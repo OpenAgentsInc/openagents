@@ -3,6 +3,7 @@ resolver = "2"
 members = [
     # Core UI
     "crates/wgpui",
+    "crates/hud",
 
     # Coder (IDE/Chat application)
     "crates/coder/domain",
@@ -81,6 +82,7 @@ tools = { path = "crates/tools" }
 claude-agent-sdk = { path = "crates/claude-agent-sdk" }
 mechacoder = { path = "crates/mechacoder" }
 wgpui = { path = "crates/wgpui" }
+hud = { path = "crates/hud" }
 coder_domain = { path = "crates/coder/domain" }
 coder_protocol = { path = "crates/coder/protocol" }
 coder_ui_runtime = { path = "crates/coder/ui_runtime" }
