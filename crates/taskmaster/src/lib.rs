@@ -36,6 +36,7 @@
 //! repo.close(&issue.id, Some("Fixed in PR #123"), vec![], Some("alice")).unwrap();
 //! ```
 
+pub mod plan_to_tasks;
 pub mod repository;
 pub mod storage;
 pub mod types;

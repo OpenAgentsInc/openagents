@@ -56,3 +56,5 @@ define_id!(RunId);
 define_id!(StepId);
 define_id!(ToolUseId);
 define_id!(ArtifactId);
+define_id!(SessionId);
+define_id!(PermissionId);

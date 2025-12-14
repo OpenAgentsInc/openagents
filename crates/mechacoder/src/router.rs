@@ -14,6 +14,8 @@ use std::collections::HashSet;
 pub enum Backend {
     /// Claude Agent SDK (requires claude CLI installed)
     ClaudeCode,
+    /// Anthropic API direct (requires ANTHROPIC_API_KEY env var)
+    Anthropic,
     /// OpenAI API (requires OPENAI_API_KEY env var)
     OpenAI,
     /// Ollama running locally (localhost:11434)
@@ -29,6 +31,7 @@ impl Backend {
     pub fn display_name(&self) -> &'static str {
         match self {
             Backend::ClaudeCode => "Claude Code",
+            Backend::Anthropic => "Anthropic",
             Backend::OpenAI => "OpenAI",
             Backend::Ollama => "Ollama",
             Backend::Pi => "Pi Agent",
@@ -40,8 +43,34 @@ impl Backend {
     pub fn is_chat_backend(&self) -> bool {
         matches!(
             self,
-            Backend::ClaudeCode | Backend::Ollama | Backend::Pi | Backend::OpenAgentsCloud
+            Backend::ClaudeCode
+                | Backend::Anthropic
+                | Backend::Ollama
+                | Backend::Pi
+                | Backend::OpenAgentsCloud
         )
+    }
+
+    /// Get the default model for this backend.
+    pub fn default_model(&self) -> Option<&'static str> {
+        match self {
+            Backend::ClaudeCode => None, // Uses Claude CLI's default
+            Backend::Anthropic => Some("claude-sonnet-4-20250514"),
+            Backend::OpenAI => Some("gpt-4o"),
+            Backend::Ollama => Some("llama3.2"),
+            Backend::Pi => None,
+            Backend::OpenAgentsCloud => None,
+        }
+    }
+
+    /// Get the provider ID for llm crate (if applicable).
+    pub fn provider_id(&self) -> Option<&'static str> {
+        match self {
+            Backend::Anthropic => Some("anthropic"),
+            Backend::OpenAI => Some("openai"),
+            Backend::Ollama => Some("ollama"),
+            _ => None,
+        }
     }
 }
 
@@ -137,9 +166,10 @@ impl Router {
     pub fn route(&self) -> Option<Backend> {
         // Priority order:
         // 1. User's preferred backend (if available and enabled)
-        // 2. Claude Code (most capable)
-        // 3. Ollama (local, no API key needed)
-        // 4. Pi (always available)
+        // 2. Claude Code (most capable, uses claude CLI)
+        // 3. Anthropic API direct (requires API key)
+        // 4. Ollama (local, no API key needed)
+        // 5. Pi (always available)
 
         // Check preferred first
         if let Some(preferred) = self.config.preferred {
@@ -151,6 +181,7 @@ impl Router {
         // Fall through priority order
         let priority = [
             Backend::ClaudeCode,
+            Backend::Anthropic,
             Backend::Ollama,
             Backend::Pi,
             Backend::OpenAgentsCloud,
@@ -194,6 +225,11 @@ impl Router {
             backends.push(Backend::ClaudeCode);
         }
 
+        // Check Anthropic API key
+        if std::env::var("ANTHROPIC_API_KEY").is_ok() {
+            backends.push(Backend::Anthropic);
+        }
+
         // Check OpenAI API key
         if std::env::var("OPENAI_API_KEY").is_ok() {
             backends.push(Backend::OpenAI);
@@ -217,6 +253,11 @@ impl Router {
         // Check Claude Code (check if claude CLI exists)
         if Self::check_claude_code_sync() {
             backends.push(Backend::ClaudeCode);
+        }
+
+        // Check Anthropic API key
+        if std::env::var("ANTHROPIC_API_KEY").is_ok() {
+            backends.push(Backend::Anthropic);
         }
 
         // Check OpenAI API key
@@ -330,7 +371,22 @@ mod tests {
     #[test]
     fn test_backend_display_name() {
         assert_eq!(Backend::ClaudeCode.display_name(), "Claude Code");
+        assert_eq!(Backend::Anthropic.display_name(), "Anthropic");
         assert_eq!(Backend::Pi.display_name(), "Pi Agent");
+    }
+
+    #[test]
+    fn test_backend_provider_id() {
+        assert_eq!(Backend::Anthropic.provider_id(), Some("anthropic"));
+        assert_eq!(Backend::OpenAI.provider_id(), Some("openai"));
+        assert_eq!(Backend::ClaudeCode.provider_id(), None);
+    }
+
+    #[test]
+    fn test_backend_default_model() {
+        assert_eq!(Backend::Anthropic.default_model(), Some("claude-sonnet-4-20250514"));
+        assert_eq!(Backend::OpenAI.default_model(), Some("gpt-4o"));
+        assert_eq!(Backend::Ollama.default_model(), Some("llama3.2"));
     }
 
     #[test]
@@ -345,5 +401,14 @@ mod tests {
         // With preferred set, that takes priority
         router.config_mut().set_preferred(Some(Backend::Pi));
         assert_eq!(router.route(), Some(Backend::Pi));
+    }
+
+    #[test]
+    fn test_router_anthropic_priority() {
+        let mut router = Router::new(RouterConfig::default());
+        // Anthropic should be preferred over Ollama (when no ClaudeCode)
+        router.detected = vec![Backend::Anthropic, Backend::Ollama, Backend::Pi];
+
+        assert_eq!(router.route(), Some(Backend::Anthropic));
     }
 }
