@@ -1,0 +1,32 @@
+[package]
+name = "hud"
+version = "0.1.0"
+edition = "2024"
+description = "Arwes-style sci-fi HUD components for WGPUI"
+license = "MIT"
+
+[[bin]]
+name = "hud_demo"
+path = "src/bin/hud_demo.rs"
+
+[lib]
+name = "hud"
+path = "src/lib.rs"
+
+[dependencies]
+wgpui = { path = "../wgpui", features = ["desktop"] }
+smallvec = { version = "1", features = ["union"] }
+log = "0.4"
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+env_logger = "0.11"
+winit = "0.30"
+pollster = "0.4"
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+wasm-bindgen = "0.2"
+console_error_panic_hook = "0.1"
+
+[features]
+default = []
+web = ["wgpui/web"]
