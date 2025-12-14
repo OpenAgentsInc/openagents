@@ -1,4 +1,3 @@
 [alias]
 coder = "run --bin coder_app"
 desktop = "run --bin coder_app"
-web = "!cd crates/coder/app && ./serve-web.sh"
