@@ -22,13 +22,14 @@ coder_ui_runtime = { path = "../ui_runtime" }
 coder_widgets = { path = "../widgets" }
 coder_shell = { path = "../shell" }
 coder_surfaces_chat = { path = "../surfaces_chat" }
-wgpui = { path = "../../wgpui" }
+wgpui = { path = "../../wgpui", features = ["desktop"] }
 
 # Logging
 log = "0.4"
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 env_logger = "0.11"
+winit = "0.30"
 pollster = "0.4"
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
