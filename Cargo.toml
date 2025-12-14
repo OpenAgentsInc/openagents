@@ -19,6 +19,7 @@ members = [
     "crates/coder/permission",
     "crates/coder/session",
     "crates/coder/agent",
+    "crates/coder/service",
     "crates/coder/app",
 
     # Nostr & Decentralized
@@ -104,6 +105,7 @@ coder_storage = { path = "crates/coder/storage" }
 coder_permission = { path = "crates/coder/permission" }
 coder_session = { path = "crates/coder/session" }
 coder_agent = { path = "crates/coder/agent" }
+coder_service = { path = "crates/coder/service" }
 coder_app = { path = "crates/coder/app" }
 
 # External crates
