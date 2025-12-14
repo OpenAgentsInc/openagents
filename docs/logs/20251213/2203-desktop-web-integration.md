@@ -1131,7 +1131,7 @@ time not implemented on this platform
 chrono's `Utc::now()` requires platform time support which isn't available on WASM without the `wasmbind` feature.
 
 **Solution:**
-Added "wasmbind" feature to chrono dependency:
+Added "wasmbind" feature to chrono dependency in **both** domain and protocol crates:
 
 File: `crates/coder/domain/Cargo.toml`
 ```toml
@@ -1142,7 +1142,18 @@ chrono = { version = "0.4", features = ["serde"] }
 chrono = { version = "0.4", features = ["serde", "wasmbind"] }
 ```
 
+File: `crates/coder/protocol/Cargo.toml`
+```toml
+# Before
+chrono = { version = "0.4", features = ["serde"] }
+
+# After
+chrono = { version = "0.4", features = ["serde", "wasmbind"] }
+```
+
 This enables chrono to use JavaScript's `Date` API for time operations on WASM.
+
+**Note:** The error persisted after the initial domain fix because the protocol crate also uses `Utc::now()` and required the same fix. Both crates needed the wasmbind feature.
 
 ### Verification
 

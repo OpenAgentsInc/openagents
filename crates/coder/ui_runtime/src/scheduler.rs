@@ -4,7 +4,10 @@
 //! Update → Build → Layout → Paint → Render
 
 use crate::effect::flush_effects;
-use std::time::{Duration, Instant};
+use std::time::Duration;
+
+#[cfg(not(target_arch = "wasm32"))]
+use std::time::Instant;
 
 /// The current phase of the frame.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -150,6 +153,7 @@ impl Scheduler {
     }
 
     /// Run a single frame.
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn run_frame(&mut self) -> FrameStats {
         let frame_start = Instant::now();
         let mut stats = FrameStats::default();
@@ -195,6 +199,49 @@ impl Scheduler {
         // Done
         self.phase = FramePhase::Idle;
         stats.total_ms = frame_start.elapsed().as_secs_f64() * 1000.0;
+
+        self.frame_count += 1;
+        self.frame_requested = false;
+        self.last_stats = stats.clone();
+
+        stats
+    }
+
+    /// Run a single frame (WASM version - no timing).
+    #[cfg(target_arch = "wasm32")]
+    pub fn run_frame(&mut self) -> FrameStats {
+        let stats = FrameStats::default();
+
+        // Update phase - run effects
+        self.phase = FramePhase::Update;
+        flush_effects();
+
+        // Build phase
+        self.phase = FramePhase::Build;
+        if let Some(ref mut callback) = self.callbacks.on_build {
+            callback();
+        }
+
+        // Layout phase
+        self.phase = FramePhase::Layout;
+        if let Some(ref mut callback) = self.callbacks.on_layout {
+            callback();
+        }
+
+        // Paint phase
+        self.phase = FramePhase::Paint;
+        if let Some(ref mut callback) = self.callbacks.on_paint {
+            callback();
+        }
+
+        // Render phase
+        self.phase = FramePhase::Render;
+        if let Some(ref mut callback) = self.callbacks.on_render {
+            callback();
+        }
+
+        // Done
+        self.phase = FramePhase::Idle;
 
         self.frame_count += 1;
         self.frame_requested = false;
