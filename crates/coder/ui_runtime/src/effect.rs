@@ -10,6 +10,7 @@ use std::sync::Arc;
 
 /// A handle to a running effect that can be used to stop it.
 pub struct EffectHandle {
+    #[allow(dead_code)]
     pub(crate) id: SubscriberId,
     stopped: Arc<Mutex<bool>>,
 }
@@ -35,6 +36,7 @@ pub struct Effect {
     /// The subscriber ID for dependency tracking.
     pub(crate) subscriber_id: SubscriberId,
     /// The scope this effect belongs to.
+    #[allow(dead_code)]
     pub(crate) scope_id: Option<ScopeId>,
 }
 

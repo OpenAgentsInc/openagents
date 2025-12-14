@@ -15,6 +15,7 @@ new_key_type! {
 /// A scope that manages reactive computations.
 pub struct Scope {
     /// Parent scope (if nested).
+    #[allow(dead_code)]
     pub(crate) parent: Option<ScopeId>,
     /// Child scopes.
     pub(crate) children: SmallVec<[ScopeId; 4]>,

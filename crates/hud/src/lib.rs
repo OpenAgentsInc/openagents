@@ -44,6 +44,25 @@
 //! - [`data::CodeBlock`] - Code display with line numbers
 //! - [`data::Card`] - Content container with title and frame
 //!
+//! ## Navigation
+//! - [`nav::Tabs`] - Tabbed navigation with animated indicator
+//! - [`nav::Breadcrumbs`] - Path navigation breadcrumbs
+//! - [`nav::Nav`] - Main navigation (horizontal/vertical)
+//! - [`nav::Pagination`] - Page navigation
+//!
+//! ## Feedback
+//! - [`feedback::Alert`] - Notification/alert messages
+//! - [`feedback::Progress`] - Progress bars (linear, segmented, striped)
+//! - [`feedback::Loading`] - Loading spinner
+//! - [`feedback::Modal`] - Modal dialog
+//! - [`feedback::Tooltip`] - Hover tooltips
+//!
+//! ## Indicators
+//! - [`indicator::StatusLight`] - LED-style status indicator
+//! - [`indicator::Meter`] - Value gauge with thresholds
+//! - [`indicator::Separator`] - Horizontal/vertical dividers
+//! - [`indicator::Figure`] - Image container with frame
+//!
 //! # Theme
 //!
 //! All components use a white-on-black color scheme with varying opacities.
@@ -55,8 +74,11 @@ pub mod button;
 pub mod data;
 pub mod easing;
 pub mod effects;
+pub mod feedback;
 pub mod form;
 pub mod frame;
+pub mod indicator;
+pub mod nav;
 pub mod text;
 pub mod theme;
 
@@ -68,5 +90,8 @@ pub use data::{Card, CodeBlock, List, ListItem, Table, TableColumn, TableRow};
 pub use effects::Illuminator;
 pub use form::{Checkbox, Select, SelectOption, TextInput, Toggle};
 pub use frame::{FrameCircle, FrameCorners, FrameHeader, FrameLines, FrameOctagon, FrameSides, FrameUnderline};
+pub use feedback::{Alert, AlertLevel, Loading, Modal, Progress, ProgressStyle, Tooltip, TooltipPosition};
+pub use indicator::{Figure, Meter, Separator, SeparatorStyle, StatusLight, StatusState};
+pub use nav::{Breadcrumbs, Crumb, Nav, NavDirection, NavItem, Pagination, Tab, Tabs};
 pub use text::{TextDecipher, TextSequence};
 pub use theme::hud as colors;

@@ -38,6 +38,7 @@ impl<T> Signal<T> {
     }
 
     /// Unsubscribe from this signal.
+    #[allow(dead_code)]
     pub(crate) fn unsubscribe(&self, subscriber: SubscriberId) {
         let mut subs = self.inner.subscribers.write();
         subs.retain(|s| *s != subscriber);

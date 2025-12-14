@@ -322,6 +322,7 @@ impl Renderer {
     }
 
     /// Update glyph atlas texture.
+    #[allow(deprecated)]
     pub fn update_atlas(&self, queue: &wgpu::Queue, data: &[u8], size: u32) {
         queue.write_texture(
             wgpu::ImageCopyTexture {

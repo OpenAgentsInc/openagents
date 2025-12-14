@@ -69,6 +69,7 @@ pub struct Chrome {
     show_status_bar: bool,
 
     /// Show navigation controls.
+    #[allow(dead_code)]
     show_nav_controls: bool,
 
     /// Current breadcrumbs.

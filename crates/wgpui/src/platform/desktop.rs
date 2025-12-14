@@ -13,12 +13,11 @@ use crate::scene::Scene;
 use crate::text::TextSystem;
 
 use std::sync::Arc;
-use winit::application::ApplicationHandler;
-use winit::dpi::{LogicalSize, PhysicalPosition, PhysicalSize};
+use winit::dpi::LogicalSize;
 use winit::event::{ElementState, MouseButton as WinitMouseButton, WindowEvent};
-use winit::event_loop::{ActiveEventLoop, EventLoop};
-use winit::keyboard::{Key as WinitKey, KeyCode as WinitKeyCode, NamedKey as WinitNamedKey};
-use winit::window::{CursorIcon, Window, WindowAttributes, WindowId};
+use winit::event_loop::ActiveEventLoop;
+use winit::keyboard::{Key as WinitKey, NamedKey as WinitNamedKey};
+use winit::window::{CursorIcon, Window, WindowAttributes};
 
 /// Desktop platform for running wgpui natively.
 pub struct DesktopPlatform {
