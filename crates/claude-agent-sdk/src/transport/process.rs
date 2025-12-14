@@ -39,6 +39,17 @@ pub struct ProcessTransport {
 }
 
 impl ProcessTransport {
+    /// Get the PATH from login shell (includes shell profile additions).
+    fn get_shell_path() -> Option<String> {
+        std::process::Command::new("zsh")
+            .args(["-lc", "echo $PATH"])
+            .output()
+            .ok()
+            .filter(|o| o.status.success())
+            .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+            .filter(|s| !s.is_empty())
+    }
+
     /// Spawn a new Claude Code CLI process.
     pub async fn spawn(
         config: ExecutableConfig,
@@ -61,6 +72,11 @@ impl ProcessTransport {
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::inherit()); // Let stderr pass through for debugging
+
+        // Use PATH from login shell to include shell profile additions
+        if let Some(shell_path) = Self::get_shell_path() {
+            cmd.env("PATH", shell_path);
+        }
 
         if let Some(cwd) = cwd {
             cmd.current_dir(cwd);
@@ -139,13 +155,28 @@ impl ProcessTransport {
         let home = std::env::var("HOME").unwrap_or_default();
         let possible_paths = [
             format!("{}/.claude/local/claude", home),
+            format!("{}/.npm-global/bin/claude", home),
+            format!("{}/.local/bin/claude", home),
             "/usr/local/bin/claude".to_string(),
             "/opt/homebrew/bin/claude".to_string(),
         ];
 
-        for path in possible_paths {
-            if std::path::Path::new(&path).exists() {
-                return Ok((path, Vec::new()));
+        for path in &possible_paths {
+            if std::path::Path::new(path).exists() {
+                return Ok((path.clone(), Vec::new()));
+            }
+        }
+
+        // Try using login shell to get PATH from shell profile
+        if let Ok(output) = std::process::Command::new("zsh")
+            .args(["-lc", "which claude"])
+            .output()
+        {
+            if output.status.success() {
+                let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                if !path.is_empty() && std::path::Path::new(&path).exists() {
+                    return Ok((path, Vec::new()));
+                }
             }
         }
 

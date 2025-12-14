@@ -238,8 +238,9 @@ impl Router {
     /// Check if Claude Code CLI is available.
     #[cfg(feature = "server")]
     async fn check_claude_code() -> bool {
-        tokio::process::Command::new("which")
-            .arg("claude")
+        // Use login shell to get proper PATH from shell profile
+        tokio::process::Command::new("zsh")
+            .args(["-lc", "which claude"])
             .output()
             .await
             .map(|o| o.status.success())
@@ -248,8 +249,9 @@ impl Router {
 
     /// Synchronous Claude Code check.
     fn check_claude_code_sync() -> bool {
-        std::process::Command::new("which")
-            .arg("claude")
+        // Use login shell to get proper PATH from shell profile
+        std::process::Command::new("zsh")
+            .args(["-lc", "which claude"])
             .output()
             .map(|o| o.status.success())
             .unwrap_or(false)
