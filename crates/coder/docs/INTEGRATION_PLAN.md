@@ -1,5 +1,10 @@
 # Coder Integration Plan
 
+> **Status: COMPLETED**
+>
+> This plan was implemented. The recommended hybrid approach (D + A: Service Layer + Event Bridge)
+> has been fully integrated. See [SERVICE_LAYER.md](./SERVICE_LAYER.md) for the implementation details.
+
 This document outlines proposed approaches for integrating the AI infrastructure (llm, session, permission, agent, storage, tool_registry) with the coder_app UI layer.
 
 ## Current State
@@ -644,3 +649,77 @@ impl CostTracker {
 - `coder_app/src/state.rs` - Add ChatService, update handlers
 - `coder_app/src/lib.rs` - Initialize service
 - `surfaces_chat/` - Add PermissionDialog widget
+
+---
+
+## Implementation Status
+
+> **Completed: December 2024**
+
+### What Was Implemented
+
+| Component | Status | Location |
+|-----------|--------|----------|
+| ChatService crate | Done | `crates/coder/service/` |
+| ChatUpdate enum (17 variants) | Done | `crates/coder/service/src/update.rs` |
+| Internal Bridge | Done | `crates/coder/service/src/bridge.rs` |
+| ServiceConfig | Done | `crates/coder/service/src/service.rs` |
+| service_handler integration | Done | `crates/coder/app/src/service_handler.rs` |
+| Feature flags | Done | `crates/coder/app/Cargo.toml` |
+| App integration | Done | `crates/coder/app/src/app.rs` |
+
+### Crate Structure
+
+```
+crates/coder/service/
+├── Cargo.toml
+└── src/
+    ├── lib.rs           # Module exports
+    ├── service.rs       # ChatService implementation
+    ├── update.rs        # ChatUpdate enum
+    └── bridge.rs        # Event translation
+```
+
+### Test Results
+
+63 tests passing across 9 AI infrastructure crates:
+- `coder_domain`: 9 tests
+- `coder_storage`: 12 tests
+- `coder_permission`: 3 tests
+- `coder_session`: 5 tests
+- `coder_agent`: 4 tests
+- `tool_registry`: 3 tests
+- `llm`: 3 tests
+- `coder_service`: 15 tests
+- `coder_app`: 9 tests
+
+### Feature Flags
+
+```toml
+[features]
+default = ["coder-service"]  # Use ChatService
+legacy = []                   # Use mechacoder (Claude Code CLI)
+```
+
+### Usage
+
+```bash
+# Run with ChatService (default)
+cargo run -p coder_app
+
+# Run with legacy Claude Code CLI
+cargo run -p coder_app --no-default-features --features legacy
+```
+
+### Remaining Work
+
+The following items were identified but not implemented:
+
+- [ ] Permission dialog widget in UI
+- [ ] OpenAI provider
+- [ ] Ollama provider
+- [ ] Session persistence (auto-save)
+- [ ] Cost tracking UI
+- [ ] Parallel tool execution
+
+See [SERVICE_LAYER.md](./SERVICE_LAYER.md) for comprehensive API documentation.
