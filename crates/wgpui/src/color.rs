@@ -112,6 +112,27 @@ impl Hsla {
         Self { a, ..self }
     }
 
+    /// Convert to linear RGB space for sRGB surfaces.
+    /// sRGB uses gamma ~2.2, so we need to raise to power 2.2 to convert to linear.
+    pub fn to_linear_rgba(&self) -> [f32; 4] {
+        let rgba = self.to_rgba();
+        [
+            Self::srgb_to_linear(rgba[0]),
+            Self::srgb_to_linear(rgba[1]),
+            Self::srgb_to_linear(rgba[2]),
+            rgba[3], // alpha is always linear
+        ]
+    }
+
+    /// Convert a single sRGB component to linear.
+    fn srgb_to_linear(c: f32) -> f32 {
+        if c <= 0.04045 {
+            c / 12.92
+        } else {
+            ((c + 0.055) / 1.055).powf(2.4)
+        }
+    }
+
     /// Lighten the color by a factor (0.0-1.0)
     pub fn lighten(self, factor: f32) -> Self {
         Self {

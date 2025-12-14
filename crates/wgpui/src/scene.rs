@@ -84,9 +84,19 @@ impl GpuQuad {
             size: [quad.bounds.size.width, quad.bounds.size.height],
             background: quad
                 .background
-                .map(|c| c.to_rgba())
+                .map(|c| {
+                    #[cfg(not(target_arch = "wasm32"))]
+                    { c.to_linear_rgba() } // Desktop: Convert to linear for Metal's sRGB handling
+                    #[cfg(target_arch = "wasm32")]
+                    { c.to_rgba() } // Web: Keep as sRGB (WebGL/WebGPU don't auto-convert)
+                })
                 .unwrap_or([0.0, 0.0, 0.0, 0.0]),
-            border_color: quad.border_color.to_rgba(),
+            border_color: {
+                #[cfg(not(target_arch = "wasm32"))]
+                { quad.border_color.to_linear_rgba() } // Desktop: Convert to linear
+                #[cfg(target_arch = "wasm32")]
+                { quad.border_color.to_rgba() } // Web: Keep as sRGB
+            },
             border_width: quad.border_width,
             corner_radii: quad.corner_radii.to_array(),
             _padding: [0.0, 0.0],
@@ -155,7 +165,12 @@ impl GpuTextQuad {
             position: [origin.x + glyph.offset.x, origin.y + glyph.offset.y],
             size: [glyph.size.width, glyph.size.height],
             uv: glyph.uv,
-            color: color.to_rgba(),
+            color: {
+                #[cfg(not(target_arch = "wasm32"))]
+                { color.to_linear_rgba() } // Desktop: Convert to linear for Metal's sRGB handling
+                #[cfg(target_arch = "wasm32")]
+                { color.to_rgba() } // Web: Keep as sRGB (WebGL/WebGPU don't auto-convert)
+            },
         }
     }
 }
