@@ -2,8 +2,17 @@
 //!
 //! This file provides the native (desktop) entry point.
 //! For WASM, see the `start` function in lib.rs.
+//!
+//! # Backend Selection
+//!
+//! By default, uses `coder_service::ChatService` which provides:
+//! - Built-in LLM providers (Anthropic)
+//! - Tool registry with standard tools
+//! - Session management and permissions
+//!
+//! Use `--features legacy` to use the mechacoder backend (Claude Code CLI).
 
-use coder_app::{spawn_chat_handler, App};
+use coder_app::App;
 use log::info;
 use std::sync::Arc;
 use tokio::sync::mpsc;
@@ -14,6 +23,12 @@ use winit::window::WindowId;
 use wgpui::platform::desktop::{create_window, DesktopPlatform};
 use wgpui::platform::Platform;
 use wgpui::Scene;
+
+#[cfg(feature = "coder-service")]
+use coder_app::{spawn_service_handler, ServiceRequest};
+
+#[cfg(not(feature = "coder-service"))]
+use coder_app::spawn_chat_handler;
 
 struct CoderApp {
     app: App,
@@ -112,25 +127,49 @@ fn main() {
 
     info!("Starting Coder desktop application...");
 
-    // Create message channels
-    let (client_tx, client_rx) = mpsc::unbounded_channel();
+    // Create message channels for server -> UI communication
     let (server_tx, server_rx) = mpsc::unbounded_channel();
 
-    // Spawn the background chat handler
-    let _handler_thread = spawn_chat_handler(client_rx, server_tx);
-    info!("Chat handler spawned");
+    // Spawn the appropriate backend handler based on feature flags
+    #[cfg(feature = "coder-service")]
+    {
+        // Use new ChatService-based handler
+        let (request_tx, request_rx) = mpsc::unbounded_channel::<ServiceRequest>();
+        let _handler_thread = spawn_service_handler(request_rx, server_tx);
+        info!("ChatService handler spawned");
 
-    // Create event loop - use Poll for continuous updates during streaming
-    let event_loop = EventLoop::new().unwrap();
-    event_loop.set_control_flow(ControlFlow::Poll);
+        // Create event loop
+        let event_loop = EventLoop::new().unwrap();
+        event_loop.set_control_flow(ControlFlow::Poll);
 
-    // Create app with channels
-    let app = App::new(client_tx, server_rx);
-    let mut coder_app = CoderApp {
-        app,
-        platform: None,
-    };
+        // Create app with service request channel
+        let app = App::new_with_service(request_tx, server_rx);
+        let mut coder_app = CoderApp {
+            app,
+            platform: None,
+        };
 
-    // Run event loop
-    event_loop.run_app(&mut coder_app).unwrap();
+        event_loop.run_app(&mut coder_app).unwrap();
+    }
+
+    #[cfg(not(feature = "coder-service"))]
+    {
+        // Use legacy mechacoder handler
+        let (client_tx, client_rx) = mpsc::unbounded_channel();
+        let _handler_thread = spawn_chat_handler(client_rx, server_tx);
+        info!("Legacy chat handler spawned");
+
+        // Create event loop
+        let event_loop = EventLoop::new().unwrap();
+        event_loop.set_control_flow(ControlFlow::Poll);
+
+        // Create app with legacy channels
+        let app = App::new(client_tx, server_rx);
+        let mut coder_app = CoderApp {
+            app,
+            platform: None,
+        };
+
+        event_loop.run_app(&mut coder_app).unwrap();
+    }
 }

@@ -9,9 +9,15 @@ use coder_surfaces_chat::ChatThread;
 use coder_ui_runtime::{CommandBus, Scheduler, Signal};
 use coder_widgets::context::{EventContext, PaintContext};
 use coder_widgets::{EventResult, Widget};
-use mechacoder::{ClientMessage, ServerMessage};
+use mechacoder::ServerMessage;
 use tokio::sync::mpsc;
 use wgpui::{Bounds, InputEvent, Scene};
+
+#[cfg(feature = "coder-service")]
+use crate::service_handler::ServiceRequest;
+
+#[cfg(any(not(feature = "coder-service"), target_arch = "wasm32"))]
+use mechacoder::ClientMessage;
 
 /// The main application.
 pub struct App {
@@ -45,7 +51,12 @@ pub struct App {
     /// Chat view state (reactive).
     chat_view: Signal<ChatView>,
 
-    /// Channel to send messages to backend.
+    /// Channel to send messages to backend (ChatService).
+    #[cfg(feature = "coder-service")]
+    request_tx: mpsc::UnboundedSender<ServiceRequest>,
+
+    /// Channel to send messages to backend (legacy mechacoder or WASM).
+    #[cfg(any(not(feature = "coder-service"), target_arch = "wasm32"))]
     client_tx: mpsc::UnboundedSender<ClientMessage>,
 
     /// Channel to receive messages from backend.
@@ -56,9 +67,70 @@ pub struct App {
 }
 
 impl App {
-    /// Create a new application with message channels.
-    ///
-    /// The channels are used to communicate with the background chat handler.
+    /// Create a new application with ChatService-based handler.
+    #[cfg(feature = "coder-service")]
+    pub fn new_with_service(
+        request_tx: mpsc::UnboundedSender<ServiceRequest>,
+        server_rx: mpsc::UnboundedReceiver<ServerMessage>,
+    ) -> Self {
+        // Get current working directory
+        let cwd = std::env::current_dir()
+            .map(|p| p.to_string_lossy().to_string())
+            .unwrap_or_else(|_| ".".to_string());
+
+        // Create chat view signal
+        let thread_id = ThreadId::new();
+        let chat_view = Signal::new(ChatView::new(thread_id));
+
+        // Clone what we need for the on_send callback
+        let tx = request_tx.clone();
+        let cwd_clone = cwd.clone();
+        let chat_view_clone = chat_view.clone();
+
+        // Create chat thread widget with on_send callback
+        let chat_thread = ChatThread::new(thread_id)
+            .chat_view(chat_view.clone())
+            .on_send(move |content: &str| {
+                log::info!("[App] User sent message: {}", content);
+
+                // Add user message to chat view
+                let mut view = chat_view_clone.get();
+                view.entries.push(ChatEntry::Message(MessageView {
+                    id: coder_domain::ids::MessageId::new(),
+                    content: content.to_string(),
+                    role: Role::User,
+                    timestamp: chrono::Utc::now(),
+                    has_tool_uses: false,
+                }));
+                chat_view_clone.set(view);
+
+                // Send to ChatService backend
+                let _ = tx.send(ServiceRequest::SendMessage {
+                    content: content.to_string(),
+                    cwd: cwd_clone.clone(),
+                });
+            });
+
+        Self {
+            state: AppState::new(),
+            navigation: Navigation::new(),
+            views: ViewRegistry::new(),
+            chrome: Chrome::new().title("Coder"),
+            scheduler: Scheduler::new(),
+            commands: CommandBus::new(),
+            window_size: (800.0, 600.0),
+            scale_factor: 1.0,
+            chat_thread,
+            chat_view,
+            request_tx,
+            server_rx,
+            cwd,
+        }
+    }
+
+    /// Create a new application with legacy mechacoder handler.
+    /// Also used for WASM builds which don't have ChatService.
+    #[cfg(any(not(feature = "coder-service"), target_arch = "wasm32"))]
     pub fn new(
         client_tx: mpsc::UnboundedSender<ClientMessage>,
         server_rx: mpsc::UnboundedReceiver<ServerMessage>,
@@ -94,7 +166,7 @@ impl App {
                 }));
                 chat_view_clone.set(view);
 
-                // Send to backend
+                // Send to legacy backend
                 let _ = tx.send(ClientMessage::SendMessage {
                     content: content.to_string(),
                     cwd: cwd_clone.clone(),
@@ -224,7 +296,8 @@ impl App {
         }
     }
 
-    /// Send a message to the backend.
+    /// Send a message to the backend (ChatService).
+    #[cfg(feature = "coder-service")]
     #[allow(dead_code)]
     pub fn send_message(&self, content: String) {
         // Add user message to chat view
@@ -238,7 +311,29 @@ impl App {
         }));
         self.chat_view.set(view);
 
-        // Send to backend
+        // Send to ChatService backend
+        let _ = self.request_tx.send(ServiceRequest::SendMessage {
+            content,
+            cwd: self.cwd.clone(),
+        });
+    }
+
+    /// Send a message to the backend (legacy mechacoder or WASM).
+    #[cfg(any(not(feature = "coder-service"), target_arch = "wasm32"))]
+    #[allow(dead_code)]
+    pub fn send_message(&self, content: String) {
+        // Add user message to chat view
+        let mut view = self.chat_view.get();
+        view.entries.push(ChatEntry::Message(MessageView {
+            id: coder_domain::ids::MessageId::new(),
+            content: content.clone(),
+            role: Role::User,
+            timestamp: chrono::Utc::now(),
+            has_tool_uses: false,
+        }));
+        self.chat_view.set(view);
+
+        // Send to legacy backend
         let _ = self.client_tx.send(ClientMessage::SendMessage {
             content,
             cwd: self.cwd.clone(),
@@ -303,6 +398,14 @@ impl App {
 mod tests {
     use super::*;
 
+    #[cfg(feature = "coder-service")]
+    fn create_test_app() -> App {
+        let (request_tx, _request_rx) = mpsc::unbounded_channel();
+        let (_server_tx, server_rx) = mpsc::unbounded_channel();
+        App::new_with_service(request_tx, server_rx)
+    }
+
+    #[cfg(not(feature = "coder-service"))]
     fn create_test_app() -> App {
         let (client_tx, _client_rx) = mpsc::unbounded_channel();
         let (_server_tx, server_rx) = mpsc::unbounded_channel();

@@ -22,6 +22,7 @@ coder_ui_runtime = { path = "../ui_runtime" }
 coder_widgets = { path = "../widgets" }
 coder_shell = { path = "../shell" }
 coder_surfaces_chat = { path = "../surfaces_chat" }
+coder_service = { path = "../service" }
 wgpui = { path = "../../wgpui", features = ["desktop"] }
 mechacoder = { path = "../../mechacoder", features = ["server"] }
 
@@ -51,7 +52,11 @@ web-sys = { version = "0.3", features = [
 ] }
 
 [features]
-default = []
+default = ["coder-service"]
 web = ["wgpui/web"]
+# Use the new ChatService-based backend (default)
+coder-service = []
+# Use the legacy mechacoder backend (Claude Code CLI)
+legacy = []
 
 [dev-dependencies]
