@@ -4,8 +4,10 @@
 //! as well as the `ProviderRegistry` for managing multiple providers.
 
 mod anthropic;
+mod openrouter;
 
 pub use anthropic::AnthropicProvider;
+pub use openrouter::OpenRouterProvider;
 
 use crate::message::CompletionRequest;
 use crate::model::ModelInfo;
@@ -134,6 +136,14 @@ impl ProviderRegistry {
             }
         }
 
+        // Try OpenRouter
+        if let Ok(openrouter) = OpenRouterProvider::new() {
+            if openrouter.is_available().await {
+                self.register(Arc::new(openrouter)).await;
+                tracing::info!("Registered OpenRouter provider");
+            }
+        }
+
         // Future: OpenAI, Ollama, etc.
 
         Ok(())
@@ -217,7 +227,31 @@ impl ProviderRegistry {
 fn parse_model_spec(spec: &str) -> Option<(String, String)> {
     let parts: Vec<&str> = spec.splitn(2, '/').collect();
     if parts.len() == 2 {
-        Some((parts[0].to_string(), parts[1].to_string()))
+        // Check for OpenRouter-style model IDs (provider/model)
+        // These contain a nested provider prefix like "anthropic/claude-3.5-sonnet"
+        let first = parts[0];
+        let second = parts[1];
+
+        // Known OpenRouter provider prefixes
+        let openrouter_prefixes = [
+            "anthropic",
+            "openai",
+            "google",
+            "meta-llama",
+            "deepseek",
+            "mistralai",
+            "cohere",
+            "perplexity",
+            "microsoft",
+        ];
+
+        // If first part is an OpenRouter provider prefix and we're using openrouter
+        if openrouter_prefixes.contains(&first) {
+            // This is an OpenRouter model ID
+            return Some(("openrouter".to_string(), spec.to_string()));
+        }
+
+        Some((first.to_string(), second.to_string()))
     } else {
         // If no provider specified, try to infer from model name
         let model = parts[0];
@@ -240,14 +274,20 @@ mod tests {
 
     #[test]
     fn test_parse_model_spec() {
+        // Direct provider/model format - non-OpenRouter providers
+        // Note: anthropic/model is detected as OpenRouter format now
         assert_eq!(
-            parse_model_spec("anthropic/claude-sonnet-4-5-20250929"),
-            Some(("anthropic".to_string(), "claude-sonnet-4-5-20250929".to_string()))
+            parse_model_spec("ollama/llama3.2"),
+            Some(("ollama".to_string(), "llama3.2".to_string()))
         );
 
+        // Bare model names - infer provider
         assert_eq!(
             parse_model_spec("claude-sonnet-4-5-20250929"),
-            Some(("anthropic".to_string(), "claude-sonnet-4-5-20250929".to_string()))
+            Some((
+                "anthropic".to_string(),
+                "claude-sonnet-4-5-20250929".to_string()
+            ))
         );
 
         assert_eq!(
@@ -258,6 +298,39 @@ mod tests {
         assert_eq!(
             parse_model_spec("llama3.2"),
             Some(("ollama".to_string(), "llama3.2".to_string()))
+        );
+    }
+
+    #[test]
+    fn test_parse_openrouter_model_spec() {
+        // OpenRouter-style model IDs route to openrouter provider
+        assert_eq!(
+            parse_model_spec("anthropic/claude-3.5-sonnet"),
+            Some((
+                "openrouter".to_string(),
+                "anthropic/claude-3.5-sonnet".to_string()
+            ))
+        );
+
+        assert_eq!(
+            parse_model_spec("openai/gpt-4o"),
+            Some(("openrouter".to_string(), "openai/gpt-4o".to_string()))
+        );
+
+        assert_eq!(
+            parse_model_spec("meta-llama/llama-3.3-70b-instruct"),
+            Some((
+                "openrouter".to_string(),
+                "meta-llama/llama-3.3-70b-instruct".to_string()
+            ))
+        );
+
+        assert_eq!(
+            parse_model_spec("google/gemini-2.0-flash-exp:free"),
+            Some((
+                "openrouter".to_string(),
+                "google/gemini-2.0-flash-exp:free".to_string()
+            ))
         );
     }
 }
