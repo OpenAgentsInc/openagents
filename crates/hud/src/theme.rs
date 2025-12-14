@@ -18,8 +18,8 @@ pub mod hud {
     /// Frame lines - dim.
     pub const FRAME_DIM: Hsla = Hsla::new(0.0, 0.0, 1.0, 0.4);
 
-    /// Dot grid dots - subtle.
-    pub const DOT_GRID: Hsla = Hsla::new(0.0, 0.0, 1.0, 0.15);
+    /// Dot grid dots - subtle but visible.
+    pub const DOT_GRID: Hsla = Hsla::new(0.0, 0.0, 1.0, 0.06);
 
     /// Primary text color.
     pub const TEXT: Hsla = Hsla::new(0.0, 0.0, 1.0, 0.9);

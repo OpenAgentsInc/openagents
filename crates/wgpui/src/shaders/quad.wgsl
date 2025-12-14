@@ -108,12 +108,17 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let border_alpha = smoothstep(-aa_width, 0.0, inner_d) * outer_alpha;
     let fill_alpha = (1.0 - smoothstep(-aa_width, 0.0, inner_d)) * outer_alpha;
 
-    // Premultiplied alpha blending
-    let fill_color = in.background * fill_alpha;
-    let border_color = in.border_color * border_alpha;
+    // Premultiplied alpha blending - must premultiply RGB by color's alpha AND coverage
+    let fill_color = vec4<f32>(
+        in.background.rgb * in.background.a * fill_alpha,
+        in.background.a * fill_alpha
+    );
+    let border_color = vec4<f32>(
+        in.border_color.rgb * in.border_color.a * border_alpha,
+        in.border_color.a * border_alpha
+    );
 
     var color = fill_color + border_color * (1.0 - fill_color.a);
-    color.a = fill_alpha * in.background.a + border_alpha * in.border_color.a;
 
     if color.a < 0.001 {
         discard;

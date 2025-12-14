@@ -8,11 +8,8 @@ use cosmic_text::{
     Weight,
 };
 
-/// Default font family for text rendering
-#[cfg(target_arch = "wasm32")]
+/// Default font family for text rendering - Berkeley Mono on all platforms
 const DEFAULT_FONT_FAMILY: Family<'static> = Family::Name("Berkeley Mono");
-#[cfg(not(target_arch = "wasm32"))]
-const DEFAULT_FONT_FAMILY: Family<'static> = Family::Monospace;
 
 /// Default shaping mode - use Basic for WASM (simpler, no HarfBuzz)
 #[cfg(target_arch = "wasm32")]
@@ -64,13 +61,12 @@ pub struct TextSystem {
 
 impl TextSystem {
     pub fn new(scale_factor: f32) -> Self {
-        // For WASM, create font system with embedded fonts (all variants)
-        #[cfg(target_arch = "wasm32")]
+        // Create font system with embedded Berkeley Mono fonts (all platforms)
         let font_system = {
             use cosmic_text::fontdb;
             let mut db = fontdb::Database::new();
 
-            // Load all font variants
+            // Load all Berkeley Mono font variants
             let regular = include_bytes!("../fonts/BerkeleyMono-Regular.ttf");
             let bold = include_bytes!("../fonts/BerkeleyMono-Bold.ttf");
             let italic = include_bytes!("../fonts/BerkeleyMono-Italic.ttf");
@@ -83,10 +79,6 @@ impl TextSystem {
 
             FontSystem::new_with_locale_and_db("en-US".to_string(), db)
         };
-
-        // For native, use system fonts
-        #[cfg(not(target_arch = "wasm32"))]
-        let font_system = FontSystem::new();
 
         Self {
             font_system,
@@ -140,19 +132,20 @@ impl TextSystem {
         self.atlas_size
     }
 
+    /// Monospace character width ratio
+    const CHAR_WIDTH_RATIO: f32 = 1.1;
+
     /// Measure text width without rendering.
     pub fn measure(&mut self, text: &str, font_size: f32) -> f32 {
-        // Simple calculation: character count * advance width
         let char_count = text.chars().count() as f32;
-        char_count * font_size * 1.1
+        char_count * font_size * Self::CHAR_WIDTH_RATIO
     }
 
     /// Measure text and return size.
     pub fn measure_size(&mut self, text: &str, font_size: f32, _max_width: Option<f32>) -> Size {
-        // Simple calculation for monospace font
         let char_count = text.chars().count() as f32;
-        let width = char_count * font_size * 1.1;
-        let height = font_size * 1.6;
+        let width = char_count * font_size * Self::CHAR_WIDTH_RATIO;
+        let height = font_size * 1.2;
         Size::new(width, height)
     }
 
@@ -200,7 +193,7 @@ impl TextSystem {
                 };
                 glyph_data.push((cache_key, current_x, run.line_y, glyph.glyph_id as u16));
                 // Monospace font advance width
-                let advance = physical_font_size * 1.1;
+                let advance = physical_font_size * Self::CHAR_WIDTH_RATIO;
                 current_x += advance;
             }
         }
