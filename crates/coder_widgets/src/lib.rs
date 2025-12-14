@@ -12,25 +12,30 @@
 //! ## Example
 //!
 //! ```rust,ignore
-//! use coder_widgets::{Widget, Div, Text};
+//! use coder_widgets::{Widget, Div, Text, Button};
 //!
-//! // Create a container with text
+//! // Create a container with text and button
 //! let widget = Div::new()
 //!     .background(wgpui::theme::bg::SURFACE)
-//!     .child(Text::new("Hello, Coder!"));
+//!     .child(Text::new("Hello, Coder!"))
+//!     .child(Button::new("Click me").on_click(|| {}));
 //! ```
 
+pub mod button;
 pub mod context;
 pub mod div;
 pub mod list;
 pub mod scroll;
 pub mod text;
+pub mod text_input;
 pub mod widget;
 
 // Re-exports
+pub use button::{Button, ButtonVariant};
 pub use context::{EventContext, PaintContext};
 pub use div::Div;
 pub use list::{VirtualList, VirtualListItem};
 pub use scroll::ScrollView;
 pub use text::Text;
+pub use text_input::TextInput;
 pub use widget::{AnyWidget, EventResult, Widget, WidgetId};

@@ -10,6 +10,9 @@ members = [
     "crates/coder_protocol",
     "crates/coder_ui_runtime",
     "crates/coder_widgets",
+    "crates/coder_shell",
+    "crates/coder_surfaces_chat",
+    "crates/coder_app",
 
     # Nostr & Decentralized
     "crates/nostr/core",
@@ -81,6 +84,9 @@ coder_domain = { path = "crates/coder_domain" }
 coder_protocol = { path = "crates/coder_protocol" }
 coder_ui_runtime = { path = "crates/coder_ui_runtime" }
 coder_widgets = { path = "crates/coder_widgets" }
+coder_shell = { path = "crates/coder_shell" }
+coder_surfaces_chat = { path = "crates/coder_surfaces_chat" }
+coder_app = { path = "crates/coder_app" }
 
 # External crates
 anyhow = "1.0.86"

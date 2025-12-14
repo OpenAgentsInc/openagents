@@ -1,0 +1,49 @@
+[package]
+name = "coder_app"
+version = "0.1.0"
+edition = "2024"
+description = "Coder application - the main entry point for web and desktop"
+license = "MIT OR Apache-2.0"
+
+[[bin]]
+name = "coder_app"
+path = "src/main.rs"
+
+[lib]
+name = "coder_app"
+path = "src/lib.rs"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+# Core dependencies
+coder_domain = { path = "../coder_domain" }
+coder_protocol = { path = "../coder_protocol" }
+coder_ui_runtime = { path = "../coder_ui_runtime" }
+coder_widgets = { path = "../coder_widgets" }
+coder_shell = { path = "../coder_shell" }
+coder_surfaces_chat = { path = "../coder_surfaces_chat" }
+wgpui = { path = "../wgpui" }
+
+# Logging
+log = "0.4"
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+env_logger = "0.11"
+pollster = "0.4"
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+wasm-bindgen = "0.2"
+wasm-bindgen-futures = "0.4"
+console_error_panic_hook = "0.1"
+console_log = "1"
+web-sys = { version = "0.3", features = [
+    "Window",
+    "Document",
+    "Element",
+    "HtmlElement",
+] }
+
+[features]
+default = []
+
+[dev-dependencies]

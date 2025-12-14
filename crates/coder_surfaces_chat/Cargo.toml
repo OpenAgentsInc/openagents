@@ -1,0 +1,21 @@
+[package]
+name = "coder_surfaces_chat"
+version = "0.1.0"
+edition = "2024"
+description = "Chat surface for Coder - renders chat threads with markdown and tool use"
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+# Core dependencies
+coder_domain = { path = "../coder_domain" }
+coder_ui_runtime = { path = "../coder_ui_runtime" }
+coder_widgets = { path = "../coder_widgets" }
+wgpui = { path = "../wgpui" }
+
+# Utilities
+smallvec = "1.13"
+
+[dev-dependencies]
+
+[features]
+default = []
