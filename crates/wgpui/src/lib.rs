@@ -38,19 +38,26 @@
 // Public modules
 pub mod color;
 pub mod geometry;
+pub mod hit_test;
+pub mod input;
 pub mod layout;
 pub mod markdown;
 pub mod platform;
 pub mod renderer;
 pub mod scene;
+pub mod scroll;
 pub mod text;
 pub mod theme;
 
 // Re-exports for convenience
 pub use color::Hsla;
 pub use geometry::{Bounds, CornerRadii, Edges, Point, Size};
+pub use hit_test::{Hit, HitTestEntry, HitTestIndex, NodeId};
+pub use input::{Cursor, InputEvent, Key, KeyCode, Modifiers, MouseButton, NamedKey};
 pub use layout::{auto, length, length_auto, pct, px, relative, zero, LayoutEngine, LayoutId, LayoutStyle};
+pub use platform::Platform;
 pub use scene::{GlyphInstance, GpuQuad, GpuTextQuad, Quad, Scene, TextRun};
+pub use scroll::{ScrollContainer, ScrollDirection};
 pub use text::{FontStyle, TextSystem};
 
 #[cfg(all(feature = "web", target_arch = "wasm32"))]

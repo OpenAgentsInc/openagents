@@ -1,67 +1,53 @@
 //! Platform abstraction layer.
+//!
+//! This module provides a platform-agnostic interface for window management,
+//! rendering, and input handling.
 
-use crate::geometry::{Point, Size};
+use crate::geometry::Size;
+use crate::input::{Cursor, InputEvent};
+use crate::scene::Scene;
+use crate::text::TextSystem;
 
-/// Platform events.
-#[derive(Clone, Debug)]
-pub enum Event {
-    /// Window resize event.
-    Resize { size: Size, scale_factor: f32 },
-    /// Mouse move event.
-    MouseMove { position: Point },
-    /// Mouse button pressed.
-    MouseDown { position: Point, button: MouseButton },
-    /// Mouse button released.
-    MouseUp { position: Point, button: MouseButton },
-    /// Mouse wheel scroll.
-    Wheel { delta: Point },
-    /// Key pressed.
-    KeyDown { key: Key, modifiers: Modifiers },
-    /// Key released.
-    KeyUp { key: Key, modifiers: Modifiers },
+/// Platform-agnostic interface for window and rendering management.
+///
+/// This trait abstracts over different platform implementations (web, desktop, mobile)
+/// to provide a unified interface for wgpui rendering.
+pub trait Platform {
+    /// Get the logical size of the rendering surface.
+    fn logical_size(&self) -> Size;
+
+    /// Get the device pixel ratio (scale factor).
+    fn scale_factor(&self) -> f32;
+
+    /// Get a mutable reference to the text system.
+    fn text_system(&mut self) -> &mut TextSystem;
+
+    /// Render a scene to the surface.
+    fn render(&mut self, scene: &Scene) -> Result<(), String>;
+
+    /// Request a redraw of the surface.
+    fn request_redraw(&self);
+
+    /// Set the cursor style.
+    fn set_cursor(&self, cursor: Cursor);
+
+    /// Handle a resize event.
+    fn handle_resize(&mut self);
 }
 
-/// Mouse buttons.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum MouseButton {
-    Left,
-    Middle,
-    Right,
-    Other(u16),
-}
+/// Event callback type for input events.
+pub type EventCallback = Box<dyn FnMut(InputEvent)>;
 
-/// Keyboard keys.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum Key {
-    Character(char),
-    Enter,
-    Escape,
-    Backspace,
-    Delete,
-    Tab,
-    ArrowUp,
-    ArrowDown,
-    ArrowLeft,
-    ArrowRight,
-    Home,
-    End,
-    PageUp,
-    PageDown,
-    Space,
-    Other(String),
-}
-
-/// Keyboard modifiers.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct Modifiers {
-    pub shift: bool,
-    pub ctrl: bool,
-    pub alt: bool,
-    pub meta: bool,
-}
-
+// Web platform (WASM)
 #[cfg(all(feature = "web", target_arch = "wasm32"))]
 pub mod web;
 
 #[cfg(all(feature = "web", target_arch = "wasm32"))]
-pub use web::WebPlatform;
+pub use web::{run_animation_loop, setup_resize_observer, WebPlatform};
+
+// Desktop platform (native)
+#[cfg(all(feature = "desktop", not(target_arch = "wasm32")))]
+pub mod desktop;
+
+#[cfg(all(feature = "desktop", not(target_arch = "wasm32")))]
+pub use desktop::DesktopPlatform;
