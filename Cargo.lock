@@ -761,6 +761,7 @@ dependencies = [
  "chrono",
  "coder_domain",
  "coder_protocol",
+ "coder_service",
  "coder_shell",
  "coder_surfaces_chat",
  "coder_ui_runtime",

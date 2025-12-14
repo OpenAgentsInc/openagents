@@ -22,12 +22,18 @@ pub mod state;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod chat_handler;
 
+#[cfg(not(target_arch = "wasm32"))]
+pub mod service_handler;
+
 // Re-exports
 pub use app::App;
 pub use state::AppState;
 
 #[cfg(not(target_arch = "wasm32"))]
 pub use chat_handler::spawn_chat_handler;
+
+#[cfg(not(target_arch = "wasm32"))]
+pub use service_handler::{spawn_service_handler, ServiceRequest};
 
 // WASM entry point for web demo
 #[cfg(all(feature = "web", target_arch = "wasm32"))]
