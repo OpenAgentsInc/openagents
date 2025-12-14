@@ -22,3 +22,97 @@ pub mod state;
 // Re-exports
 pub use app::App;
 pub use state::AppState;
+
+// WASM entry point for web demo
+#[cfg(all(feature = "web", target_arch = "wasm32"))]
+use wasm_bindgen::prelude::*;
+
+#[cfg(all(feature = "web", target_arch = "wasm32"))]
+#[wasm_bindgen]
+pub async fn start() -> Result<(), JsValue> {
+    console_error_panic_hook::set_once();
+
+    // Initialize logging for web
+    console_log::init_with_level(log::Level::Info).expect("Failed to initialize logger");
+
+    log::info!("Starting Coder web application...");
+
+    // Initialize platform
+    let platform = wgpui::platform::web::WebPlatform::init("coder-canvas")
+        .await
+        .map_err(|e| JsValue::from_str(&e))?;
+
+    // Hide loading indicator
+    if let Some(window) = web_sys::window() {
+        if let Some(document) = window.document() {
+            if let Some(loading) = document.get_element_by_id("loading") {
+                loading
+                    .dyn_ref::<web_sys::HtmlElement>()
+                    .map(|el| el.style().set_property("display", "none"));
+            }
+        }
+    }
+
+    // Set up state
+    use std::cell::RefCell;
+    use std::rc::Rc;
+    use wgpui::platform::Platform;
+
+    let platform = Rc::new(RefCell::new(platform));
+
+    // Create app
+    let mut app = App::new();
+
+    // Set initial size
+    {
+        let p = platform.borrow();
+        let size = p.logical_size();
+        app.set_size(size.width, size.height);
+    }
+
+    // Initialize app
+    app.init();
+
+    let app = Rc::new(RefCell::new(app));
+
+    log::info!("Coder web application initialized");
+
+    // Set up resize handler
+    {
+        let platform_clone = platform.clone();
+        let app_clone = app.clone();
+        let canvas = platform.borrow().canvas().clone();
+        wgpui::platform::web::setup_resize_observer(&canvas, move || {
+            if let Ok(mut p) = platform_clone.try_borrow_mut() {
+                p.handle_resize();
+                let size = p.logical_size();
+                if let Ok(mut a) = app_clone.try_borrow_mut() {
+                    a.set_size(size.width, size.height);
+                }
+            }
+        });
+    }
+
+    // Animation loop
+    let platform_clone = platform.clone();
+    let app_clone = app.clone();
+
+    wgpui::platform::web::run_animation_loop(move || {
+        let mut platform = platform_clone.borrow_mut();
+        let mut app = app_clone.borrow_mut();
+
+        // Update app state
+        app.update();
+
+        // Paint to scene
+        let mut scene = wgpui::Scene::new();
+        app.paint(&mut scene, platform.text_system());
+
+        // Render
+        if let Err(e) = platform.render(&scene) {
+            log::error!("Render error: {}", e);
+        }
+    });
+
+    Ok(())
+}
