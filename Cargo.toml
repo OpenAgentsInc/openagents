@@ -5,10 +5,11 @@ members = [
     "crates/dioxus",
     "crates/wgpui",
 
-    # Coder Domain, Protocol & Runtime
+    # Coder Domain, Protocol, Runtime & Widgets
     "crates/coder_domain",
     "crates/coder_protocol",
     "crates/coder_ui_runtime",
+    "crates/coder_widgets",
 
     # Nostr & Decentralized
     "crates/nostr/core",
@@ -79,6 +80,7 @@ wgpui = { path = "crates/wgpui" }
 coder_domain = { path = "crates/coder_domain" }
 coder_protocol = { path = "crates/coder_protocol" }
 coder_ui_runtime = { path = "crates/coder_ui_runtime" }
+coder_widgets = { path = "crates/coder_widgets" }
 
 # External crates
 anyhow = "1.0.86"
