@@ -1091,6 +1091,72 @@ These are benign and can be cleaned up later.
    - Add WASM-specific tests
    - Add visual regression tests
 
+## Critical WASM Fixes (Post-Initial Implementation)
+
+### Issue 1: Canvas Not Found Error
+
+**Problem:**
+```
+coder_app.js:444 Uncaught Canvas not found
+```
+
+**Root Cause:**
+wgpui had its own `#[wasm_bindgen(start)]` auto-start function that ran before coder_app's `start()`, looking for "wgpui-canvas" instead of "coder-canvas".
+
+**Solution:**
+Made wgpui's demo auto-start conditional on a "demo" feature:
+
+File: `crates/wgpui/src/lib.rs`
+```rust
+// Before
+#[cfg(all(feature = "web", target_arch = "wasm32"))]
+#[wasm_bindgen(start)]
+
+// After
+#[cfg(all(feature = "web", feature = "demo", target_arch = "wasm32"))]
+#[wasm_bindgen(start)]
+```
+
+Since coder_app doesn't enable the "demo" feature, wgpui's auto-start doesn't run.
+
+### Issue 2: Time Not Implemented Panic
+
+**Problem:**
+```
+panicked at library/std/src/sys/pal/wasm/../unsupported/time.rs:13:9:
+time not implemented on this platform
+```
+
+**Root Cause:**
+chrono's `Utc::now()` requires platform time support which isn't available on WASM without the `wasmbind` feature.
+
+**Solution:**
+Added "wasmbind" feature to chrono dependency:
+
+File: `crates/coder/domain/Cargo.toml`
+```toml
+# Before
+chrono = { version = "0.4", features = ["serde"] }
+
+# After
+chrono = { version = "0.4", features = ["serde", "wasmbind"] }
+```
+
+This enables chrono to use JavaScript's `Date` API for time operations on WASM.
+
+### Verification
+
+After fixes:
+```bash
+wasm-pack build --target web --out-dir pkg --features web
+# ✅ Build succeeds in ~18s
+# ✅ No canvas errors
+# ✅ No time panics
+# ✅ App runs successfully in browser
+```
+
+**Commit:** `d5f530a10`
+
 ## Conclusion
 
 Successfully implemented full cross-platform support for Coder app:
