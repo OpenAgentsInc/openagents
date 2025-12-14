@@ -38,6 +38,12 @@
 //! - [`form::Toggle`] - On/off switch
 //! - [`form::Select`] - Dropdown select menu
 //!
+//! ## Data Display
+//! - [`data::List`] - Animated list with bullet markers
+//! - [`data::Table`] - Data table with headers
+//! - [`data::CodeBlock`] - Code display with line numbers
+//! - [`data::Card`] - Content container with title and frame
+//!
 //! # Theme
 //!
 //! All components use a white-on-black color scheme with varying opacities.
@@ -46,6 +52,7 @@
 pub mod animator;
 pub mod background;
 pub mod button;
+pub mod data;
 pub mod easing;
 pub mod effects;
 pub mod form;
@@ -57,6 +64,7 @@ pub mod theme;
 pub use animator::{AnimatorManager, AnimatorState, HudAnimator, ManagerMode};
 pub use background::{DotGridBackground, GridLinesBackground, LineDirection, MovingLinesBackground};
 pub use button::HudButton;
+pub use data::{Card, CodeBlock, List, ListItem, Table, TableColumn, TableRow};
 pub use effects::Illuminator;
 pub use form::{Checkbox, Select, SelectOption, TextInput, Toggle};
 pub use frame::{FrameCircle, FrameCorners, FrameHeader, FrameLines, FrameOctagon, FrameSides, FrameUnderline};
