@@ -117,6 +117,73 @@ pub enum DomainEvent {
         changes: ProjectChanges,
         timestamp: DateTime<Utc>,
     },
+
+    // ==================
+    // Session Events
+    // ==================
+    /// A new session was created.
+    SessionCreated {
+        session_id: SessionId,
+        project_id: Option<ProjectId>,
+        directory: String,
+        timestamp: DateTime<Utc>,
+    },
+
+    /// A session was updated (title, metadata, etc.).
+    SessionUpdated {
+        session_id: SessionId,
+        changes: SessionChanges,
+        timestamp: DateTime<Utc>,
+    },
+
+    /// A session was archived.
+    SessionArchived {
+        session_id: SessionId,
+        timestamp: DateTime<Utc>,
+    },
+
+    /// Session status changed (idle, busy, error).
+    SessionStatusChanged {
+        session_id: SessionId,
+        status: SessionStatus,
+        timestamp: DateTime<Utc>,
+    },
+
+    // ==================
+    // Permission Events
+    // ==================
+    /// A permission was requested (awaiting user response).
+    PermissionRequested {
+        permission_id: PermissionId,
+        session_id: SessionId,
+        message_id: MessageId,
+        tool_use_id: Option<ToolUseId>,
+        permission_type: String,
+        patterns: Vec<String>,
+        title: String,
+        metadata: serde_json::Value,
+        timestamp: DateTime<Utc>,
+    },
+
+    /// A permission request was responded to.
+    PermissionResponded {
+        permission_id: PermissionId,
+        response: PermissionResponse,
+        timestamp: DateTime<Utc>,
+    },
+
+    // ==================
+    // Enhanced Tool Events
+    // ==================
+    /// Tool use progress update (for streaming tool output).
+    ToolUseProgress {
+        thread_id: ThreadId,
+        message_id: MessageId,
+        tool_use_id: ToolUseId,
+        title: Option<String>,
+        metadata: serde_json::Value,
+        timestamp: DateTime<Utc>,
+    },
 }
 
 /// Changes to a project.
@@ -126,6 +193,47 @@ pub struct ProjectChanges {
     pub name: Option<String>,
     /// New description (if changed).
     pub description: Option<String>,
+}
+
+/// Changes to a session.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct SessionChanges {
+    /// New title (if changed).
+    pub title: Option<String>,
+    /// New metadata (if changed).
+    pub metadata: Option<serde_json::Value>,
+}
+
+/// Session status.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SessionStatus {
+    /// Session is idle, waiting for input.
+    Idle,
+    /// Session is processing a request.
+    Busy,
+    /// Session is waiting for permission approval.
+    WaitingForPermission,
+    /// Session encountered an error.
+    Error,
+}
+
+impl Default for SessionStatus {
+    fn default() -> Self {
+        Self::Idle
+    }
+}
+
+/// User response to a permission request.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PermissionResponse {
+    /// Allow this action once.
+    Once,
+    /// Allow this action (and similar patterns) for the session.
+    Always,
+    /// Reject this action.
+    Reject,
 }
 
 impl DomainEvent {
@@ -138,12 +246,19 @@ impl DomainEvent {
             DomainEvent::MessageComplete { timestamp, .. } => *timestamp,
             DomainEvent::ToolUseStarted { tool_use, .. } => tool_use.started_at,
             DomainEvent::ToolUseComplete { .. } => Utc::now(), // Result has its own timestamp
+            DomainEvent::ToolUseProgress { timestamp, .. } => *timestamp,
             DomainEvent::RunStarted { timestamp, .. } => *timestamp,
             DomainEvent::RunStepUpdated { .. } => Utc::now(),
             DomainEvent::RunArtifactAdded { .. } => Utc::now(),
             DomainEvent::RunFinished { timestamp, .. } => *timestamp,
             DomainEvent::ProjectCreated { timestamp, .. } => *timestamp,
             DomainEvent::ProjectUpdated { timestamp, .. } => *timestamp,
+            DomainEvent::SessionCreated { timestamp, .. } => *timestamp,
+            DomainEvent::SessionUpdated { timestamp, .. } => *timestamp,
+            DomainEvent::SessionArchived { timestamp, .. } => *timestamp,
+            DomainEvent::SessionStatusChanged { timestamp, .. } => *timestamp,
+            DomainEvent::PermissionRequested { timestamp, .. } => *timestamp,
+            DomainEvent::PermissionResponded { timestamp, .. } => *timestamp,
         }
     }
 
@@ -156,6 +271,7 @@ impl DomainEvent {
             DomainEvent::MessageComplete { thread_id, .. } => Some(*thread_id),
             DomainEvent::ToolUseStarted { thread_id, .. } => Some(*thread_id),
             DomainEvent::ToolUseComplete { thread_id, .. } => Some(*thread_id),
+            DomainEvent::ToolUseProgress { thread_id, .. } => Some(*thread_id),
             _ => None,
         }
     }
@@ -177,6 +293,28 @@ impl DomainEvent {
             DomainEvent::ThreadCreated { project_id, .. } => *project_id,
             DomainEvent::ProjectCreated { project_id, .. } => Some(*project_id),
             DomainEvent::ProjectUpdated { project_id, .. } => Some(*project_id),
+            DomainEvent::SessionCreated { project_id, .. } => *project_id,
+            _ => None,
+        }
+    }
+
+    /// Get the session ID if this event is session-related.
+    pub fn session_id(&self) -> Option<SessionId> {
+        match self {
+            DomainEvent::SessionCreated { session_id, .. } => Some(*session_id),
+            DomainEvent::SessionUpdated { session_id, .. } => Some(*session_id),
+            DomainEvent::SessionArchived { session_id, .. } => Some(*session_id),
+            DomainEvent::SessionStatusChanged { session_id, .. } => Some(*session_id),
+            DomainEvent::PermissionRequested { session_id, .. } => Some(*session_id),
+            _ => None,
+        }
+    }
+
+    /// Get the permission ID if this event is permission-related.
+    pub fn permission_id(&self) -> Option<PermissionId> {
+        match self {
+            DomainEvent::PermissionRequested { permission_id, .. } => Some(*permission_id),
+            DomainEvent::PermissionResponded { permission_id, .. } => Some(*permission_id),
             _ => None,
         }
     }

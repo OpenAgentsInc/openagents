@@ -15,6 +15,10 @@ members = [
     "crates/coder/surfaces_terminal",
     "crates/coder/surfaces_diff",
     "crates/coder/surfaces_timeline",
+    "crates/coder/storage",
+    "crates/coder/permission",
+    "crates/coder/session",
+    "crates/coder/agent",
     "crates/coder/app",
 
     # Nostr & Decentralized
@@ -32,6 +36,8 @@ members = [
     "crates/tools",
     "crates/taskmaster",
     "crates/config",
+    "crates/llm",
+    "crates/tool_registry",
 
     # Data
     "crates/atif",
@@ -81,6 +87,8 @@ config = { path = "crates/config" }
 tools = { path = "crates/tools" }
 claude-agent-sdk = { path = "crates/claude-agent-sdk" }
 mechacoder = { path = "crates/mechacoder" }
+llm = { path = "crates/llm" }
+tool_registry = { path = "crates/tool_registry" }
 wgpui = { path = "crates/wgpui" }
 hud = { path = "crates/hud" }
 coder_domain = { path = "crates/coder/domain" }
@@ -92,6 +100,10 @@ coder_surfaces_chat = { path = "crates/coder/surfaces_chat" }
 coder_surfaces_terminal = { path = "crates/coder/surfaces_terminal" }
 coder_surfaces_diff = { path = "crates/coder/surfaces_diff" }
 coder_surfaces_timeline = { path = "crates/coder/surfaces_timeline" }
+coder_storage = { path = "crates/coder/storage" }
+coder_permission = { path = "crates/coder/permission" }
+coder_session = { path = "crates/coder/session" }
+coder_agent = { path = "crates/coder/agent" }
 coder_app = { path = "crates/coder/app" }
 
 # External crates

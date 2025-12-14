@@ -1,0 +1,42 @@
+[package]
+name = "llm"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+# Async
+async-trait.workspace = true
+tokio.workspace = true
+futures.workspace = true
+
+# HTTP & Streaming
+reqwest.workspace = true
+bytes.workspace = true
+
+# Serialization
+serde.workspace = true
+serde_json.workspace = true
+
+# Error handling
+thiserror.workspace = true
+anyhow.workspace = true
+
+# Logging
+tracing.workspace = true
+
+# Utilities
+chrono.workspace = true
+uuid.workspace = true
+
+# SSE parsing
+eventsource-stream = "0.2"
+pin-project-lite = "0.2"
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["test-util", "macros"] }
