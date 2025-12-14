@@ -1088,6 +1088,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "coder_ui_runtime"
+version = "0.1.0"
+dependencies = [
+ "coder_domain",
+ "parking_lot",
+ "serde_json",
+ "slotmap",
+ "smallvec",
+]
+
+[[package]]
 name = "codespan-reporting"
 version = "0.11.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
