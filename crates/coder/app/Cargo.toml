@@ -16,13 +16,13 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 # Core dependencies
-coder_domain = { path = "../coder_domain" }
-coder_protocol = { path = "../coder_protocol" }
-coder_ui_runtime = { path = "../coder_ui_runtime" }
-coder_widgets = { path = "../coder_widgets" }
-coder_shell = { path = "../coder_shell" }
-coder_surfaces_chat = { path = "../coder_surfaces_chat" }
-wgpui = { path = "../wgpui" }
+coder_domain = { path = "../domain" }
+coder_protocol = { path = "../protocol" }
+coder_ui_runtime = { path = "../ui_runtime" }
+coder_widgets = { path = "../widgets" }
+coder_shell = { path = "../shell" }
+coder_surfaces_chat = { path = "../surfaces_chat" }
+wgpui = { path = "../../wgpui" }
 
 # Logging
 log = "0.4"

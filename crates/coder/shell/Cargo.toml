@@ -7,10 +7,10 @@ license = "MIT OR Apache-2.0"
 
 [dependencies]
 # Core dependencies
-coder_domain = { path = "../coder_domain" }
-coder_ui_runtime = { path = "../coder_ui_runtime" }
-coder_widgets = { path = "../coder_widgets" }
-wgpui = { path = "../wgpui" }
+coder_domain = { path = "../domain" }
+coder_ui_runtime = { path = "../ui_runtime" }
+coder_widgets = { path = "../widgets" }
+wgpui = { path = "../../wgpui" }
 
 # Utilities
 smallvec = "1.13"

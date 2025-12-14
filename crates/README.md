@@ -13,7 +13,7 @@ Low-level UI framework with wgpu/WebGPU backend:
 - Platform abstraction (web-sys/winit)
 - Theme and styling system
 
-### `coder_app/`
+### `coder/app/`
 **Main application entry point**
 
 Application bootstrap and platform initialization:
@@ -22,7 +22,7 @@ Application bootstrap and platform initialization:
 - Event processing loop
 - View composition
 
-### `coder_shell/`
+### `coder/shell/`
 **Application shell with routing and navigation**
 
 Top-level app chrome and navigation:
@@ -31,16 +31,16 @@ Top-level app chrome and navigation:
 - ViewRegistry for managing active views
 - Window chrome (header, status bar)
 
-### `coder_surfaces_*/`
+### `coder/surfaces_*/`
 **IDE surface components**
 
 Specialized UI surfaces:
-- `coder_surfaces_chat/` - Chat thread with markdown streaming
-- `coder_surfaces_terminal/` - ANSI terminal emulator
-- `coder_surfaces_diff/` - Side-by-side/unified diff viewer
-- `coder_surfaces_timeline/` - Agent workflow visualization
+- `coder/surfaces_chat/` - Chat thread with markdown streaming
+- `coder/surfaces_terminal/` - ANSI terminal emulator
+- `coder/surfaces_diff/` - Side-by-side/unified diff viewer
+- `coder/surfaces_timeline/` - Agent workflow visualization
 
-### `coder_widgets/`
+### `coder/widgets/`
 **Widget library**
 
 Reusable UI components:
@@ -48,7 +48,7 @@ Reusable UI components:
 - Div, Text, ScrollView, VirtualList
 - TextInput, Button
 
-### `coder_ui_runtime/`
+### `coder/ui_runtime/`
 **Reactive UI runtime**
 
 Solid.js-inspired reactivity:
@@ -57,7 +57,7 @@ Solid.js-inspired reactivity:
 - Frame scheduler
 - Command bus
 
-### `coder_domain/`
+### `coder/domain/`
 **Domain model and events**
 
 Event-sourced domain types:
@@ -65,7 +65,7 @@ Event-sourced domain types:
 - Projections (ChatView, ThreadSummary)
 - Thread and message types
 
-### `coder_protocol/`
+### `coder/protocol/`
 **Wire protocol for agent communication**
 
 Protocol types for client-agent messaging:
@@ -201,16 +201,17 @@ HTTP client for on-device LLM inference (macOS 15.1+):
 ```
 crates/
 ├── wgpui/                    # GPU-accelerated UI engine
-├── coder_app/                # Main application entry point
-├── coder_shell/              # Application shell + routing
-├── coder_surfaces_chat/      # Chat thread surface
-├── coder_surfaces_terminal/  # Terminal emulator surface
-├── coder_surfaces_diff/      # Diff viewer surface
-├── coder_surfaces_timeline/  # Timeline surface
-├── coder_widgets/            # Widget library
-├── coder_ui_runtime/         # Reactive runtime
-├── coder_domain/             # Domain model + events
-├── coder_protocol/           # Wire protocol
+├── coder/
+│   ├── app/                  # Main application entry point
+│   ├── shell/                # Application shell + routing
+│   ├── surfaces_chat/        # Chat thread surface
+│   ├── surfaces_terminal/    # Terminal emulator surface
+│   ├── surfaces_diff/        # Diff viewer surface
+│   ├── surfaces_timeline/    # Timeline surface
+│   ├── widgets/              # Widget library
+│   ├── ui_runtime/           # Reactive runtime
+│   ├── domain/               # Domain model + events
+│   └── protocol/             # Wire protocol
 ├── claude-agent-sdk/         # Claude CLI SDK
 ├── mechacoder/               # Agent message types
 ├── config/                   # Configuration
