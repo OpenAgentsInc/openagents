@@ -296,6 +296,7 @@ impl Widget for Button {
 }
 
 // Helper trait for Hsla color manipulation
+#[allow(dead_code)]
 trait HslaExt {
     fn transparent() -> Self;
     fn darken(&self, amount: f32) -> Self;

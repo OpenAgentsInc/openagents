@@ -102,10 +102,10 @@ fn process_sdk_message(msg: SdkMessage) -> Vec<ServerMessage> {
             });
         }
 
-        SdkMessage::Assistant(assistant_msg) => {
-            if let Some(entries) = process_assistant_message(&assistant_msg.message) {
-                out.extend(entries);
-            }
+        SdkMessage::Assistant(_assistant_msg) => {
+            // Skip - text content was already streamed via StreamEvent
+            // Only tool_use blocks would be relevant here, but those are also
+            // handled via StreamEvent content_block_start
         }
 
         SdkMessage::Result(result) => {

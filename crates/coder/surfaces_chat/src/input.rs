@@ -205,7 +205,15 @@ impl Widget for ChatInput {
             return EventResult::Handled;
         }
 
-        // Handle input events (for typing and clicking on input)
+        // Handle click anywhere in the input area to focus the text input
+        if let InputEvent::MouseDown { position, button, .. } = event {
+            if *button == wgpui::MouseButton::Left && bounds.contains(*position) {
+                self.text_input.set_focused(true);
+                return EventResult::Handled;
+            }
+        }
+
+        // Handle input events (for typing)
         let result = self.text_input.event(event, input_bounds, cx);
         if result.is_handled() {
             // Sync value from text input

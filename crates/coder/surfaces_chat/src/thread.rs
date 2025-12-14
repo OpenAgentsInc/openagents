@@ -22,6 +22,7 @@ pub struct ChatThread {
     id: Option<WidgetId>,
 
     /// Thread ID.
+    #[allow(dead_code)]
     thread_id: ThreadId,
 
     /// Chat view state (reactive).
@@ -49,6 +50,7 @@ pub struct ChatThread {
     input_height: f32,
 
     /// Callback for sending messages.
+    #[allow(dead_code)]
     on_send: Option<OnSend>,
 }
 
@@ -335,6 +337,14 @@ impl Widget for ChatThread {
             self.input_height,
         );
 
+        // Must match the bounds used in paint() for click detection to work
+        let input_widget_bounds = Bounds::new(
+            input_bounds.origin.x + 12.0,
+            input_bounds.origin.y + 12.0,
+            input_bounds.size.width - 24.0,
+            input_bounds.size.height - 24.0,
+        );
+
         // Handle scroll in content area
         match event {
             InputEvent::Wheel { delta, .. } => {
@@ -349,8 +359,8 @@ impl Widget for ChatThread {
             _ => {}
         }
 
-        // Forward events to input
-        let result = self.input.event(event, input_bounds, cx);
+        // Forward events to input (use same bounds as paint)
+        let result = self.input.event(event, input_widget_bounds, cx);
         if result.is_handled() {
             return result;
         }

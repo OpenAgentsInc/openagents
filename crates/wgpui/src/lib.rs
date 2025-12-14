@@ -67,7 +67,8 @@ pub use platform::web::{run_animation_loop, setup_resize_observer, WebPlatform};
 #[cfg(all(feature = "web", target_arch = "wasm32"))]
 use wasm_bindgen::prelude::*;
 
-#[cfg(all(feature = "web", feature = "demo", target_arch = "wasm32"))]
+#[cfg(all(feature = "web", target_arch = "wasm32"))]
+#[allow(dead_code)]
 #[wasm_bindgen(start)]
 pub async fn main() -> Result<(), JsValue> {
     console_error_panic_hook::set_once();

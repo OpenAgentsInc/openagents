@@ -451,7 +451,7 @@ impl Widget for TextInput {
                 return EventResult::Handled;
             }
 
-            InputEvent::KeyDown { key, code, modifiers, .. } if self.focused => {
+            InputEvent::KeyDown { key, modifiers, .. } if self.focused => {
                 match key {
                     Key::Named(NamedKey::Enter) => {
                         self.submit();
@@ -564,6 +564,7 @@ impl Widget for TextInput {
 }
 
 /// Convert a key code to a character (basic ASCII).
+#[allow(dead_code)]
 fn keycode_to_char(code: KeyCode, shift: bool) -> Option<char> {
     match code {
         KeyCode::KeyA => Some(if shift { 'A' } else { 'a' }),

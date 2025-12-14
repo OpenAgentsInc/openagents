@@ -238,7 +238,23 @@ impl Router {
     /// Check if Claude Code CLI is available.
     #[cfg(feature = "server")]
     async fn check_claude_code() -> bool {
-        // Use login shell to get proper PATH from shell profile
+        // Check known installation paths first
+        let home = std::env::var("HOME").unwrap_or_default();
+        let known_paths = [
+            format!("{}/.claude/local/claude", home),
+            format!("{}/.npm-global/bin/claude", home),
+            format!("{}/.local/bin/claude", home),
+            "/usr/local/bin/claude".to_string(),
+            "/opt/homebrew/bin/claude".to_string(),
+        ];
+
+        for path in &known_paths {
+            if std::path::Path::new(path).exists() {
+                return true;
+            }
+        }
+
+        // Fall back to PATH check via login shell
         tokio::process::Command::new("zsh")
             .args(["-lc", "which claude"])
             .output()
@@ -249,7 +265,23 @@ impl Router {
 
     /// Synchronous Claude Code check.
     fn check_claude_code_sync() -> bool {
-        // Use login shell to get proper PATH from shell profile
+        // Check known installation paths first
+        let home = std::env::var("HOME").unwrap_or_default();
+        let known_paths = [
+            format!("{}/.claude/local/claude", home),
+            format!("{}/.npm-global/bin/claude", home),
+            format!("{}/.local/bin/claude", home),
+            "/usr/local/bin/claude".to_string(),
+            "/opt/homebrew/bin/claude".to_string(),
+        ];
+
+        for path in &known_paths {
+            if std::path::Path::new(path).exists() {
+                return true;
+            }
+        }
+
+        // Fall back to PATH check via login shell
         std::process::Command::new("zsh")
             .args(["-lc", "which claude"])
             .output()
