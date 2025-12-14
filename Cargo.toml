@@ -2,7 +2,6 @@
 resolver = "2"
 members = [
     # Core UI
-    "crates/dioxus",
     "crates/wgpui",
 
     # Coder Domain, Protocol, Runtime & Widgets
@@ -40,7 +39,6 @@ members = [
     "crates/unit",
     "crates/fm-bridge",
     "crates/oanix",
-    "crates/coder",
 ]
 
 [workspace.lints.rust]

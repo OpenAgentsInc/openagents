@@ -5,12 +5,27 @@ You are helping on the core codebase of OpenAgents, an applied AI lab building i
 ## Tech Stack
 
 - **Rust** with edition 2024
-- **Dioxus 0.7** for web UI (see `crates/dioxus/`)
-- **wgpui** for GPU-accelerated canvas rendering
+- **wgpui** for GPU-accelerated UI rendering
+- **coder_app** for the main application
 
-## Dioxus 0.7
+## UI Architecture ("Own All Six Layers")
 
-The web UI uses [Dioxus 0.7](https://dioxuslabs.com/learn/0.7) with fullstack and router features. Key points: `cx`, `Scope`, and `use_state` are gone in 0.7. Use `use_signal` for local state, `use_memo` for derived values, and `use_resource` for async data. Components are functions with `#[component]` that return `Element`. Server functions use `#[post("/path")]` or `#[get("/path")]` macros. Run with `dx serve` from `crates/dioxus/`.
+The UI uses a custom GPU-accelerated stack:
+
+```
+coder_app          → Application entry point
+coder_shell        → Routing, navigation, chrome
+coder_surfaces_*   → Chat, terminal, diff, timeline
+coder_widgets      → Widget library
+coder_ui_runtime   → Reactive runtime (Signal<T>, Memo<T>)
+wgpui              → GPU renderer (wgpu/WebGPU)
+```
+
+Key patterns:
+- Event-sourced domain model with `DomainEvent`
+- Solid.js-inspired reactivity with `Signal<T>`, `Memo<T>`, `Effect`
+- Virtual scrolling for large lists
+- Run with `cargo coder` or `cargo run -p coder_app`
 
 ---
 
