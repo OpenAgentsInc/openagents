@@ -85,11 +85,18 @@ impl ChatThread {
     }
 
     /// Set the on_send callback.
-    pub fn on_send<F>(mut self, f: F) -> Self
+    ///
+    /// This callback is invoked when the user sends a message.
+    pub fn on_send<F>(mut self, mut f: F) -> Self
     where
         F: FnMut(&str) + 'static,
     {
-        self.on_send = Some(Box::new(f));
+        // Wrap the callback to convert String -> &str
+        self.input = ChatInput::new()
+            .placeholder("Type a message...")
+            .on_send(move |msg: String| {
+                f(&msg);
+            });
         self
     }
 

@@ -172,18 +172,44 @@ impl Widget for ChatInput {
             bounds.size.height,
         );
 
-        // Handle input events
+        // Check for Enter key to send
+        if let InputEvent::KeyDown { key, .. } = event {
+            if let wgpui::Key::Named(wgpui::NamedKey::Enter) = key {
+                if !self.is_empty() {
+                    self.send();
+                    return EventResult::Handled;
+                }
+            }
+        }
+
+        // Check for button click (MouseUp on button)
+        if let InputEvent::MouseUp { position, button, .. } = event {
+            if *button == wgpui::MouseButton::Left && button_bounds.contains(*position) {
+                self.send();
+                return EventResult::Handled;
+            }
+        }
+
+        // Check if this is a mouse event on the button area - don't forward to text_input
+        // to avoid unfocusing when clicking the send button
+        let is_button_mouse_event = match event {
+            InputEvent::MouseDown { position, .. } |
+            InputEvent::MouseUp { position, .. } |
+            InputEvent::MouseMove { position, .. } => button_bounds.contains(*position),
+            _ => false,
+        };
+
+        if is_button_mouse_event {
+            // Let button handle hover/press states
+            let _ = self.send_button.event(event, button_bounds, cx);
+            return EventResult::Handled;
+        }
+
+        // Handle input events (for typing and clicking on input)
         let result = self.text_input.event(event, input_bounds, cx);
         if result.is_handled() {
             // Sync value from text input
             self.current_value = self.text_input.get_value().to_string();
-            return result;
-        }
-
-        // Handle button events
-        let result = self.send_button.event(event, button_bounds, cx);
-        if result.is_handled() {
-            self.send();
             return result;
         }
 

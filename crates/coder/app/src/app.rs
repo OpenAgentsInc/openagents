@@ -1,45 +1,17 @@
 //! Application core - manages the main application lifecycle.
 
 use crate::state::AppState;
+use coder_domain::ids::ThreadId;
+use coder_domain::message::Role;
+use coder_domain::{ChatEntry, ChatView, MessageView, StreamingMessage};
 use coder_shell::{Chrome, Navigation, Route, ViewRegistry};
-use coder_ui_runtime::{CommandBus, Scheduler};
+use coder_surfaces_chat::ChatThread;
+use coder_ui_runtime::{CommandBus, Scheduler, Signal};
 use coder_widgets::context::{EventContext, PaintContext};
 use coder_widgets::{EventResult, Widget};
-use wgpui::markdown::{MarkdownRenderer, StreamingConfig, StreamingMarkdown};
-use wgpui::{Bounds, InputEvent, Point, Quad, Scene};
-
-// Demo markdown content for streaming demo
-const DEMO_MARKDOWN: &str = r#"# BUILD v5
-
-This is a **GPU-accelerated** markdown renderer with *streaming* support.
-
-## Features
-
-- Syntax highlighting via syntect
-- Streaming text support
-- Full markdown rendering
-
-## Code Example
-
-```rust
-fn main() {
-    let greeting = "Hello, wgpui!";
-    println!("{}", greeting);
-}
-```
-
-> Blockquotes are styled with a yellow accent bar
-
----
-
-### Inline Styles
-
-You can use `inline code`, **bold**, *italic*, and ~~strikethrough~~.
-
-1. Ordered lists
-2. Work great
-3. With numbers
-"#;
+use mechacoder::{ClientMessage, ServerMessage};
+use tokio::sync::mpsc;
+use wgpui::{Bounds, InputEvent, Scene};
 
 /// The main application.
 pub struct App {
@@ -67,25 +39,67 @@ pub struct App {
     /// Scale factor for high-DPI.
     scale_factor: f32,
 
-    /// Streaming markdown demo.
-    demo_streaming: StreamingMarkdown,
+    /// Chat thread widget.
+    chat_thread: ChatThread,
 
-    /// Character index for streaming demo.
-    demo_char_index: usize,
+    /// Chat view state (reactive).
+    chat_view: Signal<ChatView>,
 
-    /// Markdown renderer.
-    markdown_renderer: MarkdownRenderer,
+    /// Channel to send messages to backend.
+    client_tx: mpsc::UnboundedSender<ClientMessage>,
+
+    /// Channel to receive messages from backend.
+    server_rx: mpsc::UnboundedReceiver<ServerMessage>,
+
+    /// Current working directory.
+    cwd: String,
 }
 
 impl App {
-    /// Create a new application.
-    pub fn new() -> Self {
-        // Set up streaming markdown with fade-in enabled and no debounce pauses
-        let streaming_config = StreamingConfig {
-            fade_in_frames: Some(15), // Fade in over ~250ms at 60fps
-            debounce_ms: 0, // No debouncing to avoid pauses
-            ..Default::default()
-        };
+    /// Create a new application with message channels.
+    ///
+    /// The channels are used to communicate with the background chat handler.
+    pub fn new(
+        client_tx: mpsc::UnboundedSender<ClientMessage>,
+        server_rx: mpsc::UnboundedReceiver<ServerMessage>,
+    ) -> Self {
+        // Get current working directory
+        let cwd = std::env::current_dir()
+            .map(|p| p.to_string_lossy().to_string())
+            .unwrap_or_else(|_| ".".to_string());
+
+        // Create chat view signal
+        let thread_id = ThreadId::new();
+        let chat_view = Signal::new(ChatView::new(thread_id));
+
+        // Clone what we need for the on_send callback
+        let tx = client_tx.clone();
+        let cwd_clone = cwd.clone();
+        let chat_view_clone = chat_view.clone();
+
+        // Create chat thread widget with on_send callback
+        let chat_thread = ChatThread::new(thread_id)
+            .chat_view(chat_view.clone())
+            .on_send(move |content: &str| {
+                log::info!("[App] User sent message: {}", content);
+
+                // Add user message to chat view
+                let mut view = chat_view_clone.get();
+                view.entries.push(ChatEntry::Message(MessageView {
+                    id: coder_domain::ids::MessageId::new(),
+                    content: content.to_string(),
+                    role: Role::User,
+                    timestamp: chrono::Utc::now(),
+                    has_tool_uses: false,
+                }));
+                chat_view_clone.set(view);
+
+                // Send to backend
+                let _ = tx.send(ClientMessage::SendMessage {
+                    content: content.to_string(),
+                    cwd: cwd_clone.clone(),
+                });
+            });
 
         Self {
             state: AppState::new(),
@@ -96,9 +110,11 @@ impl App {
             commands: CommandBus::new(),
             window_size: (800.0, 600.0),
             scale_factor: 1.0,
-            demo_streaming: StreamingMarkdown::with_config(streaming_config),
-            demo_char_index: 0,
-            markdown_renderer: MarkdownRenderer::new(),
+            chat_thread,
+            chat_view,
+            client_tx,
+            server_rx,
+            cwd,
         }
     }
 
@@ -133,24 +149,8 @@ impl App {
         // Create event context
         let mut cx = EventContext::new(&mut self.commands);
 
-        // Let chrome handle events first
-        let result = self.chrome.event(event, bounds, &mut cx);
-        if result.is_handled() {
-            return result;
-        }
-
-        // Get content bounds (inside chrome)
-        let content_bounds = self.chrome.content_bounds(bounds);
-
-        // Let active view handle events
-        if let Some(view) = self.views.active() {
-            let result = view.widget().event(event, content_bounds, &mut cx);
-            if result.is_handled() {
-                return result;
-            }
-        }
-
-        EventResult::Ignored
+        // Let chat thread handle events (full screen, no chrome)
+        self.chat_thread.event(event, bounds, &mut cx)
     }
 
     /// Run a frame update cycle.
@@ -158,18 +158,88 @@ impl App {
         // Run the scheduler
         let _stats = self.scheduler.run_frame();
 
-        // Simulate streaming: append characters over time (faster, smoother)
-        let chars_per_frame = if self.demo_char_index < 150 { 8 } else { 3 };
-
-        if self.demo_char_index < DEMO_MARKDOWN.len() {
-            let end = (self.demo_char_index + chars_per_frame).min(DEMO_MARKDOWN.len());
-            self.demo_streaming.append(&DEMO_MARKDOWN[self.demo_char_index..end]);
-            self.demo_char_index = end;
-        } else if !self.demo_streaming.document().is_complete {
-            self.demo_streaming.complete();
+        // Poll for server messages (non-blocking)
+        while let Ok(msg) = self.server_rx.try_recv() {
+            self.handle_server_message(msg);
         }
+    }
 
-        self.demo_streaming.tick();
+    /// Handle a message from the backend.
+    fn handle_server_message(&mut self, msg: ServerMessage) {
+        let mut view = self.chat_view.get();
+
+        match msg {
+            ServerMessage::TextDelta { text } => {
+                // Update streaming message
+                if let Some(streaming) = &mut view.streaming_message {
+                    streaming.content_so_far.push_str(&text);
+                } else {
+                    view.streaming_message = Some(StreamingMessage {
+                        id: coder_domain::ids::MessageId::new(),
+                        content_so_far: text,
+                        is_complete: false,
+                        started_at: chrono::Utc::now(),
+                    });
+                }
+                self.chat_view.set(view);
+            }
+            ServerMessage::Done { error } => {
+                // Complete the streaming message
+                if let Some(streaming) = view.streaming_message.take() {
+                    if let Some(err) = error {
+                        log::error!("[App] Backend error: {}", err);
+                    }
+
+                    // Add as completed message
+                    view.entries.push(ChatEntry::Message(MessageView {
+                        id: streaming.id,
+                        content: streaming.content_so_far,
+                        role: Role::Assistant,
+                        timestamp: chrono::Utc::now(),
+                        has_tool_uses: false,
+                    }));
+                }
+                self.chat_view.set(view);
+            }
+            ServerMessage::SessionInit { session_id } => {
+                log::info!("[App] Session initialized: {}", session_id);
+            }
+            ServerMessage::ToolStart { tool_use_id, tool_name } => {
+                log::info!("[App] Tool started: {} ({})", tool_name, tool_use_id);
+            }
+            ServerMessage::ToolResult { tool_use_id, output, is_error } => {
+                log::info!(
+                    "[App] Tool result: {} (error={}): {}",
+                    tool_use_id,
+                    is_error,
+                    output.chars().take(100).collect::<String>()
+                );
+            }
+            ServerMessage::ToolInput { .. } | ServerMessage::ToolProgress { .. } => {
+                // Ignore for now
+            }
+        }
+    }
+
+    /// Send a message to the backend.
+    #[allow(dead_code)]
+    pub fn send_message(&self, content: String) {
+        // Add user message to chat view
+        let mut view = self.chat_view.get();
+        view.entries.push(ChatEntry::Message(MessageView {
+            id: coder_domain::ids::MessageId::new(),
+            content: content.clone(),
+            role: Role::User,
+            timestamp: chrono::Utc::now(),
+            has_tool_uses: false,
+        }));
+        self.chat_view.set(view);
+
+        // Send to backend
+        let _ = self.client_tx.send(ClientMessage::SendMessage {
+            content,
+            cwd: self.cwd.clone(),
+        });
     }
 
     /// Paint the application to a scene.
@@ -184,82 +254,8 @@ impl App {
             wgpui::Quad::new(bounds).with_background(wgpui::theme::bg::APP),
         );
 
-        // Paint chrome
-        self.chrome.paint(bounds, &mut cx);
-
-        // Get content bounds (inside chrome)
-        let content_bounds = self.chrome.content_bounds(bounds);
-
-        // Paint active view
-        if let Some(view) = self.views.active() {
-            view.widget().paint(content_bounds, &mut cx);
-        } else {
-            // Paint default content when no view is active
-            self.paint_home(content_bounds, &mut cx);
-        }
-    }
-
-    /// Paint the home screen with streaming markdown demo.
-    fn paint_home(&self, bounds: Bounds, cx: &mut PaintContext) {
-        // Header bar
-        let header_bounds = Bounds::new(
-            bounds.origin.x,
-            bounds.origin.y,
-            bounds.size.width,
-            48.0,
-        );
-        cx.scene.draw_quad(
-            Quad::new(header_bounds)
-                .with_background(wgpui::theme::bg::SURFACE)
-                .with_border(wgpui::theme::border::DEFAULT, 1.0),
-        );
-
-        // Header title
-        let title_run = cx.text.layout(
-            "wgpui Markdown Demo",
-            Point::new(bounds.origin.x + 16.0, bounds.origin.y + 16.0),
-            14.0,
-            wgpui::theme::accent::PRIMARY,
-        );
-        cx.scene.draw_text(title_run);
-
-        // Streaming status
-        let status_text = if self.demo_streaming.document().is_complete {
-            "Complete"
-        } else {
-            "Streaming..."
-        };
-        let status_color = if self.demo_streaming.document().is_complete {
-            wgpui::theme::status::SUCCESS
-        } else {
-            wgpui::theme::accent::PRIMARY
-        };
-        let status_run = cx.text.layout(
-            status_text,
-            Point::new(
-                bounds.origin.x + bounds.size.width - 140.0,
-                bounds.origin.y + 16.0,
-            ),
-            12.0,
-            status_color,
-        );
-        cx.scene.draw_text(status_run);
-
-        // Content area
-        let content_x = bounds.origin.x + 20.0;
-        let content_y = bounds.origin.y + 64.0;
-        let content_width = (bounds.size.width - 40.0).min(700.0);
-
-        // Render markdown with fade-in effect
-        let fade = self.demo_streaming.fade_state();
-        self.markdown_renderer.render_with_opacity(
-            self.demo_streaming.document(),
-            Point::new(content_x, content_y),
-            content_width,
-            cx.text,
-            cx.scene,
-            fade.new_content_opacity,
-        );
+        // Paint chat thread (full screen, no chrome)
+        self.chat_thread.paint(bounds, &mut cx);
     }
 
     /// Navigate to a route.
@@ -300,39 +296,39 @@ impl App {
     }
 }
 
-impl Default for App {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
+    fn create_test_app() -> App {
+        let (client_tx, _client_rx) = mpsc::unbounded_channel();
+        let (_server_tx, server_rx) = mpsc::unbounded_channel();
+        App::new(client_tx, server_rx)
+    }
+
     #[test]
     fn test_app_creation() {
-        let app = App::new();
+        let app = create_test_app();
         assert_eq!(app.window_size, (800.0, 600.0));
     }
 
     #[test]
     fn test_app_set_size() {
-        let mut app = App::new();
+        let mut app = create_test_app();
         app.set_size(1920.0, 1080.0);
         assert_eq!(app.size(), (1920.0, 1080.0));
     }
 
     #[test]
     fn test_app_init() {
-        let mut app = App::new();
+        let mut app = create_test_app();
         app.init();
         assert!(app.current_route().is_home());
     }
 
     #[test]
     fn test_app_navigation() {
-        let mut app = App::new();
+        let mut app = create_test_app();
         app.init();
 
         app.navigate(Route::Settings);
