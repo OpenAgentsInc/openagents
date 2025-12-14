@@ -841,6 +841,128 @@ pub enum PermissionError {
 
 ---
 
+## 7. Service Layer (`crates/coder/service/`)
+
+The service layer provides a unified API that bridges the AI infrastructure with the UI layer.
+
+### ChatService
+
+```rust
+pub struct ChatService {
+    inner: Arc<ChatServiceInner>,
+}
+
+impl ChatService {
+    /// Create a new ChatService
+    pub async fn new(config: ServiceConfig) -> Result<Self, ServiceError>;
+
+    /// Create a new session
+    pub async fn create_session(&self, working_directory: Option<PathBuf>) -> Result<Session, ServiceError>;
+
+    /// Send a message and get a stream of updates
+    pub fn send_message(&self, session_id: SessionId, content: String) -> ChatStream;
+
+    /// Respond to a permission request
+    pub async fn respond_permission(
+        &self,
+        session_id: SessionId,
+        permission_id: PermissionId,
+        response: PermissionResponse,
+    ) -> Result<(), ServiceError>;
+
+    /// Cancel an active session
+    pub async fn cancel(&self, session_id: SessionId) -> Result<(), ServiceError>;
+
+    /// Get the agent registry
+    pub fn agents(&self) -> &AgentRegistry;
+
+    /// Get the storage
+    pub fn storage(&self) -> Arc<Storage>;
+}
+
+pub type ChatStream = Pin<Box<dyn Stream<Item = ChatUpdate> + Send>>;
+```
+
+### ChatUpdate Events
+
+The service emits a stream of `ChatUpdate` events for the UI to consume:
+
+```rust
+pub enum ChatUpdate {
+    // Session lifecycle
+    SessionStarted { session_id, thread_id },
+    SessionStatusChanged { session_id, status },
+    SessionEnded { session_id, success, error },
+
+    // Message streaming
+    MessageStarted { session_id, message_id, role },
+    TextDelta { session_id, message_id, delta },
+    ReasoningDelta { session_id, message_id, delta },
+    MessageCompleted { session_id, message_id, finish_reason },
+
+    // Tool use
+    ToolStarted { session_id, message_id, tool_call_id, tool_name },
+    ToolInputDelta { session_id, tool_call_id, delta },
+    ToolExecuting { session_id, tool_call_id, input },
+    ToolProgress { session_id, tool_call_id, message },
+    ToolCompleted { session_id, tool_call_id, output, is_error, duration_ms },
+
+    // Permission
+    PermissionRequired { session_id, permission_id, request },
+    PermissionResolved { session_id, permission_id, granted },
+
+    // Errors and metadata
+    Error { session_id, message, code, recoverable },
+    UsageUpdate { session_id, total_tokens, cost_usd },
+    AgentInfo { session_id, agent_id, model_id, provider_id },
+}
+```
+
+### Internal Bridge
+
+The service uses an internal bridge to translate between `SessionEvent`/`PermissionEvent` and `ChatUpdate`:
+
+```rust
+struct Bridge {
+    session_id: SessionId,
+    thread_id: ThreadId,
+    update_tx: mpsc::UnboundedSender<ChatUpdate>,
+    tool_start_times: HashMap<String, Instant>,
+}
+
+impl Bridge {
+    fn handle_session_event(&mut self, event: SessionEvent);
+    fn handle_permission_event(&mut self, event: PermissionEvent);
+}
+```
+
+### Usage Example
+
+```rust
+use coder_service::{ChatService, ServiceConfig, ChatUpdate};
+use futures::StreamExt;
+
+let config = ServiceConfig::from_env();
+let service = ChatService::new(config).await?;
+
+let session = service.create_session(None).await?;
+let stream = service.send_message(session.id, "Hello!".into());
+
+futures::pin_mut!(stream);
+while let Some(update) = stream.next().await {
+    match update {
+        ChatUpdate::TextDelta { delta, .. } => print!("{}", delta),
+        ChatUpdate::ToolStarted { tool_name, .. } => println!("[Using: {}]", tool_name),
+        ChatUpdate::SessionEnded { .. } => break,
+        _ => {}
+    }
+}
+```
+
+For comprehensive service layer documentation, see [SERVICE_LAYER.md](./SERVICE_LAYER.md).
+
+---
+
 ## Future Enhancements
 
 - **OpenAI Provider**: GPT-4, o1/o3 series with reasoning tokens

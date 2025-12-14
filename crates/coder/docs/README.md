@@ -170,10 +170,16 @@ crates/coder/
 │   ├── definition.rs # AgentDefinition types
 │   ├── permission.rs # Agent permission presets
 │   └── registry.rs   # Built-in agents (general, explore, plan, build)
+├── service/          # Service layer (bridges AI infra with UI)
+│   ├── lib.rs        # ChatService, exports
+│   ├── service.rs    # Main ChatService implementation
+│   ├── update.rs     # ChatUpdate enum (17 event types)
+│   └── bridge.rs     # Event translation (SessionEvent → ChatUpdate)
 ├── app/              # Application entry
 │   ├── main.rs       # Native entry point
 │   ├── app.rs        # App struct
-│   └── state.rs      # AppState
+│   ├── state.rs      # AppState
+│   └── service_handler.rs  # ChatService integration handler
 └── docs/             # Documentation (you are here)
     ├── README.md
     ├── ARCHITECTURE.md
@@ -181,6 +187,9 @@ crates/coder/
     ├── REACTIVE_RUNTIME.md
     ├── DATA_FLOW.md
     ├── AI_INFRASTRUCTURE.md
+    ├── SERVICE_LAYER.md
+    ├── CONFIGURATION.md
+    ├── INTEGRATION_PLAN.md
     └── GETTING_STARTED.md
 
 crates/llm/           # LLM Provider abstraction
@@ -233,12 +242,15 @@ Commands are requests. Events are facts.
 - **[ARCHITECTURE.md](./ARCHITECTURE.md)** - Deep dive into the six layers
 - **[DOMAIN_MODEL.md](./DOMAIN_MODEL.md)** - Event sourcing, entities, projections
 - **[REACTIVE_RUNTIME.md](./REACTIVE_RUNTIME.md)** - Signals, effects, scheduler
-- **[WIDGETS.md](./WIDGETS.md)** - Widget system and composition
-- **[SURFACES.md](./SURFACES.md)** - Chat, terminal, diff, timeline
 - **[DATA_FLOW.md](./DATA_FLOW.md)** - How data flows through the system
 
 ### AI & Session Management
 - **[AI_INFRASTRUCTURE.md](./AI_INFRASTRUCTURE.md)** - LLM providers, tools, sessions, agents, permissions
+- **[SERVICE_LAYER.md](./SERVICE_LAYER.md)** - ChatService API, ChatUpdate events, integration guide
+- **[INTEGRATION_PLAN.md](./INTEGRATION_PLAN.md)** - Integration approaches and implementation status
+
+### Configuration
+- **[CONFIGURATION.md](./CONFIGURATION.md)** - Environment variables, feature flags, all config options
 
 ### Getting Started
 - **[GETTING_STARTED.md](./GETTING_STARTED.md)** - Build, run, develop
@@ -249,12 +261,29 @@ Commands are requests. Events are facts.
 # Build
 cargo build -p coder_app
 
-# Run
+# Run (uses ChatService by default)
 cargo run -p coder_app
 
 # Or use the alias
 cargo coder
+
+# Run with legacy Claude Code CLI backend
+cargo run -p coder_app --no-default-features --features legacy
 ```
+
+### Environment Setup
+
+```bash
+# Required for ChatService backend
+export ANTHROPIC_API_KEY=sk-ant-api03-...
+
+# Optional configuration
+export CODER_WORKING_DIR=/path/to/project
+export CODER_DATABASE=/path/to/coder.db
+export CODER_DEFAULT_MODEL=claude-sonnet-4-20250514
+```
+
+See [CONFIGURATION.md](./CONFIGURATION.md) for all configuration options.
 
 ## Design Principles
 
