@@ -1,6 +1,8 @@
 //! Web platform implementation using web-sys and wgpu.
 
 use crate::geometry::Size;
+use crate::input::Cursor;
+use crate::platform::Platform;
 use crate::renderer::Renderer;
 use crate::scene::Scene;
 use crate::text::TextSystem;
@@ -157,36 +159,8 @@ impl WebPlatform {
         &self.canvas
     }
 
-    /// Handle resize.
-    pub fn handle_resize(&mut self) {
-        let window = web_sys::window().unwrap();
-        self.scale_factor = window.device_pixel_ratio() as f32;
-
-        let rect = self.canvas.get_bounding_client_rect();
-        let logical_width = rect.width() as f32;
-        let logical_height = rect.height() as f32;
-        self.logical_size = Size::new(logical_width, logical_height);
-
-        let physical_width = (logical_width * self.scale_factor) as u32;
-        let physical_height = (logical_height * self.scale_factor) as u32;
-
-        if physical_width > 0 && physical_height > 0 {
-            self.canvas.set_width(physical_width);
-            self.canvas.set_height(physical_height);
-
-            self.surface_config.width = physical_width;
-            self.surface_config.height = physical_height;
-            self.surface.configure(&self.device, &self.surface_config);
-
-            self.renderer
-                .resize(&self.queue, self.logical_size, self.scale_factor);
-
-            self.text_system.set_scale_factor(self.scale_factor);
-        }
-    }
-
     /// Render a frame.
-    pub fn render(&mut self, scene: &Scene) -> Result<(), String> {
+    pub fn render_scene(&mut self, scene: &Scene) -> Result<(), String> {
         // Update atlas if needed
         if self.text_system.is_dirty() {
             self.renderer.update_atlas(
@@ -225,6 +199,62 @@ impl WebPlatform {
         frame.present();
 
         Ok(())
+    }
+}
+
+impl Platform for WebPlatform {
+    fn logical_size(&self) -> Size {
+        self.logical_size
+    }
+
+    fn scale_factor(&self) -> f32 {
+        self.scale_factor
+    }
+
+    fn text_system(&mut self) -> &mut TextSystem {
+        &mut self.text_system
+    }
+
+    fn render(&mut self, scene: &Scene) -> Result<(), String> {
+        self.render_scene(scene)
+    }
+
+    fn request_redraw(&self) {
+        // On web, requestAnimationFrame handles redraws
+        // This is a no-op since we use run_animation_loop
+    }
+
+    fn set_cursor(&self, cursor: Cursor) {
+        if let Ok(style) = self.canvas.style().set_property("cursor", cursor.as_css()) {
+            let _ = style;
+        }
+    }
+
+    fn handle_resize(&mut self) {
+        let window = web_sys::window().unwrap();
+        self.scale_factor = window.device_pixel_ratio() as f32;
+
+        let rect = self.canvas.get_bounding_client_rect();
+        let logical_width = rect.width() as f32;
+        let logical_height = rect.height() as f32;
+        self.logical_size = Size::new(logical_width, logical_height);
+
+        let physical_width = (logical_width * self.scale_factor) as u32;
+        let physical_height = (logical_height * self.scale_factor) as u32;
+
+        if physical_width > 0 && physical_height > 0 {
+            self.canvas.set_width(physical_width);
+            self.canvas.set_height(physical_height);
+
+            self.surface_config.width = physical_width;
+            self.surface_config.height = physical_height;
+            self.surface.configure(&self.device, &self.surface_config);
+
+            self.renderer
+                .resize(&self.queue, self.logical_size, self.scale_factor);
+
+            self.text_system.set_scale_factor(self.scale_factor);
+        }
     }
 }
 

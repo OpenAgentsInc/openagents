@@ -17,6 +17,7 @@ web = [
     "js-sys",
     "console_error_panic_hook",
 ]
+desktop = ["winit", "pollster"]
 
 [dependencies]
 # GPU
@@ -76,3 +77,7 @@ web-sys = { version = "0.3", optional = true, features = [
 js-sys = { version = "0.3", optional = true }
 console_error_panic_hook = { version = "0.1", optional = true }
 getrandom = { version = "0.3", features = ["wasm_js"] }
+
+# Desktop (optional)
+winit = { version = "0.30", optional = true }
+pollster = { version = "0.4", optional = true }
