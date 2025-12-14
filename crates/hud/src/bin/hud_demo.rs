@@ -9,6 +9,7 @@ use hud::{
     background::{DotGridBackground, GridLinesBackground, LineDirection, MovingLinesBackground},
     button::HudButton,
     effects::Illuminator,
+    form::{Checkbox, Select, SelectOption, TextInput, Toggle},
     frame::{FrameCircle, FrameCorners, FrameHeader, FrameLines, FrameOctagon, FrameSides, FrameUnderline},
     text::{TextDecipher, TextSequence},
     theme::{hud as colors, timing},
@@ -53,6 +54,12 @@ struct HudDemo {
     circle_frame: FrameCircle,
     header_frame: FrameHeader,
     underline_frame: FrameUnderline,
+
+    // Form components
+    text_input: TextInput,
+    checkbox: Checkbox,
+    toggle: Toggle,
+    select: Select,
 
     // State
     window_size: (f32, f32),
@@ -167,6 +174,24 @@ impl HudDemo {
             underline_frame: FrameUnderline::new()
                 .line_width(2.0)
                 .color(colors::FRAME_NORMAL),
+            // Form components
+            text_input: TextInput::new()
+                .placeholder("Enter command...")
+                .font_size(12.0),
+            checkbox: Checkbox::new()
+                .label("Enable feature")
+                .font_size(12.0),
+            toggle: Toggle::new()
+                .label("Active mode")
+                .font_size(12.0),
+            select: Select::new()
+                .options(vec![
+                    SelectOption::new("Option A"),
+                    SelectOption::new("Option B"),
+                    SelectOption::new("Option C"),
+                ])
+                .placeholder("Select...")
+                .font_size(12.0),
             window_size: (1280.0, 720.0),
             mouse_pos: Point::new(0.0, 0.0),
             started: false,
@@ -191,6 +216,12 @@ impl HudDemo {
         self.circle_frame.animator_mut().enter();
         self.header_frame.animator_mut().enter();
         self.underline_frame.animator_mut().enter();
+
+        // Form components
+        self.text_input.animator_mut().enter();
+        self.checkbox.animator_mut().enter();
+        self.toggle.animator_mut().enter();
+        self.select.animator_mut().enter();
 
         // Text animations
         self.title_text.animator_mut().enter();
@@ -229,6 +260,12 @@ impl HudDemo {
         self.circle_frame.tick();
         self.header_frame.tick();
         self.underline_frame.tick();
+
+        // Form components
+        self.text_input.tick();
+        self.checkbox.tick();
+        self.toggle.tick();
+        self.select.tick();
 
         // Text animations
         self.title_text.tick();
@@ -433,6 +470,36 @@ impl HudDemo {
         );
         scene.draw_text(content_title);
 
+        // Form section - below frame showcase
+        let form_y = row2_y + showcase_size + 50.0;
+        let form_x = content_bounds.origin.x + 20.0;
+        let form_width = content_bounds.size.width - 40.0;
+
+        // Form section label
+        let form_label = text_system.layout(
+            "FORM COMPONENTS",
+            Point::new(form_x, form_y - 20.0),
+            10.0,
+            content_text_color,
+        );
+        scene.draw_text(form_label);
+
+        // TextInput
+        let input_bounds = Bounds::new(form_x, form_y, form_width * 0.45, 32.0);
+        self.text_input.paint(input_bounds, scene, text_system);
+
+        // Select (next to input)
+        let select_bounds = Bounds::new(form_x + form_width * 0.5, form_y, form_width * 0.45, 32.0);
+        self.select.paint(select_bounds, scene, text_system);
+
+        // Checkbox and Toggle (below)
+        let controls_y = form_y + 45.0;
+        let checkbox_bounds = Bounds::new(form_x, controls_y, 150.0, 24.0);
+        self.checkbox.paint(checkbox_bounds, scene, text_system);
+
+        let toggle_bounds = Bounds::new(form_x + 160.0, controls_y, 150.0, 24.0);
+        self.toggle.paint(toggle_bounds, scene, text_system);
+
         // Info text at bottom
         let info_text = text_system.layout(
             "MOVE MOUSE FOR ILLUMINATOR EFFECT",
@@ -465,6 +532,43 @@ impl HudDemo {
             let button_bounds = Bounds::new(button_x, button_y, button_width, button_height);
             button.event(event, button_bounds);
         }
+
+        // Handle form component events
+        // Calculate content area bounds (same as in paint)
+        let panel_width = 200.0;
+        let panel_height = 120.0;
+        let panel_x = main_bounds.origin.x + 20.0;
+        let panel_start_y = main_bounds.origin.y + 80.0;
+        let panel_spacing = 15.0;
+
+        let content_x = panel_x + panel_width + 30.0;
+        let content_y = panel_start_y;
+        let content_width = button_x - content_x - 40.0;
+        let content_bounds = Bounds::new(content_x, content_y, content_width, 3.0 * panel_height + 2.0 * panel_spacing);
+
+        // Frame showcase dimensions
+        let showcase_size = 80.0;
+        let showcase_spacing = 20.0;
+        let grid_start_y = content_bounds.origin.y + 50.0;
+        let row2_y = grid_start_y + showcase_size + 40.0;
+
+        // Form bounds
+        let form_y = row2_y + showcase_size + 50.0;
+        let form_x = content_bounds.origin.x + 20.0;
+        let form_width = content_bounds.size.width - 40.0;
+
+        let input_bounds = Bounds::new(form_x, form_y, form_width * 0.45, 32.0);
+        self.text_input.event(event, input_bounds);
+
+        let select_bounds = Bounds::new(form_x + form_width * 0.5, form_y, form_width * 0.45, 32.0);
+        self.select.event(event, select_bounds);
+
+        let controls_y = form_y + 45.0;
+        let checkbox_bounds = Bounds::new(form_x, controls_y, 150.0, 24.0);
+        self.checkbox.event(event, checkbox_bounds);
+
+        let toggle_bounds = Bounds::new(form_x + 160.0, controls_y, 150.0, 24.0);
+        self.toggle.event(event, toggle_bounds);
     }
 }
 
