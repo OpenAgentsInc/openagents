@@ -1,195 +1,59 @@
 # MechaCoder Harbor Integration Work Log
 
-**Date:** 2024-12-14 09:20
-**Goal:** Get MechaCoder doing a demo single-task ("regex-log") run via Harbor with testgen skill
+**Date:** 2025-12-14
+**Goal:** Get Claude Code CLI running Terminal-Bench evaluations via Harbor with testgen skill
 
-## Session Summary
+## Summary
 
-Re-adding Harbor integration that was previously deleted during codebase cleanup. Supporting both Claude Code CLI and Pi agents via `--agent-import-path` flag.
+Successfully created Harbor adapter package for Claude Code CLI with testgen skill integration. Achieved **reward=1.0** on regex-log task with Claude Sonnet.
 
-## Context
+## Implementation
 
-### Previous Success
-- **2024-12-11**: Claude Code + Haiku + TestGen achieved 100% on regex-log
-- 66 tests generated via testgen protocol
-- Documented in `docs/logs/old/20251211/1745-testgen-v2-haiku-tb2-pass.md`
+### Package Structure
 
-### Existing Assets
-- `crates/claude-agent-sdk/` - Rust SDK for Claude Code CLI
-- `crates/pi/` - Rust port of Pi coding agent
-- `.claude/skills/testgen-protocol/` - TestGen skill
-- `~/code/mechacoder-terminal-bench/` - Reference Harbor adapter (forked from pi-terminal-bench)
+Created `harbor/` Python package with:
+- `pyproject.toml` - Package config (Python 3.12+, Harbor dependency)
+- `src/openagents_harbor/__init__.py` - Package exports
+- `src/openagents_harbor/claude_agent.py` - Claude Code CLI adapter
+- `src/openagents_harbor/pi_agent.py` - Pi agent adapter (stub)
+- `src/openagents_harbor/install-agent.sh.j2` - Jinja template for container setup
 
----
+### Key Technical Challenges Solved
 
-## Implementation Log
+1. **Root User Issue**: Claude CLI refuses `--dangerously-skip-permissions` when run as root
+   - **Solution**: Create non-root `claude` user in container, run CLI via `su - claude`
 
-### Step 1: Create Harbor Package Structure
-**Status:** Complete
+2. **Shell Quoting**: Complex instruction escaping broke with `su -c '...'`
+   - **Solution**: Write instruction to file, pipe to claude via `cat instruction.txt | claude -p -`
 
-Created `harbor/` Python package at repo root:
+3. **OAuth Credentials**: Claude needs `~/.claude/.credentials.json` for OAuth auth
+   - **Solution**: Read local credentials and inject into container for claude user
 
-```
-harbor/
-├── pyproject.toml
-├── src/
-│   └── openagents_harbor/
-│       ├── __init__.py
-│       ├── claude_agent.py
-│       ├── pi_agent.py
-│       └── install-agent.sh.j2
-```
+4. **Node.js Installation**: Container didn't have Node.js
+   - **Solution**: Install nvm + Node.js 22 as claude user in install script
 
-### Step 2: Claude Code Agent Implementation
-**Status:** Complete
+### Install Script Flow
 
-File: `harbor/src/openagents_harbor/claude_agent.py`
-
-Features:
-- Testgen skill protocol prepended to all instructions
-- Credential export from Mac Keychain (OAuth tokens work in containers)
-- Model parsing from Harbor format (anthropic/model → model)
-- Session JSONL parsing for token usage
-
-Key components:
-```python
-class ClaudeCodeAgent(BaseInstalledAgent):
-    # Spawns: claude --print --dangerously-skip-permissions --max-turns 50 ...
-    # Prepends testgen skill to instruction
-    # Exports Mac Keychain credentials if needed
-```
-
-### Step 3: Pi Agent Implementation
-**Status:** Complete
-
-File: `harbor/src/openagents_harbor/pi_agent.py`
-
-Features:
-- Multi-provider support (Anthropic, OpenAI, Gemini, Groq, etc.)
-- JSON output mode for structured logging
-- Provider/model parsing from Harbor format
-
-Key components:
-```python
-class PiAgent(BaseInstalledAgent):
-    # Spawns: pi --print --mode json --provider X --model Y ...
-```
-
-### Step 4: Installation Template
-**Status:** Complete
-
-File: `harbor/src/openagents_harbor/install-agent.sh.j2`
-
-Installs:
-- Node.js and npm
-- Claude Code CLI (`@anthropic-ai/claude-code`)
-- Pi agent (`@anthropic-ai/pi`)
-- Python pytest for test generation
-
-### Step 5: Demo Run Script
-**Status:** Complete
-
-File: `scripts/tbench-demo.sh`
-
-Usage:
 ```bash
-# Claude Code (default) with testgen
-./scripts/tbench-demo.sh claude regex-log
-
-# Pi agent
-./scripts/tbench-demo.sh pi regex-log
-
-# Custom model
-./scripts/tbench-demo.sh claude regex-log anthropic/claude-sonnet-4-5-20250929
+1. apt-get install curl sudo
+2. Create claude user with sudo access
+3. chown -R claude:claude /app
+4. As claude user:
+   - Install nvm
+   - Install Node.js 22
+   - npm install -g @anthropic-ai/claude-code
+   - npm install -g @mariozechner/pi-coding-agent
+5. pip install pytest
 ```
 
-Features:
-- Automatic Harbor patch application (upload_dir bug)
-- Mac Keychain credential export
-- Virtual environment setup
-- Results display
+### Agent Command Flow
 
----
-
-## Credential Handling
-
-OAuth tokens work in containers via credential export:
-
-1. Extract from Mac Keychain: `security find-generic-password -s "Claude Code-credentials" -g`
-2. Parse JSON from output: `password: "{\"claudeAiOauth\":{...}}"`
-3. Write to `~/.claude/.credentials.json` with mode 600
-4. Claude CLI finds credentials and authenticates
-
-This approach documented in:
-- `docs/logs/old/20251204/2347-claude-credentials-export-log.md`
-- Commit `75b245318` (feat: add Claude Code OAuth credential injection)
-
----
-
-## Files Created
-
-| File | Purpose |
-|------|---------|
-| `harbor/pyproject.toml` | Python package config |
-| `harbor/src/openagents_harbor/__init__.py` | Package exports |
-| `harbor/src/openagents_harbor/claude_agent.py` | Claude Code adapter with testgen |
-| `harbor/src/openagents_harbor/pi_agent.py` | Pi agent adapter |
-| `harbor/src/openagents_harbor/install-agent.sh.j2` | Agent installation template |
-| `scripts/tbench-demo.sh` | Demo run script |
-
----
-
-## Usage
-
-### Setup
 ```bash
-# Install Harbor
-uv tool install harbor
-
-# Install our adapter
-cd harbor
-uv venv && source .venv/bin/activate
-uv pip install -e ".[dev]"
-
-# Set credentials (either method works)
-export ANTHROPIC_API_KEY="sk-ant-..."
-# OR let script export from Mac Keychain
+1. mkdir -p /logs/agent
+2. Write instruction to /logs/agent/instruction.txt (heredoc)
+3. Create /home/claude/.claude/.credentials.json from local credentials
+4. su - claude -c 'source nvm && cat instruction.txt | claude --print --dangerously-skip-permissions --max-turns 50 --model <model> -p -'
 ```
-
-### Run with Claude Code + TestGen
-```bash
-harbor run \
-    -d terminal-bench@2.0 \
-    --agent-import-path openagents_harbor:ClaudeCodeAgent \
-    -m anthropic/claude-haiku-4-5-20251001 \
-    -t regex-log \
-    -o results/
-
-# Or use the demo script
-./scripts/tbench-demo.sh claude regex-log
-```
-
-### Run with Pi Agent
-```bash
-harbor run \
-    -d terminal-bench@2.0 \
-    --agent-import-path openagents_harbor:PiAgent \
-    -m anthropic/claude-haiku-4-5-20251001 \
-    -t regex-log \
-    -o results/
-
-# Or use the demo script
-./scripts/tbench-demo.sh pi regex-log
-```
-
----
-
-## Issues Encountered
-
-### Harbor upload_dir Bug
-The demo script automatically patches Harbor's `upload_dir` function to fix the `/tests` directory copy issue. See `~/code/mechacoder-terminal-bench/README.md` for details.
-
----
 
 ## Test Results
 
@@ -199,7 +63,7 @@ The demo script automatically patches Harbor's `upload_dir` function to fix the 
 |-------|--------|------|-------|
 | claude-haiku-4-5-20251001 | 0.0 | 3:19 | Misunderstood task - limited all days to 29 |
 | claude-haiku-4-5-20251001 | 0.0 | 5:15 | Same issue |
-| **claude-sonnet-4-20250514** | **1.0** | 4:46 | **PASSED** |
+| claude-sonnet-4-20250514 | **1.0** | 4:46 | **PASSED** |
 
 ### Additional Tasks
 
@@ -207,31 +71,65 @@ The demo script automatically patches Harbor's `upload_dir` function to fix the 
 |------|-------|--------|------|-------|
 | chess-best-move | Sonnet 4 | 0.0 | 2:12 | Challenging task |
 | filter-js-from-html | Sonnet 4 | 0.0 | 22:48 | Complex parsing task |
+| gcode-to-text | Sonnet 4 | - | Running | - |
 
 Note: Terminal-Bench 2.0 tasks are challenging. The infrastructure is validated - regex-log passes with Sonnet (reward=1.0).
 
----
+## Issues Encountered
 
-## Technical Challenges Solved
+1. **Python 3.10 too old** - Harbor requires Python 3.12+
+   - Fixed: Updated `requires-python = ">=3.12"`, recreated venv
 
-1. **Root User Issue**: Claude CLI refuses `--dangerously-skip-permissions` when run as root
-   - Solution: Create non-root `claude` user in container, run CLI via `su - claude`
+2. **Missing README.md** - Hatchling build failed
+   - Fixed: Created harbor/README.md
 
-2. **Shell Quoting**: Complex instruction escaping broke with `su -c '...'`
-   - Solution: Write instruction to file, pipe to claude via `cat instruction.txt | claude -p -`
+3. **curl not found in container** - Install script tried curl before installing it
+   - Fixed: apt-get install curl first
 
-3. **OAuth Credentials**: Claude needs `~/.claude/.credentials.json` for OAuth auth
-   - Solution: Read local credentials and inject into container for claude user
+4. **`--task-ids` wrong flag** - Harbor uses `-t` or `--task-name`
+   - Fixed: Updated demo script
 
-4. **Node.js Installation**: Container didn't have Node.js
-   - Solution: Install nvm + Node.js 22 as claude user in install script
+5. **`--session` flag unknown** - Claude CLI doesn't support `--session`
+   - Fixed: Removed from command
 
----
+6. **Root privilege error** - `--dangerously-skip-permissions` rejected as root
+   - Fixed: Run as non-root claude user
 
-## Success Criteria Met
+7. **Quoting issues** - Complex shell escaping broke with `su -c`
+   - Fixed: Write instruction to file, pipe to claude
 
-- [x] Harbor adapter package created
-- [x] Claude Code CLI runs in containers
-- [x] TestGen skill integrated
-- [x] regex-log task passes with Sonnet (reward=1.0)
-- [x] Committed and pushed to main
+## Files Created/Modified
+
+- `harbor/pyproject.toml`
+- `harbor/README.md`
+- `harbor/src/openagents_harbor/__init__.py`
+- `harbor/src/openagents_harbor/claude_agent.py`
+- `harbor/src/openagents_harbor/pi_agent.py`
+- `harbor/src/openagents_harbor/install-agent.sh.j2`
+- `scripts/tbench-demo.sh`
+
+## Usage
+
+```bash
+# Setup
+cd harbor
+uv venv --python python3.12
+source .venv/bin/activate
+uv pip install -e ".[dev]"
+
+# Run demo
+harbor run \
+  -d terminal-bench@2.0 \
+  --agent-import-path openagents_harbor:ClaudeCodeAgent \
+  -m anthropic/claude-sonnet-4-20250514 \
+  -t regex-log \
+  -o /tmp/tbench-results \
+  -n 1
+```
+
+## Next Steps
+
+1. Test more tasks to validate infrastructure
+2. Improve Haiku's task understanding (maybe tune testgen prompt)
+3. Add token tracking from Claude CLI output
+4. Complete Pi agent implementation
