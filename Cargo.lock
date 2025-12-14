@@ -1067,6 +1067,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "coder_domain"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "serde",
+ "serde_json",
+ "smallvec",
+ "uuid",
+]
+
+[[package]]
+name = "coder_protocol"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "coder_domain",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "codespan-reporting"
 version = "0.11.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
