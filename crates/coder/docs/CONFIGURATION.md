@@ -21,7 +21,7 @@ This document provides a comprehensive reference for all configuration options i
 
 | Variable | Description | Example |
 |----------|-------------|---------|
-| `ANTHROPIC_API_KEY` | Anthropic API key for Claude models | `sk-ant-api03-...` |
+| `ANTHROPIC_API_KEY` | Anthropic API key for Claude models (or use provider-specific keys below) | `sk-ant-api03-...` |
 
 ### Optional Variables
 
@@ -30,9 +30,15 @@ This document provides a comprehensive reference for all configuration options i
 | `CODER_WORKING_DIR` | Default working directory for sessions | Current directory |
 | `CODER_DATABASE` | Path to SQLite database file | `coder.db` |
 | `CODER_DEFAULT_AGENT` | Default agent for new sessions | `build` |
-| `CODER_DEFAULT_MODEL` | Default model ID | `claude-sonnet-4-20250514` |
+| `CODER_DEFAULT_MODEL` | Default model ID | `claude-sonnet-4-5-20250929` |
 | `CODER_DEFAULT_PROVIDER` | Default provider ID | `anthropic` |
 | `ANTHROPIC_BASE_URL` | Custom Anthropic API endpoint | `https://api.anthropic.com` |
+| `OPENAI_API_KEY` | OpenAI API key | - |
+| `OPENAI_BASE_URL` | Custom OpenAI endpoint (proxy) | `https://api.openai.com/v1` |
+| `OPENROUTER_API_KEY` | OpenRouter API key | - |
+| `OPENROUTER_BASE_URL` | Custom OpenRouter endpoint | `https://openrouter.ai/api/v1` |
+| `OLLAMA_BASE_URL` / `OLLAMA_HOST` | Ollama OpenAI-compatible endpoint | `http://localhost:11434/v1` |
+| `FM_BRIDGE_URL` | Apple FM bridge endpoint | `http://localhost:3030` |
 | `RUST_LOG` | Logging level for Rust crates | `info` |
 
 ### Example .env File
@@ -44,8 +50,12 @@ ANTHROPIC_API_KEY=sk-ant-api03-your-key-here
 # Optional overrides
 CODER_WORKING_DIR=/home/user/projects/myproject
 CODER_DATABASE=/home/user/.coder/coder.db
-CODER_DEFAULT_MODEL=claude-sonnet-4-20250514
+CODER_DEFAULT_MODEL=claude-sonnet-4-5-20250929
 CODER_DEFAULT_AGENT=build
+OPENAI_API_KEY=sk-openai-...
+OPENROUTER_API_KEY=sk-or-...
+# OLLAMA_BASE_URL=http://localhost:11434/v1
+# FM_BRIDGE_URL=http://localhost:3030
 
 # Logging
 RUST_LOG=coder_app=debug,coder_service=debug,llm=trace
@@ -97,7 +107,7 @@ ServiceConfig {
     working_directory: std::env::current_dir().unwrap_or(PathBuf::from(".")),
     database_path: PathBuf::from("coder.db"),
     default_agent: "build".to_string(),
-    default_model: "claude-sonnet-4-20250514".to_string(),
+    default_model: "claude-sonnet-4-5-20250929".to_string(),
     default_provider: "anthropic".to_string(),
     max_turns: 50,
     processor_config: ProcessorConfig::default(),
@@ -114,7 +124,7 @@ let config = ServiceConfig {
     working_directory: PathBuf::from("/my/project"),
     database_path: PathBuf::from("/data/coder.db"),
     default_agent: "build".to_string(),
-    default_model: "claude-sonnet-4-20250514".to_string(),
+    default_model: "claude-sonnet-4-5-20250929".to_string(),
     default_provider: "anthropic".to_string(),
     max_turns: 100,
     ..Default::default()
