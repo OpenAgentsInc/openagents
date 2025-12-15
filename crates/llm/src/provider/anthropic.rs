@@ -80,7 +80,10 @@ impl AnthropicProvider {
     }
 
     /// Build the request body for the Anthropic API.
-    fn build_request(&self, request: &CompletionRequest) -> Result<serde_json::Value, ProviderError> {
+    fn build_request(
+        &self,
+        request: &CompletionRequest,
+    ) -> Result<serde_json::Value, ProviderError> {
         let messages = transform_messages(&request.messages)?;
 
         let mut body = serde_json::json!({
@@ -199,6 +202,8 @@ struct AnthropicStreamAdapter<S> {
     started: bool,
     current_content_id: Option<String>,
     current_tool_id: Option<String>,
+    current_tool_name: Option<String>,
+    current_tool_input: Option<String>,
     usage: Usage,
 }
 
@@ -210,6 +215,8 @@ impl<S> AnthropicStreamAdapter<S> {
             started: false,
             current_content_id: None,
             current_tool_id: None,
+            current_tool_name: None,
+            current_tool_input: None,
             usage: Usage::default(),
         }
     }
@@ -289,8 +296,15 @@ impl<S> AnthropicStreamAdapter<S> {
                         self.current_content_id = Some(id.clone());
                         Ok(Some(StreamEvent::TextStart { id }))
                     }
-                    AnthropicContentBlock::ToolUse { id: tool_id, name, .. } => {
+                    AnthropicContentBlock::ToolUse {
+                        id: tool_id,
+                        name,
+                        input,
+                    } => {
                         self.current_tool_id = Some(tool_id.clone());
+                        self.current_tool_name = Some(name.clone());
+                        self.current_tool_input =
+                            Some(serde_json::to_string(&input).unwrap_or_default());
                         Ok(Some(StreamEvent::ToolInputStart {
                             id: tool_id.clone(),
                             tool_name: name.clone(),
@@ -317,6 +331,11 @@ impl<S> AnthropicStreamAdapter<S> {
                     }
                     AnthropicDelta::InputJsonDelta { partial_json } => {
                         let id = self.current_tool_id.clone().unwrap_or_default();
+                        if let Some(buf) = &mut self.current_tool_input {
+                            buf.push_str(&partial_json);
+                        } else {
+                            self.current_tool_input = Some(partial_json.clone());
+                        }
                         Ok(Some(StreamEvent::ToolInputDelta {
                             id,
                             delta: partial_json,
@@ -342,7 +361,17 @@ impl<S> AnthropicStreamAdapter<S> {
                 // Determine type from current state
                 if self.current_tool_id.is_some() {
                     let tool_id = self.current_tool_id.take().unwrap_or_default();
-                    Ok(Some(StreamEvent::ToolInputEnd { id: tool_id }))
+                    let tool_name = self.current_tool_name.take().unwrap_or_default();
+                    let input_raw = self.current_tool_input.take().unwrap_or_default();
+                    let input = serde_json::from_str(&input_raw)
+                        .unwrap_or_else(|_| serde_json::Value::String(input_raw));
+
+                    Ok(Some(StreamEvent::ToolCall {
+                        tool_call_id: tool_id,
+                        tool_name,
+                        input,
+                        provider_metadata: None,
+                    }))
                 } else {
                     self.current_content_id = None;
                     Ok(Some(StreamEvent::TextEnd { id }))
@@ -372,13 +401,11 @@ impl<S> AnthropicStreamAdapter<S> {
                 }))
             }
 
-            "message_stop" => {
-                Ok(Some(StreamEvent::Finish {
-                    finish_reason: FinishReason::Stop,
-                    usage: self.usage.clone(),
-                    provider_metadata: None,
-                }))
-            }
+            "message_stop" => Ok(Some(StreamEvent::Finish {
+                finish_reason: FinishReason::Stop,
+                usage: self.usage.clone(),
+                provider_metadata: None,
+            })),
 
             "error" => {
                 let error: AnthropicError =
@@ -412,6 +439,7 @@ struct AnthropicMessageStart {
 }
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 struct AnthropicMessage {
     id: String,
     model: String,
@@ -419,6 +447,7 @@ struct AnthropicMessage {
 }
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 struct AnthropicUsage {
     input_tokens: u64,
     #[serde(default)]
@@ -436,14 +465,24 @@ struct AnthropicContentBlockStart {
 }
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 #[serde(tag = "type", rename_all = "snake_case")]
 enum AnthropicContentBlock {
-    Text { text: String },
-    ToolUse { id: String, name: String, input: serde_json::Value },
-    Thinking { thinking: String },
+    Text {
+        text: String,
+    },
+    ToolUse {
+        id: String,
+        name: String,
+        input: serde_json::Value,
+    },
+    Thinking {
+        thinking: String,
+    },
 }
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 struct AnthropicContentBlockDelta {
     index: usize,
     delta: AnthropicDelta,
@@ -469,6 +508,7 @@ struct AnthropicMessageDelta {
 }
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 struct AnthropicMessageDeltaInner {
     stop_reason: Option<String>,
     stop_sequence: Option<String>,
@@ -509,47 +549,60 @@ fn transform_messages(messages: &[Message]) -> Result<serde_json::Value, Provide
                     "type": "text",
                     "text": text,
                 }),
-                ContentBlock::Image { source, media_type: _ } => {
-                    match source {
-                        crate::message::ImageSource::Base64 { data, media_type: mt } => {
-                            serde_json::json!({
-                                "type": "image",
-                                "source": {
-                                    "type": "base64",
-                                    "media_type": mt,
-                                    "data": data,
-                                }
-                            })
-                        }
-                        crate::message::ImageSource::Url { url } => {
-                            serde_json::json!({
-                                "type": "image",
-                                "source": {
-                                    "type": "url",
-                                    "url": url,
-                                }
-                            })
-                        }
+                ContentBlock::Image {
+                    source,
+                    media_type: _,
+                } => match source {
+                    crate::message::ImageSource::Base64 {
+                        data,
+                        media_type: mt,
+                    } => {
+                        serde_json::json!({
+                            "type": "image",
+                            "source": {
+                                "type": "base64",
+                                "media_type": mt,
+                                "data": data,
+                            }
+                        })
                     }
-                }
+                    crate::message::ImageSource::Url { url } => {
+                        serde_json::json!({
+                            "type": "image",
+                            "source": {
+                                "type": "url",
+                                "url": url,
+                            }
+                        })
+                    }
+                },
                 ContentBlock::ToolUse { id, name, input } => serde_json::json!({
                     "type": "tool_use",
                     "id": id,
                     "name": name,
                     "input": input,
                 }),
-                ContentBlock::ToolResult { tool_use_id, content, is_error } => {
+                ContentBlock::ToolResult {
+                    tool_use_id,
+                    content,
+                    is_error,
+                } => {
                     let content_value = match content {
                         ToolResultContent::Text(text) => serde_json::json!(text),
                         ToolResultContent::Blocks(blocks) => {
                             // Recursively transform blocks
-                            serde_json::json!(blocks.iter().map(|b| match b {
-                                ContentBlock::Text { text } => serde_json::json!({
-                                    "type": "text",
-                                    "text": text,
-                                }),
-                                _ => serde_json::json!({}),
-                            }).collect::<Vec<_>>())
+                            serde_json::json!(
+                                blocks
+                                    .iter()
+                                    .map(|b| match b {
+                                        ContentBlock::Text { text } => serde_json::json!({
+                                            "type": "text",
+                                            "text": text,
+                                        }),
+                                        _ => serde_json::json!({}),
+                                    })
+                                    .collect::<Vec<_>>()
+                            )
                         }
                     };
                     serde_json::json!({
@@ -610,10 +663,7 @@ mod tests {
 
     #[test]
     fn test_transform_messages() {
-        let messages = vec![
-            Message::user("Hello"),
-            Message::assistant("Hi there!"),
-        ];
+        let messages = vec![Message::user("Hello"), Message::assistant("Hi there!")];
 
         let result = transform_messages(&messages).unwrap();
         let arr = result.as_array().unwrap();

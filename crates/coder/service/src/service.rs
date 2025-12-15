@@ -5,21 +5,21 @@
 use crate::bridge::Bridge;
 use crate::update::ChatUpdate;
 use coder_agent::AgentRegistry;
-use coder_domain::ids::SessionId;
 use coder_domain::PermissionId;
+use coder_domain::ids::SessionId;
 use coder_permission::{PermissionManager, Response as PermissionResponse};
 use coder_session::{AgentConfig, ProcessorConfig, PromptBuilder, Session};
 use coder_storage::Storage;
 use futures::stream::{Stream, StreamExt};
-use llm::{CompletionRequest, Message, ProviderRegistry, Tool};
+use llm::{CompletionRequest, Message, ModelInfo, ProviderRegistry, Tool};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::pin::Pin;
 use std::sync::Arc;
 use thiserror::Error;
-use tokio::sync::{mpsc, RwLock};
+use tokio::sync::{RwLock, mpsc};
 use tool_registry::ToolRegistry;
-use tracing::{info};
+use tracing::info;
 
 /// Chat stream type alias.
 pub type ChatStream = Pin<Box<dyn Stream<Item = ChatUpdate> + Send>>;
@@ -77,7 +77,7 @@ impl Default for ServiceConfig {
             working_directory: std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
             database_path: PathBuf::from("coder.db"),
             default_agent: "build".to_string(),
-            default_model: "claude-sonnet-4-20250514".to_string(),
+            default_model: "claude-sonnet-4-5-20250929".to_string(),
             default_provider: "anthropic".to_string(),
             max_turns: 50,
             processor_config: ProcessorConfig::default(),
@@ -147,10 +147,8 @@ impl ChatService {
         let permission_manager = Arc::new(PermissionManager::new());
 
         // Initialize storage
-        let storage = Arc::new(
-            Storage::open(&config.database_path)
-                .map_err(ServiceError::Storage)?,
-        );
+        let storage =
+            Arc::new(Storage::open(&config.database_path).map_err(ServiceError::Storage)?);
 
         // Initialize agent registry
         let agent_registry = AgentRegistry::with_builtin_agents();
@@ -173,24 +171,37 @@ impl ChatService {
         })
     }
 
-    /// Create a new session.
-    pub async fn create_session(
-        &self,
-        working_directory: Option<PathBuf>,
-    ) -> Result<Session, ServiceError> {
-        let working_dir = working_directory.unwrap_or_else(|| self.inner.config.working_directory.clone());
-
-        let agent_config = AgentConfig {
+    fn default_agent_config(&self) -> AgentConfig {
+        AgentConfig {
             agent_id: self.inner.config.default_agent.clone(),
             model_id: self.inner.config.default_model.clone(),
             provider_id: self.inner.config.default_provider.clone(),
             max_tokens: Some(8192),
             temperature: None,
-        };
+        }
+    }
+
+    /// Create a new session.
+    pub async fn create_session(
+        &self,
+        working_directory: Option<PathBuf>,
+    ) -> Result<Session, ServiceError> {
+        let agent_config = self.default_agent_config();
+        self.create_session_with_agent(agent_config, working_directory)
+            .await
+    }
+
+    /// Create a session with a specific agent/model configuration.
+    pub async fn create_session_with_agent(
+        &self,
+        agent_config: AgentConfig,
+        working_directory: Option<PathBuf>,
+    ) -> Result<Session, ServiceError> {
+        let working_dir =
+            working_directory.unwrap_or_else(|| self.inner.config.working_directory.clone());
 
         let session = Session::new(working_dir).with_agent(agent_config);
 
-        // Store in active sessions
         self.inner
             .sessions
             .write()
@@ -205,11 +216,7 @@ impl ChatService {
     /// Send a message and get a stream of updates.
     ///
     /// This is the main entry point for chat operations.
-    pub fn send_message(
-        &self,
-        session_id: SessionId,
-        content: String,
-    ) -> ChatStream {
+    pub fn send_message(&self, session_id: SessionId, content: String) -> ChatStream {
         let inner = self.inner.clone();
 
         Box::pin(async_stream::stream! {
@@ -231,7 +238,7 @@ impl ChatService {
             };
 
             // Create update channel
-            let (update_tx, mut update_rx) = mpsc::unbounded_channel();
+            let (update_tx, _update_rx) = mpsc::unbounded_channel();
 
             // Create bridge
             let bridge = Bridge::new(session_id, session.thread_id, update_tx.clone());
@@ -243,26 +250,28 @@ impl ChatService {
                 thread_id: session.thread_id,
             };
 
-            // Emit agent info
-            bridge.emit_agent_info(
-                &session.agent_config.agent_id,
-                &session.agent_config.model_id,
-                &session.agent_config.provider_id,
-            );
-            yield ChatUpdate::AgentInfo {
-                session_id,
-                agent_id: session.agent_config.agent_id.clone(),
-                model_id: session.agent_config.model_id.clone(),
-                provider_id: session.agent_config.provider_id.clone(),
+            // Resolve provider for this model
+            let provider = match inner
+                .provider_registry
+                .get(&session.agent_config.provider_id)
+                .await
+            {
+                Some(p) => Some(p),
+                None => inner
+                    .provider_registry
+                    .provider_for_model(&session.agent_config.model_id)
+                    .await,
             };
 
-            // Get provider
-            let provider = match inner.provider_registry.get(&session.agent_config.provider_id).await {
+            let provider = match provider {
                 Some(p) => p,
                 None => {
                     yield ChatUpdate::Error {
                         session_id,
-                        message: format!("Provider not found: {}", session.agent_config.provider_id),
+                        message: format!(
+                            "Provider not found for model {}",
+                            session.agent_config.model_id
+                        ),
                         code: Some("PROVIDER_NOT_FOUND".into()),
                         recoverable: false,
                     };
@@ -270,26 +279,54 @@ impl ChatService {
                 }
             };
 
+            let capabilities = provider.capabilities();
+            let resolved_provider_id = provider.id().to_string();
+
+            // Emit agent info
+            bridge.emit_agent_info(
+                &session.agent_config.agent_id,
+                &session.agent_config.model_id,
+                &resolved_provider_id,
+            );
+            yield ChatUpdate::AgentInfo {
+                session_id,
+                agent_id: session.agent_config.agent_id.clone(),
+                model_id: session.agent_config.model_id.clone(),
+                provider_id: resolved_provider_id.clone(),
+            };
+
             // Build system prompt
             let prompt = PromptBuilder::new(&session.working_directory, session.agent_config.clone())
                 .build();
 
             // Build completion request
-            let tools = inner.tool_registry.to_anthropic_tools();
-            let llm_tools: Vec<Tool> = tools
-                .into_iter()
-                .map(|t| Tool::new(
-                    t["name"].as_str().unwrap_or(""),
-                    t["description"].as_str().unwrap_or(""),
-                    t["input_schema"].clone(),
-                ))
-                .collect();
-
-            let request = CompletionRequest::new(&session.agent_config.model_id)
+            let mut request = CompletionRequest::new(&session.agent_config.model_id)
                 .system(&prompt)
-                .message(Message::user(&content))
-                .max_tokens(session.agent_config.max_tokens.unwrap_or(8192))
-                .tools(llm_tools);
+                .message(Message::user(&content));
+
+            if let Some(max_tokens) = session.agent_config.max_tokens {
+                request = request.max_tokens(max_tokens);
+            }
+
+            if let Some(temp) = session.agent_config.temperature {
+                request = request.temperature(temp);
+            }
+
+            if capabilities.tool_calling {
+                let tools = inner.tool_registry.to_anthropic_tools();
+                let llm_tools: Vec<Tool> = tools
+                    .into_iter()
+                    .map(|t| {
+                        Tool::new(
+                            t["name"].as_str().unwrap_or(""),
+                            t["description"].as_str().unwrap_or(""),
+                            t["input_schema"].clone(),
+                        )
+                    })
+                    .collect();
+
+                request = request.tools(llm_tools);
+            }
 
             // Start streaming
             let stream = match provider.stream(request).await {
@@ -308,8 +345,7 @@ impl ChatService {
             // Process stream events
             futures::pin_mut!(stream);
 
-            let mut current_message_id = coder_domain::MessageId::new();
-            let mut has_tool_use = false;
+            let current_message_id = coder_domain::MessageId::new();
 
             // Emit message started
             yield ChatUpdate::MessageStarted {
@@ -337,7 +373,6 @@ impl ChatService {
                                 };
                             }
                             llm::StreamEvent::ToolInputStart { id, tool_name } => {
-                                has_tool_use = true;
                                 yield ChatUpdate::ToolStarted {
                                     session_id,
                                     message_id: current_message_id,
@@ -353,7 +388,6 @@ impl ChatService {
                                 };
                             }
                             llm::StreamEvent::ToolCall { tool_call_id, tool_name, input, .. } => {
-                                has_tool_use = true;
                                 yield ChatUpdate::ToolExecuting {
                                     session_id,
                                     tool_call_id: tool_call_id.clone(),
@@ -464,6 +498,11 @@ impl ChatService {
         self.inner.storage.clone()
     }
 
+    /// List available models from registered providers.
+    pub async fn list_models(&self) -> Vec<ModelInfo> {
+        self.inner.provider_registry.list_models().await
+    }
+
     /// Get a session by ID.
     pub async fn get_session(&self, session_id: SessionId) -> Option<Session> {
         self.inner.sessions.read().await.get(&session_id).cloned()
@@ -491,7 +530,7 @@ mod tests {
     fn test_service_config_default() {
         let config = ServiceConfig::default();
         assert_eq!(config.default_agent, "build");
-        assert_eq!(config.default_model, "claude-sonnet-4-20250514");
+        assert_eq!(config.default_model, "claude-sonnet-4-5-20250929");
         assert_eq!(config.default_provider, "anthropic");
     }
 }

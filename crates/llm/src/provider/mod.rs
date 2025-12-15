@@ -4,9 +4,16 @@
 //! as well as the `ProviderRegistry` for managing multiple providers.
 
 mod anthropic;
+mod apple;
+mod ollama;
+mod openai;
+mod openai_common;
 mod openrouter;
 
 pub use anthropic::AnthropicProvider;
+pub use apple::AppleProvider;
+pub use ollama::OllamaProvider;
+pub use openai::OpenAIProvider;
 pub use openrouter::OpenRouterProvider;
 
 use crate::message::CompletionRequest;
@@ -144,7 +151,29 @@ impl ProviderRegistry {
             }
         }
 
-        // Future: OpenAI, Ollama, etc.
+        // Try OpenAI
+        if let Ok(openai) = OpenAIProvider::new() {
+            if openai.is_available().await {
+                self.register(Arc::new(openai)).await;
+                tracing::info!("Registered OpenAI provider");
+            }
+        }
+
+        // Try Ollama (local)
+        if let Ok(ollama) = OllamaProvider::new() {
+            if ollama.is_available().await {
+                self.register(Arc::new(ollama)).await;
+                tracing::info!("Registered Ollama provider");
+            }
+        }
+
+        // Try Apple FM bridge
+        if let Ok(apple) = AppleProvider::new() {
+            if apple.is_available().await {
+                self.register(Arc::new(apple)).await;
+                tracing::info!("Registered Apple FM provider");
+            }
+        }
 
         Ok(())
     }
@@ -261,6 +290,8 @@ fn parse_model_spec(spec: &str) -> Option<(String, String)> {
             "openai"
         } else if model.starts_with("llama") || model.starts_with("qwen") {
             "ollama"
+        } else if model.starts_with("apple") || model.starts_with("fm") {
+            "apple"
         } else {
             return None;
         };
@@ -298,6 +329,11 @@ mod tests {
         assert_eq!(
             parse_model_spec("llama3.2"),
             Some(("ollama".to_string(), "llama3.2".to_string()))
+        );
+
+        assert_eq!(
+            parse_model_spec("apple-foundation-model"),
+            Some(("apple".to_string(), "apple-foundation-model".to_string()))
         );
     }
 

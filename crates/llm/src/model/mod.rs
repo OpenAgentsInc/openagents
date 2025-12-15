@@ -449,6 +449,40 @@ pub mod ollama {
     }
 }
 
+/// Apple Foundation Models (via local bridge).
+pub mod apple {
+    use super::*;
+
+    /// Default Apple FM model (bridge-provided).
+    pub fn foundation_default() -> ModelInfo {
+        ModelInfo::builder("apple-foundation-model", "apple")
+            .name("Apple Foundation Model")
+            .family("apple-fm")
+            .capabilities(ModelCapabilities {
+                temperature: true,
+                reasoning: false,
+                tool_calling: false,
+                vision: false,
+                pdf: false,
+                audio: false,
+                video: false,
+                streaming: true,
+                caching: false,
+                interleaved_thinking: None,
+                fine_grained_tool_streaming: None,
+            })
+            .pricing(ModelPricing::new(0.0, 0.0))
+            .limits(ModelLimits::new(128_000, 8_192))
+            .status(ModelStatus::Beta)
+            .build()
+    }
+
+    /// All Apple FM models.
+    pub fn all() -> Vec<ModelInfo> {
+        vec![foundation_default()]
+    }
+}
+
 /// OpenRouter model definitions.
 ///
 /// OpenRouter provides access to models from multiple providers through

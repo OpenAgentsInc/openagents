@@ -29,7 +29,7 @@ impl ToolRegistry {
 
     /// Register a tool in the registry.
     pub fn register(&mut self, tool: BoxedTool) {
-        let name = tool.info().name.clone();
+        let name = tool.info().name;
         self.tools.insert(name, Arc::new(tool));
     }
 
@@ -70,9 +70,9 @@ impl ToolRegistry {
         input: serde_json::Value,
         ctx: &ToolContext,
     ) -> ToolResult<ToolOutput> {
-        let tool = self.get(name).ok_or_else(|| {
-            crate::ToolError::not_found(format!("Tool not found: {}", name))
-        })?;
+        let tool = self
+            .get(name)
+            .ok_or_else(|| crate::ToolError::not_found(format!("Tool not found: {}", name)))?;
 
         tool.execute_json(input, ctx).await
     }
@@ -84,7 +84,8 @@ impl ToolRegistry {
         input: &serde_json::Value,
         ctx: &ToolContext,
     ) -> Option<crate::PermissionRequest> {
-        self.get(name).and_then(|tool| tool.check_permission_json(input, ctx))
+        self.get(name)
+            .and_then(|tool| tool.check_permission_json(input, ctx))
     }
 
     /// Get tools formatted for Anthropic's API.

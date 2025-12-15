@@ -1,7 +1,7 @@
 //! Session state and management.
 
-use coder_domain::{MessageId, SessionId, ThreadId};
 use chrono::{DateTime, Utc};
+use coder_domain::{MessageId, SessionId, ThreadId};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use thiserror::Error;
@@ -75,7 +75,7 @@ impl Default for AgentConfig {
     fn default() -> Self {
         Self {
             agent_id: "default".to_string(),
-            model_id: "claude-sonnet-4-20250514".to_string(),
+            model_id: "claude-sonnet-4-5-20250929".to_string(),
             provider_id: "anthropic".to_string(),
             max_tokens: Some(8192),
             temperature: None,
@@ -151,7 +151,9 @@ impl Session {
     pub fn is_busy(&self) -> bool {
         matches!(
             self.status,
-            SessionStatus::Busy | SessionStatus::WaitingForPermission | SessionStatus::Retrying { .. }
+            SessionStatus::Busy
+                | SessionStatus::WaitingForPermission
+                | SessionStatus::Retrying { .. }
         )
     }
 
