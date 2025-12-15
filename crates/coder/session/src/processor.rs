@@ -4,8 +4,8 @@ use crate::{Session, SessionError, SessionEvent, SessionStatus};
 use coder_domain::MessageId;
 use coder_permission::{PermissionError, PermissionManager, PermissionRequestBuilder};
 use futures::StreamExt;
-use llm::stream::StreamEvent;
 use llm::CompletionStream;
+use llm::stream::StreamEvent;
 use std::sync::Arc;
 use tokio::sync::mpsc;
 use tool_registry::{ToolContext, ToolRegistry};
@@ -138,7 +138,11 @@ impl Processor {
                     });
                 }
 
-                StreamEvent::Finish { finish_reason: reason, usage, .. } => {
+                StreamEvent::Finish {
+                    finish_reason: reason,
+                    usage,
+                    ..
+                } => {
                     finish_reason = format!("{:?}", reason);
 
                     // Update session usage
@@ -167,9 +171,7 @@ impl Processor {
 
             // Execute tool if we have a pending one
             if let Some(tool) = current_tool.take() {
-                let result = self
-                    .execute_tool(session, message_id, &tool)
-                    .await;
+                let result = self.execute_tool(session, message_id, &tool).await;
 
                 self.emit(SessionEvent::ToolCompleted {
                     session_id: session.id,
@@ -206,22 +208,21 @@ impl Processor {
         _message_id: MessageId,
         tool: &PendingToolCall,
     ) -> ToolCallResult {
-        let ctx = ToolContext::new(&session.working_directory)
-            .with_session(session.id.to_string());
+        let ctx = ToolContext::new(&session.working_directory).with_session(session.id.to_string());
 
         // Check permission
-        if let Some(permission_request) = self.tool_registry.check_permission(
-            &tool.tool_name,
-            &tool.input,
-            &ctx,
-        ) {
+        if let Some(permission_request) =
+            self.tool_registry
+                .check_permission(&tool.tool_name, &tool.input, &ctx)
+        {
             // Build and submit permission request
-            let request = PermissionRequestBuilder::new(session.id, &permission_request.permission_type)
-                .title(&permission_request.title)
-                .description(&permission_request.description)
-                .patterns(permission_request.patterns.clone())
-                .metadata(permission_request.metadata.clone())
-                .build();
+            let request =
+                PermissionRequestBuilder::new(session.id, &permission_request.permission_type)
+                    .title(&permission_request.title)
+                    .description(&permission_request.description)
+                    .patterns(permission_request.patterns.clone())
+                    .metadata(permission_request.metadata.clone())
+                    .build();
 
             // Note: status will be set properly by the UI/controller
 
@@ -234,7 +235,21 @@ impl Processor {
                     return ToolCallResult {
                         tool_call_id: tool.tool_call_id.clone(),
                         success: false,
-                        output: format!("Permission denied: {}", reason),
+                        output: format!(
+                            "Permission denied for {}. You can update agent permissions or reply with an approved command.",
+                            tool.tool_name
+                        ),
+                    };
+                }
+                Err(PermissionError::Timeout) => {
+                    warn!(tool = %tool.tool_name, "Permission request timed out");
+                    return ToolCallResult {
+                        tool_call_id: tool.tool_call_id.clone(),
+                        success: false,
+                        output: format!(
+                            "Permission request timed out for {}. Please retry or adjust permissions.",
+                            tool.tool_name
+                        ),
                     };
                 }
                 Err(e) => {
@@ -249,7 +264,11 @@ impl Processor {
         }
 
         // Execute the tool
-        match self.tool_registry.execute(&tool.tool_name, tool.input.clone(), &ctx).await {
+        match self
+            .tool_registry
+            .execute(&tool.tool_name, tool.input.clone(), &ctx)
+            .await
+        {
             Ok(output) => {
                 info!(
                     tool = %tool.tool_name,
