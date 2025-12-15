@@ -32,6 +32,15 @@ pub struct ChatView {
     pub last_updated: Option<DateTime<Utc>>,
 }
 
+/// Snapshot of a ChatView at a point in time.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChatSnapshot {
+    /// When the snapshot was taken.
+    pub taken_at: DateTime<Utc>,
+    /// Captured projection.
+    pub projection: ChatView,
+}
+
 /// Lightweight summary metadata for thread lists.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ThreadSummary {
@@ -358,6 +367,23 @@ impl ChatView {
             unread_count: self.message_count,
             last_updated,
         }
+    }
+
+    /// Create a snapshot of the current view.
+    pub fn snapshot(&self) -> ChatSnapshot {
+        ChatSnapshot {
+            taken_at: Utc::now(),
+            projection: self.clone(),
+        }
+    }
+
+    /// Restore a chat view from a snapshot and subsequent events.
+    pub fn restore_from_snapshot(snapshot: ChatSnapshot, events: &[DomainEvent]) -> Self {
+        let mut view = snapshot.projection;
+        for event in events {
+            view.apply(event);
+        }
+        view
     }
 }
 
