@@ -326,8 +326,6 @@ fn story_32_streaming_completion_after_resume() {
 /// Story 33: As a user, deleting a thread cascades to associated messages/tool uses
 /// without orphaned rows.
 ///
-/// NOTE: This requires storage layer implementation. For now, we verify that
-/// all events contain thread_id for proper cascade identification.
 #[test]
 fn story_33_all_thread_events_contain_thread_id() {
     let thread_id = ThreadId::new();
@@ -365,6 +363,33 @@ fn story_33_all_thread_events_contain_thread_id() {
             event
         );
     }
+}
+
+/// Story 33: Deleting a session cascades to messages (no orphans).
+#[test]
+fn story_33_session_delete_cascades_messages() {
+    use coder_storage::{Session as StoredSession, Storage};
+
+    let storage = Storage::in_memory().expect("create in-memory storage");
+
+    // Create session and messages
+    let session = StoredSession::new("/tmp/project").with_title("Cascade test");
+    storage.create_session(&session).expect("create session");
+
+    let msg1 = coder_storage::StoredMessage::user(session.id, "Hello");
+    storage.add_message(&msg1).expect("add message 1");
+    let msg2 = coder_storage::StoredMessage::assistant(session.id);
+    storage.add_message(&msg2).expect("add message 2");
+
+    // Delete the session and ensure messages are removed
+    let deleted = storage.delete_session(&session.id).expect("delete session");
+    assert!(deleted, "session should be deleted");
+
+    let messages = storage.get_messages(&session.id).expect("list messages");
+    assert!(messages.is_empty(), "messages should be cascaded on delete");
+
+    let session_after = storage.get_session(&session.id).expect("get session");
+    assert!(session_after.is_none(), "session should be gone");
 }
 
 // ============================================================================
