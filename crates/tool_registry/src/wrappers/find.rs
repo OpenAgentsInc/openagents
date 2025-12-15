@@ -15,6 +15,13 @@ pub struct FindInput {
     /// Maximum number of results.
     #[serde(default)]
     pub max_results: Option<usize>,
+    /// Whether to respect .gitignore and VCS ignore files.
+    #[serde(default = "default_respect_gitignore")]
+    pub respect_gitignore: bool,
+}
+
+fn default_respect_gitignore() -> bool {
+    true
 }
 
 /// Async wrapper for the Find/Glob tool.
@@ -28,7 +35,9 @@ impl Tool for FindToolWrapper {
     fn info(&self) -> ToolInfo {
         ToolInfo {
             name: "glob".to_string(),
-            description: "Find files matching a glob pattern. Returns a list of matching file paths.".to_string(),
+            description:
+                "Find files matching a glob pattern. Returns a list of matching file paths."
+                    .to_string(),
             input_schema: serde_json::json!({
                 "type": "object",
                 "properties": {
@@ -43,6 +52,11 @@ impl Tool for FindToolWrapper {
                     "max_results": {
                         "type": "integer",
                         "description": "Maximum number of results to return"
+                    },
+                    "respect_gitignore": {
+                        "type": "boolean",
+                        "description": "Whether to honor .gitignore and VCS ignore files",
+                        "default": true
                     }
                 },
                 "required": ["pattern"]
@@ -52,16 +66,26 @@ impl Tool for FindToolWrapper {
         }
     }
 
-    fn check_permission(&self, input: &Self::Input, ctx: &ToolContext) -> Option<PermissionRequest> {
+    fn check_permission(
+        &self,
+        input: &Self::Input,
+        ctx: &ToolContext,
+    ) -> Option<PermissionRequest> {
         // Only require permission if searching outside working directory
         if let Some(path) = &input.path {
             let resolved = ctx.resolve_path(path);
             if !ctx.is_path_allowed(&resolved) {
-                return Some(PermissionRequest::new(
-                    "file_search",
-                    format!("Find files in: {}", path),
-                    format!("Allow searching outside working directory: {}", resolved.display()),
-                ).with_patterns(vec![resolved.to_string_lossy().to_string()]));
+                return Some(
+                    PermissionRequest::new(
+                        "file_search",
+                        format!("Find files in: {}", path),
+                        format!(
+                            "Allow searching outside working directory: {}",
+                            resolved.display()
+                        ),
+                    )
+                    .with_patterns(vec![resolved.to_string_lossy().to_string()]),
+                );
             }
         }
         None
@@ -70,16 +94,26 @@ impl Tool for FindToolWrapper {
     async fn execute(&self, input: Self::Input, ctx: &ToolContext) -> ToolResult<ToolOutput> {
         ctx.check_cancelled()?;
 
-        let path = input.path.as_ref()
+        let path = input
+            .path
+            .as_ref()
             .map(|p| ctx.resolve_path(p))
             .unwrap_or_else(|| ctx.working_dir.clone());
         let pattern = input.pattern.clone();
         let max_results = input.max_results;
+        let respect_gitignore = input.respect_gitignore;
 
         // Execute in blocking task since FindTool is synchronous
         // Use find_glob for glob patterns
         let result = tokio::task::spawn_blocking(move || {
-            tools::FindTool::find_glob(&path, &pattern, max_results)
+            tools::FindTool::find_with_options(
+                &path,
+                None,
+                Some(&pattern),
+                max_results,
+                false,
+                respect_gitignore,
+            )
         })
         .await
         .map_err(|e| crate::ToolError::execution_failed(format!("Task join error: {}", e)))?

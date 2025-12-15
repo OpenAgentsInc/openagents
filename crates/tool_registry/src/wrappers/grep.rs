@@ -18,6 +18,13 @@ pub struct GrepInput {
     /// Case insensitive search.
     #[serde(default)]
     pub ignore_case: bool,
+    /// Whether to respect .gitignore and VCS ignore files.
+    #[serde(default = "default_respect_gitignore")]
+    pub respect_gitignore: bool,
+}
+
+fn default_respect_gitignore() -> bool {
+    true
 }
 
 /// A serializable match result for output.
@@ -58,6 +65,11 @@ impl Tool for GrepToolWrapper {
                     "ignore_case": {
                         "type": "boolean",
                         "description": "If true, search is case insensitive"
+                    },
+                    "respect_gitignore": {
+                        "type": "boolean",
+                        "description": "Whether to honor .gitignore and VCS ignore files",
+                        "default": true
                     }
                 },
                 "required": ["pattern"]
@@ -67,16 +79,26 @@ impl Tool for GrepToolWrapper {
         }
     }
 
-    fn check_permission(&self, input: &Self::Input, ctx: &ToolContext) -> Option<PermissionRequest> {
+    fn check_permission(
+        &self,
+        input: &Self::Input,
+        ctx: &ToolContext,
+    ) -> Option<PermissionRequest> {
         // Only require permission if searching outside working directory
         if let Some(path) = &input.path {
             let resolved = ctx.resolve_path(path);
             if !ctx.is_path_allowed(&resolved) {
-                return Some(PermissionRequest::new(
-                    "file_search",
-                    format!("Search in: {}", path),
-                    format!("Allow searching outside working directory: {}", resolved.display()),
-                ).with_patterns(vec![resolved.to_string_lossy().to_string()]));
+                return Some(
+                    PermissionRequest::new(
+                        "file_search",
+                        format!("Search in: {}", path),
+                        format!(
+                            "Allow searching outside working directory: {}",
+                            resolved.display()
+                        ),
+                    )
+                    .with_patterns(vec![resolved.to_string_lossy().to_string()]),
+                );
             }
         }
         None
@@ -85,16 +107,25 @@ impl Tool for GrepToolWrapper {
     async fn execute(&self, input: Self::Input, ctx: &ToolContext) -> ToolResult<ToolOutput> {
         ctx.check_cancelled()?;
 
-        let path = input.path.as_ref()
+        let path = input
+            .path
+            .as_ref()
             .map(|p| ctx.resolve_path(p))
             .unwrap_or_else(|| ctx.working_dir.clone());
         let pattern = input.pattern.clone();
         let max_results = input.max_results;
         let ignore_case = input.ignore_case;
+        let respect_gitignore = input.respect_gitignore;
 
         // Execute in blocking task since GrepTool is synchronous
         let result = tokio::task::spawn_blocking(move || {
-            tools::GrepTool::search_with_options(&pattern, &path, ignore_case, max_results)
+            tools::GrepTool::search_with_options(
+                &pattern,
+                &path,
+                ignore_case,
+                max_results,
+                respect_gitignore,
+            )
         })
         .await
         .map_err(|e| crate::ToolError::execution_failed(format!("Task join error: {}", e)))?
@@ -107,7 +138,9 @@ impl Tool for GrepToolWrapper {
         });
 
         // Convert to serializable output
-        let matches_output: Vec<GrepMatchOutput> = result.matches.iter()
+        let matches_output: Vec<GrepMatchOutput> = result
+            .matches
+            .iter()
             .map(|m| GrepMatchOutput {
                 file: m.file.clone(),
                 line: m.line,

@@ -15,6 +15,7 @@ walkdir = { workspace = true }
 globset = { workspace = true }
 similar = { workspace = true }
 shellexpand = { workspace = true }
+ignore = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }

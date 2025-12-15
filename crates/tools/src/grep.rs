@@ -3,11 +3,11 @@
 //! TOOL-020..023: Pattern search in files
 
 use crate::error::{ToolError, ToolResult};
+use ignore::{WalkBuilder, gitignore::Gitignore};
 use regex::Regex;
 use std::fs;
 use std::path::Path;
 use std::time::Instant;
-use walkdir::WalkDir;
 
 /// A single match result
 #[derive(Debug, Clone)]
@@ -66,7 +66,7 @@ impl GrepTool {
         path: impl AsRef<Path>,
         max_results: Option<usize>,
     ) -> ToolResult<GrepResult> {
-        Self::search_with_options(pattern, path, false, max_results)
+        Self::search_with_options(pattern, path, false, max_results, true)
     }
 
     /// Search with additional options
@@ -75,13 +75,14 @@ impl GrepTool {
         path: impl AsRef<Path>,
         ignore_case: bool,
         max_results: Option<usize>,
+        respect_gitignore: bool,
     ) -> ToolResult<GrepResult> {
         let start = Instant::now();
         let path_str = path.as_ref().to_string_lossy().to_string();
 
         // Expand ~ to home directory
         let expanded = shellexpand::tilde(&path_str).to_string();
-        let path = Path::new(&expanded);
+        let path = Path::new(&expanded).to_path_buf();
 
         // Check if path exists
         if !path.exists() {
@@ -103,7 +104,7 @@ impl GrepTool {
 
         let resolved_path = path
             .canonicalize()
-            .unwrap_or_else(|_| path.to_path_buf())
+            .unwrap_or_else(|_| path.clone())
             .to_string_lossy()
             .to_string();
 
@@ -114,21 +115,47 @@ impl GrepTool {
         // Search files
         if path.is_file() {
             files_searched = 1;
-            Self::search_file(path, &path_str, &regex, &mut matches, max)?;
+            Self::search_file(&path, &path_str, &regex, &mut matches, max)?;
         } else {
-            for entry in WalkDir::new(path)
+            let mut walker = WalkBuilder::new(&path);
+            walker
                 .follow_links(false)
-                .into_iter()
-                .filter_map(|e| e.ok())
-                .filter(|e| e.file_type().is_file())
-            {
-                let entry_path = entry.path();
-                let relative_path = entry_path.strip_prefix(path).unwrap_or(entry_path);
+                .hidden(true)
+                .ignore(respect_gitignore)
+                .git_ignore(respect_gitignore)
+                .git_global(respect_gitignore)
+                .git_exclude(respect_gitignore);
 
-                // Skip hidden files and directories (check relative path only)
-                if Self::is_hidden_or_ignored(relative_path) {
+            let gitignore: Option<Gitignore> = if respect_gitignore {
+                let gitignore_file = path.join(".gitignore");
+                if gitignore_file.exists() {
+                    walker.add_ignore(gitignore_file);
+                }
+                let mut builder = ignore::gitignore::GitignoreBuilder::new(&path);
+                let _ = builder.add(path.join(".gitignore"));
+                builder.build().ok()
+            } else {
+                None
+            };
+
+            for entry in walker.build().filter_map(|e| e.ok()) {
+                let entry_path = entry.path();
+                let ft = match entry.file_type() {
+                    Some(ft) => ft,
+                    None => continue,
+                };
+
+                if !ft.is_file() {
                     continue;
                 }
+
+                if let Some(ref gitignore) = gitignore {
+                    if gitignore.matched(entry_path, ft.is_dir()).is_ignore() {
+                        continue;
+                    }
+                }
+
+                let relative_path = entry_path.strip_prefix(&path).unwrap_or(entry_path);
 
                 // Skip binary files
                 if Self::is_likely_binary(entry_path) {
@@ -190,26 +217,6 @@ impl GrepTool {
         }
 
         Ok(())
-    }
-
-    /// Check if a path should be ignored (hidden or common ignore patterns)
-    fn is_hidden_or_ignored(path: &Path) -> bool {
-        for component in path.components() {
-            if let std::path::Component::Normal(name) = component {
-                let name_str = name.to_string_lossy();
-                if name_str.starts_with('.') {
-                    return true;
-                }
-                // Common ignore patterns
-                if matches!(
-                    name_str.as_ref(),
-                    "node_modules" | "target" | "dist" | "build" | "__pycache__" | ".git"
-                ) {
-                    return true;
-                }
-            }
-        }
-        false
     }
 
     /// Check if a file is likely binary
@@ -319,7 +326,7 @@ mod tests {
         let file = dir.path().join("test.txt");
         fs::write(&file, "Hello HELLO hello\n").unwrap();
 
-        let result = GrepTool::search_with_options("HELLO", dir.path(), true, None).unwrap();
+        let result = GrepTool::search_with_options("HELLO", dir.path(), true, None, true).unwrap();
         assert_eq!(result.matches.len(), 1); // One line matches
     }
 
@@ -365,5 +372,22 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let result = GrepTool::search("[invalid", dir.path(), None);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn respects_gitignore() {
+        let dir = TempDir::new().unwrap();
+        create_test_files(&dir);
+        fs::write(dir.path().join(".gitignore"), "file2.txt\nsubdir/\n").unwrap();
+
+        let result = GrepTool::search("hello", dir.path(), None).unwrap();
+        // Should skip file2.txt and subdir contents
+        assert_eq!(result.matches.len(), 2); // Only file1.txt matches
+        assert!(
+            result
+                .matches
+                .iter()
+                .all(|m| !m.file.contains("file2") && !m.file.contains("subdir"))
+        );
     }
 }
