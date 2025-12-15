@@ -4,6 +4,7 @@
 
 use crate::error::{ToolError, ToolResult};
 use globset::{Glob, GlobMatcher};
+use ignore::{WalkBuilder, gitignore::Gitignore};
 use std::path::Path;
 use std::time::Instant;
 use walkdir::WalkDir;
@@ -57,7 +58,7 @@ impl FindTool {
         pattern: Option<&str>,
         max_results: Option<usize>,
     ) -> ToolResult<FindResult> {
-        Self::find_with_options(path, pattern, None, max_results, false)
+        Self::find_with_options(path, pattern, None, max_results, false, true)
     }
 
     /// Find files with a glob pattern
@@ -71,7 +72,7 @@ impl FindTool {
         glob: &str,
         max_results: Option<usize>,
     ) -> ToolResult<FindResult> {
-        Self::find_with_options(path, None, Some(glob), max_results, false)
+        Self::find_with_options(path, None, Some(glob), max_results, false, true)
     }
 
     /// Find with all options
@@ -81,13 +82,14 @@ impl FindTool {
         glob: Option<&str>,
         max_results: Option<usize>,
         include_hidden: bool,
+        respect_gitignore: bool,
     ) -> ToolResult<FindResult> {
         let start = Instant::now();
         let path_str = path.as_ref().to_string_lossy().to_string();
 
         // Expand ~ to home directory
         let expanded = shellexpand::tilde(&path_str).to_string();
-        let path = Path::new(&expanded);
+        let path = Path::new(&expanded).to_path_buf();
 
         // Check if path exists
         if !path.exists() {
@@ -106,7 +108,7 @@ impl FindTool {
 
         let resolved_root = path
             .canonicalize()
-            .unwrap_or_else(|_| path.to_path_buf())
+            .unwrap_or_else(|_| path.clone())
             .to_string_lossy()
             .to_string();
 
@@ -130,26 +132,54 @@ impl FindTool {
         let mut directories_visited = 0;
         let max = max_results.unwrap_or(usize::MAX);
 
-        for entry in WalkDir::new(path)
+        let mut walker = WalkBuilder::new(&path);
+        walker
+            .hidden(!include_hidden)
             .follow_links(false)
-            .into_iter()
-            .filter_map(|e| e.ok())
-        {
+            .ignore(respect_gitignore)
+            .git_ignore(respect_gitignore)
+            .git_global(respect_gitignore)
+            .git_exclude(respect_gitignore);
+
+        let gitignore: Option<Gitignore> = if respect_gitignore {
+            let gitignore_file = path.join(".gitignore");
+            let mut builder = ignore::gitignore::GitignoreBuilder::new(&path);
+            if gitignore_file.exists() {
+                walker.add_ignore(gitignore_file.clone());
+                let _ = builder.add(gitignore_file);
+            }
+            builder.build().ok()
+        } else {
+            None
+        };
+
+        for entry in walker.build().filter_map(|e| e.ok()) {
+            let entry_path = entry.path();
+
+            // Skip the root directory entry
+            if entry_path == path {
+                continue;
+            }
+
             entries_visited += 1;
 
-            if entry.file_type().is_dir() {
+            let ft = match entry.file_type() {
+                Some(ft) => ft,
+                None => continue,
+            };
+
+            if ft.is_dir() {
                 directories_visited += 1;
                 continue;
             }
 
-            let entry_path = entry.path();
-            let relative = entry_path.strip_prefix(path).unwrap_or(entry_path);
-
-            // Skip hidden unless requested (check relative path only)
-            if !include_hidden && Self::is_hidden_relative(relative) {
-                continue;
+            if let Some(ref gitignore) = gitignore {
+                if gitignore.matched(entry_path, ft.is_dir()).is_ignore() {
+                    continue;
+                }
             }
 
+            let relative = entry_path.strip_prefix(&path).unwrap_or(entry_path);
             let relative = relative.to_string_lossy().to_string();
 
             // Check glob match
@@ -372,7 +402,7 @@ mod tests {
         let dir = TempDir::new().unwrap();
         create_test_structure(&dir);
 
-        let result = FindTool::find_with_options(dir.path(), None, None, None, true).unwrap();
+        let result = FindTool::find_with_options(dir.path(), None, None, None, true, true).unwrap();
         assert_eq!(result.matches, 5); // Including .hidden
     }
 
@@ -400,5 +430,26 @@ mod tests {
     fn test_nonexistent_path() {
         let result = FindTool::find("/nonexistent/path", None, None);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn respects_gitignore_by_default() {
+        let dir = TempDir::new().unwrap();
+        create_test_structure(&dir);
+        std::fs::write(
+            dir.path().join(".gitignore"),
+            "file2.rs\nsubdir/nested.txt\n",
+        )
+        .unwrap();
+
+        let result = FindTool::find(dir.path(), None, None).unwrap();
+        // hidden plus gitignored files skipped; should only see file1.txt and nested.rs
+        assert_eq!(result.matches, 2);
+        assert!(
+            result
+                .files
+                .iter()
+                .all(|p| !p.contains("file2.rs") && !p.contains("nested.txt"))
+        );
     }
 }
