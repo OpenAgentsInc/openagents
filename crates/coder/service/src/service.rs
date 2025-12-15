@@ -864,9 +864,21 @@ impl ChatService {
         permission_id: PermissionId,
         response: PermissionResponse,
     ) -> Result<(), ServiceError> {
+        self.respond_permission_with_patterns(session_id, permission_id, response, None)
+            .await
+    }
+
+    /// Respond to a permission request with optional override patterns (for "Always").
+    pub async fn respond_permission_with_patterns(
+        &self,
+        session_id: SessionId,
+        permission_id: PermissionId,
+        response: PermissionResponse,
+        patterns: Option<Vec<String>>,
+    ) -> Result<(), ServiceError> {
         self.inner
             .permission_manager
-            .respond(session_id, permission_id, response)
+            .respond_with_patterns(session_id, permission_id, response, patterns)
             .await
             .map_err(|e| ServiceError::Permission(e.to_string()))
     }
