@@ -102,7 +102,7 @@ pub struct ModelProviderInfo {
 }
 
 impl ModelProviderInfo {
-    fn build_header_map(&self) -> crate::error::Result<HeaderMap> {
+    fn build_header_map(&self) -> crate::core::error::Result<HeaderMap> {
         let mut headers = HeaderMap::new();
         if let Some(extra) = &self.http_headers {
             for (k, v) in extra {
@@ -130,7 +130,7 @@ impl ModelProviderInfo {
     pub(crate) fn to_api_provider(
         &self,
         auth_mode: Option<AuthMode>,
-    ) -> crate::error::Result<ApiProvider> {
+    ) -> crate::core::error::Result<ApiProvider> {
         let default_base_url = if matches!(auth_mode, Some(AuthMode::ChatGPT)) {
             "https://chatgpt.com/backend-api/codex"
         } else {
@@ -167,7 +167,7 @@ impl ModelProviderInfo {
     /// If `env_key` is Some, returns the API key for this provider if present
     /// (and non-empty) in the environment. If `env_key` is required but
     /// cannot be found, returns an error.
-    pub fn api_key(&self) -> crate::error::Result<Option<String>> {
+    pub fn api_key(&self) -> crate::core::error::Result<Option<String>> {
         match &self.env_key {
             Some(env_key) => {
                 let env_value = std::env::var(env_key);
@@ -180,7 +180,7 @@ impl ModelProviderInfo {
                         }
                     })
                     .map_err(|_| {
-                        crate::error::CodexErr::EnvVar(EnvVarError {
+                        crate::core::error::CodexErr::EnvVar(EnvVarError {
                             var: env_key.clone(),
                             instructions: self.env_key_instructions.clone(),
                         })

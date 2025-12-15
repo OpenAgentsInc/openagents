@@ -36,6 +36,16 @@ pub trait KeyringStore: Send + Sync {
 
     /// Delete a value from the keyring
     fn delete(&self, service: &str, key: &str) -> Result<(), String>;
+
+    /// Load a value from the keyring (alias for get)
+    fn load(&self, service: &str, key: &str) -> Option<String> {
+        self.get(service, key)
+    }
+
+    /// Save a value to the keyring (alias for set)
+    fn save(&self, service: &str, key: &str, value: &str) -> Result<(), String> {
+        self.set(service, key, value)
+    }
 }
 
 impl KeyringStore for DefaultKeyringStore {

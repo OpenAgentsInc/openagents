@@ -87,8 +87,8 @@ async fn start_review_conversation(
     // re-enable blocked tools (web search, view image).
     sub_agent_config
         .features
-        .disable(crate::features::Feature::WebSearchRequest)
-        .disable(crate::features::Feature::ViewImageTool);
+        .disable(crate::core::features::Feature::WebSearchRequest)
+        .disable(crate::core::features::Feature::ViewImageTool);
 
     // Set explicit review rubric for the sub-agent
     sub_agent_config.base_instructions = Some(crate::REVIEW_PROMPT.to_string());
@@ -201,11 +201,11 @@ pub(crate) async fn exit_review_mode(
             findings_str.push_str(&format!("\n{block}"));
         }
         let rendered =
-            crate::client_common::REVIEW_EXIT_SUCCESS_TMPL.replace("{results}", &findings_str);
+            crate::core::client_common::REVIEW_EXIT_SUCCESS_TMPL.replace("{results}", &findings_str);
         let assistant_message = render_review_output_text(&out);
         (rendered, assistant_message)
     } else {
-        let rendered = crate::client_common::REVIEW_EXIT_INTERRUPTED_TMPL.to_string();
+        let rendered = crate::core::client_common::REVIEW_EXIT_INTERRUPTED_TMPL.to_string();
         let assistant_message =
             "Review was interrupted. Please re-run /review and wait for it to complete."
                 .to_string();

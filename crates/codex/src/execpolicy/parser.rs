@@ -63,7 +63,7 @@ impl PolicyParser {
         Ok(())
     }
 
-    pub fn build(self) -> crate::policy::Policy {
+    pub fn build(self) -> crate::execpolicy::policy::Policy {
         self.builder.into_inner().build()
     }
 }
@@ -85,8 +85,8 @@ impl PolicyBuilder {
             .insert(rule.program().to_string(), rule);
     }
 
-    fn build(self) -> crate::policy::Policy {
-        crate::policy::Policy::new(self.rules_by_program)
+    fn build(self) -> crate::execpolicy::policy::Policy {
+        crate::execpolicy::policy::Policy::new(self.rules_by_program)
     }
 }
 

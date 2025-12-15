@@ -24,7 +24,7 @@ use super::list::Cursor;
 use super::list::get_conversations;
 use super::policy::is_persisted_response_item;
 use crate::core::config::Config;
-use crate::client::default_client::originator;
+use crate::core::default_client::originator;
 use crate::core::git_info::collect_git_info;
 use crate::core::protocol::InitialHistory;
 use crate::core::protocol::ResumedHistory;

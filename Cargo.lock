@@ -1198,6 +1198,7 @@ dependencies = [
  "mime_guess",
  "multimap",
  "nucleo-matcher",
+ "num_cpus",
  "oauth2",
  "once_cell",
  "opentelemetry",

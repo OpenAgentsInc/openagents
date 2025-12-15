@@ -583,7 +583,7 @@ impl Session {
         // - load history metadata
         let rollout_fut = RolloutRecorder::new(&config, rollout_params);
 
-        let history_meta_fut = crate::message_history::history_metadata(&config);
+        let history_meta_fut = crate::core::message_history::history_metadata(&config);
         let auth_statuses_fut = compute_auth_statuses(
             config.mcp_servers.iter(),
             config.mcp_oauth_credentials_store_mode,
@@ -983,7 +983,7 @@ impl Session {
             return Err(ExecPolicyUpdateError::FeatureDisabled);
         }
 
-        crate::exec_policy::append_execpolicy_amendment_and_update(
+        crate::core::exec_policy::append_execpolicy_amendment_and_update(
             &codex_home,
             &current_policy,
             &amendment.command,
@@ -1804,7 +1804,7 @@ mod handlers {
         let id = sess.conversation_id;
         let config = Arc::clone(config);
         tokio::spawn(async move {
-            if let Err(e) = crate::message_history::append_entry(&text, &id, &config).await {
+            if let Err(e) = crate::core::message_history::append_entry(&text, &id, &config).await {
                 warn!("failed to append to message history: {e}");
             }
         });
@@ -1823,7 +1823,7 @@ mod handlers {
         tokio::spawn(async move {
             // Run lookup in blocking thread because it does file IO + locking.
             let entry_opt = tokio::task::spawn_blocking(move || {
-                crate::message_history::lookup(log_id, offset, &config)
+                crate::core::message_history::lookup(log_id, offset, &config)
             })
             .await
             .unwrap_or(None);
@@ -1867,8 +1867,8 @@ mod handlers {
 
     pub async fn list_custom_prompts(sess: &Session, sub_id: String) {
         let custom_prompts: Vec<CustomPrompt> =
-            if let Some(dir) = crate::custom_prompts::default_prompts_dir() {
-                crate::custom_prompts::discover_prompts_in(&dir).await
+            if let Some(dir) = crate::core::custom_prompts::default_prompts_dir() {
+                crate::core::custom_prompts::discover_prompts_in(&dir).await
             } else {
                 Vec::new()
             };
@@ -2018,7 +2018,7 @@ async fn spawn_review_thread(
     config: Arc<Config>,
     parent_turn_context: Arc<TurnContext>,
     sub_id: String,
-    resolved: crate::review_prompts::ResolvedReviewRequest,
+    resolved: crate::core::review_prompts::ResolvedReviewRequest,
 ) {
     let model = config.review_model.clone();
     let review_model_family = sess
@@ -2029,8 +2029,8 @@ async fn spawn_review_thread(
     // For reviews, disable web_search and view_image regardless of global settings.
     let mut review_features = sess.features.clone();
     review_features
-        .disable(crate::features::Feature::WebSearchRequest)
-        .disable(crate::features::Feature::ViewImageTool);
+        .disable(crate::core::features::Feature::WebSearchRequest)
+        .disable(crate::core::features::Feature::ViewImageTool);
     let tools_config = ToolsConfig::new(&ToolsConfigParams {
         model_family: &review_model_family,
         features: &review_features,

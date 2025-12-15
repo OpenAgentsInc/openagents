@@ -232,7 +232,7 @@ pub(crate) trait ToolRuntime<Req, Out>: Approvable<Req> + Sandboxable {
 }
 
 pub(crate) struct SandboxAttempt<'a> {
-    pub sandbox: crate::exec::SandboxType,
+    pub sandbox: crate::core::exec::SandboxType,
     pub policy: &'a crate::protocol::SandboxPolicy,
     pub(crate) manager: &'a SandboxManager,
     pub(crate) sandbox_cwd: &'a Path,
@@ -243,7 +243,7 @@ impl<'a> SandboxAttempt<'a> {
     pub fn env_for(
         &self,
         spec: CommandSpec,
-    ) -> Result<crate::sandboxing::ExecEnv, SandboxTransformError> {
+    ) -> Result<crate::core::sandboxing::ExecEnv, SandboxTransformError> {
         self.manager.transform(
             spec,
             self.policy,

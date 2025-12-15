@@ -1,4 +1,4 @@
-//! Types used to define the fields of [`crate::config::Config`].
+//! Types used to define the fields of [`crate::core::config::Config`].
 
 // Note this file should generally be restricted to simple struct/enum
 // definitions that do not contain business logic.

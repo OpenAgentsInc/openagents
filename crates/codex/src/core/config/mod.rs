@@ -219,7 +219,7 @@ pub struct Config {
     pub file_opener: UriBasedFileOpener,
 
     /// Path to the `codex-linux-sandbox` executable. This must be set if
-    /// [`crate::exec::SandboxType::LinuxSeccomp`] is used. Note that this
+    /// [`crate::core::exec::SandboxType::LinuxSeccomp`] is used. Note that this
     /// cannot be set in the config file: it must be set in code via
     /// [`ConfigOverrides`].
     ///
@@ -293,7 +293,7 @@ pub struct Config {
     pub disable_paste_burst: bool,
 
     /// OTEL configuration (exporter type, endpoint, headers, etc.).
-    pub otel: crate::config::types::OtelConfig,
+    pub otel: crate::core::config::types::OtelConfig,
 }
 
 impl Config {
@@ -306,7 +306,7 @@ impl Config {
         let root_value = load_resolved_config(
             &codex_home,
             cli_overrides,
-            crate::config_loader::LoaderOverrides::default(),
+            crate::core::config_loader::LoaderOverrides::default(),
         )
         .await?;
 
@@ -326,7 +326,7 @@ pub async fn load_config_as_toml_with_cli_overrides(
     let root_value = load_resolved_config(
         codex_home,
         cli_overrides,
-        crate::config_loader::LoaderOverrides::default(),
+        crate::core::config_loader::LoaderOverrides::default(),
     )
     .await?;
 
@@ -341,7 +341,7 @@ pub async fn load_config_as_toml_with_cli_overrides(
 async fn load_resolved_config(
     codex_home: &Path,
     cli_overrides: Vec<(String, TomlValue)>,
-    overrides: crate::config_loader::LoaderOverrides,
+    overrides: crate::core::config_loader::LoaderOverrides,
 ) -> std::io::Result<TomlValue> {
     let layers = load_config_layers_state(codex_home, &cli_overrides, overrides).await?;
     Ok(layers.effective_config())
@@ -365,7 +365,7 @@ pub async fn load_global_mcp_servers(
     let root_value = load_resolved_config(
         codex_home,
         Vec::new(),
-        crate::config_loader::LoaderOverrides::default(),
+        crate::core::config_loader::LoaderOverrides::default(),
     )
     .await?;
     let Some(servers_value) = root_value.get("mcp_servers") else {
@@ -669,13 +669,13 @@ pub struct ConfigToml {
     pub disable_paste_burst: Option<bool>,
 
     /// OTEL configuration.
-    pub otel: Option<crate::config::types::OtelConfigToml>,
+    pub otel: Option<crate::core::config::types::OtelConfigToml>,
 
     /// Tracks whether the Windows onboarding screen has been acknowledged.
     pub windows_wsl_setup_acknowledged: Option<bool>,
 
     /// Collection of in-product notices (different from notifications)
-    /// See [`crate::config::types::Notices`] for more details
+    /// See [`crate::core::config::types::Notices`] for more details
     pub notice: Option<Notice>,
 
     /// Legacy, now use features
@@ -797,7 +797,7 @@ impl ConfigToml {
         if cfg!(target_os = "windows")
             && matches!(resolved_sandbox_mode, SandboxMode::WorkspaceWrite)
             // If the experimental Windows sandbox is enabled, do not force a downgrade.
-            && crate::safety::get_platform_sandbox().is_none()
+            && crate::core::safety::get_platform_sandbox().is_none()
         {
             sandbox_policy = SandboxPolicy::new_read_only_policy();
             forced_auto_mode_downgraded_on_windows = true;
@@ -958,10 +958,10 @@ impl Config {
         {
             // Base flag controls sandbox on/off; elevated only applies when base is enabled.
             let sandbox_enabled = features.enabled(Feature::WindowsSandbox);
-            crate::safety::set_windows_sandbox_enabled(sandbox_enabled);
+            crate::core::safety::set_windows_sandbox_enabled(sandbox_enabled);
             let elevated_enabled =
                 sandbox_enabled && features.enabled(Feature::WindowsSandboxElevated);
-            crate::safety::set_windows_elevated_sandbox_enabled(elevated_enabled);
+            crate::core::safety::set_windows_elevated_sandbox_enabled(elevated_enabled);
         }
 
         let resolved_cwd = {
@@ -1257,7 +1257,7 @@ impl Config {
     }
 
     pub fn set_windows_sandbox_globally(&mut self, value: bool) {
-        crate::safety::set_windows_sandbox_enabled(value);
+        crate::core::safety::set_windows_sandbox_enabled(value);
         if value {
             self.features.enable(Feature::WindowsSandbox);
         } else {
@@ -1731,7 +1731,7 @@ trust_level = "trusted"
         let mut entries = BTreeMap::new();
         entries.insert("apply_patch_freeform".to_string(), false);
         let cfg = ConfigToml {
-            features: Some(crate::features::FeaturesToml { entries }),
+            features: Some(crate::core::features::FeaturesToml { entries }),
             ..Default::default()
         };
 
@@ -1806,7 +1806,7 @@ trust_level = "trusted"
         std::fs::write(&config_path, "mcp_oauth_credentials_store = \"file\"\n")?;
         std::fs::write(&managed_path, "mcp_oauth_credentials_store = \"keyring\"\n")?;
 
-        let overrides = crate::config_loader::LoaderOverrides {
+        let overrides = crate::core::config_loader::LoaderOverrides {
             managed_config_path: Some(managed_path.clone()),
             #[cfg(target_os = "macos")]
             managed_preferences_base64: None,
@@ -1921,7 +1921,7 @@ trust_level = "trusted"
         )?;
         std::fs::write(&managed_path, "model = \"managed_config\"\n")?;
 
-        let overrides = crate::config_loader::LoaderOverrides {
+        let overrides = crate::core::config_loader::LoaderOverrides {
             managed_config_path: Some(managed_path),
             #[cfg(target_os = "macos")]
             managed_preferences_base64: None,

@@ -51,6 +51,13 @@ pub struct ReadinessFlag {
 }
 
 impl ReadinessFlag {
+    /// Create a new readiness flag
+    pub fn new() -> Self {
+        Self {
+            ready: Arc::new(AtomicBool::new(false)),
+        }
+    }
+
     /// Check if ready
     pub fn is_ready(&self) -> bool {
         self.ready.load(Ordering::SeqCst)
@@ -59,6 +66,41 @@ impl ReadinessFlag {
     /// Mark as ready
     pub fn set_ready(&self) {
         self.ready.store(true, Ordering::SeqCst);
+    }
+
+    /// Subscribe to readiness changes (stub - returns a future that never resolves)
+    pub fn subscribe(&self) -> impl std::future::Future<Output = ()> + Send + 'static {
+        let ready = self.ready.clone();
+        async move {
+            // Poll until ready
+            loop {
+                if ready.load(Ordering::SeqCst) {
+                    break;
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+            }
+        }
+    }
+
+    /// Wait until ready (alias for subscribe)
+    pub async fn wait_ready(&self) {
+        loop {
+            if self.ready.load(Ordering::SeqCst) {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+    }
+
+    /// Mark as ready (alias)
+    pub fn mark_ready(&self) {
+        self.set_ready();
+    }
+}
+
+impl Default for ReadinessFlag {
+    fn default() -> Self {
+        Self::new()
     }
 }
 

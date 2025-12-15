@@ -274,7 +274,7 @@ fn truncate_before_nth_user_message(history: InitialHistory, n: usize) -> Initia
     for (idx, item) in items.iter().enumerate() {
         if let RolloutItem::ResponseItem(item @ ResponseItem::Message { .. }) = item
             && matches!(
-                crate::event_mapping::parse_turn_item(item),
+                crate::core::event_mapping::parse_turn_item(item),
                 Some(TurnItem::UserMessage(_))
             )
         {

@@ -204,7 +204,7 @@ pub fn content_items_to_text(content: &[ContentItem]) -> Option<String> {
 pub(crate) fn collect_user_messages(items: &[ResponseItem]) -> Vec<String> {
     items
         .iter()
-        .filter_map(|item| match crate::event_mapping::parse_turn_item(item) {
+        .filter_map(|item| match crate::core::event_mapping::parse_turn_item(item) {
             Some(TurnItem::UserMessage(user)) => {
                 if is_summary_message(&user.message()) {
                     None

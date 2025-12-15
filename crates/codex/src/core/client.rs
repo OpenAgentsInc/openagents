@@ -464,7 +464,7 @@ async fn handle_unauthorized(
     status: StatusCode,
     refreshed: &mut bool,
     auth_manager: &Option<Arc<AuthManager>>,
-    auth: &Option<crate::auth::CodexAuth>,
+    auth: &Option<crate::core::auth::CodexAuth>,
 ) -> Result<()> {
     if *refreshed {
         return Err(map_unauthorized_status(status));

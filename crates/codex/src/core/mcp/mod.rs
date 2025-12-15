@@ -95,7 +95,7 @@ pub fn group_tools_by_server(
 
 pub(crate) async fn collect_mcp_snapshot_from_manager(
     mcp_connection_manager: &McpConnectionManager,
-    auth_status_entries: HashMap<String, crate::mcp::auth::McpAuthStatusEntry>,
+    auth_status_entries: HashMap<String, crate::core::mcp::auth::McpAuthStatusEntry>,
 ) -> McpListToolsResponseEvent {
     let (tools, resources, resource_templates) = tokio::join!(
         mcp_connection_manager.list_all_tools(),
