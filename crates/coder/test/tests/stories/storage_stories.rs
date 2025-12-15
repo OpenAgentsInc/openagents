@@ -143,8 +143,6 @@ fn story_30_event_replay_preserves_ordering() {
 /// Story 31: As a user, sessions and threads persist to SQLite by default
 /// and reload correctly after restart.
 ///
-/// NOTE: This requires SQLite storage implementation. For now, we verify
-/// the event serialization that enables persistence.
 #[test]
 fn story_31_events_are_serializable_for_persistence() {
     let thread_id = ThreadId::new();
@@ -171,6 +169,39 @@ fn story_31_events_are_serializable_for_persistence() {
     } else {
         panic!("Wrong event type after deserialization");
     }
+}
+
+/// Story 31: SQLite round-trip stores and reloads sessions/messages.
+#[test]
+fn story_31_sqlite_round_trip() {
+    use coder_storage::{Session as StoredSession, Storage};
+
+    let storage = Storage::in_memory().expect("should create in-memory sqlite");
+
+    // Create session and a couple messages.
+    let session = StoredSession::new("/tmp/project").with_title("Story 31");
+    storage.create_session(&session).expect("create session");
+
+    let user_msg = coder_storage::StoredMessage::user(session.id, "Hello");
+    storage.add_message(&user_msg).expect("add user message");
+
+    let assistant_msg = coder_storage::StoredMessage::assistant(session.id);
+    storage
+        .add_message(&assistant_msg)
+        .expect("add assistant message");
+
+    // Simulate reload: read from storage and verify data integrity.
+    let loaded_session = storage
+        .get_session(&session.id)
+        .expect("get session")
+        .expect("session exists");
+    assert_eq!(loaded_session.id, session.id);
+    assert_eq!(loaded_session.title.as_deref(), Some("Story 31"));
+
+    let messages = storage.get_messages(&session.id).expect("list messages");
+    assert_eq!(messages.len(), 2);
+    assert_eq!(messages[0].role, "user");
+    assert_eq!(messages[1].role, "assistant");
 }
 
 /// Story 31: Event envelope captures sequence for ordered replay
