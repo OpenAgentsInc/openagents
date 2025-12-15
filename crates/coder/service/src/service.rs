@@ -79,6 +79,20 @@ pub struct AgentCapabilities {
     pub permissions: AgentPermission,
 }
 
+/// Estimated cost and latency for a model.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ModelEstimate {
+    pub model_id: String,
+    pub provider_id: String,
+    pub name: String,
+    pub input_tokens: u64,
+    pub output_tokens: u64,
+    pub input_cost_usd: f64,
+    pub output_cost_usd: f64,
+    pub total_cost_usd: f64,
+    pub estimated_latency_ms: u64,
+}
+
 /// Configuration for the ChatService.
 #[derive(Debug, Clone)]
 pub struct ServiceConfig {
@@ -269,6 +283,32 @@ impl ChatService {
         }
     }
 
+    fn estimate_for_model(
+        &self,
+        model: &ModelInfo,
+        input_tokens: u64,
+        output_tokens: u64,
+    ) -> ModelEstimate {
+        // Pricing is per million tokens.
+        let input_cost = (model.pricing.input_per_mtok / 1_000_000.0) * input_tokens as f64;
+        let output_cost = (model.pricing.output_per_mtok / 1_000_000.0) * output_tokens as f64;
+
+        // Simple latency heuristic: base 500ms + 0.1ms per token.
+        let estimated_latency_ms = 500 + ((input_tokens + output_tokens) / 10);
+
+        ModelEstimate {
+            model_id: model.id.clone(),
+            provider_id: model.provider.clone(),
+            name: model.name.clone(),
+            input_tokens,
+            output_tokens,
+            input_cost_usd: input_cost,
+            output_cost_usd: output_cost,
+            total_cost_usd: input_cost + output_cost,
+            estimated_latency_ms,
+        }
+    }
+
     /// Get the saved org defaults, if present.
     pub fn get_org_defaults(&self) -> Result<Option<OrgDefaults>, ServiceError> {
         Ok(self.inner.storage.get(&ORG_DEFAULTS_KEY)?)
@@ -404,6 +444,24 @@ impl ChatService {
             .ok_or_else(|| ServiceError::AgentNotFound(agent_id.to_string()))?;
 
         Ok(self.capabilities_for(&agent))
+    }
+
+    /// Estimate cost/latency for available models with default token counts.
+    pub async fn list_model_estimates(&self) -> Vec<ModelEstimate> {
+        self.list_model_estimates_with_tokens(1000, 1000).await
+    }
+
+    /// Estimate cost/latency for available models given token counts.
+    pub async fn list_model_estimates_with_tokens(
+        &self,
+        input_tokens: u64,
+        output_tokens: u64,
+    ) -> Vec<ModelEstimate> {
+        let models = self.inner.provider_registry.list_models().await;
+        models
+            .iter()
+            .map(|m| self.estimate_for_model(m, input_tokens, output_tokens))
+            .collect()
     }
 
     /// Send a message and get a stream of updates.
@@ -732,6 +790,7 @@ impl Clone for ChatService {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use llm::ModelPricing;
     use tempfile::tempdir;
 
     #[test]
@@ -974,5 +1033,27 @@ mod tests {
             u,
             ChatUpdate::Error { code: Some(code), .. } if code == "PROVIDER_NOT_FOUND"
         )));
+    }
+
+    #[tokio::test]
+    async fn model_estimate_uses_pricing() {
+        let tmp = tempdir().unwrap();
+        let config = ServiceConfig {
+            working_directory: tmp.path().to_path_buf(),
+            database_path: tmp.path().join("coder.db"),
+            ..ServiceConfig::default()
+        };
+
+        let service = ChatService::new(config).await.unwrap();
+        let info = ModelInfo::builder("anthropic/claude-3.5-sonnet", "openrouter")
+            .pricing(ModelPricing::new(3.0, 15.0))
+            .build();
+
+        let estimate = service.estimate_for_model(&info, 1000, 1000);
+        // 3/1M per token -> 0.003 per 1k; 15/1M -> 0.015 per 1k
+        assert!((estimate.input_cost_usd - 0.003).abs() < 1e-6);
+        assert!((estimate.output_cost_usd - 0.015).abs() < 1e-6);
+        assert!((estimate.total_cost_usd - 0.018).abs() < 1e-6);
+        assert!(estimate.estimated_latency_ms >= 500);
     }
 }
