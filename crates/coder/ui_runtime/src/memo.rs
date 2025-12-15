@@ -3,10 +3,11 @@
 //! Memos compute derived values from signals and other memos,
 //! caching the result and recomputing only when dependencies change.
 
-use crate::runtime::{with_runtime, SubscriberId};
+use crate::runtime::{SubscriberId, with_runtime};
 use parking_lot::RwLock;
 use slotmap::new_key_type;
 use smallvec::SmallVec;
+use std::collections::HashMap;
 use std::sync::Arc;
 
 new_key_type! {
@@ -14,12 +15,54 @@ new_key_type! {
     pub struct MemoId;
 }
 
+trait DirtyMemo: Send + Sync {
+    fn mark_dirty(&self);
+}
+
+struct MemoRegistry {
+    memos: parking_lot::Mutex<HashMap<SubscriberId, Arc<dyn DirtyMemo>>>,
+}
+
+impl MemoRegistry {
+    fn new() -> Self {
+        Self {
+            memos: parking_lot::Mutex::new(HashMap::new()),
+        }
+    }
+
+    fn register(&self, id: SubscriberId, memo: Arc<dyn DirtyMemo>) {
+        self.memos.lock().insert(id, memo);
+    }
+
+    fn unregister(&self, id: &SubscriberId) {
+        self.memos.lock().remove(id);
+    }
+
+    /// Mark the memo dirty and notify its subscribers. Returns true if handled.
+    fn mark_dirty(&self, id: SubscriberId) -> bool {
+        if let Some(memo) = self.memos.lock().get(&id) {
+            memo.mark_dirty();
+            return true;
+        }
+        false
+    }
+}
+
+thread_local! {
+    static MEMO_REGISTRY: MemoRegistry = MemoRegistry::new();
+}
+
+/// Mark a memo dirty for the given subscriber id. Returns true if a memo was found.
+pub(crate) fn mark_memo_dirty(subscriber: SubscriberId) -> bool {
+    MEMO_REGISTRY.with(|reg| reg.mark_dirty(subscriber))
+}
+
 /// A memoized computation that caches its result.
-pub struct Memo<T> {
+pub struct Memo<T: Send + Sync + 'static> {
     inner: Arc<MemoInner<T>>,
 }
 
-struct MemoInner<T> {
+struct MemoInner<T: Send + Sync + 'static> {
     /// The compute function.
     compute: Box<dyn Fn() -> T + Send + Sync>,
     /// Cached value.
@@ -32,7 +75,20 @@ struct MemoInner<T> {
     subscriber_id: SubscriberId,
 }
 
-impl<T> Memo<T> {
+impl<T: Send + Sync + 'static> DirtyMemo for MemoInner<T> {
+    fn mark_dirty(&self) {
+        *self.dirty.write() = true;
+        // Notify subscribers that depend on this memo.
+        let subs = self.subscribers.read();
+        with_runtime(|rt| {
+            for &sub in subs.iter() {
+                rt.queue_effect(sub);
+            }
+        });
+    }
+}
+
+impl<T: Send + Sync + 'static> Memo<T> {
     /// Create a new memo with a compute function.
     pub fn new<F>(compute: F) -> Self
     where
@@ -47,15 +103,19 @@ impl<T> Memo<T> {
             unsafe { std::mem::transmute::<_, SubscriberId>(id) }
         });
 
-        Self {
-            inner: Arc::new(MemoInner {
-                compute: Box::new(compute),
-                value: RwLock::new(None),
-                dirty: RwLock::new(true),
-                subscribers: RwLock::new(SmallVec::new()),
-                subscriber_id,
-            }),
-        }
+        let inner = Arc::new(MemoInner {
+            compute: Box::new(compute),
+            value: RwLock::new(None),
+            dirty: RwLock::new(true),
+            subscribers: RwLock::new(SmallVec::new()),
+            subscriber_id,
+        });
+
+        MEMO_REGISTRY.with(|reg| {
+            reg.register(subscriber_id, inner.clone());
+        });
+
+        Self { inner }
     }
 
     /// Mark the memo as dirty (needs recomputation).
@@ -79,7 +139,7 @@ impl<T> Memo<T> {
     }
 }
 
-impl<T: Clone> Memo<T> {
+impl<T: Clone + Send + Sync + 'static> Memo<T> {
     /// Get the memoized value, recomputing if necessary.
     pub fn get(&self) -> T {
         // Track dependency
@@ -114,7 +174,7 @@ impl<T: Clone> Memo<T> {
     }
 }
 
-impl<T> Clone for Memo<T> {
+impl<T: Send + Sync + 'static> Clone for Memo<T> {
     fn clone(&self) -> Self {
         Self {
             inner: self.inner.clone(),
@@ -125,10 +185,18 @@ impl<T> Clone for Memo<T> {
 /// Create a new memo with a compute function.
 pub fn create_memo<T, F>(compute: F) -> Memo<T>
 where
-    T: Clone + 'static,
+    T: Clone + Send + Sync + 'static,
     F: Fn() -> T + Send + Sync + 'static,
 {
     Memo::new(compute)
+}
+
+impl<T: Send + Sync + 'static> Drop for Memo<T> {
+    fn drop(&mut self) {
+        MEMO_REGISTRY.with(|reg| {
+            reg.unregister(&self.inner.subscriber_id);
+        });
+    }
 }
 
 #[cfg(test)]
