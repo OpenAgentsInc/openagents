@@ -156,7 +156,7 @@ impl UnifiedExecSession {
     }
 
     pub(super) fn terminate(&self) {
-        self.session.terminate();
+        let _ = self.session.terminate();
         self.cancellation_token.cancel();
         self.output_task.abort();
     }

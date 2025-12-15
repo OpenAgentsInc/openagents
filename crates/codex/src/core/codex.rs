@@ -154,7 +154,6 @@ use crate::protocol::openai_models::ReasoningEffort as ReasoningEffortConfig;
 use crate::core::protocol::CodexErrorInfo;
 use crate::core::protocol::InitialHistory;
 use crate::protocol::user_input::UserInput;
-use crate::stubs::readiness::Readiness;
 use crate::stubs::readiness::ReadinessFlag;
 
 /// The high-level interface to the Codex system.

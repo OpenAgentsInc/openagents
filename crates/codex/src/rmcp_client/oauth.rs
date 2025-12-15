@@ -17,7 +17,6 @@
 //! If the keyring is not available or fails, we fall back to CODEX_HOME/.credentials.json which is consistent with other coding CLI agents.
 
 use anyhow::Context;
-use anyhow::Error;
 use anyhow::Result;
 use oauth2::AccessToken;
 use oauth2::EmptyExtraTokenFields;

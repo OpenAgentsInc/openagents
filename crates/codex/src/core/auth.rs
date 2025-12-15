@@ -32,9 +32,7 @@ use crate::core::token_data::parse_id_token;
 use crate::core::util::try_parse_error_message;
 use crate::client::CodexHttpClient;
 use crate::protocol::account::PlanType as AccountPlanType;
-use once_cell::sync::Lazy;
 use serde_json::Value;
-use tempfile::TempDir;
 use thiserror::Error;
 
 #[derive(Debug, Clone)]

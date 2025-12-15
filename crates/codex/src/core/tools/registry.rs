@@ -9,7 +9,6 @@ use crate::core::tools::context::ToolOutput;
 use crate::core::tools::context::ToolPayload;
 use async_trait::async_trait;
 use crate::protocol::models::ResponseInputItem;
-use crate::stubs::readiness::Readiness;
 use tracing::warn;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
