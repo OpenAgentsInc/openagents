@@ -310,6 +310,15 @@ impl ChatView {
         self.entries.is_empty()
     }
 
+    /// Reconstruct a ChatView by replaying a slice of events.
+    pub fn from_events(thread_id: ThreadId, events: &[DomainEvent]) -> Self {
+        let mut view = ChatView::new(thread_id);
+        for event in events {
+            view.apply(event);
+        }
+        view
+    }
+
     /// Get a lightweight summary suitable for thread lists.
     pub fn summary(&self) -> ThreadSummary {
         let last_message = self.entries.iter().rev().find_map(|entry| match entry {

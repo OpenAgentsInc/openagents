@@ -79,6 +79,23 @@ fn story_30_event_replay_reconstructs_chat_view_identically() {
     }
 }
 
+/// Story 30 (helper): ChatView::from_events reconstructs identically.
+#[test]
+fn story_30_chat_view_from_events_is_equivalent() {
+    let thread_id = ThreadId::new();
+    let events = create_conversation_events(thread_id);
+
+    let mut live_view = ChatView::new(thread_id);
+    for event in &events {
+        live_view.apply(event);
+    }
+
+    let replayed = ChatView::from_events(thread_id, &events);
+    assert_eq!(live_view.thread_id, replayed.thread_id);
+    assert_eq!(live_view.entries.len(), replayed.entries.len());
+    assert_eq!(live_view.message_count, replayed.message_count);
+}
+
 /// Story 30 (extended): Event replay preserves message ordering
 #[test]
 fn story_30_event_replay_preserves_ordering() {
