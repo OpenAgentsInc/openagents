@@ -34,6 +34,7 @@ members = [
     "crates/agents",
     "crates/ai",
     "crates/claude-agent-sdk",
+    "crates/codex",
     "crates/mechacoder",
     "crates/tools",
     "crates/taskmaster",
@@ -89,6 +90,7 @@ fm-bridge = { path = "crates/fm-bridge" }
 config = { path = "crates/config" }
 tools = { path = "crates/tools" }
 claude-agent-sdk = { path = "crates/claude-agent-sdk" }
+codex = { path = "crates/codex" }
 mechacoder = { path = "crates/mechacoder" }
 llm = { path = "crates/llm" }
 tool_registry = { path = "crates/tool_registry" }
