@@ -1,8 +1,8 @@
 //! Tool execution context with cancellation support.
 
-use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::path::{Component, Path, PathBuf};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use tokio::sync::watch;
 
 /// A token that can be used to cancel tool execution.
@@ -102,8 +102,12 @@ pub struct ToolContext {
 impl ToolContext {
     /// Create a new tool context with the given working directory.
     pub fn new(working_dir: impl Into<PathBuf>) -> Self {
+        let provided = working_dir.into();
+        let canonical = provided
+            .canonicalize()
+            .unwrap_or_else(|_| provided.clone());
         Self {
-            working_dir: working_dir.into(),
+            working_dir: canonical,
             cancellation: CancellationToken::default(),
             session_id: None,
             metadata: serde_json::Value::Null,
@@ -115,8 +119,12 @@ impl ToolContext {
         working_dir: impl Into<PathBuf>,
         cancellation: CancellationToken,
     ) -> Self {
+        let provided = working_dir.into();
+        let canonical = provided
+            .canonicalize()
+            .unwrap_or_else(|_| provided.clone());
         Self {
-            working_dir: working_dir.into(),
+            working_dir: canonical,
             cancellation,
             session_id: None,
             metadata: serde_json::Value::Null,
@@ -160,14 +168,14 @@ impl ToolContext {
     /// Check if a path is within the working directory or its subdirectories.
     pub fn is_path_allowed(&self, path: &PathBuf) -> bool {
         // Normalize both paths
+        let working = self
+            .working_dir
+            .canonicalize()
+            .unwrap_or_else(|_| self.working_dir.clone());
+
         let resolved = match path.canonicalize() {
             Ok(p) => p,
-            Err(_) => return false,
-        };
-
-        let working = match self.working_dir.canonicalize() {
-            Ok(p) => p,
-            Err(_) => return false,
+            Err(_) => normalize_with_base(&working, path),
         };
 
         resolved.starts_with(&working)
@@ -180,9 +188,39 @@ impl Default for ToolContext {
     }
 }
 
+/// Normalize a path, resolving `.`/`..` components relative to a base when the
+/// target may not exist (canonicalize would fail).
+fn normalize_with_base(base: &Path, path: &Path) -> PathBuf {
+    let mut normalized = if path.is_absolute() {
+        PathBuf::new()
+    } else {
+        base.to_path_buf()
+    };
+
+    for comp in path.components() {
+        match comp {
+            Component::Prefix(prefix) => {
+                normalized = PathBuf::from(prefix.as_os_str());
+            }
+            Component::RootDir => {
+                normalized = PathBuf::from(comp.as_os_str());
+            }
+            Component::CurDir => {}
+            Component::ParentDir => {
+                normalized.pop();
+            }
+            Component::Normal(part) => normalized.push(part),
+        }
+    }
+
+    normalized
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs;
+    use tempfile::tempdir;
 
     #[test]
     fn test_cancellation_token() {
@@ -239,5 +277,27 @@ mod tests {
             ctx.resolve_path("/etc/config"),
             PathBuf::from("/etc/config")
         );
+    }
+
+    #[test]
+    fn test_is_path_allowed_nonexistent_inside_workspace() {
+        let base = tempdir().unwrap();
+        let workspace = base.path().join("ws");
+        fs::create_dir_all(&workspace).unwrap();
+
+        let ctx = ToolContext::new(&workspace);
+        let target = ctx.resolve_path("new_file.txt");
+        assert!(ctx.is_path_allowed(&target));
+    }
+
+    #[test]
+    fn test_is_path_allowed_rejects_escape() {
+        let base = tempdir().unwrap();
+        let workspace = base.path().join("ws");
+        fs::create_dir_all(&workspace).unwrap();
+
+        let ctx = ToolContext::new(&workspace);
+        let target = ctx.resolve_path("../outside.txt");
+        assert!(!ctx.is_path_allowed(&target));
     }
 }
