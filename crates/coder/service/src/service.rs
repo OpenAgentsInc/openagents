@@ -203,6 +203,7 @@ impl ChatService {
             agent_id: self.inner.config.default_agent.clone(),
             model_id: self.inner.config.default_model.clone(),
             provider_id: self.inner.config.default_provider.clone(),
+            pinned: false,
             max_tokens: Some(8192),
             temperature: None,
         }
@@ -227,6 +228,7 @@ impl ChatService {
                     agent_id: defaults.agent_id,
                     model_id: defaults.model_id,
                     provider_id: defaults.provider_id,
+                    pinned: false,
                     max_tokens: config_default.max_tokens,
                     temperature: config_default.temperature,
                 };
@@ -335,6 +337,7 @@ impl ChatService {
             agent_id: agent_id.clone(),
             model_id: model_id.unwrap_or_else(|| session.agent_config.model_id.clone()),
             provider_id: provider_id.unwrap_or_else(|| session.agent_config.provider_id.clone()),
+            pinned: session.agent_config.pinned,
             max_tokens: session.agent_config.max_tokens,
             temperature: session.agent_config.temperature,
         };
@@ -346,6 +349,37 @@ impl ChatService {
             model = %updated_config.model_id,
             provider = %updated_config.provider_id,
             "Session agent switched"
+        );
+
+        Ok(updated_config)
+    }
+
+    /// Pin a specific model/provider to this session to prevent provider fallback.
+    pub async fn pin_model(
+        &self,
+        session_id: SessionId,
+        model_id: String,
+        provider_id: String,
+    ) -> Result<AgentConfig, ServiceError> {
+        let mut sessions = self.inner.sessions.write().await;
+        let session = sessions
+            .get_mut(&session_id)
+            .ok_or(ServiceError::SessionNotFound(session_id))?;
+
+        let updated_config = AgentConfig {
+            model_id,
+            provider_id,
+            pinned: true,
+            ..session.agent_config.clone()
+        };
+
+        session.agent_config = updated_config.clone();
+
+        info!(
+            session_id = %session_id,
+            model = %session.agent_config.model_id,
+            provider = %session.agent_config.provider_id,
+            "Session model pinned"
         );
 
         Ok(updated_config)
@@ -410,16 +444,23 @@ impl ChatService {
             };
 
             // Resolve provider for this model
-            let provider = match inner
-                .provider_registry
-                .get(&session.agent_config.provider_id)
-                .await
-            {
-                Some(p) => Some(p),
-                None => inner
+            let provider = if session.agent_config.pinned {
+                inner
                     .provider_registry
-                    .provider_for_model(&session.agent_config.model_id)
-                    .await,
+                    .get(&session.agent_config.provider_id)
+                    .await
+            } else {
+                match inner
+                    .provider_registry
+                    .get(&session.agent_config.provider_id)
+                    .await
+                {
+                    Some(p) => Some(p),
+                    None => inner
+                        .provider_registry
+                        .provider_for_model(&session.agent_config.model_id)
+                        .await,
+                }
             };
 
             let provider = match provider {
@@ -427,10 +468,17 @@ impl ChatService {
                 None => {
                     yield ChatUpdate::Error {
                         session_id,
-                        message: format!(
-                            "Provider not found for model {}",
-                            session.agent_config.model_id
-                        ),
+                        message: if session.agent_config.pinned {
+                            format!(
+                                "Provider {} not available for pinned model {}",
+                                session.agent_config.provider_id, session.agent_config.model_id
+                            )
+                        } else {
+                            format!(
+                                "Provider not found for model {}",
+                                session.agent_config.model_id
+                            )
+                        },
                         code: Some("PROVIDER_NOT_FOUND".into()),
                         recoverable: false,
                     };
@@ -868,5 +916,63 @@ mod tests {
                 .is_some_and(|enabled| !enabled)
         );
         assert_eq!(general.model_id, service.config_agent_config().model_id);
+    }
+
+    #[tokio::test]
+    async fn pin_model_sets_pinned_flag_and_updates_config() {
+        let tmp = tempdir().unwrap();
+        let config = ServiceConfig {
+            working_directory: tmp.path().to_path_buf(),
+            database_path: tmp.path().join("coder.db"),
+            ..ServiceConfig::default()
+        };
+
+        let service = ChatService::new(config).await.unwrap();
+        let session = service.create_session(None).await.unwrap();
+
+        let updated = service
+            .pin_model(session.id, "gpt-4o".to_string(), "openai".to_string())
+            .await
+            .unwrap();
+
+        assert!(updated.pinned);
+        assert_eq!(updated.model_id, "gpt-4o");
+        assert_eq!(updated.provider_id, "openai");
+
+        let stored = service.get_session(session.id).await.unwrap();
+        assert!(stored.agent_config.pinned);
+        assert_eq!(stored.agent_config.model_id, "gpt-4o");
+        assert_eq!(stored.agent_config.provider_id, "openai");
+    }
+
+    #[tokio::test]
+    async fn pinned_model_disallows_provider_fallback() {
+        let tmp = tempdir().unwrap();
+        let config = ServiceConfig {
+            working_directory: tmp.path().to_path_buf(),
+            database_path: tmp.path().join("coder.db"),
+            ..ServiceConfig::default()
+        };
+
+        let service = ChatService::new(config).await.unwrap();
+        let session = service.create_session(None).await.unwrap();
+
+        service
+            .pin_model(
+                session.id,
+                "claude-3.5-sonnet".to_string(),
+                "anthropic".to_string(),
+            )
+            .await
+            .unwrap();
+
+        let updates = service.send_message(session.id, "hello".into());
+        let collected: Vec<ChatUpdate> = updates.collect().await;
+
+        // Last update should be provider not found because registry is empty and pinned prevents fallback.
+        assert!(collected.iter().any(|u| matches!(
+            u,
+            ChatUpdate::Error { code: Some(code), .. } if code == "PROVIDER_NOT_FOUND"
+        )));
     }
 }
