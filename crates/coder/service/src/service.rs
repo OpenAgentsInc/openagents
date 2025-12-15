@@ -12,6 +12,7 @@ use coder_session::{AgentConfig, ProcessorConfig, PromptBuilder, Session};
 use coder_storage::Storage;
 use futures::stream::{Stream, StreamExt};
 use llm::{CompletionRequest, Message, ModelInfo, ProviderRegistry, Tool};
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::pin::Pin;
@@ -19,7 +20,7 @@ use std::sync::Arc;
 use thiserror::Error;
 use tokio::sync::{RwLock, mpsc};
 use tool_registry::ToolRegistry;
-use tracing::info;
+use tracing::{info, warn};
 
 /// Chat stream type alias.
 pub type ChatStream = Pin<Box<dyn Stream<Item = ChatUpdate> + Send>>;
@@ -51,6 +52,16 @@ pub enum ServiceError {
     #[error("Internal error: {0}")]
     Internal(String),
 }
+
+/// Org-wide default agent/model/provider configuration.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct OrgDefaults {
+    pub agent_id: String,
+    pub model_id: String,
+    pub provider_id: String,
+}
+
+const ORG_DEFAULTS_KEY: [&str; 2] = ["org", "defaults"];
 
 /// Configuration for the ChatService.
 #[derive(Debug, Clone)]
@@ -171,7 +182,7 @@ impl ChatService {
         })
     }
 
-    fn default_agent_config(&self) -> AgentConfig {
+    fn config_agent_config(&self) -> AgentConfig {
         AgentConfig {
             agent_id: self.inner.config.default_agent.clone(),
             model_id: self.inner.config.default_model.clone(),
@@ -179,6 +190,54 @@ impl ChatService {
             max_tokens: Some(8192),
             temperature: None,
         }
+    }
+
+    fn org_defaults(&self) -> Option<OrgDefaults> {
+        match self.inner.storage.get(&ORG_DEFAULTS_KEY) {
+            Ok(value) => value,
+            Err(e) => {
+                warn!(error = %e, "Failed to load org defaults, falling back to config defaults");
+                None
+            }
+        }
+    }
+
+    fn default_agent_config(&self) -> AgentConfig {
+        let config_default = self.config_agent_config();
+
+        if let Some(defaults) = self.org_defaults() {
+            if self.inner.agent_registry.get(&defaults.agent_id).is_some() {
+                return AgentConfig {
+                    agent_id: defaults.agent_id,
+                    model_id: defaults.model_id,
+                    provider_id: defaults.provider_id,
+                    max_tokens: config_default.max_tokens,
+                    temperature: config_default.temperature,
+                };
+            }
+
+            warn!(
+                agent_id = %defaults.agent_id,
+                "Org default agent not found; using configured defaults"
+            );
+        }
+
+        config_default
+    }
+
+    /// Get the saved org defaults, if present.
+    pub fn get_org_defaults(&self) -> Result<Option<OrgDefaults>, ServiceError> {
+        Ok(self.inner.storage.get(&ORG_DEFAULTS_KEY)?)
+    }
+
+    /// Set org-wide default agent/model/provider configuration.
+    pub fn set_org_defaults(&self, defaults: OrgDefaults) -> Result<(), ServiceError> {
+        if self.inner.agent_registry.get(&defaults.agent_id).is_none() {
+            return Err(ServiceError::AgentNotFound(defaults.agent_id));
+        }
+
+        self.inner.storage.set(&ORG_DEFAULTS_KEY, &defaults)?;
+        Ok(())
     }
 
     /// Create a new session.
@@ -525,6 +584,7 @@ impl Clone for ChatService {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tempfile::tempdir;
 
     #[test]
     fn test_service_config_default() {
@@ -532,5 +592,52 @@ mod tests {
         assert_eq!(config.default_agent, "build");
         assert_eq!(config.default_model, "claude-sonnet-4-5-20250929");
         assert_eq!(config.default_provider, "anthropic");
+    }
+
+    #[tokio::test]
+    async fn set_org_defaults_requires_known_agent() {
+        let tmp = tempdir().unwrap();
+        let config = ServiceConfig {
+            working_directory: tmp.path().to_path_buf(),
+            database_path: tmp.path().join("coder.db"),
+            ..ServiceConfig::default()
+        };
+
+        let service = ChatService::new(config).await.unwrap();
+        let result = service.set_org_defaults(OrgDefaults {
+            agent_id: "missing".to_string(),
+            model_id: "gpt-4o".to_string(),
+            provider_id: "openai".to_string(),
+        });
+
+        assert!(matches!(
+            result,
+            Err(ServiceError::AgentNotFound(agent)) if agent == "missing"
+        ));
+    }
+
+    #[tokio::test]
+    async fn uses_org_defaults_for_new_session() {
+        let tmp = tempdir().unwrap();
+        let defaults = OrgDefaults {
+            agent_id: "build".to_string(),
+            model_id: "gpt-4o".to_string(),
+            provider_id: "openai".to_string(),
+        };
+        let config = ServiceConfig {
+            working_directory: tmp.path().to_path_buf(),
+            database_path: tmp.path().join("coder.db"),
+            ..ServiceConfig::default()
+        };
+
+        let service = ChatService::new(config).await.unwrap();
+        service.set_org_defaults(defaults.clone()).unwrap();
+
+        let session = service.create_session(None).await.unwrap();
+
+        assert_eq!(session.agent_config.agent_id, defaults.agent_id);
+        assert_eq!(session.agent_config.model_id, defaults.model_id);
+        assert_eq!(session.agent_config.provider_id, defaults.provider_id);
+        assert_eq!(service.get_org_defaults().unwrap(), Some(defaults));
     }
 }
