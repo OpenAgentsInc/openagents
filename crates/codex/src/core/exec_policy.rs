@@ -3,7 +3,7 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use crate::command_safety::is_dangerous_command::requires_initial_appoval;
+use crate::core::command_safety::is_dangerous_command::requires_initial_appoval;
 use crate::execpolicy::AmendError;
 use crate::execpolicy::Decision;
 use crate::execpolicy::Error as ExecPolicyRuleError;

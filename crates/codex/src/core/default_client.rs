@@ -79,7 +79,7 @@ pub fn get_codex_user_agent() -> String {
         os_info.os_type(),
         os_info.version(),
         os_info.architecture().unwrap_or("unknown"),
-        crate::terminal::user_agent()
+        crate::core::terminal::user_agent()
     );
     let suffix = USER_AGENT_SUFFIX
         .lock()

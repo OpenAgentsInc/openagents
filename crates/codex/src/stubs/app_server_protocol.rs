@@ -4,6 +4,7 @@
 //! The full implementation is in codex-app-server-protocol.
 
 use serde::{Deserialize, Serialize};
+use std::path::PathBuf;
 
 /// Authentication mode for the app server
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
@@ -12,6 +13,8 @@ pub enum AuthMode {
     None,
     ApiKey,
     OAuth,
+    /// ChatGPT authentication mode (SSO)
+    ChatGPT,
 }
 
 /// Configuration for the app server
@@ -21,10 +24,21 @@ pub struct Config {
     pub working_directory: Option<String>,
 }
 
+/// A single edit in a batch write
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ConfigEdit {
+    pub key_path: String,
+    pub value: serde_json::Value,
+    pub merge_strategy: Option<MergeStrategy>,
+}
+
 /// Parameters for batch config writes
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ConfigBatchWriteParams {
     pub values: Vec<ConfigValueWriteParams>,
+    pub file_path: Option<PathBuf>,
+    pub expected_version: Option<String>,
+    pub edits: Vec<ConfigEdit>,
 }
 
 /// A configuration layer
@@ -48,6 +62,9 @@ pub enum ConfigLayerName {
     User,
     Workspace,
     Override,
+    System,
+    SessionFlags,
+    Mdm,
 }
 
 impl Default for ConfigLayerName {
@@ -60,12 +77,20 @@ impl Default for ConfigLayerName {
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ConfigReadParams {
     pub keys: Vec<String>,
+    /// Whether to include configuration layers in the response
+    pub include_layers: bool,
 }
 
 /// Response for reading config
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ConfigReadResponse {
     pub values: serde_json::Value,
+    /// The merged configuration
+    pub config: Config,
+    /// Origins for each configuration value
+    pub origins: Vec<ConfigLayerMetadata>,
+    /// Optional list of layers (if requested)
+    pub layers: Option<Vec<ConfigLayerMetadata>>,
 }
 
 /// Parameters for writing a config value
@@ -73,6 +98,10 @@ pub struct ConfigReadResponse {
 pub struct ConfigValueWriteParams {
     pub key: String,
     pub value: serde_json::Value,
+    pub file_path: Option<PathBuf>,
+    pub key_path: String,
+    pub expected_version: Option<String>,
+    pub merge_strategy: Option<MergeStrategy>,
 }
 
 /// Error code for config writes
@@ -82,6 +111,10 @@ pub enum ConfigWriteErrorCode {
     InvalidValue,
     PermissionDenied,
     IoError,
+    ConfigValidationError,
+    ConfigVersionConflict,
+    ConfigPathNotFound,
+    ConfigLayerReadonly,
 }
 
 /// Response for writing config
@@ -111,6 +144,7 @@ pub enum MergeStrategy {
     #[default]
     Override,
     Merge,
+    Upsert,
 }
 
 /// Metadata for overridden values
@@ -126,6 +160,17 @@ pub struct Tools {
     pub read_file: bool,
     pub write_file: bool,
     pub apply_patch: bool,
+    pub web_search: bool,
+    pub view_image: bool,
+}
+
+/// Forced login method
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub enum ForcedLoginMethod {
+    #[default]
+    None,
+    Chatgpt,
+    Api,
 }
 
 /// User saved configuration
@@ -133,6 +178,17 @@ pub struct Tools {
 pub struct UserSavedConfig {
     pub model: Option<String>,
     pub api_key: Option<String>,
+    pub tools: Option<Tools>,
+    pub sandbox_settings: Option<SandboxSettings>,
+    pub sandbox_mode: Option<String>,
+    pub profiles: Option<Vec<Profile>>,
+    pub profile: Option<String>,
+    pub model_verbosity: Option<String>,
+    pub model_reasoning_summary: Option<bool>,
+    pub model_reasoning_effort: Option<String>,
+    pub forced_login_method: Option<ForcedLoginMethod>,
+    pub forced_chatgpt_workspace_id: Option<String>,
+    pub approval_policy: Option<String>,
 }
 
 /// Write status
@@ -140,6 +196,8 @@ pub struct UserSavedConfig {
 pub enum WriteStatus {
     Success,
     Failure,
+    Ok,
+    OkOverridden,
 }
 
 /// User profile
@@ -155,4 +213,7 @@ pub struct Profile {
 pub struct SandboxSettings {
     pub enabled: bool,
     pub policy: Option<String>,
+    pub writable_roots: Vec<String>,
+    pub network_access: bool,
+    pub exclude_tmpdir_env_var: Option<String>,
 }

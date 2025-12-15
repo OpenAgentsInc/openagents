@@ -40,6 +40,81 @@ pub mod otel_manager {
         pub fn trace_id(&self) -> Option<String> {
             None
         }
+
+        /// No-op: Record conversation start
+        pub fn conversation_starts(&self) {
+            // No-op
+        }
+
+        /// No-op: Record user prompt
+        pub fn user_prompt(&self, _prompt: &str) {
+            // No-op
+        }
+
+        /// No-op: Set model info
+        pub fn with_model(&self, _model: &str) -> Self {
+            self.clone()
+        }
+
+        /// No-op: Record response
+        pub fn record_responses(&self, _responses: &[impl std::fmt::Debug]) {
+            // No-op
+        }
+
+        /// No-op: Record tool call
+        pub fn record_tool_call(&self, _tool: &str, _args: &str, _result: &str) {
+            // No-op
+        }
+
+        /// No-op: Record error
+        pub fn record_error(&self, _error: &str) {
+            // No-op
+        }
+
+        /// No-op: Record tool result
+        pub fn tool_result(&self, _tool: &str, _result: &str) {
+            // No-op
+        }
+
+        /// No-op: Record SSE event completed
+        pub fn sse_event_completed(&self, _event: &str) {
+            // No-op
+        }
+
+        /// No-op: Record SSE event completed failed
+        pub fn see_event_completed_failed(&self, _event: &str, _error: &str) {
+            // No-op
+        }
+
+        /// No-op: Record API request
+        pub fn record_api_request(&self, _method: &str, _url: &str, _status: u16) {
+            // No-op
+        }
+
+        /// No-op: Tool decision
+        pub fn tool_decision(&self, _tool: &str, _decision: ToolDecisionSource) {
+            // No-op
+        }
+
+        /// No-op: Log tool result
+        pub fn log_tool_result(&self, _tool: &str, _result: &str) {
+            // No-op
+        }
+
+        /// No-op: Log tool failed
+        pub fn log_tool_failed(&self, _tool: &str, _error: &str) {
+            // No-op
+        }
+
+        /// No-op: Log SSE event
+        pub fn log_sse_event(&self, _event: &str) {
+            // No-op
+        }
+
+        /// No-op: Get current span
+        pub fn current_span(&self) -> OtelSpan {
+            OtelSpan
+        }
     }
 
     /// Tool decision source for telemetry
@@ -75,6 +150,8 @@ pub mod config {
         #[default]
         None,
         Otlp,
+        OtlpHttp,
+        OtlpGrpc,
     }
 
     /// Stub OTEL HTTP protocol
@@ -83,6 +160,8 @@ pub mod config {
         #[default]
         Http,
         Grpc,
+        Json,
+        Binary,
     }
 
     /// Stub OTEL settings
@@ -100,6 +179,9 @@ pub mod config {
         pub cert_path: Option<String>,
         pub key_path: Option<String>,
         pub ca_path: Option<String>,
+        pub ca_certificate: Option<String>,
+        pub client_certificate: Option<String>,
+        pub client_private_key: Option<String>,
     }
 }
 

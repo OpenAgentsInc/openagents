@@ -31,7 +31,7 @@ pub struct ConfigProfile {
     pub tools_view_image: Option<bool>,
     /// Optional feature toggles scoped to this profile.
     #[serde(default)]
-    pub features: Option<crate::features::FeaturesToml>,
+    pub features: Option<crate::core::features::FeaturesToml>,
     pub oss_provider: Option<String>,
 }
 

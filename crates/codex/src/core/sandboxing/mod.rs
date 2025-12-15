@@ -82,11 +82,11 @@ impl SandboxManager {
             SandboxablePreference::Require => {
                 // Require a platform sandbox when available; on Windows this
                 // respects the enable_experimental_windows_sandbox feature.
-                crate::safety::get_platform_sandbox().unwrap_or(SandboxType::None)
+                crate::core::safety::get_platform_sandbox().unwrap_or(SandboxType::None)
             }
             SandboxablePreference::Auto => match policy {
                 SandboxPolicy::DangerFullAccess => SandboxType::None,
-                _ => crate::safety::get_platform_sandbox().unwrap_or(SandboxType::None),
+                _ => crate::core::safety::get_platform_sandbox().unwrap_or(SandboxType::None),
             },
         }
     }
@@ -165,7 +165,7 @@ impl SandboxManager {
     }
 
     pub fn denied(&self, sandbox: SandboxType, out: &ExecToolCallOutput) -> bool {
-        crate::exec::is_likely_sandbox_denied(sandbox, out)
+        crate::core::exec::is_likely_sandbox_denied(sandbox, out)
     }
 }
 
@@ -173,6 +173,6 @@ pub async fn execute_env(
     env: ExecEnv,
     policy: &SandboxPolicy,
     stdout_stream: Option<StdoutStream>,
-) -> crate::error::Result<ExecToolCallOutput> {
+) -> crate::core::error::Result<ExecToolCallOutput> {
     execute_exec_env(env, policy, stdout_stream).await
 }

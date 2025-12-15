@@ -103,7 +103,7 @@ fn extract_request_id(headers: Option<&HeaderMap>) -> Option<String> {
 pub(crate) async fn auth_provider_from_auth(
     auth: Option<CodexAuth>,
     provider: &ModelProviderInfo,
-) -> crate::error::Result<CoreAuthProvider> {
+) -> crate::core::error::Result<CoreAuthProvider> {
     if let Some(api_key) = provider.api_key()? {
         return Ok(CoreAuthProvider {
             token: Some(api_key),

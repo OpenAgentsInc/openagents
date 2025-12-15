@@ -13,3 +13,24 @@ pub mod parse_command;
 pub mod plan_tool;
 pub mod protocol;
 pub mod user_input;
+
+// Re-export main protocol types
+pub use protocol::{
+    Submission, Op, AskForApproval, SandboxPolicy, WritableRoot,
+    Event, EventMsg, CodexErrorInfo,
+    RawResponseItemEvent, ItemStartedEvent, ItemCompletedEvent,
+    AgentMessageContentDeltaEvent, ReasoningContentDeltaEvent, ReasoningRawContentDeltaEvent,
+    ExitedReviewModeEvent, ErrorEvent, WarningEvent, ContextCompactedEvent,
+    TaskCompleteEvent, TaskStartedEvent,
+    TokenUsage, TokenUsageInfo, TokenCountEvent,
+    RateLimitSnapshot, RateLimitWindow, CreditsSnapshot, FinalOutput,
+    AgentMessageEvent, UserMessageEvent, AgentMessageDeltaEvent,
+    AgentReasoningEvent, AgentReasoningRawContentEvent, AgentReasoningRawContentDeltaEvent,
+    AgentReasoningSectionBreakEvent, AgentReasoningDeltaEvent,
+    McpInvocation, McpToolCallBeginEvent, McpToolCallEndEvent,
+    WebSearchBeginEvent, WebSearchEndEvent,
+    ConversationPathResponseEvent, ResumedHistory, InitialHistory,
+    SessionSource, SubAgentSource, SessionMeta, SessionMetaLine,
+    RolloutItem, CompactedItem, TurnContextItem,
+    GetHistoryEntryResponseEvent, SkillMetadata,
+};

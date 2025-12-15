@@ -50,7 +50,7 @@ impl ShellCommandHandler {
 
     fn to_exec_params(
         params: ShellCommandToolCallParams,
-        session: &crate::codex::Session,
+        session: &crate::core::codex::Session,
         turn_context: &TurnContext,
     ) -> ExecParams {
         let shell = session.user_shell();
@@ -204,9 +204,9 @@ impl ShellHandler {
     async fn run_exec_like(
         tool_name: &str,
         exec_params: ExecParams,
-        session: Arc<crate::codex::Session>,
+        session: Arc<crate::core::codex::Session>,
         turn: Arc<TurnContext>,
-        tracker: crate::tools::context::SharedTurnDiffTracker,
+        tracker: crate::core::tools::context::SharedTurnDiffTracker,
         call_id: String,
         freeform: bool,
     ) -> Result<ToolOutput, FunctionCallError> {

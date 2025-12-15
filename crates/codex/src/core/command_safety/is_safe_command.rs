@@ -1,5 +1,5 @@
 use crate::core::bash::parse_shell_lc_plain_commands;
-use crate::command_safety::windows_safe_commands::is_safe_command_windows;
+use crate::core::command_safety::windows_safe_commands::is_safe_command_windows;
 
 pub fn is_known_safe_command(command: &[String]) -> bool {
     let command: Vec<String> = command
