@@ -605,11 +605,13 @@ fn story_36_session_components_are_exportable() {
     struct ExportBundle {
         events: Vec<EventEnvelope>,
         chat_view: ChatView,
+        snapshot: coder_domain::ChatSnapshot,
     }
 
     let bundle = ExportBundle {
         events: events.clone(),
-        chat_view: view,
+        chat_view: view.clone(),
+        snapshot: view.snapshot(),
     };
 
     let json = serde_json::to_string_pretty(&bundle).expect("Bundle should serialize");
@@ -617,6 +619,11 @@ fn story_36_session_components_are_exportable() {
 
     assert_eq!(restored.events.len(), 2);
     assert_eq!(restored.chat_view.message_count, 1);
+
+    // Replay post-snapshot events into restored snapshot to verify import path.
+    let replay_events: Vec<DomainEvent> = restored.events.iter().map(|e| e.event.clone()).collect();
+    let replayed = ChatView::restore_from_snapshot(restored.snapshot, &replay_events);
+    assert_eq!(replayed.message_count, restored.chat_view.message_count);
 }
 
 // ============================================================================
