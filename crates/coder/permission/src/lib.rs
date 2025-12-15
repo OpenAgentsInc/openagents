@@ -6,14 +6,14 @@
 //! - Session-scoped approval tracking
 //! - Wildcard pattern matching
 
-use coder_domain::{PermissionId, SessionId};
 use chrono::{DateTime, Utc};
+use coder_domain::{PermissionId, SessionId};
 use globset::{Glob, GlobMatcher};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
 use thiserror::Error;
-use tokio::sync::{mpsc, oneshot, RwLock};
+use tokio::sync::{RwLock, mpsc, oneshot};
 use tracing::{debug, info, warn};
 
 /// Error types for permission operations.
@@ -193,16 +193,25 @@ impl PermissionManager {
         permission_id: PermissionId,
         response: Response,
     ) -> Result<(), PermissionError> {
+        self.respond_with_patterns(session_id, permission_id, response, None)
+            .await
+    }
+
+    /// Respond to a pending permission request with optional override patterns for "Always".
+    pub async fn respond_with_patterns(
+        &self,
+        session_id: SessionId,
+        permission_id: PermissionId,
+        response: Response,
+        patterns: Option<Vec<String>>,
+    ) -> Result<(), PermissionError> {
         let mut sessions = self.sessions.write().await;
         let session = sessions.get_mut(&session_id).ok_or_else(|| {
             PermissionError::Internal(format!("Session not found: {}", session_id))
         })?;
 
         let pending = session.pending.remove(&permission_id).ok_or_else(|| {
-            PermissionError::Internal(format!(
-                "Permission request not found: {}",
-                permission_id
-            ))
+            PermissionError::Internal(format!("Permission request not found: {}", permission_id))
         })?;
 
         info!(
@@ -213,10 +222,11 @@ impl PermissionManager {
 
         // If "Always", add patterns to approved
         if response == Response::Always {
+            let patterns_to_approve = patterns.unwrap_or_else(|| pending.request.patterns.clone());
             self.approve_patterns(
                 session,
                 &pending.request.permission_type,
-                &pending.request.patterns,
+                &patterns_to_approve,
             );
 
             // Check other pending requests that might now be covered
@@ -224,11 +234,7 @@ impl PermissionManager {
                 .pending
                 .iter()
                 .filter(|(_, p)| {
-                    self.is_covered(
-                        &p.request.permission_type,
-                        &p.request.patterns,
-                        session,
-                    )
+                    self.is_covered(&p.request.permission_type, &p.request.patterns, session)
                 })
                 .map(|(id, _)| *id)
                 .collect();
@@ -287,7 +293,12 @@ impl PermissionManager {
     }
 
     /// Check if patterns are covered by approved patterns.
-    fn is_covered(&self, permission_type: &str, patterns: &[String], session: &SessionState) -> bool {
+    fn is_covered(
+        &self,
+        permission_type: &str,
+        patterns: &[String],
+        session: &SessionState,
+    ) -> bool {
         let approved = match session.approved_patterns.get(permission_type) {
             Some(matchers) => matchers,
             None => return false,
@@ -299,9 +310,9 @@ impl PermissionManager {
         }
 
         // Check if all patterns are covered
-        patterns.iter().all(|pattern| {
-            approved.iter().any(|matcher| matcher.is_match(pattern))
-        })
+        patterns
+            .iter()
+            .all(|pattern| approved.iter().any(|matcher| matcher.is_match(pattern)))
     }
 
     /// Add patterns to approved list.
@@ -536,5 +547,46 @@ mod tests {
 
         let result = manager.ask(request).await;
         assert!(matches!(result, Err(PermissionError::Rejected { .. })));
+    }
+
+    #[tokio::test]
+    async fn test_permission_always_with_glob_patterns() {
+        let manager = PermissionManager::new();
+        let session_id = SessionId::new();
+
+        // First request for a specific command
+        let request1 = PermissionRequestBuilder::new(session_id, "bash")
+            .title("Run git status")
+            .pattern("git status")
+            .build();
+
+        let permission_id = request1.id;
+        let manager = Arc::new(manager);
+        let manager_clone = manager.clone();
+
+        // Respond with Always and a broader glob pattern
+        tokio::spawn(async move {
+            tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+            manager_clone
+                .respond_with_patterns(
+                    session_id,
+                    permission_id,
+                    Response::Always,
+                    Some(vec!["git *".to_string()]),
+                )
+                .await
+                .unwrap();
+        });
+
+        manager.ask(request1).await.unwrap();
+
+        // This git command should now be auto-approved by the glob
+        let request2 = PermissionRequestBuilder::new(session_id, "bash")
+            .title("Run git commit")
+            .pattern("git commit -m \"test\"")
+            .build();
+
+        let result = manager.ask(request2).await;
+        assert!(result.is_ok());
     }
 }
