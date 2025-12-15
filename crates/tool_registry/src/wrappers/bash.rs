@@ -61,6 +61,17 @@ impl Tool for BashToolWrapper {
         }
     }
 
+    fn validate(&self, input: &Self::Input, ctx: &ToolContext) -> ToolResult<()> {
+        if let Some(target) = find_destructive_external_target(&input.command, ctx) {
+            return Err(crate::ToolError::permission_denied(format!(
+                "Destructive command targets path outside workspace: {}",
+                target.display()
+            )));
+        }
+
+        Ok(())
+    }
+
     fn check_permission(
         &self,
         input: &Self::Input,
@@ -148,5 +159,65 @@ fn truncate_command(cmd: &str, max_len: usize) -> String {
         cmd.to_string()
     } else {
         format!("{}...", &cmd[..max_len - 3])
+    }
+}
+
+fn is_destructive_command(token: &str) -> bool {
+    matches!(token, "rm" | "rmdir")
+}
+
+fn find_destructive_external_target(command: &str, ctx: &ToolContext) -> Option<PathBuf> {
+    let tokens: Vec<&str> = command.split_whitespace().collect();
+
+    if !tokens.iter().any(|t| is_destructive_command(t)) {
+        return None;
+    }
+
+    for token in tokens {
+        if token.is_empty()
+            || token.starts_with('-')
+            || matches!(token, "rm" | "rmdir" | "&&" | "||" | ";" | "|" | "--")
+        {
+            continue;
+        }
+
+        let resolved = ctx.resolve_path(token);
+        if !ctx.is_path_allowed(&resolved) {
+            return Some(resolved);
+        }
+    }
+
+    None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::tempdir;
+
+    #[test]
+    fn detects_destructive_outside_workspace() {
+        let base = tempdir().unwrap();
+        let workspace = base.path().join("ws");
+        std::fs::create_dir_all(&workspace).unwrap();
+        let ctx = ToolContext::new(&workspace);
+
+        let outside = workspace.parent().unwrap().join("outside");
+        let cmd = format!("rm -rf {}", outside.display());
+
+        let result = find_destructive_external_target(&cmd, &ctx);
+        assert!(result.is_some());
+    }
+
+    #[test]
+    fn allows_destructive_inside_workspace() {
+        let base = tempdir().unwrap();
+        let workspace = base.path().join("ws");
+        std::fs::create_dir_all(&workspace).unwrap();
+        let ctx = ToolContext::new(&workspace);
+
+        let cmd = "rm -rf src".to_string();
+        let result = find_destructive_external_target(&cmd, &ctx);
+        assert!(result.is_none());
     }
 }
