@@ -97,11 +97,11 @@ pub mod otel_manager {
         }
 
         /// No-op: Record tool result
-        pub fn tool_result(
+        pub fn tool_result<T: AsRef<str>>(
             &self,
             _tool_name: &str,
             _call_id: &str,
-            _log_payload: Option<&str>,
+            _log_payload: Option<T>,
             _duration: std::time::Duration,
             _success: bool,
             _message: &str,
@@ -125,7 +125,7 @@ pub mod otel_manager {
         }
 
         /// No-op: Tool decision
-        pub fn tool_decision(&self, _tool: &str, _decision: ToolDecisionSource) {
+        pub fn tool_decision<T, U>(&self, _tool_name: &str, _call_id: &str, _decision: T, _user_or_cfg: U) {
             // No-op
         }
 
