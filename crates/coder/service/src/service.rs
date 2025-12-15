@@ -309,6 +309,23 @@ impl ChatService {
         }
     }
 
+    async fn local_default_agent_config(&self) -> Result<AgentConfig, ServiceError> {
+        let models = self.inner.provider_registry.list_models().await;
+        let local = models
+            .iter()
+            .find(|m| m.provider == "ollama" || m.provider == "apple")
+            .ok_or_else(|| ServiceError::Provider("Local provider unavailable".into()))?;
+
+        Ok(AgentConfig {
+            agent_id: self.inner.config.default_agent.clone(),
+            model_id: local.id.clone(),
+            provider_id: local.provider.clone(),
+            pinned: true,
+            max_tokens: Some(8192),
+            temperature: None,
+        })
+    }
+
     /// Get the saved org defaults, if present.
     pub fn get_org_defaults(&self) -> Result<Option<OrgDefaults>, ServiceError> {
         Ok(self.inner.storage.get(&ORG_DEFAULTS_KEY)?)
@@ -354,6 +371,16 @@ impl ChatService {
         info!(session_id = %session.id, "Session created");
 
         Ok(session)
+    }
+
+    /// Create a new session using a local/offline provider (Ollama/Apple).
+    pub async fn create_offline_session(
+        &self,
+        working_directory: Option<PathBuf>,
+    ) -> Result<Session, ServiceError> {
+        let agent_config = self.local_default_agent_config().await?;
+        self.create_session_with_agent(agent_config, working_directory)
+            .await
     }
 
     /// Switch the active agent (and optional model/provider) for an existing session.
@@ -462,6 +489,12 @@ impl ChatService {
             .iter()
             .map(|m| self.estimate_for_model(m, input_tokens, output_tokens))
             .collect()
+    }
+
+    /// Expose provider registry for testing/model introspection.
+    #[cfg(test)]
+    pub fn provider_registry(&self) -> &ProviderRegistry {
+        &self.inner.provider_registry
     }
 
     /// Send a message and get a stream of updates.
@@ -790,8 +823,52 @@ impl Clone for ChatService {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use llm::ModelPricing;
+    use async_trait::async_trait;
+    use futures::StreamExt;
+    use llm::{
+        CompletionRequest, CompletionStream, LlmProvider, ModelPricing, ProviderCapabilities,
+        ProviderError,
+    };
     use tempfile::tempdir;
+
+    struct FakeLocalProvider {
+        id: &'static str,
+        model_id: &'static str,
+    }
+
+    #[async_trait]
+    impl LlmProvider for FakeLocalProvider {
+        fn id(&self) -> &'static str {
+            self.id
+        }
+
+        fn display_name(&self) -> &'static str {
+            self.id
+        }
+
+        async fn is_available(&self) -> bool {
+            true
+        }
+
+        async fn list_models(&self) -> Result<Vec<ModelInfo>, ProviderError> {
+            Ok(vec![
+                ModelInfo::builder(self.model_id, self.id)
+                    .pricing(ModelPricing::new(0.0, 0.0))
+                    .build(),
+            ])
+        }
+
+        async fn stream(
+            &self,
+            _request: CompletionRequest,
+        ) -> Result<CompletionStream, ProviderError> {
+            Err(ProviderError::Other("not implemented".into()))
+        }
+
+        fn capabilities(&self) -> ProviderCapabilities {
+            ProviderCapabilities::default()
+        }
+    }
 
     #[test]
     fn test_service_config_default() {
@@ -1055,5 +1132,43 @@ mod tests {
         assert!((estimate.output_cost_usd - 0.015).abs() < 1e-6);
         assert!((estimate.total_cost_usd - 0.018).abs() < 1e-6);
         assert!(estimate.estimated_latency_ms >= 500);
+    }
+
+    #[tokio::test]
+    async fn create_offline_session_uses_local_provider() {
+        let tmp = tempdir().unwrap();
+        let config = ServiceConfig {
+            working_directory: tmp.path().to_path_buf(),
+            database_path: tmp.path().join("coder.db"),
+            ..ServiceConfig::default()
+        };
+
+        let service = ChatService::new(config).await.unwrap();
+        service
+            .provider_registry()
+            .register(Arc::new(FakeLocalProvider {
+                id: "ollama",
+                model_id: "ollama/local",
+            }))
+            .await;
+
+        let session = service.create_offline_session(None).await.unwrap();
+        assert_eq!(session.agent_config.provider_id, "ollama");
+        assert_eq!(session.agent_config.model_id, "ollama/local");
+        assert!(session.agent_config.pinned);
+    }
+
+    #[tokio::test]
+    async fn create_offline_session_errors_when_no_local() {
+        let tmp = tempdir().unwrap();
+        let config = ServiceConfig {
+            working_directory: tmp.path().to_path_buf(),
+            database_path: tmp.path().join("coder.db"),
+            ..ServiceConfig::default()
+        };
+
+        let service = ChatService::new(config).await.unwrap();
+        let result = service.create_offline_session(None).await;
+        assert!(matches!(result, Err(ServiceError::Provider(_))));
     }
 }
