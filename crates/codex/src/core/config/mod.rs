@@ -690,11 +690,13 @@ pub struct ConfigToml {
 
 impl From<ConfigToml> for UserSavedConfig {
     fn from(config_toml: ConfigToml) -> Self {
-        let profiles = config_toml
-            .profiles
-            .into_iter()
-            .map(|(k, v)| (k, v.into()))
-            .collect();
+        let profiles = Some(
+            config_toml
+                .profiles
+                .into_iter()
+                .map(|(_, v)| v.into())
+                .collect(),
+        );
 
         Self {
             api_key: None,

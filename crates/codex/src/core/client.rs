@@ -421,6 +421,7 @@ where
                             Some(usage.cached_input_tokens),
                             Some(usage.reasoning_output_tokens),
                             usage.total_tokens,
+                            0, // reasoning_tokens
                         );
                     }
                     if tx_event

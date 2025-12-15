@@ -71,7 +71,7 @@ use tracing::instrument;
 use tracing::warn;
 
 use crate::core::model_provider_info::ModelProviderInfo;
-use crate::api::provider::WireApi;
+use crate::core::model_provider_info::WireApi;
 use crate::core::client::ModelClient;
 use crate::core::client_common::Prompt;
 use crate::core::client_common::ResponseEvent;
@@ -619,7 +619,7 @@ impl Session {
         maybe_push_chat_wire_api_deprecation(&config, &mut post_session_configured_events);
 
         // todo(aibrahim): why are we passing model here while it can change?
-        let otel_manager = OtelManager::new(
+        let otel_manager = OtelManager::with_config(
             conversation_id,
             session_configuration.model.as_str(),
             session_configuration.model.as_str(),
@@ -639,7 +639,7 @@ impl Session {
             config.model_auto_compact_token_limit,
             config.approval_policy,
             config.sandbox_policy.clone(),
-            config.mcp_servers.keys().map(String::as_str).collect(),
+            config.mcp_servers.keys().map(String::as_str).collect::<Vec<_>>(),
             config.active_profile.clone(),
         );
 
@@ -1834,11 +1834,7 @@ mod handlers {
                     crate::protocol::GetHistoryEntryResponseEvent {
                         offset,
                         log_id,
-                        entry: entry_opt.map(|e| crate::protocol::message_history::HistoryEntry {
-                            conversation_id: e.session_id,
-                            ts: e.ts,
-                            text: e.text,
-                        }),
+                        entry: entry_opt,
                     },
                 ),
             };
@@ -3004,7 +3000,7 @@ mod tests {
         model_family: &ModelFamily,
         session_source: SessionSource,
     ) -> OtelManager {
-        OtelManager::new(
+        OtelManager::with_config(
             conversation_id,
             ModelsManager::get_model_offline(config.model.as_deref()).as_str(),
             model_family.slug.as_str(),

@@ -68,18 +68,19 @@ impl ReadinessFlag {
         self.ready.store(true, Ordering::SeqCst);
     }
 
-    /// Subscribe to readiness changes (stub - returns a future that never resolves)
-    pub fn subscribe(&self) -> impl std::future::Future<Output = ()> + Send + 'static {
+    /// Subscribe to readiness changes - returns a future that resolves to a Token when ready
+    pub async fn subscribe(&self) -> Result<Token, std::io::Error> {
         let ready = self.ready.clone();
-        async move {
-            // Poll until ready
-            loop {
-                if ready.load(Ordering::SeqCst) {
-                    break;
-                }
-                tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        // Poll until ready
+        loop {
+            if ready.load(Ordering::SeqCst) {
+                break;
             }
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
         }
+        Ok(Token {
+            ready: Some(self.ready.clone()),
+        })
     }
 
     /// Wait until ready (alias for subscribe)
@@ -92,9 +93,11 @@ impl ReadinessFlag {
         }
     }
 
-    /// Mark as ready (alias)
-    pub fn mark_ready(&self) {
-        self.set_ready();
+    /// Mark as ready (alias) - async version that takes a token and returns Result
+    pub async fn mark_ready(&self, _token: Token) -> Result<bool, std::io::Error> {
+        let was_ready = self.ready.load(Ordering::SeqCst);
+        self.ready.store(true, Ordering::SeqCst);
+        Ok(!was_ready)
     }
 }
 
@@ -105,6 +108,7 @@ impl Default for ReadinessFlag {
 }
 
 /// A token that marks the readiness as ready when dropped
+#[derive(Clone)]
 pub struct Token {
     ready: Option<Arc<AtomicBool>>,
 }

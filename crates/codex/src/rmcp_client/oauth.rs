@@ -162,7 +162,7 @@ fn load_oauth_tokens_from_keyring<K: KeyringStore>(
             Ok(Some(tokens))
         }
         Ok(None) => Ok(None),
-        Err(error) => Err(Error::new(error.into_error())),
+        Err(error) => Err(anyhow::anyhow!("{}", error)),
     }
 }
 
@@ -206,7 +206,7 @@ fn save_oauth_tokens_with_keyring<K: KeyringStore>(
                 error.message()
             );
             warn!("{message}");
-            Err(Error::new(error.into_error()).context(message))
+            Err(anyhow::anyhow!("{}", error).context(message))
         }
     }
 }
@@ -251,7 +251,7 @@ fn delete_oauth_tokens_from_keyring_and_file<K: KeyringStore>(
             warn!("failed to delete OAuth tokens from keyring: {message}");
             match store_mode {
                 OAuthCredentialsStoreMode::Auto | OAuthCredentialsStoreMode::Keyring => {
-                    return Err(error.into_error())
+                    return Err(anyhow::anyhow!("{}", error))
                         .context("failed to delete OAuth tokens from keyring");
                 }
                 OAuthCredentialsStoreMode::File => false,

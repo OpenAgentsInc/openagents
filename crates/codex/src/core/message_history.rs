@@ -26,8 +26,10 @@ use std::io::Write;
 use std::path::Path;
 use std::path::PathBuf;
 
+use schemars::JsonSchema;
 use serde::Deserialize;
 use serde::Serialize;
+use ts_rs::TS;
 
 use std::time::Duration;
 use tokio::fs;
@@ -51,7 +53,7 @@ const HISTORY_SOFT_CAP_RATIO: f64 = 0.8;
 const MAX_RETRIES: usize = 10;
 const RETRY_SLEEP: Duration = Duration::from_millis(100);
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
 pub struct HistoryEntry {
     pub session_id: String,
     pub ts: u64,

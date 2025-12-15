@@ -4,6 +4,7 @@ use std::path::Path;
 use crate::apply_patch;
 use crate::core::apply_patch::InternalApplyPatchInvocation;
 use crate::core::apply_patch::convert_apply_patch_to_protocol;
+use crate::core::apply_patch::apply_patch as core_apply_patch;
 use crate::core::client_common::tools::FreeformTool;
 use crate::core::client_common::tools::FreeformToolFormat;
 use crate::core::client_common::tools::ResponsesApiTool;
@@ -81,7 +82,7 @@ impl ToolHandler for ApplyPatchHandler {
         let command = vec!["apply_patch".to_string(), patch_input.clone()];
         match crate::apply_patch::maybe_parse_apply_patch_verified(&command, &cwd) {
             crate::apply_patch::MaybeApplyPatchVerified::Body(changes) => {
-                match apply_patch::apply_patch(session.as_ref(), turn.as_ref(), &call_id, changes)
+                match core_apply_patch(session.as_ref(), turn.as_ref(), &call_id, changes)
                     .await
                 {
                     InternalApplyPatchInvocation::Output(item) => {
@@ -178,7 +179,7 @@ pub(crate) async fn intercept_apply_patch(
                     turn,
                 )
                 .await;
-            match apply_patch::apply_patch(session, turn, call_id, changes).await {
+            match core_apply_patch(session, turn, call_id, changes).await {
                 InternalApplyPatchInvocation::Output(item) => {
                     let content = item?;
                     Ok(Some(ToolOutput::Function {

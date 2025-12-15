@@ -40,8 +40,8 @@ pub fn build_provider(
                     cert_path: None,
                     key_path: None,
                     ca_path: None,
-                    ca_certificate: config.ca_certificate.clone(),
-                    client_certificate: config.client_certificate.clone(),
+                    ca_certificate: config.ca_certificate.as_ref().map(|p| p.to_string_lossy().to_string()),
+                    client_certificate: config.client_certificate.as_ref().map(|p| p.to_string_lossy().to_string()),
                     client_private_key: config.client_private_key.as_ref().map(|p| p.to_string_lossy().to_string()),
                 }),
             }
@@ -60,8 +60,8 @@ pub fn build_provider(
                 cert_path: None,
                 key_path: None,
                 ca_path: None,
-                ca_certificate: config.ca_certificate.clone(),
-                client_certificate: config.client_certificate.clone(),
+                ca_certificate: config.ca_certificate.as_ref().map(|p| p.to_string_lossy().to_string()),
+                client_certificate: config.client_certificate.as_ref().map(|p| p.to_string_lossy().to_string()),
                 client_private_key: config.client_private_key.as_ref().map(|p| p.to_string_lossy().to_string()),
             }),
         },
@@ -70,7 +70,7 @@ pub fn build_provider(
     let exporter = to_otel_exporter(&config.otel.exporter);
     let trace_exporter = to_otel_exporter(&config.otel.trace_exporter);
 
-    OtelProvider::from(&OtelSettings {
+    let settings = OtelSettings {
         exporter,
         endpoint: None,
         protocol: OtelHttpProtocol::default(),
@@ -80,7 +80,8 @@ pub fn build_provider(
         codex_home: config.codex_home.clone(),
         environment: config.otel.environment.to_string(),
         trace_exporter,
-    })
+    };
+    Ok(Some(OtelProvider::new(&settings)?))
 }
 
 /// Filter predicate for exporting only Codex-owned events via OTEL.
