@@ -10,6 +10,9 @@ use crate::tool::{ToolResult, ToolUseStatus};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
+/// Maximum characters to include in thread previews.
+const THREAD_PREVIEW_MAX_LEN: usize = 120;
+
 /// A projected view of a chat thread optimized for UI rendering.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ChatView {
@@ -27,6 +30,42 @@ pub struct ChatView {
 
     /// When the thread was last updated.
     pub last_updated: Option<DateTime<Utc>>,
+}
+
+/// Lightweight summary metadata for thread lists.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ThreadSummary {
+    /// The thread ID.
+    pub thread_id: ThreadId,
+
+    /// Preview of the last message content (truncated).
+    pub last_message_preview: Option<String>,
+
+    /// Role of the last message author.
+    pub last_message_role: Option<Role>,
+
+    /// Total number of messages in the thread.
+    pub message_count: usize,
+
+    /// Count of messages not yet marked as read.
+    pub unread_count: usize,
+
+    /// When the last message was added/updated.
+    pub last_updated: Option<DateTime<Utc>>,
+}
+
+impl ThreadSummary {
+    /// Create an empty summary for a thread.
+    pub fn new(thread_id: ThreadId) -> Self {
+        Self {
+            thread_id,
+            last_message_preview: None,
+            last_message_role: None,
+            message_count: 0,
+            unread_count: 0,
+            last_updated: None,
+        }
+    }
 }
 
 /// An entry in the chat view.
@@ -121,10 +160,12 @@ impl ChatView {
                 }
 
                 // If there's a streaming message that matches, finalize it
-                if let Some(streaming) = &self.streaming_message {
-                    if streaming.id == message.id {
-                        self.streaming_message = None;
-                    }
+                if self
+                    .streaming_message
+                    .as_ref()
+                    .is_some_and(|streaming| streaming.id == message.id)
+                {
+                    self.streaming_message = None;
                 }
 
                 let view = MessageView {
@@ -175,10 +216,12 @@ impl ChatView {
                     return;
                 }
 
-                if let Some(streaming) = &mut self.streaming_message {
-                    if streaming.id == *message_id {
-                        streaming.is_complete = true;
-                    }
+                if let Some(streaming) = self
+                    .streaming_message
+                    .as_mut()
+                    .filter(|streaming| streaming.id == *message_id)
+                {
+                    streaming.is_complete = true;
                 }
                 self.last_updated = Some(*timestamp);
             }
@@ -217,17 +260,17 @@ impl ChatView {
 
                 // Find and update the tool use entry
                 for entry in &mut self.entries {
-                    if let ChatEntry::ToolUse(view) = entry {
-                        if view.id == *tool_use_id {
-                            view.status = if result.success {
-                                ToolUseStatus::Success
-                            } else {
-                                ToolUseStatus::Failed
-                            };
-                            view.result_summary = Some(summarize_result(result));
-                            view.duration_ms = Some(result.duration_ms);
-                            break;
-                        }
+                    if let ChatEntry::ToolUse(view) = entry
+                        && view.id == *tool_use_id
+                    {
+                        view.status = if result.success {
+                            ToolUseStatus::Success
+                        } else {
+                            ToolUseStatus::Failed
+                        };
+                        view.result_summary = Some(summarize_result(result));
+                        view.duration_ms = Some(result.duration_ms);
+                        break;
                     }
                 }
                 self.last_updated = Some(Utc::now());
@@ -265,6 +308,47 @@ impl ChatView {
     /// Check if empty.
     pub fn is_empty(&self) -> bool {
         self.entries.is_empty()
+    }
+
+    /// Get a lightweight summary suitable for thread lists.
+    pub fn summary(&self) -> ThreadSummary {
+        let last_message = self.entries.iter().rev().find_map(|entry| match entry {
+            ChatEntry::Message(message) => Some(message),
+            _ => None,
+        });
+
+        let (last_message_preview, last_message_role, last_updated) =
+            if let Some(message) = last_message {
+                (
+                    Some(truncate(&message.content, THREAD_PREVIEW_MAX_LEN)),
+                    Some(message.role),
+                    Some(message.timestamp),
+                )
+            } else if let Some(streaming) = &self.streaming_message {
+                if streaming.content_so_far.is_empty() {
+                    (None, None, self.last_updated)
+                } else {
+                    (
+                        Some(truncate(
+                            streaming.content_so_far.as_str(),
+                            THREAD_PREVIEW_MAX_LEN,
+                        )),
+                        None,
+                        Some(streaming.started_at),
+                    )
+                }
+            } else {
+                (None, None, self.last_updated)
+            };
+
+        ThreadSummary {
+            thread_id: self.thread_id,
+            last_message_preview,
+            last_message_role,
+            message_count: self.message_count,
+            unread_count: self.message_count,
+            last_updated,
+        }
     }
 }
 
@@ -341,6 +425,61 @@ mod tests {
         } else {
             panic!("Expected message entry");
         }
+    }
+
+    #[test]
+    fn test_chat_view_summary_tracks_latest_message() {
+        let thread_id = ThreadId::new();
+        let mut view = ChatView::new(thread_id);
+
+        // Initial summary is empty.
+        let initial = view.summary();
+        assert_eq!(initial.thread_id, thread_id);
+        assert!(initial.last_message_preview.is_none());
+        assert!(initial.last_message_role.is_none());
+        assert_eq!(initial.message_count, 0);
+        assert_eq!(initial.unread_count, 0);
+        assert!(initial.last_updated.is_none());
+
+        // Add a user message and verify summary updates.
+        let first_message = Message::new(Role::User, "First message");
+        let first_timestamp = first_message.created_at;
+        view.apply(&DomainEvent::MessageAdded {
+            thread_id,
+            message: first_message.clone(),
+        });
+
+        let after_first = view.summary();
+        assert_eq!(after_first.message_count, 1);
+        assert_eq!(after_first.unread_count, 1);
+        assert_eq!(after_first.last_message_role, Some(Role::User));
+        assert_eq!(
+            after_first.last_message_preview.as_deref(),
+            Some("First message")
+        );
+        assert_eq!(after_first.last_updated, Some(first_timestamp));
+
+        // Add a long assistant message and ensure preview is truncated and role updates.
+        let long_content = "x".repeat(THREAD_PREVIEW_MAX_LEN + 10);
+        let assistant_message = Message::new(Role::Assistant, long_content.clone());
+        view.apply(&DomainEvent::MessageAdded {
+            thread_id,
+            message: assistant_message.clone(),
+        });
+
+        let expected_preview = format!("{}...", &long_content[..THREAD_PREVIEW_MAX_LEN]);
+        let after_second = view.summary();
+        assert_eq!(after_second.message_count, 2);
+        assert_eq!(after_second.unread_count, 2);
+        assert_eq!(after_second.last_message_role, Some(Role::Assistant));
+        assert_eq!(
+            after_second.last_message_preview.as_deref(),
+            Some(expected_preview.as_str())
+        );
+        assert_eq!(
+            after_second.last_updated,
+            Some(assistant_message.created_at)
+        );
     }
 
     #[test]

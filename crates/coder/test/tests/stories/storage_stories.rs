@@ -11,9 +11,7 @@
 //! 36. Exporting a session (events + projections) produces a portable bundle I can re-import.
 
 use chrono::Utc;
-use coder_domain::{
-    ChatEntry, ChatView, DomainEvent, Message, MessageId, Role, ThreadId,
-};
+use coder_domain::{ChatEntry, ChatView, DomainEvent, Message, MessageId, Role, ThreadId};
 
 // ============================================================================
 // Story 30: Replaying DomainEvents reconstructs ChatView identically
@@ -144,8 +142,7 @@ fn story_31_events_are_serializable_for_persistence() {
     let json = serde_json::to_string(&event).expect("Event should serialize");
 
     // Events must deserialize correctly
-    let deserialized: DomainEvent =
-        serde_json::from_str(&json).expect("Event should deserialize");
+    let deserialized: DomainEvent = serde_json::from_str(&json).expect("Event should deserialize");
 
     if let DomainEvent::MessageAdded {
         thread_id: t,
@@ -251,7 +248,10 @@ fn story_32_streaming_completion_after_resume() {
     }
 
     // Then: Stream is marked as complete
-    assert!(!view.is_streaming(), "Should not be streaming after completion");
+    assert!(
+        !view.is_streaming(),
+        "Should not be streaming after completion"
+    );
 }
 
 // ============================================================================
@@ -349,8 +349,12 @@ fn story_35_thread_summary_updates_on_new_messages() {
     let mut view = ChatView::new(thread_id);
 
     // Initially empty
-    assert_eq!(view.message_count, 0);
-    assert!(view.last_updated.is_none());
+    let initial_summary = view.summary();
+    assert_eq!(initial_summary.message_count, 0);
+    assert_eq!(initial_summary.unread_count, 0);
+    assert!(initial_summary.last_message_preview.is_none());
+    assert!(initial_summary.last_message_role.is_none());
+    assert!(initial_summary.last_updated.is_none());
 
     // Add first message
     let msg1 = Message::new(Role::User, "Hello!");
@@ -359,8 +363,15 @@ fn story_35_thread_summary_updates_on_new_messages() {
         message: msg1.clone(),
     });
 
-    assert_eq!(view.message_count, 1);
-    assert!(view.last_updated.is_some());
+    let summary_after_first = view.summary();
+    assert_eq!(summary_after_first.message_count, 1);
+    assert_eq!(summary_after_first.unread_count, 1);
+    assert_eq!(summary_after_first.last_message_role, Some(Role::User));
+    assert_eq!(
+        summary_after_first.last_message_preview.as_deref(),
+        Some("Hello!")
+    );
+    assert_eq!(summary_after_first.last_updated, Some(msg1.created_at));
 
     // Add second message
     let msg2 = Message::new(Role::Assistant, "Hi there!");
@@ -369,8 +380,18 @@ fn story_35_thread_summary_updates_on_new_messages() {
         message: msg2.clone(),
     });
 
-    assert_eq!(view.message_count, 2);
-    assert!(view.last_updated.is_some());
+    let summary_after_second = view.summary();
+    assert_eq!(summary_after_second.message_count, 2);
+    assert_eq!(summary_after_second.unread_count, 2);
+    assert_eq!(
+        summary_after_second.last_message_preview.as_deref(),
+        Some("Hi there!")
+    );
+    assert_eq!(
+        summary_after_second.last_message_role,
+        Some(Role::Assistant)
+    );
+    assert_eq!(summary_after_second.last_updated, Some(msg2.created_at));
 }
 
 /// Story 35: Thread summary reflects most recent message content
@@ -384,17 +405,22 @@ fn story_35_thread_summary_reflects_latest_content() {
         message: Message::new(Role::User, "First message"),
     });
 
+    let preview_len = 120;
+    let long_content = "A".repeat(preview_len + 20);
     view.apply(&DomainEvent::MessageAdded {
         thread_id,
-        message: Message::new(Role::Assistant, "Second message"),
+        message: Message::new(Role::Assistant, long_content.clone()),
     });
 
-    // Last entry should be the most recent message
-    if let Some(ChatEntry::Message(last)) = view.entries.last() {
-        assert_eq!(last.content, "Second message");
-    } else {
-        panic!("Expected message entry");
-    }
+    let summary = view.summary();
+    let expected_preview = format!("{}...", &long_content[..preview_len]);
+    assert_eq!(summary.message_count, 2);
+    assert_eq!(summary.unread_count, 2);
+    assert_eq!(
+        summary.last_message_preview.as_deref(),
+        Some(expected_preview.as_str())
+    );
+    assert_eq!(summary.last_message_role, Some(Role::Assistant));
 }
 
 // ============================================================================
