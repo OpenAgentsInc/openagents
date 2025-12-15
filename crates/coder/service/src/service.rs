@@ -4,7 +4,7 @@
 
 use crate::bridge::Bridge;
 use crate::update::ChatUpdate;
-use coder_agent::AgentRegistry;
+use coder_agent::{AgentDefinition, AgentPermission, AgentRegistry};
 use coder_domain::PermissionId;
 use coder_domain::ids::SessionId;
 use coder_permission::{PermissionManager, Response as PermissionResponse};
@@ -62,6 +62,22 @@ pub struct OrgDefaults {
 }
 
 const ORG_DEFAULTS_KEY: [&str; 2] = ["org", "defaults"];
+
+/// Agent capability details for display.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AgentCapabilities {
+    pub agent_id: String,
+    pub description: Option<String>,
+    pub model_id: String,
+    pub provider_id: String,
+    pub temperature: Option<f32>,
+    pub max_steps: Option<u32>,
+    /// Tool overrides: name -> enabled (true) or disabled (false).
+    pub tool_overrides: HashMap<String, bool>,
+    /// Whether tools default to enabled when not listed in overrides.
+    pub all_tools_enabled: bool,
+    pub permissions: AgentPermission,
+}
 
 /// Configuration for the ChatService.
 #[derive(Debug, Clone)]
@@ -225,6 +241,32 @@ impl ChatService {
         config_default
     }
 
+    fn capabilities_for(&self, agent: &AgentDefinition) -> AgentCapabilities {
+        let config_default = self.config_agent_config();
+        let (provider_id, model_id) = agent
+            .model
+            .as_ref()
+            .map(|m| (m.provider_id.clone(), m.model_id.clone()))
+            .unwrap_or_else(|| {
+                (
+                    config_default.provider_id.clone(),
+                    config_default.model_id.clone(),
+                )
+            });
+
+        AgentCapabilities {
+            agent_id: agent.name.clone(),
+            description: agent.description.clone(),
+            model_id,
+            provider_id,
+            temperature: agent.temperature,
+            max_steps: agent.max_steps,
+            tool_overrides: agent.tools.clone().into_iter().collect(),
+            all_tools_enabled: agent.tools.is_empty(),
+            permissions: agent.permission.clone(),
+        }
+    }
+
     /// Get the saved org defaults, if present.
     pub fn get_org_defaults(&self) -> Result<Option<OrgDefaults>, ServiceError> {
         Ok(self.inner.storage.get(&ORG_DEFAULTS_KEY)?)
@@ -307,6 +349,27 @@ impl ChatService {
         );
 
         Ok(updated_config)
+    }
+
+    /// List capabilities for primary agents.
+    pub fn list_agent_capabilities(&self) -> Vec<AgentCapabilities> {
+        self.inner
+            .agent_registry
+            .list_primary()
+            .iter()
+            .map(|agent| self.capabilities_for(agent))
+            .collect()
+    }
+
+    /// Get capabilities for a specific agent.
+    pub fn agent_capabilities(&self, agent_id: &str) -> Result<AgentCapabilities, ServiceError> {
+        let agent = self
+            .inner
+            .agent_registry
+            .get(agent_id)
+            .ok_or_else(|| ServiceError::AgentNotFound(agent_id.to_string()))?;
+
+        Ok(self.capabilities_for(&agent))
     }
 
     /// Send a message and get a stream of updates.
@@ -756,5 +819,54 @@ mod tests {
             .await;
 
         assert!(matches!(result, Err(ServiceError::SessionNotFound(id)) if id == missing_id));
+    }
+
+    #[tokio::test]
+    async fn agent_capabilities_available_for_primary_agents() {
+        let tmp = tempdir().unwrap();
+        let config = ServiceConfig {
+            working_directory: tmp.path().to_path_buf(),
+            database_path: tmp.path().join("coder.db"),
+            ..ServiceConfig::default()
+        };
+
+        let service = ChatService::new(config).await.unwrap();
+        let caps = service.list_agent_capabilities();
+
+        // Built-in primary agents include build and plan.
+        let build = caps.iter().find(|c| c.agent_id == "build").unwrap();
+        assert!(build.all_tools_enabled);
+        assert_eq!(build.permissions.edit, coder_agent::Permission::Allow);
+
+        let plan = caps.iter().find(|c| c.agent_id == "plan").unwrap();
+        assert_eq!(plan.permissions.edit, coder_agent::Permission::Deny);
+        assert!(
+            plan.permissions
+                .bash
+                .get("*")
+                .is_some_and(|perm| *perm == coder_agent::Permission::Ask)
+        );
+    }
+
+    #[tokio::test]
+    async fn get_agent_capabilities_includes_overrides() {
+        let tmp = tempdir().unwrap();
+        let config = ServiceConfig {
+            working_directory: tmp.path().to_path_buf(),
+            database_path: tmp.path().join("coder.db"),
+            ..ServiceConfig::default()
+        };
+
+        let service = ChatService::new(config).await.unwrap();
+        let general = service.agent_capabilities("general").unwrap();
+
+        assert!(!general.tool_overrides.is_empty());
+        assert!(
+            general
+                .tool_overrides
+                .get("todoread")
+                .is_some_and(|enabled| !enabled)
+        );
+        assert_eq!(general.model_id, service.config_agent_config().model_id);
     }
 }
