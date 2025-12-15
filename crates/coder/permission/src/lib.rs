@@ -97,10 +97,27 @@ struct SessionState {
     pending: HashMap<PermissionId, PendingRequest>,
 }
 
+/// Permission audit entry for visibility and replay.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PermissionAuditEntry {
+    pub timestamp: DateTime<Utc>,
+    pub session_id: SessionId,
+    pub permission_id: PermissionId,
+    pub permission_type: String,
+    pub patterns: Vec<String>,
+    pub title: String,
+    pub description: String,
+    pub response: Option<Response>,
+}
+
 /// The permission manager handles permission requests and responses.
 pub struct PermissionManager {
     /// Session states.
     sessions: Arc<RwLock<HashMap<SessionId, SessionState>>>,
+    /// Global deny rules by permission type.
+    global_denies: Arc<RwLock<HashMap<String, Vec<GlobMatcher>>>>,
+    /// Audit entries keyed by session for later inspection.
+    audit_log: Arc<RwLock<HashMap<SessionId, Vec<PermissionAuditEntry>>>>,
     /// Channel to send permission events.
     event_tx: mpsc::UnboundedSender<PermissionEvent>,
     /// Receiver for permission events (can be cloned to allow multiple listeners).
@@ -113,6 +130,8 @@ impl PermissionManager {
         let (event_tx, event_rx) = mpsc::unbounded_channel();
         Self {
             sessions: Arc::new(RwLock::new(HashMap::new())),
+            global_denies: Arc::new(RwLock::new(HashMap::new())),
+            audit_log: Arc::new(RwLock::new(HashMap::new())),
             event_tx,
             event_rx: Arc::new(RwLock::new(Some(event_rx))),
         }
@@ -132,6 +151,22 @@ impl PermissionManager {
     pub async fn ask(&self, request: PermissionRequest) -> Result<(), PermissionError> {
         let session_id = request.session_id;
         let permission_id = request.id;
+
+        // Check global denies first
+        if self
+            .is_denied_globally(&request.permission_type, &request.patterns)
+            .await
+        {
+            warn!(
+                permission_type = %request.permission_type,
+                "Permission blocked by global deny rule"
+            );
+            return Err(PermissionError::Rejected {
+                session_id,
+                permission_id,
+                reason: "Action blocked by global policy".to_string(),
+            });
+        }
 
         // Check if already approved
         {
@@ -170,6 +205,7 @@ impl PermissionManager {
             title = %request.title,
             "Permission request pending"
         );
+        self.push_audit(&request, None).await;
         let _ = self.event_tx.send(PermissionEvent::RequestPending(request));
 
         // Wait for response
@@ -265,6 +301,7 @@ impl PermissionManager {
             session_id,
             response,
         });
+        self.push_audit(&pending.request, Some(response)).await;
 
         Ok(())
     }
@@ -351,6 +388,61 @@ impl PermissionManager {
                 }
             }
         }
+    }
+
+    /// Set global deny rules (replaces existing).
+    pub async fn set_global_denies(&self, rules: HashMap<String, Vec<String>>) {
+        let mut compiled: HashMap<String, Vec<GlobMatcher>> = HashMap::new();
+        for (ptype, patterns) in rules {
+            let mut matchers = Vec::new();
+            for pattern in patterns {
+                if let Ok(glob) = Glob::new(&pattern) {
+                    matchers.push(glob.compile_matcher());
+                }
+            }
+            compiled.insert(ptype, matchers);
+        }
+        *self.global_denies.write().await = compiled;
+    }
+
+    async fn is_denied_globally(&self, permission_type: &str, patterns: &[String]) -> bool {
+        let denies = self.global_denies.read().await;
+        let Some(matchers) = denies.get(permission_type) else {
+            return false;
+        };
+
+        if patterns.is_empty() {
+            return false;
+        }
+
+        patterns
+            .iter()
+            .any(|pattern| matchers.iter().any(|m| m.is_match(pattern)))
+    }
+
+    /// Retrieve audit entries for a session.
+    pub async fn audit_entries(&self, session_id: SessionId) -> Vec<PermissionAuditEntry> {
+        self.audit_log
+            .read()
+            .await
+            .get(&session_id)
+            .cloned()
+            .unwrap_or_default()
+    }
+
+    async fn push_audit(&self, request: &PermissionRequest, response: Option<Response>) {
+        let mut log = self.audit_log.write().await;
+        let entry = PermissionAuditEntry {
+            timestamp: Utc::now(),
+            session_id: request.session_id,
+            permission_id: request.id,
+            permission_type: request.permission_type.clone(),
+            patterns: request.patterns.clone(),
+            title: request.title.clone(),
+            description: request.description.clone(),
+            response,
+        };
+        log.entry(request.session_id).or_default().push(entry);
     }
 }
 
@@ -480,6 +572,11 @@ mod tests {
         // Ask for permission (should complete after response)
         let result = manager_clone.ask(request).await;
         assert!(result.is_ok());
+
+        let audit = manager_clone.audit_entries(session_id).await;
+        assert_eq!(audit.len(), 2); // request + response
+        assert!(audit.iter().any(|e| e.response.is_none()));
+        assert!(audit.iter().any(|e| e.response == Some(Response::Once)));
     }
 
     #[tokio::test]
@@ -588,5 +685,28 @@ mod tests {
 
         let result = manager.ask(request2).await;
         assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_global_deny_blocks_request() {
+        let manager = PermissionManager::new();
+        let session_id = SessionId::new();
+
+        manager
+            .set_global_denies(HashMap::from([(
+                "bash".to_string(),
+                vec!["rm -rf /".to_string()],
+            )]))
+            .await;
+
+        let request = PermissionRequestBuilder::new(session_id, "bash")
+            .title("Dangerous command")
+            .pattern("rm -rf /")
+            .build();
+
+        let result = manager.ask(request).await;
+        assert!(
+            matches!(result, Err(PermissionError::Rejected { reason, .. }) if reason.contains("global policy"))
+        );
     }
 }
