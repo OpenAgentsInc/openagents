@@ -272,6 +272,43 @@ impl ChatService {
         Ok(session)
     }
 
+    /// Switch the active agent (and optional model/provider) for an existing session.
+    pub async fn switch_agent(
+        &self,
+        session_id: SessionId,
+        agent_id: String,
+        model_id: Option<String>,
+        provider_id: Option<String>,
+    ) -> Result<AgentConfig, ServiceError> {
+        if self.inner.agent_registry.get(agent_id.as_str()).is_none() {
+            return Err(ServiceError::AgentNotFound(agent_id));
+        }
+
+        let mut sessions = self.inner.sessions.write().await;
+        let session = sessions
+            .get_mut(&session_id)
+            .ok_or(ServiceError::SessionNotFound(session_id))?;
+
+        let updated_config = AgentConfig {
+            agent_id: agent_id.clone(),
+            model_id: model_id.unwrap_or_else(|| session.agent_config.model_id.clone()),
+            provider_id: provider_id.unwrap_or_else(|| session.agent_config.provider_id.clone()),
+            max_tokens: session.agent_config.max_tokens,
+            temperature: session.agent_config.temperature,
+        };
+
+        session.agent_config = updated_config.clone();
+        info!(
+            session_id = %session_id,
+            agent = %updated_config.agent_id,
+            model = %updated_config.model_id,
+            provider = %updated_config.provider_id,
+            "Session agent switched"
+        );
+
+        Ok(updated_config)
+    }
+
     /// Send a message and get a stream of updates.
     ///
     /// This is the main entry point for chat operations.
@@ -639,5 +676,85 @@ mod tests {
         assert_eq!(session.agent_config.model_id, defaults.model_id);
         assert_eq!(session.agent_config.provider_id, defaults.provider_id);
         assert_eq!(service.get_org_defaults().unwrap(), Some(defaults));
+    }
+
+    #[tokio::test]
+    async fn switch_agent_updates_session_config() {
+        let tmp = tempdir().unwrap();
+        let config = ServiceConfig {
+            working_directory: tmp.path().to_path_buf(),
+            database_path: tmp.path().join("coder.db"),
+            ..ServiceConfig::default()
+        };
+
+        let service = ChatService::new(config).await.unwrap();
+        let session = service.create_session(None).await.unwrap();
+
+        let updated = service
+            .switch_agent(
+                session.id,
+                "plan".to_string(),
+                Some("gpt-4o".to_string()),
+                Some("openai".to_string()),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(updated.agent_id, "plan");
+        assert_eq!(updated.model_id, "gpt-4o");
+        assert_eq!(updated.provider_id, "openai");
+
+        let stored = service.get_session(session.id).await.unwrap();
+        assert_eq!(stored.agent_config.agent_id, "plan");
+        assert_eq!(stored.agent_config.model_id, "gpt-4o");
+        assert_eq!(stored.agent_config.provider_id, "openai");
+        assert_eq!(
+            stored.thread_id, session.thread_id,
+            "thread context preserved"
+        );
+    }
+
+    #[tokio::test]
+    async fn switch_agent_validates_agent_exists() {
+        let tmp = tempdir().unwrap();
+        let config = ServiceConfig {
+            working_directory: tmp.path().to_path_buf(),
+            database_path: tmp.path().join("coder.db"),
+            ..ServiceConfig::default()
+        };
+
+        let service = ChatService::new(config).await.unwrap();
+        let session = service.create_session(None).await.unwrap();
+
+        let result = service
+            .switch_agent(session.id, "missing".to_string(), None, None)
+            .await;
+
+        assert!(matches!(
+            result,
+            Err(ServiceError::AgentNotFound(agent)) if agent == "missing"
+        ));
+
+        let stored = service.get_session(session.id).await.unwrap();
+        assert_eq!(stored.agent_config.agent_id, "build");
+    }
+
+    #[tokio::test]
+    async fn switch_agent_errors_for_missing_session() {
+        let tmp = tempdir().unwrap();
+        let config = ServiceConfig {
+            working_directory: tmp.path().to_path_buf(),
+            database_path: tmp.path().join("coder.db"),
+            ..ServiceConfig::default()
+        };
+
+        let service = ChatService::new(config).await.unwrap();
+        let missing_id = SessionId::new();
+
+        let result = service
+            .switch_agent(missing_id, "plan".to_string(), None, None)
+            .await;
+
+        assert!(matches!(result, Err(ServiceError::SessionNotFound(id)) if id == missing_id));
     }
 }
