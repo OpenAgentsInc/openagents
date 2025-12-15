@@ -4,7 +4,7 @@
 
 use crate::bridge::Bridge;
 use crate::update::ChatUpdate;
-use coder_agent::{AgentDefinition, AgentPermission, AgentRegistry};
+use coder_agent::{AgentDefinition, AgentPermission, AgentRegistry, Permission};
 use coder_domain::PermissionId;
 use coder_domain::ids::SessionId;
 use coder_permission::{PermissionManager, Response as PermissionResponse};
@@ -53,6 +53,16 @@ pub enum ServiceError {
     Internal(String),
 }
 
+/// Permissioned actions for prompting/validation.
+#[derive(Debug, Clone)]
+pub enum PermissionAction<'a> {
+    Edit,
+    Webfetch,
+    ExternalDirectory,
+    DoomLoop,
+    Bash(&'a str),
+}
+
 /// Org-wide default agent/model/provider configuration.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct OrgDefaults {
@@ -91,6 +101,17 @@ pub struct ModelEstimate {
     pub output_cost_usd: f64,
     pub total_cost_usd: f64,
     pub estimated_latency_ms: u64,
+}
+
+/// Permission prompts for an agent.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PermissionPrompts {
+    pub agent_id: String,
+    pub edit: Permission,
+    pub webfetch: Permission,
+    pub external_directory: Permission,
+    pub doom_loop: Permission,
+    pub bash_patterns: HashMap<String, Permission>,
 }
 
 /// Configuration for the ChatService.
@@ -471,6 +492,64 @@ impl ChatService {
             .ok_or_else(|| ServiceError::AgentNotFound(agent_id.to_string()))?;
 
         Ok(self.capabilities_for(&agent))
+    }
+
+    /// Check permission policy for a given action and agent.
+    pub fn check_permission(
+        &self,
+        agent_id: &str,
+        action: PermissionAction<'_>,
+    ) -> Result<Permission, ServiceError> {
+        let agent = self
+            .inner
+            .agent_registry
+            .get(agent_id)
+            .ok_or_else(|| ServiceError::AgentNotFound(agent_id.to_string()))?;
+
+        let perm = match action {
+            PermissionAction::Edit => agent.permission.edit,
+            PermissionAction::Webfetch => agent.permission.webfetch,
+            PermissionAction::ExternalDirectory => agent.permission.external_directory,
+            PermissionAction::DoomLoop => agent.permission.doom_loop,
+            PermissionAction::Bash(cmd) => agent.permission.check_bash(cmd),
+        };
+
+        Ok(perm)
+    }
+
+    /// Check permission policy for a specific session's active agent.
+    pub async fn check_session_permission(
+        &self,
+        session_id: SessionId,
+        action: PermissionAction<'_>,
+    ) -> Result<Permission, ServiceError> {
+        let agent_id = {
+            let sessions = self.inner.sessions.read().await;
+            let session = sessions
+                .get(&session_id)
+                .ok_or(ServiceError::SessionNotFound(session_id))?;
+            session.agent_config.agent_id.clone()
+        };
+
+        self.check_permission(&agent_id, action)
+    }
+
+    /// Get permission prompts for an agent.
+    pub fn permission_prompts(&self, agent_id: &str) -> Result<PermissionPrompts, ServiceError> {
+        let agent = self
+            .inner
+            .agent_registry
+            .get(agent_id)
+            .ok_or_else(|| ServiceError::AgentNotFound(agent_id.to_string()))?;
+
+        Ok(PermissionPrompts {
+            agent_id: agent.name.clone(),
+            edit: agent.permission.edit,
+            webfetch: agent.permission.webfetch,
+            external_directory: agent.permission.external_directory,
+            doom_loop: agent.permission.doom_loop,
+            bash_patterns: agent.permission.bash.clone().into_iter().collect(),
+        })
     }
 
     /// Estimate cost/latency for available models with default token counts.
@@ -1260,5 +1339,110 @@ mod tests {
             .await;
 
         assert!(service.has_local_provider().await);
+    }
+
+    #[tokio::test]
+    async fn permission_prompts_reflect_agent_config() {
+        let tmp = tempdir().unwrap();
+        let config = ServiceConfig {
+            working_directory: tmp.path().to_path_buf(),
+            database_path: tmp.path().join("coder.db"),
+            ..ServiceConfig::default()
+        };
+
+        let service = ChatService::new(config).await.unwrap();
+
+        let build = service.permission_prompts("build").unwrap();
+        assert_eq!(build.edit, Permission::Allow);
+        assert!(
+            build
+                .bash_patterns
+                .get("*")
+                .is_some_and(|p| *p == Permission::Allow)
+        );
+
+        let plan = service.permission_prompts("plan").unwrap();
+        assert_eq!(plan.edit, Permission::Deny);
+        assert!(
+            plan.bash_patterns
+                .get("*")
+                .is_some_and(|p| *p == Permission::Ask)
+        );
+    }
+
+    #[tokio::test]
+    async fn check_permission_matches_agent_policy() {
+        let tmp = tempdir().unwrap();
+        let config = ServiceConfig {
+            working_directory: tmp.path().to_path_buf(),
+            database_path: tmp.path().join("coder.db"),
+            ..ServiceConfig::default()
+        };
+
+        let service = ChatService::new(config).await.unwrap();
+
+        // Build agent is permissive
+        assert_eq!(
+            service
+                .check_permission("build", PermissionAction::Edit)
+                .unwrap(),
+            Permission::Allow
+        );
+
+        // Plan agent uses ask for catch-all bash and deny edits.
+        assert_eq!(
+            service
+                .check_permission("plan", PermissionAction::Edit)
+                .unwrap(),
+            Permission::Deny
+        );
+        assert_eq!(
+            service
+                .check_permission("plan", PermissionAction::Bash("ls"))
+                .unwrap(),
+            Permission::Allow
+        );
+        assert_eq!(
+            service
+                .check_permission("plan", PermissionAction::Bash("rm -rf /tmp"))
+                .unwrap(),
+            Permission::Ask
+        );
+    }
+
+    #[tokio::test]
+    async fn check_session_permission_uses_session_agent() {
+        let tmp = tempdir().unwrap();
+        let config = ServiceConfig {
+            working_directory: tmp.path().to_path_buf(),
+            database_path: tmp.path().join("coder.db"),
+            ..ServiceConfig::default()
+        };
+
+        let service = ChatService::new(config).await.unwrap();
+        let session = service.create_session(None).await.unwrap();
+
+        // Default build agent allows edits.
+        assert_eq!(
+            service
+                .check_session_permission(session.id, PermissionAction::Edit)
+                .await
+                .unwrap(),
+            Permission::Allow
+        );
+
+        // Switch to plan agent, which denies edits.
+        service
+            .switch_agent(session.id, "plan".to_string(), None, None)
+            .await
+            .unwrap();
+
+        assert_eq!(
+            service
+                .check_session_permission(session.id, PermissionAction::Edit)
+                .await
+                .unwrap(),
+            Permission::Deny
+        );
     }
 }
