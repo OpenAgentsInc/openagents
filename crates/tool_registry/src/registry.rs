@@ -74,6 +74,9 @@ impl ToolRegistry {
             .get(name)
             .ok_or_else(|| crate::ToolError::not_found(format!("Tool not found: {}", name)))?;
 
+        // Validate input against the tool schema before permission or execution.
+        tool.validate_json(&input, ctx)?;
+
         tool.execute_json(input, ctx).await
     }
 
@@ -162,6 +165,15 @@ mod tests {
         let result = registry.execute("grep", input, &ctx).await;
         // May succeed or fail depending on /tmp contents, but shouldn't panic
         assert!(result.is_ok() || result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_execute_invalid_input() {
+        let registry = ToolRegistry::with_standard_tools();
+        let ctx = ToolContext::default();
+
+        let result = registry.execute("bash", serde_json::json!({}), &ctx).await;
+        assert!(matches!(result, Err(crate::ToolError::InvalidInput(_))));
     }
 
     #[test]
