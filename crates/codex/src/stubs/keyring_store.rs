@@ -6,6 +6,29 @@
 
 use std::collections::HashMap;
 use std::sync::RwLock;
+use thiserror::Error;
+
+/// Keyring store error
+#[derive(Debug, Error)]
+pub enum KeyringError {
+    #[error("keyring access error: {0}")]
+    Access(String),
+    #[error("lock error: {0}")]
+    Lock(String),
+}
+
+impl KeyringError {
+    pub fn into_error(self) -> Box<dyn std::error::Error + Send + Sync> {
+        Box::new(self)
+    }
+
+    pub fn message(&self) -> &str {
+        match self {
+            KeyringError::Access(msg) => msg,
+            KeyringError::Lock(msg) => msg,
+        }
+    }
+}
 
 /// A simple in-memory keyring store that falls back to environment variables
 pub struct DefaultKeyringStore {
@@ -32,18 +55,18 @@ pub trait KeyringStore: Send + Sync {
     fn get(&self, service: &str, key: &str) -> Option<String>;
 
     /// Set a value in the keyring
-    fn set(&self, service: &str, key: &str, value: &str) -> Result<(), String>;
+    fn set(&self, service: &str, key: &str, value: &str) -> Result<(), KeyringError>;
 
     /// Delete a value from the keyring
-    fn delete(&self, service: &str, key: &str) -> Result<(), String>;
+    fn delete(&self, service: &str, key: &str) -> Result<(), KeyringError>;
 
-    /// Load a value from the keyring (alias for get)
-    fn load(&self, service: &str, key: &str) -> Option<String> {
-        self.get(service, key)
+    /// Load a value from the keyring
+    fn load(&self, service: &str, key: &str) -> Result<Option<String>, KeyringError> {
+        Ok(self.get(service, key))
     }
 
-    /// Save a value to the keyring (alias for set)
-    fn save(&self, service: &str, key: &str, value: &str) -> Result<(), String> {
+    /// Save a value to the keyring
+    fn save(&self, service: &str, key: &str, value: &str) -> Result<(), KeyringError> {
         self.set(service, key, value)
     }
 }
@@ -62,21 +85,21 @@ impl KeyringStore for DefaultKeyringStore {
         store.get(&full_key).cloned()
     }
 
-    fn set(&self, service: &str, key: &str, value: &str) -> Result<(), String> {
+    fn set(&self, service: &str, key: &str, value: &str) -> Result<(), KeyringError> {
         let mut store = self
             .memory
             .write()
-            .map_err(|e| format!("Lock error: {}", e))?;
+            .map_err(|e| KeyringError::Lock(e.to_string()))?;
         let full_key = format!("{}:{}", service, key);
         store.insert(full_key, value.to_string());
         Ok(())
     }
 
-    fn delete(&self, service: &str, key: &str) -> Result<(), String> {
+    fn delete(&self, service: &str, key: &str) -> Result<(), KeyringError> {
         let mut store = self
             .memory
             .write()
-            .map_err(|e| format!("Lock error: {}", e))?;
+            .map_err(|e| KeyringError::Lock(e.to_string()))?;
         let full_key = format!("{}:{}", service, key);
         store.remove(&full_key);
         Ok(())

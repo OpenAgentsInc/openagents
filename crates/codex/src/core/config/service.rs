@@ -139,13 +139,21 @@ impl ConfigService {
 
         let json_value = serde_json::to_value(&effective)
             .map_err(|err| ConfigServiceError::json("failed to serialize configuration", err))?;
-        let config: ApiConfig = serde_json::from_value(json_value)
+        let config: ApiConfig = serde_json::from_value(json_value.clone())
             .map_err(|err| ConfigServiceError::json("failed to deserialize configuration", err))?;
 
         Ok(ConfigReadResponse {
             config,
-            origins: layers.origins(),
-            layers: params.include_layers.then(|| layers.layers_high_to_low()),
+            origins: layers.origins().into_values().collect(),
+            layers: params.include_layers.then(|| {
+                layers.layers_high_to_low().into_iter().map(|l| ConfigLayerMetadata {
+                    name: l.name.to_string(),
+                    path: Some(l.source.clone()),
+                    source: l.source,
+                    version: l.version,
+                }).collect()
+            }),
+            values: json_value,
         })
     }
 
@@ -153,8 +161,8 @@ impl ConfigService {
         &self,
         params: ConfigValueWriteParams,
     ) -> Result<ConfigWriteResponse, ConfigServiceError> {
-        let edits = vec![(params.key_path, params.value, params.merge_strategy)];
-        self.apply_edits(params.file_path, params.expected_version, edits)
+        let edits = vec![(params.key_path, params.value, params.merge_strategy.unwrap_or_default())];
+        self.apply_edits(params.file_path.map(|p| p.display().to_string()), params.expected_version, edits)
             .await
     }
 
@@ -165,10 +173,10 @@ impl ConfigService {
         let edits = params
             .edits
             .into_iter()
-            .map(|edit| (edit.key_path, edit.value, edit.merge_strategy))
+            .map(|edit| (edit.key_path, edit.value, edit.merge_strategy.unwrap_or_default()))
             .collect();
 
-        self.apply_edits(params.file_path, params.expected_version, edits)
+        self.apply_edits(params.file_path.map(|p| p.display().to_string()), params.expected_version, edits)
             .await
     }
 
@@ -303,8 +311,9 @@ impl ConfigService {
 
         Ok(ConfigWriteResponse {
             status,
-            version: updated_layers.user.version.clone(),
-            file_path,
+            error: None,
+            version: Some(updated_layers.user.version.clone()),
+            file_path: Some(std::path::PathBuf::from(&file_path)),
             overridden_metadata: overridden,
         })
     }
@@ -503,6 +512,9 @@ fn override_message(layer: &ConfigLayerName) -> String {
         ConfigLayerName::System => "Overridden by managed config (system)".to_string(),
         ConfigLayerName::SessionFlags => "Overridden by session flags".to_string(),
         ConfigLayerName::User => "Overridden by user config".to_string(),
+        ConfigLayerName::Default => "Using default config".to_string(),
+        ConfigLayerName::Workspace => "Overridden by workspace config".to_string(),
+        ConfigLayerName::Override => "Overridden by override config".to_string(),
     }
 }
 
@@ -527,11 +539,11 @@ fn compute_override_metadata(
     let message = override_message(&overriding_layer.name);
 
     Some(OverriddenMetadata {
-        message,
-        overriding_layer,
+        original_layer: None,
+        message: Some(message),
+        overriding_layer: Some(overriding_layer.name.clone()),
         effective_value: effective_value
-            .and_then(|value| serde_json::to_value(value).ok())
-            .unwrap_or(JsonValue::Null),
+            .and_then(|value| serde_json::to_value(value).ok()),
     })
 }
 

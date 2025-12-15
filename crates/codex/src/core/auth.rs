@@ -198,6 +198,8 @@ impl CodexAuth {
                 let id_token = self.get_token_data().await?.access_token;
                 Ok(id_token)
             }
+            AuthMode::None => Err(std::io::Error::other("No authentication configured.")),
+            AuthMode::OAuth => Err(std::io::Error::other("OAuth mode not supported in stub.")),
         }
     }
 
@@ -365,6 +367,8 @@ pub async fn enforce_login_restrictions(config: &Config) -> std::io::Result<()> 
                 "ChatGPT login is required, but an API key is currently being used. Logging out."
                     .to_string(),
             ),
+            (_, AuthMode::None) => Some("No authentication configured.".to_string()),
+            (_, AuthMode::OAuth) => Some("OAuth mode not supported with forced login.".to_string()),
         };
 
         if let Some(message) = method_violation {

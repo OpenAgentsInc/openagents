@@ -11,6 +11,7 @@ use tokio::sync::mpsc;
 use tokio::sync::oneshot;
 
 /// Stub for PTY command session
+#[derive(Debug)]
 pub struct ExecCommandSession {
     _inner: (),
 }

@@ -7,20 +7,33 @@ pub mod otel_manager {
     use std::sync::Arc;
 
     /// No-op OpenTelemetry manager
-    #[derive(Clone)]
+    #[derive(Clone, Debug)]
     pub struct OtelManager {
         _inner: Arc<()>,
     }
 
     impl Default for OtelManager {
         fn default() -> Self {
-            Self::new()
+            Self {
+                _inner: Arc::new(()),
+            }
         }
     }
 
     impl OtelManager {
-        /// Create a new no-op OtelManager
-        pub fn new() -> Self {
+        /// Create a new no-op OtelManager (accepts any arguments for compatibility)
+        #[allow(clippy::too_many_arguments)]
+        pub fn new(
+            _service_name: impl Into<String>,
+            _service_version: impl Into<String>,
+            _environment: impl Into<String>,
+            _model: impl Into<String>,
+            _model_family: impl Into<String>,
+            _cwd: impl Into<String>,
+            _otel_settings: impl std::fmt::Debug,
+            _session_id: impl Into<String>,
+            _codex_home: impl Into<std::path::PathBuf>,
+        ) -> Self {
             Self {
                 _inner: Arc::new(()),
             }
@@ -42,22 +55,34 @@ pub mod otel_manager {
         }
 
         /// No-op: Record conversation start
-        pub fn conversation_starts(&self) {
+        #[allow(clippy::too_many_arguments)]
+        pub fn conversation_starts(
+            &self,
+            _conversation_id: impl Into<String>,
+            _model: impl Into<String>,
+            _model_family: impl Into<String>,
+            _model_provider: impl Into<String>,
+            _approval_policy: impl Into<String>,
+            _sandbox_policy: impl Into<String>,
+            _initial_prompt: impl Into<String>,
+            _features: impl std::fmt::Debug,
+            _rollout_path: impl std::fmt::Debug,
+        ) {
             // No-op
         }
 
         /// No-op: Record user prompt
-        pub fn user_prompt(&self, _prompt: &str) {
+        pub fn user_prompt(&self, _prompt: impl std::fmt::Debug) {
             // No-op
         }
 
         /// No-op: Set model info
-        pub fn with_model(&self, _model: &str) -> Self {
+        pub fn with_model(&self, _model: &str, _model_slug: &str) -> Self {
             self.clone()
         }
 
         /// No-op: Record response
-        pub fn record_responses(&self, _responses: &[impl std::fmt::Debug]) {
+        pub fn record_responses<T: std::fmt::Debug>(&self, _responses: &T, _event: impl std::fmt::Debug) {
             // No-op
         }
 
@@ -77,17 +102,17 @@ pub mod otel_manager {
         }
 
         /// No-op: Record SSE event completed
-        pub fn sse_event_completed(&self, _event: &str) {
+        pub fn sse_event_completed(&self, _input_tokens: i64, _output_tokens: i64, _total_tokens: i64, _reasoning_tokens: i64) {
             // No-op
         }
 
         /// No-op: Record SSE event completed failed
-        pub fn see_event_completed_failed(&self, _event: &str, _error: &str) {
+        pub fn see_event_completed_failed(&self, _error: impl std::fmt::Debug) {
             // No-op
         }
 
         /// No-op: Record API request
-        pub fn record_api_request(&self, _method: &str, _url: &str, _status: u16) {
+        pub fn record_api_request(&self, _attempt: u64, _method: &str, _url: &str, _status: u16) {
             // No-op
         }
 
@@ -107,13 +132,13 @@ pub mod otel_manager {
         }
 
         /// No-op: Log SSE event
-        pub fn log_sse_event(&self, _event: &str) {
+        pub fn log_sse_event<T: std::fmt::Debug>(&self, _result: &T, _duration: std::time::Duration) {
             // No-op
         }
 
-        /// No-op: Get current span
-        pub fn current_span(&self) -> OtelSpan {
-            OtelSpan
+        /// No-op: Get current span - returns a span ID compatible with tracing
+        pub fn current_span(&self) -> tracing::Span {
+            tracing::Span::none()
         }
     }
 
@@ -126,6 +151,7 @@ pub mod otel_manager {
     }
 
     /// No-op span
+    #[derive(Debug)]
     pub struct OtelSpan;
 
     impl OtelSpan {
@@ -150,8 +176,17 @@ pub mod config {
         #[default]
         None,
         Otlp,
-        OtlpHttp,
-        OtlpGrpc,
+        OtlpHttp {
+            endpoint: String,
+            protocol: OtelHttpProtocol,
+            headers: std::collections::HashMap<String, String>,
+            tls: Option<OtelTlsConfig>,
+        },
+        OtlpGrpc {
+            endpoint: String,
+            headers: std::collections::HashMap<String, String>,
+            tls: Option<OtelTlsConfig>,
+        },
     }
 
     /// Stub OTEL HTTP protocol
@@ -171,6 +206,11 @@ pub mod config {
         pub endpoint: Option<String>,
         pub protocol: OtelHttpProtocol,
         pub tls: Option<OtelTlsConfig>,
+        pub service_name: String,
+        pub service_version: String,
+        pub codex_home: std::path::PathBuf,
+        pub environment: String,
+        pub trace_exporter: OtelExporter,
     }
 
     /// Stub OTEL TLS config

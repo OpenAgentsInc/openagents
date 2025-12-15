@@ -697,15 +697,16 @@ impl From<ConfigToml> for UserSavedConfig {
             .collect();
 
         Self {
-            approval_policy: config_toml.approval_policy,
-            sandbox_mode: config_toml.sandbox_mode,
+            api_key: None,
+            approval_policy: config_toml.approval_policy.map(|a| format!("{:?}", a)),
+            sandbox_mode: config_toml.sandbox_mode.map(|s| format!("{:?}", s)),
             sandbox_settings: config_toml.sandbox_workspace_write.map(From::from),
             forced_chatgpt_workspace_id: config_toml.forced_chatgpt_workspace_id,
-            forced_login_method: config_toml.forced_login_method,
+            forced_login_method: config_toml.forced_login_method.map(Into::into),
             model: config_toml.model,
-            model_reasoning_effort: config_toml.model_reasoning_effort,
-            model_reasoning_summary: config_toml.model_reasoning_summary,
-            model_verbosity: config_toml.model_verbosity,
+            model_reasoning_effort: config_toml.model_reasoning_effort.map(|r| format!("{:?}", r)),
+            model_reasoning_summary: config_toml.model_reasoning_summary.map(|r| !matches!(r, ReasoningSummary::None)),
+            model_verbosity: config_toml.model_verbosity.map(|v| format!("{:?}", v)),
             tools: config_toml.tools.map(From::from),
             profile: config_toml.profile,
             profiles,
@@ -741,8 +742,12 @@ pub struct ToolsToml {
 impl From<ToolsToml> for Tools {
     fn from(tools_toml: ToolsToml) -> Self {
         Self {
-            web_search: tools_toml.web_search,
-            view_image: tools_toml.view_image,
+            shell: true,
+            read_file: true,
+            write_file: true,
+            apply_patch: true,
+            web_search: tools_toml.web_search.unwrap_or(false),
+            view_image: tools_toml.view_image.unwrap_or(false),
         }
     }
 }
