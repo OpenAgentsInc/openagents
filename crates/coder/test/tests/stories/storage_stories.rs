@@ -238,7 +238,7 @@ fn story_32_streaming_state_can_be_resumed() {
     let message_id = MessageId::new();
 
     // Given: Streaming started with partial content
-    let events = vec![
+    let mut events = vec![
         DomainEvent::MessageStreaming {
             thread_id,
             message_id,
@@ -253,6 +253,14 @@ fn story_32_streaming_state_can_be_resumed() {
         },
     ];
 
+    // Also include a completion event to ensure we preserve completion state.
+    let completion = DomainEvent::MessageComplete {
+        thread_id,
+        message_id,
+        timestamp: Utc::now(),
+    };
+    events.push(completion.clone());
+
     // When: We create a ChatView and apply the events (simulating reconnect)
     let mut view = ChatView::new(thread_id);
     for event in &events {
@@ -266,6 +274,15 @@ fn story_32_streaming_state_can_be_resumed() {
         Some("Hello, I am your assistant."),
         "Streaming content should be concatenated"
     );
+    assert!(
+        !view.is_streaming(),
+        "Completion event should mark streaming as finished"
+    );
+
+    // And: Replaying the same events yields the same streaming state
+    let replayed = ChatView::from_events(thread_id, &events);
+    assert_eq!(replayed.streaming_content(), view.streaming_content());
+    assert_eq!(replayed.is_streaming(), view.is_streaming());
 }
 
 /// Story 32: Streaming completion is tracked correctly after resume
