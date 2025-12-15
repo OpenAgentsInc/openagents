@@ -53,25 +53,43 @@ impl SyntaxHighlighter {
 
     /// Get syntax for a language name or extension.
     fn get_syntax(&self, language: &str) -> Option<&SyntaxReference> {
-        // Map common aliases
+        // Map common aliases to a deterministic token + extension.
         let lang_lower = language.to_lowercase();
-        let lang = match lang_lower.as_str() {
-            "js" => "javascript",
-            "ts" => "typescript",
-            "py" => "python",
-            "rb" => "ruby",
-            "rs" => "rust",
-            "sh" | "bash" | "zsh" | "shell" => "Bourne Again Shell (bash)",
-            "yml" => "yaml",
-            "md" => "markdown",
-            "c++" => "cpp",
-            "dockerfile" => "dockerfile",
-            _ => lang_lower.as_str(),
+        let (ext, token) = match lang_lower.as_str() {
+            "js" | "javascript" => ("js", "JavaScript"),
+            "ts" | "typescript" => ("ts", "TypeScript"),
+            "py" | "python" => ("py", "Python"),
+            "rb" | "ruby" => ("rb", "Ruby"),
+            "rs" | "rust" => ("rs", "Rust"),
+            "sh" | "bash" | "zsh" | "shell" => ("sh", "Bourne Again Shell (bash)"),
+            "yml" | "yaml" => ("yml", "YAML"),
+            "md" | "markdown" => ("md", "Markdown"),
+            "c++" | "cpp" => ("cpp", "C++"),
+            "dockerfile" => ("dockerfile", "Dockerfile"),
+            other => (other, other),
         };
 
-        self.syntax_set
-            .find_syntax_by_token(lang)
-            .or_else(|| self.syntax_set.find_syntax_by_extension(lang))
+        let primary = self
+            .syntax_set
+            .find_syntax_by_extension(ext)
+            .or_else(|| self.syntax_set.find_syntax_by_token(token));
+
+        if primary.is_some() {
+            return primary;
+        }
+
+        // Fallbacks for aliases that might not exist in the bundled syntax set.
+        match lang_lower.as_str() {
+            "ts" | "typescript" => self
+                .syntax_set
+                .find_syntax_by_extension("js")
+                .or_else(|| self.syntax_set.find_syntax_by_token("JavaScript")),
+            "js" | "javascript" => self
+                .syntax_set
+                .find_syntax_by_extension("js")
+                .or_else(|| self.syntax_set.find_syntax_by_token("JavaScript")),
+            _ => None,
+        }
     }
 
     /// Highlight code and return styled lines.
@@ -87,15 +105,17 @@ impl SyntaxHighlighter {
         };
 
         // Use base16-ocean.dark theme (works well with dark backgrounds)
-        let theme = self
-            .theme_set
-            .themes
-            .get("base16-ocean.dark")
-            .or_else(|| self.theme_set.themes.values().next());
+        // Fall back deterministically to the alphabetically-first theme to avoid
+        // hash-map iteration nondeterminism across runs.
+        let theme = self.theme_set.themes.get("base16-ocean.dark").or_else(|| {
+            let mut keys: Vec<_> = self.theme_set.themes.keys().collect();
+            keys.sort();
+            keys.first()
+                .and_then(|k| self.theme_set.themes.get(*k))
+        });
 
-        let theme = match theme {
-            Some(t) => t,
-            None => return self.plain_lines(code, config),
+        let Some(theme) = theme else {
+            return self.plain_lines(code, config);
         };
 
         let mut highlighter = HighlightLines::new(syntax, theme);
