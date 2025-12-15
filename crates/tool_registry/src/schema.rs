@@ -2,6 +2,7 @@
 
 use schemars::JsonSchema;
 use serde::de::DeserializeOwned;
+use serde_json::{Map, Value};
 
 /// Generate a JSON Schema for a type.
 pub fn generate_schema<T: JsonSchema>() -> serde_json::Value {
@@ -11,8 +12,7 @@ pub fn generate_schema<T: JsonSchema>() -> serde_json::Value {
 
 /// Validate JSON input against a type's schema.
 pub fn validate_input<T: DeserializeOwned>(input: &serde_json::Value) -> Result<T, String> {
-    serde_json::from_value(input.clone())
-        .map_err(|e| format!("Invalid input: {}", e))
+    serde_json::from_value(input.clone()).map_err(|e| format!("Invalid input: {}", e))
 }
 
 /// Convert a tool's input schema to Anthropic's tool format.
@@ -21,10 +21,31 @@ pub fn to_anthropic_tool_schema(
     description: &str,
     input_schema: serde_json::Value,
 ) -> serde_json::Value {
+    let mut schema = match input_schema {
+        Value::Object(map) => map,
+        _ => Map::new(),
+    };
+
+    schema
+        .entry("type".to_string())
+        .or_insert(Value::String("object".to_string()));
+    schema
+        .entry("properties".to_string())
+        .or_insert_with(|| Value::Object(Map::new()));
+    schema
+        .entry("required".to_string())
+        .or_insert_with(|| Value::Array(Vec::new()));
+    schema
+        .entry("additionalProperties".to_string())
+        .or_insert(Value::Bool(false));
+    schema
+        .entry("strict".to_string())
+        .or_insert(Value::Bool(true));
+
     serde_json::json!({
         "name": name,
         "description": description,
-        "input_schema": input_schema
+        "input_schema": Value::Object(schema)
     })
 }
 
@@ -64,11 +85,16 @@ mod tests {
             "type": "object",
             "properties": {
                 "file_path": { "type": "string" }
-            }
+            },
+            "required": ["file_path"]
         });
 
         let tool = to_anthropic_tool_schema("read", "Read a file", schema);
         assert_eq!(tool["name"], "read");
         assert_eq!(tool["description"], "Read a file");
+        assert_eq!(tool["input_schema"]["type"], "object");
+        assert_eq!(tool["input_schema"]["strict"], true);
+        assert_eq!(tool["input_schema"]["additionalProperties"], false);
+        assert!(tool["input_schema"]["required"].is_array());
     }
 }

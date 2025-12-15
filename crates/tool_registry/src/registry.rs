@@ -93,11 +93,7 @@ impl ToolRegistry {
         self.list()
             .into_iter()
             .map(|info| {
-                serde_json::json!({
-                    "name": info.name,
-                    "description": info.description,
-                    "input_schema": info.input_schema
-                })
+                crate::to_anthropic_tool_schema(&info.name, &info.description, info.input_schema)
             })
             .collect()
     }
@@ -147,6 +143,8 @@ mod tests {
             assert!(tool.get("name").is_some());
             assert!(tool.get("description").is_some());
             assert!(tool.get("input_schema").is_some());
+            assert_eq!(tool["input_schema"]["strict"], true);
+            assert_eq!(tool["input_schema"]["additionalProperties"], false);
         }
     }
 
