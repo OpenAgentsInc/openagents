@@ -3,6 +3,7 @@
 use crate::{PermissionRequest, Tool, ToolContext, ToolInfo, ToolOutput, ToolResult};
 use async_trait::async_trait;
 use serde::Deserialize;
+use std::path::PathBuf;
 
 /// Input for the Bash tool.
 #[derive(Debug, Deserialize)]
@@ -31,7 +32,8 @@ impl Tool for BashToolWrapper {
     fn info(&self) -> ToolInfo {
         ToolInfo {
             name: "bash".to_string(),
-            description: "Execute a bash command. Returns stdout, stderr, and exit code.".to_string(),
+            description: "Execute a bash command. Returns stdout, stderr, and exit code."
+                .to_string(),
             input_schema: serde_json::json!({
                 "type": "object",
                 "properties": {
@@ -59,22 +61,48 @@ impl Tool for BashToolWrapper {
         }
     }
 
-    fn check_permission(&self, input: &Self::Input, _ctx: &ToolContext) -> Option<PermissionRequest> {
+    fn check_permission(
+        &self,
+        input: &Self::Input,
+        _ctx: &ToolContext,
+    ) -> Option<PermissionRequest> {
+        // If command targets an external directory, prompt specifically for that.
+        if let Some(cwd) = &input.cwd {
+            let resolved: PathBuf = _ctx.resolve_path(cwd);
+            if !_ctx.is_path_allowed(&resolved) {
+                return Some(
+                    PermissionRequest::new(
+                        "external_directory",
+                        "Access external directory",
+                        format!("Run command in external directory: {}", resolved.display()),
+                    )
+                    .with_patterns(vec![resolved.display().to_string()]),
+                );
+            }
+        }
+
         // All bash commands require permission
-        let desc = input.description.as_deref().unwrap_or("Execute shell command");
-        Some(PermissionRequest::new(
-            "bash",
-            desc,
-            format!("Execute command: {}", truncate_command(&input.command, 100)),
-        ).with_patterns(vec![input.command.clone()]))
+        let desc = input
+            .description
+            .as_deref()
+            .unwrap_or("Execute shell command");
+        Some(
+            PermissionRequest::new(
+                "bash",
+                desc,
+                format!("Execute command: {}", truncate_command(&input.command, 100)),
+            )
+            .with_patterns(vec![input.command.clone()]),
+        )
     }
 
     async fn execute(&self, input: Self::Input, ctx: &ToolContext) -> ToolResult<ToolOutput> {
         ctx.check_cancelled()?;
 
-        let cwd = input.cwd.clone().or_else(|| {
-            ctx.working_dir.to_str().map(|s| s.to_string())
-        });
+        let cwd = input
+            .cwd
+            .clone()
+            .or_else(|| ctx.working_dir.to_str().map(|s| s.to_string()));
         let timeout = input.timeout;
         let command = input.command.clone();
 
@@ -97,8 +125,12 @@ impl Tool for BashToolWrapper {
         let content = if result.success {
             result.output
         } else {
-            format!("Command failed (exit {}): {}",
-                result.exit_code.map(|c| c.to_string()).unwrap_or_else(|| "signal".to_string()),
+            format!(
+                "Command failed (exit {}): {}",
+                result
+                    .exit_code
+                    .map(|c| c.to_string())
+                    .unwrap_or_else(|| "signal".to_string()),
                 result.output
             )
         };
