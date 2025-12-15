@@ -7,6 +7,7 @@ use std::collections::HashMap;
 use std::io;
 use std::path::Path;
 use std::process::ExitStatus;
+use tokio::sync::broadcast;
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
 
@@ -61,14 +62,15 @@ impl ExecCommandSession {
         Ok(())
     }
 
-    /// Get writer sender (stub - returns None)
-    pub fn writer_sender(&self) -> Option<mpsc::Sender<Vec<u8>>> {
-        None
+    /// Get writer sender (stub - returns a closed sender)
+    pub fn writer_sender(&self) -> mpsc::Sender<Vec<u8>> {
+        let (tx, _rx) = mpsc::channel(1);
+        tx
     }
 
-    /// Get output receiver (stub - returns a closed receiver)
-    pub fn output_receiver(&self) -> mpsc::Receiver<Vec<u8>> {
-        let (_tx, rx) = mpsc::channel(1);
+    /// Get output receiver (stub - returns a closed broadcast receiver)
+    pub fn output_receiver(&self) -> broadcast::Receiver<Vec<u8>> {
+        let (_tx, rx) = broadcast::channel(1);
         rx
     }
 
@@ -92,14 +94,14 @@ impl Default for ExecCommandSession {
 /// Stub for spawned PTY with channels for output and exit notification
 pub struct SpawnedPty {
     pub session: ExecCommandSession,
-    pub output_rx: mpsc::Receiver<Vec<u8>>,
+    pub output_rx: broadcast::Receiver<Vec<u8>>,
     pub exit_rx: oneshot::Receiver<Option<ExitStatus>>,
 }
 
 impl SpawnedPty {
     /// Create a new stub PTY
     pub fn new() -> Self {
-        let (_output_tx, output_rx) = mpsc::channel(1);
+        let (_output_tx, output_rx) = broadcast::channel(1);
         let (_exit_tx, exit_rx) = oneshot::channel();
         Self {
             session: ExecCommandSession::new(),

@@ -76,7 +76,7 @@ impl ToolRegistry {
                 otel.tool_result(
                     tool_name.as_ref(),
                     &call_id_owned,
-                    log_payload.as_ref(),
+                    Some(log_payload.as_ref()),
                     Duration::ZERO,
                     false,
                     &message,
@@ -90,7 +90,7 @@ impl ToolRegistry {
             otel.tool_result(
                 tool_name.as_ref(),
                 &call_id_owned,
-                log_payload.as_ref(),
+                Some(log_payload.as_ref()),
                 Duration::ZERO,
                 false,
                 &message,
@@ -104,7 +104,7 @@ impl ToolRegistry {
             .log_tool_result(
                 tool_name.as_ref(),
                 &call_id_owned,
-                log_payload.as_ref(),
+                Some(log_payload.as_ref()),
                 || {
                     let handler = handler.clone();
                     let output_cell = &output_cell;

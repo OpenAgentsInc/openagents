@@ -147,7 +147,7 @@ impl ConfigService {
             origins: layers.origins().into_values().collect(),
             layers: params.include_layers.then(|| {
                 layers.layers_high_to_low().into_iter().map(|l| ConfigLayerMetadata {
-                    name: l.name.to_string(),
+                    name: l.name.clone(),
                     path: Some(l.source.clone()),
                     source: l.source,
                     version: l.version,
@@ -455,7 +455,7 @@ fn toml_value_to_value(value: &TomlValue) -> anyhow::Result<toml_edit::Value> {
         TomlValue::Integer(val) => Ok(toml_edit::Value::from(*val)),
         TomlValue::Float(val) => Ok(toml_edit::Value::from(*val)),
         TomlValue::Boolean(val) => Ok(toml_edit::Value::from(*val)),
-        TomlValue::Datetime(val) => Ok(toml_edit::Value::from(*val)),
+        TomlValue::Datetime(val) => Ok(toml_edit::Value::from(val.to_string())),
         TomlValue::Array(items) => {
             let mut array = toml_edit::Array::new();
             for item in items {

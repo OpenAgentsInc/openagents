@@ -52,12 +52,23 @@ pub struct ConfigLayer {
 }
 
 /// Metadata for a configuration layer
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ConfigLayerMetadata {
-    pub name: String,
+    pub name: ConfigLayerName,
     pub path: Option<String>,
     pub source: String,
     pub version: Option<String>,
+}
+
+impl Default for ConfigLayerMetadata {
+    fn default() -> Self {
+        Self {
+            name: ConfigLayerName::Default,
+            path: None,
+            source: String::new(),
+            version: None,
+        }
+    }
 }
 
 /// Name of a configuration layer

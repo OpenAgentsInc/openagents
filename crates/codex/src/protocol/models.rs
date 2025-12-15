@@ -304,7 +304,7 @@ impl From<Vec<UserInput>> for ResponseInputItem {
                 .filter_map(|c| match c {
                     UserInput::Text { text } => Some(ContentItem::InputText { text }),
                     UserInput::Image { image_url } => Some(ContentItem::InputImage { image_url }),
-                    UserInput::LocalImage { path } => match load_and_resize_to_fit(&path) {
+                    UserInput::LocalImage { path } => match load_and_resize_to_fit(&path, 1024, 1024) {
                         Ok(image) => Some(ContentItem::InputImage {
                             image_url: image.into_data_url(),
                         }),

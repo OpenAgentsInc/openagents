@@ -31,6 +31,7 @@ impl KeyringError {
 }
 
 /// A simple in-memory keyring store that falls back to environment variables
+#[derive(Debug)]
 pub struct DefaultKeyringStore {
     memory: RwLock<HashMap<String, String>>,
 }
@@ -50,7 +51,7 @@ impl DefaultKeyringStore {
 }
 
 /// Trait for keyring operations
-pub trait KeyringStore: Send + Sync {
+pub trait KeyringStore: Send + Sync + std::fmt::Debug {
     /// Get a value from the keyring
     fn get(&self, service: &str, key: &str) -> Option<String>;
 
@@ -58,7 +59,7 @@ pub trait KeyringStore: Send + Sync {
     fn set(&self, service: &str, key: &str, value: &str) -> Result<(), KeyringError>;
 
     /// Delete a value from the keyring
-    fn delete(&self, service: &str, key: &str) -> Result<(), KeyringError>;
+    fn delete(&self, service: &str, key: &str) -> Result<bool, KeyringError>;
 
     /// Load a value from the keyring
     fn load(&self, service: &str, key: &str) -> Result<Option<String>, KeyringError> {
@@ -95,14 +96,14 @@ impl KeyringStore for DefaultKeyringStore {
         Ok(())
     }
 
-    fn delete(&self, service: &str, key: &str) -> Result<(), KeyringError> {
+    fn delete(&self, service: &str, key: &str) -> Result<bool, KeyringError> {
         let mut store = self
             .memory
             .write()
             .map_err(|e| KeyringError::Lock(e.to_string()))?;
         let full_key = format!("{}:{}", service, key);
-        store.remove(&full_key);
-        Ok(())
+        let removed = store.remove(&full_key).is_some();
+        Ok(removed)
     }
 }
 

@@ -41,7 +41,7 @@ impl SessionTask for GhostSnapshotTask {
         cancellation_token: CancellationToken,
     ) -> Option<String> {
         tokio::task::spawn(async move {
-            let token = self.token;
+            let token = self.token.clone();
             // Channel used to signal when the snapshot work has finished so the
             // timeout warning task can exit early without sending a warning.
             let (snapshot_done_tx, snapshot_done_rx) = oneshot::channel::<()>();

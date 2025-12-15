@@ -40,7 +40,7 @@ impl ConfigLayerEntry {
             name: self.name.clone(),
             path: Some(self.source.display().to_string()),
             source: self.source.display().to_string(),
-            version: self.version.clone(),
+            version: Some(self.version.clone()),
         }
     }
 
@@ -50,7 +50,7 @@ impl ConfigLayerEntry {
             name: self.name.clone(),
             values: config_value.clone(),
             source: self.source.display().to_string(),
-            version: self.version.clone(),
+            version: Some(self.version.clone()),
             config: config_value,
         }
     }

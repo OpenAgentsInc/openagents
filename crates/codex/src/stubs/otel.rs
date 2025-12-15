@@ -21,9 +21,16 @@ pub mod otel_manager {
     }
 
     impl OtelManager {
+        /// Create a new no-op OtelManager with no arguments
+        pub fn new() -> Self {
+            Self {
+                _inner: Arc::new(()),
+            }
+        }
+
         /// Create a new no-op OtelManager (accepts any arguments for compatibility)
         #[allow(clippy::too_many_arguments)]
-        pub fn new<T1, T2, T3, T4, T5, T6, T7, T8, T9>(
+        pub fn with_config<T1, T2, T3, T4, T5, T6, T7, T8, T9>(
             _conversation_id: T1,
             _model: T2,
             _model_family: T3,
@@ -109,8 +116,17 @@ pub mod otel_manager {
             // No-op
         }
 
-        /// No-op: Record SSE event completed
-        pub fn sse_event_completed(&self, _input_tokens: i64, _output_tokens: i64, _total_tokens: i64, _reasoning_tokens: i64) {
+        /// No-op: Record SSE event completed (accepts up to 6 token counts for compatibility)
+        #[allow(clippy::too_many_arguments)]
+        pub fn sse_event_completed(
+            &self,
+            _input_tokens: i64,
+            _output_tokens: i64,
+            _cached_input_tokens: Option<i64>,
+            _reasoning_output_tokens: Option<i64>,
+            _total_tokens: i64,
+            _reasoning_tokens: i64,
+        ) {
             // No-op
         }
 
@@ -119,8 +135,14 @@ pub mod otel_manager {
             // No-op
         }
 
-        /// No-op: Record API request
-        pub fn record_api_request(&self, _attempt: u64, _method: &str, _url: &str, _status: u16) {
+        /// No-op: Record API request (flexible signature)
+        pub fn record_api_request<T1, T2, T3>(
+            &self,
+            _attempt: u64,
+            _status_or_method: T1,
+            _url_or_error: T2,
+            _duration_or_status: T3,
+        ) {
             // No-op
         }
 
