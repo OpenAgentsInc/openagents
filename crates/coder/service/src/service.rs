@@ -497,6 +497,22 @@ impl ChatService {
         &self.inner.provider_registry
     }
 
+    /// Providers requiring credentials that are currently unavailable.
+    pub async fn missing_required_providers(&self, required: &[&str]) -> Vec<String> {
+        let available = self.inner.provider_registry.list_all().await;
+        required
+            .iter()
+            .filter(|p| !available.contains(&p.to_string()))
+            .map(|p| p.to_string())
+            .collect()
+    }
+
+    /// Whether any local provider (ollama/apple) is available.
+    pub async fn has_local_provider(&self) -> bool {
+        let available = self.inner.provider_registry.list_all().await;
+        available.contains(&"ollama".to_string()) || available.contains(&"apple".to_string())
+    }
+
     /// Send a message and get a stream of updates.
     ///
     /// This is the main entry point for chat operations.
@@ -1170,5 +1186,79 @@ mod tests {
         let service = ChatService::new(config).await.unwrap();
         let result = service.create_offline_session(None).await;
         assert!(matches!(result, Err(ServiceError::Provider(_))));
+    }
+
+    #[tokio::test]
+    async fn missing_required_providers_reports_absent() {
+        let tmp = tempdir().unwrap();
+        let config = ServiceConfig {
+            working_directory: tmp.path().to_path_buf(),
+            database_path: tmp.path().join("coder.db"),
+            ..ServiceConfig::default()
+        };
+
+        let service = ChatService::new(config).await.unwrap();
+        service
+            .provider_registry()
+            .register(Arc::new(FakeLocalProvider {
+                id: "ollama",
+                model_id: "ollama/local",
+            }))
+            .await;
+
+        let missing = service
+            .missing_required_providers(&["anthropic", "openai"])
+            .await;
+        // We only registered ollama, so both should be missing.
+        assert!(missing.contains(&"anthropic".to_string()));
+        assert!(missing.contains(&"openai".to_string()));
+    }
+
+    #[tokio::test]
+    async fn missing_required_providers_omits_available() {
+        let tmp = tempdir().unwrap();
+        let config = ServiceConfig {
+            working_directory: tmp.path().to_path_buf(),
+            database_path: tmp.path().join("coder.db"),
+            ..ServiceConfig::default()
+        };
+
+        let service = ChatService::new(config).await.unwrap();
+        service
+            .provider_registry()
+            .register(Arc::new(FakeLocalProvider {
+                id: "anthropic",
+                model_id: "claude-local",
+            }))
+            .await;
+
+        let missing = service
+            .missing_required_providers(&["anthropic", "openai"])
+            .await;
+        assert!(!missing.contains(&"anthropic".to_string()));
+        assert!(missing.contains(&"openai".to_string()));
+    }
+
+    #[tokio::test]
+    async fn has_local_provider_checks_registry() {
+        let tmp = tempdir().unwrap();
+        let config = ServiceConfig {
+            working_directory: tmp.path().to_path_buf(),
+            database_path: tmp.path().join("coder.db"),
+            ..ServiceConfig::default()
+        };
+
+        let service = ChatService::new(config).await.unwrap();
+        assert!(!service.has_local_provider().await);
+
+        service
+            .provider_registry()
+            .register(Arc::new(FakeLocalProvider {
+                id: "apple",
+                model_id: "apple/fm",
+            }))
+            .await;
+
+        assert!(service.has_local_provider().await);
     }
 }
