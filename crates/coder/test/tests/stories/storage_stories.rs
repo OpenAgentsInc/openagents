@@ -427,6 +427,53 @@ fn story_34_chat_view_is_serializable_for_snapshots() {
     assert_eq!(restored.message_count, 2);
 }
 
+/// Story 34/102: Snapshot then replay yields identical state.
+#[test]
+fn story_34_snapshot_restore_replays_events_identically() {
+    let thread_id = ThreadId::new();
+    let mut live_view = ChatView::new(thread_id);
+
+    // Apply initial events
+    let initial_events = vec![
+        DomainEvent::MessageAdded {
+            thread_id,
+            message: Message::new(Role::User, "Hi"),
+        },
+        DomainEvent::MessageAdded {
+            thread_id,
+            message: Message::new(Role::Assistant, "Hello!"),
+        },
+    ];
+    for event in &initial_events {
+        live_view.apply(event);
+    }
+
+    // Take snapshot
+    let snapshot = live_view.snapshot();
+
+    // Apply subsequent events to live view
+    let later_events = vec![DomainEvent::MessageAdded {
+        thread_id,
+        message: Message::new(Role::User, "Follow-up"),
+    }];
+    for event in &later_events {
+        live_view.apply(event);
+    }
+
+    // Restore from snapshot and replay later events
+    let replayed = ChatView::restore_from_snapshot(snapshot, &later_events);
+
+    assert_eq!(live_view.entries.len(), replayed.entries.len());
+    assert_eq!(live_view.message_count, replayed.message_count);
+    if let (Some(ChatEntry::Message(live)), Some(ChatEntry::Message(replayed_msg))) =
+        (live_view.entries.last(), replayed.entries.last())
+    {
+        assert_eq!(live.content, replayed_msg.content);
+    } else {
+        panic!("Expected final message entries to match");
+    }
+}
+
 // ============================================================================
 // Story 35: Thread summaries update on new messages
 // ============================================================================

@@ -37,7 +37,7 @@ pub use event::DomainEvent;
 pub use ids::*;
 pub use message::{Message, Role};
 pub use projections::chat_view::{
-    ChatEntry, ChatView, MessageView, StreamingMessage, ThreadSummary,
+    ChatEntry, ChatSnapshot, ChatView, MessageView, StreamingMessage, ThreadSummary,
 };
 pub use run::{Run, RunStatus, StepRun, StepStatus};
 pub use tool::{ToolResult, ToolUse};
