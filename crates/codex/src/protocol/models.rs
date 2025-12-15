@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
 use crate::utils::image::load_and_resize_to_fit;
+use crate::utils::image::IntoDataUrl;
 use crate::mcp_types::CallToolResult;
 use crate::mcp_types::ContentBlock;
 use serde::Deserialize;

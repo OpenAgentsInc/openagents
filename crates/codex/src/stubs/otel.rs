@@ -23,16 +23,16 @@ pub mod otel_manager {
     impl OtelManager {
         /// Create a new no-op OtelManager (accepts any arguments for compatibility)
         #[allow(clippy::too_many_arguments)]
-        pub fn new(
-            _service_name: impl Into<String>,
-            _service_version: impl Into<String>,
-            _environment: impl Into<String>,
-            _model: impl Into<String>,
-            _model_family: impl Into<String>,
-            _cwd: impl Into<String>,
-            _otel_settings: impl std::fmt::Debug,
-            _session_id: impl Into<String>,
-            _codex_home: impl Into<std::path::PathBuf>,
+        pub fn new<T1, T2, T3, T4, T5, T6, T7, T8, T9>(
+            _conversation_id: T1,
+            _model: T2,
+            _model_family: T3,
+            _account_id: T4,
+            _account_email: T5,
+            _auth_mode: T6,
+            _otel_settings: T7,
+            _session_source: T8,
+            _codex_home: T9,
         ) -> Self {
             Self {
                 _inner: Arc::new(()),
@@ -56,17 +56,17 @@ pub mod otel_manager {
 
         /// No-op: Record conversation start
         #[allow(clippy::too_many_arguments)]
-        pub fn conversation_starts(
+        pub fn conversation_starts<T1, T2, T3, T4, T5, T6, T7, T8, T9>(
             &self,
-            _conversation_id: impl Into<String>,
-            _model: impl Into<String>,
-            _model_family: impl Into<String>,
-            _model_provider: impl Into<String>,
-            _approval_policy: impl Into<String>,
-            _sandbox_policy: impl Into<String>,
-            _initial_prompt: impl Into<String>,
-            _features: impl std::fmt::Debug,
-            _rollout_path: impl std::fmt::Debug,
+            _model_provider: T1,
+            _reasoning_effort: T2,
+            _reasoning_summary: T3,
+            _context_window: T4,
+            _auto_compact_limit: T5,
+            _cwd: T6,
+            _approval_policy: T7,
+            _sandbox_policy: T8,
+            _features: T9,
         ) {
             // No-op
         }
@@ -97,7 +97,15 @@ pub mod otel_manager {
         }
 
         /// No-op: Record tool result
-        pub fn tool_result(&self, _tool: &str, _result: &str) {
+        pub fn tool_result(
+            &self,
+            _tool_name: &str,
+            _call_id: &str,
+            _log_payload: Option<&str>,
+            _duration: std::time::Duration,
+            _success: bool,
+            _message: &str,
+        ) {
             // No-op
         }
 
@@ -121,9 +129,19 @@ pub mod otel_manager {
             // No-op
         }
 
-        /// No-op: Log tool result
-        pub fn log_tool_result(&self, _tool: &str, _result: &str) {
-            // No-op
+        /// No-op: Log tool result - returns the result of the closure
+        pub async fn log_tool_result<T, F, Fut>(
+            &self,
+            _tool_name: &str,
+            _call_id: &str,
+            _log_payload: Option<&str>,
+            f: F,
+        ) -> T
+        where
+            F: FnOnce() -> Fut,
+            Fut: std::future::Future<Output = T>,
+        {
+            f().await
         }
 
         /// No-op: Log tool failed
