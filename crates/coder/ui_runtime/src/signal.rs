@@ -3,7 +3,8 @@
 //! Signals are the core primitive for reactive state. When a signal's
 //! value changes, all dependent effects and memos are notified.
 
-use crate::runtime::{with_runtime, SubscriberId};
+use crate::memo::mark_memo_dirty;
+use crate::runtime::{SubscriberId, with_runtime};
 use parking_lot::RwLock;
 use smallvec::SmallVec;
 use std::sync::Arc;
@@ -49,7 +50,9 @@ impl<T> Signal<T> {
         let subs = self.inner.subscribers.read();
         with_runtime(|rt| {
             for &sub in subs.iter() {
-                rt.queue_effect(sub);
+                if !mark_memo_dirty(sub) {
+                    rt.queue_effect(sub);
+                }
             }
         });
     }
@@ -153,7 +156,9 @@ impl<T> WriteSignal<T> {
         let subs = self.inner.subscribers.read();
         with_runtime(|rt| {
             for &sub in subs.iter() {
-                rt.queue_effect(sub);
+                if !mark_memo_dirty(sub) {
+                    rt.queue_effect(sub);
+                }
             }
         });
     }
@@ -170,7 +175,9 @@ impl<T> WriteSignal<T> {
         let subs = self.inner.subscribers.read();
         with_runtime(|rt| {
             for &sub in subs.iter() {
-                rt.queue_effect(sub);
+                if !mark_memo_dirty(sub) {
+                    rt.queue_effect(sub);
+                }
             }
         });
     }
