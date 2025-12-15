@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 
-use crate::core::parse_command::ParsedCommand;
+use crate::protocol::parse_command::ParsedCommand;
 use crate::core::protocol::FileChange;
 use crate::mcp_types::RequestId;
 use schemars::JsonSchema;

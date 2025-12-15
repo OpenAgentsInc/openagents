@@ -46,6 +46,9 @@ pub struct ConfigBatchWriteParams {
 pub struct ConfigLayer {
     pub name: ConfigLayerName,
     pub values: serde_json::Value,
+    pub source: String,
+    pub version: Option<String>,
+    pub config: serde_json::Value,
 }
 
 /// Metadata for a configuration layer
@@ -53,6 +56,8 @@ pub struct ConfigLayer {
 pub struct ConfigLayerMetadata {
     pub name: String,
     pub path: Option<String>,
+    pub source: String,
+    pub version: Option<String>,
 }
 
 /// Name of a configuration layer
@@ -65,6 +70,20 @@ pub enum ConfigLayerName {
     System,
     SessionFlags,
     Mdm,
+}
+
+impl std::fmt::Display for ConfigLayerName {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ConfigLayerName::Default => write!(f, "default"),
+            ConfigLayerName::User => write!(f, "user"),
+            ConfigLayerName::Workspace => write!(f, "workspace"),
+            ConfigLayerName::Override => write!(f, "override"),
+            ConfigLayerName::System => write!(f, "system"),
+            ConfigLayerName::SessionFlags => write!(f, "session_flags"),
+            ConfigLayerName::Mdm => write!(f, "mdm"),
+        }
+    }
 }
 
 impl Default for ConfigLayerName {
@@ -122,6 +141,9 @@ pub enum ConfigWriteErrorCode {
 pub struct ConfigWriteResponse {
     pub status: WriteStatus,
     pub error: Option<ConfigWriteErrorCode>,
+    pub version: Option<String>,
+    pub file_path: Option<std::path::PathBuf>,
+    pub overridden_metadata: Option<OverriddenMetadata>,
 }
 
 /// Git SHA identifier
@@ -151,6 +173,9 @@ pub enum MergeStrategy {
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct OverriddenMetadata {
     pub original_layer: Option<ConfigLayerName>,
+    pub message: Option<String>,
+    pub overriding_layer: Option<ConfigLayerName>,
+    pub effective_value: Option<serde_json::Value>,
 }
 
 /// Available tools configuration
@@ -171,6 +196,15 @@ pub enum ForcedLoginMethod {
     None,
     Chatgpt,
     Api,
+}
+
+impl From<crate::protocol::config_types::ForcedLoginMethod> for ForcedLoginMethod {
+    fn from(method: crate::protocol::config_types::ForcedLoginMethod) -> Self {
+        match method {
+            crate::protocol::config_types::ForcedLoginMethod::Chatgpt => ForcedLoginMethod::Chatgpt,
+            crate::protocol::config_types::ForcedLoginMethod::Api => ForcedLoginMethod::Api,
+        }
+    }
 }
 
 /// User saved configuration
@@ -206,6 +240,13 @@ pub struct Profile {
     pub name: Option<String>,
     pub email: Option<String>,
     pub avatar_url: Option<String>,
+    pub model: Option<String>,
+    pub model_provider: Option<String>,
+    pub approval_policy: Option<String>,
+    pub model_reasoning_effort: Option<String>,
+    pub model_reasoning_summary: Option<bool>,
+    pub model_verbosity: Option<String>,
+    pub chatgpt_base_url: Option<String>,
 }
 
 /// Sandbox settings
@@ -216,4 +257,5 @@ pub struct SandboxSettings {
     pub writable_roots: Vec<String>,
     pub network_access: bool,
     pub exclude_tmpdir_env_var: Option<String>,
+    pub exclude_slash_tmp: Option<bool>,
 }

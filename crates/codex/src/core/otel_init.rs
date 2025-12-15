@@ -37,9 +37,12 @@ pub fn build_provider(
                     .collect(),
                 protocol,
                 tls: tls.as_ref().map(|config| OtelTlsSettings {
+                    cert_path: None,
+                    key_path: None,
+                    ca_path: None,
                     ca_certificate: config.ca_certificate.clone(),
                     client_certificate: config.client_certificate.clone(),
-                    client_private_key: config.client_private_key.clone(),
+                    client_private_key: config.client_private_key.as_ref().map(|p| p.to_string_lossy().to_string()),
                 }),
             }
         }
@@ -54,9 +57,12 @@ pub fn build_provider(
                 .map(|(k, v)| (k.clone(), v.clone()))
                 .collect(),
             tls: tls.as_ref().map(|config| OtelTlsSettings {
+                cert_path: None,
+                key_path: None,
+                ca_path: None,
                 ca_certificate: config.ca_certificate.clone(),
                 client_certificate: config.client_certificate.clone(),
-                client_private_key: config.client_private_key.clone(),
+                client_private_key: config.client_private_key.as_ref().map(|p| p.to_string_lossy().to_string()),
             }),
         },
     };
@@ -65,11 +71,14 @@ pub fn build_provider(
     let trace_exporter = to_otel_exporter(&config.otel.trace_exporter);
 
     OtelProvider::from(&OtelSettings {
+        exporter,
+        endpoint: None,
+        protocol: OtelHttpProtocol::default(),
+        tls: None,
         service_name: originator().value.to_owned(),
         service_version: service_version.to_string(),
         codex_home: config.codex_home.clone(),
         environment: config.otel.environment.to_string(),
-        exporter,
         trace_exporter,
     })
 }

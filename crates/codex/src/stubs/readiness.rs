@@ -45,7 +45,7 @@ impl Readiness {
 }
 
 /// A flag that can be used to mark readiness
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct ReadinessFlag {
     ready: Arc<AtomicBool>,
 }
