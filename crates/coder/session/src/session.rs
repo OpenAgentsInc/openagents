@@ -65,6 +65,9 @@ pub struct AgentConfig {
     pub model_id: String,
     /// Provider to use (e.g., "anthropic").
     pub provider_id: String,
+    /// Whether the model selection is pinned (no provider fallback).
+    #[serde(default)]
+    pub pinned: bool,
     /// Maximum tokens for response.
     pub max_tokens: Option<u32>,
     /// Temperature for sampling.
@@ -77,6 +80,7 @@ impl Default for AgentConfig {
             agent_id: "default".to_string(),
             model_id: "claude-sonnet-4-5-20250929".to_string(),
             provider_id: "anthropic".to_string(),
+            pinned: false,
             max_tokens: Some(8192),
             temperature: None,
         }
