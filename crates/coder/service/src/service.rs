@@ -73,6 +73,10 @@ pub struct OrgDefaults {
 
 const ORG_DEFAULTS_KEY: [&str; 2] = ["org", "defaults"];
 
+fn doom_loop_reached(threshold: u32, consecutive_failures: usize) -> bool {
+    threshold > 0 && consecutive_failures >= threshold as usize
+}
+
 /// Agent capability details for display.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AgentCapabilities {
@@ -739,6 +743,7 @@ impl ChatService {
             futures::pin_mut!(stream);
 
             let current_message_id = coder_domain::MessageId::new();
+            let mut consecutive_tool_errors = 0usize;
 
             // Emit message started
             yield ChatUpdate::MessageStarted {
@@ -791,6 +796,12 @@ impl ChatService {
                                 let ctx = tool_registry::ToolContext::new(&session.working_directory);
                                 match inner.tool_registry.execute(&tool_name, input, &ctx).await {
                                     Ok(output) => {
+                                        if output.success {
+                                            consecutive_tool_errors = 0;
+                                        } else {
+                                            consecutive_tool_errors += 1;
+                                        }
+
                                         yield ChatUpdate::ToolCompleted {
                                             session_id,
                                             tool_call_id,
@@ -800,6 +811,7 @@ impl ChatService {
                                         };
                                     }
                                     Err(e) => {
+                                        consecutive_tool_errors += 1;
                                         yield ChatUpdate::ToolCompleted {
                                             session_id,
                                             tool_call_id,
@@ -808,6 +820,27 @@ impl ChatService {
                                             duration_ms: 0,
                                         };
                                     }
+                                }
+
+                                if doom_loop_reached(inner.config.processor_config.doom_loop_threshold, consecutive_tool_errors) {
+                                    let message = format!(
+                                        "Halting after {} failed tool attempts. Please adjust your request or respond with new guidance to continue.",
+                                        consecutive_tool_errors
+                                    );
+
+                                    yield ChatUpdate::Error {
+                                        session_id,
+                                        message: message.clone(),
+                                        code: Some("DOOM_LOOP".into()),
+                                        recoverable: true,
+                                    };
+
+                                    yield ChatUpdate::SessionEnded {
+                                        session_id,
+                                        success: false,
+                                        error: Some(message),
+                                    };
+                                    return;
                                 }
                             }
                             llm::StreamEvent::Finish { finish_reason, usage, .. } => {
@@ -1456,5 +1489,13 @@ mod tests {
                 .unwrap(),
             Permission::Deny
         );
+    }
+
+    #[test]
+    fn doom_loop_helper_respects_threshold() {
+        assert!(!doom_loop_reached(0, 5));
+        assert!(!doom_loop_reached(3, 2));
+        assert!(doom_loop_reached(3, 3));
+        assert!(doom_loop_reached(3, 5));
     }
 }
