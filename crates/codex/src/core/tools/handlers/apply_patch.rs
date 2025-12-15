@@ -1,7 +1,6 @@
 use std::collections::BTreeMap;
 use std::path::Path;
 
-use crate::apply_patch;
 use crate::core::apply_patch::InternalApplyPatchInvocation;
 use crate::core::apply_patch::convert_apply_patch_to_protocol;
 use crate::core::apply_patch::apply_patch as core_apply_patch;

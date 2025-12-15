@@ -12,7 +12,6 @@ use crate::utils::git::capture_ghost_snapshot_report;
 use crate::utils::git::create_ghost_commit;
 use crate::protocol::models::ResponseItem;
 use crate::protocol::user_input::UserInput;
-use crate::stubs::readiness::Readiness;
 use crate::stubs::readiness::Token;
 use std::sync::Arc;
 use std::time::Duration;
