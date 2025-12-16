@@ -81,16 +81,14 @@ impl OnboardingScreen {
         use wgpui::Quad;
         use wgpui::color::Hsla;
 
-        // Background
+        log::debug!("Onboarding paint called, bounds: {:?}", bounds);
+
+        // Background - dark blue (hue is 0-1 normalized, so 220/360 = 0.611)
         scene.draw_quad(Quad {
             bounds,
-            background: Some(Hsla::new(220.0, 0.08, 0.08, 1.0)),
+            background: Some(Hsla::new(220.0 / 360.0, 0.15, 0.12, 1.0)),
             ..Default::default()
         });
-
-        // TODO: Implement full UI with HUD components
-        // For now, this is a placeholder that will be filled in
-        // with actual HUD button, text, and input components
 
         match self.screen_state {
             OnboardingState::Welcome => {
@@ -108,20 +106,173 @@ impl OnboardingScreen {
         }
     }
 
-    fn paint_welcome(&self, _bounds: Bounds, _scene: &mut Scene, _scale: f32) {
-        // TODO: Paint welcome screen with Generate/Import buttons
+    fn paint_welcome(&self, bounds: Bounds, scene: &mut Scene, scale: f32) {
+        use wgpui::{Point, Quad, Size};
+        use wgpui::color::Hsla;
+        use wgpui::geometry::CornerRadii;
+
+        let center_x = bounds.origin.x + bounds.size.width / 2.0;
+        let center_y = bounds.origin.y + bounds.size.height / 2.0;
+
+        // Title area - cyan accent bar at top
+        let title_bar = Bounds {
+            origin: Point { x: bounds.origin.x, y: bounds.origin.y },
+            size: Size { width: bounds.size.width, height: 60.0 * scale },
+        };
+        scene.draw_quad(Quad {
+            bounds: title_bar,
+            background: Some(Hsla::new(180.0 / 360.0, 0.8, 0.4, 1.0)), // Cyan
+            ..Default::default()
+        });
+
+        // Main content card
+        let card_width = 400.0 * scale;
+        let card_height = 300.0 * scale;
+        let card_bounds = Bounds {
+            origin: Point {
+                x: center_x - card_width / 2.0,
+                y: center_y - card_height / 2.0,
+            },
+            size: Size { width: card_width, height: card_height },
+        };
+        scene.draw_quad(Quad {
+            bounds: card_bounds,
+            background: Some(Hsla::new(220.0 / 360.0, 0.2, 0.18, 1.0)),
+            corner_radii: CornerRadii::uniform(12.0 * scale),
+            ..Default::default()
+        });
+
+        // "Generate New" button (green)
+        let btn_width = 300.0 * scale;
+        let btn_height = 50.0 * scale;
+        let generate_btn = Bounds {
+            origin: Point {
+                x: center_x - btn_width / 2.0,
+                y: center_y - btn_height - 20.0 * scale,
+            },
+            size: Size { width: btn_width, height: btn_height },
+        };
+        scene.draw_quad(Quad {
+            bounds: generate_btn,
+            background: Some(Hsla::new(140.0 / 360.0, 0.6, 0.4, 1.0)), // Green
+            corner_radii: CornerRadii::uniform(8.0 * scale),
+            ..Default::default()
+        });
+
+        // "Import Existing" button (blue)
+        let import_btn = Bounds {
+            origin: Point {
+                x: center_x - btn_width / 2.0,
+                y: center_y + 20.0 * scale,
+            },
+            size: Size { width: btn_width, height: btn_height },
+        };
+        scene.draw_quad(Quad {
+            bounds: import_btn,
+            background: Some(Hsla::new(210.0 / 360.0, 0.6, 0.5, 1.0)), // Blue
+            corner_radii: CornerRadii::uniform(8.0 * scale),
+            ..Default::default()
+        });
+
+        // Status indicator at bottom (orange if no text rendering)
+        let status_bar = Bounds {
+            origin: Point {
+                x: bounds.origin.x,
+                y: bounds.origin.y + bounds.size.height - 40.0 * scale,
+            },
+            size: Size { width: bounds.size.width, height: 40.0 * scale },
+        };
+        scene.draw_quad(Quad {
+            bounds: status_bar,
+            background: Some(Hsla::new(30.0 / 360.0, 0.8, 0.5, 1.0)), // Orange
+            ..Default::default()
+        });
+
+        log::debug!("Welcome screen painted with {} quads", 5);
     }
 
-    fn paint_show_seed(&self, _bounds: Bounds, _scene: &mut Scene, _scale: f32) {
-        // TODO: Paint seed phrase display grid
+    fn paint_show_seed(&self, bounds: Bounds, scene: &mut Scene, scale: f32) {
+        use wgpui::{Point, Quad, Size};
+        use wgpui::color::Hsla;
+        use wgpui::geometry::CornerRadii;
+
+        // Grid of 12 word slots
+        let grid_cols = 3;
+        let grid_rows = 4;
+        let slot_width = 150.0 * scale;
+        let slot_height = 40.0 * scale;
+        let gap = 10.0 * scale;
+
+        let grid_width = grid_cols as f32 * slot_width + (grid_cols - 1) as f32 * gap;
+        let grid_height = grid_rows as f32 * slot_height + (grid_rows - 1) as f32 * gap;
+        let start_x = bounds.origin.x + (bounds.size.width - grid_width) / 2.0;
+        let start_y = bounds.origin.y + (bounds.size.height - grid_height) / 2.0;
+
+        for row in 0..grid_rows {
+            for col in 0..grid_cols {
+                let slot_bounds = Bounds {
+                    origin: Point {
+                        x: start_x + col as f32 * (slot_width + gap),
+                        y: start_y + row as f32 * (slot_height + gap),
+                    },
+                    size: Size { width: slot_width, height: slot_height },
+                };
+                scene.draw_quad(Quad {
+                    bounds: slot_bounds,
+                    background: Some(Hsla::new(220.0 / 360.0, 0.2, 0.25, 1.0)),
+                    corner_radii: CornerRadii::uniform(4.0 * scale),
+                    ..Default::default()
+                });
+            }
+        }
     }
 
-    fn paint_import_seed(&self, _bounds: Bounds, _scene: &mut Scene, _scale: f32) {
-        // TODO: Paint seed import text area
+    fn paint_import_seed(&self, bounds: Bounds, scene: &mut Scene, scale: f32) {
+        use wgpui::{Point, Quad, Size};
+        use wgpui::color::Hsla;
+        use wgpui::geometry::CornerRadii;
+
+        // Text input area
+        let input_width = 500.0 * scale;
+        let input_height = 150.0 * scale;
+        let input_bounds = Bounds {
+            origin: Point {
+                x: bounds.origin.x + (bounds.size.width - input_width) / 2.0,
+                y: bounds.origin.y + (bounds.size.height - input_height) / 2.0,
+            },
+            size: Size { width: input_width, height: input_height },
+        };
+        scene.draw_quad(Quad {
+            bounds: input_bounds,
+            background: Some(Hsla::new(220.0 / 360.0, 0.15, 0.2, 1.0)),
+            corner_radii: CornerRadii::uniform(8.0 * scale),
+            ..Default::default()
+        });
     }
 
-    fn paint_confirm_backup(&self, _bounds: Bounds, _scene: &mut Scene, _scale: f32) {
-        // TODO: Paint backup confirmation checkbox
+    fn paint_confirm_backup(&self, bounds: Bounds, scene: &mut Scene, scale: f32) {
+        use wgpui::{Point, Quad, Size};
+        use wgpui::color::Hsla;
+        use wgpui::geometry::CornerRadii;
+
+        // Checkbox area
+        let checkbox_size = 30.0 * scale;
+        let center_x = bounds.origin.x + bounds.size.width / 2.0;
+        let center_y = bounds.origin.y + bounds.size.height / 2.0;
+
+        let checkbox_bounds = Bounds {
+            origin: Point {
+                x: center_x - 200.0 * scale,
+                y: center_y,
+            },
+            size: Size { width: checkbox_size, height: checkbox_size },
+        };
+        scene.draw_quad(Quad {
+            bounds: checkbox_bounds,
+            background: Some(Hsla::new(220.0 / 360.0, 0.2, 0.3, 1.0)),
+            corner_radii: CornerRadii::uniform(4.0 * scale),
+            ..Default::default()
+        });
     }
 
     /// Handle input events

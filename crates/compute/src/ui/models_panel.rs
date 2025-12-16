@@ -21,7 +21,7 @@ impl ModelsPanel {
         // Panel background
         scene.draw_quad(Quad {
             bounds,
-            background: Some(Hsla::new(220.0, 0.1, 0.15, 1.0)),
+            background: Some(Hsla::new(220.0 / 360.0, 0.1, 0.15, 1.0)),
             corner_radii: CornerRadii::uniform(8.0 * scale),
             ..Default::default()
         });
