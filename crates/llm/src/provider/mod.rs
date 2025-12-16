@@ -5,6 +5,7 @@
 
 mod anthropic;
 mod apple;
+mod groq;
 mod ollama;
 mod openai;
 mod openai_common;
@@ -12,6 +13,7 @@ mod openrouter;
 
 pub use anthropic::AnthropicProvider;
 pub use apple::AppleProvider;
+pub use groq::GroqProvider;
 pub use ollama::OllamaProvider;
 pub use openai::OpenAIProvider;
 pub use openrouter::OpenRouterProvider;
@@ -156,6 +158,14 @@ impl ProviderRegistry {
             if openai.is_available().await {
                 self.register(Arc::new(openai)).await;
                 tracing::info!("Registered OpenAI provider");
+            }
+        }
+
+        // Try Groq
+        if let Ok(groq) = GroqProvider::new() {
+            if groq.is_available().await {
+                self.register(Arc::new(groq)).await;
+                tracing::info!("Registered Groq provider");
             }
         }
 
