@@ -18,6 +18,7 @@ import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Optional, Sequence, Set, Tuple
+from urllib.parse import urlparse, urlunparse
 
 try:
     import whisper  # type: ignore
@@ -73,26 +74,33 @@ def gather_existing_numbers(transcripts_dir: Path) -> Set[int]:
 def yt_dlp_download(episode: Episode, download_dir: Path, cookies_from_browser: Optional[str]) -> Tuple[Path, dict]:
     download_dir.mkdir(parents=True, exist_ok=True)
     output_template = download_dir / f"episode-{episode.index:03}.%(ext)s"
-    cmd = [
-        "yt-dlp",
-        "--no-progress",
-        "--print-json",
-        "-o",
-        str(output_template),
-        episode.url,
-    ]
-    if cookies_from_browser:
-        cmd.extend(["--cookies-from-browser", cookies_from_browser])
+    errors: List[str] = []
 
-    result = subprocess.run(cmd, capture_output=True, text=True)
-    if result.returncode != 0:
-        raise RuntimeError(f"yt-dlp failed for {episode.url}: {result.stderr.strip()}")
+    for candidate in candidate_urls(episode.url):
+        cmd = [
+            "yt-dlp",
+            "--no-progress",
+            "--print-json",
+            "-o",
+            str(output_template),
+            candidate,
+        ]
+        if cookies_from_browser:
+            cmd.extend(["--cookies-from-browser", cookies_from_browser])
 
-    info = _extract_json_line(result.stdout)
-    media_path = _resolve_download_path(download_dir, episode.index)
-    if not media_path:
-        raise FileNotFoundError(f"Could not locate downloaded media for episode {episode.index}")
-    return media_path, info or {}
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        if result.returncode != 0:
+            errors.append(result.stderr.strip() or result.stdout.strip())
+            continue
+
+        info = _extract_json_line(result.stdout)
+        media_path = _resolve_download_path(download_dir, episode.index)
+        if media_path:
+            return media_path, info or {}
+        errors.append("Download completed but media file was not found.")
+
+    failure_msg = errors[-1] if errors else "Unknown error"
+    raise RuntimeError(f"yt-dlp failed for {episode.url}: {failure_msg}")
 
 
 def _extract_json_line(output: str) -> Optional[dict]:
@@ -114,6 +122,16 @@ def _resolve_download_path(download_dir: Path, index: int) -> Optional[Path]:
         if path.suffix in media_exts and not path.name.endswith(".part"):
             return path
     return None
+
+
+def candidate_urls(url: str) -> List[str]:
+    parsed = urlparse(url)
+    candidates = [url]
+    if "twitter.com" in parsed.netloc:
+        candidates.append(urlunparse(parsed._replace(netloc="x.com")))
+    elif parsed.netloc == "x.com":
+        candidates.append(urlunparse(parsed._replace(netloc="twitter.com")))
+    return candidates
 
 
 def format_duration(seconds: Optional[float]) -> str:
@@ -205,6 +223,12 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     parser.add_argument("--language", type=str, default=None, help="Force language (e.g., en)")
     parser.add_argument("--cookies-from-browser", type=str, default=None, help="Pass to yt-dlp if login is required")
     parser.add_argument("--overwrite", action="store_true", help="Recreate transcripts even if present")
+    parser.add_argument(
+        "--order",
+        choices=["asc", "desc"],
+        default="asc",
+        help="Order to process missing episodes (default: ascending/index order)",
+    )
     args = parser.parse_args(argv)
 
     episodes = parse_series(args.series_file)
@@ -213,6 +237,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
 
     existing = set() if args.overwrite else gather_existing_numbers(args.transcripts_dir)
     missing = [ep for ep in episodes if ep.index not in existing]
+    missing.sort(key=lambda ep: ep.index, reverse=args.order == "desc")
     if args.limit and args.limit > 0:
         missing = missing[: args.limit]
 
@@ -223,16 +248,27 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     print(f"Found {len(missing)} missing episodes. Preparing to process {len(missing)}.")
     model = whisper.load_model(args.model)
 
+    failures: List[Tuple[Episode, Exception]] = []
     for episode in missing:
         print(f"Processing episode {episode.index:03d}: {episode.title}")
-        with tempfile.TemporaryDirectory() as tmpdir:
-            tmp_path = Path(tmpdir)
-            media_path, info = yt_dlp_download(episode, tmp_path, args.cookies_from_browser)
-            result = model.transcribe(str(media_path), language=args.language, verbose=False)
-        markdown = render_markdown(episode, info, result, args.model)
-        output_path = args.transcripts_dir / f"{episode.index:03d}.md"
-        output_path.write_text(markdown, encoding="utf-8")
-        print(f"Saved transcript to {output_path}")
+        try:
+            with tempfile.TemporaryDirectory() as tmpdir:
+                tmp_path = Path(tmpdir)
+                media_path, info = yt_dlp_download(episode, tmp_path, args.cookies_from_browser)
+                result = model.transcribe(str(media_path), language=args.language, verbose=False)
+            markdown = render_markdown(episode, info, result, args.model)
+            output_path = args.transcripts_dir / f"{episode.index:03d}.md"
+            output_path.write_text(markdown, encoding="utf-8")
+            print(f"Saved transcript to {output_path}")
+        except Exception as exc:  # pragma: no cover - runtime workflow
+            failures.append((episode, exc))
+            print(f"Failed episode {episode.index:03d}: {exc}")
+
+    if failures:
+        print("The following episodes failed:")
+        for episode, exc in failures:
+            print(f"- {episode.index:03d} ({episode.url}): {exc}")
+        return 1
 
     return 0
 
