@@ -14,6 +14,7 @@ use reqwest::Client;
 const DEFAULT_BASE_URL: &str = "https://api.groq.com/openai/v1";
 
 /// Groq provider using OpenAI-compatible API.
+#[derive(Clone)]
 pub struct GroqProvider {
     client: Client,
     api_key: String,
