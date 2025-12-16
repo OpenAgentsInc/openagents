@@ -493,6 +493,7 @@ impl ToolCallState {
 struct OpenAIStreamChunk {
     id: Option<String>,
     model: Option<String>,
+    #[serde(default)]
     choices: Vec<OpenAIChoice>,
     usage: Option<OpenAIUsage>,
 }
