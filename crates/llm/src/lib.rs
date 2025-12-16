@@ -28,8 +28,8 @@ pub mod stream;
 
 // Re-exports
 pub use message::{
-    CompletionRequest, ContentBlock, ImageSource, Message, ProviderOptions, Role, Tool,
-    ToolChoice, ToolResultContent,
+    CompletionRequest, ContentBlock, ImageSource, Message, ProviderOptions, Role, Tool, ToolChoice,
+    ToolResultContent,
 };
 pub use model::{ModelCapabilities, ModelInfo, ModelLimits, ModelPricing, ModelStatus};
 pub use provider::{LlmProvider, ProviderCapabilities, ProviderError, ProviderRegistry};

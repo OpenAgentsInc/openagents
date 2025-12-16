@@ -616,3 +616,62 @@ pub mod openrouter {
         ]
     }
 }
+
+/// Groq model definitions.
+///
+/// Groq provides ultra-fast inference using their custom LPU hardware.
+/// We focus on OpenAI's GPT-OSS models which have reasoning capabilities.
+pub mod groq {
+    use super::*;
+
+    /// OpenAI GPT-OSS 120B - flagship open-weight model with reasoning.
+    pub fn gpt_oss_120b() -> ModelInfo {
+        ModelInfo::builder("openai/gpt-oss-120b", "groq")
+            .name("GPT-OSS 120B")
+            .family("gpt-oss")
+            .capabilities(ModelCapabilities {
+                temperature: true,
+                reasoning: true,
+                tool_calling: true,
+                vision: false,
+                pdf: false,
+                audio: false,
+                video: false,
+                streaming: true,
+                caching: false,
+                interleaved_thinking: None,
+                fine_grained_tool_streaming: None,
+            })
+            .pricing(ModelPricing::new(0.15, 0.60))
+            .limits(ModelLimits::new(131_072, 65_536))
+            .build()
+    }
+
+    /// OpenAI GPT-OSS 20B - faster, smaller reasoning model.
+    pub fn gpt_oss_20b() -> ModelInfo {
+        ModelInfo::builder("openai/gpt-oss-20b", "groq")
+            .name("GPT-OSS 20B")
+            .family("gpt-oss")
+            .capabilities(ModelCapabilities {
+                temperature: true,
+                reasoning: true,
+                tool_calling: true,
+                vision: false,
+                pdf: false,
+                audio: false,
+                video: false,
+                streaming: true,
+                caching: false,
+                interleaved_thinking: None,
+                fine_grained_tool_streaming: None,
+            })
+            .pricing(ModelPricing::new(0.075, 0.30))
+            .limits(ModelLimits::new(131_072, 65_536))
+            .build()
+    }
+
+    /// All Groq models.
+    pub fn all() -> Vec<ModelInfo> {
+        vec![gpt_oss_120b(), gpt_oss_20b()]
+    }
+}
