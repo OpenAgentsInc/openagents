@@ -8,8 +8,8 @@ use crate::scene::Scene;
 use crate::text::TextSystem;
 use std::cell::RefCell;
 use std::rc::Rc;
-use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
+use wasm_bindgen::prelude::*;
 use web_sys::HtmlCanvasElement;
 
 /// Web platform for running wgpui in a browser.

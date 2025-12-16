@@ -1,9 +1,5 @@
 use std::sync::Arc;
 
-use async_trait::async_trait;
-use crate::protocol::items::TurnItem;
-use crate::protocol::models::ContentItem;
-use crate::protocol::models::ResponseItem;
 use crate::core::protocol::AgentMessageContentDeltaEvent;
 use crate::core::protocol::AgentMessageDeltaEvent;
 use crate::core::protocol::Event;
@@ -11,6 +7,10 @@ use crate::core::protocol::EventMsg;
 use crate::core::protocol::ExitedReviewModeEvent;
 use crate::core::protocol::ItemCompletedEvent;
 use crate::core::protocol::ReviewOutputEvent;
+use crate::protocol::items::TurnItem;
+use crate::protocol::models::ContentItem;
+use crate::protocol::models::ResponseItem;
+use async_trait::async_trait;
 use tokio_util::sync::CancellationToken;
 
 use crate::core::codex::Session;
@@ -200,8 +200,8 @@ pub(crate) async fn exit_review_mode(
             let block = format_review_findings_block(&out.findings, None);
             findings_str.push_str(&format!("\n{block}"));
         }
-        let rendered =
-            crate::core::client_common::REVIEW_EXIT_SUCCESS_TMPL.replace("{results}", &findings_str);
+        let rendered = crate::core::client_common::REVIEW_EXIT_SUCCESS_TMPL
+            .replace("{results}", &findings_str);
         let assistant_message = render_review_output_text(&out);
         (rendered, assistant_message)
     } else {

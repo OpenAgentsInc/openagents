@@ -201,10 +201,12 @@ impl Table {
                 self.header_height,
             );
 
-            scene.draw_quad(
-                wgpui::Quad::new(header_bounds)
-                    .with_background(Hsla::new(0.0, 0.0, 1.0, 0.03 * header_eased))
-            );
+            scene.draw_quad(wgpui::Quad::new(header_bounds).with_background(Hsla::new(
+                0.0,
+                0.0,
+                1.0,
+                0.03 * header_eased,
+            )));
 
             // Draw header underline
             scene.draw_quad(
@@ -219,7 +221,7 @@ impl Table {
                     hud::FRAME_DIM.s,
                     hud::FRAME_DIM.l,
                     hud::FRAME_DIM.a * header_eased,
-                ))
+                )),
             );
 
             // Draw header text
@@ -264,7 +266,7 @@ impl Table {
                         bounds.size.width,
                         self.row_height,
                     ))
-                    .with_background(Hsla::new(0.0, 0.0, 1.0, 0.02 * eased))
+                    .with_background(Hsla::new(0.0, 0.0, 1.0, 0.02 * eased)),
                 );
             }
 
@@ -278,12 +280,8 @@ impl Table {
                 }
 
                 let text_y = row_y + (self.row_height - self.font_size) / 2.0;
-                let text_color = Hsla::new(
-                    hud::TEXT.h,
-                    hud::TEXT.s,
-                    hud::TEXT.l,
-                    hud::TEXT.a * eased,
-                );
+                let text_color =
+                    Hsla::new(hud::TEXT.h, hud::TEXT.s, hud::TEXT.l, hud::TEXT.a * eased);
 
                 let text_run = text_system.layout(
                     cell,

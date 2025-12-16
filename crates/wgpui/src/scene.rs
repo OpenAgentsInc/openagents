@@ -86,16 +86,24 @@ impl GpuQuad {
                 .background
                 .map(|c| {
                     #[cfg(not(target_arch = "wasm32"))]
-                    { c.to_linear_rgba() } // Desktop: Convert to linear for Metal's sRGB handling
+                    {
+                        c.to_linear_rgba()
+                    } // Desktop: Convert to linear for Metal's sRGB handling
                     #[cfg(target_arch = "wasm32")]
-                    { c.to_rgba() } // Web: Keep as sRGB (WebGL/WebGPU don't auto-convert)
+                    {
+                        c.to_rgba()
+                    } // Web: Keep as sRGB (WebGL/WebGPU don't auto-convert)
                 })
                 .unwrap_or([0.0, 0.0, 0.0, 0.0]),
             border_color: {
                 #[cfg(not(target_arch = "wasm32"))]
-                { quad.border_color.to_linear_rgba() } // Desktop: Convert to linear
+                {
+                    quad.border_color.to_linear_rgba()
+                } // Desktop: Convert to linear
                 #[cfg(target_arch = "wasm32")]
-                { quad.border_color.to_rgba() } // Web: Keep as sRGB
+                {
+                    quad.border_color.to_rgba()
+                } // Web: Keep as sRGB
             },
             border_width: quad.border_width,
             corner_radii: quad.corner_radii.to_array(),
@@ -167,9 +175,13 @@ impl GpuTextQuad {
             uv: glyph.uv,
             color: {
                 #[cfg(not(target_arch = "wasm32"))]
-                { color.to_linear_rgba() } // Desktop: Convert to linear for Metal's sRGB handling
+                {
+                    color.to_linear_rgba()
+                } // Desktop: Convert to linear for Metal's sRGB handling
                 #[cfg(target_arch = "wasm32")]
-                { color.to_rgba() } // Web: Keep as sRGB (WebGL/WebGPU don't auto-convert)
+                {
+                    color.to_rgba()
+                } // Web: Keep as sRGB (WebGL/WebGPU don't auto-convert)
             },
         }
     }

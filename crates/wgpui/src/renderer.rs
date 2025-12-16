@@ -141,12 +141,11 @@ impl Renderer {
         });
 
         // Quad pipeline
-        let quad_pipeline_layout =
-            device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-                label: Some("Quad Pipeline Layout"),
-                bind_group_layouts: &[&uniform_bind_group_layout],
-                push_constant_ranges: &[],
-            });
+        let quad_pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("Quad Pipeline Layout"),
+            bind_group_layouts: &[&uniform_bind_group_layout],
+            push_constant_ranges: &[],
+        });
 
         let quad_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             label: Some("Quad Pipeline"),
@@ -224,12 +223,11 @@ impl Renderer {
         });
 
         // Text pipeline
-        let text_pipeline_layout =
-            device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-                label: Some("Text Pipeline Layout"),
-                bind_group_layouts: &[&uniform_bind_group_layout, &atlas_bind_group_layout],
-                push_constant_ranges: &[],
-            });
+        let text_pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("Text Pipeline Layout"),
+            bind_group_layouts: &[&uniform_bind_group_layout, &atlas_bind_group_layout],
+            push_constant_ranges: &[],
+        });
 
         let text_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             label: Some("Text Pipeline"),
@@ -350,12 +348,13 @@ impl Renderer {
         // Create quad instance buffer
         let quads = scene.gpu_quads();
         if !quads.is_empty() {
-            self.quad_instance_buffer =
-                Some(device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            self.quad_instance_buffer = Some(device.create_buffer_init(
+                &wgpu::util::BufferInitDescriptor {
                     label: Some("Quad Instance Buffer"),
                     contents: bytemuck::cast_slice(&quads),
                     usage: wgpu::BufferUsages::VERTEX,
-                }));
+                },
+            ));
             self.quad_count = quads.len() as u32;
         } else {
             self.quad_instance_buffer = None;
@@ -365,12 +364,13 @@ impl Renderer {
         // Create text instance buffer
         let text_quads = scene.gpu_text_quads();
         if !text_quads.is_empty() {
-            self.text_instance_buffer =
-                Some(device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            self.text_instance_buffer = Some(device.create_buffer_init(
+                &wgpu::util::BufferInitDescriptor {
                     label: Some("Text Instance Buffer"),
                     contents: bytemuck::cast_slice(&text_quads),
                     usage: wgpu::BufferUsages::VERTEX,
-                }));
+                },
+            ));
             self.text_count = text_quads.len() as u32;
         } else {
             self.text_instance_buffer = None;

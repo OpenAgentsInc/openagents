@@ -110,7 +110,12 @@ impl GridLinesBackground {
             return;
         }
 
-        let color = Hsla::new(self.color.h, self.color.s, self.color.l, self.color.a * progress);
+        let color = Hsla::new(
+            self.color.h,
+            self.color.s,
+            self.color.l,
+            self.color.a * progress,
+        );
         let w = self.line_width;
 
         let x = bounds.origin.x;
@@ -123,8 +128,7 @@ impl GridLinesBackground {
             let mut line_x = x;
             while line_x <= x + width {
                 scene.draw_quad(
-                    Quad::new(Bounds::new(line_x - w / 2.0, y, w, height))
-                        .with_background(color),
+                    Quad::new(Bounds::new(line_x - w / 2.0, y, w, height)).with_background(color),
                 );
                 line_x += self.spacing;
             }
@@ -135,8 +139,7 @@ impl GridLinesBackground {
             let mut line_y = y;
             while line_y <= y + height {
                 scene.draw_quad(
-                    Quad::new(Bounds::new(x, line_y - w / 2.0, width, w))
-                        .with_background(color),
+                    Quad::new(Bounds::new(x, line_y - w / 2.0, width, w)).with_background(color),
                 );
                 line_y += self.spacing;
             }

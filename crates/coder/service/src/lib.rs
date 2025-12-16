@@ -47,8 +47,8 @@ pub use service::{ChatService, ChatStream, ServiceConfig, ServiceError};
 pub use update::{ChatUpdate, MessageRole, SessionStatus};
 
 // Re-export commonly used types from dependencies
-pub use coder_domain::ids::{MessageId, SessionId, ThreadId};
 pub use coder_domain::PermissionId;
+pub use coder_domain::ids::{MessageId, SessionId, ThreadId};
 pub use coder_permission::{PermissionRequest, Response as PermissionResponse};
 pub use coder_session::{AgentConfig, Session};
 pub use coder_storage::Storage;

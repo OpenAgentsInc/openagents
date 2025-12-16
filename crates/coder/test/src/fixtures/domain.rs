@@ -1,7 +1,7 @@
 //! Domain fixture for setting up domain entities.
 
-use coder_domain::{Message, Role, SessionId, ThreadId};
 use chrono::{DateTime, Utc};
+use coder_domain::{Message, Role, SessionId, ThreadId};
 
 /// Simple session struct for testing (not from coder_domain which stores in DB).
 #[derive(Debug, Clone)]

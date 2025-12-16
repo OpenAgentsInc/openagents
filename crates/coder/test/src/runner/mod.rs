@@ -107,7 +107,10 @@ impl TestResults {
 
     /// Get failure messages.
     pub fn failures(&self) -> Vec<&StoryResult> {
-        self.results.iter().filter(|r| r.outcome.is_failed()).collect()
+        self.results
+            .iter()
+            .filter(|r| r.outcome.is_failed())
+            .collect()
     }
 
     /// Get pass rate as percentage.
@@ -179,7 +182,9 @@ impl TestRunner {
         let start = Instant::now();
 
         // Get stories to run (apply filters)
-        let stories: Vec<&Story> = self.inventory.stories()
+        let stories: Vec<&Story> = self
+            .inventory
+            .stories()
             .iter()
             .filter(|s| self.should_run(s))
             .collect();
@@ -357,20 +362,10 @@ mod tests {
 
     #[test]
     fn test_runner_serial() {
-        let mut runner = TestRunner::new(
-            RunnerConfig::new().parallelism(Parallelism::Serial)
-        );
+        let mut runner = TestRunner::new(RunnerConfig::new().parallelism(Parallelism::Serial));
 
-        runner.add_story(
-            StoryBuilder::new("test 1")
-                .then(|_| {})
-                .build()
-        );
-        runner.add_story(
-            StoryBuilder::new("test 2")
-                .then(|_| {})
-                .build()
-        );
+        runner.add_story(StoryBuilder::new("test 1").then(|_| {}).build());
+        runner.add_story(StoryBuilder::new("test 2").then(|_| {}).build());
 
         let results = runner.run();
 
@@ -382,19 +377,15 @@ mod tests {
 
     #[test]
     fn test_runner_with_failure() {
-        let mut runner = TestRunner::new(
-            RunnerConfig::new().parallelism(Parallelism::Serial)
-        );
+        let mut runner = TestRunner::new(RunnerConfig::new().parallelism(Parallelism::Serial));
 
-        runner.add_story(
-            StoryBuilder::new("passing")
-                .then(|_| {})
-                .build()
-        );
+        runner.add_story(StoryBuilder::new("passing").then(|_| {}).build());
         runner.add_story(
             StoryBuilder::new("failing")
-                .then(|_| { panic!("intentional failure"); })
-                .build()
+                .then(|_| {
+                    panic!("intentional failure");
+                })
+                .build(),
         );
 
         let results = runner.run();
@@ -410,7 +401,7 @@ mod tests {
         let mut runner = TestRunner::new(
             RunnerConfig::new()
                 .parallelism(Parallelism::Serial)
-                .filter("chat")
+                .filter("chat"),
         );
 
         runner.add_story(StoryBuilder::new("chat feature").then(|_| {}).build());
@@ -427,20 +418,16 @@ mod tests {
         let mut runner = TestRunner::new(
             RunnerConfig::new()
                 .parallelism(Parallelism::Serial)
-                .tags(["smoke"])
+                .tags(["smoke"]),
         );
 
         runner.add_story(
             StoryBuilder::new("with tag")
                 .tagged("smoke")
                 .then(|_| {})
-                .build()
+                .build(),
         );
-        runner.add_story(
-            StoryBuilder::new("without tag")
-                .then(|_| {})
-                .build()
-        );
+        runner.add_story(StoryBuilder::new("without tag").then(|_| {}).build());
 
         let results = runner.run();
 

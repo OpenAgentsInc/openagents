@@ -88,10 +88,12 @@ impl Figure {
         let frame_color = Hsla::new(self.color.h, self.color.s, self.color.l, frame_alpha);
 
         // Draw background
-        scene.draw_quad(
-            wgpui::Quad::new(bounds)
-                .with_background(Hsla::new(0.0, 0.0, 0.0, 0.5 * progress)),
-        );
+        scene.draw_quad(wgpui::Quad::new(bounds).with_background(Hsla::new(
+            0.0,
+            0.0,
+            0.0,
+            0.5 * progress,
+        )));
 
         // Draw corner frame
         let corner = self.corner_size;
@@ -101,13 +103,15 @@ impl Figure {
             wgpui::Quad::new(Bounds::from_origin_size(
                 Point::new(bounds.x(), bounds.y()),
                 Size::new(corner * progress, 1.0),
-            )).with_background(frame_color),
+            ))
+            .with_background(frame_color),
         );
         scene.draw_quad(
             wgpui::Quad::new(Bounds::from_origin_size(
                 Point::new(bounds.x(), bounds.y()),
                 Size::new(1.0, corner * progress),
-            )).with_background(frame_color),
+            ))
+            .with_background(frame_color),
         );
 
         // Top-right
@@ -115,13 +119,15 @@ impl Figure {
             wgpui::Quad::new(Bounds::from_origin_size(
                 Point::new(bounds.x() + bounds.width() - corner * progress, bounds.y()),
                 Size::new(corner * progress, 1.0),
-            )).with_background(frame_color),
+            ))
+            .with_background(frame_color),
         );
         scene.draw_quad(
             wgpui::Quad::new(Bounds::from_origin_size(
                 Point::new(bounds.x() + bounds.width() - 1.0, bounds.y()),
                 Size::new(1.0, corner * progress),
-            )).with_background(frame_color),
+            ))
+            .with_background(frame_color),
         );
 
         // Bottom-left
@@ -129,27 +135,37 @@ impl Figure {
             wgpui::Quad::new(Bounds::from_origin_size(
                 Point::new(bounds.x(), bounds.y() + bounds.height() - 1.0),
                 Size::new(corner * progress, 1.0),
-            )).with_background(frame_color),
+            ))
+            .with_background(frame_color),
         );
         scene.draw_quad(
             wgpui::Quad::new(Bounds::from_origin_size(
                 Point::new(bounds.x(), bounds.y() + bounds.height() - corner * progress),
                 Size::new(1.0, corner * progress),
-            )).with_background(frame_color),
+            ))
+            .with_background(frame_color),
         );
 
         // Bottom-right
         scene.draw_quad(
             wgpui::Quad::new(Bounds::from_origin_size(
-                Point::new(bounds.x() + bounds.width() - corner * progress, bounds.y() + bounds.height() - 1.0),
+                Point::new(
+                    bounds.x() + bounds.width() - corner * progress,
+                    bounds.y() + bounds.height() - 1.0,
+                ),
                 Size::new(corner * progress, 1.0),
-            )).with_background(frame_color),
+            ))
+            .with_background(frame_color),
         );
         scene.draw_quad(
             wgpui::Quad::new(Bounds::from_origin_size(
-                Point::new(bounds.x() + bounds.width() - 1.0, bounds.y() + bounds.height() - corner * progress),
+                Point::new(
+                    bounds.x() + bounds.width() - 1.0,
+                    bounds.y() + bounds.height() - corner * progress,
+                ),
                 Size::new(1.0, corner * progress),
-            )).with_background(frame_color),
+            ))
+            .with_background(frame_color),
         );
     }
 
@@ -169,10 +185,12 @@ impl Figure {
                 Point::new(content.x(), y),
                 Size::new(content.width(), 1.0),
             );
-            scene.draw_quad(
-                wgpui::Quad::new(scanline_bounds)
-                    .with_background(Hsla::new(0.0, 0.0, 0.0, 0.15 * progress)),
-            );
+            scene.draw_quad(wgpui::Quad::new(scanline_bounds).with_background(Hsla::new(
+                0.0,
+                0.0,
+                0.0,
+                0.15 * progress,
+            )));
             y += scanline_spacing;
         }
     }
@@ -198,10 +216,12 @@ impl Figure {
                 Point::new(bounds.x(), caption_y - 4.0),
                 Size::new(bounds.width(), 24.0),
             );
-            scene.draw_quad(
-                wgpui::Quad::new(caption_bg)
-                    .with_background(Hsla::new(0.0, 0.0, 0.0, 0.7 * progress)),
-            );
+            scene.draw_quad(wgpui::Quad::new(caption_bg).with_background(Hsla::new(
+                0.0,
+                0.0,
+                0.0,
+                0.7 * progress,
+            )));
 
             // Caption text
             let caption_run = text_system.layout(

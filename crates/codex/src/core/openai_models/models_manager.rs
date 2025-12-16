@@ -1,10 +1,10 @@
-use chrono::Utc;
 use crate::api::ModelsClient;
 use crate::api::ReqwestTransport;
-use crate::stubs::app_server_protocol::AuthMode;
 use crate::protocol::openai_models::ModelInfo;
 use crate::protocol::openai_models::ModelPreset;
 use crate::protocol::openai_models::ModelsResponse;
+use crate::stubs::app_server_protocol::AuthMode;
+use chrono::Utc;
 use http::HeaderMap;
 use std::path::PathBuf;
 use std::sync::Arc;

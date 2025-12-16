@@ -1,9 +1,9 @@
-use chrono::DateTime;
-use chrono::Utc;
 use crate::api::AuthProvider as ApiAuthProvider;
 use crate::api::TransportError;
 use crate::api::error::ApiError;
 use crate::api::rate_limits::parse_rate_limit;
+use chrono::DateTime;
+use chrono::Utc;
 use http::HeaderMap;
 use serde::Deserialize;
 

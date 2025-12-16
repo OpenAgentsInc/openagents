@@ -1,7 +1,7 @@
 //! Progress tracking with taskmaster integration.
 
-use crate::discovery::DiscoveredTask;
 use crate::Result;
+use crate::discovery::DiscoveredTask;
 use std::path::PathBuf;
 use std::sync::Arc;
 use taskmaster::{IssueRepository, SqliteRepository};
@@ -70,11 +70,7 @@ impl ProgressTracker {
     }
 
     /// Mark a task as completed successfully.
-    pub fn task_completed(
-        &self,
-        task: &DiscoveredTask,
-        commits: Vec<String>,
-    ) -> Result<()> {
+    pub fn task_completed(&self, task: &DiscoveredTask, commits: Vec<String>) -> Result<()> {
         if let Some(repo) = &self.repo {
             if let crate::discovery::TaskDiscoverySource::Taskmaster { issue_id } = &task.source {
                 repo.close(

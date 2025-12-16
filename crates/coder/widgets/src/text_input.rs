@@ -397,7 +397,8 @@ impl Widget for TextInput {
                 } else {
                     (self.cursor, start)
                 };
-                let from_x = text_x + self.value[..from].chars().count() as f32 * self.font_size * 0.6;
+                let from_x =
+                    text_x + self.value[..from].chars().count() as f32 * self.font_size * 0.6;
                 let to_x = text_x + self.value[..to].chars().count() as f32 * self.font_size * 0.6;
 
                 cx.scene.draw_quad(
@@ -420,12 +421,9 @@ impl Widget for TextInput {
         };
 
         if !text.is_empty() {
-            let text_run = cx.text.layout(
-                text,
-                Point::new(text_x, text_y),
-                self.font_size,
-                color,
-            );
+            let text_run = cx
+                .text
+                .layout(text, Point::new(text_x, text_y), self.font_size, color);
             cx.scene.draw_text(text_run);
         }
 
@@ -446,7 +444,9 @@ impl Widget for TextInput {
 
     fn event(&mut self, event: &InputEvent, bounds: Bounds, _cx: &mut EventContext) -> EventResult {
         match event {
-            InputEvent::MouseDown { position, button, .. } => {
+            InputEvent::MouseDown {
+                position, button, ..
+            } => {
                 if *button == MouseButton::Left && bounds.contains(*position) {
                     self.focused = true;
                     self.cursor_blink_frame = 0;
@@ -549,7 +549,9 @@ impl Widget for TextInput {
                 }
             }
 
-            InputEvent::FocusIn if bounds.contains(Point::new(bounds.origin.x, bounds.origin.y)) => {
+            InputEvent::FocusIn
+                if bounds.contains(Point::new(bounds.origin.x, bounds.origin.y)) =>
+            {
                 self.focused = true;
                 self.cursor_blink_frame = 0;
                 return EventResult::Handled;

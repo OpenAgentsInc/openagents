@@ -115,17 +115,29 @@ impl MarkdownRenderer {
                 self.render_unordered_list(items, origin, max_width, text_system, scene, opacity)
             }
 
-            MarkdownBlock::OrderedList { start, items } => {
-                self.render_ordered_list(*start, items, origin, max_width, text_system, scene, opacity)
-            }
+            MarkdownBlock::OrderedList { start, items } => self.render_ordered_list(
+                *start,
+                items,
+                origin,
+                max_width,
+                text_system,
+                scene,
+                opacity,
+            ),
 
             MarkdownBlock::HorizontalRule => {
                 self.render_horizontal_rule(origin, max_width, scene, opacity)
             }
 
-            MarkdownBlock::Table { headers, rows } => {
-                self.render_table(headers, rows, origin, max_width, text_system, scene, opacity)
-            }
+            MarkdownBlock::Table { headers, rows } => self.render_table(
+                headers,
+                rows,
+                origin,
+                max_width,
+                text_system,
+                scene,
+                opacity,
+            ),
         }
     }
 
@@ -152,11 +164,7 @@ impl MarkdownRenderer {
             let mut line_height = 0.0f32;
 
             for span in &line.spans {
-                let text_size = text_system.measure_size(
-                    &span.text,
-                    span.style.font_size,
-                    None,
-                );
+                let text_size = text_system.measure_size(&span.text, span.style.font_size, None);
 
                 // Render background if present (with opacity)
                 if let Some(bg) = span.style.background {
@@ -242,11 +250,19 @@ impl MarkdownRenderer {
         let total_height = content_height + padding * 2.0;
 
         // Draw background with opacity
-        let bg_color = self.config.code_background.with_alpha(self.config.code_background.a * opacity);
+        let bg_color = self
+            .config
+            .code_background
+            .with_alpha(self.config.code_background.a * opacity);
         scene.draw_quad(
-            Quad::new(Bounds::new(origin.x, origin.y + margin, max_width, total_height))
-                .with_background(bg_color)
-                .with_uniform_radius(theme::radius::DEFAULT),
+            Quad::new(Bounds::new(
+                origin.x,
+                origin.y + margin,
+                max_width,
+                total_height,
+            ))
+            .with_background(bg_color)
+            .with_uniform_radius(theme::radius::DEFAULT),
         );
 
         // Draw lines
@@ -329,7 +345,10 @@ impl MarkdownRenderer {
             let item_y = y;
 
             // Render bullet with opacity
-            let bullet_color = self.config.text_color.with_alpha(self.config.text_color.a * opacity);
+            let bullet_color = self
+                .config
+                .text_color
+                .with_alpha(self.config.text_color.a * opacity);
             let bullet_run = text_system.layout(
                 "\u{2022}", // bullet character
                 Point::new(bullet_x, item_y),
@@ -375,7 +394,10 @@ impl MarkdownRenderer {
             let number = start + i as u64;
 
             // Render number with opacity
-            let number_color = self.config.text_color.with_alpha(self.config.text_color.a * opacity);
+            let number_color = self
+                .config
+                .text_color
+                .with_alpha(self.config.text_color.a * opacity);
             let number_run = text_system.layout(
                 &format!("{}.", number),
                 Point::new(number_x, item_y),
@@ -455,8 +477,7 @@ impl MarkdownRenderer {
         // Header border with opacity
         let border_color = theme::border::DEFAULT.with_alpha(opacity);
         scene.draw_quad(
-            Quad::new(Bounds::new(origin.x, y, max_width, 1.0))
-                .with_background(border_color),
+            Quad::new(Bounds::new(origin.x, y, max_width, 1.0)).with_background(border_color),
         );
         y += 1.0;
 

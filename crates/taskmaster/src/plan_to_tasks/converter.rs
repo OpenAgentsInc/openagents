@@ -3,8 +3,7 @@
 use std::collections::HashMap;
 
 use crate::{
-    Dependency, DependencyType, IdMethod, Issue, IssueCreate, IssueRepository,
-    TaskmasterError,
+    Dependency, DependencyType, IdMethod, Issue, IssueCreate, IssueRepository, TaskmasterError,
 };
 
 use super::parser::ParsedPlan;
@@ -80,7 +79,11 @@ pub fn convert_to_tasks<R: IssueRepository>(
 
         if dry_run {
             // For dry run, create a mock issue
-            let mock_id = format!("{}-{}", prefix, uuid::Uuid::new_v4().to_string()[..8].to_string());
+            let mock_id = format!(
+                "{}-{}",
+                prefix,
+                uuid::Uuid::new_v4().to_string()[..8].to_string()
+            );
             title_to_id.insert(task.title.clone(), mock_id.clone());
 
             let mock_issue = Issue {
@@ -169,7 +172,10 @@ pub fn print_summary(result: &ConversionResult, dry_run: bool) {
     let mode = if dry_run { "[DRY RUN] " } else { "" };
 
     println!("\n{}Conversion Summary:", mode.yellow());
-    println!("  {} tasks created", result.created.len().to_string().green());
+    println!(
+        "  {} tasks created",
+        result.created.len().to_string().green()
+    );
 
     if !result.skipped.is_empty() {
         println!(

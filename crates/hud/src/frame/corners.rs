@@ -121,7 +121,12 @@ impl FrameCorners {
 
         // Animate both length and alpha
         let alpha = progress;
-        let color = Hsla::new(self.color.h, self.color.s, self.color.l, self.color.a * alpha);
+        let color = Hsla::new(
+            self.color.h,
+            self.color.s,
+            self.color.l,
+            self.color.a * alpha,
+        );
 
         // Animate corner length from 0 to full
         let animated_length = self.corner_length * progress;

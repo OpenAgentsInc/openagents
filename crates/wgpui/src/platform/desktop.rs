@@ -4,9 +4,7 @@
 //! macOS, Windows, and Linux.
 
 use crate::geometry::Size;
-use crate::input::{
-    Cursor, InputEvent, Key, KeyCode, Modifiers, MouseButton, NamedKey,
-};
+use crate::input::{Cursor, InputEvent, Key, KeyCode, Modifiers, MouseButton, NamedKey};
 use crate::platform::Platform;
 use crate::renderer::Renderer;
 use crate::scene::Scene;
@@ -59,11 +57,9 @@ impl DesktopPlatform {
         }))
         .ok_or("No adapter found")?;
 
-        let (device, queue) = pollster::block_on(adapter.request_device(
-            &wgpu::DeviceDescriptor::default(),
-            None,
-        ))
-        .map_err(|e| format!("Failed to create device: {:?}", e))?;
+        let (device, queue) =
+            pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor::default(), None))
+                .map_err(|e| format!("Failed to create device: {:?}", e))?;
 
         // Configure surface
         let surface_caps = surface.get_capabilities(&adapter);
@@ -157,10 +153,7 @@ impl DesktopPlatform {
                     }
                     winit::event::MouseScrollDelta::PixelDelta(pos) => {
                         let scale = self.scale_factor;
-                        crate::geometry::Point::new(
-                            pos.x as f32 / scale,
-                            pos.y as f32 / scale,
-                        )
+                        crate::geometry::Point::new(pos.x as f32 / scale, pos.y as f32 / scale)
                     }
                 };
                 Some(InputEvent::Wheel {

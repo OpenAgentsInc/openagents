@@ -89,7 +89,11 @@ pub mod otel_manager {
         }
 
         /// No-op: Record response
-        pub fn record_responses<T: std::fmt::Debug>(&self, _responses: &T, _event: impl std::fmt::Debug) {
+        pub fn record_responses<T: std::fmt::Debug>(
+            &self,
+            _responses: &T,
+            _event: impl std::fmt::Debug,
+        ) {
             // No-op
         }
 
@@ -147,7 +151,13 @@ pub mod otel_manager {
         }
 
         /// No-op: Tool decision
-        pub fn tool_decision<T, U>(&self, _tool_name: &str, _call_id: &str, _decision: T, _user_or_cfg: U) {
+        pub fn tool_decision<T, U>(
+            &self,
+            _tool_name: &str,
+            _call_id: &str,
+            _decision: T,
+            _user_or_cfg: U,
+        ) {
             // No-op
         }
 
@@ -172,7 +182,11 @@ pub mod otel_manager {
         }
 
         /// No-op: Log SSE event
-        pub fn log_sse_event<T: std::fmt::Debug>(&self, _result: &T, _duration: std::time::Duration) {
+        pub fn log_sse_event<T: std::fmt::Debug>(
+            &self,
+            _result: &T,
+            _duration: std::time::Duration,
+        ) {
             // No-op
         }
 
@@ -285,6 +299,6 @@ pub mod otel_provider {
     }
 }
 
-pub use otel_manager::OtelManager;
 pub use config::{OtelExporter, OtelHttpProtocol, OtelSettings, OtelTlsConfig};
+pub use otel_manager::OtelManager;
 pub use otel_provider::OtelProvider;

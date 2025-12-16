@@ -347,8 +347,8 @@ fn rate_limit_regex() -> &'static regex_lite::Regex {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use assert_matches::assert_matches;
     use crate::protocol::models::ResponseItem;
+    use assert_matches::assert_matches;
     use pretty_assertions::assert_eq;
     use serde_json::json;
     use tokio::sync::mpsc;

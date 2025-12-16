@@ -238,10 +238,12 @@ impl Select {
         } else {
             0.02
         };
-        scene.draw_quad(
-            wgpui::Quad::new(bounds)
-                .with_background(Hsla::new(0.0, 0.0, 1.0, header_bg_alpha * progress))
-        );
+        scene.draw_quad(wgpui::Quad::new(bounds).with_background(Hsla::new(
+            0.0,
+            0.0,
+            1.0,
+            header_bg_alpha * progress,
+        )));
 
         // Draw header border
         let header_border_color = if self.open || self.hovered {
@@ -249,15 +251,15 @@ impl Select {
         } else {
             hud::FRAME_DIM
         };
-        scene.draw_quad(
-            wgpui::Quad::new(bounds)
-                .with_border(Hsla::new(
-                    header_border_color.h,
-                    header_border_color.s,
-                    header_border_color.l,
-                    header_border_color.a * progress,
-                ), self.border_width)
-        );
+        scene.draw_quad(wgpui::Quad::new(bounds).with_border(
+            Hsla::new(
+                header_border_color.h,
+                header_border_color.s,
+                header_border_color.l,
+                header_border_color.a * progress,
+            ),
+            self.border_width,
+        ));
 
         // Draw selected text or placeholder
         let display_text = if self.options.is_empty() {
@@ -278,7 +280,12 @@ impl Select {
             display_text,
             Point::new(text_x, text_y),
             self.font_size,
-            Hsla::new(text_color.h, text_color.s, text_color.l, text_color.a * progress),
+            Hsla::new(
+                text_color.h,
+                text_color.s,
+                text_color.l,
+                text_color.a * progress,
+            ),
         );
         scene.draw_text(text_run);
 
@@ -297,19 +304,18 @@ impl Select {
 
         // Left leg of arrow
         scene.draw_quad(
-            wgpui::Quad::new(Bounds::new(
-                arrow_x, arrow_y,
-                arrow_size / 2.0 + 1.0, 2.0,
-            ))
-            .with_background(arrow_color)
+            wgpui::Quad::new(Bounds::new(arrow_x, arrow_y, arrow_size / 2.0 + 1.0, 2.0))
+                .with_background(arrow_color),
         );
         // Right leg of arrow
         scene.draw_quad(
             wgpui::Quad::new(Bounds::new(
-                arrow_x + arrow_size / 2.0, arrow_y,
-                arrow_size / 2.0 + 1.0, 2.0,
+                arrow_x + arrow_size / 2.0,
+                arrow_y,
+                arrow_size / 2.0 + 1.0,
+                2.0,
             ))
-            .with_background(arrow_color)
+            .with_background(arrow_color),
         );
 
         // Draw dropdown if open
@@ -327,21 +333,23 @@ impl Select {
             );
 
             // Draw dropdown background
-            scene.draw_quad(
-                wgpui::Quad::new(clipped_bounds)
-                    .with_background(Hsla::new(0.0, 0.0, 0.0, 0.95 * progress))
-            );
+            scene.draw_quad(wgpui::Quad::new(clipped_bounds).with_background(Hsla::new(
+                0.0,
+                0.0,
+                0.0,
+                0.95 * progress,
+            )));
 
             // Draw dropdown border
-            scene.draw_quad(
-                wgpui::Quad::new(clipped_bounds)
-                    .with_border(Hsla::new(
-                        hud::FRAME_DIM.h,
-                        hud::FRAME_DIM.s,
-                        hud::FRAME_DIM.l,
-                        hud::FRAME_DIM.a * progress * eased,
-                    ), self.border_width)
-            );
+            scene.draw_quad(wgpui::Quad::new(clipped_bounds).with_border(
+                Hsla::new(
+                    hud::FRAME_DIM.h,
+                    hud::FRAME_DIM.s,
+                    hud::FRAME_DIM.l,
+                    hud::FRAME_DIM.a * progress * eased,
+                ),
+                self.border_width,
+            ));
 
             // Draw options
             let visible_count = self.options.len().min(self.max_visible_options);
@@ -354,8 +362,10 @@ impl Select {
                 }
 
                 let option_bounds = Bounds::new(
-                    dropdown_bounds.origin.x, option_y,
-                    dropdown_bounds.size.width, self.option_height,
+                    dropdown_bounds.origin.x,
+                    option_y,
+                    dropdown_bounds.size.width,
+                    self.option_height,
                 );
 
                 // Draw hover highlight
@@ -363,10 +373,12 @@ impl Select {
                 let is_selected = i == self.selected_index;
 
                 if is_hovered {
-                    scene.draw_quad(
-                        wgpui::Quad::new(option_bounds)
-                            .with_background(Hsla::new(0.0, 0.0, 1.0, 0.1 * progress * eased))
-                    );
+                    scene.draw_quad(wgpui::Quad::new(option_bounds).with_background(Hsla::new(
+                        0.0,
+                        0.0,
+                        1.0,
+                        0.1 * progress * eased,
+                    )));
                 }
 
                 // Draw option text
@@ -379,7 +391,8 @@ impl Select {
                 };
 
                 let option_text_x = option_bounds.origin.x + self.padding.0;
-                let option_text_y = option_bounds.origin.y + (self.option_height - self.font_size) / 2.0;
+                let option_text_y =
+                    option_bounds.origin.y + (self.option_height - self.font_size) / 2.0;
 
                 let option_text_run = text_system.layout(
                     &self.options[i].label,
@@ -414,7 +427,8 @@ impl Select {
                 if self.open && dropdown_bounds.contains(*position) {
                     let relative_y = position.y - dropdown_bounds.origin.y;
                     let option_index = (relative_y / self.option_height) as usize;
-                    if option_index < self.options.len() && option_index < self.max_visible_options {
+                    if option_index < self.options.len() && option_index < self.max_visible_options
+                    {
                         self.hovered_option = Some(option_index);
                     } else {
                         self.hovered_option = None;
@@ -426,7 +440,9 @@ impl Select {
                 was_hovered != self.hovered || was_hovered_option != self.hovered_option
             }
 
-            InputEvent::MouseDown { position, button, .. } => {
+            InputEvent::MouseDown {
+                position, button, ..
+            } => {
                 if *button == MouseButton::Left {
                     // Check if clicking on header
                     if bounds.contains(*position) {
@@ -438,7 +454,9 @@ impl Select {
                     if self.open && dropdown_bounds.contains(*position) {
                         let relative_y = position.y - dropdown_bounds.origin.y;
                         let option_index = (relative_y / self.option_height) as usize;
-                        if option_index < self.options.len() && option_index < self.max_visible_options {
+                        if option_index < self.options.len()
+                            && option_index < self.max_visible_options
+                        {
                             self.selected_index = option_index;
                             self.open = false;
                             if let Some(on_change) = &mut self.on_change {

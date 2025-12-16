@@ -55,9 +55,9 @@ mod streaming;
 mod types;
 
 // Re-export public types
-pub use highlighter::{SyntaxHighlighter, SUPPORTED_LANGUAGES};
+pub use highlighter::{SUPPORTED_LANGUAGES, SyntaxHighlighter};
 pub use parser::MarkdownParser;
-pub use renderer::{render_markdown, MarkdownRenderer};
+pub use renderer::{MarkdownRenderer, render_markdown};
 pub use streaming::{FadeState, StreamingConfig, StreamingMarkdown};
 pub use types::{
     MarkdownBlock, MarkdownConfig, MarkdownDocument, StyledLine, StyledSpan, TextStyle,

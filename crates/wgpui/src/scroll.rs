@@ -227,8 +227,14 @@ impl ScrollContainer {
         Bounds::new(
             self.scroll_offset.x,
             self.scroll_offset.y,
-            self.viewport.size.width.min(self.content_size.width - self.scroll_offset.x),
-            self.viewport.size.height.min(self.content_size.height - self.scroll_offset.y),
+            self.viewport
+                .size
+                .width
+                .min(self.content_size.width - self.scroll_offset.x),
+            self.viewport
+                .size
+                .height
+                .min(self.content_size.height - self.scroll_offset.y),
         )
     }
 

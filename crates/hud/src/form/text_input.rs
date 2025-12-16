@@ -190,8 +190,7 @@ impl TextInput {
         if self.focus_progress > 0.0 {
             let bg_alpha = 0.03 * self.focus_progress * progress;
             scene.draw_quad(
-                wgpui::Quad::new(bounds)
-                    .with_background(Hsla::new(0.0, 0.0, 1.0, bg_alpha))
+                wgpui::Quad::new(bounds).with_background(Hsla::new(0.0, 0.0, 1.0, bg_alpha)),
             );
         }
 
@@ -204,10 +203,12 @@ impl TextInput {
         );
         scene.draw_quad(
             wgpui::Quad::new(Bounds::new(
-                bounds.origin.x, underline_y,
-                bounds.size.width, self.underline_width,
+                bounds.origin.x,
+                underline_y,
+                bounds.size.width,
+                self.underline_width,
             ))
-            .with_background(base_color)
+            .with_background(base_color),
         );
 
         // Draw focus underline (expands from center)
@@ -224,10 +225,12 @@ impl TextInput {
             );
             scene.draw_quad(
                 wgpui::Quad::new(Bounds::new(
-                    focus_x, underline_y,
-                    focus_width, self.underline_width,
+                    focus_x,
+                    underline_y,
+                    focus_width,
+                    self.underline_width,
                 ))
-                .with_background(focus_color)
+                .with_background(focus_color),
             );
         }
 
@@ -269,7 +272,9 @@ impl TextInput {
         // Draw cursor
         if self.focused && self.cursor_blink_time < 0.5 {
             let text_before_cursor = &self.value[..self.cursor_pos];
-            let cursor_offset = text_system.measure_size(text_before_cursor, self.font_size, None).width;
+            let cursor_offset = text_system
+                .measure_size(text_before_cursor, self.font_size, None)
+                .width;
             let cursor_x = text_x + cursor_offset;
 
             let cursor_color = Hsla::new(
@@ -279,11 +284,8 @@ impl TextInput {
                 hud::FRAME_BRIGHT.a * progress,
             );
             scene.draw_quad(
-                wgpui::Quad::new(Bounds::new(
-                    cursor_x, content_y,
-                    2.0, self.font_size,
-                ))
-                .with_background(cursor_color)
+                wgpui::Quad::new(Bounds::new(cursor_x, content_y, 2.0, self.font_size))
+                    .with_background(cursor_color),
             );
         }
     }
@@ -293,7 +295,9 @@ impl TextInput {
     /// Returns `true` if the event was handled.
     pub fn event(&mut self, event: &InputEvent, bounds: Bounds) -> bool {
         match event {
-            InputEvent::MouseDown { position, button, .. } => {
+            InputEvent::MouseDown {
+                position, button, ..
+            } => {
                 if *button == MouseButton::Left {
                     let was_focused = self.focused;
                     self.focused = bounds.contains(*position);
@@ -310,56 +314,54 @@ impl TextInput {
                 }
             }
 
-            InputEvent::KeyDown { key, .. } if self.focused => {
-                match key {
-                    Key::Named(NamedKey::ArrowLeft) => {
-                        if self.cursor_pos > 0 {
-                            self.cursor_pos -= 1;
-                            self.cursor_blink_time = 0.0;
-                        }
-                        true
-                    }
-                    Key::Named(NamedKey::ArrowRight) => {
-                        if self.cursor_pos < self.value.len() {
-                            self.cursor_pos += 1;
-                            self.cursor_blink_time = 0.0;
-                        }
-                        true
-                    }
-                    Key::Named(NamedKey::Home) => {
-                        self.cursor_pos = 0;
+            InputEvent::KeyDown { key, .. } if self.focused => match key {
+                Key::Named(NamedKey::ArrowLeft) => {
+                    if self.cursor_pos > 0 {
+                        self.cursor_pos -= 1;
                         self.cursor_blink_time = 0.0;
-                        true
                     }
-                    Key::Named(NamedKey::End) => {
-                        self.cursor_pos = self.value.len();
-                        self.cursor_blink_time = 0.0;
-                        true
-                    }
-                    Key::Named(NamedKey::Backspace) => {
-                        if self.cursor_pos > 0 {
-                            self.cursor_pos -= 1;
-                            self.value.remove(self.cursor_pos);
-                            self.cursor_blink_time = 0.0;
-                            if let Some(on_change) = &mut self.on_change {
-                                on_change(&self.value);
-                            }
-                        }
-                        true
-                    }
-                    Key::Named(NamedKey::Delete) => {
-                        if self.cursor_pos < self.value.len() {
-                            self.value.remove(self.cursor_pos);
-                            self.cursor_blink_time = 0.0;
-                            if let Some(on_change) = &mut self.on_change {
-                                on_change(&self.value);
-                            }
-                        }
-                        true
-                    }
-                    _ => false,
+                    true
                 }
-            }
+                Key::Named(NamedKey::ArrowRight) => {
+                    if self.cursor_pos < self.value.len() {
+                        self.cursor_pos += 1;
+                        self.cursor_blink_time = 0.0;
+                    }
+                    true
+                }
+                Key::Named(NamedKey::Home) => {
+                    self.cursor_pos = 0;
+                    self.cursor_blink_time = 0.0;
+                    true
+                }
+                Key::Named(NamedKey::End) => {
+                    self.cursor_pos = self.value.len();
+                    self.cursor_blink_time = 0.0;
+                    true
+                }
+                Key::Named(NamedKey::Backspace) => {
+                    if self.cursor_pos > 0 {
+                        self.cursor_pos -= 1;
+                        self.value.remove(self.cursor_pos);
+                        self.cursor_blink_time = 0.0;
+                        if let Some(on_change) = &mut self.on_change {
+                            on_change(&self.value);
+                        }
+                    }
+                    true
+                }
+                Key::Named(NamedKey::Delete) => {
+                    if self.cursor_pos < self.value.len() {
+                        self.value.remove(self.cursor_pos);
+                        self.cursor_blink_time = 0.0;
+                        if let Some(on_change) = &mut self.on_change {
+                            on_change(&self.value);
+                        }
+                    }
+                    true
+                }
+                _ => false,
+            },
 
             InputEvent::TextInput { text } if self.focused => {
                 // Insert text at cursor position

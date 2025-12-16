@@ -97,11 +97,12 @@ impl ChatThread {
         F: FnMut(&str) + 'static,
     {
         // Wrap the callback to convert String -> &str
-        self.input = ChatInput::new()
-            .placeholder("Type a message...")
-            .on_send(move |msg: String| {
-                f(&msg);
-            });
+        self.input =
+            ChatInput::new()
+                .placeholder("Type a message...")
+                .on_send(move |msg: String| {
+                    f(&msg);
+                });
         self
     }
 
@@ -214,18 +215,15 @@ impl Widget for ChatThread {
 
         // Update scroll container
         self.scroll.set_viewport(content_bounds);
-        self.scroll.set_content_size(Size::new(
-            content_bounds.size.width,
-            self.content_height(),
-        ));
+        self.scroll
+            .set_content_size(Size::new(content_bounds.size.width, self.content_height()));
 
         let view = self.chat_view.get_untracked();
         let visible_range = self.visible_range(content_bounds.size.height);
 
         // Draw background
-        cx.scene.draw_quad(
-            Quad::new(content_bounds).with_background(wgpui::theme::bg::APP),
-        );
+        cx.scene
+            .draw_quad(Quad::new(content_bounds).with_background(wgpui::theme::bg::APP));
 
         // Push clip
         cx.scene.push_clip(content_bounds);
@@ -271,10 +269,8 @@ impl Widget for ChatThread {
                                 .copied()
                                 .unwrap_or(self.estimated_height),
                         );
-                        let mut indicator = ToolUseIndicator::new(
-                            &tool_view.tool_name,
-                            tool_view.status,
-                        );
+                        let mut indicator =
+                            ToolUseIndicator::new(&tool_view.tool_name, tool_view.status);
                         indicator.paint(tool_bounds, cx);
                     }
                 }
@@ -285,8 +281,7 @@ impl Widget for ChatThread {
         if let Some(streaming) = &view.streaming_message {
             if !streaming.is_complete {
                 let y_offset = self.content_height() - self.estimated_height;
-                let streaming_y =
-                    content_bounds.origin.y + y_offset - self.scroll.scroll_offset.y;
+                let streaming_y = content_bounds.origin.y + y_offset - self.scroll.scroll_offset.y;
 
                 let streaming_bounds = Bounds::new(
                     content_bounds.origin.x + message_offset_x,
@@ -295,9 +290,11 @@ impl Widget for ChatThread {
                     self.estimated_height,
                 );
 
-                let mut bubble =
-                    MessageBubble::new(&streaming.content_so_far, coder_domain::message::Role::Assistant)
-                        .streaming(true);
+                let mut bubble = MessageBubble::new(
+                    &streaming.content_so_far,
+                    coder_domain::message::Role::Assistant,
+                )
+                .streaming(true);
                 bubble.paint(streaming_bounds, cx);
             }
         }

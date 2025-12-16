@@ -173,7 +173,10 @@ impl Bridge {
                 permission_id,
                 response,
             } => {
-                let granted = matches!(response, coder_permission::Response::Once | coder_permission::Response::Always);
+                let granted = matches!(
+                    response,
+                    coder_permission::Response::Once | coder_permission::Response::Always
+                );
 
                 self.emit(ChatUpdate::PermissionResolved {
                     session_id,

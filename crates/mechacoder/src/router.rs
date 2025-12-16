@@ -481,7 +481,12 @@ mod tests {
     fn test_router_openrouter_priority() {
         let mut router = Router::new(RouterConfig::default());
         // OpenRouter should be preferred over OpenAI and Ollama (when no Anthropic)
-        router.detected = vec![Backend::OpenRouter, Backend::OpenAI, Backend::Ollama, Backend::Pi];
+        router.detected = vec![
+            Backend::OpenRouter,
+            Backend::OpenAI,
+            Backend::Ollama,
+            Backend::Pi,
+        ];
 
         assert_eq!(router.route(), Some(Backend::OpenRouter));
     }

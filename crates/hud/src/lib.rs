@@ -84,13 +84,19 @@ pub mod theme;
 
 // Re-export commonly used types
 pub use animator::{AnimatorManager, AnimatorState, HudAnimator, ManagerMode};
-pub use background::{DotGridBackground, GridLinesBackground, LineDirection, MovingLinesBackground};
+pub use background::{
+    DotGridBackground, GridLinesBackground, LineDirection, MovingLinesBackground,
+};
 pub use button::HudButton;
 pub use data::{Card, CodeBlock, List, ListItem, Table, TableColumn, TableRow};
 pub use effects::Illuminator;
+pub use feedback::{
+    Alert, AlertLevel, Loading, Modal, Progress, ProgressStyle, Tooltip, TooltipPosition,
+};
 pub use form::{Checkbox, Select, SelectOption, TextInput, Toggle};
-pub use frame::{FrameCircle, FrameCorners, FrameHeader, FrameLines, FrameOctagon, FrameSides, FrameUnderline};
-pub use feedback::{Alert, AlertLevel, Loading, Modal, Progress, ProgressStyle, Tooltip, TooltipPosition};
+pub use frame::{
+    FrameCircle, FrameCorners, FrameHeader, FrameLines, FrameOctagon, FrameSides, FrameUnderline,
+};
 pub use indicator::{Figure, Meter, Separator, SeparatorStyle, StatusLight, StatusState};
 pub use nav::{Breadcrumbs, Crumb, Nav, NavDirection, NavItem, Pagination, Tab, Tabs};
 pub use text::{TextDecipher, TextSequence};

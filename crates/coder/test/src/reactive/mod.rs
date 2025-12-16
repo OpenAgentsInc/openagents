@@ -87,10 +87,7 @@ impl SignalTracker {
                 "Signal '{}' last value {:?} != expected {:?}",
                 name, actual, expected
             ),
-            None => panic!(
-                "Signal '{}' has no recorded values (or wrong type)",
-                name
-            ),
+            None => panic!("Signal '{}' has no recorded values (or wrong type)", name),
         }
     }
 
@@ -132,8 +129,7 @@ impl MemoTracker {
     /// Record a memo recomputation.
     pub fn record_recompute<T: Clone + Send + Sync + 'static>(&mut self, name: &str, value: T) {
         *self.recompute_counts.entry(name.to_string()).or_insert(0) += 1;
-        self.last_values
-            .insert(name.to_string(), Box::new(value));
+        self.last_values.insert(name.to_string(), Box::new(value));
     }
 
     /// Get the number of times a memo was recomputed.
@@ -154,11 +150,7 @@ impl MemoTracker {
     /// Assert that a memo was recomputed at least once.
     pub fn assert_recomputed(&self, name: &str) {
         let count = self.recompute_count(name);
-        assert!(
-            count > 0,
-            "Memo '{}' was never recomputed",
-            name
-        );
+        assert!(count > 0, "Memo '{}' was never recomputed", name);
     }
 
     /// Get the last computed value of a memo.
@@ -223,11 +215,7 @@ impl EffectTracker {
     /// Assert that an effect executed at least once.
     pub fn assert_ran(&self, name: &str) {
         let count = self.execution_count(name);
-        assert!(
-            count > 0,
-            "Effect '{}' never executed",
-            name
-        );
+        assert!(count > 0, "Effect '{}' never executed", name);
     }
 
     /// Assert that an effect never executed.

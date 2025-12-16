@@ -4,6 +4,8 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use crate::core::command_safety::is_dangerous_command::requires_initial_appoval;
+use crate::core::protocol::AskForApproval;
+use crate::core::protocol::SandboxPolicy;
 use crate::execpolicy::AmendError;
 use crate::execpolicy::Decision;
 use crate::execpolicy::Error as ExecPolicyRuleError;
@@ -13,8 +15,6 @@ use crate::execpolicy::PolicyParser;
 use crate::execpolicy::RuleMatch;
 use crate::execpolicy::blocking_append_allow_prefix_rule;
 use crate::protocol::approvals::ExecPolicyAmendment;
-use crate::core::protocol::AskForApproval;
-use crate::core::protocol::SandboxPolicy;
 use thiserror::Error;
 use tokio::fs;
 use tokio::sync::RwLock;

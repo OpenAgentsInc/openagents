@@ -174,7 +174,7 @@ impl Default for ViewRegistry {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use coder_widgets::{context::PaintContext, Div, EventResult};
+    use coder_widgets::{Div, EventResult, context::PaintContext};
     use wgpui::InputEvent;
 
     struct TestView {

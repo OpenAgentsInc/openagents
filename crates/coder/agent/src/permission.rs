@@ -63,8 +63,7 @@ mod tests {
 
     #[test]
     fn test_permission_checker() {
-        let agent = AgentDefinition::new("test")
-            .permission(AgentPermission::read_only());
+        let agent = AgentDefinition::new("test").permission(AgentPermission::read_only());
 
         let checker = PermissionChecker::new(&agent);
 

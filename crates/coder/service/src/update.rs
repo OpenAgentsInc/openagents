@@ -3,8 +3,8 @@
 //! These types represent all possible updates that can occur during a chat session,
 //! providing a unified stream for the UI to consume.
 
-use coder_domain::ids::{MessageId, SessionId, ThreadId};
 use coder_domain::PermissionId;
+use coder_domain::ids::{MessageId, SessionId, ThreadId};
 use coder_permission::PermissionRequest;
 use serde::{Deserialize, Serialize};
 
@@ -239,7 +239,11 @@ impl ChatUpdate {
     pub fn is_terminal(&self) -> bool {
         matches!(
             self,
-            ChatUpdate::SessionEnded { .. } | ChatUpdate::Error { recoverable: false, .. }
+            ChatUpdate::SessionEnded { .. }
+                | ChatUpdate::Error {
+                    recoverable: false,
+                    ..
+                }
         )
     }
 }

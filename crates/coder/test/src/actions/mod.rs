@@ -414,9 +414,7 @@ mod tests {
     #[test]
     fn test_user_actions_modifiers() {
         let mut harness = TestHarness::new();
-        let actions = UserActions::new(&mut harness)
-            .with_shift()
-            .with_ctrl();
+        let actions = UserActions::new(&mut harness).with_shift().with_ctrl();
 
         assert!(actions.modifiers.shift);
         assert!(actions.modifiers.ctrl);
@@ -442,6 +440,9 @@ mod tests {
         assert_eq!(key_to_code(&Key::Character("a".into())), KeyCode::KeyA);
         assert_eq!(key_to_code(&Key::Character("5".into())), KeyCode::Digit5);
         assert_eq!(key_to_code(&Key::Named(NamedKey::Enter)), KeyCode::Enter);
-        assert_eq!(key_to_code(&Key::Named(NamedKey::ArrowUp)), KeyCode::ArrowUp);
+        assert_eq!(
+            key_to_code(&Key::Named(NamedKey::ArrowUp)),
+            KeyCode::ArrowUp
+        );
     }
 }

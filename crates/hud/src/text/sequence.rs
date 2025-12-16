@@ -132,12 +132,20 @@ impl TextSequence {
         scene.draw_text(text_run);
 
         // Draw cursor if enabled and animating or blinking
-        if self.show_cursor && (self.animator.state().is_animating() ||
-            (self.animator.state().is_entered() && self.cursor_visible)) {
+        if self.show_cursor
+            && (self.animator.state().is_animating()
+                || (self.animator.state().is_entered() && self.cursor_visible))
+        {
             // Calculate cursor position
             let cursor_x = origin.x + text_system.measure(&visible_text, self.font_size);
-            let cursor_color = Hsla::new(self.color.h, self.color.s, self.color.l, self.color.a * 0.8);
-            let cursor = text_system.layout("_", Point::new(cursor_x, origin.y), self.font_size, cursor_color);
+            let cursor_color =
+                Hsla::new(self.color.h, self.color.s, self.color.l, self.color.a * 0.8);
+            let cursor = text_system.layout(
+                "_",
+                Point::new(cursor_x, origin.y),
+                self.font_size,
+                cursor_color,
+            );
             scene.draw_text(cursor);
         }
     }

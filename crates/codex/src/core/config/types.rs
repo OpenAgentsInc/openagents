@@ -429,9 +429,17 @@ impl From<SandboxWorkspaceWrite> for crate::stubs::app_server_protocol::SandboxS
         Self {
             enabled: true,
             policy: None,
-            writable_roots: sandbox_workspace_write.writable_roots.into_iter().map(|p| p.display().to_string()).collect(),
+            writable_roots: sandbox_workspace_write
+                .writable_roots
+                .into_iter()
+                .map(|p| p.display().to_string())
+                .collect(),
             network_access: sandbox_workspace_write.network_access,
-            exclude_tmpdir_env_var: if sandbox_workspace_write.exclude_tmpdir_env_var { Some("TMPDIR".to_string()) } else { None },
+            exclude_tmpdir_env_var: if sandbox_workspace_write.exclude_tmpdir_env_var {
+                Some("TMPDIR".to_string())
+            } else {
+                None
+            },
             exclude_slash_tmp: Some(sandbox_workspace_write.exclude_slash_tmp),
         }
     }

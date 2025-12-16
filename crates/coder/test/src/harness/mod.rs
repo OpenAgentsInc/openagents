@@ -184,11 +184,7 @@ pub struct MockPaintContext<'a> {
 
 impl<'a> MockPaintContext<'a> {
     /// Create a new mock paint context.
-    pub fn new(
-        scene: &'a mut Scene,
-        text: &'a mut MockTextSystem,
-        scale_factor: f32,
-    ) -> Self {
+    pub fn new(scene: &'a mut Scene, text: &'a mut MockTextSystem, scale_factor: f32) -> Self {
         Self {
             scene,
             text,

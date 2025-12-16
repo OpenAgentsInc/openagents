@@ -103,9 +103,7 @@ impl ToolContext {
     /// Create a new tool context with the given working directory.
     pub fn new(working_dir: impl Into<PathBuf>) -> Self {
         let provided = working_dir.into();
-        let canonical = provided
-            .canonicalize()
-            .unwrap_or_else(|_| provided.clone());
+        let canonical = provided.canonicalize().unwrap_or_else(|_| provided.clone());
         Self {
             working_dir: canonical,
             cancellation: CancellationToken::default(),
@@ -120,9 +118,7 @@ impl ToolContext {
         cancellation: CancellationToken,
     ) -> Self {
         let provided = working_dir.into();
-        let canonical = provided
-            .canonicalize()
-            .unwrap_or_else(|_| provided.clone());
+        let canonical = provided.canonicalize().unwrap_or_else(|_| provided.clone());
         Self {
             working_dir: canonical,
             cancellation,

@@ -90,11 +90,11 @@ struct CompactHistoryResponse {
 mod tests {
     use super::*;
     use crate::api::provider::RetryConfig;
-    use async_trait::async_trait;
     use crate::client::Request;
     use crate::client::Response;
     use crate::client::StreamResponse;
     use crate::client::TransportError;
+    use async_trait::async_trait;
     use http::HeaderMap;
     use std::time::Duration;
 

@@ -157,7 +157,12 @@ impl FrameLines {
         );
 
         let alpha = progress;
-        let color = Hsla::new(self.color.h, self.color.s, self.color.l, self.color.a * alpha);
+        let color = Hsla::new(
+            self.color.h,
+            self.color.s,
+            self.color.l,
+            self.color.a * alpha,
+        );
 
         let w = self.line_width;
         let half_gap = self.gap / 2.0;

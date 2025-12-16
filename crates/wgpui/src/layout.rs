@@ -1,9 +1,9 @@
 //! Layout engine using Taffy for CSS Flexbox layout.
 
 use crate::geometry::{Bounds, Size};
-use slotmap::{new_key_type, SlotMap};
-use taffy::prelude::*;
+use slotmap::{SlotMap, new_key_type};
 use taffy::Overflow;
+use taffy::prelude::*;
 
 new_key_type! {
     /// Identifier for a layout node.
@@ -174,11 +174,7 @@ impl LayoutEngine {
     }
 
     /// Request a layout node with the given style and children.
-    pub fn request_layout(
-        &mut self,
-        style: &LayoutStyle,
-        children: &[LayoutId],
-    ) -> LayoutId {
+    pub fn request_layout(&mut self, style: &LayoutStyle, children: &[LayoutId]) -> LayoutId {
         let taffy_children: Vec<NodeId> = children
             .iter()
             .filter_map(|id| self.nodes.get(*id).copied())
@@ -201,7 +197,13 @@ impl LayoutEngine {
     /// Request a measured leaf node (size computed by callback).
     pub fn request_measured<F>(&mut self, style: &LayoutStyle, _measure: F) -> LayoutId
     where
-        F: Fn(taffy::Size<Option<f32>>, taffy::Size<AvailableSpace>, NodeId, Option<&mut ()>, &Style) -> taffy::Size<f32>
+        F: Fn(
+                taffy::Size<Option<f32>>,
+                taffy::Size<AvailableSpace>,
+                NodeId,
+                Option<&mut ()>,
+                &Style,
+            ) -> taffy::Size<f32>
             + Send
             + Sync
             + 'static,

@@ -1,3 +1,5 @@
+use crate::apply_patch::ApplyPatchAction;
+use crate::apply_patch::ApplyPatchFileChange;
 use crate::core::codex::Session;
 use crate::core::codex::TurnContext;
 use crate::core::function_tool::FunctionCallError;
@@ -5,8 +7,6 @@ use crate::core::protocol::FileChange;
 use crate::core::protocol::ReviewDecision;
 use crate::core::safety::SafetyCheck;
 use crate::core::safety::assess_patch_safety;
-use crate::apply_patch::ApplyPatchAction;
-use crate::apply_patch::ApplyPatchFileChange;
 use std::collections::HashMap;
 use std::path::PathBuf;
 

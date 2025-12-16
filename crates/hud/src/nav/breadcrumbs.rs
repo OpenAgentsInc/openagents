@@ -184,7 +184,12 @@ impl Breadcrumbs {
             );
 
             // Draw crumb label
-            let text_run = text_system.layout(&crumb.label, Point::new(current_x, text_y), 14.0, label_color);
+            let text_run = text_system.layout(
+                &crumb.label,
+                Point::new(current_x, text_y),
+                14.0,
+                label_color,
+            );
             scene.draw_text(text_run);
 
             // Draw underline on hover
@@ -195,13 +200,12 @@ impl Breadcrumbs {
                     wgpui::Size::new(crumb_width * item_progress, 1.0),
                 );
                 scene.draw_quad(
-                    wgpui::Quad::new(underline_bounds)
-                        .with_background(Hsla::new(
-                            self.color.h,
-                            self.color.s,
-                            self.color.l,
-                            self.color.a * item_progress * 0.5,
-                        )),
+                    wgpui::Quad::new(underline_bounds).with_background(Hsla::new(
+                        self.color.h,
+                        self.color.s,
+                        self.color.l,
+                        self.color.a * item_progress * 0.5,
+                    )),
                 );
             }
 
@@ -218,7 +222,12 @@ impl Breadcrumbs {
                     self.text_color.a * item_progress * 0.3,
                 );
 
-                let sep_run = text_system.layout(&self.separator, Point::new(current_x, text_y), 14.0, sep_color);
+                let sep_run = text_system.layout(
+                    &self.separator,
+                    Point::new(current_x, text_y),
+                    14.0,
+                    sep_color,
+                );
                 scene.draw_text(sep_run);
 
                 current_x += self.calculate_crumb_width(&self.separator) + self.item_gap;

@@ -1,9 +1,9 @@
 use std::collections::HashMap;
 use std::time::Duration;
 
+use crate::protocol::protocol::McpAuthStatus;
 use anyhow::Error;
 use anyhow::Result;
-use crate::protocol::protocol::McpAuthStatus;
 use reqwest::Client;
 use reqwest::StatusCode;
 use reqwest::Url;

@@ -1,9 +1,6 @@
 use std::sync::Arc;
 use std::sync::atomic::AtomicU64;
 
-use async_channel::Receiver;
-use async_channel::Sender;
-use crate::utils::async_utils::OrCancelExt;
 use crate::core::protocol::ApplyPatchApprovalRequestEvent;
 use crate::core::protocol::Event;
 use crate::core::protocol::EventMsg;
@@ -13,6 +10,9 @@ use crate::core::protocol::SessionSource;
 use crate::core::protocol::SubAgentSource;
 use crate::core::protocol::Submission;
 use crate::protocol::user_input::UserInput;
+use crate::utils::async_utils::OrCancelExt;
+use async_channel::Receiver;
+use async_channel::Sender;
 use std::time::Duration;
 use tokio::time::timeout;
 use tokio_util::sync::CancellationToken;
@@ -349,11 +349,11 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use async_channel::bounded;
-    use crate::protocol::models::ResponseItem;
     use crate::core::protocol::RawResponseItemEvent;
     use crate::core::protocol::TurnAbortReason;
     use crate::core::protocol::TurnAbortedEvent;
+    use crate::protocol::models::ResponseItem;
+    use async_channel::bounded;
     use pretty_assertions::assert_eq;
 
     #[tokio::test]

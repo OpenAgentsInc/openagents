@@ -197,7 +197,7 @@ impl Toggle {
         scene.draw_quad(
             wgpui::Quad::new(track_bounds)
                 .with_background(Hsla::new(0.0, 0.0, 1.0, track_bg_alpha * progress))
-                .with_uniform_radius(self.track_height / 2.0)
+                .with_uniform_radius(self.track_height / 2.0),
         );
 
         // Draw track border
@@ -210,13 +210,16 @@ impl Toggle {
         };
         scene.draw_quad(
             wgpui::Quad::new(track_bounds)
-                .with_border(Hsla::new(
-                    border_color.h,
-                    border_color.s,
-                    border_color.l,
-                    border_color.a * progress,
-                ), self.border_width)
-                .with_uniform_radius(self.track_height / 2.0)
+                .with_border(
+                    Hsla::new(
+                        border_color.h,
+                        border_color.s,
+                        border_color.l,
+                        border_color.a * progress,
+                    ),
+                    self.border_width,
+                )
+                .with_uniform_radius(self.track_height / 2.0),
         );
 
         // Calculate knob position
@@ -242,7 +245,7 @@ impl Toggle {
                     knob_color.l,
                     knob_color.a * progress,
                 ))
-                .with_uniform_radius(self.knob_size / 2.0)
+                .with_uniform_radius(self.knob_size / 2.0),
         );
 
         // Draw label
@@ -283,7 +286,9 @@ impl Toggle {
                 was_hovered != self.hovered
             }
 
-            InputEvent::MouseDown { position, button, .. } => {
+            InputEvent::MouseDown {
+                position, button, ..
+            } => {
                 if *button == MouseButton::Left && bounds.contains(*position) {
                     self.enabled = !self.enabled;
                     if let Some(on_change) = &mut self.on_change {

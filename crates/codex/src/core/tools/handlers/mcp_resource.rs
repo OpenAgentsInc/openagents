@@ -3,7 +3,6 @@ use std::sync::Arc;
 use std::time::Duration;
 use std::time::Instant;
 
-use async_trait::async_trait;
 use crate::mcp_types::CallToolResult;
 use crate::mcp_types::ContentBlock;
 use crate::mcp_types::ListResourceTemplatesRequestParams;
@@ -15,6 +14,7 @@ use crate::mcp_types::ReadResourceResult;
 use crate::mcp_types::Resource;
 use crate::mcp_types::ResourceTemplate;
 use crate::mcp_types::TextContent;
+use async_trait::async_trait;
 use serde::Deserialize;
 use serde::Serialize;
 use serde::de::DeserializeOwned;

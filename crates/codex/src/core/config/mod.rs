@@ -27,8 +27,6 @@ use crate::core::project_doc::LOCAL_PROJECT_DOC_FILENAME;
 use crate::core::protocol::AskForApproval;
 use crate::core::protocol::SandboxPolicy;
 use crate::core::util::resolve_path;
-use crate::stubs::app_server_protocol::Tools;
-use crate::stubs::app_server_protocol::UserSavedConfig;
 use crate::protocol::config_types::ForcedLoginMethod;
 use crate::protocol::config_types::ReasoningSummary;
 use crate::protocol::config_types::SandboxMode;
@@ -37,6 +35,8 @@ use crate::protocol::config_types::Verbosity;
 use crate::protocol::openai_models::ReasoningEffort;
 use crate::protocol::openai_models::ReasoningSummaryFormat;
 use crate::rmcp_client::OAuthCredentialsStoreMode;
+use crate::stubs::app_server_protocol::Tools;
+use crate::stubs::app_server_protocol::UserSavedConfig;
 use crate::utils::absolute_path::AbsolutePathBuf;
 use crate::utils::absolute_path::AbsolutePathBufGuard;
 use dirs::home_dir;
@@ -706,8 +706,12 @@ impl From<ConfigToml> for UserSavedConfig {
             forced_chatgpt_workspace_id: config_toml.forced_chatgpt_workspace_id,
             forced_login_method: config_toml.forced_login_method.map(Into::into),
             model: config_toml.model,
-            model_reasoning_effort: config_toml.model_reasoning_effort.map(|r| format!("{:?}", r)),
-            model_reasoning_summary: config_toml.model_reasoning_summary.map(|r| !matches!(r, ReasoningSummary::None)),
+            model_reasoning_effort: config_toml
+                .model_reasoning_effort
+                .map(|r| format!("{:?}", r)),
+            model_reasoning_summary: config_toml
+                .model_reasoning_summary
+                .map(|r| !matches!(r, ReasoningSummary::None)),
             model_verbosity: config_toml.model_verbosity.map(|v| format!("{:?}", v)),
             tools: config_toml.tools.map(From::from),
             profile: config_toml.profile,

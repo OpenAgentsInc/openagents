@@ -149,10 +149,12 @@ impl HudButton {
 
         // Draw hover/pressed background
         if bg_alpha > 0.0 {
-            scene.draw_quad(
-                wgpui::Quad::new(bounds)
-                    .with_background(Hsla::new(0.0, 0.0, 1.0, bg_alpha * progress))
-            );
+            scene.draw_quad(wgpui::Quad::new(bounds).with_background(Hsla::new(
+                0.0,
+                0.0,
+                1.0,
+                bg_alpha * progress,
+            )));
         }
 
         // Draw frame with state-based color
@@ -175,8 +177,18 @@ impl HudButton {
         let text_x = bounds.origin.x + (bounds.size.width - text_size.width) / 2.0;
         let text_y = bounds.origin.y + (bounds.size.height - text_size.height) / 2.0;
 
-        let final_text_color = Hsla::new(text_color.h, text_color.s, text_color.l, text_color.a * progress);
-        let text_run = text_system.layout(&self.label, Point::new(text_x, text_y), self.font_size, final_text_color);
+        let final_text_color = Hsla::new(
+            text_color.h,
+            text_color.s,
+            text_color.l,
+            text_color.a * progress,
+        );
+        let text_run = text_system.layout(
+            &self.label,
+            Point::new(text_x, text_y),
+            self.font_size,
+            final_text_color,
+        );
         scene.draw_text(text_run);
     }
 

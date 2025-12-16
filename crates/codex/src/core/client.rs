@@ -1,7 +1,5 @@
 use std::sync::Arc;
 
-use crate::core::api_bridge::auth_provider_from_auth;
-use crate::core::api_bridge::map_api_error;
 use crate::api::AggregateStreamExt;
 use crate::api::ChatClient as ApiChatClient;
 use crate::api::CompactClient as ApiCompactClient;
@@ -17,13 +15,15 @@ use crate::api::TransportError;
 use crate::api::common::Reasoning;
 use crate::api::create_text_param_for_request;
 use crate::api::error::ApiError;
-use crate::stubs::app_server_protocol::AuthMode;
-use crate::stubs::otel::otel_manager::OtelManager;
+use crate::core::api_bridge::auth_provider_from_auth;
+use crate::core::api_bridge::map_api_error;
+use crate::core::protocol::SessionSource;
 use crate::protocol::ConversationId;
 use crate::protocol::config_types::ReasoningSummary as ReasoningSummaryConfig;
 use crate::protocol::models::ResponseItem;
 use crate::protocol::openai_models::ReasoningEffort as ReasoningEffortConfig;
-use crate::core::protocol::SessionSource;
+use crate::stubs::app_server_protocol::AuthMode;
+use crate::stubs::otel::otel_manager::OtelManager;
 use eventsource_stream::Event;
 use eventsource_stream::EventStreamError;
 use futures::StreamExt;

@@ -17,11 +17,11 @@ use clap::Parser;
 use colored::Colorize;
 use std::path::PathBuf;
 
+use taskmaster::SqliteRepository;
 use taskmaster::plan_to_tasks::{
     convert_to_tasks, default_claude_dir, discover_plan_by_name, discover_plans,
     parse_plan_with_llm, print_summary,
 };
-use taskmaster::SqliteRepository;
 
 #[derive(Parser, Debug)]
 #[command(name = "plan-to-tasks")]
@@ -45,7 +45,11 @@ struct Args {
     dry_run: bool,
 
     /// Taskmaster database path
-    #[arg(long, env = "TASKMASTER_DB", default_value = ".openagents/taskmaster.db")]
+    #[arg(
+        long,
+        env = "TASKMASTER_DB",
+        default_value = ".openagents/taskmaster.db"
+    )]
     db: PathBuf,
 
     /// Issue ID prefix
@@ -86,11 +90,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         return Ok(());
     }
 
-    println!(
-        "{} Found {} plan(s) to process",
-        "->".blue(),
-        plans.len()
-    );
+    println!("{} Found {} plan(s) to process", "->".blue(), plans.len());
 
     // Open taskmaster database
     let repo = if args.dry_run {
@@ -107,11 +107,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut total_skipped = 0;
 
     for plan in plans {
-        println!(
-            "\n{} Processing: {}",
-            "=>".green(),
-            plan.name.cyan()
-        );
+        println!("\n{} Processing: {}", "=>".green(), plan.name.cyan());
 
         if args.verbose {
             println!("   Path: {}", plan.path.display());
@@ -139,9 +135,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             for task in &parsed.tasks {
                 println!(
                     "      - [{}] {} ({})",
-                    task.priority,
-                    task.title,
-                    task.issue_type
+                    task.priority, task.title, task.issue_type
                 );
             }
         }
@@ -170,10 +164,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
 
     if !args.dry_run && total_created > 0 {
-        println!(
-            "\nTasks saved to: {}",
-            args.db.display().to_string().cyan()
-        );
+        println!("\nTasks saved to: {}", args.db.display().to_string().cyan());
         println!("Run `taskmaster list` to view them.");
     }
 

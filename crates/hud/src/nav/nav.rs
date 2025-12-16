@@ -263,9 +263,15 @@ impl Nav {
             let (text_alpha, indicator_alpha) = if item.disabled {
                 (self.text_color.a * item_progress * 0.3, 0.0)
             } else if item.active {
-                (self.text_color.a * item_progress, self.color.a * item_progress)
+                (
+                    self.text_color.a * item_progress,
+                    self.color.a * item_progress,
+                )
             } else if is_hovered {
-                (self.text_color.a * item_progress * 0.8, self.color.a * item_progress * 0.5)
+                (
+                    self.text_color.a * item_progress * 0.8,
+                    self.color.a * item_progress * 0.5,
+                )
             } else {
                 (self.text_color.a * item_progress * 0.5, 0.0)
             };
@@ -273,15 +279,27 @@ impl Nav {
             // Draw icon if present
             let mut text_x = current_x + self.item_padding;
             if let Some(icon) = &item.icon {
-                let icon_color = Hsla::new(self.text_color.h, self.text_color.s, self.text_color.l, text_alpha);
-                let icon_run = text_system.layout(icon, Point::new(text_x, text_y), 14.0, icon_color);
+                let icon_color = Hsla::new(
+                    self.text_color.h,
+                    self.text_color.s,
+                    self.text_color.l,
+                    text_alpha,
+                );
+                let icon_run =
+                    text_system.layout(icon, Point::new(text_x, text_y), 14.0, icon_color);
                 scene.draw_text(icon_run);
                 text_x += 20.0;
             }
 
             // Draw label
-            let label_color = Hsla::new(self.text_color.h, self.text_color.s, self.text_color.l, text_alpha);
-            let label_run = text_system.layout(&item.label, Point::new(text_x, text_y), 14.0, label_color);
+            let label_color = Hsla::new(
+                self.text_color.h,
+                self.text_color.s,
+                self.text_color.l,
+                text_alpha,
+            );
+            let label_run =
+                text_system.layout(&item.label, Point::new(text_x, text_y), 14.0, label_color);
             scene.draw_text(label_run);
 
             // Draw bottom indicator for active/hovered
@@ -291,8 +309,12 @@ impl Nav {
                     Size::new(item_width * item_progress, 2.0),
                 );
                 scene.draw_quad(
-                    wgpui::Quad::new(indicator_bounds)
-                        .with_background(Hsla::new(self.color.h, self.color.s, self.color.l, indicator_alpha)),
+                    wgpui::Quad::new(indicator_bounds).with_background(Hsla::new(
+                        self.color.h,
+                        self.color.s,
+                        self.color.l,
+                        indicator_alpha,
+                    )),
                 );
             }
 
@@ -316,9 +338,17 @@ impl Nav {
             let (text_alpha, indicator_alpha, bg_alpha) = if item.disabled {
                 (self.text_color.a * item_progress * 0.3, 0.0, 0.0)
             } else if item.active {
-                (self.text_color.a * item_progress, self.color.a * item_progress, self.color.a * item_progress * 0.1)
+                (
+                    self.text_color.a * item_progress,
+                    self.color.a * item_progress,
+                    self.color.a * item_progress * 0.1,
+                )
             } else if is_hovered {
-                (self.text_color.a * item_progress * 0.8, self.color.a * item_progress * 0.5, self.color.a * item_progress * 0.05)
+                (
+                    self.text_color.a * item_progress * 0.8,
+                    self.color.a * item_progress * 0.5,
+                    self.color.a * item_progress * 0.05,
+                )
             } else {
                 (self.text_color.a * item_progress * 0.5, 0.0, 0.0)
             };
@@ -330,10 +360,12 @@ impl Nav {
 
             // Draw background
             if bg_alpha > 0.0 {
-                scene.draw_quad(
-                    wgpui::Quad::new(item_bounds)
-                        .with_background(Hsla::new(self.color.h, self.color.s, self.color.l, bg_alpha)),
-                );
+                scene.draw_quad(wgpui::Quad::new(item_bounds).with_background(Hsla::new(
+                    self.color.h,
+                    self.color.s,
+                    self.color.l,
+                    bg_alpha,
+                )));
             }
 
             // Draw left indicator
@@ -343,8 +375,12 @@ impl Nav {
                     Size::new(self.indicator_width, item_height * item_progress),
                 );
                 scene.draw_quad(
-                    wgpui::Quad::new(indicator_bounds)
-                        .with_background(Hsla::new(self.color.h, self.color.s, self.color.l, indicator_alpha)),
+                    wgpui::Quad::new(indicator_bounds).with_background(Hsla::new(
+                        self.color.h,
+                        self.color.s,
+                        self.color.l,
+                        indicator_alpha,
+                    )),
                 );
             }
 
@@ -353,24 +389,44 @@ impl Nav {
             let text_y = current_y + (item_height / 2.0) + 4.0;
 
             if let Some(icon) = &item.icon {
-                let icon_color = Hsla::new(self.text_color.h, self.text_color.s, self.text_color.l, text_alpha);
-                let icon_run = text_system.layout(icon, Point::new(text_x, text_y), 14.0, icon_color);
+                let icon_color = Hsla::new(
+                    self.text_color.h,
+                    self.text_color.s,
+                    self.text_color.l,
+                    text_alpha,
+                );
+                let icon_run =
+                    text_system.layout(icon, Point::new(text_x, text_y), 14.0, icon_color);
                 scene.draw_text(icon_run);
                 text_x += 24.0;
             }
 
             // Draw label
-            let label_color = Hsla::new(self.text_color.h, self.text_color.s, self.text_color.l, text_alpha);
-            let label_run = text_system.layout(&item.label, Point::new(text_x, text_y), 14.0, label_color);
+            let label_color = Hsla::new(
+                self.text_color.h,
+                self.text_color.s,
+                self.text_color.l,
+                text_alpha,
+            );
+            let label_run =
+                text_system.layout(&item.label, Point::new(text_x, text_y), 14.0, label_color);
             scene.draw_text(label_run);
 
             // Draw expand indicator for items with children
             if !item.children.is_empty() {
                 let expand_icon = if self.expanded == Some(i) { "v" } else { ">" };
-                let expand_color = Hsla::new(self.text_color.h, self.text_color.s, self.text_color.l, text_alpha * 0.5);
+                let expand_color = Hsla::new(
+                    self.text_color.h,
+                    self.text_color.s,
+                    self.text_color.l,
+                    text_alpha * 0.5,
+                );
                 let expand_run = text_system.layout(
                     expand_icon,
-                    Point::new(bounds.x() + bounds.width() - self.item_padding - 8.0, text_y),
+                    Point::new(
+                        bounds.x() + bounds.width() - self.item_padding - 8.0,
+                        text_y,
+                    ),
                     12.0,
                     expand_color,
                 );

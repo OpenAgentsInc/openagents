@@ -1,9 +1,9 @@
 use std::collections::HashMap;
 
-use crate::utils::image::load_and_resize_to_fit;
-use crate::utils::image::IntoDataUrl;
 use crate::mcp_types::CallToolResult;
 use crate::mcp_types::ContentBlock;
+use crate::utils::image::IntoDataUrl;
+use crate::utils::image::load_and_resize_to_fit;
 use serde::Deserialize;
 use serde::Deserializer;
 use serde::Serialize;
@@ -304,33 +304,36 @@ impl From<Vec<UserInput>> for ResponseInputItem {
                 .filter_map(|c| match c {
                     UserInput::Text { text } => Some(ContentItem::InputText { text }),
                     UserInput::Image { image_url } => Some(ContentItem::InputImage { image_url }),
-                    UserInput::LocalImage { path } => match load_and_resize_to_fit(&path, 1024, 1024) {
-                        Ok(image) => Some(ContentItem::InputImage {
-                            image_url: image.into_data_url(),
-                        }),
-                        Err(err) => {
-                            if matches!(&err, ImageProcessingError::Read { .. }) {
-                                Some(local_image_error_placeholder(&path, &err))
-                            } else if err.is_invalid_image() {
-                                Some(invalid_image_error_placeholder(&path, &err))
-                            } else {
-                                let Some(mime_guess) = mime_guess::from_path(&path).first() else {
-                                    return Some(local_image_error_placeholder(
-                                        &path,
-                                        "unsupported MIME type (unknown)",
-                                    ));
-                                };
-                                let mime = mime_guess.essence_str().to_owned();
-                                if !mime.starts_with("image/") {
-                                    return Some(local_image_error_placeholder(
-                                        &path,
-                                        format!("unsupported MIME type `{mime}`"),
-                                    ));
+                    UserInput::LocalImage { path } => {
+                        match load_and_resize_to_fit(&path, 1024, 1024) {
+                            Ok(image) => Some(ContentItem::InputImage {
+                                image_url: image.into_data_url(),
+                            }),
+                            Err(err) => {
+                                if matches!(&err, ImageProcessingError::Read { .. }) {
+                                    Some(local_image_error_placeholder(&path, &err))
+                                } else if err.is_invalid_image() {
+                                    Some(invalid_image_error_placeholder(&path, &err))
+                                } else {
+                                    let Some(mime_guess) = mime_guess::from_path(&path).first()
+                                    else {
+                                        return Some(local_image_error_placeholder(
+                                            &path,
+                                            "unsupported MIME type (unknown)",
+                                        ));
+                                    };
+                                    let mime = mime_guess.essence_str().to_owned();
+                                    if !mime.starts_with("image/") {
+                                        return Some(local_image_error_placeholder(
+                                            &path,
+                                            format!("unsupported MIME type `{mime}`"),
+                                        ));
+                                    }
+                                    Some(unsupported_image_error_placeholder(&path, &mime))
                                 }
-                                Some(unsupported_image_error_placeholder(&path, &mime))
                             }
                         }
-                    },
+                    }
                     UserInput::Skill { .. } => None, // Skill bodies are injected later in core
                 })
                 .collect::<Vec<ContentItem>>(),
@@ -553,9 +556,9 @@ impl std::ops::Deref for FunctionCallOutputPayload {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use anyhow::Result;
     use crate::mcp_types::ImageContent;
     use crate::mcp_types::TextContent;
+    use anyhow::Result;
     use pretty_assertions::assert_eq;
     use tempfile::tempdir;
 

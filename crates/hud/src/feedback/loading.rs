@@ -127,7 +127,12 @@ impl Loading {
         );
         scene.draw_quad(
             wgpui::Quad::new(center_bounds)
-                .with_background(Hsla::new(self.color.h, self.color.s, self.color.l, self.color.a * progress * 0.5))
+                .with_background(Hsla::new(
+                    self.color.h,
+                    self.color.s,
+                    self.color.l,
+                    self.color.a * progress * 0.5,
+                ))
                 .with_uniform_radius(center_size / 2.0),
         );
     }

@@ -4,9 +4,7 @@
 //! converting StreamEvents to ServerMessages for WebSocket delivery.
 
 use futures::StreamExt;
-use llm::{
-    CompletionRequest, ContentBlock, Message, ProviderRegistry, Role, StreamEvent, Tool,
-};
+use llm::{CompletionRequest, ContentBlock, Message, ProviderRegistry, Role, StreamEvent, Tool};
 use std::sync::Arc;
 use tokio::sync::mpsc;
 
@@ -40,8 +38,7 @@ pub async fn run_provider_session(
     };
 
     // Build the completion request
-    let mut request = CompletionRequest::new(model)
-        .message(Message::user(&message));
+    let mut request = CompletionRequest::new(model).message(Message::user(&message));
 
     if let Some(system) = system_prompt {
         request = request.system(&system);
@@ -212,7 +209,6 @@ pub async fn run_conversation(
     let mut conversation = messages;
 
     for _turn in 0..max_turns {
-
         let provider = match registry.get(provider_id).await {
             Some(p) => p,
             None => {

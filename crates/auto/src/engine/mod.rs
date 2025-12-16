@@ -9,8 +9,8 @@ use crate::detection::Detection;
 use crate::discovery::DiscoveredTask;
 use crate::progress::ProgressTracker;
 use crate::{AutoError, Result};
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use tokio::sync::Mutex;
 
 /// The main execution engine for auto mode.
@@ -36,10 +36,7 @@ impl AutoEngine {
         )
         .unwrap_or_else(|_| ProgressTracker::without_taskmaster("auto"));
 
-        let runner = TaskRunner::new(
-            config.clone(),
-            detection.clone(),
-        );
+        let runner = TaskRunner::new(config.clone(), detection.clone());
 
         Self {
             config,

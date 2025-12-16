@@ -5,13 +5,13 @@ use strum_macros::Display as DeriveDisplay;
 
 use crate::core::codex::TurnContext;
 use crate::core::protocol::AskForApproval;
+use crate::core::protocol::ENVIRONMENT_CONTEXT_CLOSE_TAG;
+use crate::core::protocol::ENVIRONMENT_CONTEXT_OPEN_TAG;
 use crate::core::protocol::SandboxPolicy;
 use crate::core::shell::Shell;
 use crate::protocol::config_types::SandboxMode;
 use crate::protocol::models::ContentItem;
 use crate::protocol::models::ResponseItem;
-use crate::core::protocol::ENVIRONMENT_CONTEXT_CLOSE_TAG;
-use crate::core::protocol::ENVIRONMENT_CONTEXT_OPEN_TAG;
 use std::path::PathBuf;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, DeriveDisplay)]

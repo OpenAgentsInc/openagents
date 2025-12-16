@@ -2,8 +2,8 @@
 //!
 //! This is a simplified stub for readiness tracking.
 
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 /// A readiness flag that can be checked
 #[derive(Clone, Default)]

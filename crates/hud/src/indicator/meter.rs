@@ -168,7 +168,8 @@ impl Meter {
                 colors::TEXT.l,
                 colors::TEXT.a * progress * 0.7,
             );
-            let label_run = text_system.layout(label, Point::new(bounds.x(), y + 12.0), 11.0, label_color);
+            let label_run =
+                text_system.layout(label, Point::new(bounds.x(), y + 12.0), 11.0, label_color);
             scene.draw_text(label_run);
             y += 18.0;
         }
@@ -178,35 +179,31 @@ impl Meter {
             Point::new(bounds.x(), y),
             Size::new(bounds.width(), self.height),
         );
-        scene.draw_quad(
-            wgpui::Quad::new(track_bounds)
-                .with_background(Hsla::new(
-                    self.track_color.h,
-                    self.track_color.s,
-                    self.track_color.l,
-                    self.track_color.a * progress,
-                )),
-        );
+        scene.draw_quad(wgpui::Quad::new(track_bounds).with_background(Hsla::new(
+            self.track_color.h,
+            self.track_color.s,
+            self.track_color.l,
+            self.track_color.a * progress,
+        )));
 
         // Draw tick marks
         let tick_spacing = bounds.width() / self.tick_count as f32;
         for i in 0..=self.tick_count {
             let tick_x = bounds.x() + i as f32 * tick_spacing;
-            let tick_height = if i % 2 == 0 { self.height } else { self.height * 0.5 };
+            let tick_height = if i % 2 == 0 {
+                self.height
+            } else {
+                self.height * 0.5
+            };
             let tick_y = y + (self.height - tick_height) / 2.0;
-            let tick_bounds = Bounds::from_origin_size(
-                Point::new(tick_x, tick_y),
-                Size::new(1.0, tick_height),
-            );
-            scene.draw_quad(
-                wgpui::Quad::new(tick_bounds)
-                    .with_background(Hsla::new(
-                        colors::FRAME_DIM.h,
-                        colors::FRAME_DIM.s,
-                        colors::FRAME_DIM.l,
-                        colors::FRAME_DIM.a * progress * 0.5,
-                    )),
-            );
+            let tick_bounds =
+                Bounds::from_origin_size(Point::new(tick_x, tick_y), Size::new(1.0, tick_height));
+            scene.draw_quad(wgpui::Quad::new(tick_bounds).with_background(Hsla::new(
+                colors::FRAME_DIM.h,
+                colors::FRAME_DIM.s,
+                colors::FRAME_DIM.l,
+                colors::FRAME_DIM.a * progress * 0.5,
+            )));
         }
 
         // Draw filled portion
@@ -217,10 +214,12 @@ impl Meter {
                 Point::new(bounds.x(), y),
                 Size::new(fill_width, self.height),
             );
-            scene.draw_quad(
-                wgpui::Quad::new(fill_bounds)
-                    .with_background(Hsla::new(fill_color.h, fill_color.s, fill_color.l, fill_color.a * progress)),
-            );
+            scene.draw_quad(wgpui::Quad::new(fill_bounds).with_background(Hsla::new(
+                fill_color.h,
+                fill_color.s,
+                fill_color.l,
+                fill_color.a * progress,
+            )));
         }
 
         // Draw value indicator line
@@ -230,13 +229,12 @@ impl Meter {
             Size::new(2.0, self.height + 4.0),
         );
         scene.draw_quad(
-            wgpui::Quad::new(indicator_bounds)
-                .with_background(Hsla::new(
-                    colors::FRAME_BRIGHT.h,
-                    colors::FRAME_BRIGHT.s,
-                    colors::FRAME_BRIGHT.l,
-                    colors::FRAME_BRIGHT.a * progress,
-                )),
+            wgpui::Quad::new(indicator_bounds).with_background(Hsla::new(
+                colors::FRAME_BRIGHT.h,
+                colors::FRAME_BRIGHT.s,
+                colors::FRAME_BRIGHT.l,
+                colors::FRAME_BRIGHT.a * progress,
+            )),
         );
 
         // Draw value if enabled
@@ -254,7 +252,10 @@ impl Meter {
             );
             let value_run = text_system.layout(
                 &value_text,
-                Point::new(bounds.x() + bounds.width() + 8.0, y + self.height / 2.0 + 4.0),
+                Point::new(
+                    bounds.x() + bounds.width() + 8.0,
+                    y + self.height / 2.0 + 4.0,
+                ),
                 12.0,
                 value_color,
             );

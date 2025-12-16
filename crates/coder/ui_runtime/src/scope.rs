@@ -3,7 +3,7 @@
 //! Scopes track effects and cleanups, ensuring proper disposal
 //! when a component or computation is destroyed.
 
-use crate::runtime::{with_runtime, SubscriberId};
+use crate::runtime::{SubscriberId, with_runtime};
 use slotmap::new_key_type;
 use smallvec::SmallVec;
 
@@ -120,8 +120,8 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::Arc;
+    use std::sync::atomic::{AtomicBool, Ordering};
 
     #[test]
     fn test_scope_creation() {

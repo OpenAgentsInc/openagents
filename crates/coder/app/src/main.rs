@@ -16,16 +16,16 @@ use coder_app::App;
 use log::info;
 use std::sync::Arc;
 use tokio::sync::mpsc;
+use wgpui::Scene;
+use wgpui::platform::Platform;
+use wgpui::platform::desktop::{DesktopPlatform, create_window};
 use winit::application::ApplicationHandler;
 use winit::event::WindowEvent;
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
 use winit::window::WindowId;
-use wgpui::platform::desktop::{create_window, DesktopPlatform};
-use wgpui::platform::Platform;
-use wgpui::Scene;
 
 #[cfg(feature = "coder-service")]
-use coder_app::{spawn_service_handler, ServiceRequest};
+use coder_app::{ServiceRequest, spawn_service_handler};
 
 #[cfg(not(feature = "coder-service"))]
 use coder_app::spawn_chat_handler;
@@ -49,13 +49,12 @@ impl ApplicationHandler for CoderApp {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         if self.platform.is_none() {
             // Create window
-            let window = create_window(event_loop, "Coder", 1280, 720)
-                .expect("Failed to create window");
+            let window =
+                create_window(event_loop, "Coder", 1280, 720).expect("Failed to create window");
             let window = Arc::new(window);
 
             // Initialize platform
-            let platform = DesktopPlatform::new(window)
-                .expect("Failed to initialize platform");
+            let platform = DesktopPlatform::new(window).expect("Failed to initialize platform");
 
             // Set initial window size in app
             let size = platform.logical_size();

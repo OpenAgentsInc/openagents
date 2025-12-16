@@ -1,6 +1,6 @@
 //! Server-to-client messages.
 
-use coder_domain::{event::DomainEvent, projections::chat_view::ChatView, ThreadId};
+use coder_domain::{ThreadId, event::DomainEvent, projections::chat_view::ChatView};
 use serde::{Deserialize, Serialize};
 
 /// Messages sent from server to client.

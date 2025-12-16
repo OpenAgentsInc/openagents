@@ -223,7 +223,8 @@ impl MockBrowserAPI {
         assert!(
             self.url.contains(substring),
             "URL '{}' does not contain '{}'",
-            self.url, substring
+            self.url,
+            substring
         );
     }
 

@@ -1,8 +1,8 @@
+pub use crate::api::common::ResponseEvent;
+use crate::apply_patch::APPLY_PATCH_TOOL_INSTRUCTIONS;
 use crate::core::client_common::tools::ToolSpec;
 use crate::core::error::Result;
 use crate::core::openai_models::model_family::ModelFamily;
-pub use crate::api::common::ResponseEvent;
-use crate::apply_patch::APPLY_PATCH_TOOL_INSTRUCTIONS;
 use crate::protocol::models::ResponseItem;
 use futures::Stream;
 use serde::Deserialize;

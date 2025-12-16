@@ -66,10 +66,7 @@ impl PromptBuilder {
 
         // Git status if available
         if let Some(ref git_status) = self.git_status {
-            prompt.push_str(&format!(
-                "## Git Status\n{}\n\n",
-                git_status
-            ));
+            prompt.push_str(&format!("## Git Status\n{}\n\n", git_status));
         }
 
         // Tool usage guidelines

@@ -1,9 +1,9 @@
 use crate::core::config::Config;
 use crate::core::git_info::resolve_root_git_project_for_trust;
+use crate::core::protocol::SkillScope;
 use crate::core::skills::model::SkillError;
 use crate::core::skills::model::SkillLoadOutcome;
 use crate::core::skills::model::SkillMetadata;
-use crate::core::protocol::SkillScope;
 use dunce::canonicalize as normalize_path;
 use serde::Deserialize;
 use std::collections::VecDeque;

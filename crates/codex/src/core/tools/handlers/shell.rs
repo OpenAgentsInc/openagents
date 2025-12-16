@@ -1,6 +1,6 @@
-use async_trait::async_trait;
 use crate::protocol::models::ShellCommandToolCallParams;
 use crate::protocol::models::ShellToolCallParams;
+use async_trait::async_trait;
 use std::sync::Arc;
 
 use crate::core::codex::TurnContext;

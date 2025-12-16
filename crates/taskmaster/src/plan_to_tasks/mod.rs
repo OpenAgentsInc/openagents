@@ -37,6 +37,8 @@ pub mod converter;
 pub mod discovery;
 pub mod parser;
 
-pub use converter::{convert_to_tasks, print_summary, ConversionResult};
-pub use discovery::{default_claude_dir, discover_plan_by_name, discover_plans, DiscoveryError, PlanFile};
-pub use parser::{parse_plan_with_llm, ParsedPlan, ParsedTask, ParseError};
+pub use converter::{ConversionResult, convert_to_tasks, print_summary};
+pub use discovery::{
+    DiscoveryError, PlanFile, default_claude_dir, discover_plan_by_name, discover_plans,
+};
+pub use parser::{ParseError, ParsedPlan, ParsedTask, parse_plan_with_llm};

@@ -196,9 +196,8 @@ impl Default for DiffView {
 impl Widget for DiffView {
     fn paint(&mut self, bounds: Bounds, cx: &mut PaintContext) {
         // Draw background
-        cx.scene.draw_quad(
-            Quad::new(bounds).with_background(wgpui::theme::bg::SURFACE),
-        );
+        cx.scene
+            .draw_quad(Quad::new(bounds).with_background(wgpui::theme::bg::SURFACE));
 
         let mode = self.mode.get_untracked();
         let scroll = self.scroll_offset.get_untracked();
@@ -283,7 +282,8 @@ impl DiffView {
             }
 
             for change in &hunk.changes {
-                if y + self.line_height > bounds.origin.y && y < bounds.origin.y + bounds.size.height
+                if y + self.line_height > bounds.origin.y
+                    && y < bounds.origin.y + bounds.size.height
                 {
                     let (bg, fg, marker) = match change.kind {
                         ChangeKind::Added => (colors::ADDED_BG, colors::ADDED_FG, "+"),
@@ -331,12 +331,9 @@ impl DiffView {
 
                     // Draw marker
                     let marker_x = bounds.origin.x + gutter_width;
-                    let run = cx.text.layout(
-                        marker,
-                        Point::new(marker_x, y),
-                        self.font_size,
-                        fg,
-                    );
+                    let run = cx
+                        .text
+                        .layout(marker, Point::new(marker_x, y), self.font_size, fg);
                     cx.scene.draw_text(run);
 
                     // Draw content
@@ -396,8 +393,13 @@ impl DiffView {
                         };
 
                         cx.scene.draw_quad(
-                            Quad::new(Bounds::new(bounds.origin.x, y, half_width - 2.0, self.line_height))
-                                .with_background(bg),
+                            Quad::new(Bounds::new(
+                                bounds.origin.x,
+                                y,
+                                half_width - 2.0,
+                                self.line_height,
+                            ))
+                            .with_background(bg),
                         );
 
                         if self.show_line_numbers {

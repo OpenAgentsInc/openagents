@@ -5,7 +5,7 @@
 
 use crate::context::{EventContext, PaintContext};
 use crate::widget::{AnyWidget, EventResult, Widget, WidgetId};
-use wgpui::scroll::{calculate_scrollbar_thumb, ScrollContainer, ScrollDirection};
+use wgpui::scroll::{ScrollContainer, ScrollDirection, calculate_scrollbar_thumb};
 use wgpui::{Bounds, InputEvent, MouseButton, Point, Quad, Size};
 
 /// A scrollable container widget.

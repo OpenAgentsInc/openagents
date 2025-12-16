@@ -2,10 +2,10 @@ use std::collections::HashMap;
 use std::env;
 use std::time::Duration;
 
+use crate::mcp_types::CallToolResult;
 use anyhow::Context;
 use anyhow::Result;
 use anyhow::anyhow;
-use crate::mcp_types::CallToolResult;
 use reqwest::ClientBuilder;
 use reqwest::header::HeaderMap;
 use reqwest::header::HeaderName;

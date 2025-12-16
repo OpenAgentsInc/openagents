@@ -1,7 +1,7 @@
 //! Backend and credential detection.
 
-use crate::config::AutoConfig;
 use crate::Result;
+use crate::config::AutoConfig;
 use mechacoder::router::{Backend, Router, RouterConfig};
 use std::collections::HashMap;
 use std::path::Path;
@@ -36,11 +36,7 @@ impl Detection {
         let mut credentials = HashMap::new();
 
         // Check environment variables
-        for key in &[
-            "ANTHROPIC_API_KEY",
-            "OPENROUTER_API_KEY",
-            "OPENAI_API_KEY",
-        ] {
+        for key in &["ANTHROPIC_API_KEY", "OPENROUTER_API_KEY", "OPENAI_API_KEY"] {
             if std::env::var(key).is_ok() {
                 credentials.insert(key.to_string(), CredentialSource::Environment);
             }
@@ -112,10 +108,7 @@ impl Detection {
     }
 
     /// Select the best backend based on priority and preferences.
-    fn select_backend(
-        available: &[Backend],
-        config: &AutoConfig,
-    ) -> (Option<Backend>, String) {
+    fn select_backend(available: &[Backend], config: &AutoConfig) -> (Option<Backend>, String) {
         // If user specified a preference, try to use it
         if let Some(preferred) = config.preferred_backend {
             if available.contains(&preferred) {

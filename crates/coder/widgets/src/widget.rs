@@ -45,7 +45,12 @@ pub trait Widget {
     fn paint(&mut self, bounds: Bounds, cx: &mut PaintContext);
 
     /// Handle an input event.
-    fn event(&mut self, _event: &InputEvent, _bounds: Bounds, _cx: &mut EventContext) -> EventResult {
+    fn event(
+        &mut self,
+        _event: &InputEvent,
+        _bounds: Bounds,
+        _cx: &mut EventContext,
+    ) -> EventResult {
         EventResult::Ignored
     }
 
@@ -67,7 +72,12 @@ pub struct AnyWidget {
 
 trait AnyWidgetTrait {
     fn paint_any(&mut self, bounds: Bounds, cx: &mut PaintContext);
-    fn event_any(&mut self, event: &InputEvent, bounds: Bounds, cx: &mut EventContext) -> EventResult;
+    fn event_any(
+        &mut self,
+        event: &InputEvent,
+        bounds: Bounds,
+        cx: &mut EventContext,
+    ) -> EventResult;
     fn id_any(&self) -> Option<WidgetId>;
     fn size_hint_any(&self) -> (Option<f32>, Option<f32>);
 }
@@ -81,7 +91,12 @@ impl<W: Widget + 'static> AnyWidgetTrait for WidgetWrapper<W> {
         self.widget.paint(bounds, cx);
     }
 
-    fn event_any(&mut self, event: &InputEvent, bounds: Bounds, cx: &mut EventContext) -> EventResult {
+    fn event_any(
+        &mut self,
+        event: &InputEvent,
+        bounds: Bounds,
+        cx: &mut EventContext,
+    ) -> EventResult {
         self.widget.event(event, bounds, cx)
     }
 
@@ -108,7 +123,12 @@ impl AnyWidget {
     }
 
     /// Handle an event.
-    pub fn event(&mut self, event: &InputEvent, bounds: Bounds, cx: &mut EventContext) -> EventResult {
+    pub fn event(
+        &mut self,
+        event: &InputEvent,
+        bounds: Bounds,
+        cx: &mut EventContext,
+    ) -> EventResult {
         self.inner.event_any(event, bounds, cx)
     }
 

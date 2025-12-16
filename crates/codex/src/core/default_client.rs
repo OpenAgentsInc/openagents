@@ -1,6 +1,6 @@
-use crate::core::spawn::CODEX_SANDBOX_ENV_VAR;
 use crate::client::CodexHttpClient;
 pub use crate::client::CodexRequestBuilder;
+use crate::core::spawn::CODEX_SANDBOX_ENV_VAR;
 use reqwest::header::HeaderValue;
 use std::sync::LazyLock;
 use std::sync::Mutex;

@@ -76,16 +76,16 @@ impl Reporter for ConsoleReporter {
 
         let duration = Self::format_duration(result.duration);
 
-        let line = format!(
-            "  [{}] {} ({})",
-            status, result.name, duration
-        );
+        let line = format!("  [{}] {} ({})", status, result.name, duration);
 
         self.println(&line);
 
         // Print failure details
         if let StoryOutcome::Failed { message, phase } = &result.outcome {
-            self.println(&format!("         Failed in '{}' phase: {}", phase, message));
+            self.println(&format!(
+                "         Failed in '{}' phase: {}",
+                phase, message
+            ));
         }
 
         // Print skip reason
@@ -98,10 +98,7 @@ impl Reporter for ConsoleReporter {
         self.println("");
         self.println(&format!(
             "Results: {} passed, {} failed, {} skipped ({} total)",
-            results.passed,
-            results.failed,
-            results.skipped,
-            results.total
+            results.passed, results.failed, results.skipped, results.total
         ));
         self.println(&format!(
             "Duration: {}",
@@ -113,10 +110,7 @@ impl Reporter for ConsoleReporter {
             self.println("\nFailed stories:");
             for failure in results.failures() {
                 if let StoryOutcome::Failed { message, phase } = &failure.outcome {
-                    self.println(&format!(
-                        "  - {} ({}): {}",
-                        failure.name, phase, message
-                    ));
+                    self.println(&format!("  - {} ({}): {}", failure.name, phase, message));
                 }
             }
         }
@@ -132,10 +126,22 @@ mod tests {
 
     #[test]
     fn test_console_reporter_format_duration() {
-        assert_eq!(ConsoleReporter::format_duration(Duration::from_millis(50)), "50ms");
-        assert_eq!(ConsoleReporter::format_duration(Duration::from_millis(999)), "999ms");
-        assert_eq!(ConsoleReporter::format_duration(Duration::from_secs(1)), "1.00s");
-        assert_eq!(ConsoleReporter::format_duration(Duration::from_millis(1500)), "1.50s");
+        assert_eq!(
+            ConsoleReporter::format_duration(Duration::from_millis(50)),
+            "50ms"
+        );
+        assert_eq!(
+            ConsoleReporter::format_duration(Duration::from_millis(999)),
+            "999ms"
+        );
+        assert_eq!(
+            ConsoleReporter::format_duration(Duration::from_secs(1)),
+            "1.00s"
+        );
+        assert_eq!(
+            ConsoleReporter::format_duration(Duration::from_millis(1500)),
+            "1.50s"
+        );
     }
 
     #[test]

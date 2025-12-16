@@ -50,9 +50,9 @@ pub mod signal;
 
 // Re-exports
 pub use command::{Command, CommandBus, CommandHandler};
-pub use effect::{create_effect, Effect, EffectHandle};
-pub use memo::{create_memo, Memo};
+pub use effect::{Effect, EffectHandle, create_effect};
+pub use memo::{Memo, create_memo};
 pub use runtime::Runtime;
 pub use scheduler::{FramePhase, Scheduler};
-pub use scope::{create_scope, Scope, ScopeId};
-pub use signal::{create_signal, ReadSignal, Signal, WriteSignal};
+pub use scope::{Scope, ScopeId, create_scope};
+pub use signal::{ReadSignal, Signal, WriteSignal, create_signal};

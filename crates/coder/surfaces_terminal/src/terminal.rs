@@ -148,7 +148,10 @@ impl Terminal {
 
     /// Calculate required size for given dimensions.
     pub fn size_for_dimensions(&self, cols: usize, rows: usize) -> (f32, f32) {
-        (cols as f32 * self.char_width, rows as f32 * self.line_height)
+        (
+            cols as f32 * self.char_width,
+            rows as f32 * self.line_height,
+        )
     }
 
     /// Calculate dimensions that fit in given bounds.
@@ -216,7 +219,10 @@ impl Terminal {
         let col = (x / self.char_width).floor() as usize;
         let row = (y / self.line_height).floor() as usize;
 
-        (row.min(self.buffer.rows() - 1), col.min(self.buffer.cols() - 1))
+        (
+            row.min(self.buffer.rows() - 1),
+            col.min(self.buffer.cols() - 1),
+        )
     }
 }
 
@@ -229,9 +235,8 @@ impl Default for Terminal {
 impl Widget for Terminal {
     fn paint(&mut self, bounds: Bounds, cx: &mut PaintContext) {
         // Draw background
-        cx.scene.draw_quad(
-            Quad::new(bounds).with_background(wgpui::theme::bg::SURFACE),
-        );
+        cx.scene
+            .draw_quad(Quad::new(bounds).with_background(wgpui::theme::bg::SURFACE));
 
         let scroll_offset = self.scroll_offset.get_untracked();
         let scrollback = self.buffer.scrollback_size();
@@ -312,29 +317,20 @@ impl Widget for Terminal {
             let cursor_y = bounds.origin.y + (cursor_row as f32) * self.line_height;
 
             let cursor_bounds = match self.cursor_style {
-                CursorStyle::Block => Bounds::new(
-                    cursor_x,
-                    cursor_y,
-                    self.char_width,
-                    self.line_height,
-                ),
+                CursorStyle::Block => {
+                    Bounds::new(cursor_x, cursor_y, self.char_width, self.line_height)
+                }
                 CursorStyle::Underline => Bounds::new(
                     cursor_x,
                     cursor_y + self.line_height - 2.0,
                     self.char_width,
                     2.0,
                 ),
-                CursorStyle::Bar => Bounds::new(
-                    cursor_x,
-                    cursor_y,
-                    2.0,
-                    self.line_height,
-                ),
+                CursorStyle::Bar => Bounds::new(cursor_x, cursor_y, 2.0, self.line_height),
             };
 
-            cx.scene.draw_quad(
-                Quad::new(cursor_bounds).with_background(DEFAULT_FG),
-            );
+            cx.scene
+                .draw_quad(Quad::new(cursor_bounds).with_background(DEFAULT_FG));
         }
     }
 

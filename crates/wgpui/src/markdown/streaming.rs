@@ -308,9 +308,11 @@ mod tests {
         streaming.complete();
 
         // Should have a code block
-        let has_code_block = streaming.document().blocks.iter().any(|b| {
-            matches!(b, MarkdownBlock::CodeBlock { .. })
-        });
+        let has_code_block = streaming
+            .document()
+            .blocks
+            .iter()
+            .any(|b| matches!(b, MarkdownBlock::CodeBlock { .. }));
         assert!(has_code_block);
     }
 }

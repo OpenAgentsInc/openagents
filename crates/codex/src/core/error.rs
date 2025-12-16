@@ -1,17 +1,17 @@
 use crate::core::exec::ExecToolCallOutput;
+use crate::core::protocol::CodexErrorInfo;
+use crate::core::protocol::ErrorEvent;
+use crate::core::protocol::RateLimitSnapshot;
 use crate::core::token_data::KnownPlan;
 use crate::core::token_data::PlanType;
 use crate::core::truncate::TruncationPolicy;
 use crate::core::truncate::truncate_text;
+use crate::protocol::ConversationId;
+use crate::utils::async_utils::CancelErr;
 use chrono::DateTime;
 use chrono::Datelike;
 use chrono::Local;
 use chrono::Utc;
-use crate::utils::async_utils::CancelErr;
-use crate::protocol::ConversationId;
-use crate::core::protocol::CodexErrorInfo;
-use crate::core::protocol::ErrorEvent;
-use crate::core::protocol::RateLimitSnapshot;
 use reqwest::StatusCode;
 use serde_json;
 use std::io;
@@ -527,11 +527,11 @@ pub fn get_error_message_ui(e: &CodexErr) -> String {
 mod tests {
     use super::*;
     use crate::core::exec::StreamOutput;
+    use crate::core::protocol::RateLimitWindow;
     use chrono::DateTime;
     use chrono::Duration as ChronoDuration;
     use chrono::TimeZone;
     use chrono::Utc;
-    use crate::core::protocol::RateLimitWindow;
     use pretty_assertions::assert_eq;
     use reqwest::Response;
     use reqwest::ResponseBuilderExt;

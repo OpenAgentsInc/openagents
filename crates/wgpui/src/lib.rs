@@ -54,14 +54,16 @@ pub use color::Hsla;
 pub use geometry::{Bounds, CornerRadii, Edges, Point, Size};
 pub use hit_test::{Hit, HitTestEntry, HitTestIndex, NodeId};
 pub use input::{Cursor, InputEvent, Key, KeyCode, Modifiers, MouseButton, NamedKey};
-pub use layout::{auto, length, length_auto, pct, px, relative, zero, LayoutEngine, LayoutId, LayoutStyle};
+pub use layout::{
+    LayoutEngine, LayoutId, LayoutStyle, auto, length, length_auto, pct, px, relative, zero,
+};
 pub use platform::Platform;
 pub use scene::{GlyphInstance, GpuQuad, GpuTextQuad, Quad, Scene, TextRun};
 pub use scroll::{ScrollContainer, ScrollDirection};
 pub use text::{FontStyle, TextSystem};
 
 #[cfg(all(feature = "web", target_arch = "wasm32"))]
-pub use platform::web::{run_animation_loop, setup_resize_observer, WebPlatform};
+pub use platform::web::{WebPlatform, run_animation_loop, setup_resize_observer};
 
 // WASM entry point for demo (only when demo feature is enabled)
 #[cfg(all(feature = "web", target_arch = "wasm32"))]
@@ -134,7 +136,9 @@ You can use `inline code`, **bold**, *italic*, and ~~strikethrough~~.
         fade_in_frames: Some(15), // Fade in over ~250ms at 60fps
         ..Default::default()
     };
-    let streaming = Rc::new(RefCell::new(markdown::StreamingMarkdown::with_config(streaming_config)));
+    let streaming = Rc::new(RefCell::new(markdown::StreamingMarkdown::with_config(
+        streaming_config,
+    )));
     let char_index = Rc::new(RefCell::new(0usize));
     let demo_text = DEMO_MARKDOWN.to_string();
 

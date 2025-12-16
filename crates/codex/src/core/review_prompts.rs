@@ -1,6 +1,6 @@
-use crate::utils::git::merge_base_with_head;
 use crate::core::protocol::ReviewRequest;
 use crate::core::protocol::ReviewTarget;
+use crate::utils::git::merge_base_with_head;
 use std::path::Path;
 
 #[derive(Clone, Debug, PartialEq)]

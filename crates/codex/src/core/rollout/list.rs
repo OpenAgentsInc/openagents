@@ -15,10 +15,10 @@ use uuid::Uuid;
 
 use super::SESSIONS_SUBDIR;
 use crate::core::protocol::EventMsg;
-use crate::file_search as file_search;
 use crate::core::protocol::RolloutItem;
 use crate::core::protocol::RolloutLine;
 use crate::core::protocol::SessionSource;
+use crate::file_search;
 
 /// Returned page of conversation summaries.
 #[derive(Debug, Default, PartialEq)]

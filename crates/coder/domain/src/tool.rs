@@ -69,11 +69,7 @@ impl ToolUse {
     }
 
     /// Create a tool use with a specific ID.
-    pub fn with_id(
-        id: ToolUseId,
-        tool_name: impl Into<String>,
-        input: serde_json::Value,
-    ) -> Self {
+    pub fn with_id(id: ToolUseId, tool_name: impl Into<String>, input: serde_json::Value) -> Self {
         Self {
             id,
             tool_name: tool_name.into(),
@@ -143,10 +139,7 @@ pub enum ToolOutput {
     Json(serde_json::Value),
 
     /// Binary output (base64 encoded).
-    Binary {
-        mime_type: String,
-        data: String,
-    },
+    Binary { mime_type: String, data: String },
 
     /// File reference.
     File {
@@ -160,7 +153,11 @@ pub enum ToolOutput {
 
 impl ToolResult {
     /// Create a successful tool result with text output.
-    pub fn success_text(tool_use_id: ToolUseId, output: impl Into<String>, duration_ms: u64) -> Self {
+    pub fn success_text(
+        tool_use_id: ToolUseId,
+        output: impl Into<String>,
+        duration_ms: u64,
+    ) -> Self {
         Self {
             tool_use_id,
             success: true,
@@ -171,7 +168,11 @@ impl ToolResult {
     }
 
     /// Create a successful tool result with JSON output.
-    pub fn success_json(tool_use_id: ToolUseId, output: serde_json::Value, duration_ms: u64) -> Self {
+    pub fn success_json(
+        tool_use_id: ToolUseId,
+        output: serde_json::Value,
+        duration_ms: u64,
+    ) -> Self {
         Self {
             tool_use_id,
             success: true,

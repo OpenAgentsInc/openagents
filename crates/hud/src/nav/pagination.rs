@@ -126,7 +126,10 @@ impl Pagination {
         }
 
         // Check next button
-        if x >= current_x && x < current_x + self.button_size && self.current_page < self.total_pages {
+        if x >= current_x
+            && x < current_x + self.button_size
+            && self.current_page < self.total_pages
+        {
             self.hovered = Some(PaginationButton::Next);
             return;
         }
@@ -293,13 +296,10 @@ impl Pagination {
         };
 
         // Draw border
-        scene.draw_quad(
-            wgpui::Quad::new(button_bounds)
-                .with_border(
-                    Hsla::new(self.color.h, self.color.s, self.color.l, border_alpha),
-                    1.0,
-                ),
-        );
+        scene.draw_quad(wgpui::Quad::new(button_bounds).with_border(
+            Hsla::new(self.color.h, self.color.s, self.color.l, border_alpha),
+            1.0,
+        ));
 
         // Draw label
         let label_alpha = if !enabled {
@@ -312,9 +312,17 @@ impl Pagination {
 
         let text_run = text_system.layout(
             label,
-            Point::new(x + self.button_size / 2.0 - 4.0, y + self.button_size / 2.0 + 4.0),
+            Point::new(
+                x + self.button_size / 2.0 - 4.0,
+                y + self.button_size / 2.0 + 4.0,
+            ),
             14.0,
-            Hsla::new(self.text_color.h, self.text_color.s, self.text_color.l, label_alpha),
+            Hsla::new(
+                self.text_color.h,
+                self.text_color.s,
+                self.text_color.l,
+                label_alpha,
+            ),
         );
         scene.draw_text(text_run);
     }
@@ -340,21 +348,27 @@ impl Pagination {
             // Filled background for current page
             scene.draw_quad(
                 wgpui::Quad::new(button_bounds)
-                    .with_background(Hsla::new(self.color.h, self.color.s, self.color.l, base_alpha * 0.3))
+                    .with_background(Hsla::new(
+                        self.color.h,
+                        self.color.s,
+                        self.color.l,
+                        base_alpha * 0.3,
+                    ))
                     .with_border(
                         Hsla::new(self.color.h, self.color.s, self.color.l, base_alpha),
                         1.0,
                     ),
             );
         } else {
-            let border_alpha = if is_hovered { base_alpha } else { base_alpha * 0.3 };
-            scene.draw_quad(
-                wgpui::Quad::new(button_bounds)
-                    .with_border(
-                        Hsla::new(self.color.h, self.color.s, self.color.l, border_alpha),
-                        1.0,
-                    ),
-            );
+            let border_alpha = if is_hovered {
+                base_alpha
+            } else {
+                base_alpha * 0.3
+            };
+            scene.draw_quad(wgpui::Quad::new(button_bounds).with_border(
+                Hsla::new(self.color.h, self.color.s, self.color.l, border_alpha),
+                1.0,
+            ));
         }
 
         // Draw page number
@@ -368,19 +382,42 @@ impl Pagination {
         let offset = if page >= 10 { 8.0 } else { 4.0 };
         let text_run = text_system.layout(
             &label,
-            Point::new(x + self.button_size / 2.0 - offset, y + self.button_size / 2.0 + 4.0),
+            Point::new(
+                x + self.button_size / 2.0 - offset,
+                y + self.button_size / 2.0 + 4.0,
+            ),
             14.0,
-            Hsla::new(self.text_color.h, self.text_color.s, self.text_color.l, label_alpha),
+            Hsla::new(
+                self.text_color.h,
+                self.text_color.s,
+                self.text_color.l,
+                label_alpha,
+            ),
         );
         scene.draw_text(text_run);
     }
 
-    fn draw_ellipsis(&self, scene: &mut Scene, text_system: &mut TextSystem, x: f32, y: f32, text_alpha: f32) {
+    fn draw_ellipsis(
+        &self,
+        scene: &mut Scene,
+        text_system: &mut TextSystem,
+        x: f32,
+        y: f32,
+        text_alpha: f32,
+    ) {
         let text_run = text_system.layout(
             "...",
-            Point::new(x + self.button_size / 2.0 - 8.0, y + self.button_size / 2.0 + 4.0),
+            Point::new(
+                x + self.button_size / 2.0 - 8.0,
+                y + self.button_size / 2.0 + 4.0,
+            ),
             14.0,
-            Hsla::new(self.text_color.h, self.text_color.s, self.text_color.l, text_alpha * 0.5),
+            Hsla::new(
+                self.text_color.h,
+                self.text_color.s,
+                self.text_color.l,
+                text_alpha * 0.5,
+            ),
         );
         scene.draw_text(text_run);
     }
