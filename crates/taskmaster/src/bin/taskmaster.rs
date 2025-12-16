@@ -100,6 +100,9 @@ enum Commands {
 
     /// Show audit events
     Events(EventsArgs),
+
+    /// Export issues to JSON/JSONL
+    Export(ExportArgs),
 }
 
 fn main() {
@@ -138,6 +141,7 @@ fn main() {
         Commands::Doctor(args) => doctor::run(&repo, args),
         Commands::Cleanup(args) => cleanup::run(&repo, args),
         Commands::Events(args) => events::run(&repo, args),
+        Commands::Export(args) => export::run(&repo, args),
     };
 
     if let Err(e) = result {
