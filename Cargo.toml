@@ -50,6 +50,9 @@ members = [
     "crates/unit",
     "crates/fm-bridge",
     "crates/oanix",
+
+    # Compute Provider
+    "crates/compute",
 ]
 
 [workspace.lints.rust]

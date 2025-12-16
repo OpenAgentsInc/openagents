@@ -1,0 +1,71 @@
+[package]
+name = "compute"
+version = "0.1.0"
+edition = "2024"
+description = "Sell compute via NIP-90 DVMs with Bitcoin payments"
+license = "MIT"
+
+[[bin]]
+name = "compute"
+path = "src/bin/compute.rs"
+
+[lib]
+name = "compute"
+path = "src/lib.rs"
+
+[dependencies]
+# Internal crates
+nostr = { path = "../nostr/core", features = ["full"] }
+nostr-client = { path = "../nostr/client" }
+llm = { path = "../llm" }
+wgpui = { path = "../wgpui", features = ["desktop"] }
+hud = { path = "../hud" }
+coder_ui_runtime = { path = "../coder/ui_runtime" }
+
+# External: Spark wallet
+spark-sdk = { git = "https://github.com/breez/spark-sdk.git", package = "spark" }
+spark-wallet = { git = "https://github.com/breez/spark-sdk.git", package = "spark-wallet" }
+
+# Cryptography
+bip39 = "2.2"
+bitcoin = { version = "0.32", features = ["serde"] }
+aes-gcm = "0.10"
+argon2 = "0.5"
+rand = "0.8"
+hex = "0.4"
+
+# Async runtime
+tokio = { version = "1", features = ["rt-multi-thread", "sync", "time", "fs"] }
+futures = "0.3"
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# Error handling
+thiserror = "2.0"
+
+# Time
+chrono = { version = "0.4", features = ["serde"] }
+
+# Logging
+log = "0.4"
+tracing = "0.1"
+
+# Collections
+smallvec = { version = "1", features = ["union"] }
+parking_lot = "0.12"
+
+# Platform
+dirs = "5.0"
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+env_logger = "0.11"
+winit = "0.30"
+pollster = "0.4"
+
+[features]
+default = []
+
+[dev-dependencies]
+tempfile = "3.10"
