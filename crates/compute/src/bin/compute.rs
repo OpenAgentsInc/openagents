@@ -87,6 +87,7 @@ impl ApplicationHandler for ComputeAppHandler {
                 // Paint to scene
                 let mut scene = Scene::new();
                 let size = platform.logical_size();
+                log::debug!("Rendering frame, size: {:?}", size);
 
                 let bounds = Bounds {
                     origin: Point { x: 0.0, y: 0.0 },
@@ -97,6 +98,7 @@ impl ApplicationHandler for ComputeAppHandler {
                 };
 
                 self.app.paint(bounds, &mut scene, self.scale);
+                log::debug!("Scene has {} quads", scene.quads.len());
 
                 // Render
                 if let Err(e) = platform.render(&scene) {

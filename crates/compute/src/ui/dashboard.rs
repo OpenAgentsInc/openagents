@@ -41,7 +41,7 @@ impl DashboardScreen {
         // Background
         scene.draw_quad(Quad {
             bounds,
-            background: Some(Hsla::new(220.0, 0.08, 0.08, 1.0)),
+            background: Some(Hsla::new(220.0 / 360.0, 0.08, 0.08, 1.0)),
             ..Default::default()
         });
 
@@ -77,7 +77,7 @@ impl DashboardScreen {
         // Header background
         scene.draw_quad(Quad {
             bounds,
-            background: Some(Hsla::new(220.0, 0.1, 0.12, 1.0)),
+            background: Some(Hsla::new(220.0 / 360.0, 0.1, 0.12, 1.0)),
             ..Default::default()
         });
 
@@ -173,9 +173,9 @@ impl DashboardScreen {
 
         // Background - green when online, dark when offline
         let bg_color = if is_online {
-            Hsla::new(140.0, 0.6, 0.3, 1.0) // Green
+            Hsla::new(140.0 / 360.0, 0.6, 0.3, 1.0) // Green
         } else {
-            Hsla::new(220.0, 0.1, 0.15, 1.0) // Dark
+            Hsla::new(220.0 / 360.0, 0.1, 0.15, 1.0) // Dark
         };
 
         scene.draw_quad(Quad {
