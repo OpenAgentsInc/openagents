@@ -2,7 +2,8 @@
 //! chat completions streaming format (OpenAI, OpenRouter, Ollama, etc).
 
 use crate::message::{
-    CompletionRequest, ContentBlock, Message, Role, Tool, ToolChoice, ToolResultContent,
+    CompletionRequest, ContentBlock, Message, ResponseFormat, Role, Tool, ToolChoice,
+    ToolResultContent,
 };
 use crate::provider::ProviderError;
 use crate::stream::{FinishReason, SseStream, StreamEvent, Usage};
@@ -46,6 +47,11 @@ pub(crate) fn build_openai_body(
 
     if let Some(tool_choice) = &request.tool_choice {
         body["tool_choice"] = transform_tool_choice(tool_choice)?;
+    }
+
+    // Apply response format if specified
+    if let Some(format) = &request.response_format {
+        body["response_format"] = transform_response_format(format)?;
     }
 
     // Apply OpenAI-specific options if present
@@ -248,6 +254,32 @@ pub(crate) fn transform_tool_choice(
                 "name": name,
             }
         }),
+    })
+}
+
+/// Convert response format to OpenAI format.
+pub(crate) fn transform_response_format(
+    format: &ResponseFormat,
+) -> Result<serde_json::Value, ProviderError> {
+    Ok(match format {
+        ResponseFormat::Text => serde_json::json!({ "type": "text" }),
+        ResponseFormat::JsonObject => serde_json::json!({ "type": "json_object" }),
+        ResponseFormat::JsonSchema { schema, name } => {
+            let mut json_schema = serde_json::json!({
+                "schema": schema,
+                "strict": true,
+            });
+            if let Some(n) = name {
+                json_schema["name"] = serde_json::json!(n);
+            } else {
+                // Some providers require a name, use a default
+                json_schema["name"] = serde_json::json!("response");
+            }
+            serde_json::json!({
+                "type": "json_schema",
+                "json_schema": json_schema
+            })
+        }
     })
 }
 

@@ -43,6 +43,10 @@ pub struct CompletionRequest {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub stop: Vec<String>,
 
+    /// Response format for structured output (JSON mode, JSON schema).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub response_format: Option<ResponseFormat>,
+
     /// Provider-specific options.
     #[serde(default, skip_serializing_if = "ProviderOptions::is_empty")]
     pub provider_options: ProviderOptions,
@@ -61,6 +65,7 @@ impl CompletionRequest {
             temperature: None,
             top_p: None,
             stop: Vec::new(),
+            response_format: None,
             provider_options: ProviderOptions::default(),
         }
     }
@@ -104,6 +109,12 @@ impl CompletionRequest {
     /// Set temperature.
     pub fn temperature(mut self, temperature: f32) -> Self {
         self.temperature = Some(temperature);
+        self
+    }
+
+    /// Set response format for structured output.
+    pub fn response_format(mut self, format: ResponseFormat) -> Self {
+        self.response_format = Some(format);
         self
     }
 }
@@ -447,4 +458,22 @@ pub struct BedrockOptions {
     /// Model profile ARN.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub profile_arn: Option<String>,
+}
+
+/// Response format for structured output.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum ResponseFormat {
+    /// Plain text response (default).
+    Text,
+    /// JSON object response (model must output valid JSON).
+    JsonObject,
+    /// JSON schema response (model must match the provided schema).
+    JsonSchema {
+        /// The JSON schema the response must conform to.
+        schema: serde_json::Value,
+        /// Optional name for the schema (some providers require this).
+        #[serde(skip_serializing_if = "Option::is_none")]
+        name: Option<String>,
+    },
 }
