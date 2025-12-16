@@ -3,13 +3,14 @@
 //! This module provides native window management and rendering for
 //! macOS, Windows, and Linux.
 
-use crate::geometry::Size;
+use crate::geometry::{Point, Size};
 use crate::input::{Cursor, InputEvent, Key, KeyCode, Modifiers, MouseButton, NamedKey};
 use crate::platform::Platform;
 use crate::renderer::Renderer;
 use crate::scene::Scene;
 use crate::text::TextSystem;
 
+use std::cell::Cell;
 use std::sync::Arc;
 use winit::dpi::LogicalSize;
 use winit::event::{ElementState, MouseButton as WinitMouseButton, WindowEvent};
@@ -28,6 +29,8 @@ pub struct DesktopPlatform {
     text_system: TextSystem,
     scale_factor: f32,
     logical_size: Size,
+    /// Track cursor position for mouse events
+    cursor_position: Cell<Point>,
 }
 
 impl DesktopPlatform {
@@ -99,6 +102,7 @@ impl DesktopPlatform {
             text_system,
             scale_factor,
             logical_size,
+            cursor_position: Cell::new(Point::ZERO),
         })
     }
 
@@ -122,17 +126,20 @@ impl DesktopPlatform {
         match event {
             WindowEvent::CursorMoved { position, .. } => {
                 let scale = self.scale_factor;
+                let pos = Point::new(
+                    position.x as f32 / scale,
+                    position.y as f32 / scale,
+                );
+                // Store cursor position for use in mouse input events
+                self.cursor_position.set(pos);
                 Some(InputEvent::MouseMove {
-                    position: crate::geometry::Point::new(
-                        position.x as f32 / scale,
-                        position.y as f32 / scale,
-                    ),
+                    position: pos,
                     modifiers: Modifiers::NONE, // TODO: track modifier state
                 })
             }
             WindowEvent::MouseInput { state, button, .. } => {
                 let btn = convert_mouse_button(*button);
-                let position = crate::geometry::Point::ZERO; // TODO: track cursor position
+                let position = self.cursor_position.get();
                 match state {
                     ElementState::Pressed => Some(InputEvent::MouseDown {
                         position,

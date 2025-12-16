@@ -97,8 +97,8 @@ impl ApplicationHandler for ComputeAppHandler {
                     },
                 };
 
-                self.app.paint(bounds, &mut scene, self.scale);
-                log::debug!("Scene has {} quads", scene.quads.len());
+                self.app.paint(bounds, &mut scene, self.scale, platform.text_system());
+                log::debug!("Scene has {} quads, {} text runs", scene.quads.len(), scene.text_runs.len());
 
                 // Render
                 if let Err(e) = platform.render(&scene) {

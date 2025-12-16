@@ -22,8 +22,10 @@ pub struct AppState {
     // Identity
     /// The user's unified identity (Nostr + Spark)
     pub identity: Signal<Option<Arc<UnifiedIdentity>>>,
-    /// Whether we're in onboarding mode (no identity yet)
-    pub is_onboarding: Signal<bool>,
+    /// Whether to show backup screen
+    pub show_backup: Signal<bool>,
+    /// Whether the seed has been backed up
+    pub is_backed_up: Signal<bool>,
 
     // Online status
     /// Whether the provider is online and accepting jobs
@@ -75,7 +77,8 @@ impl AppState {
     pub fn new() -> Self {
         Self {
             identity: Signal::new(None),
-            is_onboarding: Signal::new(true),
+            show_backup: Signal::new(false),
+            is_backed_up: Signal::new(false),
             is_online: Signal::new(false),
             balance_sats: Signal::new(0),
             spark_address: Signal::new(String::new()),
@@ -91,16 +94,30 @@ impl AppState {
         }
     }
 
-    /// Set the identity and exit onboarding mode
+    /// Set the identity
     pub fn set_identity(&self, identity: UnifiedIdentity) {
         self.identity.set(Some(Arc::new(identity)));
-        self.is_onboarding.set(false);
     }
 
-    /// Clear the identity and enter onboarding mode
+    /// Clear the identity
     pub fn clear_identity(&self) {
         self.identity.set(None);
-        self.is_onboarding.set(true);
+    }
+
+    /// Show backup screen
+    pub fn show_backup_screen(&self) {
+        self.show_backup.set(true);
+    }
+
+    /// Hide backup screen
+    pub fn hide_backup_screen(&self) {
+        self.show_backup.set(false);
+    }
+
+    /// Mark seed as backed up
+    pub fn mark_backed_up(&self) {
+        self.is_backed_up.set(true);
+        self.show_backup.set(false);
     }
 
     /// Toggle online status
@@ -228,7 +245,8 @@ mod tests {
     #[test]
     fn test_state_default() {
         let state = AppState::new();
-        assert!(state.is_onboarding.get());
+        assert!(!state.show_backup.get());
+        assert!(!state.is_backed_up.get());
         assert!(!state.is_online.get());
         assert_eq!(state.balance_sats.get(), 0);
     }

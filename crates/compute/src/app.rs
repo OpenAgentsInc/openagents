@@ -7,7 +7,7 @@ use crate::storage::SecureStore;
 use crate::ui::RootView;
 use std::sync::Arc;
 use tokio::sync::broadcast;
-use wgpui::{Bounds, Scene};
+use wgpui::{Bounds, Scene, TextSystem};
 
 /// Main compute provider application
 pub struct ComputeApp {
@@ -57,11 +57,9 @@ impl ComputeApp {
 
     /// Initialize the application (async)
     pub async fn init(&mut self) {
-        // Check if we have a stored identity
-        if self.storage.exists().await {
-            // For now, we'll need to prompt for password
-            // TODO: Implement password prompt in UI
-            log::info!("Found existing identity, need password to unlock");
+        // Try to load existing identity or generate new one
+        if let Err(e) = self.load_or_generate_identity().await {
+            log::error!("Failed to initialize identity: {}", e);
         }
 
         // Check if Ollama is available
@@ -84,9 +82,61 @@ impl ComputeApp {
         }
     }
 
+    /// Load existing identity or generate a new one
+    async fn load_or_generate_identity(&mut self) -> Result<(), String> {
+        use crate::domain::UnifiedIdentity;
+
+        // Try to load from plaintext storage first (auto-generated, not yet backed up)
+        if self.storage.plaintext_exists().await {
+            match self.storage.load_plaintext().await {
+                Ok(mnemonic) => {
+                    match UnifiedIdentity::from_mnemonic(&mnemonic, "") {
+                        Ok(identity) => {
+                            let npub = identity.npub().unwrap_or_else(|_| "unknown".to_string());
+                            log::info!("Loaded existing identity: {}", npub);
+                            self.state.set_identity(identity);
+                            self.state.is_backed_up.set(false); // Not backed up yet
+                            return Ok(());
+                        }
+                        Err(e) => {
+                            log::warn!("Failed to restore identity from stored mnemonic: {}", e);
+                        }
+                    }
+                }
+                Err(e) => {
+                    log::warn!("Failed to load plaintext mnemonic: {}", e);
+                }
+            }
+        }
+
+        // Try to load from encrypted storage (backed up)
+        // TODO: Implement password prompt for encrypted storage
+
+        // No identity found, generate a new one
+        log::info!("No identity found, generating new one");
+        match UnifiedIdentity::generate() {
+            Ok(identity) => {
+                // Save to plaintext storage
+                if let Err(e) = self.storage.store_plaintext(identity.mnemonic()).await {
+                    log::error!("Failed to save identity: {}", e);
+                    return Err(format!("Failed to save identity: {}", e));
+                }
+                let npub = identity.npub().unwrap_or_else(|_| "unknown".to_string());
+                log::info!("Generated new identity: {}", npub);
+                self.state.set_identity(identity);
+                self.state.is_backed_up.set(false);
+                Ok(())
+            }
+            Err(e) => {
+                log::error!("Failed to generate identity: {}", e);
+                Err(format!("Failed to generate identity: {}", e))
+            }
+        }
+    }
+
     /// Paint the application to the scene
-    pub fn paint(&mut self, bounds: Bounds, scene: &mut Scene, scale: f32) {
-        self.root_view.paint(bounds, scene, scale);
+    pub fn paint(&mut self, bounds: Bounds, scene: &mut Scene, scale: f32, text_system: &mut TextSystem) {
+        self.root_view.paint(bounds, scene, scale, text_system);
     }
 
     /// Handle input events
