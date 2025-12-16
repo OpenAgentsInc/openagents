@@ -89,6 +89,43 @@ impl SecureStore {
         fs::try_exists(&self.path).await.unwrap_or(false)
     }
 
+    /// Path for unencrypted mnemonic (for auto-generated wallets)
+    fn plaintext_path(&self) -> PathBuf {
+        self.path.with_extension("seed")
+    }
+
+    /// Check if plaintext seed exists
+    pub async fn plaintext_exists(&self) -> bool {
+        fs::try_exists(self.plaintext_path()).await.unwrap_or(false)
+    }
+
+    /// Store mnemonic in plaintext (for auto-generated wallets before backup)
+    pub async fn store_plaintext(&self, mnemonic: &str) -> Result<(), SecureStoreError> {
+        // Ensure directory exists
+        if let Some(parent) = self.path.parent() {
+            fs::create_dir_all(parent).await?;
+        }
+        fs::write(self.plaintext_path(), mnemonic).await?;
+        Ok(())
+    }
+
+    /// Load plaintext mnemonic
+    pub async fn load_plaintext(&self) -> Result<String, SecureStoreError> {
+        if !self.plaintext_exists().await {
+            return Err(SecureStoreError::NotFound);
+        }
+        let mnemonic = fs::read_to_string(self.plaintext_path()).await?;
+        Ok(mnemonic.trim().to_string())
+    }
+
+    /// Delete plaintext seed (after backup is confirmed)
+    pub async fn delete_plaintext(&self) -> Result<(), SecureStoreError> {
+        if self.plaintext_exists().await {
+            fs::remove_file(self.plaintext_path()).await?;
+        }
+        Ok(())
+    }
+
     /// Store the seed phrase encrypted with a password
     pub async fn store(&self, mnemonic: &str, password: &str) -> Result<(), SecureStoreError> {
         // Generate salt for key derivation

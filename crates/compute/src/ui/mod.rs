@@ -2,8 +2,8 @@
 //!
 //! Uses wgpui and HUD components for a sci-fi styled interface.
 
+pub mod backup;
 pub mod dashboard;
-pub mod onboarding;
 pub mod root;
 
 // Panel components
@@ -13,6 +13,6 @@ pub mod models_panel;
 pub mod network_panel;
 pub mod wallet_panel;
 
+pub use backup::BackupScreen;
 pub use dashboard::DashboardScreen;
-pub use onboarding::OnboardingScreen;
 pub use root::RootView;
