@@ -1011,6 +1011,7 @@ dependencies = [
  "llm",
  "serde",
  "serde_json",
+ "tempfile",
  "thiserror 2.0.17",
  "tokio",
  "tool_registry",
@@ -7178,6 +7179,7 @@ name = "tools"
 version = "0.1.0"
 dependencies = [
  "globset",
+ "ignore",
  "regex",
  "serde",
  "serde_json",

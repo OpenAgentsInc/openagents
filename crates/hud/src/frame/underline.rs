@@ -101,7 +101,12 @@ impl FrameUnderline {
             return;
         }
 
-        let color = Hsla::new(self.color.h, self.color.s, self.color.l, self.color.a * progress);
+        let color = Hsla::new(
+            self.color.h,
+            self.color.s,
+            self.color.l,
+            self.color.a * progress,
+        );
         let w = self.line_width;
 
         let x = bounds.origin.x;
@@ -112,17 +117,13 @@ impl FrameUnderline {
 
         if self.from_left {
             // Animate from left edge
-            scene.draw_quad(
-                Quad::new(Bounds::new(x, y, line_width, w))
-                    .with_background(color),
-            );
+            scene.draw_quad(Quad::new(Bounds::new(x, y, line_width, w)).with_background(color));
         } else {
             // Animate from center
             let center = x + width / 2.0;
             let half = line_width / 2.0;
             scene.draw_quad(
-                Quad::new(Bounds::new(center - half, y, line_width, w))
-                    .with_background(color),
+                Quad::new(Bounds::new(center - half, y, line_width, w)).with_background(color),
             );
         }
     }

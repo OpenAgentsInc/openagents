@@ -33,7 +33,7 @@ pub use state::AppState;
 pub use chat_handler::spawn_chat_handler;
 
 #[cfg(not(target_arch = "wasm32"))]
-pub use service_handler::{spawn_service_handler, ServiceRequest};
+pub use service_handler::{ServiceRequest, spawn_service_handler};
 
 // WASM entry point for web demo
 #[cfg(all(feature = "web", target_arch = "wasm32"))]

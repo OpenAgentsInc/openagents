@@ -20,8 +20,8 @@
 //! ```
 
 use chrono::{DateTime, Utc};
-use rusqlite::{params, Connection, OptionalExtension};
-use serde::{de::DeserializeOwned, Serialize};
+use rusqlite::{Connection, OptionalExtension, params};
+use serde::{Serialize, de::DeserializeOwned};
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 use thiserror::Error;
@@ -151,9 +151,11 @@ impl Storage {
         let conn = self.conn.lock().unwrap();
 
         let result: Option<String> = conn
-            .query_row("SELECT value FROM kv WHERE key = ?1", params![key_str], |row| {
-                row.get(0)
-            })
+            .query_row(
+                "SELECT value FROM kv WHERE key = ?1",
+                params![key_str],
+                |row| row.get(0),
+            )
             .optional()?;
 
         match result {
@@ -187,9 +189,9 @@ impl Storage {
         key: &[&str],
         f: impl FnOnce(&mut T),
     ) -> Result<T> {
-        let mut value: T = self.get(key)?.ok_or_else(|| {
-            StorageError::NotFound(key.join("/"))
-        })?;
+        let mut value: T = self
+            .get(key)?
+            .ok_or_else(|| StorageError::NotFound(key.join("/")))?;
 
         f(&mut value);
         self.set(key, &value)?;
@@ -315,9 +317,15 @@ impl Storage {
                 project_id: row.get::<_, Option<String>>(1)?.map(|s| s.parse().unwrap()),
                 directory: row.get(2)?,
                 title: row.get(3)?,
-                created_at: DateTime::parse_from_rfc3339(&row.get::<_, String>(4)?).unwrap().into(),
-                updated_at: DateTime::parse_from_rfc3339(&row.get::<_, String>(5)?).unwrap().into(),
-                archived_at: row.get::<_, Option<String>>(6)?.map(|s| DateTime::parse_from_rfc3339(&s).unwrap().into()),
+                created_at: DateTime::parse_from_rfc3339(&row.get::<_, String>(4)?)
+                    .unwrap()
+                    .into(),
+                updated_at: DateTime::parse_from_rfc3339(&row.get::<_, String>(5)?)
+                    .unwrap()
+                    .into(),
+                archived_at: row
+                    .get::<_, Option<String>>(6)?
+                    .map(|s| DateTime::parse_from_rfc3339(&s).unwrap().into()),
                 metadata: serde_json::from_str(&row.get::<_, String>(7)?).unwrap_or_default(),
             })
         })?;
@@ -335,7 +343,10 @@ impl Storage {
         let conn = self.conn.lock().unwrap();
 
         // Messages are deleted via CASCADE
-        let count = conn.execute("DELETE FROM sessions WHERE id = ?1", params![id.to_string()])?;
+        let count = conn.execute(
+            "DELETE FROM sessions WHERE id = ?1",
+            params![id.to_string()],
+        )?;
         Ok(count > 0)
     }
 
@@ -387,8 +398,12 @@ impl Storage {
                 session_id: row.get::<_, String>(1)?.parse().unwrap(),
                 role: row.get(2)?,
                 content: serde_json::from_str(&row.get::<_, String>(3)?).unwrap_or_default(),
-                created_at: DateTime::parse_from_rfc3339(&row.get::<_, String>(4)?).unwrap().into(),
-                updated_at: DateTime::parse_from_rfc3339(&row.get::<_, String>(5)?).unwrap().into(),
+                created_at: DateTime::parse_from_rfc3339(&row.get::<_, String>(4)?)
+                    .unwrap()
+                    .into(),
+                updated_at: DateTime::parse_from_rfc3339(&row.get::<_, String>(5)?)
+                    .unwrap()
+                    .into(),
                 metadata: serde_json::from_str(&row.get::<_, String>(6)?).unwrap_or_default(),
             })
         })?;
@@ -428,7 +443,10 @@ impl Storage {
     /// Delete a message.
     pub fn delete_message(&self, id: &Uuid) -> Result<bool> {
         let conn = self.conn.lock().unwrap();
-        let count = conn.execute("DELETE FROM messages WHERE id = ?1", params![id.to_string()])?;
+        let count = conn.execute(
+            "DELETE FROM messages WHERE id = ?1",
+            params![id.to_string()],
+        )?;
         Ok(count > 0)
     }
 }

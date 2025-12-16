@@ -40,9 +40,18 @@ pub fn build_provider(
                     cert_path: None,
                     key_path: None,
                     ca_path: None,
-                    ca_certificate: config.ca_certificate.as_ref().map(|p| p.to_string_lossy().to_string()),
-                    client_certificate: config.client_certificate.as_ref().map(|p| p.to_string_lossy().to_string()),
-                    client_private_key: config.client_private_key.as_ref().map(|p| p.to_string_lossy().to_string()),
+                    ca_certificate: config
+                        .ca_certificate
+                        .as_ref()
+                        .map(|p| p.to_string_lossy().to_string()),
+                    client_certificate: config
+                        .client_certificate
+                        .as_ref()
+                        .map(|p| p.to_string_lossy().to_string()),
+                    client_private_key: config
+                        .client_private_key
+                        .as_ref()
+                        .map(|p| p.to_string_lossy().to_string()),
                 }),
             }
         }
@@ -60,9 +69,18 @@ pub fn build_provider(
                 cert_path: None,
                 key_path: None,
                 ca_path: None,
-                ca_certificate: config.ca_certificate.as_ref().map(|p| p.to_string_lossy().to_string()),
-                client_certificate: config.client_certificate.as_ref().map(|p| p.to_string_lossy().to_string()),
-                client_private_key: config.client_private_key.as_ref().map(|p| p.to_string_lossy().to_string()),
+                ca_certificate: config
+                    .ca_certificate
+                    .as_ref()
+                    .map(|p| p.to_string_lossy().to_string()),
+                client_certificate: config
+                    .client_certificate
+                    .as_ref()
+                    .map(|p| p.to_string_lossy().to_string()),
+                client_private_key: config
+                    .client_private_key
+                    .as_ref()
+                    .map(|p| p.to_string_lossy().to_string()),
             }),
         },
     };

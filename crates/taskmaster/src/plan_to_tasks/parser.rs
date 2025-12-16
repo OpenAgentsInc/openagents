@@ -1,6 +1,6 @@
 //! LLM-based plan parsing using Claude
 
-use claude_agent_sdk::{query, QueryOptions, SdkMessage};
+use claude_agent_sdk::{QueryOptions, SdkMessage, query};
 use futures::StreamExt;
 use serde::{Deserialize, Serialize};
 
@@ -132,10 +132,7 @@ Rules:
 ///
 /// # Returns
 /// A `ParsedPlan` with extracted tasks
-pub async fn parse_plan_with_llm(
-    content: &str,
-    plan_name: &str,
-) -> Result<ParsedPlan, ParseError> {
+pub async fn parse_plan_with_llm(content: &str, plan_name: &str) -> Result<ParsedPlan, ParseError> {
     // Combine system prompt with the plan content
     let prompt = format!(
         "{}\n\n---\n\nExtract tasks from this plan document named '{}':\n\n{}",
@@ -146,9 +143,9 @@ pub async fn parse_plan_with_llm(
         .model("claude-haiku-4-5-20251001") // Use Haiku for cost efficiency
         .max_turns(1);
 
-    let stream = query(&prompt, options).await.map_err(|e| {
-        ParseError::SdkError(format!("Failed to start Claude query: {}", e))
-    })?;
+    let stream = query(&prompt, options)
+        .await
+        .map_err(|e| ParseError::SdkError(format!("Failed to start Claude query: {}", e)))?;
 
     futures::pin_mut!(stream);
 
@@ -164,10 +161,7 @@ pub async fn parse_plan_with_llm(
                 }
             }
             Err(e) => {
-                return Err(ParseError::SdkError(format!(
-                    "Claude stream error: {}",
-                    e
-                )));
+                return Err(ParseError::SdkError(format!("Claude stream error: {}", e)));
             }
         }
     }
@@ -220,7 +214,10 @@ fn parse_json_response(text: &str) -> Result<ParsedPlan, ParseError> {
 fn extract_json(text: &str) -> String {
     // Try to find JSON block in markdown
     if let Some(start) = text.find("```json") {
-        if let Some(end) = text[start..].find("```\n").or_else(|| text[start..].rfind("```")) {
+        if let Some(end) = text[start..]
+            .find("```\n")
+            .or_else(|| text[start..].rfind("```"))
+        {
             let json_start = start + 7; // Skip "```json"
             let json_end = start + end;
             if json_start < json_end {

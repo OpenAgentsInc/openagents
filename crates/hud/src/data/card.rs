@@ -152,10 +152,12 @@ impl Card {
                 bounds.size.width,
                 self.title_height,
             );
-            scene.draw_quad(
-                wgpui::Quad::new(title_bounds)
-                    .with_background(Hsla::new(0.0, 0.0, 1.0, 0.02 * progress))
-            );
+            scene.draw_quad(wgpui::Quad::new(title_bounds).with_background(Hsla::new(
+                0.0,
+                0.0,
+                1.0,
+                0.02 * progress,
+            )));
 
             // Title underline
             scene.draw_quad(
@@ -170,7 +172,7 @@ impl Card {
                     hud::FRAME_DIM.s,
                     hud::FRAME_DIM.l,
                     hud::FRAME_DIM.a * 0.5 * progress,
-                ))
+                )),
             );
 
             // Title text

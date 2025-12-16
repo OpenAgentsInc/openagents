@@ -112,16 +112,16 @@ pub use crate::protocol::protocol;
 // as those in the protocol crate when constructing protocol messages.
 pub use crate::protocol::config_types as protocol_config_types;
 
-pub use client::ModelClient;
-pub use client_common::Prompt;
-pub use client_common::REVIEW_PROMPT;
-pub use client_common::ResponseEvent;
-pub use client_common::ResponseStream;
 pub use crate::protocol::models::ContentItem;
 pub use crate::protocol::models::LocalShellAction;
 pub use crate::protocol::models::LocalShellExecAction;
 pub use crate::protocol::models::LocalShellStatus;
 pub use crate::protocol::models::ResponseItem;
+pub use client::ModelClient;
+pub use client_common::Prompt;
+pub use client_common::REVIEW_PROMPT;
+pub use client_common::ResponseEvent;
+pub use client_common::ResponseStream;
 pub use compact::content_items_to_text;
 pub use event_mapping::parse_turn_item;
 pub mod compact;

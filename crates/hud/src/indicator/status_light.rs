@@ -26,10 +26,10 @@ impl StatusState {
     pub fn color(&self) -> Hsla {
         match self {
             StatusState::Offline => Hsla::new(0.0, 0.0, 0.4, 0.5),
-            StatusState::Online => Hsla::new(0.35, 0.8, 0.5, 1.0),   // Green
-            StatusState::Warning => Hsla::new(0.12, 0.8, 0.5, 1.0),  // Orange
-            StatusState::Error => Hsla::new(0.0, 0.8, 0.5, 1.0),     // Red
-            StatusState::Busy => Hsla::new(0.6, 0.8, 0.6, 1.0),      // Cyan
+            StatusState::Online => Hsla::new(0.35, 0.8, 0.5, 1.0), // Green
+            StatusState::Warning => Hsla::new(0.12, 0.8, 0.5, 1.0), // Orange
+            StatusState::Error => Hsla::new(0.0, 0.8, 0.5, 1.0),   // Red
+            StatusState::Busy => Hsla::new(0.6, 0.8, 0.6, 1.0),    // Cyan
         }
     }
 }
@@ -146,7 +146,15 @@ impl StatusLight {
             );
             scene.draw_quad(
                 wgpui::Quad::new(ring_bounds)
-                    .with_border(Hsla::new(colors::FRAME_DIM.h, colors::FRAME_DIM.s, colors::FRAME_DIM.l, colors::FRAME_DIM.a * progress), 1.0)
+                    .with_border(
+                        Hsla::new(
+                            colors::FRAME_DIM.h,
+                            colors::FRAME_DIM.s,
+                            colors::FRAME_DIM.l,
+                            colors::FRAME_DIM.a * progress,
+                        ),
+                        1.0,
+                    )
                     .with_uniform_radius(ring_size / 2.0),
             );
         }
@@ -158,7 +166,12 @@ impl StatusLight {
         );
         scene.draw_quad(
             wgpui::Quad::new(light_bounds)
-                .with_background(Hsla::new(color.h, color.s, color.l, color.a * progress * pulse))
+                .with_background(Hsla::new(
+                    color.h,
+                    color.s,
+                    color.l,
+                    color.a * progress * pulse,
+                ))
                 .with_uniform_radius(self.size / 2.0),
         );
 

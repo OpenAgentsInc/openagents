@@ -3,10 +3,10 @@ use std::collections::HashMap;
 use std::env;
 use std::path::PathBuf;
 
-use async_channel::unbounded;
 use crate::core::protocol::McpListToolsResponseEvent;
 use crate::core::protocol::SandboxPolicy;
 use crate::mcp_types::Tool as McpTool;
+use async_channel::unbounded;
 use tokio_util::sync::CancellationToken;
 
 use crate::core::config::Config;

@@ -102,15 +102,12 @@ impl Modal {
         }
 
         // Draw backdrop
-        scene.draw_quad(
-            wgpui::Quad::new(viewport)
-                .with_background(Hsla::new(
-                    self.backdrop_color.h,
-                    self.backdrop_color.s,
-                    self.backdrop_color.l,
-                    self.backdrop_color.a * progress,
-                )),
-        );
+        scene.draw_quad(wgpui::Quad::new(viewport).with_background(Hsla::new(
+            self.backdrop_color.h,
+            self.backdrop_color.s,
+            self.backdrop_color.l,
+            self.backdrop_color.a * progress,
+        )));
 
         // Calculate animated modal bounds (scale in from center)
         let scale = 0.9 + 0.1 * progress;
@@ -124,69 +121,102 @@ impl Modal {
         );
 
         // Draw modal background
-        scene.draw_quad(
-            wgpui::Quad::new(scaled_bounds)
-                .with_background(Hsla::new(0.0, 0.0, 0.02, 0.95 * progress)),
-        );
+        scene.draw_quad(wgpui::Quad::new(scaled_bounds).with_background(Hsla::new(
+            0.0,
+            0.0,
+            0.02,
+            0.95 * progress,
+        )));
 
         // Draw frame corners
         let corner = self.corner_size;
-        let frame_color = Hsla::new(self.color.h, self.color.s, self.color.l, self.color.a * progress);
+        let frame_color = Hsla::new(
+            self.color.h,
+            self.color.s,
+            self.color.l,
+            self.color.a * progress,
+        );
 
         // Top-left corner
         scene.draw_quad(
             wgpui::Quad::new(Bounds::from_origin_size(
                 Point::new(scaled_bounds.x(), scaled_bounds.y()),
                 Size::new(corner, 1.0),
-            )).with_background(frame_color),
+            ))
+            .with_background(frame_color),
         );
         scene.draw_quad(
             wgpui::Quad::new(Bounds::from_origin_size(
                 Point::new(scaled_bounds.x(), scaled_bounds.y()),
                 Size::new(1.0, corner),
-            )).with_background(frame_color),
+            ))
+            .with_background(frame_color),
         );
 
         // Top-right corner
         scene.draw_quad(
             wgpui::Quad::new(Bounds::from_origin_size(
-                Point::new(scaled_bounds.x() + scaled_bounds.width() - corner, scaled_bounds.y()),
+                Point::new(
+                    scaled_bounds.x() + scaled_bounds.width() - corner,
+                    scaled_bounds.y(),
+                ),
                 Size::new(corner, 1.0),
-            )).with_background(frame_color),
+            ))
+            .with_background(frame_color),
         );
         scene.draw_quad(
             wgpui::Quad::new(Bounds::from_origin_size(
-                Point::new(scaled_bounds.x() + scaled_bounds.width() - 1.0, scaled_bounds.y()),
+                Point::new(
+                    scaled_bounds.x() + scaled_bounds.width() - 1.0,
+                    scaled_bounds.y(),
+                ),
                 Size::new(1.0, corner),
-            )).with_background(frame_color),
+            ))
+            .with_background(frame_color),
         );
 
         // Bottom-left corner
         scene.draw_quad(
             wgpui::Quad::new(Bounds::from_origin_size(
-                Point::new(scaled_bounds.x(), scaled_bounds.y() + scaled_bounds.height() - 1.0),
+                Point::new(
+                    scaled_bounds.x(),
+                    scaled_bounds.y() + scaled_bounds.height() - 1.0,
+                ),
                 Size::new(corner, 1.0),
-            )).with_background(frame_color),
+            ))
+            .with_background(frame_color),
         );
         scene.draw_quad(
             wgpui::Quad::new(Bounds::from_origin_size(
-                Point::new(scaled_bounds.x(), scaled_bounds.y() + scaled_bounds.height() - corner),
+                Point::new(
+                    scaled_bounds.x(),
+                    scaled_bounds.y() + scaled_bounds.height() - corner,
+                ),
                 Size::new(1.0, corner),
-            )).with_background(frame_color),
+            ))
+            .with_background(frame_color),
         );
 
         // Bottom-right corner
         scene.draw_quad(
             wgpui::Quad::new(Bounds::from_origin_size(
-                Point::new(scaled_bounds.x() + scaled_bounds.width() - corner, scaled_bounds.y() + scaled_bounds.height() - 1.0),
+                Point::new(
+                    scaled_bounds.x() + scaled_bounds.width() - corner,
+                    scaled_bounds.y() + scaled_bounds.height() - 1.0,
+                ),
                 Size::new(corner, 1.0),
-            )).with_background(frame_color),
+            ))
+            .with_background(frame_color),
         );
         scene.draw_quad(
             wgpui::Quad::new(Bounds::from_origin_size(
-                Point::new(scaled_bounds.x() + scaled_bounds.width() - 1.0, scaled_bounds.y() + scaled_bounds.height() - corner),
+                Point::new(
+                    scaled_bounds.x() + scaled_bounds.width() - 1.0,
+                    scaled_bounds.y() + scaled_bounds.height() - corner,
+                ),
                 Size::new(1.0, corner),
-            )).with_background(frame_color),
+            ))
+            .with_background(frame_color),
         );
 
         // Draw title
@@ -198,7 +228,10 @@ impl Modal {
         );
         let title_run = text_system.layout(
             &self.title,
-            Point::new(scaled_bounds.x() + self.padding, scaled_bounds.y() + self.padding + 14.0),
+            Point::new(
+                scaled_bounds.x() + self.padding,
+                scaled_bounds.y() + self.padding + 14.0,
+            ),
             16.0,
             title_color,
         );
@@ -206,12 +239,19 @@ impl Modal {
 
         // Draw title underline
         let underline_bounds = Bounds::from_origin_size(
-            Point::new(scaled_bounds.x() + self.padding, scaled_bounds.y() + self.padding + 24.0),
+            Point::new(
+                scaled_bounds.x() + self.padding,
+                scaled_bounds.y() + self.padding + 24.0,
+            ),
             Size::new((scaled_bounds.width() - self.padding * 2.0) * progress, 1.0),
         );
         scene.draw_quad(
-            wgpui::Quad::new(underline_bounds)
-                .with_background(Hsla::new(self.color.h, self.color.s, self.color.l, self.color.a * progress * 0.5)),
+            wgpui::Quad::new(underline_bounds).with_background(Hsla::new(
+                self.color.h,
+                self.color.s,
+                self.color.l,
+                self.color.a * progress * 0.5,
+            )),
         );
 
         // Draw content
@@ -224,7 +264,10 @@ impl Modal {
             );
             let content_run = text_system.layout(
                 &self.content,
-                Point::new(scaled_bounds.x() + self.padding, scaled_bounds.y() + self.padding + 48.0),
+                Point::new(
+                    scaled_bounds.x() + self.padding,
+                    scaled_bounds.y() + self.padding + 48.0,
+                ),
                 14.0,
                 content_color,
             );

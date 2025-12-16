@@ -200,8 +200,13 @@ impl SqliteRepository {
 
 impl IssueRepository for SqliteRepository {
     fn init(&self) -> Result<()> {
-        let conn = self.conn.lock().unwrap();
-        conn.execute_batch(SCHEMA_V1)?;
+        {
+            let conn = self.conn.lock().unwrap();
+            conn.execute_batch(SCHEMA_V1)?;
+        }
+
+        // Apply migrations to reach the latest schema
+        let _ = self.migrate()?;
         Ok(())
     }
 

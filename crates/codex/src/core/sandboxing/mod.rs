@@ -14,14 +14,14 @@ use crate::core::exec::execute_exec_env;
 use crate::core::landlock::create_linux_sandbox_command_args;
 use crate::core::protocol::SandboxPolicy;
 #[cfg(target_os = "macos")]
-use crate::seatbelt::MACOS_PATH_TO_SEATBELT_EXECUTABLE;
-#[cfg(target_os = "macos")]
-use crate::seatbelt::create_seatbelt_command_args;
-#[cfg(target_os = "macos")]
 use crate::core::spawn::CODEX_SANDBOX_ENV_VAR;
 use crate::core::spawn::CODEX_SANDBOX_NETWORK_DISABLED_ENV_VAR;
 use crate::core::tools::sandboxing::SandboxablePreference;
 pub use crate::protocol::models::SandboxPermissions;
+#[cfg(target_os = "macos")]
+use crate::seatbelt::MACOS_PATH_TO_SEATBELT_EXECUTABLE;
+#[cfg(target_os = "macos")]
+use crate::seatbelt::create_seatbelt_command_args;
 use std::collections::HashMap;
 use std::path::Path;
 use std::path::PathBuf;

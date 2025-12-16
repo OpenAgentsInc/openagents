@@ -204,22 +204,34 @@ impl Tabs {
 
         // Draw bottom line (full width)
         let line_bounds = Bounds::from_origin_size(
-            Point::new(bounds.x(), bounds.y() + bounds.height() - self.indicator_height),
+            Point::new(
+                bounds.x(),
+                bounds.y() + bounds.height() - self.indicator_height,
+            ),
             wgpui::Size::new(bounds.width() * progress, self.indicator_height),
         );
-        scene.draw_quad(
-            wgpui::Quad::new(line_bounds)
-                .with_background(Hsla::new(self.color.h, self.color.s, self.color.l, base_alpha * 0.3)),
-        );
+        scene.draw_quad(wgpui::Quad::new(line_bounds).with_background(Hsla::new(
+            self.color.h,
+            self.color.s,
+            self.color.l,
+            base_alpha * 0.3,
+        )));
 
         // Draw animated indicator
         let indicator_bounds = Bounds::from_origin_size(
-            Point::new(self.indicator_x, bounds.y() + bounds.height() - self.indicator_height),
+            Point::new(
+                self.indicator_x,
+                bounds.y() + bounds.height() - self.indicator_height,
+            ),
             wgpui::Size::new(self.indicator_width, self.indicator_height),
         );
         scene.draw_quad(
-            wgpui::Quad::new(indicator_bounds)
-                .with_background(Hsla::new(self.color.h, self.color.s, self.color.l, base_alpha)),
+            wgpui::Quad::new(indicator_bounds).with_background(Hsla::new(
+                self.color.h,
+                self.color.s,
+                self.color.l,
+                base_alpha,
+            )),
         );
 
         // Draw tab labels
@@ -249,7 +261,8 @@ impl Tabs {
             let text_x = tab_bound.x() + self.tab_padding;
             let text_y = tab_bound.y() + (tab_bound.height() / 2.0) + 4.0;
 
-            let text_run = text_system.layout(&tab.label, Point::new(text_x, text_y), 14.0, label_color);
+            let text_run =
+                text_system.layout(&tab.label, Point::new(text_x, text_y), 14.0, label_color);
             scene.draw_text(text_run);
         }
     }

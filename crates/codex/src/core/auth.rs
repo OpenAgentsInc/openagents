@@ -15,9 +15,10 @@ use std::sync::Arc;
 use std::sync::Mutex;
 use std::time::Duration;
 
-use crate::stubs::app_server_protocol::AuthMode;
 use crate::protocol::config_types::ForcedLoginMethod;
+use crate::stubs::app_server_protocol::AuthMode;
 
+use crate::client::CodexHttpClient;
 pub use crate::core::auth::storage::AuthCredentialsStoreMode;
 pub use crate::core::auth::storage::AuthDotJson;
 use crate::core::auth::storage::AuthStorageBackend;
@@ -30,7 +31,6 @@ use crate::core::token_data::PlanType as InternalPlanType;
 use crate::core::token_data::TokenData;
 use crate::core::token_data::parse_id_token;
 use crate::core::util::try_parse_error_message;
-use crate::client::CodexHttpClient;
 use crate::protocol::account::PlanType as AccountPlanType;
 use serde_json::Value;
 use thiserror::Error;
@@ -643,8 +643,8 @@ mod tests {
     use crate::core::token_data::PlanType as InternalPlanType;
     use crate::protocol::account::PlanType as AccountPlanType;
 
-    use base64::Engine;
     use crate::protocol::config_types::ForcedLoginMethod;
+    use base64::Engine;
     use pretty_assertions::assert_eq;
     use serde::Serialize;
     use serde_json::json;

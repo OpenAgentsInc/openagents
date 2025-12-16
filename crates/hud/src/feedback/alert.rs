@@ -23,10 +23,10 @@ impl AlertLevel {
     /// Get the accent color for this level.
     pub fn color(&self) -> Hsla {
         match self {
-            AlertLevel::Info => Hsla::new(0.6, 0.5, 0.6, 0.8),    // Cyan-ish
+            AlertLevel::Info => Hsla::new(0.6, 0.5, 0.6, 0.8), // Cyan-ish
             AlertLevel::Success => Hsla::new(0.35, 0.6, 0.5, 0.8), // Green
             AlertLevel::Warning => Hsla::new(0.12, 0.7, 0.5, 0.8), // Orange
-            AlertLevel::Error => Hsla::new(0.0, 0.7, 0.5, 0.8),    // Red
+            AlertLevel::Error => Hsla::new(0.0, 0.7, 0.5, 0.8), // Red
         }
     }
 
@@ -133,10 +133,12 @@ impl Alert {
             Point::new(bounds.x(), bounds.y()),
             Size::new(3.0, bounds.height() * progress),
         );
-        scene.draw_quad(
-            wgpui::Quad::new(accent_bar)
-                .with_background(Hsla::new(accent_color.h, accent_color.s, accent_color.l, accent_alpha)),
-        );
+        scene.draw_quad(wgpui::Quad::new(accent_bar).with_background(Hsla::new(
+            accent_color.h,
+            accent_color.s,
+            accent_color.l,
+            accent_alpha,
+        )));
 
         // Draw icon
         let icon_x = bounds.x() + self.padding;
@@ -161,7 +163,8 @@ impl Alert {
                 self.text_color.l,
                 self.text_color.a * progress,
             );
-            let title_run = text_system.layout(title, Point::new(text_x, text_y + 12.0), 14.0, title_color);
+            let title_run =
+                text_system.layout(title, Point::new(text_x, text_y + 12.0), 14.0, title_color);
             scene.draw_text(title_run);
             text_y += 20.0;
         }
@@ -173,7 +176,12 @@ impl Alert {
             self.text_color.l,
             self.text_color.a * progress * 0.8,
         );
-        let message_run = text_system.layout(&self.message, Point::new(text_x, text_y + 12.0), 12.0, message_color);
+        let message_run = text_system.layout(
+            &self.message,
+            Point::new(text_x, text_y + 12.0),
+            12.0,
+            message_color,
+        );
         scene.draw_text(message_run);
     }
 }

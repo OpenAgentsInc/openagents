@@ -10,12 +10,15 @@ use hud::{
     button::HudButton,
     effects::Illuminator,
     form::{Checkbox, Select, SelectOption, TextInput, Toggle},
-    frame::{FrameCircle, FrameCorners, FrameHeader, FrameLines, FrameOctagon, FrameSides, FrameUnderline},
+    frame::{
+        FrameCircle, FrameCorners, FrameHeader, FrameLines, FrameOctagon, FrameSides,
+        FrameUnderline,
+    },
     text::{TextDecipher, TextSequence},
     theme::{hud as colors, timing},
 };
-use wgpui::platform::desktop::{create_window, DesktopPlatform};
 use wgpui::platform::Platform;
+use wgpui::platform::desktop::{DesktopPlatform, create_window};
 use wgpui::{Bounds, InputEvent, Point, Quad, Scene};
 use winit::application::ApplicationHandler;
 use winit::event::WindowEvent;
@@ -74,21 +77,16 @@ impl HudDemo {
             HudButton::new("CONNECT")
                 .font_size(12.0)
                 .corner_length(10.0),
-            HudButton::new("SCAN")
-                .font_size(12.0)
-                .corner_length(10.0),
-            HudButton::new("ABORT")
-                .font_size(12.0)
-                .corner_length(10.0),
+            HudButton::new("SCAN").font_size(12.0).corner_length(10.0),
+            HudButton::new("ABORT").font_size(12.0).corner_length(10.0),
         ];
 
         // Create button manager for staggered animation
-        let mut button_manager = AnimatorManager::new(ManagerMode::Stagger)
-            .stagger_offset(timing::STAGGER_OFFSET);
+        let mut button_manager =
+            AnimatorManager::new(ManagerMode::Stagger).stagger_offset(timing::STAGGER_OFFSET);
         for _ in &buttons {
-            button_manager.add_child(
-                hud::animator::HudAnimator::new().enter_duration(timing::ENTER_FRAMES),
-            );
+            button_manager
+                .add_child(hud::animator::HudAnimator::new().enter_duration(timing::ENTER_FRAMES));
         }
 
         // Create panels
@@ -105,8 +103,8 @@ impl HudDemo {
         ];
 
         // Create panel manager for staggered animation
-        let mut panel_manager = AnimatorManager::new(ManagerMode::Stagger)
-            .stagger_offset(timing::STAGGER_OFFSET * 2);
+        let mut panel_manager =
+            AnimatorManager::new(ManagerMode::Stagger).stagger_offset(timing::STAGGER_OFFSET * 2);
         for _ in &panels {
             panel_manager
                 .add_child(hud::animator::HudAnimator::new().enter_duration(timing::ENTER_FRAMES));
@@ -178,12 +176,8 @@ impl HudDemo {
             text_input: TextInput::new()
                 .placeholder("Enter command...")
                 .font_size(12.0),
-            checkbox: Checkbox::new()
-                .label("Enable feature")
-                .font_size(12.0),
-            toggle: Toggle::new()
-                .label("Active mode")
-                .font_size(12.0),
+            checkbox: Checkbox::new().label("Enable feature").font_size(12.0),
+            toggle: Toggle::new().label("Active mode").font_size(12.0),
             select: Select::new()
                 .options(vec![
                     SelectOption::new("Option A"),
@@ -328,7 +322,10 @@ impl HudDemo {
 
         // Status text (animated decipher)
         self.status_text.paint(
-            Point::new(main_bounds.origin.x + main_bounds.size.width - 200.0, main_bounds.origin.y + 18.0),
+            Point::new(
+                main_bounds.origin.x + main_bounds.size.width - 200.0,
+                main_bounds.origin.y + 18.0,
+            ),
             scene,
             text_system,
         );
@@ -429,11 +426,19 @@ impl HudDemo {
         );
         scene.draw_text(octagon_label);
 
-        let circle_bounds = Bounds::new(grid_start_x + showcase_size + showcase_spacing, grid_start_y, showcase_size, showcase_size);
+        let circle_bounds = Bounds::new(
+            grid_start_x + showcase_size + showcase_spacing,
+            grid_start_y,
+            showcase_size,
+            showcase_size,
+        );
         self.circle_frame.paint(circle_bounds, scene);
         let circle_label = text_system.layout(
             "CIRCLE",
-            Point::new(grid_start_x + showcase_size + showcase_spacing + 20.0, grid_start_y + showcase_size + 5.0),
+            Point::new(
+                grid_start_x + showcase_size + showcase_spacing + 20.0,
+                grid_start_y + showcase_size + 5.0,
+            ),
             9.0,
             content_text_color,
         );
@@ -451,11 +456,19 @@ impl HudDemo {
         );
         scene.draw_text(header_label);
 
-        let underline_bounds = Bounds::new(grid_start_x + showcase_size + showcase_spacing, row2_y, showcase_size, showcase_size);
+        let underline_bounds = Bounds::new(
+            grid_start_x + showcase_size + showcase_spacing,
+            row2_y,
+            showcase_size,
+            showcase_size,
+        );
         self.underline_frame.paint(underline_bounds, scene);
         let underline_label = text_system.layout(
             "UNDERLINE",
-            Point::new(grid_start_x + showcase_size + showcase_spacing + 10.0, row2_y + showcase_size + 5.0),
+            Point::new(
+                grid_start_x + showcase_size + showcase_spacing + 10.0,
+                row2_y + showcase_size + 5.0,
+            ),
             9.0,
             content_text_color,
         );
@@ -464,7 +477,10 @@ impl HudDemo {
         // Content title
         let content_title = text_system.layout(
             "FRAME SHOWCASE",
-            Point::new(content_bounds.origin.x + content_bounds.size.width / 2.0 - 50.0, content_bounds.origin.y + 15.0),
+            Point::new(
+                content_bounds.origin.x + content_bounds.size.width / 2.0 - 50.0,
+                content_bounds.origin.y + 15.0,
+            ),
             12.0,
             content_text_color,
         );
@@ -503,7 +519,10 @@ impl HudDemo {
         // Info text at bottom
         let info_text = text_system.layout(
             "MOVE MOUSE FOR ILLUMINATOR EFFECT",
-            Point::new(content_bounds.origin.x + content_bounds.size.width / 2.0 - 100.0, content_bounds.origin.y + content_bounds.size.height - 25.0),
+            Point::new(
+                content_bounds.origin.x + content_bounds.size.width / 2.0 - 100.0,
+                content_bounds.origin.y + content_bounds.size.height - 25.0,
+            ),
             9.0,
             content_text_color,
         );
@@ -544,7 +563,12 @@ impl HudDemo {
         let content_x = panel_x + panel_width + 30.0;
         let content_y = panel_start_y;
         let content_width = button_x - content_x - 40.0;
-        let content_bounds = Bounds::new(content_x, content_y, content_width, 3.0 * panel_height + 2.0 * panel_spacing);
+        let content_bounds = Bounds::new(
+            content_x,
+            content_y,
+            content_width,
+            3.0 * panel_height + 2.0 * panel_spacing,
+        );
 
         // Frame showcase dimensions
         let showcase_size = 80.0;

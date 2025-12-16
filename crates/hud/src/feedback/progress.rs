@@ -139,7 +139,10 @@ impl Progress {
         }
 
         let bar_bounds = Bounds::from_origin_size(
-            Point::new(bounds.x(), bounds.y() + (bounds.height() - self.height) / 2.0),
+            Point::new(
+                bounds.x(),
+                bounds.y() + (bounds.height() - self.height) / 2.0,
+            ),
             Size::new(bounds.width(), self.height),
         );
 
@@ -155,15 +158,12 @@ impl Progress {
         let bar_alpha = self.color.a * anim_progress;
 
         // Draw track
-        scene.draw_quad(
-            wgpui::Quad::new(bounds)
-                .with_background(Hsla::new(
-                    self.track_color.h,
-                    self.track_color.s,
-                    self.track_color.l,
-                    track_alpha,
-                )),
-        );
+        scene.draw_quad(wgpui::Quad::new(bounds).with_background(Hsla::new(
+            self.track_color.h,
+            self.track_color.s,
+            self.track_color.l,
+            track_alpha,
+        )));
 
         // Draw filled portion
         let fill_width = bounds.width() * self.percentage() * anim_progress;
@@ -172,10 +172,12 @@ impl Progress {
                 Point::new(bounds.x(), bounds.y()),
                 Size::new(fill_width, bounds.height()),
             );
-            scene.draw_quad(
-                wgpui::Quad::new(fill_bounds)
-                    .with_background(Hsla::new(self.color.h, self.color.s, self.color.l, bar_alpha)),
-            );
+            scene.draw_quad(wgpui::Quad::new(fill_bounds).with_background(Hsla::new(
+                self.color.h,
+                self.color.s,
+                self.color.l,
+                bar_alpha,
+            )));
         }
     }
 
@@ -198,7 +200,12 @@ impl Progress {
             let color = if is_filled {
                 Hsla::new(self.color.h, self.color.s, self.color.l, bar_alpha)
             } else {
-                Hsla::new(self.track_color.h, self.track_color.s, self.track_color.l, track_alpha)
+                Hsla::new(
+                    self.track_color.h,
+                    self.track_color.s,
+                    self.track_color.l,
+                    track_alpha,
+                )
             };
 
             scene.draw_quad(wgpui::Quad::new(segment_bounds).with_background(color));
@@ -210,15 +217,12 @@ impl Progress {
         let bar_alpha = self.color.a * anim_progress;
 
         // Draw track
-        scene.draw_quad(
-            wgpui::Quad::new(bounds)
-                .with_background(Hsla::new(
-                    self.track_color.h,
-                    self.track_color.s,
-                    self.track_color.l,
-                    track_alpha,
-                )),
-        );
+        scene.draw_quad(wgpui::Quad::new(bounds).with_background(Hsla::new(
+            self.track_color.h,
+            self.track_color.s,
+            self.track_color.l,
+            track_alpha,
+        )));
 
         // Draw filled portion with stripes
         let fill_width = bounds.width() * self.percentage() * anim_progress;
@@ -229,10 +233,12 @@ impl Progress {
             );
 
             // Base fill
-            scene.draw_quad(
-                wgpui::Quad::new(fill_bounds)
-                    .with_background(Hsla::new(self.color.h, self.color.s, self.color.l, bar_alpha)),
-            );
+            scene.draw_quad(wgpui::Quad::new(fill_bounds).with_background(Hsla::new(
+                self.color.h,
+                self.color.s,
+                self.color.l,
+                bar_alpha,
+            )));
 
             // Draw animated stripes
             let stripe_width = 10.0;
@@ -247,15 +253,12 @@ impl Progress {
                         Point::new(start_x, bounds.y()),
                         Size::new(end_x - start_x, bounds.height()),
                     );
-                    scene.draw_quad(
-                        wgpui::Quad::new(stripe_bounds)
-                            .with_background(Hsla::new(
-                                self.color.h,
-                                self.color.s,
-                                self.color.l.min(1.0) + 0.1,
-                                bar_alpha * 0.3,
-                            )),
-                    );
+                    scene.draw_quad(wgpui::Quad::new(stripe_bounds).with_background(Hsla::new(
+                        self.color.h,
+                        self.color.s,
+                        self.color.l.min(1.0) + 0.1,
+                        bar_alpha * 0.3,
+                    )));
                 }
                 stripe_x += stripe_spacing;
             }

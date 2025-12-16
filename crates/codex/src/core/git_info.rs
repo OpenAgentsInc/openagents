@@ -2,9 +2,9 @@ use std::collections::HashSet;
 use std::path::Path;
 use std::path::PathBuf;
 
+use crate::core::protocol::GitInfo;
 use crate::core::util::resolve_path;
 use crate::stubs::app_server_protocol::GitSha;
-use crate::core::protocol::GitInfo;
 use futures::future::join_all;
 use serde::Deserialize;
 use serde::Serialize;

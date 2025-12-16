@@ -417,7 +417,10 @@ mod tests {
     fn test_code_block_preservation() {
         // Inside code block - should NOT complete markers
         assert_eq!(remend("```\n**bold\n"), "```\n**bold\n");
-        assert_eq!(remend("```rust\nlet x = *ptr;\n"), "```rust\nlet x = *ptr;\n");
+        assert_eq!(
+            remend("```rust\nlet x = *ptr;\n"),
+            "```rust\nlet x = *ptr;\n"
+        );
     }
 
     #[test]
@@ -450,14 +453,8 @@ mod tests {
 
     #[test]
     fn test_mixed_formatting() {
-        assert_eq!(
-            remend("**bold** and *italic"),
-            "**bold** and *italic*"
-        );
-        assert_eq!(
-            remend("*italic* and **bold"),
-            "*italic* and **bold**"
-        );
+        assert_eq!(remend("**bold** and *italic"), "**bold** and *italic*");
+        assert_eq!(remend("*italic* and **bold"), "*italic* and **bold**");
     }
 
     #[test]

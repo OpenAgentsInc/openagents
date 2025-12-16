@@ -172,8 +172,16 @@ impl TextSystem {
         // Build attrs with correct weight and style
         let attrs = Attrs::new()
             .family(DEFAULT_FONT_FAMILY)
-            .weight(if style.bold { Weight::BOLD } else { Weight::NORMAL })
-            .style(if style.italic { Style::Italic } else { Style::Normal });
+            .weight(if style.bold {
+                Weight::BOLD
+            } else {
+                Weight::NORMAL
+            })
+            .style(if style.italic {
+                Style::Italic
+            } else {
+                Style::Normal
+            });
 
         buffer.set_text(&mut self.font_system, text, attrs, DEFAULT_SHAPING);
         buffer.shape_until_scroll(&mut self.font_system, false);
@@ -205,22 +213,28 @@ impl TextSystem {
                 entry.clone()
             } else {
                 // Rasterize glyph - clone data immediately to release borrow
-                let image_data: Option<(i32, i32, u32, u32, SwashContent, Vec<u8>)> =
-                    self.swash_cache.get_image(&mut self.font_system, cache_key.cache_key)
-                        .as_ref()
-                        .map(|image| {
-                            (
-                                image.placement.left,
-                                image.placement.top,
-                                image.placement.width,
-                                image.placement.height,
-                                image.content,
-                                image.data.to_vec(),
-                            )
-                        });
+                let image_data: Option<(i32, i32, u32, u32, SwashContent, Vec<u8>)> = self
+                    .swash_cache
+                    .get_image(&mut self.font_system, cache_key.cache_key)
+                    .as_ref()
+                    .map(|image| {
+                        (
+                            image.placement.left,
+                            image.placement.top,
+                            image.placement.width,
+                            image.placement.height,
+                            image.content,
+                            image.data.to_vec(),
+                        )
+                    });
 
                 if let Some((left, top, width, height, content, data)) = image_data {
-                    let placement = cosmic_text::Placement { left, top, width, height };
+                    let placement = cosmic_text::Placement {
+                        left,
+                        top,
+                        width,
+                        height,
+                    };
                     let entry = self.pack_glyph_data(&placement, content, &data);
                     self.glyph_cache.insert(cache_key, entry.clone());
                     entry

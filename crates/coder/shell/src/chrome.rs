@@ -287,9 +287,7 @@ mod tests {
 
     #[test]
     fn test_content_bounds() {
-        let chrome = Chrome::new()
-            .header_height(48.0)
-            .status_bar_height(24.0);
+        let chrome = Chrome::new().header_height(48.0).status_bar_height(24.0);
 
         let window = Bounds::new(0.0, 0.0, 800.0, 600.0);
         let content = chrome.content_bounds(window);
@@ -316,9 +314,7 @@ mod tests {
 
     #[test]
     fn test_hide_chrome() {
-        let chrome = Chrome::new()
-            .show_header(false)
-            .show_status_bar(false);
+        let chrome = Chrome::new().show_header(false).show_status_bar(false);
 
         let window = Bounds::new(0.0, 0.0, 800.0, 600.0);
         let content = chrome.content_bounds(window);

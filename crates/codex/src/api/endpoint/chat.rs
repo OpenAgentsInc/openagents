@@ -1,4 +1,3 @@
-use crate::api::requests::ChatRequest;
 use crate::api::auth::AuthProvider;
 use crate::api::common::Prompt as ApiPrompt;
 use crate::api::common::ResponseEvent;
@@ -7,6 +6,7 @@ use crate::api::endpoint::streaming::StreamingClient;
 use crate::api::error::ApiError;
 use crate::api::provider::Provider;
 use crate::api::provider::WireApi;
+use crate::api::requests::ChatRequest;
 use crate::api::sse::chat::spawn_chat_stream;
 use crate::api::telemetry::SseTelemetry;
 use crate::client::HttpTransport;

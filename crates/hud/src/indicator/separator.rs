@@ -115,19 +115,15 @@ impl Separator {
             let width = bounds.width() * progress;
             let x = bounds.x() + (bounds.width() - width) / 2.0;
             let y = bounds.y() + (bounds.height() - self.thickness) / 2.0;
-            let line_bounds = Bounds::from_origin_size(
-                Point::new(x, y),
-                Size::new(width, self.thickness),
-            );
+            let line_bounds =
+                Bounds::from_origin_size(Point::new(x, y), Size::new(width, self.thickness));
             scene.draw_quad(wgpui::Quad::new(line_bounds).with_background(color));
         } else {
             let height = bounds.height() * progress;
             let x = bounds.x() + (bounds.width() - self.thickness) / 2.0;
             let y = bounds.y() + (bounds.height() - height) / 2.0;
-            let line_bounds = Bounds::from_origin_size(
-                Point::new(x, y),
-                Size::new(self.thickness, height),
-            );
+            let line_bounds =
+                Bounds::from_origin_size(Point::new(x, y), Size::new(self.thickness, height));
             scene.draw_quad(wgpui::Quad::new(line_bounds).with_background(color));
         }
     }
@@ -176,10 +172,8 @@ impl Separator {
             let mut x = start_x;
 
             while x < start_x + total_width {
-                let dot_bounds = Bounds::from_origin_size(
-                    Point::new(x, y),
-                    Size::new(dot_size, dot_size),
-                );
+                let dot_bounds =
+                    Bounds::from_origin_size(Point::new(x, y), Size::new(dot_size, dot_size));
                 scene.draw_quad(
                     wgpui::Quad::new(dot_bounds)
                         .with_background(color)
@@ -194,10 +188,8 @@ impl Separator {
             let mut y = start_y;
 
             while y < start_y + total_height {
-                let dot_bounds = Bounds::from_origin_size(
-                    Point::new(x, y),
-                    Size::new(dot_size, dot_size),
-                );
+                let dot_bounds =
+                    Bounds::from_origin_size(Point::new(x, y), Size::new(dot_size, dot_size));
                 scene.draw_quad(
                     wgpui::Quad::new(dot_bounds)
                         .with_background(color)
@@ -244,10 +236,7 @@ impl Separator {
                 Point::new(center_x - decoration_size / 2.0, dec_y),
                 Size::new(decoration_size, decoration_size),
             );
-            scene.draw_quad(
-                wgpui::Quad::new(dec_bounds)
-                    .with_border(color, 1.0),
-            );
+            scene.draw_quad(wgpui::Quad::new(dec_bounds).with_border(color, 1.0));
         } else {
             // Vertical version
             let total_height = bounds.height() * progress;
@@ -282,10 +271,7 @@ impl Separator {
                 Point::new(dec_x, center_y - decoration_size / 2.0),
                 Size::new(decoration_size, decoration_size),
             );
-            scene.draw_quad(
-                wgpui::Quad::new(dec_bounds)
-                    .with_border(color, 1.0),
-            );
+            scene.draw_quad(wgpui::Quad::new(dec_bounds).with_border(color, 1.0));
         }
     }
 }

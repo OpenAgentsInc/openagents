@@ -270,10 +270,7 @@ mod tests {
     fn test_mock_chat_service_tool_use() {
         let mut service = MockChatService::new();
 
-        service.queue_tool_use(
-            "read_file",
-            serde_json::json!({ "path": "/tmp/test.txt" }),
-        );
+        service.queue_tool_use("read_file", serde_json::json!({ "path": "/tmp/test.txt" }));
 
         let resp = service.send_message("Read the file");
 

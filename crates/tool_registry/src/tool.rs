@@ -2,7 +2,7 @@
 
 use crate::{ToolContext, ToolError, ToolResult};
 use async_trait::async_trait;
-use serde::{de::DeserializeOwned, Serialize};
+use serde::{Serialize, de::DeserializeOwned};
 use std::fmt::Debug;
 
 /// Information about a tool for display purposes.
@@ -149,7 +149,11 @@ pub trait Tool: Send + Sync + Debug {
     ///
     /// Returns `Some(PermissionRequest)` if permission is needed,
     /// or `None` if the tool can execute without permission.
-    fn check_permission(&self, _input: &Self::Input, _ctx: &ToolContext) -> Option<PermissionRequest> {
+    fn check_permission(
+        &self,
+        _input: &Self::Input,
+        _ctx: &ToolContext,
+    ) -> Option<PermissionRequest> {
         // Default: no permission required
         None
     }
@@ -204,9 +208,8 @@ impl<T: Tool + 'static> DynTool for ToolWrapper<T> {
         input: serde_json::Value,
         ctx: &ToolContext,
     ) -> ToolResult<ToolOutput> {
-        let typed_input: T::Input = serde_json::from_value(input).map_err(|e| {
-            ToolError::InvalidInput(format!("Failed to parse input: {}", e))
-        })?;
+        let typed_input: T::Input = serde_json::from_value(input)
+            .map_err(|e| ToolError::InvalidInput(format!("Failed to parse input: {}", e)))?;
 
         self.0.validate(&typed_input, ctx)?;
         self.0.execute(typed_input, ctx).await
@@ -222,9 +225,8 @@ impl<T: Tool + 'static> DynTool for ToolWrapper<T> {
     }
 
     fn validate_json(&self, input: &serde_json::Value, ctx: &ToolContext) -> ToolResult<()> {
-        let typed_input: T::Input = serde_json::from_value(input.clone()).map_err(|e| {
-            ToolError::InvalidInput(format!("Failed to parse input: {}", e))
-        })?;
+        let typed_input: T::Input = serde_json::from_value(input.clone())
+            .map_err(|e| ToolError::InvalidInput(format!("Failed to parse input: {}", e)))?;
         self.0.validate(&typed_input, ctx)
     }
 }

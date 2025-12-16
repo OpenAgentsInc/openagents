@@ -222,7 +222,10 @@ impl Widget for ChatInput {
         }
 
         // Check for button click (MouseUp on button)
-        if let InputEvent::MouseUp { position, button, .. } = event {
+        if let InputEvent::MouseUp {
+            position, button, ..
+        } = event
+        {
             if *button == wgpui::MouseButton::Left && button_bounds.contains(*position) {
                 self.send();
                 return EventResult::Handled;
@@ -232,9 +235,9 @@ impl Widget for ChatInput {
         // Check if this is a mouse event on the button area - don't forward to text_input
         // to avoid unfocusing when clicking the send button
         let is_button_mouse_event = match event {
-            InputEvent::MouseDown { position, .. } |
-            InputEvent::MouseUp { position, .. } |
-            InputEvent::MouseMove { position, .. } => button_bounds.contains(*position),
+            InputEvent::MouseDown { position, .. }
+            | InputEvent::MouseUp { position, .. }
+            | InputEvent::MouseMove { position, .. } => button_bounds.contains(*position),
             _ => false,
         };
 
@@ -245,7 +248,10 @@ impl Widget for ChatInput {
         }
 
         // Handle click anywhere in the input area to focus the text input
-        if let InputEvent::MouseDown { position, button, .. } = event {
+        if let InputEvent::MouseDown {
+            position, button, ..
+        } = event
+        {
             if *button == wgpui::MouseButton::Left && bounds.contains(*position) {
                 self.text_input.set_focused(true);
                 return EventResult::Handled;

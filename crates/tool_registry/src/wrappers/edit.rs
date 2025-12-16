@@ -29,7 +29,9 @@ impl Tool for EditToolWrapper {
     fn info(&self) -> ToolInfo {
         ToolInfo {
             name: "edit".to_string(),
-            description: "Perform a search-and-replace edit on a file. The old_string must match exactly.".to_string(),
+            description:
+                "Perform a search-and-replace edit on a file. The old_string must match exactly."
+                    .to_string(),
             input_schema: serde_json::json!({
                 "type": "object",
                 "properties": {
@@ -57,28 +59,35 @@ impl Tool for EditToolWrapper {
         }
     }
 
-    fn check_permission(&self, input: &Self::Input, ctx: &ToolContext) -> Option<PermissionRequest> {
+    fn check_permission(
+        &self,
+        input: &Self::Input,
+        ctx: &ToolContext,
+    ) -> Option<PermissionRequest> {
         let resolved = ctx.resolve_path(&input.file_path);
 
         let old_preview = truncate_string(&input.old_string, 50);
         let new_preview = truncate_string(&input.new_string, 50);
 
-        Some(PermissionRequest::new(
-            "file_edit",
-            format!("Edit file: {}", input.file_path),
-            format!(
-                "Replace \"{}\" with \"{}\" in {}",
-                old_preview,
-                new_preview,
-                resolved.display()
-            ),
-        ).with_patterns(vec![resolved.to_string_lossy().to_string()]))
+        Some(
+            PermissionRequest::new(
+                "file_edit",
+                format!("Edit file: {}", input.file_path),
+                format!(
+                    "Replace \"{}\" with \"{}\" in {}",
+                    old_preview,
+                    new_preview,
+                    resolved.display()
+                ),
+            )
+            .with_patterns(vec![resolved.to_string_lossy().to_string()]),
+        )
     }
 
     fn validate(&self, input: &Self::Input, _ctx: &ToolContext) -> ToolResult<()> {
         if input.old_string == input.new_string {
             return Err(crate::ToolError::invalid_input(
-                "old_string and new_string are identical - no change would occur"
+                "old_string and new_string are identical - no change would occur",
             ));
         }
         Ok(())
@@ -107,8 +116,7 @@ impl Tool for EditToolWrapper {
 
         let msg = format!(
             "Edited {}: {} replacement(s) made",
-            result.path,
-            result.replacements
+            result.path, result.replacements
         );
 
         Ok(ToolOutput::success(msg).with_metadata(metadata))

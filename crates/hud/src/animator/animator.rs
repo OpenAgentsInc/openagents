@@ -1,6 +1,6 @@
 //! Core animation state machine.
 
-use crate::easing::{ease_out_cubic, EasingFn};
+use crate::easing::{EasingFn, ease_out_cubic};
 use crate::theme::timing;
 
 use super::state::AnimatorState;

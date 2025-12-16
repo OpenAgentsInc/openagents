@@ -102,7 +102,12 @@ impl FrameHeader {
             return;
         }
 
-        let color = Hsla::new(self.color.h, self.color.s, self.color.l, self.color.a * progress);
+        let color = Hsla::new(
+            self.color.h,
+            self.color.s,
+            self.color.l,
+            self.color.a * progress,
+        );
         let w = self.line_width;
         let a = self.accent_size;
 
@@ -121,15 +126,11 @@ impl FrameHeader {
 
         // Top-left accent (vertical)
         let accent_height = a * progress;
-        scene.draw_quad(
-            Quad::new(Bounds::new(x, y, w, accent_height))
-                .with_background(color),
-        );
+        scene.draw_quad(Quad::new(Bounds::new(x, y, w, accent_height)).with_background(color));
 
         // Top-right accent (vertical)
         scene.draw_quad(
-            Quad::new(Bounds::new(x + width - w, y, w, accent_height))
-                .with_background(color),
+            Quad::new(Bounds::new(x + width - w, y, w, accent_height)).with_background(color),
         );
 
         // Bottom line and accents if enabled
@@ -138,20 +139,35 @@ impl FrameHeader {
 
             // Bottom line
             scene.draw_quad(
-                Quad::new(Bounds::new(top_center - top_half, bottom_y, top_half * 2.0, w))
-                    .with_background(color),
+                Quad::new(Bounds::new(
+                    top_center - top_half,
+                    bottom_y,
+                    top_half * 2.0,
+                    w,
+                ))
+                .with_background(color),
             );
 
             // Bottom-left accent (vertical, going up)
             scene.draw_quad(
-                Quad::new(Bounds::new(x, bottom_y - accent_height + w, w, accent_height))
-                    .with_background(color),
+                Quad::new(Bounds::new(
+                    x,
+                    bottom_y - accent_height + w,
+                    w,
+                    accent_height,
+                ))
+                .with_background(color),
             );
 
             // Bottom-right accent (vertical, going up)
             scene.draw_quad(
-                Quad::new(Bounds::new(x + width - w, bottom_y - accent_height + w, w, accent_height))
-                    .with_background(color),
+                Quad::new(Bounds::new(
+                    x + width - w,
+                    bottom_y - accent_height + w,
+                    w,
+                    accent_height,
+                ))
+                .with_background(color),
             );
         }
     }

@@ -106,10 +106,7 @@ pub fn discover_plans(claude_dir: &Path, limit: usize) -> Result<Vec<PlanFile>, 
 }
 
 /// Discover a specific plan file by name
-pub fn discover_plan_by_name(
-    claude_dir: &Path,
-    name: &str,
-) -> Result<PlanFile, DiscoveryError> {
+pub fn discover_plan_by_name(claude_dir: &Path, name: &str) -> Result<PlanFile, DiscoveryError> {
     let plans_dir = claude_dir.join("plans");
     let path = plans_dir.join(format!("{}.md", name));
 

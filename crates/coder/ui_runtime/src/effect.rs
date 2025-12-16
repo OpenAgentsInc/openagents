@@ -3,7 +3,7 @@
 //! Effects run automatically when their dependencies change,
 //! enabling side effects like logging, network requests, or DOM updates.
 
-use crate::runtime::{with_runtime, SubscriberId};
+use crate::runtime::{SubscriberId, with_runtime};
 use crate::scope::ScopeId;
 use parking_lot::Mutex;
 use std::sync::Arc;

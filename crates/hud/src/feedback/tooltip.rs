@@ -138,7 +138,12 @@ impl Tooltip {
             wgpui::Quad::new(animated_bounds)
                 .with_background(Hsla::new(0.0, 0.0, 0.05, 0.95 * progress))
                 .with_border(
-                    Hsla::new(self.color.h, self.color.s, self.color.l, self.color.a * progress),
+                    Hsla::new(
+                        self.color.h,
+                        self.color.s,
+                        self.color.l,
+                        self.color.a * progress,
+                    ),
                     1.0,
                 ),
         );
@@ -152,7 +157,10 @@ impl Tooltip {
         );
         let text_run = text_system.layout(
             &self.text,
-            Point::new(animated_bounds.x() + self.padding, animated_bounds.y() + self.padding + 10.0),
+            Point::new(
+                animated_bounds.x() + self.padding,
+                animated_bounds.y() + self.padding + 10.0,
+            ),
             12.0,
             text_color,
         );

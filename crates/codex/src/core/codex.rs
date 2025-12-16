@@ -20,18 +20,6 @@ use crate::core::openai_models::model_family::ModelFamily;
 use crate::core::openai_models::models_manager::ModelsManager;
 use crate::core::parse_command::parse_command;
 use crate::core::parse_turn_item;
-use crate::core::stream_events_utils::HandleOutputCtx;
-use crate::core::stream_events_utils::handle_non_tool_response_item;
-use crate::core::stream_events_utils::handle_output_item_done;
-use crate::core::terminal;
-use crate::core::truncate::TruncationPolicy;
-use crate::core::user_notification::UserNotifier;
-use crate::core::util::error_or_panic;
-use async_channel::Receiver;
-use async_channel::Sender;
-use crate::protocol::ConversationId;
-use crate::protocol::approvals::ExecPolicyAmendment;
-use crate::protocol::items::TurnItem;
 use crate::core::protocol::FileChange;
 use crate::core::protocol::HasLegacyEvent;
 use crate::core::protocol::ItemCompletedEvent;
@@ -43,10 +31,13 @@ use crate::core::protocol::SessionSource;
 use crate::core::protocol::TaskStartedEvent;
 use crate::core::protocol::TurnAbortReason;
 use crate::core::protocol::TurnContextItem;
-use crate::rmcp_client::ElicitationResponse;
-use futures::future::BoxFuture;
-use futures::prelude::*;
-use futures::stream::FuturesOrdered;
+use crate::core::stream_events_utils::HandleOutputCtx;
+use crate::core::stream_events_utils::handle_non_tool_response_item;
+use crate::core::stream_events_utils::handle_output_item_done;
+use crate::core::terminal;
+use crate::core::truncate::TruncationPolicy;
+use crate::core::user_notification::UserNotifier;
+use crate::core::util::error_or_panic;
 use crate::mcp_types::CallToolResult;
 use crate::mcp_types::ListResourceTemplatesRequestParams;
 use crate::mcp_types::ListResourceTemplatesResult;
@@ -55,6 +46,15 @@ use crate::mcp_types::ListResourcesResult;
 use crate::mcp_types::ReadResourceRequestParams;
 use crate::mcp_types::ReadResourceResult;
 use crate::mcp_types::RequestId;
+use crate::protocol::ConversationId;
+use crate::protocol::approvals::ExecPolicyAmendment;
+use crate::protocol::items::TurnItem;
+use crate::rmcp_client::ElicitationResponse;
+use async_channel::Receiver;
+use async_channel::Sender;
+use futures::future::BoxFuture;
+use futures::prelude::*;
+use futures::stream::FuturesOrdered;
 use serde_json;
 use serde_json::Value;
 use tokio::sync::Mutex;
@@ -70,8 +70,6 @@ use tracing::info_span;
 use tracing::instrument;
 use tracing::warn;
 
-use crate::core::model_provider_info::ModelProviderInfo;
-use crate::core::model_provider_info::WireApi;
 use crate::core::client::ModelClient;
 use crate::core::client_common::Prompt;
 use crate::core::client_common::ResponseEvent;
@@ -88,16 +86,20 @@ use crate::core::exec_policy::ExecPolicyUpdateError;
 use crate::core::mcp::auth::compute_auth_statuses;
 use crate::core::mcp_connection_manager::McpConnectionManager;
 use crate::core::model_provider_info::CHAT_WIRE_API_DEPRECATION_SUMMARY;
+use crate::core::model_provider_info::ModelProviderInfo;
+use crate::core::model_provider_info::WireApi;
 use crate::core::project_doc::get_user_instructions;
 use crate::core::protocol::AgentMessageContentDeltaEvent;
 use crate::core::protocol::AgentReasoningSectionBreakEvent;
 use crate::core::protocol::ApplyPatchApprovalRequestEvent;
 use crate::core::protocol::AskForApproval;
 use crate::core::protocol::BackgroundEventEvent;
+use crate::core::protocol::CodexErrorInfo;
 use crate::core::protocol::DeprecationNoticeEvent;
 use crate::core::protocol::Event;
 use crate::core::protocol::EventMsg;
 use crate::core::protocol::ExecApprovalRequestEvent;
+use crate::core::protocol::InitialHistory;
 use crate::core::protocol::Op;
 use crate::core::protocol::RateLimitSnapshot;
 use crate::core::protocol::ReasoningContentDeltaEvent;
@@ -106,7 +108,6 @@ use crate::core::protocol::ReviewDecision;
 use crate::core::protocol::SandboxPolicy;
 use crate::core::protocol::SessionConfiguredEvent;
 use crate::core::protocol::SkillErrorInfo;
-use crate::protocol::SkillMetadata as ProtocolSkillMetadata;
 use crate::core::protocol::StreamErrorEvent;
 use crate::core::protocol::Submission;
 use crate::core::protocol::TokenCountEvent;
@@ -143,18 +144,17 @@ use crate::core::user_instructions::DeveloperInstructions;
 use crate::core::user_instructions::UserInstructions;
 use crate::core::user_notification::UserNotification;
 use crate::core::util::backoff;
-use crate::utils::async_utils::OrCancelExt;
 use crate::execpolicy::Policy as ExecPolicy;
-use crate::stubs::otel::otel_manager::OtelManager;
+use crate::protocol::SkillMetadata as ProtocolSkillMetadata;
 use crate::protocol::config_types::ReasoningSummary as ReasoningSummaryConfig;
 use crate::protocol::models::ContentItem;
 use crate::protocol::models::ResponseInputItem;
 use crate::protocol::models::ResponseItem;
 use crate::protocol::openai_models::ReasoningEffort as ReasoningEffortConfig;
-use crate::core::protocol::CodexErrorInfo;
-use crate::core::protocol::InitialHistory;
 use crate::protocol::user_input::UserInput;
+use crate::stubs::otel::otel_manager::OtelManager;
 use crate::stubs::readiness::ReadinessFlag;
+use crate::utils::async_utils::OrCancelExt;
 
 /// The high-level interface to the Codex system.
 /// It operates as a queue pair where you send submissions and receive events.
@@ -638,7 +638,11 @@ impl Session {
             config.model_auto_compact_token_limit,
             config.approval_policy,
             config.sandbox_policy.clone(),
-            config.mcp_servers.keys().map(String::as_str).collect::<Vec<_>>(),
+            config
+                .mcp_servers
+                .keys()
+                .map(String::as_str)
+                .collect::<Vec<_>>(),
             config.active_profile.clone(),
         );
 
@@ -1630,12 +1634,6 @@ mod handlers {
     use crate::core::features::Feature;
     use crate::core::mcp::auth::compute_auth_statuses;
     use crate::core::mcp::collect_mcp_snapshot_from_manager;
-    use crate::core::review_prompts::resolve_review_request;
-    use crate::core::tasks::CompactTask;
-    use crate::core::tasks::RegularTask;
-    use crate::core::tasks::UndoTask;
-    use crate::core::tasks::UserShellCommandTask;
-    use crate::protocol::custom_prompts::CustomPrompt;
     use crate::core::protocol::CodexErrorInfo;
     use crate::core::protocol::ErrorEvent;
     use crate::core::protocol::Event;
@@ -1648,11 +1646,17 @@ mod handlers {
     use crate::core::protocol::SkillsListEntry;
     use crate::core::protocol::TurnAbortReason;
     use crate::core::protocol::WarningEvent;
+    use crate::core::review_prompts::resolve_review_request;
+    use crate::core::tasks::CompactTask;
+    use crate::core::tasks::RegularTask;
+    use crate::core::tasks::UndoTask;
+    use crate::core::tasks::UserShellCommandTask;
+    use crate::protocol::custom_prompts::CustomPrompt;
 
+    use crate::mcp_types::RequestId;
     use crate::protocol::user_input::UserInput;
     use crate::rmcp_client::ElicitationAction;
     use crate::rmcp_client::ElicitationResponse;
-    use crate::mcp_types::RequestId;
     use std::path::PathBuf;
     use std::sync::Arc;
     use tracing::info;
@@ -2484,7 +2488,9 @@ async fn try_run_turn(
             .await
         {
             Ok(event) => event,
-            Err(crate::utils::async_utils::CancelErr::Cancelled) => break Err(CodexErr::TurnAborted),
+            Err(crate::utils::async_utils::CancelErr::Cancelled) => {
+                break Err(CodexErr::TurnAborted);
+            }
         };
 
         let event = match event {
@@ -2667,11 +2673,7 @@ mod tests {
     use crate::protocol::models::FunctionCallOutputPayload;
 
     use crate::core::protocol::CompactedItem;
-    use crate::protocol::CreditsSnapshot;
-    use crate::protocol::InitialHistory;
     use crate::core::protocol::RateLimitSnapshot;
-    use crate::protocol::RateLimitWindow;
-    use crate::protocol::ResumedHistory;
     use crate::core::state::TaskKind;
     use crate::core::tasks::SessionTask;
     use crate::core::tasks::SessionTaskContext;
@@ -2683,9 +2685,13 @@ mod tests {
     use crate::core::tools::handlers::UnifiedExecHandler;
     use crate::core::tools::registry::ToolHandler;
     use crate::core::turn_diff_tracker::TurnDiffTracker;
-    use crate::stubs::app_server_protocol::AuthMode;
+    use crate::protocol::CreditsSnapshot;
+    use crate::protocol::InitialHistory;
+    use crate::protocol::RateLimitWindow;
+    use crate::protocol::ResumedHistory;
     use crate::protocol::models::ContentItem;
     use crate::protocol::models::ResponseItem;
+    use crate::stubs::app_server_protocol::AuthMode;
     use std::time::Duration;
     use tokio::time::sleep;
 

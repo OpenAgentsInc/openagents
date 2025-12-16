@@ -96,7 +96,12 @@ impl FrameCircle {
             return;
         }
 
-        let color = Hsla::new(self.color.h, self.color.s, self.color.l, self.color.a * progress);
+        let color = Hsla::new(
+            self.color.h,
+            self.color.s,
+            self.color.l,
+            self.color.a * progress,
+        );
         let w = self.line_width;
 
         // Center and radius

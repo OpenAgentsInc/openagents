@@ -85,11 +85,11 @@ mod tests {
     use super::*;
     use crate::api::provider::RetryConfig;
     use crate::api::provider::WireApi;
-    use async_trait::async_trait;
     use crate::client::Request;
     use crate::client::Response;
     use crate::client::StreamResponse;
     use crate::client::TransportError;
+    use async_trait::async_trait;
     use http::HeaderMap;
     use http::StatusCode;
     use pretty_assertions::assert_eq;

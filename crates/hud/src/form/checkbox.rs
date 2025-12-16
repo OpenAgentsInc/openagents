@@ -175,12 +175,20 @@ impl Checkbox {
         let box_bounds = Bounds::new(box_x, box_y, self.box_size, self.box_size);
 
         // Draw box background on hover or checked
-        let bg_alpha = if self.hovered { 0.08 } else if self.checked { 0.04 } else { 0.0 };
+        let bg_alpha = if self.hovered {
+            0.08
+        } else if self.checked {
+            0.04
+        } else {
+            0.0
+        };
         if bg_alpha > 0.0 {
-            scene.draw_quad(
-                wgpui::Quad::new(box_bounds)
-                    .with_background(Hsla::new(0.0, 0.0, 1.0, bg_alpha * progress))
-            );
+            scene.draw_quad(wgpui::Quad::new(box_bounds).with_background(Hsla::new(
+                0.0,
+                0.0,
+                1.0,
+                bg_alpha * progress,
+            )));
         }
 
         // Draw box border
@@ -192,15 +200,15 @@ impl Checkbox {
             hud::FRAME_DIM
         };
 
-        scene.draw_quad(
-            wgpui::Quad::new(box_bounds)
-                .with_border(Hsla::new(
-                    border_color.h,
-                    border_color.s,
-                    border_color.l,
-                    border_color.a * progress,
-                ), self.border_width)
-        );
+        scene.draw_quad(wgpui::Quad::new(box_bounds).with_border(
+            Hsla::new(
+                border_color.h,
+                border_color.s,
+                border_color.l,
+                border_color.a * progress,
+            ),
+            self.border_width,
+        ));
 
         // Draw checkmark
         if self.check_progress > 0.0 {
@@ -228,10 +236,12 @@ impl Checkbox {
             let short_len = inner_w * 0.35 * eased;
             scene.draw_quad(
                 wgpui::Quad::new(Bounds::new(
-                    inner_x, inner_y + inner_h * 0.5,
-                    short_len, line_width,
+                    inner_x,
+                    inner_y + inner_h * 0.5,
+                    short_len,
+                    line_width,
                 ))
-                .with_background(check_color)
+                .with_background(check_color),
             );
 
             // Long diagonal (center going up-right)
@@ -240,10 +250,12 @@ impl Checkbox {
                 let long_len = inner_w * 0.65 * long_progress;
                 scene.draw_quad(
                     wgpui::Quad::new(Bounds::new(
-                        inner_x + inner_w * 0.35, inner_y + inner_h * 0.5 - line_width,
-                        long_len, line_width,
+                        inner_x + inner_w * 0.35,
+                        inner_y + inner_h * 0.5 - line_width,
+                        long_len,
+                        line_width,
                     ))
-                    .with_background(check_color)
+                    .with_background(check_color),
                 );
             }
         }
@@ -286,7 +298,9 @@ impl Checkbox {
                 was_hovered != self.hovered
             }
 
-            InputEvent::MouseDown { position, button, .. } => {
+            InputEvent::MouseDown {
+                position, button, ..
+            } => {
                 if *button == MouseButton::Left && bounds.contains(*position) {
                     self.checked = !self.checked;
                     if let Some(on_change) = &mut self.on_change {

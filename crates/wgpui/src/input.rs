@@ -295,16 +295,11 @@ pub enum InputEvent {
         modifiers: Modifiers,
     },
     /// Text input from keyboard (handles IME composition).
-    TextInput {
-        text: String,
-    },
+    TextInput { text: String },
     /// IME composition started.
     ImeStart,
     /// IME composition updated.
-    ImeUpdate {
-        text: String,
-        cursor: Option<usize>,
-    },
+    ImeUpdate { text: String, cursor: Option<usize> },
     /// IME composition ended.
     ImeEnd,
     /// Focus gained.

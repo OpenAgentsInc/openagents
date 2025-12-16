@@ -255,14 +255,18 @@ impl Widget for Button {
                 }
             }
 
-            InputEvent::MouseDown { position, button, .. } => {
+            InputEvent::MouseDown {
+                position, button, ..
+            } => {
                 if *button == MouseButton::Left && bounds.contains(*position) {
                     self.pressed = true;
                     return EventResult::Handled;
                 }
             }
 
-            InputEvent::MouseUp { position, button, .. } => {
+            InputEvent::MouseUp {
+                position, button, ..
+            } => {
                 if *button == MouseButton::Left && self.pressed {
                     self.pressed = false;
 
@@ -309,21 +313,11 @@ impl HslaExt for Hsla {
     }
 
     fn darken(&self, amount: f32) -> Self {
-        Hsla::new(
-            self.h,
-            self.s,
-            (self.l - amount).max(0.0),
-            self.a,
-        )
+        Hsla::new(self.h, self.s, (self.l - amount).max(0.0), self.a)
     }
 
     fn lighten(&self, amount: f32) -> Self {
-        Hsla::new(
-            self.h,
-            self.s,
-            (self.l + amount).min(1.0),
-            self.a,
-        )
+        Hsla::new(self.h, self.s, (self.l + amount).min(1.0), self.a)
     }
 
     fn with_alpha(&self, alpha: f32) -> Self {

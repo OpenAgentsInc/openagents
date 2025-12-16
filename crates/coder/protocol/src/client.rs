@@ -109,7 +109,10 @@ mod tests {
         assert!(json.contains("thread_id"));
 
         let deserialized: ClientMessage = serde_json::from_str(&json).unwrap();
-        if let ClientMessage::Subscribe { include_history, .. } = deserialized {
+        if let ClientMessage::Subscribe {
+            include_history, ..
+        } = deserialized
+        {
             assert!(include_history);
         } else {
             panic!("Wrong message type");

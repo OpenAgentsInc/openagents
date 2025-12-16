@@ -104,7 +104,12 @@ impl FrameOctagon {
             return;
         }
 
-        let color = Hsla::new(self.color.h, self.color.s, self.color.l, self.color.a * progress);
+        let color = Hsla::new(
+            self.color.h,
+            self.color.s,
+            self.color.l,
+            self.color.a * progress,
+        );
         let w = self.line_width;
         let c = self.corner_size;
 
@@ -142,8 +147,13 @@ impl FrameOctagon {
         let bot_center = bot_start_x + bot_len / 2.0;
         let bot_half = (bot_len / 2.0) * progress;
         scene.draw_quad(
-            Quad::new(Bounds::new(bot_center - bot_half, y + height - w, bot_half * 2.0, w))
-                .with_background(color),
+            Quad::new(Bounds::new(
+                bot_center - bot_half,
+                y + height - w,
+                bot_half * 2.0,
+                w,
+            ))
+            .with_background(color),
         );
 
         // Left edge (vertical)
@@ -164,8 +174,13 @@ impl FrameOctagon {
         let right_center = right_start_y + right_len / 2.0;
         let right_half = (right_len / 2.0) * progress;
         scene.draw_quad(
-            Quad::new(Bounds::new(x + width - w, right_center - right_half, w, right_half * 2.0))
-                .with_background(color),
+            Quad::new(Bounds::new(
+                x + width - w,
+                right_center - right_half,
+                w,
+                right_half * 2.0,
+            ))
+            .with_background(color),
         );
 
         // Diagonal corners - draw as rotated quads approximated with small rectangles
@@ -175,13 +190,40 @@ impl FrameOctagon {
         self.draw_diagonal(scene, x, y + c, x + c, y, w, color, progress);
 
         // Top-right diagonal: from (x + width - c, y) to (x + width, y + c)
-        self.draw_diagonal(scene, x + width - c, y, x + width, y + c, w, color, progress);
+        self.draw_diagonal(
+            scene,
+            x + width - c,
+            y,
+            x + width,
+            y + c,
+            w,
+            color,
+            progress,
+        );
 
         // Bottom-right diagonal: from (x + width, y + height - c) to (x + width - c, y + height)
-        self.draw_diagonal(scene, x + width, y + height - c, x + width - c, y + height, w, color, progress);
+        self.draw_diagonal(
+            scene,
+            x + width,
+            y + height - c,
+            x + width - c,
+            y + height,
+            w,
+            color,
+            progress,
+        );
 
         // Bottom-left diagonal: from (x + c, y + height) to (x, y + height - c)
-        self.draw_diagonal(scene, x + c, y + height, x, y + height - c, w, color, progress);
+        self.draw_diagonal(
+            scene,
+            x + c,
+            y + height,
+            x,
+            y + height - c,
+            w,
+            color,
+            progress,
+        );
     }
 
     /// Draw a diagonal line from (x1, y1) to (x2, y2) using small quads.
@@ -228,8 +270,13 @@ impl FrameOctagon {
             let py = mid_y + unit_y * t;
 
             scene.draw_quad(
-                Quad::new(Bounds::new(px - width / 2.0, py - width / 2.0, width, width))
-                    .with_background(color),
+                Quad::new(Bounds::new(
+                    px - width / 2.0,
+                    py - width / 2.0,
+                    width,
+                    width,
+                ))
+                .with_background(color),
             );
         }
     }

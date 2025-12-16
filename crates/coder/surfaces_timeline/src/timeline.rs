@@ -195,9 +195,8 @@ impl Default for Timeline {
 impl Widget for Timeline {
     fn paint(&mut self, bounds: Bounds, cx: &mut PaintContext) {
         // Draw background
-        cx.scene.draw_quad(
-            Quad::new(bounds).with_background(colors::BACKGROUND),
-        );
+        cx.scene
+            .draw_quad(Quad::new(bounds).with_background(colors::BACKGROUND));
 
         let scroll_y = self.scroll_y.get_untracked();
 
@@ -238,7 +237,9 @@ impl Widget for Timeline {
                     self.focused = false;
                 }
             }
-            InputEvent::Wheel { delta, modifiers, .. } => {
+            InputEvent::Wheel {
+                delta, modifiers, ..
+            } => {
                 if modifiers.command() || modifiers.ctrl {
                     // Zoom with Cmd/Ctrl + wheel
                     if delta.y > 0.0 {
@@ -329,8 +330,13 @@ impl Timeline {
             if x >= content_start {
                 // Draw grid line
                 cx.scene.draw_quad(
-                    Quad::new(Bounds::new(x, bounds.origin.y + 24.0, 1.0, bounds.size.height - 24.0))
-                        .with_background(colors::GRID_LINE),
+                    Quad::new(Bounds::new(
+                        x,
+                        bounds.origin.y + 24.0,
+                        1.0,
+                        bounds.size.height - 24.0,
+                    ))
+                    .with_background(colors::GRID_LINE),
                 );
             }
 
@@ -484,9 +490,14 @@ impl Timeline {
         // Draw selection border
         if is_selected {
             cx.scene.draw_quad(
-                Quad::new(Bounds::new(x - 2.0, step_y - 2.0, width + 4.0, step_height + 4.0))
-                    .with_border(Hsla::new(0.0, 0.0, 1.0, 1.0), 2.0)
-                    .with_corner_radii(CornerRadii::uniform(6.0)),
+                Quad::new(Bounds::new(
+                    x - 2.0,
+                    step_y - 2.0,
+                    width + 4.0,
+                    step_height + 4.0,
+                ))
+                .with_border(Hsla::new(0.0, 0.0, 1.0, 1.0), 2.0)
+                .with_corner_radii(CornerRadii::uniform(6.0)),
             );
         }
 

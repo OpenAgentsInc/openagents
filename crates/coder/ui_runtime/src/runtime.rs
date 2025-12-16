@@ -5,7 +5,7 @@
 
 use crate::scope::{Scope, ScopeId};
 use parking_lot::Mutex;
-use slotmap::{new_key_type, SlotMap};
+use slotmap::{SlotMap, new_key_type};
 use std::cell::RefCell;
 use std::sync::Arc;
 

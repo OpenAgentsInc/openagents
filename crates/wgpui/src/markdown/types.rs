@@ -183,10 +183,7 @@ pub enum MarkdownBlock {
     Paragraph(Vec<StyledLine>),
 
     /// Header with level (1-6)
-    Header {
-        level: u8,
-        lines: Vec<StyledLine>,
-    },
+    Header { level: u8, lines: Vec<StyledLine> },
 
     /// Code block with optional language
     CodeBlock {

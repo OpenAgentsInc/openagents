@@ -74,7 +74,12 @@ impl Widget for Text {
         cx.scene.draw_text(text_run);
     }
 
-    fn event(&mut self, _event: &InputEvent, _bounds: Bounds, _cx: &mut EventContext) -> EventResult {
+    fn event(
+        &mut self,
+        _event: &InputEvent,
+        _bounds: Bounds,
+        _cx: &mut EventContext,
+    ) -> EventResult {
         // Text doesn't handle events by default
         EventResult::Ignored
     }

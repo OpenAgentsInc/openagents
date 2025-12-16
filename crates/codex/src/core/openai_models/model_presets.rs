@@ -1,8 +1,8 @@
-use crate::stubs::app_server_protocol::AuthMode;
 use crate::protocol::openai_models::ModelPreset;
 use crate::protocol::openai_models::ModelUpgrade;
 use crate::protocol::openai_models::ReasoningEffort;
 use crate::protocol::openai_models::ReasoningEffortPreset;
+use crate::stubs::app_server_protocol::AuthMode;
 use once_cell::sync::Lazy;
 
 pub const HIDE_GPT5_1_MIGRATION_PROMPT_CONFIG: &str = "hide_gpt5_1_migration_prompt";

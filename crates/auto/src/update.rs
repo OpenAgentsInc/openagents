@@ -152,9 +152,7 @@ impl AutoUpdate {
     pub fn is_terminal(&self) -> bool {
         matches!(
             self,
-            AutoUpdate::Finished { .. }
-                | AutoUpdate::Error { .. }
-                | AutoUpdate::Cancelled { .. }
+            AutoUpdate::Finished { .. } | AutoUpdate::Error { .. } | AutoUpdate::Cancelled { .. }
         )
     }
 

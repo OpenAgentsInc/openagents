@@ -44,8 +44,12 @@ impl From<ConfigProfile> for crate::stubs::app_server_protocol::Profile {
             model: config_profile.model,
             model_provider: config_profile.model_provider,
             approval_policy: config_profile.approval_policy.map(|a| format!("{:?}", a)),
-            model_reasoning_effort: config_profile.model_reasoning_effort.map(|r| format!("{:?}", r)),
-            model_reasoning_summary: config_profile.model_reasoning_summary.map(|r| !matches!(r, ReasoningSummary::None)),
+            model_reasoning_effort: config_profile
+                .model_reasoning_effort
+                .map(|r| format!("{:?}", r)),
+            model_reasoning_summary: config_profile
+                .model_reasoning_summary
+                .map(|r| !matches!(r, ReasoningSummary::None)),
             model_verbosity: config_profile.model_verbosity.map(|v| format!("{:?}", v)),
             chatgpt_base_url: config_profile.chatgpt_base_url,
         }

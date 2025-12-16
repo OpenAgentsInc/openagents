@@ -146,12 +146,16 @@ impl ConfigService {
             config,
             origins: layers.origins().into_values().collect(),
             layers: params.include_layers.then(|| {
-                layers.layers_high_to_low().into_iter().map(|l| ConfigLayerMetadata {
-                    name: l.name.clone(),
-                    path: Some(l.source.clone()),
-                    source: l.source,
-                    version: l.version,
-                }).collect()
+                layers
+                    .layers_high_to_low()
+                    .into_iter()
+                    .map(|l| ConfigLayerMetadata {
+                        name: l.name.clone(),
+                        path: Some(l.source.clone()),
+                        source: l.source,
+                        version: l.version,
+                    })
+                    .collect()
             }),
             values: json_value,
         })
@@ -161,9 +165,17 @@ impl ConfigService {
         &self,
         params: ConfigValueWriteParams,
     ) -> Result<ConfigWriteResponse, ConfigServiceError> {
-        let edits = vec![(params.key_path, params.value, params.merge_strategy.unwrap_or_default())];
-        self.apply_edits(params.file_path.map(|p| p.display().to_string()), params.expected_version, edits)
-            .await
+        let edits = vec![(
+            params.key_path,
+            params.value,
+            params.merge_strategy.unwrap_or_default(),
+        )];
+        self.apply_edits(
+            params.file_path.map(|p| p.display().to_string()),
+            params.expected_version,
+            edits,
+        )
+        .await
     }
 
     pub async fn batch_write(
@@ -173,11 +185,21 @@ impl ConfigService {
         let edits = params
             .edits
             .into_iter()
-            .map(|edit| (edit.key_path, edit.value, edit.merge_strategy.unwrap_or_default()))
+            .map(|edit| {
+                (
+                    edit.key_path,
+                    edit.value,
+                    edit.merge_strategy.unwrap_or_default(),
+                )
+            })
             .collect();
 
-        self.apply_edits(params.file_path.map(|p| p.display().to_string()), params.expected_version, edits)
-            .await
+        self.apply_edits(
+            params.file_path.map(|p| p.display().to_string()),
+            params.expected_version,
+            edits,
+        )
+        .await
     }
 
     pub async fn load_user_saved_config(
@@ -542,8 +564,7 @@ fn compute_override_metadata(
         original_layer: None,
         message: Some(message),
         overriding_layer: Some(overriding_layer.name.clone()),
-        effective_value: effective_value
-            .and_then(|value| serde_json::to_value(value).ok()),
+        effective_value: effective_value.and_then(|value| serde_json::to_value(value).ok()),
     })
 }
 
@@ -586,8 +607,8 @@ fn find_effective_layer(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use anyhow::Result;
     use crate::stubs::app_server_protocol::AskForApproval;
+    use anyhow::Result;
     use pretty_assertions::assert_eq;
     use tempfile::tempdir;
 

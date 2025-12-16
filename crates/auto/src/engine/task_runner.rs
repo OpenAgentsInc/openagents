@@ -35,9 +35,9 @@ impl TaskRunner {
             }
             Backend::Ollama => self.run_with_ollama(task).await,
             Backend::Pi => self.run_with_pi(task).await,
-            Backend::OpenAgentsCloud => {
-                Err(AutoError::Backend("OpenAgents Cloud not yet implemented".to_string()))
-            }
+            Backend::OpenAgentsCloud => Err(AutoError::Backend(
+                "OpenAgents Cloud not yet implemented".to_string(),
+            )),
         }
     }
 
@@ -58,9 +58,9 @@ impl TaskRunner {
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
 
-        let mut child = cmd.spawn().map_err(|e| {
-            AutoError::Backend(format!("Failed to spawn claude: {}", e))
-        })?;
+        let mut child = cmd
+            .spawn()
+            .map_err(|e| AutoError::Backend(format!("Failed to spawn claude: {}", e)))?;
 
         // Read output
         let stdout = child.stdout.take().expect("stdout not captured");
@@ -87,11 +87,7 @@ impl TaskRunner {
     }
 
     /// Run task using API provider (Anthropic, OpenRouter, OpenAI).
-    async fn run_with_api(
-        &self,
-        task: &DiscoveredTask,
-        _backend: Backend,
-    ) -> Result<Vec<String>> {
+    async fn run_with_api(&self, task: &DiscoveredTask, _backend: Backend) -> Result<Vec<String>> {
         // For now, fall back to Claude CLI if available
         // Full API implementation would use coder_service
         let prompt = self.build_prompt(task);

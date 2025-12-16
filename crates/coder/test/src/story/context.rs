@@ -145,8 +145,8 @@ mod tests {
 
     #[test]
     fn test_context_wait_until() {
-        use std::sync::atomic::{AtomicBool, Ordering};
         use std::sync::Arc;
+        use std::sync::atomic::{AtomicBool, Ordering};
 
         let cx = TestContext::new();
         let flag = Arc::new(AtomicBool::new(false));
@@ -158,9 +158,7 @@ mod tests {
             flag_clone.store(true, Ordering::SeqCst);
         });
 
-        let result = cx.wait_until(Duration::from_millis(200), || {
-            flag.load(Ordering::SeqCst)
-        });
+        let result = cx.wait_until(Duration::from_millis(200), || flag.load(Ordering::SeqCst));
 
         assert!(result, "Expected condition to become true");
     }

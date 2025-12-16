@@ -1,8 +1,6 @@
-use crate::core::AuthManager;
 #[cfg(any(test, feature = "test-support"))]
 use crate::CodexAuth;
-#[cfg(any(test, feature = "test-support"))]
-use crate::core::model_provider_info::ModelProviderInfo;
+use crate::core::AuthManager;
 use crate::core::codex::Codex;
 use crate::core::codex::CodexSpawnOk;
 use crate::core::codex::INITIAL_SUBMIT_ID;
@@ -10,19 +8,21 @@ use crate::core::codex_conversation::CodexConversation;
 use crate::core::config::Config;
 use crate::core::error::CodexErr;
 use crate::core::error::Result as CodexResult;
+#[cfg(any(test, feature = "test-support"))]
+use crate::core::model_provider_info::ModelProviderInfo;
 use crate::core::openai_models::models_manager::ModelsManager;
 use crate::core::protocol::Event;
 use crate::core::protocol::EventMsg;
+use crate::core::protocol::InitialHistory;
+use crate::core::protocol::RolloutItem;
 use crate::core::protocol::SessionConfiguredEvent;
+use crate::core::protocol::SessionSource;
 use crate::core::rollout::RolloutRecorder;
 use crate::core::skills::SkillsManager;
 use crate::protocol::ConversationId;
 use crate::protocol::items::TurnItem;
 use crate::protocol::models::ResponseItem;
 use crate::protocol::openai_models::ModelPreset;
-use crate::core::protocol::InitialHistory;
-use crate::core::protocol::RolloutItem;
-use crate::core::protocol::SessionSource;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -302,10 +302,10 @@ fn truncate_before_nth_user_message(history: InitialHistory, n: usize) -> Initia
 mod tests {
     use super::*;
     use crate::core::codex::make_session_and_context;
-    use assert_matches::assert_matches;
     use crate::protocol::models::ContentItem;
     use crate::protocol::models::ReasoningItemReasoningSummary;
     use crate::protocol::models::ResponseItem;
+    use assert_matches::assert_matches;
     use pretty_assertions::assert_eq;
 
     fn user_msg(text: &str) -> ResponseItem {

@@ -43,7 +43,7 @@ pub type EventCallback = Box<dyn FnMut(InputEvent)>;
 pub mod web;
 
 #[cfg(all(feature = "web", target_arch = "wasm32"))]
-pub use web::{run_animation_loop, setup_resize_observer, WebPlatform};
+pub use web::{WebPlatform, run_animation_loop, setup_resize_observer};
 
 // Desktop platform (native)
 #[cfg(all(feature = "desktop", not(target_arch = "wasm32")))]

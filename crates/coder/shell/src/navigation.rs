@@ -134,10 +134,7 @@ impl Navigation {
             ],
             Route::Project { project_id } => vec![
                 Breadcrumb::new("Home", Route::Home),
-                Breadcrumb::new(
-                    &format!("Project {}", &project_id.to_string()[..8]),
-                    route,
-                ),
+                Breadcrumb::new(&format!("Project {}", &project_id.to_string()[..8]), route),
             ],
             Route::Settings => vec![
                 Breadcrumb::new("Home", Route::Home),

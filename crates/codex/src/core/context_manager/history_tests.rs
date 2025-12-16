@@ -1,7 +1,5 @@
 use super::*;
-use crate::truncate;
 use crate::core::truncate::TruncationPolicy;
-use crate::utils::git::GhostCommit;
 use crate::protocol::models::ContentItem;
 use crate::protocol::models::FunctionCallOutputPayload;
 use crate::protocol::models::LocalShellAction;
@@ -9,6 +7,8 @@ use crate::protocol::models::LocalShellExecAction;
 use crate::protocol::models::LocalShellStatus;
 use crate::protocol::models::ReasoningItemContent;
 use crate::protocol::models::ReasoningItemReasoningSummary;
+use crate::truncate;
+use crate::utils::git::GhostCommit;
 use pretty_assertions::assert_eq;
 use regex_lite::Regex;
 

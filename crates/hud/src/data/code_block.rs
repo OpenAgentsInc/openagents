@@ -189,7 +189,7 @@ impl CodeBlock {
                     hud::FRAME_DIM.s,
                     hud::FRAME_DIM.l,
                     hud::FRAME_DIM.a * 0.5 * parent_progress,
-                ))
+                )),
             );
         }
 
@@ -242,12 +242,7 @@ impl CodeBlock {
 
             // Draw code line with slide effect
             let slide_offset = 10.0 * (1.0 - eased);
-            let code_color = Hsla::new(
-                hud::TEXT.h,
-                hud::TEXT.s,
-                hud::TEXT.l,
-                hud::TEXT.a * eased,
-            );
+            let code_color = Hsla::new(hud::TEXT.h, hud::TEXT.s, hud::TEXT.l, hud::TEXT.a * eased);
             let code_run = text_system.layout(
                 line,
                 Point::new(code_x + slide_offset, line_y),

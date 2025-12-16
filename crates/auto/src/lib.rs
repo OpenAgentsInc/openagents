@@ -49,7 +49,9 @@ use tokio::sync::mpsc;
 #[derive(Debug, Error)]
 pub enum AutoError {
     /// No backend available.
-    #[error("No AI backend available. Set ANTHROPIC_API_KEY, OPENROUTER_API_KEY, or install Claude CLI")]
+    #[error(
+        "No AI backend available. Set ANTHROPIC_API_KEY, OPENROUTER_API_KEY, or install Claude CLI"
+    )]
     NoBackend,
 
     /// No tasks found.

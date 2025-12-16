@@ -112,7 +112,8 @@ pub async fn run_main<T: Reporter>(
     let cancel_flag = Arc::new(AtomicBool::new(false));
     // Convert Option<usize> to NonZero<usize> with defaults
     let limit_nz = NonZero::new(limit.unwrap_or(100)).unwrap_or(NonZero::new(100).unwrap());
-    let threads_nz = NonZero::new(threads.unwrap_or(num_cpus::get())).unwrap_or(NonZero::new(1).unwrap());
+    let threads_nz =
+        NonZero::new(threads.unwrap_or(num_cpus::get())).unwrap_or(NonZero::new(1).unwrap());
     let FileSearchResults {
         total_match_count,
         matches,

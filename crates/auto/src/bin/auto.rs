@@ -146,10 +146,7 @@ fn print_update(update: &AutoUpdate) {
             selected_backend,
             working_directory,
         } => {
-            println!(
-                "Working directory: {}",
-                working_directory.display()
-            );
+            println!("Working directory: {}", working_directory.display());
             if let Some(backend) = selected_backend {
                 println!("Using backend: {}", backend.display_name());
             }
@@ -241,10 +238,7 @@ fn print_update(update: &AutoUpdate) {
             eprintln!("Error: {}", error);
         }
         AutoUpdate::Cancelled { reason } => {
-            println!(
-                "Cancelled: {}",
-                reason.as_deref().unwrap_or("User request")
-            );
+            println!("Cancelled: {}", reason.as_deref().unwrap_or("User request"));
         }
     }
 }

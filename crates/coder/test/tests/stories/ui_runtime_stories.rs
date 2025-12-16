@@ -15,8 +15,8 @@ use coder_ui_runtime::{
     scheduler::{FramePhase, Scheduler},
     signal::create_signal,
 };
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
 // ============================================================================
@@ -298,6 +298,67 @@ fn story_41_monospace_character_width() {
 
     // Width should scale linearly with character count
     assert_eq!(long.width, short.width * 2.0);
+}
+
+/// Story 41: Markdown renderer outputs deterministic layout for lists/code/inline.
+#[test]
+fn story_41_markdown_render_is_deterministic() {
+    use coder_test::assertions::SceneAssertions;
+    use coder_test::harness::MockTextSystem;
+    use wgpui::markdown::{MarkdownParser, MarkdownRenderer};
+    use wgpui::{Point, Scene};
+
+    let mut text = MockTextSystem::new();
+    let mut scene = Scene::new();
+    let parser = MarkdownParser::new();
+    let renderer = MarkdownRenderer::new();
+
+    let markdown = r#"
+# Heading
+
+- item one
+- item two
+
+1. alpha
+2. beta
+
+Inline `code` sample.
+
+```
+fn main() {
+    println!("hi");
+}
+```
+"#;
+
+    let doc = parser.parse(markdown);
+
+    // First render
+    renderer.render(
+        &doc,
+        Point::new(0.0, 0.0),
+        400.0,
+        text.text_system_mut(),
+        &mut scene,
+    );
+    let first_runs = scene.text_runs().len();
+    let first_bounds = scene.bounds();
+
+    // Reset scene and render again
+    let mut scene = Scene::new();
+    renderer.render(
+        &doc,
+        Point::new(0.0, 0.0),
+        400.0,
+        text.text_system_mut(),
+        &mut scene,
+    );
+    let second_runs = scene.text_runs().len();
+    let second_bounds = scene.bounds();
+
+    // Deterministic: number of draw calls and overall bounds must match
+    assert_eq!(first_runs, second_runs);
+    assert_eq!(first_bounds, second_bounds);
 }
 
 // ============================================================================

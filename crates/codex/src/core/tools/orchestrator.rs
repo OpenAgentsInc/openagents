@@ -8,6 +8,8 @@ retry without sandbox on denial (no re‑approval thanks to caching).
 use crate::core::error::CodexErr;
 use crate::core::error::SandboxErr;
 use crate::core::exec::ExecToolCallOutput;
+use crate::core::protocol::AskForApproval;
+use crate::core::protocol::ReviewDecision;
 use crate::core::sandboxing::SandboxManager;
 use crate::core::tools::sandboxing::ApprovalCtx;
 use crate::core::tools::sandboxing::ExecApprovalRequirement;
@@ -17,8 +19,6 @@ use crate::core::tools::sandboxing::ToolCtx;
 use crate::core::tools::sandboxing::ToolError;
 use crate::core::tools::sandboxing::ToolRuntime;
 use crate::core::tools::sandboxing::default_exec_approval_requirement;
-use crate::core::protocol::AskForApproval;
-use crate::core::protocol::ReviewDecision;
 
 pub(crate) struct ToolOrchestrator {
     sandbox: SandboxManager,

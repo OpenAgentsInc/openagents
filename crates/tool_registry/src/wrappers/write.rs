@@ -44,23 +44,30 @@ impl Tool for WriteToolWrapper {
         }
     }
 
-    fn check_permission(&self, input: &Self::Input, ctx: &ToolContext) -> Option<PermissionRequest> {
+    fn check_permission(
+        &self,
+        input: &Self::Input,
+        ctx: &ToolContext,
+    ) -> Option<PermissionRequest> {
         let resolved = ctx.resolve_path(&input.file_path);
         let exists = resolved.exists();
 
         let action = if exists { "Overwrite" } else { "Create" };
         let title = format!("{} file: {}", action, input.file_path);
 
-        Some(PermissionRequest::new(
-            "file_write",
-            title,
-            format!(
-                "{} file with {} bytes: {}",
-                action,
-                input.content.len(),
-                resolved.display()
-            ),
-        ).with_patterns(vec![resolved.to_string_lossy().to_string()]))
+        Some(
+            PermissionRequest::new(
+                "file_write",
+                title,
+                format!(
+                    "{} file with {} bytes: {}",
+                    action,
+                    input.content.len(),
+                    resolved.display()
+                ),
+            )
+            .with_patterns(vec![resolved.to_string_lossy().to_string()]),
+        )
     }
 
     async fn execute(&self, input: Self::Input, ctx: &ToolContext) -> ToolResult<ToolOutput> {
@@ -70,12 +77,11 @@ impl Tool for WriteToolWrapper {
         let content = input.content.clone();
 
         // Execute in blocking task since WriteTool is synchronous
-        let result = tokio::task::spawn_blocking(move || {
-            tools::WriteTool::write(&resolved, &content)
-        })
-        .await
-        .map_err(|e| crate::ToolError::execution_failed(format!("Task join error: {}", e)))?
-        .map_err(crate::ToolError::from)?;
+        let result =
+            tokio::task::spawn_blocking(move || tools::WriteTool::write(&resolved, &content))
+                .await
+                .map_err(|e| crate::ToolError::execution_failed(format!("Task join error: {}", e)))?
+                .map_err(crate::ToolError::from)?;
 
         let metadata = serde_json::json!({
             "path": result.path,
@@ -86,9 +92,15 @@ impl Tool for WriteToolWrapper {
         });
 
         let msg = if !result.existed_before {
-            format!("Created file: {} ({} bytes)", result.path, result.bytes_written)
+            format!(
+                "Created file: {} ({} bytes)",
+                result.path, result.bytes_written
+            )
         } else {
-            format!("Updated file: {} ({} bytes)", result.path, result.bytes_written)
+            format!(
+                "Updated file: {} ({} bytes)",
+                result.path, result.bytes_written
+            )
         };
 
         Ok(ToolOutput::success(msg).with_metadata(metadata))

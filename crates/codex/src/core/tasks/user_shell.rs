@@ -1,10 +1,10 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use async_trait::async_trait;
+use crate::protocol::user_input::UserInput;
 use crate::utils::async_utils::CancelErr;
 use crate::utils::async_utils::OrCancelExt;
-use crate::protocol::user_input::UserInput;
+use async_trait::async_trait;
 use tokio_util::sync::CancellationToken;
 use tracing::error;
 use uuid::Uuid;

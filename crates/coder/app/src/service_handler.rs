@@ -156,7 +156,11 @@ impl ServiceHandler {
                 message,
                 ..
             } => {
-                log::debug!("[ServiceHandler] Tool progress: {} - {}", tool_call_id, message);
+                log::debug!(
+                    "[ServiceHandler] Tool progress: {} - {}",
+                    tool_call_id,
+                    message
+                );
                 // ServerMessage::ToolProgress uses elapsed_seconds, not message
                 // For now, skip this as we can't easily convert a message to seconds
                 None

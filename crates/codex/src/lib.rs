@@ -81,16 +81,16 @@
 //! - [`stubs`] - Stubs for removed dependencies
 
 // Phase 1: Foundation modules
-pub mod protocol;
-pub mod mcp_types;
-pub mod client;
 pub mod api;
+pub mod client;
+pub mod mcp_types;
+pub mod protocol;
 
 // Phase 2: Utilities & Tools
-pub mod utils;
 pub mod apply_patch;
 pub mod execpolicy;
 pub mod file_search;
+pub mod utils;
 
 // Phase 3: MCP
 pub mod rmcp_client;

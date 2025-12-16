@@ -1,5 +1,7 @@
 use crate::core::codex::TurnContext;
 use crate::core::context_manager::normalize;
+use crate::core::protocol::TokenUsage;
+use crate::core::protocol::TokenUsageInfo;
 use crate::core::truncate::TruncationPolicy;
 use crate::core::truncate::approx_token_count;
 use crate::core::truncate::approx_tokens_from_byte_count;
@@ -9,8 +11,6 @@ use crate::protocol::models::ContentItem;
 use crate::protocol::models::FunctionCallOutputContentItem;
 use crate::protocol::models::FunctionCallOutputPayload;
 use crate::protocol::models::ResponseItem;
-use crate::core::protocol::TokenUsage;
-use crate::core::protocol::TokenUsageInfo;
 use std::ops::Deref;
 
 /// Transcript of conversation history

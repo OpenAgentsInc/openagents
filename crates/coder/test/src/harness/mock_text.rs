@@ -3,6 +3,9 @@
 //! This provides text measurement without requiring actual font loading,
 //! making tests fast and deterministic.
 
+use wgpui::scene::TextRun;
+use wgpui::text::FontStyle;
+use wgpui::text::TextSystem as WgpuTextSystem;
 use wgpui::{Point, Size};
 
 /// Mock text system that provides deterministic text measurement.
@@ -16,6 +19,8 @@ pub struct MockTextSystem {
     line_height: f32,
     /// Scale factor (affects measurements).
     scale_factor: f32,
+    /// Total layout calls recorded (useful for determinism checks).
+    layout_calls: usize,
 }
 
 impl MockTextSystem {
@@ -27,6 +32,7 @@ impl MockTextSystem {
             char_width: 8.0,
             line_height: 16.0,
             scale_factor: 1.0,
+            layout_calls: 0,
         }
     }
 
@@ -36,6 +42,7 @@ impl MockTextSystem {
             char_width,
             line_height,
             scale_factor: 1.0,
+            layout_calls: 0,
         }
     }
 
@@ -74,6 +81,7 @@ impl MockTextSystem {
     pub fn measure_line(&self, line: &str) -> f32 {
         // Count graphemes for better Unicode handling
         let char_count = line.chars().count();
+        // Measure is deterministic and proportional to characters.
         char_count as f32 * self.char_width()
     }
 
@@ -94,7 +102,10 @@ impl MockTextSystem {
             }
         }
 
-        Point::new(col as f32 * self.char_width(), line as f32 * self.line_height())
+        Point::new(
+            col as f32 * self.char_width(),
+            line as f32 * self.line_height(),
+        )
     }
 
     /// Get the character index at the given position.
@@ -125,12 +136,7 @@ impl MockTextSystem {
     }
 
     /// Calculate the bounds of a text selection.
-    pub fn selection_bounds(
-        &self,
-        text: &str,
-        start: usize,
-        end: usize,
-    ) -> Vec<wgpui::Bounds> {
+    pub fn selection_bounds(&self, text: &str, start: usize, end: usize) -> Vec<wgpui::Bounds> {
         let start_pos = self.char_position(text, start);
         let end_pos = self.char_position(text, end);
 
@@ -183,6 +189,43 @@ impl MockTextSystem {
         }
 
         bounds
+    }
+
+    /// Record a layout call (for deterministic render assertions).
+    pub fn record_layout(&mut self) {
+        self.layout_calls += 1;
+    }
+
+    /// Get the total layout calls recorded.
+    pub fn layout_calls(&self) -> usize {
+        self.layout_calls
+    }
+}
+
+impl TextSystem for MockTextSystem {
+    fn measure_size(&mut self, text: &str, font_size: f32, _font_style: Option<FontStyle>) -> Size {
+        // scale width by font size relative to default 16px
+        let scale = font_size / 16.0;
+        let mut clone = self.clone();
+        clone.set_scale_factor(self.scale_factor * scale);
+        clone.record_layout();
+        clone.measure(text)
+    }
+
+    fn layout_styled(
+        &mut self,
+        text: &str,
+        origin: Point,
+        font_size: f32,
+        _color: Color,
+        _style: FontStyle,
+    ) -> TextRun {
+        let size = self.measure_size(text, font_size, None);
+        TextRun {
+            text: text.to_string(),
+            origin,
+            size,
+        }
     }
 }
 

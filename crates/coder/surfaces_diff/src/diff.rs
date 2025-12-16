@@ -265,10 +265,7 @@ fn group_into_hunks(changes: &[Change], context: usize) -> Vec<Hunk> {
                     let hunk_start_old = old_start.saturating_sub(context_buffer.len());
                     let hunk_start_new = new_start.saturating_sub(context_buffer.len());
 
-                    let mut hunk = Hunk::new(
-                        hunk_start_old.max(1),
-                        hunk_start_new.max(1),
-                    );
+                    let mut hunk = Hunk::new(hunk_start_old.max(1), hunk_start_new.max(1));
 
                     // Add leading context
                     for ctx in context_buffer.drain(..) {
@@ -310,9 +307,7 @@ pub fn compute_word_diff(old: &str, new: &str) -> Vec<(ChangeKind, String)> {
     let diff = TextDiff::from_words(old, new);
 
     diff.iter_all_changes()
-        .map(|change| {
-            (ChangeKind::from(change.tag()), change.value().to_string())
-        })
+        .map(|change| (ChangeKind::from(change.tag()), change.value().to_string()))
         .collect()
 }
 

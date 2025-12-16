@@ -7,8 +7,8 @@ use crate::core::function_tool::FunctionCallError;
 use crate::core::tools::context::ToolInvocation;
 use crate::core::tools::context::ToolOutput;
 use crate::core::tools::context::ToolPayload;
-use async_trait::async_trait;
 use crate::protocol::models::ResponseInputItem;
+use async_trait::async_trait;
 use tracing::warn;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]

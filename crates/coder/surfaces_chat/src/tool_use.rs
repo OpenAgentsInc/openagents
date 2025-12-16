@@ -206,12 +206,7 @@ impl Widget for ToolUseIndicator {
         }
     }
 
-    fn event(
-        &mut self,
-        event: &InputEvent,
-        bounds: Bounds,
-        _cx: &mut EventContext,
-    ) -> EventResult {
+    fn event(&mut self, event: &InputEvent, bounds: Bounds, _cx: &mut EventContext) -> EventResult {
         // Toggle expanded on click
         match event {
             InputEvent::MouseDown { position, .. } => {

@@ -6,6 +6,8 @@
 //! `SandboxAttempt` with a minimal environment.
 use crate::core::CODEX_APPLY_PATCH_ARG1;
 use crate::core::exec::ExecToolCallOutput;
+use crate::core::protocol::AskForApproval;
+use crate::core::protocol::ReviewDecision;
 use crate::core::sandboxing::CommandSpec;
 use crate::core::sandboxing::SandboxPermissions;
 use crate::core::sandboxing::execute_env;
@@ -18,8 +20,6 @@ use crate::core::tools::sandboxing::ToolCtx;
 use crate::core::tools::sandboxing::ToolError;
 use crate::core::tools::sandboxing::ToolRuntime;
 use crate::core::tools::sandboxing::with_cached_approval;
-use crate::core::protocol::AskForApproval;
-use crate::core::protocol::ReviewDecision;
 use futures::future::BoxFuture;
 use std::collections::HashMap;
 use std::path::PathBuf;

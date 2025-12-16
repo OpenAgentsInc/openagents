@@ -1,7 +1,7 @@
 //! Task discovery from various sources.
 
-use crate::config::{AutoConfig, TaskSource};
 use crate::Result;
+use crate::config::{AutoConfig, TaskSource};
 use std::path::PathBuf;
 use taskmaster::{Issue, IssueFilter, IssueRepository, SqliteRepository};
 
@@ -77,9 +77,7 @@ impl Discovery {
                 } else {
                     Some(issue.description.clone())
                 },
-                source: TaskDiscoverySource::Taskmaster {
-                    issue_id: issue.id,
-                },
+                source: TaskDiscoverySource::Taskmaster { issue_id: issue.id },
                 priority: issue.priority.as_i32(),
                 labels: issue.labels.clone(),
             })
@@ -164,9 +162,7 @@ impl Discovery {
                         } else {
                             Some(issue.description.clone())
                         },
-                        source: TaskDiscoverySource::Taskmaster {
-                            issue_id: issue.id,
-                        },
+                        source: TaskDiscoverySource::Taskmaster { issue_id: issue.id },
                         priority: issue.priority.as_i32(),
                         labels: issue.labels.clone(),
                     });

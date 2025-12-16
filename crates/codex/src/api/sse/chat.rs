@@ -347,8 +347,8 @@ async fn append_reasoning_text(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use assert_matches::assert_matches;
     use crate::protocol::models::ResponseItem;
+    use assert_matches::assert_matches;
     use futures::TryStreamExt;
     use serde_json::json;
     use tokio::sync::mpsc;

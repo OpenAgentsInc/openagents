@@ -371,7 +371,13 @@ mod tests {
     #[test]
     fn test_back_overshoots() {
         // Back easing should overshoot (go negative or >1)
-        assert!(ease_in_back(0.2) < 0.0, "ease_in_back should overshoot negative");
-        assert!(ease_out_back(0.8) > 1.0, "ease_out_back should overshoot >1");
+        assert!(
+            ease_in_back(0.2) < 0.0,
+            "ease_in_back should overshoot negative"
+        );
+        assert!(
+            ease_out_back(0.8) > 1.0,
+            "ease_out_back should overshoot >1"
+        );
     }
 }

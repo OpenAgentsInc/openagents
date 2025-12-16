@@ -186,10 +186,12 @@ impl List {
 
             scene.draw_quad(
                 wgpui::Quad::new(Bounds::new(
-                    item_x, marker_y,
-                    self.marker_size, self.marker_size,
+                    item_x,
+                    marker_y,
+                    self.marker_size,
+                    self.marker_size,
                 ))
-                .with_background(marker_color)
+                .with_background(marker_color),
             );
 
             // Draw primary text
@@ -200,12 +202,7 @@ impl List {
                 item_y + (self.item_height - self.font_size) / 2.0
             };
 
-            let text_color = Hsla::new(
-                hud::TEXT.h,
-                hud::TEXT.s,
-                hud::TEXT.l,
-                hud::TEXT.a * eased,
-            );
+            let text_color = Hsla::new(hud::TEXT.h, hud::TEXT.s, hud::TEXT.l, hud::TEXT.a * eased);
 
             let text_run = text_system.layout(
                 &item.text,

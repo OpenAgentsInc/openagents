@@ -232,7 +232,10 @@ impl App {
 
         // Poll for server messages (non-blocking)
         while let Ok(msg) = self.server_rx.try_recv() {
-            log::info!("[App] Received server message: {:?}", std::mem::discriminant(&msg));
+            log::info!(
+                "[App] Received server message: {:?}",
+                std::mem::discriminant(&msg)
+            );
             self.handle_server_message(msg);
         }
     }
@@ -255,7 +258,13 @@ impl App {
                         started_at: chrono::Utc::now(),
                     });
                 }
-                log::info!("[App] Streaming message now: {} chars", view.streaming_message.as_ref().map(|s| s.content_so_far.len()).unwrap_or(0));
+                log::info!(
+                    "[App] Streaming message now: {} chars",
+                    view.streaming_message
+                        .as_ref()
+                        .map(|s| s.content_so_far.len())
+                        .unwrap_or(0)
+                );
                 self.chat_view.set(view);
             }
             ServerMessage::Done { error } => {
@@ -279,10 +288,17 @@ impl App {
             ServerMessage::SessionInit { session_id } => {
                 log::info!("[App] Session initialized: {}", session_id);
             }
-            ServerMessage::ToolStart { tool_use_id, tool_name } => {
+            ServerMessage::ToolStart {
+                tool_use_id,
+                tool_name,
+            } => {
                 log::info!("[App] Tool started: {} ({})", tool_name, tool_use_id);
             }
-            ServerMessage::ToolResult { tool_use_id, output, is_error } => {
+            ServerMessage::ToolResult {
+                tool_use_id,
+                output,
+                is_error,
+            } => {
                 log::info!(
                     "[App] Tool result: {} (error={}): {}",
                     tool_use_id,
@@ -348,9 +364,8 @@ impl App {
         let mut cx = PaintContext::new(scene, text_system, self.scale_factor);
 
         // Paint background
-        cx.scene.draw_quad(
-            wgpui::Quad::new(bounds).with_background(wgpui::theme::bg::APP),
-        );
+        cx.scene
+            .draw_quad(wgpui::Quad::new(bounds).with_background(wgpui::theme::bg::APP));
 
         // Paint chat thread (full screen, no chrome)
         self.chat_thread.paint(bounds, &mut cx);

@@ -336,7 +336,8 @@ impl vte::Perform for AnsiParser {
         }
     }
 
-    fn hook(&mut self, _params: &vte::Params, _intermediates: &[u8], _ignore: bool, _action: char) {}
+    fn hook(&mut self, _params: &vte::Params, _intermediates: &[u8], _ignore: bool, _action: char) {
+    }
     fn put(&mut self, _byte: u8) {}
     fn unhook(&mut self) {}
     fn osc_dispatch(&mut self, _params: &[&[u8]], _bell_terminated: bool) {}
@@ -410,9 +411,7 @@ mod tests {
 
     #[test]
     fn test_style_effective_colors() {
-        let style = AnsiStyle::new()
-            .with_fg(colors::RED)
-            .with_bg(colors::BLUE);
+        let style = AnsiStyle::new().with_fg(colors::RED).with_bg(colors::BLUE);
 
         assert_eq!(style.effective_fg(), colors::RED);
         assert_eq!(style.effective_bg(), colors::BLUE);
@@ -420,9 +419,7 @@ mod tests {
 
     #[test]
     fn test_style_inverse() {
-        let mut style = AnsiStyle::new()
-            .with_fg(colors::RED)
-            .with_bg(colors::BLUE);
+        let mut style = AnsiStyle::new().with_fg(colors::RED).with_bg(colors::BLUE);
         style.inverse = true;
 
         assert_eq!(style.effective_fg(), colors::BLUE);

@@ -43,15 +43,11 @@ impl SceneAssertions for Scene {
     }
 
     fn contains_quad_at(&self, bounds: Bounds) -> bool {
-        self.quads
-            .iter()
-            .any(|q| q.bounds == bounds)
+        self.quads.iter().any(|q| q.bounds == bounds)
     }
 
     fn has_quad_intersecting(&self, bounds: Bounds) -> bool {
-        self.quads
-            .iter()
-            .any(|q| q.bounds.intersects(&bounds))
+        self.quads.iter().any(|q| q.bounds.intersects(&bounds))
     }
 
     fn text_at(&self, _position: Point) -> Option<String> {

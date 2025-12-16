@@ -1,6 +1,5 @@
 use std::sync::Arc;
 
-use crate::core::model_provider_info::ModelProviderInfo;
 use crate::core::client_common::Prompt;
 use crate::core::client_common::ResponseEvent;
 use crate::core::codex::Session;
@@ -9,9 +8,11 @@ use crate::core::codex::get_last_assistant_message_from_turn;
 use crate::core::error::CodexErr;
 use crate::core::error::Result as CodexResult;
 use crate::core::features::Feature;
+use crate::core::model_provider_info::ModelProviderInfo;
 use crate::core::protocol::CompactedItem;
 use crate::core::protocol::ContextCompactedEvent;
 use crate::core::protocol::EventMsg;
+use crate::core::protocol::RolloutItem;
 use crate::core::protocol::TaskStartedEvent;
 use crate::core::protocol::TurnContextItem;
 use crate::core::protocol::WarningEvent;
@@ -23,7 +24,6 @@ use crate::protocol::items::TurnItem;
 use crate::protocol::models::ContentItem;
 use crate::protocol::models::ResponseInputItem;
 use crate::protocol::models::ResponseItem;
-use crate::core::protocol::RolloutItem;
 use crate::protocol::user_input::UserInput;
 use futures::prelude::*;
 use tracing::error;
@@ -204,16 +204,18 @@ pub fn content_items_to_text(content: &[ContentItem]) -> Option<String> {
 pub(crate) fn collect_user_messages(items: &[ResponseItem]) -> Vec<String> {
     items
         .iter()
-        .filter_map(|item| match crate::core::event_mapping::parse_turn_item(item) {
-            Some(TurnItem::UserMessage(user)) => {
-                if is_summary_message(&user.message()) {
-                    None
-                } else {
-                    Some(user.message())
+        .filter_map(
+            |item| match crate::core::event_mapping::parse_turn_item(item) {
+                Some(TurnItem::UserMessage(user)) => {
+                    if is_summary_message(&user.message()) {
+                        None
+                    } else {
+                        Some(user.message())
+                    }
                 }
-            }
-            _ => None,
-        })
+                _ => None,
+            },
+        )
         .collect()
 }
 
