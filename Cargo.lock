@@ -539,26 +539,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "blackbox"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "chrono",
- "clap",
- "colored",
- "lazy_static",
- "regex",
- "serde",
- "serde_json",
- "serde_yaml",
- "sqlx",
- "tempfile",
- "thiserror 1.0.69",
- "tokio",
- "uuid",
-]
-
-[[package]]
 name = "blake2"
 version = "0.10.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3432,6 +3412,26 @@ name = "raw-window-handle"
 version = "0.6.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "20675572f6f24e9e76ef639bc5552774ed45f1c30e2951e1e99c59888861c539"
+
+[[package]]
+name = "recorder"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "clap",
+ "colored",
+ "lazy_static",
+ "regex",
+ "serde",
+ "serde_json",
+ "serde_yaml",
+ "sqlx",
+ "tempfile",
+ "thiserror 1.0.69",
+ "tokio",
+ "uuid",
+]
 
 [[package]]
 name = "redox_syscall"

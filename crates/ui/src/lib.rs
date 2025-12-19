@@ -29,7 +29,7 @@
 mod button;
 mod colors;
 mod layout;
-pub mod blackbox;
+pub mod recorder;
 
 pub use button::{Button, ButtonSize, ButtonVariant};
 pub use colors::COLOR_TOKENS;

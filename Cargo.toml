@@ -1,7 +1,7 @@
 [workspace]
 resolver = "2"
 members = [
-    "crates/blackbox",
+    "crates/recorder",
     "crates/desktop",
     "crates/ui",
     "crates/fm-bridge",
@@ -39,7 +39,7 @@ publish = false
 
 [workspace.dependencies]
 # OpenAgents workspace crates
-blackbox = { path = "crates/blackbox" }
+recorder = { path = "crates/recorder" }
 claude-agent-sdk = { path = "crates/claude-agent-sdk" }
 compute = { path = "crates/compute" }
 config = { path = "crates/config" }
