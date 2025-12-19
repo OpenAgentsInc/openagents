@@ -1,0 +1,40 @@
+[package]
+name = "autopilot"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "Autonomous task runner with trajectory logging"
+
+[[bin]]
+name = "autopilot"
+path = "src/main.rs"
+
+[dependencies]
+# Workspace crates
+claude-agent-sdk.workspace = true
+
+# CLI
+clap.workspace = true
+
+# Async
+tokio.workspace = true
+futures.workspace = true
+
+# Serialization
+serde.workspace = true
+serde_json.workspace = true
+
+# Time handling (Central US timezone)
+chrono.workspace = true
+chrono-tz = "0.10"
+
+# Error handling
+anyhow.workspace = true
+
+# Output
+colored = "2"
+
+[lints]
+workspace = true
