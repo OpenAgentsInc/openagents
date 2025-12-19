@@ -1,8 +1,8 @@
 # OpenAgents
 
-A mech suit for your Claude Code.
+Your agent command center.
 
-Work in progress. First build ETA December 22.
+Work in progress. First release ETA December 22.
 
 ## Structure
 
