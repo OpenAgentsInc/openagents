@@ -7,6 +7,8 @@
 //!
 //! - `export`: Enable database export functionality (requires PostgreSQL)
 
+pub mod convert;
+
 #[cfg(feature = "export")]
 pub mod export;
 
@@ -121,6 +123,25 @@ pub struct Header {
     #[serde(default)]
     pub notes: Option<String>,
 
+    // Claude Code specific fields
+    #[serde(default)]
+    pub client_version: Option<String>,
+
+    #[serde(default)]
+    pub slug: Option<String>,
+
+    #[serde(default)]
+    pub cwd: Option<String>,
+
+    #[serde(default)]
+    pub tokens_total_in: Option<u64>,
+
+    #[serde(default)]
+    pub tokens_total_out: Option<u64>,
+
+    #[serde(default)]
+    pub tokens_cached: Option<u64>,
+
     // Catch-all for extra.* fields
     #[serde(flatten)]
     pub extra: HashMap<String, serde_yaml::Value>,
@@ -164,6 +185,10 @@ pub enum LineType {
     Lifecycle,
     /// Phase: `@phase explore`, `@phase design`
     Phase,
+    /// Thinking: `th: reasoning... sig=...`
+    Thinking,
+    /// Todos: `td: [pending] Task 1 [completed] Task 2`
+    Todos,
     /// Empty line
     Empty,
     /// Continuation (indented)
@@ -189,6 +214,15 @@ pub struct ParsedLine {
     pub attempt: Option<String>,
     pub level: Option<String>,
     pub result: Option<String>,
+
+    // Claude Code specific metadata
+    pub parent_uuid: Option<String>,
+    pub signature: Option<String>,
+    pub tokens_in: Option<u64>,
+    pub tokens_out: Option<u64>,
+    pub tokens_cached: Option<u64>,
+    pub interrupted: bool,
+    pub model: Option<String>,
 }
 
 // ============================================================================
@@ -230,6 +264,12 @@ pub struct SessionStats {
     pub has_timestamps: bool,
     pub blob_references: usize,
     pub redacted_values: usize,
+    // Claude Code specific stats
+    pub thinking_blocks: usize,
+    pub todos_updates: usize,
+    pub total_tokens_in: u64,
+    pub total_tokens_out: u64,
+    pub total_tokens_cached: u64,
 }
 
 impl ValidationResult {
@@ -278,11 +318,13 @@ lazy_static! {
     static ref RE_COMMENT: Regex = Regex::new(r"^#\s*(.*)$").unwrap();
     static ref RE_LIFECYCLE: Regex = Regex::new(r"^@(\w+)(.*)$").unwrap();
     static ref RE_PHASE: Regex = Regex::new(r"^@phase\s+(\w+)(.*)$").unwrap();
+    static ref RE_THINKING: Regex = Regex::new(r"^th:\s*(.*)$").unwrap();
+    static ref RE_TODOS: Regex = Regex::new(r"^td:\s*(.*)$").unwrap();
 
     // Field extraction
     static ref RE_CALL_ID: Regex = Regex::new(r"\bid=(\w+)").unwrap();
     static ref RE_STEP: Regex = Regex::new(r"\bstep=(\d+)").unwrap();
-    static ref RE_TIMESTAMP: Regex = Regex::new(r"\bts=(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z?)").unwrap();
+    static ref RE_TIMESTAMP: Regex = Regex::new(r"\bts=(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z?)").unwrap();
     static ref RE_TID: Regex = Regex::new(r"\btid=(\w+)").unwrap();
     static ref RE_SPAN: Regex = Regex::new(r"\bspan=(\w+)").unwrap();
     static ref RE_LATENCY: Regex = Regex::new(r"\blatency_ms=(\d+)").unwrap();
@@ -290,10 +332,19 @@ lazy_static! {
     static ref RE_LEVEL: Regex = Regex::new(r"\blevel=(\w+)").unwrap();
     static ref RE_RESULT: Regex = Regex::new(r"→\s*(.+)$").unwrap();
 
+    // Claude Code specific field extraction
+    static ref RE_PARENT: Regex = Regex::new(r"\bparent=([a-f0-9-]+)").unwrap();
+    static ref RE_SIG: Regex = Regex::new(r"\bsig=(\S+)").unwrap();
+    static ref RE_TOKENS_IN: Regex = Regex::new(r"\btokens_in=(\d+)").unwrap();
+    static ref RE_TOKENS_OUT: Regex = Regex::new(r"\btokens_out=(\d+)").unwrap();
+    static ref RE_TOKENS_CACHED: Regex = Regex::new(r"\btokens_cached=(\d+)").unwrap();
+    static ref RE_INTERRUPTED: Regex = Regex::new(r"\binterrupted\b").unwrap();
+    static ref RE_MODEL: Regex = Regex::new(r"\bmodel=(\S+)").unwrap();
+
     // Validation patterns
     static ref RE_BLOB: Regex = Regex::new(r"@blob\s+sha256=([a-f0-9]+)").unwrap();
     static ref RE_REDACTED: Regex = Regex::new(r"\[redacted:\w+\]").unwrap();
-    static ref RE_ISO_TIMESTAMP: Regex = Regex::new(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z?$").unwrap();
+    static ref RE_ISO_TIMESTAMP: Regex = Regex::new(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z?$").unwrap();
     static ref RE_SHA256: Regex = Regex::new(r"^[a-f0-9]{6,64}$").unwrap();
 }
 
@@ -424,6 +475,16 @@ fn parse_line(line_number: usize, raw: &str) -> ParsedLine {
         (LineType::Phase, trimmed[7..].to_string())
     } else if RE_LIFECYCLE.is_match(trimmed) {
         (LineType::Lifecycle, trimmed[1..].to_string())
+    } else if let Some(caps) = RE_THINKING.captures(trimmed) {
+        (
+            LineType::Thinking,
+            caps.get(1).map_or("", |m| m.as_str()).to_string(),
+        )
+    } else if let Some(caps) = RE_TODOS.captures(trimmed) {
+        (
+            LineType::Todos,
+            caps.get(1).map_or("", |m| m.as_str()).to_string(),
+        )
     } else {
         (LineType::Unknown, trimmed.to_string())
     };
@@ -441,6 +502,21 @@ fn parse_line(line_number: usize, raw: &str) -> ParsedLine {
     let level = RE_LEVEL.captures(&content).map(|c| c[1].to_string());
     let result = RE_RESULT.captures(&content).map(|c| c[1].to_string());
 
+    // Claude Code specific metadata
+    let parent_uuid = RE_PARENT.captures(&content).map(|c| c[1].to_string());
+    let signature = RE_SIG.captures(&content).map(|c| c[1].to_string());
+    let tokens_in = RE_TOKENS_IN
+        .captures(&content)
+        .and_then(|c| c[1].parse().ok());
+    let tokens_out = RE_TOKENS_OUT
+        .captures(&content)
+        .and_then(|c| c[1].parse().ok());
+    let tokens_cached = RE_TOKENS_CACHED
+        .captures(&content)
+        .and_then(|c| c[1].parse().ok());
+    let interrupted = RE_INTERRUPTED.is_match(&content);
+    let model = RE_MODEL.captures(&content).map(|c| c[1].to_string());
+
     ParsedLine {
         line_number,
         raw: raw.to_string(),
@@ -455,6 +531,13 @@ fn parse_line(line_number: usize, raw: &str) -> ParsedLine {
         attempt,
         level,
         result,
+        parent_uuid,
+        signature,
+        tokens_in,
+        tokens_out,
+        tokens_cached,
+        interrupted,
+        model,
     }
 }
 
@@ -556,6 +639,12 @@ pub fn validate(session: &ParsedSession) -> ValidationResult {
                     has_end = true;
                 }
             }
+            LineType::Thinking => {
+                result.stats.thinking_blocks += 1;
+            }
+            LineType::Todos => {
+                result.stats.todos_updates += 1;
+            }
             LineType::Unknown => {
                 result.issues.push(ValidationIssue {
                     line: Some(line.line_number),
@@ -586,6 +675,17 @@ pub fn validate(session: &ParsedSession) -> ValidationResult {
         // Track timestamps
         if line.timestamp.is_some() {
             result.stats.has_timestamps = true;
+        }
+
+        // Track token usage
+        if let Some(tokens) = line.tokens_in {
+            result.stats.total_tokens_in += tokens;
+        }
+        if let Some(tokens) = line.tokens_out {
+            result.stats.total_tokens_out += tokens;
+        }
+        if let Some(tokens) = line.tokens_cached {
+            result.stats.total_tokens_cached += tokens;
         }
 
         // Validate timestamp format
@@ -764,6 +864,8 @@ a: Hi there
             ("c:github.issues state=open → [5]", LineType::Mcp),
             ("# This is a comment", LineType::Comment),
             ("@start id=sess_1", LineType::Lifecycle),
+            ("th: Analyzing the request...", LineType::Thinking),
+            ("td: [pending] Fix bug [completed] Add test", LineType::Todos),
             ("", LineType::Empty),
             ("  continuation line", LineType::Continuation),
         ];
@@ -815,5 +917,81 @@ a: Response
         let result = validate(&session);
 
         assert!(result.warnings().any(|w| w.code == "W003"));
+    }
+
+    #[test]
+    fn test_claude_code_metadata() {
+        let line = parse_line(
+            1,
+            "th: Let me analyze... sig=Ep4E... parent=abc-123-def tokens_in=100 tokens_out=50 tokens_cached=25 model=claude-opus-4-5",
+        );
+
+        assert_eq!(line.line_type, LineType::Thinking);
+        assert_eq!(line.signature, Some("Ep4E...".to_string()));
+        assert_eq!(line.parent_uuid, Some("abc-123-def".to_string()));
+        assert_eq!(line.tokens_in, Some(100));
+        assert_eq!(line.tokens_out, Some(50));
+        assert_eq!(line.tokens_cached, Some(25));
+        assert_eq!(line.model, Some("claude-opus-4-5".to_string()));
+        assert!(!line.interrupted);
+    }
+
+    #[test]
+    fn test_claude_code_interrupted() {
+        let line = parse_line(1, "t:Bash id=call_1 interrupted → [error]");
+
+        assert_eq!(line.line_type, LineType::Tool);
+        assert!(line.interrupted);
+    }
+
+    #[test]
+    fn test_claude_code_header() {
+        let content = r#"---
+format: bbox/1
+id: sess_test
+repo_sha: abc123
+client_version: "2.0.71"
+slug: mighty-wishing-music
+cwd: /Users/test/code
+tokens_total_in: 1000
+tokens_total_out: 500
+tokens_cached: 200
+---
+
+u: Hello
+"#;
+        let session = parse_content(content).unwrap();
+        assert_eq!(session.header.client_version, Some("2.0.71".to_string()));
+        assert_eq!(
+            session.header.slug,
+            Some("mighty-wishing-music".to_string())
+        );
+        assert_eq!(session.header.cwd, Some("/Users/test/code".to_string()));
+        assert_eq!(session.header.tokens_total_in, Some(1000));
+        assert_eq!(session.header.tokens_total_out, Some(500));
+        assert_eq!(session.header.tokens_cached, Some(200));
+    }
+
+    #[test]
+    fn test_validate_thinking_and_todos() {
+        let content = r#"---
+format: bbox/1
+id: test
+repo_sha: abc123
+---
+
+u: Fix the bug
+th: Let me analyze... tokens_in=100 tokens_out=50
+a: I found the issue
+td: [in_progress] Fix bug [pending] Add tests
+"#;
+        let session = parse_content(content).unwrap();
+        let result = validate(&session);
+
+        assert!(result.is_valid());
+        assert_eq!(result.stats.thinking_blocks, 1);
+        assert_eq!(result.stats.todos_updates, 1);
+        assert_eq!(result.stats.total_tokens_in, 100);
+        assert_eq!(result.stats.total_tokens_out, 50);
     }
 }
