@@ -4,6 +4,14 @@ Your agent command center.
 
 Work in progress. First release ETA December 22.
 
+## Tech stack
+
+- Rust
+- HTMX
+- Tailwind
+- Maud
+- Nostr
+
 ## Structure
 
 - `crates/claude-agent-sdk` - Claude Code integration
