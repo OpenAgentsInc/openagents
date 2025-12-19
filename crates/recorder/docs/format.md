@@ -1,6 +1,8 @@
-# Recorder Format (rlog/1)
+# Recorder Format Specification (rlog/1)
 
-Recorder is a line-based format for logging agent sessions. Each line is a single event. A required YAML header defines session metadata.
+Line-based format for logging agent sessions. Each line is a single event. A required YAML header defines session metadata.
+
+**Design priorities**: streamability (each line parses independently), human readability (no tooling required), deterministic parsing (unambiguous prefixes), minimal overhead (no nested JSON for common cases).
 
 ## File Layout
 
