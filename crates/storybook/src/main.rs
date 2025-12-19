@@ -22,6 +22,7 @@ use stories::atoms::attempt_badge::attempt_badge_story;
 use stories::atoms::blob_ref::blob_ref_story;
 use stories::atoms::call_id_badge::call_id_badge_story;
 use stories::atoms::cost_badge::cost_badge_story;
+use stories::atoms::index::atoms_index_story;
 use stories::atoms::latency_badge::latency_badge_story;
 use stories::atoms::line_type_label::line_type_label_story;
 use stories::atoms::redacted_value::redacted_value_story;
@@ -52,6 +53,7 @@ fn sidebar_nav(active_story: &str) -> Markup {
                 h2 class="uppercase text-muted-foreground mb-1 mt-3 pl-1 tracking-wide text-xs" { "Components" }
                 a href="/stories/button" class=(link_class("button")) { "Button" }
                 h2 class="uppercase text-muted-foreground mb-1 mt-4 pl-1 tracking-wide text-xs" { "Atoms" }
+                a href="/stories/atoms" class=(link_class("atoms")) { "Index" }
                 a href="/stories/atoms/status-dot" class=(link_class("atoms/status-dot")) { "Status Dot" }
                 a href="/stories/atoms/line-type-label" class=(link_class("atoms/line-type-label")) { "Line Type Label" }
                 a href="/stories/atoms/step-badge" class=(link_class("atoms/step-badge")) { "Step Badge" }
@@ -269,6 +271,14 @@ async fn atoms_result_arrow_page() -> impl Responder {
         .body(html.into_string())
 }
 
+async fn atoms_index_page() -> impl Responder {
+    let content = atoms_index_story();
+    let html = base_layout("Atoms", "atoms", content);
+    HttpResponse::Ok()
+        .content_type("text/html; charset=utf-8")
+        .body(html.into_string())
+}
+
 #[tokio::main]
 async fn main() -> std::io::Result<()> {
     let mut listenfd = ListenFd::from_env();
@@ -277,6 +287,7 @@ async fn main() -> std::io::Result<()> {
         App::new()
             .route("/", web::get().to(index))
             .route("/stories/button", web::get().to(button_story_page))
+            .route("/stories/atoms", web::get().to(atoms_index_page))
             .route("/stories/atoms/status-dot", web::get().to(atoms_status_dot_page))
             .route("/stories/atoms/line-type-label", web::get().to(atoms_line_type_label_page))
             .route("/stories/atoms/step-badge", web::get().to(atoms_step_badge_page))

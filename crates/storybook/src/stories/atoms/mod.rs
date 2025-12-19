@@ -2,6 +2,7 @@ pub mod attempt_badge;
 pub mod blob_ref;
 pub mod call_id_badge;
 pub mod cost_badge;
+pub mod index;
 pub mod latency_badge;
 pub mod line_type_label;
 pub mod redacted_value;
