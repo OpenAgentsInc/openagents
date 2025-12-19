@@ -1,2 +1,2 @@
 pub mod button;
-pub mod blackbox;
+pub mod recorder;
