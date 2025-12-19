@@ -29,12 +29,11 @@
 mod button;
 mod colors;
 mod layout;
-mod atoms;
+pub mod blackbox;
 
 pub use button::{Button, ButtonSize, ButtonVariant};
 pub use colors::COLOR_TOKENS;
 pub use layout::base_document;
-pub use atoms::*;
 
 /// Tailwind CDN script (Play CDN for development).
 pub const TAILWIND_CDN: &str = include_str!("static/tailwind.js");
