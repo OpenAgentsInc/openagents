@@ -19,6 +19,7 @@ tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 open = "5"
 listenfd = "1"
 futures-util = "0.3"
+ui = { path = "../ui" }
 
 [lints]
 workspace = true

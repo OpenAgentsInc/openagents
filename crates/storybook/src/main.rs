@@ -15,23 +15,29 @@ mod stories;
 use actix_web::{App, HttpResponse, HttpServer, Responder, rt, web};
 use actix_ws::Message;
 use listenfd::ListenFd;
-use maud::{DOCTYPE, Markup, html};
+use maud::{DOCTYPE, Markup, PreEscaped, html};
 use std::time::Duration;
 
 use stories::button::button_story;
+use ui::{TAILWIND_CDN, TAILWIND_THEME};
 
 const PORT: u16 = 3030;
 
 fn sidebar_nav(active_story: &str) -> Markup {
+    let link_class = |name: &str| {
+        if active_story == name {
+            "block px-2 py-1 text-foreground bg-accent"
+        } else {
+            "block px-2 py-1 text-muted-foreground hover:text-foreground hover:bg-secondary"
+        }
+    };
+
     html! {
-        aside style="position: fixed; top: 0; left: 0; bottom: 0; width: 12rem; border-right: 1px solid #333; overflow-y: auto; padding: 0.75rem; background: #111; z-index: 100;" {
-            h1 style="font-weight: bold; margin-bottom: 0.75rem; color: #fff;" { "Storybook" }
+        aside class="fixed top-0 left-0 bottom-0 w-48 border-r border-border overflow-y-auto p-3 bg-background z-50" {
+            h1 class="font-bold mb-3 text-foreground" { "Storybook" }
             nav {
-                h2 style="text-transform: uppercase; color: #888; margin-bottom: 0.25rem; margin-top: 0.75rem; padding-left: 0.25rem; letter-spacing: 0.05em; font-size: 0.75rem;" { "Components" }
-                a href="/stories/button" style=(format!("display: block; padding: 0.25rem 0.5rem; color: {}; text-decoration: none; background: {};",
-                    if active_story == "button" { "#fff" } else { "#888" },
-                    if active_story == "button" { "#222" } else { "transparent" }
-                )) { "Button" }
+                h2 class="uppercase text-muted-foreground mb-1 mt-3 pl-1 tracking-wide text-xs" { "Components" }
+                a href="/stories/button" class=(link_class("button")) { "Button" }
             }
         }
     }
@@ -41,13 +47,13 @@ fn base_layout(title: &str, active_story: &str, content: Markup) -> Markup {
     let body_content = html! {
         (sidebar_nav(active_story))
 
-        main style="margin-left: 12rem; height: 100vh; overflow-y: auto; padding: 2rem;" {
+        main class="ml-48 min-h-screen overflow-y-auto p-8" {
             (content)
         }
 
         // Hot reload WebSocket - reconnects on server restart
         script {
-            (maud::PreEscaped(r#"
+            (PreEscaped(r#"
             (function() {
                 var wasConnected = false;
                 function connect() {
@@ -73,14 +79,14 @@ fn base_layout(title: &str, active_story: &str, content: Markup) -> Markup {
                 meta charset="utf-8";
                 meta name="viewport" content="width=device-width, initial-scale=1";
                 title { (title) " - Storybook" }
-                style {
-                    r#"
-                    * { box-sizing: border-box; margin: 0; padding: 0; }
-                    html, body { height: 100%; overflow: hidden; background: #0a0a0a; color: #e0e0e0; font-family: 'Berkeley Mono', 'SF Mono', 'Monaco', monospace; }
-                    "#
-                }
+                // Inline Tailwind CSS (Play CDN)
+                script { (PreEscaped(TAILWIND_CDN)) }
+                // Custom theme
+                style type="text/tailwindcss" { (PreEscaped(TAILWIND_THEME)) }
             }
-            body { (body_content) }
+            body class="bg-background text-foreground font-mono antialiased" {
+                (body_content)
+            }
         }
     }
 }
