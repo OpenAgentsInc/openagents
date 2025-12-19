@@ -1,6 +1,8 @@
-# OpenAgents Desktop
+# OpenAgents
 
-Minimal foundation for the OpenAgents desktop marketplace app.
+A mech suit for your Claude Code.
+
+Work in progress. First build ETA December 22.
 
 ## Structure
 
