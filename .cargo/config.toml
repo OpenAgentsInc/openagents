@@ -1,2 +1,3 @@
 [alias]
 desktop = "run -p desktop"
+storybook = "run -p storybook"

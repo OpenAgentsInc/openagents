@@ -8,6 +8,7 @@ members = [
     "crates/nostr/core",
     "crates/compute",
     "crates/config",
+    "crates/storybook",
 ]
 
 [workspace.lints.rust]
