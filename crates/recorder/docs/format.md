@@ -17,7 +17,7 @@ u: Another line
 
 ### Required Header Fields
 
-- `format` (must start with `bbox/`)
+- `format` (must start with `rlog/`)
 - `id`
 - `repo_sha`
 
@@ -35,6 +35,7 @@ When converting from Claude Code JSONL, these additional fields are captured:
 - `tokens_total_in` - Session total input tokens
 - `tokens_total_out` - Session total output tokens
 - `tokens_cached` - Session total cached tokens
+- `tokens_cache_create` - Session total cache creation tokens
 
 ## Line Prefixes
 
@@ -92,12 +93,13 @@ When converting from Claude Code, these additional fields may appear:
 
 ### Claude Code Comment Types
 
-File snapshots and queue operations are converted to comments:
+File snapshots, queue operations, and raw events are converted to comments:
 
 ```
 # file-snapshot: <message_id> files=<count>
 # queue: enqueue "<message>"
 # queue: remove
+# claude: {<raw jsonl>}
 ```
 
 ## Validation Rules (Current)

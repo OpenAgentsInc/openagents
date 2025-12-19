@@ -2,7 +2,7 @@
 //!
 //! Converts Claude Code session files (`.jsonl`) to Recorder format (`.rlog`).
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
 use std::path::Path;
@@ -34,6 +34,8 @@ pub struct ConvertOptions {
     pub include_snapshots: bool,
     /// Include queue-operation events as comments
     pub include_queue_ops: bool,
+    /// Include raw Claude Code JSONL events as comments
+    pub include_raw_events: bool,
 }
 
 impl Default for ConvertOptions {
@@ -42,22 +44,10 @@ impl Default for ConvertOptions {
             include_thinking: true,
             include_signature: true,
             include_snapshots: true,
-            include_queue_ops: false,
+            include_queue_ops: true,
+            include_raw_events: true,
         }
     }
-}
-
-/// Represents a parsed Claude Code event
-#[derive(Debug, Deserialize)]
-#[serde(tag = "type")]
-#[serde(rename_all = "kebab-case")]
-enum ClaudeEvent {
-    User(UserEvent),
-    Assistant(AssistantEvent),
-    FileHistorySnapshot(FileSnapshotEvent),
-    QueueOperation(QueueOperationEvent),
-    #[serde(other)]
-    Unknown,
 }
 
 #[derive(Debug, Deserialize)]
@@ -136,14 +126,14 @@ enum ContentBlock {
     Unknown,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 #[serde(untagged)]
 enum ToolResultContent {
     Text(String),
     Blocks(Vec<ToolResultBlock>),
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 struct ToolResultBlock {
     #[serde(rename = "type")]
     block_type: Option<String>,
@@ -213,6 +203,7 @@ struct SessionMeta {
     tokens_in: u64,
     tokens_out: u64,
     tokens_cached: u64,
+    tokens_cache_create: u64,
     first_timestamp: Option<String>,
 }
 
@@ -249,6 +240,10 @@ pub fn convert_content(
 
         // Extract event type
         let event_type = event.get("type").and_then(|v| v.as_str()).unwrap_or("");
+
+        if options.include_raw_events {
+            lines_output.push(format!("# claude: {}", line));
+        }
 
         match event_type {
             "user" => {
@@ -296,6 +291,17 @@ pub fn convert_content(
                         }
                         if let Some(id) = &user_event.uuid {
                             line.push_str(&format!(" id={}", truncate_uuid(id)));
+                            append_meta_json(&mut line, "id_full", id);
+                        }
+                        if let Some(parent) = &user_event.parent_uuid {
+                            line.push_str(&format!(" parent={}", truncate_uuid(parent)));
+                            append_meta_json(&mut line, "parent_full", parent);
+                        }
+                        if let Some(session) = &user_event.session_id {
+                            append_meta_json(&mut line, "session", session);
+                        }
+                        if let Some(role) = &msg.role {
+                            append_meta_json(&mut line, "role", role);
                         }
 
                         lines_output.push(line);
@@ -333,6 +339,9 @@ pub fn convert_content(
                         if let Some(t) = usage.cache_read_input_tokens {
                             meta.tokens_cached += t;
                         }
+                        if let Some(t) = usage.cache_creation_input_tokens {
+                            meta.tokens_cache_create += t;
+                        }
                     }
 
                     // Process content blocks
@@ -354,25 +363,7 @@ pub fn convert_content(
                                             }
                                         }
 
-                                        if let Some(ts) = &assistant_event.timestamp {
-                                            line.push_str(&format!(" ts={}", ts));
-                                        }
-                                        if let Some(parent) = &assistant_event.parent_uuid {
-                                            line.push_str(&format!(
-                                                " parent={}",
-                                                truncate_uuid(parent)
-                                            ));
-                                        }
-
-                                        // Add token info
-                                        if let Some(usage) = &msg.usage {
-                                            if let Some(t) = usage.input_tokens {
-                                                line.push_str(&format!(" tokens_in={}", t));
-                                            }
-                                            if let Some(t) = usage.output_tokens {
-                                                line.push_str(&format!(" tokens_out={}", t));
-                                            }
-                                        }
+                                        append_assistant_meta(&mut line, &assistant_event, msg);
 
                                         lines_output.push(line);
                                     }
@@ -380,19 +371,16 @@ pub fn convert_content(
 
                                 ContentBlock::Text { text } => {
                                     let mut line = format_agent_line(text);
-
-                                    if let Some(ts) = &assistant_event.timestamp {
-                                        line.push_str(&format!(" ts={}", ts));
-                                    }
-                                    if let Some(parent) = &assistant_event.parent_uuid {
-                                        line.push_str(&format!(" parent={}", truncate_uuid(parent)));
-                                    }
+                                    append_assistant_meta(&mut line, &assistant_event, msg);
 
                                     lines_output.push(line);
                                 }
 
                                 ContentBlock::ToolUse { id, name, input } => {
-                                    let line = format_tool_start_line(id, name, input);
+                                    let mut line = format_tool_start_line(id, name, input);
+                                    append_meta_json(&mut line, "id_full", id);
+                                    append_meta_json(&mut line, "input", input);
+                                    append_assistant_meta(&mut line, &assistant_event, msg);
                                     lines_output.push(line);
                                 }
 
@@ -403,12 +391,15 @@ pub fn convert_content(
                                 } => {
                                     let result_text = extract_tool_result_text(content);
                                     let status = if *is_error { "[error]" } else { "[ok]" };
-                                    let line = format!(
+                                    let mut line = format!(
                                         "o: id={} → {} {}",
                                         truncate_uuid(tool_use_id),
                                         status,
                                         truncate_content(&result_text, 100)
                                     );
+                                    append_meta_json(&mut line, "id_full", tool_use_id);
+                                    append_meta_json(&mut line, "result_full", content);
+                                    append_assistant_meta(&mut line, &assistant_event, msg);
                                     lines_output.push(line);
                                 }
 
@@ -429,6 +420,42 @@ pub fn convert_content(
                             }
                         }
                     }
+
+                    let mut meta_line = String::from("# tool-use-result");
+                    let mut has_meta = false;
+
+                    if let Some(status) = &result.status {
+                        append_meta_json(&mut meta_line, "status", status);
+                        has_meta = true;
+                    }
+                    if let Some(prompt) = &result.prompt {
+                        append_meta_json(&mut meta_line, "prompt", prompt);
+                        has_meta = true;
+                    }
+                    if let Some(agent_id) = &result.agent_id {
+                        append_meta_json(&mut meta_line, "agent_id", agent_id);
+                        has_meta = true;
+                    }
+                    if let Some(stdout) = &result.stdout {
+                        append_meta_json(&mut meta_line, "stdout", stdout);
+                        has_meta = true;
+                    }
+                    if let Some(stderr) = &result.stderr {
+                        append_meta_json(&mut meta_line, "stderr", stderr);
+                        has_meta = true;
+                    }
+                    if result.is_image {
+                        meta_line.push_str(" is_image=true");
+                        has_meta = true;
+                    }
+                    if let Some(content) = &result.content {
+                        append_meta_json(&mut meta_line, "content", content);
+                        has_meta = true;
+                    }
+
+                    if has_meta {
+                        lines_output.push(meta_line);
+                    }
                 }
             }
 
@@ -448,11 +475,15 @@ pub fn convert_content(
                         .unwrap_or(0);
 
                     let msg_id = snapshot.message_id.as_deref().unwrap_or("unknown");
-                    let line = format!(
+                    let mut line = format!(
                         "# file-snapshot: {} files={}",
                         truncate_uuid(msg_id),
                         file_count
                     );
+                    if let Some(ts) = snapshot.snapshot.as_ref().and_then(|s| s.timestamp.as_ref())
+                    {
+                        line.push_str(&format!(" ts={}", ts));
+                    }
                     lines_output.push(line);
                 }
             }
@@ -472,7 +503,10 @@ pub fn convert_content(
                         .map(|c| truncate_content(c, 50))
                         .unwrap_or_default();
 
-                    let line = format!("# queue: {} \"{}\"", op, content);
+                    let mut line = format!("# queue: {} \"{}\"", op, content);
+                    if let Some(ts) = &queue_op.timestamp {
+                        line.push_str(&format!(" ts={}", ts));
+                    }
                     lines_output.push(line);
                 }
             }
@@ -514,6 +548,9 @@ pub fn convert_content(
     }
     if meta.tokens_cached > 0 {
         output.push(format!("tokens_cached: {}", meta.tokens_cached));
+    }
+    if meta.tokens_cache_create > 0 {
+        output.push(format!("tokens_cache_create: {}", meta.tokens_cache_create));
     }
 
     output.push("---".to_string());
@@ -599,6 +636,53 @@ fn format_tool_start_line(id: &str, name: &str, input: &Value) -> String {
     )
 }
 
+fn append_meta_json<T: serde::Serialize>(line: &mut String, key: &str, value: &T) {
+    let encoded = serde_json::to_string(value).unwrap_or_else(|_| "\"<invalid>\"".to_string());
+    line.push(' ');
+    line.push_str(key);
+    line.push('=');
+    line.push_str(&encoded);
+}
+
+fn append_assistant_meta(line: &mut String, event: &AssistantEvent, msg: &AssistantMessage) {
+    if let Some(ts) = &event.timestamp {
+        line.push_str(&format!(" ts={}", ts));
+    }
+    if let Some(parent) = &event.parent_uuid {
+        line.push_str(&format!(" parent={}", truncate_uuid(parent)));
+        append_meta_json(line, "parent_full", parent);
+    }
+    if let Some(uuid) = &event.uuid {
+        append_meta_json(line, "uuid", uuid);
+    }
+    if let Some(session) = &event.session_id {
+        append_meta_json(line, "session", session);
+    }
+    if let Some(message_id) = &msg.id {
+        append_meta_json(line, "message_id", message_id);
+    }
+    if let Some(stop) = &msg.stop_reason {
+        append_meta_json(line, "stop", stop);
+    }
+    if let Some(model) = &msg.model {
+        append_meta_json(line, "model", model);
+    }
+    if let Some(usage) = &msg.usage {
+        if let Some(t) = usage.input_tokens {
+            line.push_str(&format!(" tokens_in={}", t));
+        }
+        if let Some(t) = usage.output_tokens {
+            line.push_str(&format!(" tokens_out={}", t));
+        }
+        if let Some(t) = usage.cache_read_input_tokens {
+            line.push_str(&format!(" tokens_cached={}", t));
+        }
+        if let Some(t) = usage.cache_creation_input_tokens {
+            line.push_str(&format!(" tokens_cache_create={}", t));
+        }
+    }
+}
+
 fn format_todos_line(todos: &[TodoItem]) -> String {
     let items: Vec<String> = todos
         .iter()
@@ -621,7 +705,12 @@ fn extract_tool_result_text(content: &ToolResultContent) -> String {
         ToolResultContent::Text(t) => t.clone(),
         ToolResultContent::Blocks(blocks) => blocks
             .iter()
-            .filter_map(|b| b.text.clone())
+            .filter_map(|b| match (&b.block_type, &b.text) {
+                (Some(block_type), Some(text)) => Some(format!("[{}] {}", block_type, text)),
+                (Some(block_type), None) => Some(format!("[{}]", block_type)),
+                (None, Some(text)) => Some(text.clone()),
+                (None, None) => None,
+            })
             .collect::<Vec<_>>()
             .join("\n"),
     }

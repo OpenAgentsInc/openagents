@@ -130,6 +130,14 @@ enum Commands {
         #[arg(long, default_value = "true")]
         include_snapshots: bool,
 
+        /// Include queue-operation events as comments
+        #[arg(long, default_value = "true")]
+        include_queue_ops: bool,
+
+        /// Include raw Claude Code JSONL events as comments
+        #[arg(long, default_value = "true")]
+        include_raw_events: bool,
+
         /// Validate the converted output
         #[arg(long)]
         validate: bool,
@@ -189,6 +197,8 @@ fn main() -> Result<()> {
             include_thinking,
             include_signature,
             include_snapshots,
+            include_queue_ops,
+            include_raw_events,
             validate: do_validate,
         } => cmd_convert(
             &file,
@@ -197,6 +207,8 @@ fn main() -> Result<()> {
             include_thinking,
             include_signature,
             include_snapshots,
+            include_queue_ops,
+            include_raw_events,
             do_validate,
         ),
     }
@@ -903,6 +915,8 @@ fn cmd_convert(
     include_thinking: bool,
     include_signature: bool,
     include_snapshots: bool,
+    include_queue_ops: bool,
+    include_raw_events: bool,
     do_validate: bool,
 ) -> Result<()> {
     let filename = path.file_name().unwrap_or_default().to_string_lossy();
@@ -939,7 +953,8 @@ fn cmd_convert(
         include_thinking,
         include_signature,
         include_snapshots,
-        include_queue_ops: false,
+        include_queue_ops,
+        include_raw_events,
     };
 
     // Convert the file
