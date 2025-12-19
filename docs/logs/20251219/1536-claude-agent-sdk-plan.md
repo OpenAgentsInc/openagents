@@ -1,9 +1,9 @@
 # Claude Agent SDK Gap Analysis & Implementation Plan
 
-**Date:** 2025-12-19
-**TypeScript SDK Version:** 0.1.61 (from npm cache)
-**CLI Version Found:** 2.0.69 (local), target 2.0.73
-**Rust SDK Version:** 0.1.0 (claims parity with 0.1.65)
+- **Date:** 2025-12-19
+- **TypeScript SDK Version:** 0.1.61 (from npm cache)
+- **CLI Version Found:** 2.0.69 (local), target 2.0.73
+- **Rust SDK Version:** 0.1.0 (claims parity with 0.1.65)
 
 ## Executive Summary
 
