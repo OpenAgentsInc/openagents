@@ -1,2 +1,0 @@
-{"step_id":12,"timestamp":"2025-12-05T08:04:25.817Z","source":"system","message":"Tool execution results","observation":{"results":[{"content":{"command":"bun run test:container","passed":false,"output":"\nError: invalidArgument: \"invalid volume name '.': must match ^[A-Za-z0-9][A-Za-z0-9_.-]*$\"\n"}}]},"extra":{"event_type":"verification_complete","passed":false}}
-{"step_id":13,"timestamp":"2025-12-05T08:04:39.754Z","source":"system","message":"Session failed: Verification failed after healing","extra":{"event_type":"session_complete","success":false}}

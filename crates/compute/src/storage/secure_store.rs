@@ -246,13 +246,13 @@ fn derive_key(password: &str, salt: &str) -> Result<[u8; 32], SecureStoreError> 
 
 /// Base64 encode bytes
 fn base64_encode(data: &[u8]) -> String {
-    use base64::{engine::general_purpose::STANDARD, Engine};
+    use base64::engine::general_purpose::STANDARD;
     STANDARD.encode(data)
 }
 
 /// Base64 decode string
 fn base64_decode(s: &str) -> Result<Vec<u8>, SecureStoreError> {
-    use base64::{engine::general_purpose::STANDARD, Engine};
+    use base64::engine::general_purpose::STANDARD;
     STANDARD
         .decode(s)
         .map_err(|e| SecureStoreError::Decryption(e.to_string()))
@@ -343,22 +343,7 @@ mod base64 {
         }
     }
 
-    pub use engine::general_purpose;
-
-    pub trait Engine {
-        fn encode(&self, data: &[u8]) -> String;
-        fn decode(&self, s: &str) -> Result<Vec<u8>, &'static str>;
-    }
-
-    impl Engine for general_purpose::StandardEngine {
-        fn encode(&self, data: &[u8]) -> String {
-            self.encode(data)
-        }
-
-        fn decode(&self, s: &str) -> Result<Vec<u8>, &'static str> {
-            self.decode(s)
-        }
-    }
+    // StandardEngine exposes encode/decode directly.
 }
 
 #[cfg(test)]

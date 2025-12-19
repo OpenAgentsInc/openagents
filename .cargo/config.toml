@@ -1,4 +1,2 @@
 [alias]
-coder = "run --bin coder_app"
-desktop = "run --bin coder_app"
-hud = "run --bin hud_demo"
+desktop = "run -p desktop"

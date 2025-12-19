@@ -1,4 +1,0 @@
-# Configure getrandom for wasm32-unknown-unknown target
-# This enables the JS backend for random number generation
-[target.wasm32-unknown-unknown]
-rustflags = ["--cfg", "getrandom_backend=\"wasm_js\""]

@@ -1,31 +1,31 @@
 # Agent Instructions
 
-You are helping on the core codebase of OpenAgents, an applied AI lab building infrastructure and products for the agentic economy.
+You are helping on the OpenAgents desktop foundation repo.
 
 ## Tech Stack
 
 - **Rust** with edition 2024
-- **wgpui** for GPU-accelerated UI rendering
-- **coder_app** for the main application
+- **wry/tao** for the native webview shell
+- **Actix + Maud + HTMX** for the local UI server
+- **Nostr core** for NIP-90 types and events
+- **claude-agent-sdk** for Claude Code integration
 
-## UI Architecture ("Own All Six Layers")
+## UI Architecture (Desktop Shell)
 
-The UI uses a custom GPU-accelerated stack:
+The desktop app is a local Actix server rendered inside a native webview:
 
 ```
-coder/app          → Application entry point
-coder/shell        → Routing, navigation, chrome
-coder/surfaces_*   → Chat, terminal, diff, timeline
-coder/widgets      → Widget library
-coder/ui_runtime   → Reactive runtime (Signal<T>, Memo<T>)
-wgpui              → GPU renderer (wgpu/WebGPU)
+openagents/            → workspace root
+crates/desktop         → desktop shell (wry/tao + Actix)
+crates/ui              → Maud/HTMX components
+crates/compute         → NIP-90 provider core
+crates/nostr/core      → protocol types
 ```
 
-Key patterns:
-- Event-sourced domain model with `DomainEvent`
-- Solid.js-inspired reactivity with `Signal<T>`, `Memo<T>`, `Effect`
-- Virtual scrolling for large lists
-- Run with `cargo coder` or `cargo run -p coder_app`
+Conventions:
+- Inline-first CSS with custom properties
+- No border radius (sharp corners)
+- Keep UI server-rendered (no SPA)
 
 ---
 
