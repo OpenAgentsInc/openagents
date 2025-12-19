@@ -1,3 +1,0 @@
-#!/bin/bash
-# Run the Coder web app
-cd "$(dirname "$0")/crates/coder/app" && ./serve-web.sh
