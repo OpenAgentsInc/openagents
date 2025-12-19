@@ -1,13 +1,15 @@
 //! Query struct for executing prompts and streaming responses.
 
 use crate::error::{Error, Result};
+use crate::hooks::{HookCallbackMatcher, HookEvent, HookInput, HookOutput, SyncHookOutput};
 use crate::options::QueryOptions;
 use crate::permissions::PermissionHandler;
 use crate::protocol::{
     AccountInfo, ControlRequestData, ControlRequestType, ControlResponseData, ControlResponseType,
-    ModelInfo, PermissionMode, PermissionResult, SdkControlRequest, SdkControlResponse, SdkMessage,
-    SdkUserMessageOutgoing, SetMaxThinkingTokensRequest, SetModelRequest, SetPermissionModeRequest,
-    SlashCommand, StdinMessage, StdoutMessage, UserMessageType,
+    HookCallbackRequest, ModelInfo, PermissionMode, PermissionResult, SdkControlRequest,
+    SdkControlResponse, SdkMessage, SdkUserMessageOutgoing, SetMaxThinkingTokensRequest,
+    SetModelRequest, SetPermissionModeRequest, SlashCommand, StdinMessage, StdoutMessage,
+    UserMessageType,
 };
 use crate::transport::ProcessTransport;
 use futures::Stream;
@@ -20,6 +22,9 @@ use std::task::{Context, Poll};
 use tokio::sync::{Mutex, mpsc, oneshot};
 use tracing::{debug, trace, warn};
 
+/// Stored hooks configuration for the query.
+type HooksMap = HashMap<HookEvent, Vec<HookCallbackMatcher>>;
+
 /// A query execution that streams messages from Claude.
 pub struct Query {
     /// The process transport.
@@ -30,6 +35,8 @@ pub struct Query {
     request_counter: AtomicU64,
     /// Permission handler for tool use requests (stored for future use).
     _permission_handler: Option<Arc<dyn PermissionHandler>>,
+    /// Hook callbacks for the query.
+    _hooks: Option<Arc<HooksMap>>,
     /// Channel to receive messages.
     message_rx: mpsc::Receiver<Result<SdkMessage>>,
     /// Session ID (available after first message).
@@ -60,13 +67,24 @@ impl Query {
         // Create message channel
         let (message_tx, message_rx) = mpsc::channel(256);
 
+        // Store hooks from options
+        let hooks = options.hooks.map(Arc::new);
+
         // Spawn message processing task
         let transport_clone = transport.clone();
         let pending_clone = pending_requests.clone();
         let handler_clone = permission_handler.clone();
+        let hooks_clone = hooks.clone();
 
         tokio::spawn(async move {
-            Self::process_messages(transport_clone, pending_clone, handler_clone, message_tx).await;
+            Self::process_messages(
+                transport_clone,
+                pending_clone,
+                handler_clone,
+                hooks_clone,
+                message_tx,
+            )
+            .await;
         });
 
         let mut query = Self {
@@ -74,6 +92,7 @@ impl Query {
             pending_requests,
             request_counter: AtomicU64::new(0),
             _permission_handler: permission_handler,
+            _hooks: hooks,
             message_rx,
             session_id: None,
             completed: false,
@@ -112,6 +131,7 @@ impl Query {
         transport: Arc<Mutex<ProcessTransport>>,
         pending_requests: Arc<Mutex<HashMap<String, oneshot::Sender<Result<Value>>>>>,
         permission_handler: Option<Arc<dyn PermissionHandler>>,
+        hooks: Option<Arc<HooksMap>>,
         message_tx: mpsc::Sender<Result<SdkMessage>>,
     ) {
         loop {
@@ -130,8 +150,13 @@ impl Query {
                         }
                         StdoutMessage::ControlRequest(req) => {
                             // Handle control requests (e.g., permission checks)
-                            Self::handle_control_request(&transport, &permission_handler, req)
-                                .await;
+                            Self::handle_control_request(
+                                &transport,
+                                &permission_handler,
+                                &hooks,
+                                req,
+                            )
+                            .await;
                         }
                         StdoutMessage::ControlResponse(resp) => {
                             // Route response to waiting request
@@ -158,6 +183,7 @@ impl Query {
     async fn handle_control_request(
         transport: &Arc<Mutex<ProcessTransport>>,
         permission_handler: &Option<Arc<dyn PermissionHandler>>,
+        hooks: &Option<Arc<HooksMap>>,
         request: SdkControlRequest,
     ) {
         debug!(request_id = %request.request_id, "Handling control request");
@@ -200,15 +226,9 @@ impl Query {
                     },
                 }
             }
-            ControlRequestData::HookCallback(ref _hook_req) => {
-                // TODO: Implement hook callbacks
-                SdkControlResponse {
-                    msg_type: ControlResponseType::ControlResponse,
-                    response: ControlResponseData::Success {
-                        request_id: request.request_id.clone(),
-                        response: Some(serde_json::json!({ "continue": true })),
-                    },
-                }
+            ControlRequestData::HookCallback(ref hook_req) => {
+                // Execute hook callbacks
+                Self::execute_hook_callback(hooks, hook_req, &request.request_id).await
             }
             _ => {
                 // Respond with success for other requests
@@ -229,6 +249,189 @@ impl Query {
             .await
         {
             warn!(error = %e, "Failed to send control response");
+        }
+    }
+
+    /// Execute hook callbacks for a hook callback request.
+    async fn execute_hook_callback(
+        hooks: &Option<Arc<HooksMap>>,
+        hook_req: &HookCallbackRequest,
+        request_id: &str,
+    ) -> SdkControlResponse {
+        // Parse the callback_id to determine which hook event this is for
+        // The callback_id format is: "event:matcher_index:hook_index" or similar
+        // For now, try to parse the event name from the input's hook_event_name field
+
+        let hooks = match hooks {
+            Some(h) => h,
+            None => {
+                // No hooks registered, return success with continue
+                return SdkControlResponse {
+                    msg_type: ControlResponseType::ControlResponse,
+                    response: ControlResponseData::Success {
+                        request_id: request_id.to_string(),
+                        response: Some(serde_json::json!({ "continue": true })),
+                    },
+                };
+            }
+        };
+
+        // Try to parse the input to determine the hook event
+        let hook_event_name = hook_req
+            .input
+            .get("hook_event_name")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+
+        // Map hook_event_name to HookEvent
+        let hook_event = match hook_event_name {
+            "PreToolUse" => HookEvent::PreToolUse,
+            "PostToolUse" => HookEvent::PostToolUse,
+            "PostToolUseFailure" => HookEvent::PostToolUseFailure,
+            "Notification" => HookEvent::Notification,
+            "UserPromptSubmit" => HookEvent::UserPromptSubmit,
+            "SessionStart" => HookEvent::SessionStart,
+            "SessionEnd" => HookEvent::SessionEnd,
+            "Stop" => HookEvent::Stop,
+            "SubagentStart" => HookEvent::SubagentStart,
+            "SubagentStop" => HookEvent::SubagentStop,
+            "PreCompact" => HookEvent::PreCompact,
+            "PermissionRequest" => HookEvent::PermissionRequest,
+            _ => {
+                debug!(
+                    hook_event_name = %hook_event_name,
+                    "Unknown hook event name, returning success"
+                );
+                return SdkControlResponse {
+                    msg_type: ControlResponseType::ControlResponse,
+                    response: ControlResponseData::Success {
+                        request_id: request_id.to_string(),
+                        response: Some(serde_json::json!({ "continue": true })),
+                    },
+                };
+            }
+        };
+
+        // Find matching hook callbacks
+        let matchers = match hooks.get(&hook_event) {
+            Some(m) => m,
+            None => {
+                return SdkControlResponse {
+                    msg_type: ControlResponseType::ControlResponse,
+                    response: ControlResponseData::Success {
+                        request_id: request_id.to_string(),
+                        response: Some(serde_json::json!({ "continue": true })),
+                    },
+                };
+            }
+        };
+
+        // Get tool_name for matching if this is a tool-related hook
+        let tool_name = hook_req
+            .input
+            .get("tool_name")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+
+        // Parse the input into a HookInput
+        let hook_input = match serde_json::from_value::<HookInput>(hook_req.input.clone()) {
+            Ok(input) => input,
+            Err(e) => {
+                warn!(error = %e, "Failed to parse hook input");
+                return SdkControlResponse {
+                    msg_type: ControlResponseType::ControlResponse,
+                    response: ControlResponseData::Error {
+                        request_id: request_id.to_string(),
+                        error: format!("Failed to parse hook input: {}", e),
+                        pending_permission_requests: None,
+                    },
+                };
+            }
+        };
+
+        // Execute all matching hooks
+        let mut final_output = SyncHookOutput::continue_execution();
+
+        for matcher in matchers {
+            // Check if matcher pattern matches (if present)
+            if let Some(ref pattern) = matcher.matcher {
+                // Simple substring matching for now
+                // TODO: Could use regex for more advanced matching
+                if !tool_name.contains(pattern.as_str()) && pattern != "*" {
+                    continue;
+                }
+            }
+
+            // Execute all hooks in this matcher
+            for hook in &matcher.hooks {
+                match hook
+                    .call(hook_input.clone(), hook_req.tool_use_id.clone())
+                    .await
+                {
+                    Ok(output) => {
+                        match output {
+                            HookOutput::Sync(sync_output) => {
+                                // Merge outputs - last non-None value wins
+                                if sync_output.continue_execution.is_some() {
+                                    final_output.continue_execution = sync_output.continue_execution;
+                                }
+                                if sync_output.suppress_output.is_some() {
+                                    final_output.suppress_output = sync_output.suppress_output;
+                                }
+                                if sync_output.stop_reason.is_some() {
+                                    final_output.stop_reason = sync_output.stop_reason;
+                                }
+                                if sync_output.decision.is_some() {
+                                    final_output.decision = sync_output.decision;
+                                }
+                                if sync_output.system_message.is_some() {
+                                    final_output.system_message = sync_output.system_message;
+                                }
+                                if sync_output.reason.is_some() {
+                                    final_output.reason = sync_output.reason;
+                                }
+                                if sync_output.hook_specific_output.is_some() {
+                                    final_output.hook_specific_output = sync_output.hook_specific_output;
+                                }
+
+                                // If continue is false, stop processing
+                                if final_output.continue_execution == Some(false) {
+                                    break;
+                                }
+                            }
+                            HookOutput::Async(async_output) => {
+                                // Return async response immediately
+                                return SdkControlResponse {
+                                    msg_type: ControlResponseType::ControlResponse,
+                                    response: ControlResponseData::Success {
+                                        request_id: request_id.to_string(),
+                                        response: Some(
+                                            serde_json::to_value(async_output).unwrap_or_default(),
+                                        ),
+                                    },
+                                };
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        warn!(error = %e, "Hook callback failed");
+                        // Continue with other hooks
+                    }
+                }
+            }
+
+            // If continue is false, stop processing matchers
+            if final_output.continue_execution == Some(false) {
+                break;
+            }
+        }
+
+        SdkControlResponse {
+            msg_type: ControlResponseType::ControlResponse,
+            response: ControlResponseData::Success {
+                request_id: request_id.to_string(),
+                response: Some(serde_json::to_value(final_output).unwrap_or_default()),
+            },
         }
     }
 

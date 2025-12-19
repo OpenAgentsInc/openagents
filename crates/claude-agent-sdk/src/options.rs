@@ -1,5 +1,6 @@
 //! Query options for configuring Claude Code sessions.
 
+use crate::hooks::{HookCallbackMatcher, HookEvent};
 use crate::protocol::PermissionMode;
 use crate::transport::ExecutableConfig;
 use serde::{Deserialize, Serialize};
@@ -37,7 +38,11 @@ pub struct QueryOptions {
     /// Additional directories Claude can access.
     pub additional_directories: Vec<PathBuf>,
 
-    /// Allowed tool names.
+    /// Tools configuration (list of names or preset).
+    /// Use this to specify the base set of available built-in tools.
+    pub tools: Option<ToolsConfig>,
+
+    /// Allowed tool names (additional filtering on top of tools config).
     pub allowed_tools: Option<Vec<String>>,
 
     /// Disallowed tool names.
@@ -102,6 +107,10 @@ pub struct QueryOptions {
 
     /// Plugins to load.
     pub plugins: Vec<PluginConfig>,
+
+    /// Hook callbacks for responding to events during execution.
+    /// Keys are hook events, values are lists of callback matchers.
+    pub hooks: Option<HashMap<HookEvent, Vec<HookCallbackMatcher>>>,
 }
 
 /// System prompt configuration.
@@ -205,6 +214,66 @@ pub enum SettingSource {
     User,
     Project,
     Local,
+}
+
+/// Tools configuration for specifying which tools are available.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum ToolsConfig {
+    /// List of specific tool names.
+    List(Vec<String>),
+    /// Use a preset configuration.
+    Preset {
+        #[serde(rename = "type")]
+        config_type: String,
+        preset: ToolPreset,
+    },
+}
+
+impl ToolsConfig {
+    /// Create a tools config with a list of tool names.
+    pub fn list(tools: Vec<String>) -> Self {
+        Self::List(tools)
+    }
+
+    /// Create a tools config with the claude_code preset (all default tools).
+    pub fn claude_code_preset() -> Self {
+        Self::Preset {
+            config_type: "preset".to_string(),
+            preset: ToolPreset::ClaudeCode,
+        }
+    }
+
+    /// Create an empty tools config (no tools).
+    pub fn none() -> Self {
+        Self::List(vec![])
+    }
+}
+
+/// Tool preset options.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ToolPreset {
+    /// Use all default Claude Code tools.
+    ClaudeCode,
+}
+
+/// Beta features that can be enabled.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum SdkBeta {
+    /// Enable 1M token context window (Sonnet 4/4.5 only).
+    /// Maps to "context-1m-2025-08-07"
+    #[serde(rename = "context-1m-2025-08-07")]
+    Context1M,
+}
+
+impl SdkBeta {
+    /// Get the string representation for CLI arguments.
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            SdkBeta::Context1M => "context-1m-2025-08-07",
+        }
+    }
 }
 
 /// Sandbox settings.
@@ -402,6 +471,54 @@ impl QueryOptions {
         self
     }
 
+    /// Set the tools configuration.
+    ///
+    /// This specifies which built-in tools are available:
+    /// - `ToolsConfig::list(vec!["Bash", "Read", "Edit"])` - only these tools
+    /// - `ToolsConfig::none()` - disable all built-in tools
+    /// - `ToolsConfig::claude_code_preset()` - use all default tools
+    pub fn tools(mut self, config: ToolsConfig) -> Self {
+        self.tools = Some(config);
+        self
+    }
+
+    /// Enable a beta feature.
+    pub fn beta(mut self, beta: SdkBeta) -> Self {
+        self.betas.push(beta.as_str().to_string());
+        self
+    }
+
+    /// Set hooks for the session.
+    ///
+    /// Hooks allow you to intercept and modify behavior at various points during execution.
+    ///
+    /// # Example
+    /// ```rust,no_run
+    /// use claude_agent_sdk::{QueryOptions, HookEvent, HookCallbackMatcher};
+    /// use std::collections::HashMap;
+    ///
+    /// let mut hooks = HashMap::new();
+    /// hooks.insert(HookEvent::PreToolUse, vec![
+    ///     HookCallbackMatcher::with_matcher("Bash").timeout(30),
+    /// ]);
+    ///
+    /// let options = QueryOptions::new().hooks(hooks);
+    /// ```
+    pub fn hooks(mut self, hooks: HashMap<HookEvent, Vec<HookCallbackMatcher>>) -> Self {
+        self.hooks = Some(hooks);
+        self
+    }
+
+    /// Add a hook for a specific event.
+    pub fn hook(mut self, event: HookEvent, matcher: HookCallbackMatcher) -> Self {
+        self.hooks
+            .get_or_insert_with(HashMap::new)
+            .entry(event)
+            .or_default()
+            .push(matcher);
+        self
+    }
+
     /// Build CLI arguments from options.
     pub fn build_args(&self) -> Vec<String> {
         let mut args = vec![
@@ -453,6 +570,30 @@ impl QueryOptions {
         for dir in &self.additional_directories {
             args.push("--add-dir".to_string());
             args.push(dir.display().to_string());
+        }
+
+        // Handle tools configuration
+        if let Some(ref tools_config) = self.tools {
+            match tools_config {
+                ToolsConfig::List(tools) if tools.is_empty() => {
+                    // Empty list disables all tools
+                    args.push("--tools".to_string());
+                    args.push("".to_string());
+                }
+                ToolsConfig::List(tools) => {
+                    for tool in tools {
+                        args.push("--tools".to_string());
+                        args.push(tool.clone());
+                    }
+                }
+                ToolsConfig::Preset { preset, .. } => {
+                    match preset {
+                        ToolPreset::ClaudeCode => {
+                            // claude_code preset uses all default tools (no flag needed)
+                        }
+                    }
+                }
+            }
         }
 
         if let Some(ref tools) = self.allowed_tools {

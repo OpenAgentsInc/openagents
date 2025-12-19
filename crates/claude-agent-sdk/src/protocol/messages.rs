@@ -237,6 +237,22 @@ pub enum SdkSystemMessage {
     /// Hook response
     #[serde(rename = "hook_response")]
     HookResponse(HookResponse),
+
+    /// API error (authentication, rate limit, etc.)
+    #[serde(rename = "api_error")]
+    ApiError(ApiErrorMessage),
+
+    /// Stop hook summary
+    #[serde(rename = "stop_hook_summary")]
+    StopHookSummary(StopHookSummaryMessage),
+
+    /// Informational message
+    #[serde(rename = "informational")]
+    Informational(InformationalMessage),
+
+    /// Local command result
+    #[serde(rename = "local_command")]
+    LocalCommand(LocalCommandMessage),
 }
 
 /// Session initialization data.
@@ -290,10 +306,19 @@ pub struct CompactMetadata {
     pub pre_tokens: u64,
 }
 
+/// SDK status values.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum SdkStatus {
+    /// Context is being compacted
+    Compacting,
+}
+
 /// Status update.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StatusUpdate {
-    pub status: Option<String>,
+    /// Current status (null means no active status)
+    pub status: Option<SdkStatus>,
     pub uuid: String,
     pub session_id: String,
 }
@@ -306,6 +331,58 @@ pub struct HookResponse {
     pub stdout: String,
     pub stderr: String,
     pub exit_code: Option<i32>,
+    pub uuid: String,
+    pub session_id: String,
+}
+
+/// API error message.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ApiErrorMessage {
+    /// Error type (e.g., "authentication_failed", "rate_limit", "billing_error")
+    pub error_type: Option<String>,
+    /// Human-readable error message
+    pub message: Option<String>,
+    /// Whether the error is retryable
+    pub retryable: Option<bool>,
+    pub uuid: String,
+    pub session_id: String,
+}
+
+/// Stop hook summary message.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StopHookSummaryMessage {
+    /// Summary of hook execution during stop
+    pub summary: Option<String>,
+    /// List of hooks that ran
+    pub hooks_executed: Option<Vec<String>>,
+    /// Whether stop was successful
+    pub success: Option<bool>,
+    pub uuid: String,
+    pub session_id: String,
+}
+
+/// Informational message (non-critical system info).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct InformationalMessage {
+    /// Informational message content
+    pub message: String,
+    /// Optional category/type of information
+    pub category: Option<String>,
+    pub uuid: String,
+    pub session_id: String,
+}
+
+/// Local command execution result.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LocalCommandMessage {
+    /// Command that was executed
+    pub command: Option<String>,
+    /// Command output
+    pub output: Option<String>,
+    /// Exit code
+    pub exit_code: Option<i32>,
+    /// Error message if command failed
+    pub error: Option<String>,
     pub uuid: String,
     pub session_id: String,
 }

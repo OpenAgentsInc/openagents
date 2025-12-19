@@ -75,6 +75,7 @@
 //! The CLI is spawned as a child process with `--output-format stream-json`.
 
 pub mod error;
+pub mod hooks;
 pub mod options;
 pub mod permissions;
 pub mod protocol;
@@ -84,21 +85,32 @@ pub mod transport;
 
 // Re-export main types at crate root
 pub use error::{Error, Result};
+pub use hooks::{
+    AsyncHookOutput, BaseHookInput, CompactTrigger, FnHookCallback, HookCallback,
+    HookCallbackMatcher, HookDecision, HookEvent, HookInput, HookOutput,
+    HookPermissionDecision, HookPermissionResult, HookSpecificOutput, NotificationHookInput,
+    PermissionRequestHookInput, PostToolUseFailureHookInput, PostToolUseHookInput,
+    PostToolUseSpecificOutput, PreCompactHookInput, PreToolUseHookInput, PreToolUseSpecificOutput,
+    SessionEndHookInput, SessionStartHookInput, SessionStartSource, SessionStartSpecificOutput,
+    StopHookInput, SubagentStartHookInput, SubagentStartSpecificOutput, SubagentStopHookInput,
+    SyncHookOutput, UserPromptSubmitHookInput, UserPromptSubmitSpecificOutput,
+};
 pub use options::{
     AgentDefinition, AgentModel, McpServerConfig, OutputFormat, PluginConfig, QueryOptions,
-    RipgrepConfig, SandboxNetworkConfig, SandboxSettings, SettingSource, SystemPromptConfig,
+    RipgrepConfig, SandboxNetworkConfig, SandboxSettings, SdkBeta, SettingSource,
+    SystemPromptConfig, ToolPreset, ToolsConfig,
 };
 pub use permissions::{
     AllowAllPermissions, CallbackPermissionHandler, DenyAllPermissions, PermissionHandler,
     PermissionRequest, PermissionRules, RulesPermissionHandler, permission_handler,
 };
 pub use protocol::{
-    AccountInfo, AssistantMessageError, KeepAliveMessage, ModelInfo, ModelUsage,
-    PermissionBehavior, PermissionDenial, PermissionMode, PermissionResult, PermissionRule,
-    PermissionUpdate, ResultError, ResultSuccess, SdkAssistantMessage, SdkAuthStatusMessage,
-    SdkControlRequest, SdkControlResponse, SdkMessage, SdkResultMessage, SdkStreamEvent,
-    SdkSystemMessage, SdkToolProgressMessage, SdkUserMessage, SlashCommand, StdinMessage,
-    StdoutMessage, Usage,
+    AccountInfo, ApiErrorMessage, AssistantMessageError, InformationalMessage, KeepAliveMessage,
+    LocalCommandMessage, ModelInfo, ModelUsage, PermissionBehavior, PermissionDenial,
+    PermissionMode, PermissionResult, PermissionRule, PermissionUpdate, ResultError, ResultSuccess,
+    SdkAssistantMessage, SdkAuthStatusMessage, SdkControlRequest, SdkControlResponse, SdkMessage,
+    SdkResultMessage, SdkStatus, SdkStreamEvent, SdkSystemMessage, SdkToolProgressMessage,
+    SdkUserMessage, SlashCommand, StdinMessage, StdoutMessage, StopHookSummaryMessage, Usage,
 };
 pub use query::Query;
 pub use session::{
