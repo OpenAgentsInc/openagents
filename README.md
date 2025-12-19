@@ -14,6 +14,7 @@ Work in progress. First release ETA December 22.
 
 ## Structure
 
+- `crates/autopilot` - autonomous task runner with trajectory logging
 - `crates/claude-agent-sdk` - Claude Code integration
 - `crates/compute` - NIP-90 provider core
 - `crates/config` - shared configuration
