@@ -18,7 +18,19 @@ use listenfd::ListenFd;
 use maud::{DOCTYPE, Markup, PreEscaped, html};
 use std::time::Duration;
 
-use stories::atoms::atoms_story;
+use stories::atoms::attempt_badge::attempt_badge_story;
+use stories::atoms::blob_ref::blob_ref_story;
+use stories::atoms::call_id_badge::call_id_badge_story;
+use stories::atoms::cost_badge::cost_badge_story;
+use stories::atoms::latency_badge::latency_badge_story;
+use stories::atoms::line_type_label::line_type_label_story;
+use stories::atoms::redacted_value::redacted_value_story;
+use stories::atoms::result_arrow::result_arrow_story;
+use stories::atoms::status_dot::status_dot_story;
+use stories::atoms::step_badge::step_badge_story;
+use stories::atoms::tid_badge::tid_badge_story;
+use stories::atoms::timestamp_badge::timestamp_badge_story;
+use stories::atoms::token_badge::token_badge_story;
 use stories::button::button_story;
 use ui::{TAILWIND_CDN, TAILWIND_THEME};
 
@@ -39,7 +51,20 @@ fn sidebar_nav(active_story: &str) -> Markup {
             nav {
                 h2 class="uppercase text-muted-foreground mb-1 mt-3 pl-1 tracking-wide text-xs" { "Components" }
                 a href="/stories/button" class=(link_class("button")) { "Button" }
-                a href="/stories/atoms" class=(link_class("atoms")) { "Atoms" }
+                h2 class="uppercase text-muted-foreground mb-1 mt-4 pl-1 tracking-wide text-xs" { "Atoms" }
+                a href="/stories/atoms/status-dot" class=(link_class("atoms/status-dot")) { "Status Dot" }
+                a href="/stories/atoms/line-type-label" class=(link_class("atoms/line-type-label")) { "Line Type Label" }
+                a href="/stories/atoms/step-badge" class=(link_class("atoms/step-badge")) { "Step Badge" }
+                a href="/stories/atoms/timestamp-badge" class=(link_class("atoms/timestamp-badge")) { "Timestamp Badge" }
+                a href="/stories/atoms/call-id-badge" class=(link_class("atoms/call-id-badge")) { "Call ID Badge" }
+                a href="/stories/atoms/cost-badge" class=(link_class("atoms/cost-badge")) { "Cost Badge" }
+                a href="/stories/atoms/token-badge" class=(link_class("atoms/token-badge")) { "Token Badge" }
+                a href="/stories/atoms/latency-badge" class=(link_class("atoms/latency-badge")) { "Latency Badge" }
+                a href="/stories/atoms/attempt-badge" class=(link_class("atoms/attempt-badge")) { "Attempt Badge" }
+                a href="/stories/atoms/tid-badge" class=(link_class("atoms/tid-badge")) { "TID Badge" }
+                a href="/stories/atoms/blob-ref" class=(link_class("atoms/blob-ref")) { "Blob Ref" }
+                a href="/stories/atoms/redacted-value" class=(link_class("atoms/redacted-value")) { "Redacted Value" }
+                a href="/stories/atoms/result-arrow" class=(link_class("atoms/result-arrow")) { "Result Arrow" }
             }
         }
     }
@@ -140,10 +165,105 @@ async fn button_story_page() -> impl Responder {
         .body(html.into_string())
 }
 
-/// Atoms story page
-async fn atoms_story_page() -> impl Responder {
-    let content = atoms_story();
-    let html = base_layout("Atoms", "atoms", content);
+async fn atoms_status_dot_page() -> impl Responder {
+    let content = status_dot_story();
+    let html = base_layout("Status Dot", "atoms/status-dot", content);
+    HttpResponse::Ok()
+        .content_type("text/html; charset=utf-8")
+        .body(html.into_string())
+}
+
+async fn atoms_line_type_label_page() -> impl Responder {
+    let content = line_type_label_story();
+    let html = base_layout("Line Type Label", "atoms/line-type-label", content);
+    HttpResponse::Ok()
+        .content_type("text/html; charset=utf-8")
+        .body(html.into_string())
+}
+
+async fn atoms_step_badge_page() -> impl Responder {
+    let content = step_badge_story();
+    let html = base_layout("Step Badge", "atoms/step-badge", content);
+    HttpResponse::Ok()
+        .content_type("text/html; charset=utf-8")
+        .body(html.into_string())
+}
+
+async fn atoms_timestamp_badge_page() -> impl Responder {
+    let content = timestamp_badge_story();
+    let html = base_layout("Timestamp Badge", "atoms/timestamp-badge", content);
+    HttpResponse::Ok()
+        .content_type("text/html; charset=utf-8")
+        .body(html.into_string())
+}
+
+async fn atoms_call_id_badge_page() -> impl Responder {
+    let content = call_id_badge_story();
+    let html = base_layout("Call ID Badge", "atoms/call-id-badge", content);
+    HttpResponse::Ok()
+        .content_type("text/html; charset=utf-8")
+        .body(html.into_string())
+}
+
+async fn atoms_cost_badge_page() -> impl Responder {
+    let content = cost_badge_story();
+    let html = base_layout("Cost Badge", "atoms/cost-badge", content);
+    HttpResponse::Ok()
+        .content_type("text/html; charset=utf-8")
+        .body(html.into_string())
+}
+
+async fn atoms_token_badge_page() -> impl Responder {
+    let content = token_badge_story();
+    let html = base_layout("Token Badge", "atoms/token-badge", content);
+    HttpResponse::Ok()
+        .content_type("text/html; charset=utf-8")
+        .body(html.into_string())
+}
+
+async fn atoms_latency_badge_page() -> impl Responder {
+    let content = latency_badge_story();
+    let html = base_layout("Latency Badge", "atoms/latency-badge", content);
+    HttpResponse::Ok()
+        .content_type("text/html; charset=utf-8")
+        .body(html.into_string())
+}
+
+async fn atoms_attempt_badge_page() -> impl Responder {
+    let content = attempt_badge_story();
+    let html = base_layout("Attempt Badge", "atoms/attempt-badge", content);
+    HttpResponse::Ok()
+        .content_type("text/html; charset=utf-8")
+        .body(html.into_string())
+}
+
+async fn atoms_tid_badge_page() -> impl Responder {
+    let content = tid_badge_story();
+    let html = base_layout("TID Badge", "atoms/tid-badge", content);
+    HttpResponse::Ok()
+        .content_type("text/html; charset=utf-8")
+        .body(html.into_string())
+}
+
+async fn atoms_blob_ref_page() -> impl Responder {
+    let content = blob_ref_story();
+    let html = base_layout("Blob Ref", "atoms/blob-ref", content);
+    HttpResponse::Ok()
+        .content_type("text/html; charset=utf-8")
+        .body(html.into_string())
+}
+
+async fn atoms_redacted_value_page() -> impl Responder {
+    let content = redacted_value_story();
+    let html = base_layout("Redacted Value", "atoms/redacted-value", content);
+    HttpResponse::Ok()
+        .content_type("text/html; charset=utf-8")
+        .body(html.into_string())
+}
+
+async fn atoms_result_arrow_page() -> impl Responder {
+    let content = result_arrow_story();
+    let html = base_layout("Result Arrow", "atoms/result-arrow", content);
     HttpResponse::Ok()
         .content_type("text/html; charset=utf-8")
         .body(html.into_string())
@@ -157,7 +277,19 @@ async fn main() -> std::io::Result<()> {
         App::new()
             .route("/", web::get().to(index))
             .route("/stories/button", web::get().to(button_story_page))
-            .route("/stories/atoms", web::get().to(atoms_story_page))
+            .route("/stories/atoms/status-dot", web::get().to(atoms_status_dot_page))
+            .route("/stories/atoms/line-type-label", web::get().to(atoms_line_type_label_page))
+            .route("/stories/atoms/step-badge", web::get().to(atoms_step_badge_page))
+            .route("/stories/atoms/timestamp-badge", web::get().to(atoms_timestamp_badge_page))
+            .route("/stories/atoms/call-id-badge", web::get().to(atoms_call_id_badge_page))
+            .route("/stories/atoms/cost-badge", web::get().to(atoms_cost_badge_page))
+            .route("/stories/atoms/token-badge", web::get().to(atoms_token_badge_page))
+            .route("/stories/atoms/latency-badge", web::get().to(atoms_latency_badge_page))
+            .route("/stories/atoms/attempt-badge", web::get().to(atoms_attempt_badge_page))
+            .route("/stories/atoms/tid-badge", web::get().to(atoms_tid_badge_page))
+            .route("/stories/atoms/blob-ref", web::get().to(atoms_blob_ref_page))
+            .route("/stories/atoms/redacted-value", web::get().to(atoms_redacted_value_page))
+            .route("/stories/atoms/result-arrow", web::get().to(atoms_result_arrow_page))
             .route("/__ws_reload", web::get().to(ws_reload))
     });
 
