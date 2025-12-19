@@ -1,47 +1,11 @@
 //! Button component story
 
 use maud::{Markup, html};
-
-/// Button component with inline CSS
-pub fn button(label: &str, variant: &str, size: &str, disabled: bool) -> Markup {
-    let (bg, fg, border) = match variant {
-        "primary" => ("#fff", "#000", "#fff"),
-        "secondary" => ("#333", "#fff", "#555"),
-        "ghost" => ("transparent", "#888", "#555"),
-        _ => ("#fff", "#000", "#fff"),
-    };
-
-    let padding = match size {
-        "small" => "0.25rem 0.5rem",
-        "large" => "0.75rem 1.5rem",
-        _ => "0.5rem 1rem",
-    };
-
-    let font_size = match size {
-        "small" => "0.75rem",
-        "large" => "1rem",
-        _ => "0.875rem",
-    };
-
-    let opacity = if disabled { "0.5" } else { "1" };
-    let cursor = if disabled { "not-allowed" } else { "pointer" };
-
-    html! {
-        button
-            style=(format!(
-                "background: {}; color: {}; border: 1px solid {}; padding: {}; font-size: {}; font-family: inherit; cursor: {}; opacity: {};",
-                bg, fg, border, padding, font_size, cursor, opacity
-            ))
-            disabled[disabled]
-        {
-            (label)
-        }
-    }
-}
+use ui::{Button, ButtonSize, ButtonVariant};
 
 fn section_title(title: &str) -> Markup {
     html! {
-        h2 style="font-size: 1rem; font-weight: 500; color: #aaa; margin-top: 2rem; margin-bottom: 1rem;" {
+        h2 class="text-base font-medium text-muted-foreground mt-8 mb-4" {
             (title)
         }
     }
@@ -49,7 +13,7 @@ fn section_title(title: &str) -> Markup {
 
 fn section(content: Markup) -> Markup {
     html! {
-        div style="padding: 1rem; border: 1px solid #333; background: #161616; margin-bottom: 1rem;" {
+        div class="p-4 border border-border bg-card mb-4" {
             (content)
         }
     }
@@ -57,7 +21,7 @@ fn section(content: Markup) -> Markup {
 
 fn row(content: Markup) -> Markup {
     html! {
-        div style="display: flex; gap: 1rem; align-items: center; flex-wrap: wrap;" {
+        div class="flex gap-4 items-center flex-wrap" {
             (content)
         }
     }
@@ -65,8 +29,8 @@ fn row(content: Markup) -> Markup {
 
 fn item(label: &str, content: Markup) -> Markup {
     html! {
-        div style="display: flex; flex-direction: column; gap: 0.5rem;" {
-            span style="font-size: 0.75rem; color: #666;" { (label) }
+        div class="flex flex-col gap-2" {
+            span class="text-xs text-muted-foreground" { (label) }
             (content)
         }
     }
@@ -74,7 +38,7 @@ fn item(label: &str, content: Markup) -> Markup {
 
 fn code_block(code: &str) -> Markup {
     html! {
-        pre style="font-size: 0.75rem; background: #0a0a0a; border: 1px solid #333; padding: 1rem; overflow-x: auto; color: #888;" {
+        pre class="text-xs bg-secondary border border-border p-4 overflow-x-auto text-muted-foreground" {
             code { (code) }
         }
     }
@@ -82,41 +46,52 @@ fn code_block(code: &str) -> Markup {
 
 pub fn button_story() -> Markup {
     html! {
-        h1 style="font-size: 1.5rem; font-weight: bold; margin-bottom: 0.5rem; padding-bottom: 0.5rem; border-bottom: 1px solid #333;" {
+        h1 class="text-2xl font-bold mb-2 pb-2 border-b border-border" {
             "Button"
         }
-        p style="font-size: 0.875rem; color: #666; margin-bottom: 1.5rem;" {
+        p class="text-sm text-muted-foreground mb-6" {
             "A button component with variants, sizes, and states."
         }
 
         (section_title("Variants"))
         (section(row(html! {
-            (item("Primary", button("Primary", "primary", "default", false)))
-            (item("Secondary", button("Secondary", "secondary", "default", false)))
-            (item("Ghost", button("Ghost", "ghost", "default", false)))
+            (item("Primary", Button::new("Primary").render()))
+            (item("Secondary", Button::new("Secondary").variant(ButtonVariant::Secondary).render()))
+            (item("Ghost", Button::new("Ghost").variant(ButtonVariant::Ghost).render()))
         })))
 
         (section_title("Sizes"))
         (section(row(html! {
-            (item("Small", button("Small", "primary", "small", false)))
-            (item("Default", button("Default", "primary", "default", false)))
-            (item("Large", button("Large", "primary", "large", false)))
+            (item("Small", Button::new("Small").size(ButtonSize::Small).render()))
+            (item("Default", Button::new("Default").render()))
+            (item("Large", Button::new("Large").size(ButtonSize::Large).render()))
         })))
 
         (section_title("States"))
         (section(row(html! {
-            (item("Active", button("Click me", "primary", "default", false)))
-            (item("Disabled", button("Disabled", "primary", "default", true)))
+            (item("Active", Button::new("Click me").render()))
+            (item("Disabled", Button::new("Disabled").disabled(true).render()))
         })))
 
         (section_title("Usage"))
-        (code_block(r#"use storybook::stories::button::button;
+        (code_block(r#"use ui::{Button, ButtonSize, ButtonVariant};
 
 // Basic usage
-button("Submit", "primary", "default", false)
+Button::new("Submit").render()
 
-// Variants: "primary", "secondary", "ghost"
-// Sizes: "small", "default", "large"
-// Disabled: true or false"#))
+// With variant
+Button::new("Cancel")
+    .variant(ButtonVariant::Secondary)
+    .render()
+
+// With size
+Button::new("Small")
+    .size(ButtonSize::Small)
+    .render()
+
+// Disabled
+Button::new("Disabled")
+    .disabled(true)
+    .render()"#))
     }
 }
