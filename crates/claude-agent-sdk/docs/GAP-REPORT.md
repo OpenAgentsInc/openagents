@@ -1,13 +1,40 @@
 # Claude Agent SDK: Rust vs Node.js Parity Report
 
-**Date:** 2025-12-11
+**Date:** 2025-12-19
 **Rust SDK Version:** 0.1.0
-**Node.js SDK Version:** 0.1.65
-**Current Parity:** ~98%
+**Node.js SDK Version:** 0.1.61 (comparing against latest CLI 2.0.73)
+**Current Parity:** ~99%
 
 ## Executive Summary
 
-Our Rust Claude Agent SDK (`crates/claude_agent_sdk/`) provides near-complete feature parity with the official Node.js SDK (`@anthropic-ai/claude-agent-sdk`). All core functionality required for building agents is implemented. The remaining ~2% gap consists of convenience features for in-process MCP servers that require implementing the full MCP protocol.
+Our Rust Claude Agent SDK (`crates/claude_agent_sdk/`) provides near-complete feature parity with the official Node.js SDK (`@anthropic-ai/claude-agent-sdk`). All core functionality required for building agents is implemented, including the full hooks callback system. The remaining ~1% gap consists of convenience features for in-process MCP servers that require implementing the full MCP protocol.
+
+---
+
+## Recent Updates (2025-12-19)
+
+### Newly Implemented Features
+
+1. **Hooks System (100%)** - Full hook callback support:
+   - All 12 hook events: `PreToolUse`, `PostToolUse`, `PostToolUseFailure`, `Notification`, `UserPromptSubmit`, `SessionStart`, `SessionEnd`, `Stop`, `SubagentStart`, `SubagentStop`, `PreCompact`, `PermissionRequest`
+   - `HookCallbackMatcher` for pattern-based matching
+   - `HookCallback` trait for custom async callbacks
+   - `FnHookCallback` helper for closure-based hooks
+   - All hook input types with full field support
+   - All hook output types including hook-specific outputs
+
+2. **New Message Types** - From CLI 2.0.73:
+   - `SdkSystemMessage::ApiError` - API error details
+   - `SdkSystemMessage::StopHookSummary` - Hook execution summary on stop
+   - `SdkSystemMessage::Informational` - Informational system messages
+   - `SdkSystemMessage::LocalCommand` - Local command execution results
+   - `SdkStatus` enum - Typed status values (`Compacting`)
+
+3. **New Options Types**:
+   - `ToolsConfig` - List or preset (`claude_code`) tool configuration
+   - `SdkBeta` enum - Typed beta features (`context-1m-2025-08-07`)
+   - `tools` field in `QueryOptions`
+   - `hooks` field in `QueryOptions`
 
 ---
 
@@ -21,9 +48,11 @@ Our Rust Claude Agent SDK (`crates/claude_agent_sdk/`) provides near-complete fe
 | **Session API (V2)** | `unstable_v2_create_session()`, `unstable_v2_resume_session()`, `unstable_v2_prompt()`, `Session` type |
 | **Query Control** | `interrupt()`, `set_permission_mode()`, `set_model()`, `set_max_thinking_tokens()`, `mcp_server_status()`, `rewind_files()`, `supported_commands()`, `supported_models()`, `account_info()`, `stream_input()` |
 | **Message Types** | All 7 types: User, Assistant, Result, System, StreamEvent, ToolProgress, AuthStatus |
+| **System Subtypes** | Init, CompactBoundary, Status, HookResponse, ApiError, StopHookSummary, Informational, LocalCommand |
 | **Permission System** | 5 modes, PermissionHandler trait, PermissionResult, PermissionUpdate, 4 built-in handlers |
+| **Hooks System** | 12 event types, callback trait, matcher, all input/output types |
 | **MCP Server Types** | Stdio, SSE, HTTP (Sdk is stub) |
-| **Configuration** | 40+ options including sandbox, plugins, agents, betas |
+| **Configuration** | 40+ options including sandbox, plugins, agents, betas, tools, hooks |
 | **Transport** | Process spawning, JSONL streaming, auto-detection |
 | **Error Handling** | 12 error variants with thiserror |
 
@@ -39,7 +68,6 @@ Our Rust Claude Agent SDK (`crates/claude_agent_sdk/`) provides near-complete fe
 |---------|-------------|----------|
 | `tool()` helper | Creates MCP tool definitions with Zod schema | Not implemented |
 | `createSdkMcpServer()` | Creates in-process MCP server | Not implemented |
-| `hooks` QueryOption | Pass hooks directly in options | Hooks via CLI settings files |
 
 ---
 
@@ -143,8 +171,6 @@ pub trait McpTool: Send + Sync {
 }
 ```
 
-**Effort Estimate:** 3-5 days
-
 **Files to Create/Modify:**
 - `crates/claude_agent_sdk/src/mcp/mod.rs` - NEW: MCP module
 - `crates/claude_agent_sdk/src/mcp/server.rs` - NEW: Server implementation
@@ -152,12 +178,6 @@ pub trait McpTool: Send + Sync {
 - `crates/claude_agent_sdk/src/mcp/protocol.rs` - NEW: JSON-RPC messages
 - `crates/claude_agent_sdk/src/options.rs` - Modify McpServerConfig::Sdk
 - `crates/claude_agent_sdk/src/query.rs` - Add MCP message routing
-
-**Dependencies to Add:**
-```toml
-# For async trait handlers
-pin-project-lite = "0.2"
-```
 
 ---
 
@@ -184,68 +204,6 @@ const weatherTool = tool(
 );
 ```
 
-**What's Missing:**
-
-1. **Schema Builder**
-   - Type-safe schema definition
-   - Constraint specification (min, max, enum, pattern)
-   - Default values
-   - Description annotations
-
-2. **Handler Wrapper**
-   - Async function wrapping
-   - Input validation
-   - Error handling
-   - Result formatting
-
-**Implementation Requirements:**
-
-```rust
-// Option A: Macro-based (ergonomic)
-#[mcp_tool(name = "get_weather", description = "Get weather")]
-async fn get_weather(
-    #[arg(description = "City name")] city: String,
-    #[arg(default = "celsius")] units: Units,
-) -> McpToolResult {
-    // Implementation
-}
-
-// Option B: Builder-based (explicit)
-pub fn tool<S, H, Fut>(
-    name: impl Into<String>,
-    description: impl Into<String>,
-    schema: S,
-    handler: H,
-) -> McpToolDefinition
-where
-    S: IntoJsonSchema,
-    H: Fn(S::Args) -> Fut + Send + Sync + 'static,
-    Fut: Future<Output = McpToolResult> + Send,
-{
-    // Build tool definition
-}
-
-// Schema builder
-pub struct SchemaBuilder {
-    properties: HashMap<String, PropertySchema>,
-    required: Vec<String>,
-}
-
-impl SchemaBuilder {
-    pub fn string(name: &str) -> PropertyBuilder { ... }
-    pub fn number(name: &str) -> PropertyBuilder { ... }
-    pub fn boolean(name: &str) -> PropertyBuilder { ... }
-    pub fn array(name: &str) -> PropertyBuilder { ... }
-    pub fn object(name: &str) -> PropertyBuilder { ... }
-}
-```
-
-**Effort Estimate:** 2-3 days
-
-**Files to Create:**
-- `crates/claude_agent_sdk/src/mcp/tool_builder.rs` - NEW
-- `crates/claude_agent_sdk/src/mcp/schema.rs` - NEW
-
 **Alternative Approach:**
 Use `schemars` crate for automatic JSON Schema derivation:
 ```rust
@@ -263,143 +221,14 @@ struct GetWeatherInput {
 
 ---
 
-### Gap 3: `createSdkMcpServer()` Function
-
-**Node.js SDK Capability:**
-```typescript
-import { createSdkMcpServer } from '@anthropic-ai/claude-agent-sdk';
-
-const server = createSdkMcpServer({
-  name: 'my-server',
-  version: '1.0.0',
-  tools: [weatherTool, calculatorTool],
-});
-```
-
-**What's Missing:**
-
-This is the factory function that creates an MCP server instance. It requires Gap 1 (MCP Protocol) to be implemented first.
-
-**Implementation Requirements:**
-
-```rust
-pub struct McpServerOptions {
-    pub name: String,
-    pub version: Option<String>,
-    pub tools: Vec<McpToolDefinition>,
-    pub resources: Option<Vec<McpResourceDefinition>>,
-    pub prompts: Option<Vec<McpPromptDefinition>>,
-}
-
-pub fn create_sdk_mcp_server(options: McpServerOptions) -> McpServerConfig {
-    McpServerConfig::Sdk {
-        name: options.name.clone(),
-        instance: Arc::new(McpServer::new(options)),
-    }
-}
-```
-
-**Effort Estimate:** 1 day (after Gap 1 is complete)
-
----
-
-### Gap 4: `hooks` QueryOption
-
-**Node.js SDK Capability:**
-```typescript
-const query = await sdk.query('Hello', {
-  hooks: {
-    PreToolUse: [{
-      matcher: 'Bash',
-      hooks: [async (input) => {
-        console.log('About to run:', input.tool_input);
-        return { continue: true };
-      }],
-    }],
-    PostToolUse: [{
-      hooks: [async (input) => {
-        console.log('Tool completed');
-        return {};
-      }],
-    }],
-  },
-});
-```
-
-**Current Rust SDK Status:**
-
-Hooks are not exposed in `QueryOptions`. Instead, hooks are configured via:
-1. User settings: `~/.claude/settings.json`
-2. Project settings: `.claude/settings.json`
-3. Local settings: `.claude/settings.local.json`
-
-**What's Missing:**
-
-1. **Hook Type Definitions**
-   ```rust
-   pub enum HookEvent {
-       PreToolUse,
-       PostToolUse,
-       PostToolUseFailure,
-       Notification,
-       UserPromptSubmit,
-       SessionStart,
-       SessionEnd,
-       Stop,
-       SubagentStart,
-       SubagentStop,
-       PreCompact,
-       PermissionRequest,
-   }
-
-   pub struct HookMatcher {
-       pub matcher: Option<String>,
-       pub hooks: Vec<HookCallback>,
-       pub timeout: Option<u32>,
-   }
-
-   pub type HookCallback = Box<dyn Fn(HookInput) -> BoxFuture<'static, HookOutput> + Send + Sync>;
-   ```
-
-2. **QueryOptions Field**
-   ```rust
-   pub struct QueryOptions {
-       // ... existing fields ...
-       pub hooks: Option<HashMap<HookEvent, Vec<HookMatcher>>>,
-   }
-   ```
-
-3. **Hook Execution Engine**
-   - Callback invocation
-   - Timeout handling
-   - Result processing
-
-**Implementation Complexity:**
-
-The challenge is that hooks in the Node.js SDK run in-process, while Claude Code CLI expects hooks to be shell commands or separate processes. To support in-process hooks, we would need to:
-
-1. Intercept hook requests from CLI
-2. Execute Rust callbacks
-3. Return results via the control protocol
-
-This is architecturally different from how the CLI currently works.
-
-**Effort Estimate:** 3-4 days
-
-**Alternative Approach:**
-
-Document that hooks should be configured via settings files, which is the standard approach for Claude Code users. This maintains simplicity and consistency with CLI behavior.
-
----
-
 ## Implementation Priority
 
-| Priority | Feature | Effort | Value | Recommendation |
-|----------|---------|--------|-------|----------------|
-| P1 | MCP Protocol (Gap 1) | 3-5 days | High | Implement - enables custom tools |
-| P2 | Tool Builder (Gap 2) | 2-3 days | Medium | Implement after P1 |
-| P3 | createSdkMcpServer (Gap 3) | 1 day | Medium | Implement after P1 |
-| P4 | Hooks Option (Gap 4) | 3-4 days | Low | Document alternative |
+| Priority | Feature | Effort | Value | Status |
+|----------|---------|--------|-------|--------|
+| ~~P1~~ | ~~Hooks System~~ | ~~3-4 days~~ | ~~High~~ | ✅ Done |
+| P2 | MCP Protocol | 3-5 days | High | Not started |
+| P3 | Tool Builder | 2-3 days | Medium | Not started |
+| P4 | createSdkMcpServer | 1 day | Medium | Not started |
 
 ---
 
@@ -425,41 +254,9 @@ let options = QueryOptions::new()
     });
 ```
 
-### For Hooks
-
-Configure hooks in settings files:
-
-```json
-// .claude/settings.json
-{
-  "hooks": {
-    "PreToolUse": [
-      {
-        "matcher": "Bash",
-        "hooks": ["./scripts/pre-bash-hook.sh"]
-      }
-    ]
-  }
-}
-```
-
 ---
 
-## Testing Gaps
-
-Current test coverage for implemented features:
-- **25 unit tests** - Core functionality
-- **13 doc tests** - API examples
-
-Tests needed for full parity:
-- MCP server protocol tests
-- Tool definition and execution tests
-- Hook callback tests
-- Integration tests with real Claude CLI
-
----
-
-## Appendix A: Complete Feature Matrix
+## Complete Feature Matrix
 
 | Node.js SDK Feature | Rust SDK | Status |
 |---------------------|----------|--------|
@@ -486,6 +283,11 @@ Tests needed for full parity:
 | `SDKAssistantMessage` | `SdkAssistantMessage` | ✅ |
 | `SDKResultMessage` | `SdkResultMessage` | ✅ |
 | `SDKSystemMessage` | `SdkSystemMessage` | ✅ |
+| `SDKSystemMessage.api_error` | `SdkSystemMessage::ApiError` | ✅ |
+| `SDKSystemMessage.stop_hook_summary` | `SdkSystemMessage::StopHookSummary` | ✅ |
+| `SDKSystemMessage.informational` | `SdkSystemMessage::Informational` | ✅ |
+| `SDKSystemMessage.local_command` | `SdkSystemMessage::LocalCommand` | ✅ |
+| `SDKStatus` | `SdkStatus` | ✅ |
 | `SDKPartialAssistantMessage` | `SdkStreamEvent` | ✅ |
 | `SDKToolProgressMessage` | `SdkToolProgressMessage` | ✅ |
 | `SDKAuthStatusMessage` | `SdkAuthStatusMessage` | ✅ |
@@ -495,7 +297,9 @@ Tests needed for full parity:
 | `McpServerConfig.sdk` | `McpServerConfig::Sdk` | ⚠️ Stub |
 | `tool()` | - | ❌ |
 | `createSdkMcpServer()` | - | ❌ |
-| `options.hooks` | - | ❌ |
+| `options.hooks` | `QueryOptions::hooks` | ✅ |
+| `options.tools` | `QueryOptions::tools` | ✅ |
+| `options.betas` | `QueryOptions::betas` | ✅ |
 | `PermissionMode.default` | `PermissionMode::Default` | ✅ |
 | `PermissionMode.acceptEdits` | `PermissionMode::AcceptEdits` | ✅ |
 | `PermissionMode.bypassPermissions` | `PermissionMode::BypassPermissions` | ✅ |
@@ -514,27 +318,42 @@ Tests needed for full parity:
 | `options.plugins` | `QueryOptions::plugins` | ✅ |
 | `options.strictMcpConfig` | `QueryOptions::strict_mcp_config()` | ✅ |
 | `options.permissionPromptToolName` | `QueryOptions::permission_prompt_tool_name()` | ✅ |
+| `HookEvent.PreToolUse` | `HookEvent::PreToolUse` | ✅ |
+| `HookEvent.PostToolUse` | `HookEvent::PostToolUse` | ✅ |
+| `HookEvent.PostToolUseFailure` | `HookEvent::PostToolUseFailure` | ✅ |
+| `HookEvent.Notification` | `HookEvent::Notification` | ✅ |
+| `HookEvent.UserPromptSubmit` | `HookEvent::UserPromptSubmit` | ✅ |
+| `HookEvent.SessionStart` | `HookEvent::SessionStart` | ✅ |
+| `HookEvent.SessionEnd` | `HookEvent::SessionEnd` | ✅ |
+| `HookEvent.Stop` | `HookEvent::Stop` | ✅ |
+| `HookEvent.SubagentStart` | `HookEvent::SubagentStart` | ✅ |
+| `HookEvent.SubagentStop` | `HookEvent::SubagentStop` | ✅ |
+| `HookEvent.PreCompact` | `HookEvent::PreCompact` | ✅ |
+| `HookEvent.PermissionRequest` | `HookEvent::PermissionRequest` | ✅ |
+| `HookCallback` | `HookCallback` trait | ✅ |
+| `HookCallbackMatcher` | `HookCallbackMatcher` | ✅ |
+| All hook input types | All hook input types | ✅ |
+| All hook output types | All hook output types | ✅ |
 
 ---
 
-## Appendix B: Node.js SDK File Reference
+## Appendix A: Node.js SDK File Reference
 
-Key files from `@anthropic-ai/claude-agent-sdk@0.1.65`:
+Key files from `@anthropic-ai/claude-agent-sdk@0.1.61`:
 
 | File | Purpose |
 |------|---------|
 | `sdk.mjs` | Main SDK implementation |
-| `sdk.d.ts` | Main type definitions |
+| `sdk.d.ts` | Main type definitions (985 lines) |
 | `sdk-tools.d.ts` | Tool input schemas |
-| `entrypoints/agentSdkTypes.d.ts` | Core API types (1042 lines) |
-| `entrypoints/sandboxTypes.d.ts` | Sandbox configuration |
-| `entrypoints/sdkControlTypes.d.ts` | Control protocol types |
-| `transport/transport.d.ts` | Transport interface |
-| `cli.js` | Claude Code CLI executable (10.3MB) |
+| `sandboxTypes.d.ts` | Sandbox configuration |
+| `cli.js` | Claude Code CLI executable (minified) |
+
+**Location:** `~/.npm/_npx/<hash>/node_modules/@anthropic-ai/claude-agent-sdk/`
 
 ---
 
-## Appendix C: Architecture Diagram
+## Appendix B: Architecture Diagram
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -546,13 +365,18 @@ Key files from `@anthropic-ai/claude-agent-sdk@0.1.65`:
 │  │  query.rs          │  session.rs      │  permissions.rs  │   │
 │  │  - Query struct    │  - Session       │  - Handler trait │   │
 │  │  - Control methods │  - V2 API        │  - Built-in impls│   │
+│  │  - Hook execution  │                  │                  │   │
 │  ├─────────────────────────────────────────────────────────┤   │
 │  │  options.rs        │  protocol/       │  transport/      │   │
 │  │  - QueryOptions    │  - Messages      │  - Process spawn │   │
 │  │  - MCP configs     │  - Control       │  - JSONL stream  │   │
+│  │  - Hooks config    │                  │                  │   │
 │  ├─────────────────────────────────────────────────────────┤   │
-│  │  mcp/ (NOT IMPLEMENTED)                                   │   │
-│  │  - Server          │  - Tools         │  - Protocol      │   │
+│  │  hooks.rs          │  mcp/ (NOT IMPLEMENTED)             │   │
+│  │  - HookEvent       │  - Server        │  - Protocol      │   │
+│  │  - HookCallback    │  - Tools         │                  │   │
+│  │  - HookInput types │                  │                  │   │
+│  │  - HookOutput types│                  │                  │   │
 │  └─────────────────────────────────────────────────────────┘   │
 │                              │                                   │
 │                              │ JSONL over stdin/stdout           │
@@ -563,6 +387,7 @@ Key files from `@anthropic-ai/claude-agent-sdk@0.1.65`:
 │  │  - MCP server management                                  │   │
 │  │  - Permission handling                                    │   │
 │  │  - Session management                                     │   │
+│  │  - Hook invocation                                        │   │
 │  └─────────────────────────────────────────────────────────┘   │
 │                              │                                   │
 │                              │ API calls                         │
@@ -577,9 +402,16 @@ Key files from `@anthropic-ai/claude-agent-sdk@0.1.65`:
 
 ## Conclusion
 
-Our Rust Claude Agent SDK provides **98% feature parity** with the official Node.js SDK. All core functionality for building agents is fully implemented. The remaining 2% consists of convenience features for in-process MCP servers that can be worked around using Stdio MCP servers.
+Our Rust Claude Agent SDK provides **99% feature parity** with the official Node.js SDK. All core functionality for building agents is fully implemented, including:
+
+- Complete query and session APIs
+- Full permission system with custom handlers
+- All message types including new CLI 2.0.73 subtypes
+- Complete hooks callback system with all 12 event types
+- MCP server configuration (stdio, SSE, HTTP)
+
+The remaining 1% consists of convenience features for in-process MCP servers (`tool()`, `createSdkMcpServer()`) that can be worked around using Stdio MCP servers.
 
 **Recommended Next Steps:**
-1. Implement MCP Protocol module (Gap 1) - Highest value
-2. Add tool builder helpers (Gap 2) - Developer experience
-3. Document hook configuration via settings files (Gap 4) - Low effort
+1. Implement MCP Protocol module - Enables custom in-process tools
+2. Add tool builder helpers - Improves developer experience
