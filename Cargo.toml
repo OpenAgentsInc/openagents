@@ -1,58 +1,13 @@
 [workspace]
 resolver = "2"
 members = [
-    # Core UI
-    "crates/wgpui",
-    "crates/hud",
-
-    # Coder (IDE/Chat application)
-    "crates/coder/domain",
-    "crates/coder/protocol",
-    "crates/coder/ui_runtime",
-    "crates/coder/widgets",
-    "crates/coder/shell",
-    "crates/coder/surfaces_chat",
-    "crates/coder/surfaces_terminal",
-    "crates/coder/surfaces_diff",
-    "crates/coder/surfaces_timeline",
-    "crates/coder/storage",
-    "crates/coder/permission",
-    "crates/coder/session",
-    "crates/coder/agent",
-    "crates/coder/service",
-    "crates/coder/app",
-    "crates/coder/test",
-
-    # Nostr & Decentralized
-    "crates/nostr/core",
-    "crates/nostr/chat",
-    "crates/nostr/client",
-    "crates/nostr/relay",
-    "crates/cloudflare",
-
-    # Agent Core
-    "crates/agents",
-    "crates/ai",
-    "crates/claude-agent-sdk",
-    "crates/codex",
-    "crates/mechacoder",
-    "crates/tools",
-    "crates/taskmaster",
-    "crates/config",
-    "crates/llm",
-    "crates/tool_registry",
-    "crates/auto",
-
-    # Data
-    "crates/atif",
-
-    # Infrastructure
-    "crates/unit",
+    "crates/desktop",
+    "crates/ui",
     "crates/fm-bridge",
-    "crates/oanix",
-
-    # Compute Provider
+    "crates/claude-agent-sdk",
+    "crates/nostr/core",
     "crates/compute",
+    "crates/config",
 ]
 
 [workspace.lints.rust]
@@ -82,40 +37,13 @@ publish = false
 
 [workspace.dependencies]
 # OpenAgents workspace crates
-nostr = { path = "crates/nostr/core" }
-nostr-chat = { path = "crates/nostr/chat" }
-nostr-client = { path = "crates/nostr/client" }
-nostr-relay = { path = "crates/nostr/relay" }
-unit = { path = "crates/unit" }
-oanix = { path = "crates/oanix" }
-atif = { path = "crates/atif" }
-fm-bridge = { path = "crates/fm-bridge" }
-config = { path = "crates/config" }
-tools = { path = "crates/tools" }
 claude-agent-sdk = { path = "crates/claude-agent-sdk" }
-codex = { path = "crates/codex" }
-mechacoder = { path = "crates/mechacoder" }
-llm = { path = "crates/llm" }
-tool_registry = { path = "crates/tool_registry" }
-auto = { path = "crates/auto" }
-wgpui = { path = "crates/wgpui" }
-hud = { path = "crates/hud" }
-coder_domain = { path = "crates/coder/domain" }
-coder_protocol = { path = "crates/coder/protocol" }
-coder_ui_runtime = { path = "crates/coder/ui_runtime" }
-coder_widgets = { path = "crates/coder/widgets" }
-coder_shell = { path = "crates/coder/shell" }
-coder_surfaces_chat = { path = "crates/coder/surfaces_chat" }
-coder_surfaces_terminal = { path = "crates/coder/surfaces_terminal" }
-coder_surfaces_diff = { path = "crates/coder/surfaces_diff" }
-coder_surfaces_timeline = { path = "crates/coder/surfaces_timeline" }
-coder_storage = { path = "crates/coder/storage" }
-coder_permission = { path = "crates/coder/permission" }
-coder_session = { path = "crates/coder/session" }
-coder_agent = { path = "crates/coder/agent" }
-coder_service = { path = "crates/coder/service" }
-coder_app = { path = "crates/coder/app" }
-coder_test = { path = "crates/coder/test" }
+compute = { path = "crates/compute" }
+config = { path = "crates/config" }
+desktop = { path = "crates/desktop" }
+fm-bridge = { path = "crates/fm-bridge" }
+nostr = { path = "crates/nostr/core" }
+ui = { path = "crates/ui" }
 
 # External crates
 anyhow = "1.0.86"

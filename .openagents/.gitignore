@@ -1,8 +1,0 @@
-# MechaCoder session and run logs (local only)
-sessions/
-run-logs/
-usage.jsonl
-step-results.json
-
-# HuggingFace datasets (downloaded locally)
-datasets/

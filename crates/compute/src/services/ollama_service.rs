@@ -1,13 +1,7 @@
-//! Ollama inference service
+//! Ollama inference service (stubbed for cleanup).
 //!
-//! Wraps the existing LLM provider for Ollama to handle inference requests.
+//! The full LLM integration will be wired back in once the desktop stack is rebuilt.
 
-use crate::state::OllamaModel;
-use futures::StreamExt;
-use llm::provider::{LlmProvider, OllamaProvider};
-use llm::stream::{CompletionStream, StreamEvent};
-use llm::{CompletionRequest, Message};
-use std::sync::Arc;
 use thiserror::Error;
 
 /// Errors from the Ollama service
@@ -23,134 +17,55 @@ pub enum OllamaError {
     ModelNotFound(String),
 }
 
+/// Model metadata exposed by the Ollama service.
+#[derive(Debug, Clone)]
+pub struct OllamaModel {
+    /// Model name (e.g., "llama3:8b")
+    pub name: String,
+    /// Model size (e.g., "4.7 GB")
+    pub size: String,
+    /// Quantization level (e.g., "Q4_0")
+    pub quantization: Option<String>,
+}
+
 /// Service for interacting with Ollama
 pub struct OllamaService {
-    provider: Option<Arc<OllamaProvider>>,
+    available: bool,
 }
 
 impl OllamaService {
     /// Create a new Ollama service
     pub fn new() -> Self {
-        let provider = OllamaProvider::new().ok().map(Arc::new);
-        Self { provider }
+        Self { available: false }
     }
 
     /// Check if Ollama is available
     pub async fn is_available(&self) -> bool {
-        match &self.provider {
-            Some(p) => p.is_available().await,
-            None => false,
-        }
+        self.available
     }
 
     /// List available models
     pub async fn list_models(&self) -> Result<Vec<OllamaModel>, OllamaError> {
-        let provider = self.provider.as_ref()
-            .ok_or_else(|| OllamaError::NotAvailable("Ollama provider not initialized".into()))?;
-
-        let models = provider
-            .list_models()
-            .await
-            .map_err(|e| OllamaError::NotAvailable(e.to_string()))?;
-
-        Ok(models
-            .into_iter()
-            .map(|m| OllamaModel {
-                name: m.id.clone(),
-                size: format_size(m.limits.context_window as u64 * 1024), // Approximate
-                quantization: None,
-                selected: false,
-            })
-            .collect())
+        if self.available {
+            Ok(Vec::new())
+        } else {
+            Err(OllamaError::NotAvailable(
+                "Ollama integration is currently disabled".into(),
+            ))
+        }
     }
 
     /// Generate a completion (non-streaming)
     pub async fn generate(&self, model: &str, prompt: &str) -> Result<String, OllamaError> {
-        let provider = self.provider.as_ref()
-            .ok_or_else(|| OllamaError::NotAvailable("Ollama provider not initialized".into()))?;
-
-        if !self.is_available().await {
-            return Err(OllamaError::NotAvailable("Ollama is not running".into()));
-        }
-
-        let request = CompletionRequest::new(model).message(Message::user(prompt));
-
-        let mut stream = provider
-            .stream(request)
-            .await
-            .map_err(|e| OllamaError::InferenceFailed(e.to_string()))?;
-
-        let mut result = String::new();
-        while let Some(chunk) = stream.next().await {
-            match chunk {
-                Ok(event) => {
-                    if let StreamEvent::TextDelta { delta, .. } = event {
-                        result.push_str(&delta);
-                    }
-                }
-                Err(e) => {
-                    return Err(OllamaError::InferenceFailed(e.to_string()));
-                }
-            }
-        }
-
-        Ok(result)
-    }
-
-    /// Generate a streaming completion
-    pub async fn generate_stream(
-        &self,
-        model: &str,
-        prompt: &str,
-    ) -> Result<CompletionStream, OllamaError> {
-        let provider = self.provider.as_ref()
-            .ok_or_else(|| OllamaError::NotAvailable("Ollama provider not initialized".into()))?;
-
-        if !self.is_available().await {
-            return Err(OllamaError::NotAvailable("Ollama is not running".into()));
-        }
-
-        let request = CompletionRequest::new(model).message(Message::user(prompt));
-
-        provider
-            .stream(request)
-            .await
-            .map_err(|e| OllamaError::InferenceFailed(e.to_string()))
+        let _ = (model, prompt);
+        Err(OllamaError::NotAvailable(
+            "Ollama integration is currently disabled".into(),
+        ))
     }
 }
 
 impl Default for OllamaService {
     fn default() -> Self {
         Self::new()
-    }
-}
-
-/// Format bytes as human-readable size
-fn format_size(bytes: u64) -> String {
-    const KB: u64 = 1024;
-    const MB: u64 = KB * 1024;
-    const GB: u64 = MB * 1024;
-
-    if bytes >= GB {
-        format!("{:.1} GB", bytes as f64 / GB as f64)
-    } else if bytes >= MB {
-        format!("{:.1} MB", bytes as f64 / MB as f64)
-    } else if bytes >= KB {
-        format!("{:.1} KB", bytes as f64 / KB as f64)
-    } else {
-        format!("{} B", bytes)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_format_size() {
-        assert_eq!(format_size(500), "500 B");
-        assert_eq!(format_size(1024), "1.0 KB");
-        assert_eq!(format_size(1024 * 1024), "1.0 MB");
-        assert_eq!(format_size(1024 * 1024 * 1024), "1.0 GB");
     }
 }

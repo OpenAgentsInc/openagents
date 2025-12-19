@@ -1,8 +1,13 @@
-# OpenAgents
+# OpenAgents Desktop
 
-Your agent command center. (wip)
+Minimal foundation for the OpenAgents desktop marketplace app.
 
-## Tech Stack
+## Structure
 
-- Rust
-- GPUI
+- `crates/desktop` - desktop shell (wry/tao + local server)
+- `crates/ui` - Maud/HTMX component library
+- `crates/claude-agent-sdk` - Claude Code integration
+- `crates/nostr/core` - Nostr protocol types (NIP-90)
+- `crates/compute` - NIP-90 provider core
+- `crates/fm-bridge` - Apple Foundation Models client
+- `crates/config` - shared configuration

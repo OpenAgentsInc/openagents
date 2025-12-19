@@ -7,12 +7,6 @@
 //! - Execute inference via Ollama
 //! - Receive Bitcoin payments via Lightning/Spark
 
-pub mod app;
 pub mod domain;
 pub mod services;
-pub mod state;
 pub mod storage;
-pub mod ui;
-
-pub use app::ComputeApp;
-pub use state::AppState;
