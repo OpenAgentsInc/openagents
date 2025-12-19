@@ -1,3 +1,4 @@
 [alias]
+autopilot = "run -p autopilot --"
 desktop = "run -p desktop"
 storybook = "run -p storybook"

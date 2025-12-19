@@ -4,8 +4,17 @@ Your agent command center.
 
 Work in progress. First release ETA December 22.
 
+## Tech stack
+
+- Rust
+- HTMX
+- Tailwind
+- Maud
+- Nostr
+
 ## Structure
 
+- `crates/autopilot` - autonomous task runner with trajectory logging
 - `crates/claude-agent-sdk` - Claude Code integration
 - `crates/compute` - NIP-90 provider core
 - `crates/config` - shared configuration
