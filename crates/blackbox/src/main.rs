@@ -5,7 +5,10 @@ use clap::{Parser, Subcommand};
 use colored::*;
 use std::path::{Path, PathBuf};
 
-use blackbox::{parse_file, validate, LineType, Severity, ValidationResult};
+use blackbox::{
+    convert::{convert_file, ConvertOptions},
+    parse_content, parse_file, validate, LineType, Severity, ValidationResult,
+};
 
 #[derive(Parser)]
 #[command(name = "blackbox")]
@@ -101,6 +104,36 @@ enum Commands {
         #[arg(long, default_value = "50")]
         limit: i64,
     },
+
+    /// Convert Claude Code JSONL session to .bbox format
+    Convert {
+        /// Path to the Claude Code .jsonl file
+        file: PathBuf,
+
+        /// Git repository SHA (auto-detect from cwd if not specified)
+        #[arg(long)]
+        repo_sha: Option<String>,
+
+        /// Output file path (default: stdout)
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+
+        /// Include thinking blocks
+        #[arg(long, default_value = "true")]
+        include_thinking: bool,
+
+        /// Include signature on thinking blocks
+        #[arg(long, default_value = "true")]
+        include_signature: bool,
+
+        /// Include file-history-snapshot events as comments
+        #[arg(long, default_value = "true")]
+        include_snapshots: bool,
+
+        /// Validate the converted output
+        #[arg(long)]
+        validate: bool,
+    },
 }
 
 fn main() -> Result<()> {
@@ -148,6 +181,24 @@ fn main() -> Result<()> {
                 limit,
             ))
         }
+
+        Commands::Convert {
+            file,
+            repo_sha,
+            output,
+            include_thinking,
+            include_signature,
+            include_snapshots,
+            validate: do_validate,
+        } => cmd_convert(
+            &file,
+            repo_sha.as_deref(),
+            output.as_ref(),
+            include_thinking,
+            include_signature,
+            include_snapshots,
+            do_validate,
+        ),
     }
 }
 
@@ -466,6 +517,8 @@ fn cmd_parse(path: &Path, show_lines: bool, max_lines: usize) -> Result<()> {
                 LineType::Comment => "  # ".dimmed(),
                 LineType::Lifecycle => "@ LC".white().bold(),
                 LineType::Phase => "@PHS".blue().bold(),
+                LineType::Thinking => "THNK".cyan().dimmed(),
+                LineType::Todos => "TODO".blue(),
                 LineType::Empty => "    ".normal(),
                 LineType::Continuation => " ...".dimmed(),
                 LineType::Unknown => "????".red(),
@@ -528,6 +581,8 @@ fn cmd_parse(path: &Path, show_lines: bool, max_lines: usize) -> Result<()> {
                 LineType::Comment => "comment",
                 LineType::Lifecycle => "lifecycle",
                 LineType::Phase => "phase",
+                LineType::Thinking => "thinking",
+                LineType::Todos => "todos",
                 LineType::Empty => "empty",
                 LineType::Continuation => "continuation",
                 LineType::Unknown => "unknown",
@@ -831,6 +886,106 @@ async fn cmd_export(
         println!("    blackbox export --session sess_20251219_001 --output ./sessions/");
         println!("    blackbox export --user-id <uuid> --output ./sessions/");
         println!("    blackbox export --list");
+    }
+
+    println!();
+    Ok(())
+}
+
+// ============================================================================
+// Convert command
+// ============================================================================
+
+fn cmd_convert(
+    path: &Path,
+    repo_sha: Option<&str>,
+    output: Option<&PathBuf>,
+    include_thinking: bool,
+    include_signature: bool,
+    include_snapshots: bool,
+    do_validate: bool,
+) -> Result<()> {
+    let filename = path.file_name().unwrap_or_default().to_string_lossy();
+
+    println!();
+    println!("{} {}", "Converting".cyan().bold(), filename.bold());
+    println!();
+
+    // Get repo SHA - either from arg or auto-detect
+    let sha = if let Some(sha) = repo_sha {
+        sha.to_string()
+    } else {
+        // Try to auto-detect from git
+        match std::process::Command::new("git")
+            .args(["rev-parse", "--short", "HEAD"])
+            .output()
+        {
+            Ok(output) if output.status.success() => {
+                String::from_utf8_lossy(&output.stdout).trim().to_string()
+            }
+            _ => {
+                println!(
+                    "  {} Could not auto-detect git SHA, using placeholder",
+                    "!".yellow()
+                );
+                "unknown".to_string()
+            }
+        }
+    };
+
+    println!("  {} repo_sha: {}", "·".dimmed(), sha);
+
+    let options = ConvertOptions {
+        include_thinking,
+        include_signature,
+        include_snapshots,
+        include_queue_ops: false,
+    };
+
+    // Convert the file
+    let bbox_content = convert_file(path, &sha, &options).context("Failed to convert file")?;
+
+    // Validate if requested
+    if do_validate {
+        println!("  {} Validating output...", "→".dimmed());
+        let session = parse_content(&bbox_content).context("Failed to parse converted output")?;
+        let result = validate(&session);
+
+        if result.is_valid() {
+            println!("  {} Validation passed", "✓".green());
+        } else {
+            println!("  {} Validation issues:", "!".yellow());
+            for issue in &result.issues {
+                let prefix = match issue.severity {
+                    Severity::Error => "ERROR".red(),
+                    Severity::Warning => "WARN".yellow(),
+                    Severity::Info => "INFO".blue(),
+                };
+                println!("    {} {}", prefix, issue.message);
+            }
+        }
+
+        // Print stats
+        println!();
+        println!("  {}", "Stats:".bold());
+        println!("    User messages:    {}", result.stats.user_messages);
+        println!("    Agent messages:   {}", result.stats.agent_messages);
+        println!("    Tool calls:       {}", result.stats.tool_calls);
+        println!("    Thinking blocks:  {}", result.stats.thinking_blocks);
+        println!("    Todos updates:    {}", result.stats.todos_updates);
+        println!("    Total tokens in:  {}", result.stats.total_tokens_in);
+        println!("    Total tokens out: {}", result.stats.total_tokens_out);
+    }
+
+    // Output
+    if let Some(output_path) = output {
+        std::fs::write(output_path, &bbox_content).context("Failed to write output file")?;
+        println!();
+        println!("  {} Written to: {}", "✓".green(), output_path.display());
+    } else {
+        println!();
+        println!("{}", "--- Output ---".dimmed());
+        println!("{}", bbox_content);
     }
 
     println!();
