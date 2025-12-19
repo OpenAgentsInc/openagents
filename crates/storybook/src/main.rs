@@ -18,6 +18,7 @@ use listenfd::ListenFd;
 use maud::{DOCTYPE, Markup, PreEscaped, html};
 use std::time::Duration;
 
+use stories::atoms::atoms_story;
 use stories::button::button_story;
 use ui::{TAILWIND_CDN, TAILWIND_THEME};
 
@@ -38,6 +39,7 @@ fn sidebar_nav(active_story: &str) -> Markup {
             nav {
                 h2 class="uppercase text-muted-foreground mb-1 mt-3 pl-1 tracking-wide text-xs" { "Components" }
                 a href="/stories/button" class=(link_class("button")) { "Button" }
+                a href="/stories/atoms" class=(link_class("atoms")) { "Atoms" }
             }
         }
     }
@@ -138,6 +140,15 @@ async fn button_story_page() -> impl Responder {
         .body(html.into_string())
 }
 
+/// Atoms story page
+async fn atoms_story_page() -> impl Responder {
+    let content = atoms_story();
+    let html = base_layout("Atoms", "atoms", content);
+    HttpResponse::Ok()
+        .content_type("text/html; charset=utf-8")
+        .body(html.into_string())
+}
+
 #[tokio::main]
 async fn main() -> std::io::Result<()> {
     let mut listenfd = ListenFd::from_env();
@@ -146,6 +157,7 @@ async fn main() -> std::io::Result<()> {
         App::new()
             .route("/", web::get().to(index))
             .route("/stories/button", web::get().to(button_story_page))
+            .route("/stories/atoms", web::get().to(atoms_story_page))
             .route("/__ws_reload", web::get().to(ws_reload))
     });
 
