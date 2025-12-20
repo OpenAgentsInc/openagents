@@ -2376,6 +2376,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "issues-mcp"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "issues",
+ "rusqlite",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "itoa"
 version = "0.4.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"

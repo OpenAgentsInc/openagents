@@ -3,6 +3,7 @@ resolver = "2"
 members = [
     "crates/autopilot",
     "crates/issues",
+    "crates/issues-mcp",
     "crates/recorder",
     "crates/desktop",
     "crates/ui",
