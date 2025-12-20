@@ -3,6 +3,7 @@
 //! This crate provides infrastructure for discovering, installing, and managing
 //! marketplace items including plugins, skills, and agents.
 
+pub mod api;
 pub mod budget;
 pub mod creator_dashboard;
 pub mod data_consumer;
@@ -20,6 +21,15 @@ pub mod skills;
 pub mod trust;
 pub mod types;
 
+pub use api::{
+    AgentSpawnRequest, AgentSpawnResponse, ApiError, BalanceResponse, CoalitionProposalRequest,
+    CoalitionProposalResponse, ComputeJobRequest, ComputeJobResponse, DataBountyRequest,
+    DataBountyResponse, DataContributionRequest, DataContributionResponse, DataListingsQuery,
+    DataPurchaseRequest, DataPurchaseResponse, HireAgentRequest, HireAgentResponse,
+    InvoiceRequest, InvoiceResponse, LedgerQuery, PaymentRequest, PaymentResponse,
+    ProviderRegistrationRequest, ProviderRegistrationResponse, SkillInstallRequest,
+    SkillInstallResponse, SkillQuery, SkillSubmissionRequest, SkillSubmissionResponse,
+};
 pub use budget::{
     AlertAction, AlertThreshold, BudgetCheckResult, BudgetConfig, BudgetError, BudgetImpact,
     BudgetPeriod, CostEstimate, OverageAction, OveragePolicy, SpendingTracker, check_budget,
