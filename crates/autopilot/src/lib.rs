@@ -285,3 +285,44 @@ impl TrajectoryCollector {
         &self.trajectory
     }
 }
+
+/// Extract session_id from a trajectory JSON file.
+pub fn extract_session_id_from_json(path: &std::path::Path) -> anyhow::Result<String> {
+    let content = std::fs::read_to_string(path)?;
+    let traj: trajectory::Trajectory = serde_json::from_str(&content)?;
+    if traj.session_id.is_empty() {
+        anyhow::bail!("No session_id in trajectory file");
+    }
+    Ok(traj.session_id)
+}
+
+/// Extract session_id from rlog YAML header.
+/// Returns None if the id field is empty or missing.
+pub fn extract_session_id_from_rlog(path: &std::path::Path) -> anyhow::Result<Option<String>> {
+    let content = std::fs::read_to_string(path)?;
+
+    // Find YAML header between --- markers
+    let lines: Vec<&str> = content.lines().collect();
+    if lines.len() < 2 || lines[0] != "---" {
+        return Ok(None);
+    }
+
+    // Find end marker
+    let end_idx = lines.iter().skip(1).position(|l| *l == "---");
+    let end_idx = match end_idx {
+        Some(idx) => idx + 1, // +1 because we skipped first line
+        None => return Ok(None),
+    };
+
+    // Parse header lines looking for id:
+    for line in &lines[1..end_idx] {
+        if let Some(rest) = line.strip_prefix("id:") {
+            let id = rest.trim();
+            if !id.is_empty() {
+                return Ok(Some(id.to_string()));
+            }
+        }
+    }
+
+    Ok(None)
+}
