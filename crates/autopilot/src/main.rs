@@ -762,24 +762,22 @@ async fn run_full_auto_loop(
     let mut continuation_count = 0;
     const MAX_CONTINUATIONS: u32 = 1000; // Safety limit
     let mut current_prompt = initial_prompt.to_string();
-    let mut is_continuation = false;
 
     loop {
-        // Create a new session for each iteration
-        // For continuations, use continue_session to resume the conversation
-        let mut session_options = options.clone();
-        if is_continuation {
-            session_options.continue_session = true;
+        // Use query() directly - same approach as run_claude_agent which works
+        // For continuations, set continue_session=true to resume conversation
+        let mut query_options = options.clone();
+        if continuation_count > 0 {
+            query_options.continue_session = true;
         }
 
-        let mut session = unstable_v2_create_session(session_options).await?;
-        session.send(&current_prompt).await?;
+        let mut stream = query(&current_prompt, query_options).await?;
 
         // Process messages until stream ends
         let mut budget_exhausted = false;
         let mut max_turns_reached = false;
 
-        while let Some(msg) = session.receive().next().await {
+        while let Some(msg) = stream.next().await {
             let msg = msg?;
             collector.process_message(&msg);
 
@@ -861,15 +859,14 @@ async fn run_full_auto_loop(
             println!("\n{} Issues still available - forcing continuation", "AUTO:".cyan().bold());
         }
 
-        // Set up for continuation
-        println!("{} Creating new session with continue_session=true (attempt {})", "AUTO:".yellow().bold(), continuation_count);
+        // Set up for continuation - include FULL_AUTO_PROMPT again to reinforce instructions
+        println!("{} Continuing with new query (attempt {})", "AUTO:".yellow().bold(), continuation_count);
 
         current_prompt = if has_more_work {
-            "CONTINUE: You stopped prematurely. There are still issues to work on. Call issue_ready NOW and continue the autonomous loop. DO NOT summarize - just call issue_ready immediately.".to_string()
+            format!("{}\n\nCONTINUE: You stopped prematurely. There are still issues to work on. Call issue_ready NOW. DO NOT output any text first - immediately call issue_ready.", FULL_AUTO_PROMPT)
         } else {
-            "CONTINUE: You stopped prematurely. No issues are ready, so create a new issue with issue_create based on your analysis of the codebase, then claim and implement it. DO NOT summarize.".to_string()
+            format!("{}\n\nCONTINUE: You stopped prematurely. No issues are ready. Create a new issue with issue_create, then claim and implement it. DO NOT output any text first.", FULL_AUTO_PROMPT)
         };
-        is_continuation = true;
     }
 
     Ok(())
