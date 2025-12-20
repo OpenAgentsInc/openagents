@@ -421,3 +421,4 @@ mod tests {
         assert_eq!(deserialized.agent_id, listing.agent_id);
     }
 }
+

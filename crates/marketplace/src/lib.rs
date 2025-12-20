@@ -120,4 +120,4 @@ pub use trust::{
     TrackRecordComponent, TrustComponents, TrustError, TrustScore, TrustTier,
     VerificationComponent as TrustVerificationComponent, calculate_trust_score,
 };
-pub use types::{ItemStatus, MarketplaceItemType};
+pub use types::{ItemStatus, RevenueSplit, SkillPricing, SkillSubmission, SkillSubmissionStatus};
