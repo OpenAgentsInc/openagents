@@ -457,10 +457,12 @@ dependencies = [
  "futures",
  "issues",
  "lazy_static",
+ "maud",
  "serde",
  "serde_json",
  "signal-hook",
  "tokio",
+ "ui",
 ]
 
 [[package]]
