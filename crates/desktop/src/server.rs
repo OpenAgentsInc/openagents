@@ -4,6 +4,7 @@ use actix_web::{App, HttpResponse, HttpServer, web};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 
+use crate::replay::replay_handler;
 use crate::views::{autopilot_page, counter_fragment, home_page};
 use crate::ws::{WsBroadcaster, ws_handler};
 
@@ -25,6 +26,7 @@ pub async fn start_server(broadcaster: Arc<WsBroadcaster>) -> anyhow::Result<u16
             .app_data(state.clone())
             .route("/", web::get().to(index))
             .route("/autopilot", web::get().to(autopilot))
+            .route("/autopilot/replay", web::get().to(replay_handler))
             .route("/events", web::post().to(events))
             .route("/increment", web::post().to(increment))
             .route("/ws", web::get().to(ws_route))

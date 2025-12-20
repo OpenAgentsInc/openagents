@@ -3,6 +3,7 @@
 //! Single binary with embedded webview + local actix server.
 //! Demonstrates Maud/HTMX/Tailwind/WebSocket real-time updates.
 
+mod replay;
 mod server;
 mod views;
 mod ws;
