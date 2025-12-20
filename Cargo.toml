@@ -2,6 +2,7 @@
 resolver = "2"
 members = [
     "crates/autopilot",
+    "crates/issues",
     "crates/recorder",
     "crates/desktop",
     "crates/ui",
@@ -41,6 +42,7 @@ publish = false
 [workspace.dependencies]
 # OpenAgents workspace crates
 autopilot = { path = "crates/autopilot" }
+issues = { path = "crates/issues" }
 recorder = { path = "crates/recorder" }
 claude-agent-sdk = { path = "crates/claude-agent-sdk" }
 compute = { path = "crates/compute" }
