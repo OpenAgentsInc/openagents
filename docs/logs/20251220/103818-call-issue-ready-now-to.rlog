@@ -800,3 +800,38 @@ a: Perfect! Now let me verify the README looks good and then commit, push, compl
 t!:Bash id=S893CZWC cmd="wc -l crates/desktop/README.md" → [running] tokens_in=2 tokens_out=107 tokens_cached=76717
 o: id=S893CZWC → [ok] 500 crates/desktop/README.md
 t!:Bash id=HTsk95nu cmd="git add -A && git commit -m "$(cat <<'EOF'" → [running] tokens_in=1 tokens_out=25 tokens_cached=80622
+o: id=HTsk95nu → [ok] [main 81a955fc5] Add comprehensive README for desktop crate
+t!:Bash id=3X1NEvmx cmd="git push origin main" → [running] tokens_in=0 tokens_out=24 tokens_cached=80888
+o: id=3X1NEvmx → [ok] [0;36m🔍 Running cargo build to check for errors and warnings...[0m
+t!:mcp__issues__issue_complete id=18dM3WSG  → [running] tokens_in=0 tokens_out=32 tokens_cached=81294
+o: id=18dM3WSG → [ok] Completed issue #11
+t!:mcp__issues__issue_ready id=7ThQcnBF  → [running] tokens_in=0 tokens_out=41 tokens_cached=81489
+o: id=7ThQcnBF → [ok] No ready issues available
+t!:mcp__issues__issue_create id=YuGhRZDL  → [running] tokens_in=0 tokens_out=8 tokens_cached=81705
+o: id=YuGhRZDL → [ok] Created issue #12: Add comprehensive README for compute crate (agent: claude)
+t!:mcp__issues__issue_claim id=eHbzzbmp  → [running] tokens_in=0 tokens_out=81 tokens_cached=81802
+o: id=eHbzzbmp → [ok] Claimed issue #12
+t!:Glob id=Nb96enn3 pattern="crates/compute/**/*.rs" → [running] tokens_in=0 tokens_out=8 tokens_cached=82127
+t!:Read id=NRaEA2EY file_path=/home/christopherdavid/code/openagents/crates/compute/Cargo.toml → [running] tokens_in=0 tokens_out=118 tokens_cached=82127
+o: id=NRaEA2EY → [ok]      1→[package]
+o: id=Nb96enn3 → [ok] /home/christopherdavid/code/openagents/crates/compute/src/app.rs
+t!:Read id=uEvLbxiw file_path=/home/christopherdavid/code/openagents/crates/compute/src/lib.rs → [running] tokens_in=652 tokens_out=25 tokens_cached=82365
+t!:Read id=yV2c5wiq file_path=/home/christopherdavid/code/openagents/crates/compute/src/domain/mod.rs → [running] tokens_in=652 tokens_out=25 tokens_cached=82365
+t!:Read id=bCRM2ggR file_path=/home/christopherdavid/code/openagents/crates/compute/src/services/dvm_service.rs → [running] tokens_in=652 tokens_out=238 tokens_cached=82365
+o: id=uEvLbxiw → [ok]      1→//! Compute Provider - Sell compute via NIP-90 DVMs with Bitcoin payments
+o: id=yV2c5wiq → [ok]      1→//! Domain types for the compute provider
+o: id=bCRM2ggR → [ok]      1→//! NIP-90 Data Vending Machine service
+t!:Read id=PnWPnVDU file_path=/home/christopherdavid/code/openagents/crates/compute/src/domain/identity.rs → [running] tokens_in=4 tokens_out=18 tokens_cached=83233
+t!:Read id=siyzPYt3 file_path=/home/christopherdavid/code/openagents/crates/compute/src/domain/job.rs → [running] tokens_in=4 tokens_out=18 tokens_cached=83233
+t!:Read id=okiSxWg8 file_path=/home/christopherdavid/code/openagents/crates/compute/src/storage/secure_store.rs → [running] tokens_in=4 tokens_out=18 tokens_cached=83233
+o: id=PnWPnVDU → [ok]      1→//! Unified identity management using BIP32 seed phrase
+o: id=siyzPYt3 → [ok]      1→//! Job types for NIP-90 DVM job processing
+o: id=okiSxWg8 → [ok]      1→//! Secure storage for seed phrase using AES-GCM encryption
+t!:Bash id=kUBf2r46 cmd="ls crates/compute/src/bin/" → [running] tokens_in=4 tokens_out=82 tokens_cached=86083
+o: id=kUBf2r46 → [ok] Permissions Size User             Date Modified Name
+a: Now I have enough context to write a comprehensive README for the compute crate. tokens_in=2 tokens_out=1 tokens_cached=89660
+t!:Write id=CuH7xQtj file_path=/home/christopherdavid/code/openagents/crates/compute/README.md → [running] tokens_in=2 tokens_out=4483 tokens_cached=89660
+o: id=CuH7xQtj → [ok] File created successfully at: /home/christopherdavid/code/openagents/crates/compute/README.md
+t!:Bash id=D9VisipN cmd="wc -l crates/compute/README.md" → [running] tokens_in=1 tokens_out=82 tokens_cached=89829
+o: id=D9VisipN → [ok] 571 crates/compute/README.md
+t!:Bash id=cNTrwemR cmd="git add -A && git commit -m "$(cat <<'EOF'" → [running] tokens_in=0 tokens_out=25 tokens_cached=94491
