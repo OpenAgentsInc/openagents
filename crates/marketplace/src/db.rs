@@ -3,7 +3,8 @@
 use rusqlite::{Connection, Result};
 use std::path::Path;
 
-/// Current schema version
+/// Current schema version (used in tests)
+#[cfg(test)]
 const SCHEMA_VERSION: i32 = 1;
 
 /// Initialize the database with migrations

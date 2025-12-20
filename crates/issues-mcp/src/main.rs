@@ -229,6 +229,38 @@ impl McpServer {
                 }),
             },
             Tool {
+                name: "issue_update".to_string(),
+                description: "Update an issue's title, description, priority, or type".to_string(),
+                input_schema: json!({
+                    "type": "object",
+                    "properties": {
+                        "number": {
+                            "type": "integer",
+                            "description": "Issue number"
+                        },
+                        "title": {
+                            "type": "string",
+                            "description": "New title"
+                        },
+                        "description": {
+                            "type": "string",
+                            "description": "New description"
+                        },
+                        "priority": {
+                            "type": "string",
+                            "enum": ["urgent", "high", "medium", "low"],
+                            "description": "New priority level"
+                        },
+                        "issue_type": {
+                            "type": "string",
+                            "enum": ["task", "bug", "feature"],
+                            "description": "New issue type"
+                        }
+                    },
+                    "required": ["number"]
+                }),
+            },
+            Tool {
                 name: "enter_plan_mode".to_string(),
                 description: "Enter planning mode to explore and design before implementing. Creates a plan file and enables restrictions.".to_string(),
                 input_schema: json!({
@@ -277,6 +309,7 @@ impl McpServer {
             "issue_complete" => self.tool_issue_complete(&conn, &arguments),
             "issue_block" => self.tool_issue_block(&conn, &arguments),
             "issue_ready" => self.tool_issue_ready(&conn),
+            "issue_update" => self.tool_issue_update(&conn, &arguments),
             "enter_plan_mode" => self.tool_enter_plan_mode(&arguments),
             "exit_plan_mode" => self.tool_exit_plan_mode(),
             _ => Err(format!("Unknown tool: {}", name)),
@@ -462,6 +495,36 @@ impl McpServer {
                 serde_json::to_string_pretty(&output).map_err(|e| e.to_string())
             }
             None => Ok("No ready issues available".to_string()),
+        }
+    }
+
+    fn tool_issue_update(&self, conn: &Connection, args: &Value) -> Result<String, String> {
+        let number = args
+            .get("number")
+            .and_then(|v| v.as_i64())
+            .ok_or("Missing number")? as i32;
+
+        let title = args.get("title").and_then(|v| v.as_str());
+        let description = args.get("description").and_then(|v| v.as_str());
+        let priority = args
+            .get("priority")
+            .and_then(|v| v.as_str())
+            .map(Priority::from_str);
+        let issue_type = args
+            .get("issue_type")
+            .and_then(|v| v.as_str())
+            .map(IssueType::from_str);
+
+        let i = issue::get_issue_by_number(conn, number)
+            .map_err(|e| e.to_string())?
+            .ok_or(format!("Issue #{} not found", number))?;
+
+        if issue::update_issue(conn, &i.id, title, description, priority, issue_type)
+            .map_err(|e| e.to_string())?
+        {
+            Ok(format!("Updated issue #{}", number))
+        } else {
+            Ok(format!("No changes made to issue #{}", number))
         }
     }
 
