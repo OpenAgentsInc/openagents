@@ -20,6 +20,9 @@ Work in progress. First release ETA December 22.
 - `crates/config` - shared configuration
 - `crates/desktop` - desktop shell (wry/tao + local server)
 - `crates/fm-bridge` - Apple Foundation Models client
+- `crates/issues` - issue tracking library
+- `crates/issues-mcp` - MCP server for issue tracking
+- `crates/marketplace` - skills, compute, and agent marketplace
 - `crates/nostr/core` - Nostr protocol types (NIP-90)
 - `crates/recorder` - session recorder format + CLI
 - `crates/ui` - Maud/HTMX component library
