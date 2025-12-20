@@ -55,6 +55,24 @@ head -50 docs/logs/20251219/1916-use-issue-ready-to-get.rlog
 jq '.result' docs/logs/20251219/1916-use-issue-ready-to-get.json
 ```
 
+### Resume a Crashed Session
+
+If autopilot crashes or is interrupted, resume from where it left off:
+
+```bash
+# Resume from a JSON trajectory file (has session_id)
+cargo autopilot resume docs/logs/20251219/2138-start-working.json
+
+# Continue most recent session (no file needed)
+cargo autopilot resume --continue-last
+
+# Resume with additional instructions
+cargo autopilot resume file.json --prompt "Continue the task"
+
+# Resume with issue tracking enabled
+cargo autopilot resume file.json --with-issues
+```
+
 ## Git Workflow
 
 Autopilot follows this workflow for code changes:
@@ -74,7 +92,7 @@ Autopilot follows this workflow for code changes:
 | `AUTOPILOT_BUDGET` | 3.0 | Max budget in USD |
 | `AUTOPILOT_MAX_TURNS` | 30 | Max conversation turns |
 
-### CLI Options
+### CLI Options (run)
 | Option | Description |
 |--------|-------------|
 | `--model MODEL` | Model to use |
@@ -83,6 +101,14 @@ Autopilot follows this workflow for code changes:
 | `--verbose` | Show all messages |
 | `--dry-run` | Don't save logs |
 | `--with-issues` | Enable issue tracking (default in wrapper) |
+
+### CLI Options (resume)
+| Option | Description |
+|--------|-------------|
+| `--continue-last` | Continue most recent session |
+| `--prompt TEXT` | Additional prompt to send on resume |
+| `--max-budget USD` | Maximum budget for resumed session |
+| `--with-issues` | Enable issue tracking |
 
 ## Architecture
 
