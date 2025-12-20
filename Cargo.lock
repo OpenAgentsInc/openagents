@@ -458,6 +458,8 @@ dependencies = [
  "issues",
  "lazy_static",
  "maud",
+ "once_cell",
+ "regex",
  "reqwest",
  "serde",
  "serde_json",

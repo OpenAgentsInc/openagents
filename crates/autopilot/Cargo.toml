@@ -52,5 +52,9 @@ signal-hook.workspace = true
 lazy_static = "1.5"
 dirs = "5.0"
 
+# Secret redaction
+once_cell = "1.19"
+regex = "1.10"
+
 [lints]
 workspace = true

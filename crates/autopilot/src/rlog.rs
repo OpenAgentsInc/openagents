@@ -1,5 +1,6 @@
 //! rlog format writer for trajectory output
 
+use crate::redact::redact_secrets;
 use crate::trajectory::{Step, StepType, Trajectory};
 use serde_json::Value;
 use std::fs::{File, OpenOptions};
@@ -256,13 +257,16 @@ impl RlogWriter {
     fn step_to_line(&self, step: &Step) -> String {
         let mut line = match &step.step_type {
             StepType::User { content } => {
-                format!("u: {}", truncate(content, 200))
+                let redacted = redact_secrets(content);
+                format!("u: {}", truncate(&redacted, 200))
             }
             StepType::Assistant { content } => {
-                format!("a: {}", truncate(content, 200))
+                let redacted = redact_secrets(content);
+                format!("a: {}", truncate(&redacted, 200))
             }
             StepType::Thinking { content, signature } => {
-                let mut l = format!("th: {}", truncate(content, 150));
+                let redacted = redact_secrets(content);
+                let mut l = format!("th: {}", truncate(&redacted, 150));
                 if let Some(sig) = signature {
                     let sig_short = if sig.len() > 20 { &sig[..20] } else { sig };
                     l.push_str(&format!(" sig={}...", sig_short));
@@ -290,7 +294,8 @@ impl RlogWriter {
                     tool_id
                 };
                 let content = output.as_deref().unwrap_or("");
-                format!("o: id={} → {} {}", id_short, status, truncate(content, 100))
+                let redacted = redact_secrets(content);
+                format!("o: id={} → {} {}", id_short, status, truncate(&redacted, 100))
             }
             StepType::SystemInit { model } => {
                 format!("@init model={}", model)
@@ -345,7 +350,10 @@ fn format_tool_args(tool_name: &str, input: &Value) -> String {
         "Bash" => input
             .get("command")
             .and_then(|v| v.as_str())
-            .map(|c| format!("cmd=\"{}\"", truncate(c, 50)))
+            .map(|c| {
+                let redacted = redact_secrets(c);
+                format!("cmd=\"{}\"", truncate(&redacted, 50))
+            })
             .unwrap_or_default(),
         "Edit" | "Write" => input
             .get("file_path")
@@ -374,8 +382,7 @@ fn format_tool_args(tool_name: &str, input: &Value) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::trajectory::{TokenUsage, TrajectoryResult};
-    use chrono::Utc;
+    use crate::trajectory::TokenUsage;
 
     #[test]
     fn test_rlog_output() {
