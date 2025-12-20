@@ -75,7 +75,7 @@ fn test_select_cheapest_provider_basic() {
         10000,
     );
 
-    let providers = vec![expensive, cheap.clone()];
+    let providers = vec![expensive, cheap];
     let selected = select_provider(&request, &providers, SelectionMode::Cheapest).unwrap();
 
     assert_eq!(selected.pricing.per_1k_input_sats, 5);
@@ -116,7 +116,7 @@ fn test_select_cheapest_multiple_providers() {
         20000,
     );
 
-    let providers = vec![p1, p2.clone(), p3];
+    let providers = vec![p1, p2, p3];
     let selected = select_provider(&request, &providers, SelectionMode::Cheapest).unwrap();
 
     // p2 has cheapest input cost
@@ -189,7 +189,7 @@ fn test_select_fastest_provider_basic() {
         10000,
     );
 
-    let providers = vec![slow, fast.clone()];
+    let providers = vec![slow, fast];
     let selected = select_provider(&request, &providers, SelectionMode::Fastest).unwrap();
 
     assert_eq!(selected.reputation.avg_latency_ms, 100);
@@ -230,7 +230,7 @@ fn test_select_fastest_multiple_providers() {
         15000,
     );
 
-    let providers = vec![p1, p2, p3.clone()];
+    let providers = vec![p1, p2, p3];
     let selected = select_provider(&request, &providers, SelectionMode::Fastest).unwrap();
 
     assert_eq!(selected.reputation.avg_latency_ms, 150);
@@ -335,7 +335,7 @@ fn test_select_best_value_prefers_high_reputation() {
         10000,
     );
 
-    let providers = vec![low_rep, high_rep.clone()];
+    let providers = vec![low_rep, high_rep];
     let selected = select_provider(&request, &providers, SelectionMode::BestValue).unwrap();
 
     assert_eq!(selected.reputation.success_rate, 0.99);
@@ -421,7 +421,7 @@ fn test_select_topk_selects_highest_reputation() {
         10000,
     );
 
-    let providers = vec![p1, p2.clone(), p3];
+    let providers = vec![p1, p2, p3];
     let selected = select_provider(&request, &providers, SelectionMode::TopK(3)).unwrap();
 
     assert_eq!(selected.reputation.success_rate, 0.99);
@@ -446,7 +446,7 @@ fn test_select_topk_with_k_values() {
         10000,
     );
 
-    let providers = vec![p1.clone()];
+    let providers = vec![p1];
 
     // Test different K values
     let selected_k1 = select_provider(&request, &providers, SelectionMode::TopK(1));
@@ -487,7 +487,7 @@ fn test_filters_offline_providers() {
         10000,
     );
 
-    let providers = vec![offline, online.clone()];
+    let providers = vec![offline, online];
     let selected = select_provider(&request, &providers, SelectionMode::Cheapest).unwrap();
 
     // Should only select online provider
@@ -594,7 +594,7 @@ fn test_filters_by_region_requirement() {
     )
     .with_requirements(requirements);
 
-    let providers = vec![eu_provider, us_provider.clone()];
+    let providers = vec![eu_provider, us_provider];
     let selected = select_provider(&request, &providers, SelectionMode::Cheapest).unwrap();
 
     assert_eq!(selected.region, Region::UsWest);
@@ -629,7 +629,7 @@ fn test_filters_by_latency_requirement() {
     )
     .with_requirements(requirements);
 
-    let providers = vec![slow, fast.clone()];
+    let providers = vec![slow, fast];
     let selected = select_provider(&request, &providers, SelectionMode::Cheapest).unwrap();
 
     assert_eq!(selected.reputation.avg_latency_ms, 200);
@@ -664,7 +664,7 @@ fn test_filters_by_reputation_requirement() {
     )
     .with_requirements(requirements);
 
-    let providers = vec![low_rep, high_rep.clone()];
+    let providers = vec![low_rep, high_rep];
     let selected = select_provider(&request, &providers, SelectionMode::Cheapest).unwrap();
 
     assert!(selected.reputation.success_rate >= 0.95);
@@ -719,7 +719,7 @@ fn test_filters_multiple_requirements() {
     )
     .with_requirements(requirements);
 
-    let providers = vec![wrong_region, slow, low_rep, perfect.clone()];
+    let providers = vec![wrong_region, slow, low_rep, perfect];
     let selected = select_provider(&request, &providers, SelectionMode::BestValue).unwrap();
 
     assert_eq!(selected.region, Region::UsWest);
@@ -783,7 +783,7 @@ fn test_single_provider_selection() {
         10000,
     );
 
-    let providers = vec![provider.clone()];
+    let providers = vec![provider];
 
     // All selection modes should return the same single provider
     let cheapest = select_provider(&request, &providers, SelectionMode::Cheapest);
