@@ -25,6 +25,7 @@
 //! - NIP-36: Sensitive Content / Content Warning
 //! - NIP-40: Expiration Timestamp
 //! - NIP-42: Authentication of Clients to Relays
+//! - NIP-44: Versioned Encryption (requires `full` feature)
 //! - NIP-47: Nostr Wallet Connect (requires `full` feature)
 //! - NIP-57: Lightning Zaps (tipping with Lightning payments)
 //! - NIP-89: Application Handlers (social discovery of skills/agents)
@@ -67,6 +68,8 @@ mod nip33;
 mod nip36;
 mod nip40;
 mod nip42;
+#[cfg(feature = "full")]
+mod nip44;
 #[cfg(feature = "full")]
 mod nip47;
 mod nip57;
@@ -222,6 +225,14 @@ pub use nip42::{
     RESTRICTED_PREFIX, create_auth_event_tags, create_auth_required_message,
     create_restricted_message, get_challenge, get_relay_url, is_auth_event,
     is_auth_required_error, is_restricted_error, normalize_relay_url, validate_auth_event,
+};
+
+// NIP-44: Versioned Encryption (requires full feature)
+#[cfg(feature = "full")]
+pub use nip44::{
+    CHACHA_KEY_SIZE, CHACHA_NONCE_SIZE, HMAC_KEY_SIZE, MAC_SIZE, MAX_PLAINTEXT_LEN,
+    MIN_PADDED_LEN, MIN_PLAINTEXT_LEN, NONCE_SIZE, Nip44Error, VERSION,
+    decrypt as decrypt_v2, encrypt as encrypt_v2,
 };
 
 // NIP-47: Nostr Wallet Connect (requires full feature)
