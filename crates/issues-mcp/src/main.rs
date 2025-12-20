@@ -228,6 +228,32 @@ impl McpServer {
                     "properties": {}
                 }),
             },
+            Tool {
+                name: "enter_plan_mode".to_string(),
+                description: "Enter planning mode to explore and design before implementing. Creates a plan file and enables restrictions.".to_string(),
+                input_schema: json!({
+                    "type": "object",
+                    "properties": {
+                        "slug": {
+                            "type": "string",
+                            "description": "Short identifier for the plan (used in filename)"
+                        },
+                        "goal": {
+                            "type": "string",
+                            "description": "The goal or objective to plan for"
+                        }
+                    },
+                    "required": ["slug", "goal"]
+                }),
+            },
+            Tool {
+                name: "exit_plan_mode".to_string(),
+                description: "Exit planning mode after completing the plan. Verifies plan has content and lifts restrictions.".to_string(),
+                input_schema: json!({
+                    "type": "object",
+                    "properties": {}
+                }),
+            },
         ];
 
         Ok(json!({ "tools": tools }))
@@ -251,6 +277,8 @@ impl McpServer {
             "issue_complete" => self.tool_issue_complete(&conn, &arguments),
             "issue_block" => self.tool_issue_block(&conn, &arguments),
             "issue_ready" => self.tool_issue_ready(&conn),
+            "enter_plan_mode" => self.tool_enter_plan_mode(&arguments),
+            "exit_plan_mode" => self.tool_exit_plan_mode(),
             _ => Err(format!("Unknown tool: {}", name)),
         };
 
@@ -435,6 +463,26 @@ impl McpServer {
             }
             None => Ok("No ready issues available".to_string()),
         }
+    }
+
+    fn tool_enter_plan_mode(&self, args: &Value) -> Result<String, String> {
+        let slug = args
+            .get("slug")
+            .and_then(|v| v.as_str())
+            .ok_or("Missing slug")?;
+
+        let goal = args
+            .get("goal")
+            .and_then(|v| v.as_str())
+            .ok_or("Missing goal")?;
+
+        // Call autopilot's plan mode module
+        let config = autopilot::planmode::PlanModeConfig::new(slug, goal);
+        autopilot::planmode::enter_plan_mode(config)
+    }
+
+    fn tool_exit_plan_mode(&self) -> Result<String, String> {
+        autopilot::planmode::exit_plan_mode()
     }
 }
 

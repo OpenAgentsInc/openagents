@@ -22,6 +22,7 @@ clap.workspace = true
 # Async
 tokio.workspace = true
 futures.workspace = true
+async-trait.workspace = true
 
 # Serialization
 serde.workspace = true
@@ -39,6 +40,10 @@ colored = "2"
 
 # Signal handling
 signal-hook.workspace = true
+
+# Plan mode
+lazy_static = "1.5"
+dirs = "5.0"
 
 [lints]
 workspace = true
