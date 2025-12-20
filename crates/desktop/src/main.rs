@@ -42,6 +42,7 @@ fn main() -> Result<()> {
     });
 
     let port = port_rx.recv().expect("receive port");
+    println!("DESKTOP_PORT={}", port);
     tracing::info!("Server running on http://127.0.0.1:{}", port);
 
     // tao event loop (must be on main thread for macOS)
