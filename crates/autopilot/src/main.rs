@@ -121,6 +121,10 @@ enum Commands {
         /// Full auto mode: continuously work on issues and discover new work
         #[arg(long, default_value_t = default_full_auto())]
         full_auto: bool,
+
+        /// Launch desktop UI alongside autopilot
+        #[arg(long, default_value_t = default_ui())]
+        ui: bool,
     },
     /// Replay a saved trajectory for debugging
     Replay {
@@ -250,10 +254,11 @@ async fn main() -> Result<()> {
             with_issues,
             issues_db,
             full_auto,
+            ui,
         } => {
             run_task(
                 prompt, cwd, model, max_turns, max_budget, output_dir, slug, dry_run, verbose,
-                with_issues, issues_db, full_auto,
+                with_issues, issues_db, full_auto, ui,
             )
             .await
         }
@@ -277,6 +282,13 @@ fn default_model() -> String {
 /// Get default full_auto from environment or fallback to false
 fn default_full_auto() -> bool {
     std::env::var("AUTOPILOT_FULL_AUTO")
+        .map(|v| v == "1" || v.to_lowercase() == "true")
+        .unwrap_or(false)
+}
+
+/// Get default ui from environment or fallback to false
+fn default_ui() -> bool {
+    std::env::var("AUTOPILOT_UI")
         .map(|v| v == "1" || v.to_lowercase() == "true")
         .unwrap_or(false)
 }
@@ -368,8 +380,56 @@ async fn run_task(
     with_issues: bool,
     issues_db: Option<PathBuf>,
     full_auto: bool,
+    ui: bool,
 ) -> Result<()> {
     let cwd = cwd.unwrap_or_else(|| std::env::current_dir().unwrap());
+
+    // Launch desktop UI if requested
+    let _ui_port: Option<u16> = if ui {
+        println!("{} Launching desktop UI...", "UI:".cyan().bold());
+
+        // Spawn desktop app as subprocess
+        let mut child = std::process::Command::new("cargo")
+            .args(["run", "--release", "-p", "desktop"])
+            .current_dir(&cwd)
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .spawn()?;
+
+        // Wait for server to start by reading stdout for the port
+        use std::io::{BufRead, BufReader};
+        let stdout = child.stdout.take().expect("Failed to get stdout");
+        let reader = BufReader::new(stdout);
+
+        let mut port = None;
+        for line in reader.lines().take(20) {
+            if let Ok(line) = line {
+                // Look for "DESKTOP_PORT=PORT"
+                if let Some(rest) = line.strip_prefix("DESKTOP_PORT=") {
+                    if let Ok(p) = rest.trim().parse::<u16>() {
+                        port = Some(p);
+                        break;
+                    }
+                }
+            }
+        }
+
+        if let Some(p) = port {
+            println!("{} Desktop running at http://127.0.0.1:{}/autopilot", "UI:".cyan().bold(), p);
+            // Open browser
+            let _ = std::process::Command::new("open")
+                .arg(format!("http://127.0.0.1:{}/autopilot", p))
+                .spawn();
+            Some(p)
+        } else {
+            eprintln!("{} Failed to detect desktop UI port", "Warning:".yellow());
+            // Kill the child process
+            let _ = child.kill();
+            None
+        }
+    } else {
+        None
+    };
 
     // Resolve friendly model names to full model IDs
     let model = resolve_model(&model);
