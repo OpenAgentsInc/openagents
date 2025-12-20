@@ -1051,3 +1051,43 @@ o: id=zuckhU3m → [ok]      1→//! Recorder format parser and validator
 t!:Write id=oNURQ7VJ file_path=/home/christopherdavid/code/openagents/crates/recorder/README.md → [running] tokens_in=5 tokens_out=4844 tokens_cached=113293
 o: id=oNURQ7VJ → [ok] File created successfully at: /home/christopherdavid/code/openagents/crates/recorder/README.md
 t!:Bash id=4HiNmM2H cmd="git add -A && git commit -m "$(cat <<'EOF'" → [running] tokens_in=5 tokens_out=26 tokens_cached=19851
+o: id=4HiNmM2H → [ok] [main 078a0e3b1] Add comprehensive README for recorder crate
+t!:Bash id=33gvwGj4 cmd="git push origin main" → [running] tokens_in=4 tokens_out=76 tokens_cached=93753
+o: id=33gvwGj4 → [ok] [0;36m🔍 Running cargo build to check for errors and warnings...[0m
+t!:mcp__issues__issue_complete id=ZPFAgrjk  → [running] tokens_in=3 tokens_out=58 tokens_cached=94665
+o: id=ZPFAgrjk → [ok] Completed issue #17
+t!:mcp__issues__issue_ready id=Hi8BuSQE  → [running] tokens_in=0 tokens_out=8 tokens_cached=94965
+o: id=Hi8BuSQE → [ok] No ready issues available
+t!:Bash id=Rc88euQR cmd="ls -la crates/ui/" → [running] tokens_in=0 tokens_out=8 tokens_cached=95080
+o: id=Rc88euQR → [ok] Permissions Size User             Date Modified Name
+t!:mcp__issues__issue_create id=8bBMzB18  → [running] tokens_in=2 tokens_out=32 tokens_cached=95175
+o: id=8bBMzB18 → [ok] Created issue #18: Add comprehensive README for ui crate (agent: claude)
+t!:mcp__issues__issue_claim id=JCfqqy63  → [running] tokens_in=0 tokens_out=79 tokens_cached=95495
+o: id=JCfqqy63 → [ok] Claimed issue #18
+t!:Read id=C7rkJHPQ file_path=/home/christopherdavid/code/openagents/crates/ui/Cargo.toml → [running] tokens_in=0 tokens_out=8 tokens_cached=95722
+t!:Bash id=1YXQ6AQL cmd="find crates/ui/src -name "*.rs" -type f | head -20" → [running] tokens_in=0 tokens_out=8 tokens_cached=95722
+t!:Read id=KAWe3spi file_path=/home/christopherdavid/code/openagents/crates/ui/src/lib.rs → [running] tokens_in=0 tokens_out=8 tokens_cached=95722
+o: id=C7rkJHPQ → [ok]      1→[package]
+o: id=KAWe3spi → [ok]      1→//! Maud/HTMX/Tailwind components for OpenAgents.
+o: id=1YXQ6AQL → [ok] crates/ui/src/button.rs
+t!:Bash id=4HioogUN cmd="find crates/ui/src/recorder -name "*.rs" -type f" → [running] tokens_in=1315 tokens_out=26 tokens_cached=95859
+t!:Read id=NrUUiRKC file_path=/home/christopherdavid/code/openagents/crates/ui/src/recorder/mod.rs → [running] tokens_in=1315 tokens_out=26 tokens_cached=95859
+t!:Read id=VWNFKHCA file_path=/home/christopherdavid/code/openagents/crates/ui/src/button.rs → [running] tokens_in=1315 tokens_out=26 tokens_cached=95859
+o: id=NrUUiRKC → [ok]      1→//! Recorder UI components grouped by atoms, molecules, organisms, and sections.
+o: id=VWNFKHCA → [ok]      1→//! Button component using Tailwind CSS with semantic color tokens.
+o: id=4HioogUN → [ok] crates/ui/src/recorder/atoms/attempt_badge.rs
+t!:Read id=vHvrAjqi file_path=/home/christopherdavid/code/openagents/crates/ui/src/layout.rs → [running] tokens_in=1231 tokens_out=18 tokens_cached=96789
+t!:Read id=vqUDTVzr file_path=/home/christopherdavid/code/openagents/crates/ui/src/recorder/atoms/mod.rs → [running] tokens_in=1231 tokens_out=18 tokens_cached=96789
+t!:Bash id=oRJbDhde cmd="ls -la crates/ui/docs/ 2>/dev/null || echo "No ..." → [running] tokens_in=1231 tokens_out=18 tokens_cached=96789
+o: id=vHvrAjqi → [ok]      1→//! Base document layout with Tailwind CSS.
+o: id=vqUDTVzr → [ok]      1→//! Recorder atom components for session log display.
+o: id=oRJbDhde → [ok] Permissions Size User             Date Modified Name
+t!:Read id=kp7xQZSB file_path=/home/christopherdavid/code/openagents/crates/ui/docs/README.md → [running] tokens_in=4 tokens_out=25 tokens_cached=99195
+t!:Read id=ZohZe1GD file_path=/home/christopherdavid/code/openagents/crates/ui/docs/components.md → [running] tokens_in=4 tokens_out=25 tokens_cached=99195
+t!:Read id=PHSzsjXH file_path=/home/christopherdavid/code/openagents/crates/ui/docs/conventions.md → [running] tokens_in=4 tokens_out=197 tokens_cached=99195
+o: id=kp7xQZSB → [ok]      1→# OpenAgents UI System
+o: id=ZohZe1GD → [ok]      1→# Components
+o: id=PHSzsjXH → [ok]      1→# Design Conventions
+t!:Write id=VfVVK9cZ file_path=/home/christopherdavid/code/openagents/crates/ui/README.md → [running] tokens_in=4 tokens_out=5887 tokens_cached=101850
+o: id=VfVVK9cZ → [ok] File created successfully at: /home/christopherdavid/code/openagents/crates/ui/README.md
+t!:Bash id=rnUtRktf cmd="git add -A && git commit -m "$(cat <<'EOF'" → [running] tokens_in=2 tokens_out=26 tokens_cached=106161
