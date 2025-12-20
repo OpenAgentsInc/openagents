@@ -48,6 +48,7 @@ base64 = { workspace = true, optional = true }
 chacha20 = { version = "0.9.1", optional = true }
 hkdf = { version = "0.12.4", optional = true }
 hmac = { version = "0.12.1", optional = true }
+urlencoding = "2.1.3"
 
 [features]
 default = ["full"]
