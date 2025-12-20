@@ -365,6 +365,54 @@ fn resolve_model(model: &str) -> String {
     }
 }
 
+/// Compaction hook to provide custom instructions
+struct CompactionHook;
+
+#[async_trait]
+impl HookCallback for CompactionHook {
+    async fn call(
+        &self,
+        input: HookInput,
+        _tool_use_id: Option<String>,
+    ) -> Result<HookOutput, claude_agent_sdk::Error> {
+        if let HookInput::PreCompact(compact_input) = input {
+            // Detect appropriate strategy based on session (simple heuristic for now)
+            let strategy = if compact_input.base.session_id.contains("auto") {
+                autopilot::compaction::CompactionStrategy::Autonomous
+            } else {
+                autopilot::compaction::CompactionStrategy::Detailed
+            };
+
+            let custom_instructions = autopilot::compaction::generate_compaction_prompt(
+                strategy,
+                compact_input.custom_instructions.as_deref(),
+            );
+
+            eprintln!("🔄 Compaction triggered ({})",
+                if matches!(compact_input.trigger, claude_agent_sdk::CompactTrigger::Auto) {
+                    "auto"
+                } else {
+                    "manual"
+                });
+            eprintln!("📝 Using strategy: {}", strategy.as_str());
+
+            return Ok(HookOutput::Sync(SyncHookOutput {
+                decision: Some(claude_agent_sdk::HookDecision::Approve),
+                system_message: Some(custom_instructions),
+                hook_specific_output: None,
+                ..Default::default()
+            }));
+        }
+
+        Ok(HookOutput::Sync(SyncHookOutput {
+            decision: Some(claude_agent_sdk::HookDecision::Approve),
+            system_message: None,
+            hook_specific_output: None,
+            ..Default::default()
+        }))
+    }
+}
+
 /// Plan mode hook to enforce restrictions
 struct PlanModeHook;
 
@@ -524,12 +572,16 @@ async fn run_task(
         }
     }
 
-    // Setup query options with plan mode hook
+    // Setup query options with hooks
     let plan_mode_hook = std::sync::Arc::new(PlanModeHook);
-    let hook_matcher = HookCallbackMatcher::new().hook(plan_mode_hook);
+    let plan_hook_matcher = HookCallbackMatcher::new().hook(plan_mode_hook);
+
+    let compaction_hook = std::sync::Arc::new(CompactionHook);
+    let compact_hook_matcher = HookCallbackMatcher::new().hook(compaction_hook);
 
     let mut hooks = std::collections::HashMap::new();
-    hooks.insert(HookEvent::PreToolUse, vec![hook_matcher]);
+    hooks.insert(HookEvent::PreToolUse, vec![plan_hook_matcher]);
+    hooks.insert(HookEvent::PreCompact, vec![compact_hook_matcher]);
 
     let options = QueryOptions::new()
         .model(&model)
