@@ -759,14 +759,22 @@ async fn run_full_auto_loop(
 ) -> Result<()> {
     use issues::{db, issue};
 
-    // First run with the initial prompt
-    let mut session = unstable_v2_create_session(options).await?;
-    session.send(initial_prompt).await?;
-
     let mut continuation_count = 0;
     const MAX_CONTINUATIONS: u32 = 1000; // Safety limit
+    let mut current_prompt = initial_prompt.to_string();
+    let mut is_continuation = false;
 
     loop {
+        // Create a new session for each iteration
+        // For continuations, use continue_session to resume the conversation
+        let mut session_options = options.clone();
+        if is_continuation {
+            session_options.continue_session = true;
+        }
+
+        let mut session = unstable_v2_create_session(session_options).await?;
+        session.send(&current_prompt).await?;
+
         // Process messages until stream ends
         let mut budget_exhausted = false;
         let mut max_turns_reached = false;
@@ -853,20 +861,15 @@ async fn run_full_auto_loop(
             println!("\n{} Issues still available - forcing continuation", "AUTO:".cyan().bold());
         }
 
-        // Force continuation - the agent stopped but there's work to do
-        println!("{} Sending continuation prompt (attempt {})", "AUTO:".yellow().bold(), continuation_count);
+        // Set up for continuation
+        println!("{} Creating new session with continue_session=true (attempt {})", "AUTO:".yellow().bold(), continuation_count);
 
-        let continuation_prompt = if has_more_work {
-            "CONTINUE: You stopped prematurely. There are still issues to work on. Call issue_ready NOW and continue the autonomous loop. DO NOT summarize - just call issue_ready immediately."
+        current_prompt = if has_more_work {
+            "CONTINUE: You stopped prematurely. There are still issues to work on. Call issue_ready NOW and continue the autonomous loop. DO NOT summarize - just call issue_ready immediately.".to_string()
         } else {
-            "CONTINUE: You stopped prematurely. No issues are ready, so create a new issue with issue_create based on your analysis of the codebase, then claim and implement it. DO NOT summarize."
+            "CONTINUE: You stopped prematurely. No issues are ready, so create a new issue with issue_create based on your analysis of the codebase, then claim and implement it. DO NOT summarize.".to_string()
         };
-
-        // Send continuation
-        if let Err(e) = session.send(continuation_prompt).await {
-            println!("{} Failed to send continuation: {} - stopping", "ERROR:".red(), e);
-            break;
-        }
+        is_continuation = true;
     }
 
     Ok(())
