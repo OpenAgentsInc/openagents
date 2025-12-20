@@ -71,6 +71,9 @@ tasks-cli-*/
 .openagents/*.db
 .openagents/*.db-*
 
+# Exception: Track issues.json for cross-machine sync
+!.openagents/issues.json
+
 # Terminal-Bench run history (local only)
 .openagents/tb-runs/
 
