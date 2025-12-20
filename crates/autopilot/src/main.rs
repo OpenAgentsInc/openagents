@@ -34,8 +34,8 @@ enum Commands {
         #[arg(short, long)]
         cwd: Option<PathBuf>,
 
-        /// Model to use
-        #[arg(short, long, default_value = "claude-sonnet-4-5-20250929")]
+        /// Model to use (sonnet, opus, haiku, or full model ID)
+        #[arg(short, long, default_value = "sonnet")]
         model: String,
 
         /// Maximum turns
@@ -99,6 +99,17 @@ async fn main() -> Result<()> {
     }
 }
 
+/// Map friendly model names to full model IDs
+fn resolve_model(model: &str) -> String {
+    match model.to_lowercase().as_str() {
+        "sonnet" => "claude-sonnet-4-5-20250929".to_string(),
+        "opus" => "claude-opus-4-5-20251101".to_string(),
+        "haiku" => "claude-haiku-4-20250514".to_string(),
+        // If not a friendly name, assume it's a full model ID
+        _ => model.to_string(),
+    }
+}
+
 async fn run_task(
     prompt: String,
     cwd: Option<PathBuf>,
@@ -113,6 +124,9 @@ async fn run_task(
     issues_db: Option<PathBuf>,
 ) -> Result<()> {
     let cwd = cwd.unwrap_or_else(|| std::env::current_dir().unwrap());
+
+    // Resolve friendly model names to full model IDs
+    let model = resolve_model(&model);
 
     // Get git info
     let repo_sha = get_git_sha(&cwd).unwrap_or_else(|_| "unknown".to_string());
