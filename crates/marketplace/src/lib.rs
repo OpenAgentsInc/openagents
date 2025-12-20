@@ -3,6 +3,7 @@
 //! This crate provides infrastructure for discovering, installing, and managing
 //! marketplace items including plugins, skills, and agents.
 
+pub mod agents;
 pub mod api;
 pub mod budget;
 pub mod creator_dashboard;
@@ -21,6 +22,10 @@ pub mod skills;
 pub mod trust;
 pub mod types;
 
+pub use agents::{
+    Agent, AgentAvailability, AgentListing, AgentPricing, AgentSpawnRequest as AgentsSpawnRequest,
+    AgentStatus, AgentWallet, PricingModel,
+};
 pub use api::{
     AgentSpawnRequest, AgentSpawnResponse, ApiError, BalanceResponse, CoalitionProposalRequest,
     CoalitionProposalResponse, ComputeJobRequest, ComputeJobResponse, DataBountyRequest,
