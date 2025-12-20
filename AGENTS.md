@@ -83,6 +83,17 @@ All crates in `crates/` must use `edition = "2024"` in their `Cargo.toml`.
 
 ---
 
+## Nostr Protocol Development
+
+When implementing NIPs (Nostr Implementation Possibilities):
+
+**IMPORTANT: NIP specifications are in `~/code/nips/` directory.**
+- Read specs from local files: `~/code/nips/09.md` for NIP-09, etc.
+- Do NOT web search for NIP specifications
+- Reference implementations in `~/code/nostr` and `~/code/nostr-rs-relay` (for study only)
+
+---
+
 ## Autopilot Daemon
 
 The `autopilotd` daemon supervises autopilot worker processes, handling crashes and memory pressure.
