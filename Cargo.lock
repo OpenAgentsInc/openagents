@@ -1133,6 +1133,8 @@ dependencies = [
  "anyhow",
  "futures-util",
  "maud",
+ "recorder",
+ "serde",
  "tao",
  "tokio",
  "tracing",
