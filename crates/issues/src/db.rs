@@ -221,4 +221,67 @@ mod tests {
         assert_eq!(next_issue_number(&conn).unwrap(), 2);
         assert_eq!(next_issue_number(&conn).unwrap(), 3);
     }
+
+    #[test]
+    fn test_counter_auto_resync_on_manual_insert() {
+        let conn = init_memory_db().unwrap();
+
+        // Get first number normally
+        assert_eq!(next_issue_number(&conn).unwrap(), 1);
+
+        // Manually insert an issue with a high number (simulating manual sqlite3 insert)
+        conn.execute(
+            "INSERT INTO issues (id, number, title, description, status, created_at, updated_at)
+             VALUES ('manual-1', 100, 'Manual Issue', 'Test', 'open', datetime('now'), datetime('now'))",
+            []
+        ).unwrap();
+
+        // The trigger should have updated the counter to 101
+        assert_eq!(next_issue_number(&conn).unwrap(), 101);
+        assert_eq!(next_issue_number(&conn).unwrap(), 102);
+    }
+
+    #[test]
+    fn test_unique_constraint_on_number() {
+        let conn = init_memory_db().unwrap();
+
+        // Create first issue
+        conn.execute(
+            "INSERT INTO issues (id, number, title, description, status, created_at, updated_at)
+             VALUES ('test-1', 1, 'First', 'Test', 'open', datetime('now'), datetime('now'))",
+            []
+        ).unwrap();
+
+        // Try to create second issue with same number - should fail
+        let result = conn.execute(
+            "INSERT INTO issues (id, number, title, description, status, created_at, updated_at)
+             VALUES ('test-2', 1, 'Second', 'Test', 'open', datetime('now'), datetime('now'))",
+            []
+        );
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_not_null_constraint_on_id() {
+        let conn = init_memory_db().unwrap();
+
+        // Try to insert issue with NULL id - should fail
+        let result = conn.execute(
+            "INSERT INTO issues (id, number, title, description, status, created_at, updated_at)
+             VALUES (NULL, 1, 'Test', 'Test', 'open', datetime('now'), datetime('now'))",
+            []
+        );
+
+        assert!(result.is_err());
+
+        // Try to insert issue with empty id - should also fail (CHECK constraint)
+        let result = conn.execute(
+            "INSERT INTO issues (id, number, title, description, status, created_at, updated_at)
+             VALUES ('', 2, 'Test', 'Test', 'open', datetime('now'), datetime('now'))",
+            []
+        );
+
+        assert!(result.is_err());
+    }
 }
