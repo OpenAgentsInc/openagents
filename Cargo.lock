@@ -2834,6 +2834,7 @@ dependencies = [
  "bech32",
  "bip39",
  "bitcoin",
+ "chrono",
  "hex",
  "rand 0.9.2",
  "serde",
