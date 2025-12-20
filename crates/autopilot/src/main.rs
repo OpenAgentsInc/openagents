@@ -546,14 +546,13 @@ fn print_progress(msg: &SdkMessage) {
     match msg {
         SdkMessage::ToolProgress(p) => {
             println!(
-                "{} {} ({:.1}s)",
-                "Working:".yellow(),
-                p.tool_name,
+                "  {} ({:.1}s)",
+                "working...".yellow().dimmed(),
                 p.elapsed_time_seconds
             );
         }
         SdkMessage::Result(_) => {
-            println!("{}", "Complete".green());
+            println!("{}", "@end".green().bold());
         }
         SdkMessage::Assistant(a) => {
             if let Some(content) = a.message.get("content").and_then(|c| c.as_array()) {
@@ -561,8 +560,21 @@ fn print_progress(msg: &SdkMessage) {
                     let block_type = block.get("type").and_then(|t| t.as_str()).unwrap_or("");
                     match block_type {
                         "text" => {
-                            // Show what the agent is thinking/saying
+                            // Show what the agent is saying (recorder-style)
                             let text = block.get("text").and_then(|t| t.as_str()).unwrap_or("");
+                            let first_line = text.lines().next().unwrap_or("");
+                            let truncated = if first_line.len() > 100 {
+                                format!("{}...", &first_line[..97])
+                            } else {
+                                first_line.to_string()
+                            };
+                            if !truncated.is_empty() {
+                                println!("{} {}", "a:".green(), truncated.dimmed());
+                            }
+                        }
+                        "thinking" => {
+                            // Show thinking (recorder-style)
+                            let text = block.get("thinking").and_then(|t| t.as_str()).unwrap_or("");
                             let first_line = text.lines().next().unwrap_or("");
                             let truncated = if first_line.len() > 80 {
                                 format!("{}...", &first_line[..77])
@@ -570,50 +582,148 @@ fn print_progress(msg: &SdkMessage) {
                                 first_line.to_string()
                             };
                             if !truncated.is_empty() {
-                                println!("{} {}", "Agent:".green(), truncated);
+                                println!("{} {}", "th:".yellow(), truncated.dimmed());
                             }
                         }
                         "tool_use" => {
                             let tool = block.get("name").and_then(|n| n.as_str()).unwrap_or("");
+                            let tool_id = block.get("id").and_then(|i| i.as_str()).unwrap_or("");
                             let input = block.get("input");
 
-                            // Extract context based on tool type
-                            let context = match tool {
+                            // Format tool args (same as rlog)
+                            let args = match tool {
                                 "Bash" => input
                                     .and_then(|i| i.get("command"))
                                     .and_then(|c| c.as_str())
                                     .map(|c| {
-                                        let truncated = if c.len() > 60 { format!("{}...", &c[..57]) } else { c.to_string() };
-                                        format!("$ {}", truncated)
-                                    }),
+                                        let truncated = if c.len() > 50 { format!("{}...", &c[..47]) } else { c.to_string() };
+                                        format!("cmd=\"{}\"", truncated)
+                                    })
+                                    .unwrap_or_default(),
                                 "Read" | "Write" | "Edit" => input
                                     .and_then(|i| i.get("file_path"))
                                     .and_then(|p| p.as_str())
-                                    .map(|p| {
-                                        // Show just filename
-                                        p.rsplit('/').next().unwrap_or(p).to_string()
-                                    }),
+                                    .map(|p| format!("file_path={}", p))
+                                    .unwrap_or_default(),
                                 "Glob" => input
                                     .and_then(|i| i.get("pattern"))
                                     .and_then(|p| p.as_str())
-                                    .map(|p| p.to_string()),
+                                    .map(|p| format!("pattern=\"{}\"", p))
+                                    .unwrap_or_default(),
                                 "Grep" => input
                                     .and_then(|i| i.get("pattern"))
                                     .and_then(|p| p.as_str())
-                                    .map(|p| format!("/{}/", p)),
+                                    .map(|p| {
+                                        let truncated = if p.len() > 30 { format!("{}...", &p[..27]) } else { p.to_string() };
+                                        format!("pattern=\"{}\"", truncated)
+                                    })
+                                    .unwrap_or_default(),
                                 "Task" => input
                                     .and_then(|i| i.get("description"))
                                     .and_then(|d| d.as_str())
-                                    .map(|d| d.to_string()),
-                                _ => None,
+                                    .map(|d| {
+                                        let truncated = if d.len() > 40 { format!("{}...", &d[..37]) } else { d.to_string() };
+                                        format!("desc=\"{}\"", truncated)
+                                    })
+                                    .unwrap_or_default(),
+                                _ => String::new(),
                             };
 
-                            match context {
-                                Some(ctx) => println!("{} {} {}", "Tool:".blue(), tool.yellow(), ctx.dimmed()),
-                                None => println!("{} {}", "Tool:".blue(), tool.yellow()),
-                            }
+                            // Get short tool ID (last 8 chars)
+                            let id_short = if tool_id.len() > 8 {
+                                &tool_id[tool_id.len() - 8..]
+                            } else {
+                                tool_id
+                            };
+
+                            // Print in recorder style: t!:ToolName id=xxx args → [running]
+                            let args_str = if args.is_empty() {
+                                String::new()
+                            } else {
+                                format!(" {}", args)
+                            };
+                            println!(
+                                "{} {} {}{} {}",
+                                "t!:".blue().bold(),
+                                tool.cyan(),
+                                format!("id={}", id_short).dimmed(),
+                                args_str.dimmed(),
+                                "→ [running]".yellow()
+                            );
                         }
                         _ => {}
+                    }
+                }
+            }
+        }
+        SdkMessage::User(u) => {
+            // Show tool results in recorder style
+            if let Some(content) = u.message.get("content") {
+                if let serde_json::Value::Array(arr) = content {
+                    for block in arr {
+                        if block.get("type").and_then(|t| t.as_str()) == Some("tool_result") {
+                            let tool_id = block
+                                .get("tool_use_id")
+                                .and_then(|i| i.as_str())
+                                .unwrap_or("");
+                            let is_error = block
+                                .get("is_error")
+                                .and_then(|e| e.as_bool())
+                                .unwrap_or(false);
+
+                            // Get short tool ID (last 8 chars)
+                            let id_short = if tool_id.len() > 8 {
+                                &tool_id[tool_id.len() - 8..]
+                            } else {
+                                tool_id
+                            };
+
+                            // Get output content
+                            let output = block
+                                .get("content")
+                                .and_then(|c| {
+                                    if let Some(s) = c.as_str() {
+                                        Some(s.to_string())
+                                    } else if let Some(arr) = c.as_array() {
+                                        arr.first()
+                                            .and_then(|b| b.get("text"))
+                                            .and_then(|t| t.as_str())
+                                            .map(|s| s.to_string())
+                                    } else {
+                                        None
+                                    }
+                                })
+                                .unwrap_or_default();
+
+                            let first_line = output.lines().next().unwrap_or("");
+                            let truncated = if first_line.len() > 60 {
+                                format!("{}...", &first_line[..57])
+                            } else {
+                                first_line.to_string()
+                            };
+
+                            // Print in recorder style: o: id=xxx → [ok]/[error] output
+                            let status = if is_error {
+                                "[error]".red()
+                            } else {
+                                "[ok]".green()
+                            };
+
+                            let output_str = if truncated.is_empty() {
+                                String::new()
+                            } else {
+                                format!(" {}", truncated.dimmed())
+                            };
+
+                            println!(
+                                "{} {} {} {}{}",
+                                "o:".magenta(),
+                                format!("id={}", id_short).dimmed(),
+                                "→".dimmed(),
+                                status,
+                                output_str
+                            );
+                        }
                     }
                 }
             }
