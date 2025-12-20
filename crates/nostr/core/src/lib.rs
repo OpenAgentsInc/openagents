@@ -6,6 +6,7 @@
 //! - NIP-04: Encrypted Direct Messages (requires `full` feature)
 //! - NIP-05: Mapping Nostr Keys to DNS-based Internet Identifiers
 //! - NIP-06: Key derivation from BIP39 mnemonic seed phrases (requires `full` feature)
+//! - NIP-09: Event Deletion Request
 //! - NIP-10: Text Notes and Threads
 //! - NIP-11: Relay Information Document
 //! - NIP-13: Proof of Work
@@ -41,6 +42,7 @@ mod nip04;
 mod nip05;
 #[cfg(feature = "full")]
 mod nip06;
+mod nip09;
 mod nip10;
 mod nip11;
 mod nip13;
@@ -95,6 +97,13 @@ pub use nip06::{
     Keypair, Nip06Error, derive_keypair, derive_keypair_full, derive_keypair_with_account,
     mnemonic_to_seed, npub_to_public_key, nsec_to_private_key, private_key_to_nsec,
     public_key_to_npub,
+};
+
+// NIP-09: Event Deletion Request
+pub use nip09::{
+    DELETION_REQUEST_KIND, Nip09Error, create_deletion_tags, create_deletion_tags_for_addresses,
+    get_deleted_addresses, get_deleted_event_ids, get_deleted_kinds, get_deletion_reason,
+    is_deletion_request, should_delete_event,
 };
 
 // NIP-10: Text Notes and Threads
