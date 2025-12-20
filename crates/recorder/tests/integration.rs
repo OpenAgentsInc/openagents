@@ -183,7 +183,7 @@ fn test_parse_all_line_types() {
 #[test]
 fn test_parse_line_with_metadata() {
     let mut content = minimal_header();
-    content.push_str("t|call_1 step=5 ts=12:34:56: Read file=/path/to/file.rs\n");
+    content.push_str("t:call_1 step=5 ts=12:34:56: Read file=/path/to/file.rs\n");
 
     let result = parse_content(&content);
     assert!(result.is_ok());
@@ -216,8 +216,8 @@ fn test_parse_line_with_tokens() {
 #[test]
 fn test_parse_tool_with_result() {
     let mut content = minimal_header();
-    content.push_str("t|call_1: Bash command='ls -la'\n");
-    content.push_str("o|call_1 lat=245ms: [file list output]\n");
+    content.push_str("t:call_1: Bash command='ls -la'\n");
+    content.push_str("o:call_1 lat=245ms: [file list output]\n");
 
     let result = parse_content(&content);
     assert!(result.is_ok());
@@ -253,7 +253,7 @@ fn test_parse_multiline_content() {
 fn test_parse_blob_references() {
     let mut content = minimal_header();
     content.push_str("a: Here's the file: @blob:abc123\n");
-    content.push_str("t|call_1: Read @blob:def456\n");
+    content.push_str("t:call_1: Read @blob:def456\n");
 
     let result = parse_content(&content);
     assert!(result.is_ok());
@@ -266,7 +266,7 @@ fn test_parse_blob_references() {
 #[test]
 fn test_parse_redacted_values() {
     let mut content = minimal_header();
-    content.push_str("t|call_1: Connect password=<REDACTED>\n");
+    content.push_str("t:call_1: Connect password=<REDACTED>\n");
     content.push_str("a: Using API key <REDACTED:8 chars>\n");
 
     let result = parse_content(&content);
@@ -286,8 +286,8 @@ fn test_validation_statistics() {
     let mut content = complete_header();
     content.push_str("u: First message\n");
     content.push_str("a in=1000 out=500: Response\n");
-    content.push_str("t|call_1 step=1: Bash ls\n");
-    content.push_str("o|call_1: [output]\n");
+    content.push_str("t:call_1 step=1: Bash ls\n");
+    content.push_str("o:call_1: [output]\n");
     content.push_str("i: Thinking...\n");
     content.push_str("#: A comment\n");
     content.push_str("a in=800 out=400 cached=200: Final response\n");
@@ -335,9 +335,9 @@ fn test_validation_statistics() {
 #[test]
 fn test_validation_detects_orphaned_observations() {
     let mut content = minimal_header();
-    content.push_str("t|call_1: Bash ls\n");
-    content.push_str("o|call_1: [output]\n");
-    content.push_str("o|call_2: [orphaned - no matching tool call]\n");
+    content.push_str("t:call_1: Bash ls\n");
+    content.push_str("o:call_1: [output]\n");
+    content.push_str("o:call_2: [orphaned - no matching tool call]\n");
 
     let result = parse_content(&content);
     assert!(result.is_ok(), "Should parse but may have validation warnings");
@@ -400,8 +400,8 @@ fn test_roundtrip_simple_session() {
 #[test]
 fn test_roundtrip_with_metadata() {
     let original = minimal_header() +
-        "t|call_1 step=5 ts=12:34:56: Glob pattern=*.rs\n" +
-        "o|call_1 lat=123ms: Found 10 files\n";
+        "t:call_1 step=5 ts=12:34:56: Glob pattern=*.rs\n" +
+        "o:call_1 lat=123ms: Found 10 files\n";
 
     let session = parse_content(&original).expect("Should parse");
 
@@ -435,7 +435,7 @@ fn test_malformed_line_prefix() {
 #[test]
 fn test_truncated_metadata() {
     let mut content = minimal_header();
-    content.push_str("t|call_1 step=: Missing step value\n");
+    content.push_str("t:call_1 step=: Missing step value\n");
 
     let result = parse_content(&content);
     // Should parse but may have invalid metadata
@@ -487,19 +487,19 @@ fn test_complete_agent_session() {
     content.push_str("a step=3 ts=00:00:02 in=1200 out=45: I'll check the authentication module.\n");
 
     // Tool call
-    content.push_str("t|call_1 step=4 ts=00:00:03: Read file=src/auth.rs\n");
+    content.push_str("t:call_1 step=4 ts=00:00:03: Read file=src/auth.rs\n");
 
     // Tool result
-    content.push_str("o|call_1 step=5 ts=00:00:05 lat=2000ms: [file contents]\n");
+    content.push_str("o:call_1 step=5 ts=00:00:05 lat=2000ms: [file contents]\n");
 
     // Agent analysis
     content.push_str("a step=6 ts=00:00:06 in=2500 out=120: Found the issue on line 42.\n");
 
     // Another tool call
-    content.push_str("t|call_2 step=7 ts=00:00:07: Edit file=src/auth.rs old='token.clone()' new='token'\n");
+    content.push_str("t:call_2 step=7 ts=00:00:07: Edit file=src/auth.rs old='token.clone()' new='token'\n");
 
     // Tool result
-    content.push_str("o|call_2 step=8 ts=00:00:08 lat=50ms result=success: File updated\n");
+    content.push_str("o:call_2 step=8 ts=00:00:08 lat=50ms result=success: File updated\n");
 
     // Final response
     content.push_str("a step=9 ts=00:00:09 in=1800 out=85: Fixed the redundant clone.\n");
@@ -530,10 +530,10 @@ fn test_session_with_subagents() {
     let mut content = minimal_header();
 
     content.push_str("u: Analyze the codebase\n");
-    content.push_str("s|agent_explore: Starting exploration\n");
-    content.push_str("t|call_1: Glob **/*.rs\n");
-    content.push_str("o|call_1: Found 100 files\n");
-    content.push_str("s|agent_explore: Exploration complete\n");
+    content.push_str("x:agent_explore: Starting exploration\n");
+    content.push_str("t:call_1: Glob **/*.rs\n");
+    content.push_str("o:call_1: Found 100 files\n");
+    content.push_str("x:agent_explore: Exploration complete\n");
     content.push_str("a: Found 100 Rust files.\n");
 
     let result = parse_content(&content);
