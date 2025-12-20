@@ -37,6 +37,26 @@ Conventions:
 - NEVER use `-i` flag (interactive not supported)
 - NEVER use destructive git commands (`git reset --hard`, `git checkout -- .`, `git restore .`) without asking first
 
+**Autopilot Commits:**
+When running in autopilot mode (autonomous issue processing), include an additional co-author line to identify work done through the autopilot system:
+
+```
+Co-Authored-By: Autopilot <autopilot@openagents.com>
+```
+
+This should appear after the Claude co-author line in commit messages:
+
+```
+Your commit message here
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)
+
+Co-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>
+Co-Authored-By: Autopilot <autopilot@openagents.com>
+```
+
+This makes it easy to identify commits that came through the autonomous autopilot workflow vs regular Claude Code usage.
+
 ---
 
 ## Database Operations
