@@ -338,12 +338,12 @@ fn default_ui() -> bool {
         .unwrap_or(false)
 }
 
-/// Get default max_turns from environment or fallback to 50
+/// Get default max_turns from environment or fallback to 9999 (effectively unlimited)
 fn default_max_turns() -> u32 {
     std::env::var("AUTOPILOT_MAX_TURNS")
         .ok()
         .and_then(|v| v.parse().ok())
-        .unwrap_or(50)
+        .unwrap_or(9999)
 }
 
 /// Get default max_budget from environment or fallback to 5.0
