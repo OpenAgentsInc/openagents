@@ -20,6 +20,7 @@
 //! - NIP-22: Comment
 //! - NIP-23: Long-form Content
 //! - NIP-25: Reactions
+//! - NIP-26: Delegated Event Signing
 //! - NIP-27: Text Note References
 //! - NIP-28: Public Chat (channels, messages, moderation)
 //! - NIP-33: Parameterized Replaceable Events (deprecated, moved to NIP-01)
@@ -68,6 +69,7 @@ mod nip21;
 mod nip22;
 mod nip23;
 mod nip25;
+mod nip26;
 mod nip27;
 mod nip28;
 mod nip33;
@@ -194,6 +196,13 @@ pub use nip23::{
 // NIP-25: Reactions
 pub use nip25::{
     EXTERNAL_REACTION_KIND, Nip25Error, REACTION_KIND, Reaction, ReactionType, is_reaction_kind,
+};
+
+// NIP-26: Delegated Event Signing
+pub use nip26::{
+    Condition, Nip26Error, check_delegation_conditions, conditions_to_string,
+    create_delegation_string, create_delegation_token, parse_conditions, validate_delegation,
+    verify_delegation_token,
 };
 
 // NIP-27: Text Note References
