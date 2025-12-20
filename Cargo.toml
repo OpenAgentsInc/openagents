@@ -4,6 +4,7 @@ members = [
     "crates/autopilot",
     "crates/issues",
     "crates/issues-mcp",
+    "crates/marketplace",
     "crates/recorder",
     "crates/desktop",
     "crates/ui",
