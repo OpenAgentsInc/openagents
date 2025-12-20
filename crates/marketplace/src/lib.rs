@@ -8,6 +8,7 @@ pub mod data_consumer;
 pub mod data_contribution;
 pub mod db;
 pub mod discovery;
+pub mod job_routing;
 pub mod provider_reputation;
 pub mod redaction;
 pub mod repository;
@@ -27,6 +28,10 @@ pub use data_contribution::{
     DataContributionType, PaymentInfo, VerificationResult,
 };
 pub use discovery::{SearchFilters, SkillListing, SortOrder, discover_local_skills};
+pub use job_routing::{
+    FailoverChain, FailoverPolicy, JobErrorType, ProviderScore, RetryDecision,
+    RoutingError, SelectionCriteria, should_retry,
+};
 pub use provider_reputation::{
     EconomicScore, ProviderReputation, ReputationError, ReputationTier, SocialScore,
     TierBenefits, TrackRecordScore, VerificationScore,
