@@ -54,7 +54,6 @@ impl Query {
     ) -> Result<Self> {
         let prompt = prompt.into();
         let args = options.build_args();
-
         let env = options.env.clone().map(|e| e.into_iter().collect());
 
         let transport =

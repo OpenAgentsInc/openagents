@@ -5,6 +5,7 @@ use clap::{Parser, Subcommand};
 use claude_agent_sdk::{QueryOptions, SdkMessage, SettingSource, query};
 use colored::*;
 use futures::StreamExt;
+use serde_json::json;
 use std::path::PathBuf;
 
 use autopilot::rlog::RlogWriter;
@@ -60,6 +61,14 @@ enum Commands {
         /// Verbose output (show all messages)
         #[arg(short, long)]
         verbose: bool,
+
+        /// Enable issue tracking tools via MCP
+        #[arg(long)]
+        with_issues: bool,
+
+        /// Path to issues database (default: autopilot.db in cwd)
+        #[arg(long)]
+        issues_db: Option<PathBuf>,
     },
 }
 
@@ -78,9 +87,12 @@ async fn main() -> Result<()> {
             slug,
             dry_run,
             verbose,
+            with_issues,
+            issues_db,
         } => {
             run_task(
                 prompt, cwd, model, max_turns, max_budget, output_dir, slug, dry_run, verbose,
+                with_issues, issues_db,
             )
             .await
         }
@@ -97,6 +109,8 @@ async fn run_task(
     slug: Option<String>,
     dry_run: bool,
     verbose: bool,
+    with_issues: bool,
+    issues_db: Option<PathBuf>,
 ) -> Result<()> {
     let cwd = cwd.unwrap_or_else(|| std::env::current_dir().unwrap());
 
@@ -132,6 +146,37 @@ async fn run_task(
         .cwd(&cwd)
         .setting_sources(vec![SettingSource::Project, SettingSource::User])
         .dangerously_skip_permissions(true);
+
+    // Write .mcp.json file for issue tracking MCP server if requested
+    let mcp_json_path = cwd.join(".mcp.json");
+    let cleanup_mcp_json = if with_issues {
+        let db_path = issues_db
+            .unwrap_or_else(|| cwd.join("autopilot.db"))
+            .display()
+            .to_string();
+
+        println!("{} {}", "Issues DB:".dimmed(), db_path);
+
+        // Build MCP server configuration
+        let mcp_config = json!({
+            "mcpServers": {
+                "issues": {
+                    "command": "cargo",
+                    "args": ["run", "--release", "-p", "issues-mcp"],
+                    "env": {
+                        "ISSUES_DB": db_path
+                    }
+                }
+            }
+        });
+
+        // Write .mcp.json file
+        std::fs::write(&mcp_json_path, serde_json::to_string_pretty(&mcp_config).unwrap())?;
+        println!("{} {}", "MCP config:".dimmed(), mcp_json_path.display());
+        true
+    } else {
+        false
+    };
 
     // Execute query
     let mut stream = query(&prompt, options).await?;
@@ -172,6 +217,11 @@ async fn run_task(
         let json_path = output_dir.join(filename(&slug, "json"));
         std::fs::write(&json_path, &json_content)?;
         println!("{} {}", "Saved:".green(), json_path.display());
+    }
+
+    // Cleanup .mcp.json if we created it
+    if cleanup_mcp_json && mcp_json_path.exists() {
+        std::fs::remove_file(&mcp_json_path)?;
     }
 
     Ok(())

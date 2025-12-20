@@ -659,6 +659,8 @@ impl QueryOptions {
             args.push(beta.clone());
         }
 
+        // Note: MCP servers are passed via Initialize control request, not CLI args
+
         // Extra args
         for (key, value) in &self.extra_args {
             args.push(format!("--{}", key));
@@ -668,5 +670,26 @@ impl QueryOptions {
         }
 
         args
+    }
+
+    /// Build the SDK MCP servers configuration for the Initialize request.
+    ///
+    /// Returns a Vec of JSON-serialized MCP server configurations.
+    pub fn build_sdk_mcp_servers(&self) -> Option<Vec<String>> {
+        if self.mcp_servers.is_empty() {
+            return None;
+        }
+
+        Some(
+            self.mcp_servers
+                .iter()
+                .map(|(name, config)| {
+                    let config_json = serde_json::json!({
+                        name: config
+                    });
+                    config_json.to_string()
+                })
+                .collect(),
+        )
     }
 }
