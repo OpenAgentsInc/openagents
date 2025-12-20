@@ -204,7 +204,7 @@ const FULL_AUTO_PROMPT: &str = r#"
 
 FULL AUTO MODE: You are in autonomous mode. Your workflow:
 1. Call issue_ready to get the next available issue
-2. If an issue exists: claim it, implement it, test it, commit, complete it
+2. If an issue exists: claim it, implement it, test it, commit AND PUSH to main, complete it
 3. After completing, call issue_ready again for the next issue
 4. When issue_ready returns "No ready issues available":
    - Analyze the codebase to understand the project direction
@@ -212,6 +212,8 @@ FULL AUTO MODE: You are in autonomous mode. Your workflow:
    - Create a new issue using issue_create with your recommendation
    - Immediately claim and implement it
 5. Continue this loop until max_budget is reached
+
+IMPORTANT: Always `git push origin main` after each commit. Each issue should be pushed before moving to the next.
 
 Never stop. Always keep working. Always keep improving.
 "#;
