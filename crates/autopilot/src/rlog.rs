@@ -92,6 +92,62 @@ impl RlogWriter {
         Ok(())
     }
 
+    /// Update header with session ID and current token totals (rewrites the file)
+    /// This is called after the SDK Init message provides the session_id
+    pub fn update_header(&mut self, path: impl AsRef<Path>, traj: &Trajectory) -> std::io::Result<()> {
+        use std::io::{BufRead, BufReader};
+
+        // Read existing content after the header
+        let existing_steps = if let Ok(file) = File::open(path.as_ref()) {
+            let reader = BufReader::new(file);
+            let mut lines = Vec::new();
+            let mut in_header = true;
+            let mut header_end_count = 0;
+
+            for line in reader.lines() {
+                let line = line?;
+                if in_header {
+                    if line == "---" {
+                        header_end_count += 1;
+                        if header_end_count == 2 {
+                            in_header = false;
+                        }
+                    }
+                } else {
+                    // Skip the @start line, we'll rewrite it
+                    if !line.starts_with("@start") {
+                        lines.push(line);
+                    }
+                }
+            }
+            lines
+        } else {
+            Vec::new()
+        };
+
+        // Reopen file for writing (truncate)
+        let file = OpenOptions::new()
+            .create(true)
+            .write(true)
+            .truncate(true)
+            .open(path.as_ref())?;
+
+        self.file_writer = Some(BufWriter::new(file));
+
+        // Write updated header
+        self.write_header(traj)?;
+
+        // Write back existing steps
+        if let Some(writer) = &mut self.file_writer {
+            for line in existing_steps {
+                writeln!(writer, "{}", line)?;
+            }
+            writer.flush()?;
+        }
+
+        Ok(())
+    }
+
     /// Append a single step to the file (for streaming mode)
     pub fn append_step(&mut self, step: &Step) -> std::io::Result<()> {
         let line = self.step_to_line(step);
