@@ -21,6 +21,8 @@ mod compute_job;
 mod identity;
 mod nip01;
 #[cfg(feature = "full")]
+mod nip04;
+#[cfg(feature = "full")]
 mod nip06;
 mod nip28;
 mod nip57;
@@ -46,6 +48,10 @@ pub use nip01::{
     finalize_event, generate_secret_key, get_event_hash, get_public_key, get_public_key_hex,
     validate_event, verify_event,
 };
+
+// NIP-04: Encrypted Direct Messages (requires full feature)
+#[cfg(feature = "full")]
+pub use nip04::{ENCRYPTED_DM_KIND, Nip04Error, decrypt, encrypt};
 
 // NIP-06: Key derivation from mnemonic (requires full feature)
 #[cfg(feature = "full")]
