@@ -86,7 +86,7 @@ enum Commands {
         max_turns: u32,
 
         /// Maximum budget in USD
-        #[arg(long, default_value = "5.0")]
+        #[arg(long, default_value_t = default_max_budget())]
         max_budget: f64,
 
         /// Output directory for logs (default: docs/logs/YYYYMMDD/)
@@ -282,6 +282,14 @@ fn default_max_turns() -> u32 {
         .ok()
         .and_then(|v| v.parse().ok())
         .unwrap_or(50)
+}
+
+/// Get default max_budget from environment or fallback to 5.0
+fn default_max_budget() -> f64 {
+    std::env::var("AUTOPILOT_MAX_BUDGET")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(5.0)
 }
 
 /// Map friendly model names to full model IDs
