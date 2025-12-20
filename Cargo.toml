@@ -79,6 +79,7 @@ serde = { version = "1.0.221", features = ["derive", "rc"] }
 serde_json = { version = "1.0.144", features = ["preserve_order", "raw_value"] }
 sha2 = "0.10"
 shellexpand = "2.1.0"
+signal-hook = "0.3"
 similar = "2.0"
 ignore = "0.4.22"
 smallvec = { version = "1.6", features = ["union"] }
