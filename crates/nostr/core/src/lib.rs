@@ -27,6 +27,7 @@ mod nip05;
 #[cfg(feature = "full")]
 mod nip06;
 mod nip10;
+mod nip13;
 mod nip18;
 mod nip23;
 mod nip25;
@@ -78,6 +79,11 @@ pub use nip06::{
 // NIP-10: Text Notes and Threads
 pub use nip10::{
     ETagMarker, EventReference, Nip10Error, TEXT_NOTE_KIND, TextNote,
+};
+
+// NIP-13: Proof of Work
+pub use nip13::{
+    Nip13Error, calculate_difficulty, check_pow, get_difficulty, parse_nonce_tag, validate_pow,
 };
 
 // NIP-18: Reposts
