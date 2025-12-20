@@ -4,7 +4,7 @@ use actix_web::{App, HttpResponse, HttpServer, web};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use crate::views::{counter_fragment, home_page};
+use crate::views::{autopilot_page, counter_fragment, home_page};
 use crate::ws::{WsBroadcaster, ws_handler};
 
 /// Application state shared across handlers
@@ -24,6 +24,8 @@ pub async fn start_server(broadcaster: Arc<WsBroadcaster>) -> anyhow::Result<u16
         App::new()
             .app_data(state.clone())
             .route("/", web::get().to(index))
+            .route("/autopilot", web::get().to(autopilot))
+            .route("/events", web::post().to(events))
             .route("/increment", web::post().to(increment))
             .route("/ws", web::get().to(ws_route))
     })
@@ -41,6 +43,20 @@ async fn index() -> HttpResponse {
     HttpResponse::Ok()
         .content_type("text/html; charset=utf-8")
         .body(home_page(0).into_string())
+}
+
+/// Autopilot live viewer page
+async fn autopilot() -> HttpResponse {
+    HttpResponse::Ok()
+        .content_type("text/html; charset=utf-8")
+        .body(autopilot_page().into_string())
+}
+
+/// Receive HTML fragment events and broadcast to WebSocket clients
+async fn events(state: web::Data<AppState>, body: String) -> HttpResponse {
+    // Broadcast the HTML fragment to all connected WebSocket clients
+    state.broadcaster.broadcast(&body);
+    HttpResponse::Ok().finish()
 }
 
 /// Increment counter and broadcast update
