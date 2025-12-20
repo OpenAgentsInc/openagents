@@ -224,6 +224,8 @@ pub fn get_next_ready_issue(conn: &Connection) -> Result<Option<Issue>> {
         WHERE status = 'open'
           AND is_blocked = 0
           AND (claimed_by IS NULL OR claimed_at < datetime('now', '-15 minutes'))
+          AND id IS NOT NULL
+          AND id != ''
         ORDER BY
           CASE priority
             WHEN 'urgent' THEN 0
