@@ -11,6 +11,7 @@
 //! - NIP-11: Relay Information Document
 //! - NIP-12: Generic Tag Queries (deprecated, moved to NIP-01)
 //! - NIP-13: Proof of Work
+//! - NIP-16: Event Treatment (deprecated, moved to NIP-01)
 //! - NIP-18: Reposts
 //! - NIP-19: bech32-encoded entities
 //! - NIP-21: nostr: URI scheme
@@ -48,6 +49,7 @@ mod nip10;
 mod nip11;
 mod nip12;
 mod nip13;
+mod nip16;
 mod nip18;
 mod nip19;
 mod nip21;
@@ -128,6 +130,12 @@ pub use nip12::{
 // NIP-13: Proof of Work
 pub use nip13::{
     Nip13Error, calculate_difficulty, check_pow, get_difficulty, parse_nonce_tag, validate_pow,
+};
+
+// NIP-16: Event Treatment (deprecated, moved to NIP-01)
+pub use nip16::{
+    EventCategory, Nip16Error, get_event_category, is_addressable, is_ephemeral, is_regular,
+    is_replaceable,
 };
 
 // NIP-18: Reposts
