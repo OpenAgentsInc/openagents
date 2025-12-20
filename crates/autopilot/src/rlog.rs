@@ -102,7 +102,7 @@ impl RlogWriter {
             StepType::ToolCall { tool, tool_id, input } => {
                 let args = format_tool_args(tool, input);
                 let id_short = if tool_id.len() > 8 {
-                    &tool_id[..8]
+                    &tool_id[tool_id.len() - 8..]
                 } else {
                     tool_id
                 };
@@ -115,7 +115,7 @@ impl RlogWriter {
             } => {
                 let status = if *success { "[ok]" } else { "[error]" };
                 let id_short = if tool_id.len() > 8 {
-                    &tool_id[..8]
+                    &tool_id[tool_id.len() - 8..]
                 } else {
                     tool_id
                 };
