@@ -27,6 +27,7 @@
 //! - NIP-40: Expiration Timestamp
 //! - NIP-42: Authentication of Clients to Relays
 //! - NIP-44: Versioned Encryption (requires `full` feature)
+//! - NIP-46: Nostr Remote Signing (requires `full` feature)
 //! - NIP-47: Nostr Wallet Connect (requires `full` feature)
 //! - NIP-51: Lists (mute lists, pin lists, bookmarks, etc.)
 //! - NIP-57: Lightning Zaps (tipping with Lightning payments)
@@ -76,6 +77,8 @@ mod nip42;
 #[cfg(feature = "full")]
 mod nip44;
 #[cfg(feature = "full")]
+#[cfg(feature = "full")]
+mod nip46;
 mod nip47;
 mod nip51;
 mod nip57;
@@ -244,6 +247,13 @@ pub use nip44::{
 };
 
 // NIP-47: Nostr Wallet Connect (requires full feature)
+
+// NIP-46: Nostr Remote Signing (requires full feature)
+#[cfg(feature = "full")]
+pub use nip46::{
+    BunkerUrl, KIND_NOSTR_CONNECT, Nip46Error, NostrConnectMethod, NostrConnectRequest,
+    NostrConnectResponse, NostrConnectUrl, generate_request_id, is_nostr_connect_event,
+};
 #[cfg(feature = "full")]
 pub use nip47::{
     BalanceResult, ErrorCode, ErrorResponse, GetBalanceParams, GetInfoParams, InfoResult,
