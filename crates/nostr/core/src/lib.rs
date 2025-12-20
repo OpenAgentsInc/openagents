@@ -9,6 +9,7 @@
 //! - NIP-09: Event Deletion Request
 //! - NIP-10: Text Notes and Threads
 //! - NIP-11: Relay Information Document
+//! - NIP-12: Generic Tag Queries (deprecated, moved to NIP-01)
 //! - NIP-13: Proof of Work
 //! - NIP-18: Reposts
 //! - NIP-19: bech32-encoded entities
@@ -45,6 +46,7 @@ mod nip06;
 mod nip09;
 mod nip10;
 mod nip11;
+mod nip12;
 mod nip13;
 mod nip18;
 mod nip19;
@@ -115,6 +117,12 @@ pub use nip10::{
 pub use nip11::{
     FeeSchedule, KindOrRange, Nip11Error, RELAY_INFO_ACCEPT_HEADER, RelayFees,
     RelayInformationDocument, RelayLimitation, RetentionPolicy,
+};
+
+// NIP-12: Generic Tag Queries (deprecated, moved to NIP-01)
+pub use nip12::{
+    Nip12Error, add_generic_tag, get_tag_values, get_tag_values_with_params, has_tag,
+    matches_tag_filter, remove_tags,
 };
 
 // NIP-13: Proof of Work
