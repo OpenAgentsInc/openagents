@@ -4,6 +4,7 @@
 //! - NIP-01: Basic protocol (events, signing, verification)
 //! - NIP-06: Key derivation from BIP39 mnemonic seed phrases (requires `full` feature)
 //! - NIP-28: Public Chat (channels, messages, moderation)
+//! - NIP-89: Application Handlers (social discovery of skills/agents)
 //! - NIP-90: Data Vending Machine (DVM) job requests/results/feedback
 //! - Identity types for marketplace participants (agents, creators, providers)
 //! - Lightning payment types for marketplace transactions
@@ -21,6 +22,7 @@ mod nip01;
 #[cfg(feature = "full")]
 mod nip06;
 mod nip28;
+mod nip89;
 mod nip90;
 #[cfg(feature = "full")]
 mod payments;
@@ -58,6 +60,13 @@ pub use nip28::{
     KIND_CHANNEL_MESSAGE, KIND_CHANNEL_METADATA, KIND_CHANNEL_MUTE_USER, ModerationReason,
     Nip28Error, is_channel_creation_kind, is_channel_kind, is_channel_message_kind,
     is_channel_metadata_kind, is_moderation_kind,
+};
+
+// NIP-89: Application Handlers
+pub use nip89::{
+    HandlerInfo, HandlerMetadata, HandlerRecommendation, HandlerType, KIND_HANDLER_INFO,
+    KIND_HANDLER_RECOMMENDATION, Nip89Error, PricingInfo, SocialTrustScore,
+    is_handler_info_kind, is_handler_recommendation_kind, is_nip89_kind,
 };
 
 // NIP-90: Data Vending Machine
