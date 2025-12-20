@@ -4,9 +4,10 @@ This document provides an overview of test coverage across all OpenAgents crates
 
 ## Overall Test Statistics
 
-- **Total Test Count**: 1000+ tests across all crates
+- **Total Test Count**: 1100+ tests across all crates
 - **Test Types**: Unit tests, Integration tests, Inline tests
 - **Coverage**: High coverage on core domain logic, moderate on service layers
+- **Recent Additions**: 51 new tests (27 marketplace discovery + 24 provider selection)
 
 ## Coverage by Crate
 
@@ -42,19 +43,27 @@ This document provides an overview of test coverage across all OpenAgents crates
 - `tests/nip06_integration.rs` - 20 tests (key derivation, mnemonic handling)
 - `tests/nip89_integration.rs` - 53 tests (handler info, metadata, social trust)
 - `tests/nip90_integration.rs` - 51 tests (DVM job types, workflows)
+- `tests/provider_selection.rs` - 24 tests (SelectionMode variants, filtering, requirements)
 
 **Inline Tests:**
 - `src/nip01.rs` - 25 tests (event signing, verification, serialization)
 - `src/nip28.rs` - 38 tests (public chat, channels, moderation)
+- `src/nip90.rs` - 50 tests (job requests, results, feedback)
+- `src/compute_job.rs` - 7 tests (inference params, job requirements, job status)
+- `src/identity.rs` - 8 tests (NostrIdentity, AgentIdentity, ReputationScore)
+- `src/payments.rs` - 11 tests (LightningInvoice, PaymentSplit, CoalitionPayment)
+- `src/provider.rs` - 10 tests (ComputePricing, ComputeCapabilities, cost calculations)
 
-**Total**: 187 tests
+**Total**: 297 tests
 
 **Coverage Highlights:**
 - Complete NIP-01 event signing and verification
 - Comprehensive NIP-06 key derivation (BIP39/BIP32)
 - Full NIP-89 handler information coverage
-- Extensive NIP-90 DVM job type testing
-- Complete NIP-28 public chat implementation
+- Extensive NIP-90 DVM job type testing (50+ inline tests)
+- Complete NIP-28 public chat implementation (30+ inline tests)
+- Comprehensive provider selection algorithms (24 integration tests)
+- Full compute job and pricing logic coverage
 
 **Coverage Gaps:**
 - Minimal gaps - nostr core is well-tested
@@ -85,12 +94,14 @@ This document provides an overview of test coverage across all OpenAgents crates
 ### marketplace (Skills & Commerce)
 
 **Test Files:**
+- `tests/discovery.rs` - 27 tests (SearchFilters, SortOrder, SkillListing, discovery)
 - Multiple inline test modules across 20+ files
 
-**Total**: 423 tests
+**Total**: 450 tests
 
 **Coverage Highlights:**
-- Comprehensive skill versioning and validation
+- Comprehensive skill discovery and search filtering
+- Complete skill versioning and validation
 - Extensive commerce and payment logic
 - Complete trust and reputation scoring
 - Full budget and cost tracking
@@ -218,7 +229,16 @@ cargo test test_name
 
 ## Recent Test Additions
 
-### Session 2025-12-20
+### Session 2025-12-20 (Latest)
+
+- **marketplace/discovery**: 27 new integration tests for SearchFilters, SortOrder, SkillListing
+- **nostr/provider_selection**: 24 new integration tests for provider selection algorithms
+  - SelectionMode variants (Cheapest, Fastest, BestValue, TopK)
+  - Provider filtering (offline, unsupported models, budget constraints)
+  - JobRequirements filtering (region, latency, reputation)
+  - Edge cases (zero budget, empty prompts, single provider)
+
+### Session 2025-12-20 (Earlier)
 
 - **autopilot/guardrails**: 24 integration tests for file operation validation
 - **ui/button**: 30 tests for Maud component rendering and XSS prevention
