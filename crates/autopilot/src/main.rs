@@ -364,6 +364,10 @@ enum IssueCommands {
         #[arg(short = 't', long, default_value = "task")]
         issue_type: String,
 
+        /// Agent to assign (claude or codex)
+        #[arg(short, long, default_value = "claude")]
+        agent: String,
+
         /// Path to issues database (default: autopilot.db in cwd)
         #[arg(long)]
         db: Option<PathBuf>,
@@ -408,6 +412,10 @@ enum IssueCommands {
     },
     /// Get the next ready issue
     Ready {
+        /// Filter by agent (claude or codex)
+        #[arg(short, long)]
+        agent: Option<String>,
+
         /// Path to issues database (default: autopilot.db in cwd)
         #[arg(long)]
         db: Option<PathBuf>,
@@ -1980,16 +1988,17 @@ async fn handle_issue_command(command: IssueCommands) -> Result<()> {
             if issues.is_empty() {
                 println!("No issues found");
             } else {
-                println!("{:<6} {:<10} {:<8} {:<50}", "Number", "Status", "Priority", "Title");
-                println!("{}", "-".repeat(80));
+                println!("{:<6} {:<10} {:<8} {:<8} {:<50}", "Number", "Status", "Priority", "Agent", "Title");
+                println!("{}", "-".repeat(90));
                 for i in issues {
                     let status_str = i.status.as_str();
                     let blocked = if i.is_blocked { " [BLOCKED]" } else { "" };
                     println!(
-                        "{:<6} {:<10} {:<8} {}{}",
+                        "{:<6} {:<10} {:<8} {:<8} {}{}",
                         i.number,
                         status_str,
                         i.priority.as_str(),
+                        i.agent,
                         i.title,
                         blocked
                     );
@@ -2001,6 +2010,7 @@ async fn handle_issue_command(command: IssueCommands) -> Result<()> {
             description,
             priority,
             issue_type,
+            agent,
             db,
         } => {
             let db_path = db.unwrap_or(default_db);
@@ -2009,13 +2019,14 @@ async fn handle_issue_command(command: IssueCommands) -> Result<()> {
             let priority = Priority::from_str(&priority);
             let issue_type = IssueType::from_str(&issue_type);
 
-            let created = issue::create_issue(&conn, &title, description.as_deref(), priority, issue_type)?;
+            let created = issue::create_issue(&conn, &title, description.as_deref(), priority, issue_type, Some(&agent))?;
 
             println!(
-                "{} Created issue #{}: {}",
+                "{} Created issue #{}: {} (agent: {})",
                 "✓".green(),
                 created.number,
-                created.title
+                created.title,
+                created.agent
             );
         }
         IssueCommands::Claim { number, run_id, db } => {
@@ -2068,17 +2079,18 @@ async fn handle_issue_command(command: IssueCommands) -> Result<()> {
                 println!("{} Issue #{} not found", "✗".red(), number);
             }
         }
-        IssueCommands::Ready { db } => {
+        IssueCommands::Ready { agent, db } => {
             let db_path = db.unwrap_or(default_db);
             let conn = db::init_db(&db_path)?;
 
-            match issue::get_next_ready_issue(&conn)? {
+            match issue::get_next_ready_issue(&conn, agent.as_deref())? {
                 Some(i) => {
                     println!("{} Next ready issue:", "→".cyan());
                     println!("  Number:   #{}", i.number);
                     println!("  Title:    {}", i.title);
                     println!("  Priority: {}", i.priority.as_str());
                     println!("  Type:     {}", i.issue_type.as_str());
+                    println!("  Agent:    {}", i.agent);
                     if let Some(ref desc) = i.description {
                         println!("  Description:");
                         for line in desc.lines() {

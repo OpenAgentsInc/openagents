@@ -151,6 +151,11 @@ impl McpServer {
                             "type": "string",
                             "enum": ["task", "bug", "feature"],
                             "description": "Issue type"
+                        },
+                        "agent": {
+                            "type": "string",
+                            "enum": ["claude", "codex"],
+                            "description": "Agent to assign (default: claude)"
                         }
                     },
                     "required": ["title"]
@@ -225,7 +230,13 @@ impl McpServer {
                 description: "Get the next ready issue (highest priority, not blocked, not claimed)".to_string(),
                 input_schema: json!({
                     "type": "object",
-                    "properties": {}
+                    "properties": {
+                        "agent": {
+                            "type": "string",
+                            "enum": ["claude", "codex"],
+                            "description": "Filter by agent (optional)"
+                        }
+                    }
                 }),
             },
             Tool {
@@ -338,7 +349,7 @@ impl McpServer {
             "issue_claim" => self.tool_issue_claim(&conn, &arguments),
             "issue_complete" => self.tool_issue_complete(&conn, &arguments),
             "issue_block" => self.tool_issue_block(&conn, &arguments),
-            "issue_ready" => self.tool_issue_ready(&conn),
+            "issue_ready" => self.tool_issue_ready(&conn, &arguments),
             "issue_update" => self.tool_issue_update(&conn, &arguments),
             "issue_delete" => self.tool_issue_delete(&conn, &arguments),
             "enter_plan_mode" => self.tool_enter_plan_mode(&arguments),
@@ -386,6 +397,7 @@ impl McpServer {
                     "title": i.title,
                     "status": i.status.as_str(),
                     "priority": i.priority.as_str(),
+                    "agent": i.agent,
                     "is_blocked": i.is_blocked
                 })
             })
@@ -414,13 +426,15 @@ impl McpServer {
             .map(IssueType::from_str)
             .unwrap_or(IssueType::Task);
 
+        let agent = args.get("agent").and_then(|v| v.as_str());
+
         let created =
-            issue::create_issue(conn, title, description, priority, issue_type)
+            issue::create_issue(conn, title, description, priority, issue_type, agent)
                 .map_err(|e| e.to_string())?;
 
         Ok(format!(
-            "Created issue #{}: {}",
-            created.number, created.title
+            "Created issue #{}: {} (agent: {})",
+            created.number, created.title, created.agent
         ))
     }
 
@@ -439,6 +453,7 @@ impl McpServer {
                     "status": i.status.as_str(),
                     "priority": i.priority.as_str(),
                     "issue_type": i.issue_type.as_str(),
+                    "agent": i.agent,
                     "is_blocked": i.is_blocked,
                     "blocked_reason": i.blocked_reason,
                     "claimed_by": i.claimed_by,
@@ -515,15 +530,18 @@ impl McpServer {
         }
     }
 
-    fn tool_issue_ready(&self, conn: &Connection) -> Result<String, String> {
-        match issue::get_next_ready_issue(conn).map_err(|e| e.to_string())? {
+    fn tool_issue_ready(&self, conn: &Connection, args: &Value) -> Result<String, String> {
+        let agent = args.get("agent").and_then(|v| v.as_str());
+
+        match issue::get_next_ready_issue(conn, agent).map_err(|e| e.to_string())? {
             Some(i) => {
                 let output = json!({
                     "number": i.number,
                     "title": i.title,
                     "description": i.description,
                     "priority": i.priority.as_str(),
-                    "issue_type": i.issue_type.as_str()
+                    "issue_type": i.issue_type.as_str(),
+                    "agent": i.agent
                 });
                 serde_json::to_string_pretty(&output).map_err(|e| e.to_string())
             }

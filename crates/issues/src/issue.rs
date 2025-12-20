@@ -104,6 +104,7 @@ pub struct Issue {
     pub status: Status,
     pub priority: Priority,
     pub issue_type: IssueType,
+    pub agent: String,
     pub is_blocked: bool,
     pub blocked_reason: Option<String>,
     pub claimed_by: Option<String>,
@@ -123,6 +124,7 @@ impl Issue {
             status: Status::from_str(&row.get::<_, String>("status")?),
             priority: Priority::from_str(&row.get::<_, String>("priority")?),
             issue_type: IssueType::from_str(&row.get::<_, String>("issue_type")?),
+            agent: row.get::<_, Option<String>>("agent")?.unwrap_or_else(|| "claude".to_string()),
             is_blocked: row.get::<_, i32>("is_blocked")? != 0,
             blocked_reason: row.get("blocked_reason")?,
             claimed_by: row.get("claimed_by")?,
@@ -151,15 +153,17 @@ pub fn create_issue(
     description: Option<&str>,
     priority: Priority,
     issue_type: IssueType,
+    agent: Option<&str>,
 ) -> Result<Issue> {
     let id = Uuid::new_v4().to_string();
     let number = next_issue_number(conn)?;
     let now = Utc::now().to_rfc3339();
+    let agent = agent.unwrap_or("claude");
 
     conn.execute(
         r#"
-        INSERT INTO issues (id, number, title, description, priority, issue_type, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO issues (id, number, title, description, priority, issue_type, agent, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         "#,
         params![
             id,
@@ -168,6 +172,7 @@ pub fn create_issue(
             description,
             priority.as_str(),
             issue_type.as_str(),
+            agent,
             now,
             now,
         ],
@@ -217,29 +222,59 @@ pub fn list_issues(conn: &Connection, status: Option<Status>) -> Result<Vec<Issu
 }
 
 /// Get the next ready issue (open, not blocked, not claimed or claim expired)
-pub fn get_next_ready_issue(conn: &Connection) -> Result<Option<Issue>> {
-    conn.query_row(
-        r#"
-        SELECT * FROM issues
-        WHERE status = 'open'
-          AND is_blocked = 0
-          AND (claimed_by IS NULL OR claimed_at < datetime('now', '-15 minutes'))
-          AND id IS NOT NULL
-          AND id != ''
-        ORDER BY
-          CASE priority
-            WHEN 'urgent' THEN 0
-            WHEN 'high' THEN 1
-            WHEN 'medium' THEN 2
-            WHEN 'low' THEN 3
-          END,
-          created_at ASC
-        LIMIT 1
-        "#,
-        [],
-        Issue::from_row,
-    )
-    .optional()
+/// Optionally filter by agent (e.g., "claude" or "codex")
+pub fn get_next_ready_issue(conn: &Connection, agent: Option<&str>) -> Result<Option<Issue>> {
+    match agent {
+        Some(agent_filter) => {
+            conn.query_row(
+                r#"
+                SELECT * FROM issues
+                WHERE status = 'open'
+                  AND is_blocked = 0
+                  AND (claimed_by IS NULL OR claimed_at < datetime('now', '-15 minutes'))
+                  AND id IS NOT NULL
+                  AND id != ''
+                  AND agent = ?
+                ORDER BY
+                  CASE priority
+                    WHEN 'urgent' THEN 0
+                    WHEN 'high' THEN 1
+                    WHEN 'medium' THEN 2
+                    WHEN 'low' THEN 3
+                  END,
+                  created_at ASC
+                LIMIT 1
+                "#,
+                [agent_filter],
+                Issue::from_row,
+            )
+            .optional()
+        }
+        None => {
+            conn.query_row(
+                r#"
+                SELECT * FROM issues
+                WHERE status = 'open'
+                  AND is_blocked = 0
+                  AND (claimed_by IS NULL OR claimed_at < datetime('now', '-15 minutes'))
+                  AND id IS NOT NULL
+                  AND id != ''
+                ORDER BY
+                  CASE priority
+                    WHEN 'urgent' THEN 0
+                    WHEN 'high' THEN 1
+                    WHEN 'medium' THEN 2
+                    WHEN 'low' THEN 3
+                  END,
+                  created_at ASC
+                LIMIT 1
+                "#,
+                [],
+                Issue::from_row,
+            )
+            .optional()
+        }
+    }
 }
 
 /// Claim an issue for a run
@@ -412,7 +447,7 @@ mod tests {
     #[test]
     fn test_create_and_get_issue() {
         let conn = init_memory_db().unwrap();
-        let issue = create_issue(&conn, "Test issue", Some("Description"), Priority::High, IssueType::Bug).unwrap();
+        let issue = create_issue(&conn, "Test issue", Some("Description"), Priority::High, IssueType::Bug, None).unwrap();
 
         assert_eq!(issue.number, 1);
         assert_eq!(issue.title, "Test issue");
@@ -420,15 +455,24 @@ mod tests {
         assert_eq!(issue.priority, Priority::High);
         assert_eq!(issue.issue_type, IssueType::Bug);
         assert_eq!(issue.status, Status::Open);
+        assert_eq!(issue.agent, "claude");
 
         let fetched = get_issue_by_number(&conn, 1).unwrap().unwrap();
         assert_eq!(fetched.id, issue.id);
     }
 
     #[test]
+    fn test_create_issue_with_agent() {
+        let conn = init_memory_db().unwrap();
+        let issue = create_issue(&conn, "Codex task", None, Priority::Medium, IssueType::Task, Some("codex")).unwrap();
+
+        assert_eq!(issue.agent, "codex");
+    }
+
+    #[test]
     fn test_claim_and_complete() {
         let conn = init_memory_db().unwrap();
-        let issue = create_issue(&conn, "Task", None, Priority::Medium, IssueType::Task).unwrap();
+        let issue = create_issue(&conn, "Task", None, Priority::Medium, IssueType::Task, None).unwrap();
 
         // Claim it
         assert!(claim_issue(&conn, &issue.id, "run-123").unwrap());
@@ -449,7 +493,7 @@ mod tests {
     #[test]
     fn test_block_unblock() {
         let conn = init_memory_db().unwrap();
-        let issue = create_issue(&conn, "Blocked task", None, Priority::Medium, IssueType::Task).unwrap();
+        let issue = create_issue(&conn, "Blocked task", None, Priority::Medium, IssueType::Task, None).unwrap();
 
         // Block it
         assert!(block_issue(&conn, &issue.id, "Waiting on dependency").unwrap());
@@ -459,7 +503,7 @@ mod tests {
         assert_eq!(blocked.blocked_reason, Some("Waiting on dependency".to_string()));
 
         // Should not appear in ready queue
-        assert!(get_next_ready_issue(&conn).unwrap().is_none());
+        assert!(get_next_ready_issue(&conn, None).unwrap().is_none());
 
         // Unblock it
         assert!(unblock_issue(&conn, &issue.id).unwrap());
@@ -469,8 +513,29 @@ mod tests {
         assert!(unblocked.blocked_reason.is_none());
 
         // Should now appear in ready queue
-        let ready = get_next_ready_issue(&conn).unwrap().unwrap();
+        let ready = get_next_ready_issue(&conn, None).unwrap().unwrap();
         assert_eq!(ready.id, issue.id);
+    }
+
+    #[test]
+    fn test_agent_filtering() {
+        let conn = init_memory_db().unwrap();
+
+        // Create claude and codex issues
+        create_issue(&conn, "Claude task", None, Priority::High, IssueType::Task, Some("claude")).unwrap();
+        create_issue(&conn, "Codex task", None, Priority::Urgent, IssueType::Task, Some("codex")).unwrap();
+
+        // Without filter, should return highest priority (codex)
+        let next = get_next_ready_issue(&conn, None).unwrap().unwrap();
+        assert_eq!(next.title, "Codex task");
+
+        // With claude filter, should return claude task
+        let claude_next = get_next_ready_issue(&conn, Some("claude")).unwrap().unwrap();
+        assert_eq!(claude_next.title, "Claude task");
+
+        // With codex filter, should return codex task
+        let codex_next = get_next_ready_issue(&conn, Some("codex")).unwrap().unwrap();
+        assert_eq!(codex_next.title, "Codex task");
     }
 
     #[test]
@@ -478,13 +543,13 @@ mod tests {
         let conn = init_memory_db().unwrap();
 
         // Create issues in reverse priority order
-        create_issue(&conn, "Low", None, Priority::Low, IssueType::Task).unwrap();
-        create_issue(&conn, "High", None, Priority::High, IssueType::Task).unwrap();
-        create_issue(&conn, "Urgent", None, Priority::Urgent, IssueType::Task).unwrap();
-        create_issue(&conn, "Medium", None, Priority::Medium, IssueType::Task).unwrap();
+        create_issue(&conn, "Low", None, Priority::Low, IssueType::Task, None).unwrap();
+        create_issue(&conn, "High", None, Priority::High, IssueType::Task, None).unwrap();
+        create_issue(&conn, "Urgent", None, Priority::Urgent, IssueType::Task, None).unwrap();
+        create_issue(&conn, "Medium", None, Priority::Medium, IssueType::Task, None).unwrap();
 
         // Next ready should be urgent
-        let next = get_next_ready_issue(&conn).unwrap().unwrap();
+        let next = get_next_ready_issue(&conn, None).unwrap().unwrap();
         assert_eq!(next.title, "Urgent");
     }
 
@@ -493,7 +558,7 @@ mod tests {
         let conn = init_memory_db().unwrap();
 
         // Create an issue
-        let issue = create_issue(&conn, "Test delete", None, Priority::Medium, IssueType::Task).unwrap();
+        let issue = create_issue(&conn, "Test delete", None, Priority::Medium, IssueType::Task, None).unwrap();
 
         // Verify it exists
         assert!(get_issue_by_id(&conn, &issue.id).unwrap().is_some());
@@ -520,7 +585,7 @@ mod tests {
         let conn = init_memory_db().unwrap();
 
         // Create an issue
-        let issue = create_issue(&conn, "Issue with events", None, Priority::High, IssueType::Bug).unwrap();
+        let issue = create_issue(&conn, "Issue with events", None, Priority::High, IssueType::Bug, None).unwrap();
 
         // Add an event manually (simulating the event log)
         conn.execute(

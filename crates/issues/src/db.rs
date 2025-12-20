@@ -4,7 +4,7 @@ use rusqlite::{Connection, Result};
 use std::path::Path;
 
 /// Current schema version
-const SCHEMA_VERSION: i32 = 4;
+const SCHEMA_VERSION: i32 = 5;
 
 /// Initialize the database with migrations
 pub fn init_db(path: &Path) -> Result<Connection> {
@@ -29,6 +29,9 @@ pub fn init_db(path: &Path) -> Result<Connection> {
     if version < 4 {
         migrate_v4(&conn)?;
     }
+    if version < 5 {
+        migrate_v5(&conn)?;
+    }
 
     Ok(conn)
 }
@@ -51,6 +54,9 @@ pub fn init_memory_db() -> Result<Connection> {
     }
     if version < 4 {
         migrate_v4(&conn)?;
+    }
+    if version < 5 {
+        migrate_v5(&conn)?;
     }
 
     Ok(conn)
@@ -243,6 +249,19 @@ fn migrate_v4(conn: &Connection) -> Result<()> {
     )?;
 
     set_schema_version(conn, 4)?;
+    Ok(())
+}
+
+fn migrate_v5(conn: &Connection) -> Result<()> {
+    // Add agent column to issues table for Codex integration
+    conn.execute_batch(
+        r#"
+        -- Add agent column (default: 'claude')
+        ALTER TABLE issues ADD COLUMN agent TEXT NOT NULL DEFAULT 'claude';
+        "#,
+    )?;
+
+    set_schema_version(conn, 5)?;
     Ok(())
 }
 
