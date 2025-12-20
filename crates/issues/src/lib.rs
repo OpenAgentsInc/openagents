@@ -1,0 +1,36 @@
+//! Local issue tracking with SQLite
+//!
+//! This crate provides a simple issue tracking system backed by SQLite,
+//! designed for use with autonomous agents like autopilot.
+//!
+//! # Example
+//!
+//! ```no_run
+//! use issues::{db, issue};
+//! use std::path::Path;
+//!
+//! // Initialize database
+//! let conn = db::init_db(Path::new("autopilot.db")).unwrap();
+//!
+//! // Create an issue
+//! let issue = issue::create_issue(
+//!     &conn,
+//!     "Fix the bug",
+//!     Some("It crashes on startup"),
+//!     issue::Priority::High,
+//!     issue::IssueType::Bug,
+//! ).unwrap();
+//!
+//! // Claim the issue
+//! issue::claim_issue(&conn, &issue.id, "run-123").unwrap();
+//!
+//! // Complete the issue
+//! issue::complete_issue(&conn, &issue.id).unwrap();
+//! ```
+
+pub mod db;
+pub mod issue;
+
+// Re-export commonly used types
+pub use db::{init_db, init_memory_db};
+pub use issue::{Issue, IssueType, Priority, Status};

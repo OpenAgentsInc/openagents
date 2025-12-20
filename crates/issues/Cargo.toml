@@ -1,0 +1,28 @@
+[package]
+name = "issues"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "Local issue tracking with SQLite"
+
+[dependencies]
+# Database
+rusqlite = { version = "0.32", features = ["bundled"] }
+
+# Serialization
+serde.workspace = true
+serde_json.workspace = true
+
+# Time
+chrono.workspace = true
+
+# IDs
+uuid.workspace = true
+
+# Error handling
+thiserror.workspace = true
+
+[lints]
+workspace = true
