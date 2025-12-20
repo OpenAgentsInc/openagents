@@ -235,6 +235,37 @@ Features:
 - Project/session tracking
 - Automatic numbering
 - Claim/completion workflow
+- **JSON export/import for cross-machine sync**
+
+**Syncing Issues Between Machines:**
+
+```bash
+# On machine A: Export issues to JSON
+cargo autopilot issue export
+# Creates .openagents/issues.json (tracked in git)
+
+# Commit and push
+git add .openagents/issues.json
+git commit -m "Sync issues"
+git push
+
+# On machine B: Pull and import
+git pull
+cargo autopilot issue import
+```
+
+Additional options:
+```bash
+# Include completed issues in export
+cargo autopilot issue export --include-completed
+
+# Force update existing issues on import
+cargo autopilot issue import --force
+
+# Custom file paths
+cargo autopilot issue export -o custom.json
+cargo autopilot issue import -i custom.json
+```
 
 [Full documentation →](crates/issues/README.md)
 
