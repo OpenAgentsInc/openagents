@@ -3,6 +3,7 @@
 //! This crate provides infrastructure for discovering, installing, and managing
 //! marketplace items including plugins, skills, and agents.
 
+pub mod agent_commerce;
 pub mod agent_lifecycle;
 pub mod agents;
 pub mod api;
@@ -28,6 +29,10 @@ pub mod skills;
 pub mod trust;
 pub mod types;
 
+pub use agent_commerce::{
+    AgentContract, ContractStatus, CoordinatorTask, DelegatedTask,
+    HireAgentRequest as AgentHireRequest, HiringRequirements, TaskSpec,
+};
 pub use agent_lifecycle::{
     AgentEconomics, AgentLifecycleState, AutonomyLevel, CapabilityManifest, DeathCause, Mutation,
     ReproductionRequest, SponsorInfo, SponsorRelationship, SponsorType, TraitInheritance,
