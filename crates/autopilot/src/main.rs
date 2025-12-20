@@ -77,7 +77,7 @@ enum Commands {
         cwd: Option<PathBuf>,
 
         /// Model to use (sonnet, opus, haiku, or full model ID)
-        #[arg(short, long, default_value = "sonnet")]
+        #[arg(short, long, default_value_t = default_model())]
         model: String,
 
         /// Maximum turns
@@ -142,6 +142,11 @@ async fn main() -> Result<()> {
             .await
         }
     }
+}
+
+/// Get default model from environment or fallback to "sonnet"
+fn default_model() -> String {
+    std::env::var("AUTOPILOT_MODEL").unwrap_or_else(|_| "sonnet".to_string())
 }
 
 /// Map friendly model names to full model IDs
