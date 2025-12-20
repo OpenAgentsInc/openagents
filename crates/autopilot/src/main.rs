@@ -137,6 +137,91 @@ enum Commands {
         #[arg(required = true)]
         trajectory2: PathBuf,
     },
+    /// Manage issues
+    Issue {
+        #[command(subcommand)]
+        command: IssueCommands,
+    },
+}
+
+#[derive(Subcommand)]
+enum IssueCommands {
+    /// List issues
+    List {
+        /// Filter by status (open, in_progress, done)
+        #[arg(short, long)]
+        status: Option<String>,
+
+        /// Path to issues database (default: autopilot.db in cwd)
+        #[arg(long)]
+        db: Option<PathBuf>,
+    },
+    /// Create a new issue
+    Create {
+        /// Issue title
+        #[arg(required = true)]
+        title: String,
+
+        /// Issue description
+        #[arg(short, long)]
+        description: Option<String>,
+
+        /// Priority (urgent, high, medium, low)
+        #[arg(short, long, default_value = "medium")]
+        priority: String,
+
+        /// Issue type (task, bug, feature)
+        #[arg(short = 't', long, default_value = "task")]
+        issue_type: String,
+
+        /// Path to issues database (default: autopilot.db in cwd)
+        #[arg(long)]
+        db: Option<PathBuf>,
+    },
+    /// Claim an issue
+    Claim {
+        /// Issue number
+        #[arg(required = true)]
+        number: i32,
+
+        /// Run ID (default: manual-<timestamp>)
+        #[arg(short, long)]
+        run_id: Option<String>,
+
+        /// Path to issues database (default: autopilot.db in cwd)
+        #[arg(long)]
+        db: Option<PathBuf>,
+    },
+    /// Mark an issue as complete
+    Complete {
+        /// Issue number
+        #[arg(required = true)]
+        number: i32,
+
+        /// Path to issues database (default: autopilot.db in cwd)
+        #[arg(long)]
+        db: Option<PathBuf>,
+    },
+    /// Block an issue
+    Block {
+        /// Issue number
+        #[arg(required = true)]
+        number: i32,
+
+        /// Reason for blocking
+        #[arg(required = true)]
+        reason: String,
+
+        /// Path to issues database (default: autopilot.db in cwd)
+        #[arg(long)]
+        db: Option<PathBuf>,
+    },
+    /// Get the next ready issue
+    Ready {
+        /// Path to issues database (default: autopilot.db in cwd)
+        #[arg(long)]
+        db: Option<PathBuf>,
+    },
 }
 
 #[tokio::main]
@@ -172,6 +257,9 @@ async fn main() -> Result<()> {
         }
         Commands::Compare { trajectory1, trajectory2 } => {
             compare_trajectories(trajectory1, trajectory2).await
+        }
+        Commands::Issue { command } => {
+            handle_issue_command(command).await
         }
     }
 }
@@ -616,5 +704,143 @@ async fn replay_trajectory(trajectory_path: PathBuf, mode: String) -> Result<()>
 
 async fn compare_trajectories(trajectory1: PathBuf, trajectory2: PathBuf) -> Result<()> {
     replay::compare_trajectories(&trajectory1, &trajectory2)?;
+    Ok(())
+}
+
+async fn handle_issue_command(command: IssueCommands) -> Result<()> {
+    use issues::{db, issue, IssueType, Priority, Status};
+
+    let default_db = std::env::current_dir()?.join("autopilot.db");
+
+    match command {
+        IssueCommands::List { status, db } => {
+            let db_path = db.unwrap_or(default_db);
+            let conn = db::init_db(&db_path)?;
+
+            let status_filter = status.as_deref().map(|s| match s {
+                "open" => Status::Open,
+                "in_progress" => Status::InProgress,
+                "done" => Status::Done,
+                _ => Status::Open,
+            });
+
+            let issues = issue::list_issues(&conn, status_filter)?;
+
+            if issues.is_empty() {
+                println!("No issues found");
+            } else {
+                println!("{:<6} {:<10} {:<8} {:<50}", "Number", "Status", "Priority", "Title");
+                println!("{}", "-".repeat(80));
+                for i in issues {
+                    let status_str = i.status.as_str();
+                    let blocked = if i.is_blocked { " [BLOCKED]" } else { "" };
+                    println!(
+                        "{:<6} {:<10} {:<8} {}{}",
+                        i.number,
+                        status_str,
+                        i.priority.as_str(),
+                        i.title,
+                        blocked
+                    );
+                }
+            }
+        }
+        IssueCommands::Create {
+            title,
+            description,
+            priority,
+            issue_type,
+            db,
+        } => {
+            let db_path = db.unwrap_or(default_db);
+            let conn = db::init_db(&db_path)?;
+
+            let priority = Priority::from_str(&priority);
+            let issue_type = IssueType::from_str(&issue_type);
+
+            let created = issue::create_issue(&conn, &title, description.as_deref(), priority, issue_type)?;
+
+            println!(
+                "{} Created issue #{}: {}",
+                "✓".green(),
+                created.number,
+                created.title
+            );
+        }
+        IssueCommands::Claim { number, run_id, db } => {
+            let db_path = db.unwrap_or(default_db);
+            let conn = db::init_db(&db_path)?;
+
+            let run_id = run_id.unwrap_or_else(|| {
+                format!("manual-{}", chrono::Utc::now().timestamp())
+            });
+
+            if let Some(i) = issue::get_issue_by_number(&conn, number)? {
+                if issue::claim_issue(&conn, &i.id, &run_id)? {
+                    println!("{} Claimed issue #{}: {}", "✓".green(), number, i.title);
+                } else {
+                    println!(
+                        "{} Could not claim issue #{} (already claimed or blocked)",
+                        "✗".red(),
+                        number
+                    );
+                }
+            } else {
+                println!("{} Issue #{} not found", "✗".red(), number);
+            }
+        }
+        IssueCommands::Complete { number, db } => {
+            let db_path = db.unwrap_or(default_db);
+            let conn = db::init_db(&db_path)?;
+
+            if let Some(i) = issue::get_issue_by_number(&conn, number)? {
+                if issue::complete_issue(&conn, &i.id)? {
+                    println!("{} Completed issue #{}: {}", "✓".green(), number, i.title);
+                } else {
+                    println!("{} Could not complete issue #{}", "✗".red(), number);
+                }
+            } else {
+                println!("{} Issue #{} not found", "✗".red(), number);
+            }
+        }
+        IssueCommands::Block { number, reason, db } => {
+            let db_path = db.unwrap_or(default_db);
+            let conn = db::init_db(&db_path)?;
+
+            if let Some(i) = issue::get_issue_by_number(&conn, number)? {
+                if issue::block_issue(&conn, &i.id, &reason)? {
+                    println!("{} Blocked issue #{}: {}", "✓".green(), number, reason);
+                } else {
+                    println!("{} Could not block issue #{}", "✗".red(), number);
+                }
+            } else {
+                println!("{} Issue #{} not found", "✗".red(), number);
+            }
+        }
+        IssueCommands::Ready { db } => {
+            let db_path = db.unwrap_or(default_db);
+            let conn = db::init_db(&db_path)?;
+
+            match issue::get_next_ready_issue(&conn)? {
+                Some(i) => {
+                    println!("{} Next ready issue:", "→".cyan());
+                    println!("  Number:   #{}", i.number);
+                    println!("  Title:    {}", i.title);
+                    println!("  Priority: {}", i.priority.as_str());
+                    println!("  Type:     {}", i.issue_type.as_str());
+                    if let Some(ref desc) = i.description {
+                        println!("  Description:");
+                        for line in desc.lines() {
+                            println!("    {}", line);
+                        }
+                    }
+                }
+                None => {
+                    println!("No ready issues available");
+                }
+            }
+        }
+    }
+
     Ok(())
 }
