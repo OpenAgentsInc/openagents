@@ -25,6 +25,9 @@ use autopilot::TrajectoryCollector;
 /// Global storage for .mcp.json path to enable cleanup on panic/signal
 static MCP_JSON_PATH: OnceLock<PathBuf> = OnceLock::new();
 
+/// Global storage for lockfile path to enable cleanup on panic/signal
+static LOCKFILE_PATH: OnceLock<PathBuf> = OnceLock::new();
+
 /// Clean up .mcp.json file if it exists
 fn cleanup_mcp_json() {
     if let Some(path) = MCP_JSON_PATH.get() {
@@ -34,12 +37,22 @@ fn cleanup_mcp_json() {
     }
 }
 
+/// Clean up lockfile if it exists
+fn cleanup_lockfile() {
+    if let Some(path) = LOCKFILE_PATH.get() {
+        if path.exists() {
+            let _ = std::fs::remove_file(path);
+        }
+    }
+}
+
 /// Setup signal handlers and panic hook for cleanup
 fn setup_cleanup_handlers() {
-    // Setup panic hook to cleanup .mcp.json
+    // Setup panic hook to cleanup .mcp.json and lockfile
     let default_panic = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |info| {
         cleanup_mcp_json();
+        // Note: lockfile intentionally NOT cleaned up here - stale lockfile indicates crash
         default_panic(info);
     }));
 
@@ -56,11 +69,106 @@ fn setup_cleanup_handlers() {
 
         for sig in signals.forever() {
             cleanup_mcp_json();
+            // Note: lockfile intentionally NOT cleaned up here - stale lockfile indicates crash
             // Re-raise signal to ensure proper exit
             signal_hook::low_level::raise(sig).ok();
             std::process::exit(128 + sig);
         }
     });
+}
+
+/// Lockfile data structure
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+struct Lockfile {
+    issue_number: Option<i32>,
+    session_id: Option<String>,
+    rlog_path: Option<String>,
+    started_at: String,
+}
+
+/// Get the lockfile path in ~/.autopilot/run.lock
+fn get_lockfile_path() -> PathBuf {
+    let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
+    PathBuf::from(home).join(".autopilot").join("run.lock")
+}
+
+/// Write lockfile with run information
+fn write_lockfile(
+    issue_number: Option<i32>,
+    session_id: Option<String>,
+    rlog_path: Option<PathBuf>,
+) -> std::io::Result<()> {
+    let lockfile_path = get_lockfile_path();
+
+    // Ensure parent directory exists
+    if let Some(parent) = lockfile_path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+
+    let lockfile = Lockfile {
+        issue_number,
+        session_id,
+        rlog_path: rlog_path.map(|p| p.display().to_string()),
+        started_at: chrono::Utc::now().to_rfc3339(),
+    };
+
+    let json = serde_json::to_string_pretty(&lockfile)?;
+    std::fs::write(&lockfile_path, json)?;
+
+    // Store path for cleanup
+    LOCKFILE_PATH.set(lockfile_path).ok();
+
+    Ok(())
+}
+
+/// Check for stale lockfile and block issue if found
+async fn check_and_handle_stale_lockfile(cwd: &PathBuf) -> Result<()> {
+    let lockfile_path = get_lockfile_path();
+
+    if !lockfile_path.exists() {
+        return Ok(());
+    }
+
+    // Read the lockfile
+    let content = std::fs::read_to_string(&lockfile_path)?;
+    let lockfile: Lockfile = serde_json::from_str(&content)?;
+
+    eprintln!("{} Found stale lockfile from {}", "Warning:".yellow(), lockfile.started_at);
+
+    // If there's an issue number, block it via MCP
+    if let Some(issue_num) = lockfile.issue_number {
+        eprintln!("{} Attempting to block issue #{} due to crash", "Crash:".red().bold(), issue_num);
+
+        // Try to use the issues MCP to block the issue
+        // Check if .mcp.json exists (issues tracking enabled)
+        let mcp_json_path = cwd.join(".mcp.json");
+        if mcp_json_path.exists() {
+            // Use the handle_issue_command to block
+            let reason = format!(
+                "Autopilot crashed during execution. Session started at {}. Rlog: {:?}",
+                lockfile.started_at,
+                lockfile.rlog_path
+            );
+
+            use issues::{db, issue};
+            let db_path = cwd.join("autopilot.db");
+            let conn = db::init_db(&db_path)?;
+
+            if let Some(i) = issue::get_issue_by_number(&conn, issue_num)? {
+                if issue::block_issue(&conn, &i.id, &reason)? {
+                    eprintln!("{} Blocked issue #{}", "✓".green(), issue_num);
+                } else {
+                    eprintln!("{} Could not block issue #{}", "✗".red(), issue_num);
+                }
+            }
+        }
+    }
+
+    // Remove the stale lockfile
+    std::fs::remove_file(&lockfile_path)?;
+    eprintln!("{} Removed stale lockfile", "Cleanup:".cyan());
+
+    Ok(())
 }
 
 #[derive(Parser)]
@@ -495,6 +603,9 @@ async fn run_task(
 ) -> Result<()> {
     let cwd = cwd.unwrap_or_else(|| std::env::current_dir().unwrap());
 
+    // Check for stale lockfile and handle crash recovery
+    check_and_handle_stale_lockfile(&cwd).await?;
+
     // Launch desktop UI if requested
     let _ui_port: Option<u16> = if ui {
         println!("{} Launching desktop UI...", "UI:".cyan().bold());
@@ -580,15 +691,19 @@ async fn run_task(
     );
 
     // Enable streaming rlog output (unless in dry-run mode)
-    if !dry_run {
+    let rlog_path = if !dry_run {
         std::fs::create_dir_all(&output_dir)?;
         let rlog_path = output_dir.join(filename(&slug, "rlog"));
         if let Err(e) = collector.enable_streaming(&rlog_path) {
             eprintln!("Warning: Failed to enable rlog streaming: {}", e);
+            None
         } else {
             println!("{} {} {}", "Streaming to:".dimmed(), rlog_path.display(), "(tail -f to watch)".dimmed());
+            Some(rlog_path)
         }
-    }
+    } else {
+        None
+    };
 
     // Setup query options with hooks
     let plan_mode_hook = std::sync::Arc::new(PlanModeHook);
@@ -641,6 +756,13 @@ async fn run_task(
         MCP_JSON_PATH.set(mcp_json_path).ok();
     }
 
+    // Write lockfile to track this run (for crash recovery)
+    // Note: session_id will be written to the collector later and available in the rlog
+    // For now we write basic info, issue_number would need to be passed as a parameter
+    if let Err(e) = write_lockfile(None, None, rlog_path.clone()) {
+        eprintln!("Warning: Failed to write lockfile: {}", e);
+    }
+
     // Execute query
     let mut stream = query(&prompt, options).await?;
 
@@ -689,8 +811,9 @@ async fn run_task(
         println!("{} {}", "Saved:".green(), json_path.display());
     }
 
-    // Cleanup .mcp.json on normal exit
+    // Cleanup .mcp.json and lockfile on normal exit
     cleanup_mcp_json();
+    cleanup_lockfile();
 
     Ok(())
 }
@@ -1210,6 +1333,7 @@ async fn resume_task(
 
     // Cleanup
     cleanup_mcp_json();
+    cleanup_lockfile();
 
     println!();
     println!("{}", "Session ended.".green());
