@@ -2,6 +2,9 @@
 
 use maud::{DOCTYPE, Markup, PreEscaped, html};
 use ui::{TAILWIND_CDN, TAILWIND_THEME};
+use ui::recorder::molecules::{ResultType, SessionMode};
+use ui::recorder::organisms::{AgentLine, UserLine, ToolLine};
+use ui::recorder::sections::{SessionHeader, SessionStats, ToolIndex, session_sidebar};
 
 /// Autopilot page with live timeline
 pub fn autopilot_page() -> Markup {
@@ -37,21 +40,22 @@ pub fn autopilot_page() -> Markup {
                 main class="pt-14 flex" {
                     // Left sidebar (fixed width)
                     aside id="session-sidebar" class="w-72 h-screen sticky top-14 overflow-y-auto border-r border-border flex-shrink-0" {
-                        // Sidebar content will be updated via WebSocket
-                        div class="p-4 text-xs text-muted-foreground" {
-                            "Waiting for session..."
-                        }
+                        // Render sidebar with mock data
+                        (render_mock_sidebar())
                     }
 
                     // Main timeline area (flex-grow)
                     div class="flex-1 px-4 pb-4" {
                         // Session header (collapsible metadata)
                         div id="session-header" class="mb-4" {
-                            // Header content will be updated via WebSocket
+                            // Header will be updated via WebSocket for live sessions
                         }
 
                         // Timeline container - messages appended here
-                        div id="timeline" class="space-y-2" {}
+                        div id="timeline" class="space-y-2" {
+                            // Render mock timeline events
+                            (render_mock_timeline())
+                        }
                     }
                 }
 
@@ -119,5 +123,97 @@ pub fn autopilot_page() -> Markup {
                 </script>"#))
             }
         }
+    }
+}
+
+/// Render mock sidebar for demo
+fn render_mock_sidebar() -> Markup {
+    let header = SessionHeader::new("sess_demo123", "claude-sonnet-4", "OpenAgentsInc/openagents")
+        .mode(SessionMode::Auto)
+        .sha("8321ff9")
+        .branch("main")
+        .budget(5.0, "2h")
+        .mcp(vec!["issues", "filesystem"]);
+
+    let stats = SessionStats {
+        lines: 47,
+        duration: "00:12:34".to_string(),
+        cost: 0.42,
+        user_msgs: 3,
+        agent_msgs: 12,
+        tool_calls: 28,
+        mcp_calls: 4,
+        subagents: 2,
+        questions: 1,
+        phases: 0,
+        blobs: 0,
+        redacted: 3,
+    };
+
+    let tool_index = ToolIndex::new()
+        .add("Read", 12)
+        .add("Edit", 8)
+        .add("Bash", 5)
+        .add("Grep", 3);
+
+    session_sidebar(
+        header,
+        SessionMode::Auto,
+        None, // No plan phase
+        0.42, // budget spent
+        5.0,  // budget total
+        0.42, // cost total
+        Some(0.03), // cost delta
+        stats,
+        tool_index,
+    )
+}
+
+/// Render mock timeline events for demo
+fn render_mock_timeline() -> Markup {
+    html! {
+        // User message
+        (UserLine::new("Wire recorder components into desktop /autopilot route")
+            .step(1)
+            .elapsed(0, 0, 0)
+            .build())
+
+        // Agent response
+        (AgentLine::new("I'll help you wire up the recorder components. Let me first explore the existing code structure.")
+            .step(2)
+            .elapsed(0, 0, 3)
+            .metrics(1200, 450, Some(800), 0.02)
+            .build())
+
+        // Tool call - Read
+        (ToolLine::new("Read", "file_path=/crates/desktop/src/views/autopilot.rs", ResultType::Ok)
+            .step(3)
+            .elapsed(0, 0, 5)
+            .call_id("toolu_abc123")
+            .latency(45)
+            .build())
+
+        // Tool call - Grep
+        (ToolLine::new("Grep", "pattern=recorder path=crates/ui/src", ResultType::Count { count: 15, unit: "matches".to_string() })
+            .step(4)
+            .elapsed(0, 0, 6)
+            .call_id("toolu_def456")
+            .latency(120)
+            .build())
+
+        // Agent continues
+        (AgentLine::new("I found the recorder components in crates/ui/src/recorder/. Now let me update the autopilot view to import and use them.")
+            .step(5)
+            .elapsed(0, 0, 8)
+            .metrics(2400, 380, Some(1800), 0.03)
+            .build())
+
+        // Tool call - Edit
+        (ToolLine::new("Edit", "file_path=/crates/desktop/src/views/autopilot.rs", ResultType::Ok)
+            .step(6)
+            .elapsed(0, 0, 12)
+            .call_id("toolu_ghi789")
+            .latency(15)
+            .build())
     }
 }

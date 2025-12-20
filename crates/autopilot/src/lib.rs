@@ -56,6 +56,11 @@ impl TrajectoryCollector {
         Ok(())
     }
 
+    /// Set the session_id (useful when resuming a session)
+    pub fn set_session_id(&mut self, session_id: String) {
+        self.trajectory.session_id = session_id;
+    }
+
     /// Stream the last added step to rlog file (if streaming is enabled)
     fn stream_last_step(&mut self) {
         if let (Some(writer), Some(last_step)) = (&mut self.rlog_writer, self.trajectory.steps.last()) {
