@@ -1779,3 +1779,98 @@ o: id=4pbPa9fG → [ok] test result: FAILED. 19 passed; 6 failed; 0 ignored; 0 m
 a: 19 passing! Down to 6 failures. Let me commit this progress: tokens_in=2 tokens_out=1 tokens_cached=147339
 t!:Bash id=pPge2TGx cmd="git add -A && git commit -m "$(cat <<'EOF'" → [running] tokens_in=2 tokens_out=1 tokens_cached=147339
 t!:Bash id=wndAZewA cmd="git push origin main" → [running] tokens_in=2 tokens_out=366 tokens_cached=147339
+o: id=pPge2TGx → [ok] [main 34a2a111f] Fix more recorder integration tests - 19 passing
+o: id=wndAZewA → [ok] [0;36m🔍 Running cargo build to check for errors and warnings...[0m
+a: Good progress! Session summary: tokens_in=2 tokens_out=1 tokens_cached=147873
+t!:mcp__issues__issue_ready id=9pvwMWMR  → [running] tokens_in=2 tokens_out=163 tokens_cached=147873
+o: id=9pvwMWMR → [ok] {
+a: Continuing with the 6 remaining test failures. Let me check what's still failing: tokens_in=0 tokens_out=2 tokens_cached=148554
+t!:Bash id=yGyoNhJ5 cmd="cargo test -p recorder --test integration 2>&1 ..." → [running] tokens_in=0 tokens_out=2 tokens_cached=148554
+t!:Bash id=h7shh4CP cmd="cargo test -p recorder --test integration test_..." → [running] tokens_in=0 tokens_out=2 tokens_cached=148554
+o: id=yGyoNhJ5 → [ok] test test_parse_line_with_metadata ... FAILED
+o: id=h7shh4CP → [ok] assertion `left == right` failed
+a: The call_id is None but expecting "call_1". The format for call_id in tool lines must be different. Let me check how tool lines with call IDs should be formatted by looking at the parser: tokens_in=4 tokens_out=1 tokens_cached=148935
+t!:Bash id=xuyZc3uH cmd="grep -n "call_id" crates/recorder/src/lib.rs | ..." → [running] tokens_in=4 tokens_out=1 tokens_cached=148935
+o: id=xuyZc3uH → [ok] 208:    pub call_id: Option<String>,
+t!:Read id=U3R6m3Hw file_path=/home/christopherdavid/code/openagents/crates/recorder/src/lib.rs → [running] tokens_in=2 tokens_out=111 tokens_cached=149497
+o: id=U3R6m3Hw → [ok]    305→    static ref RE_USER: Regex = Regex::new(r"^u:\s*(.*)$").unwrap();
+a: I see! The call_id is extracted from `id=xxx` in the content, not from the line prefix. So `t:call_1` is wrong - it should be something like `t:Read id=call_1`. Let me fix the test: tokens_in=1 tokens_out=1 tokens_cached=149857
+t!:Edit id=UbTxETCA file_path=/home/christopherdavid/code/openagents/crates/recorder/tests/integration.rs → [running] tokens_in=1 tokens_out=577 tokens_cached=149857
+o: id=UbTxETCA → [ok] The file /home/christopherdavid/code/openagents/crates/recorder/tests/integration.rs has been upd...
+a: Now let me check and fix the other failing tests similarly. Given token usage (131K/200K), let me batch fix them: tokens_in=0 tokens_out=1 tokens_cached=151205
+t!:Bash id=gJRevffF cmd="cargo test -p recorder --test integration test_..." → [running] tokens_in=0 tokens_out=1 tokens_cached=151205
+t!:Bash id=rvgQMTYJ cmd="cargo test -p recorder --test integration test_..." → [running] tokens_in=0 tokens_out=1 tokens_cached=151205
+o: id=gJRevffF → [ok] test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 24 filtered out; finished in 0.01s
+o: id=rvgQMTYJ → [ok] assertion `left == right` failed
+a: The metadata test still fails. Let me check what the actual content looks like. The tokens test is expecting tokens_in but getting None. Let me check the token field names in the regex: tokens_in=1 tokens_out=1 tokens_cached=152256
+t!:Bash id=hs5Fqaso cmd="grep -n "tokens_in\|tokens_out\|RE_.*TOKEN" cra..." → [running] tokens_in=1 tokens_out=144 tokens_cached=152256
+o: id=hs5Fqaso → [ok] 221:    pub tokens_in: Option<u64>,
+a: The fields are `tokens_in=`, `tokens_out=`, `tokens_cached=`. My test used `in=`, `out=`, `cached=`. Let me fix the token test: tokens_in=0 tokens_out=1 tokens_cached=152752
+t!:Edit id=AQgHQg8W file_path=/home/christopherdavid/code/openagents/crates/recorder/tests/integration.rs → [running] tokens_in=0 tokens_out=462 tokens_cached=152752
+o: id=AQgHQg8W → [ok] The file /home/christopherdavid/code/openagents/crates/recorder/tests/integration.rs has been upd...
+a: Let me check the tool_with_result test and fix it, then check latency format: tokens_in=0 tokens_out=3 tokens_cached=153222
+t!:Read id=gyHpivtq file_path=/home/christopherdavid/code/openagents/crates/recorder/tests/integration.rs → [running] tokens_in=0 tokens_out=3 tokens_cached=153222
+o: id=gyHpivtq → [ok]    216→#[test]
+a: The latency field is `lat=` but the regex expects `latency_ms=`. Let me fix these tests properly: tokens_in=0 tokens_out=1 tokens_cached=154188
+t!:Edit id=vHbTGRmS file_path=/home/christopherdavid/code/openagents/crates/recorder/tests/integration.rs → [running] tokens_in=0 tokens_out=495 tokens_cached=154188
+o: id=vHbTGRmS → [ok] The file /home/christopherdavid/code/openagents/crates/recorder/tests/integration.rs has been upd...
+# status: Compacting
+a: I'll continue with Issue #41 by testing the fixes I just made and then fixing the remaining failures. tokens_in=3 tokens_out=2 tokens_cached=19855
+t!:Bash id=4N6nJvei cmd="cargo test -p recorder --test integration" → [running] tokens_in=3 tokens_out=120 tokens_cached=19855
+o: id=4N6nJvei → [error] Exit code 101
+a: Good progress - down to 4 failures. Let me fix them: tokens_in=7 tokens_out=1 tokens_cached=37818
+t!:Read id=ZQ2v2UyP file_path=/home/christopherdavid/code/openagents/crates/recorder/tests/integration.rs → [running] tokens_in=7 tokens_out=1 tokens_cached=37818
+o: id=ZQ2v2UyP → [ok]    184→fn test_parse_line_with_metadata() {
+a: I see - the content field should NOT include the metadata. Let me check what the parser does: tokens_in=5 tokens_out=2 tokens_cached=38809
+t!:Read id=xJboBoG1 file_path=/home/christopherdavid/code/openagents/crates/recorder/src/parser.rs → [running] tokens_in=5 tokens_out=2 tokens_cached=38809
+o: id=xJboBoG1 → [error] <tool_use_error>File does not exist.</tool_use_error>
+t!:Glob id=51ZYHK4i pattern="**/parser.rs" → [running] tokens_in=6 tokens_out=26 tokens_cached=39764
+o: id=51ZYHK4i → [ok] No files found
+t!:Glob id=oNBRvswa pattern="**/*.rs" → [running] tokens_in=4 tokens_out=91 tokens_cached=39966
+o: id=oNBRvswa → [ok] /home/christopherdavid/code/openagents/crates/recorder/src/convert.rs
+t!:Grep id=vRXn3Hf7 pattern="fn parse_content|fn parse_line" → [running] tokens_in=3 tokens_out=120 tokens_cached=40212
+o: id=vRXn3Hf7 → [ok] Found 1 file
+t!:Grep id=1b7mQCAX pattern="content:" → [running] tokens_in=2 tokens_out=24 tokens_cached=40452
+o: id=1b7mQCAX → [ok] 202-    pub line_number: usize,
+t!:Grep id=pd4R7m13 pattern="content: (.+\.to_string|res..." → [running] tokens_in=1 tokens_out=24 tokens_cached=40635
+o: id=pd4R7m13 → [ok] No matches found
+t!:Read id=nUhCcNoG file_path=/home/christopherdavid/code/openagents/crates/recorder/src/lib.rs → [running] tokens_in=0 tokens_out=111 tokens_cached=41057
+o: id=nUhCcNoG → [ok]    440→    } else if RE_TOOL_START.is_match(trimmed) {
+a: I see - the `content` field at line 445 includes everything after the prefix. For Tool lines, it's `trimmed[2..]` which would be everything after `t:`. So the test expectation is wrong - the conten... tokens_in=0 tokens_out=1 tokens_cached=41248
+t!:Read id=jBmPzbfL file_path=/home/christopherdavid/code/openagents/crates/recorder/src/lib.rs → [running] tokens_in=0 tokens_out=195 tokens_cached=41248
+o: id=jBmPzbfL → [ok]    100→
+a: I see from line 160 and 166 - the content field stores EVERYTHING after the prefix. So for `t:Read id=call_1 step=5 file=/path/to/file.rs`, the content would be `Read id=call_1 step=5 file=/path/to... tokens_in=0 tokens_out=3 tokens_cached=42968
+t!:Read id=GXt8ZGsg file_path=/home/christopherdavid/code/openagents/crates/recorder/tests/integration.rs → [running] tokens_in=0 tokens_out=215 tokens_cached=42968
+o: id=GXt8ZGsg → [ok]    400→#[test]
+a: I see at line 403 - the format is `t:call_1 step=5 ts=12:34:56: Glob pattern=*.rs` where the call_id comes after `t:` directly. Let me check the regex patterns: tokens_in=0 tokens_out=1 tokens_cached=44264
+t!:Grep id=4k3drqHy pattern="RE_TOOL|RE_CALL_ID" → [running] tokens_in=0 tokens_out=1 tokens_cached=44264
+o: id=4k3drqHy → [ok] 305-    static ref RE_USER: Regex = Regex::new(r"^u:\s*(.*)$").unwrap();
+a: Now I understand! Looking at line 309 and 445: tokens_in=0 tokens_out=3 tokens_cached=45144
+t!:Edit id=j3HvK1XQ file_path=/home/christopherdavid/code/openagents/crates/recorder/tests/integration.rs → [running] tokens_in=0 tokens_out=713 tokens_cached=45144
+o: id=j3HvK1XQ → [ok] The file /home/christopherdavid/code/openagents/crates/recorder/tests/integration.rs has been upd...
+t!:Edit id=KPSwPX2P file_path=/home/christopherdavid/code/openagents/crates/recorder/tests/integration.rs → [running] tokens_in=0 tokens_out=582 tokens_cached=46177
+o: id=KPSwPX2P → [ok] The file /home/christopherdavid/code/openagents/crates/recorder/tests/integration.rs has been upd...
+t!:Read id=1gwBD8Jj file_path=/home/christopherdavid/code/openagents/crates/recorder/tests/integration.rs → [running] tokens_in=0 tokens_out=111 tokens_cached=47346
+o: id=1gwBD8Jj → [ok]    315→            stats.total_tokens_out += tokens;
+t!:Read id=LQ6gmfZY file_path=/home/christopherdavid/code/openagents/crates/recorder/tests/integration.rs → [running] tokens_in=0 tokens_out=111 tokens_cached=48490
+o: id=LQ6gmfZY → [ok]    285→    let mut content = complete_header();
+a: I see the issue - lines 287, 288, 290, 292 use wrong formats. Let me fix test_validation_statistics: tokens_in=0 tokens_out=1 tokens_cached=49263
+t!:Edit id=SHnvn65f file_path=/home/christopherdavid/code/openagents/crates/recorder/tests/integration.rs → [running] tokens_in=0 tokens_out=454 tokens_cached=49263
+o: id=SHnvn65f → [ok] The file /home/christopherdavid/code/openagents/crates/recorder/tests/integration.rs has been upd...
+a: Now let me fix test_complete_agent_session which expects all lines to have timestamps: tokens_in=0 tokens_out=1 tokens_cached=50024
+t!:Read id=uzz4CnfG file_path=/home/christopherdavid/code/openagents/crates/recorder/tests/integration.rs → [running] tokens_in=0 tokens_out=1 tokens_cached=50024
+o: id=uzz4CnfG → [ok]    490→    // Tool result
+t!:Read id=nYQ5zcqJ file_path=/home/christopherdavid/code/openagents/crates/recorder/tests/integration.rs → [running] tokens_in=0 tokens_out=18 tokens_cached=50945
+o: id=nYQ5zcqJ → [ok]    480→
+a: The timestamps at lines 482, 485, 488, 491, 494, 497, 500, 503 use the wrong format. Looking back at the regex on line 327 from lib.rs, it expects ISO8601: `\bts=(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2... tokens_in=0 tokens_out=1 tokens_cached=51976
+t!:Edit id=KwPcZ5DY file_path=/home/christopherdavid/code/openagents/crates/recorder/tests/integration.rs → [running] tokens_in=0 tokens_out=1077 tokens_cached=51976
+o: id=KwPcZ5DY → [error] <tool_use_error>String to replace not found in file.
+t!:Read id=mA1eyxyU file_path=/home/christopherdavid/code/openagents/crates/recorder/tests/integration.rs → [running] tokens_in=1 tokens_out=111 tokens_cached=52573
+o: id=mA1eyxyU → [ok]    475→fn test_complete_agent_session() {
+t!:Edit id=ujLW2H8o file_path=/home/christopherdavid/code/openagents/crates/recorder/tests/integration.rs → [running] tokens_in=0 tokens_out=971 tokens_cached=54109
+o: id=ujLW2H8o → [ok] The file /home/christopherdavid/code/openagents/crates/recorder/tests/integration.rs has been upd...
+a: Now let me run the tests again to see if all 4 failures are fixed: tokens_in=0 tokens_out=1 tokens_cached=54952
+t!:Bash id=piLyGLL6 cmd="cargo test -p recorder --test integration" → [running] tokens_in=0 tokens_out=99 tokens_cached=54952
+o: id=piLyGLL6 → [ok] running 25 tests
+a: Perfect! All 25 tests pass. Let me commit and push: tokens_in=0 tokens_out=1 tokens_cached=56662
+t!:Bash id=C5KXev42 cmd="git add -A && git commit -m "$(cat <<'EOF'" → [running] tokens_in=0 tokens_out=302 tokens_cached=56662
