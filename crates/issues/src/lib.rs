@@ -20,6 +20,7 @@
 //!     issue::Priority::High,
 //!     issue::IssueType::Bug,
 //!     None, // agent (defaults to "claude")
+//!     None, // directive_id
 //! ).unwrap();
 //!
 //! // Claim the issue
@@ -30,12 +31,14 @@
 //! ```
 
 pub mod db;
+pub mod directive;
 pub mod issue;
 pub mod project;
 pub mod session;
 
 // Re-export commonly used types
 pub use db::{init_db, init_memory_db};
+pub use directive::{Directive, DirectiveError, DirectivePriority, DirectiveProgress, DirectiveStatus};
 pub use issue::{Issue, IssueType, Priority, Status};
 pub use project::Project;
 pub use session::{Session, SessionStatus};

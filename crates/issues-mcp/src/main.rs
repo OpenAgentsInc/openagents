@@ -157,6 +157,10 @@ impl McpServer {
                             "type": "string",
                             "enum": ["claude", "codex"],
                             "description": "Agent to assign (default: claude)"
+                        },
+                        "directive_id": {
+                            "type": "string",
+                            "description": "ID of the directive this issue belongs to (e.g., 'd-001')"
                         }
                     },
                     "required": ["title"]
@@ -337,6 +341,81 @@ impl McpServer {
                     "required": ["number"]
                 }),
             },
+            // Directive tools
+            Tool {
+                name: "directive_list".to_string(),
+                description: "List all directives from .openagents/directives/. Returns high-level project goals.".to_string(),
+                input_schema: json!({
+                    "type": "object",
+                    "properties": {
+                        "status": {
+                            "type": "string",
+                            "enum": ["active", "paused", "completed"],
+                            "description": "Filter by status (default: all)"
+                        }
+                    }
+                }),
+            },
+            Tool {
+                name: "directive_get".to_string(),
+                description: "Get a directive by ID with its linked issues and progress.".to_string(),
+                input_schema: json!({
+                    "type": "object",
+                    "properties": {
+                        "id": {
+                            "type": "string",
+                            "description": "Directive ID (e.g., 'd-001')"
+                        }
+                    },
+                    "required": ["id"]
+                }),
+            },
+            Tool {
+                name: "directive_create".to_string(),
+                description: "Create a new directive in .openagents/directives/.".to_string(),
+                input_schema: json!({
+                    "type": "object",
+                    "properties": {
+                        "id": {
+                            "type": "string",
+                            "description": "Directive ID (e.g., 'd-001')"
+                        },
+                        "title": {
+                            "type": "string",
+                            "description": "Directive title"
+                        },
+                        "priority": {
+                            "type": "string",
+                            "enum": ["urgent", "high", "medium", "low"],
+                            "description": "Priority level (default: medium)"
+                        },
+                        "body": {
+                            "type": "string",
+                            "description": "Markdown body with goal, success criteria, etc."
+                        }
+                    },
+                    "required": ["id", "title"]
+                }),
+            },
+            Tool {
+                name: "directive_update".to_string(),
+                description: "Update a directive's status.".to_string(),
+                input_schema: json!({
+                    "type": "object",
+                    "properties": {
+                        "id": {
+                            "type": "string",
+                            "description": "Directive ID"
+                        },
+                        "status": {
+                            "type": "string",
+                            "enum": ["active", "paused", "completed"],
+                            "description": "New status"
+                        }
+                    },
+                    "required": ["id", "status"]
+                }),
+            },
         ];
 
         Ok(json!({ "tools": tools }))
@@ -362,6 +441,10 @@ impl McpServer {
             "issue_ready" => self.tool_issue_ready(&conn, &arguments),
             "issue_update" => self.tool_issue_update(&conn, &arguments),
             "issue_delete" => self.tool_issue_delete(&conn, &arguments),
+            "directive_list" => self.tool_directive_list(&conn, &arguments),
+            "directive_get" => self.tool_directive_get(&conn, &arguments),
+            "directive_create" => self.tool_directive_create(&arguments),
+            "directive_update" => self.tool_directive_update(&arguments),
             "enter_plan_mode" => self.tool_enter_plan_mode(&arguments),
             "exit_plan_mode" => self.tool_exit_plan_mode(&arguments),
             "advance_plan_phase" => self.tool_advance_plan_phase(),
@@ -437,14 +520,21 @@ impl McpServer {
             .unwrap_or(IssueType::Task);
 
         let agent = args.get("agent").and_then(|v| v.as_str());
+        let directive_id = args.get("directive_id").and_then(|v| v.as_str());
 
         let created =
-            issue::create_issue(conn, title, description, priority, issue_type, agent)
+            issue::create_issue(conn, title, description, priority, issue_type, agent, directive_id)
                 .map_err(|e| e.to_string())?;
 
+        let directive_info = if let Some(did) = &created.directive_id {
+            format!(" [directive: {}]", did)
+        } else {
+            String::new()
+        };
+
         Ok(format!(
-            "Created issue #{}: {} (agent: {})",
-            created.number, created.title, created.agent
+            "Created issue #{}: {} (agent: {}){}",
+            created.number, created.title, created.agent, directive_info
         ))
     }
 
@@ -652,6 +742,156 @@ impl McpServer {
             "Current phase: {}\n\n{}",
             phase.as_str().to_uppercase(),
             phase_prompt
+        ))
+    }
+
+    fn tool_directive_list(&self, conn: &Connection, args: &Value) -> Result<String, String> {
+        let status_filter = args.get("status").and_then(|v| v.as_str());
+
+        // Get directives from .openagents/directives/
+        let directives_dir = std::path::PathBuf::from(".openagents/directives");
+        let directives = issues::directive::load_directives(&directives_dir)
+            .map_err(|e| e.to_string())?;
+
+        // Filter by status if specified
+        let filtered: Vec<_> = if let Some(status_str) = status_filter {
+            let status = issues::DirectiveStatus::from_str(status_str);
+            directives.into_iter().filter(|d| d.status == status).collect()
+        } else {
+            directives
+        };
+
+        // Build output with progress
+        let output: Vec<Value> = filtered
+            .iter()
+            .map(|d| {
+                let progress = issues::directive::calculate_progress(conn, &d.id);
+                json!({
+                    "id": d.id,
+                    "title": d.title,
+                    "status": d.status.as_str(),
+                    "priority": d.priority.as_str(),
+                    "progress": format!("{}/{} issues ({}%)", progress.completed_issues, progress.total_issues, progress.percentage()),
+                    "created": d.created.to_string()
+                })
+            })
+            .collect();
+
+        serde_json::to_string_pretty(&output).map_err(|e| e.to_string())
+    }
+
+    fn tool_directive_get(&self, conn: &Connection, args: &Value) -> Result<String, String> {
+        let id = args
+            .get("id")
+            .and_then(|v| v.as_str())
+            .ok_or("Missing id")?;
+
+        let directives_dir = std::path::PathBuf::from(".openagents/directives");
+        let directive = issues::directive::get_directive_by_id(&directives_dir, id)
+            .map_err(|e| e.to_string())?
+            .ok_or(format!("Directive '{}' not found", id))?;
+
+        let progress = issues::directive::calculate_progress(conn, &directive.id);
+        let linked_issues = issues::directive::list_issues_by_directive(conn, &directive.id)
+            .map_err(|e| e.to_string())?;
+
+        let issues_summary: Vec<Value> = linked_issues
+            .iter()
+            .map(|i| {
+                json!({
+                    "number": i.number,
+                    "title": i.title,
+                    "status": i.status.as_str(),
+                    "is_blocked": i.is_blocked
+                })
+            })
+            .collect();
+
+        let output = json!({
+            "id": directive.id,
+            "title": directive.title,
+            "status": directive.status.as_str(),
+            "priority": directive.priority.as_str(),
+            "created": directive.created.to_string(),
+            "updated": directive.updated.to_string(),
+            "body": directive.body,
+            "progress": {
+                "total": progress.total_issues,
+                "completed": progress.completed_issues,
+                "in_progress": progress.in_progress_issues,
+                "blocked": progress.blocked_issues,
+                "percentage": progress.percentage()
+            },
+            "issues": issues_summary
+        });
+
+        serde_json::to_string_pretty(&output).map_err(|e| e.to_string())
+    }
+
+    fn tool_directive_create(&self, args: &Value) -> Result<String, String> {
+        let id = args
+            .get("id")
+            .and_then(|v| v.as_str())
+            .ok_or("Missing id")?;
+
+        let title = args
+            .get("title")
+            .and_then(|v| v.as_str())
+            .ok_or("Missing title")?;
+
+        let priority = args
+            .get("priority")
+            .and_then(|v| v.as_str())
+            .map(|s| match s {
+                "urgent" => issues::directive::DirectivePriority::Urgent,
+                "high" => issues::directive::DirectivePriority::High,
+                "low" => issues::directive::DirectivePriority::Low,
+                _ => issues::directive::DirectivePriority::Medium,
+            })
+            .unwrap_or(issues::directive::DirectivePriority::Medium);
+
+        let body = args
+            .get("body")
+            .and_then(|v| v.as_str())
+            .unwrap_or("## Goal\n\nDescribe the goal here.\n\n## Success Criteria\n\n- [ ] Criterion 1");
+
+        let directives_dir = std::path::PathBuf::from(".openagents/directives");
+        let directive = issues::Directive::create(&directives_dir, id, title, priority, body)
+            .map_err(|e| e.to_string())?;
+
+        Ok(format!(
+            "Created directive '{}': {} (priority: {}, file: {:?})",
+            directive.id,
+            directive.title,
+            directive.priority.as_str(),
+            directive.file_path
+        ))
+    }
+
+    fn tool_directive_update(&self, args: &Value) -> Result<String, String> {
+        let id = args
+            .get("id")
+            .and_then(|v| v.as_str())
+            .ok_or("Missing id")?;
+
+        let status_str = args
+            .get("status")
+            .and_then(|v| v.as_str())
+            .ok_or("Missing status")?;
+
+        let new_status = issues::DirectiveStatus::from_str(status_str);
+
+        let directives_dir = std::path::PathBuf::from(".openagents/directives");
+        let mut directive = issues::directive::get_directive_by_id(&directives_dir, id)
+            .map_err(|e| e.to_string())?
+            .ok_or(format!("Directive '{}' not found", id))?;
+
+        directive.set_status(new_status).map_err(|e| e.to_string())?;
+
+        Ok(format!(
+            "Updated directive '{}' status to {}",
+            directive.id,
+            directive.status.as_str()
         ))
     }
 }

@@ -443,6 +443,11 @@ enum Commands {
         #[command(subcommand)]
         command: SessionCommands,
     },
+    /// Manage directives
+    Directive {
+        #[command(subcommand)]
+        command: DirectiveCommands,
+    },
 }
 
 #[derive(Subcommand)]
@@ -631,6 +636,62 @@ enum SessionCommands {
     },
 }
 
+#[derive(Subcommand)]
+enum DirectiveCommands {
+    /// List all directives
+    List {
+        /// Filter by status (active, paused, completed)
+        #[arg(short, long)]
+        status: Option<String>,
+
+        /// Path to issues database (for progress calculation)
+        #[arg(long)]
+        db: Option<PathBuf>,
+    },
+    /// Show directive details
+    Show {
+        /// Directive ID (e.g., 'd-001')
+        #[arg(required = true)]
+        id: String,
+
+        /// Path to issues database (for progress calculation)
+        #[arg(long)]
+        db: Option<PathBuf>,
+    },
+    /// Create a new directive
+    Create {
+        /// Directive ID (e.g., 'd-001')
+        #[arg(required = true)]
+        id: String,
+
+        /// Directive title
+        #[arg(required = true)]
+        title: String,
+
+        /// Priority (urgent, high, medium, low)
+        #[arg(short, long, default_value = "medium")]
+        priority: String,
+    },
+    /// Pause a directive
+    Pause {
+        /// Directive ID
+        #[arg(required = true)]
+        id: String,
+    },
+    /// Complete a directive
+    Complete {
+        /// Directive ID
+        #[arg(required = true)]
+        id: String,
+    },
+    /// Resume a paused directive
+    Resume {
+        /// Directive ID
+        #[arg(required = true)]
+        id: String,
+    },
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     // Setup cleanup handlers for signals and panics
@@ -693,6 +754,9 @@ async fn main() -> Result<()> {
         }
         Commands::Session { command } => {
             handle_session_command(command).await
+        }
+        Commands::Directive { command } => {
+            handle_directive_command(command).await
         }
     }
 }
@@ -833,10 +897,16 @@ LOOP START:
 4. GOTO LOOP START
 
 IF issue_ready returns "No ready issues available":
-- Analyze codebase to identify the next logical improvement
-- Create a new issue with issue_create
-- Claim and implement it
+- First check directives with directive_list to see active high-level goals
+- Review the directive's goal, success criteria, and current progress
+- Create 1-3 specific, actionable issues linked to an active directive using:
+  issue_create title="..." directive_id="d-001" (use the actual directive ID)
+- If no directives exist, analyze codebase to identify the next logical improvement
+- Claim and implement the new issue
 - GOTO LOOP START
+
+DIRECTIVES: High-level goals in .openagents/directives/ guide what to work on.
+Use directive_list to see them, directive_get <id> for details.
 
 CRITICAL RULES - VIOLATION MEANS FAILURE:
 - NEVER output a "session summary" or "issues completed" message
@@ -2374,7 +2444,7 @@ async fn handle_issue_command(command: IssueCommands) -> Result<()> {
             let priority = Priority::from_str(&priority);
             let issue_type = IssueType::from_str(&issue_type);
 
-            let created = issue::create_issue(&conn, &title, description.as_deref(), priority, issue_type, Some(&agent))?;
+            let created = issue::create_issue(&conn, &title, description.as_deref(), priority, issue_type, Some(&agent), None)?;
 
             println!(
                 "{} Created issue #{}: {} (agent: {})",
@@ -2596,6 +2666,163 @@ async fn handle_issue_command(command: IssueCommands) -> Result<()> {
             if skipped > 0 {
                 println!("  Skipped:  {} (use --force to update)", skipped);
             }
+        }
+    }
+
+    Ok(())
+}
+
+async fn handle_directive_command(command: DirectiveCommands) -> Result<()> {
+    use issues::{db, directive, DirectiveStatus};
+
+    let default_db = std::env::current_dir()?.join("autopilot.db");
+    let directives_dir = std::env::current_dir()?.join(".openagents/directives");
+
+    match command {
+        DirectiveCommands::List { status, db } => {
+            let db_path = db.unwrap_or(default_db);
+            let conn = db::init_db(&db_path)?;
+
+            let all_directives = directive::load_directives(&directives_dir)
+                .map_err(|e| anyhow::anyhow!("{}", e))?;
+
+            // Filter by status if specified
+            let directives: Vec<_> = if let Some(ref status_str) = status {
+                let filter_status = DirectiveStatus::from_str(status_str);
+                all_directives.into_iter().filter(|d| d.status == filter_status).collect()
+            } else {
+                all_directives
+            };
+
+            if directives.is_empty() {
+                if directives_dir.exists() {
+                    println!("No directives found");
+                } else {
+                    println!("No directives directory found. Create {} to get started.", directives_dir.display());
+                }
+            } else {
+                println!("{:<12} {:<8} {:<10} {:<40} {}", "ID", "Status", "Progress", "Title", "Priority");
+                println!("{}", "-".repeat(85));
+                for d in directives {
+                    let progress = directive::calculate_progress(&conn, &d.id);
+                    let progress_str = if progress.total_issues > 0 {
+                        format!("{}/{} ({}%)", progress.completed_issues, progress.total_issues, progress.percentage())
+                    } else {
+                        "0/0".to_string()
+                    };
+                    let title_short = if d.title.len() > 38 {
+                        format!("{}...", &d.title[..35])
+                    } else {
+                        d.title.clone()
+                    };
+                    println!(
+                        "{:<12} {:<8} {:<10} {:<40} {}",
+                        d.id,
+                        d.status.as_str(),
+                        progress_str,
+                        title_short,
+                        d.priority.as_str()
+                    );
+                }
+            }
+        }
+        DirectiveCommands::Show { id, db } => {
+            let db_path = db.unwrap_or(default_db);
+            let conn = db::init_db(&db_path)?;
+
+            match directive::get_directive_by_id(&directives_dir, &id)
+                .map_err(|e| anyhow::anyhow!("{}", e))?
+            {
+                Some(d) => {
+                    let progress = directive::calculate_progress(&conn, &d.id);
+                    let linked_issues = directive::list_issues_by_directive(&conn, &d.id)?;
+
+                    println!("{} Directive {}", "→".cyan(), d.id);
+                    println!("  Title:    {}", d.title);
+                    println!("  Status:   {}", d.status.as_str());
+                    println!("  Priority: {}", d.priority.as_str());
+                    println!("  Created:  {}", d.created);
+                    println!("  Updated:  {}", d.updated);
+                    println!();
+                    println!("{} Progress: {}/{} issues ({}%)", "→".cyan(), progress.completed_issues, progress.total_issues, progress.percentage());
+                    if progress.in_progress_issues > 0 {
+                        println!("  In progress: {}", progress.in_progress_issues);
+                    }
+                    if progress.blocked_issues > 0 {
+                        println!("  Blocked: {}", progress.blocked_issues);
+                    }
+                    println!();
+                    println!("{} Body:", "→".cyan());
+                    for line in d.body.lines() {
+                        println!("  {}", line);
+                    }
+                    if !linked_issues.is_empty() {
+                        println!();
+                        println!("{} Linked Issues:", "→".cyan());
+                        for i in linked_issues {
+                            let status_icon = match i.status.as_str() {
+                                "done" => "✓".green(),
+                                "in_progress" => "●".yellow(),
+                                _ => "○".white(),
+                            };
+                            println!("  {} #{} - {} [{}]", status_icon, i.number, i.title, i.status.as_str());
+                        }
+                    }
+                }
+                None => {
+                    eprintln!("{} Directive '{}' not found", "Error:".red(), id);
+                    std::process::exit(1);
+                }
+            }
+        }
+        DirectiveCommands::Create { id, title, priority } => {
+            let priority = match priority.as_str() {
+                "urgent" => directive::DirectivePriority::Urgent,
+                "high" => directive::DirectivePriority::High,
+                "low" => directive::DirectivePriority::Low,
+                _ => directive::DirectivePriority::Medium,
+            };
+
+            let body = "## Goal\n\nDescribe the goal here.\n\n## Success Criteria\n\n- [ ] Criterion 1\n- [ ] Criterion 2";
+
+            let d = issues::Directive::create(&directives_dir, &id, &title, priority, body)
+                .map_err(|e| anyhow::anyhow!("{}", e))?;
+
+            println!("{} Created directive '{}'", "✓".green(), d.id);
+            println!("  Title: {}", d.title);
+            println!("  File:  {:?}", d.file_path);
+            println!();
+            println!("Edit the file to add your goal and success criteria.");
+        }
+        DirectiveCommands::Pause { id } => {
+            let mut d = directive::get_directive_by_id(&directives_dir, &id)
+                .map_err(|e| anyhow::anyhow!("{}", e))?
+                .ok_or_else(|| anyhow::anyhow!("Directive '{}' not found", id))?;
+
+            d.set_status(DirectiveStatus::Paused)
+                .map_err(|e| anyhow::anyhow!("{}", e))?;
+
+            println!("{} Paused directive '{}'", "⏸".yellow(), d.id);
+        }
+        DirectiveCommands::Complete { id } => {
+            let mut d = directive::get_directive_by_id(&directives_dir, &id)
+                .map_err(|e| anyhow::anyhow!("{}", e))?
+                .ok_or_else(|| anyhow::anyhow!("Directive '{}' not found", id))?;
+
+            d.set_status(DirectiveStatus::Completed)
+                .map_err(|e| anyhow::anyhow!("{}", e))?;
+
+            println!("{} Completed directive '{}'", "✓".green(), d.id);
+        }
+        DirectiveCommands::Resume { id } => {
+            let mut d = directive::get_directive_by_id(&directives_dir, &id)
+                .map_err(|e| anyhow::anyhow!("{}", e))?
+                .ok_or_else(|| anyhow::anyhow!("Directive '{}' not found", id))?;
+
+            d.set_status(DirectiveStatus::Active)
+                .map_err(|e| anyhow::anyhow!("{}", e))?;
+
+            println!("{} Resumed directive '{}' (now active)", "▶".green(), d.id);
         }
     }
 
