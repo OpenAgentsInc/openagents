@@ -7,6 +7,7 @@ pub mod agents;
 pub mod api;
 pub mod bounties;
 pub mod budget;
+pub mod coalition_compute;
 pub mod coalitions;
 pub mod creator_dashboard;
 pub mod data_consumer;
@@ -31,6 +32,10 @@ pub use agents::{
 };
 pub use bounties::{
     BountyRequirements, BountyStatus, BountySubmission, DataBounty, SubmissionStatus,
+};
+pub use coalition_compute::{
+    AggregationStrategy, CoalitionComputeRequest, CoalitionResult, DecomposableTask,
+    InferenceParams, ParallelismStrategy, ProviderContribution, Subtask, SubtaskResult,
 };
 pub use coalitions::{
     Coalition, CoalitionMember, CoalitionStatus, CoalitionType, Contribution, PaymentPool,
