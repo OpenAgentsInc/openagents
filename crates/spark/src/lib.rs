@@ -16,7 +16,26 @@
 //!         |                                           |
 //!    Nostr Keypair                             Spark Signer
 //!    (crates/nostr/core)                       (crates/spark)
+//!         |                                           |
+//!         +---------------------+---------------------+
+//!                               |
+//!                         UnifiedIdentity
+//!                      (crates/compute/domain)
 //! ```
+//!
+//! # Status
+//!
+//! **Phase 1: Core Integration (COMPLETED)**
+//! - ✅ SparkSigner with BIP44 key derivation
+//! - ✅ Integration into UnifiedIdentity
+//! - ✅ Basic wallet types and stubs
+//!
+//! **Phase 2: Wallet Operations (IN PROGRESS)**
+//! - 🚧 Balance queries (stub implementation)
+//! - 🚧 Wallet info (stub implementation)
+//! - ⏸️ Breez SDK integration (pending)
+//!
+//! **Phase 3+: Payment Methods, Tokens, Multi-Network (PLANNED)**
 //!
 //! # Example
 //!
@@ -31,9 +50,27 @@
 //! let pubkey = signer.public_key_hex();
 //! println!("Public key: {}", pubkey);
 //! ```
+//!
+//! ```rust,ignore
+//! use spark::{SparkSigner, SparkWallet, WalletConfig, Network};
+//!
+//! // Create a wallet (async)
+//! let signer = SparkSigner::from_mnemonic(mnemonic, "").expect("valid mnemonic");
+//! let config = WalletConfig {
+//!     network: Network::Testnet,
+//!     ..Default::default()
+//! };
+//! let wallet = SparkWallet::new(signer, config).await?;
+//!
+//! // Get balance (currently stub - returns zero)
+//! let balance = wallet.get_balance().await?;
+//! println!("Total: {} sats", balance.total_sats());
+//! ```
 
 pub mod error;
 pub mod signer;
+pub mod wallet;
 
 pub use error::SparkError;
 pub use signer::SparkSigner;
+pub use wallet::{Balance, Network, SparkWallet, WalletConfig, WalletInfo};
