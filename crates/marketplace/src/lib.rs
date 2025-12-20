@@ -5,6 +5,7 @@
 
 pub mod agents;
 pub mod api;
+pub mod bounties;
 pub mod budget;
 pub mod coalitions;
 pub mod creator_dashboard;
@@ -27,6 +28,9 @@ pub mod types;
 pub use agents::{
     Agent, AgentAvailability, AgentListing, AgentPricing, AgentSpawnRequest as AgentsSpawnRequest,
     AgentStatus, AgentWallet, PricingModel,
+};
+pub use bounties::{
+    BountyRequirements, BountyStatus, BountySubmission, DataBounty, SubmissionStatus,
 };
 pub use coalitions::{
     Coalition, CoalitionMember, CoalitionStatus, CoalitionType, Contribution, PaymentPool,
