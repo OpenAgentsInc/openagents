@@ -89,7 +89,10 @@ impl WorkerSupervisor {
                 cmd.arg("--full-auto");
                 cmd.arg("--with-issues");
                 cmd.arg("--model").arg(&self.config.model);
-                cmd.arg("--max-budget").arg(self.config.max_budget.to_string());
+                // Only pass budget if explicitly set (> 0)
+                if self.config.max_budget > 0.0 {
+                    cmd.arg("--max-budget").arg(self.config.max_budget.to_string());
+                }
                 cmd.arg("--max-turns").arg(self.config.max_turns.to_string());
 
                 if let Some(project) = &self.config.project {
@@ -112,7 +115,10 @@ impl WorkerSupervisor {
                 cmd.arg("--full-auto");
                 cmd.arg("--with-issues");
                 cmd.arg("--model").arg(&self.config.model);
-                cmd.arg("--max-budget").arg(self.config.max_budget.to_string());
+                // Only pass budget if explicitly set (> 0)
+                if self.config.max_budget > 0.0 {
+                    cmd.arg("--max-budget").arg(self.config.max_budget.to_string());
+                }
                 cmd.arg("--max-turns").arg(self.config.max_turns.to_string());
 
                 if let Some(project) = &self.config.project {

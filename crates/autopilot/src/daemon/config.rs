@@ -145,7 +145,7 @@ impl Default for DaemonConfig {
             socket_path: autopilot_dir.join("autopilotd.sock"),
             pid_file: autopilot_dir.join("autopilotd.pid"),
             model: "sonnet".to_string(),
-            max_budget: 300.0,
+            max_budget: 0.0, // 0 = no constraint
             max_turns: 99999,
         }
     }
