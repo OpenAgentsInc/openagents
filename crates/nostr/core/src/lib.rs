@@ -7,6 +7,7 @@
 //! - NIP-90: Data Vending Machine (DVM) job requests/results/feedback
 //! - Identity types for marketplace participants (agents, creators, providers)
 //! - Lightning payment types for marketplace transactions
+//! - Compute provider types for decentralized compute marketplace
 //!
 //! # Features
 //!
@@ -21,6 +22,7 @@ mod nip28;
 mod nip90;
 #[cfg(feature = "full")]
 mod payments;
+mod provider;
 
 // NIP-01: Basic protocol (Event type always available)
 pub use nip01::{
@@ -78,4 +80,10 @@ pub use identity::CreatorProfile;
 pub use payments::{
     CoalitionPayment, InvoiceStatus, LightningInvoice, PaymentDestination, PaymentError,
     PaymentRequest, PaymentResult, PaymentSplit,
+};
+
+// Compute provider types for marketplace
+pub use provider::{
+    ComputeCapabilities, ComputePricing, ComputeProvider, ProviderError, ProviderReputation,
+    Region, ReputationTier,
 };
