@@ -460,6 +460,315 @@ cargo add tokio --features full
 - Governance framework
 - Mobile companion app
 
+## Examples
+
+### Running Autopilot on a Task
+
+Run the autonomous task executor with a natural language prompt:
+
+```bash
+# Initialize autopilot (creates autopilot.db)
+cargo run -p autopilot -- init
+
+# Run a single task
+cargo run -p autopilot -- run "Add error handling to the authentication module"
+
+# Expected output:
+# ✓ Created issue #1: Add error handling to the authentication module
+# ✓ Claimed issue #1
+# → Analyzing crates/auth/src/lib.rs...
+# → Adding Result types and error propagation...
+# → Running tests...
+# ✓ All tests passed
+# ✓ Completed issue #1
+#
+# Session saved to: docs/logs/20251220/session_12345.rlog
+# Tokens: 15,234 in / 8,901 out
+# Cost: $0.45
+```
+
+The autopilot creates an issue, claims it, implements the changes, and logs the entire trajectory to an `.rlog` file.
+
+### Full-Auto Mode (Process All Issues)
+
+Run autopilot in continuous mode to process all issues in the queue:
+
+```bash
+# Create multiple issues
+cargo run -p autopilot -- issue create "Fix clippy warnings" --priority high
+cargo run -p autopilot -- issue create "Update dependencies" --priority medium
+cargo run -p autopilot -- issue create "Add unit tests for parser" --priority high
+
+# Run in full-auto mode
+cargo run -p autopilot -- run --full-auto --project myproject
+
+# Expected behavior:
+# → Processing issue #1: Fix clippy warnings
+# ✓ Completed issue #1
+# → Processing issue #3: Add unit tests for parser (high priority)
+# ✓ Completed issue #3
+# → Processing issue #2: Update dependencies
+# ✓ Completed issue #2
+# ✓ No more issues - session complete
+```
+
+Full-auto mode processes issues by priority until the queue is empty.
+
+### Managing Issues Programmatically
+
+Use the `issues` crate API to manage tasks:
+
+```rust
+use issues::{db, issue, Priority, IssueType};
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Initialize database
+    let conn = db::init_db("autopilot.db")?;
+
+    // Create a bug issue
+    let bug = issue::create_issue(
+        &conn,
+        "Memory leak in session handler",
+        Some("Users report increasing memory usage over time"),
+        Priority::Urgent,
+        IssueType::Bug,
+        Some("claude"),
+    )?;
+    println!("Created issue #{}", bug.number);
+
+    // Get next highest priority issue for Claude
+    let next = issue::get_next_ready_issue(&conn, Some("claude"))?;
+    if let Some(issue) = next {
+        println!("Next task: {} (priority: {:?})", issue.title, issue.priority);
+
+        // Claim the issue
+        issue::claim_issue(&conn, issue.number, "run_12345")?;
+
+        // ... do work ...
+
+        // Complete the issue
+        issue::complete_issue(&conn, issue.number)?;
+        println!("✓ Issue #{} completed", issue.number);
+    }
+
+    Ok(())
+}
+```
+
+### Analyzing Session Recordings
+
+Parse and analyze `.rlog` session files:
+
+```bash
+# Validate a session file
+cargo run -p recorder -- validate docs/logs/20251220/session_12345.rlog
+
+# Expected output:
+# ✓ Valid session format
+# Lines: 156
+# Turns: 12
+# Tools called: 34
+# Errors: 0
+
+# Convert to JSON for processing
+cargo run -p recorder -- convert session.rlog --output session.json
+
+# Show detailed statistics
+cargo run -p recorder -- stats session.rlog
+
+# Expected output:
+# Session Statistics
+# ==================
+# Total lines:        156
+# User messages:      12
+# Agent messages:     45
+# Tool executions:    34
+# Thinking blocks:    18
+# Errors:             0
+#
+# Token Usage
+# ===========
+# Input tokens:       23,456
+# Output tokens:      12,890
+# Cache reads:        8,901
+# Cache writes:       4,567
+#
+# Cost Breakdown
+# ==============
+# Input:              $0.23
+# Output:             $0.39
+# Cache reads:        $0.02
+# Cache writes:       $0.01
+# Total:              $0.65
+```
+
+Use the `recorder` crate API to parse sessions programmatically:
+
+```rust
+use recorder::{parse_rlog_file, SessionStats};
+
+fn analyze_session(path: &str) -> Result<(), Box<dyn std::error::Error>> {
+    // Parse the .rlog file
+    let session = parse_rlog_file(path)?;
+
+    // Calculate statistics
+    let stats = SessionStats::from_session(&session);
+
+    println!("Session had {} turns", stats.turn_count);
+    println!("Total cost: ${:.2}", stats.total_cost);
+    println!("Most used tool: {}", stats.most_used_tool);
+
+    // Find all errors
+    for line in session.lines.iter().filter(|l| l.line_type == "error") {
+        println!("Error at line {}: {}", line.line_number, line.content);
+    }
+
+    Ok(())
+}
+```
+
+### Browsing UI Components in Storybook
+
+Launch the component explorer to develop and test UI components:
+
+```bash
+# Start storybook server
+cargo run -p storybook
+
+# Expected output:
+# Server running at http://localhost:3030
+# Opening browser...
+
+# With hot-reload (recommended for development)
+cargo install systemfd cargo-watch
+systemfd --no-pid -s http::3030 -- cargo watch -x 'run -p storybook'
+
+# Expected output:
+# Watching for changes in crates/ui/ and crates/storybook/
+# Browser will auto-refresh on changes
+```
+
+Navigate to specific components:
+- http://localhost:3030/stories/button - Button variants and states
+- http://localhost:3030/stories/recorder/atoms - Atomic recorder components
+- http://localhost:3030/stories/recorder/demo - Full session viewer
+
+Develop new components with instant feedback:
+
+```rust
+// crates/ui/src/my_component.rs
+use maud::{Markup, html};
+
+pub fn my_component(text: &str) -> Markup {
+    html! {
+        div class="p-4 bg-card border border-border" {
+            (text)
+        }
+    }
+}
+
+// Save file → storybook auto-refreshes → see changes immediately
+```
+
+### Building a NIP-90 Compute Provider
+
+Create a Data Vending Machine (DVM) that processes jobs from the Nostr network:
+
+```rust
+use compute::{ComputeProvider, JobRequest, JobResult};
+use nostr_core::{Event, Keys};
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Initialize with BIP39 mnemonic
+    let provider = ComputeProvider::new(
+        "your twelve word mnemonic phrase goes here for key derivation",
+        vec!["wss://relay.damus.io", "wss://nos.lol"],
+    ).await?;
+
+    // Register handler for text generation jobs (NIP-90 kind 5050)
+    provider.register_handler(5050, |job: JobRequest| async move {
+        let prompt = job.input_data.get("prompt")
+            .and_then(|v| v.as_str())
+            .unwrap_or("Hello");
+
+        // Process with local LLM (Ollama)
+        let response = ollama_generate("llama2", prompt).await?;
+
+        JobResult::success(job.id, response)
+    });
+
+    println!("DVM listening for jobs on Nostr...");
+    provider.run().await?;
+
+    Ok(())
+}
+```
+
+Submit a job to the DVM:
+
+```bash
+# Using nostr CLI or any Nostr client
+nostr event --kind 5050 \
+  --content '{"prompt": "Explain Rust ownership"}' \
+  --tags '[["p", "<provider_pubkey>"], ["encrypted"]]'
+
+# DVM processes and returns result as NIP-90 job result event
+```
+
+### Multi-Agent Workflow
+
+Delegate between Claude and Codex for complex tasks:
+
+```rust
+use claude_agent_sdk::{query, QueryOptions};
+use codex_agent_sdk::{Codex, ThreadOptions, TurnOptions};
+use futures::StreamExt;
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Start with Claude for code review
+    let mut claude_stream = query(
+        "Review crates/auth/src/lib.rs for security issues",
+        QueryOptions::new()
+    ).await?;
+
+    let mut review = String::new();
+    while let Some(msg) = claude_stream.next().await {
+        if let Some(text) = msg?.text_delta {
+            review.push_str(&text);
+        }
+    }
+
+    println!("Claude's review:\n{}", review);
+
+    // Delegate fixes to Codex
+    let codex = Codex::new();
+    let mut thread = codex.start_thread(ThreadOptions::default());
+
+    let fix_prompt = format!(
+        "Fix the security issues identified:\n\n{}",
+        review
+    );
+
+    let turn = thread.run(&fix_prompt, TurnOptions::default()).await?;
+    println!("Codex implemented fixes:\n{}", turn.final_response);
+
+    // Return to Claude for verification
+    let verify_stream = query(
+        "Verify the security fixes are correct",
+        QueryOptions::new()
+    ).await?;
+
+    // Process verification...
+
+    Ok(())
+}
+```
+
+This workflow leverages each agent's strengths: Claude for analysis/review, Codex for implementation.
+
 ## Documentation
 
 - **Workspace README**: This file
