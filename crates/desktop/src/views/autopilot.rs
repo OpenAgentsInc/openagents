@@ -33,13 +33,26 @@ pub fn autopilot_page() -> Markup {
                     }
                 }
 
-                // Main content area
-                main class="pt-14 pb-4 px-4" {
-                    // Session header placeholder (updated on first message)
-                    div id="session-header" class="mb-4" {}
+                // Main content area with sidebar layout
+                main class="pt-14 flex" {
+                    // Left sidebar (fixed width)
+                    aside id="session-sidebar" class="w-72 h-screen sticky top-14 overflow-y-auto border-r border-border flex-shrink-0" {
+                        // Sidebar content will be updated via WebSocket
+                        div class="p-4 text-xs text-muted-foreground" {
+                            "Waiting for session..."
+                        }
+                    }
 
-                    // Timeline container - messages appended here
-                    div id="timeline" class="space-y-2" {}
+                    // Main timeline area (flex-grow)
+                    div class="flex-1 px-4 pb-4" {
+                        // Session header (collapsible metadata)
+                        div id="session-header" class="mb-4" {
+                            // Header content will be updated via WebSocket
+                        }
+
+                        // Timeline container - messages appended here
+                        div id="timeline" class="space-y-2" {}
+                    }
                 }
 
                 // WebSocket connection for autopilot updates
@@ -49,6 +62,8 @@ pub fn autopilot_page() -> Markup {
                     var autoScroll = document.getElementById('auto-scroll');
                     var timeline = document.getElementById('timeline');
                     var status = document.getElementById('session-status');
+                    var sidebar = document.getElementById('session-sidebar');
+                    var header = document.getElementById('session-header');
 
                     ws.onopen = function() {
                         status.textContent = 'connected';
@@ -56,8 +71,34 @@ pub fn autopilot_page() -> Markup {
                     };
 
                     ws.onmessage = function(e) {
-                        // Append HTML fragment to timeline
-                        timeline.insertAdjacentHTML('beforeend', e.data);
+                        var fragment = e.data;
+
+                        // Check if fragment has an id attribute (for OOB swap pattern)
+                        var tempDiv = document.createElement('div');
+                        tempDiv.innerHTML = fragment;
+                        var firstChild = tempDiv.firstElementChild;
+
+                        if (firstChild && firstChild.id) {
+                            // Replace existing element with same id
+                            var existingElement = document.getElementById(firstChild.id);
+                            if (existingElement) {
+                                existingElement.outerHTML = fragment;
+                                return;
+                            }
+
+                            // Special handling for sidebar and header updates
+                            if (firstChild.id === 'session-sidebar') {
+                                sidebar.innerHTML = firstChild.innerHTML;
+                                return;
+                            }
+                            if (firstChild.id === 'session-header') {
+                                header.innerHTML = firstChild.innerHTML;
+                                return;
+                            }
+                        }
+
+                        // Default: append to timeline
+                        timeline.insertAdjacentHTML('beforeend', fragment);
 
                         // Auto-scroll if enabled
                         if (autoScroll.checked) {
