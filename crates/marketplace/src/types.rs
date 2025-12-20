@@ -1,6 +1,8 @@
 //! Core types for the marketplace
 
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use std::path::PathBuf;
 
 /// Pricing model for marketplace skills
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -108,6 +110,214 @@ impl RevenueSplit {
 impl Default for RevenueSplit {
     fn default() -> Self {
         Self::DEFAULT
+    }
+}
+
+/// Status of a skill submission in the publishing workflow
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SkillSubmissionStatus {
+    /// Still being edited by creator
+    Draft,
+    /// Submitted and awaiting review assignment
+    PendingReview,
+    /// Currently being reviewed
+    InReview,
+    /// Reviewer requested changes
+    ChangesRequested,
+    /// Approved by reviewer
+    Approved,
+    /// Published to marketplace
+    Published,
+    /// No longer recommended for use
+    Deprecated,
+    /// Rejected and will not be published
+    Rejected,
+}
+
+impl SkillSubmissionStatus {
+    /// Get the status as a string
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            SkillSubmissionStatus::Draft => "draft",
+            SkillSubmissionStatus::PendingReview => "pending_review",
+            SkillSubmissionStatus::InReview => "in_review",
+            SkillSubmissionStatus::ChangesRequested => "changes_requested",
+            SkillSubmissionStatus::Approved => "approved",
+            SkillSubmissionStatus::Published => "published",
+            SkillSubmissionStatus::Deprecated => "deprecated",
+            SkillSubmissionStatus::Rejected => "rejected",
+        }
+    }
+
+    /// Check if the submission is in a terminal state
+    pub fn is_terminal(&self) -> bool {
+        matches!(
+            self,
+            SkillSubmissionStatus::Published
+                | SkillSubmissionStatus::Deprecated
+                | SkillSubmissionStatus::Rejected
+        )
+    }
+
+    /// Check if the submission can be edited
+    pub fn is_editable(&self) -> bool {
+        matches!(
+            self,
+            SkillSubmissionStatus::Draft | SkillSubmissionStatus::ChangesRequested
+        )
+    }
+}
+
+/// A skill submission for review and publishing
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SkillSubmission {
+    /// Unique submission ID
+    pub id: String,
+    /// Path to local skill directory
+    pub skill_path: PathBuf,
+    /// Creator's Nostr public key (hex format)
+    pub creator: String,
+    /// Current status
+    pub status: SkillSubmissionStatus,
+    /// When submitted
+    pub submitted_at: DateTime<Utc>,
+    /// When reviewed (if applicable)
+    pub reviewed_at: Option<DateTime<Utc>>,
+    /// Reviewer's notes
+    pub reviewer_notes: Option<String>,
+}
+
+/// Type of quality check performed on a submission
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum QualityCheckType {
+    /// Validates SKILL.md frontmatter schema
+    SchemaValidation,
+    /// Scans for malicious code in scripts
+    SecurityScan,
+    /// Tests execution in sandbox
+    SandboxTest,
+    /// Optional conformance benchmark
+    BenchmarkTest,
+}
+
+impl QualityCheckType {
+    /// Get the check type as a string
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            QualityCheckType::SchemaValidation => "schema_validation",
+            QualityCheckType::SecurityScan => "security_scan",
+            QualityCheckType::SandboxTest => "sandbox_test",
+            QualityCheckType::BenchmarkTest => "benchmark_test",
+        }
+    }
+
+    /// Check if this is a required check
+    pub fn is_required(&self) -> bool {
+        !matches!(self, QualityCheckType::BenchmarkTest)
+    }
+}
+
+/// Result of a quality check
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct QualityCheck {
+    /// Type of check performed
+    pub check_type: QualityCheckType,
+    /// Whether the check passed
+    pub passed: bool,
+    /// Additional details about the check result
+    pub details: Option<String>,
+}
+
+impl QualityCheck {
+    /// Create a new quality check result
+    pub fn new(check_type: QualityCheckType, passed: bool, details: Option<String>) -> Self {
+        Self {
+            check_type,
+            passed,
+            details,
+        }
+    }
+
+    /// Create a passing check
+    pub fn pass(check_type: QualityCheckType) -> Self {
+        Self::new(check_type, true, None)
+    }
+
+    /// Create a failing check with details
+    pub fn fail(check_type: QualityCheckType, details: impl Into<String>) -> Self {
+        Self::new(check_type, false, Some(details.into()))
+    }
+}
+
+/// Review decision for a skill submission
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum ReviewDecision {
+    /// Approve the submission for publishing
+    Approve,
+    /// Request changes before approval
+    RequestChanges {
+        /// Explanation of required changes
+        reason: String,
+    },
+    /// Reject the submission
+    Reject {
+        /// Explanation of rejection
+        reason: String,
+    },
+}
+
+impl ReviewDecision {
+    /// Check if the decision is approval
+    pub fn is_approval(&self) -> bool {
+        matches!(self, ReviewDecision::Approve)
+    }
+
+    /// Check if the decision is rejection
+    pub fn is_rejection(&self) -> bool {
+        matches!(self, ReviewDecision::Reject { .. })
+    }
+
+    /// Get the reason if applicable
+    pub fn reason(&self) -> Option<&str> {
+        match self {
+            ReviewDecision::Approve => None,
+            ReviewDecision::RequestChanges { reason } | ReviewDecision::Reject { reason } => {
+                Some(reason)
+            }
+        }
+    }
+}
+
+/// A review of a skill submission
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SubmissionReview {
+    /// ID of the submission being reviewed
+    pub submission_id: String,
+    /// Reviewer identifier
+    pub reviewer: String,
+    /// Review decision
+    pub decision: ReviewDecision,
+    /// Reviewer's notes
+    pub notes: String,
+    /// Quality checks performed
+    pub checks: Vec<QualityCheck>,
+}
+
+impl SubmissionReview {
+    /// Check if all required checks passed
+    pub fn all_required_checks_passed(&self) -> bool {
+        self.checks
+            .iter()
+            .filter(|c| c.check_type.is_required())
+            .all(|c| c.passed)
+    }
+
+    /// Get failed checks
+    pub fn failed_checks(&self) -> Vec<&QualityCheck> {
+        self.checks.iter().filter(|c| !c.passed).collect()
     }
 }
 
@@ -377,5 +587,204 @@ mod tests {
         assert_eq!(json, "\"installed\"");
         let deserialized: ItemStatus = serde_json::from_str(&json).unwrap();
         assert_eq!(deserialized, status);
+    }
+
+    #[test]
+    fn test_submission_status_as_str() {
+        assert_eq!(SkillSubmissionStatus::Draft.as_str(), "draft");
+        assert_eq!(SkillSubmissionStatus::PendingReview.as_str(), "pending_review");
+        assert_eq!(SkillSubmissionStatus::InReview.as_str(), "in_review");
+        assert_eq!(SkillSubmissionStatus::ChangesRequested.as_str(), "changes_requested");
+        assert_eq!(SkillSubmissionStatus::Approved.as_str(), "approved");
+        assert_eq!(SkillSubmissionStatus::Published.as_str(), "published");
+        assert_eq!(SkillSubmissionStatus::Deprecated.as_str(), "deprecated");
+        assert_eq!(SkillSubmissionStatus::Rejected.as_str(), "rejected");
+    }
+
+    #[test]
+    fn test_submission_status_is_terminal() {
+        assert!(!SkillSubmissionStatus::Draft.is_terminal());
+        assert!(!SkillSubmissionStatus::PendingReview.is_terminal());
+        assert!(!SkillSubmissionStatus::InReview.is_terminal());
+        assert!(!SkillSubmissionStatus::ChangesRequested.is_terminal());
+        assert!(!SkillSubmissionStatus::Approved.is_terminal());
+        assert!(SkillSubmissionStatus::Published.is_terminal());
+        assert!(SkillSubmissionStatus::Deprecated.is_terminal());
+        assert!(SkillSubmissionStatus::Rejected.is_terminal());
+    }
+
+    #[test]
+    fn test_submission_status_is_editable() {
+        assert!(SkillSubmissionStatus::Draft.is_editable());
+        assert!(!SkillSubmissionStatus::PendingReview.is_editable());
+        assert!(!SkillSubmissionStatus::InReview.is_editable());
+        assert!(SkillSubmissionStatus::ChangesRequested.is_editable());
+        assert!(!SkillSubmissionStatus::Approved.is_editable());
+        assert!(!SkillSubmissionStatus::Published.is_editable());
+        assert!(!SkillSubmissionStatus::Deprecated.is_editable());
+        assert!(!SkillSubmissionStatus::Rejected.is_editable());
+    }
+
+    #[test]
+    fn test_quality_check_type_as_str() {
+        assert_eq!(QualityCheckType::SchemaValidation.as_str(), "schema_validation");
+        assert_eq!(QualityCheckType::SecurityScan.as_str(), "security_scan");
+        assert_eq!(QualityCheckType::SandboxTest.as_str(), "sandbox_test");
+        assert_eq!(QualityCheckType::BenchmarkTest.as_str(), "benchmark_test");
+    }
+
+    #[test]
+    fn test_quality_check_type_is_required() {
+        assert!(QualityCheckType::SchemaValidation.is_required());
+        assert!(QualityCheckType::SecurityScan.is_required());
+        assert!(QualityCheckType::SandboxTest.is_required());
+        assert!(!QualityCheckType::BenchmarkTest.is_required());
+    }
+
+    #[test]
+    fn test_quality_check_constructors() {
+        let pass = QualityCheck::pass(QualityCheckType::SchemaValidation);
+        assert_eq!(pass.check_type, QualityCheckType::SchemaValidation);
+        assert!(pass.passed);
+        assert!(pass.details.is_none());
+
+        let fail = QualityCheck::fail(QualityCheckType::SecurityScan, "Found malware");
+        assert_eq!(fail.check_type, QualityCheckType::SecurityScan);
+        assert!(!fail.passed);
+        assert_eq!(fail.details, Some("Found malware".to_string()));
+    }
+
+    #[test]
+    fn test_review_decision_is_approval() {
+        assert!(ReviewDecision::Approve.is_approval());
+        assert!(!ReviewDecision::RequestChanges {
+            reason: "Fix typos".to_string()
+        }
+        .is_approval());
+        assert!(!ReviewDecision::Reject {
+            reason: "Spam".to_string()
+        }
+        .is_approval());
+    }
+
+    #[test]
+    fn test_review_decision_is_rejection() {
+        assert!(!ReviewDecision::Approve.is_rejection());
+        assert!(!ReviewDecision::RequestChanges {
+            reason: "Fix typos".to_string()
+        }
+        .is_rejection());
+        assert!(ReviewDecision::Reject {
+            reason: "Spam".to_string()
+        }
+        .is_rejection());
+    }
+
+    #[test]
+    fn test_review_decision_reason() {
+        assert_eq!(ReviewDecision::Approve.reason(), None);
+        assert_eq!(
+            ReviewDecision::RequestChanges {
+                reason: "Fix typos".to_string()
+            }
+            .reason(),
+            Some("Fix typos")
+        );
+        assert_eq!(
+            ReviewDecision::Reject {
+                reason: "Spam".to_string()
+            }
+            .reason(),
+            Some("Spam")
+        );
+    }
+
+    #[test]
+    fn test_submission_review_all_required_checks_passed() {
+        let review = SubmissionReview {
+            submission_id: "sub1".to_string(),
+            reviewer: "reviewer1".to_string(),
+            decision: ReviewDecision::Approve,
+            notes: "Looks good".to_string(),
+            checks: vec![
+                QualityCheck::pass(QualityCheckType::SchemaValidation),
+                QualityCheck::pass(QualityCheckType::SecurityScan),
+                QualityCheck::pass(QualityCheckType::SandboxTest),
+                QualityCheck::fail(QualityCheckType::BenchmarkTest, "Slow"), // Optional check failure is OK
+            ],
+        };
+
+        assert!(review.all_required_checks_passed());
+
+        let review_with_failure = SubmissionReview {
+            submission_id: "sub2".to_string(),
+            reviewer: "reviewer1".to_string(),
+            decision: ReviewDecision::RequestChanges {
+                reason: "Fix security issues".to_string(),
+            },
+            notes: "Security problems found".to_string(),
+            checks: vec![
+                QualityCheck::pass(QualityCheckType::SchemaValidation),
+                QualityCheck::fail(QualityCheckType::SecurityScan, "Malware detected"),
+                QualityCheck::pass(QualityCheckType::SandboxTest),
+            ],
+        };
+
+        assert!(!review_with_failure.all_required_checks_passed());
+    }
+
+    #[test]
+    fn test_submission_review_failed_checks() {
+        let review = SubmissionReview {
+            submission_id: "sub1".to_string(),
+            reviewer: "reviewer1".to_string(),
+            decision: ReviewDecision::RequestChanges {
+                reason: "Fix issues".to_string(),
+            },
+            notes: "Multiple issues".to_string(),
+            checks: vec![
+                QualityCheck::pass(QualityCheckType::SchemaValidation),
+                QualityCheck::fail(QualityCheckType::SecurityScan, "Issue 1"),
+                QualityCheck::fail(QualityCheckType::SandboxTest, "Issue 2"),
+            ],
+        };
+
+        let failed = review.failed_checks();
+        assert_eq!(failed.len(), 2);
+        assert_eq!(failed[0].check_type, QualityCheckType::SecurityScan);
+        assert_eq!(failed[1].check_type, QualityCheckType::SandboxTest);
+    }
+
+    #[test]
+    fn test_skill_submission_serde() {
+        let submission = SkillSubmission {
+            id: "sub123".to_string(),
+            skill_path: PathBuf::from("/path/to/skill"),
+            creator: "npub1creator".to_string(),
+            status: SkillSubmissionStatus::PendingReview,
+            submitted_at: Utc::now(),
+            reviewed_at: None,
+            reviewer_notes: None,
+        };
+
+        let json = serde_json::to_string(&submission).unwrap();
+        let deserialized: SkillSubmission = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.id, submission.id);
+        assert_eq!(deserialized.status, submission.status);
+    }
+
+    #[test]
+    fn test_review_decision_serde() {
+        let approve = ReviewDecision::Approve;
+        let json = serde_json::to_string(&approve).unwrap();
+        let deserialized: ReviewDecision = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized, approve);
+
+        let request_changes = ReviewDecision::RequestChanges {
+            reason: "Fix formatting".to_string(),
+        };
+        let json = serde_json::to_string(&request_changes).unwrap();
+        let deserialized: ReviewDecision = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized, request_changes);
     }
 }
