@@ -257,12 +257,24 @@ Recommended tools:
 - Read: Examine key files to understand structure and patterns
 - Task (Explore agent): Launch exploration agents for thorough investigation
 
+PARALLEL EXPLORATION STRATEGY:
+For comprehensive exploration, launch up to 3 Explore agents in parallel using the Task tool.
+Each agent should investigate a different aspect:
+  1. Existing patterns and similar implementations
+  2. Dependencies, constraints, and technical requirements
+  3. Files and modules that need modification
+
+You can use the suggest_explore_agents() helper (see planmode module) or craft custom prompts
+for parallel exploration. Launch agents in parallel for efficiency.
+
 What to do:
 1. Use Glob/Grep to locate relevant files and code patterns
-2. Read key files to understand architecture and existing patterns
-3. Document findings in your plan file
-4. Note constraints, dependencies, and existing patterns
-5. Identify files that will need modification
+2. Consider launching parallel Explore agents for thorough investigation
+3. Read key files to understand architecture and existing patterns
+4. Aggregate findings from multiple sources
+5. Document findings in your plan file
+6. Note constraints, dependencies, and existing patterns
+7. Identify files that will need modification
 
 What NOT to do:
 - Don't write code or modify files (except the plan)
@@ -283,13 +295,25 @@ Recommended tools:
 - Task (Plan agent): Launch planning agents to analyze different perspectives
 - AskUserQuestion: Clarify ambiguities or get user preferences
 
+PARALLEL DESIGN ANALYSIS:
+For comprehensive design analysis, launch multiple Plan agents in parallel using the Task tool.
+Each agent should analyze from a different perspective:
+  1. Simplicity and maintainability
+  2. Performance and scalability
+  3. Type safety and error handling
+
+You can use the suggest_plan_agents() helper (see planmode module) or craft custom prompts
+for multi-perspective analysis. Launch agents in parallel for efficiency.
+
 What to do:
 1. List multiple implementation approaches with pros/cons
-2. Consider trade-offs: complexity, maintainability, performance
-3. Evaluate how each approach fits existing patterns
-4. Identify risks and edge cases for each approach
-5. Document your recommended approach with rationale
-6. Update the Design section of your plan file
+2. Consider launching parallel Plan agents for multi-perspective analysis
+3. Consider trade-offs: complexity, maintainability, performance
+4. Evaluate how each approach fits existing patterns
+5. Aggregate insights from different perspectives
+6. Identify risks and edge cases for each approach
+7. Document your recommended approach with rationale
+8. Update the Design section of your plan file
 
 What NOT to do:
 - Don't implement yet
@@ -392,6 +416,84 @@ Your task:
 Remember: You're designing an approach, not implementing it. Focus on architecture, patterns, and decision rationale."#,
         feature, context, perspective
     )
+}
+
+/// Generate exploration topics for parallel investigation during Explore phase
+///
+/// Returns up to 3 investigation areas based on the goal
+pub fn generate_exploration_topics(goal: &str) -> Vec<(String, String)> {
+    // Returns (topic, focus) pairs for parallel exploration
+    vec![
+        (
+            format!("Existing patterns for {}", goal),
+            "Find similar implementations, patterns, and architectural choices in the codebase".to_string()
+        ),
+        (
+            format!("Dependencies and constraints for {}", goal),
+            "Identify external dependencies, libraries, and technical constraints that will impact implementation".to_string()
+        ),
+        (
+            format!("Files and modules for {}", goal),
+            "Locate all files, modules, and components that will need to be created or modified".to_string()
+        ),
+    ]
+}
+
+/// Generate design perspectives for parallel analysis during Design phase
+///
+/// Returns different architectural perspectives to consider
+pub fn generate_design_perspectives() -> Vec<String> {
+    vec![
+        "Simplicity and maintainability".to_string(),
+        "Performance and scalability".to_string(),
+        "Type safety and error handling".to_string(),
+    ]
+}
+
+/// Format exploration results for aggregation into the plan
+pub fn format_exploration_results(results: &[(String, String)]) -> String {
+    let mut formatted = String::from("## Exploration Results\n\n");
+
+    for (i, (topic, findings)) in results.iter().enumerate() {
+        formatted.push_str(&format!("### Investigation {}: {}\n\n", i + 1, topic));
+        formatted.push_str(findings);
+        formatted.push_str("\n\n");
+    }
+
+    formatted
+}
+
+/// Format design analysis results for aggregation into the plan
+pub fn format_design_results(results: &[(String, String)]) -> String {
+    let mut formatted = String::from("## Design Analysis\n\n");
+
+    for (perspective, analysis) in results {
+        formatted.push_str(&format!("### Perspective: {}\n\n", perspective));
+        formatted.push_str(analysis);
+        formatted.push_str("\n\n");
+    }
+
+    formatted
+}
+
+/// Suggested prompts for launching parallel explore agents
+///
+/// Returns a list of Task tool prompts ready to be executed in parallel
+pub fn suggest_explore_agents(goal: &str) -> Vec<String> {
+    generate_exploration_topics(goal)
+        .into_iter()
+        .map(|(topic, focus)| explore_agent_prompt(&topic, &focus))
+        .collect()
+}
+
+/// Suggested prompts for launching parallel plan agents
+///
+/// Returns a list of Task tool prompts ready to be executed in parallel
+pub fn suggest_plan_agents(feature: &str, context: &str) -> Vec<String> {
+    generate_design_perspectives()
+        .into_iter()
+        .map(|perspective| plan_agent_prompt(feature, context, &perspective))
+        .collect()
 }
 
 /// Check if a tool should be allowed in plan mode
@@ -665,5 +767,140 @@ mod tests {
 
         // Exit plan mode
         exit_plan_mode().unwrap();
+    }
+
+    #[test]
+    fn test_generate_exploration_topics() {
+        let goal = "add user authentication";
+        let topics = generate_exploration_topics(goal);
+
+        // Should generate 3 topics
+        assert_eq!(topics.len(), 3);
+
+        // Check that topics are relevant
+        assert!(topics[0].0.contains(goal));
+        assert!(topics[1].0.contains(goal));
+        assert!(topics[2].0.contains(goal));
+
+        // Check that each has a focus
+        assert!(!topics[0].1.is_empty());
+        assert!(!topics[1].1.is_empty());
+        assert!(!topics[2].1.is_empty());
+    }
+
+    #[test]
+    fn test_generate_design_perspectives() {
+        let perspectives = generate_design_perspectives();
+
+        // Should generate 3 perspectives
+        assert_eq!(perspectives.len(), 3);
+
+        // Check for expected perspectives
+        assert!(perspectives.iter().any(|p| p.contains("maintainability")));
+        assert!(perspectives.iter().any(|p| p.contains("Performance")));
+        assert!(perspectives.iter().any(|p| p.contains("Type safety")));
+    }
+
+    #[test]
+    fn test_explore_agent_prompt() {
+        let topic = "existing authentication patterns";
+        let focus = "Find all auth-related modules";
+        let prompt = explore_agent_prompt(topic, focus);
+
+        // Should contain the topic and focus
+        assert!(prompt.contains(topic));
+        assert!(prompt.contains(focus));
+
+        // Should contain expected instructions
+        assert!(prompt.contains("Glob"));
+        assert!(prompt.contains("Grep"));
+        assert!(prompt.contains("Read"));
+    }
+
+    #[test]
+    fn test_plan_agent_prompt() {
+        let feature = "JWT authentication";
+        let context = "Found 3 existing auth modules";
+        let perspective = "Security and type safety";
+        let prompt = plan_agent_prompt(feature, context, perspective);
+
+        // Should contain all parameters
+        assert!(prompt.contains(feature));
+        assert!(prompt.contains(context));
+        assert!(prompt.contains(perspective));
+
+        // Should be about planning not implementing
+        assert!(prompt.contains("designing"));
+        assert!(prompt.contains("architecture"));
+    }
+
+    #[test]
+    fn test_suggest_explore_agents() {
+        let goal = "implement caching layer";
+        let prompts = suggest_explore_agents(goal);
+
+        // Should generate 3 prompts (one per exploration topic)
+        assert_eq!(prompts.len(), 3);
+
+        // Each should be a complete prompt
+        for prompt in &prompts {
+            assert!(prompt.contains("You are an exploration agent"));
+            assert!(prompt.contains(goal));
+        }
+    }
+
+    #[test]
+    fn test_suggest_plan_agents() {
+        let feature = "add caching";
+        let context = "Found Redis and in-memory options";
+        let prompts = suggest_plan_agents(feature, context);
+
+        // Should generate 3 prompts (one per perspective)
+        assert_eq!(prompts.len(), 3);
+
+        // Each should be a complete prompt
+        for prompt in &prompts {
+            assert!(prompt.contains("You are a planning agent"));
+            assert!(prompt.contains(feature));
+            assert!(prompt.contains(context));
+        }
+    }
+
+    #[test]
+    fn test_format_exploration_results() {
+        let results = vec![
+            ("Finding A".to_string(), "Details about A".to_string()),
+            ("Finding B".to_string(), "Details about B".to_string()),
+        ];
+        let formatted = format_exploration_results(&results);
+
+        // Should contain markdown headers
+        assert!(formatted.contains("## Exploration Results"));
+        assert!(formatted.contains("### Investigation 1"));
+        assert!(formatted.contains("### Investigation 2"));
+
+        // Should contain the topics and findings
+        assert!(formatted.contains("Finding A"));
+        assert!(formatted.contains("Details about A"));
+        assert!(formatted.contains("Finding B"));
+        assert!(formatted.contains("Details about B"));
+    }
+
+    #[test]
+    fn test_format_design_results() {
+        let results = vec![
+            ("Perspective A".to_string(), "Analysis A".to_string()),
+            ("Perspective B".to_string(), "Analysis B".to_string()),
+        ];
+        let formatted = format_design_results(&results);
+
+        // Should contain markdown headers
+        assert!(formatted.contains("## Design Analysis"));
+        assert!(formatted.contains("### Perspective: Perspective A"));
+        assert!(formatted.contains("### Perspective: Perspective B"));
+
+        // Should contain the analyses
+        assert!(formatted.contains("Analysis A"));
+        assert!(formatted.contains("Analysis B"));
     }
 }
