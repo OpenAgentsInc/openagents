@@ -15,6 +15,7 @@
 //! - NIP-25: Reactions
 //! - NIP-27: Text Note References
 //! - NIP-28: Public Chat (channels, messages, moderation)
+//! - NIP-40: Expiration Timestamp
 //! - NIP-47: Nostr Wallet Connect (requires `full` feature)
 //! - NIP-57: Lightning Zaps (tipping with Lightning payments)
 //! - NIP-89: Application Handlers (social discovery of skills/agents)
@@ -47,6 +48,7 @@ mod nip23;
 mod nip25;
 mod nip27;
 mod nip28;
+mod nip40;
 #[cfg(feature = "full")]
 mod nip47;
 mod nip57;
@@ -140,6 +142,12 @@ pub use nip28::{
     KIND_CHANNEL_MESSAGE, KIND_CHANNEL_METADATA, KIND_CHANNEL_MUTE_USER, ModerationReason,
     Nip28Error, is_channel_creation_kind, is_channel_kind, is_channel_message_kind,
     is_channel_metadata_kind, is_moderation_kind,
+};
+
+// NIP-40: Expiration Timestamp
+pub use nip40::{
+    EXPIRATION_TAG, Nip40Error, get_expiration, has_expiration, is_expired, set_expiration,
+    time_until_expiration, validate_expiration,
 };
 
 // NIP-47: Nostr Wallet Connect (requires full feature)
