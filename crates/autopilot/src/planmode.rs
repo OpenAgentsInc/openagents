@@ -152,9 +152,12 @@ r#"# Plan: {}
     std::fs::write(&config.plan_file, template)
         .map_err(|e| format!("Failed to create plan file: {}", e))?;
 
+    let phase_prompt = get_phase_prompt(PlanPhase::Explore);
+
     Ok(format!(
-        "Entered plan mode. Plan file: {}\n\nRestrictions active:\n- File writes blocked (except plan file)\n- Git commits blocked\n- Destructive bash commands blocked\n\nAllowed:\n- Read operations\n- Plan file edits\n- Subagent launches\n- User questions",
-        config.plan_file.display()
+        "Entered plan mode. Plan file: {}\n\nRestrictions active:\n- File writes blocked (except plan file)\n- Git commits blocked\n- Destructive bash commands blocked\n\nAllowed:\n- Read operations\n- Plan file edits\n- Subagent launches\n- User questions\n\n{}\n",
+        config.plan_file.display(),
+        phase_prompt
     ))
 }
 
@@ -215,11 +218,21 @@ pub fn get_current_phase() -> PlanPhase {
     CURRENT_PHASE.read().ok().map(|p| *p).unwrap_or(PlanPhase::Explore)
 }
 
-/// Advance to the next plan phase
-pub fn advance_phase() -> Result<PlanPhase, String> {
-    let mut phase = CURRENT_PHASE.write().map_err(|e| e.to_string())?;
-    *phase = phase.next().ok_or("Already at final phase")?;
-    Ok(*phase)
+/// Advance to the next plan phase and return the new phase with its prompt
+pub fn advance_phase() -> Result<String, String> {
+    let new_phase = {
+        let mut phase = CURRENT_PHASE.write().map_err(|e| e.to_string())?;
+        *phase = phase.next().ok_or("Already at final phase")?;
+        *phase
+    };
+
+    let phase_prompt = get_phase_prompt(new_phase);
+
+    Ok(format!(
+        "Advanced to {} phase.\n\n{}",
+        new_phase.as_str().to_uppercase(),
+        phase_prompt
+    ))
 }
 
 /// Set the current plan phase
@@ -227,6 +240,119 @@ pub fn set_phase(new_phase: PlanPhase) -> Result<(), String> {
     let mut phase = CURRENT_PHASE.write().map_err(|e| e.to_string())?;
     *phase = new_phase;
     Ok(())
+}
+
+/// Get phase-specific guidance prompt
+pub fn get_phase_prompt(phase: PlanPhase) -> &'static str {
+    match phase {
+        PlanPhase::Explore => {
+            r#"
+EXPLORE PHASE - Focus on understanding
+
+Your goal: Gather information to understand the codebase and requirements.
+
+Recommended tools:
+- Glob: Find files by pattern (e.g., "**/*.rs", "src/*/mod.rs")
+- Grep: Search code for keywords, patterns, and existing implementations
+- Read: Examine key files to understand structure and patterns
+- Task (Explore agent): Launch exploration agents for thorough investigation
+
+What to do:
+1. Use Glob/Grep to locate relevant files and code patterns
+2. Read key files to understand architecture and existing patterns
+3. Document findings in your plan file
+4. Note constraints, dependencies, and existing patterns
+5. Identify files that will need modification
+
+What NOT to do:
+- Don't write code or modify files (except the plan)
+- Don't make implementation decisions yet
+- Don't commit anything
+
+When ready: Move to Design phase to evaluate approaches.
+"#
+        }
+        PlanPhase::Design => {
+            r#"
+DESIGN PHASE - Evaluate approaches
+
+Your goal: Design and compare implementation approaches.
+
+Recommended tools:
+- Read: Deep-dive into relevant files for detailed context
+- Task (Plan agent): Launch planning agents to analyze different perspectives
+- AskUserQuestion: Clarify ambiguities or get user preferences
+
+What to do:
+1. List multiple implementation approaches with pros/cons
+2. Consider trade-offs: complexity, maintainability, performance
+3. Evaluate how each approach fits existing patterns
+4. Identify risks and edge cases for each approach
+5. Document your recommended approach with rationale
+6. Update the Design section of your plan file
+
+What NOT to do:
+- Don't implement yet
+- Don't commit to a single approach without comparing alternatives
+- Don't skip documenting trade-offs
+
+When ready: Move to Review phase to validate completeness.
+"#
+        }
+        PlanPhase::Review => {
+            r#"
+REVIEW PHASE - Validate and refine
+
+Your goal: Ensure the plan is complete and aligned with requirements.
+
+Recommended tools:
+- Read: Verify all necessary files are accounted for
+- AskUserQuestion: Validate assumptions and clarify requirements
+- Task: Get additional perspectives if needed
+
+What to do:
+1. Break down implementation into specific, actionable steps
+2. List files to create/modify/delete
+3. Identify potential risks and edge cases
+4. Verify alignment with user intent
+5. Ask clarifying questions if anything is ambiguous
+6. Document implementation steps in the Review section
+7. Ensure nothing critical is missing
+
+What NOT to do:
+- Don't skip validation steps
+- Don't assume - ask if uncertain
+- Don't move forward with gaps in understanding
+
+When ready: Move to Final phase to prepare for implementation.
+"#
+        }
+        PlanPhase::Final => {
+            r#"
+FINAL PHASE - Prepare for implementation
+
+Your goal: Finalize the plan and prepare to exit plan mode.
+
+What to do:
+1. Review the entire plan for completeness
+2. Ensure all sections are filled with sufficient detail
+3. Verify the implementation steps are clear and actionable
+4. Confirm risks and considerations are documented
+5. Add any final notes or reminders
+6. Mark the plan as ready for implementation
+
+What NOT to do:
+- Don't exit without a complete plan
+- Don't leave ambiguities or TODOs in the plan
+- Don't skip documenting risks
+
+When ready: Use ExitPlanMode to lift restrictions and begin implementation.
+"#
+        }
+        PlanPhase::Exit => {
+            "Plan mode completed. All restrictions lifted. You can now implement the plan."
+        }
+    }
 }
 
 /// Generate a prompt for an explore subagent
@@ -361,6 +487,9 @@ mod tests {
 
     #[test]
     fn test_tool_restrictions() {
+        // Ensure clean state - try to exit plan mode if active
+        let _ = exit_plan_mode();
+
         // Not in plan mode - all tools allowed
         assert!(is_tool_allowed_in_plan_mode("Write", &serde_json::json!({"file_path": "/tmp/test.txt"})).is_ok());
 
@@ -452,5 +581,72 @@ mod tests {
         assert!(is_tool_allowed_in_plan_mode("Bash", &serde_json::json!({
             "command": "sqlite3 autopilot.db \"Update issues SET status='done'\""
         })).is_err());
+    }
+
+    #[test]
+    fn test_phase_prompts() {
+        // Test that each phase has a non-empty prompt
+        assert!(!get_phase_prompt(PlanPhase::Explore).is_empty());
+        assert!(!get_phase_prompt(PlanPhase::Design).is_empty());
+        assert!(!get_phase_prompt(PlanPhase::Review).is_empty());
+        assert!(!get_phase_prompt(PlanPhase::Final).is_empty());
+        assert!(!get_phase_prompt(PlanPhase::Exit).is_empty());
+
+        // Test that prompts contain expected keywords
+        assert!(get_phase_prompt(PlanPhase::Explore).contains("EXPLORE PHASE"));
+        assert!(get_phase_prompt(PlanPhase::Design).contains("DESIGN PHASE"));
+        assert!(get_phase_prompt(PlanPhase::Review).contains("REVIEW PHASE"));
+        assert!(get_phase_prompt(PlanPhase::Final).contains("FINAL PHASE"));
+    }
+
+    #[test]
+    fn test_phase_advancement() {
+        // Start in Explore phase
+        let config = PlanModeConfig::new("test-phases", "Test phase advancement");
+        enter_plan_mode(config).unwrap();
+
+        // Should start in Explore
+        assert_eq!(get_current_phase(), PlanPhase::Explore);
+
+        // Advance to Design
+        let result = advance_phase();
+        assert!(result.is_ok());
+        assert_eq!(get_current_phase(), PlanPhase::Design);
+
+        // Advance to Review
+        let result = advance_phase();
+        assert!(result.is_ok());
+        assert_eq!(get_current_phase(), PlanPhase::Review);
+
+        // Advance to Final
+        let result = advance_phase();
+        assert!(result.is_ok());
+        assert_eq!(get_current_phase(), PlanPhase::Final);
+
+        // Advance to Exit
+        let result = advance_phase();
+        assert!(result.is_ok());
+        assert_eq!(get_current_phase(), PlanPhase::Exit);
+
+        // Cannot advance beyond Exit
+        let result = advance_phase();
+        assert!(result.is_err());
+
+        // Exit plan mode
+        exit_plan_mode().unwrap();
+    }
+
+    #[test]
+    fn test_enter_plan_mode_includes_prompt() {
+        // Enter plan mode should include the initial Explore phase prompt
+        let config = PlanModeConfig::new("test-prompt", "Test initial prompt");
+        let result = enter_plan_mode(config).unwrap();
+
+        // Should contain the Explore phase guidance
+        assert!(result.contains("EXPLORE PHASE"));
+        assert!(result.contains("Entered plan mode"));
+
+        // Exit plan mode
+        exit_plan_mode().unwrap();
     }
 }

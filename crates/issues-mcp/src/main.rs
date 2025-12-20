@@ -287,6 +287,22 @@ impl McpServer {
                 }),
             },
             Tool {
+                name: "advance_plan_phase".to_string(),
+                description: "Advance to the next plan mode phase (Explore -> Design -> Review -> Final -> Exit). Returns phase-specific guidance.".to_string(),
+                input_schema: json!({
+                    "type": "object",
+                    "properties": {}
+                }),
+            },
+            Tool {
+                name: "get_current_phase".to_string(),
+                description: "Get the current plan mode phase and its guidance prompt.".to_string(),
+                input_schema: json!({
+                    "type": "object",
+                    "properties": {}
+                }),
+            },
+            Tool {
                 name: "issue_delete".to_string(),
                 description: "Delete an issue (hard delete). Use for cleanup and testing only.".to_string(),
                 input_schema: json!({
@@ -327,6 +343,8 @@ impl McpServer {
             "issue_delete" => self.tool_issue_delete(&conn, &arguments),
             "enter_plan_mode" => self.tool_enter_plan_mode(&arguments),
             "exit_plan_mode" => self.tool_exit_plan_mode(),
+            "advance_plan_phase" => self.tool_advance_plan_phase(),
+            "get_current_phase" => self.tool_get_current_phase(),
             _ => Err(format!("Unknown tool: {}", name)),
         };
 
@@ -578,6 +596,20 @@ impl McpServer {
 
     fn tool_exit_plan_mode(&self) -> Result<String, String> {
         autopilot::planmode::exit_plan_mode()
+    }
+
+    fn tool_advance_plan_phase(&self) -> Result<String, String> {
+        autopilot::planmode::advance_phase()
+    }
+
+    fn tool_get_current_phase(&self) -> Result<String, String> {
+        let phase = autopilot::planmode::get_current_phase();
+        let phase_prompt = autopilot::planmode::get_phase_prompt(phase);
+        Ok(format!(
+            "Current phase: {}\n\n{}",
+            phase.as_str().to_uppercase(),
+            phase_prompt
+        ))
     }
 }
 
