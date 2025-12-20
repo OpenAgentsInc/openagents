@@ -253,7 +253,7 @@ fn test_delete_issue() {
     )
     .expect("Failed to create issue");
 
-    let issue_id = issue.id.clone();
+    let issue_id = issue.id;
 
     // Verify issue exists
     assert!(issue::get_issue_by_id(&conn, &issue_id).expect("Should query").is_some());
