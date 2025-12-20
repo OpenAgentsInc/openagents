@@ -672,3 +672,131 @@ t!:Bash id=PqAVu7vd cmd="cargo test --package issues --test integration" → [ru
 o: id=PqAVu7vd → [ok] running 20 tests
 a: Excellent! All 20 integration tests pass with no warnings. Now I'll commit, push, complete the issue, and get the next one. tokens_in=0 tokens_out=5 tokens_cached=66939
 t!:Bash id=1QXFBYHV cmd="git add -A && git commit -m "$(cat <<'EOF'" → [running] tokens_in=0 tokens_out=5 tokens_cached=66939
+o: id=1QXFBYHV → [ok] [main d92d0e981] Add comprehensive integration tests for issues database lifecycle
+t!:Bash id=AFQCgpeP cmd="git push origin main" → [running] tokens_in=0 tokens_out=75 tokens_cached=67447
+o: id=AFQCgpeP → [ok] [0;36m🔍 Running cargo build to check for errors and warnings...[0m
+t!:mcp__issues__issue_complete id=E9JCXqt4  → [running] tokens_in=0 tokens_out=25 tokens_cached=67977
+o: id=E9JCXqt4 → [ok] Completed issue #10
+t!:mcp__issues__issue_ready id=wBJvwTpk  → [running] tokens_in=0 tokens_out=5 tokens_cached=68176
+o: id=wBJvwTpk → [ok] No ready issues available
+t!:Task id=yA93eMGm desc="Find next valuable issue" → [running] tokens_in=0 tokens_out=8 tokens_cached=68290
+t!:Bash id=NuY1Dx77 cmd="find /home/christopherdavid/code/openagents -ty..." → [running] tokens_in=3 tokens_out=1 tokens_cached=12128
+t!:Bash id=Ygv5H8yv cmd="ls -la /home/christopherdavid/code/openagents/c..." → [running] tokens_in=3 tokens_out=1 tokens_cached=12128
+t!:Bash id=paNpokyE cmd="git log --oneline -20" → [running] tokens_in=3 tokens_out=1 tokens_cached=12128
+o: id=paNpokyE → [ok] d92d0e981 Add comprehensive integration tests for issues database lifecycle
+o: id=Ygv5H8yv → [ok] Permissions Size User             Date Modified Name
+o: id=NuY1Dx77 → [ok] /home/christopherdavid/code/openagents/crates/fm-bridge/README.md
+t!:Bash id=JR5LJyZU cmd="for crate in /home/christopherdavid/code/openag..." → [running] tokens_in=834 tokens_out=1 tokens_cached=14573
+t!:Bash id=2npULspR cmd="find /home/christopherdavid/code/openagents/cra..." → [running] tokens_in=834 tokens_out=1 tokens_cached=14573
+t!:Bash id=v31YcszM cmd="find /home/christopherdavid/code/openagents/cra..." → [running] tokens_in=834 tokens_out=1 tokens_cached=14573
+o: id=JR5LJyZU → [ok] MISSING README: claude-mcp
+o: id=v31YcszM → [ok] /home/christopherdavid/code/openagents/crates/autopilot/tests/trajectory_tracking.rs
+o: id=2npULspR → [ok] 15
+t!:Read id=F2uqU9vf file_path=/home/christopherdavid/code/openagents/crates/desktop/Cargo.toml → [running] tokens_in=116 tokens_out=3 tokens_cached=15211
+t!:Read id=qZVxpwzq file_path=/home/christopherdavid/code/openagents/crates/compute/Cargo.toml → [running] tokens_in=116 tokens_out=3 tokens_cached=15211
+t!:Read id=TcBw36vy file_path=/home/christopherdavid/code/openagents/crates/nostr/Cargo.toml → [running] tokens_in=116 tokens_out=3 tokens_cached=15211
+t!:Read id=qWrLR1FF file_path=/home/christopherdavid/code/openagents/crates/ui/Cargo.toml → [running] tokens_in=116 tokens_out=276 tokens_cached=15211
+o: id=TcBw36vy → [error] <tool_use_error>File does not exist.</tool_use_error>
+o: id=F2uqU9vf → [ok]      1→[package]
+o: id=qZVxpwzq → [ok]      1→[package]
+o: id=qWrLR1FF → [ok]      1→[package]
+t!:Read id=X9Ks6mu1 file_path=/home/christopherdavid/code/openagents/crates/compute → [running] tokens_in=7 tokens_out=1 tokens_cached=16672
+t!:Bash id=jC43pqhw cmd="find /home/christopherdavid/code/openagents/cra..." → [running] tokens_in=7 tokens_out=1 tokens_cached=16672
+t!:Bash id=ATEimGyF cmd="grep -r "#\[test\]" /home/christopherdavid/code..." → [running] tokens_in=7 tokens_out=1 tokens_cached=16672
+o: id=X9Ks6mu1 → [error] EISDIR: illegal operation on a directory, read
+o: id=jC43pqhw → [ok] /home/christopherdavid/code/openagents/crates/compute/src/app.rs
+o: id=ATEimGyF → [ok] /home/christopherdavid/code/openagents/crates/compute/src/domain/earnings.rs:    #[test]
+t!:Bash id=tbWpYJFY cmd="find /home/christopherdavid/code/openagents/cra..." → [running] tokens_in=7 tokens_out=1 tokens_cached=18666
+t!:Bash id=WrJbpb8B cmd="grep -r "#\[test\]" /home/christopherdavid/code..." → [running] tokens_in=7 tokens_out=1 tokens_cached=18666
+t!:Read id=X7FMYeTH file_path=/home/christopherdavid/code/openagents/crates/desktop/src/main.rs → [running] tokens_in=7 tokens_out=1 tokens_cached=18666
+o: id=X7FMYeTH → [ok]      1→//! OpenAgents Desktop - Hello World Demo
+o: id=tbWpYJFY → [ok] 10
+o: id=WrJbpb8B → [ok] 0
+t!:Read id=p7Q4cNKr file_path=/home/christopherdavid/code/openagents/crates/marketplace/Cargo.toml → [running] tokens_in=722 tokens_out=1 tokens_cached=19768
+t!:Bash id=Av2kP3Dj cmd="find /home/christopherdavid/code/openagents/cra..." → [running] tokens_in=722 tokens_out=1 tokens_cached=19768
+t!:Bash id=PZTkt9BS cmd="ls -la /home/christopherdavid/code/openagents/c..." → [running] tokens_in=722 tokens_out=1 tokens_cached=19768
+o: id=p7Q4cNKr → [ok]      1→[package]
+o: id=Av2kP3Dj → [ok] /home/christopherdavid/code/openagents/crates/marketplace/src/agent_commerce.rs
+o: id=PZTkt9BS → [ok] Permissions Size User             Date Modified Name
+t!:Read id=KkxWPpjf file_path=/home/christopherdavid/code/openagents/crates/ui/src/lib.rs → [running] tokens_in=7 tokens_out=1 tokens_cached=20266
+t!:Read id=V14cMp71 file_path=/home/christopherdavid/code/openagents/crates/autopilot/README.md → [running] tokens_in=7 tokens_out=1 tokens_cached=20266
+t!:Read id=tM2p9TPM file_path=/home/christopherdavid/code/openagents/crates/compute/src/lib.rs → [running] tokens_in=7 tokens_out=1 tokens_cached=20266
+o: id=KkxWPpjf → [ok]      1→//! Maud/HTMX/Tailwind components for OpenAgents.
+o: id=V14cMp71 → [ok]      1→# Autopilot
+o: id=tM2p9TPM → [ok]      1→//! Compute Provider - Sell compute via NIP-90 DVMs with Bitcoin payments
+t!:Read id=bZtQRVwV file_path=/home/christopherdavid/code/openagents/crates/compute/src/services/dvm_service.rs → [running] tokens_in=7 tokens_out=1 tokens_cached=23235
+t!:Read id=ehh5GARo file_path=/home/christopherdavid/code/openagents/crates/compute/src/storage/secure_store.rs → [running] tokens_in=7 tokens_out=1 tokens_cached=23235
+t!:Bash id=N4tx4Gj3 cmd="grep -r "#\[cfg(test)\]" /home/christopherdavid..." → [running] tokens_in=7 tokens_out=290 tokens_cached=23235
+o: id=bZtQRVwV → [ok]      1→//! NIP-90 Data Vending Machine service
+o: id=ehh5GARo → [ok]      1→//! Secure storage for seed phrase using AES-GCM encryption
+o: id=N4tx4Gj3 → [ok] /home/christopherdavid/code/openagents/crates/compute/src/domain/earnings.rs:#[cfg(test)]
+t!:Bash id=PafnXH36 cmd="find /home/christopherdavid/code/openagents/cra..." → [running] tokens_in=7 tokens_out=1 tokens_cached=26406
+t!:Bash id=qS9V3qGA cmd="ls -la /home/christopherdavid/code/openagents/c..." → [running] tokens_in=7 tokens_out=1 tokens_cached=26406
+t!:Bash id=Y2CbTzud cmd="wc -l /home/christopherdavid/code/openagents/cr..." → [running] tokens_in=7 tokens_out=1 tokens_cached=26406
+o: id=PafnXH36 → [ok] /home/christopherdavid/code/openagents/crates/nostr/core/src/nip01.rs
+o: id=qS9V3qGA → [ok] Permissions Size User             Date Modified Name
+o: id=Y2CbTzud → [ok]   798 total
+t!:Read id=3ujULCng file_path=/home/christopherdavid/code/openagents/crates/issues/tests/integration.rs → [running] tokens_in=7 tokens_out=3 tokens_cached=28779
+t!:Bash id=FGDw77by cmd="ls -la /home/christopherdavid/code/openagents/c..." → [running] tokens_in=7 tokens_out=3 tokens_cached=28779
+t!:Bash id=DWA4Ec26 cmd="find /home/christopherdavid/code/openagents/cra..." → [running] tokens_in=7 tokens_out=3 tokens_cached=28779
+o: id=3ujULCng → [ok]      1→//! Integration tests for issues database lifecycle
+o: id=FGDw77by → [ok] Permissions Size User             Date Modified Name
+o: id=DWA4Ec26 → [ok] 46
+t!:Bash id=ZhWkJgWt cmd="git show d92d0e981 --stat | head -20" → [running] tokens_in=7 tokens_out=6 tokens_cached=29635
+t!:Bash id=VP8v8W8a cmd="git show c8e0a31cc --stat | head -20" → [running] tokens_in=7 tokens_out=6 tokens_cached=29635
+t!:Bash id=y9Z6Zy5w cmd="find /home/christopherdavid/code/openagents/cra..." → [running] tokens_in=7 tokens_out=279 tokens_cached=29635
+o: id=VP8v8W8a → [ok] commit c8e0a31cc27af350add7dbbc78a0cdeb11223db8
+o: id=ZhWkJgWt → [ok] commit d92d0e981920e041717fd76590412d3d83a4ed08
+o: id=y9Z6Zy5w → [ok]  2375 total
+t!:Read id=WASXD48W file_path=/home/christopherdavid/code/openagents/crates/README.md → [running] tokens_in=7 tokens_out=1 tokens_cached=31076
+t!:Read id=EdejFvsg file_path=/home/christopherdavid/code/openagents/crates/compute/src/services/ollama_service.rs → [running] tokens_in=7 tokens_out=1 tokens_cached=31076
+o: id=WASXD48W → [ok]      1→# OpenAgents Crates
+o: id=EdejFvsg → [ok]      1→//! Ollama inference service (stubbed for cleanup).
+t!:Read id=iCBMQ6sK file_path=/home/christopherdavid/code/openagents/crates/autopilot/README.md → [running] tokens_in=7 tokens_out=1 tokens_cached=32388
+t!:Bash id=RATBX6yt cmd="git log --oneline --all -- "*README*" | head -10" → [running] tokens_in=7 tokens_out=177 tokens_cached=32388
+o: id=iCBMQ6sK → [ok]      1→# Autopilot
+o: id=RATBX6yt → [ok] f59f4b186 Add comprehensive README for autopilot crate
+t!:Bash id=tKs3yMYX cmd="for crate in compute desktop marketplace codex ..." → [running] tokens_in=7 tokens_out=1 tokens_cached=35869
+o: id=tKs3yMYX → [error] Exit code 2
+t!:Bash id=f5KvzjLB cmd="wc -l /home/christopherdavid/code/openagents/cr..." → [running] tokens_in=7 tokens_out=1 tokens_cached=38041
+t!:Bash id=R4Xux5WA cmd="wc -l /home/christopherdavid/code/openagents/cr..." → [running] tokens_in=7 tokens_out=1 tokens_cached=38041
+t!:Bash id=pUQjfGaf cmd="wc -l /home/christopherdavid/code/openagents/cr..." → [running] tokens_in=7 tokens_out=1 tokens_cached=38041
+o: id=f5KvzjLB → [ok]   3682 total
+o: id=R4Xux5WA → [ok]   798 total
+o: id=pUQjfGaf → [ok]  15791 total
+t!:Read id=dqPNqxts file_path=/home/christopherdavid/code/openagents/crates/desktop/src/server.rs → [running] tokens_in=7 tokens_out=1 tokens_cached=38534
+t!:Read id=CjawsNod file_path=/home/christopherdavid/code/openagents/crates/desktop/src/views.rs → [running] tokens_in=7 tokens_out=1 tokens_cached=38534
+o: id=CjawsNod → [error] <tool_use_error>File does not exist. Did you mean views?</tool_use_error>
+o: id=dqPNqxts → [ok]      1→//! Actix-web server for the desktop app
+t!:Bash id=jg6knwmx cmd="ls /home/christopherdavid/code/openagents/crate..." → [running] tokens_in=52 tokens_out=1 tokens_cached=39098
+o: id=jg6knwmx → [ok] Permissions Size User             Date Modified Name
+o: id=yA93eMGm → [ok] Perfect! Now I have all the information I need. Let me summarize my findings:
+t!:mcp__issues__issue_create id=VMUCFvKT  → [running] tokens_in=0 tokens_out=5 tokens_cached=68489
+o: id=VMUCFvKT → [ok] Created issue #11: Add comprehensive README for desktop crate (agent: claude)
+t!:mcp__issues__issue_claim id=Ni1PaiY8  → [running] tokens_in=0 tokens_out=81 tokens_cached=69563
+o: id=Ni1PaiY8 → [ok] Claimed issue #11
+t!:Read id=ULNr1qH2 file_path=/home/christopherdavid/code/openagents/crates/desktop/src/lib.rs → [running] tokens_in=0 tokens_out=5 tokens_cached=69859
+t!:Read id=YdJEhbcs file_path=/home/christopherdavid/code/openagents/crates/desktop/src/main.rs → [running] tokens_in=0 tokens_out=5 tokens_cached=69859
+t!:Glob id=JQ7gV4wN pattern="crates/desktop/**/*.rs" → [running] tokens_in=0 tokens_out=5 tokens_cached=69859
+o: id=ULNr1qH2 → [error] <tool_use_error>File does not exist.</tool_use_error>
+o: id=YdJEhbcs → [ok]      1→//! OpenAgents Desktop - Hello World Demo
+o: id=JQ7gV4wN → [ok] /home/christopherdavid/code/openagents/crates/desktop/src/replay.rs
+t!:Read id=AkQaaYJw file_path=/home/christopherdavid/code/openagents/crates/desktop/src/server.rs → [running] tokens_in=4 tokens_out=18 tokens_cached=70097
+t!:Read id=wBPymPxo file_path=/home/christopherdavid/code/openagents/crates/desktop/src/ws.rs → [running] tokens_in=4 tokens_out=18 tokens_cached=70097
+t!:Read id=R8bJWTDp file_path=/home/christopherdavid/code/openagents/crates/desktop/src/views/mod.rs → [running] tokens_in=4 tokens_out=199 tokens_cached=70097
+o: id=AkQaaYJw → [ok]      1→//! Actix-web server for the desktop app
+o: id=wBPymPxo → [ok]      1→//! Simplified WebSocket broadcaster for the desktop app
+o: id=R8bJWTDp → [ok]      1→//! Maud views for the desktop app
+t!:Read id=sbqoXZcv file_path=/home/christopherdavid/code/openagents/crates/desktop/src/views/home.rs → [running] tokens_in=4 tokens_out=25 tokens_cached=71756
+t!:Read id=S8qFmgoa file_path=/home/christopherdavid/code/openagents/crates/desktop/src/views/layout.rs → [running] tokens_in=4 tokens_out=25 tokens_cached=71756
+t!:Read id=ZGH8GwQ5 file_path=/home/christopherdavid/code/openagents/crates/desktop/Cargo.toml → [running] tokens_in=4 tokens_out=201 tokens_cached=71756
+o: id=sbqoXZcv → [ok]      1→//! Home page with counter demo
+o: id=S8qFmgoa → [ok]      1→//! Base layout with Tailwind CSS
+o: id=ZGH8GwQ5 → [ok]      1→[package]
+a: Now I have enough context to create a comprehensive README for the desktop crate. Let me write it. tokens_in=4 tokens_out=1 tokens_cached=74408
+t!:Write id=mRp75KpG file_path=/home/christopherdavid/code/openagents/crates/desktop/README.md → [running] tokens_in=4 tokens_out=3850 tokens_cached=74408
+o: id=mRp75KpG → [ok] File created successfully at: /home/christopherdavid/code/openagents/crates/desktop/README.md
+a: Perfect! Now let me verify the README looks good and then commit, push, complete, and get the next issue. tokens_in=2 tokens_out=1 tokens_cached=76717
+t!:Bash id=S893CZWC cmd="wc -l crates/desktop/README.md" → [running] tokens_in=2 tokens_out=107 tokens_cached=76717
+o: id=S893CZWC → [ok] 500 crates/desktop/README.md
+t!:Bash id=HTsk95nu cmd="git add -A && git commit -m "$(cat <<'EOF'" → [running] tokens_in=1 tokens_out=25 tokens_cached=80622
