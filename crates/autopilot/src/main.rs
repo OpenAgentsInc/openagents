@@ -205,6 +205,10 @@ enum Commands {
         #[arg(short, long)]
         cwd: Option<PathBuf>,
 
+        /// Agent to use (claude or codex)
+        #[arg(long, default_value = "claude")]
+        agent: String,
+
         /// Model to use (sonnet, opus, haiku, or full model ID)
         #[arg(short, long, default_value_t = default_model())]
         model: String,
@@ -492,6 +496,7 @@ async fn main() -> Result<()> {
             prompt,
             project,
             cwd,
+            agent,
             model,
             max_turns,
             max_budget,
@@ -505,7 +510,7 @@ async fn main() -> Result<()> {
             ui,
         } => {
             run_task(
-                prompt, project, cwd, model, max_turns, max_budget, output_dir, slug, dry_run, verbose,
+                prompt, project, cwd, agent, model, max_turns, max_budget, output_dir, slug, dry_run, verbose,
                 with_issues, issues_db, full_auto, ui,
             )
             .await
@@ -686,10 +691,156 @@ IMPORTANT: Always `git push origin main` after each commit. Each issue should be
 Never stop. Always keep working. Always keep improving.
 "#;
 
+/// Run Claude agent with the given prompt
+async fn run_claude_agent(
+    prompt: &str,
+    options: QueryOptions,
+    collector: &mut TrajectoryCollector,
+    verbose: bool,
+    ui_port: Option<u16>,
+) -> Result<()> {
+    let mut stream = query(prompt, options).await?;
+
+    while let Some(msg) = stream.next().await {
+        let msg = msg?;
+
+        // Collect trajectory
+        collector.process_message(&msg);
+
+        // Stream to desktop UI if enabled
+        if let Some(port) = ui_port {
+            if let Some(html) = autopilot::ui_renderer::render_sdk_message(&msg) {
+                let _ = stream_to_desktop(port, html.into_string()).await;
+            }
+        }
+
+        // Print progress
+        if verbose {
+            print_message(&msg);
+        } else {
+            print_progress(&msg);
+        }
+    }
+
+    Ok(())
+}
+
+/// Run Codex agent with the given prompt
+async fn run_codex_agent(
+    prompt: &str,
+    cwd: &PathBuf,
+    _max_turns: u32,
+    _max_budget: f64,
+    _collector: &mut TrajectoryCollector,
+    verbose: bool,
+) -> Result<()> {
+    use codex_agent_sdk::{Codex, SandboxMode, ThreadOptions, TurnOptions};
+
+    let codex = Codex::new();
+    let thread_options = ThreadOptions {
+        working_directory: Some(cwd.clone()),
+        sandbox_mode: Some(SandboxMode::WorkspaceWrite),
+        ..Default::default()
+    };
+
+    let mut thread = codex.start_thread(thread_options);
+    let mut streamed = thread.run_streamed(prompt, TurnOptions::default()).await?;
+
+    let mut turn_items = Vec::new();
+    let mut usage = None;
+
+    while let Some(event_result) = streamed.next().await {
+        let event = event_result?;
+
+        // Process events and add to trajectory
+        match &event {
+            codex_agent_sdk::ThreadEvent::ThreadStarted(e) => {
+                if verbose {
+                    println!("{} Thread started: {}", "Codex:".cyan().bold(), e.thread_id);
+                }
+            }
+            codex_agent_sdk::ThreadEvent::TurnStarted(_) => {
+                if verbose {
+                    println!("{} Turn started", "Codex:".dimmed());
+                }
+            }
+            codex_agent_sdk::ThreadEvent::ItemStarted(e) => {
+                if verbose {
+                    println!("{} Item started: {:?}", "Codex:".dimmed(), e.item.details);
+                }
+            }
+            codex_agent_sdk::ThreadEvent::ItemUpdated(_) => {
+                // Progress updates
+            }
+            codex_agent_sdk::ThreadEvent::ItemCompleted(e) => {
+                turn_items.push(e.item.clone());
+
+                use codex_agent_sdk::ThreadItemDetails;
+                match &e.item.details {
+                    ThreadItemDetails::AgentMessage(msg) => {
+                        if verbose {
+                            println!("{} {}", "Agent:".cyan().bold(), msg.text);
+                        }
+                    }
+                    ThreadItemDetails::CommandExecution(cmd) => {
+                        println!("{} Executing: {}", "Command:".yellow().bold(), cmd.command);
+                        if verbose && !cmd.aggregated_output.is_empty() {
+                            println!("{}", cmd.aggregated_output);
+                        }
+                    }
+                    ThreadItemDetails::FileChange(file) => {
+                        println!("{} {} file(s) changed", "File change:".green().bold(), file.changes.len());
+                        if verbose {
+                            for change in &file.changes {
+                                println!("  {}", change.path);
+                            }
+                        }
+                    }
+                    ThreadItemDetails::Reasoning(reasoning) => {
+                        if verbose {
+                            println!("{} {}", "Reasoning:".magenta().dimmed(), reasoning.text);
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            codex_agent_sdk::ThreadEvent::TurnCompleted(e) => {
+                usage = Some(e.usage.clone());
+                if verbose {
+                    println!("{} Turn completed", "Codex:".green().bold());
+                    println!("  Input tokens: {}", e.usage.input_tokens);
+                    println!("  Output tokens: {}", e.usage.output_tokens);
+                }
+            }
+            codex_agent_sdk::ThreadEvent::TurnFailed(e) => {
+                eprintln!("{} Turn failed: {}", "Error:".red().bold(), e.error.message);
+                anyhow::bail!("Codex turn failed: {}", e.error.message);
+            }
+            codex_agent_sdk::ThreadEvent::Error(e) => {
+                eprintln!("{} {}", "Error:".red().bold(), e.message);
+                anyhow::bail!("Codex error: {}", e.message);
+            }
+        }
+    }
+
+    // Add summary to trajectory collector
+    // Note: TrajectoryCollector expects SdkMessage format, but for now we can add a simple result
+    // This would need proper adapter in the future for full Codex trajectory support
+    if let Some(usage) = usage {
+        // Add usage tracking
+        // For now, just print - full trajectory integration would need TrajectoryEvent adapter
+        println!("{} Total tokens: {}", "Usage:".dimmed(),
+            usage.input_tokens + usage.output_tokens);
+    }
+
+    Ok(())
+}
+
 async fn run_task(
     prompt: String,
     project: Option<String>,
     cwd: Option<PathBuf>,
+    agent: String,
     model: String,
     max_turns: u32,
     max_budget: f64,
@@ -908,27 +1059,31 @@ async fn run_task(
         eprintln!("Warning: Failed to write lockfile: {}", e);
     }
 
-    // Execute query
-    let mut stream = query(&prompt, options).await?;
-
-    while let Some(msg) = stream.next().await {
-        let msg = msg?;
-
-        // Collect trajectory
-        collector.process_message(&msg);
-
-        // Stream to desktop UI if enabled
-        if let Some(port) = _ui_port {
-            if let Some(html) = autopilot::ui_renderer::render_sdk_message(&msg) {
-                let _ = stream_to_desktop(port, html.into_string()).await;
-            }
+    // Dispatch to appropriate agent
+    match agent.as_str() {
+        "claude" => {
+            run_claude_agent(
+                &prompt,
+                options,
+                &mut collector,
+                verbose,
+                _ui_port,
+            )
+            .await?;
         }
-
-        // Print progress
-        if verbose {
-            print_message(&msg);
-        } else {
-            print_progress(&msg);
+        "codex" => {
+            run_codex_agent(
+                &prompt,
+                &cwd,
+                max_turns,
+                max_budget,
+                &mut collector,
+                verbose,
+            )
+            .await?;
+        }
+        _ => {
+            anyhow::bail!("Unknown agent: {}. Use 'claude' or 'codex'", agent);
         }
     }
 

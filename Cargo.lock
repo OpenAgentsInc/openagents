@@ -452,6 +452,7 @@ dependencies = [
  "chrono-tz",
  "clap",
  "claude-agent-sdk",
+ "codex-agent-sdk",
  "colored",
  "dirs",
  "futures",
