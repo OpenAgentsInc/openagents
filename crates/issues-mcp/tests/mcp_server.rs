@@ -12,11 +12,6 @@ fn make_request(method: &str, params: Value) -> Value {
     })
 }
 
-// Helper to parse JSON-RPC response
-fn parse_response(response: &str) -> Value {
-    serde_json::from_str(response).expect("valid JSON")
-}
-
 // =========================================================================
 // JSON-RPC Protocol tests
 // =========================================================================
