@@ -1,4 +1,5 @@
 [alias]
 autopilot = "run -p autopilot --"
+fullauto = "run -p autopilot -- run --with-issues --full-auto --max-turns 99999 --max-budget 300"
 desktop = "run -p desktop"
 storybook = "run -p storybook"
