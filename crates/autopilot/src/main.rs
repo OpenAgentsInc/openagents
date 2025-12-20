@@ -314,6 +314,11 @@ enum Commands {
         #[command(subcommand)]
         command: ProjectCommands,
     },
+    /// View sessions
+    Session {
+        #[command(subcommand)]
+        command: SessionCommands,
+    },
 }
 
 #[derive(Subcommand)]
@@ -442,6 +447,30 @@ enum ProjectCommands {
     },
 }
 
+#[derive(Subcommand)]
+enum SessionCommands {
+    /// List sessions
+    List {
+        /// Filter by project name
+        #[arg(short, long)]
+        project: Option<String>,
+
+        /// Path to issues database (default: autopilot.db in cwd)
+        #[arg(long)]
+        db: Option<PathBuf>,
+    },
+    /// Show session details
+    Show {
+        /// Session ID (or prefix)
+        #[arg(required = true)]
+        id: String,
+
+        /// Path to issues database (default: autopilot.db in cwd)
+        #[arg(long)]
+        db: Option<PathBuf>,
+    },
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     // Setup cleanup handlers for signals and panics
@@ -500,6 +529,9 @@ async fn main() -> Result<()> {
         }
         Commands::Project { command } => {
             handle_project_command(command).await
+        }
+        Commands::Session { command } => {
+            handle_session_command(command).await
         }
     }
 }
@@ -662,7 +694,7 @@ async fn run_task(
     ui: bool,
 ) -> Result<()> {
     // Load project if specified
-    let (cwd, issues_db) = if let Some(project_name) = project {
+    let (cwd, issues_db, project_id) = if let Some(project_name) = project {
         use issues::{db, project};
 
         let default_db = std::env::current_dir()?.join("autopilot.db");
@@ -674,7 +706,8 @@ async fn run_task(
                 println!("{} {}", "Path:".dimmed(), proj.path);
                 (
                     PathBuf::from(&proj.path),
-                    Some(PathBuf::from(&proj.path).join("autopilot.db"))
+                    Some(PathBuf::from(&proj.path).join("autopilot.db")),
+                    Some(proj.id)
                 )
             }
             None => {
@@ -684,7 +717,24 @@ async fn run_task(
             }
         }
     } else {
-        (cwd.unwrap_or_else(|| std::env::current_dir().unwrap()), issues_db)
+        (cwd.unwrap_or_else(|| std::env::current_dir().unwrap()), issues_db, None)
+    };
+
+    // Create session record if we have a project
+    let session_id = if let Some(ref proj_id) = project_id {
+        use issues::{db, session};
+
+        let default_db = cwd.join("autopilot.db");
+        let db_path = issues_db.as_ref().unwrap_or(&default_db);
+        let conn = db::init_db(db_path)?;
+
+        let pid = std::process::id() as i32;
+        let session = session::create_session(&conn, proj_id, &prompt, &model, Some(pid))?;
+
+        println!("{} Session ID: {}", "Session:".dimmed(), &session.id[..8]);
+        Some(session.id)
+    } else {
+        None
     };
 
     // Check for stale lockfile and handle crash recovery
@@ -812,8 +862,10 @@ async fn run_task(
     // Write .mcp.json file for issue tracking MCP server if requested
     if with_issues {
         let mcp_json_path = cwd.join(".mcp.json");
+        let default_issues_db = cwd.join("autopilot.db");
         let db_path = issues_db
-            .unwrap_or_else(|| cwd.join("autopilot.db"))
+            .as_ref()
+            .unwrap_or(&default_issues_db)
             .display()
             .to_string();
 
@@ -893,6 +945,32 @@ async fn run_task(
         let json_path = output_dir.join(filename(&slug, "json"));
         std::fs::write(&json_path, &json_content)?;
         println!("{} {}", "Saved:".green(), json_path.display());
+
+        // Update session with trajectory path if we have a session
+        if let Some(ref sess_id) = session_id {
+            use issues::{db, session};
+            let default_db = cwd.join("autopilot.db");
+            let db_path = issues_db.as_ref().unwrap_or(&default_db);
+            if let Ok(conn) = db::init_db(db_path) {
+                let _ = session::update_session_trajectory(&conn, sess_id, &json_path.display().to_string());
+            }
+        }
+    }
+
+    // Update session status on completion
+    if let Some(ref sess_id) = session_id {
+        use issues::{db, session, SessionStatus};
+        let default_db = cwd.join("autopilot.db");
+        let db_path = issues_db.as_ref().unwrap_or(&default_db);
+        if let Ok(conn) = db::init_db(db_path) {
+            let status = if trajectory.result.as_ref().map(|r| r.success).unwrap_or(false) {
+                SessionStatus::Completed
+            } else {
+                SessionStatus::Failed
+            };
+            let _ = session::update_session_status(&conn, sess_id, status);
+            let _ = session::update_session_metrics(&conn, sess_id, trajectory.usage.cost_usd, 0); // TODO: track issues completed
+        }
     }
 
     // Cleanup .mcp.json and lockfile on normal exit
@@ -1491,6 +1569,100 @@ async fn analyze_trajectories(path: PathBuf, aggregate: bool, json_output: bool)
             println!("{}", serde_json::to_string_pretty(&analysis)?);
         } else {
             analyze::print_analysis(&analysis);
+        }
+    }
+
+    Ok(())
+}
+
+async fn handle_session_command(command: SessionCommands) -> Result<()> {
+    use issues::{db, project, session};
+
+    let default_db = std::env::current_dir()?.join("autopilot.db");
+
+    match command {
+        SessionCommands::List { project: proj_name, db } => {
+            let db_path = db.unwrap_or(default_db);
+            let conn = db::init_db(&db_path)?;
+
+            // Get project_id if project name is provided
+            let project_id = if let Some(ref name) = proj_name {
+                match project::get_project_by_name(&conn, name)? {
+                    Some(p) => Some(p.id),
+                    None => {
+                        eprintln!("{} Project '{}' not found", "Error:".red(), name);
+                        std::process::exit(1);
+                    }
+                }
+            } else {
+                None
+            };
+
+            let sessions = session::list_sessions(&conn, project_id.as_deref())?;
+
+            if sessions.is_empty() {
+                println!("No sessions found");
+            } else {
+                println!("{:<10} {:<10} {:<40} {:<10} {:<8}", "ID", "Status", "Prompt", "Budget", "Issues");
+                println!("{}", "-".repeat(85));
+                for s in sessions {
+                    let id_short = if s.id.len() > 8 { &s.id[..8] } else { &s.id };
+                    let prompt_short = if s.prompt.len() > 38 {
+                        format!("{}...", &s.prompt[..35])
+                    } else {
+                        s.prompt.clone()
+                    };
+                    println!(
+                        "{:<10} {:<10} {:<40} ${:<9.2} {}",
+                        id_short,
+                        s.status.as_str(),
+                        prompt_short,
+                        s.budget_spent,
+                        s.issues_completed
+                    );
+                }
+            }
+        }
+        SessionCommands::Show { id, db } => {
+            let db_path = db.unwrap_or(default_db);
+            let conn = db::init_db(&db_path)?;
+
+            // Try to find session by ID or prefix
+            let sessions = session::list_sessions(&conn, None)?;
+            let matching: Vec<_> = sessions.iter().filter(|s| s.id.starts_with(&id)).collect();
+
+            match matching.len() {
+                0 => {
+                    eprintln!("{} Session '{}' not found", "Error:".red(), id);
+                    std::process::exit(1);
+                }
+                1 => {
+                    let s = matching[0];
+                    println!("{} Session {}", "→".cyan(), &s.id[..8]);
+                    println!("  Status:     {}", s.status.as_str());
+                    println!("  Prompt:     {}", s.prompt);
+                    println!("  Model:      {}", s.model);
+                    if let Some(pid) = s.pid {
+                        println!("  PID:        {}", pid);
+                    }
+                    println!("  Started:    {}", s.started_at);
+                    if let Some(ref ended) = s.ended_at {
+                        println!("  Ended:      {}", ended);
+                    }
+                    println!("  Budget:     ${:.4}", s.budget_spent);
+                    println!("  Issues:     {}", s.issues_completed);
+                    if let Some(ref path) = s.trajectory_path {
+                        println!("  Trajectory: {}", path);
+                    }
+                }
+                _ => {
+                    eprintln!("{} Multiple sessions match '{}'. Please be more specific:", "Error:".yellow(), id);
+                    for s in matching {
+                        eprintln!("  {}", &s.id[..16]);
+                    }
+                    std::process::exit(1);
+                }
+            }
         }
     }
 
