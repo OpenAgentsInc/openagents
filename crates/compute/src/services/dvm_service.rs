@@ -428,8 +428,10 @@ mod tests {
 
         // Create DVM service with custom config
         let mut dvm = DvmService::new(relay_service.clone(), ollama_service, event_tx);
-        let mut config = DvmConfig::default();
-        config.min_price_msats = 5000;
+        let config = DvmConfig {
+            min_price_msats: 5000,
+            ..Default::default()
+        };
         dvm.set_config(config);
         dvm.set_identity(Arc::new(identity.clone())).await;
 

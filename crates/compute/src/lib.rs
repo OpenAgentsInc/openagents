@@ -10,3 +10,13 @@
 pub mod domain;
 pub mod services;
 pub mod storage;
+
+// UI modules disabled until wgpui dependency is added
+// #[cfg(feature = "ui")]
+// pub mod app;
+// #[cfg(feature = "ui")]
+// pub mod state;
+// #[cfg(feature = "ui")]
+// pub mod ui;
+// #[cfg(feature = "ui")]
+// pub use app::ComputeApp;

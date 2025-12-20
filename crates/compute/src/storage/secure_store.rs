@@ -80,7 +80,7 @@ impl SecureStore {
     }
 
     /// Create a secure store at the default location
-    pub fn default() -> Self {
+    pub fn with_default_path() -> Self {
         Self::new(Self::default_path())
     }
 

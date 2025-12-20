@@ -482,7 +482,7 @@ mod tests {
         // Add very long content that should be truncated
         let long_content = "x".repeat(500);
         traj.add_step(StepType::User {
-            content: long_content.clone(),
+            content: long_content,
         });
 
         let mut writer = RlogWriter::new();

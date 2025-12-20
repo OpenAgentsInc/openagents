@@ -46,7 +46,7 @@ impl ComputeApp {
         Self {
             root_view: RootView::new(state.clone()),
             state,
-            storage: SecureStore::default(),
+            storage: SecureStore::with_default_path(),
             ollama_service,
             relay_service,
             dvm_service,
