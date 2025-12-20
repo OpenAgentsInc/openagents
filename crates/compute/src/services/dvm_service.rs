@@ -5,7 +5,10 @@
 use crate::domain::{DomainEvent, Job, UnifiedIdentity};
 use crate::services::{OllamaService, RelayService};
 use chrono::Utc;
-use nostr::{JobInput, KIND_JOB_TEXT_GENERATION};
+use nostr::{
+    finalize_event, EventTemplate, HandlerInfo, HandlerMetadata, HandlerType, JobInput,
+    PricingInfo, KIND_HANDLER_INFO, KIND_JOB_TEXT_GENERATION,
+};
 use std::collections::HashMap;
 use std::sync::Arc;
 use thiserror::Error;
@@ -33,6 +36,9 @@ pub enum DvmError {
 
     #[error("signing failed: {0}")]
     SigningFailed(String),
+
+    #[error("NIP-89 handler publishing failed: {0}")]
+    HandlerPublishFailed(String),
 }
 
 /// Configuration for the DVM service
@@ -125,6 +131,17 @@ impl DvmService {
             .map_err(|e| DvmError::RelayError(e.to_string()))?;
 
         *self.running.write().await = true;
+
+        // Publish NIP-89 handler info to advertise capabilities
+        match self.publish_handler_info().await {
+            Ok(event_id) => {
+                log::info!("Published handler info with event id: {}", event_id);
+            }
+            Err(e) => {
+                log::warn!("Failed to publish handler info: {}", e);
+                // Don't fail startup if handler publishing fails
+            }
+        }
 
         // Emit event
         let _ = self.event_tx.send(DomainEvent::WentOnline {
@@ -287,11 +304,80 @@ impl DvmService {
     pub async fn get_job(&self, job_id: &str) -> Option<Job> {
         self.active_jobs.read().await.get(job_id).cloned()
     }
+
+    /// Publish NIP-89 handler information to advertise compute provider capabilities
+    pub async fn publish_handler_info(&self) -> Result<String, DvmError> {
+        let identity = self
+            .identity
+            .read()
+            .await
+            .clone()
+            .ok_or(DvmError::NotInitialized)?;
+
+        // Create handler metadata
+        let metadata = HandlerMetadata::new(
+            "OpenAgents Compute Provider",
+            "AI inference provider using Ollama for NIP-90 data vending machine jobs"
+        )
+        .with_website("https://openagents.com");
+
+        // Build handler info
+        let mut handler_info = HandlerInfo::new(
+            identity.public_key_hex(),
+            HandlerType::ComputeProvider,
+            metadata,
+        )
+        .add_capability("text-generation")
+        .add_capability("nip90-kind-5050");
+
+        // Add pricing if configured
+        if self.config.min_price_msats > 0 {
+            let pricing = PricingInfo::new(self.config.min_price_msats)
+                .with_model("per-request")
+                .with_currency("sats");
+            handler_info = handler_info.with_pricing(pricing);
+        }
+
+        // Serialize metadata to JSON for event content
+        let content = serde_json::json!({
+            "name": "OpenAgents Compute Provider",
+            "description": "AI inference provider using Ollama for NIP-90 data vending machine jobs",
+            "website": "https://openagents.com"
+        })
+        .to_string();
+
+        // Create event template
+        let template = EventTemplate {
+            created_at: Utc::now().timestamp() as u64,
+            kind: KIND_HANDLER_INFO,
+            tags: handler_info.to_tags(),
+            content,
+        };
+
+        // Sign the event
+        let event = finalize_event(&template, identity.private_key_bytes())
+            .map_err(|e| DvmError::SigningFailed(e.to_string()))?;
+
+        // Publish to relays
+        self.relay_service
+            .publish(event.clone())
+            .await
+            .map_err(|e| DvmError::HandlerPublishFailed(e.to_string()))?;
+
+        log::info!(
+            "Published NIP-89 handler info (event id: {}) to {} relays",
+            event.id,
+            self.relay_service.connected_relays().await.len()
+        );
+
+        Ok(event.id)
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::domain::UnifiedIdentity;
 
     #[test]
     fn test_supported_kinds() {
@@ -303,5 +389,70 @@ mod tests {
         let config = DvmConfig::default();
         assert_eq!(config.min_price_msats, 1000);
         assert_eq!(config.default_model, "llama3.2");
+    }
+
+    #[tokio::test]
+    async fn test_publish_handler_info() {
+        // Create test identity
+        let identity = UnifiedIdentity::generate().expect("should generate identity");
+
+        // Create services
+        let relay_service = Arc::new(RelayService::new());
+        let ollama_service = Arc::new(OllamaService::new());
+        let (event_tx, _event_rx) = broadcast::channel(100);
+
+        // Create DVM service
+        let dvm = DvmService::new(relay_service.clone(), ollama_service, event_tx);
+        dvm.set_identity(Arc::new(identity.clone())).await;
+
+        // Connect to relays (this is mocked in tests)
+        relay_service.connect().await.expect("should connect");
+
+        // Publish handler info
+        let result = dvm.publish_handler_info().await;
+        assert!(result.is_ok(), "should publish handler info");
+
+        let event_id = result.unwrap();
+        assert_eq!(event_id.len(), 64, "event id should be 64 hex characters");
+    }
+
+    #[tokio::test]
+    async fn test_publish_handler_info_with_pricing() {
+        // Create test identity
+        let identity = UnifiedIdentity::generate().expect("should generate identity");
+
+        // Create services
+        let relay_service = Arc::new(RelayService::new());
+        let ollama_service = Arc::new(OllamaService::new());
+        let (event_tx, _event_rx) = broadcast::channel(100);
+
+        // Create DVM service with custom config
+        let mut dvm = DvmService::new(relay_service.clone(), ollama_service, event_tx);
+        let mut config = DvmConfig::default();
+        config.min_price_msats = 5000;
+        dvm.set_config(config);
+        dvm.set_identity(Arc::new(identity.clone())).await;
+
+        // Connect to relays
+        relay_service.connect().await.expect("should connect");
+
+        // Publish handler info
+        let result = dvm.publish_handler_info().await;
+        assert!(result.is_ok(), "should publish handler info with pricing");
+    }
+
+    #[tokio::test]
+    async fn test_publish_handler_info_requires_identity() {
+        // Create services without setting identity
+        let relay_service = Arc::new(RelayService::new());
+        let ollama_service = Arc::new(OllamaService::new());
+        let (event_tx, _event_rx) = broadcast::channel(100);
+
+        let dvm = DvmService::new(relay_service, ollama_service, event_tx);
+
+        // Should fail without identity
+        let result = dvm.publish_handler_info().await;
+        assert!(result.is_err(), "should fail without identity");
+        assert!(matches!(result.unwrap_err(), DvmError::NotInitialized));
     }
 }
