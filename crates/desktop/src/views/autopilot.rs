@@ -69,6 +69,17 @@ pub fn autopilot_page() -> Markup {
                     var sidebar = document.getElementById('session-sidebar');
                     var header = document.getElementById('session-header');
 
+                    // Restore auto-scroll preference from localStorage
+                    var savedPref = localStorage.getItem('autopilot-auto-scroll');
+                    if (savedPref !== null) {
+                        autoScroll.checked = savedPref === 'true';
+                    }
+
+                    // Save preference when toggled
+                    autoScroll.addEventListener('change', function() {
+                        localStorage.setItem('autopilot-auto-scroll', autoScroll.checked);
+                    });
+
                     ws.onopen = function() {
                         status.textContent = 'connected';
                         status.className = 'text-xs text-green';
