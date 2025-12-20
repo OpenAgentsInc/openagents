@@ -80,3 +80,40 @@ sqlite3 autopilot.db "INSERT INTO ..."        # NEVER - use the API
 All crates in `crates/` must use `edition = "2024"` in their `Cargo.toml`.
 
 **Testing:** Tests go in their respective crates (e.g., `crates/foo/src/tests/`). Do NOT create separate test crates.
+
+---
+
+## Autopilot Daemon
+
+The `autopilotd` daemon supervises autopilot worker processes, handling crashes and memory pressure.
+
+**Starting the daemon:**
+```bash
+# Development
+cargo daemon --workdir /path/to/project --project myproject
+
+# Production (systemd)
+systemctl --user start autopilotd
+```
+
+**Commands:**
+```bash
+autopilotd status         # Check daemon and worker status
+autopilotd restart-worker # Restart worker without restarting daemon
+autopilotd stop           # Stop daemon
+```
+
+**Viewing logs:**
+```bash
+# Worker logs are in the standard rlog location
+tail -f docs/logs/$(date +%Y%m%d)/*.rlog
+
+# Daemon logs (when running with systemd)
+journalctl --user -u autopilotd -f
+```
+
+**Memory management:**
+- Daemon monitors system memory every 5 seconds
+- Kills node processes >500MB when memory is low (<2GB)
+- Force-restarts worker when memory is critical (<1GB)
+- Automatic exponential backoff on crashes (1s → 5min max)

@@ -52,9 +52,9 @@ impl WorkerSupervisor {
         // Inherit environment
         cmd.env("AUTOPILOTD_SUPERVISED", "1");
 
-        // Pipe stdout/stderr for logging
+        // Inherit stderr so we can see worker errors, pipe stdout
         cmd.stdout(Stdio::piped());
-        cmd.stderr(Stdio::piped());
+        cmd.stderr(Stdio::inherit());
 
         // Create new process group on Unix
         #[cfg(unix)]
@@ -81,7 +81,10 @@ impl WorkerSupervisor {
         match &self.config.worker_command {
             WorkerCommand::Cargo { manifest_path } => {
                 let mut cmd = Command::new("cargo");
-                cmd.arg("autopilot");
+                cmd.arg("run");
+                cmd.arg("-p").arg("autopilot");
+                cmd.arg("--bin").arg("autopilot");
+                cmd.arg("--");
                 cmd.arg("run");
                 cmd.arg("--full-auto");
                 cmd.arg("--with-issues");
