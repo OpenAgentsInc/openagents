@@ -378,7 +378,7 @@ fn test_params_multiple_values() {
 #[test]
 fn test_params_get_nonexistent() {
     let job = create_test_job();
-    assert!(job.params.get("nonexistent").is_none());
+    assert!(!job.params.contains_key("nonexistent"));
 }
 
 // =========================================================================

@@ -294,8 +294,10 @@ fn test_validation_statistics() {
     let session = parse_content(&content).expect("Should parse");
 
     // Create validation result (simplified - actual validation would be more complex)
-    let mut stats = recorder::SessionStats::default();
-    stats.total_lines = session.lines.len();
+    let mut stats = recorder::SessionStats {
+        total_lines: session.lines.len(),
+        ..Default::default()
+    };
 
     for line in &session.lines {
         match line.line_type {

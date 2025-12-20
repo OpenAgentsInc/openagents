@@ -238,7 +238,7 @@ fn test_discover_local_skills_invalid_skill_format() {
     let skill_dir = temp_dir.join("broken-skill");
     fs::create_dir_all(&skill_dir).unwrap();
 
-    let metadata = discover_local_skills(&[temp_dir.clone()]);
+    let metadata = discover_local_skills(std::slice::from_ref(&temp_dir));
 
     // Should skip invalid skills
     assert_eq!(metadata.len(), 0);
@@ -268,7 +268,7 @@ description: Valid skill
     let invalid_dir = temp_dir.join("invalid-skill");
     fs::create_dir_all(&invalid_dir).unwrap();
 
-    let metadata = discover_local_skills(&[temp_dir.clone()]);
+    let metadata = discover_local_skills(std::slice::from_ref(&temp_dir));
 
     // Should only find the valid one
     assert_eq!(metadata.len(), 1);
@@ -284,7 +284,7 @@ fn test_discover_local_skills_permissions_handling() {
     let _ = fs::remove_dir_all(&temp_dir);
     fs::create_dir_all(&temp_dir).unwrap();
 
-    let metadata = discover_local_skills(&[temp_dir.clone()]);
+    let metadata = discover_local_skills(std::slice::from_ref(&temp_dir));
 
     // Should handle empty dir gracefully
     assert_eq!(metadata.len(), 0);
