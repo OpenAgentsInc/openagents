@@ -83,6 +83,40 @@ Autopilot follows this workflow for code changes:
 4. Human reviews and squash-merges
 5. Autopilot pulls main and continues
 
+## Context Compaction
+
+Autopilot automatically provides custom compaction instructions when the conversation context needs to be summarized:
+
+### Compaction Strategies
+
+Four strategies are automatically detected based on session context:
+
+1. **Detailed** - Preserves technical details, code paths, function names
+   - Used when: Code implementation, testing, debugging
+   - Focus: Technical accuracy for continuation
+
+2. **Summary** - Concise high-level outcomes
+   - Used when: General tasks, quick summaries
+   - Focus: Key decisions and next steps
+
+3. **Autonomous** - Handoff-ready action plans
+   - Used when: Full auto mode, issue tracking
+   - Focus: Clear task status and continuation points
+
+4. **Planning** - Preserves plan mode context
+   - Used when: Plan mode sessions
+   - Focus: Exploration findings, design decisions, implementation plans
+
+### How It Works
+
+When Claude Code CLI triggers compaction (automatically or via `/compact`):
+1. Autopilot's PreCompact hook detects the event
+2. Strategy is selected based on session context
+3. Custom instructions are injected to guide the LLM
+4. Compacted summary preserves critical context for continuation
+
+The compaction happens transparently - no manual intervention needed.
+
 ## Configuration
 
 ### Environment Variables
