@@ -944,3 +944,7 @@ t!:Bash id=WompNkEG cmd="cargo test --package marketplace" → [running] tokens_
 o: id=WompNkEG → [ok] running 423 tests
 a: Perfect! All 423 tests pass! Now let me commit this work. tokens_in=0 tokens_out=1 tokens_cached=147547
 t!:Bash id=axG24sfq cmd="git add -A && git commit -m "$(cat <<'EOF'" → [running] tokens_in=0 tokens_out=1 tokens_cached=147547
+o: id=axG24sfq → [ok] [main 441e1c95c] Add comprehensive unit tests for marketplace pricing logic
+# status: Compacting
+a: I'll continue with the FULL AUTO MODE loop. I just finished adding unit tests to the marketplace crate with all 423 tests passing. Now I need to commit, push, complete issue #14, and immediately ge... tokens_in=3 tokens_out=4 tokens_cached=19857
+t!:Bash id=mntGLQSS cmd="git add -A && git commit -m "$(cat <<'EOF'" → [running] tokens_in=3 tokens_out=4 tokens_cached=19857
