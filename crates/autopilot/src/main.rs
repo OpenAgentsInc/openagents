@@ -883,8 +883,43 @@ impl HookCallback for PlanModeHook {
     }
 }
 
-/// Full auto mode prompt suffix
-const FULL_AUTO_PROMPT: &str = r#"
+/// Load active directives and format as a summary for the prompt
+fn load_directive_summary(cwd: &std::path::Path) -> String {
+    use issues::directive;
+
+    let directives_dir = cwd.join(".openagents/directives");
+    let directives = match directive::get_active_directives(&directives_dir) {
+        Ok(d) => d,
+        Err(_) => return String::new(),
+    };
+
+    if directives.is_empty() {
+        return String::new();
+    }
+
+    let mut summary = String::from("\n\nACTIVE DIRECTIVES (high-level goals guiding your work):\n");
+    for d in &directives {
+        // Extract first line of Goal section if present
+        let goal_line = d.body.lines()
+            .skip_while(|l| !l.starts_with("## Goal"))
+            .nth(2)  // Skip "## Goal" and blank line
+            .unwrap_or("")
+            .trim();
+
+        summary.push_str(&format!(
+            "\n[{}] {} (priority: {})\n  {}\n",
+            d.id, d.title, d.priority.as_str(),
+            if goal_line.is_empty() { "See directive for details" } else { goal_line }
+        ));
+    }
+    summary.push_str("\nUse directive_get <id> for full details, success criteria, and phases.\n");
+    summary.push_str("When creating issues, link them with: issue_create title=\"...\" directive_id=\"<id>\"\n");
+
+    summary
+}
+
+/// Full auto mode prompt suffix (without directives - those are added dynamically)
+const FULL_AUTO_PROMPT_BASE: &str = r#"
 
 FULL AUTO MODE - CRITICAL AUTONOMOUS LOOP INSTRUCTIONS:
 
@@ -892,21 +927,20 @@ You are in FULLY AUTONOMOUS mode. You MUST follow this exact loop:
 
 LOOP START:
 1. Call issue_ready to get the next available issue
-2. If issue exists: claim → implement → test → commit → PUSH → complete
+2. If issue exists:
+   - Check if the issue is linked to a directive (has directive_id)
+   - If linked, review that directive with directive_get to understand the bigger picture
+   - Implement → test → commit → PUSH → complete
 3. IMMEDIATELY call issue_ready again (NO SUMMARIES, NO PAUSES)
 4. GOTO LOOP START
 
 IF issue_ready returns "No ready issues available":
-- First check directives with directive_list to see active high-level goals
-- Review the directive's goal, success criteria, and current progress
-- Create 1-3 specific, actionable issues linked to an active directive using:
-  issue_create title="..." directive_id="d-001" (use the actual directive ID)
-- If no directives exist, analyze codebase to identify the next logical improvement
+- Review the active directives shown above
+- Pick the highest priority directive that needs work
+- Create 1-3 specific, actionable issues linked to it using:
+  issue_create title="..." directive_id="<id>"
 - Claim and implement the new issue
 - GOTO LOOP START
-
-DIRECTIVES: High-level goals in .openagents/directives/ guide what to work on.
-Use directive_list to see them, directive_get <id> for details.
 
 CRITICAL RULES - VIOLATION MEANS FAILURE:
 - NEVER output a "session summary" or "issues completed" message
@@ -1113,13 +1147,14 @@ async fn run_full_auto_loop(
             println!("\n{} Issues still available - forcing continuation", "AUTO:".cyan().bold());
         }
 
-        // Set up for continuation - include FULL_AUTO_PROMPT again to reinforce instructions
+        // Set up for continuation - include directive summary and FULL_AUTO_PROMPT again
         println!("{} Continuing with new query (attempt {})", "AUTO:".yellow().bold(), continuation_count);
 
+        let directive_summary = load_directive_summary(&cwd);
         current_prompt = if has_more_work {
-            format!("{}\n\nCONTINUE: You stopped prematurely. There are still issues to work on. Call issue_ready NOW. DO NOT output any text first - immediately call issue_ready.", FULL_AUTO_PROMPT)
+            format!("{}{}\n\nCONTINUE: You stopped prematurely. There are still issues to work on. Call issue_ready NOW. DO NOT output any text first - immediately call issue_ready.", directive_summary, FULL_AUTO_PROMPT_BASE)
         } else {
-            format!("{}\n\nCONTINUE: You stopped prematurely. No issues are ready. Create a new issue with issue_create, then claim and implement it. DO NOT output any text first.", FULL_AUTO_PROMPT)
+            format!("{}{}\n\nCONTINUE: You stopped prematurely. No issues are ready. Review the directives above and create a new issue linked to one. DO NOT output any text first.", directive_summary, FULL_AUTO_PROMPT_BASE)
         };
     }
 
@@ -1371,7 +1406,8 @@ async fn run_task(
 
     // Enhance prompt for full-auto mode
     let prompt = if full_auto {
-        format!("{}{}", prompt, FULL_AUTO_PROMPT)
+        let directive_summary = load_directive_summary(&cwd);
+        format!("{}{}{}", prompt, directive_summary, FULL_AUTO_PROMPT_BASE)
     } else {
         prompt
     };
