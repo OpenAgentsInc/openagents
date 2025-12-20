@@ -19,6 +19,7 @@
 //!     Some("It crashes on startup"),
 //!     issue::Priority::High,
 //!     issue::IssueType::Bug,
+//!     None, // agent (defaults to "claude")
 //! ).unwrap();
 //!
 //! // Claim the issue
