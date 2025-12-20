@@ -8,6 +8,7 @@ pub mod data_consumer;
 pub mod data_contribution;
 pub mod db;
 pub mod discovery;
+pub mod provider_reputation;
 pub mod redaction;
 pub mod repository;
 pub mod skills;
@@ -26,6 +27,10 @@ pub use data_contribution::{
     DataContributionType, PaymentInfo, VerificationResult,
 };
 pub use discovery::{SearchFilters, SkillListing, SortOrder, discover_local_skills};
+pub use provider_reputation::{
+    EconomicScore, ProviderReputation, ReputationError, ReputationTier, SocialScore,
+    TierBenefits, TrackRecordScore, VerificationScore,
+};
 pub use redaction::{
     CustomRedactionPattern, RedactionEngine, RedactionError, RedactionPreferences,
     RedactionRecord, RedactionResult, RedactionType, SecretDetection, TextSpan,
