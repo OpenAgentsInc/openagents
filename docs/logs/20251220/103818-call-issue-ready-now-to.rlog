@@ -2041,3 +2041,31 @@ t!:Bash id=jyzNQ371 cmd="cargo test -p autopilot --test rlog_writer" → [runnin
 o: id=jyzNQ371 → [ok] running 27 tests
 a: Perfect! All 27 tests pass. Let me commit and push: tokens_in=0 tokens_out=4 tokens_cached=115930
 t!:Bash id=RBXZxfFN cmd="git add -A && git commit -m "$(cat <<'EOF'" → [running] tokens_in=0 tokens_out=354 tokens_cached=115930
+o: id=RBXZxfFN → [ok] [main 4c4fc5518] Add comprehensive unit tests for rlog writer module
+t!:Bash id=U8Q9FJSm cmd="git push origin main" → [running] tokens_in=0 tokens_out=25 tokens_cached=116517
+o: id=U8Q9FJSm → [ok] [0;36m🔍 Running cargo build to check for errors and warnings...[0m
+t!:mcp__issues__issue_complete id=w9EEyHWL  → [running] tokens_in=0 tokens_out=58 tokens_cached=117077
+o: id=w9EEyHWL → [ok] Completed issue #43
+t!:mcp__issues__issue_ready id=AaxcJ6VK  → [running] tokens_in=0 tokens_out=41 tokens_cached=117276
+o: id=AaxcJ6VK → [ok] No ready issues available
+t!:mcp__issues__issue_create id=DcrefzCf  → [running] tokens_in=0 tokens_out=8 tokens_cached=117390
+o: id=DcrefzCf → [ok] Created issue #44: Add README for compute crate (agent: claude)
+t!:mcp__issues__issue_ready id=yyQFHuaQ  → [running] tokens_in=0 tokens_out=8 tokens_cached=117591
+o: id=yyQFHuaQ → [ok] {
+t!:mcp__issues__issue_claim id=bgrtviLy  → [running] tokens_in=0 tokens_out=81 tokens_cached=117814
+o: id=bgrtviLy → [ok] Claimed issue #44
+a: I'll create a comprehensive README for the compute crate documenting the NIP-90 DVM implementation. tokens_in=0 tokens_out=1 tokens_cached=117986
+t!:Read id=HbtkdtAP file_path=/home/christopherdavid/code/openagents/crates/compute/Cargo.toml → [running] tokens_in=0 tokens_out=101 tokens_cached=117986
+o: id=HbtkdtAP → [ok]      1→[package]
+t!:Glob id=FoBVVg2w pattern="**/*.rs" → [running] tokens_in=2 tokens_out=91 tokens_cached=118226
+o: id=FoBVVg2w → [ok] /home/christopherdavid/code/openagents/crates/compute/src/bin/compute.rs
+t!:Read id=JEJ8W6Gh file_path=/home/christopherdavid/code/openagents/crates/compute/src/lib.rs → [running] tokens_in=1 tokens_out=111 tokens_cached=119016
+o: id=JEJ8W6Gh → [ok]      1→//! Compute Provider - Sell compute via NIP-90 DVMs with Bitcoin payments
+t!:Write id=BEHQmP8y file_path=/home/christopherdavid/code/openagents/crates/compute/README.md → [running] tokens_in=0 tokens_out=2528 tokens_cached=119942
+o: id=BEHQmP8y → [error] <tool_use_error>File has not been read yet. Read it first before writing to it.</tool_use_error>
+t!:Bash id=n51yfLeD cmd="ls /home/christopherdavid/code/openagents/crate..." → [running] tokens_in=1 tokens_out=26 tokens_cached=120466
+o: id=n51yfLeD → [ok] Permissions Size User             Date Modified Name
+t!:Read id=ZKtxDhPW file_path=/home/christopherdavid/code/openagents/crates/compute/README.md → [running] tokens_in=0 tokens_out=75 tokens_cached=123070
+o: id=ZKtxDhPW → [ok]      1→# Compute Provider
+a: The README already exists and is comprehensive (572 lines). It covers everything I was planning to add. Let me complete the issue since the README is already well-documented: tokens_in=0 tokens_out=1 tokens_cached=123382
+t!:Bash id=oGkqs4Pr cmd="git add -A && git commit -m "$(cat <<'EOF'" → [running] tokens_in=0 tokens_out=332 tokens_cached=123382
