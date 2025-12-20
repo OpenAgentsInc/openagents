@@ -154,6 +154,14 @@ impl TrajectoryCollector {
                             .unwrap_or("unknown");
                         let tool_id = block.get("id").and_then(|i| i.as_str()).unwrap_or("");
                         let input = block.get("input").cloned().unwrap_or(Value::Null);
+
+                        // Track issue_complete calls
+                        if tool_name == "mcp__issues__issue_complete" {
+                            if let Some(result) = &mut self.trajectory.result {
+                                result.issues_completed += 1;
+                            }
+                        }
+
                         let step = self.trajectory.add_step(StepType::ToolCall {
                             tool: tool_name.to_string(),
                             tool_id: tool_id.to_string(),
@@ -254,6 +262,7 @@ impl TrajectoryCollector {
                     num_turns: success.num_turns,
                     result_text: Some(success.result.clone()),
                     errors: Vec::new(),
+                    issues_completed: 0,
                 });
             }
             SdkResultMessage::ErrorDuringExecution(err)
@@ -273,6 +282,7 @@ impl TrajectoryCollector {
                     num_turns: err.num_turns,
                     result_text: None,
                     errors: err.errors.clone(),
+                    issues_completed: 0,
                 });
             }
         }

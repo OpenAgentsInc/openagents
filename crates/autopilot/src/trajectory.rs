@@ -91,6 +91,8 @@ pub struct TrajectoryResult {
     pub result_text: Option<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub errors: Vec<String>,
+    #[serde(default)]
+    pub issues_completed: u32,
 }
 
 impl Trajectory {
