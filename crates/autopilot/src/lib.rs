@@ -290,6 +290,166 @@ impl TrajectoryCollector {
         }
     }
 
+    /// Process a Codex ThreadEvent and add to trajectory
+    pub fn process_codex_event(&mut self, event: &codex_agent_sdk::ThreadEvent) {
+        use codex_agent_sdk::{ThreadEvent, ThreadItemDetails};
+
+        match event {
+            ThreadEvent::ThreadStarted(e) => {
+                // Store thread ID as session_id
+                self.trajectory.session_id = e.thread_id.clone();
+
+                // Update the header now that we have the thread_id
+                if let (Some(writer), Some(path)) = (&mut self.rlog_writer, &self.rlog_path) {
+                    let _ = writer.update_header(path, &self.trajectory);
+                }
+            }
+            ThreadEvent::ItemCompleted(item_event) => {
+                match &item_event.item.details {
+                    ThreadItemDetails::AgentMessage(msg) => {
+                        self.trajectory.add_step(StepType::Assistant {
+                            content: msg.text.clone(),
+                        });
+                        self.stream_last_step();
+                    }
+                    ThreadItemDetails::Reasoning(reasoning) => {
+                        self.trajectory.add_step(StepType::Thinking {
+                            content: reasoning.text.clone(),
+                            signature: None,
+                        });
+                        self.stream_last_step();
+                    }
+                    ThreadItemDetails::CommandExecution(cmd) => {
+                        self.trajectory.add_step(StepType::ToolCall {
+                            tool: "Bash".to_string(),
+                            tool_id: item_event.item.id.clone(),
+                            input: serde_json::json!({ "command": cmd.command }),
+                        });
+                        self.stream_last_step();
+
+                        // Add tool result
+                        let success = matches!(cmd.status, codex_agent_sdk::CommandExecutionStatus::Completed);
+                        self.trajectory.add_step(StepType::ToolResult {
+                            tool_id: item_event.item.id.clone(),
+                            success,
+                            output: if cmd.aggregated_output.is_empty() {
+                                None
+                            } else {
+                                Some(cmd.aggregated_output.clone())
+                            },
+                        });
+                        self.stream_last_step();
+                    }
+                    ThreadItemDetails::FileChange(fc) => {
+                        let changes_json = serde_json::to_value(&fc.changes).unwrap_or(serde_json::json!([]));
+                        self.trajectory.add_step(StepType::ToolCall {
+                            tool: "Edit".to_string(),
+                            tool_id: item_event.item.id.clone(),
+                            input: serde_json::json!({ "changes": changes_json }),
+                        });
+                        self.stream_last_step();
+
+                        // Add tool result
+                        let success = matches!(fc.status, codex_agent_sdk::PatchApplyStatus::Completed);
+                        self.trajectory.add_step(StepType::ToolResult {
+                            tool_id: item_event.item.id.clone(),
+                            success,
+                            output: Some(format!("{} file(s) changed", fc.changes.len())),
+                        });
+                        self.stream_last_step();
+                    }
+                    ThreadItemDetails::McpToolCall(mcp) => {
+                        self.trajectory.add_step(StepType::ToolCall {
+                            tool: format!("{}:{}", mcp.server, mcp.tool),
+                            tool_id: item_event.item.id.clone(),
+                            input: mcp.arguments.clone(),
+                        });
+                        self.stream_last_step();
+
+                        // Add tool result
+                        let success = matches!(mcp.status, codex_agent_sdk::McpToolCallStatus::Completed);
+                        let output = mcp.result.as_ref().map(|r| {
+                            serde_json::to_string_pretty(r).unwrap_or_else(|_| format!("{:?}", r))
+                        });
+                        self.trajectory.add_step(StepType::ToolResult {
+                            tool_id: item_event.item.id.clone(),
+                            success,
+                            output,
+                        });
+                        self.stream_last_step();
+                    }
+                    ThreadItemDetails::WebSearch(ws) => {
+                        self.trajectory.add_step(StepType::ToolCall {
+                            tool: "WebSearch".to_string(),
+                            tool_id: item_event.item.id.clone(),
+                            input: serde_json::json!({ "query": ws.query }),
+                        });
+                        self.stream_last_step();
+
+                        // Add result
+                        self.trajectory.add_step(StepType::ToolResult {
+                            tool_id: item_event.item.id.clone(),
+                            success: true,
+                            output: Some(format!("Search: {}", ws.query)),
+                        });
+                        self.stream_last_step();
+                    }
+                    ThreadItemDetails::TodoList(todo) => {
+                        let items_json = serde_json::to_value(&todo.items).unwrap_or(serde_json::json!([]));
+                        self.trajectory.add_step(StepType::ToolCall {
+                            tool: "TodoWrite".to_string(),
+                            tool_id: item_event.item.id.clone(),
+                            input: serde_json::json!({ "todos": items_json }),
+                        });
+                        self.stream_last_step();
+
+                        self.trajectory.add_step(StepType::ToolResult {
+                            tool_id: item_event.item.id.clone(),
+                            success: true,
+                            output: Some(format!("{} todo items", todo.items.len())),
+                        });
+                        self.stream_last_step();
+                    }
+                    ThreadItemDetails::Error(err) => {
+                        self.trajectory.add_step(StepType::SystemStatus {
+                            status: format!("Error: {}", err.message),
+                        });
+                        self.stream_last_step();
+                    }
+                }
+            }
+            ThreadEvent::TurnCompleted(tc) => {
+                // Update token usage
+                self.trajectory.usage.input_tokens += tc.usage.input_tokens as u64;
+                self.trajectory.usage.output_tokens += tc.usage.output_tokens as u64;
+                self.trajectory.usage.cache_read_tokens += tc.usage.cached_input_tokens as u64;
+
+                // Add token info to the last step if available
+                if let Some(step) = self.trajectory.steps.last_mut() {
+                    step.tokens_in = Some(tc.usage.input_tokens as u64);
+                    step.tokens_out = Some(tc.usage.output_tokens as u64);
+                    step.tokens_cached = Some(tc.usage.cached_input_tokens as u64);
+                }
+            }
+            ThreadEvent::TurnFailed(tf) => {
+                self.trajectory.ended_at = Some(Utc::now());
+                self.trajectory.add_step(StepType::SystemStatus {
+                    status: format!("Turn failed: {}", tf.error.message),
+                });
+                self.stream_last_step();
+            }
+            ThreadEvent::Error(e) => {
+                self.trajectory.add_step(StepType::SystemStatus {
+                    status: format!("Error: {}", e.message),
+                });
+                self.stream_last_step();
+            }
+            _ => {
+                // Ignore other events (TurnStarted, ItemStarted, ItemUpdated)
+            }
+        }
+    }
+
     /// Finish collecting and return the trajectory
     pub fn finish(mut self) -> Trajectory {
         // Write footer to rlog if streaming is enabled

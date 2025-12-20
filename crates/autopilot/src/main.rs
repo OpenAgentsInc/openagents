@@ -752,7 +752,10 @@ async fn run_codex_agent(
     while let Some(event_result) = streamed.next().await {
         let event = event_result?;
 
-        // Process events and add to trajectory
+        // Add to trajectory collector
+        _collector.process_codex_event(&event);
+
+        // Process events for console output
         match &event {
             codex_agent_sdk::ThreadEvent::ThreadStarted(e) => {
                 if verbose {
