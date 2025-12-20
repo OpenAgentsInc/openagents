@@ -447,12 +447,64 @@ fn print_progress(msg: &SdkMessage) {
             println!("{}", "Complete".green());
         }
         SdkMessage::Assistant(a) => {
-            // Show tool calls
             if let Some(content) = a.message.get("content").and_then(|c| c.as_array()) {
                 for block in content {
-                    if block.get("type").and_then(|t| t.as_str()) == Some("tool_use") {
-                        let tool = block.get("name").and_then(|n| n.as_str()).unwrap_or("");
-                        println!("{} {}", "Calling:".blue(), tool);
+                    let block_type = block.get("type").and_then(|t| t.as_str()).unwrap_or("");
+                    match block_type {
+                        "text" => {
+                            // Show what the agent is thinking/saying
+                            let text = block.get("text").and_then(|t| t.as_str()).unwrap_or("");
+                            let first_line = text.lines().next().unwrap_or("");
+                            let truncated = if first_line.len() > 80 {
+                                format!("{}...", &first_line[..77])
+                            } else {
+                                first_line.to_string()
+                            };
+                            if !truncated.is_empty() {
+                                println!("{} {}", "Agent:".green(), truncated);
+                            }
+                        }
+                        "tool_use" => {
+                            let tool = block.get("name").and_then(|n| n.as_str()).unwrap_or("");
+                            let input = block.get("input");
+
+                            // Extract context based on tool type
+                            let context = match tool {
+                                "Bash" => input
+                                    .and_then(|i| i.get("command"))
+                                    .and_then(|c| c.as_str())
+                                    .map(|c| {
+                                        let truncated = if c.len() > 60 { format!("{}...", &c[..57]) } else { c.to_string() };
+                                        format!("$ {}", truncated)
+                                    }),
+                                "Read" | "Write" | "Edit" => input
+                                    .and_then(|i| i.get("file_path"))
+                                    .and_then(|p| p.as_str())
+                                    .map(|p| {
+                                        // Show just filename
+                                        p.rsplit('/').next().unwrap_or(p).to_string()
+                                    }),
+                                "Glob" => input
+                                    .and_then(|i| i.get("pattern"))
+                                    .and_then(|p| p.as_str())
+                                    .map(|p| p.to_string()),
+                                "Grep" => input
+                                    .and_then(|i| i.get("pattern"))
+                                    .and_then(|p| p.as_str())
+                                    .map(|p| format!("/{}/", p)),
+                                "Task" => input
+                                    .and_then(|i| i.get("description"))
+                                    .and_then(|d| d.as_str())
+                                    .map(|d| d.to_string()),
+                                _ => None,
+                            };
+
+                            match context {
+                                Some(ctx) => println!("{} {} {}", "Tool:".blue(), tool.yellow(), ctx.dimmed()),
+                                None => println!("{} {}", "Tool:".blue(), tool.yellow()),
+                            }
+                        }
+                        _ => {}
                     }
                 }
             }
