@@ -7,6 +7,7 @@ pub mod creator_dashboard;
 pub mod data_contribution;
 pub mod db;
 pub mod discovery;
+pub mod redaction;
 pub mod repository;
 pub mod skills;
 pub mod types;
@@ -20,6 +21,10 @@ pub use data_contribution::{
     DataContributionType, PaymentInfo, VerificationResult,
 };
 pub use discovery::{SearchFilters, SkillListing, SortOrder, discover_local_skills};
+pub use redaction::{
+    CustomRedactionPattern, RedactionEngine, RedactionError, RedactionPreferences,
+    RedactionRecord, RedactionResult, RedactionType, SecretDetection, TextSpan,
+};
 pub use repository::{Repository, Skill as SkillRecord, SkillRepository, SkillVersion};
 pub use skills::{Skill, SkillError, SkillManifest, SkillMetadata, discover_skills, validate_skill_name};
 pub use types::{ItemStatus, MarketplaceItemType};
