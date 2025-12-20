@@ -788,12 +788,12 @@ fn default_max_turns() -> u32 {
         .unwrap_or(9999)
 }
 
-/// Get default max_budget from environment or fallback to 5.0
+/// Get default max_budget from environment or fallback to 0.0 (no constraint)
 fn default_max_budget() -> f64 {
     std::env::var("AUTOPILOT_MAX_BUDGET")
         .ok()
         .and_then(|v| v.parse().ok())
-        .unwrap_or(5.0)
+        .unwrap_or(0.0)
 }
 
 /// Map friendly model names to full model IDs
@@ -1455,14 +1455,18 @@ async fn run_task(
     hooks.insert(HookEvent::PreToolUse, vec![plan_hook_matcher]);
     hooks.insert(HookEvent::PreCompact, vec![compact_hook_matcher]);
 
-    let options = QueryOptions::new()
+    let mut options = QueryOptions::new()
         .model(&model)
         .max_turns(max_turns)
-        .max_budget_usd(max_budget)
         .cwd(&cwd)
         .setting_sources(vec![SettingSource::Project, SettingSource::User])
         .hooks(hooks)
         .dangerously_skip_permissions(true);
+
+    // Only set budget constraint if explicitly specified (> 0)
+    if max_budget > 0.0 {
+        options = options.max_budget_usd(max_budget);
+    }
 
     // Write .mcp.json file for issue tracking MCP server if requested
     if with_issues {
@@ -2027,10 +2031,14 @@ async fn resume_task(
 
     // Build QueryOptions with resume
     let mut options = QueryOptions::new()
-        .max_budget_usd(max_budget)
         .cwd(&cwd)
         .setting_sources(vec![SettingSource::Project, SettingSource::User])
         .dangerously_skip_permissions(true);
+
+    // Only set budget constraint if explicitly specified (> 0)
+    if max_budget > 0.0 {
+        options = options.max_budget_usd(max_budget);
+    }
 
     if let Some(ref id) = session_id {
         options.resume = Some(id.clone());

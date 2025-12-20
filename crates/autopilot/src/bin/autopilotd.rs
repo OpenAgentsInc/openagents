@@ -38,8 +38,8 @@ struct Cli {
     #[arg(long, default_value = "sonnet")]
     model: String,
 
-    /// Maximum budget in USD
-    #[arg(long, default_value = "300")]
+    /// Maximum budget in USD (0 = no constraint)
+    #[arg(long, default_value = "0")]
     max_budget: f64,
 
     /// Maximum turns
@@ -128,7 +128,9 @@ async fn run_daemon(config: DaemonConfig) -> Result<()> {
     eprintln!("  Working dir: {:?}", config.working_dir);
     eprintln!("  Project: {:?}", config.project);
     eprintln!("  Model: {}", config.model);
-    eprintln!("  Max budget: ${:.2}", config.max_budget);
+    if config.max_budget > 0.0 {
+        eprintln!("  Max budget: ${:.2}", config.max_budget);
+    }
     eprintln!("  Socket: {:?}", config.socket_path);
 
     // Create shutdown channel

@@ -14,6 +14,7 @@
 //! - NIP-16: Event Treatment (deprecated, moved to NIP-01)
 //! - NIP-18: Reposts
 //! - NIP-19: bech32-encoded entities
+//! - NIP-20: Command Results (deprecated, moved to NIP-01)
 //! - NIP-21: nostr: URI scheme
 //! - NIP-23: Long-form Content
 //! - NIP-25: Reactions
@@ -52,6 +53,7 @@ mod nip13;
 mod nip16;
 mod nip18;
 mod nip19;
+mod nip20;
 mod nip21;
 mod nip23;
 mod nip25;
@@ -148,6 +150,9 @@ pub use nip19::{
     AddressPointer, EventPointer, Nip19Entity, Nip19Error, ProfilePointer, decode, encode_naddr,
     encode_nevent, encode_note, encode_nprofile, encode_npub, encode_nsec,
 };
+
+// NIP-20: Command Results (deprecated, moved to NIP-01)
+pub use nip20::{CommandResult, Nip20Error, NoticeMessage, OkMessage};
 
 // NIP-21: nostr: URI scheme
 pub use nip21::{
