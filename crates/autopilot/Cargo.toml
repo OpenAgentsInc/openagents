@@ -37,5 +37,8 @@ anyhow.workspace = true
 # Output
 colored = "2"
 
+# Signal handling
+signal-hook.workspace = true
+
 [lints]
 workspace = true

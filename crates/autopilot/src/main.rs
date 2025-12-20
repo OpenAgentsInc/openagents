@@ -7,11 +7,53 @@ use colored::*;
 use futures::StreamExt;
 use serde_json::json;
 use std::path::PathBuf;
+use std::sync::OnceLock;
 
 use autopilot::rlog::RlogWriter;
 use autopilot::timestamp::{date_dir, filename, generate_slug};
 use autopilot::trajectory::{StepType, Trajectory};
 use autopilot::TrajectoryCollector;
+
+/// Global storage for .mcp.json path to enable cleanup on panic/signal
+static MCP_JSON_PATH: OnceLock<PathBuf> = OnceLock::new();
+
+/// Clean up .mcp.json file if it exists
+fn cleanup_mcp_json() {
+    if let Some(path) = MCP_JSON_PATH.get() {
+        if path.exists() {
+            let _ = std::fs::remove_file(path);
+        }
+    }
+}
+
+/// Setup signal handlers and panic hook for cleanup
+fn setup_cleanup_handlers() {
+    // Setup panic hook to cleanup .mcp.json
+    let default_panic = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        cleanup_mcp_json();
+        default_panic(info);
+    }));
+
+    // Setup signal handlers for SIGINT and SIGTERM
+    let _ = signal_hook::flag::register(signal_hook::consts::SIGINT, std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)));
+    let _ = signal_hook::flag::register(signal_hook::consts::SIGTERM, std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)));
+
+    // Use iterator-based signal handling for cleanup
+    std::thread::spawn(|| {
+        let mut signals = signal_hook::iterator::Signals::new(&[
+            signal_hook::consts::SIGINT,
+            signal_hook::consts::SIGTERM,
+        ]).expect("Failed to create signal handler");
+
+        for sig in signals.forever() {
+            cleanup_mcp_json();
+            // Re-raise signal to ensure proper exit
+            signal_hook::low_level::raise(sig).ok();
+            std::process::exit(128 + sig);
+        }
+    });
+}
 
 #[derive(Parser)]
 #[command(name = "autopilot")]
@@ -74,6 +116,9 @@ enum Commands {
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    // Setup cleanup handlers for signals and panics
+    setup_cleanup_handlers();
+
     let cli = Cli::parse();
 
     match cli.command {
@@ -162,8 +207,8 @@ async fn run_task(
         .dangerously_skip_permissions(true);
 
     // Write .mcp.json file for issue tracking MCP server if requested
-    let mcp_json_path = cwd.join(".mcp.json");
-    let cleanup_mcp_json = if with_issues {
+    if with_issues {
+        let mcp_json_path = cwd.join(".mcp.json");
         let db_path = issues_db
             .unwrap_or_else(|| cwd.join("autopilot.db"))
             .display()
@@ -187,10 +232,10 @@ async fn run_task(
         // Write .mcp.json file
         std::fs::write(&mcp_json_path, serde_json::to_string_pretty(&mcp_config).unwrap())?;
         println!("{} {}", "MCP config:".dimmed(), mcp_json_path.display());
-        true
-    } else {
-        false
-    };
+
+        // Store path for cleanup on panic/signal
+        MCP_JSON_PATH.set(mcp_json_path).ok();
+    }
 
     // Execute query
     let mut stream = query(&prompt, options).await?;
@@ -233,10 +278,8 @@ async fn run_task(
         println!("{} {}", "Saved:".green(), json_path.display());
     }
 
-    // Cleanup .mcp.json if we created it
-    if cleanup_mcp_json && mcp_json_path.exists() {
-        std::fs::remove_file(&mcp_json_path)?;
-    }
+    // Cleanup .mcp.json on normal exit
+    cleanup_mcp_json();
 
     Ok(())
 }
