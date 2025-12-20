@@ -5,6 +5,7 @@
 //! - File writes are restricted (except for the plan file)
 //! - Git commits are blocked
 //! - Destructive commands are prevented
+//! - SQLite write commands are blocked (always, not just in plan mode)
 //! - Reads, analysis, and subagents are allowed
 
 use std::path::{Path, PathBuf};
@@ -269,8 +270,31 @@ Remember: You're designing an approach, not implementing it. Focus on architectu
 
 /// Check if a tool should be allowed in plan mode
 pub fn is_tool_allowed_in_plan_mode(tool_name: &str, tool_input: &serde_json::Value) -> Result<(), String> {
+    // Check sqlite3 write commands first (always blocked, regardless of plan mode)
+    if tool_name == "Bash" {
+        let command = tool_input
+            .get("command")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+
+        // Block sqlite3 write commands
+        // These must use the provided MCP APIs to maintain data consistency
+        if command.contains("sqlite3") {
+            let cmd_upper = command.to_uppercase();
+            if cmd_upper.contains("INSERT")
+                || cmd_upper.contains("UPDATE")
+                || cmd_upper.contains("DELETE")
+                || cmd_upper.contains("DROP")
+                || cmd_upper.contains("ALTER")
+                || cmd_upper.contains("CREATE TABLE")
+                || cmd_upper.contains("TRUNCATE") {
+                return Err("SQLite write commands are not allowed via sqlite3. Use the provided MCP APIs (issue_create, issue_update, issue_claim, issue_complete, issue_block) to maintain data consistency.".to_string());
+            }
+        }
+    }
+
     if !is_plan_mode_active() {
-        return Ok(()); // Not in plan mode, allow everything
+        return Ok(()); // Not in plan mode, allow everything else
     }
 
     match tool_name {
@@ -294,7 +318,7 @@ pub fn is_tool_allowed_in_plan_mode(tool_name: &str, tool_input: &serde_json::Va
         }
 
         "Bash" => {
-            // Check for destructive commands
+            // Check for destructive commands in plan mode
             let command = tool_input
                 .get("command")
                 .and_then(|v| v.as_str())
@@ -373,5 +397,60 @@ mod tests {
 
         // All tools allowed again
         assert!(is_tool_allowed_in_plan_mode("Write", &serde_json::json!({"file_path": "/tmp/test.txt"})).is_ok());
+    }
+
+    #[test]
+    fn test_sqlite3_write_blocking() {
+        // SQLite write commands blocked regardless of plan mode
+
+        // INSERT blocked
+        assert!(is_tool_allowed_in_plan_mode("Bash", &serde_json::json!({
+            "command": "sqlite3 autopilot.db \"INSERT INTO issues VALUES (1, 'test')\""
+        })).is_err());
+
+        // UPDATE blocked
+        assert!(is_tool_allowed_in_plan_mode("Bash", &serde_json::json!({
+            "command": "sqlite3 autopilot.db \"UPDATE issues SET status='done' WHERE number=1\""
+        })).is_err());
+
+        // DELETE blocked
+        assert!(is_tool_allowed_in_plan_mode("Bash", &serde_json::json!({
+            "command": "sqlite3 autopilot.db \"DELETE FROM issues WHERE number=1\""
+        })).is_err());
+
+        // DROP blocked
+        assert!(is_tool_allowed_in_plan_mode("Bash", &serde_json::json!({
+            "command": "sqlite3 autopilot.db \"DROP TABLE issues\""
+        })).is_err());
+
+        // ALTER blocked
+        assert!(is_tool_allowed_in_plan_mode("Bash", &serde_json::json!({
+            "command": "sqlite3 autopilot.db \"ALTER TABLE issues ADD COLUMN foo TEXT\""
+        })).is_err());
+
+        // CREATE TABLE blocked
+        assert!(is_tool_allowed_in_plan_mode("Bash", &serde_json::json!({
+            "command": "sqlite3 autopilot.db \"CREATE TABLE foo (id INTEGER)\""
+        })).is_err());
+
+        // TRUNCATE blocked
+        assert!(is_tool_allowed_in_plan_mode("Bash", &serde_json::json!({
+            "command": "sqlite3 autopilot.db \"TRUNCATE TABLE issues\""
+        })).is_err());
+
+        // Read-only SELECT allowed
+        assert!(is_tool_allowed_in_plan_mode("Bash", &serde_json::json!({
+            "command": "sqlite3 autopilot.db \"SELECT * FROM issues\""
+        })).is_ok());
+
+        // Case insensitive - lowercase insert blocked
+        assert!(is_tool_allowed_in_plan_mode("Bash", &serde_json::json!({
+            "command": "sqlite3 autopilot.db \"insert into issues values (1, 'test')\""
+        })).is_err());
+
+        // Mixed case UPDATE blocked
+        assert!(is_tool_allowed_in_plan_mode("Bash", &serde_json::json!({
+            "command": "sqlite3 autopilot.db \"Update issues SET status='done'\""
+        })).is_err());
     }
 }
