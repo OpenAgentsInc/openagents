@@ -22,6 +22,30 @@ use autopilot::trajectory::{StepType, Trajectory};
 use autopilot::{extract_session_id_from_json, extract_session_id_from_rlog};
 use autopilot::TrajectoryCollector;
 
+/// Minimum available memory in bytes before we kill the process (2 GB)
+const MIN_AVAILABLE_MEMORY_BYTES: u64 = 2 * 1024 * 1024 * 1024;
+
+/// Check if system has enough available memory
+/// Returns (available_bytes, is_ok)
+fn check_memory() -> (u64, bool) {
+    use sysinfo::System;
+    let mut sys = System::new();
+    sys.refresh_memory();
+    let available = sys.available_memory();
+    (available, available >= MIN_AVAILABLE_MEMORY_BYTES)
+}
+
+/// Format bytes as human-readable string
+fn format_bytes(bytes: u64) -> String {
+    if bytes >= 1024 * 1024 * 1024 {
+        format!("{:.1} GB", bytes as f64 / (1024.0 * 1024.0 * 1024.0))
+    } else if bytes >= 1024 * 1024 {
+        format!("{:.1} MB", bytes as f64 / (1024.0 * 1024.0))
+    } else {
+        format!("{:.1} KB", bytes as f64 / 1024.0)
+    }
+}
+
 /// Global storage for .mcp.json path to enable cleanup on panic/signal
 static MCP_JSON_PATH: OnceLock<PathBuf> = OnceLock::new();
 
@@ -764,6 +788,23 @@ async fn run_full_auto_loop(
     let mut current_prompt = initial_prompt.to_string();
 
     loop {
+        // Check memory at start of each iteration
+        let (available_mem, mem_ok) = check_memory();
+        if !mem_ok {
+            println!("\n{} Available memory ({}) below threshold ({}) - stopping to prevent crash",
+                "MEMORY:".red().bold(),
+                format_bytes(available_mem),
+                format_bytes(MIN_AVAILABLE_MEMORY_BYTES));
+            anyhow::bail!("Insufficient memory: {} available, {} required",
+                format_bytes(available_mem),
+                format_bytes(MIN_AVAILABLE_MEMORY_BYTES));
+        }
+
+        // Log memory status periodically
+        if continuation_count % 5 == 0 {
+            println!("{} Available memory: {}", "MEM:".dimmed(), format_bytes(available_mem));
+        }
+
         // Use query() directly - same approach as run_claude_agent which works
         // For continuations, set continue_session=true to resume conversation
         let mut query_options = options.clone();
@@ -776,8 +817,22 @@ async fn run_full_auto_loop(
         // Process messages until stream ends
         let mut budget_exhausted = false;
         let mut max_turns_reached = false;
+        let mut message_count = 0;
 
         while let Some(msg) = stream.next().await {
+            message_count += 1;
+
+            // Check memory every 10 messages
+            if message_count % 10 == 0 {
+                let (avail, ok) = check_memory();
+                if message_count % 100 == 0 {
+                    println!("{} Memory: {}", "MEM:".dimmed(), format_bytes(avail));
+                }
+                if !ok {
+                    println!("\n{} Memory critical ({}) - aborting", "MEMORY:".red().bold(), format_bytes(avail));
+                    anyhow::bail!("Memory critical during execution: {} available", format_bytes(avail));
+                }
+            }
             let msg = msg?;
             collector.process_message(&msg);
 
