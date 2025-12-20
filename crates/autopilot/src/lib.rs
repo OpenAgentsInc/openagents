@@ -4,6 +4,7 @@
 //! and logs the complete trajectory in both rlog and JSON formats.
 
 pub mod compaction;
+pub mod guardrails;
 pub mod planmode;
 pub mod redact;
 pub mod replay;
