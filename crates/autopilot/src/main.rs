@@ -82,7 +82,7 @@ enum Commands {
         model: String,
 
         /// Maximum turns
-        #[arg(long, default_value = "50")]
+        #[arg(long, default_value_t = default_max_turns())]
         max_turns: u32,
 
         /// Maximum budget in USD
@@ -274,6 +274,14 @@ fn default_full_auto() -> bool {
     std::env::var("AUTOPILOT_FULL_AUTO")
         .map(|v| v == "1" || v.to_lowercase() == "true")
         .unwrap_or(false)
+}
+
+/// Get default max_turns from environment or fallback to 50
+fn default_max_turns() -> u32 {
+    std::env::var("AUTOPILOT_MAX_TURNS")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(50)
 }
 
 /// Map friendly model names to full model IDs
