@@ -294,7 +294,16 @@ impl McpServer {
                 description: "Exit planning mode after completing the plan. Verifies plan has content and lifts restrictions.".to_string(),
                 input_schema: json!({
                     "type": "object",
-                    "properties": {}
+                    "properties": {
+                        "launchSwarm": {
+                            "type": "boolean",
+                            "description": "Whether to launch a swarm to implement the plan"
+                        },
+                        "teammateCount": {
+                            "type": "number",
+                            "description": "Number of teammates to spawn in the swarm"
+                        }
+                    }
                 }),
             },
             Tool {
@@ -353,7 +362,7 @@ impl McpServer {
             "issue_update" => self.tool_issue_update(&conn, &arguments),
             "issue_delete" => self.tool_issue_delete(&conn, &arguments),
             "enter_plan_mode" => self.tool_enter_plan_mode(&arguments),
-            "exit_plan_mode" => self.tool_exit_plan_mode(),
+            "exit_plan_mode" => self.tool_exit_plan_mode(&arguments),
             "advance_plan_phase" => self.tool_advance_plan_phase(),
             "get_current_phase" => self.tool_get_current_phase(),
             _ => Err(format!("Unknown tool: {}", name)),
@@ -612,8 +621,23 @@ impl McpServer {
         autopilot::planmode::enter_plan_mode(config)
     }
 
-    fn tool_exit_plan_mode(&self) -> Result<String, String> {
-        autopilot::planmode::exit_plan_mode()
+    fn tool_exit_plan_mode(&self, args: &Value) -> Result<String, String> {
+        let launch_swarm = args
+            .get("launchSwarm")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+
+        let teammate_count = args
+            .get("teammateCount")
+            .and_then(|v| v.as_u64())
+            .map(|n| n as usize);
+
+        let config = autopilot::planmode::ExitPlanModeConfig {
+            launch_swarm,
+            teammate_count,
+        };
+
+        autopilot::planmode::exit_plan_mode_with_config(config)
     }
 
     fn tool_advance_plan_phase(&self) -> Result<String, String> {
