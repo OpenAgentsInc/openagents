@@ -1,0 +1,649 @@
+//! Trajectory analysis and metrics computation
+
+use std::collections::HashMap;
+use std::path::Path;
+
+use chrono::{DateTime, Utc};
+use colored::*;
+use serde::{Deserialize, Serialize};
+
+use crate::trajectory::{StepType, Trajectory};
+
+/// Complete analysis of a single trajectory
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TrajectoryAnalysis {
+    pub session_id: String,
+    pub model: String,
+    pub prompt_preview: String,
+    pub started_at: DateTime<Utc>,
+    pub ended_at: Option<DateTime<Utc>>,
+    pub performance: PerformanceMetrics,
+    pub cost: CostMetrics,
+    pub errors: ErrorMetrics,
+    pub quality: QualityMetrics,
+    pub tool_usage: ToolUsageMetrics,
+}
+
+/// Performance timing metrics
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct PerformanceMetrics {
+    pub total_duration_ms: u64,
+    pub tool_latency_stats: LatencyStats,
+    pub parallel_tool_batches: u32,
+    pub total_tool_calls: u32,
+}
+
+/// Latency statistics for distributions
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct LatencyStats {
+    pub min_ms: u64,
+    pub max_ms: u64,
+    pub mean_ms: f64,
+    pub p50_ms: u64,
+    pub p95_ms: u64,
+    pub count: usize,
+}
+
+/// Cost and token metrics
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct CostMetrics {
+    pub total_cost_usd: f64,
+    pub input_tokens: u64,
+    pub output_tokens: u64,
+    pub cache_read_tokens: u64,
+    pub cache_hit_rate: f64,
+    pub tokens_by_step_type: HashMap<String, u64>,
+}
+
+/// Error and failure metrics
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct ErrorMetrics {
+    pub success: bool,
+    pub total_tool_calls: u32,
+    pub failed_tool_calls: u32,
+    pub tool_error_rate: f64,
+    pub errors_by_tool: HashMap<String, u32>,
+}
+
+/// Quality and behavioral metrics
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct QualityMetrics {
+    pub num_turns: u32,
+    pub thinking_blocks: u32,
+    pub avg_thinking_length: f64,
+    pub tool_diversity: f64,
+    pub unique_tools: u32,
+}
+
+/// Tool usage breakdown
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct ToolUsageMetrics {
+    pub total_calls: u32,
+    pub calls_by_tool: HashMap<String, u32>,
+    pub success_rate_by_tool: HashMap<String, f64>,
+    pub most_used_tool: Option<String>,
+}
+
+/// Aggregated metrics across multiple trajectories
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct AggregateAnalysis {
+    pub trajectory_count: usize,
+    pub date_range: Option<(DateTime<Utc>, DateTime<Utc>)>,
+    pub by_model: HashMap<String, ModelStats>,
+    pub total_cost_usd: f64,
+    pub avg_cost_usd: f64,
+    pub avg_duration_ms: f64,
+    pub overall_success_rate: f64,
+    pub avg_tool_error_rate: f64,
+    pub avg_cache_hit_rate: f64,
+    pub total_tool_calls: u32,
+    pub top_error_tools: Vec<(String, u32)>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct ModelStats {
+    pub count: usize,
+    pub avg_cost: f64,
+    pub avg_duration_ms: f64,
+    pub success_rate: f64,
+}
+
+/// Load a trajectory from a JSON file
+pub fn load_trajectory(path: &Path) -> anyhow::Result<Trajectory> {
+    let content = std::fs::read_to_string(path)?;
+    let trajectory: Trajectory = serde_json::from_str(&content)?;
+    Ok(trajectory)
+}
+
+/// Analyze a single trajectory
+pub fn analyze_trajectory(trajectory: &Trajectory) -> TrajectoryAnalysis {
+    let performance = compute_performance(trajectory);
+    let cost = compute_cost(trajectory);
+    let errors = compute_errors(trajectory);
+    let quality = compute_quality(trajectory);
+    let tool_usage = compute_tool_usage(trajectory);
+
+    TrajectoryAnalysis {
+        session_id: trajectory.session_id.clone(),
+        model: trajectory.model.clone(),
+        prompt_preview: truncate(&trajectory.prompt, 80),
+        started_at: trajectory.started_at,
+        ended_at: trajectory.ended_at,
+        performance,
+        cost,
+        errors,
+        quality,
+        tool_usage,
+    }
+}
+
+/// Compute performance metrics
+fn compute_performance(trajectory: &Trajectory) -> PerformanceMetrics {
+    let total_duration_ms = trajectory
+        .result
+        .as_ref()
+        .map(|r| r.duration_ms)
+        .unwrap_or(0);
+
+    // Track tool call timestamps to compute latencies
+    let mut pending_calls: HashMap<String, DateTime<Utc>> = HashMap::new();
+    let mut latencies: Vec<u64> = Vec::new();
+    let mut tool_intervals: Vec<(DateTime<Utc>, DateTime<Utc>)> = Vec::new();
+    let mut total_tool_calls = 0u32;
+
+    for step in &trajectory.steps {
+        match &step.step_type {
+            StepType::ToolCall { tool_id, .. } => {
+                total_tool_calls += 1;
+                pending_calls.insert(tool_id.clone(), step.timestamp);
+            }
+            StepType::ToolResult { tool_id, .. } => {
+                if let Some(start_time) = pending_calls.remove(tool_id) {
+                    let latency = (step.timestamp - start_time).num_milliseconds().max(0) as u64;
+                    latencies.push(latency);
+                    tool_intervals.push((start_time, step.timestamp));
+                }
+            }
+            _ => {}
+        }
+    }
+
+    let tool_latency_stats = compute_latency_stats(&latencies);
+    let parallel_tool_batches = detect_parallel_batches(&tool_intervals);
+
+    PerformanceMetrics {
+        total_duration_ms,
+        tool_latency_stats,
+        parallel_tool_batches,
+        total_tool_calls,
+    }
+}
+
+/// Compute latency statistics from a list of latencies
+fn compute_latency_stats(latencies: &[u64]) -> LatencyStats {
+    if latencies.is_empty() {
+        return LatencyStats::default();
+    }
+
+    let mut sorted = latencies.to_vec();
+    sorted.sort();
+
+    let count = sorted.len();
+    let sum: u64 = sorted.iter().sum();
+
+    LatencyStats {
+        min_ms: sorted[0],
+        max_ms: sorted[count - 1],
+        mean_ms: sum as f64 / count as f64,
+        p50_ms: sorted[count / 2],
+        p95_ms: sorted[(count * 95 / 100).min(count - 1)],
+        count,
+    }
+}
+
+/// Detect number of parallel tool batches (overlapping tool calls)
+fn detect_parallel_batches(intervals: &[(DateTime<Utc>, DateTime<Utc>)]) -> u32 {
+    if intervals.is_empty() {
+        return 0;
+    }
+
+    let mut sorted: Vec<_> = intervals.to_vec();
+    sorted.sort_by_key(|(start, _)| *start);
+
+    let mut batches = 1u32;
+    let mut current_batch_end = sorted[0].1;
+
+    for (start, end) in sorted.iter().skip(1) {
+        if *start > current_batch_end {
+            // New batch - no overlap
+            batches += 1;
+            current_batch_end = *end;
+        } else {
+            // Overlapping - extend batch
+            current_batch_end = std::cmp::max(current_batch_end, *end);
+        }
+    }
+
+    batches
+}
+
+/// Compute cost metrics
+fn compute_cost(trajectory: &Trajectory) -> CostMetrics {
+    let usage = &trajectory.usage;
+
+    // Compute cache hit rate
+    let total_input = usage.input_tokens + usage.cache_read_tokens;
+    let cache_hit_rate = if total_input > 0 {
+        usage.cache_read_tokens as f64 / total_input as f64
+    } else {
+        0.0
+    };
+
+    // Tokens by step type
+    let mut tokens_by_step_type: HashMap<String, u64> = HashMap::new();
+
+    for step in &trajectory.steps {
+        let step_name = match &step.step_type {
+            StepType::Thinking { .. } => "thinking",
+            StepType::Assistant { .. } => "assistant",
+            StepType::ToolCall { .. } => "tool_call",
+            StepType::ToolResult { .. } => "tool_result",
+            StepType::User { .. } => "user",
+            StepType::SystemInit { .. } => "system_init",
+            StepType::SystemStatus { .. } => "system_status",
+        };
+
+        let entry = tokens_by_step_type.entry(step_name.to_string()).or_insert(0);
+        if let Some(t) = step.tokens_out {
+            *entry += t;
+        }
+    }
+
+    CostMetrics {
+        total_cost_usd: usage.cost_usd,
+        input_tokens: usage.input_tokens,
+        output_tokens: usage.output_tokens,
+        cache_read_tokens: usage.cache_read_tokens,
+        cache_hit_rate,
+        tokens_by_step_type,
+    }
+}
+
+/// Compute error metrics
+fn compute_errors(trajectory: &Trajectory) -> ErrorMetrics {
+    let mut total_tool_calls = 0u32;
+    let mut failed_tool_calls = 0u32;
+    let mut errors_by_tool: HashMap<String, u32> = HashMap::new();
+    let mut pending_tools: HashMap<String, String> = HashMap::new(); // tool_id -> tool_name
+
+    for step in &trajectory.steps {
+        match &step.step_type {
+            StepType::ToolCall { tool, tool_id, .. } => {
+                total_tool_calls += 1;
+                pending_tools.insert(tool_id.clone(), tool.clone());
+            }
+            StepType::ToolResult { tool_id, success, .. } => {
+                if !*success {
+                    failed_tool_calls += 1;
+                    if let Some(tool_name) = pending_tools.get(tool_id) {
+                        *errors_by_tool.entry(tool_name.clone()).or_insert(0) += 1;
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
+    let tool_error_rate = if total_tool_calls > 0 {
+        failed_tool_calls as f64 / total_tool_calls as f64
+    } else {
+        0.0
+    };
+
+    ErrorMetrics {
+        success: trajectory.result.as_ref().map(|r| r.success).unwrap_or(false),
+        total_tool_calls,
+        failed_tool_calls,
+        tool_error_rate,
+        errors_by_tool,
+    }
+}
+
+/// Compute quality metrics
+fn compute_quality(trajectory: &Trajectory) -> QualityMetrics {
+    let mut thinking_blocks = 0u32;
+    let mut thinking_lengths: Vec<usize> = Vec::new();
+    let mut unique_tools: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let mut tool_call_count = 0u32;
+
+    for step in &trajectory.steps {
+        match &step.step_type {
+            StepType::Thinking { content, .. } => {
+                thinking_blocks += 1;
+                thinking_lengths.push(content.len());
+            }
+            StepType::ToolCall { tool, .. } => {
+                tool_call_count += 1;
+                unique_tools.insert(tool.clone());
+            }
+            _ => {}
+        }
+    }
+
+    let avg_thinking_length = if thinking_lengths.is_empty() {
+        0.0
+    } else {
+        thinking_lengths.iter().sum::<usize>() as f64 / thinking_lengths.len() as f64
+    };
+
+    let tool_diversity = if tool_call_count > 0 {
+        unique_tools.len() as f64 / tool_call_count as f64
+    } else {
+        0.0
+    };
+
+    QualityMetrics {
+        num_turns: trajectory.result.as_ref().map(|r| r.num_turns).unwrap_or(0),
+        thinking_blocks,
+        avg_thinking_length,
+        tool_diversity,
+        unique_tools: unique_tools.len() as u32,
+    }
+}
+
+/// Compute tool usage metrics
+fn compute_tool_usage(trajectory: &Trajectory) -> ToolUsageMetrics {
+    let mut calls_by_tool: HashMap<String, u32> = HashMap::new();
+    let mut successes_by_tool: HashMap<String, u32> = HashMap::new();
+    let mut pending_tools: HashMap<String, String> = HashMap::new();
+
+    for step in &trajectory.steps {
+        match &step.step_type {
+            StepType::ToolCall { tool, tool_id, .. } => {
+                *calls_by_tool.entry(tool.clone()).or_insert(0) += 1;
+                pending_tools.insert(tool_id.clone(), tool.clone());
+            }
+            StepType::ToolResult { tool_id, success, .. } => {
+                if *success {
+                    if let Some(tool_name) = pending_tools.get(tool_id) {
+                        *successes_by_tool.entry(tool_name.clone()).or_insert(0) += 1;
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
+    let total_calls: u32 = calls_by_tool.values().sum();
+
+    let success_rate_by_tool: HashMap<String, f64> = calls_by_tool
+        .iter()
+        .map(|(tool, count)| {
+            let successes = successes_by_tool.get(tool).copied().unwrap_or(0);
+            let rate = if *count > 0 {
+                successes as f64 / *count as f64
+            } else {
+                0.0
+            };
+            (tool.clone(), rate)
+        })
+        .collect();
+
+    let most_used_tool = calls_by_tool
+        .iter()
+        .max_by_key(|(_, count)| *count)
+        .map(|(tool, _)| tool.clone());
+
+    ToolUsageMetrics {
+        total_calls,
+        calls_by_tool,
+        success_rate_by_tool,
+        most_used_tool,
+    }
+}
+
+/// Aggregate analysis across multiple trajectories
+pub fn aggregate_analyses(analyses: &[TrajectoryAnalysis]) -> AggregateAnalysis {
+    if analyses.is_empty() {
+        return AggregateAnalysis::default();
+    }
+
+    let trajectory_count = analyses.len();
+
+    // Date range
+    let min_date = analyses.iter().map(|a| a.started_at).min();
+    let max_date = analyses.iter().filter_map(|a| a.ended_at).max();
+    let date_range = min_date.and_then(|min| max_date.map(|max| (min, max)));
+
+    // By model stats
+    let mut by_model: HashMap<String, Vec<&TrajectoryAnalysis>> = HashMap::new();
+    for analysis in analyses {
+        by_model
+            .entry(analysis.model.clone())
+            .or_default()
+            .push(analysis);
+    }
+
+    let by_model_stats: HashMap<String, ModelStats> = by_model
+        .iter()
+        .map(|(model, runs)| {
+            let count = runs.len();
+            let avg_cost = runs.iter().map(|r| r.cost.total_cost_usd).sum::<f64>() / count as f64;
+            let avg_duration =
+                runs.iter().map(|r| r.performance.total_duration_ms).sum::<u64>() as f64
+                    / count as f64;
+            let success_rate = runs.iter().filter(|r| r.errors.success).count() as f64 / count as f64;
+            (
+                model.clone(),
+                ModelStats {
+                    count,
+                    avg_cost,
+                    avg_duration_ms: avg_duration,
+                    success_rate,
+                },
+            )
+        })
+        .collect();
+
+    // Aggregates
+    let total_cost_usd: f64 = analyses.iter().map(|a| a.cost.total_cost_usd).sum();
+    let avg_cost_usd = total_cost_usd / trajectory_count as f64;
+    let avg_duration_ms = analyses
+        .iter()
+        .map(|a| a.performance.total_duration_ms)
+        .sum::<u64>() as f64
+        / trajectory_count as f64;
+    let overall_success_rate =
+        analyses.iter().filter(|a| a.errors.success).count() as f64 / trajectory_count as f64;
+    let avg_tool_error_rate =
+        analyses.iter().map(|a| a.errors.tool_error_rate).sum::<f64>() / trajectory_count as f64;
+    let avg_cache_hit_rate =
+        analyses.iter().map(|a| a.cost.cache_hit_rate).sum::<f64>() / trajectory_count as f64;
+    let total_tool_calls: u32 = analyses.iter().map(|a| a.tool_usage.total_calls).sum();
+
+    // Top error tools
+    let mut error_tools: HashMap<String, u32> = HashMap::new();
+    for analysis in analyses {
+        for (tool, count) in &analysis.errors.errors_by_tool {
+            *error_tools.entry(tool.clone()).or_insert(0) += count;
+        }
+    }
+    let mut top_error_tools: Vec<(String, u32)> = error_tools.into_iter().collect();
+    top_error_tools.sort_by(|a, b| b.1.cmp(&a.1));
+    top_error_tools.truncate(5);
+
+    AggregateAnalysis {
+        trajectory_count,
+        date_range,
+        by_model: by_model_stats,
+        total_cost_usd,
+        avg_cost_usd,
+        avg_duration_ms,
+        overall_success_rate,
+        avg_tool_error_rate,
+        avg_cache_hit_rate,
+        total_tool_calls,
+        top_error_tools,
+    }
+}
+
+/// Print analysis in human-readable format
+pub fn print_analysis(analysis: &TrajectoryAnalysis) {
+    let sep = "=".repeat(80);
+    println!("{}", sep.bright_blue());
+    println!(
+        "{}",
+        format!("Trajectory Analysis: {}", &analysis.session_id[..8.min(analysis.session_id.len())])
+            .bright_white()
+            .bold()
+    );
+    println!("{}", sep.bright_blue());
+
+    // Performance
+    println!("\n{}", "PERFORMANCE".yellow().bold());
+    println!(
+        "  Duration:          {:.1}s",
+        analysis.performance.total_duration_ms as f64 / 1000.0
+    );
+    if analysis.performance.tool_latency_stats.count > 0 {
+        let stats = &analysis.performance.tool_latency_stats;
+        println!(
+            "  Tool Latency:      p50={}ms, p95={}ms (n={})",
+            stats.p50_ms, stats.p95_ms, stats.count
+        );
+    }
+    println!(
+        "  Parallel Batches:  {}",
+        analysis.performance.parallel_tool_batches
+    );
+    println!("  Total Tool Calls:  {}", analysis.performance.total_tool_calls);
+
+    // Cost
+    println!("\n{}", "COST".yellow().bold());
+    println!("  Total:             ${:.4}", analysis.cost.total_cost_usd);
+    println!(
+        "  Input Tokens:      {}",
+        format_tokens(analysis.cost.input_tokens)
+    );
+    println!(
+        "  Output Tokens:     {}",
+        format_tokens(analysis.cost.output_tokens)
+    );
+    println!("  Cache Hit Rate:    {:.1}%", analysis.cost.cache_hit_rate * 100.0);
+
+    // Errors
+    println!("\n{}", "ERRORS".yellow().bold());
+    let success_str = if analysis.errors.success {
+        "YES".green()
+    } else {
+        "NO".red()
+    };
+    println!("  Success:           {}", success_str);
+    println!(
+        "  Tool Error Rate:   {:.1}% ({}/{})",
+        analysis.errors.tool_error_rate * 100.0,
+        analysis.errors.failed_tool_calls,
+        analysis.errors.total_tool_calls
+    );
+    if !analysis.errors.errors_by_tool.is_empty() {
+        println!("  Errors by Tool:");
+        for (tool, count) in &analysis.errors.errors_by_tool {
+            println!("    {}: {}", tool, count);
+        }
+    }
+
+    // Quality
+    println!("\n{}", "QUALITY".yellow().bold());
+    println!("  Turns:             {}", analysis.quality.num_turns);
+    println!("  Thinking Blocks:   {}", analysis.quality.thinking_blocks);
+    println!(
+        "  Tool Diversity:    {:.0}% ({} unique)",
+        analysis.quality.tool_diversity * 100.0,
+        analysis.quality.unique_tools
+    );
+
+    // Tool Usage
+    if !analysis.tool_usage.calls_by_tool.is_empty() {
+        println!("\n{}", "TOOL USAGE".yellow().bold());
+        let mut tools: Vec<_> = analysis.tool_usage.calls_by_tool.iter().collect();
+        tools.sort_by(|a, b| b.1.cmp(a.1));
+        for (tool, count) in tools.iter().take(10) {
+            let success_rate = analysis
+                .tool_usage
+                .success_rate_by_tool
+                .get(*tool)
+                .copied()
+                .unwrap_or(0.0);
+            println!("  {:20} {} calls, {:.0}% success", tool, count, success_rate * 100.0);
+        }
+    }
+
+    println!("\n{}", sep.bright_blue());
+}
+
+/// Print aggregate analysis
+pub fn print_aggregate(analysis: &AggregateAnalysis) {
+    let sep = "=".repeat(80);
+    println!("{}", sep.bright_blue());
+    println!(
+        "{}",
+        format!("Aggregate Analysis: {} trajectories", analysis.trajectory_count)
+            .bright_white()
+            .bold()
+    );
+    println!("{}", sep.bright_blue());
+
+    // Overview
+    println!("\n{}", "OVERVIEW".yellow().bold());
+    println!("  Trajectories:      {}", analysis.trajectory_count);
+    println!("  Total Cost:        ${:.4}", analysis.total_cost_usd);
+    println!("  Avg Cost:          ${:.4}", analysis.avg_cost_usd);
+    println!("  Avg Duration:      {:.1}s", analysis.avg_duration_ms / 1000.0);
+    println!("  Success Rate:      {:.1}%", analysis.overall_success_rate * 100.0);
+    println!("  Avg Tool Errors:   {:.1}%", analysis.avg_tool_error_rate * 100.0);
+    println!("  Avg Cache Hit:     {:.1}%", analysis.avg_cache_hit_rate * 100.0);
+    println!("  Total Tool Calls:  {}", analysis.total_tool_calls);
+
+    // By Model
+    if !analysis.by_model.is_empty() {
+        println!("\n{}", "BY MODEL".yellow().bold());
+        for (model, stats) in &analysis.by_model {
+            let model_short = model.split('-').take(3).collect::<Vec<_>>().join("-");
+            println!(
+                "  {:30} {} runs, ${:.4} avg, {:.1}% success",
+                model_short,
+                stats.count,
+                stats.avg_cost,
+                stats.success_rate * 100.0
+            );
+        }
+    }
+
+    // Top Error Tools
+    if !analysis.top_error_tools.is_empty() {
+        println!("\n{}", "TOP ERROR TOOLS".yellow().bold());
+        for (tool, count) in &analysis.top_error_tools {
+            println!("  {:20} {} errors", tool, count);
+        }
+    }
+
+    println!("\n{}", sep.bright_blue());
+}
+
+fn truncate(s: &str, max_len: usize) -> String {
+    if s.len() <= max_len {
+        s.to_string()
+    } else {
+        format!("{}...", &s[..max_len - 3])
+    }
+}
+
+fn format_tokens(tokens: u64) -> String {
+    if tokens >= 1_000_000 {
+        format!("{:.1}M", tokens as f64 / 1_000_000.0)
+    } else if tokens >= 1_000 {
+        format!("{:.1}K", tokens as f64 / 1_000.0)
+    } else {
+        tokens.to_string()
+    }
+}

@@ -14,6 +14,7 @@ use serde_json::json;
 use std::path::PathBuf;
 use std::sync::OnceLock;
 
+use autopilot::analyze;
 use autopilot::replay;
 use autopilot::rlog::RlogWriter;
 use autopilot::timestamp::{date_dir, filename, generate_slug};
@@ -146,6 +147,20 @@ enum Commands {
         /// Path to second trajectory JSON file
         #[arg(required = true)]
         trajectory2: PathBuf,
+    },
+    /// Analyze trajectory metrics
+    Analyze {
+        /// Path to trajectory JSON file or directory
+        #[arg(required = true)]
+        path: PathBuf,
+
+        /// Aggregate metrics across all files in directory
+        #[arg(long)]
+        aggregate: bool,
+
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
     },
     /// Resume a previous session
     Resume {
@@ -298,6 +313,9 @@ async fn main() -> Result<()> {
         }
         Commands::Compare { trajectory1, trajectory2 } => {
             compare_trajectories(trajectory1, trajectory2).await
+        }
+        Commands::Analyze { path, aggregate, json } => {
+            analyze_trajectories(path, aggregate, json).await
         }
         Commands::Resume {
             trajectory,
@@ -1219,6 +1237,55 @@ async fn replay_trajectory(trajectory_path: PathBuf, mode: String) -> Result<()>
 
 async fn compare_trajectories(trajectory1: PathBuf, trajectory2: PathBuf) -> Result<()> {
     replay::compare_trajectories(&trajectory1, &trajectory2)?;
+    Ok(())
+}
+
+async fn analyze_trajectories(path: PathBuf, aggregate: bool, json_output: bool) -> Result<()> {
+    if aggregate || path.is_dir() {
+        // Aggregate mode: analyze all JSON files in directory
+        let dir = if path.is_dir() { path } else { path.parent().unwrap().to_path_buf() };
+
+        let mut analyses = Vec::new();
+
+        for entry in std::fs::read_dir(&dir)? {
+            let entry = entry?;
+            let path = entry.path();
+            if path.extension().map(|e| e == "json").unwrap_or(false) {
+                match analyze::load_trajectory(&path) {
+                    Ok(trajectory) => {
+                        analyses.push(analyze::analyze_trajectory(&trajectory));
+                    }
+                    Err(e) => {
+                        eprintln!("Warning: Failed to load {}: {}", path.display(), e);
+                    }
+                }
+            }
+        }
+
+        if analyses.is_empty() {
+            println!("No trajectory files found in {}", dir.display());
+            return Ok(());
+        }
+
+        let aggregate_analysis = analyze::aggregate_analyses(&analyses);
+
+        if json_output {
+            println!("{}", serde_json::to_string_pretty(&aggregate_analysis)?);
+        } else {
+            analyze::print_aggregate(&aggregate_analysis);
+        }
+    } else {
+        // Single file mode
+        let trajectory = analyze::load_trajectory(&path)?;
+        let analysis = analyze::analyze_trajectory(&trajectory);
+
+        if json_output {
+            println!("{}", serde_json::to_string_pretty(&analysis)?);
+        } else {
+            analyze::print_analysis(&analysis);
+        }
+    }
+
     Ok(())
 }
 
