@@ -6,89 +6,155 @@
 use claude_agent_sdk::SdkMessage;
 use maud::Markup;
 use serde_json::Value;
+use std::collections::HashMap;
 use ui::recorder::organisms::{AgentLine, ToolLine, LifecycleEvent, lifecycle_line};
 use ui::recorder::molecules::ResultType;
 
-/// Render an SdkMessage to HTML using recorder components.
-pub fn render_sdk_message(msg: &SdkMessage) -> Option<Markup> {
-    match msg {
-        SdkMessage::Assistant(asst) => render_assistant_message(asst),
-        SdkMessage::User(user) => render_user_message(user),
-        SdkMessage::ToolProgress(progress) => render_tool_progress(progress),
-        SdkMessage::System(sys) => render_system_message(sys),
-        SdkMessage::Result(result) => render_result_message(result),
-        _ => None,
-    }
+/// Stateful UI renderer that tracks pending tool calls for result matching.
+#[derive(Default)]
+pub struct UiRenderer {
+    /// Map of tool_use_id -> (tool_name, args)
+    pending_calls: HashMap<String, (String, String)>,
 }
 
-/// Render assistant messages (text blocks and tool_use).
-fn render_assistant_message(asst: &claude_agent_sdk::SdkAssistantMessage) -> Option<Markup> {
-    // Parse content blocks
-    let content = asst.message.get("content")?.as_array()?;
+impl UiRenderer {
+    /// Create a new UI renderer.
+    pub fn new() -> Self {
+        Self::default()
+    }
 
-    // For now, render only the first block (we could iterate if needed)
-    for block in content {
-        let block_type = block.get("type")?.as_str()?;
-
-        match block_type {
-            "text" => {
-                let text = block.get("text")?.as_str()?;
-                return Some(AgentLine::new(text).build());
+    /// Render an SdkMessage to HTML, optionally returning an update script for SSE.
+    ///
+    /// Returns (html, optional_update_script).
+    pub fn render(&mut self, msg: &SdkMessage) -> (Option<Markup>, Option<String>) {
+        match msg {
+            SdkMessage::Assistant(asst) => (self.render_assistant_message(asst), None),
+            SdkMessage::User(user) => {
+                // Tool results may generate update scripts
+                self.render_user_message(user)
             }
-            "tool_use" => {
-                let tool_name = block.get("name")?.as_str()?;
-                let tool_id = block.get("id")?.as_str()?;
-                let input = block.get("input")?;
-
-                // Format args based on tool type
-                let args = format_tool_args(tool_name, input);
-
-                return Some(
-                    ToolLine::new(tool_name, &args, ResultType::Pending)
-                        .call_id(tool_id)
-                        .build()
-                );
-            }
-            _ => continue,
+            SdkMessage::ToolProgress(progress) => (render_tool_progress(progress), None),
+            SdkMessage::System(sys) => (render_system_message(sys), None),
+            SdkMessage::Result(result) => (render_result_message(result), None),
+            _ => (None, None),
         }
     }
-
-    None
 }
 
-/// Render user messages (tool results).
-fn render_user_message(user: &claude_agent_sdk::SdkUserMessage) -> Option<Markup> {
-    let content = user.message.get("content")?;
+/// Render an SdkMessage to HTML using recorder components.
+///
+/// Note: This is a stateless convenience function. For proper tool result matching,
+/// use UiRenderer instead.
+pub fn render_sdk_message(msg: &SdkMessage) -> Option<Markup> {
+    let mut renderer = UiRenderer::new();
+    renderer.render(msg).0
+}
 
-    match content {
-        Value::Array(arr) => {
-            // Look for tool_result blocks
-            for block in arr {
-                if block.get("type")?.as_str()? == "tool_result" {
-                    let tool_id = block.get("tool_use_id")?.as_str()?;
-                    let is_error = block.get("is_error")?.as_bool().unwrap_or(false);
+impl UiRenderer {
+    /// Render assistant messages (text blocks and tool_use).
+    fn render_assistant_message(&mut self, asst: &claude_agent_sdk::SdkAssistantMessage) -> Option<Markup> {
+        // Parse content blocks
+        let content = asst.message.get("content")?.as_array()?;
 
-                    let result = if is_error {
-                        let error_msg = extract_error_message(block);
-                        ResultType::Error(error_msg)
-                    } else {
-                        ResultType::Ok
-                    };
+        // For now, render only the first block (we could iterate if needed)
+        for block in content {
+            let block_type = block.get("type")?.as_str()?;
 
-                    // Note: In practice, we'd need to update an existing ToolLine
-                    // For now, we'll return a placeholder that shows the result
-                    // This would need to be handled via SSE updates in the actual implementation
+            match block_type {
+                "text" => {
+                    let text = block.get("text")?.as_str()?;
+                    return Some(AgentLine::new(text).build());
+                }
+                "tool_use" => {
+                    let tool_name = block.get("name")?.as_str()?;
+                    let tool_id = block.get("id")?.as_str()?;
+                    let input = block.get("input")?;
+
+                    // Format args based on tool type
+                    let args = format_tool_args(tool_name, input);
+
+                    // Track this pending call
+                    self.pending_calls.insert(
+                        tool_id.to_string(),
+                        (tool_name.to_string(), args.clone())
+                    );
+
                     return Some(
-                        ToolLine::new("(completed)", tool_id, result)
+                        ToolLine::new(tool_name, &args, ResultType::Pending)
+                            .call_id(tool_id)
                             .build()
                     );
                 }
+                _ => continue,
             }
         }
-        _ => {}
+
+        None
     }
 
-    None
+    /// Render user messages (tool results).
+    ///
+    /// Returns (html, optional_update_script) where update_script replaces the pending ToolLine.
+    fn render_user_message(&mut self, user: &claude_agent_sdk::SdkUserMessage) -> (Option<Markup>, Option<String>) {
+        let content = match user.message.get("content") {
+            Some(c) => c,
+            None => return (None, None),
+        };
+
+        match content {
+            Value::Array(arr) => {
+                // Look for tool_result blocks
+                for block in arr {
+                    if block.get("type").and_then(|t| t.as_str()) == Some("tool_result") {
+                        let tool_id = match block.get("tool_use_id").and_then(|i| i.as_str()) {
+                            Some(id) => id,
+                            None => continue,
+                        };
+                        let is_error = block.get("is_error").and_then(|e| e.as_bool()).unwrap_or(false);
+
+                        let result = if is_error {
+                            let error_msg = extract_error_message(block);
+                            ResultType::Error(error_msg)
+                        } else {
+                            ResultType::Ok
+                        };
+
+                        // Look up the pending call
+                        if let Some((tool_name, args)) = self.pending_calls.remove(tool_id) {
+                            // Generate complete ToolLine HTML
+                            let complete_line = ToolLine::new(&tool_name, &args, result)
+                                .call_id(tool_id)
+                                .build();
+
+                            // Generate update script for SSE
+                            let update_script = format!(
+                                r#"<script>
+                                (function() {{
+                                    const elem = document.querySelector('[data-call-id="{}"]');
+                                    if (elem) {{
+                                        elem.outerHTML = `{}`;
+                                    }}
+                                }})();
+                                </script>"#,
+                                tool_id,
+                                complete_line.into_string().replace('`', "\\`")
+                            );
+
+                            return (None, Some(update_script));
+                        } else {
+                            // No pending call found - return standalone result
+                            return (Some(
+                                ToolLine::new("(unknown)", tool_id, result).build()
+                            ), None);
+                        }
+                    }
+                }
+            }
+            _ => {}
+        }
+
+        (None, None)
+    }
 }
 
 /// Render tool progress updates.
@@ -251,6 +317,7 @@ fn extract_error_message(block: &Value) -> String {
 mod tests {
     use super::*;
     use serde_json::json;
+    use claude_agent_sdk::{SdkAssistantMessage, SdkUserMessage};
 
     #[test]
     fn test_format_tool_args_bash() {
@@ -277,5 +344,238 @@ mod tests {
         let result = format_tool_args("Bash", &input);
         assert!(result.len() < 100);
         assert!(result.ends_with("...\""));
+    }
+
+    #[test]
+    fn test_ui_renderer_tracks_pending_calls() {
+        let mut renderer = UiRenderer::new();
+
+        let asst_msg = SdkAssistantMessage {
+            message: json!({
+                "content": [
+                    {
+                        "type": "tool_use",
+                        "id": "call_123",
+                        "name": "Bash",
+                        "input": {"command": "ls -la"}
+                    }
+                ]
+            }),
+            parent_tool_use_id: None,
+            error: None,
+            uuid: "uuid-1".to_string(),
+            session_id: "session-1".to_string(),
+        };
+
+        let html = renderer.render_assistant_message(&asst_msg);
+        assert!(html.is_some());
+        assert_eq!(renderer.pending_calls.len(), 1);
+        assert!(renderer.pending_calls.contains_key("call_123"));
+    }
+
+    #[test]
+    fn test_ui_renderer_matches_result_to_call() {
+        let mut renderer = UiRenderer::new();
+
+        // First, create a tool call
+        let asst_msg = SdkAssistantMessage {
+            message: json!({
+                "content": [
+                    {
+                        "type": "tool_use",
+                        "id": "call_456",
+                        "name": "Read",
+                        "input": {"file_path": "/test.rs"}
+                    }
+                ]
+            }),
+            parent_tool_use_id: None,
+            error: None,
+            uuid: "uuid-2".to_string(),
+            session_id: "session-1".to_string(),
+        };
+        renderer.render_assistant_message(&asst_msg);
+
+        // Then, send a tool result
+        let user_msg = SdkUserMessage {
+            message: json!({
+                "content": [
+                    {
+                        "type": "tool_result",
+                        "tool_use_id": "call_456",
+                        "is_error": false,
+                        "content": "file contents"
+                    }
+                ]
+            }),
+            parent_tool_use_id: None,
+            is_synthetic: None,
+            tool_use_result: None,
+            uuid: Some("uuid-3".to_string()),
+            session_id: "session-1".to_string(),
+            is_replay: None,
+        };
+
+        let (html, script) = renderer.render_user_message(&user_msg);
+        assert!(html.is_none()); // Should return update script, not new HTML
+        assert!(script.is_some()); // Should generate update script
+
+        let update_script = script.unwrap();
+        assert!(update_script.contains("call_456")); // Should reference tool_id
+        assert!(update_script.contains("data-call-id")); // Should query by call ID
+        assert!(update_script.contains("outerHTML")); // Should replace element
+
+        // Pending call should be removed
+        assert_eq!(renderer.pending_calls.len(), 0);
+    }
+
+    #[test]
+    fn test_ui_renderer_handles_error_result() {
+        let mut renderer = UiRenderer::new();
+
+        // Create a tool call
+        let asst_msg = SdkAssistantMessage {
+            message: json!({
+                "content": [
+                    {
+                        "type": "tool_use",
+                        "id": "call_789",
+                        "name": "Bash",
+                        "input": {"command": "bad command"}
+                    }
+                ]
+            }),
+            parent_tool_use_id: None,
+            error: None,
+            uuid: "uuid-4".to_string(),
+            session_id: "session-1".to_string(),
+        };
+        renderer.render_assistant_message(&asst_msg);
+
+        // Send error result
+        let user_msg = SdkUserMessage {
+            message: json!({
+                "content": [
+                    {
+                        "type": "tool_result",
+                        "tool_use_id": "call_789",
+                        "is_error": true,
+                        "content": "Command failed"
+                    }
+                ]
+            }),
+            parent_tool_use_id: None,
+            is_synthetic: None,
+            tool_use_result: None,
+            uuid: Some("uuid-5".to_string()),
+            session_id: "session-1".to_string(),
+            is_replay: None,
+        };
+
+        let (html, script) = renderer.render_user_message(&user_msg);
+        assert!(html.is_none());
+        assert!(script.is_some());
+
+        let update_script = script.unwrap();
+        assert!(update_script.contains("call_789"));
+        assert!(renderer.pending_calls.len() == 0);
+    }
+
+    #[test]
+    fn test_ui_renderer_unknown_result_without_pending_call() {
+        let mut renderer = UiRenderer::new();
+
+        // Send a result without prior call
+        let user_msg = SdkUserMessage {
+            message: json!({
+                "content": [
+                    {
+                        "type": "tool_result",
+                        "tool_use_id": "call_unknown",
+                        "is_error": false,
+                        "content": "result"
+                    }
+                ]
+            }),
+            parent_tool_use_id: None,
+            is_synthetic: None,
+            tool_use_result: None,
+            uuid: Some("uuid-6".to_string()),
+            session_id: "session-1".to_string(),
+            is_replay: None,
+        };
+
+        let (html, script) = renderer.render_user_message(&user_msg);
+        assert!(html.is_some()); // Should return standalone HTML
+        assert!(script.is_none()); // No update script
+    }
+
+    #[test]
+    fn test_ui_renderer_multiple_pending_calls() {
+        let mut renderer = UiRenderer::new();
+
+        // Create two tool calls
+        let asst_msg1 = SdkAssistantMessage {
+            message: json!({
+                "content": [
+                    {
+                        "type": "tool_use",
+                        "id": "call_a",
+                        "name": "Read",
+                        "input": {"file_path": "/a.rs"}
+                    }
+                ]
+            }),
+            parent_tool_use_id: None,
+            error: None,
+            uuid: "uuid-7".to_string(),
+            session_id: "session-1".to_string(),
+        };
+        renderer.render_assistant_message(&asst_msg1);
+
+        let asst_msg2 = SdkAssistantMessage {
+            message: json!({
+                "content": [
+                    {
+                        "type": "tool_use",
+                        "id": "call_b",
+                        "name": "Bash",
+                        "input": {"command": "ls"}
+                    }
+                ]
+            }),
+            parent_tool_use_id: None,
+            error: None,
+            uuid: "uuid-8".to_string(),
+            session_id: "session-1".to_string(),
+        };
+        renderer.render_assistant_message(&asst_msg2);
+
+        assert_eq!(renderer.pending_calls.len(), 2);
+
+        // Resolve first call
+        let user_msg = SdkUserMessage {
+            message: json!({
+                "content": [
+                    {
+                        "type": "tool_result",
+                        "tool_use_id": "call_a",
+                        "is_error": false,
+                        "content": "content"
+                    }
+                ]
+            }),
+            parent_tool_use_id: None,
+            is_synthetic: None,
+            tool_use_result: None,
+            uuid: Some("uuid-9".to_string()),
+            session_id: "session-1".to_string(),
+            is_replay: None,
+        };
+
+        let (_, script) = renderer.render_user_message(&user_msg);
+        assert!(script.is_some());
+        assert_eq!(renderer.pending_calls.len(), 1);
+        assert!(renderer.pending_calls.contains_key("call_b"));
     }
 }
