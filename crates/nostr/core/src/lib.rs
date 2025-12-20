@@ -28,6 +28,7 @@ mod nip05;
 mod nip06;
 mod nip10;
 mod nip18;
+mod nip23;
 mod nip25;
 mod nip28;
 #[cfg(feature = "full")]
@@ -82,6 +83,11 @@ pub use nip10::{
 // NIP-18: Reposts
 pub use nip18::{
     GENERIC_REPOST_KIND, GenericRepost, Nip18Error, REPOST_KIND, Repost, is_repost_kind,
+};
+
+// NIP-23: Long-form Content
+pub use nip23::{
+    ARTICLE_KIND, Article, DRAFT_ARTICLE_KIND, Nip23Error, is_article_kind,
 };
 
 // NIP-25: Reactions
