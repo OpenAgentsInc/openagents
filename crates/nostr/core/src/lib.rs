@@ -25,6 +25,7 @@ mod nip02;
 mod nip04;
 #[cfg(feature = "full")]
 mod nip06;
+mod nip25;
 mod nip28;
 #[cfg(feature = "full")]
 mod nip47;
@@ -65,6 +66,11 @@ pub use nip06::{
     Keypair, Nip06Error, derive_keypair, derive_keypair_full, derive_keypair_with_account,
     mnemonic_to_seed, npub_to_public_key, nsec_to_private_key, private_key_to_nsec,
     public_key_to_npub,
+};
+
+// NIP-25: Reactions
+pub use nip25::{
+    EXTERNAL_REACTION_KIND, Nip25Error, REACTION_KIND, Reaction, ReactionType, is_reaction_kind,
 };
 
 // NIP-28: Public Chat
