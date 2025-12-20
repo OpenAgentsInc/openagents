@@ -5,7 +5,7 @@ use clap::{Parser, Subcommand};
 use claude_agent_sdk::{
     QueryOptions, SdkMessage, SettingSource, query,
     HookCallback, HookCallbackMatcher, HookEvent, HookInput, HookOutput,
-    SyncHookOutput,
+    SyncHookOutput, unstable_v2_create_session,
 };
 use async_trait::async_trait;
 use colored::*;
@@ -18,6 +18,7 @@ use autopilot::replay;
 use autopilot::rlog::RlogWriter;
 use autopilot::timestamp::{date_dir, filename, generate_slug};
 use autopilot::trajectory::{StepType, Trajectory};
+use autopilot::{extract_session_id_from_json, extract_session_id_from_rlog};
 use autopilot::TrajectoryCollector;
 
 /// Global storage for .mcp.json path to enable cleanup on panic/signal
@@ -146,6 +147,36 @@ enum Commands {
         #[arg(required = true)]
         trajectory2: PathBuf,
     },
+    /// Resume a previous session
+    Resume {
+        /// Path to .json or .rlog trajectory file
+        #[arg(required_unless_present = "continue_last")]
+        trajectory: Option<PathBuf>,
+
+        /// Continue most recent session (no file needed)
+        #[arg(long, short = 'c')]
+        continue_last: bool,
+
+        /// Working directory (default: from trajectory or current)
+        #[arg(short = 'd', long)]
+        cwd: Option<PathBuf>,
+
+        /// Additional prompt to send on resume
+        #[arg(short, long)]
+        prompt: Option<String>,
+
+        /// Maximum budget in USD
+        #[arg(long, default_value_t = default_max_budget())]
+        max_budget: f64,
+
+        /// Enable issue tracking tools via MCP
+        #[arg(long)]
+        with_issues: bool,
+
+        /// Path to issues database (default: autopilot.db in cwd)
+        #[arg(long)]
+        issues_db: Option<PathBuf>,
+    },
     /// Manage issues
     Issue {
         #[command(subcommand)]
@@ -267,6 +298,20 @@ async fn main() -> Result<()> {
         }
         Commands::Compare { trajectory1, trajectory2 } => {
             compare_trajectories(trajectory1, trajectory2).await
+        }
+        Commands::Resume {
+            trajectory,
+            continue_last,
+            cwd,
+            prompt,
+            max_budget,
+            with_issues,
+            issues_db,
+        } => {
+            resume_task(
+                trajectory, continue_last, cwd, prompt, max_budget, with_issues, issues_db,
+            )
+            .await
         }
         Commands::Issue { command } => {
             handle_issue_command(command).await
@@ -928,6 +973,108 @@ async fn stream_to_desktop(port: u16, html: String) -> Result<()> {
         .body(html)
         .send()
         .await;
+
+    Ok(())
+}
+
+/// Resume a previous autopilot session
+async fn resume_task(
+    trajectory: Option<PathBuf>,
+    continue_last: bool,
+    cwd: Option<PathBuf>,
+    prompt: Option<String>,
+    max_budget: f64,
+    with_issues: bool,
+    issues_db: Option<PathBuf>,
+) -> Result<()> {
+    let cwd = cwd.unwrap_or_else(|| std::env::current_dir().unwrap());
+
+    // Get session_id from trajectory file or use --continue
+    let session_id = if continue_last {
+        println!("{} Continuing most recent session...", "Resume:".cyan().bold());
+        None
+    } else {
+        let path = trajectory.expect("trajectory path required");
+        println!("{} Loading session from {:?}", "Resume:".cyan().bold(), path);
+
+        let id = if path.extension().and_then(|e| e.to_str()) == Some("json") {
+            extract_session_id_from_json(&path)?
+        } else {
+            // Try rlog, fall back to error
+            extract_session_id_from_rlog(&path)?.ok_or_else(|| {
+                anyhow::anyhow!(
+                    "No session_id in rlog header. Use --continue-last to resume most recent session."
+                )
+            })?
+        };
+
+        println!("{} session_id={}", "Resume:".dimmed(), &id[..id.len().min(8)]);
+        Some(id)
+    };
+
+    // Build QueryOptions with resume
+    let mut options = QueryOptions::new()
+        .max_budget_usd(max_budget)
+        .cwd(&cwd)
+        .setting_sources(vec![SettingSource::Project, SettingSource::User])
+        .dangerously_skip_permissions(true);
+
+    if let Some(id) = session_id {
+        options.resume = Some(id);
+    } else {
+        options.continue_session = true;
+    }
+
+    // Setup MCP for issue tracking if requested
+    if with_issues {
+        let mcp_json_path = cwd.join(".mcp.json");
+        let db_path = issues_db
+            .unwrap_or_else(|| cwd.join("autopilot.db"))
+            .display()
+            .to_string();
+
+        let mcp_config = json!({
+            "mcpServers": {
+                "issues": {
+                    "command": "cargo",
+                    "args": ["run", "--release", "-p", "issues-mcp"],
+                    "env": {
+                        "ISSUES_DB": db_path
+                    }
+                }
+            }
+        });
+
+        std::fs::write(&mcp_json_path, serde_json::to_string_pretty(&mcp_config).unwrap())?;
+        MCP_JSON_PATH.set(mcp_json_path).ok();
+    }
+
+    // Create session
+    let mut session = unstable_v2_create_session(options).await?;
+
+    // Send prompt if provided
+    if let Some(p) = prompt {
+        println!("{} Sending: {}", "Resume:".cyan().bold(), p);
+        session.send(&p).await?;
+    } else {
+        // Send a continue message
+        session.send("Continue from where you left off.").await?;
+    }
+
+    println!("{} Resumed, streaming...", "Resume:".green().bold());
+    println!();
+
+    // Process messages
+    while let Some(msg) = session.receive().next().await {
+        let msg = msg?;
+        print_progress(&msg);
+    }
+
+    // Cleanup
+    cleanup_mcp_json();
+
+    println!();
+    println!("{}", "Session ended.".green());
 
     Ok(())
 }
