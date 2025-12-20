@@ -4,7 +4,7 @@ use rusqlite::{Connection, Result};
 use std::path::Path;
 
 /// Current schema version
-const SCHEMA_VERSION: i32 = 2;
+const SCHEMA_VERSION: i32 = 3;
 
 /// Initialize the database with migrations
 pub fn init_db(path: &Path) -> Result<Connection> {
@@ -23,6 +23,9 @@ pub fn init_db(path: &Path) -> Result<Connection> {
     if version < 2 {
         migrate_v2(&conn)?;
     }
+    if version < 3 {
+        migrate_v3(&conn)?;
+    }
 
     Ok(conn)
 }
@@ -39,6 +42,9 @@ pub fn init_memory_db() -> Result<Connection> {
     }
     if version < 2 {
         migrate_v2(&conn)?;
+    }
+    if version < 3 {
+        migrate_v3(&conn)?;
     }
 
     Ok(conn)
@@ -160,6 +166,30 @@ fn migrate_v2(conn: &Connection) -> Result<()> {
     )?;
 
     set_schema_version(conn, 2)?;
+    Ok(())
+}
+
+fn migrate_v3(conn: &Connection) -> Result<()> {
+    // Sync issue_counter to MAX(number) + 1 to fix any desync from manual inserts
+    conn.execute_batch(
+        r#"
+        UPDATE issue_counter
+        SET next_number = COALESCE((SELECT MAX(number) + 1 FROM issues), 1)
+        WHERE id = 1;
+
+        -- Create trigger to keep counter in sync when issues are inserted
+        -- This handles manual sqlite3 inserts that bypass the API
+        CREATE TRIGGER IF NOT EXISTS sync_issue_counter_on_insert
+        AFTER INSERT ON issues
+        BEGIN
+            UPDATE issue_counter
+            SET next_number = MAX(next_number, NEW.number + 1)
+            WHERE id = 1;
+        END;
+        "#,
+    )?;
+
+    set_schema_version(conn, 3)?;
     Ok(())
 }
 

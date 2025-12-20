@@ -1,0 +1,16 @@
+{
+  "mcpServers": {
+    "issues": {
+      "command": "cargo",
+      "args": [
+        "run",
+        "--release",
+        "-p",
+        "issues-mcp"
+      ],
+      "env": {
+        "ISSUES_DB": "/Users/christopherdavid/code/openagents/autopilot.db"
+      }
+    }
+  }
+}
