@@ -189,6 +189,72 @@ impl WorkerSupervisor {
         }
     }
 
+    /// Check if worker is stalled (no log activity for too long)
+    /// Returns true if worker was stalled and killed
+    pub fn check_stall(&mut self) -> bool {
+        if !self.state.is_running() {
+            return false;
+        }
+
+        let stall_timeout = Duration::from_millis(self.config.restart.stall_timeout_ms);
+
+        // Find the latest log file
+        if let Some(log_path) = self.find_latest_log() {
+            if let Ok(metadata) = std::fs::metadata(&log_path) {
+                if let Ok(modified) = metadata.modified() {
+                    if let Ok(elapsed) = modified.elapsed() {
+                        if elapsed > stall_timeout {
+                            eprintln!(
+                                "Worker stalled: no log activity for {:?} (log: {:?})",
+                                elapsed, log_path
+                            );
+                            self.stop_worker();
+                            return true;
+                        }
+                    }
+                }
+            }
+        }
+
+        false
+    }
+
+    /// Find the latest .rlog file in docs/logs/
+    fn find_latest_log(&self) -> Option<std::path::PathBuf> {
+        let logs_dir = self.config.working_dir.join("docs").join("logs");
+
+        // Find today's directory (or most recent)
+        let mut dirs: Vec<_> = std::fs::read_dir(&logs_dir)
+            .ok()?
+            .filter_map(|e| e.ok())
+            .filter(|e| e.path().is_dir())
+            .collect();
+
+        dirs.sort_by_key(|e| std::cmp::Reverse(e.file_name()));
+
+        let latest_dir = dirs.first()?.path();
+
+        // Find the most recently modified .rlog file
+        let mut logs: Vec<_> = std::fs::read_dir(&latest_dir)
+            .ok()?
+            .filter_map(|e| e.ok())
+            .filter(|e| {
+                e.path()
+                    .extension()
+                    .map(|ext| ext == "rlog")
+                    .unwrap_or(false)
+            })
+            .collect();
+
+        logs.sort_by(|a, b| {
+            let a_time = a.metadata().and_then(|m| m.modified()).ok();
+            let b_time = b.metadata().and_then(|m| m.modified()).ok();
+            b_time.cmp(&a_time)
+        });
+
+        logs.first().map(|e| e.path())
+    }
+
     /// Check memory and take action if needed
     /// Returns true if worker was force-restarted
     pub fn check_memory(&mut self) -> bool {
@@ -315,6 +381,16 @@ impl WorkerSupervisor {
                         std::thread::sleep(Duration::from_secs(2));
                         if let Err(e) = self.spawn_worker() {
                             eprintln!("Failed to restart worker after memory cleanup: {}", e);
+                        }
+                    }
+
+                    // Check for stalled worker (no log activity)
+                    if self.check_stall() {
+                        // Worker was killed due to stall, restart it
+                        eprintln!("Restarting stalled worker...");
+                        std::thread::sleep(Duration::from_secs(2));
+                        if let Err(e) = self.spawn_worker() {
+                            eprintln!("Failed to restart stalled worker: {}", e);
                         }
                     }
 
