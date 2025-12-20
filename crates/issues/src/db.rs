@@ -4,7 +4,7 @@ use rusqlite::{Connection, Result};
 use std::path::Path;
 
 /// Current schema version
-const SCHEMA_VERSION: i32 = 3;
+const SCHEMA_VERSION: i32 = 4;
 
 /// Initialize the database with migrations
 pub fn init_db(path: &Path) -> Result<Connection> {
@@ -26,6 +26,9 @@ pub fn init_db(path: &Path) -> Result<Connection> {
     if version < 3 {
         migrate_v3(&conn)?;
     }
+    if version < 4 {
+        migrate_v4(&conn)?;
+    }
 
     Ok(conn)
 }
@@ -45,6 +48,9 @@ pub fn init_memory_db() -> Result<Connection> {
     }
     if version < 3 {
         migrate_v3(&conn)?;
+    }
+    if version < 4 {
+        migrate_v4(&conn)?;
     }
 
     Ok(conn)
@@ -190,6 +196,53 @@ fn migrate_v3(conn: &Connection) -> Result<()> {
     )?;
 
     set_schema_version(conn, 3)?;
+    Ok(())
+}
+
+fn migrate_v4(conn: &Connection) -> Result<()> {
+    // Add projects and sessions tables for multi-project Autopilot support
+    conn.execute_batch(
+        r#"
+        -- Projects table
+        CREATE TABLE IF NOT EXISTS projects (
+            id TEXT NOT NULL PRIMARY KEY,
+            name TEXT NOT NULL UNIQUE,
+            path TEXT NOT NULL,
+            description TEXT,
+            default_model TEXT,
+            default_budget REAL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            CHECK(id != ''),
+            CHECK(name != '')
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_projects_name ON projects(name);
+
+        -- Sessions table
+        CREATE TABLE IF NOT EXISTS sessions (
+            id TEXT NOT NULL PRIMARY KEY,
+            project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+            status TEXT NOT NULL DEFAULT 'running',
+            prompt TEXT NOT NULL,
+            model TEXT NOT NULL,
+            pid INTEGER,
+            trajectory_path TEXT,
+            started_at TEXT NOT NULL,
+            ended_at TEXT,
+            budget_spent REAL DEFAULT 0.0,
+            issues_completed INTEGER DEFAULT 0,
+            CHECK(id != ''),
+            CHECK(status IN ('running', 'completed', 'failed', 'cancelled'))
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_sessions_project ON sessions(project_id);
+        CREATE INDEX IF NOT EXISTS idx_sessions_status ON sessions(status);
+        CREATE INDEX IF NOT EXISTS idx_sessions_started ON sessions(started_at);
+        "#,
+    )?;
+
+    set_schema_version(conn, 4)?;
     Ok(())
 }
 

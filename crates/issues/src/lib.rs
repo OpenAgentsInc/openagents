@@ -30,7 +30,11 @@
 
 pub mod db;
 pub mod issue;
+pub mod project;
+pub mod session;
 
 // Re-export commonly used types
 pub use db::{init_db, init_memory_db};
 pub use issue::{Issue, IssueType, Priority, Status};
+pub use project::Project;
+pub use session::{Session, SessionStatus};
