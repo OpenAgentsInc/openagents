@@ -88,8 +88,14 @@ impl ToolLine {
             _ => "border-l-2 border-border",
         };
 
+        let details_id = self.call_id.as_deref().unwrap_or(&self.tool_name);
+
         html! {
-            details class={ (LINE_CARD_CLASS) " " (border_class) } open[self.expanded] {
+            details
+                class={ (LINE_CARD_CLASS) " " (border_class) }
+                id={ "tool-" (details_id) }
+                open[self.expanded]
+                ontoggle="localStorage.setItem(this.id, this.open)" {
                 summary class="cursor-pointer list-none" {
                     div class={ "flex items-center gap-2 " (LINE_HEADER_CLASS) } {
                         (status_dot(status))
@@ -110,6 +116,13 @@ impl ToolLine {
                     }
                     (result_display(self.result))
                 }
+            }
+            script {
+                "(function() {"
+                    "const el = document.getElementById('tool-" (details_id) "');"
+                    "const saved = localStorage.getItem('tool-" (details_id) "');"
+                    "if (saved !== null) el.open = saved === 'true';"
+                "})();"
             }
         }
     }
