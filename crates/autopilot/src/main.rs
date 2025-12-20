@@ -188,7 +188,11 @@ enum Commands {
         #[arg(required = true)]
         prompt: String,
 
-        /// Working directory (default: current directory)
+        /// Project name (loads cwd and issues_db from project)
+        #[arg(short, long)]
+        project: Option<String>,
+
+        /// Working directory (default: current directory or from project)
         #[arg(short, long)]
         cwd: Option<PathBuf>,
 
@@ -305,6 +309,11 @@ enum Commands {
         #[command(subcommand)]
         command: IssueCommands,
     },
+    /// Manage projects
+    Project {
+        #[command(subcommand)]
+        command: ProjectCommands,
+    },
 }
 
 #[derive(Subcommand)]
@@ -387,6 +396,52 @@ enum IssueCommands {
     },
 }
 
+#[derive(Subcommand)]
+enum ProjectCommands {
+    /// Add a new project
+    Add {
+        /// Project name
+        #[arg(required = true)]
+        name: String,
+
+        /// Project path
+        #[arg(short, long, required = true)]
+        path: PathBuf,
+
+        /// Project description
+        #[arg(short, long)]
+        description: Option<String>,
+
+        /// Default model (sonnet, opus, haiku)
+        #[arg(short, long)]
+        model: Option<String>,
+
+        /// Default budget in USD
+        #[arg(short, long)]
+        budget: Option<f64>,
+
+        /// Path to issues database (default: autopilot.db in cwd)
+        #[arg(long)]
+        db: Option<PathBuf>,
+    },
+    /// List all projects
+    List {
+        /// Path to issues database (default: autopilot.db in cwd)
+        #[arg(long)]
+        db: Option<PathBuf>,
+    },
+    /// Remove a project
+    Remove {
+        /// Project name
+        #[arg(required = true)]
+        name: String,
+
+        /// Path to issues database (default: autopilot.db in cwd)
+        #[arg(long)]
+        db: Option<PathBuf>,
+    },
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     // Setup cleanup handlers for signals and panics
@@ -397,6 +452,7 @@ async fn main() -> Result<()> {
     match cli.command {
         Commands::Run {
             prompt,
+            project,
             cwd,
             model,
             max_turns,
@@ -411,7 +467,7 @@ async fn main() -> Result<()> {
             ui,
         } => {
             run_task(
-                prompt, cwd, model, max_turns, max_budget, output_dir, slug, dry_run, verbose,
+                prompt, project, cwd, model, max_turns, max_budget, output_dir, slug, dry_run, verbose,
                 with_issues, issues_db, full_auto, ui,
             )
             .await
@@ -441,6 +497,9 @@ async fn main() -> Result<()> {
         }
         Commands::Issue { command } => {
             handle_issue_command(command).await
+        }
+        Commands::Project { command } => {
+            handle_project_command(command).await
         }
     }
 }
@@ -588,6 +647,7 @@ Never stop. Always keep working. Always keep improving.
 
 async fn run_task(
     prompt: String,
+    project: Option<String>,
     cwd: Option<PathBuf>,
     model: String,
     max_turns: u32,
@@ -601,7 +661,31 @@ async fn run_task(
     full_auto: bool,
     ui: bool,
 ) -> Result<()> {
-    let cwd = cwd.unwrap_or_else(|| std::env::current_dir().unwrap());
+    // Load project if specified
+    let (cwd, issues_db) = if let Some(project_name) = project {
+        use issues::{db, project};
+
+        let default_db = std::env::current_dir()?.join("autopilot.db");
+        let conn = db::init_db(&default_db)?;
+
+        match project::get_project_by_name(&conn, &project_name)? {
+            Some(proj) => {
+                println!("{} Loading project '{}'", "Project:".cyan().bold(), proj.name);
+                println!("{} {}", "Path:".dimmed(), proj.path);
+                (
+                    PathBuf::from(&proj.path),
+                    Some(PathBuf::from(&proj.path).join("autopilot.db"))
+                )
+            }
+            None => {
+                eprintln!("{} Project '{}' not found", "Error:".red(), project_name);
+                eprintln!("Run `cargo autopilot project list` to see available projects");
+                std::process::exit(1);
+            }
+        }
+    } else {
+        (cwd.unwrap_or_else(|| std::env::current_dir().unwrap()), issues_db)
+    };
 
     // Check for stale lockfile and handle crash recovery
     check_and_handle_stale_lockfile(&cwd).await?;
@@ -1407,6 +1491,101 @@ async fn analyze_trajectories(path: PathBuf, aggregate: bool, json_output: bool)
             println!("{}", serde_json::to_string_pretty(&analysis)?);
         } else {
             analyze::print_analysis(&analysis);
+        }
+    }
+
+    Ok(())
+}
+
+async fn handle_project_command(command: ProjectCommands) -> Result<()> {
+    use issues::{db, project, session};
+
+    let default_db = std::env::current_dir()?.join("autopilot.db");
+
+    match command {
+        ProjectCommands::Add {
+            name,
+            path,
+            description,
+            model,
+            budget,
+            db,
+        } => {
+            let db_path = db.unwrap_or(default_db);
+            let conn = db::init_db(&db_path)?;
+
+            // Validate path exists
+            if !path.exists() {
+                eprintln!("{} Path does not exist: {}", "Error:".red(), path.display());
+                std::process::exit(1);
+            }
+
+            let created = project::create_project(
+                &conn,
+                &name,
+                &path.display().to_string(),
+                description.as_deref(),
+                model.as_deref(),
+                budget,
+            )?;
+
+            println!(
+                "{} Created project '{}'",
+                "✓".green(),
+                created.name
+            );
+            println!("  Path:   {}", created.path);
+            if let Some(ref desc) = created.description {
+                println!("  Desc:   {}", desc);
+            }
+            if let Some(ref m) = created.default_model {
+                println!("  Model:  {}", m);
+            }
+            if let Some(b) = created.default_budget {
+                println!("  Budget: ${}", b);
+            }
+        }
+        ProjectCommands::List { db } => {
+            let db_path = db.unwrap_or(default_db);
+            let conn = db::init_db(&db_path)?;
+
+            let projects = project::list_projects(&conn)?;
+
+            if projects.is_empty() {
+                println!("No projects found");
+                println!("\nCreate a project with:");
+                println!("  cargo autopilot project add <name> --path <directory>");
+            } else {
+                println!("{:<20} {:<40} {:<10}", "Name", "Path", "Sessions");
+                println!("{}", "-".repeat(75));
+                for p in projects {
+                    // Count sessions for this project
+                    let sessions = session::list_sessions(&conn, Some(&p.id))?;
+                    let session_count = sessions.len();
+
+                    println!(
+                        "{:<20} {:<40} {}",
+                        p.name,
+                        p.path,
+                        session_count
+                    );
+                }
+            }
+        }
+        ProjectCommands::Remove { name, db } => {
+            let db_path = db.unwrap_or(default_db);
+            let conn = db::init_db(&db_path)?;
+
+            if let Some(p) = project::get_project_by_name(&conn, &name)? {
+                if project::delete_project(&conn, &p.id)? {
+                    println!("{} Removed project '{}'", "✓".green(), name);
+                    println!("  Note: Project files remain at {}", p.path);
+                } else {
+                    eprintln!("{} Could not remove project '{}'", "✗".red(), name);
+                }
+            } else {
+                eprintln!("{} Project '{}' not found", "✗".red(), name);
+            }
         }
     }
 
