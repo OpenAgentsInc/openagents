@@ -462,6 +462,7 @@ dependencies = [
  "once_cell",
  "regex",
  "reqwest",
+ "rusqlite",
  "serde",
  "serde_json",
  "signal-hook",

@@ -61,6 +61,7 @@ regex = "1.10"
 sysinfo = "0.32"
 
 [dev-dependencies]
+rusqlite = { version = "0.32", features = ["bundled"] }
 tempfile = "3.10"
 
 [lints]

@@ -1874,3 +1874,106 @@ t!:Bash id=piLyGLL6 cmd="cargo test -p recorder --test integration" → [running
 o: id=piLyGLL6 → [ok] running 25 tests
 a: Perfect! All 25 tests pass. Let me commit and push: tokens_in=0 tokens_out=1 tokens_cached=56662
 t!:Bash id=C5KXev42 cmd="git add -A && git commit -m "$(cat <<'EOF'" → [running] tokens_in=0 tokens_out=302 tokens_cached=56662
+o: id=C5KXev42 → [ok] [main c8e7802c3] Fix all recorder integration test failures
+t!:Bash id=LSzXAY5c cmd="git push origin main" → [running] tokens_in=0 tokens_out=25 tokens_cached=57340
+o: id=LSzXAY5c → [ok] [0;36m🔍 Running cargo build to check for errors and warnings...[0m
+t!:mcp__issues__issue_complete id=fcmgzuNz  → [running] tokens_in=0 tokens_out=32 tokens_cached=57725
+o: id=fcmgzuNz → [ok] Completed issue #41
+t!:mcp__issues__issue_ready id=yuebrGd8  → [running] tokens_in=0 tokens_out=5 tokens_cached=58028
+o: id=yuebrGd8 → [ok] No ready issues available
+t!:mcp__issues__issue_create id=1XxTqRTt  → [running] tokens_in=0 tokens_out=156 tokens_cached=58142
+o: id=1XxTqRTt → [ok] Created issue #42: Add integration tests for autopilot crate (agent: claude)
+t!:mcp__issues__issue_ready id=C3vAWsbL  → [running] tokens_in=0 tokens_out=8 tokens_cached=58239
+o: id=C3vAWsbL → [ok] {
+t!:mcp__issues__issue_claim id=8JLF6CFA  → [running] tokens_in=0 tokens_out=8 tokens_cached=58567
+o: id=8JLF6CFA → [ok] Claimed issue #42
+t!:Glob id=JA872yac pattern="**/tests/**/*.rs" → [running] tokens_in=0 tokens_out=94 tokens_cached=58739
+o: id=JA872yac → [ok] /home/christopherdavid/code/openagents/crates/autopilot/tests/trajectory_tracking.rs
+t!:Read id=SXwCSSUC file_path=/home/christopherdavid/code/openagents/crates/autopilot/tests/trajectory_tracking.rs → [running] tokens_in=2 tokens_out=81 tokens_cached=58875
+o: id=SXwCSSUC → [ok]      1→//! Integration tests for autopilot trajectory tracking
+t!:Read id=bHVacivX file_path=/home/christopherdavid/code/openagents/crates/autopilot/src/lib.rs → [running] tokens_in=1 tokens_out=113 tokens_cached=59142
+o: id=bHVacivX → [ok]      1→//! Autopilot - Autonomous task runner with trajectory logging
+t!:Glob id=qEpyJAZ5 pattern="**/*.rs" → [running] tokens_in=0 tokens_out=93 tokens_cached=63253
+o: id=qEpyJAZ5 → [ok] /home/christopherdavid/code/openagents/crates/autopilot/src/analyze.rs
+t!:Bash id=VE3f1vw5 cmd="ls crates/autopilot/src/issue*.rs 2>/dev/null |..." → [running] tokens_in=0 tokens_out=114 tokens_cached=64052
+o: id=VE3f1vw5 → [ok] No issue module found
+t!:Grep id=ozvtZiv1 pattern="^pub mod" → [running] tokens_in=0 tokens_out=116 tokens_cached=64635
+o: id=ozvtZiv1 → [ok] 6:pub mod analyze;
+t!:Grep id=wAQoLHmb pattern="issue::" → [running] tokens_in=0 tokens_out=113 tokens_cached=64781
+o: id=wAQoLHmb → [ok] Found 2 files
+t!:Grep id=vrb2awxz pattern="^mod issue" → [running] tokens_in=0 tokens_out=134 tokens_cached=65018
+o: id=vrb2awxz → [ok] No matches found
+t!:Grep id=dEGDygKs pattern="fn.*issue|Issue" → [running] tokens_in=0 tokens_out=26 tokens_cached=65314
+o: id=dEGDygKs → [ok] 432:    Issue {
+t!:Grep id=GAY2VNLR pattern="^use issues::" → [running] tokens_in=0 tokens_out=24 tokens_cached=65495
+o: id=GAY2VNLR → [ok] No matches found
+t!:Read id=Y4FHChf3 file_path=/home/christopherdavid/code/openagents/crates/autopilot/src/main.rs → [running] tokens_in=0 tokens_out=25 tokens_cached=66038
+o: id=Y4FHChf3 → [ok]      1→//! Autopilot CLI - Run autonomous tasks with Claude and log trajectories
+t!:Grep id=wy4C9Xzu pattern="Cargo.toml" → [running] tokens_in=0 tokens_out=116 tokens_cached=66324
+o: id=wy4C9Xzu → [ok] No files found
+t!:Read id=AqMnPA2U file_path=/home/christopherdavid/code/openagents/crates/autopilot/Cargo.toml → [running] tokens_in=0 tokens_out=79 tokens_cached=67132
+o: id=AqMnPA2U → [ok]      1→[package]
+a: I can see the autopilot crate already has trajectory_tracking.rs integration tests. The issues functionality comes from the `issues` workspace crate (line 18). Let me create more comprehensive inte... tokens_in=0 tokens_out=1 tokens_cached=67297
+t!:Write id=Mh83KttB file_path=/home/christopherdavid/code/openagents/crates/autopilot/tests/database_integration.rs → [running] tokens_in=0 tokens_out=3548 tokens_cached=67297
+o: id=Mh83KttB → [ok] File created successfully at: /home/christopherdavid/code/openagents/crates/autopilot/tests/datab...
+t!:Bash id=1rHXmsjn cmd="cargo test -p autopilot --test database_integra..." → [running] tokens_in=0 tokens_out=26 tokens_cached=68164
+o: id=1rHXmsjn → [error] Exit code 101
+a: Let me check the issues crate API to get the correct function names: tokens_in=1 tokens_out=3 tokens_cached=71792
+t!:Grep id=RVevP2uC pattern="^pub fn" → [running] tokens_in=1 tokens_out=3 tokens_cached=71792
+o: id=RVevP2uC → [ok] crates/issues/src/db.rs:11:pub fn init_db(path: &Path) -> Result<Connection> {
+t!:Read id=ZAe2LRgc file_path=/home/christopherdavid/code/openagents/crates/issues/src/types.rs → [running] tokens_in=0 tokens_out=111 tokens_cached=74736
+o: id=ZAe2LRgc → [error] <tool_use_error>File does not exist.</tool_use_error>
+t!:Read id=tGrASTZc file_path=/home/christopherdavid/code/openagents/crates/issues/src/issue.rs → [running] tokens_in=1 tokens_out=111 tokens_cached=75824
+o: id=tGrASTZc → [ok]      1→//! Issue struct and CRUD operations
+t!:Read id=n6Vq4nNb file_path=/home/christopherdavid/code/openagents/crates/issues/src/issue.rs → [running] tokens_in=0 tokens_out=18 tokens_cached=76107
+o: id=n6Vq4nNb → [ok]    100→    pub id: String,
+a: Now I understand the API. Let me fix the tests: tokens_in=0 tokens_out=1 tokens_cached=77166
+t!:Edit id=MCnVmNT2 file_path=/home/christopherdavid/code/openagents/crates/autopilot/tests/database_integration.rs → [running] tokens_in=0 tokens_out=460 tokens_cached=77166
+o: id=MCnVmNT2 → [ok] The file /home/christopherdavid/code/openagents/crates/autopilot/tests/database_integration.rs ha...
+t!:Edit id=h5NnyCCP file_path=/home/christopherdavid/code/openagents/crates/autopilot/tests/database_integration.rs → [running] tokens_in=0 tokens_out=444 tokens_cached=78344
+o: id=h5NnyCCP → [ok] The file /home/christopherdavid/code/openagents/crates/autopilot/tests/database_integration.rs ha...
+t!:Bash id=nd8S4zf2 cmd="sed -i 's/issue::get_issue(/issue::get_issue_by..." → [running] tokens_in=0 tokens_out=25 tokens_cached=79264
+o: id=nd8S4zf2 → [ok] 
+a: Now I need to fix the additional issues - the sed changed `issue.blocked` to `issue.is_blocked` but we also need to handle the Optional returns and errors: tokens_in=0 tokens_out=1 tokens_cached=80085
+t!:Edit id=XysYQTzk file_path=/home/christopherdavid/code/openagents/crates/autopilot/tests/database_integration.rs → [running] tokens_in=0 tokens_out=505 tokens_cached=80085
+o: id=XysYQTzk → [ok] The file /home/christopherdavid/code/openagents/crates/autopilot/tests/database_integration.rs ha...
+t!:Bash id=iMC9UYoa cmd="sed -i 's/issue::get_issue_by_id(&conn, \&issue..." → [running] tokens_in=0 tokens_out=26 tokens_cached=82577
+o: id=iMC9UYoa → [ok] 
+t!:Bash id=LLhyDowY cmd="cargo test -p autopilot --test database_integra..." → [running] tokens_in=0 tokens_out=26 tokens_cached=83581
+o: id=LLhyDowY → [ok]    Compiling autopilot v0.1.0 (/home/christopherdavid/code/openagents/crates/autopilot)
+a: The autopilot crate doesn't have rusqlite as a dependency - the issues crate re-exports it. Let me fix: tokens_in=0 tokens_out=1 tokens_cached=85034
+t!:Edit id=WdQxNucY file_path=/home/christopherdavid/code/openagents/crates/autopilot/tests/database_integration.rs → [running] tokens_in=0 tokens_out=1 tokens_cached=85034
+o: id=WdQxNucY → [ok] The file /home/christopherdavid/code/openagents/crates/autopilot/tests/database_integration.rs ha...
+t!:Bash id=JLVEmqDM cmd="cargo test -p autopilot --test database_integra..." → [running] tokens_in=0 tokens_out=24 tokens_cached=85368
+o: id=JLVEmqDM → [ok]    Compiling autopilot v0.1.0 (/home/christopherdavid/code/openagents/crates/autopilot)
+t!:Read id=rzx9eZZo file_path=/home/christopherdavid/code/openagents/crates/issues/src/lib.rs → [running] tokens_in=0 tokens_out=77 tokens_cached=85908
+o: id=rzx9eZZo → [ok]      1→//! Local issue tracking with SQLite
+a: I need to use rusqlite directly. Let me add it as a dev-dependency: tokens_in=0 tokens_out=1 tokens_cached=86203
+t!:Bash id=nXbvAQH9 cmd="cd crates/autopilot && cargo add rusqlite --dev" → [running] tokens_in=0 tokens_out=109 tokens_cached=86203
+o: id=nXbvAQH9 → [error] Exit code 101
+a: I need to use the same rusqlite version. Let me check what version the issues crate uses: tokens_in=1 tokens_out=5 tokens_cached=86886
+t!:Grep id=oFgBiCW7 pattern="^rusqlite" → [running] tokens_in=1 tokens_out=5 tokens_cached=86886
+o: id=oFgBiCW7 → [ok] 12:rusqlite = { version = "0.32", features = ["bundled"] }
+t!:Bash id=Bo333XwX cmd="cd crates/autopilot && cargo add rusqlite@0.32 ..." → [running] tokens_in=0 tokens_out=26 tokens_cached=87695
+o: id=Bo333XwX → [ok]     Updating crates.io index
+t!:Edit id=LHurt9xv file_path=/home/christopherdavid/code/openagents/crates/autopilot/tests/database_integration.rs → [running] tokens_in=0 tokens_out=177 tokens_cached=87901
+o: id=LHurt9xv → [error] <tool_use_error>File has not been read yet. Read it first before writing to it.</tool_use_error>
+t!:Bash id=yoY6kXs6 cmd="sed -i '6s/use issues::{db, issue, IssueType, P..." → [running] tokens_in=1 tokens_out=25 tokens_cached=88207
+o: id=yoY6kXs6 → [error] Exit code 2
+t!:Bash id=piZtUPKr cmd="head -10 /home/christopherdavid/code/openagents..." → [running] tokens_in=1 tokens_out=25 tokens_cached=88464
+o: id=piZtUPKr → [ok] //! Integration tests for autopilot database operations
+t!:Read id=upusf1tK file_path=/home/christopherdavid/code/openagents/crates/autopilot/tests/database_integration.rs → [running] tokens_in=0 tokens_out=115 tokens_cached=88685
+o: id=upusf1tK → [ok]      1→//! Integration tests for autopilot database operations
+t!:Edit id=nSPj5sEV file_path=/home/christopherdavid/code/openagents/crates/autopilot/tests/database_integration.rs → [running] tokens_in=0 tokens_out=255 tokens_cached=89027
+o: id=nSPj5sEV → [ok] The file /home/christopherdavid/code/openagents/crates/autopilot/tests/database_integration.rs ha...
+t!:Bash id=ZZNCgLH1 cmd="cargo test -p autopilot --test database_integra..." → [running] tokens_in=0 tokens_out=101 tokens_cached=89388
+o: id=ZZNCgLH1 → [error] Exit code 101
+a: Good progress! 10/11 tests pass. The concurrent_issue_claims test is failing because the claim_issue function returns Ok(false) instead of an error when already claimed. Let me fix: tokens_in=1 tokens_out=1 tokens_cached=89897
+t!:Read id=EHuEJfib file_path=/home/christopherdavid/code/openagents/crates/autopilot/tests/database_integration.rs → [running] tokens_in=1 tokens_out=1 tokens_cached=89897
+o: id=EHuEJfib → [ok]    268→#[test]
+t!:Edit id=CBzzm8R8 file_path=/home/christopherdavid/code/openagents/crates/autopilot/tests/database_integration.rs → [running] tokens_in=0 tokens_out=443 tokens_cached=90553
+o: id=CBzzm8R8 → [ok] The file /home/christopherdavid/code/openagents/crates/autopilot/tests/database_integration.rs ha...
+t!:Bash id=t8VGGCdM cmd="cargo test -p autopilot --test database_integra..." → [running] tokens_in=0 tokens_out=84 tokens_cached=91204
+o: id=t8VGGCdM → [ok] running 11 tests
+a: Perfect! All 11 tests pass. Let me commit and push: tokens_in=0 tokens_out=4 tokens_cached=92131
+t!:Bash id=GTtAj8bQ cmd="git add -A && git commit -m "$(cat <<'EOF'" → [running] tokens_in=0 tokens_out=263 tokens_cached=92131
