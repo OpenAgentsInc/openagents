@@ -3,6 +3,7 @@
 //! This crate provides infrastructure for discovering, installing, and managing
 //! marketplace items including plugins, skills, and agents.
 
+pub mod budget;
 pub mod creator_dashboard;
 pub mod data_consumer;
 pub mod data_contribution;
@@ -17,6 +18,10 @@ pub mod repository;
 pub mod skills;
 pub mod types;
 
+pub use budget::{
+    AlertAction, AlertThreshold, BudgetCheckResult, BudgetConfig, BudgetError, BudgetImpact,
+    BudgetPeriod, CostEstimate, OverageAction, OveragePolicy, SpendingTracker, check_budget,
+};
 pub use creator_dashboard::{
     CreatorAnalytics, CreatorDashboard, CreatorSkillSummary, DashboardError,
     EarningsSummary, PayoutRecord, PayoutStatus, PeriodEarnings,
