@@ -2225,3 +2225,22 @@ o: id=cdzzJoUq → [ok] File created successfully at: /home/christopherdavid/cod
 t!:Bash id=6NKLHe6N cmd="cargo test --package nostr --test nip90_integra..." → [running] tokens_in=2 tokens_out=104 tokens_cached=58593
 o: id=6NKLHe6N → [ok] running 51 tests
 t!:Bash id=8ZHdxvTa cmd="git add -A && git commit -m "$(cat <<'EOF'" → [running] tokens_in=1 tokens_out=26 tokens_cached=66060
+o: id=8ZHdxvTa → [ok] [main 9eea1de69] Add comprehensive unit tests for NIP-90 DVM job types
+t!:mcp__issues__issue_complete id=N61JdmRc  → [running] tokens_in=0 tokens_out=58 tokens_cached=67134
+o: id=N61JdmRc → [ok] Completed issue #50
+t!:mcp__issues__issue_ready id=ZGzDTKES  → [running] tokens_in=0 tokens_out=5 tokens_cached=67623
+o: id=ZGzDTKES → [ok] No ready issues available
+t!:mcp__issues__issue_create id=CTBtbYtZ  → [running] tokens_in=0 tokens_out=8 tokens_cached=67737
+o: id=CTBtbYtZ → [ok] Created issue #51: Add unit tests for NIP-89 handler info in nostr core crate (agent: claude)
+t!:mcp__issues__issue_ready id=CmRig88b  → [running] tokens_in=0 tokens_out=5 tokens_cached=67953
+o: id=CmRig88b → [ok] {
+t!:mcp__issues__issue_claim id=326a9duU  → [running] tokens_in=0 tokens_out=81 tokens_cached=68216
+o: id=326a9duU → [ok] Claimed issue #51
+t!:Read id=3fZBNZYQ file_path=/home/christopherdavid/code/openagents/crates/nostr/core/src/nip89.rs → [running] tokens_in=0 tokens_out=8 tokens_cached=68434
+o: id=3fZBNZYQ → [ok]      1→//! NIP-89: Application Handlers
+a: The nip89.rs file already has comprehensive inline tests (lines 363-580). I'll create a dedicated integration test file to cover additional scenarios and workflows not covered in the inline tests. tokens_in=2 tokens_out=1 tokens_cached=68674
+t!:Write id=s46LpVJY file_path=/home/christopherdavid/code/openagents/crates/nostr/core/tests/nip89_integration.rs → [running] tokens_in=2 tokens_out=7101 tokens_cached=68674
+o: id=s46LpVJY → [ok] File created successfully at: /home/christopherdavid/code/openagents/crates/nostr/core/tests/nip8...
+t!:Bash id=4FHv3528 cmd="cargo test --package nostr --test nip89_integra..." → [running] tokens_in=1 tokens_out=26 tokens_cached=76005
+o: id=4FHv3528 → [ok] running 53 tests
+t!:Bash id=youU8CCd cmd="git add -A && git commit -m "$(cat <<'EOF'" → [running] tokens_in=0 tokens_out=353 tokens_cached=83294
