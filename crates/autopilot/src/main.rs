@@ -9,6 +9,7 @@ use serde_json::json;
 use std::path::PathBuf;
 use std::sync::OnceLock;
 
+use autopilot::replay;
 use autopilot::rlog::RlogWriter;
 use autopilot::timestamp::{date_dir, filename, generate_slug};
 use autopilot::trajectory::{StepType, Trajectory};
@@ -116,6 +117,26 @@ enum Commands {
         #[arg(long, default_value_t = default_full_auto())]
         full_auto: bool,
     },
+    /// Replay a saved trajectory for debugging
+    Replay {
+        /// Path to trajectory JSON file
+        #[arg(required = true)]
+        trajectory: PathBuf,
+
+        /// View mode: interactive (default), list, or summary
+        #[arg(short, long, default_value = "interactive")]
+        mode: String,
+    },
+    /// Compare two trajectories side-by-side
+    Compare {
+        /// Path to first trajectory JSON file
+        #[arg(required = true)]
+        trajectory1: PathBuf,
+
+        /// Path to second trajectory JSON file
+        #[arg(required = true)]
+        trajectory2: PathBuf,
+    },
 }
 
 #[tokio::main]
@@ -145,6 +166,12 @@ async fn main() -> Result<()> {
                 with_issues, issues_db, full_auto,
             )
             .await
+        }
+        Commands::Replay { trajectory, mode } => {
+            replay_trajectory(trajectory, mode).await
+        }
+        Commands::Compare { trajectory1, trajectory2 } => {
+            compare_trajectories(trajectory1, trajectory2).await
         }
     }
 }
@@ -502,4 +529,27 @@ fn get_git_branch(cwd: &PathBuf) -> Result<String> {
         .current_dir(cwd)
         .output()?;
     Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+}
+
+async fn replay_trajectory(trajectory_path: PathBuf, mode: String) -> Result<()> {
+    // Load trajectory
+    let trajectory = replay::load_trajectory(&trajectory_path)?;
+
+    // Run appropriate viewer based on mode
+    match mode.as_str() {
+        "interactive" | "i" => replay::interactive_replay(&trajectory)?,
+        "list" | "l" => replay::list_steps(&trajectory)?,
+        "summary" | "s" => replay::summary_view(&trajectory)?,
+        _ => {
+            eprintln!("Unknown mode: {}. Use interactive, list, or summary.", mode);
+            std::process::exit(1);
+        }
+    }
+
+    Ok(())
+}
+
+async fn compare_trajectories(trajectory1: PathBuf, trajectory2: PathBuf) -> Result<()> {
+    replay::compare_trajectories(&trajectory1, &trajectory2)?;
+    Ok(())
 }
