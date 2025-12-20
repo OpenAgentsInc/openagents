@@ -18,7 +18,7 @@ set -e
 
 # Defaults
 MODEL="${AUTOPILOT_MODEL:-sonnet}"
-MAX_TURNS="${AUTOPILOT_MAX_TURNS:-200}"
+MAX_TURNS="${AUTOPILOT_MAX_TURNS:-99999}"
 MAX_BUDGET="${AUTOPILOT_BUDGET:-300.0}"
 FULL_AUTO="${AUTOPILOT_FULL_AUTO:-}"
 UI="${AUTOPILOT_UI:-}"
@@ -67,7 +67,7 @@ if [ -z "$PROMPT" ]; then
     echo ""
     echo "Options:"
     echo "  --model MODEL      Model to use (sonnet, opus, haiku)"
-    echo "  --max-turns N      Maximum turns (default: 200)"
+    echo "  --max-turns N      Maximum turns (default: 99999)"
     echo "  --max-budget USD   Maximum budget (default: 300.0)"
     echo "  --full-auto        Keep working on issues and discover new work"
     echo "  --ui               Launch desktop UI with live visualization"
