@@ -21,6 +21,7 @@
 //! - NIP-25: Reactions
 //! - NIP-27: Text Note References
 //! - NIP-28: Public Chat (channels, messages, moderation)
+//! - NIP-33: Parameterized Replaceable Events (deprecated, moved to NIP-01)
 //! - NIP-36: Sensitive Content / Content Warning
 //! - NIP-40: Expiration Timestamp
 //! - NIP-47: Nostr Wallet Connect (requires `full` feature)
@@ -61,6 +62,7 @@ mod nip23;
 mod nip25;
 mod nip27;
 mod nip28;
+mod nip33;
 mod nip36;
 mod nip40;
 #[cfg(feature = "full")]
@@ -191,6 +193,13 @@ pub use nip28::{
     KIND_CHANNEL_MESSAGE, KIND_CHANNEL_METADATA, KIND_CHANNEL_MUTE_USER, ModerationReason,
     Nip28Error, is_channel_creation_kind, is_channel_kind, is_channel_message_kind,
     is_channel_metadata_kind, is_moderation_kind,
+};
+
+// NIP-33: Parameterized Replaceable Events (deprecated, moved to NIP-01)
+pub use nip33::{
+    ADDRESSABLE_KIND_MAX, ADDRESSABLE_KIND_MIN, D_TAG, Nip33Error, create_a_tag, create_address,
+    get_a_tags, get_d_tag, get_event_address, parse_address, set_d_tag,
+    validate_addressable_event,
 };
 
 // NIP-36: Sensitive Content / Content Warning
