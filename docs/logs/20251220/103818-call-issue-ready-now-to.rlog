@@ -1977,3 +1977,67 @@ t!:Bash id=t8VGGCdM cmd="cargo test -p autopilot --test database_integra..." →
 o: id=t8VGGCdM → [ok] running 11 tests
 a: Perfect! All 11 tests pass. Let me commit and push: tokens_in=0 tokens_out=4 tokens_cached=92131
 t!:Bash id=GTtAj8bQ cmd="git add -A && git commit -m "$(cat <<'EOF'" → [running] tokens_in=0 tokens_out=263 tokens_cached=92131
+o: id=GTtAj8bQ → [ok] [main dec03dedc] Add comprehensive database integration tests for autopilot crate
+t!:Bash id=hwPVsNoJ cmd="git push origin main" → [running] tokens_in=0 tokens_out=75 tokens_cached=92531
+o: id=hwPVsNoJ → [ok] [0;36m🔍 Running cargo build to check for errors and warnings...[0m
+t!:mcp__issues__issue_complete id=ZjWShPWp  → [running] tokens_in=0 tokens_out=58 tokens_cached=92996
+o: id=ZjWShPWp → [ok] Completed issue #42
+t!:mcp__issues__issue_ready id=odXhuhGr  → [running] tokens_in=0 tokens_out=41 tokens_cached=93191
+o: id=odXhuhGr → [ok] No ready issues available
+t!:mcp__issues__issue_create id=jUCx5Nq4  → [running] tokens_in=0 tokens_out=5 tokens_cached=93303
+o: id=jUCx5Nq4 → [ok] Created issue #43: Add unit tests for rlog writer module (agent: claude)
+t!:mcp__issues__issue_ready id=K1cY9kEf  → [running] tokens_in=0 tokens_out=8 tokens_cached=93500
+o: id=K1cY9kEf → [ok] {
+t!:mcp__issues__issue_claim id=WyEnb4Xb  → [running] tokens_in=0 tokens_out=81 tokens_cached=93729
+o: id=WyEnb4Xb → [ok] Claimed issue #43
+t!:Read id=DLP22kZ8 file_path=/home/christopherdavid/code/openagents/crates/autopilot/src/rlog.rs → [running] tokens_in=0 tokens_out=8 tokens_cached=93903
+o: id=DLP22kZ8 → [ok]      1→//! rlog format writer for trajectory output
+t!:Read id=6KwkrC8d file_path=/home/christopherdavid/code/openagents/crates/autopilot/src/rlog.rs → [running] tokens_in=2 tokens_out=18 tokens_cached=94141
+o: id=6KwkrC8d → [ok]    150→    }
+t!:Read id=VzZ82wJA file_path=/home/christopherdavid/code/openagents/crates/autopilot/src/rlog.rs → [running] tokens_in=1 tokens_out=18 tokens_cached=95645
+o: id=VzZ82wJA → [ok]    250→    fn write_end_batch(&mut self, traj: &Trajectory) {
+t!:Read id=Qw5MwE1q file_path=/home/christopherdavid/code/openagents/crates/autopilot/src/rlog.rs → [running] tokens_in=0 tokens_out=25 tokens_cached=97176
+o: id=Qw5MwE1q → [ok]    400→        traj.add_step(StepType::Assistant {
+a: I can see there are already some tests in the module (lines 382-449+). Let me add more comprehensive unit tests covering edge cases and helper functions: tokens_in=0 tokens_out=1 tokens_cached=99517
+t!:Write id=3gQ9PGKv file_path=/home/christopherdavid/code/openagents/crates/autopilot/tests/rlog_writer.rs → [running] tokens_in=0 tokens_out=4834 tokens_cached=99517
+o: id=3gQ9PGKv → [ok] File created successfully at: /home/christopherdavid/code/openagents/crates/autopilot/tests/rlog_...
+t!:Bash id=jTHuhDFN cmd="cargo test -p autopilot --test rlog_writer" → [running] tokens_in=0 tokens_out=103 tokens_cached=100423
+o: id=jTHuhDFN → [error] Exit code 101
+a: Let me fix the compilation errors: tokens_in=1 tokens_out=1 tokens_cached=105440
+t!:Read id=dsCCBG71 file_path=/home/christopherdavid/code/openagents/crates/autopilot/tests/rlog_writer.rs → [running] tokens_in=1 tokens_out=124 tokens_cached=105440
+o: id=dsCCBG71 → [ok]    265→}
+t!:Grep id=VUgoaGfH pattern="pub fn add_step" → [running] tokens_in=0 tokens_out=26 tokens_cached=106377
+o: id=VUgoaGfH → [ok] 118-            usage: TokenUsage::default(),
+a: I see - `add_step` returns a mutable reference. Let me fix the tests: tokens_in=0 tokens_out=1 tokens_cached=107196
+t!:Edit id=Gh8DAvfu file_path=/home/christopherdavid/code/openagents/crates/autopilot/tests/rlog_writer.rs → [running] tokens_in=0 tokens_out=392 tokens_cached=107196
+o: id=Gh8DAvfu → [ok] The file /home/christopherdavid/code/openagents/crates/autopilot/tests/rlog_writer.rs has been up...
+t!:Edit id=eDWVTbZK file_path=/home/christopherdavid/code/openagents/crates/autopilot/tests/rlog_writer.rs → [running] tokens_in=0 tokens_out=383 tokens_cached=107500
+o: id=eDWVTbZK → [ok] The file /home/christopherdavid/code/openagents/crates/autopilot/tests/rlog_writer.rs has been up...
+t!:Edit id=WFCjcYVp file_path=/home/christopherdavid/code/openagents/crates/autopilot/tests/rlog_writer.rs → [running] tokens_in=0 tokens_out=24 tokens_cached=108361
+o: id=WFCjcYVp → [ok] The file /home/christopherdavid/code/openagents/crates/autopilot/tests/rlog_writer.rs has been up...
+t!:Edit id=Mee8hnFX file_path=/home/christopherdavid/code/openagents/crates/autopilot/tests/rlog_writer.rs → [running] tokens_in=0 tokens_out=561 tokens_cached=109130
+o: id=Mee8hnFX → [ok] The file /home/christopherdavid/code/openagents/crates/autopilot/tests/rlog_writer.rs has been up...
+t!:Bash id=WaTo4v95 cmd="cargo test -p autopilot --test rlog_writer" → [running] tokens_in=0 tokens_out=26 tokens_cached=109494
+o: id=WaTo4v95 → [error] Exit code 101
+a: Good progress - 24/27 pass. Let me check the actual output format to fix the expectations: tokens_in=1 tokens_out=1 tokens_cached=110657
+t!:Read id=UksRzH9K file_path=/home/christopherdavid/code/openagents/crates/autopilot/src/rlog.rs → [running] tokens_in=1 tokens_out=137 tokens_cached=110657
+o: id=UksRzH9K → [ok]     74→        // Write start marker
+a: The session ID in test trajectory isn't set - it defaults to a UUID. Let me fix the tests to check for what's actually there: tokens_in=0 tokens_out=1 tokens_cached=111544
+t!:Edit id=7skwJ3rw file_path=/home/christopherdavid/code/openagents/crates/autopilot/tests/rlog_writer.rs → [running] tokens_in=0 tokens_out=379 tokens_cached=111544
+o: id=7skwJ3rw → [ok] The file /home/christopherdavid/code/openagents/crates/autopilot/tests/rlog_writer.rs has been up...
+t!:Read id=KKiru8wH file_path=/home/christopherdavid/code/openagents/crates/autopilot/src/rlog.rs → [running] tokens_in=0 tokens_out=25 tokens_cached=112102
+o: id=KKiru8wH → [ok]    276→            StepType::ToolCall { tool, tool_id, input } => {
+a: I see - it uses the LAST 8 chars of the tool_id (line 279, 292), not the first. Let me fix the test expectations: tokens_in=0 tokens_out=1 tokens_cached=112832
+t!:Edit id=5Kz2NXF3 file_path=/home/christopherdavid/code/openagents/crates/autopilot/tests/rlog_writer.rs → [running] tokens_in=0 tokens_out=297 tokens_cached=112832
+o: id=5Kz2NXF3 → [ok] The file /home/christopherdavid/code/openagents/crates/autopilot/tests/rlog_writer.rs has been up...
+t!:Edit id=2JvXJ1GW file_path=/home/christopherdavid/code/openagents/crates/autopilot/tests/rlog_writer.rs → [running] tokens_in=0 tokens_out=197 tokens_cached=113539
+o: id=2JvXJ1GW → [ok] The file /home/christopherdavid/code/openagents/crates/autopilot/tests/rlog_writer.rs has been up...
+t!:Bash id=mk4eCtgS cmd="cargo test -p autopilot --test rlog_writer" → [running] tokens_in=0 tokens_out=85 tokens_cached=114090
+o: id=mk4eCtgS → [error] Exit code 101
+a: Almost there - just one failure. The tool_id is "toolu_abc123" which has 11 characters, so the last 8 would be "u_abc123": tokens_in=1 tokens_out=1 tokens_cached=114614
+t!:Edit id=VhBJbje8 file_path=/home/christopherdavid/code/openagents/crates/autopilot/tests/rlog_writer.rs → [running] tokens_in=1 tokens_out=255 tokens_cached=114614
+o: id=VhBJbje8 → [ok] The file /home/christopherdavid/code/openagents/crates/autopilot/tests/rlog_writer.rs has been up...
+t!:Bash id=jyzNQ371 cmd="cargo test -p autopilot --test rlog_writer" → [running] tokens_in=0 tokens_out=86 tokens_cached=115343
+o: id=jyzNQ371 → [ok] running 27 tests
+a: Perfect! All 27 tests pass. Let me commit and push: tokens_in=0 tokens_out=4 tokens_cached=115930
+t!:Bash id=RBXZxfFN cmd="git add -A && git commit -m "$(cat <<'EOF'" → [running] tokens_in=0 tokens_out=354 tokens_cached=115930
