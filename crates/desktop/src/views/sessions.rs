@@ -5,6 +5,7 @@ use super::layout;
 
 /// Session data structure for display
 #[derive(Debug)]
+#[allow(dead_code)]
 pub struct SessionRow {
     pub id: String,
     pub project_name: String,
@@ -16,12 +17,14 @@ pub struct SessionRow {
 
 /// Project option for filter dropdown
 #[derive(Debug)]
+#[allow(dead_code)]
 pub struct ProjectOption {
     pub id: String,
     pub name: String,
 }
 
 /// Full sessions page
+#[allow(dead_code)]
 pub fn sessions_page(
     sessions: Vec<SessionRow>,
     projects: Vec<ProjectOption>,
@@ -125,6 +128,7 @@ pub fn sessions_page(
 }
 
 /// Status badge with color coding
+#[allow(dead_code)]
 fn status_badge(status: &str) -> Markup {
     let (color_class, display_text) = match status {
         "running" => ("text-blue border-blue", "Running"),

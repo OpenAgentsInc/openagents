@@ -15,6 +15,7 @@ use std::sync::Mutex;
 /// JSON-RPC request
 #[derive(Debug, Deserialize)]
 struct JsonRpcRequest {
+    #[allow(dead_code)]
     jsonrpc: String,
     id: Option<Value>,
     method: String,

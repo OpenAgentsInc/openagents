@@ -5,6 +5,7 @@ use super::layout;
 
 /// Project data structure for display
 #[derive(Debug)]
+#[allow(dead_code)]
 pub struct ProjectRow {
     pub id: String,
     pub name: String,
@@ -14,6 +15,7 @@ pub struct ProjectRow {
 }
 
 /// Full projects page
+#[allow(dead_code)]
 pub fn projects_page(projects: Vec<ProjectRow>) -> Markup {
     layout(
         "Projects - OpenAgents",
