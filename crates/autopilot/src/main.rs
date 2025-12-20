@@ -167,17 +167,23 @@ fn setup_cleanup_handlers() {
 
     // Use iterator-based signal handling for cleanup
     std::thread::spawn(|| {
-        let mut signals = signal_hook::iterator::Signals::new(&[
+        match signal_hook::iterator::Signals::new(&[
             signal_hook::consts::SIGINT,
             signal_hook::consts::SIGTERM,
-        ]).expect("Failed to create signal handler");
-
-        if let Some(sig) = signals.forever().next() {
-            cleanup_mcp_json();
-            // Note: lockfile intentionally NOT cleaned up here - stale lockfile indicates crash
-            // Re-raise signal to ensure proper exit
-            signal_hook::low_level::raise(sig).ok();
-            std::process::exit(128 + sig);
+        ]) {
+            Ok(mut signals) => {
+                if let Some(sig) = signals.forever().next() {
+                    cleanup_mcp_json();
+                    // Note: lockfile intentionally NOT cleaned up here - stale lockfile indicates crash
+                    // Re-raise signal to ensure proper exit
+                    signal_hook::low_level::raise(sig).ok();
+                    std::process::exit(128 + sig);
+                }
+            }
+            Err(e) => {
+                eprintln!("Warning: Failed to create signal handler: {}", e);
+                // Continue without signal handling
+            }
         }
     });
 }
@@ -1177,7 +1183,9 @@ async fn run_task(
             }
         }
     } else {
-        (cwd.unwrap_or_else(|| std::env::current_dir().unwrap()), issues_db, None)
+        (cwd.unwrap_or_else(|| {
+            std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."))
+        }), issues_db, None)
     };
 
     // Create session record if we have a project
@@ -1214,19 +1222,24 @@ async fn run_task(
 
         // Wait for server to start by reading stdout for the port
         use std::io::{BufRead, BufReader};
-        let stdout = child.stdout.take().expect("Failed to get stdout");
-        let reader = BufReader::new(stdout);
+        let port = if let Some(stdout) = child.stdout.take() {
+            let reader = BufReader::new(stdout);
 
-        let mut port = None;
-        for line in reader.lines().take(20).flatten() {
-            // Look for "DESKTOP_PORT=PORT"
-            if let Some(rest) = line.strip_prefix("DESKTOP_PORT=") {
-                if let Ok(p) = rest.trim().parse::<u16>() {
-                    port = Some(p);
-                    break;
+            let mut port = None;
+            for line in reader.lines().take(20).flatten() {
+                // Look for "DESKTOP_PORT=PORT"
+                if let Some(rest) = line.strip_prefix("DESKTOP_PORT=") {
+                    if let Ok(p) = rest.trim().parse::<u16>() {
+                        port = Some(p);
+                        break;
+                    }
                 }
             }
-        }
+            port
+        } else {
+            eprintln!("Warning: Failed to get stdout from desktop process");
+            None
+        };
 
         if let Some(p) = port {
             println!("{} Desktop running at http://127.0.0.1:{}/autopilot", "UI:".cyan().bold(), p);
@@ -1846,7 +1859,9 @@ async fn resume_task(
     with_issues: bool,
     issues_db: Option<PathBuf>,
 ) -> Result<()> {
-    let cwd = cwd.unwrap_or_else(|| std::env::current_dir().unwrap());
+    let cwd = cwd.unwrap_or_else(|| {
+        std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."))
+    });
 
     // Track original trajectory path for appending logs
     let original_trajectory_path = trajectory.clone();
@@ -1856,7 +1871,7 @@ async fn resume_task(
         println!("{} Continuing most recent session...", "Resume:".cyan().bold());
         None
     } else {
-        let path = trajectory.expect("trajectory path required");
+        let path = trajectory.ok_or_else(|| anyhow::anyhow!("trajectory path required for resume"))?;
         println!("{} Loading session from {:?}", "Resume:".cyan().bold(), path);
 
         let id = if path.extension().and_then(|e| e.to_str()) == Some("json") {
