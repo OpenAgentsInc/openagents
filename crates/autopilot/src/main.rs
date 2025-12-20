@@ -1472,7 +1472,8 @@ async fn run_task(
                 SessionStatus::Failed
             };
             let _ = session::update_session_status(&conn, sess_id, status);
-            let _ = session::update_session_metrics(&conn, sess_id, trajectory.usage.cost_usd, 0); // TODO: track issues completed
+            let issues_completed = trajectory.result.as_ref().map(|r| r.issues_completed as i32).unwrap_or(0);
+            let _ = session::update_session_metrics(&conn, sess_id, trajectory.usage.cost_usd, issues_completed);
         }
     }
 
