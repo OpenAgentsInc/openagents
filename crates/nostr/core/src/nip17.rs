@@ -21,7 +21,6 @@
 
 use crate::nip01::{Event, UnsignedEvent};
 use crate::nip59::{gift_wrap, unwrap_gift_wrap_full, Rumor};
-use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 /// Kind for chat messages
