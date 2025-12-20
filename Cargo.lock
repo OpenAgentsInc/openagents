@@ -447,13 +447,16 @@ name = "autopilot"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "async-trait",
  "chrono",
  "chrono-tz",
  "clap",
  "claude-agent-sdk",
  "colored",
+ "dirs",
  "futures",
  "issues",
+ "lazy_static",
  "serde",
  "serde_json",
  "signal-hook",
@@ -2381,6 +2384,7 @@ name = "issues-mcp"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "autopilot",
  "issues",
  "rusqlite",
  "serde",

@@ -2,7 +2,12 @@
 
 use anyhow::Result;
 use clap::{Parser, Subcommand};
-use claude_agent_sdk::{QueryOptions, SdkMessage, SettingSource, query};
+use claude_agent_sdk::{
+    QueryOptions, SdkMessage, SettingSource, query,
+    HookCallback, HookCallbackMatcher, HookEvent, HookInput, HookOutput,
+    SyncHookOutput,
+};
+use async_trait::async_trait;
 use colored::*;
 use futures::StreamExt;
 use serde_json::json;
@@ -303,6 +308,34 @@ fn resolve_model(model: &str) -> String {
     }
 }
 
+/// Plan mode hook to enforce restrictions
+struct PlanModeHook;
+
+#[async_trait]
+impl HookCallback for PlanModeHook {
+    async fn call(
+        &self,
+        input: HookInput,
+        _tool_use_id: Option<String>,
+    ) -> Result<HookOutput, claude_agent_sdk::Error> {
+        match input {
+            HookInput::PreToolUse(pre) => {
+                // Check if this tool is allowed in plan mode
+                if let Err(reason) = autopilot::planmode::is_tool_allowed_in_plan_mode(
+                    &pre.tool_name,
+                    &pre.tool_input,
+                ) {
+                    // Block the tool
+                    return Ok(SyncHookOutput::block(&reason).into());
+                }
+                // Allow the tool
+                Ok(SyncHookOutput::continue_execution().into())
+            }
+            _ => Ok(SyncHookOutput::continue_execution().into()),
+        }
+    }
+}
+
 /// Full auto mode prompt suffix
 const FULL_AUTO_PROMPT: &str = r#"
 
@@ -386,13 +419,20 @@ async fn run_task(
         }
     }
 
-    // Setup query options
+    // Setup query options with plan mode hook
+    let plan_mode_hook = std::sync::Arc::new(PlanModeHook);
+    let hook_matcher = HookCallbackMatcher::new().hook(plan_mode_hook);
+
+    let mut hooks = std::collections::HashMap::new();
+    hooks.insert(HookEvent::PreToolUse, vec![hook_matcher]);
+
     let options = QueryOptions::new()
         .model(&model)
         .max_turns(max_turns)
         .max_budget_usd(max_budget)
         .cwd(&cwd)
         .setting_sources(vec![SettingSource::Project, SettingSource::User])
+        .hooks(hooks)
         .dangerously_skip_permissions(true);
 
     // Write .mcp.json file for issue tracking MCP server if requested

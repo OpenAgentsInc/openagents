@@ -14,6 +14,7 @@ path = "src/main.rs"
 [dependencies]
 # Workspace crates
 issues.workspace = true
+autopilot.workspace = true
 
 # Database (for Connection type)
 rusqlite = { version = "0.32", features = ["bundled"] }
