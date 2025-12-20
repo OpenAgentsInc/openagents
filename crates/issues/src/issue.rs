@@ -1,0 +1,460 @@
+//! Issue struct and CRUD operations
+
+use chrono::{DateTime, Utc};
+use rusqlite::{Connection, OptionalExtension, Result, Row, params};
+use serde::{Deserialize, Serialize};
+use uuid::Uuid;
+
+use crate::db::next_issue_number;
+
+/// Issue status
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum Status {
+    #[default]
+    Open,
+    InProgress,
+    Done,
+}
+
+impl Status {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Status::Open => "open",
+            Status::InProgress => "in_progress",
+            Status::Done => "done",
+        }
+    }
+
+    pub fn from_str(s: &str) -> Self {
+        match s {
+            "in_progress" => Status::InProgress,
+            "done" => Status::Done,
+            _ => Status::Open,
+        }
+    }
+}
+
+/// Issue priority
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum Priority {
+    Urgent,
+    High,
+    #[default]
+    Medium,
+    Low,
+}
+
+impl Priority {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Priority::Urgent => "urgent",
+            Priority::High => "high",
+            Priority::Medium => "medium",
+            Priority::Low => "low",
+        }
+    }
+
+    pub fn from_str(s: &str) -> Self {
+        match s {
+            "urgent" => Priority::Urgent,
+            "high" => Priority::High,
+            "low" => Priority::Low,
+            _ => Priority::Medium,
+        }
+    }
+}
+
+/// Issue type
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum IssueType {
+    #[default]
+    Task,
+    Bug,
+    Feature,
+}
+
+impl IssueType {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            IssueType::Task => "task",
+            IssueType::Bug => "bug",
+            IssueType::Feature => "feature",
+        }
+    }
+
+    pub fn from_str(s: &str) -> Self {
+        match s {
+            "bug" => IssueType::Bug,
+            "feature" => IssueType::Feature,
+            _ => IssueType::Task,
+        }
+    }
+}
+
+/// An issue in the tracking system
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Issue {
+    pub id: String,
+    pub number: i32,
+    pub title: String,
+    pub description: Option<String>,
+    pub status: Status,
+    pub priority: Priority,
+    pub issue_type: IssueType,
+    pub is_blocked: bool,
+    pub blocked_reason: Option<String>,
+    pub claimed_by: Option<String>,
+    pub claimed_at: Option<DateTime<Utc>>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+    pub completed_at: Option<DateTime<Utc>>,
+}
+
+impl Issue {
+    fn from_row(row: &Row) -> Result<Self> {
+        Ok(Issue {
+            id: row.get("id")?,
+            number: row.get("number")?,
+            title: row.get("title")?,
+            description: row.get("description")?,
+            status: Status::from_str(&row.get::<_, String>("status")?),
+            priority: Priority::from_str(&row.get::<_, String>("priority")?),
+            issue_type: IssueType::from_str(&row.get::<_, String>("issue_type")?),
+            is_blocked: row.get::<_, i32>("is_blocked")? != 0,
+            blocked_reason: row.get("blocked_reason")?,
+            claimed_by: row.get("claimed_by")?,
+            claimed_at: row
+                .get::<_, Option<String>>("claimed_at")?
+                .and_then(|s| DateTime::parse_from_rfc3339(&s).ok())
+                .map(|dt| dt.with_timezone(&Utc)),
+            created_at: DateTime::parse_from_rfc3339(&row.get::<_, String>("created_at")?)
+                .map(|dt| dt.with_timezone(&Utc))
+                .unwrap_or_else(|_| Utc::now()),
+            updated_at: DateTime::parse_from_rfc3339(&row.get::<_, String>("updated_at")?)
+                .map(|dt| dt.with_timezone(&Utc))
+                .unwrap_or_else(|_| Utc::now()),
+            completed_at: row
+                .get::<_, Option<String>>("completed_at")?
+                .and_then(|s| DateTime::parse_from_rfc3339(&s).ok())
+                .map(|dt| dt.with_timezone(&Utc)),
+        })
+    }
+}
+
+/// Create a new issue
+pub fn create_issue(
+    conn: &Connection,
+    title: &str,
+    description: Option<&str>,
+    priority: Priority,
+    issue_type: IssueType,
+) -> Result<Issue> {
+    let id = Uuid::new_v4().to_string();
+    let number = next_issue_number(conn)?;
+    let now = Utc::now().to_rfc3339();
+
+    conn.execute(
+        r#"
+        INSERT INTO issues (id, number, title, description, priority, issue_type, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        "#,
+        params![
+            id,
+            number,
+            title,
+            description,
+            priority.as_str(),
+            issue_type.as_str(),
+            now,
+            now,
+        ],
+    )?;
+
+    get_issue_by_id(conn, &id)?.ok_or(rusqlite::Error::QueryReturnedNoRows)
+}
+
+/// Get an issue by ID
+pub fn get_issue_by_id(conn: &Connection, id: &str) -> Result<Option<Issue>> {
+    conn.query_row("SELECT * FROM issues WHERE id = ?", [id], Issue::from_row)
+        .optional()
+}
+
+/// Get an issue by number
+pub fn get_issue_by_number(conn: &Connection, number: i32) -> Result<Option<Issue>> {
+    conn.query_row(
+        "SELECT * FROM issues WHERE number = ?",
+        [number],
+        Issue::from_row,
+    )
+    .optional()
+}
+
+/// List all issues, optionally filtered by status
+pub fn list_issues(conn: &Connection, status: Option<Status>) -> Result<Vec<Issue>> {
+    let mut issues = Vec::new();
+
+    match status {
+        Some(s) => {
+            let mut stmt = conn.prepare("SELECT * FROM issues WHERE status = ? ORDER BY number")?;
+            let rows = stmt.query_map([s.as_str()], Issue::from_row)?;
+            for row in rows {
+                issues.push(row?);
+            }
+        }
+        None => {
+            let mut stmt = conn.prepare("SELECT * FROM issues ORDER BY number")?;
+            let rows = stmt.query_map([], Issue::from_row)?;
+            for row in rows {
+                issues.push(row?);
+            }
+        }
+    }
+
+    Ok(issues)
+}
+
+/// Get the next ready issue (open, not blocked, not claimed or claim expired)
+pub fn get_next_ready_issue(conn: &Connection) -> Result<Option<Issue>> {
+    conn.query_row(
+        r#"
+        SELECT * FROM issues
+        WHERE status = 'open'
+          AND is_blocked = 0
+          AND (claimed_by IS NULL OR claimed_at < datetime('now', '-15 minutes'))
+        ORDER BY
+          CASE priority
+            WHEN 'urgent' THEN 0
+            WHEN 'high' THEN 1
+            WHEN 'medium' THEN 2
+            WHEN 'low' THEN 3
+          END,
+          created_at ASC
+        LIMIT 1
+        "#,
+        [],
+        Issue::from_row,
+    )
+    .optional()
+}
+
+/// Claim an issue for a run
+pub fn claim_issue(conn: &Connection, issue_id: &str, run_id: &str) -> Result<bool> {
+    let now = Utc::now().to_rfc3339();
+    let updated = conn.execute(
+        r#"
+        UPDATE issues SET
+          status = 'in_progress',
+          claimed_by = ?,
+          claimed_at = ?,
+          updated_at = ?
+        WHERE id = ?
+          AND status = 'open'
+          AND is_blocked = 0
+          AND (claimed_by IS NULL OR claimed_at < datetime('now', '-15 minutes'))
+        "#,
+        params![run_id, now, now, issue_id],
+    )?;
+    Ok(updated > 0)
+}
+
+/// Release a claim on an issue (without completing it)
+pub fn unclaim_issue(conn: &Connection, issue_id: &str) -> Result<bool> {
+    let now = Utc::now().to_rfc3339();
+    let updated = conn.execute(
+        r#"
+        UPDATE issues SET
+          status = 'open',
+          claimed_by = NULL,
+          claimed_at = NULL,
+          updated_at = ?
+        WHERE id = ?
+        "#,
+        params![now, issue_id],
+    )?;
+    Ok(updated > 0)
+}
+
+/// Mark an issue as complete
+pub fn complete_issue(conn: &Connection, issue_id: &str) -> Result<bool> {
+    let now = Utc::now().to_rfc3339();
+    let updated = conn.execute(
+        r#"
+        UPDATE issues SET
+          status = 'done',
+          claimed_by = NULL,
+          claimed_at = NULL,
+          completed_at = ?,
+          updated_at = ?
+        WHERE id = ?
+        "#,
+        params![now, now, issue_id],
+    )?;
+    Ok(updated > 0)
+}
+
+/// Block an issue with a reason
+pub fn block_issue(conn: &Connection, issue_id: &str, reason: &str) -> Result<bool> {
+    let now = Utc::now().to_rfc3339();
+    let updated = conn.execute(
+        r#"
+        UPDATE issues SET
+          is_blocked = 1,
+          blocked_reason = ?,
+          status = 'open',
+          claimed_by = NULL,
+          claimed_at = NULL,
+          updated_at = ?
+        WHERE id = ?
+        "#,
+        params![reason, now, issue_id],
+    )?;
+    Ok(updated > 0)
+}
+
+/// Unblock an issue
+pub fn unblock_issue(conn: &Connection, issue_id: &str) -> Result<bool> {
+    let now = Utc::now().to_rfc3339();
+    let updated = conn.execute(
+        r#"
+        UPDATE issues SET
+          is_blocked = 0,
+          blocked_reason = NULL,
+          updated_at = ?
+        WHERE id = ?
+        "#,
+        params![now, issue_id],
+    )?;
+    Ok(updated > 0)
+}
+
+/// Update issue title and description
+pub fn update_issue(
+    conn: &Connection,
+    issue_id: &str,
+    title: Option<&str>,
+    description: Option<&str>,
+) -> Result<bool> {
+    let now = Utc::now().to_rfc3339();
+
+    match (title, description) {
+        (Some(t), Some(d)) => {
+            let updated = conn.execute(
+                "UPDATE issues SET title = ?, description = ?, updated_at = ? WHERE id = ?",
+                params![t, d, now, issue_id],
+            )?;
+            Ok(updated > 0)
+        }
+        (Some(t), None) => {
+            let updated = conn.execute(
+                "UPDATE issues SET title = ?, updated_at = ? WHERE id = ?",
+                params![t, now, issue_id],
+            )?;
+            Ok(updated > 0)
+        }
+        (None, Some(d)) => {
+            let updated = conn.execute(
+                "UPDATE issues SET description = ?, updated_at = ? WHERE id = ?",
+                params![d, now, issue_id],
+            )?;
+            Ok(updated > 0)
+        }
+        (None, None) => Ok(false),
+    }
+}
+
+/// Delete an issue (hard delete)
+pub fn delete_issue(conn: &Connection, issue_id: &str) -> Result<bool> {
+    // First delete related events
+    conn.execute("DELETE FROM issue_events WHERE issue_id = ?", [issue_id])?;
+    // Then delete the issue
+    let deleted = conn.execute("DELETE FROM issues WHERE id = ?", [issue_id])?;
+    Ok(deleted > 0)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::db::init_memory_db;
+
+    #[test]
+    fn test_create_and_get_issue() {
+        let conn = init_memory_db().unwrap();
+        let issue = create_issue(&conn, "Test issue", Some("Description"), Priority::High, IssueType::Bug).unwrap();
+
+        assert_eq!(issue.number, 1);
+        assert_eq!(issue.title, "Test issue");
+        assert_eq!(issue.description, Some("Description".to_string()));
+        assert_eq!(issue.priority, Priority::High);
+        assert_eq!(issue.issue_type, IssueType::Bug);
+        assert_eq!(issue.status, Status::Open);
+
+        let fetched = get_issue_by_number(&conn, 1).unwrap().unwrap();
+        assert_eq!(fetched.id, issue.id);
+    }
+
+    #[test]
+    fn test_claim_and_complete() {
+        let conn = init_memory_db().unwrap();
+        let issue = create_issue(&conn, "Task", None, Priority::Medium, IssueType::Task).unwrap();
+
+        // Claim it
+        assert!(claim_issue(&conn, &issue.id, "run-123").unwrap());
+
+        let claimed = get_issue_by_id(&conn, &issue.id).unwrap().unwrap();
+        assert_eq!(claimed.status, Status::InProgress);
+        assert_eq!(claimed.claimed_by, Some("run-123".to_string()));
+
+        // Complete it
+        assert!(complete_issue(&conn, &issue.id).unwrap());
+
+        let completed = get_issue_by_id(&conn, &issue.id).unwrap().unwrap();
+        assert_eq!(completed.status, Status::Done);
+        assert!(completed.claimed_by.is_none());
+        assert!(completed.completed_at.is_some());
+    }
+
+    #[test]
+    fn test_block_unblock() {
+        let conn = init_memory_db().unwrap();
+        let issue = create_issue(&conn, "Blocked task", None, Priority::Medium, IssueType::Task).unwrap();
+
+        // Block it
+        assert!(block_issue(&conn, &issue.id, "Waiting on dependency").unwrap());
+
+        let blocked = get_issue_by_id(&conn, &issue.id).unwrap().unwrap();
+        assert!(blocked.is_blocked);
+        assert_eq!(blocked.blocked_reason, Some("Waiting on dependency".to_string()));
+
+        // Should not appear in ready queue
+        assert!(get_next_ready_issue(&conn).unwrap().is_none());
+
+        // Unblock it
+        assert!(unblock_issue(&conn, &issue.id).unwrap());
+
+        let unblocked = get_issue_by_id(&conn, &issue.id).unwrap().unwrap();
+        assert!(!unblocked.is_blocked);
+        assert!(unblocked.blocked_reason.is_none());
+
+        // Should now appear in ready queue
+        let ready = get_next_ready_issue(&conn).unwrap().unwrap();
+        assert_eq!(ready.id, issue.id);
+    }
+
+    #[test]
+    fn test_priority_ordering() {
+        let conn = init_memory_db().unwrap();
+
+        // Create issues in reverse priority order
+        create_issue(&conn, "Low", None, Priority::Low, IssueType::Task).unwrap();
+        create_issue(&conn, "High", None, Priority::High, IssueType::Task).unwrap();
+        create_issue(&conn, "Urgent", None, Priority::Urgent, IssueType::Task).unwrap();
+        create_issue(&conn, "Medium", None, Priority::Medium, IssueType::Task).unwrap();
+
+        // Next ready should be urgent
+        let next = get_next_ready_issue(&conn).unwrap().unwrap();
+        assert_eq!(next.title, "Urgent");
+    }
+}

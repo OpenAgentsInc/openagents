@@ -28,7 +28,13 @@ pub fn init_db(path: &Path) -> Result<Connection> {
 pub fn init_memory_db() -> Result<Connection> {
     let conn = Connection::open_in_memory()?;
     conn.execute_batch("PRAGMA foreign_keys = ON;")?;
-    migrate_v1(&conn)?;
+
+    // Ensure schema_version table exists before migration
+    let version = get_schema_version(&conn)?;
+    if version < 1 {
+        migrate_v1(&conn)?;
+    }
+
     Ok(conn)
 }
 
@@ -78,30 +84,11 @@ fn migrate_v1(conn: &Connection) -> Result<()> {
         CREATE INDEX IF NOT EXISTS idx_issues_status ON issues(status);
         CREATE INDEX IF NOT EXISTS idx_issues_number ON issues(number);
 
-        -- Runs table
-        CREATE TABLE IF NOT EXISTS runs (
-            id TEXT PRIMARY KEY,
-            prompt TEXT NOT NULL,
-            status TEXT NOT NULL DEFAULT 'running',
-            model TEXT,
-            started_at TEXT NOT NULL,
-            ended_at TEXT,
-            duration_ms INTEGER,
-            tokens_in INTEGER DEFAULT 0,
-            tokens_out INTEGER DEFAULT 0,
-            cost_usd REAL DEFAULT 0,
-            issues_created INTEGER DEFAULT 0,
-            issues_completed INTEGER DEFAULT 0,
-            error_message TEXT
-        );
-
-        CREATE INDEX IF NOT EXISTS idx_runs_status ON runs(status);
-
-        -- Issue events table
+        -- Issue events table (audit log)
         CREATE TABLE IF NOT EXISTS issue_events (
             id TEXT PRIMARY KEY,
             issue_id TEXT NOT NULL REFERENCES issues(id),
-            run_id TEXT REFERENCES runs(id),
+            actor TEXT,
             event_type TEXT NOT NULL,
             old_value TEXT,
             new_value TEXT,
