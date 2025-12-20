@@ -487,4 +487,58 @@ mod tests {
         let next = get_next_ready_issue(&conn).unwrap().unwrap();
         assert_eq!(next.title, "Urgent");
     }
+
+    #[test]
+    fn test_delete_issue() {
+        let conn = init_memory_db().unwrap();
+
+        // Create an issue
+        let issue = create_issue(&conn, "Test delete", None, Priority::Medium, IssueType::Task).unwrap();
+
+        // Verify it exists
+        assert!(get_issue_by_id(&conn, &issue.id).unwrap().is_some());
+        assert!(get_issue_by_number(&conn, issue.number).unwrap().is_some());
+
+        // Delete it
+        assert!(delete_issue(&conn, &issue.id).unwrap());
+
+        // Verify it's gone
+        assert!(get_issue_by_id(&conn, &issue.id).unwrap().is_none());
+        assert!(get_issue_by_number(&conn, issue.number).unwrap().is_none());
+    }
+
+    #[test]
+    fn test_delete_nonexistent_issue() {
+        let conn = init_memory_db().unwrap();
+
+        // Try to delete an issue that doesn't exist
+        assert!(!delete_issue(&conn, "nonexistent-id").unwrap());
+    }
+
+    #[test]
+    fn test_delete_issue_with_events() {
+        let conn = init_memory_db().unwrap();
+
+        // Create an issue
+        let issue = create_issue(&conn, "Issue with events", None, Priority::High, IssueType::Bug).unwrap();
+
+        // Add an event manually (simulating the event log)
+        conn.execute(
+            "INSERT INTO issue_events (id, issue_id, event_type, created_at) VALUES (?, ?, ?, datetime('now'))",
+            ["event-1", &issue.id, "created"]
+        ).unwrap();
+
+        // Delete the issue - should cascade delete events
+        assert!(delete_issue(&conn, &issue.id).unwrap());
+
+        // Verify issue and events are gone
+        assert!(get_issue_by_id(&conn, &issue.id).unwrap().is_none());
+
+        let event_count: i32 = conn.query_row(
+            "SELECT COUNT(*) FROM issue_events WHERE issue_id = ?",
+            [&issue.id],
+            |row| row.get(0)
+        ).unwrap();
+        assert_eq!(event_count, 0);
+    }
 }
