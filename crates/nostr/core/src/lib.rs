@@ -25,6 +25,7 @@ mod nip02;
 mod nip04;
 #[cfg(feature = "full")]
 mod nip06;
+mod nip10;
 mod nip25;
 mod nip28;
 #[cfg(feature = "full")]
@@ -66,6 +67,11 @@ pub use nip06::{
     Keypair, Nip06Error, derive_keypair, derive_keypair_full, derive_keypair_with_account,
     mnemonic_to_seed, npub_to_public_key, nsec_to_private_key, private_key_to_nsec,
     public_key_to_npub,
+};
+
+// NIP-10: Text Notes and Threads
+pub use nip10::{
+    ETagMarker, EventReference, Nip10Error, TEXT_NOTE_KIND, TextNote,
 };
 
 // NIP-25: Reactions
