@@ -13,7 +13,7 @@
     "claimed_by": null,
     "claimed_at": null,
     "created_at": "2025-12-20T16:59:41.173094342Z",
-    "updated_at": "2025-12-20T17:00:01.864088274Z",
+    "updated_at": "2025-12-20T20:36:49.299852433Z",
     "completed_at": null
   },
   {
@@ -30,7 +30,7 @@
     "claimed_by": null,
     "claimed_at": null,
     "created_at": "2025-12-20T17:41:39.380178404Z",
-    "updated_at": "2025-12-20T17:42:05.136400252Z",
+    "updated_at": "2025-12-20T20:36:49.304097769Z",
     "completed_at": null
   },
   {
@@ -47,7 +47,7 @@
     "claimed_by": null,
     "claimed_at": null,
     "created_at": "2025-12-20T17:47:32.433214889Z",
-    "updated_at": "2025-12-20T17:47:55.808073613Z",
+    "updated_at": "2025-12-20T20:36:49.307714419Z",
     "completed_at": null
   },
   {
@@ -64,7 +64,7 @@
     "claimed_by": null,
     "claimed_at": null,
     "created_at": "2025-12-20T17:55:10.095409568Z",
-    "updated_at": "2025-12-20T17:55:25.487703509Z",
+    "updated_at": "2025-12-20T20:36:49.311085943Z",
     "completed_at": null
   },
   {
@@ -81,7 +81,7 @@
     "claimed_by": null,
     "claimed_at": null,
     "created_at": "2025-12-20T19:01:41.746716753Z",
-    "updated_at": "2025-12-20T19:02:51.212017448Z",
+    "updated_at": "2025-12-20T20:36:49.319358206Z",
     "completed_at": null
   },
   {
@@ -98,7 +98,7 @@
     "claimed_by": null,
     "claimed_at": null,
     "created_at": "2025-12-20T19:08:15.065491549Z",
-    "updated_at": "2025-12-20T19:11:24.916632631Z",
+    "updated_at": "2025-12-20T20:36:49.322846526Z",
     "completed_at": null
   },
   {
@@ -115,7 +115,7 @@
     "claimed_by": null,
     "claimed_at": null,
     "created_at": "2025-12-20T19:11:35.569038662Z",
-    "updated_at": "2025-12-20T19:12:07.513406764Z",
+    "updated_at": "2025-12-20T20:36:49.326488056Z",
     "completed_at": null
   },
   {
@@ -132,7 +132,7 @@
     "claimed_by": null,
     "claimed_at": null,
     "created_at": "2025-12-20T19:12:17.483462981Z",
-    "updated_at": "2025-12-20T19:12:37.837028354Z",
+    "updated_at": "2025-12-20T20:36:49.330508979Z",
     "completed_at": null
   },
   {
@@ -149,7 +149,7 @@
     "claimed_by": null,
     "claimed_at": null,
     "created_at": "2025-12-20T19:12:49.184154476Z",
-    "updated_at": "2025-12-20T19:13:07.338562996Z",
+    "updated_at": "2025-12-20T20:36:49.334482790Z",
     "completed_at": null
   },
   {
@@ -166,7 +166,7 @@
     "claimed_by": null,
     "claimed_at": null,
     "created_at": "2025-12-20T19:15:52.882418836Z",
-    "updated_at": "2025-12-20T19:16:19.036950103Z",
+    "updated_at": "2025-12-20T20:36:49.338574753Z",
     "completed_at": null
   },
   {
@@ -183,7 +183,7 @@
     "claimed_by": null,
     "claimed_at": null,
     "created_at": "2025-12-20T19:18:06.120234035Z",
-    "updated_at": "2025-12-20T19:18:21.166197512Z",
+    "updated_at": "2025-12-20T20:36:49.342784670Z",
     "completed_at": null
   },
   {
@@ -200,7 +200,7 @@
     "claimed_by": null,
     "claimed_at": null,
     "created_at": "2025-12-20T19:18:34.127002796Z",
-    "updated_at": "2025-12-20T19:20:20.687171740Z",
+    "updated_at": "2025-12-20T20:36:49.347100863Z",
     "completed_at": null
   },
   {
@@ -217,7 +217,7 @@
     "claimed_by": null,
     "claimed_at": null,
     "created_at": "2025-12-20T19:20:26.834286263Z",
-    "updated_at": "2025-12-20T19:20:47.974309236Z",
+    "updated_at": "2025-12-20T20:36:49.351425919Z",
     "completed_at": null
   },
   {
@@ -234,7 +234,7 @@
     "claimed_by": null,
     "claimed_at": null,
     "created_at": "2025-12-20T19:34:53.331155687Z",
-    "updated_at": "2025-12-20T19:35:30.959204939Z",
+    "updated_at": "2025-12-20T20:36:49.355878068Z",
     "completed_at": null
   },
   {
@@ -251,7 +251,7 @@
     "claimed_by": null,
     "claimed_at": null,
     "created_at": "2025-12-20T19:35:00.952998529Z",
-    "updated_at": "2025-12-20T19:35:47.191362396Z",
+    "updated_at": "2025-12-20T20:36:49.360744051Z",
     "completed_at": null
   },
   {
@@ -268,7 +268,7 @@
     "claimed_by": null,
     "claimed_at": null,
     "created_at": "2025-12-20T19:35:06.833645659Z",
-    "updated_at": "2025-12-20T19:36:08.721442084Z",
+    "updated_at": "2025-12-20T20:36:49.365809648Z",
     "completed_at": null
   },
   {
@@ -285,58 +285,7 @@
     "claimed_by": null,
     "claimed_at": null,
     "created_at": "2025-12-20T19:47:22.081333873Z",
-    "updated_at": "2025-12-20T19:48:03.562641653Z",
-    "completed_at": null
-  },
-  {
-    "id": "050cf8e2-19a5-4929-8660-072a129e5f85",
-    "number": 147,
-    "title": "Add JSON export command for issues",
-    "description": "Add `cargo autopilot export` command to export issues table to JSON.\n\nFeatures:\n- Export issues to JSON file (default: `.openagents/issues.json`)\n- Option to include/exclude completed issues\n- Sanitize sensitive fields (exclude prompts from sessions)\n- Only export issues table (not sessions/events which are machine-specific)\n\nSee: docs/logs/20251220/1024-issue-sync-plan.md",
-    "status": "inprogress",
-    "priority": "high",
-    "issue_type": "feature",
-    "agent": "claude",
-    "is_blocked": false,
-    "blocked_reason": null,
-    "claimed_by": "autonomous_loop_20251220",
-    "claimed_at": "2025-12-20T20:29:09.688001827Z",
-    "created_at": "2025-12-20T20:26:54.114643374Z",
-    "updated_at": "2025-12-20T20:29:09.688001827Z",
-    "completed_at": null
-  },
-  {
-    "id": "33566c30-130e-4142-8e8b-3d181ffea799",
-    "number": 148,
-    "title": "Add JSON import command for issues",
-    "description": "Add `cargo autopilot import` command to import issues from JSON.\n\nFeatures:\n- Read JSON file and merge into local database\n- Merge strategy: skip if same UUID exists, or force update flag\n- Preserve local issue_counter (renumber if conflicts)\n- Handle issue_events table appropriately\n\nSee: docs/logs/20251220/1024-issue-sync-plan.md",
-    "status": "open",
-    "priority": "high",
-    "issue_type": "feature",
-    "agent": "claude",
-    "is_blocked": false,
-    "blocked_reason": null,
-    "claimed_by": null,
-    "claimed_at": null,
-    "created_at": "2025-12-20T20:26:54.147520300Z",
-    "updated_at": "2025-12-20T20:26:54.147520300Z",
-    "completed_at": null
-  },
-  {
-    "id": "4f0e6262-b407-41e4-92f4-5f29fa9cbf5d",
-    "number": 149,
-    "title": "Update gitignore to whitelist issues.json for sync",
-    "description": "Add exception to .gitignore so `.openagents/issues.json` is tracked in git.\n\nCurrently `*.db` is ignored, need to ensure the JSON export file is NOT ignored so it can be committed and synced between machines.\n\nSee: docs/logs/20251220/1024-issue-sync-plan.md",
-    "status": "open",
-    "priority": "medium",
-    "issue_type": "task",
-    "agent": "claude",
-    "is_blocked": false,
-    "blocked_reason": null,
-    "claimed_by": null,
-    "claimed_at": null,
-    "created_at": "2025-12-20T20:26:54.179984670Z",
-    "updated_at": "2025-12-20T20:26:54.179984670Z",
+    "updated_at": "2025-12-20T20:36:49.370591689Z",
     "completed_at": null
   },
   {
@@ -348,12 +297,12 @@
     "priority": "low",
     "issue_type": "feature",
     "agent": "claude",
-    "is_blocked": false,
-    "blocked_reason": null,
+    "is_blocked": true,
+    "blocked_reason": "This is a phase 2 feature that requires significant design and implementation work including Nostr integration, event signing, relay management, and conflict resolution. Would consume substantial budget and tokens. Phase 1 (JSON export/import) is now complete and sufficient for cross-machine sync. This should be tackled in a dedicated session focused on Nostr integration.",
     "claimed_by": null,
     "claimed_at": null,
     "created_at": "2025-12-20T20:26:54.211803959Z",
-    "updated_at": "2025-12-20T20:26:54.211803959Z",
+    "updated_at": "2025-12-20T20:38:22.651200685Z",
     "completed_at": null
   }
 ]
