@@ -1,5 +1,7 @@
 [alias]
 autopilot = "run -p autopilot --"
+autopilotd = "run -p autopilot --bin autopilotd --"
+daemon = "run -p autopilot --bin autopilotd --"
 fullauto = ["run", "-p", "autopilot", "--", "run", "--with-issues", "--full-auto", "--max-turns", "99999", "--max-budget", "300", "Begin autonomous work. Call issue_ready to get the first issue, or if none exist, review the active directives and create issues to advance them."]
 desktop = "run -p desktop"
 storybook = "run -p storybook"

@@ -49,7 +49,7 @@ impl Default for MemoryConfig {
     fn default() -> Self {
         Self {
             min_available_bytes: 2 * 1024 * 1024 * 1024,        // 2 GB
-            critical_threshold_bytes: 1 * 1024 * 1024 * 1024,   // 1 GB
+            critical_threshold_bytes: 1024 * 1024 * 1024,   // 1 GB
             poll_interval_ms: 5000,                              // 5 seconds
             node_kill_threshold_bytes: 500 * 1024 * 1024,        // 500 MB
         }
