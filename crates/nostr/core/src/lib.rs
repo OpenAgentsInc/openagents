@@ -16,6 +16,7 @@
 //! - NIP-19: bech32-encoded entities
 //! - NIP-20: Command Results (deprecated, moved to NIP-01)
 //! - NIP-21: nostr: URI scheme
+//! - NIP-22: Comment
 //! - NIP-23: Long-form Content
 //! - NIP-25: Reactions
 //! - NIP-27: Text Note References
@@ -55,6 +56,7 @@ mod nip18;
 mod nip19;
 mod nip20;
 mod nip21;
+mod nip22;
 mod nip23;
 mod nip25;
 mod nip27;
@@ -157,6 +159,13 @@ pub use nip20::{CommandResult, Nip20Error, NoticeMessage, OkMessage};
 // NIP-21: nostr: URI scheme
 pub use nip21::{
     NOSTR_URI_SCHEME, Nip21Error, from_nostr_uri, is_nostr_uri, strip_nostr_prefix, to_nostr_uri,
+};
+
+// NIP-22: Comment
+pub use nip22::{
+    COMMENT_KIND, Nip22Error, create_comment_tags, get_parent_address, get_parent_event_id,
+    get_parent_kind, get_root_address, get_root_event_id, get_root_kind, is_comment,
+    validate_comment,
 };
 
 // NIP-23: Long-form Content
