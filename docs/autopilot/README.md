@@ -121,6 +121,67 @@ autopilot.db          # SQLite database for issues
 docs/logs/            # Trajectory logs
 ```
 
+## Plan Mode
+
+Plan mode is a structured workflow for exploring and designing before executing:
+
+### What is Plan Mode?
+
+Plan mode creates a restricted environment where agents can:
+- **Explore** the codebase (read files, search code)
+- **Design** implementation approaches (analyze, plan)
+- **Launch subagents** for parallel investigation
+- **Ask questions** to clarify requirements
+
+But **cannot**:
+- Write files (except the plan file)
+- Commit or push to git
+- Execute destructive bash commands
+
+### Using Plan Mode
+
+Plan mode is entered via MCP tools:
+
+```bash
+# Enter plan mode
+issue_enter_plan_mode(slug="feature-name", goal="Implement X")
+
+# Exit plan mode (validates plan completeness)
+issue_exit_plan_mode()
+```
+
+### Plan Phases
+
+Plans progress through 4 phases:
+
+1. **Explore** - Understand codebase and requirements
+2. **Design** - Evaluate approaches and create plan
+3. **Review** - Validate plan completeness
+4. **Final** - Prepare for implementation
+
+### Subagents in Plan Mode
+
+The planmode module provides helper functions for launching specialized subagents:
+
+```rust
+use autopilot::planmode::{explore_agent_prompt, plan_agent_prompt};
+
+// Launch an explore agent
+let prompt = explore_agent_prompt(
+    "authentication system",
+    "Find all auth-related code and patterns"
+);
+
+// Launch a plan agent
+let prompt = plan_agent_prompt(
+    "add OAuth support",
+    "Current auth uses JWT tokens",
+    "simplicity" // or "performance", "maintainability", etc.
+);
+```
+
+Agents can be launched in parallel (up to 3 recommended) and their findings incorporated into the plan file.
+
 ## MCP Tools Available
 
 When running with `--with-issues`:
@@ -134,3 +195,5 @@ When running with `--with-issues`:
 | `issue_complete` | Mark issue done |
 | `issue_block` | Block issue with reason |
 | `issue_ready` | Get next ready issue |
+| `enter_plan_mode` | Enter structured planning mode |
+| `exit_plan_mode` | Exit plan mode and validate plan |

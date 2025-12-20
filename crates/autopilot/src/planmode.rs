@@ -11,11 +11,51 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::RwLock;
 
+/// Plan phases for structured exploration and design
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PlanPhase {
+    /// Explore phase: understand codebase and requirements
+    Explore,
+    /// Design phase: evaluate approaches and create plan
+    Design,
+    /// Review phase: validate plan completeness
+    Review,
+    /// Final phase: prepare for implementation
+    Final,
+    /// Exit phase: plan mode completed
+    Exit,
+}
+
+impl PlanPhase {
+    /// Get the phase name as a string
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            PlanPhase::Explore => "explore",
+            PlanPhase::Design => "design",
+            PlanPhase::Review => "review",
+            PlanPhase::Final => "final",
+            PlanPhase::Exit => "exit",
+        }
+    }
+
+    /// Get the next phase
+    pub fn next(&self) -> Option<PlanPhase> {
+        match self {
+            PlanPhase::Explore => Some(PlanPhase::Design),
+            PlanPhase::Design => Some(PlanPhase::Review),
+            PlanPhase::Review => Some(PlanPhase::Final),
+            PlanPhase::Final => Some(PlanPhase::Exit),
+            PlanPhase::Exit => None,
+        }
+    }
+}
+
 /// Global plan mode state
 static PLAN_MODE_ACTIVE: AtomicBool = AtomicBool::new(false);
 
 lazy_static::lazy_static! {
     static ref PLAN_FILE_PATH: RwLock<Option<PathBuf>> = RwLock::new(None);
+    static ref CURRENT_PHASE: RwLock<PlanPhase> = RwLock::new(PlanPhase::Explore);
 }
 
 /// Plan mode configuration
@@ -61,6 +101,12 @@ pub fn enter_plan_mode(config: PlanModeConfig) -> Result<String, String> {
         *path = Some(config.plan_file.clone());
     }
 
+    // Reset to explore phase
+    {
+        let mut phase = CURRENT_PHASE.write().map_err(|e| e.to_string())?;
+        *phase = PlanPhase::Explore;
+    }
+
     // Create initial plan file template
     let template = format!(
 r#"# Plan: {}
@@ -68,20 +114,33 @@ r#"# Plan: {}
 ## Goal
 {}
 
-## Current Understanding
+## Phase 1: Explore
+### Current Understanding
 [Document your understanding of the codebase and requirements here]
 
-## Approach Options
+### Subagent Findings
+[Results from explore agents investigating the codebase]
+
+## Phase 2: Design
+### Approach Options
 [List different implementation approaches with pros/cons]
 
-## Recommended Approach
+### Recommended Approach
 [Describe the recommended approach in detail]
 
-## Implementation Steps
+### Subagent Analysis
+[Results from plan agents analyzing different perspectives]
+
+## Phase 3: Review
+### Implementation Steps
 [Break down into specific, actionable steps]
 
-## Risks & Considerations
+### Risks & Considerations
 [List potential issues, edge cases, dependencies]
+
+## Phase 4: Final
+### Ready for Implementation
+[Confirm all planning is complete and ready to exit plan mode]
 "#,
         config.plan_file.file_stem()
             .and_then(|s| s.to_str())
@@ -148,6 +207,64 @@ pub fn is_plan_file(path: &Path) -> bool {
     } else {
         false
     }
+}
+
+/// Get the current plan phase
+pub fn get_current_phase() -> PlanPhase {
+    CURRENT_PHASE.read().ok().map(|p| *p).unwrap_or(PlanPhase::Explore)
+}
+
+/// Advance to the next plan phase
+pub fn advance_phase() -> Result<PlanPhase, String> {
+    let mut phase = CURRENT_PHASE.write().map_err(|e| e.to_string())?;
+    *phase = phase.next().ok_or("Already at final phase")?;
+    Ok(*phase)
+}
+
+/// Set the current plan phase
+pub fn set_phase(new_phase: PlanPhase) -> Result<(), String> {
+    let mut phase = CURRENT_PHASE.write().map_err(|e| e.to_string())?;
+    *phase = new_phase;
+    Ok(())
+}
+
+/// Generate a prompt for an explore subagent
+pub fn explore_agent_prompt(topic: &str, focus: &str) -> String {
+    format!(
+        r#"You are an exploration agent investigating: {}
+
+Focus: {}
+
+Your task:
+1. Use Glob, Grep, and Read tools to search for relevant code, patterns, and structures
+2. After each tool call, note what you learned
+3. Be efficient - prioritize the most relevant files
+4. Summarize your findings with file lists and key insights
+
+Remember: You're gathering information to help plan an implementation. Focus on understanding existing patterns, architecture, and constraints."#,
+        topic, focus
+    )
+}
+
+/// Generate a prompt for a plan subagent
+pub fn plan_agent_prompt(feature: &str, context: &str, perspective: &str) -> String {
+    format!(
+        r#"You are a planning agent designing: {}
+
+Context from exploration:
+{}
+
+Perspective: {} (focus on this aspect in your analysis)
+
+Your task:
+1. Read relevant files for deeper context
+2. Analyze trade-offs of different approaches
+3. Consider the specified perspective in your analysis
+4. Produce a structured implementation plan
+
+Remember: You're designing an approach, not implementing it. Focus on architecture, patterns, and decision rationale."#,
+        feature, context, perspective
+    )
 }
 
 /// Check if a tool should be allowed in plan mode
