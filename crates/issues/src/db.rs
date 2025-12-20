@@ -5,7 +5,7 @@ use std::path::Path;
 
 /// Current schema version
 #[allow(dead_code)]
-const SCHEMA_VERSION: i32 = 5;
+const SCHEMA_VERSION: i32 = 6;
 
 /// Initialize the database with migrations
 pub fn init_db(path: &Path) -> Result<Connection> {
@@ -33,6 +33,9 @@ pub fn init_db(path: &Path) -> Result<Connection> {
     if version < 5 {
         migrate_v5(&conn)?;
     }
+    if version < 6 {
+        migrate_v6(&conn)?;
+    }
 
     Ok(conn)
 }
@@ -58,6 +61,9 @@ pub fn init_memory_db() -> Result<Connection> {
     }
     if version < 5 {
         migrate_v5(&conn)?;
+    }
+    if version < 6 {
+        migrate_v6(&conn)?;
     }
 
     Ok(conn)
@@ -263,6 +269,22 @@ fn migrate_v5(conn: &Connection) -> Result<()> {
     )?;
 
     set_schema_version(conn, 5)?;
+    Ok(())
+}
+
+fn migrate_v6(conn: &Connection) -> Result<()> {
+    // Add directive_id column to issues table for linking issues to directives
+    conn.execute_batch(
+        r#"
+        -- Add directive_id column for linking issues to directives
+        ALTER TABLE issues ADD COLUMN directive_id TEXT;
+
+        -- Index for efficient directive lookups
+        CREATE INDEX IF NOT EXISTS idx_issues_directive ON issues(directive_id);
+        "#,
+    )?;
+
+    set_schema_version(conn, 6)?;
     Ok(())
 }
 
