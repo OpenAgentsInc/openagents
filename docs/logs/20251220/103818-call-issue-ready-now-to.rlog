@@ -2173,3 +2173,27 @@ o: id=TN4gzvEH → [ok] The file /home/christopherdavid/code/openagents/crates/c
 t!:Bash id=x84ShXQ2 cmd="cargo test -p compute --test storage_secure_store" → [running] tokens_in=0 tokens_out=26 tokens_cached=145605
 o: id=x84ShXQ2 → [ok] running 25 tests
 t!:Bash id=zihpfPtf cmd="git add -A && git commit -m "$(cat <<'EOF'" → [running] tokens_in=0 tokens_out=332 tokens_cached=146646
+o: id=zihpfPtf → [ok] [main 9a50ef9f0] Add comprehensive unit tests for SecureStore encryption module
+t!:Bash id=zhpUvJ8W cmd="git push origin main" → [running] tokens_in=0 tokens_out=25 tokens_cached=147187
+o: id=zhpUvJ8W → [ok] [0;36m🔍 Running cargo build to check for errors and warnings...[0m
+t!:mcp__issues__issue_complete id=BgT4RW9C  → [running] tokens_in=0 tokens_out=32 tokens_cached=147731
+o: id=BgT4RW9C → [ok] Completed issue #48
+t!:mcp__issues__issue_ready id=xzHACmF7  → [running] tokens_in=0 tokens_out=8 tokens_cached=147930
+o: id=xzHACmF7 → [ok] No ready issues available
+t!:mcp__issues__issue_create id=r8DmZNHp  → [running] tokens_in=0 tokens_out=8 tokens_cached=148042
+o: id=r8DmZNHp → [ok] Created issue #49: Add integration tests for nostr core crate (agent: claude)
+t!:mcp__issues__issue_ready id=kNB3GPNh  → [running] tokens_in=0 tokens_out=8 tokens_cached=148242
+o: id=kNB3GPNh → [ok] {
+t!:mcp__issues__issue_claim id=PKkfk6Bt  → [running] tokens_in=0 tokens_out=8 tokens_cached=148480
+o: id=PKkfk6Bt → [ok] Claimed issue #49
+t!:Glob id=uRDiwu4y pattern="**/*.rs" → [running] tokens_in=0 tokens_out=94 tokens_cached=148664
+o: id=uRDiwu4y → [ok] /home/christopherdavid/code/openagents/crates/nostr/core/src/nip01.rs
+t!:Read id=FXLbK1kX file_path=/home/christopherdavid/code/openagents/crates/nostr/core/src/nip06.rs → [running] tokens_in=2 tokens_out=25 tokens_cached=148902
+o: id=FXLbK1kX → [ok]      1→//! NIP-06: Basic key derivation from mnemonic seed phrase.
+t!:Write id=Kiin4JMF file_path=/home/christopherdavid/code/openagents/crates/nostr/core/tests/nip06_integration.rs → [running] tokens_in=1 tokens_out=2301 tokens_cached=149342
+o: id=Kiin4JMF → [ok] File created successfully at: /home/christopherdavid/code/openagents/crates/nostr/core/tests/nip0...
+t!:Bash id=ZWifQDZx cmd="cargo test -p nostr --test nip06_integration" → [running] tokens_in=0 tokens_out=106 tokens_cached=150678
+o: id=ZWifQDZx → [ok] running 20 tests
+t!:Edit id=6Ruzkx5p file_path=/home/christopherdavid/code/openagents/crates/nostr/core/tests/nip06_integration.rs → [running] tokens_in=0 tokens_out=18 tokens_cached=153164
+o: id=6Ruzkx5p → [ok] The file /home/christopherdavid/code/openagents/crates/nostr/core/tests/nip06_integration.rs has ...
+t!:Bash id=NCed7wTS cmd="git add -A && git commit -m "$(cat <<'EOF'" → [running] tokens_in=0 tokens_out=26 tokens_cached=153838
