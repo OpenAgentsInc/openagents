@@ -111,6 +111,10 @@ enum Commands {
         /// Path to issues database (default: autopilot.db in cwd)
         #[arg(long)]
         issues_db: Option<PathBuf>,
+
+        /// Full auto mode: continuously work on issues and discover new work
+        #[arg(long, default_value_t = default_full_auto())]
+        full_auto: bool,
     },
 }
 
@@ -134,10 +138,11 @@ async fn main() -> Result<()> {
             verbose,
             with_issues,
             issues_db,
+            full_auto,
         } => {
             run_task(
                 prompt, cwd, model, max_turns, max_budget, output_dir, slug, dry_run, verbose,
-                with_issues, issues_db,
+                with_issues, issues_db, full_auto,
             )
             .await
         }
@@ -147,6 +152,13 @@ async fn main() -> Result<()> {
 /// Get default model from environment or fallback to "sonnet"
 fn default_model() -> String {
     std::env::var("AUTOPILOT_MODEL").unwrap_or_else(|_| "sonnet".to_string())
+}
+
+/// Get default full_auto from environment or fallback to false
+fn default_full_auto() -> bool {
+    std::env::var("AUTOPILOT_FULL_AUTO")
+        .map(|v| v == "1" || v.to_lowercase() == "true")
+        .unwrap_or(false)
 }
 
 /// Map friendly model names to full model IDs
@@ -160,6 +172,23 @@ fn resolve_model(model: &str) -> String {
     }
 }
 
+/// Full auto mode prompt suffix
+const FULL_AUTO_PROMPT: &str = r#"
+
+FULL AUTO MODE: You are in autonomous mode. Your workflow:
+1. Call issue_ready to get the next available issue
+2. If an issue exists: claim it, implement it, test it, commit, complete it
+3. After completing, call issue_ready again for the next issue
+4. When issue_ready returns "No ready issues available":
+   - Analyze the codebase to understand the project direction
+   - Identify the most logical next improvement or feature
+   - Create a new issue using issue_create with your recommendation
+   - Immediately claim and implement it
+5. Continue this loop until max_budget is reached
+
+Never stop. Always keep working. Always keep improving.
+"#;
+
 async fn run_task(
     prompt: String,
     cwd: Option<PathBuf>,
@@ -172,6 +201,7 @@ async fn run_task(
     verbose: bool,
     with_issues: bool,
     issues_db: Option<PathBuf>,
+    full_auto: bool,
 ) -> Result<()> {
     let cwd = cwd.unwrap_or_else(|| std::env::current_dir().unwrap());
 
@@ -188,9 +218,19 @@ async fn run_task(
     // Setup output directory
     let output_dir = output_dir.unwrap_or_else(|| PathBuf::from("docs/logs").join(date_dir()));
 
-    println!("{} {}", "Running:".cyan().bold(), prompt);
+    // Enhance prompt for full-auto mode
+    let prompt = if full_auto {
+        format!("{}{}", prompt, FULL_AUTO_PROMPT)
+    } else {
+        prompt
+    };
+
+    println!("{} {}", "Running:".cyan().bold(), prompt.lines().next().unwrap_or(&prompt));
     println!("{} {}", "Model:".dimmed(), model);
     println!("{} {}", "CWD:".dimmed(), cwd.display());
+    if full_auto {
+        println!("{} {}", "Mode:".magenta().bold(), "FULL AUTO");
+    }
     println!();
 
     // Create trajectory collector
@@ -369,17 +409,15 @@ fn print_message(msg: &SdkMessage) {
 fn print_progress(msg: &SdkMessage) {
     match msg {
         SdkMessage::ToolProgress(p) => {
-            print!(
-                "\r{} {} ({:.1}s)    ",
+            println!(
+                "{} {} ({:.1}s)",
                 "Working:".yellow(),
                 p.tool_name,
                 p.elapsed_time_seconds
             );
-            use std::io::Write;
-            std::io::stdout().flush().ok();
         }
         SdkMessage::Result(_) => {
-            println!();
+            println!("{}", "Complete".green());
         }
         SdkMessage::Assistant(a) => {
             // Show tool calls
@@ -387,9 +425,7 @@ fn print_progress(msg: &SdkMessage) {
                 for block in content {
                     if block.get("type").and_then(|t| t.as_str()) == Some("tool_use") {
                         let tool = block.get("name").and_then(|n| n.as_str()).unwrap_or("");
-                        print!("\r{} {}           ", "Calling:".blue(), tool);
-                        use std::io::Write;
-                        std::io::stdout().flush().ok();
+                        println!("{} {}", "Calling:".blue(), tool);
                     }
                 }
             }
