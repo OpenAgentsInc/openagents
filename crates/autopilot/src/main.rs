@@ -157,6 +157,15 @@ async fn check_and_handle_stale_lockfile(cwd: &PathBuf) -> Result<()> {
             if let Some(i) = issue::get_issue_by_number(&conn, issue_num)? {
                 if issue::block_issue(&conn, &i.id, &reason)? {
                     eprintln!("{} Blocked issue #{}", "✓".green(), issue_num);
+
+                    // Print resume hint
+                    if let Some(ref rlog) = lockfile.rlog_path {
+                        eprintln!();
+                        eprintln!("{}", "=".repeat(60).yellow());
+                        eprintln!("{} To resume crashed session:", "→".cyan());
+                        eprintln!("  {}", format!("autopilot resume {}", rlog).cyan());
+                        eprintln!("{}", "=".repeat(60).yellow());
+                    }
                 } else {
                     eprintln!("{} Could not block issue #{}", "✗".red(), issue_num);
                 }
@@ -945,6 +954,33 @@ async fn run_task(
         let json_path = output_dir.join(filename(&slug, "json"));
         std::fs::write(&json_path, &json_content)?;
         println!("{} {}", "Saved:".green(), json_path.display());
+
+        // Print resume hints if session failed or was interrupted
+        if let Some(ref result) = trajectory.result {
+            let is_budget_error = result.errors.iter().any(|e| e.contains("budget") || e.contains("Budget"));
+            let is_max_turns = result.errors.iter().any(|e| e.contains("max_turns") || e.contains("turns"));
+
+            if !result.success && (is_budget_error || is_max_turns || !result.errors.is_empty()) {
+                println!();
+                println!("{}", "=".repeat(60).yellow());
+                println!("{} Session interrupted", "⚠".yellow().bold());
+
+                if is_budget_error {
+                    println!("  Reason: Budget exhausted");
+                } else if is_max_turns {
+                    println!("  Reason: Max turns reached");
+                } else if !result.errors.is_empty() {
+                    println!("  Reason: {}", result.errors[0]);
+                }
+
+                println!();
+                println!("{} To resume this session:", "→".cyan());
+                println!("  {}", format!("autopilot resume {}", json_path.display()).cyan());
+                println!("  or");
+                println!("  {}", "autopilot resume --continue-last".cyan());
+                println!("{}", "=".repeat(60).yellow());
+            }
+        }
 
         // Update session with trajectory path if we have a session
         if let Some(ref sess_id) = session_id {
