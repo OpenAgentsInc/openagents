@@ -1,0 +1,32 @@
+[package]
+name = "spark"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Spark Bitcoin payment integration for OpenAgents"
+
+[lints]
+workspace = true
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+# BIP39 mnemonic handling (same as nostr crate)
+bip39 = "2.2.0"
+
+# BIP32 derivation and secp256k1 (same as nostr crate)
+bitcoin = { version = "0.32.6", features = ["serde"] }
+
+# Error handling
+thiserror.workspace = true
+
+# Hex encoding
+hex.workspace = true
+
+# Serialization
+serde.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]

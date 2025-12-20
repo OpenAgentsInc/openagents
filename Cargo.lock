@@ -4345,6 +4345,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "spark"
+version = "0.1.0"
+dependencies = [
+ "bip39",
+ "bitcoin",
+ "hex",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.17",
+]
+
+[[package]]
 name = "spin"
 version = "0.9.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
