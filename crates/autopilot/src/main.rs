@@ -1041,6 +1041,9 @@ async fn resume_task(
 ) -> Result<()> {
     let cwd = cwd.unwrap_or_else(|| std::env::current_dir().unwrap());
 
+    // Track original trajectory path for appending logs
+    let original_trajectory_path = trajectory.clone();
+
     // Get session_id from trajectory file or use --continue
     let session_id = if continue_last {
         println!("{} Continuing most recent session...", "Resume:".cyan().bold());
@@ -1071,8 +1074,8 @@ async fn resume_task(
         .setting_sources(vec![SettingSource::Project, SettingSource::User])
         .dangerously_skip_permissions(true);
 
-    if let Some(id) = session_id {
-        options.resume = Some(id);
+    if let Some(ref id) = session_id {
+        options.resume = Some(id.clone());
     } else {
         options.continue_session = true;
     }
@@ -1101,6 +1104,52 @@ async fn resume_task(
         MCP_JSON_PATH.set(mcp_json_path).ok();
     }
 
+    // Determine output paths - append to original files if resuming from a file
+    let (rlog_path, json_path) = if let Some(ref orig_path) = original_trajectory_path {
+        // Use same directory and derive paths from original
+        let parent = orig_path.parent().unwrap_or(std::path::Path::new("."));
+        let stem = orig_path.file_stem().and_then(|s| s.to_str()).unwrap_or("resumed");
+        (
+            parent.join(format!("{}.rlog", stem)),
+            parent.join(format!("{}.json", stem)),
+        )
+    } else {
+        // Create new files in standard location for --continue-last
+        let output_dir = PathBuf::from("docs/logs").join(date_dir());
+        std::fs::create_dir_all(&output_dir)?;
+        let slug = format!("resumed-{}", chrono::Utc::now().format("%H%M"));
+        (
+            output_dir.join(filename(&slug, "rlog")),
+            output_dir.join(filename(&slug, "json")),
+        )
+    };
+
+    // Get git info
+    let repo_sha = get_git_sha(&cwd).unwrap_or_else(|_| "unknown".to_string());
+    let branch = get_git_branch(&cwd).ok();
+
+    // Create trajectory collector for the resumed session
+    let resume_prompt = prompt.clone().unwrap_or_else(|| "Continue from where you left off.".to_string());
+    let mut collector = TrajectoryCollector::new(
+        format!("[RESUMED] {}", resume_prompt),
+        "resumed".to_string(), // model not known in resume
+        cwd.display().to_string(),
+        repo_sha,
+        branch,
+    );
+
+    // Set session_id if we have it
+    if let Some(ref id) = session_id {
+        collector.set_session_id(id.clone());
+    }
+
+    // Enable streaming rlog output
+    if let Err(e) = collector.enable_streaming(&rlog_path) {
+        eprintln!("Warning: Failed to enable rlog streaming: {}", e);
+    } else {
+        println!("{} {} {}", "Streaming to:".dimmed(), rlog_path.display(), "(tail -f to watch)".dimmed());
+    }
+
     // Create session
     let mut session = unstable_v2_create_session(options).await?;
 
@@ -1116,11 +1165,30 @@ async fn resume_task(
     println!("{} Resumed, streaming...", "Resume:".green().bold());
     println!();
 
-    // Process messages
+    // Process messages - collect trajectory AND print progress
     while let Some(msg) = session.receive().next().await {
         let msg = msg?;
+        collector.process_message(&msg);
         print_progress(&msg);
     }
+
+    let trajectory = collector.finish();
+
+    println!();
+    println!("{}", "=".repeat(60).dimmed());
+    print_summary(&trajectory);
+
+    // Save outputs
+    // Write .rlog
+    let mut rlog_writer = RlogWriter::new();
+    let rlog_content = rlog_writer.write(&trajectory);
+    std::fs::write(&rlog_path, &rlog_content)?;
+    println!("{} {}", "Saved:".green(), rlog_path.display());
+
+    // Write .json
+    let json_content = trajectory.to_json();
+    std::fs::write(&json_path, &json_content)?;
+    println!("{} {}", "Saved:".green(), json_path.display());
 
     // Cleanup
     cleanup_mcp_json();
