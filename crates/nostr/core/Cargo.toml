@@ -38,10 +38,13 @@ sha2 = { workspace = true }
 # Random number generation (for key generation)
 rand = { workspace = true, optional = true }
 
+# DateTime support for identity types
+chrono = { workspace = true, optional = true }
+
 [features]
 default = ["full"]
 # Full crypto support (key generation, signing)
-full = ["bip39", "bitcoin", "bech32", "rand"]
+full = ["bip39", "bitcoin", "bech32", "rand", "chrono"]
 # Minimal - just Event type and serialization (for WASM/relay)
 minimal = []
 

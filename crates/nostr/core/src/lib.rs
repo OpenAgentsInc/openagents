@@ -5,12 +5,14 @@
 //! - NIP-06: Key derivation from BIP39 mnemonic seed phrases (requires `full` feature)
 //! - NIP-28: Public Chat (channels, messages, moderation)
 //! - NIP-90: Data Vending Machine (DVM) job requests/results/feedback
+//! - Identity types for marketplace participants (agents, creators, providers)
 //!
 //! # Features
 //!
 //! - `full` (default): Full crypto support including key generation and signing
 //! - `minimal`: Just Event type and serialization (for WASM/relay use)
 
+mod identity;
 mod nip01;
 #[cfg(feature = "full")]
 mod nip06;
@@ -60,3 +62,10 @@ pub use nip90::{
     get_request_kind, get_result_kind, is_dvm_kind, is_job_feedback_kind, is_job_request_kind,
     is_job_result_kind,
 };
+
+// Identity types for marketplace (base types always available)
+pub use identity::{AgentIdentity, IdentityError, NostrIdentity, ReputationScore, WalletInfo};
+
+// Identity types that require full feature (use chrono::DateTime)
+#[cfg(feature = "full")]
+pub use identity::CreatorProfile;
