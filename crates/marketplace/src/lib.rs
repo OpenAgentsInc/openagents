@@ -16,6 +16,7 @@ pub mod db;
 pub mod discovery;
 pub mod disputes;
 pub mod dvm;
+pub mod geo_routing;
 pub mod job_routing;
 pub mod ledger;
 pub mod mcp_binding;
@@ -42,6 +43,9 @@ pub use coalitions::{
     PaymentSplit,
 };
 pub use dvm::{DvmJobRequest, DvmJobResult, DvmOffer, DvmResultStatus, DvmTag};
+pub use geo_routing::{
+    DataResidencyPolicy, GeoLocation, GeoRoutingPolicy, OrgGeoPolicy, Region,
+};
 pub use api::{
     AgentSpawnRequest, AgentSpawnResponse, ApiError, BalanceResponse, CoalitionProposalRequest,
     CoalitionProposalResponse, ComputeJobRequest, ComputeJobResponse, DataBountyRequest,
