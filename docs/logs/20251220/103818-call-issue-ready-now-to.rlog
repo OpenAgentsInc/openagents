@@ -2069,3 +2069,28 @@ t!:Read id=ZKtxDhPW file_path=/home/christopherdavid/code/openagents/crates/comp
 o: id=ZKtxDhPW → [ok]      1→# Compute Provider
 a: The README already exists and is comprehensive (572 lines). It covers everything I was planning to add. Let me complete the issue since the README is already well-documented: tokens_in=0 tokens_out=1 tokens_cached=123382
 t!:Bash id=oGkqs4Pr cmd="git add -A && git commit -m "$(cat <<'EOF'" → [running] tokens_in=0 tokens_out=332 tokens_cached=123382
+o: id=oGkqs4Pr → [ok] [main d4f3c2fd9] Complete compute crate README documentation
+t!:Bash id=P3fKTWdX cmd="git push origin main" → [running] tokens_in=0 tokens_out=25 tokens_cached=129805
+o: id=P3fKTWdX → [ok] [0;36m🔍 Running cargo build to check for errors and warnings...[0m
+t!:mcp__issues__issue_complete id=2NGxpgsj  → [running] tokens_in=0 tokens_out=58 tokens_cached=130318
+o: id=2NGxpgsj → [ok] Completed issue #44
+t!:mcp__issues__issue_ready id=nbLABnGq  → [running] tokens_in=0 tokens_out=5 tokens_cached=130518
+o: id=nbLABnGq → [ok] No ready issues available
+t!:mcp__issues__issue_create id=VEchfu9D  → [running] tokens_in=0 tokens_out=8 tokens_cached=130632
+o: id=VEchfu9D → [ok] Created issue #45: Add unit tests for trajectory module (agent: claude)
+t!:mcp__issues__issue_ready id=LpdeqVfr  → [running] tokens_in=0 tokens_out=8 tokens_cached=130831
+o: id=LpdeqVfr → [ok] {
+t!:mcp__issues__issue_claim id=giVTKBhb  → [running] tokens_in=0 tokens_out=8 tokens_cached=131065
+o: id=giVTKBhb → [ok] Claimed issue #45
+a: I'll create comprehensive unit tests for the trajectory module. tokens_in=0 tokens_out=1 tokens_cached=131246
+t!:Read id=YWM4igcW file_path=/home/christopherdavid/code/openagents/crates/autopilot/src/trajectory.rs → [running] tokens_in=0 tokens_out=125 tokens_cached=131246
+o: id=YWM4igcW → [ok]      1→//! Trajectory data structures for recording agent runs
+t!:Read id=1CmET3AK file_path=/home/christopherdavid/code/openagents/crates/autopilot/src/trajectory.rs → [running] tokens_in=2 tokens_out=113 tokens_cached=131486
+o: id=1CmET3AK → [ok]    150→            StepType::SystemInit { model } => Some(model),
+a: Now I'll create comprehensive unit tests for the trajectory module: tokens_in=1 tokens_out=1 tokens_cached=133537
+t!:Write id=6h166unR file_path=/home/christopherdavid/code/openagents/crates/autopilot/tests/trajectory.rs → [running] tokens_in=1 tokens_out=5636 tokens_cached=133537
+o: id=6h166unR → [ok] File created successfully at: /home/christopherdavid/code/openagents/crates/autopilot/tests/traje...
+t!:Bash id=nJwGDqXT cmd="cargo test -p autopilot --test trajectory" → [running] tokens_in=0 tokens_out=26 tokens_cached=133954
+o: id=nJwGDqXT → [ok] running 31 tests
+a: Perfect! All 31 tests pass. Let me commit and push: tokens_in=0 tokens_out=1 tokens_cached=139661
+t!:Bash id=zczo6mB3 cmd="git add -A && git commit -m "$(cat <<'EOF'" → [running] tokens_in=0 tokens_out=316 tokens_cached=139661
