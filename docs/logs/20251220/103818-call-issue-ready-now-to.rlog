@@ -835,3 +835,37 @@ o: id=CuH7xQtj → [ok] File created successfully at: /home/christopherdavid/cod
 t!:Bash id=D9VisipN cmd="wc -l crates/compute/README.md" → [running] tokens_in=1 tokens_out=82 tokens_cached=89829
 o: id=D9VisipN → [ok] 571 crates/compute/README.md
 t!:Bash id=cNTrwemR cmd="git add -A && git commit -m "$(cat <<'EOF'" → [running] tokens_in=0 tokens_out=25 tokens_cached=94491
+o: id=cNTrwemR → [ok] [main 61bb0c066] Add comprehensive README for compute crate
+t!:Bash id=s9K5jCrT cmd="git push origin main" → [running] tokens_in=0 tokens_out=24 tokens_cached=94630
+o: id=s9K5jCrT → [ok] [0;36m🔍 Running cargo build to check for errors and warnings...[0m
+t!:mcp__issues__issue_complete id=ZP41dSiD  → [running] tokens_in=0 tokens_out=58 tokens_cached=95071
+o: id=ZP41dSiD → [ok] Completed issue #12
+t!:mcp__issues__issue_ready id=ptN79gH2  → [running] tokens_in=0 tokens_out=5 tokens_cached=95371
+o: id=ptN79gH2 → [ok] No ready issues available
+t!:mcp__issues__issue_create id=uxjKiKbb  → [running] tokens_in=0 tokens_out=221 tokens_cached=95485
+o: id=uxjKiKbb → [ok] Created issue #13: Add README for marketplace crate (agent: claude)
+t!:mcp__issues__issue_claim id=97B3gsqd  → [running] tokens_in=0 tokens_out=8 tokens_cached=95584
+o: id=97B3gsqd → [ok] Claimed issue #13
+t!:Read id=C4n6Jcwz file_path=/home/christopherdavid/code/openagents/crates/marketplace/Cargo.toml → [running] tokens_in=0 tokens_out=8 tokens_cached=95974
+t!:Glob id=LDogdPPE pattern="crates/marketplace/src/**/*.rs" → [running] tokens_in=0 tokens_out=120 tokens_cached=95974
+o: id=C4n6Jcwz → [ok]      1→[package]
+o: id=LDogdPPE → [ok] /home/christopherdavid/code/openagents/crates/marketplace/src/agent_commerce.rs
+t!:Read id=Hhkd4B9y file_path=/home/christopherdavid/code/openagents/crates/marketplace/src/lib.rs → [running] tokens_in=4 tokens_out=18 tokens_cached=96112
+t!:Read id=vpyB9dq5 file_path=/home/christopherdavid/code/openagents/crates/marketplace/src/types.rs → [running] tokens_in=4 tokens_out=18 tokens_cached=96112
+t!:Read id=UcXrTHLm file_path=/home/christopherdavid/code/openagents/crates/marketplace/src/agents.rs → [running] tokens_in=4 tokens_out=18 tokens_cached=96112
+o: id=Hhkd4B9y → [ok]      1→//! Marketplace for plugins, skills, and agents
+o: id=vpyB9dq5 → [ok]      1→//! Core types for the marketplace
+o: id=UcXrTHLm → [ok]      1→//! Types for agents as autonomous economic actors in the marketplace
+a: The marketplace crate is very complex with 30+ modules. Let me read a few more key files to understand the architecture better before writing the README. tokens_in=4 tokens_out=1 tokens_cached=97610
+t!:Read id=EWXGp9VF file_path=/home/christopherdavid/code/openagents/crates/marketplace/src/repository.rs → [running] tokens_in=4 tokens_out=1 tokens_cached=97610
+t!:Read id=poToN4yv file_path=/home/christopherdavid/code/openagents/crates/marketplace/src/provider_reputation.rs → [running] tokens_in=4 tokens_out=1 tokens_cached=97610
+t!:Read id=PUfMFs9D file_path=/home/christopherdavid/code/openagents/crates/marketplace/src/coalitions.rs → [running] tokens_in=4 tokens_out=1 tokens_cached=97610
+o: id=EWXGp9VF → [ok]      1→//! Repository trait and implementation for marketplace items
+o: id=poToN4yv → [ok]      1→//! Provider reputation system for compute marketplace
+o: id=PUfMFs9D → [ok]      1→//! Types for agent coalitions and collaborative work
+a: Now I have enough context. This is a very complex marketplace system. Let me create a comprehensive README. tokens_in=4 tokens_out=1 tokens_cached=103122
+t!:Write id=wyEYSXps file_path=/home/christopherdavid/code/openagents/crates/marketplace/README.md → [running] tokens_in=4 tokens_out=6495 tokens_cached=103122
+o: id=wyEYSXps → [ok] File created successfully at: /home/christopherdavid/code/openagents/crates/marketplace/README.md
+t!:Bash id=t8RTsEa4 cmd="wc -l crates/marketplace/README.md" → [running] tokens_in=2 tokens_out=82 tokens_cached=106989
+o: id=t8RTsEa4 → [ok] 744 crates/marketplace/README.md
+t!:Bash id=e7HzSmxd cmd="git add -A && git commit -m "$(cat <<'EOF'" → [running] tokens_in=1 tokens_out=432 tokens_cached=113560
