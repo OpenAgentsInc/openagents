@@ -328,3 +328,23 @@ o: id=Kzzwf7yx → [ok]    Compiling marketplace v0.1.0 (/Users/christopherdavid
 t!:Bash id=sA37TBsz cmd="cargo test --package marketplace agent_commerce..." → [running] tokens_in=0 tokens_out=84 tokens_cached=50959
 o: id=sA37TBsz → [ok]    Compiling marketplace v0.1.0 (/Users/christopherdavid/code/openagents/crates/marketplace)
 t!:Bash id=8gihc3NA cmd="git add -A && git commit -m "$(cat <<'EOF'" → [running] tokens_in=0 tokens_out=447 tokens_cached=51144
+o: id=8gihc3NA → [ok] [main d2c65f794] Add agent-to-agent commerce types
+t!:Bash id=Hn24Cy85 cmd="git push origin main" → [running] tokens_in=0 tokens_out=75 tokens_cached=51808
+o: id=Hn24Cy85 → [ok] Running pre-push checks...
+t!:mcp__issues__issue_complete id=cSXsgKgg  → [running] tokens_in=0 tokens_out=58 tokens_cached=52351
+o: id=cSXsgKgg → [ok] Completed issue #60
+t!:mcp__issues__issue_ready id=z6QSmPf9  → [running] tokens_in=0 tokens_out=5 tokens_cached=52524
+o: id=z6QSmPf9 → [ok] {
+t!:mcp__issues__issue_claim id=hoQiDm1j  → [running] tokens_in=0 tokens_out=8 tokens_cached=52740
+o: id=hoQiDm1j → [ok] Claimed issue #61
+t!:Write id=4PWdBP5z file_path=/Users/christopherdavid/code/openagents/crates/marketplace/src/agent_governance.rs → [running] tokens_in=0 tokens_out=5814 tokens_cached=53533
+o: id=4PWdBP5z → [ok] File created successfully at: /Users/christopherdavid/code/openagents/crates/marketplace/src/agen...
+t!:Read id=acfN3GHR file_path=/Users/christopherdavid/code/openagents/crates/marketplace/src/lib.rs → [running] tokens_in=2 tokens_out=77 tokens_cached=53671
+o: id=acfN3GHR → [ok]      1→//! Marketplace for plugins, skills, and agents
+t!:Edit id=VkuYUmPP file_path=/Users/christopherdavid/code/openagents/crates/marketplace/src/lib.rs → [running] tokens_in=1 tokens_out=418 tokens_cached=59666
+o: id=VkuYUmPP → [ok] The file /Users/christopherdavid/code/openagents/crates/marketplace/src/lib.rs has been updated. ...
+t!:Edit id=Zf5CqP2w file_path=/Users/christopherdavid/code/openagents/crates/marketplace/src/lib.rs → [running] tokens_in=0 tokens_out=280 tokens_cached=61838
+o: id=Zf5CqP2w → [ok] The file /Users/christopherdavid/code/openagents/crates/marketplace/src/lib.rs has been updated. ...
+t!:Bash id=mQqQvWDZ cmd="cargo build --package marketplace 2>&1" → [running] tokens_in=0 tokens_out=26 tokens_cached=62698
+o: id=mQqQvWDZ → [ok]    Compiling marketplace v0.1.0 (/Users/christopherdavid/code/openagents/crates/marketplace)
+t!:Bash id=Fexvi5uq cmd="cargo test --package marketplace agent_governan..." → [running] tokens_in=0 tokens_out=25 tokens_cached=63439
