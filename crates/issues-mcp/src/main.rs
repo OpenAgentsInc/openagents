@@ -286,6 +286,20 @@ impl McpServer {
                     "properties": {}
                 }),
             },
+            Tool {
+                name: "issue_delete".to_string(),
+                description: "Delete an issue (hard delete). Use for cleanup and testing only.".to_string(),
+                input_schema: json!({
+                    "type": "object",
+                    "properties": {
+                        "number": {
+                            "type": "integer",
+                            "description": "Issue number"
+                        }
+                    },
+                    "required": ["number"]
+                }),
+            },
         ];
 
         Ok(json!({ "tools": tools }))
@@ -310,6 +324,7 @@ impl McpServer {
             "issue_block" => self.tool_issue_block(&conn, &arguments),
             "issue_ready" => self.tool_issue_ready(&conn),
             "issue_update" => self.tool_issue_update(&conn, &arguments),
+            "issue_delete" => self.tool_issue_delete(&conn, &arguments),
             "enter_plan_mode" => self.tool_enter_plan_mode(&arguments),
             "exit_plan_mode" => self.tool_exit_plan_mode(),
             _ => Err(format!("Unknown tool: {}", name)),
@@ -525,6 +540,23 @@ impl McpServer {
             Ok(format!("Updated issue #{}", number))
         } else {
             Ok(format!("No changes made to issue #{}", number))
+        }
+    }
+
+    fn tool_issue_delete(&self, conn: &Connection, args: &Value) -> Result<String, String> {
+        let number = args
+            .get("number")
+            .and_then(|v| v.as_i64())
+            .ok_or("Missing number")? as i32;
+
+        let i = issue::get_issue_by_number(conn, number)
+            .map_err(|e| e.to_string())?
+            .ok_or(format!("Issue #{} not found", number))?;
+
+        if issue::delete_issue(conn, &i.id).map_err(|e| e.to_string())? {
+            Ok(format!("Deleted issue #{}", number))
+        } else {
+            Ok(format!("Could not delete issue #{}", number))
         }
     }
 
