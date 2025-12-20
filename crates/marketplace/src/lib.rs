@@ -8,6 +8,7 @@ pub mod data_consumer;
 pub mod data_contribution;
 pub mod db;
 pub mod discovery;
+pub mod disputes;
 pub mod job_routing;
 pub mod ledger;
 pub mod provider_reputation;
@@ -29,6 +30,11 @@ pub use data_contribution::{
     DataContributionType, PaymentInfo, VerificationResult,
 };
 pub use discovery::{SearchFilters, SkillListing, SortOrder, discover_local_skills};
+pub use disputes::{
+    Dispute, DisputeError, DisputeResolution, DisputeStatus, DisputeType, Evidence,
+    EvidenceType, RefundMethod, RefundRequest, RefundResult, RefundStatus, RefundTrigger,
+    ResolutionDecision,
+};
 pub use job_routing::{
     FailoverChain, FailoverPolicy, JobErrorType, ProviderScore, RetryDecision,
     RoutingError, SelectionCriteria, should_retry,
