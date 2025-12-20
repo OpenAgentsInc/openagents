@@ -477,6 +477,10 @@ pub fn is_tool_allowed_in_plan_mode(tool_name: &str, tool_input: &serde_json::Va
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Mutex;
+
+    // Mutex to serialize tests that modify global plan mode state
+    static TEST_MUTEX: Mutex<()> = Mutex::new(());
 
     #[test]
     fn test_plan_path_generation() {
@@ -487,8 +491,15 @@ mod tests {
 
     #[test]
     fn test_tool_restrictions() {
-        // Ensure clean state - try to exit plan mode if active
-        let _ = exit_plan_mode();
+        // Acquire mutex to serialize with other tests that modify global state
+        let _guard = TEST_MUTEX.lock().unwrap();
+
+        // Ensure clean state - directly reset global state
+        PLAN_MODE_ACTIVE.store(false, Ordering::SeqCst);
+        {
+            let mut path = PLAN_FILE_PATH.write().unwrap();
+            *path = None;
+        }
 
         // Not in plan mode - all tools allowed
         assert!(is_tool_allowed_in_plan_mode("Write", &serde_json::json!({"file_path": "/tmp/test.txt"})).is_ok());
@@ -601,6 +612,9 @@ mod tests {
 
     #[test]
     fn test_phase_advancement() {
+        // Acquire mutex to serialize with other tests that modify global state
+        let _guard = TEST_MUTEX.lock().unwrap();
+
         // Start in Explore phase
         let config = PlanModeConfig::new("test-phases", "Test phase advancement");
         enter_plan_mode(config).unwrap();
@@ -638,6 +652,9 @@ mod tests {
 
     #[test]
     fn test_enter_plan_mode_includes_prompt() {
+        // Acquire mutex to serialize with other tests that modify global state
+        let _guard = TEST_MUTEX.lock().unwrap();
+
         // Enter plan mode should include the initial Explore phase prompt
         let config = PlanModeConfig::new("test-prompt", "Test initial prompt");
         let result = enter_plan_mode(config).unwrap();
