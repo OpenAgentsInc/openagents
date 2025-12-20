@@ -25,6 +25,9 @@ use tracing::{debug, trace, warn};
 /// Stored hooks configuration for the query.
 type HooksMap = HashMap<HookEvent, Vec<HookCallbackMatcher>>;
 
+/// Type alias for pending control requests map.
+type PendingRequestsMap = Arc<Mutex<HashMap<String, oneshot::Sender<Result<Value>>>>>;
+
 /// A query execution that streams messages from Claude.
 pub struct Query {
     /// The process transport.
@@ -436,7 +439,7 @@ impl Query {
 
     /// Handle a control response from the CLI.
     async fn handle_control_response(
-        pending_requests: &Arc<Mutex<HashMap<String, oneshot::Sender<Result<Value>>>>>,
+        pending_requests: &PendingRequestsMap,
         response: SdkControlResponse,
     ) {
         let (request_id, result) = match response.response {
@@ -751,10 +754,8 @@ impl Stream for Query {
                 // Update session_id from messages
                 if let Ok(ref msg) = result {
                     match msg {
-                        SdkMessage::System(sys) => {
-                            if let crate::protocol::SdkSystemMessage::Init(init) = sys {
-                                self.session_id = Some(init.session_id.clone());
-                            }
+                        SdkMessage::System(crate::protocol::SdkSystemMessage::Init(init)) => {
+                            self.session_id = Some(init.session_id.clone());
                         }
                         SdkMessage::Result(_) => {
                             self.completed = true;

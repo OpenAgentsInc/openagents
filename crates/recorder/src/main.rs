@@ -717,11 +717,10 @@ fn renumber_steps_sequential(content: &str) -> Result<(String, usize)> {
     let mut step_lines: Vec<(usize, u32)> = Vec::new(); // (line_index, current_step)
 
     for (i, line) in lines.iter().enumerate() {
-        if let Some(caps) = step_re.captures(line) {
-            if let Ok(step_num) = caps[1].parse::<u32>() {
+        if let Some(caps) = step_re.captures(line)
+            && let Ok(step_num) = caps[1].parse::<u32>() {
                 step_lines.push((i, step_num));
             }
-        }
     }
 
     if step_lines.is_empty() {
@@ -908,6 +907,7 @@ async fn cmd_export(
 // Convert command
 // ============================================================================
 
+#[allow(clippy::too_many_arguments)]
 fn cmd_convert(
     path: &Path,
     repo_sha: Option<&str>,

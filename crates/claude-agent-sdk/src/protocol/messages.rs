@@ -221,6 +221,7 @@ pub struct PermissionDenial {
 /// System message types.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "subtype")]
+#[allow(clippy::large_enum_variant)]
 pub enum SdkSystemMessage {
     /// Session initialization
     #[serde(rename = "init")]

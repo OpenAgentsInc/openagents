@@ -320,7 +320,7 @@ impl CoalitionPayment {
 
     /// Add a new split to the payment
     pub fn add_split(&mut self, split: PaymentSplit) -> Result<(), PaymentError> {
-        self.splits.push(split.clone());
+        self.splits.push(split);
 
         // Recalculate total
         let new_total: u64 = self.splits.iter().map(|s| s.amount_sats).sum();

@@ -18,7 +18,7 @@ pub struct AppState {
 pub async fn start_server(broadcaster: Arc<WsBroadcaster>) -> anyhow::Result<u16> {
     let state = web::Data::new(AppState {
         counter: AtomicU64::new(0),
-        broadcaster: broadcaster.clone(),
+        broadcaster: broadcaster,
     });
 
     let server = HttpServer::new(move || {

@@ -606,7 +606,7 @@ mod tests {
             10000,
         );
 
-        let providers = vec![provider1.clone(), provider2];
+        let providers = vec![provider1, provider2];
         let selected = select_provider(&request, &providers, SelectionMode::Cheapest).unwrap();
 
         assert_eq!(selected.pricing.per_1k_input_sats, 5);
@@ -628,7 +628,7 @@ mod tests {
             10000,
         );
 
-        let providers = vec![slow_provider, fast_provider.clone()];
+        let providers = vec![slow_provider, fast_provider];
         let selected = select_provider(&request, &providers, SelectionMode::Fastest).unwrap();
 
         assert_eq!(selected.reputation.avg_latency_ms, 200);

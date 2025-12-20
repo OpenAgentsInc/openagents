@@ -162,6 +162,7 @@ r#"# Plan: {}
 }
 
 /// Exit plan mode configuration
+#[derive(Default)]
 pub struct ExitPlanModeConfig {
     /// Whether to launch a swarm to implement the plan
     pub launch_swarm: bool,
@@ -169,14 +170,6 @@ pub struct ExitPlanModeConfig {
     pub teammate_count: Option<usize>,
 }
 
-impl Default for ExitPlanModeConfig {
-    fn default() -> Self {
-        Self {
-            launch_swarm: false,
-            teammate_count: None,
-        }
-    }
-}
 
 /// Exit plan mode
 pub fn exit_plan_mode() -> Result<String, String> {

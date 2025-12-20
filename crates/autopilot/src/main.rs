@@ -172,7 +172,7 @@ fn setup_cleanup_handlers() {
             signal_hook::consts::SIGTERM,
         ]).expect("Failed to create signal handler");
 
-        for sig in signals.forever() {
+        if let Some(sig) = signals.forever().next() {
             cleanup_mcp_json();
             // Note: lockfile intentionally NOT cleaned up here - stale lockfile indicates crash
             // Re-raise signal to ensure proper exit
@@ -1218,14 +1218,12 @@ async fn run_task(
         let reader = BufReader::new(stdout);
 
         let mut port = None;
-        for line in reader.lines().take(20) {
-            if let Ok(line) = line {
-                // Look for "DESKTOP_PORT=PORT"
-                if let Some(rest) = line.strip_prefix("DESKTOP_PORT=") {
-                    if let Ok(p) = rest.trim().parse::<u16>() {
-                        port = Some(p);
-                        break;
-                    }
+        for line in reader.lines().take(20).flatten() {
+            // Look for "DESKTOP_PORT=PORT"
+            if let Some(rest) = line.strip_prefix("DESKTOP_PORT=") {
+                if let Ok(p) = rest.trim().parse::<u16>() {
+                    port = Some(p);
+                    break;
                 }
             }
         }

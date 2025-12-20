@@ -278,6 +278,7 @@ pub struct LedgerEntry {
 
 impl LedgerEntry {
     /// Create a new ledger entry
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         id: impl Into<String>,
         entry_type: LedgerEntryType,

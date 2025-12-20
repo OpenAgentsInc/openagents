@@ -130,7 +130,7 @@ pub mod db {
     pub fn build_header(session: &DbSession) -> String {
         let mut header = String::new();
         header.push_str("---\n");
-        header.push_str(&format!("format: rlog/1\n"));
+        header.push_str("format: rlog/1\n");
         header.push_str(&format!("id: {}\n", session.session_id));
         header.push_str(&format!("mode: {}\n", session.mode));
 
@@ -161,24 +161,22 @@ pub mod db {
         }
 
         // Capabilities
-        if let serde_json::Value::Array(ref skills) = session.skills {
-            if !skills.is_empty() {
+        if let serde_json::Value::Array(ref skills) = session.skills
+            && !skills.is_empty() {
                 let skill_strs: Vec<String> = skills
                     .iter()
                     .filter_map(|v| v.as_str().map(|s| s.to_string()))
                     .collect();
                 header.push_str(&format!("skills: [{}]\n", skill_strs.join(", ")));
             }
-        }
-        if let serde_json::Value::Array(ref mcp) = session.mcp_servers {
-            if !mcp.is_empty() {
+        if let serde_json::Value::Array(ref mcp) = session.mcp_servers
+            && !mcp.is_empty() {
                 let mcp_strs: Vec<String> = mcp
                     .iter()
                     .filter_map(|v| v.as_str().map(|s| s.to_string()))
                     .collect();
                 header.push_str(&format!("mcp: [{}]\n", mcp_strs.join(", ")));
             }
-        }
 
         // Limits
         if let Some(ref budget) = session.budget {

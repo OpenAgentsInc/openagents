@@ -1,6 +1,7 @@
 //! Tests for protocol message serialization.
 
 #[cfg(test)]
+#[allow(clippy::module_inception)]
 mod tests {
     use crate::protocol::*;
     use serde_json::json;

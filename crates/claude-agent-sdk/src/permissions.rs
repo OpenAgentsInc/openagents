@@ -28,6 +28,7 @@ pub trait PermissionHandler: Send + Sync {
     /// * `Ok(PermissionResult::Allow { .. })` - Allow the tool to execute
     /// * `Ok(PermissionResult::Deny { .. })` - Deny the tool execution
     /// * `Err(_)` - Error occurred during permission check
+    #[allow(clippy::too_many_arguments)]
     async fn can_use_tool(
         &self,
         tool_name: &str,
