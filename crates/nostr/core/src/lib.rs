@@ -8,12 +8,14 @@
 //! - Identity types for marketplace participants (agents, creators, providers)
 //! - Lightning payment types for marketplace transactions
 //! - Compute provider types for decentralized compute marketplace
+//! - Compute job types for job submission and routing
 //!
 //! # Features
 //!
 //! - `full` (default): Full crypto support including key generation and signing
 //! - `minimal`: Just Event type and serialization (for WASM/relay use)
 
+mod compute_job;
 mod identity;
 mod nip01;
 #[cfg(feature = "full")]
@@ -86,4 +88,10 @@ pub use payments::{
 pub use provider::{
     ComputeCapabilities, ComputePricing, ComputeProvider, ProviderError, ProviderReputation,
     Region, ReputationTier,
+};
+
+// Compute job types for marketplace
+pub use compute_job::{
+    ComputeJobError, ComputeJobRequest, ComputeJobResult, InferenceParams, JobRequirements,
+    JobStatus as ComputeJobStatus, SelectionMode, TokenUsage, select_provider,
 };
