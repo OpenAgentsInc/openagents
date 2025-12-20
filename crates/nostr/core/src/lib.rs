@@ -25,6 +25,8 @@ mod nip04;
 #[cfg(feature = "full")]
 mod nip06;
 mod nip28;
+#[cfg(feature = "full")]
+mod nip47;
 mod nip57;
 mod nip89;
 mod nip90;
@@ -68,6 +70,18 @@ pub use nip28::{
     KIND_CHANNEL_MESSAGE, KIND_CHANNEL_METADATA, KIND_CHANNEL_MUTE_USER, ModerationReason,
     Nip28Error, is_channel_creation_kind, is_channel_kind, is_channel_message_kind,
     is_channel_metadata_kind, is_moderation_kind,
+};
+
+// NIP-47: Nostr Wallet Connect (requires full feature)
+#[cfg(feature = "full")]
+pub use nip47::{
+    BalanceResult, ErrorCode, ErrorResponse, GetBalanceParams, GetInfoParams, InfoResult,
+    Invoice, InvoiceState, ListTransactionsParams, ListTransactionsResult, LookupInvoiceParams,
+    MakeInvoiceParams, Method, MultiPayInvoiceItem, MultiPayInvoiceParams, MultiPayKeysendItem,
+    MultiPayKeysendParams, Network, Nip47Error, Notification, NotificationType,
+    PayInvoiceParams, PayInvoiceResult, PayKeysendParams, Request, RequestParams, Response,
+    ResponseResult, TlvRecord, Transaction, TransactionType, INFO_EVENT_KIND,
+    NOTIFICATION_KIND_NIP04, NOTIFICATION_KIND_NIP44, REQUEST_KIND, RESPONSE_KIND,
 };
 
 // NIP-57: Lightning Zaps
