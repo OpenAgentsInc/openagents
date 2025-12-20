@@ -38,6 +38,84 @@ fn check_memory() -> (u64, bool) {
     (available, available >= MIN_AVAILABLE_MEMORY_BYTES)
 }
 
+/// List top memory-consuming processes and optionally kill Claude-related ones
+fn check_and_kill_memory_hogs() -> u64 {
+    use sysinfo::{System, Signal};
+
+    let mut sys = System::new_all();
+    sys.refresh_all();
+
+    let available = sys.available_memory();
+    let total = sys.total_memory();
+    let used = total - available;
+
+    println!("\n{}", "=".repeat(60).yellow());
+    println!("{} Memory Status", "MEM:".yellow().bold());
+    println!("  Total:     {}", format_bytes(total));
+    println!("  Used:      {}", format_bytes(used));
+    println!("  Available: {}", format_bytes(available));
+    println!();
+
+    // Collect processes with memory info
+    let mut processes: Vec<_> = sys.processes()
+        .iter()
+        .map(|(pid, proc)| {
+            let mem = proc.memory();
+            let name = proc.name().to_string_lossy().to_string();
+            (*pid, name, mem)
+        })
+        .collect();
+
+    // Sort by memory usage descending
+    processes.sort_by(|a, b| b.2.cmp(&a.2));
+
+    println!("{} Top 15 Memory Hogs:", "PROCS:".yellow().bold());
+    for (i, (pid, name, mem)) in processes.iter().take(15).enumerate() {
+        let is_claude = name.to_lowercase().contains("claude") || name.to_lowercase().contains("node");
+        let marker = if is_claude { " ← CLAUDE/NODE".red().bold().to_string() } else { String::new() };
+        println!("  {:2}. {:>10}  {:6}  {}{}",
+            i + 1,
+            format_bytes(*mem),
+            pid,
+            name,
+            marker
+        );
+    }
+
+    // Find and kill stale claude/node processes (but not ourselves)
+    let current_pid = std::process::id();
+    let mut killed = 0;
+
+    for (pid, name, mem) in processes.iter() {
+        let name_lower = name.to_lowercase();
+        // Kill node processes using > 500MB that aren't critical
+        if name_lower.contains("node") && *mem > 500 * 1024 * 1024 {
+            // Skip if it might be our parent process
+            if pid.as_u32() == current_pid {
+                continue;
+            }
+
+            if let Some(proc) = sys.process(*pid) {
+                println!("{} Killing {} (PID {}, using {})",
+                    "KILL:".red().bold(), name, pid, format_bytes(*mem));
+                if proc.kill_with(Signal::Term).unwrap_or(false) {
+                    killed += 1;
+                }
+            }
+        }
+    }
+
+    if killed > 0 {
+        println!("{} Killed {} memory hog processes", "CLEANUP:".green().bold(), killed);
+        // Give processes time to die
+        std::thread::sleep(std::time::Duration::from_secs(2));
+    }
+
+    println!("{}", "=".repeat(60).yellow());
+
+    available
+}
+
 /// Format bytes as human-readable string
 fn format_bytes(bytes: u64) -> String {
     if bytes >= 1024 * 1024 * 1024 {
@@ -794,16 +872,27 @@ async fn run_full_auto_loop(
         // Check memory at start of each iteration
         let (available_mem, mem_ok) = check_memory();
         if !mem_ok {
-            println!("\n{} Available memory ({}) below threshold ({}) - stopping to prevent crash",
-                "MEMORY:".red().bold(),
-                format_bytes(available_mem),
-                format_bytes(MIN_AVAILABLE_MEMORY_BYTES));
-            anyhow::bail!("Insufficient memory: {} available, {} required",
-                format_bytes(available_mem),
-                format_bytes(MIN_AVAILABLE_MEMORY_BYTES));
+            println!("\n{} Memory low ({}) - checking for processes to kill...",
+                "MEMORY:".yellow().bold(),
+                format_bytes(available_mem));
+
+            // Try to free memory by killing hogs
+            let new_avail = check_and_kill_memory_hogs();
+
+            // Check again after cleanup
+            if new_avail < MIN_AVAILABLE_MEMORY_BYTES {
+                println!("\n{} Still insufficient memory ({}) after cleanup - aborting",
+                    "MEMORY:".red().bold(),
+                    format_bytes(new_avail));
+                anyhow::bail!("Insufficient memory: {} available, {} required",
+                    format_bytes(new_avail),
+                    format_bytes(MIN_AVAILABLE_MEMORY_BYTES));
+            } else {
+                println!("{} Memory recovered to {} - continuing", "MEMORY:".green().bold(), format_bytes(new_avail));
+            }
         }
 
-        // Log memory status periodically
+        // Log memory status periodically (every iteration or every 5)
         if continuation_count % 5 == 0 {
             println!("{} Available memory: {}", "MEM:".dimmed(), format_bytes(available_mem));
         }
@@ -832,8 +921,11 @@ async fn run_full_auto_loop(
                     println!("{} Memory: {}", "MEM:".dimmed(), format_bytes(avail));
                 }
                 if !ok {
-                    println!("\n{} Memory critical ({}) - aborting", "MEMORY:".red().bold(), format_bytes(avail));
-                    anyhow::bail!("Memory critical during execution: {} available", format_bytes(avail));
+                    println!("\n{} Memory critical ({}) - attempting cleanup", "MEMORY:".yellow().bold(), format_bytes(avail));
+                    let new_avail = check_and_kill_memory_hogs();
+                    if new_avail < MIN_AVAILABLE_MEMORY_BYTES {
+                        anyhow::bail!("Memory critical after cleanup: {} available", format_bytes(new_avail));
+                    }
                 }
             }
             let msg = msg?;
