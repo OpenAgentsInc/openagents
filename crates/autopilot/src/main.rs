@@ -531,6 +531,20 @@ enum IssueCommands {
         #[arg(long)]
         db: Option<PathBuf>,
     },
+    /// Export issues to JSON
+    Export {
+        /// Output file path (default: .openagents/issues.json)
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+
+        /// Include completed issues
+        #[arg(long)]
+        include_completed: bool,
+
+        /// Path to issues database (default: autopilot.db in cwd)
+        #[arg(long)]
+        db: Option<PathBuf>,
+    },
 }
 
 #[derive(Subcommand)]
@@ -2429,6 +2443,43 @@ async fn handle_issue_command(command: IssueCommands) -> Result<()> {
                     println!("No ready issues available");
                 }
             }
+        }
+        IssueCommands::Export { output, include_completed, db } => {
+            let db_path = db.unwrap_or(default_db);
+            let conn = db::init_db(&db_path)?;
+
+            // Get all issues (filtering will be done during export)
+            let issues = issue::list_issues(&conn, None)?;
+
+            // Filter out completed issues if not requested
+            let issues_to_export: Vec<_> = if include_completed {
+                issues
+            } else {
+                issues.into_iter().filter(|i| i.status != Status::Done).collect()
+            };
+
+            // Serialize to JSON
+            let json = serde_json::to_string_pretty(&issues_to_export)?;
+
+            // Determine output path
+            let output_path = output.unwrap_or_else(|| {
+                let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+                cwd.join(".openagents").join("issues.json")
+            });
+
+            // Ensure parent directory exists
+            if let Some(parent) = output_path.parent() {
+                std::fs::create_dir_all(parent)?;
+            }
+
+            // Write JSON file
+            std::fs::write(&output_path, json)?;
+
+            println!("{} Exported {} issues to {}",
+                "✓".green(),
+                issues_to_export.len(),
+                output_path.display()
+            );
         }
     }
 
