@@ -2197,3 +2197,31 @@ o: id=ZWifQDZx → [ok] running 20 tests
 t!:Edit id=6Ruzkx5p file_path=/home/christopherdavid/code/openagents/crates/nostr/core/tests/nip06_integration.rs → [running] tokens_in=0 tokens_out=18 tokens_cached=153164
 o: id=6Ruzkx5p → [ok] The file /home/christopherdavid/code/openagents/crates/nostr/core/tests/nip06_integration.rs has ...
 t!:Bash id=NCed7wTS cmd="git add -A && git commit -m "$(cat <<'EOF'" → [running] tokens_in=0 tokens_out=26 tokens_cached=153838
+o: id=NCed7wTS → [ok] [main 8dfbca074] Add comprehensive integration tests for NIP-06 key derivation
+t!:Bash id=esEG8K5N cmd="git push origin main" → [running] tokens_in=0 tokens_out=79 tokens_cached=154169
+o: id=esEG8K5N → [ok] [0;36m🔍 Running cargo build to check for errors and warnings...[0m
+t!:mcp__issues__issue_complete id=Nj8pu66K  → [running] tokens_in=0 tokens_out=32 tokens_cached=154726
+o: id=Nj8pu66K → [ok] Completed issue #49
+t!:mcp__issues__issue_ready id=evD9sKBF  → [running] tokens_in=0 tokens_out=5 tokens_cached=154929
+o: id=evD9sKBF → [ok] No ready issues available
+# status: Compacting
+a: I'll continue in FULL AUTO MODE. The queue is empty, so I'll create a new issue for the next logical improvement. tokens_in=3 tokens_out=1 tokens_cached=19797
+t!:mcp__issues__issue_create id=WnxpcUxb  → [running] tokens_in=3 tokens_out=213 tokens_cached=19797
+o: id=WnxpcUxb → [ok] Created issue #50: Add unit tests for NIP-90 job types in nostr core crate (agent: claude)
+t!:mcp__issues__issue_ready id=WhPVQqgL  → [running] tokens_in=3 tokens_out=58 tokens_cached=41309
+o: id=WhPVQqgL → [ok] {
+t!:mcp__issues__issue_claim id=XHMyJLp6  → [running] tokens_in=3 tokens_out=81 tokens_cached=41599
+o: id=XHMyJLp6 → [ok] Claimed issue #50
+t!:Glob id=ZcFbWB5q pattern="**/nostr/core/src/**/*.rs" → [running] tokens_in=3 tokens_out=62 tokens_cached=41818
+o: id=ZcFbWB5q → [ok] /home/christopherdavid/code/openagents/crates/nostr/core/src/nip01.rs
+t!:Read id=KZyh6ARs file_path=/home/christopherdavid/code/openagents/crates/nostr/core/src/nip90.rs → [running] tokens_in=5 tokens_out=82 tokens_cached=41956
+o: id=KZyh6ARs → [ok]      1→//! NIP-90: Data Vending Machine
+a: The nip90.rs file already has comprehensive unit tests (lines 716-1215). I need to check if there are any gaps in test coverage or create integration tests in a separate test file. tokens_in=4 tokens_out=1 tokens_cached=42364
+t!:Glob id=xfrwy69U pattern="**/nostr/core/tests/*.rs" → [running] tokens_in=4 tokens_out=104 tokens_cached=42364
+o: id=xfrwy69U → [ok] /home/christopherdavid/code/openagents/crates/nostr/core/tests/nip06_integration.rs
+a: The nip90.rs module already has extensive inline tests. However, the issue asks for comprehensive unit tests in a separate test file. I'll create a dedicated integration test file that covers NIP-9... tokens_in=3 tokens_out=7 tokens_cached=58306
+t!:Write id=cdzzJoUq file_path=/home/christopherdavid/code/openagents/crates/nostr/core/tests/nip90_integration.rs → [running] tokens_in=3 tokens_out=7382 tokens_cached=58306
+o: id=cdzzJoUq → [ok] File created successfully at: /home/christopherdavid/code/openagents/crates/nostr/core/tests/nip9...
+t!:Bash id=6NKLHe6N cmd="cargo test --package nostr --test nip90_integra..." → [running] tokens_in=2 tokens_out=104 tokens_cached=58593
+o: id=6NKLHe6N → [ok] running 51 tests
+t!:Bash id=8ZHdxvTa cmd="git add -A && git commit -m "$(cat <<'EOF'" → [running] tokens_in=1 tokens_out=26 tokens_cached=66060
