@@ -12,6 +12,7 @@
 //! - NIP-12: Generic Tag Queries (deprecated, moved to NIP-01)
 //! - NIP-13: Proof of Work
 //! - NIP-16: Event Treatment (deprecated, moved to NIP-01)
+//! - NIP-17: Private Direct Messages (requires `full` feature)
 //! - NIP-18: Reposts
 //! - NIP-19: bech32-encoded entities
 //! - NIP-20: Command Results (deprecated, moved to NIP-01)
@@ -29,6 +30,7 @@
 //! - NIP-47: Nostr Wallet Connect (requires `full` feature)
 //! - NIP-51: Lists (mute lists, pin lists, bookmarks, etc.)
 //! - NIP-57: Lightning Zaps (tipping with Lightning payments)
+//! - NIP-59: Gift Wrap (encapsulation and metadata obscuring, requires `full` feature)
 //! - NIP-89: Application Handlers (social discovery of skills/agents)
 //! - NIP-90: Data Vending Machine (DVM) job requests/results/feedback
 //! - Identity types for marketplace participants (agents, creators, providers)
@@ -56,6 +58,8 @@ mod nip11;
 mod nip12;
 mod nip13;
 mod nip16;
+#[cfg(feature = "full")]
+mod nip17;
 mod nip18;
 mod nip19;
 mod nip20;
@@ -75,6 +79,8 @@ mod nip44;
 mod nip47;
 mod nip51;
 mod nip57;
+#[cfg(feature = "full")]
+mod nip59;
 mod nip89;
 mod nip90;
 #[cfg(feature = "full")]
@@ -265,6 +271,21 @@ pub use nip51::{
 // NIP-57: Lightning Zaps
 pub use nip57::{
     Nip57Error, ZapReceipt, ZapRequest, ZAP_RECEIPT_KIND, ZAP_REQUEST_KIND,
+};
+
+// NIP-59: Gift Wrap (requires full feature)
+#[cfg(feature = "full")]
+pub use nip59::{
+    KIND_GIFT_WRAP, KIND_SEAL, Nip59Error, Rumor, create_gift_wrap, create_seal, gift_wrap,
+    random_timestamp, unwrap_gift_wrap, unwrap_gift_wrap_full, unwrap_seal,
+};
+
+// NIP-17: Private Direct Messages (requires full feature)
+#[cfg(feature = "full")]
+pub use nip17::{
+    ChatMessage, DmRelayList, FileMessage, KIND_CHAT_MESSAGE, KIND_DM_RELAY_LIST,
+    KIND_FILE_MESSAGE, Nip17Error, QuotedEvent, receive_chat_message, receive_file_message,
+    send_chat_message, send_file_message,
 };
 
 // NIP-89: Application Handlers
