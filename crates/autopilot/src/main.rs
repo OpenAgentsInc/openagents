@@ -29,9 +29,12 @@ const MIN_AVAILABLE_MEMORY_BYTES: u64 = 2 * 1024 * 1024 * 1024;
 /// Returns (available_bytes, is_ok)
 fn check_memory() -> (u64, bool) {
     use sysinfo::System;
-    let mut sys = System::new();
-    sys.refresh_memory();
+    let sys = System::new_all();
     let available = sys.available_memory();
+    // If we get 0, something went wrong - don't abort, just return ok
+    if available == 0 {
+        return (0, true);
+    }
     (available, available >= MIN_AVAILABLE_MEMORY_BYTES)
 }
 
