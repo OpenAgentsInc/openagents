@@ -4,7 +4,7 @@ use rusqlite::{Connection, Result};
 use std::path::Path;
 
 /// Current schema version
-const SCHEMA_VERSION: i32 = 1;
+const SCHEMA_VERSION: i32 = 2;
 
 /// Initialize the database with migrations
 pub fn init_db(path: &Path) -> Result<Connection> {
@@ -20,6 +20,9 @@ pub fn init_db(path: &Path) -> Result<Connection> {
     if version < 1 {
         migrate_v1(&conn)?;
     }
+    if version < 2 {
+        migrate_v2(&conn)?;
+    }
 
     Ok(conn)
 }
@@ -33,6 +36,9 @@ pub fn init_memory_db() -> Result<Connection> {
     let version = get_schema_version(&conn)?;
     if version < 1 {
         migrate_v1(&conn)?;
+    }
+    if version < 2 {
+        migrate_v2(&conn)?;
     }
 
     Ok(conn)
@@ -107,7 +113,53 @@ fn migrate_v1(conn: &Connection) -> Result<()> {
         "#,
     )?;
 
-    set_schema_version(conn, SCHEMA_VERSION)?;
+    set_schema_version(conn, 1)?;
+    Ok(())
+}
+
+fn migrate_v2(conn: &Connection) -> Result<()> {
+    // Clean up any NULL ids (from manual inserts) and delete those rows
+    conn.execute("DELETE FROM issues WHERE id IS NULL OR id = ''", [])?;
+    conn.execute("DELETE FROM issue_events WHERE id IS NULL OR id = ''", [])?;
+
+    // Recreate issues table with explicit NOT NULL constraint on id
+    conn.execute_batch(
+        r#"
+        -- Create new table with proper constraints
+        CREATE TABLE issues_new (
+            id TEXT NOT NULL PRIMARY KEY,
+            number INTEGER NOT NULL UNIQUE,
+            title TEXT NOT NULL,
+            description TEXT,
+            status TEXT NOT NULL DEFAULT 'open',
+            priority TEXT DEFAULT 'medium',
+            issue_type TEXT DEFAULT 'task',
+            is_blocked INTEGER DEFAULT 0,
+            blocked_reason TEXT,
+            claimed_by TEXT,
+            claimed_at TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            completed_at TEXT,
+            CHECK(id != '')
+        );
+
+        -- Copy data from old table
+        INSERT INTO issues_new SELECT * FROM issues WHERE id IS NOT NULL AND id != '';
+
+        -- Drop old table
+        DROP TABLE issues;
+
+        -- Rename new table
+        ALTER TABLE issues_new RENAME TO issues;
+
+        -- Recreate indexes
+        CREATE INDEX idx_issues_status ON issues(status);
+        CREATE INDEX idx_issues_number ON issues(number);
+        "#,
+    )?;
+
+    set_schema_version(conn, 2)?;
     Ok(())
 }
 
