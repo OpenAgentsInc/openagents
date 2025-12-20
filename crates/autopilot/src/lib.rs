@@ -3,6 +3,7 @@
 //! This crate provides a CLI tool that executes tasks via the Claude Agent SDK
 //! and logs the complete trajectory in both rlog and JSON formats.
 
+pub mod analyze;
 pub mod compaction;
 pub mod guardrails;
 pub mod planmode;
