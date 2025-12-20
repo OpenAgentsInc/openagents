@@ -2,8 +2,20 @@
 //!
 //! This crate provides:
 //! - NIP-01: Basic protocol (events, signing, verification)
+//! - NIP-02: Follow List (Contact List and Petnames)
+//! - NIP-04: Encrypted Direct Messages (requires `full` feature)
+//! - NIP-05: Mapping Nostr Keys to DNS-based Internet Identifiers
 //! - NIP-06: Key derivation from BIP39 mnemonic seed phrases (requires `full` feature)
+//! - NIP-10: Text Notes and Threads
+//! - NIP-13: Proof of Work
+//! - NIP-18: Reposts
+//! - NIP-19: bech32-encoded entities
+//! - NIP-21: nostr: URI scheme
+//! - NIP-23: Long-form Content
+//! - NIP-25: Reactions
+//! - NIP-27: Text Note References
 //! - NIP-28: Public Chat (channels, messages, moderation)
+//! - NIP-47: Nostr Wallet Connect (requires `full` feature)
 //! - NIP-57: Lightning Zaps (tipping with Lightning payments)
 //! - NIP-89: Application Handlers (social discovery of skills/agents)
 //! - NIP-90: Data Vending Machine (DVM) job requests/results/feedback
@@ -29,8 +41,11 @@ mod nip06;
 mod nip10;
 mod nip13;
 mod nip18;
+mod nip19;
+mod nip21;
 mod nip23;
 mod nip25;
+mod nip27;
 mod nip28;
 #[cfg(feature = "full")]
 mod nip47;
@@ -91,6 +106,17 @@ pub use nip18::{
     GENERIC_REPOST_KIND, GenericRepost, Nip18Error, REPOST_KIND, Repost, is_repost_kind,
 };
 
+// NIP-19: bech32-encoded entities
+pub use nip19::{
+    AddressPointer, EventPointer, Nip19Entity, Nip19Error, ProfilePointer, decode, encode_naddr,
+    encode_nevent, encode_note, encode_nprofile, encode_npub, encode_nsec,
+};
+
+// NIP-21: nostr: URI scheme
+pub use nip21::{
+    NOSTR_URI_SCHEME, Nip21Error, from_nostr_uri, is_nostr_uri, strip_nostr_prefix, to_nostr_uri,
+};
+
 // NIP-23: Long-form Content
 pub use nip23::{
     ARTICLE_KIND, Article, DRAFT_ARTICLE_KIND, Nip23Error, is_article_kind,
@@ -99,6 +125,12 @@ pub use nip23::{
 // NIP-25: Reactions
 pub use nip25::{
     EXTERNAL_REACTION_KIND, Nip25Error, REACTION_KIND, Reaction, ReactionType, is_reaction_kind,
+};
+
+// NIP-27: Text Note References
+pub use nip27::{
+    MentionReference, Nip27Error, extract_event_references, extract_profile_references,
+    extract_references, get_mentioned_event_ids, get_mentioned_pubkeys, has_references,
 };
 
 // NIP-28: Public Chat

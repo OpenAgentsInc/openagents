@@ -178,7 +178,7 @@ pub fn encode_naddr(addr: &AddressPointer) -> Result<String, Nip19Error> {
 
 /// Decode a NIP-19 entity from a bech32 string.
 pub fn decode(s: &str) -> Result<Nip19Entity, Nip19Error> {
-    use bech32::Hrp;
+    
 
     let (hrp, data) = bech32::decode(s).map_err(|e| Nip19Error::Bech32Decode(e.to_string()))?;
 
