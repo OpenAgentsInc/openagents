@@ -8,6 +8,7 @@ pub mod replay;
 pub mod rlog;
 pub mod timestamp;
 pub mod trajectory;
+pub mod ui_renderer;
 
 use chrono::Utc;
 use claude_agent_sdk::{
