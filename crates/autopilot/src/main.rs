@@ -1356,7 +1356,9 @@ async fn run_task(
         });
 
         // Write .mcp.json file
-        std::fs::write(&mcp_json_path, serde_json::to_string_pretty(&mcp_config).unwrap())?;
+        let json = serde_json::to_string_pretty(&mcp_config)
+            .expect("Failed to serialize MCP config to JSON");
+        std::fs::write(&mcp_json_path, json)?;
         println!("{} {}", "MCP config:".dimmed(), mcp_json_path.display());
 
         // Store path for cleanup on panic/signal
@@ -1922,7 +1924,9 @@ async fn resume_task(
             }
         });
 
-        std::fs::write(&mcp_json_path, serde_json::to_string_pretty(&mcp_config).unwrap())?;
+        let json = serde_json::to_string_pretty(&mcp_config)
+            .expect("Failed to serialize MCP config to JSON");
+        std::fs::write(&mcp_json_path, json)?;
         MCP_JSON_PATH.set(mcp_json_path).ok();
     }
 
@@ -2048,7 +2052,13 @@ async fn compare_trajectories(trajectory1: PathBuf, trajectory2: PathBuf) -> Res
 async fn analyze_trajectories(path: PathBuf, aggregate: bool, json_output: bool) -> Result<()> {
     if aggregate || path.is_dir() {
         // Aggregate mode: analyze all JSON files in directory
-        let dir = if path.is_dir() { path } else { path.parent().unwrap().to_path_buf() };
+        let dir = if path.is_dir() {
+            path
+        } else {
+            path.parent()
+                .expect("Path should have a parent directory")
+                .to_path_buf()
+        };
 
         let mut analyses = Vec::new();
 

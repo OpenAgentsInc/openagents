@@ -398,7 +398,9 @@ fn print_validation_json(result: &ValidationResult) {
         }
     });
 
-    println!("{}", serde_json::to_string_pretty(&output).unwrap());
+    let json = serde_json::to_string_pretty(&output)
+        .expect("Failed to serialize validation output to JSON");
+    println!("{}", json);
 }
 
 fn cmd_stats(path: &Path) -> Result<()> {
@@ -710,7 +712,8 @@ fn cmd_fix(
 fn renumber_steps_sequential(content: &str) -> Result<(String, usize)> {
     use regex::Regex;
 
-    let step_re = Regex::new(r"step=(\d+)").unwrap();
+    let step_re = Regex::new(r"step=(\d+)")
+        .expect("Invalid regex pattern for step renumbering");
     let lines: Vec<&str> = content.lines().collect();
 
     // First pass: find all lines with step= and their current numbers
