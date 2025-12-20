@@ -6,6 +6,7 @@
 //! - NIP-28: Public Chat (channels, messages, moderation)
 //! - NIP-90: Data Vending Machine (DVM) job requests/results/feedback
 //! - Identity types for marketplace participants (agents, creators, providers)
+//! - Lightning payment types for marketplace transactions
 //!
 //! # Features
 //!
@@ -18,6 +19,8 @@ mod nip01;
 mod nip06;
 mod nip28;
 mod nip90;
+#[cfg(feature = "full")]
+mod payments;
 
 // NIP-01: Basic protocol (Event type always available)
 pub use nip01::{
@@ -69,3 +72,10 @@ pub use identity::{AgentIdentity, IdentityError, NostrIdentity, ReputationScore,
 // Identity types that require full feature (use chrono::DateTime)
 #[cfg(feature = "full")]
 pub use identity::CreatorProfile;
+
+// Lightning payment types (require full feature for DateTime)
+#[cfg(feature = "full")]
+pub use payments::{
+    CoalitionPayment, InvoiceStatus, LightningInvoice, PaymentDestination, PaymentError,
+    PaymentRequest, PaymentResult, PaymentSplit,
+};
