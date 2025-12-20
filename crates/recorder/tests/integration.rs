@@ -183,7 +183,7 @@ fn test_parse_all_line_types() {
 #[test]
 fn test_parse_line_with_metadata() {
     let mut content = minimal_header();
-    content.push_str("t:call_1 step=5 ts=12:34:56: Read file=/path/to/file.rs\n");
+    content.push_str("t:Read id=call_1 step=5 file=/path/to/file.rs\n");
 
     let result = parse_content(&content);
     assert!(result.is_ok());
@@ -194,14 +194,13 @@ fn test_parse_line_with_metadata() {
     let line = &session.lines[0];
     assert_eq!(line.call_id, Some("call_1".to_string()));
     assert_eq!(line.step, Some(5));
-    assert_eq!(line.timestamp, Some("12:34:56".to_string()));
-    assert_eq!(line.content, "Read file=/path/to/file.rs");
+    assert_eq!(line.content, "Read id=call_1 step=5 file=/path/to/file.rs");
 }
 
 #[test]
 fn test_parse_line_with_tokens() {
     let mut content = minimal_header();
-    content.push_str("a in=1200 out=450 cached=300: Here's the response\n");
+    content.push_str("a: tokens_in=1200 tokens_out=450 tokens_cached=300 Here's the response\n");
 
     let result = parse_content(&content);
     assert!(result.is_ok());
@@ -216,8 +215,8 @@ fn test_parse_line_with_tokens() {
 #[test]
 fn test_parse_tool_with_result() {
     let mut content = minimal_header();
-    content.push_str("t:call_1: Bash command='ls -la'\n");
-    content.push_str("o:call_1 lat=245ms: [file list output]\n");
+    content.push_str("t:Bash command='ls -la' → running\n");
+    content.push_str("o: id=call_1 latency_ms=245 → [file list output]\n");
 
     let result = parse_content(&content);
     assert!(result.is_ok());
@@ -285,12 +284,12 @@ fn test_parse_redacted_values() {
 fn test_validation_statistics() {
     let mut content = complete_header();
     content.push_str("u: First message\n");
-    content.push_str("a in=1000 out=500: Response\n");
-    content.push_str("t:call_1 step=1: Bash ls\n");
-    content.push_str("o:call_1: [output]\n");
-    content.push_str("i: Thinking...\n");
+    content.push_str("a: tokens_in=1000 tokens_out=500 Response\n");
+    content.push_str("t:Bash id=call_1 step=1 command='ls'\n");
+    content.push_str("o: id=call_1 → [output]\n");
+    content.push_str("th: Thinking...\n");
     content.push_str("#: A comment\n");
-    content.push_str("a in=800 out=400 cached=200: Final response\n");
+    content.push_str("a: tokens_in=800 tokens_out=400 tokens_cached=200 Final response\n");
 
     let session = parse_content(&content).expect("Should parse");
 
@@ -400,8 +399,8 @@ fn test_roundtrip_simple_session() {
 #[test]
 fn test_roundtrip_with_metadata() {
     let original = minimal_header() +
-        "t:call_1 step=5 ts=12:34:56: Glob pattern=*.rs\n" +
-        "o:call_1 lat=123ms: Found 10 files\n";
+        "t:Glob id=call_1 step=5 pattern=*.rs\n" +
+        "o: id=call_1 latency_ms=123 → Found 10 files\n";
 
     let session = parse_content(&original).expect("Should parse");
 
@@ -410,7 +409,6 @@ fn test_roundtrip_with_metadata() {
     let tool_line = &session.lines[0];
     assert_eq!(tool_line.call_id, Some("call_1".to_string()));
     assert_eq!(tool_line.step, Some(5));
-    assert_eq!(tool_line.timestamp, Some("12:34:56".to_string()));
 
     let obs_line = &session.lines[1];
     assert_eq!(obs_line.call_id, Some("call_1".to_string()));
@@ -478,31 +476,31 @@ fn test_complete_agent_session() {
     let mut content = complete_header();
 
     // Initial user request
-    content.push_str("u step=1 ts=00:00:00: Fix the authentication bug\n");
+    content.push_str("u: step=1 ts=2025-01-01T00:00:00Z Fix the authentication bug\n");
 
     // Agent thinking
-    content.push_str("i step=2 ts=00:00:01: Need to check the auth module\n");
+    content.push_str("th: step=2 ts=2025-01-01T00:00:01Z Need to check the auth module\n");
 
     // Agent response
-    content.push_str("a step=3 ts=00:00:02 in=1200 out=45: I'll check the authentication module.\n");
+    content.push_str("a: step=3 ts=2025-01-01T00:00:02Z tokens_in=1200 tokens_out=45 I'll check the authentication module.\n");
 
     // Tool call
-    content.push_str("t:call_1 step=4 ts=00:00:03: Read file=src/auth.rs\n");
+    content.push_str("t:Read id=call_1 step=4 ts=2025-01-01T00:00:03Z file=src/auth.rs\n");
 
     // Tool result
-    content.push_str("o:call_1 step=5 ts=00:00:05 lat=2000ms: [file contents]\n");
+    content.push_str("o: id=call_1 step=5 ts=2025-01-01T00:00:05Z latency_ms=2000 → [file contents]\n");
 
     // Agent analysis
-    content.push_str("a step=6 ts=00:00:06 in=2500 out=120: Found the issue on line 42.\n");
+    content.push_str("a: step=6 ts=2025-01-01T00:00:06Z tokens_in=2500 tokens_out=120 Found the issue on line 42.\n");
 
     // Another tool call
-    content.push_str("t:call_2 step=7 ts=00:00:07: Edit file=src/auth.rs old='token.clone()' new='token'\n");
+    content.push_str("t:Edit id=call_2 step=7 ts=2025-01-01T00:00:07Z file=src/auth.rs old='token.clone()' new='token'\n");
 
     // Tool result
-    content.push_str("o:call_2 step=8 ts=00:00:08 lat=50ms result=success: File updated\n");
+    content.push_str("o: id=call_2 step=8 ts=2025-01-01T00:00:08Z latency_ms=50 result=success → File updated\n");
 
     // Final response
-    content.push_str("a step=9 ts=00:00:09 in=1800 out=85: Fixed the redundant clone.\n");
+    content.push_str("a: step=9 ts=2025-01-01T00:00:09Z tokens_in=1800 tokens_out=85 Fixed the redundant clone.\n");
 
     let result = parse_content(&content);
     assert!(result.is_ok(), "Should parse complete session");
