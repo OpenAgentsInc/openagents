@@ -39,6 +39,22 @@ Conventions:
 
 ---
 
+## Database Operations
+
+**NEVER use raw sqlite3 commands to insert or modify data.** Always use the provided APIs:
+
+- Use `cargo autopilot issue create` or `issue_create` MCP tool to create issues
+- Use `cargo autopilot issue claim/complete/block` for issue state changes
+- Direct sqlite3 commands bypass counters and triggers, causing data inconsistency
+
+If you need to query data for debugging, read-only sqlite3 commands are fine:
+```bash
+sqlite3 autopilot.db "SELECT * FROM issues"  # OK - read only
+sqlite3 autopilot.db "INSERT INTO ..."        # NEVER - use the API
+```
+
+---
+
 ## Rust Crates
 
 All crates in `crates/` must use `edition = "2024"` in their `Cargo.toml`.
