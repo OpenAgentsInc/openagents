@@ -271,6 +271,17 @@ async fn run_task(
         branch,
     );
 
+    // Enable streaming rlog output (unless in dry-run mode)
+    if !dry_run {
+        std::fs::create_dir_all(&output_dir)?;
+        let rlog_path = output_dir.join(filename(&slug, "rlog"));
+        if let Err(e) = collector.enable_streaming(&rlog_path) {
+            eprintln!("Warning: Failed to enable rlog streaming: {}", e);
+        } else {
+            println!("{} {} {}", "Streaming to:".dimmed(), rlog_path.display(), "(tail -f to watch)".dimmed());
+        }
+    }
+
     // Setup query options
     let options = QueryOptions::new()
         .model(&model)
