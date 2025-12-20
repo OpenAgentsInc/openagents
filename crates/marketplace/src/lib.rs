@@ -16,6 +16,7 @@ pub mod provider_reputation;
 pub mod redaction;
 pub mod repository;
 pub mod skills;
+pub mod trust;
 pub mod types;
 
 pub use budget::{
@@ -58,4 +59,9 @@ pub use redaction::{
 };
 pub use repository::{Repository, Skill as SkillRecord, SkillRepository, SkillVersion};
 pub use skills::{Skill, SkillError, SkillManifest, SkillMetadata, discover_skills, validate_skill_name};
+pub use trust::{
+    EconomicComponent, EntityType, SocialComponent, TierBenefits as TrustTierBenefits,
+    TrackRecordComponent, TrustComponents, TrustError, TrustScore, TrustTier,
+    VerificationComponent as TrustVerificationComponent, calculate_trust_score,
+};
 pub use types::{ItemStatus, MarketplaceItemType};
