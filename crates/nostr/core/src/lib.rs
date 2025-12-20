@@ -20,6 +20,7 @@
 mod compute_job;
 mod identity;
 mod nip01;
+mod nip02;
 #[cfg(feature = "full")]
 mod nip04;
 #[cfg(feature = "full")]
@@ -50,6 +51,9 @@ pub use nip01::{
     finalize_event, generate_secret_key, get_event_hash, get_public_key, get_public_key_hex,
     validate_event, verify_event,
 };
+
+// NIP-02: Follow List (Contact List and Petnames)
+pub use nip02::{CONTACT_LIST_KIND, Contact, ContactList, Nip02Error};
 
 // NIP-04: Encrypted Direct Messages (requires full feature)
 #[cfg(feature = "full")]
