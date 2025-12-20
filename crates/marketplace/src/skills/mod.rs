@@ -4,11 +4,17 @@
 //! This module implements the Agent Skills open standard (agentskills.io).
 
 pub mod agentskill;
+pub mod execution;
 pub mod versioning;
 
 pub use agentskill::{
     Skill, SkillError, SkillManifest, SkillMetadata,
     discover_skills, validate_skill_name,
+};
+
+pub use execution::{
+    ExecutionError, ExecutionResult, FilesystemAccess, ResourceUsage,
+    SandboxConfig, ScriptExecution,
 };
 
 pub use versioning::{
