@@ -23,6 +23,7 @@ mod nip01;
 mod nip02;
 #[cfg(feature = "full")]
 mod nip04;
+mod nip05;
 #[cfg(feature = "full")]
 mod nip06;
 mod nip10;
@@ -60,6 +61,9 @@ pub use nip02::{CONTACT_LIST_KIND, Contact, ContactList, Nip02Error};
 // NIP-04: Encrypted Direct Messages (requires full feature)
 #[cfg(feature = "full")]
 pub use nip04::{ENCRYPTED_DM_KIND, Nip04Error, decrypt, encrypt};
+
+// NIP-05: Mapping Nostr Keys to DNS-based Internet Identifiers
+pub use nip05::{Nip05Error, Nip05Identifier, Nip05Response};
 
 // NIP-06: Key derivation from mnemonic (requires full feature)
 #[cfg(feature = "full")]
