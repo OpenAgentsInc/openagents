@@ -24,6 +24,8 @@ pub struct TrajectoryCollector {
     trajectory: Trajectory,
     /// Optional rlog writer for streaming output
     rlog_writer: Option<RlogWriter>,
+    /// Path to the rlog file for header updates
+    rlog_path: Option<std::path::PathBuf>,
 }
 
 impl TrajectoryCollector {
@@ -38,14 +40,17 @@ impl TrajectoryCollector {
         Self {
             trajectory: Trajectory::new(prompt, model, cwd, repo_sha, branch),
             rlog_writer: None,
+            rlog_path: None,
         }
     }
 
     /// Enable streaming rlog output to a file
     pub fn enable_streaming(&mut self, path: impl AsRef<std::path::Path>) -> std::io::Result<()> {
+        let path = path.as_ref();
         let mut writer = RlogWriter::new_streaming(path)?;
         writer.write_header(&self.trajectory)?;
         self.rlog_writer = Some(writer);
+        self.rlog_path = Some(path.to_path_buf());
         Ok(())
     }
 
@@ -76,6 +81,12 @@ impl TrajectoryCollector {
                 self.trajectory.add_step(StepType::SystemInit {
                     model: init.model.clone(),
                 });
+
+                // Update the header now that we have the session_id
+                if let (Some(writer), Some(path)) = (&mut self.rlog_writer, &self.rlog_path) {
+                    let _ = writer.update_header(path, &self.trajectory);
+                }
+
                 self.stream_last_step();
             }
             SdkSystemMessage::Status(status) => {

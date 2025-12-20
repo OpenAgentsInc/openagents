@@ -14,13 +14,13 @@ pub fn date_dir() -> String {
     format!("{:04}{:02}{:02}", ct.year(), ct.month(), ct.day())
 }
 
-/// Format time as HHMM for filename prefix
+/// Format time as HHMMSS for filename prefix (includes seconds to prevent duplicates)
 pub fn time_prefix() -> String {
     let ct = now_central();
-    format!("{:02}{:02}", ct.hour(), ct.minute())
+    format!("{:02}{:02}{:02}", ct.hour(), ct.minute(), ct.second())
 }
 
-/// Generate full filename: HHMM-slug.ext
+/// Generate full filename: HHMMSS-slug.ext
 pub fn filename(slug: &str, ext: &str) -> String {
     format!("{}-{}.{}", time_prefix(), slug, ext)
 }
@@ -67,7 +67,7 @@ mod tests {
     fn test_generate_slug() {
         assert_eq!(generate_slug("Say hello and list files"), "say-hello-and-list");
         assert_eq!(generate_slug("Fix the bug!"), "fix-the-bug");
-        assert_eq!(generate_slug("a b c d e f"), "cd"); // Skips single chars
+        assert_eq!(generate_slug("a b c d e f"), ""); // Skips all single chars, returns empty
         assert_eq!(generate_slug("Read README.md"), "read-readme-md");
     }
 
@@ -75,6 +75,6 @@ mod tests {
     fn test_filename() {
         let f = filename("test-slug", "rlog");
         assert!(f.ends_with("-test-slug.rlog"));
-        assert_eq!(f.len(), "HHMM-test-slug.rlog".len());
+        assert_eq!(f.len(), "HHMMSS-test-slug.rlog".len());
     }
 }
