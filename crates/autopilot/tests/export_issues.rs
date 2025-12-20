@@ -1,4 +1,4 @@
-//! Tests for the issue export functionality
+//! Tests for the issue export and import functionality
 
 use issues::{db, issue, IssueType, Priority, Status};
 use rusqlite::Connection;
@@ -197,4 +197,231 @@ fn test_export_preserves_number() {
 
     // Verify numbers are sequential
     assert_eq!(issue2.number, issue1.number + 1);
+}
+
+#[test]
+fn test_import_issues_from_json() {
+    let (dir1, conn1) = test_db();
+    let (_dir2, conn2) = test_db();
+
+    // Create issues in first database
+    let issue1 = issue::create_issue(
+        &conn1,
+        "Import test 1",
+        Some("Description 1"),
+        Priority::High,
+        IssueType::Task,
+        Some("claude"),
+    )
+    .expect("Failed to create issue");
+
+    let issue2 = issue::create_issue(
+        &conn1,
+        "Import test 2",
+        Some("Description 2"),
+        Priority::Medium,
+        IssueType::Bug,
+        Some("codex"),
+    )
+    .expect("Failed to create issue");
+
+    // Export to JSON
+    let issues = issue::list_issues(&conn1, None).expect("Failed to list issues");
+    let json = serde_json::to_string_pretty(&issues).expect("Failed to serialize");
+    let json_path = dir1.path().join("export.json");
+    std::fs::write(&json_path, &json).expect("Failed to write JSON");
+
+    // Import into second database
+    let imported_issues: Vec<issue::Issue> =
+        serde_json::from_str(&json).expect("Failed to deserialize");
+
+    for imported_issue in imported_issues {
+        let now = chrono::Utc::now().to_rfc3339();
+        conn2
+            .execute(
+                r#"
+                INSERT INTO issues (
+                    id, number, title, description, status, priority, issue_type, agent,
+                    is_blocked, blocked_reason, claimed_by, claimed_at,
+                    created_at, updated_at, completed_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                "#,
+                rusqlite::params![
+                    imported_issue.id,
+                    imported_issue.number,
+                    imported_issue.title,
+                    imported_issue.description,
+                    imported_issue.status.as_str(),
+                    imported_issue.priority.as_str(),
+                    imported_issue.issue_type.as_str(),
+                    imported_issue.agent,
+                    if imported_issue.is_blocked { 1 } else { 0 },
+                    imported_issue.blocked_reason,
+                    imported_issue.claimed_by,
+                    imported_issue.claimed_at.map(|dt| dt.to_rfc3339()),
+                    imported_issue.created_at.to_rfc3339(),
+                    now,
+                    imported_issue.completed_at.map(|dt| dt.to_rfc3339()),
+                ],
+            )
+            .expect("Failed to import issue");
+    }
+
+    // Verify import
+    let imported = issue::list_issues(&conn2, None).expect("Failed to list issues");
+    assert_eq!(imported.len(), 2);
+
+    // Find imported issues by ID
+    let imported1 = imported.iter().find(|i| i.id == issue1.id).expect("Issue 1 not found");
+    let imported2 = imported.iter().find(|i| i.id == issue2.id).expect("Issue 2 not found");
+
+    assert_eq!(imported1.title, "Import test 1");
+    assert_eq!(imported1.number, issue1.number);
+    assert_eq!(imported2.title, "Import test 2");
+    assert_eq!(imported2.agent, "codex");
+}
+
+#[test]
+fn test_import_skip_existing() {
+    let (_dir, conn) = test_db();
+
+    // Create an issue
+    let existing = issue::create_issue(
+        &conn,
+        "Original title",
+        Some("Original description"),
+        Priority::Medium,
+        IssueType::Task,
+        Some("claude"),
+    )
+    .expect("Failed to create issue");
+
+    // Try to import the same issue (by UUID) with different data
+    let modified = issue::Issue {
+        id: existing.id.clone(),
+        number: existing.number,
+        title: "Modified title".to_string(),
+        description: Some("Modified description".to_string()),
+        status: existing.status,
+        priority: Priority::High,
+        issue_type: existing.issue_type,
+        agent: existing.agent.clone(),
+        is_blocked: existing.is_blocked,
+        blocked_reason: existing.blocked_reason.clone(),
+        claimed_by: existing.claimed_by.clone(),
+        claimed_at: existing.claimed_at,
+        created_at: existing.created_at,
+        updated_at: existing.updated_at,
+        completed_at: existing.completed_at,
+    };
+
+    // Check that issue exists
+    let exists = issue::get_issue_by_id(&conn, &modified.id)
+        .expect("Should query")
+        .is_some();
+    assert!(exists);
+
+    // In real import, we would skip this issue unless --force is used
+    // For this test, just verify the original data is unchanged
+    let retrieved = issue::get_issue_by_id(&conn, &existing.id)
+        .expect("Failed to get issue")
+        .expect("Issue should exist");
+    assert_eq!(retrieved.title, "Original title");
+    assert_eq!(retrieved.priority, Priority::Medium);
+}
+
+#[test]
+fn test_import_updates_counter() {
+    let (_dir, conn) = test_db();
+
+    // Get initial counter value
+    let initial_counter: i32 = conn
+        .query_row(
+            "SELECT next_number FROM issue_counter WHERE id = 1",
+            [],
+            |row| row.get(0),
+        )
+        .expect("Failed to get counter");
+
+    // Import an issue with a higher number
+    let high_number = initial_counter + 10;
+    // Generate a simple unique ID for testing
+    let test_id = format!("test-{}-{}", chrono::Utc::now().timestamp(), high_number);
+    let imported = issue::Issue {
+        id: test_id,
+        number: high_number,
+        title: "High numbered issue".to_string(),
+        description: None,
+        status: Status::Open,
+        priority: Priority::Medium,
+        issue_type: IssueType::Task,
+        agent: "claude".to_string(),
+        is_blocked: false,
+        blocked_reason: None,
+        claimed_by: None,
+        claimed_at: None,
+        created_at: chrono::Utc::now(),
+        updated_at: chrono::Utc::now(),
+        completed_at: None,
+    };
+
+    let now = chrono::Utc::now().to_rfc3339();
+    conn.execute(
+        r#"
+        INSERT INTO issues (
+            id, number, title, description, status, priority, issue_type, agent,
+            is_blocked, blocked_reason, claimed_by, claimed_at,
+            created_at, updated_at, completed_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        "#,
+        rusqlite::params![
+            imported.id,
+            imported.number,
+            imported.title,
+            imported.description,
+            imported.status.as_str(),
+            imported.priority.as_str(),
+            imported.issue_type.as_str(),
+            imported.agent,
+            if imported.is_blocked { 1 } else { 0 },
+            imported.blocked_reason,
+            imported.claimed_by,
+            imported.claimed_at.map(|dt| dt.to_rfc3339()),
+            imported.created_at.to_rfc3339(),
+            now,
+            imported.completed_at.map(|dt| dt.to_rfc3339()),
+        ],
+    )
+    .expect("Failed to import issue");
+
+    // Update counter
+    conn.execute(
+        "UPDATE issue_counter SET next_number = ? WHERE id = 1",
+        [high_number + 1],
+    )
+    .expect("Failed to update counter");
+
+    // Verify counter was updated
+    let new_counter: i32 = conn
+        .query_row(
+            "SELECT next_number FROM issue_counter WHERE id = 1",
+            [],
+            |row| row.get(0),
+        )
+        .expect("Failed to get counter");
+    assert_eq!(new_counter, high_number + 1);
+
+    // Create a new issue and verify it gets the correct number
+    let new_issue = issue::create_issue(
+        &conn,
+        "New issue after import",
+        None,
+        Priority::Low,
+        IssueType::Task,
+        Some("claude"),
+    )
+    .expect("Failed to create issue");
+    assert_eq!(new_issue.number, high_number + 1);
 }

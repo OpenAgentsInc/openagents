@@ -545,6 +545,20 @@ enum IssueCommands {
         #[arg(long)]
         db: Option<PathBuf>,
     },
+    /// Import issues from JSON
+    Import {
+        /// Input file path (default: .openagents/issues.json)
+        #[arg(short, long)]
+        input: Option<PathBuf>,
+
+        /// Force update existing issues with same UUID
+        #[arg(long)]
+        force: bool,
+
+        /// Path to issues database (default: autopilot.db in cwd)
+        #[arg(long)]
+        db: Option<PathBuf>,
+    },
 }
 
 #[derive(Subcommand)]
@@ -2480,6 +2494,108 @@ async fn handle_issue_command(command: IssueCommands) -> Result<()> {
                 issues_to_export.len(),
                 output_path.display()
             );
+        }
+        IssueCommands::Import { input, force, db } => {
+            let db_path = db.unwrap_or(default_db);
+            let conn = db::init_db(&db_path)?;
+
+            // Determine input path
+            let input_path = input.unwrap_or_else(|| {
+                let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+                cwd.join(".openagents").join("issues.json")
+            });
+
+            // Check if file exists
+            if !input_path.exists() {
+                eprintln!("{} File not found: {}", "✗".red(), input_path.display());
+                std::process::exit(1);
+            }
+
+            // Read and parse JSON
+            let json = std::fs::read_to_string(&input_path)?;
+            let imported_issues: Vec<issue::Issue> = serde_json::from_str(&json)?;
+
+            let mut imported = 0;
+            let mut skipped = 0;
+            let mut updated = 0;
+
+            for imported_issue in imported_issues {
+                // Check if issue with same UUID already exists
+                if let Some(_existing) = issue::get_issue_by_id(&conn, &imported_issue.id)? {
+                    if force {
+                        // Update existing issue
+                        issue::update_issue(
+                            &conn,
+                            &imported_issue.id,
+                            Some(&imported_issue.title),
+                            imported_issue.description.as_deref(),
+                            Some(imported_issue.priority),
+                            Some(imported_issue.issue_type),
+                        )?;
+                        updated += 1;
+                    } else {
+                        // Skip - UUID already exists
+                        skipped += 1;
+                    }
+                } else {
+                    // Insert new issue - need to preserve all fields including number
+                    // We need to use raw SQL since create_issue() generates new UUIDs and numbers
+                    let now = chrono::Utc::now().to_rfc3339();
+                    let sql = r#"
+                        INSERT INTO issues (
+                            id, number, title, description, status, priority, issue_type, agent,
+                            is_blocked, blocked_reason, claimed_by, claimed_at,
+                            created_at, updated_at, completed_at
+                        )
+                        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)
+                    "#;
+
+                    // Build params vec to work with execute() method on Connection
+                    conn.execute(
+                        sql,
+                        &[
+                            &imported_issue.id as &str,
+                            &imported_issue.number.to_string() as &str,
+                            &imported_issue.title as &str,
+                            &imported_issue.description.as_deref().unwrap_or("") as &str,
+                            imported_issue.status.as_str(),
+                            imported_issue.priority.as_str(),
+                            imported_issue.issue_type.as_str(),
+                            &imported_issue.agent as &str,
+                            &if imported_issue.is_blocked { "1" } else { "0" },
+                            &imported_issue.blocked_reason.as_deref().unwrap_or("") as &str,
+                            &imported_issue.claimed_by.as_deref().unwrap_or("") as &str,
+                            &imported_issue.claimed_at.map(|dt| dt.to_rfc3339()).unwrap_or_default() as &str,
+                            &imported_issue.created_at.to_rfc3339() as &str,
+                            &now as &str,
+                            &imported_issue.completed_at.map(|dt| dt.to_rfc3339()).unwrap_or_default() as &str,
+                        ],
+                    ).map_err(|e| anyhow::anyhow!("Failed to insert issue: {}", e))?;
+                    imported += 1;
+
+                    // Update issue counter if needed
+                    let current_counter: i32 = conn.query_row(
+                        "SELECT next_number FROM issue_counter WHERE id = 1",
+                        [],
+                        |row| row.get(0),
+                    )?;
+                    if imported_issue.number >= current_counter {
+                        conn.execute(
+                            "UPDATE issue_counter SET next_number = ? WHERE id = 1",
+                            [imported_issue.number + 1],
+                        )?;
+                    }
+                }
+            }
+
+            println!("{} Import complete:", "✓".green());
+            println!("  Imported: {}", imported);
+            if updated > 0 {
+                println!("  Updated:  {}", updated);
+            }
+            if skipped > 0 {
+                println!("  Skipped:  {} (use --force to update)", skipped);
+            }
         }
     }
 
