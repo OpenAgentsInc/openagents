@@ -321,6 +321,191 @@ impl SubmissionReview {
     }
 }
 
+/// Status of a skill installation
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum InstallationStatus {
+    /// Currently installing
+    Installing,
+    /// Successfully installed
+    Installed,
+    /// Update available with new version
+    UpdateAvailable {
+        /// New version available
+        new_version: String,
+    },
+    /// Installation failed
+    Failed {
+        /// Error message
+        error: String,
+    },
+    /// Previously installed but removed
+    Uninstalled,
+}
+
+impl InstallationStatus {
+    /// Check if installation is complete and working
+    pub fn is_operational(&self) -> bool {
+        matches!(
+            self,
+            InstallationStatus::Installed | InstallationStatus::UpdateAvailable { .. }
+        )
+    }
+
+    /// Check if installation is in progress
+    pub fn is_installing(&self) -> bool {
+        matches!(self, InstallationStatus::Installing)
+    }
+
+    /// Check if installation failed
+    pub fn is_failed(&self) -> bool {
+        matches!(self, InstallationStatus::Failed { .. })
+    }
+
+    /// Get error message if failed
+    pub fn error(&self) -> Option<&str> {
+        match self {
+            InstallationStatus::Failed { error } => Some(error),
+            _ => None,
+        }
+    }
+}
+
+/// A skill installation record
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SkillInstallation {
+    /// Unique installation ID
+    pub id: String,
+    /// ID of the installed skill
+    pub skill_id: String,
+    /// User who installed the skill
+    pub user_id: String,
+    /// When installed
+    pub installed_at: DateTime<Utc>,
+    /// Installed version
+    pub version: String,
+    /// Local installation path
+    pub path: PathBuf,
+    /// Current installation status
+    pub status: InstallationStatus,
+}
+
+/// An MCP dependency required by a skill
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct McpDependency {
+    /// MCP server name
+    pub server_name: String,
+    /// Optional version constraint (e.g., "^1.0.0", ">=2.1.0")
+    pub version_constraint: Option<String>,
+    /// Whether this dependency is required
+    pub required: bool,
+}
+
+impl McpDependency {
+    /// Create a new required dependency
+    pub fn required(server_name: impl Into<String>) -> Self {
+        Self {
+            server_name: server_name.into(),
+            version_constraint: None,
+            required: true,
+        }
+    }
+
+    /// Create a new optional dependency
+    pub fn optional(server_name: impl Into<String>) -> Self {
+        Self {
+            server_name: server_name.into(),
+            version_constraint: None,
+            required: false,
+        }
+    }
+
+    /// Set version constraint
+    pub fn with_version(mut self, constraint: impl Into<String>) -> Self {
+        self.version_constraint = Some(constraint.into());
+        self
+    }
+}
+
+/// Information about a missing MCP dependency
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MissingDependency {
+    /// Name of the missing server
+    pub server_name: String,
+    /// Required version constraint if any
+    pub version_constraint: Option<String>,
+    /// Whether this is a hard requirement
+    pub required: bool,
+    /// Suggested installation command or link
+    pub install_hint: Option<String>,
+}
+
+impl MissingDependency {
+    /// Create from an MCP dependency
+    pub fn from_dependency(dep: &McpDependency) -> Self {
+        Self {
+            server_name: dep.server_name.clone(),
+            version_constraint: dep.version_constraint.clone(),
+            required: dep.required,
+            install_hint: None,
+        }
+    }
+
+    /// Add installation hint
+    pub fn with_hint(mut self, hint: impl Into<String>) -> Self {
+        self.install_hint = Some(hint.into());
+        self
+    }
+}
+
+/// Information about an available skill update
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SkillUpdate {
+    /// Installation ID
+    pub installation_id: String,
+    /// Skill ID
+    pub skill_id: String,
+    /// Current version
+    pub current_version: String,
+    /// New version available
+    pub new_version: String,
+    /// Update description/changelog
+    pub description: Option<String>,
+    /// Whether this is a breaking change
+    pub breaking: bool,
+}
+
+impl SkillUpdate {
+    /// Create a new update notification
+    pub fn new(
+        installation_id: impl Into<String>,
+        skill_id: impl Into<String>,
+        current_version: impl Into<String>,
+        new_version: impl Into<String>,
+    ) -> Self {
+        Self {
+            installation_id: installation_id.into(),
+            skill_id: skill_id.into(),
+            current_version: current_version.into(),
+            new_version: new_version.into(),
+            description: None,
+            breaking: false,
+        }
+    }
+
+    /// Mark as breaking change
+    pub fn as_breaking(mut self) -> Self {
+        self.breaking = true;
+        self
+    }
+
+    /// Add description
+    pub fn with_description(mut self, desc: impl Into<String>) -> Self {
+        self.description = Some(desc.into());
+        self
+    }
+}
+
 /// Type of marketplace item
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -786,5 +971,167 @@ mod tests {
         let json = serde_json::to_string(&request_changes).unwrap();
         let deserialized: ReviewDecision = serde_json::from_str(&json).unwrap();
         assert_eq!(deserialized, request_changes);
+    }
+
+    #[test]
+    fn test_installation_status_is_operational() {
+        assert!(!InstallationStatus::Installing.is_operational());
+        assert!(InstallationStatus::Installed.is_operational());
+        assert!(InstallationStatus::UpdateAvailable {
+            new_version: "2.0.0".to_string()
+        }
+        .is_operational());
+        assert!(!InstallationStatus::Failed {
+            error: "Error".to_string()
+        }
+        .is_operational());
+        assert!(!InstallationStatus::Uninstalled.is_operational());
+    }
+
+    #[test]
+    fn test_installation_status_is_installing() {
+        assert!(InstallationStatus::Installing.is_installing());
+        assert!(!InstallationStatus::Installed.is_installing());
+        assert!(!InstallationStatus::Uninstalled.is_installing());
+    }
+
+    #[test]
+    fn test_installation_status_is_failed() {
+        assert!(!InstallationStatus::Installing.is_failed());
+        assert!(!InstallationStatus::Installed.is_failed());
+        assert!(InstallationStatus::Failed {
+            error: "Error".to_string()
+        }
+        .is_failed());
+    }
+
+    #[test]
+    fn test_installation_status_error() {
+        assert_eq!(InstallationStatus::Installing.error(), None);
+        assert_eq!(InstallationStatus::Installed.error(), None);
+        assert_eq!(
+            InstallationStatus::Failed {
+                error: "Something broke".to_string()
+            }
+            .error(),
+            Some("Something broke")
+        );
+    }
+
+    #[test]
+    fn test_mcp_dependency_builders() {
+        let required = McpDependency::required("filesystem");
+        assert_eq!(required.server_name, "filesystem");
+        assert!(required.required);
+        assert_eq!(required.version_constraint, None);
+
+        let optional = McpDependency::optional("database");
+        assert_eq!(optional.server_name, "database");
+        assert!(!optional.required);
+
+        let versioned = McpDependency::required("api").with_version("^1.0.0");
+        assert_eq!(versioned.version_constraint, Some("^1.0.0".to_string()));
+    }
+
+    #[test]
+    fn test_missing_dependency_from_dependency() {
+        let dep = McpDependency::required("test-server").with_version(">=2.0.0");
+        let missing = MissingDependency::from_dependency(&dep);
+
+        assert_eq!(missing.server_name, "test-server");
+        assert_eq!(missing.version_constraint, Some(">=2.0.0".to_string()));
+        assert!(missing.required);
+        assert_eq!(missing.install_hint, None);
+
+        let with_hint = missing.with_hint("Run: npm install test-server");
+        assert_eq!(
+            with_hint.install_hint,
+            Some("Run: npm install test-server".to_string())
+        );
+    }
+
+    #[test]
+    fn test_skill_update_builder() {
+        let update = SkillUpdate::new("inst1", "skill1", "1.0.0", "2.0.0");
+        assert_eq!(update.installation_id, "inst1");
+        assert_eq!(update.skill_id, "skill1");
+        assert_eq!(update.current_version, "1.0.0");
+        assert_eq!(update.new_version, "2.0.0");
+        assert!(!update.breaking);
+        assert_eq!(update.description, None);
+
+        let with_desc = update
+            .clone()
+            .with_description("Added new features");
+        assert_eq!(
+            with_desc.description,
+            Some("Added new features".to_string())
+        );
+
+        let breaking = update.as_breaking();
+        assert!(breaking.breaking);
+    }
+
+    #[test]
+    fn test_skill_installation_serde() {
+        let installation = SkillInstallation {
+            id: "install123".to_string(),
+            skill_id: "skill456".to_string(),
+            user_id: "user789".to_string(),
+            installed_at: Utc::now(),
+            version: "1.0.0".to_string(),
+            path: PathBuf::from("/home/user/.skills/skill456"),
+            status: InstallationStatus::Installed,
+        };
+
+        let json = serde_json::to_string(&installation).unwrap();
+        let deserialized: SkillInstallation = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.id, installation.id);
+        assert_eq!(deserialized.status, installation.status);
+    }
+
+    #[test]
+    fn test_installation_status_serde() {
+        let installed = InstallationStatus::Installed;
+        let json = serde_json::to_string(&installed).unwrap();
+        let deserialized: InstallationStatus = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized, installed);
+
+        let failed = InstallationStatus::Failed {
+            error: "Network error".to_string(),
+        };
+        let json = serde_json::to_string(&failed).unwrap();
+        let deserialized: InstallationStatus = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized, failed);
+
+        let update_available = InstallationStatus::UpdateAvailable {
+            new_version: "3.0.0".to_string(),
+        };
+        let json = serde_json::to_string(&update_available).unwrap();
+        let deserialized: InstallationStatus = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized, update_available);
+    }
+
+    #[test]
+    fn test_mcp_dependency_serde() {
+        let dep = McpDependency::required("server").with_version("^1.0.0");
+        let json = serde_json::to_string(&dep).unwrap();
+        let deserialized: McpDependency = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.server_name, dep.server_name);
+        assert_eq!(deserialized.version_constraint, dep.version_constraint);
+        assert_eq!(deserialized.required, dep.required);
+    }
+
+    #[test]
+    fn test_skill_update_serde() {
+        let update = SkillUpdate::new("inst1", "skill1", "1.0.0", "2.0.0")
+            .as_breaking()
+            .with_description("Major update");
+
+        let json = serde_json::to_string(&update).unwrap();
+        let deserialized: SkillUpdate = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.installation_id, update.installation_id);
+        assert_eq!(deserialized.breaking, update.breaking);
+        assert_eq!(deserialized.description, update.description);
     }
 }
