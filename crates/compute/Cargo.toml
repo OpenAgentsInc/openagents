@@ -19,6 +19,7 @@ path = "src/lib.rs"
 [dependencies]
 # Internal crates
 nostr = { path = "../nostr/core", features = ["full"] }
+spark = { path = "../spark" }
 
 # Cryptography
 bip39 = "2.2"

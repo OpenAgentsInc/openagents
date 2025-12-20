@@ -96,12 +96,17 @@ impl AppState {
 
     /// Set the identity
     pub fn set_identity(&self, identity: UnifiedIdentity) {
+        // Update spark_address signal with the public key
+        let spark_pubkey = identity.spark_public_key_hex();
+        self.spark_address.set(spark_pubkey);
+
         self.identity.set(Some(Arc::new(identity)));
     }
 
     /// Clear the identity
     pub fn clear_identity(&self) {
         self.identity.set(None);
+        self.spark_address.set(String::new());
     }
 
     /// Show backup screen

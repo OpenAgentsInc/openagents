@@ -869,6 +869,7 @@ dependencies = [
  "rand 0.8.5",
  "serde",
  "serde_json",
+ "spark",
  "tempfile",
  "thiserror 2.0.17",
  "tokio",

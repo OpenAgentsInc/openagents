@@ -2,10 +2,11 @@
 //!
 //! The same seed phrase is used to derive:
 //! - Nostr keypair via NIP-06 (m/44'/1237'/0'/0/0)
-//! - Spark wallet signer
+//! - Spark wallet signer via BIP44 (m/44'/0'/0'/0/0)
 
 use bip39::Mnemonic;
 use nostr::{Keypair, Nip06Error, derive_keypair_full};
+use spark::{SparkSigner, SparkError};
 use thiserror::Error;
 
 /// Errors that can occur during identity operations
@@ -40,6 +41,16 @@ impl From<Nip06Error> for IdentityError {
     }
 }
 
+impl From<SparkError> for IdentityError {
+    fn from(e: SparkError) -> Self {
+        match e {
+            SparkError::InvalidMnemonic(s) => IdentityError::InvalidMnemonic(s),
+            SparkError::KeyDerivation(s) => IdentityError::KeyDerivation(s),
+            _ => IdentityError::SparkWallet(e.to_string()),
+        }
+    }
+}
+
 /// Unified identity that manages both Nostr and Bitcoin/Spark keys from a single seed
 #[derive(Clone)]
 pub struct UnifiedIdentity {
@@ -47,8 +58,8 @@ pub struct UnifiedIdentity {
     mnemonic: String,
     /// Nostr keypair derived via NIP-06 (m/44'/1237'/0'/0/0)
     nostr_keypair: Keypair,
-    // TODO: Add Spark wallet signer when spark-wallet crate is integrated
-    // spark_signer: Arc<dyn Signer>,
+    /// Spark signer derived via BIP44 (m/44'/0'/0'/0/0)
+    spark_signer: SparkSigner,
 }
 
 impl UnifiedIdentity {
@@ -83,15 +94,16 @@ impl UnifiedIdentity {
         let _parsed = Mnemonic::parse(mnemonic)
             .map_err(|e| IdentityError::InvalidMnemonic(e.to_string()))?;
 
-        // Derive Nostr keypair using NIP-06
+        // Derive Nostr keypair using NIP-06 (m/44'/1237'/0'/0/0)
         let nostr_keypair = derive_keypair_full(mnemonic, passphrase, 0)?;
 
-        // TODO: Initialize Spark wallet signer from the same mnemonic
-        // The Spark SDK uses its own derivation path internally
+        // Derive Spark signer using BIP44 (m/44'/0'/0'/0/0)
+        let spark_signer = SparkSigner::from_mnemonic(mnemonic, passphrase)?;
 
         Ok(Self {
             mnemonic: mnemonic.to_string(),
             nostr_keypair,
+            spark_signer,
         })
     }
 
@@ -152,9 +164,15 @@ impl UnifiedIdentity {
         }
     }
 
-    // TODO: Spark wallet integration methods
-    // pub fn spark_address(&self) -> String { ... }
-    // pub fn spark_signer(&self) -> Arc<dyn Signer> { ... }
+    /// Get the Spark signer for Bitcoin payments
+    pub fn spark_signer(&self) -> &SparkSigner {
+        &self.spark_signer
+    }
+
+    /// Get the Spark public key as hex (for display)
+    pub fn spark_public_key_hex(&self) -> String {
+        self.spark_signer.public_key_hex()
+    }
 }
 
 impl std::fmt::Debug for UnifiedIdentity {
@@ -227,5 +245,53 @@ mod tests {
         assert!(short.starts_with("npub1"));
         assert!(short.contains("..."));
         assert!(short.len() < 20);
+    }
+
+    #[test]
+    fn test_spark_integration() {
+        let mnemonic = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
+        let identity = UnifiedIdentity::from_mnemonic(mnemonic, "").expect("should create identity");
+
+        // Should have spark signer
+        let signer = identity.spark_signer();
+        assert_eq!(signer.public_key().len(), 33);
+
+        // Should produce hex public key
+        let pubkey_hex = identity.spark_public_key_hex();
+        assert_eq!(pubkey_hex.len(), 66); // 33 bytes * 2 hex chars
+
+        // Should start with 02 or 03 (compressed format)
+        assert!(pubkey_hex.starts_with("02") || pubkey_hex.starts_with("03"));
+    }
+
+    #[test]
+    fn test_spark_deterministic_derivation() {
+        let mnemonic = "leader monkey parrot ring guide accident before fence cannon height naive bean";
+
+        let identity1 = UnifiedIdentity::from_mnemonic(mnemonic, "").unwrap();
+        let identity2 = UnifiedIdentity::from_mnemonic(mnemonic, "").unwrap();
+
+        // Same mnemonic should produce same Spark keys
+        assert_eq!(
+            identity1.spark_public_key_hex(),
+            identity2.spark_public_key_hex()
+        );
+    }
+
+    #[test]
+    fn test_unified_identity_both_keys() {
+        let mnemonic = "zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo wrong";
+        let identity = UnifiedIdentity::from_mnemonic(mnemonic, "").expect("should create identity");
+
+        // Should have both Nostr and Spark keys
+        let npub = identity.npub().expect("should have npub");
+        assert!(npub.starts_with("npub1"));
+
+        let spark_pubkey = identity.spark_public_key_hex();
+        assert!(spark_pubkey.starts_with("02") || spark_pubkey.starts_with("03"));
+
+        // The keys should be different (different derivation paths)
+        let nostr_hex = identity.public_key_hex();
+        assert_ne!(nostr_hex, spark_pubkey);
     }
 }
