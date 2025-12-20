@@ -27,6 +27,7 @@
 //! - NIP-42: Authentication of Clients to Relays
 //! - NIP-44: Versioned Encryption (requires `full` feature)
 //! - NIP-47: Nostr Wallet Connect (requires `full` feature)
+//! - NIP-51: Lists (mute lists, pin lists, bookmarks, etc.)
 //! - NIP-57: Lightning Zaps (tipping with Lightning payments)
 //! - NIP-89: Application Handlers (social discovery of skills/agents)
 //! - NIP-90: Data Vending Machine (DVM) job requests/results/feedback
@@ -72,6 +73,7 @@ mod nip42;
 mod nip44;
 #[cfg(feature = "full")]
 mod nip47;
+mod nip51;
 mod nip57;
 mod nip89;
 mod nip90;
@@ -245,6 +247,19 @@ pub use nip47::{
     PayInvoiceParams, PayInvoiceResult, PayKeysendParams, Request, RequestParams, Response,
     ResponseResult, TlvRecord, Transaction, TransactionType, INFO_EVENT_KIND,
     NOTIFICATION_KIND_NIP04, NOTIFICATION_KIND_NIP44, REQUEST_KIND, RESPONSE_KIND,
+};
+
+// NIP-51: Lists
+pub use nip51::{
+    KIND_APP_CURATION, KIND_BLOCKED_RELAYS, KIND_BOOKMARK_SETS, KIND_BOOKMARKS, KIND_CALENDAR,
+    KIND_COMMUNITIES, KIND_CURATION_SETS, KIND_DM_RELAYS, KIND_EMOJI_SETS, KIND_EMOJIS,
+    KIND_FOLLOW_LIST, KIND_FOLLOW_SETS, KIND_INTERESTS, KIND_INTEREST_SETS, KIND_KIND_MUTE_SETS,
+    KIND_MEDIA_FOLLOWS, KIND_MEDIA_STARTER_PACKS, KIND_MUTE_LIST, KIND_PINNED_NOTES,
+    KIND_PUBLIC_CHATS, KIND_RELAY_FEEDS, KIND_RELAY_LIST, KIND_RELAY_SETS, KIND_RELEASE_ARTIFACTS,
+    KIND_SEARCH_RELAYS, KIND_SIMPLE_GROUPS, KIND_STARTER_PACKS, KIND_VIDEO_CURATION,
+    KIND_WIKI_AUTHORS, KIND_WIKI_RELAYS, ListType, Nip51Error, create_metadata_tags,
+    create_set_identifier_tag, get_description, get_image, get_list_type, get_public_items,
+    get_set_identifier, get_title, is_list_event, is_nip04_encryption,
 };
 
 // NIP-57: Lightning Zaps
