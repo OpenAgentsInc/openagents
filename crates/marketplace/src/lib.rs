@@ -4,6 +4,7 @@
 //! marketplace items including plugins, skills, and agents.
 
 pub mod creator_dashboard;
+pub mod data_consumer;
 pub mod data_contribution;
 pub mod db;
 pub mod discovery;
@@ -15,6 +16,10 @@ pub mod types;
 pub use creator_dashboard::{
     CreatorAnalytics, CreatorDashboard, CreatorSkillSummary, DashboardError,
     EarningsSummary, PayoutRecord, PayoutStatus, PeriodEarnings,
+};
+pub use data_consumer::{
+    DataAccessToken, DataConsumerError, DataListing, DataListingType, DataPermissions,
+    DataPurchase, DataSample, DatasetMetadata, RateLimit,
 };
 pub use data_contribution::{
     ContributionError, ContributionMetadata, ContributionStatus, DataContribution,
