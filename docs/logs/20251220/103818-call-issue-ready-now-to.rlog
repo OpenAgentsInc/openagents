@@ -2244,3 +2244,30 @@ o: id=s46LpVJY → [ok] File created successfully at: /home/christopherdavid/cod
 t!:Bash id=4FHv3528 cmd="cargo test --package nostr --test nip89_integra..." → [running] tokens_in=1 tokens_out=26 tokens_cached=76005
 o: id=4FHv3528 → [ok] running 53 tests
 t!:Bash id=youU8CCd cmd="git add -A && git commit -m "$(cat <<'EOF'" → [running] tokens_in=0 tokens_out=353 tokens_cached=83294
+o: id=youU8CCd → [ok] [main 0d58a1fd2] Add comprehensive unit tests for NIP-89 handler information
+t!:mcp__issues__issue_complete id=fzppGFzq  → [running] tokens_in=0 tokens_out=32 tokens_cached=84325
+o: id=fzppGFzq → [ok] Completed issue #51
+t!:mcp__issues__issue_ready id=7Byontb3  → [running] tokens_in=0 tokens_out=58 tokens_cached=84866
+o: id=7Byontb3 → [ok] No ready issues available
+t!:mcp__issues__issue_create id=yu3JJURL  → [running] tokens_in=0 tokens_out=189 tokens_cached=85082
+o: id=yu3JJURL → [ok] Created issue #52: Add unit tests for SecureStore encryption module in compute crate (agent: claude)
+t!:mcp__issues__issue_ready id=MSC7psFo  → [running] tokens_in=0 tokens_out=58 tokens_cached=85196
+o: id=MSC7psFo → [ok] {
+t!:mcp__issues__issue_claim id=2gp6r6yx  → [running] tokens_in=0 tokens_out=81 tokens_cached=85460
+o: id=2gp6r6yx → [ok] Claimed issue #52
+t!:Read id=k4uPtmuw file_path=/home/christopherdavid/code/openagents/crates/compute/src/storage/secure_store.rs → [running] tokens_in=0 tokens_out=81 tokens_cached=85785
+o: id=k4uPtmuw → [ok]      1→//! Secure storage for seed phrase using AES-GCM encryption
+a: I see there are already some basic tests in the secure_store.rs file (lines 349-423). The issue asks for comprehensive tests beyond what already exists. Looking at the existing tests in `/home/chri... tokens_in=2 tokens_out=1 tokens_cached=85924
+t!:Glob id=aNixVFPG pattern="**/compute/tests/*.rs" → [running] tokens_in=2 tokens_out=1 tokens_cached=85924
+o: id=aNixVFPG → [ok] /home/christopherdavid/code/openagents/crates/compute/tests/domain_identity.rs
+a: The storage_secure_store.rs test file already exists with 25 tests. However, looking at the SecureStore implementation, I notice there are plaintext storage methods (`store_plaintext`, `load_plaint... tokens_in=1 tokens_out=1 tokens_cached=91914
+t!:Read id=j8njUEpQ file_path=/home/christopherdavid/code/openagents/crates/compute/tests/storage_secure_store.rs → [running] tokens_in=1 tokens_out=1 tokens_cached=91914
+o: id=j8njUEpQ → [ok]      1→//! Unit tests for SecureStore encryption module
+t!:Read id=PvzztaWH file_path=/home/christopherdavid/code/openagents/crates/compute/tests/storage_secure_store.rs → [running] tokens_in=0 tokens_out=18 tokens_cached=92295
+o: id=PvzztaWH → [ok]    100→    // Try to change with wrong old password
+a: Looking at the existing tests, there are already 25 comprehensive tests. However, I can add some additional edge case tests for: tokens_in=0 tokens_out=4 tokens_cached=93838
+t!:Edit id=oAzevfcn file_path=/home/christopherdavid/code/openagents/crates/compute/tests/storage_secure_store.rs → [running] tokens_in=0 tokens_out=3400 tokens_cached=93838
+o: id=oAzevfcn → [ok] The file /home/christopherdavid/code/openagents/crates/compute/tests/storage_secure_store.rs has ...
+t!:Bash id=qyq2bCbP cmd="cargo test --package compute --test storage_sec..." → [running] tokens_in=0 tokens_out=26 tokens_cached=97593
+o: id=qyq2bCbP → [ok]    Compiling compute v0.1.0 (/home/christopherdavid/code/openagents/crates/compute)
+t!:Bash id=QUr7GgHt cmd="git add -A && git commit -m "$(cat <<'EOF'" → [running] tokens_in=0 tokens_out=349 tokens_cached=105045
