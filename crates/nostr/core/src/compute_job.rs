@@ -424,7 +424,7 @@ pub fn select_provider(
             candidates.first().map(|&p| p.clone())
         }
 
-        SelectionMode::TopK(k) => {
+        SelectionMode::TopK(_k) => {
             // Return highest reputation provider from top K
             candidates.sort_by(|a, b| {
                 b.reputation.success_rate.partial_cmp(&a.reputation.success_rate)
