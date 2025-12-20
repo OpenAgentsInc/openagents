@@ -683,20 +683,33 @@ impl HookCallback for PlanModeHook {
 /// Full auto mode prompt suffix
 const FULL_AUTO_PROMPT: &str = r#"
 
-FULL AUTO MODE: You are in autonomous mode. Your workflow:
+FULL AUTO MODE - CRITICAL AUTONOMOUS LOOP INSTRUCTIONS:
+
+You are in FULLY AUTONOMOUS mode. You MUST follow this exact loop:
+
+LOOP START:
 1. Call issue_ready to get the next available issue
-2. If an issue exists: claim it, implement it, test it, commit AND PUSH to main, complete it
-3. After completing, call issue_ready again for the next issue
-4. When issue_ready returns "No ready issues available":
-   - Analyze the codebase to understand the project direction
-   - Identify the most logical next improvement or feature
-   - Create a new issue using issue_create with your recommendation
-   - Immediately claim and implement it
-5. Continue this loop until max_budget is reached
+2. If issue exists: claim → implement → test → commit → PUSH → complete
+3. IMMEDIATELY call issue_ready again (NO SUMMARIES, NO PAUSES)
+4. GOTO LOOP START
 
-IMPORTANT: Always `git push origin main` after each commit. Each issue should be pushed before moving to the next.
+IF issue_ready returns "No ready issues available":
+- Analyze codebase to identify the next logical improvement
+- Create a new issue with issue_create
+- Claim and implement it
+- GOTO LOOP START
 
-Never stop. Always keep working. Always keep improving.
+CRITICAL RULES - VIOLATION MEANS FAILURE:
+- NEVER output a "session summary" or "issues completed" message
+- NEVER stop to reflect on progress
+- NEVER say "I've completed X issues" - this is a STOP SIGNAL, do NOT emit it
+- After EVERY issue_complete, your VERY NEXT action MUST be issue_ready
+- The ONLY valid reasons to stop: budget exhausted error, max turns error, or system crash
+- If you output text without immediately calling issue_ready after completing an issue, YOU HAVE FAILED
+
+IMPORTANT: Always `git push origin main` after each commit.
+
+This is an INFINITE LOOP. You run until the system stops you. DO NOT STOP YOURSELF.
 "#;
 
 /// Run Claude agent with the given prompt
@@ -727,6 +740,132 @@ async fn run_claude_agent(
             print_message(&msg);
         } else {
             print_progress(&msg);
+        }
+    }
+
+    Ok(())
+}
+
+/// Full-auto loop: keeps running until budget exhausted
+/// If agent stops prematurely, we detect it and force continuation
+async fn run_full_auto_loop(
+    initial_prompt: &str,
+    options: QueryOptions,
+    collector: &mut TrajectoryCollector,
+    verbose: bool,
+    ui_port: Option<u16>,
+    cwd: &PathBuf,
+    issues_db: Option<&PathBuf>,
+) -> Result<()> {
+    use issues::{db, issue};
+
+    // First run with the initial prompt
+    let mut session = unstable_v2_create_session(options).await?;
+    session.send(initial_prompt).await?;
+
+    let mut continuation_count = 0;
+    const MAX_CONTINUATIONS: u32 = 1000; // Safety limit
+
+    loop {
+        // Process messages until stream ends
+        let mut budget_exhausted = false;
+        let mut max_turns_reached = false;
+
+        while let Some(msg) = session.receive().next().await {
+            let msg = msg?;
+            collector.process_message(&msg);
+
+            // Check if this is a result message indicating session end
+            if let SdkMessage::Result(ref result) = msg {
+                // Check for budget/turns exhaustion based on result type
+                match result {
+                    claude_agent_sdk::SdkResultMessage::ErrorMaxBudget(_) => {
+                        budget_exhausted = true;
+                    }
+                    claude_agent_sdk::SdkResultMessage::ErrorMaxTurns(_) => {
+                        max_turns_reached = true;
+                    }
+                    claude_agent_sdk::SdkResultMessage::ErrorDuringExecution(e) => {
+                        // Check error messages for budget/turn related errors
+                        for err in &e.errors {
+                            let err_lower = err.to_lowercase();
+                            if err_lower.contains("budget") || err_lower.contains("cost") {
+                                budget_exhausted = true;
+                            }
+                            if err_lower.contains("turn") || err_lower.contains("max_turn") {
+                                max_turns_reached = true;
+                            }
+                        }
+                    }
+                    claude_agent_sdk::SdkResultMessage::Success(_) => {
+                        // Success means the agent decided to stop - we may need to continue
+                    }
+                    _ => {}
+                }
+            }
+
+            // Stream to UI
+            if let Some(port) = ui_port {
+                if let Some(html) = autopilot::ui_renderer::render_sdk_message(&msg) {
+                    let _ = stream_to_desktop(port, html.into_string()).await;
+                }
+            }
+
+            // Print progress
+            if verbose {
+                print_message(&msg);
+            } else {
+                print_progress(&msg);
+            }
+        }
+
+        // If budget or turns exhausted, we're done
+        if budget_exhausted {
+            println!("\n{} Budget exhausted - stopping full-auto loop", "STOP:".red().bold());
+            break;
+        }
+        if max_turns_reached {
+            println!("\n{} Max turns reached - stopping full-auto loop", "STOP:".red().bold());
+            break;
+        }
+
+        // Safety limit
+        continuation_count += 1;
+        if continuation_count >= MAX_CONTINUATIONS {
+            println!("\n{} Max continuations ({}) reached", "STOP:".yellow().bold(), MAX_CONTINUATIONS);
+            break;
+        }
+
+        // Check if there are more issues to work on
+        let default_db = cwd.join("autopilot.db");
+        let db_path = issues_db.unwrap_or(&default_db);
+
+        let has_more_work = if let Ok(conn) = db::init_db(db_path) {
+            issue::get_next_ready_issue(&conn, Some("claude"))?.is_some()
+        } else {
+            false
+        };
+
+        if !has_more_work {
+            // No more issues - but in full-auto we should create new work
+            println!("\n{} No ready issues - sending continuation to create work", "AUTO:".cyan().bold());
+        } else {
+            println!("\n{} Issues still available - forcing continuation", "AUTO:".cyan().bold());
+        }
+
+        // Force continuation - the agent stopped but there's work to do
+        println!("{} Sending continuation prompt (attempt {})", "AUTO:".yellow().bold(), continuation_count);
+
+        let continuation_prompt = if has_more_work {
+            "CONTINUE: You stopped prematurely. There are still issues to work on. Call issue_ready NOW and continue the autonomous loop. DO NOT summarize - just call issue_ready immediately."
+        } else {
+            "CONTINUE: You stopped prematurely. No issues are ready, so create a new issue with issue_create based on your analysis of the codebase, then claim and implement it. DO NOT summarize."
+        };
+
+        // Send continuation
+        if let Err(e) = session.send(continuation_prompt).await {
+            println!("{} Failed to send continuation: {} - stopping", "ERROR:".red(), e);
+            break;
         }
     }
 
@@ -1071,30 +1210,44 @@ async fn run_task(
     }
 
     // Dispatch to appropriate agent
-    match agent.as_str() {
-        "claude" => {
-            run_claude_agent(
-                &prompt,
-                options,
-                &mut collector,
-                verbose,
-                _ui_port,
-            )
-            .await?;
-        }
-        "codex" => {
-            run_codex_agent(
-                &prompt,
-                &cwd,
-                max_turns,
-                max_budget,
-                &mut collector,
-                verbose,
-            )
-            .await?;
-        }
-        _ => {
-            anyhow::bail!("Unknown agent: {}. Use 'claude' or 'codex'", agent);
+    // In full-auto mode, we loop and force continuation if the agent stops prematurely
+    if full_auto && agent == "claude" {
+        run_full_auto_loop(
+            &prompt,
+            options,
+            &mut collector,
+            verbose,
+            _ui_port,
+            &cwd,
+            issues_db.as_ref(),
+        )
+        .await?;
+    } else {
+        match agent.as_str() {
+            "claude" => {
+                run_claude_agent(
+                    &prompt,
+                    options,
+                    &mut collector,
+                    verbose,
+                    _ui_port,
+                )
+                .await?;
+            }
+            "codex" => {
+                run_codex_agent(
+                    &prompt,
+                    &cwd,
+                    max_turns,
+                    max_budget,
+                    &mut collector,
+                    verbose,
+                )
+                .await?;
+            }
+            _ => {
+                anyhow::bail!("Unknown agent: {}. Use 'claude' or 'codex'", agent);
+            }
         }
     }
 
