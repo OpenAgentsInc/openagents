@@ -183,7 +183,7 @@ fn parse_frontmatter(content: &str) -> Result<(String, String), SkillError> {
     let lines: Vec<&str> = content.lines().collect();
 
     // Must start with ---
-    if !lines.first().map_or(false, |l| l.trim() == "---") {
+    if lines.first().is_none_or(|l| l.trim() != "---") {
         return Err(SkillError::MissingField(
             "SKILL.md must start with YAML frontmatter (---)".to_string()
         ));

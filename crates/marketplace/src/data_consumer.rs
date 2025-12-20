@@ -209,7 +209,7 @@ impl DataListing {
 
     /// Check if the listing is expired
     pub fn is_expired(&self) -> bool {
-        self.expires_at.map_or(false, |exp| Utc::now() > exp)
+        self.expires_at.is_some_and(|exp| Utc::now() > exp)
     }
 
     /// Get price per record
@@ -301,7 +301,7 @@ impl DataPurchase {
 
     /// Check if access is expired
     pub fn is_expired(&self) -> bool {
-        self.expires_at.map_or(false, |exp| Utc::now() > exp)
+        self.expires_at.is_some_and(|exp| Utc::now() > exp)
     }
 
     /// Check if download is still available
@@ -500,7 +500,7 @@ impl DataAccessToken {
 
     /// Check if the token is expired
     pub fn is_expired(&self) -> bool {
-        self.expires_at.map_or(false, |exp| Utc::now() > exp)
+        self.expires_at.is_some_and(|exp| Utc::now() > exp)
     }
 
     /// Check if a request is allowed (considering rate limits)

@@ -579,8 +579,8 @@ pub fn validate(session: &ParsedSession) -> ValidationResult {
             }
             LineType::ToolProgress => {
                 // Validate that progress has matching start
-                if let Some(ref id) = line.call_id {
-                    if !tool_start_ids.contains(id) && !call_ids.contains(id) {
+                if let Some(ref id) = line.call_id
+                    && !tool_start_ids.contains(id) && !call_ids.contains(id) {
                         result.issues.push(ValidationIssue {
                             line: Some(line.line_number),
                             severity: Severity::Warning,
@@ -588,7 +588,6 @@ pub fn validate(session: &ParsedSession) -> ValidationResult {
                             message: format!("Tool progress references unknown call id: {}", id),
                         });
                     }
-                }
             }
             LineType::Observation => {
                 result.stats.observations += 1;
@@ -658,8 +657,8 @@ pub fn validate(session: &ParsedSession) -> ValidationResult {
 
         // Validate step ordering
         if let Some(step) = line.step {
-            if let Some(last) = last_step {
-                if step < last {
+            if let Some(last) = last_step
+                && step < last {
                     result.issues.push(ValidationIssue {
                         line: Some(line.line_number),
                         severity: Severity::Warning,
@@ -667,7 +666,6 @@ pub fn validate(session: &ParsedSession) -> ValidationResult {
                         message: format!("Step {} is less than previous step {}", step, last),
                     });
                 }
-            }
             last_step = Some(step);
             result.stats.max_step = Some(step);
         }
@@ -689,8 +687,8 @@ pub fn validate(session: &ParsedSession) -> ValidationResult {
         }
 
         // Validate timestamp format
-        if let Some(ref ts) = line.timestamp {
-            if !RE_ISO_TIMESTAMP.is_match(ts) {
+        if let Some(ref ts) = line.timestamp
+            && !RE_ISO_TIMESTAMP.is_match(ts) {
                 result.issues.push(ValidationIssue {
                     line: Some(line.line_number),
                     severity: Severity::Warning,
@@ -698,7 +696,6 @@ pub fn validate(session: &ParsedSession) -> ValidationResult {
                     message: format!("Invalid timestamp format: {}", ts),
                 });
             }
-        }
 
         // Count blobs
         result.stats.blob_references += RE_BLOB.find_iter(&line.raw).count();

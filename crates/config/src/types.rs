@@ -426,6 +426,7 @@ impl Default for ReflexionConfig {
 /// Cloud configuration
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[derive(Default)]
 pub struct CloudConfig {
     /// API endpoint
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -436,14 +437,6 @@ pub struct CloudConfig {
     pub api_key: Option<String>,
 }
 
-impl Default for CloudConfig {
-    fn default() -> Self {
-        Self {
-            endpoint: None,
-            api_key: None,
-        }
-    }
-}
 
 /// Main project configuration
 ///

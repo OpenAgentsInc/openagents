@@ -36,8 +36,10 @@ pub enum ExecutionError {
 /// Filesystem access control for sandboxed execution
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(tag = "type", rename_all = "snake_case")]
+#[derive(Default)]
 pub enum FilesystemAccess {
     /// No filesystem access allowed
+    #[default]
     None,
 
     /// Read-only access to specified paths
@@ -53,11 +55,6 @@ pub enum FilesystemAccess {
     },
 }
 
-impl Default for FilesystemAccess {
-    fn default() -> Self {
-        Self::None
-    }
-}
 
 impl FilesystemAccess {
     /// Create read-only access to specific paths

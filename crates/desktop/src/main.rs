@@ -25,7 +25,7 @@ fn main() -> Result<()> {
     let broadcaster = Arc::new(WsBroadcaster::new(64));
 
     // Start tokio runtime + actix server in background thread
-    let broadcaster_clone = broadcaster.clone();
+    let broadcaster_clone = broadcaster;
     let (port_tx, port_rx) = std::sync::mpsc::channel();
 
     std::thread::spawn(move || {

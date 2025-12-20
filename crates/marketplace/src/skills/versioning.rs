@@ -177,7 +177,7 @@ impl SkillVersion {
     }
 
     /// Get the version string (e.g., "1.2.3" or "2.0.0-beta.1")
-    pub fn to_string(&self) -> String {
+    pub fn as_string(&self) -> String {
         format!("{}", self)
     }
 }
@@ -281,7 +281,7 @@ impl VersionRegistry {
     pub fn find_version(&self, version_str: &str) -> Option<&SkillVersion> {
         self.versions
             .iter()
-            .find(|v| v.to_string() == version_str)
+            .find(|v| v.as_string() == version_str)
     }
 
     /// List all versions
@@ -303,7 +303,7 @@ impl VersionRegistry {
         let version = self
             .versions
             .iter_mut()
-            .find(|v| v.to_string() == version_str)
+            .find(|v| v.as_string() == version_str)
             .ok_or_else(|| VersionError::VersionNotFound(version_str.to_string()))?;
 
         if version.deprecated {

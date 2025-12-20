@@ -352,8 +352,8 @@ pub fn convert_content(
                                     if options.include_thinking {
                                         let mut line = format_thinking_line(thinking);
 
-                                        if options.include_signature {
-                                            if let Some(sig) = signature {
+                                        if options.include_signature
+                                            && let Some(sig) = signature {
                                                 let short_sig = if sig.len() > 20 {
                                                     format!("{}...", &sig[..20])
                                                 } else {
@@ -361,7 +361,6 @@ pub fn convert_content(
                                                 };
                                                 line.push_str(&format!(" sig={}", short_sig));
                                             }
-                                        }
 
                                         append_assistant_meta(&mut line, &assistant_event, msg);
 
@@ -414,11 +413,10 @@ pub fn convert_content(
                     // This is typically attached to tool result messages
                     if result.interrupted {
                         // Mark the last tool as interrupted if present
-                        if let Some(last) = lines_output.last_mut() {
-                            if last.starts_with("t!:") || last.starts_with("t:") {
+                        if let Some(last) = lines_output.last_mut()
+                            && (last.starts_with("t!:") || last.starts_with("t:")) {
                                 last.push_str(" interrupted");
                             }
-                        }
                     }
 
                     let mut meta_line = String::from("# tool-use-result");

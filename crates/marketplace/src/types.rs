@@ -47,13 +47,13 @@ impl SkillPricing {
             SkillPricing::Free => 0,
             SkillPricing::PerCall { credits } => *credits,
             SkillPricing::PerToken { per_1k_input, per_1k_output } => {
-                let input_cost = (input_tokens * per_1k_input + 999) / 1000; // Round up
-                let output_cost = (output_tokens * per_1k_output + 999) / 1000; // Round up
+                let input_cost = (input_tokens * per_1k_input).div_ceil(1000); // Round up
+                let output_cost = (output_tokens * per_1k_output).div_ceil(1000); // Round up
                 input_cost + output_cost
             }
             SkillPricing::Hybrid { per_call, per_1k_input, per_1k_output } => {
-                let input_cost = (input_tokens * per_1k_input + 999) / 1000; // Round up
-                let output_cost = (output_tokens * per_1k_output + 999) / 1000; // Round up
+                let input_cost = (input_tokens * per_1k_input).div_ceil(1000); // Round up
+                let output_cost = (output_tokens * per_1k_output).div_ceil(1000); // Round up
                 per_call + input_cost + output_cost
             }
         }

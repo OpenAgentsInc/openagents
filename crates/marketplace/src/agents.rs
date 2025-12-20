@@ -54,7 +54,7 @@ impl AgentWallet {
 
     /// Check if agent can afford to operate for N days
     pub fn can_operate_for_days(&self, days: u32) -> bool {
-        let required = (self.daily_burn_sats as u64) * (days as u64);
+        let required = self.daily_burn_sats * (days as u64);
         self.balance_sats >= required
     }
 

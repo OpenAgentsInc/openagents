@@ -10,6 +10,7 @@ use tokio::sync::mpsc;
 
 /// Configuration for finding the Claude Code executable.
 #[derive(Debug, Clone)]
+#[derive(Default)]
 pub struct ExecutableConfig {
     /// Explicit path to the Claude Code executable (cli.js or claude binary).
     pub path: Option<PathBuf>,
@@ -19,15 +20,6 @@ pub struct ExecutableConfig {
     pub executable_args: Vec<String>,
 }
 
-impl Default for ExecutableConfig {
-    fn default() -> Self {
-        Self {
-            path: None,
-            executable: None,
-            executable_args: Vec::new(),
-        }
-    }
-}
 
 /// Process transport for communicating with Claude Code CLI.
 pub struct ProcessTransport {
@@ -91,15 +83,13 @@ impl ProcessTransport {
         let mut child = cmd.spawn()?;
 
         let stdin = child.stdin.take().ok_or_else(|| {
-            Error::SpawnFailed(std::io::Error::new(
-                std::io::ErrorKind::Other,
+            Error::SpawnFailed(std::io::Error::other(
                 "Failed to capture stdin",
             ))
         })?;
 
         let stdout = child.stdout.take().ok_or_else(|| {
-            Error::SpawnFailed(std::io::Error::new(
-                std::io::ErrorKind::Other,
+            Error::SpawnFailed(std::io::Error::other(
                 "Failed to capture stdout",
             ))
         })?;
@@ -130,8 +120,6 @@ impl ProcessTransport {
                     // Try to detect available runtime
                     if which::which("bun").is_ok() {
                         "bun".to_string()
-                    } else if which::which("node").is_ok() {
-                        "node".to_string()
                     } else {
                         "node".to_string() // Default to node
                     }
@@ -171,14 +159,12 @@ impl ProcessTransport {
         if let Ok(output) = std::process::Command::new("zsh")
             .args(["-lc", "which claude"])
             .output()
-        {
-            if output.status.success() {
+            && output.status.success() {
                 let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
                 if !path.is_empty() && std::path::Path::new(&path).exists() {
                     return Ok((path, Vec::new()));
                 }
             }
-        }
 
         Err(Error::ExecutableNotFound(
             "Could not find 'claude' executable. Install Claude Code CLI or provide explicit path."
@@ -252,10 +238,7 @@ impl ProcessTransport {
 
     /// Check if the process is still running.
     pub fn is_running(&mut self) -> bool {
-        match self.child.try_wait() {
-            Ok(None) => true,
-            _ => false,
-        }
+        matches!(self.child.try_wait(), Ok(None))
     }
 
     /// Kill the CLI process.

@@ -276,6 +276,7 @@ impl Default for EconomicScore {
 
 /// Verification score component
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Default)]
 pub struct VerificationScore {
     /// Identity verified
     pub identity_verified: bool,
@@ -327,16 +328,6 @@ impl VerificationScore {
     }
 }
 
-impl Default for VerificationScore {
-    fn default() -> Self {
-        Self {
-            identity_verified: false,
-            payment_verified: false,
-            capacity_verified: false,
-            kyc_completed: false,
-        }
-    }
-}
 
 /// Complete provider reputation
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -502,7 +493,7 @@ impl TierBenefits {
 
     /// Check if a job count is within the tier limit
     pub fn within_limit(&self, job_count: u32) -> bool {
-        self.job_volume_limit.map_or(true, |limit| job_count < limit)
+        self.job_volume_limit.is_none_or(|limit| job_count < limit)
     }
 }
 
