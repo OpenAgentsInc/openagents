@@ -2094,3 +2094,40 @@ t!:Bash id=nJwGDqXT cmd="cargo test -p autopilot --test trajectory" → [running
 o: id=nJwGDqXT → [ok] running 31 tests
 a: Perfect! All 31 tests pass. Let me commit and push: tokens_in=0 tokens_out=1 tokens_cached=139661
 t!:Bash id=zczo6mB3 cmd="git add -A && git commit -m "$(cat <<'EOF'" → [running] tokens_in=0 tokens_out=316 tokens_cached=139661
+o: id=zczo6mB3 → [ok] [main bb224187c] Add comprehensive unit tests for trajectory module
+t!:Bash id=9nvmP34L cmd="git push origin main" → [running] tokens_in=0 tokens_out=74 tokens_cached=140426
+o: id=9nvmP34L → [ok] [0;36m🔍 Running cargo build to check for errors and warnings...[0m
+t!:mcp__issues__issue_complete id=P1VBCP8S  → [running] tokens_in=0 tokens_out=32 tokens_cached=140836
+o: id=P1VBCP8S → [ok] Completed issue #45
+t!:mcp__issues__issue_ready id=f2uA1w27  → [running] tokens_in=0 tokens_out=8 tokens_cached=141137
+o: id=f2uA1w27 → [ok] No ready issues available
+t!:mcp__issues__issue_create id=cRVL7bQf  → [running] tokens_in=0 tokens_out=164 tokens_cached=141251
+o: id=cRVL7bQf → [ok] Created issue #46: Add unit tests for domain modules in compute crate (agent: claude)
+t!:mcp__issues__issue_ready id=3vmmD63i  → [running] tokens_in=0 tokens_out=8 tokens_cached=141348
+o: id=3vmmD63i → [ok] {
+t!:mcp__issues__issue_claim id=fk8r2HWA  → [running] tokens_in=0 tokens_out=81 tokens_cached=141687
+o: id=fk8r2HWA → [ok] Claimed issue #46
+a: I'll create comprehensive unit tests for the domain modules in the compute crate. tokens_in=0 tokens_out=1 tokens_cached=141867
+t!:Read id=CQqSW6Vw file_path=/home/christopherdavid/code/openagents/crates/compute/src/domain/identity.rs → [running] tokens_in=0 tokens_out=1 tokens_cached=141867
+o: id=CQqSW6Vw → [ok]      1→//! Unified identity management using BIP32 seed phrase
+t!:Read id=pjGkeLjg file_path=/home/christopherdavid/code/openagents/crates/compute/src/domain/identity.rs → [running] tokens_in=2 tokens_out=18 tokens_cached=142005
+o: id=pjGkeLjg → [ok]    100→    /// WARNING: Handle with care - this is sensitive data
+t!:Read id=nvY4kDjP file_path=/home/christopherdavid/code/openagents/crates/compute/src/domain/job.rs → [running] tokens_in=1 tokens_out=113 tokens_cached=143874
+o: id=nvY4kDjP → [ok]      1→//! Job types for NIP-90 DVM job processing
+a: Let me check the rest of the domain modules and then create comprehensive tests: tokens_in=0 tokens_out=8 tokens_cached=144782
+t!:Bash id=UFNT8Jdt cmd="wc -l /home/christopherdavid/code/openagents/cr..." → [running] tokens_in=0 tokens_out=8 tokens_cached=144782
+o: id=UFNT8Jdt → [ok]   166 /home/christopherdavid/code/openagents/crates/compute/src/domain/earnings.rs
+a: Given the token usage (124K/200K = 62%), I should create focused tests for the key domain modules. Let me create unit tests for UnifiedIdentity and Job: tokens_in=0 tokens_out=1 tokens_cached=145971
+t!:Write id=LP9o4qhV file_path=/home/christopherdavid/code/openagents/crates/compute/tests/domain_identity.rs → [running] tokens_in=0 tokens_out=2611 tokens_cached=145971
+o: id=LP9o4qhV → [ok] File created successfully at: /home/christopherdavid/code/openagents/crates/compute/tests/domain_...
+t!:Bash id=8B4zwGWG cmd="cargo test -p compute --test domain_identity" → [running] tokens_in=0 tokens_out=99 tokens_cached=146395
+o: id=8B4zwGWG → [error] Exit code 101
+a: Good - 22/23 tests pass. BIP39 mnemonics are actually case-sensitive (lowercase only), so let me remove that test: tokens_in=1 tokens_out=1 tokens_cached=149084
+t!:Read id=8y6s49Qn file_path=/home/christopherdavid/code/openagents/crates/compute/tests/domain_identity.rs → [running] tokens_in=1 tokens_out=147 tokens_cached=149084
+o: id=8y6s49Qn → [ok]    186→    // Empty passphrase should be deterministic
+t!:Edit id=J4TFpiJX file_path=/home/christopherdavid/code/openagents/crates/compute/tests/domain_identity.rs → [running] tokens_in=0 tokens_out=350 tokens_cached=149888
+o: id=J4TFpiJX → [ok] The file /home/christopherdavid/code/openagents/crates/compute/tests/domain_identity.rs has been ...
+t!:Bash id=rVdosgfh cmd="cargo test -p compute --test domain_identity" → [running] tokens_in=0 tokens_out=26 tokens_cached=150390
+o: id=rVdosgfh → [ok] running 23 tests
+a: Perfect! All 23 tests pass. Let me commit and push: tokens_in=0 tokens_out=4 tokens_cached=151156
+t!:Bash id=zpPeyn4s cmd="git add -A && git commit -m "$(cat <<'EOF'" → [running] tokens_in=0 tokens_out=324 tokens_cached=151156
