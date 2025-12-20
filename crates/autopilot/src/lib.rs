@@ -474,6 +474,11 @@ impl TrajectoryCollector {
     pub fn trajectory(&self) -> &Trajectory {
         &self.trajectory
     }
+
+    /// Consume the collector and return the trajectory (for testing)
+    pub fn into_trajectory(self) -> Trajectory {
+        self.trajectory
+    }
 }
 
 /// Extract session_id from a trajectory JSON file.
