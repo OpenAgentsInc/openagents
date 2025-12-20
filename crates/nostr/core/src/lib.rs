@@ -27,6 +27,7 @@ mod nip05;
 #[cfg(feature = "full")]
 mod nip06;
 mod nip10;
+mod nip18;
 mod nip25;
 mod nip28;
 #[cfg(feature = "full")]
@@ -76,6 +77,11 @@ pub use nip06::{
 // NIP-10: Text Notes and Threads
 pub use nip10::{
     ETagMarker, EventReference, Nip10Error, TEXT_NOTE_KIND, TextNote,
+};
+
+// NIP-18: Reposts
+pub use nip18::{
+    GENERIC_REPOST_KIND, GenericRepost, Nip18Error, REPOST_KIND, Repost, is_repost_kind,
 };
 
 // NIP-25: Reactions
