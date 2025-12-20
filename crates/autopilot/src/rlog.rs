@@ -2,28 +2,142 @@
 
 use crate::trajectory::{Step, StepType, Trajectory};
 use serde_json::Value;
+use std::fs::{File, OpenOptions};
+use std::io::{BufWriter, Write};
+use std::path::Path;
 
 /// Writer for rlog format
 pub struct RlogWriter {
     lines: Vec<String>,
+    /// Optional file writer for streaming mode
+    file_writer: Option<BufWriter<File>>,
 }
 
 impl RlogWriter {
     pub fn new() -> Self {
-        Self { lines: Vec::new() }
+        Self {
+            lines: Vec::new(),
+            file_writer: None,
+        }
     }
 
-    /// Write trajectory to rlog format string
+    /// Create a new writer in streaming mode that writes to a file
+    pub fn new_streaming(path: impl AsRef<Path>) -> std::io::Result<Self> {
+        let path = path.as_ref();
+        let file = OpenOptions::new()
+            .create(true)
+            .write(true)
+            .truncate(true)
+            .open(path)?;
+
+        Ok(Self {
+            lines: Vec::new(),
+            file_writer: Some(BufWriter::new(file)),
+        })
+    }
+
+    /// Write header to the file (for streaming mode)
+    pub fn write_header(&mut self, traj: &Trajectory) -> std::io::Result<()> {
+        let mut header_lines = Vec::new();
+        header_lines.push("---".to_string());
+        header_lines.push("format: rlog/1".to_string());
+        header_lines.push(format!("id: {}", traj.session_id));
+        header_lines.push(format!("repo_sha: {}", traj.repo_sha));
+
+        if let Some(ref branch) = traj.branch {
+            header_lines.push(format!("branch: {}", branch));
+        }
+
+        header_lines.push(format!("model: {}", traj.model));
+        header_lines.push(format!("cwd: {}", traj.cwd));
+        header_lines.push("agent: autopilot".to_string());
+        header_lines.push(format!("version: {}", env!("CARGO_PKG_VERSION")));
+
+        // Token summaries (will be updated at end)
+        header_lines.push(format!(
+            "tokens_total_in: {}",
+            traj.usage.input_tokens
+        ));
+        header_lines.push(format!(
+            "tokens_total_out: {}",
+            traj.usage.output_tokens
+        ));
+        header_lines.push(format!(
+            "tokens_cached: {}",
+            traj.usage.cache_read_tokens
+        ));
+
+        header_lines.push("---".to_string());
+        header_lines.push(String::new());
+
+        // Write start marker
+        let id = if traj.session_id.len() > 8 {
+            &traj.session_id[..8]
+        } else {
+            &traj.session_id
+        };
+        header_lines.push(format!(
+            "@start id={} ts={}",
+            id,
+            traj.started_at.format("%Y-%m-%dT%H:%M:%SZ")
+        ));
+
+        if let Some(writer) = &mut self.file_writer {
+            for line in &header_lines {
+                writeln!(writer, "{}", line)?;
+            }
+            writer.flush()?;
+        }
+
+        Ok(())
+    }
+
+    /// Append a single step to the file (for streaming mode)
+    pub fn append_step(&mut self, step: &Step) -> std::io::Result<()> {
+        let line = self.step_to_line(step);
+
+        if let Some(writer) = &mut self.file_writer {
+            writeln!(writer, "{}", line)?;
+            writer.flush()?;
+        }
+
+        Ok(())
+    }
+
+    /// Write footer to the file (for streaming mode)
+    pub fn write_footer(&mut self, traj: &Trajectory) -> std::io::Result<()> {
+        let footer = format!(
+            "@end tokens_in={} tokens_out={} cost_usd={:.4}",
+            traj.usage.input_tokens, traj.usage.output_tokens, traj.usage.cost_usd
+        );
+
+        if let Some(writer) = &mut self.file_writer {
+            writeln!(writer, "{}", footer)?;
+            writer.flush()?;
+        }
+
+        Ok(())
+    }
+
+    /// Close the file writer (for streaming mode)
+    pub fn close(&mut self) -> std::io::Result<()> {
+        if let Some(mut writer) = self.file_writer.take() {
+            writer.flush()?;
+        }
+        Ok(())
+    }
+
+    /// Write trajectory to rlog format string (batch mode)
     pub fn write(&mut self, traj: &Trajectory) -> String {
         self.lines.clear();
-        self.write_header(traj);
-        self.write_start(traj);
-        self.write_steps(traj);
-        self.write_end(traj);
+        self.write_header_batch(traj);
+        self.write_start_batch(traj);
+        self.write_steps_batch(traj);
+        self.write_end_batch(traj);
         self.lines.join("\n")
     }
 
-    fn write_header(&mut self, traj: &Trajectory) {
+    fn write_header_batch(&mut self, traj: &Trajectory) {
         self.lines.push("---".to_string());
         self.lines.push("format: rlog/1".to_string());
         self.lines.push(format!("id: {}", traj.session_id));
@@ -57,7 +171,7 @@ impl RlogWriter {
         self.lines.push(String::new());
     }
 
-    fn write_start(&mut self, traj: &Trajectory) {
+    fn write_start_batch(&mut self, traj: &Trajectory) {
         let id = if traj.session_id.len() > 8 {
             &traj.session_id[..8]
         } else {
@@ -70,13 +184,13 @@ impl RlogWriter {
         ));
     }
 
-    fn write_steps(&mut self, traj: &Trajectory) {
+    fn write_steps_batch(&mut self, traj: &Trajectory) {
         for step in &traj.steps {
             self.lines.push(self.step_to_line(step));
         }
     }
 
-    fn write_end(&mut self, traj: &Trajectory) {
+    fn write_end_batch(&mut self, traj: &Trajectory) {
         self.lines.push(format!(
             "@end tokens_in={} tokens_out={} cost_usd={:.4}",
             traj.usage.input_tokens, traj.usage.output_tokens, traj.usage.cost_usd

@@ -14,10 +14,13 @@ use claude_agent_sdk::{
 };
 use serde_json::Value;
 use trajectory::{StepType, TokenUsage, Trajectory, TrajectoryResult};
+use rlog::RlogWriter;
 
 /// Collects SdkMessages into a Trajectory
 pub struct TrajectoryCollector {
     trajectory: Trajectory,
+    /// Optional rlog writer for streaming output
+    rlog_writer: Option<RlogWriter>,
 }
 
 impl TrajectoryCollector {
@@ -31,6 +34,22 @@ impl TrajectoryCollector {
     ) -> Self {
         Self {
             trajectory: Trajectory::new(prompt, model, cwd, repo_sha, branch),
+            rlog_writer: None,
+        }
+    }
+
+    /// Enable streaming rlog output to a file
+    pub fn enable_streaming(&mut self, path: impl AsRef<std::path::Path>) -> std::io::Result<()> {
+        let mut writer = RlogWriter::new_streaming(path)?;
+        writer.write_header(&self.trajectory)?;
+        self.rlog_writer = Some(writer);
+        Ok(())
+    }
+
+    /// Stream the last added step to rlog file (if streaming is enabled)
+    fn stream_last_step(&mut self) {
+        if let (Some(writer), Some(last_step)) = (&mut self.rlog_writer, self.trajectory.steps.last()) {
+            let _ = writer.append_step(last_step);
         }
     }
 
@@ -54,12 +73,14 @@ impl TrajectoryCollector {
                 self.trajectory.add_step(StepType::SystemInit {
                     model: init.model.clone(),
                 });
+                self.stream_last_step();
             }
             SdkSystemMessage::Status(status) => {
                 if let Some(s) = &status.status {
                     self.trajectory.add_step(StepType::SystemStatus {
                         status: format!("{:?}", s),
                     });
+                    self.stream_last_step();
                 }
             }
             _ => {}
@@ -92,6 +113,7 @@ impl TrajectoryCollector {
                         step.tokens_in = tokens_in;
                         step.tokens_out = tokens_out;
                         step.tokens_cached = tokens_cached;
+                        self.stream_last_step();
                     }
                     "text" => {
                         let text = block.get("text").and_then(|t| t.as_str()).unwrap_or("");
@@ -101,6 +123,7 @@ impl TrajectoryCollector {
                         step.tokens_in = tokens_in;
                         step.tokens_out = tokens_out;
                         step.tokens_cached = tokens_cached;
+                        self.stream_last_step();
                     }
                     "tool_use" => {
                         let tool_name = block
@@ -117,6 +140,7 @@ impl TrajectoryCollector {
                         step.tokens_in = tokens_in;
                         step.tokens_out = tokens_out;
                         step.tokens_cached = tokens_cached;
+                        self.stream_last_step();
                     }
                     _ => {}
                 }
@@ -174,6 +198,7 @@ impl TrajectoryCollector {
                                     Some(output)
                                 },
                             });
+                            self.stream_last_step();
                         }
                     }
                 }
@@ -182,6 +207,7 @@ impl TrajectoryCollector {
                     self.trajectory.add_step(StepType::User {
                         content: s.clone(),
                     });
+                    self.stream_last_step();
                 }
                 _ => {}
             }
@@ -243,7 +269,12 @@ impl TrajectoryCollector {
     }
 
     /// Finish collecting and return the trajectory
-    pub fn finish(self) -> Trajectory {
+    pub fn finish(mut self) -> Trajectory {
+        // Write footer to rlog if streaming is enabled
+        if let Some(writer) = &mut self.rlog_writer {
+            let _ = writer.write_footer(&self.trajectory);
+            let _ = writer.close();
+        }
         self.trajectory
     }
 
