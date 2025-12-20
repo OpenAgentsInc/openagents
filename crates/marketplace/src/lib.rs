@@ -12,6 +12,7 @@ pub mod discovery;
 pub mod disputes;
 pub mod job_routing;
 pub mod ledger;
+pub mod mcp_binding;
 pub mod provider_reputation;
 pub mod redaction;
 pub mod repository;
@@ -48,6 +49,11 @@ pub use job_routing::{
 pub use ledger::{
     Balance, Direction, LedgerAmounts, LedgerEntry, LedgerEntryType, LedgerError,
     LedgerFilters, LedgerOperation, LedgerParties, LedgerReferences,
+};
+pub use mcp_binding::{
+    ConnectedServer, ConnectionStatus, McpBindingError, McpCapability, McpDependencyCheck,
+    McpServer, McpServerSuggestion, McpSession, ServerStatus, SkillMcpBinding,
+    check_mcp_dependencies, suggest_mcp_servers,
 };
 pub use provider_reputation::{
     EconomicScore, ProviderReputation, ReputationError, ReputationTier, SocialScore,
