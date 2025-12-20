@@ -417,4 +417,160 @@ mod tests {
         assert!(output.contains("a: Hi there!"));
         assert!(output.contains("@end tokens_in=100"));
     }
+
+    #[test]
+    fn test_all_step_types() {
+        let mut traj = Trajectory::new(
+            "Test all steps".to_string(),
+            "claude-sonnet-4".to_string(),
+            "/test".to_string(),
+            "abc".to_string(),
+            None,
+        );
+        traj.session_id = "test_id".to_string();
+
+        // Add all step types
+        traj.add_step(StepType::SystemInit {
+            model: "claude-sonnet-4".to_string(),
+        });
+        traj.add_step(StepType::User {
+            content: "User message".to_string(),
+        });
+        traj.add_step(StepType::Thinking {
+            content: "Thinking content".to_string(),
+            signature: Some("sig123".to_string()),
+        });
+        traj.add_step(StepType::ToolCall {
+            tool: "Read".to_string(),
+            tool_id: "toolu_abc123".to_string(),
+            input: serde_json::json!({"file_path": "/test/file.rs"}),
+        });
+        traj.add_step(StepType::ToolResult {
+            tool_id: "toolu_abc123".to_string(),
+            success: true,
+            output: Some("File contents".to_string()),
+        });
+        traj.add_step(StepType::SystemStatus {
+            status: "Complete".to_string(),
+        });
+
+        let mut writer = RlogWriter::new();
+        let output = writer.write(&traj);
+
+        // Verify all step types are formatted
+        assert!(output.contains("@init model=claude-sonnet-4"));
+        assert!(output.contains("u: User message"));
+        assert!(output.contains("th: Thinking content"));
+        assert!(output.contains("t!:Read"));
+        assert!(output.contains("file_path=/test/file.rs"));
+        assert!(output.contains("o:"));
+        assert!(output.contains("[ok]"));
+        assert!(output.contains("# status: Complete"));
+    }
+
+    #[test]
+    fn test_truncation() {
+        let mut traj = Trajectory::new(
+            "Test truncation".to_string(),
+            "claude".to_string(),
+            "/".to_string(),
+            "a".to_string(),
+            None,
+        );
+        traj.session_id = "t".to_string();
+
+        // Add very long content that should be truncated
+        let long_content = "x".repeat(500);
+        traj.add_step(StepType::User {
+            content: long_content.clone(),
+        });
+
+        let mut writer = RlogWriter::new();
+        let output = writer.write(&traj);
+
+        // Should be truncated to ~200 chars plus "..."
+        let user_line = output.lines().find(|l| l.starts_with("u:")).unwrap();
+        assert!(user_line.len() < 210);
+        assert!(user_line.contains("..."));
+    }
+
+    #[test]
+    fn test_tool_result_formatting() {
+        let mut traj = Trajectory::new("Test".to_string(), "m".to_string(), "/".to_string(), "a".to_string(), None);
+        traj.session_id = "t".to_string();
+
+        // Success result
+        traj.add_step(StepType::ToolResult {
+            tool_id: "tool_success".to_string(),
+            success: true,
+            output: Some("Success output".to_string()),
+        });
+
+        // Error result
+        traj.add_step(StepType::ToolResult {
+            tool_id: "tool_error".to_string(),
+            success: false,
+            output: Some("Error message".to_string()),
+        });
+
+        let mut writer = RlogWriter::new();
+        let output = writer.write(&traj);
+
+        // Check both success and error formatting
+        assert!(output.contains("[ok]"));
+        assert!(output.contains("[error]"));
+    }
+
+    #[test]
+    fn test_header_fields() {
+        let mut traj = Trajectory::new(
+            "Test header".to_string(),
+            "claude-opus-4".to_string(),
+            "/home/test".to_string(),
+            "commit_sha".to_string(),
+            Some("feature-branch".to_string()),
+        );
+        traj.session_id = "session_abc".to_string();
+        traj.usage = TokenUsage {
+            input_tokens: 1000,
+            output_tokens: 500,
+            cache_read_tokens: 200,
+            cache_creation_tokens: 100,
+            cost_usd: 0.05,
+        };
+
+        let mut writer = RlogWriter::new();
+        let output = writer.write(&traj);
+
+        // Verify all header fields
+        assert!(output.contains("format: rlog/1"));
+        assert!(output.contains("id: session_abc"));
+        assert!(output.contains("repo_sha: commit_sha"));
+        assert!(output.contains("branch: feature-branch"));
+        assert!(output.contains("model: claude-opus-4"));
+        assert!(output.contains("cwd: /home/test"));
+        assert!(output.contains("agent: autopilot"));
+        assert!(output.contains("tokens_total_in: 1000"));
+        assert!(output.contains("tokens_total_out: 500"));
+        assert!(output.contains("tokens_cached: 200"));
+    }
+
+    #[test]
+    fn test_special_characters() {
+        let mut traj = Trajectory::new("Test".to_string(), "m".to_string(), "/".to_string(), "a".to_string(), None);
+        traj.session_id = "t".to_string();
+
+        // Add content with special characters
+        traj.add_step(StepType::User {
+            content: "Content with \"quotes\" and 'apostrophes' and <brackets>".to_string(),
+        });
+
+        let mut writer = RlogWriter::new();
+        let output = writer.write(&traj);
+
+        // Should preserve special characters
+        assert!(output.contains("\"quotes\""));
+        assert!(output.contains("'apostrophes'"));
+        assert!(output.contains("<brackets>"));
+    }
 }
