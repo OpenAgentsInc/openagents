@@ -10,6 +10,7 @@ members = [
     "crates/ui",
     "crates/fm-bridge",
     "crates/claude-agent-sdk",
+    "crates/codex-agent-sdk",
     "crates/nostr/core",
     "crates/compute",
     "crates/config",
@@ -47,6 +48,7 @@ autopilot = { path = "crates/autopilot" }
 issues = { path = "crates/issues" }
 recorder = { path = "crates/recorder" }
 claude-agent-sdk = { path = "crates/claude-agent-sdk" }
+codex-agent-sdk = { path = "crates/codex-agent-sdk" }
 compute = { path = "crates/compute" }
 config = { path = "crates/config" }
 desktop = { path = "crates/desktop" }
