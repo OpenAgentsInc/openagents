@@ -4,6 +4,7 @@ use rusqlite::{Connection, Result};
 use std::path::Path;
 
 /// Current schema version
+#[allow(dead_code)]
 const SCHEMA_VERSION: i32 = 5;
 
 /// Initialize the database with migrations

@@ -9,7 +9,7 @@
         "issues-mcp"
       ],
       "env": {
-        "ISSUES_DB": "/Users/christopherdavid/code/openagents/autopilot.db"
+        "ISSUES_DB": "/home/christopherdavid/code/openagents/autopilot.db"
       }
     }
   }

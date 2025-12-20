@@ -5,7 +5,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use crate::replay::replay_handler;
-use crate::views::{autopilot_page, counter_fragment, home_page, ProjectRow, projects_page, ProjectOption, SessionRow, sessions_page};
+use crate::views::{autopilot_page, counter_fragment, home_page};
 use crate::ws::{WsBroadcaster, ws_handler};
 
 /// Application state shared across handlers
