@@ -315,7 +315,7 @@ pub struct SlashCommand {
     pub name: String,
     /// Description of what the command does.
     pub description: String,
-    /// Hint for expected argument format (e.g., "<file>").
+    /// Hint for expected argument format (e.g., `<file>`).
     #[serde(rename = "argumentHint", default)]
     pub argument_hint: String,
 }
