@@ -11,6 +11,10 @@ description = "Autonomous task runner with trajectory logging"
 name = "autopilot"
 path = "src/main.rs"
 
+[[bin]]
+name = "autopilotd"
+path = "src/bin/autopilotd.rs"
+
 [dependencies]
 # Workspace crates
 claude-agent-sdk.workspace = true
@@ -59,6 +63,14 @@ regex = "1.10"
 
 # System monitoring
 sysinfo = "0.32"
+
+# Daemon config
+toml = "0.8"
+shellexpand = "3.1"
+
+# Unix process groups
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
 
 [dev-dependencies]
 rusqlite = { version = "0.32", features = ["bundled"] }

@@ -5,6 +5,7 @@
 
 pub mod analyze;
 pub mod compaction;
+pub mod daemon;
 pub mod guardrails;
 pub mod planmode;
 pub mod redact;

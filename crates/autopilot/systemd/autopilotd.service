@@ -1,0 +1,48 @@
+# Autopilot Daemon - Systemd User Service
+#
+# Installation:
+#   mkdir -p ~/.config/systemd/user
+#   cp autopilotd.service ~/.config/systemd/user/
+#   systemctl --user daemon-reload
+#   systemctl --user enable autopilotd
+#   systemctl --user start autopilotd
+#
+# Monitoring:
+#   systemctl --user status autopilotd
+#   journalctl --user -u autopilotd -f
+
+[Unit]
+Description=Autopilot Supervisor Daemon
+Documentation=https://github.com/OpenAgentsInc/openagents
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=%h/.cargo/bin/autopilotd --workdir %h/code/openagents --project openagents
+ExecStop=%h/.cargo/bin/autopilotd stop
+
+# Restart configuration
+Restart=always
+RestartSec=10
+StartLimitBurst=5
+StartLimitIntervalSec=300
+
+# Environment
+Environment=RUST_LOG=autopilot=info
+Environment=RUST_BACKTRACE=1
+EnvironmentFile=-%h/.autopilot/env
+
+# Working directory
+WorkingDirectory=%h/code/openagents
+
+# Resource limits - keep daemon lightweight
+MemoryMax=512M
+MemoryHigh=256M
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=autopilotd
+
+[Install]
+WantedBy=default.target
