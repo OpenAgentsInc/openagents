@@ -6,6 +6,7 @@
 pub mod agents;
 pub mod api;
 pub mod budget;
+pub mod coalitions;
 pub mod creator_dashboard;
 pub mod data_consumer;
 pub mod data_contribution;
@@ -25,6 +26,10 @@ pub mod types;
 pub use agents::{
     Agent, AgentAvailability, AgentListing, AgentPricing, AgentSpawnRequest as AgentsSpawnRequest,
     AgentStatus, AgentWallet, PricingModel,
+};
+pub use coalitions::{
+    Coalition, CoalitionMember, CoalitionStatus, CoalitionType, Contribution, PaymentPool,
+    PaymentSplit,
 };
 pub use api::{
     AgentSpawnRequest, AgentSpawnResponse, ApiError, BalanceResponse, CoalitionProposalRequest,
