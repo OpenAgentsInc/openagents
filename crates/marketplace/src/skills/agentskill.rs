@@ -206,6 +206,38 @@ fn parse_frontmatter(content: &str) -> Result<(String, String), SkillError> {
     Ok((frontmatter, body))
 }
 
+/// Discover all SKILL.md files recursively in a directory
+pub fn discover_skills(dir: &std::path::Path) -> Result<Vec<Skill>, SkillError> {
+    let mut skills = Vec::new();
+
+    if !dir.is_dir() {
+        return Ok(skills);
+    }
+
+    // Walk directory recursively
+    for entry in walkdir::WalkDir::new(dir)
+        .follow_links(false)
+        .into_iter()
+        .filter_map(|e| e.ok())
+    {
+        let path = entry.path();
+
+        // Check if this is a SKILL.md file
+        if path.is_file() && path.file_name().and_then(|n| n.to_str()) == Some("SKILL.md") {
+            // Try to parse the skill
+            match Skill::from_file(path.to_path_buf()) {
+                Ok(skill) => skills.push(skill),
+                Err(e) => {
+                    // Log error but continue discovering other skills
+                    eprintln!("Warning: Failed to parse skill at {}: {}", path.display(), e);
+                }
+            }
+        }
+    }
+
+    Ok(skills)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -308,5 +340,53 @@ Use this skill for PDF operations."#;
         let deserialized: SkillManifest = serde_json::from_str(&json).unwrap();
         assert_eq!(deserialized.metadata.name, "test-skill");
         assert_eq!(deserialized.creator_pubkey, "npub1test");
+    }
+
+    #[test]
+    fn test_discover_skills() {
+        use std::fs;
+
+        // Create a temporary directory structure with skills
+        let temp_dir = std::env::temp_dir().join("test_skills_discovery");
+        let _ = fs::remove_dir_all(&temp_dir); // Clean up if exists
+        fs::create_dir_all(&temp_dir).unwrap();
+
+        // Create skill 1
+        let skill1_dir = temp_dir.join("my-skill");
+        fs::create_dir_all(&skill1_dir).unwrap();
+        fs::write(
+            skill1_dir.join("SKILL.md"),
+            r#"---
+name: my-skill
+description: My test skill
+---
+# My Skill"#,
+        )
+        .unwrap();
+
+        // Create skill 2 in a subdirectory
+        let skill2_dir = temp_dir.join("subdir").join("another-skill");
+        fs::create_dir_all(&skill2_dir).unwrap();
+        fs::write(
+            skill2_dir.join("SKILL.md"),
+            r#"---
+name: another-skill
+description: Another test skill
+---
+# Another Skill"#,
+        )
+        .unwrap();
+
+        // Discover skills
+        let skills = discover_skills(&temp_dir).unwrap();
+
+        // Should find both skills
+        assert_eq!(skills.len(), 2);
+        let names: Vec<String> = skills.iter().map(|s| s.metadata.name.clone()).collect();
+        assert!(names.contains(&"my-skill".to_string()));
+        assert!(names.contains(&"another-skill".to_string()));
+
+        // Clean up
+        let _ = fs::remove_dir_all(&temp_dir);
     }
 }

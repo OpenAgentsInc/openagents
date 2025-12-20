@@ -9,5 +9,5 @@ pub mod skills;
 pub mod types;
 
 pub use repository::{Repository, Skill as SkillRecord, SkillRepository, SkillVersion};
-pub use skills::{Skill, SkillError, SkillManifest, SkillMetadata, validate_skill_name};
+pub use skills::{Skill, SkillError, SkillManifest, SkillMetadata, discover_skills, validate_skill_name};
 pub use types::{ItemStatus, MarketplaceItemType};
