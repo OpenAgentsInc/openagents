@@ -7,6 +7,7 @@
 //! - NIP-05: Mapping Nostr Keys to DNS-based Internet Identifiers
 //! - NIP-06: Key derivation from BIP39 mnemonic seed phrases (requires `full` feature)
 //! - NIP-10: Text Notes and Threads
+//! - NIP-11: Relay Information Document
 //! - NIP-13: Proof of Work
 //! - NIP-18: Reposts
 //! - NIP-19: bech32-encoded entities
@@ -40,6 +41,7 @@ mod nip05;
 #[cfg(feature = "full")]
 mod nip06;
 mod nip10;
+mod nip11;
 mod nip13;
 mod nip18;
 mod nip19;
@@ -96,6 +98,12 @@ pub use nip06::{
 // NIP-10: Text Notes and Threads
 pub use nip10::{
     ETagMarker, EventReference, Nip10Error, TEXT_NOTE_KIND, TextNote,
+};
+
+// NIP-11: Relay Information Document
+pub use nip11::{
+    FeeSchedule, KindOrRange, Nip11Error, RELAY_INFO_ACCEPT_HEADER, RelayFees,
+    RelayInformationDocument, RelayLimitation, RetentionPolicy,
 };
 
 // NIP-13: Proof of Work
