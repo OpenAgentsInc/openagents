@@ -16,6 +16,7 @@
 //! - NIP-25: Reactions
 //! - NIP-27: Text Note References
 //! - NIP-28: Public Chat (channels, messages, moderation)
+//! - NIP-36: Sensitive Content / Content Warning
 //! - NIP-40: Expiration Timestamp
 //! - NIP-47: Nostr Wallet Connect (requires `full` feature)
 //! - NIP-57: Lightning Zaps (tipping with Lightning payments)
@@ -50,6 +51,7 @@ mod nip23;
 mod nip25;
 mod nip27;
 mod nip28;
+mod nip36;
 mod nip40;
 #[cfg(feature = "full")]
 mod nip47;
@@ -150,6 +152,12 @@ pub use nip28::{
     KIND_CHANNEL_MESSAGE, KIND_CHANNEL_METADATA, KIND_CHANNEL_MUTE_USER, ModerationReason,
     Nip28Error, is_channel_creation_kind, is_channel_kind, is_channel_message_kind,
     is_channel_metadata_kind, is_moderation_kind,
+};
+
+// NIP-36: Sensitive Content / Content Warning
+pub use nip36::{
+    CONTENT_WARNING_TAG, Nip36Error, add_content_warning, get_content_warning,
+    has_content_warning, reasons, remove_content_warning,
 };
 
 // NIP-40: Expiration Timestamp
