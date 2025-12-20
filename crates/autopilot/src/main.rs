@@ -535,6 +535,13 @@ async fn run_task(
         // Collect trajectory
         collector.process_message(&msg);
 
+        // Stream to desktop UI if enabled
+        if let Some(port) = _ui_port {
+            if let Some(html) = autopilot::ui_renderer::render_sdk_message(&msg) {
+                let _ = stream_to_desktop(port, html.into_string()).await;
+            }
+        }
+
         // Print progress
         if verbose {
             print_message(&msg);
@@ -908,6 +915,21 @@ fn get_git_branch(cwd: &PathBuf) -> Result<String> {
         .current_dir(cwd)
         .output()?;
     Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+}
+
+/// Stream HTML fragment to desktop app /events endpoint
+async fn stream_to_desktop(port: u16, html: String) -> Result<()> {
+    let client = reqwest::Client::new();
+    let url = format!("http://127.0.0.1:{}/events", port);
+
+    let _ = client
+        .post(&url)
+        .header("Content-Type", "text/html")
+        .body(html)
+        .send()
+        .await;
+
+    Ok(())
 }
 
 async fn replay_trajectory(trajectory_path: PathBuf, mode: String) -> Result<()> {

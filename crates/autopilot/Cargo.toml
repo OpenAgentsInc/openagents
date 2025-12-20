@@ -28,6 +28,9 @@ tokio.workspace = true
 futures.workspace = true
 async-trait.workspace = true
 
+# HTTP client
+reqwest.workspace = true
+
 # Serialization
 serde.workspace = true
 serde_json.workspace = true
