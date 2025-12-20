@@ -15,6 +15,7 @@ members = [
     "crates/compute",
     "crates/config",
     "crates/storybook",
+    "crates/spark",
 ]
 
 [workspace.lints.rust]
@@ -54,6 +55,7 @@ config = { path = "crates/config" }
 desktop = { path = "crates/desktop" }
 fm-bridge = { path = "crates/fm-bridge" }
 nostr = { path = "crates/nostr/core" }
+spark = { path = "crates/spark" }
 ui = { path = "crates/ui" }
 
 # External crates
