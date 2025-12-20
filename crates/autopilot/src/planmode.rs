@@ -161,8 +161,30 @@ r#"# Plan: {}
     ))
 }
 
+/// Exit plan mode configuration
+pub struct ExitPlanModeConfig {
+    /// Whether to launch a swarm to implement the plan
+    pub launch_swarm: bool,
+    /// Number of teammates in the swarm (defaults to 3 if launch_swarm is true)
+    pub teammate_count: Option<usize>,
+}
+
+impl Default for ExitPlanModeConfig {
+    fn default() -> Self {
+        Self {
+            launch_swarm: false,
+            teammate_count: None,
+        }
+    }
+}
+
 /// Exit plan mode
 pub fn exit_plan_mode() -> Result<String, String> {
+    exit_plan_mode_with_config(Default::default())
+}
+
+/// Exit plan mode with optional swarm configuration
+pub fn exit_plan_mode_with_config(config: ExitPlanModeConfig) -> Result<String, String> {
     // Verify plan has content
     let plan_file = {
         let path = PLAN_FILE_PATH.read().map_err(|e| e.to_string())?;
@@ -188,10 +210,23 @@ pub fn exit_plan_mode() -> Result<String, String> {
         *path = None;
     }
 
-    Ok(format!(
-        "Exited plan mode. Plan saved to: {}\n\nAll restrictions lifted. You can now implement the plan.",
+    let mut message = format!(
+        "Exited plan mode. Plan saved to: {}\n\nAll restrictions lifted.",
         plan_file.display()
-    ))
+    );
+
+    if config.launch_swarm {
+        let teammate_count = config.teammate_count.unwrap_or(3);
+        message.push_str(&format!(
+            "\n\nSwarm execution is configured but not yet implemented. Planned configuration:\n- Teammates: {}\n- Plan: {}\n\nFor now, you can implement the plan manually.",
+            teammate_count,
+            plan_file.display()
+        ));
+    } else {
+        message.push_str(" You can now implement the plan.");
+    }
+
+    Ok(message)
 }
 
 /// Check if plan mode is currently active
