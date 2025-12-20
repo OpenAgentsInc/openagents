@@ -7,5 +7,5 @@ pub mod agentskill;
 
 pub use agentskill::{
     Skill, SkillError, SkillManifest, SkillMetadata,
-    validate_skill_name,
+    discover_skills, validate_skill_name,
 };

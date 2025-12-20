@@ -22,4 +22,7 @@ uuid = { version = "1.0", features = ["v4", "serde"] }
 # Error handling
 thiserror = "2.0"
 
+# File system walking
+walkdir = "2.5"
+
 [dev-dependencies]
