@@ -6,10 +6,11 @@ description = "Sell compute via NIP-90 DVMs with Bitcoin payments"
 license = "MIT"
 autobins = false
 
-[[bin]]
-name = "compute"
-path = "src/bin/compute.rs"
-required-features = ["ui"]
+# Binary disabled until wgpui/winit dependencies are added
+# [[bin]]
+# name = "compute"
+# path = "src/bin/compute.rs"
+# required-features = ["ui"]
 
 [lib]
 name = "compute"
