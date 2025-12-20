@@ -143,35 +143,41 @@ fn test_parse_all_line_types() {
     let mut content = minimal_header();
     content.push_str("u: What files are here?\n");
     content.push_str("a: I'll check for you.\n");
-    content.push_str("t|call_1: Glob pattern=**/*.rs\n");
-    content.push_str("o|call_1: Found 5 files\n");
-    content.push_str("s|agent_001: Exploring the codebase\n");
-    content.push_str("m|call_2: issue_list status=open\n");
+    content.push_str("t:Glob pattern=**/*.rs → [5 files]\n");
+    content.push_str("o: id=call_1 → Found 5 files\n");
+    content.push_str("x:explore \"Check codebase\" → summary\n");
+    content.push_str("c:issue.list status=open → [3 issues]\n");
     content.push_str("q: Should I proceed?\n");
-    content.push_str("p: Planning phase started\n");
-    content.push_str("e: Session started\n");
-    content.push_str("#: This is a comment\n");
-    content.push_str("i: Thinking about the approach...\n");
+    content.push_str("@phase design\n");
+    content.push_str("@start\n");
+    content.push_str("# This is a comment\n");
+    content.push_str("th: Thinking about the approach...\n");
     content.push_str("td: [ ] Fix authentication\n");
 
     let result = parse_content(&content);
     assert!(result.is_ok(), "Should parse all line types");
 
     let session = result.unwrap();
+
+    // Debug: print actual line types
+    for (i, line) in session.lines.iter().enumerate() {
+        eprintln!("Line {}: {:?}", i, line.line_type);
+    }
+
     assert_eq!(session.lines.len(), 12);
 
-    assert!(matches!(session.lines[0].line_type, LineType::User));
-    assert!(matches!(session.lines[1].line_type, LineType::Agent));
-    assert!(matches!(session.lines[2].line_type, LineType::Tool));
-    assert!(matches!(session.lines[3].line_type, LineType::Observation));
-    assert!(matches!(session.lines[4].line_type, LineType::Subagent));
-    assert!(matches!(session.lines[5].line_type, LineType::Mcp));
-    assert!(matches!(session.lines[6].line_type, LineType::Question));
-    assert!(matches!(session.lines[7].line_type, LineType::Phase));
-    assert!(matches!(session.lines[8].line_type, LineType::Lifecycle));
-    assert!(matches!(session.lines[9].line_type, LineType::Comment));
-    assert!(matches!(session.lines[10].line_type, LineType::Thinking));
-    assert!(matches!(session.lines[11].line_type, LineType::Todos));
+    assert!(matches!(session.lines[0].line_type, LineType::User), "Line 0 should be User");
+    assert!(matches!(session.lines[1].line_type, LineType::Agent), "Line 1 should be Agent");
+    assert!(matches!(session.lines[2].line_type, LineType::Tool), "Line 2 should be Tool");
+    assert!(matches!(session.lines[3].line_type, LineType::Observation), "Line 3 should be Observation");
+    assert!(matches!(session.lines[4].line_type, LineType::Subagent), "Line 4 should be Subagent");
+    assert!(matches!(session.lines[5].line_type, LineType::Mcp), "Line 5 should be Mcp");
+    assert!(matches!(session.lines[6].line_type, LineType::Question), "Line 6 should be Question");
+    assert!(matches!(session.lines[7].line_type, LineType::Phase), "Line 7 should be Phase");
+    assert!(matches!(session.lines[8].line_type, LineType::Lifecycle), "Line 8 should be Lifecycle");
+    assert!(matches!(session.lines[9].line_type, LineType::Comment), "Line 9 should be Comment");
+    assert!(matches!(session.lines[10].line_type, LineType::Thinking), "Line 10 should be Thinking");
+    assert!(matches!(session.lines[11].line_type, LineType::Todos), "Line 11 should be Todos");
 }
 
 #[test]
