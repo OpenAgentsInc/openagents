@@ -51,6 +51,12 @@ pub trait Repository {
 
     /// Get versions for a skill
     fn get_versions(&self, skill_id: &str) -> Result<Vec<SkillVersion>>;
+
+    /// Search skills by text query (searches name and description)
+    fn search(&self, query: &str) -> Result<Vec<Skill>>;
+
+    /// List skills with sorting and limit
+    fn list_with_sort(&self, sort_order: &str, limit: usize) -> Result<Vec<Skill>>;
 }
 
 /// SQLite implementation of Repository
@@ -235,6 +241,112 @@ impl Repository for SkillRepository<'_> {
 
         Ok(versions)
     }
+
+    fn search(&self, query: &str) -> Result<Vec<Skill>> {
+        let search_pattern = format!("%{}%", query.to_lowercase());
+
+        let mut stmt = self.conn.prepare(
+            r#"
+            SELECT id, slug, name, description, author, version, status,
+                   icon_url, readme, created_at, updated_at, installed_at
+            FROM skills
+            WHERE LOWER(name) LIKE ?1 OR LOWER(description) LIKE ?1
+            ORDER BY created_at DESC
+            "#,
+        )?;
+
+        let skills = stmt
+            .query_map([&search_pattern], |row| {
+                let status_str: String = row.get(6)?;
+                let status = serde_json::from_value(serde_json::json!(status_str))
+                    .unwrap_or(ItemStatus::Available);
+
+                let created_at: String = row.get(9)?;
+                let updated_at: String = row.get(10)?;
+                let installed_at: Option<String> = row.get(11)?;
+
+                Ok(Skill {
+                    id: row.get(0)?,
+                    slug: row.get(1)?,
+                    name: row.get(2)?,
+                    description: row.get(3)?,
+                    author: row.get(4)?,
+                    version: row.get(5)?,
+                    status,
+                    icon_url: row.get(7)?,
+                    readme: row.get(8)?,
+                    created_at: DateTime::parse_from_rfc3339(&created_at)
+                        .unwrap()
+                        .with_timezone(&Utc),
+                    updated_at: DateTime::parse_from_rfc3339(&updated_at)
+                        .unwrap()
+                        .with_timezone(&Utc),
+                    installed_at: installed_at
+                        .and_then(|s| DateTime::parse_from_rfc3339(&s).ok())
+                        .map(|dt| dt.with_timezone(&Utc)),
+                })
+            })?
+            .collect::<Result<Vec<_>>>()?;
+
+        Ok(skills)
+    }
+
+    fn list_with_sort(&self, sort_order: &str, limit: usize) -> Result<Vec<Skill>> {
+        let order_clause = match sort_order {
+            "recent" => "created_at DESC",
+            "alphabetical" => "name ASC",
+            "popular" => "installed_at DESC NULLS LAST", // Skills with installs first
+            _ => "created_at DESC", // Default to recent
+        };
+
+        let query = format!(
+            r#"
+            SELECT id, slug, name, description, author, version, status,
+                   icon_url, readme, created_at, updated_at, installed_at
+            FROM skills
+            ORDER BY {}
+            LIMIT ?1
+            "#,
+            order_clause
+        );
+
+        let mut stmt = self.conn.prepare(&query)?;
+
+        let skills = stmt
+            .query_map([limit], |row| {
+                let status_str: String = row.get(6)?;
+                let status = serde_json::from_value(serde_json::json!(status_str))
+                    .unwrap_or(ItemStatus::Available);
+
+                let created_at: String = row.get(9)?;
+                let updated_at: String = row.get(10)?;
+                let installed_at: Option<String> = row.get(11)?;
+
+                Ok(Skill {
+                    id: row.get(0)?,
+                    slug: row.get(1)?,
+                    name: row.get(2)?,
+                    description: row.get(3)?,
+                    author: row.get(4)?,
+                    version: row.get(5)?,
+                    status,
+                    icon_url: row.get(7)?,
+                    readme: row.get(8)?,
+                    created_at: DateTime::parse_from_rfc3339(&created_at)
+                        .unwrap()
+                        .with_timezone(&Utc),
+                    updated_at: DateTime::parse_from_rfc3339(&updated_at)
+                        .unwrap()
+                        .with_timezone(&Utc),
+                    installed_at: installed_at
+                        .and_then(|s| DateTime::parse_from_rfc3339(&s).ok())
+                        .map(|dt| dt.with_timezone(&Utc)),
+                })
+            })?
+            .collect::<Result<Vec<_>>>()?;
+
+        Ok(skills)
+    }
 }
 
 #[cfg(test)]
@@ -326,5 +438,138 @@ mod tests {
         let versions = repo.get_versions(&skill.id).unwrap();
         assert_eq!(versions.len(), 1);
         assert_eq!(versions[0].version, "1.0.1");
+    }
+
+    #[test]
+    fn test_search_by_name() {
+        let conn = init_memory_db().unwrap();
+        let repo = SkillRepository::new(&conn);
+
+        let mut skill1 = create_test_skill();
+        skill1.slug = "pdf-parser".to_string();
+        skill1.name = "PDF Parser".to_string();
+        skill1.description = Some("Parse PDF files".to_string());
+
+        let mut skill2 = create_test_skill();
+        skill2.slug = "image-processor".to_string();
+        skill2.name = "Image Processor".to_string();
+        skill2.description = Some("Process images".to_string());
+
+        repo.create(&skill1).unwrap();
+        repo.create(&skill2).unwrap();
+
+        // Search by name
+        let results = repo.search("pdf").unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].name, "PDF Parser");
+    }
+
+    #[test]
+    fn test_search_by_description() {
+        let conn = init_memory_db().unwrap();
+        let repo = SkillRepository::new(&conn);
+
+        let mut skill1 = create_test_skill();
+        skill1.slug = "pdf-parser".to_string();
+        skill1.name = "PDF Parser".to_string();
+        skill1.description = Some("Parse PDF files".to_string());
+
+        let mut skill2 = create_test_skill();
+        skill2.slug = "image-processor".to_string();
+        skill2.name = "Image Processor".to_string();
+        skill2.description = Some("Process images".to_string());
+
+        repo.create(&skill1).unwrap();
+        repo.create(&skill2).unwrap();
+
+        // Search by description
+        let results = repo.search("images").unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].name, "Image Processor");
+    }
+
+    #[test]
+    fn test_search_case_insensitive() {
+        let conn = init_memory_db().unwrap();
+        let repo = SkillRepository::new(&conn);
+
+        let mut skill = create_test_skill();
+        skill.slug = "pdf-parser".to_string();
+        skill.name = "PDF Parser".to_string();
+
+        repo.create(&skill).unwrap();
+
+        // Case insensitive search
+        let results = repo.search("PDF").unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].name, "PDF Parser");
+    }
+
+    #[test]
+    fn test_list_with_sort_recent() {
+        let conn = init_memory_db().unwrap();
+        let repo = SkillRepository::new(&conn);
+
+        let mut skill1 = create_test_skill();
+        skill1.slug = "old-skill".to_string();
+        skill1.name = "Old Skill".to_string();
+        skill1.created_at = Utc::now() - chrono::Duration::days(1);
+
+        let mut skill2 = create_test_skill();
+        skill2.slug = "new-skill".to_string();
+        skill2.name = "New Skill".to_string();
+        skill2.created_at = Utc::now();
+
+        repo.create(&skill1).unwrap();
+        repo.create(&skill2).unwrap();
+
+        let results = repo.list_with_sort("recent", 10).unwrap();
+        assert_eq!(results.len(), 2);
+        assert_eq!(results[0].name, "New Skill");
+        assert_eq!(results[1].name, "Old Skill");
+    }
+
+    #[test]
+    fn test_list_with_sort_alphabetical() {
+        let conn = init_memory_db().unwrap();
+        let repo = SkillRepository::new(&conn);
+
+        let mut skill1 = create_test_skill();
+        skill1.slug = "zebra-skill".to_string();
+        skill1.name = "Zebra Skill".to_string();
+
+        let mut skill2 = create_test_skill();
+        skill2.slug = "alpha-skill".to_string();
+        skill2.name = "Alpha Skill".to_string();
+
+        repo.create(&skill1).unwrap();
+        repo.create(&skill2).unwrap();
+
+        let results = repo.list_with_sort("alphabetical", 10).unwrap();
+        assert_eq!(results.len(), 2);
+        assert_eq!(results[0].name, "Alpha Skill");
+        assert_eq!(results[1].name, "Zebra Skill");
+    }
+
+    #[test]
+    fn test_list_with_sort_limit() {
+        let conn = init_memory_db().unwrap();
+        let repo = SkillRepository::new(&conn);
+
+        let mut skill1 = create_test_skill();
+        skill1.slug = "skill1".to_string();
+
+        let mut skill2 = create_test_skill();
+        skill2.slug = "skill2".to_string();
+
+        let mut skill3 = create_test_skill();
+        skill3.slug = "skill3".to_string();
+
+        repo.create(&skill1).unwrap();
+        repo.create(&skill2).unwrap();
+        repo.create(&skill3).unwrap();
+
+        let results = repo.list_with_sort("recent", 2).unwrap();
+        assert_eq!(results.len(), 2);
     }
 }

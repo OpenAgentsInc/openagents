@@ -332,39 +332,67 @@ pub fn unblock_issue(conn: &Connection, issue_id: &str) -> Result<bool> {
     Ok(updated > 0)
 }
 
-/// Update issue title and description
+/// Update issue fields
 pub fn update_issue(
     conn: &Connection,
     issue_id: &str,
     title: Option<&str>,
     description: Option<&str>,
+    priority: Option<Priority>,
+    issue_type: Option<IssueType>,
 ) -> Result<bool> {
     let now = Utc::now().to_rfc3339();
 
-    match (title, description) {
-        (Some(t), Some(d)) => {
-            let updated = conn.execute(
-                "UPDATE issues SET title = ?, description = ?, updated_at = ? WHERE id = ?",
-                params![t, d, now, issue_id],
-            )?;
-            Ok(updated > 0)
-        }
-        (Some(t), None) => {
-            let updated = conn.execute(
-                "UPDATE issues SET title = ?, updated_at = ? WHERE id = ?",
-                params![t, now, issue_id],
-            )?;
-            Ok(updated > 0)
-        }
-        (None, Some(d)) => {
-            let updated = conn.execute(
-                "UPDATE issues SET description = ?, updated_at = ? WHERE id = ?",
-                params![d, now, issue_id],
-            )?;
-            Ok(updated > 0)
-        }
-        (None, None) => Ok(false),
+    // Build dynamic update query
+    let mut updates = vec!["updated_at = ?"];
+    let mut has_changes = false;
+
+    if title.is_some() {
+        updates.push("title = ?");
+        has_changes = true;
     }
+    if description.is_some() {
+        updates.push("description = ?");
+        has_changes = true;
+    }
+    if priority.is_some() {
+        updates.push("priority = ?");
+        has_changes = true;
+    }
+    if issue_type.is_some() {
+        updates.push("issue_type = ?");
+        has_changes = true;
+    }
+
+    if !has_changes {
+        return Ok(false);
+    }
+
+    let sql = format!("UPDATE issues SET {} WHERE id = ?", updates.join(", "));
+
+    // Build params dynamically
+    let mut param_values: Vec<String> = vec![now];
+    if let Some(t) = title {
+        param_values.push(t.to_string());
+    }
+    if let Some(d) = description {
+        param_values.push(d.to_string());
+    }
+    if let Some(p) = priority {
+        param_values.push(p.as_str().to_string());
+    }
+    if let Some(it) = issue_type {
+        param_values.push(it.as_str().to_string());
+    }
+    param_values.push(issue_id.to_string());
+
+    let params: Vec<&dyn rusqlite::ToSql> = param_values
+        .iter()
+        .map(|s| s as &dyn rusqlite::ToSql)
+        .collect();
+
+    let updated = conn.execute(&sql, params.as_slice())?;
+    Ok(updated > 0)
 }
 
 /// Delete an issue (hard delete)
