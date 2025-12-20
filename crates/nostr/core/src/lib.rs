@@ -24,6 +24,7 @@
 //! - NIP-33: Parameterized Replaceable Events (deprecated, moved to NIP-01)
 //! - NIP-36: Sensitive Content / Content Warning
 //! - NIP-40: Expiration Timestamp
+//! - NIP-42: Authentication of Clients to Relays
 //! - NIP-47: Nostr Wallet Connect (requires `full` feature)
 //! - NIP-57: Lightning Zaps (tipping with Lightning payments)
 //! - NIP-89: Application Handlers (social discovery of skills/agents)
@@ -65,6 +66,7 @@ mod nip28;
 mod nip33;
 mod nip36;
 mod nip40;
+mod nip42;
 #[cfg(feature = "full")]
 mod nip47;
 mod nip57;
@@ -212,6 +214,14 @@ pub use nip36::{
 pub use nip40::{
     EXPIRATION_TAG, Nip40Error, get_expiration, has_expiration, is_expired, set_expiration,
     time_until_expiration, validate_expiration,
+};
+
+// NIP-42: Authentication of Clients to Relays
+pub use nip42::{
+    AUTH_KIND, AUTH_REQUIRED_PREFIX, CHALLENGE_TAG, MAX_TIME_DIFF, Nip42Error, RELAY_TAG,
+    RESTRICTED_PREFIX, create_auth_event_tags, create_auth_required_message,
+    create_restricted_message, get_challenge, get_relay_url, is_auth_event,
+    is_auth_required_error, is_restricted_error, normalize_relay_url, validate_auth_event,
 };
 
 // NIP-47: Nostr Wallet Connect (requires full feature)
