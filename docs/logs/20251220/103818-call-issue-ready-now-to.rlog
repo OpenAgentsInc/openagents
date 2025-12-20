@@ -1091,3 +1091,29 @@ o: id=PHSzsjXH → [ok]      1→# Design Conventions
 t!:Write id=VfVVK9cZ file_path=/home/christopherdavid/code/openagents/crates/ui/README.md → [running] tokens_in=4 tokens_out=5887 tokens_cached=101850
 o: id=VfVVK9cZ → [ok] File created successfully at: /home/christopherdavid/code/openagents/crates/ui/README.md
 t!:Bash id=rnUtRktf cmd="git add -A && git commit -m "$(cat <<'EOF'" → [running] tokens_in=2 tokens_out=26 tokens_cached=106161
+o: id=rnUtRktf → [ok] [main 71cdc4c9d] Add comprehensive README for ui crate
+t!:Bash id=7scapZKL cmd="git push origin main" → [running] tokens_in=1 tokens_out=26 tokens_cached=112122
+o: id=7scapZKL → [ok] [0;36m🔍 Running cargo build to check for errors and warnings...[0m
+t!:mcp__issues__issue_complete id=ddvzVVUN  → [running] tokens_in=0 tokens_out=32 tokens_cached=113276
+o: id=ddvzVVUN → [ok] Completed issue #18
+t!:mcp__issues__issue_ready id=dVJQkJmr  → [running] tokens_in=0 tokens_out=8 tokens_cached=113580
+o: id=dVJQkJmr → [ok] No ready issues available
+t!:Bash id=cSzQozrE cmd="for crate in claude-mcp codex codex-agent-sdk i..." → [running] tokens_in=0 tokens_out=135 tokens_cached=113692
+o: id=cSzQozrE → [ok] claude-mcp
+t!:mcp__issues__issue_create id=VbJxWRZR  → [running] tokens_in=2 tokens_out=32 tokens_cached=113787
+o: id=VbJxWRZR → [ok] Created issue #19: Add comprehensive README for storybook crate (agent: claude)
+t!:mcp__issues__issue_claim id=PWzG7VWA  → [running] tokens_in=0 tokens_out=8 tokens_cached=114088
+o: id=PWzG7VWA → [ok] Claimed issue #19
+t!:Read id=tR8SR94f file_path=/home/christopherdavid/code/openagents/crates/storybook/Cargo.toml → [running] tokens_in=0 tokens_out=8 tokens_cached=114316
+t!:Bash id=LAXHT2hH cmd="find crates/storybook/src -name "*.rs" -type f" → [running] tokens_in=0 tokens_out=8 tokens_cached=114316
+t!:Read id=8rYVChmv file_path=/home/christopherdavid/code/openagents/crates/storybook/src/main.rs → [running] tokens_in=0 tokens_out=8 tokens_cached=114316
+o: id=tR8SR94f → [ok]      1→[package]
+o: id=8rYVChmv → [ok]      1→//! Storybook: Visual component explorer for OpenAgents UI
+o: id=LAXHT2hH → [ok] crates/storybook/src/main.rs
+t!:Read id=N719dCu7 file_path=/home/christopherdavid/code/openagents/crates/storybook/src/stories/button.rs → [running] tokens_in=6080 tokens_out=18 tokens_cached=114450
+t!:Read id=j8PeJzHr file_path=/home/christopherdavid/code/openagents/crates/storybook/src/stories/recorder/index.rs → [running] tokens_in=6080 tokens_out=18 tokens_cached=114450
+o: id=N719dCu7 → [ok]      1→//! Button component story
+o: id=j8PeJzHr → [ok]      1→//! Recorder component index.
+t!:Write id=QbqPPfEB file_path=/home/christopherdavid/code/openagents/crates/storybook/README.md → [running] tokens_in=4 tokens_out=5064 tokens_cached=115708
+o: id=QbqPPfEB → [ok] File created successfully at: /home/christopherdavid/code/openagents/crates/storybook/README.md
+t!:Bash id=heHrMHQr cmd="git add -A && git commit -m "$(cat <<'EOF'" → [running] tokens_in=2 tokens_out=26 tokens_cached=124010
