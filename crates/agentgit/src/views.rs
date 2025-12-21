@@ -1088,7 +1088,7 @@ pub fn patch_detail_page(repository: &Event, patch: &Event, identifier: &str) ->
 }
 
 /// Pull request detail page
-pub fn pull_request_detail_page(repository: &Event, pull_request: &Event, reviews: &[Event], status_events: &[Event], identifier: &str) -> Markup {
+pub fn pull_request_detail_page(repository: &Event, pull_request: &Event, reviews: &[Event], status_events: &[Event], identifier: &str, trajectory_session: Option<&Event>, trajectory_events: &[Event]) -> Markup {
     let repo_name = get_tag_value(repository, "name").unwrap_or_else(|| "Repository".to_string());
     let pr_title = get_tag_value(pull_request, "subject").unwrap_or_else(|| "Untitled Pull Request".to_string());
     let pr_status = get_tag_value(pull_request, "status").unwrap_or_else(|| "open".to_string());
@@ -1379,6 +1379,98 @@ pub fn pull_request_detail_page(repository: &Event, pull_request: &Event, review
                                                     div.tag-item {
                                                         span.tag-name { (tag_name) }
                                                         span.tag-value { (tag_value) }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            @if let Some(session) = trajectory_session {
+                                section.issue-section {
+                                    h2 { "🔍 Agent Trajectory" }
+
+                                    @let session_metadata = serde_json::from_str::<serde_json::Value>(&session.content).ok();
+                                    @let trajectory_hash = session_metadata
+                                        .as_ref()
+                                        .and_then(|m| m.get("trajectory_hash"))
+                                        .and_then(|h| h.as_str());
+
+                                    div.trajectory-summary style="background: var(--card-bg, #1a1a1a); padding: 1rem; margin-bottom: 1rem; border: 1px solid var(--border-color, #333);" {
+                                        p { "Session ID: " code { (session.id) } }
+                                        p { "Agent: " code { (session.pubkey) } }
+                                        p { "Started: " span { (session.created_at) } }
+                                        @if trajectory_events.is_empty() {
+                                            p { span style="color: #fbbf24;" { "⚠ Warning: No trajectory events found" } }
+                                        } @else {
+                                            p { "Events: " (trajectory_events.len()) }
+                                            @if let Some(hash) = trajectory_hash {
+                                                p { "Hash: " code { (hash) } }
+                                            } @else {
+                                                p { span style="color: #fbbf24;" { "⚠ Warning: No trajectory hash in session" } }
+                                            }
+                                        }
+                                    }
+
+                                    @if !trajectory_events.is_empty() {
+                                        h3 { "Event Timeline" }
+                                        div style="position: relative; padding-left: 2rem;" {
+                                            @for event in trajectory_events {
+                                                @let step_type = get_tag_value(event, "step").unwrap_or_else(|| "Unknown".to_string());
+                                                @let seq = get_tag_value(event, "seq").unwrap_or_else(|| "?".to_string());
+
+                                                @let event_data = serde_json::from_str::<serde_json::Value>(&event.content).ok();
+                                                @let tool_name = event_data.as_ref()
+                                                    .and_then(|d| d.get("tool"))
+                                                    .and_then(|t| t.as_str());
+
+                                                div style="position: relative; margin-bottom: 1rem; padding: 1rem; background: var(--card-bg, #1a1a1a); border: 1px solid var(--border-color, #333);" {
+                                                    div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;" {
+                                                        span style="font-weight: 600; color: var(--accent-color, #0ea5e9);" {
+                                                            "#" (seq) " "
+                                                            @if step_type == "ToolUse" {
+                                                                @if let Some(tool) = tool_name {
+                                                                    "🔧 " (tool)
+                                                                } @else {
+                                                                    "🔧 Tool Use"
+                                                                }
+                                                            } @else if step_type == "ToolResult" {
+                                                                @if let Some(tool) = tool_name {
+                                                                    "✅ " (tool) " Result"
+                                                                } @else {
+                                                                    "✅ Tool Result"
+                                                                }
+                                                            } @else if step_type == "Thinking" {
+                                                                "💭 Thinking"
+                                                            } @else if step_type == "Message" {
+                                                                "💬 Message"
+                                                            } @else {
+                                                                "📝 " (step_type)
+                                                            }
+                                                        }
+                                                        span style="font-size: 0.85rem; color: var(--text-secondary, #888);" {
+                                                            (event.created_at)
+                                                        }
+                                                    }
+
+                                                    @if step_type == "Thinking" {
+                                                        @if let Some(data) = event_data.as_ref() {
+                                                            @if let Some(hash) = data.get("hash").and_then(|h| h.as_str()) {
+                                                                p style="font-size: 0.9rem; color: var(--text-secondary, #888);" {
+                                                                    "Content redacted (hash: " code { (hash) } ")"
+                                                                }
+                                                            } @else {
+                                                                p style="font-size: 0.9rem; color: var(--text-secondary, #888);" { "Content redacted" }
+                                                            }
+                                                        }
+                                                    } @else if !event.content.is_empty() {
+                                                        details {
+                                                            summary { "View event data" }
+                                                            div style="margin-top: 0.5rem; padding: 0.5rem; background: var(--bg-color, #0a0a0a); font-family: monospace; font-size: 0.85rem; white-space: pre-wrap; overflow-x: auto;" {
+                                                                (event.content)
+                                                            }
+                                                        }
                                                     }
                                                 }
                                             }
