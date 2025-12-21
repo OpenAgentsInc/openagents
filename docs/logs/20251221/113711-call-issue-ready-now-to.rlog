@@ -129,3 +129,59 @@ t!:Bash id=D7TVowpL cmd="cargo build -p marketplace --lib 2>&1 | head -20" → [
 o: id=D7TVowpL → [ok]    Compiling marketplace v0.1.0 (/home/christopherdavid/code/openagents/crates/marketplace)
 a: Excellent! Let me commit this work: tokens_in=0 tokens_out=5 tokens_cached=85100
 t!:Bash id=m8DEQCaA cmd="git add -A && git diff --cached --stat" → [running] tokens_in=0 tokens_out=5 tokens_cached=85100
+o: id=m8DEQCaA → [ok]  crates/marketplace/src/skills/browse.rs            | 431 +++++++++++++++++++++
+t!:Bash id=2Y7mHD9Y cmd="git commit -m "$(cat <<'EOF'" → [running] tokens_in=0 tokens_out=272 tokens_cached=85292
+o: id=2Y7mHD9Y → [ok] [main 86fb6cb4e] Implement skills marketplace browse/search functionality
+t!:Bash id=bTtnnrmw cmd="git push origin main" → [running] tokens_in=0 tokens_out=25 tokens_cached=85589
+o: id=bTtnnrmw → [ok] [0;36m🔍 Running cargo build to check for errors and warnings...[0m
+t!:mcp__issues__issue_complete id=GixYNips  → [running] tokens_in=0 tokens_out=58 tokens_cached=85925
+o: id=GixYNips → [ok] Completed issue #408
+t!:mcp__issues__issue_ready id=cfBgTbGm  → [running] tokens_in=0 tokens_out=41 tokens_cached=86087
+o: id=cfBgTbGm → [ok] {
+t!:mcp__issues__issue_claim id=QpzNXiuB  → [running] tokens_in=2 tokens_out=81 tokens_cached=86270
+o: id=QpzNXiuB → [ok] Claimed issue #409
+t!:Read id=tnd1fXNm file_path=/home/christopherdavid/code/openagents/crates/marketplace/src/cli/mod.rs → [running] tokens_in=2 tokens_out=79 tokens_cached=86431
+o: id=tnd1fXNm → [ok]      1→//! CLI commands for marketplace
+t!:Read id=V8iLz4oj file_path=/home/christopherdavid/code/openagents/crates/marketplace/src/cli/skills.rs → [running] tokens_in=1 tokens_out=79 tokens_cached=86529
+o: id=V8iLz4oj → [ok]      1→//! Skills CLI commands
+t!:Read id=83hzmaR6 file_path=/home/christopherdavid/code/openagents/crates/marketplace/src/main.rs → [running] tokens_in=1 tokens_out=24 tokens_cached=86859
+o: id=83hzmaR6 → [ok]      1→//! Marketplace CLI - Unified marketplace for compute, skills, and data
+a: Let me implement the skills CLI commands: tokens_in=1 tokens_out=1 tokens_cached=87042
+t!:Write id=HoKNPfqd file_path=/home/christopherdavid/code/openagents/crates/marketplace/src/cli/skills.rs → [running] tokens_in=1 tokens_out=2493 tokens_cached=87042
+o: id=HoKNPfqd → [error] <tool_use_error>File has not been read yet. Read it first before writing to it.</tool_use_error>
+t!:Read id=S4wMYcBa file_path=/home/christopherdavid/code/openagents/crates/marketplace/src/cli/skills.rs → [running] tokens_in=2 tokens_out=79 tokens_cached=87731
+o: id=S4wMYcBa → [ok]      1→//! Skills CLI commands
+t!:Write id=vArScpXj file_path=/home/christopherdavid/code/openagents/crates/marketplace/src/cli/skills.rs → [running] tokens_in=1 tokens_out=2464 tokens_cached=90353
+o: id=vArScpXj → [ok] The file /home/christopherdavid/code/openagents/crates/marketplace/src/cli/skills.rs has been upd...
+a: Now update the main.rs to wire up the skills commands: tokens_in=1 tokens_out=1 tokens_cached=90537
+t!:Edit id=iFpXm4bd file_path=/home/christopherdavid/code/openagents/crates/marketplace/src/main.rs → [running] tokens_in=1 tokens_out=837 tokens_cached=90537
+o: id=iFpXm4bd → [ok] The file /home/christopherdavid/code/openagents/crates/marketplace/src/main.rs has been updated. ...
+a: Now let me build and test the CLI: tokens_in=0 tokens_out=1 tokens_cached=96390
+t!:Bash id=98dr3z4h cmd="cargo build -p marketplace --bin marketplace 2>..." → [running] tokens_in=0 tokens_out=115 tokens_cached=96390
+o: id=98dr3z4h → [ok]    Compiling marketplace v0.1.0 (/home/christopherdavid/code/openagents/crates/marketplace)
+a: I need to use `crate::` instead of `marketplace::`: tokens_in=0 tokens_out=1 tokens_cached=97935
+t!:Edit id=TfX1C543 file_path=/home/christopherdavid/code/openagents/crates/marketplace/src/cli/skills.rs → [running] tokens_in=0 tokens_out=214 tokens_cached=97935
+o: id=TfX1C543 → [ok] The file /home/christopherdavid/code/openagents/crates/marketplace/src/cli/skills.rs has been upd...
+t!:Edit id=4TUYqQq6 file_path=/home/christopherdavid/code/openagents/crates/marketplace/src/cli/skills.rs → [running] tokens_in=0 tokens_out=158 tokens_cached=98532
+o: id=4TUYqQq6 → [ok] The file /home/christopherdavid/code/openagents/crates/marketplace/src/cli/skills.rs has been upd...
+t!:Edit id=j57d9LZj file_path=/home/christopherdavid/code/openagents/crates/marketplace/src/cli/skills.rs → [running] tokens_in=0 tokens_out=158 tokens_cached=99008
+o: id=j57d9LZj → [ok] The file /home/christopherdavid/code/openagents/crates/marketplace/src/cli/skills.rs has been upd...
+a: Now let me also need to export SkillsCommands from the cli module: tokens_in=0 tokens_out=1 tokens_cached=99341
+t!:Edit id=pr7xMta3 file_path=/home/christopherdavid/code/openagents/crates/marketplace/src/cli/mod.rs → [running] tokens_in=0 tokens_out=206 tokens_cached=99341
+o: id=pr7xMta3 → [error] <tool_use_error>File has not been read yet. Read it first before writing to it.</tool_use_error>
+t!:Read id=brnPRojk file_path=/home/christopherdavid/code/openagents/crates/marketplace/src/cli/mod.rs → [running] tokens_in=1 tokens_out=79 tokens_cached=99676
+o: id=brnPRojk → [ok]      1→//! CLI commands for marketplace
+t!:Edit id=nnXed6aR file_path=/home/christopherdavid/code/openagents/crates/marketplace/src/cli/mod.rs → [running] tokens_in=0 tokens_out=187 tokens_cached=100031
+o: id=nnXed6aR → [ok] The file /home/christopherdavid/code/openagents/crates/marketplace/src/cli/mod.rs has been update...
+a: Now try building again: tokens_in=0 tokens_out=1 tokens_cached=100260
+t!:Bash id=oD7rbQ8f cmd="cargo build -p marketplace --bin marketplace 2>..." → [running] tokens_in=0 tokens_out=111 tokens_cached=100260
+o: id=oD7rbQ8f → [ok]    Compiling marketplace v0.1.0 (/home/christopherdavid/code/openagents/crates/marketplace)
+a: Perfect! Let me test the CLI: tokens_in=0 tokens_out=1 tokens_cached=100588
+t!:Bash id=NpdLKJHg cmd="cargo run -p marketplace --bin marketplace -- s..." → [running] tokens_in=0 tokens_out=109 tokens_cached=100588
+o: id=NpdLKJHg → [ok] No skills found matching criteria
+t!:Bash id=2cBxEzZS cmd="cargo run -p marketplace --bin marketplace -- s..." → [running] tokens_in=0 tokens_out=25 tokens_cached=100871
+o: id=2cBxEzZS → [ok] No skills found matching 'test'
+t!:Bash id=4JcmApv9 cmd="cargo run -p marketplace --bin marketplace -- s..." → [running] tokens_in=0 tokens_out=24 tokens_cached=101034
+o: id=4JcmApv9 → [ok] Skills marketplace commands
+a: Excellent! All the CLI commands work. Let me commit this: tokens_in=0 tokens_out=6 tokens_cached=101298
+t!:Bash id=XakWQfZB cmd="git add -A && git diff --cached --stat" → [running] tokens_in=0 tokens_out=97 tokens_cached=101298
