@@ -68,12 +68,17 @@ sysinfo = "0.32"
 toml = "0.8"
 shellexpand = "3.1"
 
+# Database
+rusqlite = { version = "0.32", features = ["bundled"] }
+
+# Statistics
+statrs = "0.17"
+
 # Unix process groups
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
 
 [dev-dependencies]
-rusqlite = { version = "0.32", features = ["bundled"] }
 tempfile = "3.10"
 
 [lints]
