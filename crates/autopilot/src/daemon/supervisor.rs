@@ -202,6 +202,15 @@ impl WorkerSupervisor {
             return false;
         }
 
+        // Grace period: don't check for stalls in the first 2 minutes after worker start
+        // This allows time for compilation and initial setup
+        let grace_period = Duration::from_secs(120);
+        if let Some(uptime) = self.state.uptime() {
+            if uptime < grace_period {
+                return false;
+            }
+        }
+
         let stall_timeout = Duration::from_millis(self.config.restart.stall_timeout_ms);
 
         // Find the latest log file
