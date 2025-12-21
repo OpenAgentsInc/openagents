@@ -96,8 +96,25 @@ When implementing NIPs (Nostr Implementation Possibilities):
 
 ## Unified OpenAgents Binary
 
-All OpenAgents functionality is available through a single `openagents` binary:
+All OpenAgents functionality is available through a single `openagents` binary.
 
+**Running the binary:**
+```bash
+# During development (from workspace root)
+cargo run --bin openagents -- <subcommand>
+
+# Or build first, then run
+cargo build --bin openagents --release
+./target/release/openagents <subcommand>
+
+# After installing globally
+cargo install --path .
+openagents <subcommand>
+```
+
+**Note:** `cargo openagents` is NOT valid syntax. Cargo subcommands require a `cargo-` prefix package.
+
+**Available commands:**
 ```bash
 # Launch GUI (default)
 openagents

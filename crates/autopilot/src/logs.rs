@@ -31,7 +31,7 @@ impl Default for LogsConfig {
             max_total_size: 1024 * 1024 * 1024, // 1GB
             archive_after_days: 30,
             delete_after_days: 90,
-            db_path: Some(PathBuf::from("autopilot.db")),
+            db_path: Some(crate::default_db_path()),
         }
     }
 }
