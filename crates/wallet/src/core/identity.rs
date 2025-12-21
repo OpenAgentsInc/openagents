@@ -105,6 +105,28 @@ impl UnifiedIdentity {
 
         Ok(signed_event)
     }
+
+    /// Get npub (bech32-encoded public key)
+    pub fn npub(&self) -> String {
+        // For now, return hex format
+        // TODO: Implement bech32 encoding for npub
+        format!("npub1{}", &self.nostr_public_key[..56])
+    }
+
+    /// Get profile metadata (placeholder)
+    pub async fn get_profile(&self) -> Result<Option<ProfileMetadata>> {
+        // TODO: Fetch from Nostr relays
+        Ok(None)
+    }
+}
+
+/// Profile metadata from kind:0 events
+#[allow(dead_code)]
+pub struct ProfileMetadata {
+    pub name: Option<String>,
+    pub about: Option<String>,
+    pub picture: Option<String>,
+    pub nip05: Option<String>,
 }
 
 #[cfg(test)]

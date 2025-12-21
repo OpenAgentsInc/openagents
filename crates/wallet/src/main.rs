@@ -27,6 +27,7 @@ use std::process;
 
 mod cli;
 mod core;
+mod gui;
 mod storage;
 
 #[derive(Parser)]
@@ -43,6 +44,9 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
+    /// Launch the wallet GUI
+    Gui,
+
     /// Initialize a new wallet with generated mnemonic
     Init {
         /// Display the mnemonic (WARNING: insecure)
@@ -329,6 +333,9 @@ fn main() {
 
 fn run(command: Commands) -> anyhow::Result<()> {
     match command {
+        Commands::Gui => {
+            gui::run_gui()
+        }
         Commands::Init { show_mnemonic } => {
             cli::identity::init(show_mnemonic)
         }
