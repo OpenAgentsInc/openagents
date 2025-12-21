@@ -20,12 +20,28 @@ pub enum TrajectorySource {
 impl TrajectorySource {
     /// Get standard log directory for this source
     pub fn default_log_dir(&self) -> Option<PathBuf> {
-        let home = std::env::var("HOME").ok()?;
-        Some(match self {
-            Self::ClaudeCode => PathBuf::from(home).join(".claude/logs"),
-            Self::Cursor => PathBuf::from(home).join(".cursor/logs"),
-            Self::Codex => PathBuf::from(home).join(".codex/logs"),
-        })
+        match self {
+            Self::ClaudeCode => {
+                // Try multiple locations for Claude Code logs
+                // 1. Check docs/logs/ in current directory (OpenAgents project structure)
+                let docs_logs = PathBuf::from("docs/logs");
+                if docs_logs.exists() && docs_logs.is_dir() {
+                    return Some(docs_logs);
+                }
+
+                // 2. Fall back to ~/.claude/logs
+                let home = std::env::var("HOME").ok()?;
+                Some(PathBuf::from(home).join(".claude/logs"))
+            }
+            Self::Cursor => {
+                let home = std::env::var("HOME").ok()?;
+                Some(PathBuf::from(home).join(".cursor/logs"))
+            }
+            Self::Codex => {
+                let home = std::env::var("HOME").ok()?;
+                Some(PathBuf::from(home).join(".codex/logs"))
+            }
+        }
     }
 
     /// Get the identifier string for this source
@@ -119,19 +135,8 @@ impl TrajectoryCollector {
             });
         }
 
-        // Scan for .rlog files (Claude Code format)
-        if let Ok(entries) = fs::read_dir(dir) {
-            for entry in entries.flatten() {
-                let path = entry.path();
-                if path.extension().and_then(|s| s.to_str()) == Some("rlog") {
-                    match self.parse_trajectory_file(source, &path) {
-                        Ok(Some(session)) => sessions.push(session),
-                        Ok(None) => {}, // File didn't meet quality threshold
-                        Err(e) => errors.push(format!("{}: {}", path.display(), e)),
-                    }
-                }
-            }
-        }
+        // Recursively scan for .rlog files (Claude Code format)
+        self.scan_directory_recursive(dir, source, &mut sessions, &mut errors);
 
         let session_count = sessions.len();
 
@@ -142,6 +147,32 @@ impl TrajectoryCollector {
             session_count,
             errors,
         })
+    }
+
+    /// Recursively scan directory for trajectory files
+    fn scan_directory_recursive(
+        &self,
+        dir: &Path,
+        source: &TrajectorySource,
+        sessions: &mut Vec<TrajectorySession>,
+        errors: &mut Vec<String>,
+    ) {
+        if let Ok(entries) = fs::read_dir(dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+
+                if path.is_dir() {
+                    // Recurse into subdirectories (e.g., date-based: docs/logs/20251221/)
+                    self.scan_directory_recursive(&path, source, sessions, errors);
+                } else if path.extension().and_then(|s| s.to_str()) == Some("rlog") {
+                    match self.parse_trajectory_file(source, &path) {
+                        Ok(Some(session)) => sessions.push(session),
+                        Ok(None) => {}, // File didn't meet quality threshold
+                        Err(e) => errors.push(format!("{}: {}", path.display(), e)),
+                    }
+                }
+            }
+        }
     }
 
     /// Parse a trajectory file and extract session metadata

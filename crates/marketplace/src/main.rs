@@ -4,6 +4,7 @@ use clap::Parser;
 use marketplace::cli::compute::ComputeCommands;
 use marketplace::cli::skills::SkillsCommands;
 use marketplace::cli::data::DataCommands;
+use marketplace::cli::trajectories::TrajectoriesCommands;
 
 #[derive(Parser)]
 #[command(name = "marketplace")]
@@ -30,19 +31,23 @@ enum Commands {
         #[command(subcommand)]
         command: DataCommands,
     },
+    /// Trajectory contribution commands
+    Trajectories(TrajectoriesCommands),
     /// Provider commands
     Provider,
     /// Earnings and payouts
     Earnings,
 }
 
-fn main() -> anyhow::Result<()> {
+#[tokio::main]
+async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
 
     match cli.command {
         Commands::Compute { command } => command.execute()?,
         Commands::Skills { command } => command.execute()?,
         Commands::Data { command } => command.execute()?,
+        Commands::Trajectories(command) => command.execute().await?,
         Commands::Provider => {
             println!("Provider management - coming soon");
         }
