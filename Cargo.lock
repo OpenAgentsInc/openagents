@@ -510,6 +510,7 @@ dependencies = [
  "libc",
  "maud",
  "nostr",
+ "nostr-client",
  "once_cell",
  "regex",
  "reqwest",
