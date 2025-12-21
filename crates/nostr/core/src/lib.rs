@@ -47,6 +47,7 @@
 //! - NIP-89: Application Handlers (social discovery of skills/agents)
 //! - NIP-90: Data Vending Machine (DVM) job requests/results/feedback
 //! - NIP-94: File Metadata
+//! - NIP-99: Classified Listings (marketplace ads)
 //! - NIP-98: HTTP Auth (requires `full` feature)
 //! - Identity types for marketplace participants (agents, creators, providers)
 //! - Lightning payment types for marketplace transactions
@@ -113,6 +114,7 @@ mod nip84;
 mod nip89;
 mod nip90;
 mod nip94;
+mod nip99;
 #[cfg(feature = "full")]
 mod nip98;
 #[cfg(feature = "full")]
@@ -424,6 +426,13 @@ pub use nip90::{
 // NIP-94: File Metadata
 pub use nip94::{
     Dimensions, FileImage, FileMetadata, FILE_METADATA_KIND, Nip94Error, is_file_metadata_kind,
+};
+
+// NIP-99: Classified Listings
+pub use nip99::{
+    ClassifiedListing, DraftListing, ListingImage, ListingStatus, Nip99Error, Price,
+    KIND_CLASSIFIED_LISTING, KIND_DRAFT_LISTING, is_classified_listing_kind,
+    is_draft_listing_kind, is_nip99_kind,
 };
 
 // NIP-98: HTTP Auth (requires full feature)
