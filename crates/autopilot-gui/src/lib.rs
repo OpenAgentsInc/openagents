@@ -10,6 +10,7 @@
 
 pub mod agent;
 pub mod server;
+pub mod sessions;
 pub mod storage;
 pub mod views;
 pub mod window;
