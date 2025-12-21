@@ -11,6 +11,7 @@
 //! - NIP-11: Relay Information Document
 //! - NIP-12: Generic Tag Queries (deprecated, moved to NIP-01)
 //! - NIP-13: Proof of Work
+//! - NIP-15: Nostr Marketplace (merchant stalls, products, auctions)
 //! - NIP-16: Event Treatment (deprecated, moved to NIP-01)
 //! - NIP-17: Private Direct Messages (requires `full` feature)
 //! - NIP-18: Reposts
@@ -79,6 +80,7 @@ mod nip10;
 mod nip11;
 mod nip12;
 mod nip13;
+mod nip15;
 mod nip16;
 #[cfg(feature = "full")]
 mod nip17;
@@ -195,6 +197,13 @@ pub use nip12::{
 // NIP-13: Proof of Work
 pub use nip13::{
     Nip13Error, calculate_difficulty, check_pow, get_difficulty, parse_nonce_tag, validate_pow,
+};
+
+// NIP-15: Nostr Marketplace
+pub use nip15::{
+    AuctionProduct, BidConfirmation, BidStatus, KIND_AUCTION, KIND_BID, KIND_BID_CONFIRMATION,
+    KIND_MARKETPLACE_UI, KIND_PRODUCT, KIND_STALL, MarketplaceUI, MerchantStall, Nip15Error,
+    Product, ProductShipping, ProductSpec, ShippingZone, UIConfig, is_marketplace_kind,
 };
 
 // NIP-16: Event Treatment (deprecated, moved to NIP-01)
