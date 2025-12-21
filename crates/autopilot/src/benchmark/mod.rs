@@ -471,7 +471,7 @@ impl BenchmarkRunner {
     }
 
     /// Run a single benchmark task
-    pub fn run_benchmark(&mut self, task: &dyn BenchmarkTask) -> Result<BenchmarkResult> {
+    pub async fn run_benchmark(&mut self, task: &dyn BenchmarkTask) -> Result<BenchmarkResult> {
         let benchmark_id = task.id().to_string();
         println!("Running benchmark {}: {}", benchmark_id, task.name());
 
@@ -486,21 +486,9 @@ impl BenchmarkRunner {
         task.setup(&workspace)
             .context("Benchmark setup failed")?;
 
-        // TODO: Execute autopilot with the task prompt
-        // For now, this is a placeholder - actual execution would use claude-agent-sdk
-        let start = Instant::now();
-
-        // Placeholder metrics - will be populated by actual agent execution
-        let metrics = BenchmarkMetrics {
-            duration_ms: start.elapsed().as_millis() as u64,
-            tokens_in: 0,
-            tokens_out: 0,
-            tokens_cached: 0,
-            cost_usd: 0.0,
-            tool_calls: 0,
-            tool_errors: 0,
-            custom_metrics: HashMap::new(),
-        };
+        // Execute autopilot with the task prompt
+        let _start = Instant::now();
+        let metrics = self.execute_benchmark_task(task, &workspace).await?;
 
         // Validate
         let validation = task
@@ -530,10 +518,114 @@ impl BenchmarkRunner {
         Ok(result)
     }
 
+    /// Execute a benchmark task by running autopilot agent
+    async fn execute_benchmark_task(
+        &self,
+        task: &dyn BenchmarkTask,
+        workspace: &Path,
+    ) -> Result<BenchmarkMetrics> {
+        use claude_agent_sdk::{QueryOptions, query};
+        use futures::StreamExt;
+        use crate::TrajectoryCollector;
+
+        let start = Instant::now();
+
+        // Get repo info for trajectory
+        let repo_sha = std::process::Command::new("git")
+            .arg("rev-parse")
+            .arg("HEAD")
+            .current_dir(workspace)
+            .output()
+            .ok()
+            .and_then(|o| String::from_utf8(o.stdout).ok())
+            .unwrap_or_else(|| "unknown".to_string())
+            .trim()
+            .to_string();
+
+        let branch = std::process::Command::new("git")
+            .arg("rev-parse")
+            .arg("--abbrev-ref")
+            .arg("HEAD")
+            .current_dir(workspace)
+            .output()
+            .ok()
+            .and_then(|o| String::from_utf8(o.stdout).ok())
+            .map(|s| s.trim().to_string());
+
+        // Create trajectory collector
+        let mut collector = TrajectoryCollector::new(
+            task.prompt().to_string(),
+            "sonnet".to_string(),
+            workspace.display().to_string(),
+            repo_sha,
+            branch,
+        );
+
+        // Configure autopilot options
+        let options = QueryOptions {
+            cwd: Some(workspace.to_path_buf()),
+            model: Some("sonnet".to_string()),
+            allow_dangerously_skip_permissions: true,
+            continue_session: false,
+            ..Default::default()
+        };
+
+        // Execute the task prompt
+        let mut stream = query(task.prompt(), options).await?;
+
+        while let Some(msg) = stream.next().await {
+            let msg = msg?;
+            collector.process_message(&msg);
+        }
+
+        // Finalize the trajectory
+        let trajectory = collector.finish();
+
+        // Extract metrics from trajectory
+        let duration_ms = start.elapsed().as_millis() as u64;
+        let tokens_in = trajectory.usage.input_tokens;
+        let tokens_out = trajectory.usage.output_tokens;
+        let tokens_cached = trajectory.usage.cache_read_tokens + trajectory.usage.cache_creation_tokens;
+        let tool_calls = trajectory.steps.iter()
+            .filter(|s| matches!(s.step_type, crate::trajectory::StepType::ToolCall { .. }))
+            .count() as u64;
+        let tool_errors = trajectory.steps.iter()
+            .filter(|s| matches!(s.step_type, crate::trajectory::StepType::ToolResult { success: false, .. }))
+            .count() as u64;
+
+        // Use the cost from trajectory if available, otherwise estimate
+        let cost_usd = if trajectory.usage.cost_usd > 0.0 {
+            trajectory.usage.cost_usd
+        } else {
+            // Rough estimate: $3/MTok input, $15/MTok output for Sonnet
+            (tokens_in as f64 * 3.0 / 1_000_000.0)
+                + (tokens_out as f64 * 15.0 / 1_000_000.0)
+        };
+
+        Ok(BenchmarkMetrics {
+            duration_ms,
+            tokens_in,
+            tokens_out,
+            tokens_cached,
+            cost_usd,
+            tool_calls,
+            tool_errors,
+            custom_metrics: HashMap::new(),
+        })
+    }
+
     /// Run all benchmarks in a category
-    pub fn run_category(&mut self, _category: &str, _tasks: &[&dyn BenchmarkTask]) -> Result<Vec<BenchmarkResult>> {
-        // TODO: Implement category running
-        todo!("Category running not yet implemented")
+    pub async fn run_category(&mut self, category: &str, tasks: &[&dyn BenchmarkTask]) -> Result<Vec<BenchmarkResult>> {
+        let mut results = Vec::new();
+
+        for task in tasks {
+            if task.category() == category {
+                let result = self.run_benchmark(*task).await?;
+                results.push(result);
+            }
+        }
+
+        Ok(results)
     }
 
     /// Compare results against a baseline version
