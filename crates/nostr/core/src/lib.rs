@@ -25,6 +25,7 @@
 //! - NIP-26: Delegated Event Signing
 //! - NIP-27: Text Note References
 //! - NIP-28: Public Chat (channels, messages, moderation)
+//! - NIP-29: Relay-based Groups (group chat with member management)
 //! - NIP-31: Alt Tag for Unknown Events (graceful degradation)
 //! - NIP-32: Labeling (content moderation and categorization)
 //! - NIP-33: Parameterized Replaceable Events (deprecated, moved to NIP-01)
@@ -95,6 +96,7 @@ mod nip25;
 mod nip26;
 mod nip27;
 mod nip28;
+mod nip29;
 mod nip31;
 mod nip32;
 mod nip33;
@@ -274,6 +276,17 @@ pub use nip28::{
     KIND_CHANNEL_MESSAGE, KIND_CHANNEL_METADATA, KIND_CHANNEL_MUTE_USER, ModerationReason,
     Nip28Error, is_channel_creation_kind, is_channel_kind, is_channel_message_kind,
     is_channel_metadata_kind, is_moderation_kind,
+};
+
+// NIP-29: Relay-based Groups
+pub use nip29::{
+    Admin, GROUP_D_TAG, GROUP_TAG, GroupAdmins, GroupMembers, GroupMetadata, GroupRoles,
+    JoinRequest, KIND_GROUP_ADMINS, KIND_GROUP_MEMBERS, KIND_GROUP_METADATA, KIND_GROUP_ROLES,
+    KIND_JOIN_REQUEST, KIND_LEAVE_REQUEST, KIND_MOD_CREATE_GROUP, KIND_MOD_CREATE_INVITE,
+    KIND_MOD_DELETE_EVENT, KIND_MOD_DELETE_GROUP, KIND_MOD_EDIT_METADATA, KIND_MOD_PUT_USER,
+    KIND_MOD_REMOVE_USER, LeaveRequest, ModerationAction, Nip29Error, PREVIOUS_TAG, Role,
+    format_group_identifier, is_group_kind, is_group_metadata_kind, is_group_moderation_kind,
+    parse_group_identifier, validate_group_id,
 };
 
 // NIP-31: Alt Tag for Unknown Events
