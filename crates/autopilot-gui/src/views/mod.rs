@@ -2,6 +2,7 @@
 
 pub mod chat;
 pub mod components;
+pub mod context;
 pub mod layout;
 pub mod permissions;
 
