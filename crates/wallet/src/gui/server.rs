@@ -97,6 +97,7 @@ async fn send_page_route(state: web::Data<AppState>) -> ActixResult<HttpResponse
 }
 
 #[derive(Deserialize)]
+#[allow(dead_code)]
 struct SendPaymentForm {
     address: String,
     amount: u64,
@@ -105,14 +106,21 @@ struct SendPaymentForm {
 /// Handle send payment form submission
 async fn send_payment(
     _state: web::Data<AppState>,
-    form: web::Form<SendPaymentForm>,
+    _form: web::Form<SendPaymentForm>,
 ) -> ActixResult<HttpResponse> {
-    // TODO: Implement actual payment sending
-    tracing::info!("Send payment: {} sats to {}", form.amount, form.address);
-
-    Ok(HttpResponse::SeeOther()
-        .insert_header(("Location", "/"))
-        .finish())
+    // Payment functionality not yet available - requires Spark SDK integration (see d-001)
+    Ok(HttpResponse::ServiceUnavailable()
+        .content_type("text/html; charset=utf-8")
+        .body(r#"<!DOCTYPE html>
+<html>
+<head><title>Payment Not Available</title></head>
+<body>
+<h1>Payment Functionality Not Available</h1>
+<p>Lightning payment sending is not yet implemented. This requires Spark SDK integration (directive d-001).</p>
+<p>The wallet GUI currently only supports viewing identity and balance information.</p>
+<p><a href="/">Return to Home</a></p>
+</body>
+</html>"#))
 }
 
 /// Receive page
