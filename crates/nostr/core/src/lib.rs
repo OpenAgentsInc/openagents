@@ -67,6 +67,7 @@
 //! - NIP-75: Zap Goals (fundraising goals with zap tracking)
 //! - NIP-78: Application-specific Data (arbitrary app data storage)
 //! - NIP-84: Highlights (highlighting valuable content)
+//! - NIP-86: Relay Management API (HTTP API for relay administration)
 //! - NIP-89: Application Handlers (social discovery of skills/agents)
 //! - NIP-90: Data Vending Machine (DVM) job requests/results/feedback
 //! - NIP-92: Media Attachments (inline media metadata)
@@ -161,6 +162,7 @@ mod nip73;
 mod nip75;
 mod nip78;
 mod nip84;
+mod nip86;
 mod nip89;
 mod nip90;
 mod nip92;
@@ -611,6 +613,21 @@ pub use nip78::{AppData, KIND_APP_DATA, Nip78Error, is_app_data_kind};
 // NIP-84: Highlights
 pub use nip84::{
     Attribution, Highlight, HighlightSource, KIND_HIGHLIGHT, Nip84Error, is_nip84_kind,
+};
+
+// NIP-86: Relay Management API
+pub use nip86::{
+    EventEntry, IpEntry, Nip86Error, PubkeyEntry,
+    Method as RelayManagementMethod, Request as RelayManagementRequest,
+    Response as RelayManagementResponse, create_allow_event_request, create_allow_kind_request,
+    create_allow_pubkey_request, create_ban_event_request, create_ban_pubkey_request,
+    create_block_ip_request, create_change_relay_description_request,
+    create_change_relay_icon_request, create_change_relay_name_request,
+    create_disallow_kind_request, create_list_allowed_kinds_request,
+    create_list_allowed_pubkeys_request, create_list_banned_events_request,
+    create_list_banned_pubkeys_request, create_list_blocked_ips_request,
+    create_list_events_needing_moderation_request, create_supported_methods_request,
+    create_unblock_ip_request, CONTENT_TYPE as RELAY_MANAGEMENT_CONTENT_TYPE,
 };
 
 // NIP-89: Application Handlers
