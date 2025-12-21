@@ -3,6 +3,7 @@
 //! Decentralized git collaboration powered by NIP-34 (Git Stuff) and NIP-SA (Sovereign Agents).
 //! Enables agents as first-class contributors with trajectory proof and bounty payments.
 
+mod nostr;
 mod server;
 mod views;
 mod ws;
@@ -14,6 +15,7 @@ use tao::event_loop::{ControlFlow, EventLoop};
 use tao::window::WindowBuilder;
 use wry::WebViewBuilder;
 
+use nostr::NostrClient;
 use server::start_server;
 use ws::WsBroadcaster;
 
@@ -36,8 +38,25 @@ fn main() -> Result<()> {
             .expect("tokio runtime");
 
         rt.block_on(async move {
-            let port = start_server(broadcaster_clone).await.expect("start server");
+            let port = start_server(broadcaster_clone.clone()).await.expect("start server");
             port_tx.send(port).expect("send port");
+
+            // Initialize Nostr client and connect to relays
+            let relay_urls = vec![
+                "wss://relay.damus.io".to_string(),
+                "wss://nos.lol".to_string(),
+                "wss://relay.nostr.band".to_string(),
+            ];
+
+            let nostr_client = NostrClient::new(relay_urls.clone(), broadcaster_clone);
+
+            // Connect and subscribe to git events
+            if let Err(e) = nostr_client.connect(relay_urls).await {
+                tracing::warn!("Failed to connect to Nostr relays: {}", e);
+            } else if let Err(e) = nostr_client.subscribe_to_git_events().await {
+                tracing::warn!("Failed to subscribe to git events: {}", e);
+            }
+
             // Keep runtime alive
             std::future::pending::<()>().await;
         });

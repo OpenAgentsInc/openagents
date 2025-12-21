@@ -32,6 +32,7 @@ ui = { path = "../ui" }
 
 # Nostr
 nostr = { path = "../nostr/core" }
+nostr-client = { path = "../nostr/client" }
 
 # Utilities
 anyhow = "1"

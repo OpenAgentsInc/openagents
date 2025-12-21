@@ -250,6 +250,7 @@ dependencies = [
  "futures-util",
  "maud",
  "nostr",
+ "nostr-client",
  "serde",
  "serde_json",
  "tao",
