@@ -1,54 +1,72 @@
-//! Bifrost protocol message types
+//! Bifrost protocol message types for threshold operations
+//!
+//! Bifrost is the coordination protocol for threshold signing and ECDH
+//! operations among FROST participants. Messages are exchanged via Nostr
+//! encrypted NIP-04 or NIP-44 channels.
 
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 
-/// Bifrost protocol message
-#[derive(Debug, Clone, Serialize, Deserialize)]
+/// Bifrost protocol message wrapper
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(tag = "type")]
 pub enum BifrostMessage {
-    /// Signing request
+    /// Request to initiate threshold signing
     #[serde(rename = "/sign/req")]
     SignRequest(SignRequest),
 
-    /// Signing response
+    /// Response with partial signature
     #[serde(rename = "/sign/res")]
     SignResponse(SignResponse),
 
-    /// Signing result
-    #[serde(rename = "/sign/ret")]
+    /// Final aggregated signature result
+    #[serde(rename = "/sign/result")]
     SignResult(SignResult),
 
     /// Signing error
-    #[serde(rename = "/sign/err")]
+    #[serde(rename = "/sign/error")]
     SignError(SignError),
 
-    /// ECDH request
+    /// Request threshold ECDH computation
     #[serde(rename = "/ecdh/req")]
     EcdhRequest(EcdhRequest),
 
-    /// ECDH response
+    /// Response with partial ECDH result
     #[serde(rename = "/ecdh/res")]
     EcdhResponse(EcdhResponse),
 }
 
 /// Request to sign an event hash
 #[serde_as]
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct SignRequest {
     /// Event hash to sign (32 bytes)
     pub event_hash: [u8; 32],
+
     /// Nonce commitment (33 bytes compressed point)
     #[serde_as(as = "[_; 33]")]
     pub nonce_commitment: [u8; 33],
+
+    /// Session ID for correlating messages
+    pub session_id: String,
+
+    /// Participant identifiers expected to sign
+    pub participants: Vec<u8>,
 }
 
-/// Partial signature from a peer
+/// Partial signature response from a participant
 #[serde_as]
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct SignResponse {
+    /// Session ID from the request
+    pub session_id: String,
+
+    /// Participant ID
+    pub participant_id: u8,
+
     /// Partial signature (32 bytes)
     pub partial_sig: [u8; 32],
+
     /// Nonce share (33 bytes compressed point)
     #[serde_as(as = "[_; 33]")]
     pub nonce_share: [u8; 33],
@@ -56,30 +74,190 @@ pub struct SignResponse {
 
 /// Final aggregated signature
 #[serde_as]
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct SignResult {
-    /// Final Schnorr signature (64 bytes)
+    /// Session ID
+    pub session_id: String,
+
+    /// Complete Schnorr signature (64 bytes: R || s)
     #[serde_as(as = "[_; 64]")]
     pub signature: [u8; 64],
 }
 
-/// Signing error
-#[derive(Debug, Clone, Serialize, Deserialize)]
+/// Signing error message
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct SignError {
-    /// Error message
+    /// Session ID
+    pub session_id: String,
+
+    /// Error description
     pub reason: String,
+
+    /// Optional error code
+    pub code: Option<String>,
 }
 
-/// Request for threshold ECDH
-#[derive(Debug, Clone, Serialize, Deserialize)]
+/// Request for threshold ECDH computation
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct EcdhRequest {
-    /// Target public key (32 bytes x-only)
+    /// Target peer public key (32 bytes x-only)
     pub target_pubkey: [u8; 32],
+
+    /// Session ID for correlating messages
+    pub session_id: String,
+
+    /// Participant identifiers expected to participate
+    pub participants: Vec<u8>,
 }
 
-/// Partial ECDH response
-#[derive(Debug, Clone, Serialize, Deserialize)]
+/// Partial ECDH result from a participant
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct EcdhResponse {
-    /// Partial ECDH result (32 bytes)
+    /// Session ID from the request
+    pub session_id: String,
+
+    /// Participant ID
+    pub participant_id: u8,
+
+    /// Partial ECDH computation (32 bytes)
     pub partial_ecdh: [u8; 32],
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_sign_request_serialize() {
+        let msg = BifrostMessage::SignRequest(SignRequest {
+            event_hash: [0x42; 32],
+            nonce_commitment: [0x99; 33],
+            session_id: "test-session-1".to_string(),
+            participants: vec![1, 2, 3],
+        });
+
+        let json = serde_json::to_string(&msg).unwrap();
+        assert!(json.contains(r#""type":"/sign/req""#));
+        assert!(json.contains("test-session-1"));
+
+        let deserialized: BifrostMessage = serde_json::from_str(&json).unwrap();
+        assert_eq!(msg, deserialized);
+    }
+
+    #[test]
+    fn test_sign_response_serialize() {
+        let msg = BifrostMessage::SignResponse(SignResponse {
+            session_id: "test-session-1".to_string(),
+            participant_id: 2,
+            partial_sig: [0xAB; 32],
+            nonce_share: [0xCD; 33],
+        });
+
+        let json = serde_json::to_string(&msg).unwrap();
+        let deserialized: BifrostMessage = serde_json::from_str(&json).unwrap();
+        assert_eq!(msg, deserialized);
+    }
+
+    #[test]
+    fn test_sign_result_serialize() {
+        let msg = BifrostMessage::SignResult(SignResult {
+            session_id: "test-session-1".to_string(),
+            signature: [0xFF; 64],
+        });
+
+        let json = serde_json::to_string(&msg).unwrap();
+        let deserialized: BifrostMessage = serde_json::from_str(&json).unwrap();
+        assert_eq!(msg, deserialized);
+    }
+
+    #[test]
+    fn test_sign_error_serialize() {
+        let msg = BifrostMessage::SignError(SignError {
+            session_id: "test-session-1".to_string(),
+            reason: "Insufficient participants".to_string(),
+            code: Some("ERR_THRESHOLD".to_string()),
+        });
+
+        let json = serde_json::to_string(&msg).unwrap();
+        let deserialized: BifrostMessage = serde_json::from_str(&json).unwrap();
+        assert_eq!(msg, deserialized);
+    }
+
+    #[test]
+    fn test_ecdh_request_serialize() {
+        let msg = BifrostMessage::EcdhRequest(EcdhRequest {
+            target_pubkey: [0x12; 32],
+            session_id: "ecdh-session-1".to_string(),
+            participants: vec![1, 2],
+        });
+
+        let json = serde_json::to_string(&msg).unwrap();
+        assert!(json.contains(r#""type":"/ecdh/req""#));
+
+        let deserialized: BifrostMessage = serde_json::from_str(&json).unwrap();
+        assert_eq!(msg, deserialized);
+    }
+
+    #[test]
+    fn test_ecdh_response_serialize() {
+        let msg = BifrostMessage::EcdhResponse(EcdhResponse {
+            session_id: "ecdh-session-1".to_string(),
+            participant_id: 1,
+            partial_ecdh: [0x34; 32],
+        });
+
+        let json = serde_json::to_string(&msg).unwrap();
+        let deserialized: BifrostMessage = serde_json::from_str(&json).unwrap();
+        assert_eq!(msg, deserialized);
+    }
+
+    #[test]
+    fn test_invalid_message_type() {
+        let json = r#"{"type":"/invalid/type","data":{}}"#;
+        let result: Result<BifrostMessage, _> = serde_json::from_str(json);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_round_trip_all_messages() {
+        let messages = vec![
+            BifrostMessage::SignRequest(SignRequest {
+                event_hash: [1; 32],
+                nonce_commitment: [2; 33],
+                session_id: "s1".into(),
+                participants: vec![1, 2],
+            }),
+            BifrostMessage::SignResponse(SignResponse {
+                session_id: "s1".into(),
+                participant_id: 1,
+                partial_sig: [3; 32],
+                nonce_share: [4; 33],
+            }),
+            BifrostMessage::SignResult(SignResult {
+                session_id: "s1".into(),
+                signature: [5; 64],
+            }),
+            BifrostMessage::SignError(SignError {
+                session_id: "s1".into(),
+                reason: "test error".into(),
+                code: None,
+            }),
+            BifrostMessage::EcdhRequest(EcdhRequest {
+                target_pubkey: [6; 32],
+                session_id: "e1".into(),
+                participants: vec![1, 2],
+            }),
+            BifrostMessage::EcdhResponse(EcdhResponse {
+                session_id: "e1".into(),
+                participant_id: 1,
+                partial_ecdh: [7; 32],
+            }),
+        ];
+
+        for msg in messages {
+            let json = serde_json::to_string(&msg).unwrap();
+            let deserialized: BifrostMessage = serde_json::from_str(&json).unwrap();
+            assert_eq!(msg, deserialized);
+        }
+    }
 }
