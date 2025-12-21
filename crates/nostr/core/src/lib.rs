@@ -73,6 +73,7 @@
 //! - NIP-96: HTTP File Storage Integration (deprecated, use NIP-B7)
 //! - NIP-98: HTTP Auth (requires `full` feature)
 //! - NIP-99: Classified Listings (marketplace ads)
+//! - NIP-C7: Chats (simple chat protocol with quote replies)
 //! - Identity types for marketplace participants (agents, creators, providers)
 //! - Lightning payment types for marketplace transactions
 //! - Compute provider types for decentralized compute marketplace
@@ -165,6 +166,7 @@ mod nip96;
 mod nip99;
 #[cfg(feature = "full")]
 mod nip98;
+mod nipc7;
 #[cfg(feature = "full")]
 mod payments;
 mod provider;
@@ -642,6 +644,12 @@ pub use nip99::{
     ClassifiedListing, DraftListing, ListingImage, ListingStatus, Nip99Error, Price,
     KIND_CLASSIFIED_LISTING, KIND_DRAFT_LISTING, is_classified_listing_kind,
     is_draft_listing_kind, is_nip99_kind,
+};
+
+// NIP-C7: Chats
+pub use nipc7::{
+    CHAT_KIND, NipC7Error, QUOTE_TAG, QuoteReference, get_quote_reference, has_quote_tag,
+    is_chat_kind,
 };
 
 // NIP-98: HTTP Auth (requires full feature)
