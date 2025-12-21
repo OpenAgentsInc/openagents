@@ -54,6 +54,7 @@
 //! - NIP-57: Lightning Zaps (tipping with Lightning payments)
 //! - NIP-58: Badges (badge definitions, awards, and profile display)
 //! - NIP-59: Gift Wrap (encapsulation and metadata obscuring, requires `full` feature)
+//! - NIP-60: Cashu Wallets (ecash wallet state management)
 //! - NIP-64: Chess (Portable Game Notation)
 //! - NIP-70: Protected Events (author-only publishing with authentication)
 //! - NIP-71: Video Events (video content with metadata)
@@ -141,6 +142,7 @@ mod nip57;
 mod nip58;
 #[cfg(feature = "full")]
 mod nip59;
+mod nip60;
 mod nip64;
 mod nip70;
 mod nip71;
@@ -506,6 +508,14 @@ pub use nip58::{
 pub use nip59::{
     KIND_GIFT_WRAP, KIND_SEAL, Nip59Error, Rumor, create_gift_wrap, create_seal, gift_wrap,
     random_timestamp, unwrap_gift_wrap, unwrap_gift_wrap_full, unwrap_seal,
+};
+
+// NIP-60: Cashu Wallets
+pub use nip60::{
+    CashuProof, EventMarker, Nip60Error, QuoteEvent, SpendingHistoryEvent, TokenContent,
+    TokenEvent, TransactionDirection, WalletEvent, QUOTE_KIND, SPENDING_HISTORY_KIND, TOKEN_KIND,
+    WALLET_KIND, is_nip60_kind, is_quote_kind, is_spending_history_kind, is_token_kind,
+    is_wallet_kind,
 };
 
 // NIP-64: Chess (Portable Game Notation)
