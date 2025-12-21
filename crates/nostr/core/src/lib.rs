@@ -33,6 +33,7 @@
 //! - NIP-49: Private Key Encryption (requires `full` feature)
 //! - NIP-50: Search Capability
 //! - NIP-51: Lists (mute lists, pin lists, bookmarks, etc.)
+//! - NIP-56: Reporting
 //! - NIP-57: Lightning Zaps (tipping with Lightning payments)
 //! - NIP-59: Gift Wrap (encapsulation and metadata obscuring, requires `full` feature)
 //! - NIP-89: Application Handlers (social discovery of skills/agents)
@@ -89,6 +90,7 @@ mod nip47;
 mod nip49;
 mod nip50;
 mod nip51;
+mod nip56;
 mod nip57;
 #[cfg(feature = "full")]
 mod nip59;
@@ -306,6 +308,11 @@ pub use nip51::{
     KIND_WIKI_AUTHORS, KIND_WIKI_RELAYS, ListType, Nip51Error, create_metadata_tags,
     create_set_identifier_tag, get_description, get_image, get_list_type, get_public_items,
     get_set_identifier, get_title, is_list_event, is_nip04_encryption,
+};
+
+// NIP-56: Reporting
+pub use nip56::{
+    Nip56Error, Report, ReportTarget, ReportType, REPORT_KIND, is_report_kind,
 };
 
 // NIP-57: Lightning Zaps
