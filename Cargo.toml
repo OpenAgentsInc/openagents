@@ -9,6 +9,7 @@ members = [
     "crates/issues-mcp",
     "crates/marketplace",
     "crates/recorder",
+    "crates/testing",
     "crates/ui",
     "crates/fm-bridge",
     "crates/claude-agent-sdk",
