@@ -682,6 +682,7 @@ dependencies = [
  "actix-ws",
  "anyhow",
  "async-trait",
+ "bip39",
  "chrono",
  "chrono-tz",
  "clap",

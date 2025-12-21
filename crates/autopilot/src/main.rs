@@ -21,6 +21,8 @@ use autopilot::timestamp::{date_dir, filename, generate_slug};
 use autopilot::trajectory::{StepType, Trajectory};
 use autopilot::{extract_session_id_from_json, extract_session_id_from_rlog};
 use autopilot::TrajectoryCollector;
+use autopilot::trajectory_publisher::{TrajectoryPublishConfig, TrajectorySessionPublisher};
+use autopilot::nip_sa_trajectory::TrajectoryPublisher as NipSaTrajectoryPublisher;
 
 /// Minimum available memory in bytes before we kill the process (2 GB)
 const MIN_AVAILABLE_MEMORY_BYTES: u64 = 2 * 1024 * 1024 * 1024;
@@ -363,6 +365,10 @@ enum Commands {
         /// Launch desktop UI alongside autopilot
         #[arg(long, default_value_t = default_ui())]
         ui: bool,
+
+        /// Publish trajectory to Nostr relays (NIP-SA kind:38030/38031)
+        #[arg(long)]
+        publish_trajectory: bool,
     },
     /// Replay a saved trajectory for debugging
     Replay {
@@ -954,10 +960,11 @@ async fn main() -> Result<()> {
             issues_db,
             full_auto,
             ui,
+            publish_trajectory,
         } => {
             run_task(
                 prompt, project, cwd, agent, model, max_turns, max_budget, output_dir, slug, dry_run, verbose,
-                with_issues, issues_db, full_auto, ui,
+                with_issues, issues_db, full_auto, ui, publish_trajectory,
             )
             .await
         }
@@ -1537,6 +1544,151 @@ async fn run_codex_agent(
     Ok(())
 }
 
+/// Publish trajectory to Nostr relays
+async fn publish_trajectory_to_nostr(
+    trajectory: &Trajectory,
+    session_id: Option<&String>,
+) -> Result<()> {
+    use anyhow::Context;
+    use bip39::Mnemonic;
+    use nostr::TrajectoryVisibility;
+    use std::str::FromStr;
+    use std::sync::Arc;
+    use wallet::core::UnifiedIdentity;
+    use wallet::storage::config::WalletConfig;
+    use wallet::storage::keychain::SecureKeychain;
+
+    // Load wallet config to get relay URLs
+    let config = WalletConfig::load()?;
+
+    if config.nostr.relays.is_empty() {
+        anyhow::bail!("No Nostr relays configured in wallet.toml");
+    }
+
+    // Try to load identity from keychain
+    let identity = if SecureKeychain::has_mnemonic() {
+        let mnemonic_str = SecureKeychain::retrieve_mnemonic()?;
+        let mnemonic = Mnemonic::from_str(&mnemonic_str)?;
+        Arc::new(UnifiedIdentity::from_mnemonic(mnemonic)?)
+    } else {
+        eprintln!("{} No wallet identity found. Run 'openagents wallet init' first.", "Warning:".yellow());
+        anyhow::bail!("No wallet identity found");
+    };
+
+    // Create trajectory publish config
+    let publish_config = TrajectoryPublishConfig::new(config.nostr.relays.clone());
+
+    // Publish TrajectorySession (kind:38030)
+    let tick_id = session_id
+        .map(|s| s.clone())
+        .unwrap_or_else(|| trajectory.session_id.clone());
+
+    let started_at = trajectory.started_at.timestamp() as u64;
+
+    let session_publisher = TrajectorySessionPublisher::with_identity(publish_config, identity.clone());
+
+    println!("{} Publishing trajectory session to Nostr relays...", "Publishing:".cyan());
+
+    match session_publisher
+        .publish_session(&trajectory.session_id, &tick_id, &trajectory.model, started_at)
+        .await
+    {
+        Ok(Some(event_id)) => {
+            println!("{} Trajectory session published: {}", "✓".green(), event_id);
+        }
+        Ok(None) => {
+            eprintln!("{} Trajectory session publishing was skipped", "Warning:".yellow());
+        }
+        Err(e) => {
+            eprintln!("{} Failed to publish trajectory session: {}", "Error:".red(), e);
+            return Err(e);
+        }
+    }
+
+    // Publish individual trajectory events (kind:38031)
+    let nip_sa_publisher = NipSaTrajectoryPublisher::new(&trajectory.session_id, &tick_id);
+    let events = nip_sa_publisher.trajectory_to_events(trajectory);
+
+    // Create session with trajectory hash
+    let _session_with_hash = nip_sa_publisher.create_session_with_hash(
+        trajectory,
+        &events,
+        TrajectoryVisibility::Public,
+    );
+
+    println!("{} Publishing {} trajectory events...", "Publishing:".cyan(), events.len());
+
+    // Publish each event to relays
+    use nostr_client::{PoolConfig, RelayPool};
+    let pool_config = PoolConfig::default();
+    let pool = RelayPool::new(pool_config);
+
+    // Connect to relays
+    for relay_url in &config.nostr.relays {
+        pool.add_relay(relay_url)
+            .await
+            .with_context(|| format!("Failed to add relay: {}", relay_url))?;
+    }
+
+    // Wait for connections
+    tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+
+    let mut published_count = 0;
+
+    for (i, trajectory_event) in events.iter().enumerate() {
+        // Build Nostr event
+        let tags = vec![
+            vec!["session_id".to_string(), trajectory_event.session_id.clone()],
+            vec!["tick_id".to_string(), trajectory_event.tick_id.clone()],
+            vec!["sequence".to_string(), trajectory_event.sequence.to_string()],
+        ];
+
+        let content_json = trajectory_event
+            .content
+            .to_json()
+            .with_context(|| format!("Failed to serialize trajectory event {}", i))?;
+
+        let template = nostr::EventTemplate {
+            created_at: std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)?
+                .as_secs(),
+            kind: autopilot::nip_sa_trajectory::TrajectoryPublisher::event_kind(),
+            tags,
+            content: content_json,
+        };
+
+        // Sign event
+        let event = identity
+            .sign_event(template)
+            .with_context(|| format!("Failed to sign trajectory event {}", i))?;
+
+        // Publish to relays
+        match pool.publish(&event).await {
+            Ok(results) => {
+                let success_count = results.iter().filter(|r| r.accepted).count();
+                if success_count > 0 {
+                    published_count += 1;
+                }
+            }
+            Err(e) => {
+                eprintln!("{} Failed to publish event {}: {}", "Warning:".yellow(), i, e);
+            }
+        }
+    }
+
+    // Disconnect from pool
+    let _ = pool.disconnect_all().await;
+
+    println!(
+        "{} Published {}/{} trajectory events to Nostr relays",
+        "✓".green(),
+        published_count,
+        events.len()
+    );
+
+    Ok(())
+}
+
 async fn run_task(
     prompt: String,
     project: Option<String>,
@@ -1553,6 +1705,7 @@ async fn run_task(
     issues_db: Option<PathBuf>,
     full_auto: bool,
     ui: bool,
+    publish_trajectory: bool,
 ) -> Result<()> {
     // Load project if specified
     let (cwd, issues_db, project_id) = if let Some(project_name) = project {
@@ -1892,6 +2045,13 @@ async fn run_task(
             let _ = session::update_session_status(&conn, sess_id, status);
             let issues_completed = trajectory.result.as_ref().map(|r| r.issues_completed as i32).unwrap_or(0);
             let _ = session::update_session_metrics(&conn, sess_id, trajectory.usage.cost_usd, issues_completed);
+        }
+    }
+
+    // Publish trajectory to Nostr relays if enabled
+    if publish_trajectory {
+        if let Err(e) = publish_trajectory_to_nostr(&trajectory, session_id.as_ref()).await {
+            eprintln!("{} Failed to publish trajectory: {}", "Warning:".yellow(), e);
         }
     }
 
