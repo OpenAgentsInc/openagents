@@ -38,7 +38,7 @@ pub mod signing;
 
 // Re-export commonly used types
 pub use credential::{GroupCredential, ShareCredential};
-pub use keygen::{generate_key_shares, Share};
+pub use keygen::{generate_key_shares, FrostShare, Share};
 
 /// FROSTR protocol version
 pub const VERSION: &str = "0.1.0";
@@ -54,6 +54,9 @@ pub enum Error {
 
     #[error("Cryptographic error: {0}")]
     Crypto(String),
+
+    #[error("FROST error: {0}")]
+    FrostError(String),
 
     #[error("Encoding error: {0}")]
     Encoding(String),
