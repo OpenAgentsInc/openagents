@@ -239,3 +239,54 @@ mod tests {
         assert!(event_id.starts_with("mock_event_id_"));
     }
 }
+
+
+    #[test]
+    fn test_multiple_goals() {
+        let mut content = AgentStateContent::new();
+        content.add_goal(Goal::new("goal-1", "First goal", 1));
+        content.add_goal(Goal::new("goal-2", "Second goal", 2));
+        content.add_goal(Goal::new("goal-3", "Third goal", 3));
+
+        assert_eq!(content.goals.len(), 3);
+
+        // Verify we can find goals by ID
+        let goal1 = content.goals.iter().find(|g| g.id == "goal-1");
+        assert!(goal1.is_some());
+        assert_eq!(goal1.unwrap().description, "First goal");
+    }
+
+    #[test]
+    fn test_state_with_complex_data() {
+        let (secret_key, public_key) = create_test_keys();
+        let manager = StateManager::new(secret_key, public_key);
+
+        let mut content = AgentStateContent::new();
+        
+        // Add multiple goals
+        for i in 0..10 {
+            content.add_goal(Goal::new(
+                &format!("goal-{}", i),
+                &format!("Goal number {}", i),
+                i as u32,
+            ));
+        }
+
+        // Add multiple memory entries
+        for i in 0..20 {
+            content.add_memory(MemoryEntry::new("observation", &format!("Memory {}", i)));
+        }
+
+        content.update_balance(50000);
+        content.record_tick(1703000000);
+
+        // Encrypt and decrypt
+        let encrypted = manager.encrypt_state(&content).unwrap();
+        let decrypted = manager.decrypt_state(&encrypted, 1).unwrap();
+
+        // Verify all data preserved
+        assert_eq!(decrypted.goals.len(), 10);
+        assert_eq!(decrypted.memory.len(), 20);
+        assert_eq!(decrypted.wallet_balance_sats, 50000);
+        assert_eq!(decrypted.tick_count, 1);
+    }
