@@ -153,13 +153,40 @@ impl BifrostNode {
     }
 
     /// Sign an event hash using threshold shares
+    ///
+    /// This method coordinates a threshold signing operation:
+    /// 1. Broadcasts SignRequest to threshold peers
+    /// 2. Collects k-of-n SignResponse messages
+    /// 3. Aggregates partial signatures into final signature
+    /// 4. Broadcasts SignResult to all participants
+    ///
+    /// Note: This is a coordinator-side stub. Full implementation requires:
+    /// - NostrTransport integration for message publishing
+    /// - Access to local FrostShare for aggregation
+    /// - Session management for correlating requests/responses
     pub async fn sign(&self, _event_hash: &[u8; 32]) -> Result<[u8; 64]> {
-        todo!("Implement threshold signing")
+        Err(crate::Error::Protocol(
+            "Sign operation requires NostrTransport integration and FrostShare. \
+             This will be implemented when BifrostNode is extended with transport \
+             and local share management.".into()
+        ))
     }
 
     /// Perform threshold ECDH with a peer
+    ///
+    /// This method coordinates a threshold ECDH operation:
+    /// 1. Broadcasts EcdhRequest to threshold peers
+    /// 2. Collects k-of-n EcdhResponse messages
+    /// 3. Aggregates partial ECDH results into shared secret
+    ///
+    /// Note: This is currently not implemented because threshold ECDH
+    /// requires multiplicative secret sharing which FROST shares don't
+    /// directly support. See crate::ecdh module documentation for details.
     pub async fn ecdh(&self, _peer_pubkey: &[u8; 32]) -> Result<[u8; 32]> {
-        todo!("Implement threshold ECDH")
+        Err(crate::Error::Protocol(
+            "Threshold ECDH not yet implemented. FROST shares require \
+             multiplicative threshold ECDH. See crate::ecdh documentation.".into()
+        ))
     }
 }
 

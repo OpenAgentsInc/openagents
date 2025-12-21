@@ -3,11 +3,13 @@
 //! The Bifrost protocol enables threshold peers to coordinate signing
 //! and ECDH operations via encrypted Nostr events.
 
+pub mod aggregator;
 pub mod messages;
 pub mod node;
 pub mod peer;
 pub mod transport;
 
+pub use aggregator::{EcdhAggregator, SigningAggregator};
 pub use messages::{
     BifrostMessage, EcdhRequest, EcdhResponse, SignError, SignRequest, SignResponse, SignResult,
 };
