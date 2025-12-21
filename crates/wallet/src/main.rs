@@ -164,6 +164,10 @@ enum Commands {
     /// Wallet settings
     #[command(subcommand)]
     Settings(SettingsCommands),
+
+    /// FROSTR threshold signing operations
+    #[command(subcommand)]
+    Frostr(FrostrCommands),
 }
 
 #[derive(Subcommand)]
@@ -312,6 +316,41 @@ enum SettingsCommands {
     },
 }
 
+#[derive(Subcommand)]
+enum FrostrCommands {
+    /// Generate threshold key shares
+    Keygen {
+        /// Minimum signers required (threshold k)
+        #[arg(short, long)]
+        threshold: u16,
+
+        /// Total number of shares (n)
+        #[arg(short = 'n', long)]
+        total: u16,
+    },
+
+    /// Import a FROSTR share credential
+    ImportShare {
+        /// Share credential (bfshare1...)
+        credential: String,
+    },
+
+    /// Export the local FROSTR share
+    ExportShare,
+
+    /// Sign an event hash using threshold shares
+    Sign {
+        /// Event hash (64-character hex)
+        event_hash: String,
+    },
+
+    /// Show FROSTR node status and peer connectivity
+    Status,
+
+    /// List available group credentials
+    ListGroups,
+}
+
 fn main() {
     let cli = Cli::parse();
 
@@ -420,6 +459,31 @@ fn run(command: Commands) -> anyhow::Result<()> {
         Commands::Settings(cmd) => match cmd {
             SettingsCommands::Show => cli::settings::show(),
             SettingsCommands::Set { key, value } => cli::settings::set(key, value),
+        },
+        Commands::Frostr(cmd) => {
+            let runtime = tokio::runtime::Runtime::new()?;
+            runtime.block_on(async {
+                match cmd {
+                    FrostrCommands::Keygen { threshold, total } => {
+                        cli::frostr::keygen(threshold, total).await
+                    }
+                    FrostrCommands::ImportShare { credential } => {
+                        cli::frostr::import_share(credential).await
+                    }
+                    FrostrCommands::ExportShare => {
+                        cli::frostr::export_share().await
+                    }
+                    FrostrCommands::Sign { event_hash } => {
+                        cli::frostr::sign(event_hash).await
+                    }
+                    FrostrCommands::Status => {
+                        cli::frostr::status().await
+                    }
+                    FrostrCommands::ListGroups => {
+                        cli::frostr::list_groups().await
+                    }
+                }
+            })
         },
     }
 }
