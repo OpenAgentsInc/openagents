@@ -135,5 +135,6 @@ A good directive body should include:
 | d-010 | Unify All Binaries into Single openagents Binary | Architecture/UX |
 | d-011 | Comprehensive Storybook Coverage for All Rust Components | UI/Documentation |
 | d-012 | No Stubs - Production-Ready Code Only | Code Quality/Policy |
+| d-013 | Comprehensive Testing Framework | Testing/Quality |
 
 View details with `cargo autopilot directive show <id>`
