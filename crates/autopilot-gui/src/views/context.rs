@@ -72,7 +72,7 @@ pub fn context_inspector(info: ContextInfo) -> Markup {
                 div class="flex items-center gap-2" {
                     (token_usage_badge(&info.token_usage))
                     button
-                        class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+                        class="px-4 py-2 bg-blue-600 text-white hover:bg-blue-700"
                         onclick="compactConversation()"
                     {
                         "Compact Conversation"
@@ -81,7 +81,7 @@ pub fn context_inspector(info: ContextInfo) -> Markup {
             }
 
             // Working Directory
-            div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4" {
+            div class="bg-white dark:bg-gray-800 shadow p-4" {
                 h2 class="text-lg font-semibold mb-2 text-gray-900 dark:text-white" { "Working Directory" }
                 p class="text-sm text-gray-600 dark:text-gray-400 font-mono" { (info.cwd) }
             }
@@ -119,7 +119,7 @@ pub fn context_inspector(info: ContextInfo) -> Markup {
             id="compact-dialog"
             class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
         {
-            div class="bg-white dark:bg-gray-800 rounded-lg p-6 max-w-md" {
+            div class="bg-white dark:bg-gray-800 p-6 max-w-md" {
                 h3 class="text-lg font-semibold mb-4 text-gray-900 dark:text-white" {
                     "Compact Conversation?"
                 }
@@ -129,13 +129,13 @@ pub fn context_inspector(info: ContextInfo) -> Markup {
                 }
                 div class="flex gap-2 justify-end" {
                     button
-                        class="px-4 py-2 border border-gray-300 rounded hover:bg-gray-50"
+                        class="px-4 py-2 border border-gray-300 hover:bg-gray-50"
                         onclick="closeCompactDialog()"
                     {
                         "Cancel"
                     }
                     button
-                        class="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700"
+                        class="px-4 py-2 bg-red-600 text-white hover:bg-red-700"
                         onclick="executeCompact()"
                     {
                         "Compact"
@@ -176,7 +176,7 @@ function toggleDirectory(path) {
 /// Git status panel
 fn git_status_panel(status: Option<GitStatus>) -> Markup {
     html! {
-        div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4" {
+        div class="bg-white dark:bg-gray-800 shadow p-4" {
             h2 class="text-lg font-semibold mb-4 text-gray-900 dark:text-white flex items-center gap-2" {
                 svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20" {
                     path d="M10 2a8 8 0 100 16 8 8 0 000-16zM9 5a1 1 0 112 0v4a1 1 0 11-2 0V5zm1 9a1 1 0 100-2 1 1 0 000 2z" {}
@@ -189,7 +189,7 @@ fn git_status_panel(status: Option<GitStatus>) -> Markup {
                     // Branch info
                     div class="flex items-center gap-2" {
                         span class="text-sm font-medium text-gray-600 dark:text-gray-400" { "Branch:" }
-                        code class="text-sm bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded" {
+                        code class="text-sm bg-gray-100 dark:bg-gray-700 px-2 py-1" {
                             (git.branch)
                         }
                         @if git.ahead > 0 {
@@ -294,7 +294,7 @@ fn token_usage_panel(usage: &TokenUsage) -> Markup {
     };
 
     html! {
-        div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4" {
+        div class="bg-white dark:bg-gray-800 shadow p-4" {
             h2 class="text-lg font-semibold mb-4 text-gray-900 dark:text-white" { "Token Usage" }
 
             // Gauge
@@ -307,9 +307,9 @@ fn token_usage_panel(usage: &TokenUsage) -> Markup {
                         (format!("{:.1}%", usage.percent))
                     }
                 }
-                div class="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-4" {
+                div class="w-full bg-gray-200 dark:bg-gray-700 h-4" {
                     div
-                        class={"h-4 rounded-full transition-all " @if usage.percent >= 80.0 {
+                        class={"h-4 transition-all " @if usage.percent >= 80.0 {
                             "bg-red-600"
                         } @else if usage.percent >= 60.0 {
                             "bg-yellow-500"
@@ -323,13 +323,13 @@ fn token_usage_panel(usage: &TokenUsage) -> Markup {
 
             // Warning thresholds
             @if usage.percent >= 80.0 {
-                div class="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded mb-4" {
+                div class="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 mb-4" {
                     p class="text-sm text-red-800 dark:text-red-300" {
                         "⚠️ Critical: Context nearly full. Consider compacting conversation."
                     }
                 }
             } @else if usage.percent >= 60.0 {
-                div class="p-3 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded mb-4" {
+                div class="p-3 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 mb-4" {
                     p class="text-sm text-yellow-800 dark:text-yellow-300" {
                         "⚠️ Warning: Approaching context limit."
                     }
@@ -362,7 +362,7 @@ fn token_usage_badge(usage: &TokenUsage) -> Markup {
     };
 
     html! {
-        div class={(bg_class) " px-3 py-1 rounded-full"} {
+        div class={(bg_class) " px-3 py-1"} {
             span class={"text-sm font-medium " (text_class)} {
                 (format!("{:.0}% tokens used", usage.percent))
             }
@@ -373,12 +373,12 @@ fn token_usage_badge(usage: &TokenUsage) -> Markup {
 /// CLAUDE.md panel
 fn claude_md_panel(content: Option<String>) -> Markup {
     html! {
-        div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4" {
+        div class="bg-white dark:bg-gray-800 shadow p-4" {
             h2 class="text-lg font-semibold mb-4 text-gray-900 dark:text-white" { "CLAUDE.md" }
 
             @if let Some(md) = content {
                 div class="prose prose-sm dark:prose-invert max-w-none" {
-                    div class="bg-gray-50 dark:bg-gray-900 p-4 rounded font-mono text-sm overflow-x-auto" {
+                    div class="bg-gray-50 dark:bg-gray-900 p-4 font-mono text-sm overflow-x-auto" {
                         pre { (md) }
                     }
                 }
@@ -394,7 +394,7 @@ fn claude_md_panel(content: Option<String>) -> Markup {
 /// Directory tree panel
 fn directory_tree_panel(root: &FileEntry) -> Markup {
     html! {
-        div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4" {
+        div class="bg-white dark:bg-gray-800 shadow p-4" {
             h2 class="text-lg font-semibold mb-4 text-gray-900 dark:text-white" { "Directory Structure" }
 
             div class="font-mono text-sm" {
@@ -410,7 +410,7 @@ fn render_file_tree(entry: &FileEntry, depth: usize) -> Markup {
 
     html! {
         div {
-            div class="flex items-center gap-2 py-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded px-2" {
+            div class="flex items-center gap-2 py-1 hover:bg-gray-100 dark:hover:bg-gray-700 px-2" {
                 span class="text-gray-500" { (indent) }
 
                 @if entry.is_dir {
@@ -474,7 +474,7 @@ fn format_bytes(bytes: u64) -> String {
 /// Context breakdown panel
 fn context_breakdown_panel(usage: &TokenUsage) -> Markup {
     html! {
-        div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4" {
+        div class="bg-white dark:bg-gray-800 shadow p-4" {
             h2 class="text-lg font-semibold mb-4 text-gray-900 dark:text-white" {
                 "Context Size Breakdown"
             }
