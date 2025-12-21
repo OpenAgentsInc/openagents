@@ -2,8 +2,13 @@
 
 use maud::{html, Markup, DOCTYPE};
 
-/// Base page layout
+/// Base page layout with navigation
 pub fn page(title: &str, content: Markup) -> String {
+    page_with_current(title, content, None)
+}
+
+/// Base page layout with current page highlighting
+pub fn page_with_current(title: &str, content: Markup, current_page: Option<&str>) -> String {
     let markup = html! {
         (DOCTYPE)
         html lang="en" {
@@ -55,6 +60,36 @@ pub fn page(title: &str, content: Markup) -> String {
                         color: #7dff7d;
                         font-size: 0.875rem;
                     }
+                    .nav-links {
+                        display: flex;
+                        gap: 1.5rem;
+                        align-items: center;
+                    }
+                    .nav-links a {
+                        color: #a0a0a0;
+                        text-decoration: none;
+                        padding: 0.5rem 1rem;
+                        transition: color 0.2s;
+                        font-size: 0.95rem;
+                    }
+                    .nav-links a:hover {
+                        color: #4a9eff;
+                    }
+                    .nav-links a.active {
+                        color: #4a9eff;
+                        border-bottom: 2px solid #4a9eff;
+                    }
+                    @media (max-width: 768px) {
+                        .nav-links {
+                            flex-direction: column;
+                            gap: 0.5rem;
+                            align-items: flex-start;
+                        }
+                        nav > div {
+                            flex-direction: column !important;
+                            gap: 1rem;
+                        }
+                    }
                     "#
                 }
             }
@@ -62,9 +97,11 @@ pub fn page(title: &str, content: Markup) -> String {
                 nav {
                     div style="display: flex; justify-content: space-between; align-items: center;" {
                         h1 { "🤖 Autopilot GUI" }
-                        div style="display: flex; gap: 1rem;" {
-                            a href="/" style="color: #4a9eff; text-decoration: none;" { "Dashboard" }
-                            a href="/chat" style="color: #4a9eff; text-decoration: none;" { "Chat" }
+                        div class="nav-links" {
+                            a href="/" class={ @if current_page == Some("dashboard") { "active" } } { "Dashboard" }
+                            a href="/chat" class={ @if current_page == Some("chat") { "active" } } { "Chat" }
+                            a href="/context" class={ @if current_page == Some("context") { "active" } } { "Context" }
+                            a href="/permissions" class={ @if current_page == Some("permissions") { "active" } } { "Permissions" }
                         }
                     }
                 }
