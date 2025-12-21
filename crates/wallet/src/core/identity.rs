@@ -16,10 +16,12 @@ pub struct UnifiedIdentity {
     /// BIP39 mnemonic
     mnemonic: Mnemonic,
     /// Nostr secret key (derived via NIP-06)
+    #[allow(dead_code)]
     nostr_secret_key: String,
     /// Nostr public key (npub)
     nostr_public_key: String,
     /// Bitcoin extended private key
+    #[allow(dead_code)]
     bitcoin_xpriv: Xpriv,
 }
 
@@ -70,6 +72,7 @@ impl UnifiedIdentity {
     }
 
     /// Get Nostr secret key (nsec)
+    #[allow(dead_code)]
     pub fn nostr_secret_key(&self) -> &str {
         &self.nostr_secret_key
     }
@@ -80,6 +83,7 @@ impl UnifiedIdentity {
     }
 
     /// Get Bitcoin extended private key
+    #[allow(dead_code)]
     pub fn bitcoin_xpriv(&self) -> &Xpriv {
         &self.bitcoin_xpriv
     }
