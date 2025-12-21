@@ -14,6 +14,7 @@ use crate::metrics::RelayMetrics;
 use crate::rate_limit::{RateLimiter, RateLimitConfig};
 use crate::relay_info::RelayInformation;
 use crate::subscription::{Filter, SubscriptionManager};
+use crate::validation;
 use futures::{SinkExt, StreamExt};
 use nostr::Event;
 use serde_json::{json, Value};
@@ -322,7 +323,7 @@ async fn handle_nostr_message(
         "EVENT" => {
             // ["EVENT", <event JSON>]
             if msg_array.len() < 2 {
-                responses.push(json!(["NOTICE", "EVENT message missing event data"]));
+                responses.push(json!(["NOTICE", "invalid: EVENT message must have 2 elements"]));
                 return responses;
             }
 
@@ -331,89 +332,90 @@ async fn handle_nostr_message(
             // Check event rate limit
             if !rate_limiter.check_event_allowed() {
                 metrics.event_rejected_rate_limit();
-                responses.push(json!(["NOTICE", "rate limit: slow down"]));
+                responses.push(json!(["NOTICE", "rate-limited: slow down there chief"]));
                 return responses;
             }
 
-            match serde_json::from_value::<Event>(msg_array[1].clone()) {
-                Ok(event) => {
-                    // Validate event signature
-                    #[cfg(feature = "full")]
-                    {
-                        if let Err(e) = nostr::verify_event(&event) {
-                            metrics.event_rejected_signature();
-                            responses.push(json!(["OK", event.id, false, format!("invalid: {}", e)]));
-                            return responses;
-                        }
-                    }
+            // Parse event
+            let event: Event = match serde_json::from_value(msg_array[1].clone()) {
+                Ok(e) => e,
+                Err(e) => {
+                    warn!("Failed to parse event: {}", e);
+                    metrics.event_rejected_validation();
+                    responses.push(json!(["NOTICE", format!("invalid: failed to parse event: {}", e)]));
+                    return responses;
+                }
+            };
 
-                    // Store the event
-                    metrics.db_query();
-                    match db.store_event(&event) {
-                        Ok(_) => {
-                            debug!("Stored event: {}", event.id);
-                            metrics.event_stored();
-                            responses.push(json!(["OK", event.id, true, ""]));
+            // Validate event structure and cryptography
+            if let Err(e) = validation::validate_event(&event) {
+                metrics.event_rejected_signature();
+                responses.push(json!(["OK", event.id.clone(), false, e.to_string()]));
+                return responses;
+            }
 
-                            // Broadcast the event to all subscribers
-                            let broadcast_event = BroadcastEvent {
-                                event: event.clone(),
-                            };
-                            if let Err(e) = broadcast_tx.send(broadcast_event) {
-                                warn!("Failed to broadcast event: {}", e);
-                            }
-                        }
-                        Err(e) => {
-                            error!("Failed to store event {}: {}", event.id, e);
-                            metrics.db_error();
-                            metrics.event_rejected_validation();
-                            responses.push(json!(["OK", event.id, false, format!("error: {}", e)]));
-                        }
+            // Store the event
+            metrics.db_query();
+            match db.store_event(&event) {
+                Ok(_) => {
+                    debug!("Stored event: {}", event.id);
+                    metrics.event_stored();
+                    responses.push(json!(["OK", event.id, true, ""]));
+
+                    // Broadcast the event to all subscribers
+                    let broadcast_event = BroadcastEvent {
+                        event: event.clone(),
+                    };
+                    if let Err(e) = broadcast_tx.send(broadcast_event) {
+                        warn!("Failed to broadcast event: {}", e);
                     }
                 }
                 Err(e) => {
-                    warn!("Invalid event: {}", e);
+                    error!("Failed to store event {}: {}", event.id, e);
+                    metrics.db_error();
                     metrics.event_rejected_validation();
-                    responses.push(json!(["NOTICE", format!("Invalid event: {}", e)]));
+                    responses.push(json!(["OK", event.id, false, format!("error: {}", e)]));
                 }
             }
         }
         "REQ" => {
             // ["REQ", <subscription_id>, <filters JSON>...]
-            if msg_array.len() < 2 {
-                responses.push(json!(["NOTICE", "REQ message missing subscription ID"]));
+            if msg_array.len() < 3 {
+                responses.push(json!(["NOTICE", "invalid: REQ message must have at least 3 elements"]));
                 return responses;
             }
 
             let sub_id = match msg_array[1].as_str() {
                 Some(id) => id,
                 None => {
-                    responses.push(json!(["NOTICE", "Invalid subscription ID"]));
+                    responses.push(json!(["NOTICE", "invalid: subscription ID must be string"]));
                     return responses;
                 }
             };
 
-            // Parse filters
-            let mut filters = Vec::new();
-            for i in 2..msg_array.len() {
-                match serde_json::from_value::<Filter>(msg_array[i].clone()) {
-                    Ok(filter) => {
-                        if let Err(e) = filter.validate() {
-                            responses.push(json!(["NOTICE", format!("Invalid filter: {}", e)]));
-                            return responses;
-                        }
-                        filters.push(filter);
-                    }
-                    Err(e) => {
-                        responses.push(json!(["NOTICE", format!("Failed to parse filter: {}", e)]));
-                        return responses;
-                    }
-                }
+            // Validate subscription ID
+            if let Err(e) = validation::validate_subscription_id(sub_id) {
+                responses.push(json!(["NOTICE", e.to_string()]));
+                return responses;
             }
 
-            if filters.is_empty() {
-                responses.push(json!(["NOTICE", "REQ message missing filters"]));
-                return responses;
+            // Parse and validate filters
+            let mut filters = Vec::new();
+            for i in 2..msg_array.len() {
+                let filter: Filter = match serde_json::from_value(msg_array[i].clone()) {
+                    Ok(f) => f,
+                    Err(e) => {
+                        responses.push(json!(["CLOSED", sub_id, format!("invalid: failed to parse filter: {}", e)]));
+                        return responses;
+                    }
+                };
+
+                if let Err(e) = validation::validate_filter(&filter) {
+                    responses.push(json!(["CLOSED", sub_id, e.to_string()]));
+                    return responses;
+                }
+
+                filters.push(filter);
             }
 
             debug!("Subscription requested: {} with {} filters", sub_id, filters.len());
@@ -456,18 +458,24 @@ async fn handle_nostr_message(
         }
         "CLOSE" => {
             // ["CLOSE", <subscription_id>]
-            if msg_array.len() < 2 {
-                responses.push(json!(["NOTICE", "CLOSE message missing subscription ID"]));
+            if msg_array.len() != 2 {
+                responses.push(json!(["NOTICE", "invalid: CLOSE message must have 2 elements"]));
                 return responses;
             }
 
             let sub_id = match msg_array[1].as_str() {
                 Some(id) => id,
                 None => {
-                    responses.push(json!(["NOTICE", "Invalid subscription ID"]));
+                    responses.push(json!(["NOTICE", "invalid: subscription ID must be string"]));
                     return responses;
                 }
             };
+
+            // Validate subscription ID
+            if let Err(e) = validation::validate_subscription_id(sub_id) {
+                responses.push(json!(["NOTICE", e.to_string()]));
+                return responses;
+            }
 
             if subscriptions.remove(sub_id) {
                 debug!("Subscription closed: {}", sub_id);

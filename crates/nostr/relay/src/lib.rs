@@ -42,6 +42,7 @@ mod rate_limit;
 mod relay_info;
 mod metrics;
 mod admin;
+mod validation;
 
 pub use db::{Database, DatabaseConfig, ConnectionPool};
 pub use server::{RelayServer, RelayConfig};
@@ -52,3 +53,8 @@ pub use rate_limit::{RateLimiter, RateLimitConfig};
 pub use relay_info::{RelayInformation, Limitation, RetentionPolicy, Fees, FeeSchedule, KindOrRange};
 pub use metrics::{RelayMetrics, MetricsSnapshot};
 pub use admin::{AdminConfig, start_admin_server, HealthResponse, StatsResponse};
+pub use validation::{
+    validate_event, validate_event_structure, validate_filter, validate_subscription_id,
+    validate_event_message, validate_req_message, validate_close_message, ValidationError,
+    MAX_EVENT_SIZE, MAX_SUBSCRIPTION_ID_LENGTH, MAX_CONTENT_LENGTH, MAX_TAGS, MAX_TAG_LENGTH,
+};
