@@ -3,6 +3,7 @@ resolver = "2"
 members = [
     "crates/agentgit",
     "crates/autopilot",
+    "crates/frostr",
     "crates/issues",
     "crates/issues-mcp",
     "crates/marketplace",
