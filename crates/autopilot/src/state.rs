@@ -123,6 +123,102 @@ impl StateManager {
 
         Ok(event_id)
     }
+
+    /// Fetch agent state from relays
+    ///
+    /// Queries relays for the most recent kind:38001 event by the agent's pubkey,
+    /// decrypts it, and returns the state content.
+    ///
+    /// Returns None if no state is found on the relays.
+    pub async fn fetch_state_from_relays(
+        &self,
+        relays: &[String],
+        agent_pubkey_hex: &str,
+    ) -> Result<Option<AgentStateContent>> {
+        use serde_json::json;
+
+        // Create relay pool
+        let config = PoolConfig::default();
+        let pool = RelayPool::new(config);
+
+        // Connect to relays
+        for relay_url in relays {
+            pool.add_relay(relay_url)
+                .await
+                .context(format!("Failed to add relay: {}", relay_url))?;
+        }
+
+        // Wait for connections
+        tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+
+        // Create filter for kind:38001 events by agent pubkey
+        let filter = json!({
+            "kinds": [KIND_AGENT_STATE],
+            "authors": [agent_pubkey_hex],
+            "limit": 1  // Only fetch most recent
+        });
+
+        // Subscribe to fetch events
+        let mut rx = pool
+            .subscribe("state-fetch", &[filter])
+            .await
+            .context("Failed to subscribe to state events")?;
+
+        // Wait for first event with timeout
+        let event = tokio::time::timeout(
+            tokio::time::Duration::from_secs(5),
+            rx.recv()
+        ).await;
+
+        // Disconnect from pool
+        let _ = pool.disconnect_all().await;
+
+        // Process the event if we got one
+        if let Ok(Some(event)) = event {
+            // Extract encrypted content from event (content is already a String)
+            let encrypted_content = &event.content;
+
+            // Determine version from event tags (d tag contains "state")
+            // For now, assume version 1
+            let version = 1;
+
+            // Decrypt the state
+            let content = self.decrypt_state(encrypted_content, version)?;
+            Ok(Some(content))
+        } else {
+            // No event found or timeout
+            Ok(None)
+        }
+    }
+
+    /// Update agent state on relays
+    ///
+    /// Fetches current state from relays, applies the provided update function,
+    /// then publishes the updated state back to relays.
+    ///
+    /// If no existing state is found, starts with an empty state.
+    pub async fn update_state_on_relays<F>(
+        &self,
+        relays: &[String],
+        agent_pubkey_hex: &str,
+        update_fn: F,
+    ) -> Result<String>
+    where
+        F: FnOnce(&mut AgentStateContent),
+    {
+        // Fetch current state
+        let mut content = self
+            .fetch_state_from_relays(relays, agent_pubkey_hex)
+            .await?
+            .unwrap_or_else(AgentStateContent::new);
+
+        // Apply update
+        update_fn(&mut content);
+
+        // Publish updated state
+        self.publish_state_to_relays(&content, relays, agent_pubkey_hex)
+            .await
+    }
 }
 
 #[cfg(test)]
@@ -231,6 +327,50 @@ mod tests {
         // Publish state (this will use mock implementation for now)
         let result = manager
             .publish_state_to_relays(&content, &relays, agent_pubkey)
+            .await;
+
+        // Should succeed with mock implementation
+        assert!(result.is_ok());
+        let event_id = result.unwrap();
+        assert!(event_id.starts_with("mock_event_id_"));
+    }
+
+    #[tokio::test]
+    #[ignore] // Requires real relay infrastructure
+    async fn test_fetch_state_from_relays_no_state() {
+        let (secret_key, public_key) = create_test_keys();
+        let manager = StateManager::new(secret_key, public_key);
+
+        // Mock relay URLs
+        let relays = vec!["wss://relay.example.com".to_string()];
+        let agent_pubkey = "npub1test";
+
+        // Try to fetch (will timeout since no real relay)
+        let result = manager
+            .fetch_state_from_relays(&relays, agent_pubkey)
+            .await;
+
+        // Should succeed with None (timeout)
+        assert!(result.is_ok());
+        assert!(result.unwrap().is_none());
+    }
+
+    #[tokio::test]
+    #[ignore] // Requires real relay infrastructure
+    async fn test_update_state_on_relays() {
+        let (secret_key, public_key) = create_test_keys();
+        let manager = StateManager::new(secret_key, public_key);
+
+        // Mock relay URLs
+        let relays = vec!["wss://relay.example.com".to_string()];
+        let agent_pubkey = "npub1test";
+
+        // Update state (will start with empty state since no relay data)
+        let result = manager
+            .update_state_on_relays(&relays, agent_pubkey, |state| {
+                state.add_goal(Goal::new("goal-1", "Test goal", 1));
+                state.update_balance(5000);
+            })
             .await;
 
         // Should succeed with mock implementation
