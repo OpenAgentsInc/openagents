@@ -34,6 +34,7 @@
 //! - NIP-49: Private Key Encryption (requires `full` feature)
 //! - NIP-50: Search Capability
 //! - NIP-51: Lists (mute lists, pin lists, bookmarks, etc.)
+//! - NIP-52: Calendar Events (date-based, time-based, calendars, RSVPs)
 //! - NIP-56: Reporting
 //! - NIP-57: Lightning Zaps (tipping with Lightning payments)
 //! - NIP-58: Badges (badge definitions, awards, and profile display)
@@ -93,6 +94,7 @@ mod nip47;
 mod nip49;
 mod nip50;
 mod nip51;
+mod nip52;
 mod nip56;
 mod nip57;
 mod nip58;
@@ -318,6 +320,15 @@ pub use nip51::{
     create_set_identifier_tag, get_description, get_image, get_list_type, get_public_items,
     get_set_identifier, get_title, is_list_event, is_nip04_encryption,
 };
+
+// NIP-52: Calendar Events
+pub use nip52::{
+    Calendar, CalendarEventRef, CalendarEventRsvp, DateBasedCalendarEvent, FreeBusyStatus,
+    KIND_CALENDAR_EVENT_RSVP, KIND_DATE_BASED_CALENDAR_EVENT,
+    KIND_TIME_BASED_CALENDAR_EVENT, Nip52Error, Participant, RsvpStatus, TimeBasedCalendarEvent,
+    is_calendar_event_kind, is_nip52_kind,
+};
+// Note: KIND_CALENDAR (31924) is already exported from nip51
 
 // NIP-56: Reporting
 pub use nip56::{
