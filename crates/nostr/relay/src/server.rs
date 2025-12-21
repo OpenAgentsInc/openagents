@@ -10,6 +10,7 @@
 use crate::broadcast::{BroadcastEvent, create_broadcast_channel};
 use crate::db::Database;
 use crate::error::{RelayError, Result};
+use crate::metrics::RelayMetrics;
 use crate::rate_limit::{RateLimiter, RateLimitConfig};
 use crate::relay_info::RelayInformation;
 use crate::subscription::{Filter, SubscriptionManager};
@@ -54,6 +55,7 @@ pub struct RelayServer {
     db: Arc<Database>,
     broadcast_tx: broadcast::Sender<BroadcastEvent>,
     rate_limiter: Arc<RateLimiter>,
+    metrics: Arc<RelayMetrics>,
 }
 
 impl RelayServer {
@@ -61,12 +63,19 @@ impl RelayServer {
     pub fn new(config: RelayConfig, db: Database) -> Self {
         let (broadcast_tx, _) = create_broadcast_channel();
         let rate_limiter = Arc::new(RateLimiter::new(config.rate_limit.clone()));
+        let metrics = Arc::new(RelayMetrics::new());
         Self {
             config,
             db: Arc::new(db),
             broadcast_tx,
             rate_limiter,
+            metrics,
         }
+    }
+
+    /// Get metrics
+    pub fn metrics(&self) -> Arc<RelayMetrics> {
+        Arc::clone(&self.metrics)
     }
 
     /// Start the relay server (WebSocket only, NIP-11 HTTP endpoint to be added separately)
@@ -82,27 +91,32 @@ impl RelayServer {
                     // Check if IP is banned
                     if self.rate_limiter.is_banned(ip).await {
                         warn!("Rejected connection from banned IP: {}", ip);
+                        self.metrics.connection_blocked_banned();
                         continue;
                     }
 
                     // Check connection limit
                     if !self.rate_limiter.check_connection_allowed(ip).await {
                         warn!("Connection limit exceeded for IP: {}", ip);
+                        self.metrics.connection_blocked_rate_limit();
                         continue;
                     }
 
                     debug!("New connection from {}", addr);
                     self.rate_limiter.register_connection(ip).await;
+                    self.metrics.connection_opened();
 
                     let db = Arc::clone(&self.db);
                     let broadcast_tx = self.broadcast_tx.clone();
                     let rate_limiter = Arc::clone(&self.rate_limiter);
+                    let metrics = Arc::clone(&self.metrics);
 
                     tokio::spawn(async move {
-                        let result = handle_connection(stream, addr, db, broadcast_tx, rate_limiter.clone()).await;
+                        let result = handle_connection(stream, addr, db, broadcast_tx, rate_limiter.clone(), metrics.clone()).await;
 
                         // Unregister connection
                         rate_limiter.unregister_connection(ip).await;
+                        metrics.connection_closed();
 
                         if let Err(e) = result {
                             error!("Error handling connection from {}: {}", addr, e);
@@ -163,6 +177,7 @@ async fn handle_connection(
     db: Arc<Database>,
     broadcast_tx: broadcast::Sender<BroadcastEvent>,
     rate_limiter: Arc<RateLimiter>,
+    metrics: Arc<RelayMetrics>,
 ) -> Result<()> {
     let ws_stream = accept_async(stream)
         .await
@@ -209,17 +224,19 @@ async fn handle_connection(
                 match msg {
                     Some(Ok(Message::Text(text))) => {
                         debug!("Received message from {}: {}", addr, text);
+                        metrics.bytes_in(text.len() as u64);
 
                         // Parse the Nostr message
                         match serde_json::from_str::<Value>(&text) {
                             Ok(value) => {
-                                let responses = handle_nostr_message(&value, &db, &mut subscriptions, &broadcast_tx, &rate_limiter).await;
+                                let responses = handle_nostr_message(&value, &db, &mut subscriptions, &broadcast_tx, &rate_limiter, &metrics).await;
 
                                 // Update the shared subscriptions
                                 *subscriptions_clone.lock().await = subscriptions.clone();
 
                                 for response in responses {
                                     let response_text = serde_json::to_string(&response)?;
+                                    metrics.bytes_out(response_text.len() as u64);
                                     if let Err(e) = write.send(Message::Text(response_text)).await {
                                         error!("Failed to send response to {}: {}", addr, e);
                                         return Ok(());
@@ -229,7 +246,9 @@ async fn handle_connection(
                             Err(e) => {
                                 warn!("Invalid JSON from {}: {}", addr, e);
                                 let notice = json!(["NOTICE", format!("Invalid JSON: {}", e)]);
-                                let _ = write.send(Message::Text(notice.to_string())).await;
+                                let notice_text = notice.to_string();
+                                metrics.bytes_out(notice_text.len() as u64);
+                                let _ = write.send(Message::Text(notice_text)).await;
                             }
                         }
                     }
@@ -274,6 +293,7 @@ async fn handle_nostr_message(
     subscriptions: &mut SubscriptionManager,
     broadcast_tx: &broadcast::Sender<BroadcastEvent>,
     rate_limiter: &RateLimiter,
+    metrics: &RelayMetrics,
 ) -> Vec<Value> {
     let mut responses = Vec::new();
 
@@ -306,8 +326,11 @@ async fn handle_nostr_message(
                 return responses;
             }
 
+            metrics.event_received();
+
             // Check event rate limit
             if !rate_limiter.check_event_allowed() {
+                metrics.event_rejected_rate_limit();
                 responses.push(json!(["NOTICE", "rate limit: slow down"]));
                 return responses;
             }
@@ -318,15 +341,18 @@ async fn handle_nostr_message(
                     #[cfg(feature = "full")]
                     {
                         if let Err(e) = nostr::verify_event(&event) {
+                            metrics.event_rejected_signature();
                             responses.push(json!(["OK", event.id, false, format!("invalid: {}", e)]));
                             return responses;
                         }
                     }
 
                     // Store the event
+                    metrics.db_query();
                     match db.store_event(&event) {
                         Ok(_) => {
                             debug!("Stored event: {}", event.id);
+                            metrics.event_stored();
                             responses.push(json!(["OK", event.id, true, ""]));
 
                             // Broadcast the event to all subscribers
@@ -339,12 +365,15 @@ async fn handle_nostr_message(
                         }
                         Err(e) => {
                             error!("Failed to store event {}: {}", event.id, e);
+                            metrics.db_error();
+                            metrics.event_rejected_validation();
                             responses.push(json!(["OK", event.id, false, format!("error: {}", e)]));
                         }
                     }
                 }
                 Err(e) => {
                     warn!("Invalid event: {}", e);
+                    metrics.event_rejected_validation();
                     responses.push(json!(["NOTICE", format!("Invalid event: {}", e)]));
                 }
             }
@@ -401,9 +430,11 @@ async fn handle_nostr_message(
             // Store subscription
             let subscription = crate::subscription::Subscription::new(sub_id.to_string(), filters.clone());
             subscriptions.add(subscription);
+            metrics.subscription_opened();
 
             // Query and send matching events for each filter
             for filter in &filters {
+                metrics.db_query();
                 match db.query_events(filter) {
                     Ok(events) => {
                         debug!("Found {} matching events for subscription {}", events.len(), sub_id);
@@ -414,6 +445,7 @@ async fn handle_nostr_message(
                     }
                     Err(e) => {
                         error!("Failed to query events for subscription {}: {}", sub_id, e);
+                        metrics.db_error();
                         responses.push(json!(["NOTICE", format!("Error querying events: {}", e)]));
                     }
                 }
@@ -439,6 +471,7 @@ async fn handle_nostr_message(
 
             if subscriptions.remove(sub_id) {
                 debug!("Subscription closed: {}", sub_id);
+                metrics.subscription_closed();
             } else {
                 debug!("Attempted to close non-existent subscription: {}", sub_id);
             }
@@ -483,7 +516,8 @@ mod tests {
         });
 
         let msg = json!(["EVENT", event_json]);
-        let responses = handle_nostr_message(&msg, &db, &mut subs, &broadcast_tx, &rate_limiter).await;
+        let metrics = RelayMetrics::new();
+        let responses = handle_nostr_message(&msg, &db, &mut subs, &broadcast_tx, &rate_limiter, &metrics).await;
 
         assert!(!responses.is_empty());
         let resp = &responses[0];
@@ -502,9 +536,10 @@ mod tests {
         let mut subs = SubscriptionManager::new();
         let (broadcast_tx, _) = create_broadcast_channel();
         let rate_limiter = RateLimiter::new(RateLimitConfig::default());
+        let metrics = RelayMetrics::new();
 
         let msg = json!(["REQ", "sub_123", {"kinds": [1]}]);
-        let responses = handle_nostr_message(&msg, &db, &mut subs, &broadcast_tx, &rate_limiter).await;
+        let responses = handle_nostr_message(&msg, &db, &mut subs, &broadcast_tx, &rate_limiter, &metrics).await;
 
         assert!(!responses.is_empty());
         // Last response should be EOSE
@@ -528,15 +563,16 @@ mod tests {
         let mut subs = SubscriptionManager::new();
         let (broadcast_tx, _) = create_broadcast_channel();
         let rate_limiter = RateLimiter::new(RateLimitConfig::default());
+        let metrics = RelayMetrics::new();
 
         // First create a subscription
         let msg1 = json!(["REQ", "sub_123", {"kinds": [1]}]);
-        handle_nostr_message(&msg1, &db, &mut subs, &broadcast_tx, &rate_limiter).await;
+        handle_nostr_message(&msg1, &db, &mut subs, &broadcast_tx, &rate_limiter, &metrics).await;
         assert_eq!(subs.len(), 1);
 
         // Now close it
         let msg2 = json!(["CLOSE", "sub_123"]);
-        let responses = handle_nostr_message(&msg2, &db, &mut subs, &broadcast_tx, &rate_limiter).await;
+        let responses = handle_nostr_message(&msg2, &db, &mut subs, &broadcast_tx, &rate_limiter, &metrics).await;
 
         assert!(responses.is_empty()); // CLOSE doesn't send responses
         assert_eq!(subs.len(), 0); // Subscription removed
@@ -554,9 +590,10 @@ mod tests {
         let mut subs = SubscriptionManager::new();
         let (broadcast_tx, _) = create_broadcast_channel();
         let rate_limiter = RateLimiter::new(RateLimitConfig::default());
+        let metrics = RelayMetrics::new();
 
         let msg = json!(["UNKNOWN", "data"]);
-        let responses = handle_nostr_message(&msg, &db, &mut subs, &broadcast_tx, &rate_limiter).await;
+        let responses = handle_nostr_message(&msg, &db, &mut subs, &broadcast_tx, &rate_limiter, &metrics).await;
 
         assert!(!responses.is_empty());
         let resp = &responses[0];
