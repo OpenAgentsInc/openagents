@@ -136,7 +136,7 @@ impl ChessGame {
         let content = self.pgn.as_str();
 
         // Skip all tag pairs
-        let mut in_tags = true;
+        let in_tags = true;
         let mut start_index = 0;
 
         for (i, line) in content.lines().enumerate() {
@@ -146,7 +146,6 @@ impl ChessGame {
                     continue; // Still in tags
                 } else if !trimmed.is_empty() {
                     // Found first non-tag, non-empty line
-                    in_tags = false;
                     start_index = content.lines().take(i).map(|l| l.len() + 1).sum();
                     break;
                 }
