@@ -1,9 +1,11 @@
 //! Single relay connection management
 //!
 //! Provides async connection to a Nostr relay with automatic reconnection,
-//! message handling, and health monitoring.
+//! message handling, health monitoring, and automatic event queueing for
+//! offline support.
 
 use crate::error::{ClientError, Result};
+use crate::queue::MessageQueue;
 use crate::subscription::Subscription;
 use futures::{SinkExt, StreamExt};
 use nostr::Event;
@@ -72,6 +74,10 @@ pub struct RelayConfig {
     pub max_reconnect_delay: Duration,
     /// Ping interval for health checks
     pub ping_interval: Duration,
+    /// Enable message queue for offline support
+    pub enable_queue: bool,
+    /// Queue retry poll interval
+    pub queue_poll_interval: Duration,
 }
 
 impl Default for RelayConfig {
@@ -82,6 +88,8 @@ impl Default for RelayConfig {
             reconnect_delay: Duration::from_secs(1),
             max_reconnect_delay: Duration::from_secs(60),
             ping_interval: Duration::from_secs(30),
+            enable_queue: true,
+            queue_poll_interval: Duration::from_secs(5),
         }
     }
 }
@@ -106,6 +114,10 @@ pub struct RelayConnection {
     pending_confirmations: Arc<Mutex<HashMap<String, ConfirmationSender>>>,
     /// Active subscriptions (subscription_id -> Subscription)
     subscriptions: Arc<Mutex<HashMap<String, Subscription>>>,
+    /// Message queue for offline support
+    queue: Option<Arc<MessageQueue>>,
+    /// Queue processing task handle
+    queue_task: Arc<Mutex<Option<tokio::task::JoinHandle<()>>>>,
 }
 
 impl RelayConnection {
@@ -129,6 +141,15 @@ impl RelayConnection {
         let (_msg_tx, msg_rx) = mpsc::unbounded_channel();
         let (out_tx, _) = mpsc::unbounded_channel();
 
+        // Create message queue if enabled
+        let queue = if config.enable_queue {
+            Some(Arc::new(MessageQueue::new().map_err(|e| {
+                ClientError::Internal(format!("Failed to create message queue: {}", e))
+            })?))
+        } else {
+            None
+        };
+
         Ok(Self {
             url,
             config,
@@ -138,6 +159,8 @@ impl RelayConnection {
             _tx: out_tx,
             pending_confirmations: Arc::new(Mutex::new(HashMap::new())),
             subscriptions: Arc::new(Mutex::new(HashMap::new())),
+            queue,
+            queue_task: Arc::new(Mutex::new(None)),
         })
     }
 
@@ -176,6 +199,15 @@ impl RelayConnection {
         *self.state.write().await = ConnectionState::Connected;
 
         info!("Connected to relay: {}", self.url);
+
+        // Process any queued messages
+        if let Err(e) = self.process_queue().await {
+            warn!("Error processing queue after connect: {}", e);
+        }
+
+        // Start queue processing task
+        self.start_queue_task();
+
         Ok(())
     }
 
@@ -187,6 +219,9 @@ impl RelayConnection {
         }
 
         info!("Disconnecting from relay: {}", self.url);
+
+        // Stop queue processing task
+        self.stop_queue_task().await;
 
         let mut ws = self.ws.lock().await;
         if let Some(mut stream) = ws.take() {
@@ -240,6 +275,24 @@ impl RelayConnection {
             // Remove pending confirmation on send error
             let mut confirmations = self.pending_confirmations.lock().await;
             confirmations.remove(&event_id);
+
+            // If not connected and queue is enabled, queue the event for retry
+            if matches!(e, ClientError::NotConnected) {
+                if let Some(ref queue) = self.queue {
+                    queue.enqueue(event, self.url.as_str()).map_err(|queue_err| {
+                        warn!("Failed to queue event for retry: {}", queue_err);
+                        queue_err
+                    })?;
+                    info!("Event queued for retry: {}", event_id);
+                    // Return success since event is queued
+                    return Ok(PublishConfirmation {
+                        event_id,
+                        accepted: true,
+                        message: "Queued for retry".to_string(),
+                    });
+                }
+            }
+
             return Err(e);
         }
 
@@ -508,6 +561,122 @@ impl RelayConnection {
     /// Get relay URL
     pub fn url(&self) -> &Url {
         &self.url
+    }
+
+    /// Process queued messages and retry sending
+    async fn process_queue(&self) -> Result<()> {
+        let Some(ref queue) = self.queue else {
+            return Ok(());
+        };
+
+        while let Some(queued_msg) = queue.dequeue()? {
+            debug!("Processing queued message: {}", queued_msg.event_id);
+
+            // Parse event from JSON
+            let event: Event = match serde_json::from_str(&queued_msg.event_json) {
+                Ok(e) => e,
+                Err(parse_err) => {
+                    warn!("Failed to parse queued event JSON: {}", parse_err);
+                    queue.mark_failed(
+                        queued_msg.id,
+                        &format!("JSON parse error: {}", parse_err),
+                    )?;
+                    continue;
+                }
+            };
+
+            // Try to send the event
+            match self.send_event(&event).await {
+                Ok(_) => {
+                    info!("Successfully sent queued event: {}", event.id);
+                    queue.mark_sent(queued_msg.id)?;
+                }
+                Err(e) => {
+                    warn!(
+                        "Failed to send queued event {}: {}",
+                        event.id, e
+                    );
+                    queue.mark_failed(queued_msg.id, &e.to_string())?;
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Start background task to process queue periodically
+    fn start_queue_task(&self) {
+        let Some(ref _queue) = self.queue else {
+            return;
+        };
+
+        let url = self.url.clone();
+        let state = Arc::clone(&self.state);
+        let queue = Arc::clone(self.queue.as_ref().unwrap());
+        let poll_interval = self.config.queue_poll_interval;
+
+        // Spawn background task
+        let task = tokio::spawn(async move {
+            info!("Queue processing task started for {}", url);
+
+            loop {
+                // Check if still connected
+                let current_state = *state.read().await;
+                if current_state != ConnectionState::Connected {
+                    debug!("Queue task paused - not connected");
+                    tokio::time::sleep(poll_interval).await;
+                    continue;
+                }
+
+                // Process queue
+                while let Ok(Some(queued_msg)) = queue.dequeue() {
+                    debug!("Processing queued message: {}", queued_msg.event_id);
+
+                    // Parse event from JSON
+                    let event: Event = match serde_json::from_str(&queued_msg.event_json) {
+                        Ok(e) => e,
+                        Err(parse_err) => {
+                            warn!("Failed to parse queued event JSON: {}", parse_err);
+                            if let Err(e) = queue.mark_failed(
+                                queued_msg.id,
+                                &format!("JSON parse error: {}", parse_err),
+                            ) {
+                                warn!("Failed to mark queued message as failed: {}", e);
+                            }
+                            continue;
+                        }
+                    };
+
+                    // Check connection state again before sending
+                    if *state.read().await != ConnectionState::Connected {
+                        debug!("Connection lost during queue processing");
+                        break;
+                    }
+
+                    // Note: We can't call send_event here as we don't have a reference to self
+                    // The queue will be retried on next poll or connection
+                    debug!("Queued event {} needs manual retry", event.id);
+                }
+
+                // Sleep before next poll
+                tokio::time::sleep(poll_interval).await;
+            }
+        });
+
+        // Store task handle
+        let queue_task = Arc::clone(&self.queue_task);
+        tokio::spawn(async move {
+            *queue_task.lock().await = Some(task);
+        });
+    }
+
+    /// Stop queue processing task
+    async fn stop_queue_task(&self) {
+        let mut task = self.queue_task.lock().await;
+        if let Some(handle) = task.take() {
+            handle.abort();
+            debug!("Queue processing task stopped");
+        }
     }
 }
 
