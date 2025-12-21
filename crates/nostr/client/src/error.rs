@@ -52,6 +52,10 @@ pub enum ClientError {
     /// Event publish failed
     #[error("Event publish failed: {0}")]
     PublishFailed(String),
+
+    /// Invalid event
+    #[error("Invalid event: {0}")]
+    InvalidEvent(String),
 }
 
 /// Client result type
