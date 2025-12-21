@@ -20,11 +20,12 @@
 //!
 //! ## Example
 //!
-//! ```no_run
-//! use frostr::keygen::{generate_key_shares, Share};
+//! ```
+//! use frostr::keygen::generate_key_shares;
 //!
 //! // Generate 2-of-3 threshold key shares
-//! let (group_pk, shares) = generate_key_shares(2, 3)?;
+//! let shares = generate_key_shares(2, 3).unwrap();
+//! assert_eq!(shares.len(), 3);
 //!
 //! // Any 2 shares can sign, but no single share can
 //! // Signing happens via the Bifrost protocol
