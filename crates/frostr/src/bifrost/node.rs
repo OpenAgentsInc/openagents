@@ -1,8 +1,13 @@
 //! Bifrost node implementation
 
+use crate::bifrost::aggregator::SigningAggregator;
 use crate::bifrost::peer::PeerManager;
 use crate::bifrost::transport::{NostrTransport, TransportConfig};
+use crate::bifrost::{BifrostMessage, SignRequest};
+use crate::keygen::FrostShare;
+use crate::signing::round1_commit;
 use crate::Result;
+use frost_secp256k1::round1::SigningCommitments;
 
 /// Timeout configuration for different operations
 #[derive(Debug, Clone)]
@@ -90,6 +95,8 @@ pub struct BifrostNode {
     peer_manager: PeerManager,
     /// Nostr transport for message publishing (optional until initialized)
     transport: Option<NostrTransport>,
+    /// Local FROST share for signing operations (optional)
+    frost_share: Option<FrostShare>,
 }
 
 impl BifrostNode {
@@ -121,6 +128,7 @@ impl BifrostNode {
             config,
             peer_manager,
             transport,
+            frost_share: None,
         })
     }
 
@@ -159,6 +167,26 @@ impl BifrostNode {
         self.transport.is_some()
     }
 
+    /// Set the local FROST share for signing
+    pub fn set_frost_share(&mut self, share: FrostShare) {
+        self.frost_share = Some(share);
+    }
+
+    /// Get the local FROST share reference
+    pub fn frost_share(&self) -> Option<&FrostShare> {
+        self.frost_share.as_ref()
+    }
+
+    /// Check if FROST share is set
+    pub fn has_frost_share(&self) -> bool {
+        self.frost_share.is_some()
+    }
+
+    /// Get threshold (k) from FROST share if available
+    pub fn threshold(&self) -> Option<u16> {
+        self.frost_share.as_ref().map(|s| s.threshold)
+    }
+
     /// Ping a peer to check connectivity
     pub async fn ping(&mut self, pubkey: &[u8; 32]) -> Result<bool> {
         self.peer_manager.ping(pubkey).await
@@ -190,34 +218,110 @@ impl BifrostNode {
     /// Sign an event hash using threshold shares
     ///
     /// This method coordinates a threshold signing operation:
-    /// 1. Broadcasts SignRequest to threshold peers
-    /// 2. Collects k-of-n SignResponse messages
-    /// 3. Aggregates partial signatures into final signature
-    /// 4. Broadcasts SignResult to all participants
+    /// 1. Generates signing nonces and commitments (round1_commit)
+    /// 2. Broadcasts SignRequest to threshold peers
+    /// 3. Collects k-of-n SignResponse messages
+    /// 4. Aggregates partial signatures into final signature
+    /// 5. Broadcasts SignResult to all participants
+    /// 6. Returns final 64-byte Schnorr signature
     ///
     /// Requires:
     /// - NostrTransport must be initialized (secret_key in config)
-    /// - Local FrostShare for signing (to be added in future issue)
-    pub async fn sign(&self, _event_hash: &[u8; 32]) -> Result<[u8; 64]> {
-        // Check if transport is available
-        let _transport = self.transport.as_ref().ok_or_else(|| {
+    /// - FrostShare must be set (call set_frost_share() first)
+    ///
+    /// Note: This is a simplified coordinator implementation. A production
+    /// version would need:
+    /// - Proper session ID generation and management
+    /// - Participant selection logic
+    /// - Full FROST type serialization for network transport
+    /// - Nonce commitment tracking
+    /// - Response validation and error handling
+    pub async fn sign(&self, event_hash: &[u8; 32]) -> Result<[u8; 64]> {
+        // Check preconditions
+        let transport = self.transport.as_ref().ok_or_else(|| {
             crate::Error::Protocol(
                 "NostrTransport not initialized. Provide secret_key in BifrostConfig.".into()
             )
         })?;
 
-        // Full implementation will:
-        // 1. Generate signing nonces (round1_commit) using local FrostShare
-        // 2. Create SignRequest with nonce commitment and session ID
-        // 3. Use transport.publish_and_wait() to broadcast and collect responses
-        // 4. Aggregate partial signatures using SigningAggregator
-        // 5. Broadcast SignResult with final signature
-        // 6. Return 64-byte signature
+        let frost_share = self.frost_share.as_ref().ok_or_else(|| {
+            crate::Error::Protocol(
+                "FrostShare not set. Call set_frost_share() before signing.".into()
+            )
+        })?;
+
+        // Get threshold requirement
+        let threshold = frost_share.threshold as usize;
+
+        // Step 1: Generate our signing nonces and commitments
+        let (_nonces, commitments) = round1_commit(frost_share);
+
+        // Serialize commitment (simplified - production needs proper serialization)
+        let commitment_bytes = self.serialize_commitment(&commitments)?;
+
+        // Step 2: Create and broadcast SignRequest
+        let session_id = self.generate_session_id();
+        let participants = self.select_participants(threshold)?;
+
+        let request = SignRequest {
+            event_hash: *event_hash,
+            nonce_commitment: commitment_bytes,
+            session_id: session_id.clone(),
+            participants: participants.clone(),
+        };
+
+        let message = BifrostMessage::SignRequest(request.clone());
+
+        // Step 3: Broadcast and wait for k responses
+        let responses = transport
+            .publish_and_wait(&message, threshold)
+            .await?;
+
+        // Step 4: Collect and validate responses
+        let mut aggregator = SigningAggregator::new(threshold, session_id);
+
+        for response in responses {
+            if let BifrostMessage::SignResponse(sign_response) = response {
+                aggregator.add_response(sign_response)?;
+            }
+        }
+
+        // Step 5: Aggregate partial signatures
+        // Note: This is where we'd call the full aggregation logic
+        // For now, we return an error indicating the implementation is incomplete
 
         Err(crate::Error::Protocol(
-            "Sign operation requires FrostShare integration. \
-             Transport is ready but full signing flow not yet implemented.".into()
+            "Signature aggregation requires full FROST type serialization. \
+             Coordinator flow is implemented but aggregation step needs completion.".into()
         ))
+    }
+
+    /// Generate a unique session ID
+    fn generate_session_id(&self) -> String {
+        use rand::RngCore;
+        let mut rng = rand::thread_rng();
+        let mut bytes = [0u8; 16];
+        rng.fill_bytes(&mut bytes);
+        format!("{:032x}", u128::from_be_bytes(bytes))
+    }
+
+    /// Select participants for signing
+    fn select_participants(&self, threshold: usize) -> Result<Vec<u8>> {
+        // In a real implementation, this would:
+        // 1. Query online peers from peer_manager
+        // 2. Select k peers based on availability and policy
+        // 3. Return their participant IDs
+        //
+        // For now, return a simple sequence
+        Ok((1..=threshold as u8).collect())
+    }
+
+    /// Serialize a signing commitment to bytes
+    fn serialize_commitment(&self, _commitments: &SigningCommitments) -> Result<[u8; 33]> {
+        // In a real implementation, this would serialize the commitment
+        // to the wire format expected by peers.
+        // For now, return placeholder bytes
+        Ok([0u8; 33])
     }
 
     /// Perform threshold ECDH with a peer
@@ -477,13 +581,13 @@ mod tests {
         let node = BifrostNode::with_config(config).unwrap();
         let event_hash = [0x42; 32];
 
-        // Should fail because FrostShare not integrated yet
+        // Should fail because FrostShare not set
         let result = node.sign(&event_hash).await;
         assert!(result.is_err());
         assert!(result
             .unwrap_err()
             .to_string()
-            .contains("FrostShare integration"));
+            .contains("FrostShare not set"));
     }
 
     #[tokio::test]
@@ -533,5 +637,119 @@ mod tests {
         assert!(node.has_transport());
         assert_eq!(node.config().peer_pubkeys.len(), 2);
         assert_eq!(node.config().secret_key, Some([0xAB; 32]));
+    }
+
+    #[test]
+    fn test_node_without_frost_share() {
+        let node = BifrostNode::new().unwrap();
+
+        // Node without frost_share
+        assert!(!node.has_frost_share());
+        assert!(node.frost_share().is_none());
+        assert!(node.threshold().is_none());
+    }
+
+    #[test]
+    fn test_node_with_frost_share() {
+        let mut node = BifrostNode::new().unwrap();
+
+        // Generate a 2-of-3 share
+        let shares = crate::keygen::generate_key_shares(2, 3).unwrap();
+        node.set_frost_share(shares[0].clone());
+
+        // Node should have frost_share
+        assert!(node.has_frost_share());
+        assert!(node.frost_share().is_some());
+        assert_eq!(node.threshold(), Some(2));
+    }
+
+    #[tokio::test]
+    async fn test_sign_requires_frost_share() {
+        let mut config = BifrostConfig::default();
+        config.secret_key = Some([0x42; 32]);
+
+        let node = BifrostNode::with_config(config).unwrap();
+        let event_hash = [0x42; 32];
+
+        // Should fail because no frost_share
+        let result = node.sign(&event_hash).await;
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("FrostShare not set"));
+    }
+
+    #[tokio::test]
+    async fn test_sign_with_frost_share_partial_implementation() {
+        let mut config = BifrostConfig::default();
+        config.secret_key = Some([0x42; 32]);
+
+        let mut node = BifrostNode::with_config(config).unwrap();
+
+        // Set frost share
+        let shares = crate::keygen::generate_key_shares(2, 3).unwrap();
+        node.set_frost_share(shares[0].clone());
+
+        let event_hash = [0x42; 32];
+
+        // Should fail at aggregation step (not fully implemented)
+        let result = node.sign(&event_hash).await;
+        assert!(result.is_err());
+        // This will fail because publish_and_wait will timeout
+        // (no actual relay connections in test)
+    }
+
+    #[test]
+    fn test_generate_session_id() {
+        let node = BifrostNode::new().unwrap();
+
+        let id1 = node.generate_session_id();
+        let id2 = node.generate_session_id();
+
+        // Session IDs should be unique
+        assert_ne!(id1, id2);
+        // Should be hex strings of length 32
+        assert_eq!(id1.len(), 32);
+        assert_eq!(id2.len(), 32);
+    }
+
+    #[test]
+    fn test_select_participants() {
+        let node = BifrostNode::new().unwrap();
+
+        let participants = node.select_participants(2).unwrap();
+        assert_eq!(participants.len(), 2);
+        assert_eq!(participants, vec![1, 2]);
+
+        let participants = node.select_participants(3).unwrap();
+        assert_eq!(participants.len(), 3);
+        assert_eq!(participants, vec![1, 2, 3]);
+    }
+
+    #[test]
+    fn test_serialize_commitment() {
+        let node = BifrostNode::new().unwrap();
+
+        // Generate dummy commitment
+        let shares = crate::keygen::generate_key_shares(2, 3).unwrap();
+        let (_, commitments) = round1_commit(&shares[0]);
+
+        let bytes = node.serialize_commitment(&commitments).unwrap();
+        assert_eq!(bytes.len(), 33);
+    }
+
+    #[test]
+    fn test_threshold_from_share() {
+        let mut node = BifrostNode::new().unwrap();
+
+        // Test different thresholds
+        let shares_2_3 = crate::keygen::generate_key_shares(2, 3).unwrap();
+        node.set_frost_share(shares_2_3[0].clone());
+        assert_eq!(node.threshold(), Some(2));
+
+        let shares_3_5 = crate::keygen::generate_key_shares(3, 5).unwrap();
+        node.set_frost_share(shares_3_5[0].clone());
+        assert_eq!(node.threshold(), Some(3));
     }
 }

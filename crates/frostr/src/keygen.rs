@@ -26,6 +26,10 @@ pub struct FrostShare {
     pub key_package: KeyPackage,
     /// Group public key package for verification
     pub public_key_package: PublicKeyPackage,
+    /// Minimum signers required (threshold k)
+    pub threshold: u16,
+    /// Total number of shares (n)
+    pub total: u16,
 }
 
 /// Galois Field GF(256) multiplication
@@ -262,6 +266,8 @@ pub fn generate_key_shares(threshold: u32, total: u32) -> Result<Vec<FrostShare>
             FrostShare {
                 key_package,
                 public_key_package: public_key_package.clone(),
+                threshold: threshold as u16,
+                total: total as u16,
             }
         })
         .collect();
