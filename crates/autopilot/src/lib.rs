@@ -14,6 +14,7 @@ pub mod redact;
 pub mod replay;
 pub mod rlog;
 pub mod timestamp;
+pub mod tool_patterns;
 pub mod trajectory;
 pub mod ui_renderer;
 
