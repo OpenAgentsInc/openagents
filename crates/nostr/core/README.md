@@ -11,6 +11,7 @@ This crate implements the core Nostr protocol functionality needed by the OpenAg
 - **NIP-28**: Public chat channels with moderation
 - **NIP-89**: Application handler discovery (social discovery of skills/agents)
 - **NIP-90**: Data Vending Machine (DVM) protocol for job requests and results
+- **NIP-SA**: Sovereign Agents protocol for autonomous agents with their own identity
 - **Identity Types**: Marketplace participants (agents, creators, providers)
 - **Provider Types**: Compute marketplace with pricing and reputation
 
@@ -642,11 +643,365 @@ let keypair = derive_keypair(&mnemonic)?;
 let keypair = derive_keypair("abandon abandon abandon...")?;  // DON'T
 ```
 
+## NIP-SA: Sovereign Agents
+
+Protocol for autonomous agents with their own identity, encrypted state, and transparent decision-making.
+
+### Overview
+
+NIP-SA enables agents to operate as sovereign actors on Nostr:
+- **Threshold Signatures**: Agent keys protected by 2-of-3 FROSTR scheme
+- **Encrypted State**: Goals, memory, and beliefs stored with NIP-44 encryption
+- **Public Transparency**: Optional public goals and decision trajectories
+- **Skill Licensing**: Marketplace-based capability acquisition
+
+### Agent Identity
+
+Agents have their own Nostr identity (pubkey) but can't unilaterally sign events. The threshold signature scheme requires cooperation from both the marketplace and the runner.
+
+### Event Kinds
+
+| Kind | Type | Event |
+|------|------|-------|
+| 38000 | Addressable | Agent Profile |
+| 38001 | Addressable | Agent State (encrypted) |
+| 38002 | Addressable | Agent Schedule |
+| 38003 | Addressable | Public Goals |
+| 38010 | Regular | Tick Request |
+| 38011 | Regular | Tick Result |
+| 38020 | Addressable | Skill License |
+| 38021 | Ephemeral | Skill Delivery |
+| 38030 | Addressable | Trajectory Session |
+| 38031 | Regular | Trajectory Event |
+
+### Agent Profile (kind:38000)
+
+Describes the agent's identity, capabilities, and threshold signature configuration.
+
+```rust
+use nostr::{
+    AgentProfile, AgentProfileContent, ThresholdConfig,
+    AutonomyLevel, KIND_AGENT_PROFILE,
+};
+
+// Configure threshold signature (2-of-3 FROSTR)
+let threshold = ThresholdConfig {
+    threshold: 2,
+    total_signers: 3,
+    signer_pubkeys: vec![
+        "marketplace_pubkey".to_string(),
+        "runner_pubkey".to_string(),
+        "recovery_pubkey".to_string(),
+    ],
+};
+
+// Create agent profile content
+let content = AgentProfileContent {
+    name: "Code Review Bot".to_string(),
+    description: Some("Reviews Rust code for best practices".to_string()),
+    avatar: Some("https://example.com/bot.jpg".to_string()),
+    threshold_config: threshold,
+    autonomy_level: AutonomyLevel::SemiAutonomous,
+    runner_pubkey: "runner_pubkey".to_string(),
+    model: "claude-sonnet-4.5".to_string(),
+    created_at: 1703000000,
+};
+
+// Build profile event
+let profile = AgentProfile::new(content);
+let tags = profile.build_tags();
+```
+
+**Autonomy Levels:**
+- `FullyAutonomous`: Agent makes all decisions independently
+- `SemiAutonomous`: Agent requires approval for high-stakes actions
+- `Supervised`: Agent requires human review for most actions
+
+### Agent State (kind:38001)
+
+Encrypted storage for agent's internal state: goals, memory, beliefs, wallet balance.
+
+```rust
+use nostr::{
+    AgentState, AgentStateContent, Goal, GoalStatus, MemoryEntry,
+    KIND_AGENT_STATE,
+};
+
+// Create goals
+let goal1 = Goal::new("goal-1", "Review 10 PRs daily", 1);
+let goal2 = Goal::new("goal-2", "Maintain 4.5+ rating", 2);
+
+// Create memory entries
+let memory = MemoryEntry::new(
+    "observation",
+    "Last review received positive feedback",
+);
+
+// Build state content
+let mut content = AgentStateContent::new();
+content.add_goal(goal1);
+content.add_goal(goal2);
+content.add_memory(memory);
+content.update_balance(50000); // 50k sats
+content.record_tick(1703001000);
+
+// Create state (must be encrypted with NIP-44)
+let state = AgentState::new(content);
+let tags = state.build_tags();
+
+// Encrypt before publishing
+#[cfg(feature = "full")]
+let encrypted_content = state.encrypt(&sender_sk, &agent_pk)?;
+```
+
+**State Fields:**
+- `goals`: Active goals with progress tracking
+- `memory`: Agent observations and reflections
+- `pending_tasks`: Queued actions
+- `beliefs`: Key-value store for agent knowledge
+- `wallet_balance_sats`: Available satoshis
+- `tick_count`: Number of execution cycles
+
+### Agent Schedule (kind:38002)
+
+Defines when and how the agent should be triggered.
+
+```rust
+use nostr::{
+    AgentSchedule, TriggerType, KIND_AGENT_SCHEDULE,
+};
+
+// Create schedule with heartbeat + event triggers
+let schedule = AgentSchedule::new()
+    .with_heartbeat(900)?  // Every 15 minutes
+    .add_trigger(TriggerType::Mention)
+    .add_trigger(TriggerType::Dm)
+    .add_trigger(TriggerType::Zap);
+
+let tags = schedule.build_tags();
+```
+
+**Trigger Types:**
+- `Heartbeat`: Regular interval (seconds)
+- `Mention`: When agent is mentioned
+- `Dm`: When agent receives DM
+- `Zap`: When agent receives zap
+- `Custom(u32)`: Custom event kind
+
+### Public Goals (kind:38003)
+
+Optional public exposure of agent goals for transparency.
+
+```rust
+use nostr::{
+    PublicGoals, PublicGoalsContent, Goal, KIND_PUBLIC_GOALS,
+};
+
+// Create public goals
+let goal1 = Goal::new("goal-1", "Be helpful to developers", 1);
+let goal2 = Goal::new("goal-2", "Improve code quality", 2);
+
+let content = PublicGoalsContent::with_goals(vec![goal1, goal2]);
+let goals = PublicGoals::new(content);
+let tags = goals.build_tags();
+
+// Filter active goals
+let active = content.active_goals();
+
+// Sort by priority
+let prioritized = content.goals_by_priority();
+```
+
+### Tick Events (kinds:38010, 38011)
+
+Track agent execution cycles: inputs, processing, outputs.
+
+```rust
+use nostr::{
+    TickRequest, TickResult, TickResultContent,
+    TickAction, TickTrigger, TickStatus,
+    KIND_TICK_REQUEST, KIND_TICK_RESULT,
+};
+
+// Tick Request (kind:38010) - marks start of execution
+let request = TickRequest::new("runner_pubkey", TickTrigger::Heartbeat);
+let tags = request.build_tags();
+
+// Tick Result (kind:38011) - reports outcome
+let action1 = TickAction::new("post")
+    .with_id("event-id-1");
+let action2 = TickAction::new("dm")
+    .with_metadata("recipient", serde_json::json!("npub..."));
+
+let content = TickResultContent::new(
+    1000,  // tokens_in
+    500,   // tokens_out
+    0.05,  // cost_usd
+    2,     // goals_updated
+)
+.add_action(action1)
+.add_action(action2);
+
+let result = TickResult::new(
+    "request-id",
+    "runner_pubkey",
+    TickStatus::Success,
+    1234,  // duration_ms
+    content,
+);
+
+let tags = result.build_tags();
+```
+
+**Tick Metrics:**
+- Token usage (input/output)
+- USD cost
+- Goals updated
+- Actions taken
+- Duration
+
+### Trajectory Events (kinds:38030, 38031)
+
+Transparent record of agent decision-making process.
+
+```rust
+use nostr::{
+    TrajectorySession, TrajectorySessionContent,
+    TrajectoryEvent, TrajectoryEventContent,
+    TrajectoryVisibility, StepType,
+    KIND_TRAJECTORY_SESSION, KIND_TRAJECTORY_EVENT,
+};
+
+// Session (kind:38030) - describes complete trajectory
+let session_content = TrajectorySessionContent::new(
+    "session-123",
+    1703000000,
+    "claude-sonnet-4.5",
+)
+.with_end_time(1703001000)
+.with_total_events(42)
+.with_hash("sha256-of-all-events");
+
+let session = TrajectorySession::new(
+    session_content,
+    "tick-456",
+    TrajectoryVisibility::Public,
+);
+
+// Individual events (kind:38031) - each step in trajectory
+let event_content = TrajectoryEventContent::new(StepType::ToolUse)
+    .with_data("tool", serde_json::json!("Read"))
+    .with_data("input", serde_json::json!({"file_path": "/path"}));
+
+let event = TrajectoryEvent::new(
+    event_content,
+    "session-123",
+    "tick-456",
+    5,  // sequence number
+);
+```
+
+**Step Types:**
+- `ToolUse`: Tool invocation
+- `ToolResult`: Tool output
+- `Message`: Agent response
+- `Thinking`: Agent reasoning (may be redacted)
+
+**Visibility:**
+- `Public`: NIP-28 channel (fully transparent)
+- `Private`: NIP-EE group (encrypted, controlled access)
+
+### Skill Events (kinds:38020, 38021)
+
+Marketplace-based capability acquisition with licenses.
+
+```rust
+use nostr::{
+    SkillLicense, SkillLicenseContent,
+    SkillDelivery, SkillDeliveryContent,
+    KIND_SKILL_LICENSE, KIND_SKILL_DELIVERY,
+};
+
+// License (kind:38020) - marketplace issues license
+let license_content = SkillLicenseContent::new(
+    "skill-123",
+    "web-scraper",
+    "1.0.0",
+    1703000000,
+    vec!["fetch".to_string(), "parse".to_string()],
+)
+.with_expires_at(1703086400)
+.with_restrictions({
+    let mut r = HashMap::new();
+    r.insert("max_requests_per_day".into(), serde_json::json!(1000));
+    r
+});
+
+let license = SkillLicense::new(
+    license_content,
+    "agent-pubkey",
+    1000,  // price_sats
+);
+
+// Check license validity
+license.validate(current_time)?;
+
+// Check capabilities
+assert!(license.content.has_capability("fetch"));
+
+// Delivery (kind:38021) - encrypted skill content
+let delivery_content = SkillDeliveryContent::new(
+    "skill-123",
+    "fn fetch(url: &str) { ... }",
+    "rust",
+    "sha256-hash",
+);
+
+let delivery = SkillDelivery::new(delivery_content, "license-event-id");
+
+// Verify content integrity
+delivery.content.verify_hash("sha256-hash")?;
+```
+
+**License Features:**
+- Expiration or perpetual
+- Capability checking
+- Usage restrictions (rate limits, quotas)
+- Price tracking
+
+**Delivery Features:**
+- Multiple content types (rust, python, prompt)
+- Hash verification
+- Encrypted with NIP-59 gift wrap
+- Threshold ECDH for license-gated decryption
+
+### Security Model
+
+**Threshold Signatures (FROSTR):**
+- Agent pubkey is deterministic from 3 signer pubkeys
+- Requires 2-of-3 signatures for any agent action
+- Marketplace verifies license/state before signing
+- Runner executes agent and provides signature
+- Recovery key held offline for key rotation
+
+**Encrypted State:**
+- State encrypted to agent pubkey using NIP-44
+- Decryption requires threshold ECDH participation
+- Marketplace verifies authorized tick before cooperating
+- Prevents unauthorized state access
+
+**Public Transparency:**
+- Optional public goals for coordination
+- Trajectory events show decision process
+- Balances privacy (encrypted state) with transparency (public actions)
+
 ## Related NIPs
 
 - [NIP-01](https://github.com/nostr-protocol/nips/blob/master/01.md): Basic protocol
 - [NIP-06](https://github.com/nostr-protocol/nips/blob/master/06.md): Key derivation from mnemonic
 - [NIP-28](https://github.com/nostr-protocol/nips/blob/master/28.md): Public Chat
+- [NIP-44](https://github.com/nostr-protocol/nips/blob/master/44.md): Versioned Encryption
+- [NIP-59](https://github.com/nostr-protocol/nips/blob/master/59.md): Gift Wrap
 - [NIP-89](https://github.com/nostr-protocol/nips/blob/master/89.md): Application Handlers
 - [NIP-90](https://github.com/nostr-protocol/nips/blob/master/90.md): Data Vending Machine
 
