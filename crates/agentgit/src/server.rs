@@ -3,17 +3,25 @@
 use actix_web::{web, App, HttpResponse, HttpServer};
 use std::sync::Arc;
 
-use crate::views::home_page;
+use crate::nostr::NostrClient;
+use crate::views::home_page_with_repos;
 use crate::ws::{ws_handler, WsBroadcaster};
 
 /// Application state shared across handlers
 pub struct AppState {
     pub broadcaster: Arc<WsBroadcaster>,
+    pub nostr_client: Arc<NostrClient>,
 }
 
 /// Starts server on 127.0.0.1:0, returns the assigned port
-pub async fn start_server(broadcaster: Arc<WsBroadcaster>) -> anyhow::Result<u16> {
-    let state = web::Data::new(AppState { broadcaster });
+pub async fn start_server(
+    broadcaster: Arc<WsBroadcaster>,
+    nostr_client: Arc<NostrClient>,
+) -> anyhow::Result<u16> {
+    let state = web::Data::new(AppState {
+        broadcaster,
+        nostr_client,
+    });
 
     let server = HttpServer::new(move || {
         App::new()
@@ -31,10 +39,19 @@ pub async fn start_server(broadcaster: Arc<WsBroadcaster>) -> anyhow::Result<u16
 }
 
 /// Home page
-async fn index() -> HttpResponse {
+async fn index(state: web::Data<AppState>) -> HttpResponse {
+    // Fetch repositories from cache
+    let repositories = match state.nostr_client.get_cached_repositories(50).await {
+        Ok(repos) => repos,
+        Err(e) => {
+            tracing::warn!("Failed to fetch repositories: {}", e);
+            vec![]
+        }
+    };
+
     HttpResponse::Ok()
         .content_type("text/html; charset=utf-8")
-        .body(home_page().into_string())
+        .body(home_page_with_repos(&repositories).into_string())
 }
 
 /// WebSocket upgrade

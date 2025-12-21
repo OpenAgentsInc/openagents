@@ -38,29 +38,35 @@ fn main() -> Result<()> {
             .expect("tokio runtime");
 
         rt.block_on(async move {
-            let port = start_server(broadcaster_clone.clone()).await.expect("start server");
-            port_tx.send(port).expect("send port");
-
-            // Initialize Nostr client and connect to relays
+            // Initialize Nostr client first
             let relay_urls = vec![
                 "wss://relay.damus.io".to_string(),
                 "wss://nos.lol".to_string(),
                 "wss://relay.nostr.band".to_string(),
             ];
 
-            match NostrClient::new(relay_urls.clone(), broadcaster_clone) {
-                Ok(nostr_client) => {
+            let nostr_client = match NostrClient::new(relay_urls.clone(), broadcaster_clone.clone()) {
+                Ok(client) => {
                     // Connect and subscribe to git events
-                    if let Err(e) = nostr_client.connect(relay_urls).await {
+                    if let Err(e) = client.connect(relay_urls.clone()).await {
                         tracing::warn!("Failed to connect to Nostr relays: {}", e);
-                    } else if let Err(e) = nostr_client.subscribe_to_git_events().await {
+                    } else if let Err(e) = client.subscribe_to_git_events().await {
                         tracing::warn!("Failed to subscribe to git events: {}", e);
                     }
+                    Arc::new(client)
                 }
                 Err(e) => {
                     tracing::error!("Failed to initialize Nostr client: {}", e);
+                    // Create a dummy client for now
+                    Arc::new(NostrClient::new(vec![], broadcaster_clone.clone()).expect("dummy client"))
                 }
-            }
+            };
+
+            // Start server with both broadcaster and nostr_client
+            let port = start_server(broadcaster_clone.clone(), nostr_client)
+                .await
+                .expect("start server");
+            port_tx.send(port).expect("send port");
 
             // Keep runtime alive
             std::future::pending::<()>().await;
