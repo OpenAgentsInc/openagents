@@ -18,8 +18,8 @@ After=network.target
 
 [Service]
 Type=simple
-ExecStart=%h/.cargo/bin/autopilotd --workdir %h/code/openagents --project openagents
-ExecStop=%h/.cargo/bin/autopilotd stop
+ExecStart=%h/.cargo/bin/openagents daemon start --workdir %h/code/openagents --project openagents
+ExecStop=%h/.cargo/bin/openagents daemon stop
 
 # Restart configuration
 Restart=always

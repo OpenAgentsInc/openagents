@@ -6,9 +6,14 @@ authors = ["OpenAgents Contributors"]
 description = "OpenAgents Wallet - Unified Nostr identity and Bitcoin payments"
 license = "MIT"
 
-[[bin]]
+# Binary removed - use `openagents wallet` instead
+# [[bin]]
+# name = "wallet"
+# path = "src/main.rs"
+
+[lib]
 name = "wallet"
-path = "src/main.rs"
+path = "src/lib.rs"
 
 [dependencies]
 # CLI

@@ -49,9 +49,10 @@ toml.workspace = true
 nostr-client = { version = "0.1.0", path = "../nostr/client" }
 sha2.workspace = true
 
-[[bin]]
-name = "marketplace"
-path = "src/main.rs"
+# Binary removed - use `openagents marketplace` instead
+# [[bin]]
+# name = "marketplace"
+# path = "src/main.rs"
 
 [lib]
 name = "marketplace"

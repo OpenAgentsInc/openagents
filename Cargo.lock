@@ -708,7 +708,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2",
- "shellexpand",
+ "shellexpand 3.1.1",
  "signal-hook",
  "statrs",
  "sysinfo",
@@ -1811,25 +1811,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "desktop"
-version = "0.1.0"
-dependencies = [
- "actix-web",
- "actix-ws",
- "anyhow",
- "futures-util",
- "maud",
- "recorder",
- "serde",
- "tao 0.33.0",
- "tokio",
- "tracing",
- "tracing-subscriber",
- "ui",
- "wry 0.50.5",
-]
-
-[[package]]
 name = "digest"
 version = "0.10.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1839,6 +1820,15 @@ dependencies = [
  "const-oid",
  "crypto-common",
  "subtle",
+]
+
+[[package]]
+name = "dirs"
+version = "4.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ca3aa72a6f96ea37bbc5aa912f6788242832f75369bdfdadcb0e38423f100059"
+dependencies = [
+ "dirs-sys 0.3.7",
 ]
 
 [[package]]
@@ -1857,6 +1847,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c3e8aa94d75141228480295a7d0e7feb620b1a5ad9f12bc40be62411e38cce4e"
 dependencies = [
  "dirs-sys 0.5.0",
+]
+
+[[package]]
+name = "dirs-sys"
+version = "0.3.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1b1d1d91c932ef41c0f2663aa8b0ca0342d444d842c06914aa0a7e352d0bada6"
+dependencies = [
+ "libc",
+ "redox_users 0.4.6",
+ "winapi",
 ]
 
 [[package]]
@@ -4832,6 +4833,29 @@ dependencies = [
 ]
 
 [[package]]
+name = "openagents"
+version = "0.1.0"
+dependencies = [
+ "actix-web",
+ "actix-ws",
+ "agentgit",
+ "anyhow",
+ "autopilot",
+ "clap",
+ "futures-util",
+ "marketplace",
+ "serde",
+ "serde_json",
+ "shellexpand 2.1.2",
+ "tao 0.33.0",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+ "wallet",
+ "wry 0.50.5",
+]
+
+[[package]]
 name = "openssl"
 version = "0.10.75"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6345,6 +6369,15 @@ dependencies = [
 
 [[package]]
 name = "shellexpand"
+version = "2.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7ccc8076840c4da029af4f87e4e8daeb0fca6b87bbb02e10cb60b791450e11e4"
+dependencies = [
+ "dirs 4.0.0",
+]
+
+[[package]]
+name = "shellexpand"
 version = "3.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8b1fdf65dd6331831494dd616b30351c38e96e45921a27745cf98490458b90bb"
@@ -7759,7 +7792,7 @@ dependencies = [
  "secp256k1",
  "serde",
  "serde_json",
- "shellexpand",
+ "shellexpand 3.1.1",
  "spark",
  "tao 0.33.0",
  "tempfile",

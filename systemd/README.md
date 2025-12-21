@@ -11,7 +11,7 @@ Automatically updates autopilot baseline metrics every week.
 - **Service**: `autopilot-baseline-update.service`
 - **Timer**: `autopilot-baseline-update.timer`
 - **Schedule**: Every Monday at 00:00
-- **Command**: `cargo autopilot baseline update`
+- **Command**: `openagents autopilot baseline update`
 
 ## Installation
 
@@ -149,13 +149,13 @@ Common issues:
 After the timer runs, check baselines:
 
 ```bash
-cargo autopilot baseline show
+openagents autopilot baseline show
 ```
 
 Or generate a full report:
 
 ```bash
-cargo autopilot baseline report
+openagents autopilot baseline report
 ```
 
 ## Related Documentation

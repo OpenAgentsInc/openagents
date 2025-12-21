@@ -7,13 +7,18 @@ license.workspace = true
 publish.workspace = true
 description = "Autonomous task runner with trajectory logging"
 
-[[bin]]
-name = "autopilot"
-path = "src/main.rs"
+# Binaries removed - use `openagents autopilot` and `openagents daemon` instead
+# [[bin]]
+# name = "autopilot"
+# path = "src/main.rs"
 
-[[bin]]
-name = "autopilotd"
-path = "src/bin/autopilotd.rs"
+# [[bin]]
+# name = "autopilotd"
+# path = "src/bin/autopilotd.rs"
+
+[lib]
+name = "autopilot"
+path = "src/lib.rs"
 
 [dependencies]
 # Workspace crates
