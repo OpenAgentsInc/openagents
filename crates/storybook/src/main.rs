@@ -18,26 +18,26 @@ use listenfd::ListenFd;
 use maud::{DOCTYPE, Markup, PreEscaped, html};
 use std::time::Duration;
 
-use stories::recorder::atoms::attempt_badge::attempt_badge_story;
-use stories::recorder::atoms::blob_ref::blob_ref_story;
-use stories::recorder::atoms::call_id_badge::call_id_badge_story;
-use stories::recorder::atoms::cost_badge::cost_badge_story;
-use stories::recorder::atoms::index::atoms_index_story;
-use stories::recorder::atoms::latency_badge::latency_badge_story;
-use stories::recorder::atoms::line_type_label::line_type_label_story;
-use stories::recorder::atoms::redacted_value::redacted_value_story;
-use stories::recorder::atoms::result_arrow::result_arrow_story;
-use stories::recorder::atoms::status_dot::status_dot_story;
-use stories::recorder::atoms::step_badge::step_badge_story;
-use stories::recorder::atoms::tid_badge::tid_badge_story;
-use stories::recorder::atoms::timestamp_badge::timestamp_badge_story;
-use stories::recorder::atoms::token_badge::token_badge_story;
-use stories::recorder::demo::recorder_demo_story;
-use stories::recorder::index::recorder_index_story;
-use stories::recorder::molecules::recorder_molecules_story;
-use stories::recorder::organisms::recorder_organisms_story;
-use stories::recorder::sections::recorder_sections_story;
-use stories::button::button_story;
+use stories::organisms::recorder::atoms::attempt_badge::attempt_badge_story;
+use stories::organisms::recorder::atoms::blob_ref::blob_ref_story;
+use stories::organisms::recorder::atoms::call_id_badge::call_id_badge_story;
+use stories::organisms::recorder::atoms::cost_badge::cost_badge_story;
+use stories::organisms::recorder::atoms::index::atoms_index_story;
+use stories::organisms::recorder::atoms::latency_badge::latency_badge_story;
+use stories::organisms::recorder::atoms::line_type_label::line_type_label_story;
+use stories::organisms::recorder::atoms::redacted_value::redacted_value_story;
+use stories::organisms::recorder::atoms::result_arrow::result_arrow_story;
+use stories::organisms::recorder::atoms::status_dot::status_dot_story;
+use stories::organisms::recorder::atoms::step_badge::step_badge_story;
+use stories::organisms::recorder::atoms::tid_badge::tid_badge_story;
+use stories::organisms::recorder::atoms::timestamp_badge::timestamp_badge_story;
+use stories::organisms::recorder::atoms::token_badge::token_badge_story;
+use stories::organisms::recorder::demo::recorder_demo_story;
+use stories::organisms::recorder::index::recorder_index_story;
+use stories::organisms::recorder::molecules::recorder_molecules_story;
+use stories::organisms::recorder::organisms::recorder_organisms_story;
+use stories::organisms::recorder::sections::recorder_sections_story;
+use stories::atoms::button::button_story;
 use ui::{TAILWIND_CDN, TAILWIND_THEME};
 
 const PORT: u16 = 3030;
@@ -55,15 +55,17 @@ fn sidebar_nav(active_story: &str) -> Markup {
         aside class="fixed top-0 left-0 bottom-0 w-48 border-r border-border overflow-y-auto p-3 bg-background z-50" {
             h1 class="font-bold mb-3 text-foreground" { "Storybook" }
             nav {
-                h2 class="uppercase text-muted-foreground mb-1 mt-3 pl-1 tracking-wide text-xs" { "Components" }
+                h2 class="uppercase text-muted-foreground mb-1 mt-3 pl-1 tracking-wide text-xs" { "Atoms" }
                 a href="/stories/button" class=(link_class("button")) { "Button" }
-                h2 class="uppercase text-muted-foreground mb-1 mt-4 pl-1 tracking-wide text-xs" { "Recorder" }
-                a href="/stories/recorder" class=(link_class("recorder")) { "Index" }
-                a href="/stories/recorder/atoms" class=(link_class("recorder/atoms")) { "Atoms" }
-                a href="/stories/recorder/molecules" class=(link_class("recorder/molecules")) { "Molecules" }
-                a href="/stories/recorder/organisms" class=(link_class("recorder/organisms")) { "Organisms" }
-                a href="/stories/recorder/sections" class=(link_class("recorder/sections")) { "Sections" }
-                a href="/stories/recorder/demo" class=(link_class("recorder/demo")) { "Demo" }
+                h2 class="uppercase text-muted-foreground mb-1 mt-4 pl-1 tracking-wide text-xs" { "Molecules" }
+                p class="text-muted-foreground text-xs pl-1 py-1" { "No stories yet" }
+                h2 class="uppercase text-muted-foreground mb-1 mt-4 pl-1 tracking-wide text-xs" { "Organisms" }
+                a href="/stories/recorder" class=(link_class("recorder")) { "Recorder Index" }
+                a href="/stories/recorder/atoms" class=(link_class("recorder/atoms")) { "Recorder Atoms" }
+                a href="/stories/recorder/molecules" class=(link_class("recorder/molecules")) { "Recorder Molecules" }
+                a href="/stories/recorder/organisms" class=(link_class("recorder/organisms")) { "Recorder Organisms" }
+                a href="/stories/recorder/sections" class=(link_class("recorder/sections")) { "Recorder Sections" }
+                a href="/stories/recorder/demo" class=(link_class("recorder/demo")) { "Recorder Demo" }
                 h2 class="uppercase text-muted-foreground mb-1 mt-3 pl-1 tracking-wide text-xs" { "Recorder Atoms" }
                 a href="/stories/recorder/atoms/status-dot" class=(link_class("recorder/atoms/status-dot")) { "Status Dot" }
                 a href="/stories/recorder/atoms/line-type-label" class=(link_class("recorder/atoms/line-type-label")) { "Line Type Label" }
@@ -78,6 +80,10 @@ fn sidebar_nav(active_story: &str) -> Markup {
                 a href="/stories/recorder/atoms/blob-ref" class=(link_class("recorder/atoms/blob-ref")) { "Blob Ref" }
                 a href="/stories/recorder/atoms/redacted-value" class=(link_class("recorder/atoms/redacted-value")) { "Redacted Value" }
                 a href="/stories/recorder/atoms/result-arrow" class=(link_class("recorder/atoms/result-arrow")) { "Result Arrow" }
+                h2 class="uppercase text-muted-foreground mb-1 mt-4 pl-1 tracking-wide text-xs" { "Screens" }
+                p class="text-muted-foreground text-xs pl-1 py-1" { "No stories yet" }
+                h2 class="uppercase text-muted-foreground mb-1 mt-4 pl-1 tracking-wide text-xs" { "Layouts" }
+                p class="text-muted-foreground text-xs pl-1 py-1" { "No stories yet" }
             }
         }
     }
