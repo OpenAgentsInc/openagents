@@ -6,7 +6,7 @@ use std::sync::Arc;
 use crate::git::{clone_repository, get_repository_path, is_repository_cloned};
 use crate::nostr::NostrClient;
 use crate::nostr::events::{PatchBuilder, PullRequestBuilder};
-use crate::views::{agent_profile_page, home_page_with_repos, issue_create_form_page, issue_detail_page, issues_list_page, patch_create_form_page, patch_detail_page, patches_list_page, pr_create_form_page, pull_request_detail_page, pull_requests_list_page, repository_detail_page, search_results_page, trajectory_viewer_page};
+use crate::views::{agent_profile_page, home_page_with_repos, issue_create_form_page, issue_detail_page, issues_list_page, patch_create_form_page, patch_detail_page, patches_list_page, pr_create_form_page, pull_request_detail_page, pull_requests_list_page, repository_create_form_page, repository_detail_page, search_results_page, trajectory_viewer_page};
 use crate::ws::{ws_handler, WsBroadcaster};
 
 /// Application state shared across handlers
@@ -29,6 +29,8 @@ pub async fn start_server(
         App::new()
             .app_data(state.clone())
             .route("/", web::get().to(index))
+            .route("/repo/new", web::get().to(repository_create_form))
+            .route("/repo", web::post().to(repository_create))
             .route("/repo/{identifier}", web::get().to(repository_detail))
             .route("/repo/{identifier}/issues", web::get().to(repository_issues))
             .route("/repo/{identifier}/issues/new", web::get().to(issue_create_form))
@@ -1353,4 +1355,68 @@ async fn ws_route(
     state: web::Data<AppState>,
 ) -> Result<HttpResponse, actix_web::Error> {
     ws_handler(req, stream, state.broadcaster.clone()).await
+}
+
+/// Repository creation form page
+async fn repository_create_form() -> HttpResponse {
+    HttpResponse::Ok()
+        .content_type("text/html; charset=utf-8")
+        .body(repository_create_form_page().into_string())
+}
+
+/// Form data for repository creation
+#[derive(serde::Deserialize)]
+#[allow(dead_code)]
+struct RepositoryCreateForm {
+    identifier: String,
+    name: String,
+    description: Option<String>,
+    clone_url_git: String,
+    clone_url_https: Option<String>,
+    web_url: Option<String>,
+    default_branch: Option<String>,
+    earliest_commit: Option<String>,
+    maintainers: Option<String>,
+}
+
+/// Repository creation handler
+async fn repository_create(
+    _state: web::Data<AppState>,
+    form: web::Form<RepositoryCreateForm>,
+) -> HttpResponse {
+    // TODO: Build kind:30617 repository announcement event
+    // For now, log the form data
+    tracing::info!(
+        "Would create repository: identifier={}, name='{}', git_url={}",
+        form.identifier,
+        form.name,
+        form.clone_url_git
+    );
+
+    // Parse maintainers (one npub per line)
+    let maintainers: Vec<String> = form
+        .maintainers
+        .as_ref()
+        .map(|m| m.lines().map(|l| l.trim().to_string()).filter(|l| !l.is_empty()).collect())
+        .unwrap_or_default();
+
+    tracing::info!("Maintainers: {:?}", maintainers);
+
+    // TODO: Create event builder when RepositoryAnnouncementBuilder is implemented
+    // TODO: Sign with identity
+    // TODO: Publish to relays
+    // TODO: Redirect to /repo/{identifier}
+
+    HttpResponse::Ok()
+        .content_type("text/html; charset=utf-8")
+        .body(format!(
+            r#"<div class="success-message" style="padding: 1rem; background: #d1fae5; border-left: 4px solid #10b981;">
+                <h3>Repository Event Template Created</h3>
+                <p>Identifier: <code>{}</code></p>
+                <p>Name: {}</p>
+                <p>⚠️ Publishing blocked on identity integration (issue #342)</p>
+                <p><a href="/">← Back to Repositories</a></p>
+            </div>"#,
+            form.identifier, form.name
+        ))
 }
