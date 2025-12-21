@@ -172,3 +172,7 @@ o: id=mEaiyHcw → [error] Exit code 128
 t!:Bash id=u9SGZ9Ex cmd="git status" → [running] tokens_in=1 tokens_out=25 tokens_cached=131530
 o: id=u9SGZ9Ex → [ok] On branch main
 t!:Bash id=nkT3x7TE cmd="git add docs/logs/20251221/100656-call-issue-re..." → [running] tokens_in=0 tokens_out=25 tokens_cached=131656
+o: id=nkT3x7TE → [error] Exit code 1
+t!:Bash id=Kp1UcW9C cmd="git fetch origin && git rebase origin/main && g..." → [running] tokens_in=1 tokens_out=90 tokens_cached=131972
+o: id=Kp1UcW9C → [error] Exit code 1
+t!:Bash id=ifDRSarR cmd="git stash && git rebase origin/main && git stas..." → [running] tokens_in=1 tokens_out=25 tokens_cached=132369
