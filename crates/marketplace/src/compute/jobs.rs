@@ -1,6 +1,6 @@
 //! Jobs module - NIP-90 job lifecycle management
 
-use nostr::{JobStatus as Nip90JobStatus, KIND_JOB_TEXT_GENERATION};
+use nostr::JobStatus as Nip90JobStatus;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -160,6 +160,7 @@ impl JobManager {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use nostr::KIND_JOB_TEXT_GENERATION;
 
     #[test]
     fn test_marketplace_job_creation() {
