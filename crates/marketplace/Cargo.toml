@@ -41,6 +41,7 @@ anyhow = "1"
 
 # Utilities
 tracing = "0.1"
+regex = "1"
 
 # File system walking
 walkdir = "2.5"
