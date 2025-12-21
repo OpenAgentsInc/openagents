@@ -247,6 +247,7 @@ dependencies = [
  "actix-web",
  "actix-ws",
  "anyhow",
+ "bip39",
  "dirs 6.0.0",
  "futures-util",
  "git2",
@@ -261,6 +262,7 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "ui",
+ "wallet",
  "wry",
 ]
 

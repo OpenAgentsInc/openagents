@@ -10,10 +10,12 @@ mod views;
 mod ws;
 
 use anyhow::Result;
+use bip39::Mnemonic;
 use std::sync::Arc;
 use tao::event::{Event, WindowEvent};
 use tao::event_loop::{ControlFlow, EventLoop};
 use tao::window::WindowBuilder;
+use wallet::core::identity::UnifiedIdentity;
 use wry::WebViewBuilder;
 
 use nostr::NostrClient;
@@ -39,7 +41,33 @@ fn main() -> Result<()> {
             .expect("tokio runtime");
 
         rt.block_on(async move {
-            // Initialize Nostr client first
+            // Load identity from environment variable
+            let identity = if let Ok(mnemonic_str) = std::env::var("AGENTGIT_MNEMONIC") {
+                match Mnemonic::parse(&mnemonic_str) {
+                    Ok(mnemonic) => {
+                        match UnifiedIdentity::from_mnemonic(mnemonic) {
+                            Ok(id) => {
+                                tracing::info!("Loaded identity from AGENTGIT_MNEMONIC");
+                                Some(Arc::new(id))
+                            }
+                            Err(e) => {
+                                tracing::error!("Failed to create identity from mnemonic: {}", e);
+                                None
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        tracing::error!("Failed to parse mnemonic: {}", e);
+                        None
+                    }
+                }
+            } else {
+                tracing::warn!("No AGENTGIT_MNEMONIC environment variable set - running in read-only mode");
+                tracing::info!("To enable event signing and publishing, set AGENTGIT_MNEMONIC");
+                None
+            };
+
+            // Initialize Nostr client
             let relay_urls = vec![
                 "wss://relay.damus.io".to_string(),
                 "wss://nos.lol".to_string(),
@@ -63,8 +91,8 @@ fn main() -> Result<()> {
                 }
             };
 
-            // Start server with both broadcaster and nostr_client
-            let port = start_server(broadcaster_clone.clone(), nostr_client)
+            // Start server with broadcaster, nostr_client, and identity
+            let port = start_server(broadcaster_clone.clone(), nostr_client, identity)
                 .await
                 .expect("start server");
             port_tx.send(port).expect("send port");

@@ -2,6 +2,7 @@
 
 use actix_web::{web, App, HttpResponse, HttpServer};
 use std::sync::Arc;
+use wallet::core::identity::UnifiedIdentity;
 
 use crate::git::{clone_repository, get_repository_path, is_repository_cloned};
 use crate::nostr::NostrClient;
@@ -13,16 +14,35 @@ use crate::ws::{ws_handler, WsBroadcaster};
 pub struct AppState {
     pub broadcaster: Arc<WsBroadcaster>,
     pub nostr_client: Arc<NostrClient>,
+    pub identity: Option<Arc<UnifiedIdentity>>,
+}
+
+impl AppState {
+    /// Sign an event template with the configured identity
+    #[allow(dead_code)]
+    pub fn sign_event(&self, _template: nostr::UnsignedEvent) -> Result<nostr::Event, String> {
+        match &self.identity {
+            Some(_identity) => {
+                // TODO: Implement actual signing using identity
+                Err("Event signing not yet implemented".to_string())
+            }
+            None => {
+                Err("No identity configured. Set AGENTGIT_MNEMONIC environment variable to enable event signing.".to_string())
+            }
+        }
+    }
 }
 
 /// Starts server on 127.0.0.1:0, returns the assigned port
 pub async fn start_server(
     broadcaster: Arc<WsBroadcaster>,
     nostr_client: Arc<NostrClient>,
+    identity: Option<Arc<UnifiedIdentity>>,
 ) -> anyhow::Result<u16> {
     let state = web::Data::new(AppState {
         broadcaster,
         nostr_client,
+        identity,
     });
 
     let server = HttpServer::new(move || {
