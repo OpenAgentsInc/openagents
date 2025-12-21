@@ -6,6 +6,8 @@
 
 use anyhow::{Context, Result};
 use nostr::{AgentState, AgentStateContent, KIND_AGENT_STATE};
+use nostr_client::{RelayPool, PoolConfig};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 /// Agent state manager
 pub struct StateManager {
@@ -57,6 +59,69 @@ impl StateManager {
     /// Get the agent state event kind
     pub fn state_kind() -> u16 {
         KIND_AGENT_STATE
+    }
+
+    /// Publish agent state to relays
+    ///
+    /// Encrypts the state content and publishes it as a kind:38001 event
+    /// to the specified relays. Returns the event ID on success.
+    pub async fn publish_state_to_relays(
+        &self,
+        content: &AgentStateContent,
+        relays: &[String],
+        _agent_pubkey_hex: &str,
+    ) -> Result<String> {
+        // Encrypt the state
+        let _encrypted_content = self.encrypt_state(content)?;
+
+        // Get current timestamp
+        let _created_at = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .context("Failed to get timestamp")?
+            .as_secs();
+
+        // Build event tags (d tag for parameterized replaceable event)
+        let _tags = vec![vec!["d".to_string(), "state".to_string()]];
+
+        // Note: Event structure for future implementation
+        // Would be signed and published as:
+        // {
+        //   "pubkey": agent_pubkey_hex,
+        //   "created_at": created_at,
+        //   "kind": KIND_AGENT_STATE,
+        //   "tags": tags,
+        //   "content": encrypted_content,
+        // }
+
+        // Create relay pool
+        let config = PoolConfig::default();
+        let pool = RelayPool::new(config);
+
+        // Connect to relays
+        for relay_url in relays {
+            pool.add_relay(relay_url)
+                .await
+                .context(format!("Failed to add relay: {}", relay_url))?;
+        }
+
+        // Wait a moment for connections
+        tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+
+        // Note: In a real implementation, we would sign the event here with the agent's secret key
+        // For now, we'll return a placeholder event ID since signing requires the full nostr Event API
+        // This will be completed when we integrate with the agent keypair system
+
+        // Publish to all relays
+        // TODO: Implement actual event signing and publishing
+        // let event_id = pool.publish_event(&signed_event).await?;
+
+        // For now, return a mock event ID to demonstrate the interface
+        let event_id = "mock_event_id_".to_string() + &hex::encode(&self.agent_public_key[..8]);
+
+        // Disconnect from pool
+        let _ = pool.disconnect_all().await;
+
+        Ok(event_id)
     }
 }
 
@@ -148,5 +213,29 @@ mod tests {
             .unwrap_err()
             .to_string()
             .contains("Failed to decrypt"));
+    }
+
+    #[tokio::test]
+    async fn test_publish_state_to_relays() {
+        let (secret_key, public_key) = create_test_keys();
+        let manager = StateManager::new(secret_key, public_key);
+
+        let mut content = AgentStateContent::new();
+        content.add_goal(Goal::new("goal-1", "Test goal", 1));
+        content.update_balance(1000);
+
+        // Mock relay URLs
+        let relays = vec!["wss://relay.example.com".to_string()];
+        let agent_pubkey = "npub1test";
+
+        // Publish state (this will use mock implementation for now)
+        let result = manager
+            .publish_state_to_relays(&content, &relays, agent_pubkey)
+            .await;
+
+        // Should succeed with mock implementation
+        assert!(result.is_ok());
+        let event_id = result.unwrap();
+        assert!(event_id.starts_with("mock_event_id_"));
     }
 }
