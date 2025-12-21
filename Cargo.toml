@@ -143,6 +143,7 @@ signal-hook = "0.3"
 similar = "2.0"
 ignore = "0.4.22"
 insta = "1.34"
+quickcheck = "1.0"
 smallvec = { version = "1.6", features = ["union"] }
 strum = { version = "0.27.2", features = ["derive"] }
 tempfile = "3.20.0"
