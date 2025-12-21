@@ -5,6 +5,10 @@ edition = "2024"
 description = "Nostr relay implementation with SQLite storage"
 license = "MIT"
 
+[features]
+default = ["full"]
+full = ["nostr/full"]
+
 [dependencies]
 # Nostr core protocol
 nostr = { path = "../core" }
