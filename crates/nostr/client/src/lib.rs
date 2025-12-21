@@ -42,12 +42,14 @@
 //! ```
 
 mod cache;
+mod contacts;
 mod error;
 mod outbox;
 mod relay;
 mod subscription;
 
 pub use cache::{CacheConfig, EventCache};
+pub use contacts::{ContactManager, MergeStrategy};
 pub use error::{ClientError, Result};
 pub use outbox::{OutboxConfig, OutboxModel};
 pub use relay::{
