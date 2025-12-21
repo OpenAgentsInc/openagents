@@ -190,9 +190,18 @@ async fn issue_detail(
         }
     };
 
+    // Fetch bounties for this issue
+    let bounties = match state.nostr_client.get_bounties_for_issue(&issue_id).await {
+        Ok(b) => b,
+        Err(e) => {
+            tracing::warn!("Failed to fetch bounties for issue {}: {}", issue_id, e);
+            Vec::new() // Continue with empty bounties if fetch fails
+        }
+    };
+
     HttpResponse::Ok()
         .content_type("text/html; charset=utf-8")
-        .body(issue_detail_page(&repository, &issue, &claims, &identifier).into_string())
+        .body(issue_detail_page(&repository, &issue, &claims, &bounties, &identifier).into_string())
 }
 
 /// Claim an issue
