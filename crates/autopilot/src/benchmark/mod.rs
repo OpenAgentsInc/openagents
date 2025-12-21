@@ -903,8 +903,8 @@ mod tests {
         Ok(())
     }
 
-    #[test]
-    fn test_benchmark_runner() -> Result<()> {
+    #[tokio::test]
+    async fn test_benchmark_runner() -> Result<()> {
         let temp_dir = TempDir::new()?;
         let workspace = temp_dir.path().join("workspace");
         let db_path = temp_dir.path().join("benchmarks.db");
@@ -916,7 +916,7 @@ mod tests {
         )?;
 
         let task = MockBenchmark;
-        let _result = runner.run_benchmark(&task)?;
+        let _result = runner.run_benchmark(&task).await?;
 
         // Verify workspace was created and cleaned up
         assert!(workspace.join("B-TEST").exists());
