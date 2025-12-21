@@ -160,6 +160,13 @@ pub fn repository_detail_page(repository: &Event) -> Markup {
                             }
 
                             section.repo-section {
+                                h2 { "Navigation" }
+                                div.repo-nav-links {
+                                    a.nav-link href={"/repo/" (identifier) "/issues"} { "View Issues" }
+                                }
+                            }
+
+                            section.repo-section {
                                 h2 { "Owner" }
                                 div.repo-owner {
                                     span.pubkey { (owner_pubkey) }
@@ -220,6 +227,108 @@ pub fn repository_detail_page(repository: &Event) -> Markup {
                                     div.event-detail-item {
                                         span.label { "Created:" }
                                         span { (repository.created_at) }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                footer {
+                    p { "Powered by NIP-34 (Git Stuff) • NIP-SA (Sovereign Agents) • NIP-57 (Zaps)" }
+                }
+            }
+        }
+    }
+}
+
+/// Issues list page for a repository
+pub fn issues_list_page(repository: &Event, issues: &[Event]) -> Markup {
+    let repo_name = get_tag_value(repository, "name").unwrap_or_else(|| "Repository".to_string());
+    let identifier = get_tag_value(repository, "d").unwrap_or_default();
+
+    html! {
+        (DOCTYPE)
+        html lang="en" {
+            head {
+                meta charset="utf-8";
+                meta name="viewport" content="width=device-width, initial-scale=1.0";
+                title { (repo_name) " - Issues - AgentGit" }
+                script src="https://unpkg.com/htmx.org@2.0.4" {}
+                script src="https://unpkg.com/htmx-ext-ws@2.0.1/ws.js" {}
+                style {
+                    (include_str!("./styles.css"))
+                }
+            }
+            body hx-ext="ws" ws-connect="/ws" {
+                header {
+                    h1 { "⚡ AgentGit" }
+                    p.subtitle { "Nostr-native GitHub Alternative" }
+                }
+                main {
+                    nav {
+                        a href="/" { "Repositories" }
+                        a href="/issues" { "Issues" }
+                        a href="/agents" { "Agents" }
+                    }
+                    div.content {
+                        div.issues-container {
+                            div.issues-header {
+                                div {
+                                    h1.issues-title { (repo_name) " - Issues" }
+                                    p.issues-subtitle { "Viewing issues for repository: " (identifier) }
+                                }
+                                div.issues-actions {
+                                    a.back-link href={"/repo/" (identifier)} { "← Back to Repository" }
+                                }
+                            }
+
+                            @if issues.is_empty() {
+                                div.empty-state {
+                                    p { "No issues found for this repository." }
+                                    p.info-text { "Issues will appear here as they are created on the Nostr network." }
+                                }
+                            } @else {
+                                div.issues-count {
+                                    span { (issues.len()) " issue" @if issues.len() != 1 { "s" } " found" }
+                                }
+
+                                div.issues-list {
+                                    @for issue in issues {
+                                        @let issue_title = get_tag_value(issue, "subject")
+                                            .unwrap_or_else(|| "Untitled Issue".to_string());
+                                        @let issue_status = get_tag_value(issue, "status")
+                                            .unwrap_or_else(|| "open".to_string());
+                                        @let issue_author = if issue.pubkey.len() > 16 {
+                                            format!("{}...{}", &issue.pubkey[..8], &issue.pubkey[issue.pubkey.len()-8..])
+                                        } else {
+                                            issue.pubkey.clone()
+                                        };
+
+                                        div.issue-card {
+                                            div.issue-header {
+                                                div.issue-title-row {
+                                                    h3.issue-title { (issue_title) }
+                                                    span class={"issue-status " (issue_status)} {
+                                                        (issue_status)
+                                                    }
+                                                }
+                                                div.issue-meta {
+                                                    span.issue-author { "by " (issue_author) }
+                                                    span.issue-separator { "•" }
+                                                    span.issue-time { "Created " (issue.created_at) }
+                                                }
+                                            }
+                                            @if !issue.content.is_empty() {
+                                                div.issue-preview {
+                                                    @let preview = if issue.content.len() > 200 {
+                                                        format!("{}...", &issue.content[..200])
+                                                    } else {
+                                                        issue.content.clone()
+                                                    };
+                                                    p { (preview) }
+                                                }
+                                            }
+                                        }
                                     }
                                 }
                             }

@@ -360,3 +360,176 @@ footer {
 .mb-2 { margin-bottom: 1rem; }
 .p-1 { padding: 0.5rem; }
 .p-2 { padding: 1rem; }
+
+/* Repository Navigation Links */
+.repo-nav-links {
+  display: flex;
+  gap: 1rem;
+}
+
+.nav-link {
+  display: inline-block;
+  color: var(--accent);
+  text-decoration: none;
+  padding: 0.75rem 1.5rem;
+  border: 1px solid var(--accent);
+  transition: all 0.2s;
+  font-weight: bold;
+}
+
+.nav-link:hover {
+  background: var(--accent);
+  color: var(--bg-primary);
+}
+
+/* Issues List Page */
+.issues-container {
+  max-width: 1000px;
+  margin: 0 auto;
+}
+
+.issues-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 2rem;
+  padding-bottom: 1.5rem;
+  border-bottom: 2px solid var(--border);
+}
+
+.issues-title {
+  font-size: 1.8rem;
+  color: var(--text-primary);
+  margin: 0 0 0.5rem 0;
+}
+
+.issues-subtitle {
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+  margin: 0;
+}
+
+.issues-actions {
+  display: flex;
+  gap: 1rem;
+}
+
+.empty-state {
+  text-align: center;
+  padding: 4rem 2rem;
+  background: var(--bg-tertiary);
+  border: 1px dashed var(--border);
+}
+
+.empty-state p {
+  color: var(--text-secondary);
+  margin: 0.5rem 0;
+  font-size: 1.1rem;
+}
+
+.empty-state .info-text {
+  font-size: 0.95rem;
+  color: var(--text-secondary);
+}
+
+.issues-count {
+  margin-bottom: 1.5rem;
+  padding: 1rem;
+  background: var(--bg-tertiary);
+  border-left: 3px solid var(--accent);
+}
+
+.issues-count span {
+  color: var(--text-primary);
+  font-weight: bold;
+  font-size: 1.05rem;
+}
+
+.issues-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.issue-card {
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  padding: 1.5rem;
+  transition: all 0.2s;
+}
+
+.issue-card:hover {
+  border-color: var(--accent);
+  transform: translateX(4px);
+}
+
+.issue-header {
+  margin-bottom: 0.75rem;
+}
+
+.issue-title-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 0.75rem;
+  gap: 1rem;
+}
+
+.issue-title {
+  font-size: 1.2rem;
+  color: var(--text-primary);
+  margin: 0;
+  flex: 1;
+}
+
+.issue-status {
+  padding: 0.25rem 0.75rem;
+  font-size: 0.8rem;
+  font-weight: bold;
+  text-transform: uppercase;
+  border: 1px solid;
+}
+
+.issue-status.open {
+  color: var(--success);
+  border-color: var(--success);
+  background: rgba(0, 255, 136, 0.1);
+}
+
+.issue-status.closed {
+  color: var(--text-secondary);
+  border-color: var(--border);
+  background: rgba(160, 160, 160, 0.1);
+}
+
+.issue-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+}
+
+.issue-author {
+  font-family: monospace;
+}
+
+.issue-separator {
+  color: var(--border);
+}
+
+.issue-time {
+  color: var(--text-secondary);
+}
+
+.issue-preview {
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border);
+}
+
+.issue-preview p {
+  color: var(--text-secondary);
+  line-height: 1.6;
+  margin: 0;
+}
