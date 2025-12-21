@@ -1497,83 +1497,150 @@ pub fn pull_request_detail_page(repository: &Event, pull_request: &Event, review
                                         .as_ref()
                                         .and_then(|m| m.get("trajectory_hash"))
                                         .and_then(|h| h.as_str());
+                                    @let session_description = session_metadata
+                                        .as_ref()
+                                        .and_then(|m| m.get("description"))
+                                        .and_then(|d| d.as_str());
+                                    @let participants = session_metadata
+                                        .as_ref()
+                                        .and_then(|m| m.get("participants"))
+                                        .and_then(|p| p.as_array());
 
-                                    div.trajectory-summary style="background: var(--card-bg, #1a1a1a); padding: 1rem; margin-bottom: 1rem; border: 1px solid var(--border-color, #333);" {
-                                        p { "Session ID: " code { (session.id) } }
-                                        p { "Agent: " code { (session.pubkey) } }
-                                        p { "Started: " span { (session.created_at) } }
-                                        @if trajectory_events.is_empty() {
-                                            p { span style="color: #fbbf24;" { "⚠ Warning: No trajectory events found" } }
-                                        } @else {
-                                            p { "Events: " (trajectory_events.len()) }
+                                    div.trajectory-summary style="background: #1e293b; padding: 1.5rem; margin-bottom: 1.5rem; border-left: 4px solid #0ea5e9;" {
+                                        div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 1rem;" {
+                                            div {
+                                                h3 style="margin: 0 0 0.5rem 0; color: #0ea5e9;" { "Trajectory Session" }
+                                                @if let Some(desc) = session_description {
+                                                    p style="margin: 0; color: #cbd5e1;" { (desc) }
+                                                }
+                                            }
+                                            a href={"/trajectory/" (session.id)} style="padding: 8px 16px; background: #0ea5e9; color: white; text-decoration: none; font-weight: 600;" {
+                                                "View Full Trajectory →"
+                                            }
+                                        }
+
+                                        div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-top: 1rem;" {
+                                            div {
+                                                p style="margin: 0; font-size: 0.875rem; color: #94a3b8;" { "Session ID" }
+                                                code style="font-size: 0.875rem;" { (session.id) }
+                                            }
+                                            div {
+                                                p style="margin: 0; font-size: 0.875rem; color: #94a3b8;" { "Started" }
+                                                span style="font-size: 0.875rem;" { (session.created_at) }
+                                            }
+                                            div {
+                                                p style="margin: 0; font-size: 0.875rem; color: #94a3b8;" { "Events" }
+                                                span style="font-size: 0.875rem; font-weight: 600; color: #10b981;" { (trajectory_events.len()) }
+                                            }
                                             @if let Some(hash) = trajectory_hash {
-                                                p { "Hash: " code { (hash) } }
-                                            } @else {
-                                                p { span style="color: #fbbf24;" { "⚠ Warning: No trajectory hash in session" } }
+                                                div {
+                                                    p style="margin: 0; font-size: 0.875rem; color: #94a3b8;" { "Hash" }
+                                                    code style="font-size: 0.75rem;" { (hash) }
+                                                }
+                                            }
+                                        }
+
+                                        @if let Some(parts) = participants {
+                                            div style="margin-top: 1rem;" {
+                                                p style="margin: 0 0 0.5rem 0; font-size: 0.875rem; color: #94a3b8;" { "Participants" }
+                                                div style="display: flex; gap: 0.5rem; flex-wrap: wrap;" {
+                                                    @for participant in parts {
+                                                        @if let Some(p) = participant.as_str() {
+                                                            span style="padding: 4px 8px; background: #334155; font-size: 0.875rem;" {
+                                                                (p)
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+
+                                        @if trajectory_events.is_empty() {
+                                            div style="margin-top: 1rem; padding: 12px; background: #fef3c7; border-left: 4px solid #f59e0b;" {
+                                                "⚠️ Warning: No trajectory events found"
+                                            }
+                                        } @else if trajectory_hash.is_none() {
+                                            div style="margin-top: 1rem; padding: 12px; background: #fef3c7; border-left: 4px solid #f59e0b;" {
+                                                "⚠️ Warning: No trajectory hash in session - integrity cannot be verified"
                                             }
                                         }
                                     }
 
                                     @if !trajectory_events.is_empty() {
-                                        h3 { "Event Timeline" }
-                                        div style="position: relative; padding-left: 2rem;" {
-                                            @for event in trajectory_events {
-                                                @let step_type = get_tag_value(event, "step").unwrap_or_else(|| "Unknown".to_string());
-                                                @let seq = get_tag_value(event, "seq").unwrap_or_else(|| "?".to_string());
+                                        details open {
+                                            summary style="cursor: pointer; padding: 12px; background: #334155; margin-bottom: 1rem; font-weight: 600; font-size: 1.1rem;" {
+                                                "📜 Event Timeline (" (trajectory_events.len()) " events)"
+                                            }
 
-                                                @let event_data = serde_json::from_str::<serde_json::Value>(&event.content).ok();
-                                                @let tool_name = event_data.as_ref()
-                                                    .and_then(|d| d.get("tool"))
-                                                    .and_then(|t| t.as_str());
+                                            div style="position: relative; padding-left: 2rem; border-left: 2px solid #475569;" {
+                                                @for event in trajectory_events {
+                                                    @let step_type = get_tag_value(event, "step").unwrap_or_else(|| "Unknown".to_string());
+                                                    @let seq = get_tag_value(event, "seq").unwrap_or_else(|| "?".to_string());
 
-                                                div style="position: relative; margin-bottom: 1rem; padding: 1rem; background: var(--card-bg, #1a1a1a); border: 1px solid var(--border-color, #333);" {
-                                                    div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;" {
-                                                        span style="font-weight: 600; color: var(--accent-color, #0ea5e9);" {
-                                                            "#" (seq) " "
-                                                            @if step_type == "ToolUse" {
-                                                                @if let Some(tool) = tool_name {
-                                                                    "🔧 " (tool)
-                                                                } @else {
-                                                                    "🔧 Tool Use"
+                                                    @let event_data = serde_json::from_str::<serde_json::Value>(&event.content).ok();
+                                                    @let tool_name = event_data.as_ref()
+                                                        .and_then(|d| d.get("tool"))
+                                                        .and_then(|t| t.as_str());
+
+                                                    @let (badge_bg, badge_icon, badge_text) = if step_type == "ToolUse" {
+                                                        ("#3b82f6", "🔧", if let Some(tool) = tool_name { tool } else { "Tool Use" })
+                                                    } else if step_type == "ToolResult" {
+                                                        ("#10b981", "✅", if let Some(tool) = tool_name { tool } else { "Tool Result" })
+                                                    } else if step_type == "Thinking" {
+                                                        ("#8b5cf6", "💭", "Thinking")
+                                                    } else if step_type == "Message" {
+                                                        ("#6366f1", "💬", "Message")
+                                                    } else {
+                                                        ("#64748b", "📝", step_type.as_str())
+                                                    };
+
+                                                    div style={"position: relative; margin-bottom: 1rem; margin-left: -0.5rem; padding-left: 1.5rem;"} {
+                                                        // Timeline dot
+                                                        div style={"position: absolute; left: -6px; top: 8px; width: 12px; height: 12px; background: " (badge_bg) "; border: 2px solid #0f172a;"} {}
+
+                                                        div style={"padding: 1rem; background: #1e293b; border-left: 3px solid " (badge_bg) ";"} {
+                                                            div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;" {
+                                                                div style="display: flex; align-items: center; gap: 0.75rem;" {
+                                                                    span style={"padding: 4px 10px; background: " (badge_bg) "; color: white; font-size: 0.875rem; font-weight: 600;"} {
+                                                                        (badge_icon) " " (badge_text)
+                                                                    }
+                                                                    span style="font-size: 0.875rem; color: #94a3b8;" {
+                                                                        "#" (seq)
+                                                                    }
                                                                 }
-                                                            } @else if step_type == "ToolResult" {
-                                                                @if let Some(tool) = tool_name {
-                                                                    "✅ " (tool) " Result"
-                                                                } @else {
-                                                                    "✅ Tool Result"
+                                                                span style="font-size: 0.8rem; color: #64748b;" {
+                                                                    (event.created_at)
                                                                 }
-                                                            } @else if step_type == "Thinking" {
-                                                                "💭 Thinking"
-                                                            } @else if step_type == "Message" {
-                                                                "💬 Message"
-                                                            } @else {
-                                                                "📝 " (step_type)
                                                             }
-                                                        }
-                                                        span style="font-size: 0.85rem; color: var(--text-secondary, #888);" {
-                                                            (event.created_at)
-                                                        }
-                                                    }
 
-                                                    @if step_type == "Thinking" {
-                                                        @if let Some(data) = event_data.as_ref() {
-                                                            @if let Some(hash) = data.get("hash").and_then(|h| h.as_str()) {
-                                                                p style="font-size: 0.9rem; color: var(--text-secondary, #888);" {
-                                                                    "Content redacted (hash: " code { (hash) } ")"
+                                                            @if step_type == "Thinking" {
+                                                                @if let Some(data) = event_data.as_ref() {
+                                                                    @if let Some(hash) = data.get("hash").and_then(|h| h.as_str()) {
+                                                                        p style="font-size: 0.875rem; color: #94a3b8; margin: 0;" {
+                                                                            "🔒 Content redacted (hash: " code style="font-size: 0.75rem;" { (hash) } ")"
+                                                                        }
+                                                                    } @else {
+                                                                        p style="font-size: 0.875rem; color: #94a3b8; margin: 0;" { "🔒 Content redacted" }
+                                                                    }
                                                                 }
-                                                            } @else {
-                                                                p style="font-size: 0.9rem; color: var(--text-secondary, #888);" { "Content redacted" }
-                                                            }
-                                                        }
-                                                    } @else if !event.content.is_empty() {
-                                                        details {
-                                                            summary { "View event data" }
-                                                            div style="margin-top: 0.5rem; padding: 0.5rem; background: var(--bg-color, #0a0a0a); font-family: monospace; font-size: 0.85rem; white-space: pre-wrap; overflow-x: auto;" {
-                                                                (event.content)
+                                                            } @else if !event.content.is_empty() {
+                                                                details {
+                                                                    summary style="cursor: pointer; color: #0ea5e9; font-size: 0.875rem;" { "▶ View event data" }
+                                                                    div style="margin-top: 0.75rem; padding: 0.75rem; background: #0f172a; font-family: monospace; font-size: 0.8rem; white-space: pre-wrap; overflow-x: auto; max-height: 400px; overflow-y: auto;" {
+                                                                        (event.content)
+                                                                    }
+                                                                }
                                                             }
                                                         }
                                                     }
                                                 }
+                                            }
+                                        }
+
+                                        div style="margin-top: 1rem; padding: 12px; background: #eff6ff; font-size: 0.875rem;" {
+                                            p style="margin: 0;" {
+                                                "💡 " strong { "Trajectory Transparency: " }
+                                                "This timeline shows every step the agent took to create this PR. Reviewers can verify the agent's reasoning and catch any suspicious behavior."
                                             }
                                         }
                                     }
