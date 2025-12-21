@@ -51,6 +51,38 @@
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use thiserror::Error;
+
+#[cfg(feature = "full")]
+use crate::nip44;
+
+/// Kind for agent state event
+pub const KIND_AGENT_STATE: u16 = 38001;
+
+/// Current state schema version
+pub const STATE_VERSION: u32 = 1;
+
+/// Errors that can occur during NIP-SA state operations
+#[derive(Debug, Error)]
+pub enum StateError {
+    #[error("serialization error: {0}")]
+    Serialization(String),
+
+    #[error("deserialization error: {0}")]
+    Deserialization(String),
+
+    #[error("encryption error: {0}")]
+    Encryption(String),
+
+    #[error("decryption error: {0}")]
+    Decryption(String),
+
+    #[error("unsupported state version: {0}")]
+    UnsupportedVersion(u32),
+
+    #[error("missing required field: {0}")]
+    MissingField(String),
+}
 
 /// Agent goal
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -114,8 +146,361 @@ pub struct AgentStateContent {
     pub tick_count: u64,
 }
 
-// TODO: Implement NIP-44 encryption to agent pubkey
-// TODO: Implement state versioning for migration support
-// TODO: Implement Event builder for kind 38001
-// TODO: Add encryption/decryption helpers
-// TODO: Add unit tests with mock keys
+impl AgentStateContent {
+    /// Create new agent state
+    pub fn new() -> Self {
+        Self {
+            goals: Vec::new(),
+            memory: Vec::new(),
+            pending_tasks: Vec::new(),
+            beliefs: HashMap::new(),
+            wallet_balance_sats: 0,
+            last_tick: 0,
+            tick_count: 0,
+        }
+    }
+
+    /// Add a goal
+    pub fn add_goal(&mut self, goal: Goal) {
+        self.goals.push(goal);
+    }
+
+    /// Add a memory entry
+    pub fn add_memory(&mut self, entry: MemoryEntry) {
+        self.memory.push(entry);
+    }
+
+    /// Update wallet balance
+    pub fn update_balance(&mut self, balance_sats: u64) {
+        self.wallet_balance_sats = balance_sats;
+    }
+
+    /// Increment tick count and update timestamp
+    pub fn record_tick(&mut self, timestamp: u64) {
+        self.tick_count += 1;
+        self.last_tick = timestamp;
+    }
+
+    /// Serialize to JSON string
+    pub fn to_json(&self) -> Result<String, StateError> {
+        serde_json::to_string(self).map_err(|e| StateError::Serialization(e.to_string()))
+    }
+
+    /// Parse from JSON string
+    pub fn from_json(json: &str) -> Result<Self, StateError> {
+        serde_json::from_str(json).map_err(|e| StateError::Deserialization(e.to_string()))
+    }
+}
+
+impl Default for AgentStateContent {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl Goal {
+    /// Create a new goal
+    pub fn new(id: impl Into<String>, description: impl Into<String>, priority: u32) -> Self {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+
+        Self {
+            id: id.into(),
+            description: description.into(),
+            priority,
+            created_at: now,
+            status: GoalStatus::Active,
+            progress: 0.0,
+        }
+    }
+
+    /// Update goal progress
+    pub fn update_progress(&mut self, progress: f64) {
+        self.progress = progress.clamp(0.0, 1.0);
+        if self.progress >= 1.0 {
+            self.status = GoalStatus::Completed;
+        }
+    }
+
+    /// Pause the goal
+    pub fn pause(&mut self) {
+        self.status = GoalStatus::Paused;
+    }
+
+    /// Resume the goal
+    pub fn resume(&mut self) {
+        if self.status == GoalStatus::Paused {
+            self.status = GoalStatus::Active;
+        }
+    }
+
+    /// Cancel the goal
+    pub fn cancel(&mut self) {
+        self.status = GoalStatus::Cancelled;
+    }
+}
+
+impl MemoryEntry {
+    /// Create a new memory entry
+    pub fn new(memory_type: impl Into<String>, content: impl Into<String>) -> Self {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+
+        Self {
+            memory_type: memory_type.into(),
+            content: content.into(),
+            timestamp: now,
+        }
+    }
+
+    /// Create a memory entry with specific timestamp
+    pub fn with_timestamp(
+        memory_type: impl Into<String>,
+        content: impl Into<String>,
+        timestamp: u64,
+    ) -> Self {
+        Self {
+            memory_type: memory_type.into(),
+            content: content.into(),
+            timestamp,
+        }
+    }
+}
+
+/// Agent state with encryption support
+#[derive(Debug, Clone)]
+pub struct AgentState {
+    /// State content
+    pub content: AgentStateContent,
+    /// State version
+    pub version: u32,
+}
+
+impl AgentState {
+    /// Create new agent state
+    pub fn new(content: AgentStateContent) -> Self {
+        Self {
+            content,
+            version: STATE_VERSION,
+        }
+    }
+
+    /// Build tags for the event
+    pub fn build_tags(&self) -> Vec<Vec<String>> {
+        vec![
+            vec!["d".to_string(), "state".to_string()],
+            vec!["encrypted".to_string()],
+            vec!["state_version".to_string(), self.version.to_string()],
+        ]
+    }
+
+    /// Encrypt state content using NIP-44
+    #[cfg(feature = "full")]
+    pub fn encrypt(
+        &self,
+        sender_secret_key: &[u8; 32],
+        agent_public_key: &[u8],
+    ) -> Result<String, StateError> {
+        let json = self.content.to_json()?;
+        nip44::encrypt(sender_secret_key, agent_public_key, &json)
+            .map_err(|e| StateError::Encryption(e.to_string()))
+    }
+
+    /// Decrypt state content using NIP-44
+    #[cfg(feature = "full")]
+    pub fn decrypt(
+        encrypted_content: &str,
+        recipient_secret_key: &[u8; 32],
+        sender_public_key: &[u8],
+        version: u32,
+    ) -> Result<Self, StateError> {
+        if version > STATE_VERSION {
+            return Err(StateError::UnsupportedVersion(version));
+        }
+
+        let json = nip44::decrypt(recipient_secret_key, sender_public_key, encrypted_content)
+            .map_err(|e| StateError::Decryption(e.to_string()))?;
+
+        let content = AgentStateContent::from_json(&json)?;
+
+        Ok(Self { content, version })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_goal_creation() {
+        let goal = Goal::new("goal-1", "Test goal", 1);
+        assert_eq!(goal.id, "goal-1");
+        assert_eq!(goal.description, "Test goal");
+        assert_eq!(goal.priority, 1);
+        assert_eq!(goal.status, GoalStatus::Active);
+        assert_eq!(goal.progress, 0.0);
+    }
+
+    #[test]
+    fn test_goal_progress() {
+        let mut goal = Goal::new("goal-1", "Test goal", 1);
+        goal.update_progress(0.5);
+        assert_eq!(goal.progress, 0.5);
+        assert_eq!(goal.status, GoalStatus::Active);
+
+        goal.update_progress(1.0);
+        assert_eq!(goal.progress, 1.0);
+        assert_eq!(goal.status, GoalStatus::Completed);
+
+        // Test clamping
+        goal.status = GoalStatus::Active;
+        goal.update_progress(1.5);
+        assert_eq!(goal.progress, 1.0);
+    }
+
+    #[test]
+    fn test_goal_pause_resume() {
+        let mut goal = Goal::new("goal-1", "Test goal", 1);
+        goal.pause();
+        assert_eq!(goal.status, GoalStatus::Paused);
+
+        goal.resume();
+        assert_eq!(goal.status, GoalStatus::Active);
+    }
+
+    #[test]
+    fn test_goal_cancel() {
+        let mut goal = Goal::new("goal-1", "Test goal", 1);
+        goal.cancel();
+        assert_eq!(goal.status, GoalStatus::Cancelled);
+    }
+
+    #[test]
+    fn test_memory_entry() {
+        let entry = MemoryEntry::new("observation", "Test memory");
+        assert_eq!(entry.memory_type, "observation");
+        assert_eq!(entry.content, "Test memory");
+        assert!(entry.timestamp > 0);
+    }
+
+    #[test]
+    fn test_memory_entry_with_timestamp() {
+        let entry = MemoryEntry::with_timestamp("observation", "Test memory", 1703000000);
+        assert_eq!(entry.timestamp, 1703000000);
+    }
+
+    #[test]
+    fn test_agent_state_content() {
+        let mut state = AgentStateContent::new();
+        assert_eq!(state.goals.len(), 0);
+        assert_eq!(state.memory.len(), 0);
+        assert_eq!(state.wallet_balance_sats, 0);
+        assert_eq!(state.tick_count, 0);
+
+        state.add_goal(Goal::new("goal-1", "Test goal", 1));
+        assert_eq!(state.goals.len(), 1);
+
+        state.add_memory(MemoryEntry::new("observation", "Test memory"));
+        assert_eq!(state.memory.len(), 1);
+
+        state.update_balance(1000);
+        assert_eq!(state.wallet_balance_sats, 1000);
+
+        state.record_tick(1703000000);
+        assert_eq!(state.tick_count, 1);
+        assert_eq!(state.last_tick, 1703000000);
+    }
+
+    #[test]
+    fn test_agent_state_content_serialization() {
+        let mut state = AgentStateContent::new();
+        state.add_goal(Goal::new("goal-1", "Test goal", 1));
+        state.add_memory(MemoryEntry::with_timestamp("observation", "Test memory", 1703000000));
+        state.update_balance(1000);
+
+        let json = state.to_json().unwrap();
+        let parsed = AgentStateContent::from_json(&json).unwrap();
+
+        assert_eq!(parsed.goals.len(), 1);
+        assert_eq!(parsed.memory.len(), 1);
+        assert_eq!(parsed.wallet_balance_sats, 1000);
+    }
+
+    #[test]
+    fn test_agent_state_tags() {
+        let state = AgentState::new(AgentStateContent::new());
+        let tags = state.build_tags();
+
+        assert_eq!(tags[0], vec!["d", "state"]);
+        assert_eq!(tags[1], vec!["encrypted"]);
+        assert_eq!(tags[2], vec!["state_version", "1"]);
+    }
+
+    #[cfg(feature = "full")]
+    #[test]
+    fn test_agent_state_encryption_roundtrip() {
+        use bitcoin::secp256k1::{PublicKey as Secp256k1PubKey, Secp256k1, SecretKey};
+
+        let secp = Secp256k1::new();
+
+        let mut state_content = AgentStateContent::new();
+        state_content.add_goal(Goal::new("goal-1", "Test goal", 1));
+        state_content.add_memory(MemoryEntry::with_timestamp(
+            "observation",
+            "Test memory",
+            1703000000,
+        ));
+        state_content.update_balance(5000);
+
+        let state = AgentState::new(state_content);
+
+        // Generate keys for testing
+        let sender_sk = SecretKey::from_slice(&[1u8; 32]).unwrap();
+        let recipient_sk = SecretKey::from_slice(&[2u8; 32]).unwrap();
+        let sender_pk = Secp256k1PubKey::from_secret_key(&secp, &sender_sk);
+        let recipient_pk = Secp256k1PubKey::from_secret_key(&secp, &recipient_sk);
+
+        // Encrypt
+        let encrypted = state
+            .encrypt(&sender_sk.secret_bytes(), &recipient_pk.serialize())
+            .unwrap();
+        assert!(!encrypted.is_empty());
+
+        // Decrypt
+        let decrypted = AgentState::decrypt(
+            &encrypted,
+            &recipient_sk.secret_bytes(),
+            &sender_pk.serialize(),
+            STATE_VERSION,
+        )
+        .unwrap();
+
+        assert_eq!(decrypted.content.goals.len(), 1);
+        assert_eq!(decrypted.content.memory.len(), 1);
+        assert_eq!(decrypted.content.wallet_balance_sats, 5000);
+        assert_eq!(decrypted.version, STATE_VERSION);
+    }
+
+    #[test]
+    fn test_goal_status_serialization() {
+        let active = GoalStatus::Active;
+        let json = serde_json::to_string(&active).unwrap();
+        assert_eq!(json, "\"active\"");
+
+        let paused = GoalStatus::Paused;
+        let json = serde_json::to_string(&paused).unwrap();
+        assert_eq!(json, "\"paused\"");
+
+        let completed = GoalStatus::Completed;
+        let json = serde_json::to_string(&completed).unwrap();
+        assert_eq!(json, "\"completed\"");
+
+        let cancelled = GoalStatus::Cancelled;
+        let json = serde_json::to_string(&cancelled).unwrap();
+        assert_eq!(json, "\"cancelled\"");
+    }
+}

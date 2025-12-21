@@ -702,7 +702,8 @@ pub use nip_sa::{
     AgentProfile, AgentProfileContent, AutonomyLevel, ProfileError, ThresholdConfig,
     KIND_AGENT_PROFILE,
     // State (kind:38001)
-    AgentStateContent, Goal, GoalStatus, MemoryEntry,
+    AgentState, AgentStateContent, Goal, GoalStatus, MemoryEntry, StateError, KIND_AGENT_STATE,
+    STATE_VERSION,
     // Schedule (kind:38002)
     AgentSchedule, TriggerType,
     // Goals (kind:38003)
