@@ -215,11 +215,11 @@ pub fn reconstruct_secret(shares: &[Share]) -> Result<[u8; 32]> {
 /// * Vector of FROST key packages
 ///
 /// # Example
-/// ```no_run
+/// ```
 /// use frostr::keygen::generate_key_shares;
 ///
 /// // Create 2-of-3 threshold
-/// let shares = generate_key_shares(2, 3)?;
+/// let shares = generate_key_shares(2, 3).unwrap();
 /// assert_eq!(shares.len(), 3);
 /// ```
 pub fn generate_key_shares(threshold: u32, total: u32) -> Result<Vec<FrostShare>> {
