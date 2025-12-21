@@ -96,5 +96,9 @@ rand = "0.9"
 name = "nip_sa_state"
 harness = false
 
+[[bench]]
+name = "trajectory_overhead"
+harness = false
+
 [lints]
 workspace = true
