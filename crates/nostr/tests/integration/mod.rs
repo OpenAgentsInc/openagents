@@ -7,6 +7,7 @@ pub mod subscriptions;
 pub mod filters;
 pub mod error_handling;
 pub mod nip01_protocol_messages;
+pub mod stress;
 
 use nostr_relay::{Database, DatabaseConfig, RelayConfig, RelayServer};
 use std::net::SocketAddr;
