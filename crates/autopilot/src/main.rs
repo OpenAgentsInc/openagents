@@ -816,6 +816,25 @@ enum MetricsCommands {
         #[arg(short, long, default_value_t = 3000)]
         port: u16,
     },
+
+    /// Run learning pipeline to analyze sessions and propose improvements
+    Learn {
+        /// Path to metrics database (default: autopilot-metrics.db)
+        #[arg(long)]
+        metrics_db: Option<PathBuf>,
+
+        /// Specific session IDs to analyze (default: last 50 sessions)
+        #[arg(long)]
+        sessions: Vec<String>,
+
+        /// Number of recent sessions to analyze if no specific sessions provided
+        #[arg(long, default_value_t = 50)]
+        limit: usize,
+
+        /// Output format (json or text)
+        #[arg(short, long, default_value = "text")]
+        format: String,
+    },
 }
 
 #[derive(Subcommand)]
@@ -3653,6 +3672,84 @@ async fn handle_metrics_command(command: MetricsCommands) -> Result<()> {
             println!();
 
             start_dashboard(&db_path, port).await?;
+        }
+        MetricsCommands::Learn {
+            metrics_db,
+            sessions,
+            limit,
+            format,
+        } => {
+            use autopilot::learning::LearningPipeline;
+
+            let db_path = metrics_db.unwrap_or_else(default_db_path);
+            let db = MetricsDb::open(&db_path)?;
+
+            println!("{}", "=".repeat(80));
+            println!("{} Autopilot Learning Pipeline", "🧠".cyan().bold());
+            println!("{}", "=".repeat(80));
+            println!();
+
+            // Get session IDs to analyze
+            let session_ids: Vec<String> = if sessions.is_empty() {
+                println!("{} Analyzing last {} sessions...", "📊".cyan(), limit);
+                let recent = db.get_recent_sessions(limit)?;
+                recent.into_iter().map(|s| s.id).collect()
+            } else {
+                println!("{} Analyzing {} specific sessions...", "📊".cyan(), sessions.len());
+                sessions.clone()
+            };
+
+            if session_ids.is_empty() {
+                println!("{} No sessions found to analyze", "⚠️".yellow());
+                return Ok(());
+            }
+
+            // Run the learning pipeline
+            let pipeline = LearningPipeline::new(&db);
+            let report = pipeline.run(&session_ids)?;
+
+            // Output results
+            match format.as_str() {
+                "json" => {
+                    println!("{}", serde_json::to_string_pretty(&report)?);
+                }
+                _ => {
+                    println!();
+                    println!("{} {} improvements detected", "✨".green(), report.improvements.len());
+                    println!();
+
+                    for improvement in &report.improvements {
+                        println!("{} {:?} (severity: {}/10)", "⚠️".yellow(), improvement.improvement_type, improvement.severity);
+                        println!("  Description: {}", improvement.description);
+                        println!("  Proposed fix: {}", improvement.proposed_fix);
+                        println!("  Evidence: {} items", improvement.evidence.len());
+                        println!();
+                    }
+
+                    if !report.prompt_updates.is_empty() {
+                        println!("{} {} prompt updates proposed", "📝".cyan(), report.prompt_updates.len());
+                        for update in &report.prompt_updates {
+                            println!("  {}: {}", update.file_path, update.section);
+                            println!("    {}", update.rationale);
+                        }
+                        println!();
+                    }
+
+                    if !report.hook_updates.is_empty() {
+                        println!("{} {} hook updates proposed", "🪝".cyan(), report.hook_updates.len());
+                        for update in &report.hook_updates {
+                            println!("  {}", update.hook_name);
+                            println!("    {}", update.rationale);
+                        }
+                        println!();
+                    }
+
+                    if !report.issues_created.is_empty() {
+                        println!("{} {} issues created", "📋".cyan(), report.issues_created.len());
+                        println!();
+                    }
+                }
+            }
         }
         MetricsCommands::CreateIssues {
             metrics_db,
