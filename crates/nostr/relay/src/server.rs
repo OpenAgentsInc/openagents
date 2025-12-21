@@ -10,6 +10,7 @@
 use crate::broadcast::{BroadcastEvent, create_broadcast_channel};
 use crate::db::Database;
 use crate::error::{RelayError, Result};
+use crate::rate_limit::{RateLimiter, RateLimitConfig};
 use crate::subscription::{Filter, SubscriptionManager};
 use futures::{SinkExt, StreamExt};
 use nostr::Event;
@@ -28,6 +29,8 @@ pub struct RelayConfig {
     pub bind_addr: SocketAddr,
     /// Maximum message size in bytes
     pub max_message_size: usize,
+    /// Rate limiting configuration
+    pub rate_limit: RateLimitConfig,
 }
 
 impl Default for RelayConfig {
@@ -35,6 +38,7 @@ impl Default for RelayConfig {
         Self {
             bind_addr: "127.0.0.1:7000".parse().unwrap(),
             max_message_size: 512 * 1024, // 512 KB
+            rate_limit: RateLimitConfig::default(),
         }
     }
 }
@@ -44,16 +48,19 @@ pub struct RelayServer {
     config: RelayConfig,
     db: Arc<Database>,
     broadcast_tx: broadcast::Sender<BroadcastEvent>,
+    rate_limiter: Arc<RateLimiter>,
 }
 
 impl RelayServer {
     /// Create a new relay server
     pub fn new(config: RelayConfig, db: Database) -> Self {
         let (broadcast_tx, _) = create_broadcast_channel();
+        let rate_limiter = Arc::new(RateLimiter::new(config.rate_limit.clone()));
         Self {
             config,
             db: Arc::new(db),
             broadcast_tx,
+            rate_limiter,
         }
     }
 
@@ -65,11 +72,34 @@ impl RelayServer {
         loop {
             match listener.accept().await {
                 Ok((stream, addr)) => {
+                    let ip = addr.ip();
+
+                    // Check if IP is banned
+                    if self.rate_limiter.is_banned(ip).await {
+                        warn!("Rejected connection from banned IP: {}", ip);
+                        continue;
+                    }
+
+                    // Check connection limit
+                    if !self.rate_limiter.check_connection_allowed(ip).await {
+                        warn!("Connection limit exceeded for IP: {}", ip);
+                        continue;
+                    }
+
                     debug!("New connection from {}", addr);
+                    self.rate_limiter.register_connection(ip).await;
+
                     let db = Arc::clone(&self.db);
                     let broadcast_tx = self.broadcast_tx.clone();
+                    let rate_limiter = Arc::clone(&self.rate_limiter);
+
                     tokio::spawn(async move {
-                        if let Err(e) = handle_connection(stream, addr, db, broadcast_tx).await {
+                        let result = handle_connection(stream, addr, db, broadcast_tx, rate_limiter.clone()).await;
+
+                        // Unregister connection
+                        rate_limiter.unregister_connection(ip).await;
+
+                        if let Err(e) = result {
                             error!("Error handling connection from {}: {}", addr, e);
                         }
                     });
@@ -88,6 +118,7 @@ async fn handle_connection(
     addr: SocketAddr,
     db: Arc<Database>,
     broadcast_tx: broadcast::Sender<BroadcastEvent>,
+    rate_limiter: Arc<RateLimiter>,
 ) -> Result<()> {
     let ws_stream = accept_async(stream)
         .await
@@ -138,7 +169,7 @@ async fn handle_connection(
                         // Parse the Nostr message
                         match serde_json::from_str::<Value>(&text) {
                             Ok(value) => {
-                                let responses = handle_nostr_message(&value, &db, &mut subscriptions, &broadcast_tx).await;
+                                let responses = handle_nostr_message(&value, &db, &mut subscriptions, &broadcast_tx, &rate_limiter).await;
 
                                 // Update the shared subscriptions
                                 *subscriptions_clone.lock().await = subscriptions.clone();
@@ -198,6 +229,7 @@ async fn handle_nostr_message(
     db: &Database,
     subscriptions: &mut SubscriptionManager,
     broadcast_tx: &broadcast::Sender<BroadcastEvent>,
+    rate_limiter: &RateLimiter,
 ) -> Vec<Value> {
     let mut responses = Vec::new();
 
@@ -227,6 +259,12 @@ async fn handle_nostr_message(
             // ["EVENT", <event JSON>]
             if msg_array.len() < 2 {
                 responses.push(json!(["NOTICE", "EVENT message missing event data"]));
+                return responses;
+            }
+
+            // Check event rate limit
+            if !rate_limiter.check_event_allowed() {
+                responses.push(json!(["NOTICE", "rate limit: slow down"]));
                 return responses;
             }
 
@@ -307,6 +345,15 @@ async fn handle_nostr_message(
 
             debug!("Subscription requested: {} with {} filters", sub_id, filters.len());
 
+            // Check subscription limit
+            if !rate_limiter.check_subscription_allowed(subscriptions.len()) {
+                responses.push(json!(["NOTICE", format!(
+                    "rate limit: max {} subscriptions per connection",
+                    rate_limiter.max_subscriptions()
+                )]));
+                return responses;
+            }
+
             // Store subscription
             let subscription = crate::subscription::Subscription::new(sub_id.to_string(), filters.clone());
             subscriptions.add(subscription);
@@ -378,6 +425,7 @@ mod tests {
         let db = Database::new(config).unwrap();
         let mut subs = SubscriptionManager::new();
         let (broadcast_tx, _) = create_broadcast_channel();
+        let rate_limiter = RateLimiter::new(RateLimitConfig::default());
 
         // Create a test event (simplified - in real use would use nostr crate)
         let event_json = json!({
@@ -391,7 +439,7 @@ mod tests {
         });
 
         let msg = json!(["EVENT", event_json]);
-        let responses = handle_nostr_message(&msg, &db, &mut subs, &broadcast_tx).await;
+        let responses = handle_nostr_message(&msg, &db, &mut subs, &broadcast_tx, &rate_limiter).await;
 
         assert!(!responses.is_empty());
         let resp = &responses[0];
@@ -409,9 +457,10 @@ mod tests {
         let db = Database::new(config).unwrap();
         let mut subs = SubscriptionManager::new();
         let (broadcast_tx, _) = create_broadcast_channel();
+        let rate_limiter = RateLimiter::new(RateLimitConfig::default());
 
         let msg = json!(["REQ", "sub_123", {"kinds": [1]}]);
-        let responses = handle_nostr_message(&msg, &db, &mut subs, &broadcast_tx).await;
+        let responses = handle_nostr_message(&msg, &db, &mut subs, &broadcast_tx, &rate_limiter).await;
 
         assert!(!responses.is_empty());
         // Last response should be EOSE
@@ -434,15 +483,16 @@ mod tests {
         let db = Database::new(config).unwrap();
         let mut subs = SubscriptionManager::new();
         let (broadcast_tx, _) = create_broadcast_channel();
+        let rate_limiter = RateLimiter::new(RateLimitConfig::default());
 
         // First create a subscription
         let msg1 = json!(["REQ", "sub_123", {"kinds": [1]}]);
-        handle_nostr_message(&msg1, &db, &mut subs, &broadcast_tx).await;
+        handle_nostr_message(&msg1, &db, &mut subs, &broadcast_tx, &rate_limiter).await;
         assert_eq!(subs.len(), 1);
 
         // Now close it
         let msg2 = json!(["CLOSE", "sub_123"]);
-        let responses = handle_nostr_message(&msg2, &db, &mut subs, &broadcast_tx).await;
+        let responses = handle_nostr_message(&msg2, &db, &mut subs, &broadcast_tx, &rate_limiter).await;
 
         assert!(responses.is_empty()); // CLOSE doesn't send responses
         assert_eq!(subs.len(), 0); // Subscription removed
@@ -459,9 +509,10 @@ mod tests {
         let db = Database::new(config).unwrap();
         let mut subs = SubscriptionManager::new();
         let (broadcast_tx, _) = create_broadcast_channel();
+        let rate_limiter = RateLimiter::new(RateLimitConfig::default());
 
         let msg = json!(["UNKNOWN", "data"]);
-        let responses = handle_nostr_message(&msg, &db, &mut subs, &broadcast_tx).await;
+        let responses = handle_nostr_message(&msg, &db, &mut subs, &broadcast_tx, &rate_limiter).await;
 
         assert!(!responses.is_empty());
         let resp = &responses[0];

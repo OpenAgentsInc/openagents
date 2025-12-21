@@ -36,6 +36,10 @@ thiserror = "2"
 # Logging
 tracing = "0.1"
 
+# Rate limiting
+governor = "0.6"
+nonzero_ext = "0.3"
+
 [dev-dependencies]
 tokio-test = "0.4"
 tempfile = "3"
