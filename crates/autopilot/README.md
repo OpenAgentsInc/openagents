@@ -359,6 +359,44 @@ If resume fails:
 - Verify session_id exists in the file
 - Try `--continue` flag for automatic resume
 
+## Performance Profiling
+
+Autopilot supports CPU profiling via flamegraphs to identify performance bottlenecks.
+
+### Install Flamegraph
+
+```bash
+cargo install flamegraph
+```
+
+On Linux, enable perf access:
+```bash
+echo -1 | sudo tee /proc/sys/kernel/perf_event_paranoid
+```
+
+### Profile a Run
+
+```bash
+# Profile a single run
+cargo flamegraph --bin autopilot -- run "Your task here"
+
+# Save to timestamped file
+cargo flamegraph --bin autopilot \
+  --output ./docs/profiles/flamegraph-$(date +%Y%m%d-%H%M%S).svg \
+  -- run "Your task here"
+
+# View the flamegraph
+firefox flamegraph.svg
+```
+
+### What to Look For
+
+- **Wide bars**: Functions consuming significant CPU time
+- **Tall stacks**: Deep call chains (potential optimization targets)
+- **Repeated patterns**: Code that could be memoized or cached
+
+See [Performance Profiling Guide](../../docs/profiles/README.md) for detailed profiling documentation, best practices, and archived results.
+
 ## Development
 
 ### Running Tests
