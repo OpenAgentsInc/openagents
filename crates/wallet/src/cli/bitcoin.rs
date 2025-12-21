@@ -76,19 +76,41 @@ pub fn balance_detailed() -> Result<()> {
 }
 
 pub fn receive(amount: Option<u64>) -> Result<()> {
+    use spark::{SparkSigner, SparkWallet, WalletConfig, Network};
+
     println!("{}", "Receive Payment".cyan().bold());
     println!();
 
-    // TODO: Generate Spark address
-    // TODO: Display address and QR code
+    // Check if wallet exists
+    if !SecureKeychain::has_mnemonic() {
+        anyhow::bail!("No wallet found. Use 'wallet init' to create one.");
+    }
+
+    // Load identity and create spark wallet
+    let mnemonic_phrase = SecureKeychain::retrieve_mnemonic()?;
+    let mnemonic = Mnemonic::parse(&mnemonic_phrase)?;
+
+    let signer = SparkSigner::from_mnemonic(&mnemonic.to_string(), "")?;
+    let config = WalletConfig {
+        network: Network::Testnet,
+        ..Default::default()
+    };
+
+    // Create wallet and get address (async)
+    let rt = tokio::runtime::Runtime::new()?;
+    let wallet = rt.block_on(SparkWallet::new(signer, config))?;
+    let address = wallet.get_spark_address();
 
     if let Some(amt) = amount {
         println!("{}: {} sats", "Amount".bold(), amt);
+        println!();
     }
 
-    println!("{}: spark1...", "Address".bold());
+    println!("{}: {}", "Address".bold(), address);
     println!();
     println!("Share this address to receive payment");
+    println!();
+    println!("{}", "Note: Spark integration is in progress. Address generation uses public key stub.".yellow());
 
     Ok(())
 }
@@ -97,19 +119,20 @@ pub fn send(address: String, amount: u64) -> Result<()> {
     println!("{}", "Send Payment".cyan().bold());
     println!();
 
-    // TODO: Validate address
-    // TODO: Create payment transaction
-    // TODO: Broadcast
+    // Check if wallet exists
+    if !SecureKeychain::has_mnemonic() {
+        anyhow::bail!("No wallet found. Use 'wallet init' to create one.");
+    }
 
     println!("{}: {}", "To".bold(), address);
     println!("{}: {} sats", "Amount".bold(), amount);
     println!();
-    println!("{}", "Confirm? (y/n)".yellow());
 
-    // TODO: Get user confirmation
-    // TODO: Send payment
-
-    println!("{}", "✓ Payment sent".green());
+    // Show warning for stub implementation
+    println!("{}", "Spark integration is in progress. This is a stub implementation.".yellow());
+    println!();
+    println!("{}", "Payment would be sent via Spark L2".dimmed());
+    println!("{}: (not implemented)", "Transaction ID".dimmed());
 
     Ok(())
 }
@@ -118,14 +141,21 @@ pub fn invoice(amount: u64, description: Option<String>) -> Result<()> {
     println!("{}", "Generate Invoice".cyan().bold());
     println!();
 
-    // TODO: Create Lightning invoice via Spark
+    // Check if wallet exists
+    if !SecureKeychain::has_mnemonic() {
+        anyhow::bail!("No wallet found. Use 'wallet init' to create one.");
+    }
 
     println!("{}: {} sats", "Amount".bold(), amount);
-    if let Some(desc) = description {
+    if let Some(desc) = &description {
         println!("{}: {}", "Description".bold(), desc);
     }
     println!();
-    println!("{}: lnbc...", "Invoice".bold());
+
+    // Stub invoice
+    println!("{}: lnbc... (stub)", "Invoice".bold().dimmed());
+    println!();
+    println!("{}", "Spark integration is in progress. Lightning invoice generation not yet implemented.".yellow());
 
     Ok(())
 }
@@ -134,19 +164,17 @@ pub fn pay(invoice: String) -> Result<()> {
     println!("{}", "Pay Invoice".cyan().bold());
     println!();
 
-    // TODO: Decode invoice
-    // TODO: Display invoice details
-    // TODO: Pay via Spark
+    // Check if wallet exists
+    if !SecureKeychain::has_mnemonic() {
+        anyhow::bail!("No wallet found. Use 'wallet init' to create one.");
+    }
 
     println!("{}: {}", "Invoice".bold(), invoice);
-    println!("{}: {} sats", "Amount".bold(), 0);
+    println!("{}: {} sats", "Amount".bold().dimmed(), 0);
     println!();
-    println!("{}", "Confirm? (y/n)".yellow());
-
-    // TODO: Get user confirmation
-    // TODO: Pay invoice
-
-    println!("{}", "✓ Payment sent".green());
+    println!("{}", "Spark integration is in progress. Lightning invoice payment not yet implemented.".yellow());
+    println!();
+    println!("{}: (not implemented)", "Payment status".dimmed());
 
     Ok(())
 }
@@ -155,11 +183,16 @@ pub fn history(limit: usize) -> Result<()> {
     println!("{}", "Transaction History".cyan().bold());
     println!();
 
-    // TODO: Fetch transaction history from storage
-    // TODO: Display transactions
+    // Check if wallet exists
+    if !SecureKeychain::has_mnemonic() {
+        anyhow::bail!("No wallet found. Use 'wallet init' to create one.");
+    }
 
     println!("Showing last {} transactions...", limit);
+    println!();
     println!("No transactions yet");
+    println!();
+    println!("{}", "Spark integration is in progress. Transaction history not yet implemented.".yellow());
 
     Ok(())
 }
