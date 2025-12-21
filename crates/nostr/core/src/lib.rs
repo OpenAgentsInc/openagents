@@ -24,6 +24,7 @@
 //! - NIP-26: Delegated Event Signing
 //! - NIP-27: Text Note References
 //! - NIP-28: Public Chat (channels, messages, moderation)
+//! - NIP-31: Alt Tag for Unknown Events (graceful degradation)
 //! - NIP-32: Labeling (content moderation and categorization)
 //! - NIP-33: Parameterized Replaceable Events (deprecated, moved to NIP-01)
 //! - NIP-36: Sensitive Content / Content Warning
@@ -91,6 +92,7 @@ mod nip25;
 mod nip26;
 mod nip27;
 mod nip28;
+mod nip31;
 mod nip32;
 mod nip33;
 mod nip36;
@@ -261,6 +263,12 @@ pub use nip28::{
     KIND_CHANNEL_MESSAGE, KIND_CHANNEL_METADATA, KIND_CHANNEL_MUTE_USER, ModerationReason,
     Nip28Error, is_channel_creation_kind, is_channel_kind, is_channel_message_kind,
     is_channel_metadata_kind, is_moderation_kind,
+};
+
+// NIP-31: Alt Tag for Unknown Events
+pub use nip31::{
+    ALT_TAG, Nip31Error, add_alt_tag, create_default_alt, get_alt_tag, has_alt_tag,
+    remove_alt_tag, set_alt_tag, validate_alt_summary,
 };
 
 // NIP-32: Labeling
