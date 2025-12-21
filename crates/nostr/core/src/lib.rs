@@ -707,7 +707,7 @@ pub use nip_sa::{
     // Schedule (kind:38002)
     AgentSchedule, ScheduleError, TriggerType, KIND_AGENT_SCHEDULE,
     // Goals (kind:38003)
-    PublicGoals,
+    PublicGoals, PublicGoalsContent, PublicGoalsError, KIND_PUBLIC_GOALS,
     // Tick (kinds:38010, 38011)
     TickAction, TickError, TickRequest, TickResult, TickResultContent, TickStatus, TickTrigger,
     KIND_TICK_REQUEST, KIND_TICK_RESULT,
