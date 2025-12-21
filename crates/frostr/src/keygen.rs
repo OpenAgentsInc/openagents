@@ -4,10 +4,11 @@
 //! Shamir Secret Sharing and FROST key generation.
 
 use crate::{Error, Result};
+use frost_secp256k1::keys::{KeyPackage, PublicKeyPackage};
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 
-/// A secret share in a threshold scheme
+/// A secret share in a threshold scheme (for SSS)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Share {
     /// Share index (1..n)
@@ -16,6 +17,15 @@ pub struct Share {
     pub secret: [u8; 32],
     /// Group public key this share belongs to
     pub group_pk: [u8; 32],
+}
+
+/// A FROST key package containing both secret and verification data
+#[derive(Debug, Clone)]
+pub struct FrostShare {
+    /// The FROST key package with signing share
+    pub key_package: KeyPackage,
+    /// Group public key package for verification
+    pub public_key_package: PublicKeyPackage,
 }
 
 /// Galois Field GF(256) multiplication
@@ -190,10 +200,11 @@ pub fn reconstruct_secret(shares: &[Share]) -> Result<[u8; 32]> {
     Ok(secret)
 }
 
-/// Generate threshold key shares
+/// Generate threshold key shares using FROST
 ///
-/// Creates a k-of-n threshold scheme where any k shares can reconstruct
-/// the signing capability, but k-1 shares reveal nothing.
+/// Creates a k-of-n threshold scheme where any k shares can sign,
+/// but k-1 shares reveal nothing. Uses the FROST protocol for
+/// verifiable secret sharing.
 ///
 /// # Arguments
 /// * `threshold` - Minimum shares needed (k)
@@ -201,27 +212,61 @@ pub fn reconstruct_secret(shares: &[Share]) -> Result<[u8; 32]> {
 ///
 /// # Returns
 /// * Group public key (32 bytes x-only)
-/// * Vector of secret shares
+/// * Vector of FROST key packages
 ///
 /// # Example
 /// ```no_run
 /// use frostr::keygen::generate_key_shares;
 ///
 /// // Create 2-of-3 threshold
-/// let (group_pk, shares) = generate_key_shares(2, 3)?;
+/// let shares = generate_key_shares(2, 3)?;
 /// assert_eq!(shares.len(), 3);
 /// ```
-pub fn generate_key_shares(threshold: u32, total: u32) -> Result<([u8; 32], Vec<Share>)> {
+pub fn generate_key_shares(threshold: u32, total: u32) -> Result<Vec<FrostShare>> {
     if threshold > total {
         return Err(Error::InvalidThreshold(threshold, total));
     }
     if threshold == 0 || total == 0 {
         return Err(Error::InvalidThreshold(threshold, total));
     }
+    if threshold > u16::MAX as u32 || total > u16::MAX as u32 {
+        return Err(Error::InvalidThreshold(threshold, total));
+    }
 
-    // TODO: Implement FROST key generation
-    // For now, return placeholder
-    todo!("Implement FROST key generation")
+    let mut rng = rand::thread_rng();
+
+    // Create identifiers for each participant (1..=total)
+    let identifiers: Vec<_> = (1..=total)
+        .map(|i| {
+            frost_secp256k1::Identifier::try_from(i as u16)
+                .expect("Identifier creation should succeed for valid indices")
+        })
+        .collect();
+
+    // Generate key shares using FROST dealer
+    let (secret_shares, public_key_package) = frost_secp256k1::keys::generate_with_dealer(
+        total as u16,
+        threshold as u16,
+        frost_secp256k1::keys::IdentifierList::Custom(&identifiers),
+        &mut rng,
+    )
+    .map_err(|e| Error::FrostError(format!("FROST keygen failed: {:?}", e)))?;
+
+    // Convert BTreeMap to Vec of FrostShare
+    let frost_shares: Vec<FrostShare> = secret_shares
+        .into_iter()
+        .map(|(_identifier, secret_share)| {
+            // Convert SecretShare to KeyPackage (performs validation)
+            let key_package: KeyPackage = secret_share.try_into().expect("Valid secret share");
+
+            FrostShare {
+                key_package,
+                public_key_package: public_key_package.clone(),
+            }
+        })
+        .collect();
+
+    Ok(frost_shares)
 }
 
 #[cfg(test)]
@@ -415,20 +460,57 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "not yet implemented")]
-    fn test_generate_key_shares_placeholder() {
-        let _ = generate_key_shares(2, 3);
+    fn test_frost_generate_key_shares_2_of_3() {
+        let shares = generate_key_shares(2, 3).unwrap();
+        assert_eq!(shares.len(), 3);
+
+        // Verify all shares have the same group public key
+        let group_pk = shares[0].public_key_package.verifying_key();
+        for share in &shares {
+            assert_eq!(share.public_key_package.verifying_key(), group_pk);
+        }
     }
 
     #[test]
-    fn test_invalid_threshold() {
+    fn test_frost_generate_key_shares_3_of_5() {
+        let shares = generate_key_shares(3, 5).unwrap();
+        assert_eq!(shares.len(), 5);
+
+        // Verify all shares have the same group public key
+        let group_pk = shares[0].public_key_package.verifying_key();
+        for share in &shares {
+            assert_eq!(share.public_key_package.verifying_key(), group_pk);
+        }
+    }
+
+    #[test]
+    fn test_frost_generate_key_shares_5_of_7() {
+        let shares = generate_key_shares(5, 7).unwrap();
+        assert_eq!(shares.len(), 7);
+
+        // Verify all shares have the same group public key
+        let group_pk = shares[0].public_key_package.verifying_key();
+        for share in &shares {
+            assert_eq!(share.public_key_package.verifying_key(), group_pk);
+        }
+    }
+
+    #[test]
+    fn test_frost_invalid_threshold() {
         let result = generate_key_shares(4, 3);
         assert!(result.is_err());
     }
 
     #[test]
-    fn test_zero_threshold() {
+    fn test_frost_zero_threshold() {
         let result = generate_key_shares(0, 3);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_frost_max_participants() {
+        // Test boundary conditions
+        let result = generate_key_shares(u16::MAX as u32 + 1, u16::MAX as u32 + 1);
         assert!(result.is_err());
     }
 }
