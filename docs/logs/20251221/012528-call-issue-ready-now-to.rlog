@@ -522,3 +522,11 @@ o: id=jEcL8evT → [ok] The file /home/christopherdavid/code/openagents/crates/n
 t!:Bash id=mKH6s4b2 cmd="cargo test nip_sa::trajectory::tests" → [running] tokens_in=0 tokens_out=84 tokens_cached=119092
 o: id=mKH6s4b2 → [ok] running 21 tests
 t!:Bash id=uKoVKcHF cmd="git add -A && git commit -m "$(cat <<'EOF'" → [running] tokens_in=0 tokens_out=392 tokens_cached=122977
+o: id=uKoVKcHF → [ok] [main 8e283009d] Add trajectory hash calculation and verification
+t!:Bash id=uChW2ZMP cmd="git push origin main" → [running] tokens_in=0 tokens_out=77 tokens_cached=124495
+o: id=uChW2ZMP → [ok] [0;36m🔍 Running cargo build to check for errors and warnings...[0m
+t!:Bash id=CuWtKuej cmd="cargo autopilot issue complete 7" → [running] tokens_in=0 tokens_out=79 tokens_cached=124927
+o: id=CuWtKuej → [ok] ✓ Completed issue #7: Add unit tests for trajectory hash calculation and verification - d-006
+t!:Bash id=dFhFccbR cmd="cargo autopilot issue ready" → [running] tokens_in=0 tokens_out=77 tokens_cached=125090
+o: id=dFhFccbR → [ok] No ready issues available
+a: I've successfully completed 6 issues related to directive d-006 (Operationalize NIP-SA): tokens_in=0 tokens_out=339 tokens_cached=125361
