@@ -6,9 +6,11 @@ use wallet::core::identity::UnifiedIdentity;
 
 use crate::git::{clone_repository, get_repository_path, is_repository_cloned};
 use crate::nostr::NostrClient;
-use crate::nostr::events::{PatchBuilder, PullRequestBuilder, RepositoryAnnouncementBuilder};
+use crate::nostr::events::{BountyOfferBuilder, IssueClaimBuilder, PatchBuilder, PullRequestBuilder, RepositoryAnnouncementBuilder, StatusEventBuilder};
 use crate::views::{agent_profile_page, home_page_with_repos, issue_create_form_page, issue_detail_page, issues_list_page, patch_create_form_page, patch_detail_page, patches_list_page, pr_create_form_page, pull_request_detail_page, pull_requests_list_page, repository_create_form_page, repository_detail_page, search_results_page, trajectory_viewer_page};
 use crate::ws::{ws_handler, WsBroadcaster};
+use nostr::{EventTemplate, Issue, KIND_ISSUE};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 /// Application state shared across handlers
 pub struct AppState {
@@ -20,11 +22,11 @@ pub struct AppState {
 impl AppState {
     /// Sign an event template with the configured identity
     #[allow(dead_code)]
-    pub fn sign_event(&self, _template: nostr::UnsignedEvent) -> Result<nostr::Event, String> {
+    pub fn sign_event(&self, template: nostr::EventTemplate) -> Result<nostr::Event, String> {
         match &self.identity {
-            Some(_identity) => {
-                // TODO: Implement actual signing using identity
-                Err("Event signing not yet implemented".to_string())
+            Some(identity) => {
+                identity.sign_event(template)
+                    .map_err(|e| format!("Failed to sign event: {}", e))
             }
             None => {
                 Err("No identity configured. Set AGENTGIT_MNEMONIC environment variable to enable event signing.".to_string())
@@ -255,41 +257,112 @@ async fn issue_detail(
 
 /// Claim an issue
 async fn issue_claim(
+    state: web::Data<AppState>,
     path: web::Path<(String, String)>,
     form: web::Form<std::collections::HashMap<String, String>>,
 ) -> HttpResponse {
-    let (_identifier, _issue_id) = path.into_inner();
+    let (identifier, issue_id) = path.into_inner();
     let content = form.get("content").cloned().unwrap_or_default();
     let estimate = form.get("estimate").and_then(|s| s.parse::<u64>().ok());
 
-    // For now, return a success message
-    // In a real implementation, this would:
-    // 1. Build an IssueClaimBuilder event
-    // 2. Sign it with the user's key
-    // 3. Publish it to relays
-    // 4. Cache it locally
+    // Fetch repository to get pubkey
+    let repository = match state.nostr_client.get_repository_by_identifier(&identifier).await {
+        Ok(Some(repo)) => repo,
+        Ok(None) => {
+            return HttpResponse::NotFound()
+                .content_type("text/html; charset=utf-8")
+                .body("<h1>Repository not found</h1>");
+        }
+        Err(e) => {
+            tracing::error!("Failed to fetch repository: {}", e);
+            return HttpResponse::InternalServerError()
+                .content_type("text/html; charset=utf-8")
+                .body("<h1>Error</h1>");
+        }
+    };
 
-    let response_html = format!(
-        r#"<div class="success-message">
-            <p>✅ Issue claim submitted!</p>
-            <p>Message: {}</p>
-            {}
-        </div>"#,
-        if content.is_empty() { "No message" } else { &content },
-        estimate.map(|e| format!("<p>Estimate: {} seconds</p>", e)).unwrap_or_default()
+    // Build repository address
+    let repo_address = format!("30617:{}:{}", repository.pubkey, identifier);
+
+    // TODO: Fetch issue to get author pubkey - for now use repo owner
+    let issue_author_pubkey = &repository.pubkey;
+
+    // Build issue claim event
+    let mut builder = IssueClaimBuilder::new(
+        &issue_id,
+        &repo_address,
+        issue_author_pubkey,
     );
 
-    HttpResponse::Ok()
-        .content_type("text/html; charset=utf-8")
-        .body(response_html)
+    if !content.is_empty() {
+        builder = builder.content(&content);
+    }
+
+    if let Some(est) = estimate {
+        builder = builder.estimate(est);
+    }
+
+    let event_template = builder.build();
+
+    // Sign and publish event
+    match state.sign_event(event_template) {
+        Ok(signed_event) => {
+            let event_id = signed_event.id.clone();
+
+            // Publish to relays
+            match state.nostr_client.publish_event(signed_event).await {
+                Ok(_) => {
+                    tracing::info!("Published issue claim: event_id={}, issue_id={}", event_id, issue_id);
+
+                    // Return success message
+                    HttpResponse::Ok()
+                        .content_type("text/html; charset=utf-8")
+                        .body(format!(
+                            r#"<div class="success-message">
+                                <p>✅ Issue claim submitted!</p>
+                                <p>Message: {}</p>
+                                {}
+                            </div>"#,
+                            if content.is_empty() { "No message" } else { &content },
+                            estimate.map(|e| format!("<p>Estimate: {} seconds</p>", e)).unwrap_or_default()
+                        ))
+                }
+                Err(e) => {
+                    tracing::error!("Failed to publish issue claim: {}", e);
+                    HttpResponse::InternalServerError()
+                        .content_type("text/html; charset=utf-8")
+                        .body(format!(
+                            r#"<div style="padding: 1rem; background: #fee2e2; border-left: 4px solid #dc2626;">
+                                <h3>Failed to Publish Claim</h3>
+                                <p>Error: {}</p>
+                            </div>"#,
+                            e
+                        ))
+                }
+            }
+        }
+        Err(e) => {
+            tracing::error!("Failed to sign issue claim event: {}", e);
+            HttpResponse::InternalServerError()
+                .content_type("text/html; charset=utf-8")
+                .body(format!(
+                    r#"<div style="padding: 1rem; background: #fee2e2; border-left: 4px solid #dc2626;">
+                        <h3>Failed to Sign Claim Event</h3>
+                        <p>Error: {}</p>
+                    </div>"#,
+                    e
+                ))
+        }
+    }
 }
 
 /// Create a bounty for an issue
 async fn issue_bounty_create(
+    state: web::Data<AppState>,
     path: web::Path<(String, String)>,
     form: web::Form<std::collections::HashMap<String, String>>,
 ) -> HttpResponse {
-    let (_identifier, _issue_id) = path.into_inner();
+    let (identifier, issue_id) = path.into_inner();
 
     // Extract form data
     let amount = match form.get("amount").and_then(|s| s.parse::<u64>().ok()) {
@@ -307,33 +380,99 @@ async fn issue_bounty_create(
         .map(|s| s.lines().map(|l| l.trim().to_string()).filter(|l| !l.is_empty()).collect())
         .unwrap_or_default();
 
-    // For now, return a success message
-    // In a real implementation, this would:
-    // 1. Build a BountyOfferBuilder event
-    // 2. Sign it with the user's key
-    // 3. Publish it to relays
-    // 4. Cache it locally
-
-    let response_html = format!(
-        r#"<div class="success-message">
-            <p>✅ Bounty created!</p>
-            <p>Amount: ⚡ {} sats</p>
-            {}
-            {}
-        </div>"#,
-        amount,
-        expiry.map(|e| format!("<p>Expires: {}</p>", e)).unwrap_or_default(),
-        if !conditions.is_empty() {
-            format!("<p>Conditions: <ul>{}</ul></p>",
-                conditions.iter().map(|c| format!("<li>{}</li>", c)).collect::<String>())
-        } else {
-            String::new()
+    // Fetch repository to get pubkey
+    let repository = match state.nostr_client.get_repository_by_identifier(&identifier).await {
+        Ok(Some(repo)) => repo,
+        Ok(None) => {
+            return HttpResponse::NotFound()
+                .content_type("text/html; charset=utf-8")
+                .body("<h1>Repository not found</h1>");
         }
+        Err(e) => {
+            tracing::error!("Failed to fetch repository: {}", e);
+            return HttpResponse::InternalServerError()
+                .content_type("text/html; charset=utf-8")
+                .body("<h1>Error</h1>");
+        }
+    };
+
+    // Build repository address
+    let repo_address = format!("30617:{}:{}", repository.pubkey, identifier);
+
+    // Build bounty offer event
+    let mut builder = BountyOfferBuilder::new(
+        &issue_id,
+        &repo_address,
+        amount,
     );
 
-    HttpResponse::Ok()
-        .content_type("text/html; charset=utf-8")
-        .body(response_html)
+    if let Some(exp) = expiry {
+        builder = builder.expiry(exp);
+    }
+
+    for condition in &conditions {
+        builder = builder.condition(condition);
+    }
+
+    let event_template = builder.build();
+
+    // Sign and publish event
+    match state.sign_event(event_template) {
+        Ok(signed_event) => {
+            let event_id = signed_event.id.clone();
+
+            // Publish to relays
+            match state.nostr_client.publish_event(signed_event).await {
+                Ok(_) => {
+                    tracing::info!("Published bounty offer: event_id={}, issue_id={}, amount={}", event_id, issue_id, amount);
+
+                    // Return success message
+                    HttpResponse::Ok()
+                        .content_type("text/html; charset=utf-8")
+                        .body(format!(
+                            r#"<div class="success-message">
+                                <p>✅ Bounty created!</p>
+                                <p>Amount: ⚡ {} sats</p>
+                                {}
+                                {}
+                            </div>"#,
+                            amount,
+                            expiry.map(|e| format!("<p>Expires: {}</p>", e)).unwrap_or_default(),
+                            if !conditions.is_empty() {
+                                format!("<p>Conditions: <ul>{}</ul></p>",
+                                    conditions.iter().map(|c| format!("<li>{}</li>", c)).collect::<String>())
+                            } else {
+                                String::new()
+                            }
+                        ))
+                }
+                Err(e) => {
+                    tracing::error!("Failed to publish bounty offer: {}", e);
+                    HttpResponse::InternalServerError()
+                        .content_type("text/html; charset=utf-8")
+                        .body(format!(
+                            r#"<div style="padding: 1rem; background: #fee2e2; border-left: 4px solid #dc2626;">
+                                <h3>Failed to Publish Bounty</h3>
+                                <p>Error: {}</p>
+                            </div>"#,
+                            e
+                        ))
+                }
+            }
+        }
+        Err(e) => {
+            tracing::error!("Failed to sign bounty offer event: {}", e);
+            HttpResponse::InternalServerError()
+                .content_type("text/html; charset=utf-8")
+                .body(format!(
+                    r#"<div style="padding: 1rem; background: #fee2e2; border-left: 4px solid #dc2626;">
+                        <h3>Failed to Sign Bounty Event</h3>
+                        <p>Error: {}</p>
+                    </div>"#,
+                    e
+                ))
+        }
+    }
 }
 
 /// Submit a review for a PR
@@ -385,10 +524,11 @@ async fn pr_review_submit(
 
 /// Change the status of a PR
 async fn pr_status_change(
+    state: web::Data<AppState>,
     path: web::Path<(String, String)>,
     form: web::Form<std::collections::HashMap<String, String>>,
 ) -> HttpResponse {
-    let (_identifier, _pr_id) = path.into_inner();
+    let (identifier, pr_id) = path.into_inner();
 
     // Extract form data
     let status = form.get("status").cloned().unwrap_or_else(|| "open".to_string());
@@ -407,31 +547,93 @@ async fn pr_status_change(
         }
     };
 
-    // For now, return a success message
-    // In a real implementation, this would:
-    // 1. Build a StatusEventBuilder with the appropriate kind
-    // 2. Sign it with the user's key
-    // 3. Publish it to relays
-    // 4. Cache it locally
-
-    let response_html = format!(
-        r#"<div class="success-message">
-            <p>✅ Status changed to: {}</p>
-            <p>Kind: {}</p>
-            {}
-        </div>"#,
-        status_label,
-        status_kind,
-        if !reason.is_empty() {
-            format!("<p>Reason: {}</p>", reason)
-        } else {
-            String::new()
+    // Fetch repository to get pubkey
+    let repository = match state.nostr_client.get_repository_by_identifier(&identifier).await {
+        Ok(Some(repo)) => repo,
+        Ok(None) => {
+            return HttpResponse::NotFound()
+                .content_type("text/html; charset=utf-8")
+                .body("<h1>Repository not found</h1>");
         }
+        Err(e) => {
+            tracing::error!("Failed to fetch repository: {}", e);
+            return HttpResponse::InternalServerError()
+                .content_type("text/html; charset=utf-8")
+                .body("<h1>Error</h1>");
+        }
+    };
+
+    // Build repository address
+    let repo_address = format!("30617:{}:{}", repository.pubkey, identifier);
+
+    // Build status event
+    let mut builder = StatusEventBuilder::new(
+        &pr_id,
+        &repo_address,
+        status_kind,
     );
 
-    HttpResponse::Ok()
-        .content_type("text/html; charset=utf-8")
-        .body(response_html)
+    if !reason.is_empty() {
+        builder = builder.reason(&reason);
+    }
+
+    let event_template = builder.build();
+
+    // Sign and publish event
+    match state.sign_event(event_template) {
+        Ok(signed_event) => {
+            let event_id = signed_event.id.clone();
+
+            // Publish to relays
+            match state.nostr_client.publish_event(signed_event).await {
+                Ok(_) => {
+                    tracing::info!("Published status change: event_id={}, pr_id={}, status={}", event_id, pr_id, status_label);
+
+                    // Return success message
+                    HttpResponse::Ok()
+                        .content_type("text/html; charset=utf-8")
+                        .body(format!(
+                            r#"<div class="success-message">
+                                <p>✅ Status changed to: {}</p>
+                                <p>Kind: {}</p>
+                                {}
+                            </div>"#,
+                            status_label,
+                            status_kind,
+                            if !reason.is_empty() {
+                                format!("<p>Reason: {}</p>", reason)
+                            } else {
+                                String::new()
+                            }
+                        ))
+                }
+                Err(e) => {
+                    tracing::error!("Failed to publish status change: {}", e);
+                    HttpResponse::InternalServerError()
+                        .content_type("text/html; charset=utf-8")
+                        .body(format!(
+                            r#"<div style="padding: 1rem; background: #fee2e2; border-left: 4px solid #dc2626;">
+                                <h3>Failed to Publish Status Change</h3>
+                                <p>Error: {}</p>
+                            </div>"#,
+                            e
+                        ))
+                }
+            }
+        }
+        Err(e) => {
+            tracing::error!("Failed to sign status change event: {}", e);
+            HttpResponse::InternalServerError()
+                .content_type("text/html; charset=utf-8")
+                .body(format!(
+                    r#"<div style="padding: 1rem; background: #fee2e2; border-left: 4px solid #dc2626;">
+                        <h3>Failed to Sign Status Change Event</h3>
+                        <p>Error: {}</p>
+                    </div>"#,
+                    e
+                ))
+        }
+    }
 }
 
 /// Issue creation form
@@ -490,33 +692,83 @@ async fn issue_create(
     // Build repository address (30617:pubkey:identifier)
     let repo_address = format!("30617:{}:{}", repository.pubkey, identifier);
 
-    // TODO: Implement event creation and publishing
-    // For now, return a placeholder message
-    tracing::warn!("Issue creation not yet implemented - need identity/signing integration");
-    tracing::info!(
-        "Would create issue: title='{}', description={:?}, labels={:?}, repo={}",
-        form.title,
-        form.description,
-        form.labels,
-        repo_address
-    );
+    // Build issue content (subject as title, description as content body)
+    let content = form.description.as_deref().unwrap_or("").to_string();
 
-    HttpResponse::Ok()
-        .content_type("text/html; charset=utf-8")
-        .body(format!(
-            "<h1>Issue Creation Not Yet Implemented</h1>\
-             <p><strong>Title:</strong> {}</p>\
-             <p><strong>Repository:</strong> {}</p>\
-             <p><strong>Description:</strong> {}</p>\
-             <p><strong>Labels:</strong> {}</p>\
-             <p>This feature requires identity/wallet integration for event signing.</p>\
-             <p><a href=\"/repo/{}/issues\">Back to issues</a></p>",
-            form.title,
-            repo_address,
-            form.description.as_deref().unwrap_or("None"),
-            form.labels.as_deref().unwrap_or("None"),
-            identifier
-        ))
+    // Create issue using NIP-34 Issue struct
+    let mut issue = Issue::new(
+        &content,
+        &repo_address,
+        &repository.pubkey,
+    ).with_subject(&form.title);
+
+    // Add labels if provided
+    if let Some(labels) = &form.labels {
+        for label in labels.lines() {
+            let trimmed = label.trim();
+            if !trimmed.is_empty() {
+                issue = issue.with_label(trimmed);
+            }
+        }
+    }
+
+    // Build event template
+    let event_template = EventTemplate {
+        created_at: SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs(),
+        kind: KIND_ISSUE,
+        content,
+        tags: issue.build_tags(),
+    };
+
+    // Sign and publish event
+    match state.sign_event(event_template) {
+        Ok(signed_event) => {
+            let event_id = signed_event.id.clone();
+
+            // Publish to relays
+            match state.nostr_client.publish_event(signed_event).await {
+                Ok(_) => {
+                    tracing::info!("Published issue: event_id={}, title='{}'", event_id, form.title);
+
+                    // Redirect to issues list
+                    HttpResponse::SeeOther()
+                        .insert_header(("Location", format!("/repo/{}/issues", identifier)))
+                        .finish()
+                }
+                Err(e) => {
+                    tracing::error!("Failed to publish issue: {}", e);
+                    HttpResponse::InternalServerError()
+                        .content_type("text/html; charset=utf-8")
+                        .body(format!(
+                            r#"<div style="padding: 1rem; background: #fee2e2; border-left: 4px solid #dc2626;">
+                                <h3>Failed to Publish Issue</h3>
+                                <p>Error: {}</p>
+                                <p><a href="/repo/{}/issues/new">← Try Again</a></p>
+                            </div>"#,
+                            e,
+                            identifier
+                        ))
+                }
+            }
+        }
+        Err(e) => {
+            tracing::error!("Failed to sign issue event: {}", e);
+            HttpResponse::InternalServerError()
+                .content_type("text/html; charset=utf-8")
+                .body(format!(
+                    r#"<div style="padding: 1rem; background: #fee2e2; border-left: 4px solid #dc2626;">
+                        <h3>Failed to Sign Issue Event</h3>
+                        <p>Error: {}</p>
+                        <p><a href="/repo/{}/issues/new">← Try Again</a></p>
+                    </div>"#,
+                    e,
+                    identifier
+                ))
+        }
+    }
 }
 
 /// Form data for issue creation
@@ -1177,58 +1429,52 @@ async fn pr_create(
 
     let event_template = builder.build();
 
-    // TODO: Sign the event template with user's identity
-    // TODO: Publish to relays
-    // TODO: Cache locally for immediate display
-    // For now, log what would be published
-    tracing::info!(
-        "Would publish PR event: kind={}, subject='{}', repo={}",
-        event_template.kind,
-        form.subject,
-        repo_address
-    );
-    tracing::debug!("Event template: {:?}", event_template);
+    // Sign and publish event
+    match state.sign_event(event_template) {
+        Ok(signed_event) => {
+            let event_id = signed_event.id.clone();
 
-    // Return success message with event details
-    let mut response = format!(
-        "<div style=\"padding: 2rem; max-width: 600px; margin: 0 auto;\">\
-         <h1 style=\"color: #4ade80;\">✅ Pull Request Event Created</h1>\
-         <p style=\"color: #888;\">Event built successfully. Publishing requires identity/wallet integration.</p>\
-         <div style=\"background: #1a1a1a; padding: 1rem; margin: 1rem 0; border-left: 3px solid #4ade80;\">\
-         <p><strong>Kind:</strong> {}</p>\
-         <p><strong>Title:</strong> {}</p>\
-         <p><strong>Repository:</strong> {}</p>\
-         <p><strong>Commit ID:</strong> {}</p>\
-         <p><strong>Clone URL:</strong> {}</p>\
-         <p><strong>Tags:</strong> {} tags</p>\
-         </div>",
-        event_template.kind,
-        form.subject,
-        repo_address,
-        form.commit_id,
-        form.clone_url,
-        event_template.tags.len()
-    );
+            // Publish to relays
+            match state.nostr_client.publish_event(signed_event).await {
+                Ok(_) => {
+                    tracing::info!("Published pull request: event_id={}, subject='{}'", event_id, form.subject);
 
-    if form.trajectory_session.is_some() || form.trajectory_hash.is_some() {
-        response.push_str("<p><strong>Trajectory:</strong> Linked ✓</p>");
+                    // Redirect to PRs list
+                    HttpResponse::SeeOther()
+                        .insert_header(("Location", format!("/repo/{}/pulls", identifier)))
+                        .finish()
+                }
+                Err(e) => {
+                    tracing::error!("Failed to publish pull request: {}", e);
+                    HttpResponse::InternalServerError()
+                        .content_type("text/html; charset=utf-8")
+                        .body(format!(
+                            r#"<div style="padding: 1rem; background: #fee2e2; border-left: 4px solid #dc2626;">
+                                <h3>Failed to Publish Pull Request</h3>
+                                <p>Error: {}</p>
+                                <p><a href="/repo/{}/pulls/new">← Try Again</a></p>
+                            </div>"#,
+                            e,
+                            identifier
+                        ))
+                }
+            }
+        }
+        Err(e) => {
+            tracing::error!("Failed to sign pull request event: {}", e);
+            HttpResponse::InternalServerError()
+                .content_type("text/html; charset=utf-8")
+                .body(format!(
+                    r#"<div style="padding: 1rem; background: #fee2e2; border-left: 4px solid #dc2626;">
+                        <h3>Failed to Sign Pull Request Event</h3>
+                        <p>Error: {}</p>
+                        <p><a href="/repo/{}/pulls/new">← Try Again</a></p>
+                    </div>"#,
+                    e,
+                    identifier
+                ))
+        }
     }
-
-    if form.depends_on.is_some() || form.stack_id.is_some() {
-        response.push_str("<p><strong>Stacked Diff:</strong> Configured ✓</p>");
-    }
-
-    response.push_str(&format!(
-        "<p style=\"margin-top: 2rem;\">\
-         <a href=\"/repo/{}/pulls\" style=\"color: #4ade80;\">← Back to pull requests</a>\
-         </p>\
-         </div>",
-        identifier
-    ));
-
-    HttpResponse::Ok()
-        .content_type("text/html; charset=utf-8")
-        .body(response)
 }
 
 /// Form data for PR creation
@@ -1316,48 +1562,52 @@ async fn patch_create(
 
     let event_template = builder.build();
 
-    // TODO: Sign the event template with user's identity
-    // TODO: Publish to relays
-    // TODO: Cache locally for immediate display
-    // For now, log what would be published
-    tracing::info!(
-        "Would publish patch event: kind={}, title='{}', patch_size={} bytes, repo={}",
-        event_template.kind,
-        form.title,
-        form.patch_content.len(),
-        repo_address
-    );
-    tracing::debug!("Event template content length: {} bytes", event_template.content.len());
+    // Sign and publish event
+    match state.sign_event(event_template) {
+        Ok(signed_event) => {
+            let event_id = signed_event.id.clone();
 
-    // Return success message with event details
-    let response = format!(
-        "<div style=\"padding: 2rem; max-width: 600px; margin: 0 auto;\">\
-         <h1 style=\"color: #4ade80;\">✅ Patch Event Created</h1>\
-         <p style=\"color: #888;\">Event built successfully. Publishing requires identity/wallet integration.</p>\
-         <div style=\"background: #1a1a1a; padding: 1rem; margin: 1rem 0; border-left: 3px solid #4ade80;\">\
-         <p><strong>Kind:</strong> {}</p>\
-         <p><strong>Title:</strong> {}</p>\
-         <p><strong>Repository:</strong> {}</p>\
-         <p><strong>Patch Size:</strong> {} bytes</p>\
-         <p><strong>Tags:</strong> {} tags</p>\
-         <p><strong>Has Description:</strong> {}</p>\
-         </div>\
-         <p style=\"margin-top: 2rem;\">\
-         <a href=\"/repo/{}/patches\" style=\"color: #4ade80;\">← Back to patches</a>\
-         </p>\
-         </div>",
-        event_template.kind,
-        form.title,
-        repo_address,
-        form.patch_content.len(),
-        event_template.tags.len(),
-        if form.description.is_some() { "Yes ✓" } else { "No" },
-        identifier
-    );
+            // Publish to relays
+            match state.nostr_client.publish_event(signed_event).await {
+                Ok(_) => {
+                    tracing::info!("Published patch: event_id={}, title='{}'", event_id, form.title);
 
-    HttpResponse::Ok()
-        .content_type("text/html; charset=utf-8")
-        .body(response)
+                    // Redirect to patches list
+                    HttpResponse::SeeOther()
+                        .insert_header(("Location", format!("/repo/{}/patches", identifier)))
+                        .finish()
+                }
+                Err(e) => {
+                    tracing::error!("Failed to publish patch: {}", e);
+                    HttpResponse::InternalServerError()
+                        .content_type("text/html; charset=utf-8")
+                        .body(format!(
+                            r#"<div style="padding: 1rem; background: #fee2e2; border-left: 4px solid #dc2626;">
+                                <h3>Failed to Publish Patch</h3>
+                                <p>Error: {}</p>
+                                <p><a href="/repo/{}/patches/new">← Try Again</a></p>
+                            </div>"#,
+                            e,
+                            identifier
+                        ))
+                }
+            }
+        }
+        Err(e) => {
+            tracing::error!("Failed to sign patch event: {}", e);
+            HttpResponse::InternalServerError()
+                .content_type("text/html; charset=utf-8")
+                .body(format!(
+                    r#"<div style="padding: 1rem; background: #fee2e2; border-left: 4px solid #dc2626;">
+                        <h3>Failed to Sign Patch Event</h3>
+                        <p>Error: {}</p>
+                        <p><a href="/repo/{}/patches/new">← Try Again</a></p>
+                    </div>"#,
+                    e,
+                    identifier
+                ))
+        }
+    }
 }
 
 /// Form data for patch creation
@@ -1401,7 +1651,7 @@ struct RepositoryCreateForm {
 
 /// Repository creation handler
 async fn repository_create(
-    _state: web::Data<AppState>,
+    state: web::Data<AppState>,
     form: web::Form<RepositoryCreateForm>,
 ) -> HttpResponse {
     // Parse maintainers (one npub per line)
@@ -1467,38 +1717,48 @@ async fn repository_create(
     );
     tracing::debug!("Event template tags: {:?}", event_template.tags);
 
-    // TODO: Sign with identity (requires wallet integration)
-    // TODO: Publish to relays
-    // TODO: Cache locally
-    // TODO: Redirect to /repo/{identifier}
+    // Sign and publish event
+    match state.sign_event(event_template) {
+        Ok(signed_event) => {
+            let event_id = signed_event.id.clone();
 
-    HttpResponse::Ok()
-        .content_type("text/html; charset=utf-8")
-        .body(format!(
-            r#"<div class="success-message" style="padding: 1rem; background: #d1fae5; border-left: 4px solid #10b981;">
-                <h3>Repository Event Template Created Successfully</h3>
-                <p><strong>Identifier:</strong> <code>{}</code></p>
-                <p><strong>Name:</strong> {}</p>
-                <p><strong>Event Kind:</strong> 30617 (Repository Announcement)</p>
-                <p><strong>Tags:</strong> {} tags generated</p>
-                <p><strong>Clone URLs:</strong> {}</p>
-                {}
-                <div style="margin-top: 1rem; padding: 12px; background: #fef3c7; border-left: 4px solid #f59e0b;">
-                    <p style="margin: 0; font-size: 0.875rem;">
-                        ⚠️ <strong>Note:</strong> Event signing and publishing requires identity integration (issue #342).
-                        The event template has been created but not published to relays.
-                    </p>
-                </div>
-                <p style="margin-top: 1rem;"><a href="/">← Back to Repositories</a></p>
-            </div>"#,
-            form.identifier,
-            form.name,
-            event_template.tags.len(),
-            if form.clone_url_https.is_some() { "Git + HTTPS" } else { "Git" },
-            if !maintainers.is_empty() {
-                format!("<p><strong>Maintainers:</strong> {} additional maintainers</p>", maintainers.len())
-            } else {
-                String::new()
+            // Publish to relays
+            match state.nostr_client.publish_event(signed_event).await {
+                Ok(_) => {
+                    tracing::info!("Published repository announcement: event_id={}", event_id);
+
+                    // Redirect to repository detail page
+                    HttpResponse::SeeOther()
+                        .insert_header(("Location", format!("/repo/{}", form.identifier)))
+                        .finish()
+                }
+                Err(e) => {
+                    tracing::error!("Failed to publish repository event: {}", e);
+                    HttpResponse::InternalServerError()
+                        .content_type("text/html; charset=utf-8")
+                        .body(format!(
+                            r#"<div style="padding: 1rem; background: #fee2e2; border-left: 4px solid #dc2626;">
+                                <h3>Failed to Publish Repository</h3>
+                                <p>Error: {}</p>
+                                <p><a href="/repo/new">← Try Again</a></p>
+                            </div>"#,
+                            e
+                        ))
+                }
             }
-        ))
+        }
+        Err(e) => {
+            tracing::error!("Failed to sign repository event: {}", e);
+            HttpResponse::InternalServerError()
+                .content_type("text/html; charset=utf-8")
+                .body(format!(
+                    r#"<div style="padding: 1rem; background: #fee2e2; border-left: 4px solid #dc2626;">
+                        <h3>Failed to Sign Repository Event</h3>
+                        <p>Error: {}</p>
+                        <p><a href="/repo/new">← Try Again</a></p>
+                    </div>"#,
+                    e
+                ))
+        }
+    }
 }
