@@ -1,4 +1,22 @@
 //! Trajectory quality validation
+//!
+//! Comprehensive quality scoring system for trajectory contributions with:
+//!
+//! - **Completeness scoring** (40% weight): Git commit correlation (initial → final)
+//! - **Complexity scoring** (30% weight): Token count and tool call metrics
+//! - **Reward signal scoring** (30% weight): CI/CD results as ground truth
+//!
+//! Quality scores range from 0.0 (unusable) to 1.0 (perfect). The validation
+//! pipeline enforces minimum quality thresholds to ensure only valuable
+//! trajectories are accepted into the marketplace.
+//!
+//! # Integration Points
+//!
+//! - Git commits extracted by `collect::extract_git_commits()`
+//! - CI/CD signals detected by `collect::detect_ci_results()`
+//! - Token counts and tool calls tracked during collection
+//! - Enforced in `contribute::submit()` before submission
+//! - Used by `RewardCalculator` for payment calculation
 
 use super::TrajectorySession;
 use serde::{Deserialize, Serialize};
