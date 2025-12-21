@@ -46,7 +46,10 @@ pub mod rewards;
 pub use collect::{TrajectoryCollector, TrajectorySource, ScanResult};
 pub use redact::{RedactionEngine, RedactionLevel, RedactionResult};
 pub use anonymize::{Anonymizer, AnonymizationResult};
-pub use contribute::{ContributionClient, ContributionRequest, ContributionStatus};
+pub use contribute::{
+    ContributionClient, ContributionConfig, ContributionRequest, ContributionStatus,
+    ContributionRecord, ContributionEarning,
+};
 pub use validate::{QualityScore, ValidationResult};
 pub use rewards::{RewardCalculator, RewardInfo};
 

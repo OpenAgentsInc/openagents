@@ -47,6 +47,7 @@ regex = "1"
 walkdir = "2.5"
 toml.workspace = true
 nostr-client = { version = "0.1.0", path = "../nostr/client" }
+sha2.workspace = true
 
 [[bin]]
 name = "marketplace"
@@ -57,3 +58,4 @@ name = "marketplace"
 path = "src/lib.rs"
 
 [dev-dependencies]
+tempfile.workspace = true
