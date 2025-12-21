@@ -173,6 +173,46 @@ impl TrajectorySessionContent {
         self
     }
 
+    /// Calculate hash from trajectory events
+    pub fn calculate_hash(event_jsons: &[String]) -> Result<String, TrajectoryError> {
+        use sha2::{Digest, Sha256};
+
+        if event_jsons.is_empty() {
+            return Err(TrajectoryError::InvalidHash(
+                "cannot calculate hash from empty event list".to_string(),
+            ));
+        }
+
+        // Concatenate all event JSONs
+        let concatenated = event_jsons.join("");
+
+        // Calculate SHA-256
+        let mut hasher = Sha256::new();
+        hasher.update(concatenated.as_bytes());
+        let result = hasher.finalize();
+
+        Ok(hex::encode(result))
+    }
+
+    /// Verify trajectory hash
+    pub fn verify_hash(&self, event_jsons: &[String]) -> Result<(), TrajectoryError> {
+        let expected_hash = self
+            .trajectory_hash
+            .as_ref()
+            .ok_or_else(|| TrajectoryError::InvalidHash("no hash to verify".to_string()))?;
+
+        let calculated_hash = Self::calculate_hash(event_jsons)?;
+
+        if &calculated_hash != expected_hash {
+            return Err(TrajectoryError::InvalidHash(format!(
+                "hash mismatch: expected {} but got {}",
+                expected_hash, calculated_hash
+            )));
+        }
+
+        Ok(())
+    }
+
     /// Serialize to JSON string
     pub fn to_json(&self) -> Result<String, TrajectoryError> {
         serde_json::to_string(self).map_err(|e| TrajectoryError::Serialization(e.to_string()))
@@ -467,5 +507,129 @@ mod tests {
         let private = TrajectoryVisibility::Private;
         let json = serde_json::to_string(&private).unwrap();
         assert_eq!(json, "\"private\"");
+    }
+
+    #[test]
+    fn test_calculate_hash_from_events() {
+        let event1 = r#"{"type":"ToolUse","tool":"Read"}"#;
+        let event2 = r#"{"type":"ToolResult","success":true}"#;
+        let events = vec![event1.to_string(), event2.to_string()];
+
+        let hash = TrajectorySessionContent::calculate_hash(&events).unwrap();
+
+        // Hash should be 64 hex characters (SHA-256)
+        assert_eq!(hash.len(), 64);
+        assert!(hash.chars().all(|c| c.is_ascii_hexdigit()));
+    }
+
+    #[test]
+    fn test_calculate_hash_empty_events() {
+        let events: Vec<String> = vec![];
+        let result = TrajectorySessionContent::calculate_hash(&events);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_calculate_hash_deterministic() {
+        let event1 = r#"{"type":"ToolUse","tool":"Read"}"#;
+        let event2 = r#"{"type":"ToolResult","success":true}"#;
+        let events = vec![event1.to_string(), event2.to_string()];
+
+        let hash1 = TrajectorySessionContent::calculate_hash(&events).unwrap();
+        let hash2 = TrajectorySessionContent::calculate_hash(&events).unwrap();
+
+        assert_eq!(hash1, hash2);
+    }
+
+    #[test]
+    fn test_calculate_hash_different_events() {
+        let events1 = vec![r#"{"type":"ToolUse"}"#.to_string()];
+        let events2 = vec![r#"{"type":"ToolResult"}"#.to_string()];
+
+        let hash1 = TrajectorySessionContent::calculate_hash(&events1).unwrap();
+        let hash2 = TrajectorySessionContent::calculate_hash(&events2).unwrap();
+
+        assert_ne!(hash1, hash2);
+    }
+
+    #[test]
+    fn test_verify_hash_success() {
+        let event1 = r#"{"type":"ToolUse","tool":"Read"}"#;
+        let event2 = r#"{"type":"ToolResult","success":true}"#;
+        let events = vec![event1.to_string(), event2.to_string()];
+
+        let hash = TrajectorySessionContent::calculate_hash(&events).unwrap();
+
+        let content = TrajectorySessionContent::new("session-123", 1703000000, "claude-sonnet-4.5")
+            .with_hash(&hash);
+
+        assert!(content.verify_hash(&events).is_ok());
+    }
+
+    #[test]
+    fn test_verify_hash_mismatch() {
+        let event1 = r#"{"type":"ToolUse","tool":"Read"}"#;
+        let events = vec![event1.to_string()];
+
+        let wrong_hash = "0".repeat(64);
+
+        let content = TrajectorySessionContent::new("session-123", 1703000000, "claude-sonnet-4.5")
+            .with_hash(wrong_hash);
+
+        assert!(content.verify_hash(&events).is_err());
+    }
+
+    #[test]
+    fn test_verify_hash_no_hash() {
+        let events = vec![r#"{"type":"ToolUse"}"#.to_string()];
+
+        let content = TrajectorySessionContent::new("session-123", 1703000000, "claude-sonnet-4.5");
+
+        let result = content.verify_hash(&events);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_hash_with_different_event_order() {
+        let event1 = r#"{"type":"ToolUse"}"#;
+        let event2 = r#"{"type":"ToolResult"}"#;
+
+        let events1 = vec![event1.to_string(), event2.to_string()];
+        let events2 = vec![event2.to_string(), event1.to_string()];
+
+        let hash1 = TrajectorySessionContent::calculate_hash(&events1).unwrap();
+        let hash2 = TrajectorySessionContent::calculate_hash(&events2).unwrap();
+
+        // Different order should produce different hash
+        assert_ne!(hash1, hash2);
+    }
+
+    #[test]
+    fn test_full_trajectory_with_hash() {
+        // Create some trajectory events
+        let event1 = TrajectoryEventContent::new(StepType::ToolUse)
+            .with_data("tool", serde_json::json!("Read"));
+        let event2 = TrajectoryEventContent::new(StepType::ToolResult)
+            .with_data("success", serde_json::json!(true));
+
+        let event1_json = event1.to_json().unwrap();
+        let event2_json = event2.to_json().unwrap();
+        let events = vec![event1_json, event2_json];
+
+        // Calculate hash from events
+        let hash = TrajectorySessionContent::calculate_hash(&events).unwrap();
+
+        // Create session with hash
+        let content = TrajectorySessionContent::new("session-123", 1703000000, "claude-sonnet-4.5")
+            .with_end_time(1703001000)
+            .with_total_events(2)
+            .with_hash(&hash);
+
+        // Verify hash matches
+        assert!(content.verify_hash(&events).is_ok());
+
+        // Verify session metadata
+        assert_eq!(content.total_events, 2);
+        assert_eq!(content.trajectory_hash, Some(hash));
     }
 }
