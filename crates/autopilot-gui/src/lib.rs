@@ -8,7 +8,9 @@
 //! - Context inspection
 //! - Multi-agent orchestration
 
+pub mod agent;
 pub mod server;
+pub mod storage;
 pub mod views;
 pub mod window;
 
