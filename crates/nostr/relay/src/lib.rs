@@ -36,7 +36,9 @@
 mod db;
 mod server;
 mod error;
+mod subscription;
 
 pub use db::{Database, DatabaseConfig, ConnectionPool};
 pub use server::{RelayServer, RelayConfig};
 pub use error::{RelayError, Result};
+pub use subscription::{Filter, Subscription, SubscriptionManager};
