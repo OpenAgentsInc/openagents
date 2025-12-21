@@ -1962,6 +1962,7 @@ dependencies = [
  "frost-core",
  "frost-secp256k1",
  "nostr",
+ "nostr-client",
  "rand 0.8.5",
  "secp256k1",
  "serde",
