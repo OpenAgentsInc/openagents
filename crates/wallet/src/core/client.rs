@@ -53,10 +53,19 @@ impl NostrClient {
 
     /// Fetch profile from relays
     #[allow(dead_code)]
-    pub async fn fetch_profile(&self, _pubkey: &str) -> Result<Option<Event>> {
-        // TODO: Implement profile fetching with filters
-        // This will require subscribing to kind:0 events for the pubkey
-        Ok(None)
+    pub async fn fetch_profile(&self, pubkey: &str) -> Result<Option<Event>> {
+        // Create filter for kind:0 (metadata) events
+        let filter = serde_json::json!({
+            "kinds": [0],
+            "authors": [pubkey],
+            "limit": 1
+        });
+
+        // Fetch events with filter
+        let mut events = self.fetch_events(vec![filter]).await?;
+
+        // Return the most recent profile event
+        Ok(events.pop())
     }
 
     /// Fetch events from relays with custom filters
