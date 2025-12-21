@@ -331,6 +331,158 @@ impl BountyClaimBuilder {
     }
 }
 
+/// Builder for creating pull request events (kind:1618)
+///
+/// Pull request events represent code contributions with optional trajectory
+/// tracking and stacked diffs support.
+#[allow(dead_code)]
+pub struct PullRequestBuilder {
+    repo_address: String,
+    subject: String,
+    content: String,
+    commit_id: Option<String>,
+    clone_url: Option<String>,
+    trajectory_session_id: Option<String>,
+    trajectory_hash: Option<String>,
+    // Stacked diffs support
+    depends_on: Option<String>,
+    stack_id: Option<String>,
+    layer_position: Option<(u32, u32)>,  // (current, total)
+}
+
+#[allow(dead_code)]
+impl PullRequestBuilder {
+    /// Create a new pull request builder
+    ///
+    /// # Arguments
+    /// * `repo_address` - The repository address tag (e.g., "30617:<pubkey>:<repo-id>")
+    /// * `subject` - The PR title/subject
+    /// * `content` - The PR description
+    pub fn new(
+        repo_address: impl Into<String>,
+        subject: impl Into<String>,
+        content: impl Into<String>,
+    ) -> Self {
+        Self {
+            repo_address: repo_address.into(),
+            subject: subject.into(),
+            content: content.into(),
+            commit_id: None,
+            clone_url: None,
+            trajectory_session_id: None,
+            trajectory_hash: None,
+            depends_on: None,
+            stack_id: None,
+            layer_position: None,
+        }
+    }
+
+    /// Set the commit ID for this PR
+    pub fn commit(mut self, commit_id: impl Into<String>) -> Self {
+        self.commit_id = Some(commit_id.into());
+        self
+    }
+
+    /// Set the clone URL for fetching this PR
+    pub fn clone_url(mut self, url: impl Into<String>) -> Self {
+        self.clone_url = Some(url.into());
+        self
+    }
+
+    /// Set the trajectory session ID that tracks the work
+    pub fn trajectory(mut self, session_id: impl Into<String>) -> Self {
+        self.trajectory_session_id = Some(session_id.into());
+        self
+    }
+
+    /// Set the trajectory hash for verification
+    pub fn trajectory_hash(mut self, hash: impl Into<String>) -> Self {
+        self.trajectory_hash = Some(hash.into());
+        self
+    }
+
+    /// Set the dependency on another PR (for stacked diffs)
+    ///
+    /// # Arguments
+    /// * `pr_event_id` - The event ID of the PR this one depends on
+    pub fn depends_on(mut self, pr_event_id: impl Into<String>) -> Self {
+        self.depends_on = Some(pr_event_id.into());
+        self
+    }
+
+    /// Set the stack ID to group related PRs (for stacked diffs)
+    ///
+    /// # Arguments
+    /// * `stack_id` - A UUID or identifier grouping PRs in this stack
+    pub fn stack(mut self, stack_id: impl Into<String>) -> Self {
+        self.stack_id = Some(stack_id.into());
+        self
+    }
+
+    /// Set the layer position in the stack (for stacked diffs)
+    ///
+    /// # Arguments
+    /// * `current` - The current layer number (1-indexed)
+    /// * `total` - The total number of layers in the stack
+    pub fn layer(mut self, current: u32, total: u32) -> Self {
+        self.layer_position = Some((current, total));
+        self
+    }
+
+    /// Build the event template
+    pub fn build(self) -> EventTemplate {
+        let mut tags = vec![
+            // Repository reference
+            vec!["a".to_string(), self.repo_address],
+            // Subject/title
+            vec!["subject".to_string(), self.subject],
+        ];
+
+        // Add optional commit ID
+        if let Some(commit) = self.commit_id {
+            tags.push(vec!["c".to_string(), commit]);
+        }
+
+        // Add optional clone URL
+        if let Some(url) = self.clone_url {
+            tags.push(vec!["clone".to_string(), url]);
+        }
+
+        // Add optional trajectory
+        if let Some(session_id) = self.trajectory_session_id {
+            tags.push(vec!["trajectory".to_string(), session_id]);
+        }
+
+        // Add optional trajectory hash
+        if let Some(hash) = self.trajectory_hash {
+            tags.push(vec!["trajectory_hash".to_string(), hash]);
+        }
+
+        // Stacked diffs tags
+        if let Some(dep_id) = self.depends_on {
+            tags.push(vec!["depends_on".to_string(), dep_id]);
+        }
+
+        if let Some(stack) = self.stack_id {
+            tags.push(vec!["stack".to_string(), stack]);
+        }
+
+        if let Some((current, total)) = self.layer_position {
+            tags.push(vec!["layer".to_string(), current.to_string(), total.to_string()]);
+        }
+
+        EventTemplate {
+            created_at: SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_secs(),
+            kind: 1618, // Pull Request
+            tags,
+            content: self.content,
+        }
+    }
+}
+
 /// Builder for creating status events (kinds 1630-1633)
 ///
 /// Status events are used to mark PRs/patches as:
@@ -487,5 +639,46 @@ mod tests {
         assert_eq!(template.kind, 1637);
         assert!(template.tags.iter().any(|t| t[0] == "trajectory_hash" && t[1] == "hash_def"));
         assert!(template.tags.iter().any(|t| t[0] == "lud16" && t[1] == "agent@getalby.com"));
+    }
+
+    #[test]
+    fn test_pull_request_builder() {
+        let template = PullRequestBuilder::new(
+            "30617:pubkey123:repo456",
+            "Fix authentication bug",
+            "This PR fixes the auth bug by...",
+        )
+        .commit("abc123def456")
+        .clone_url("https://github.com/user/repo.git")
+        .trajectory("session_xyz")
+        .trajectory_hash("hash_abc")
+        .build();
+
+        assert_eq!(template.kind, 1618);
+        assert!(template.tags.iter().any(|t| t[0] == "a" && t[1] == "30617:pubkey123:repo456"));
+        assert!(template.tags.iter().any(|t| t[0] == "subject" && t[1] == "Fix authentication bug"));
+        assert!(template.tags.iter().any(|t| t[0] == "c" && t[1] == "abc123def456"));
+        assert!(template.tags.iter().any(|t| t[0] == "clone" && t[1] == "https://github.com/user/repo.git"));
+        assert!(template.tags.iter().any(|t| t[0] == "trajectory" && t[1] == "session_xyz"));
+        assert!(template.tags.iter().any(|t| t[0] == "trajectory_hash" && t[1] == "hash_abc"));
+    }
+
+    #[test]
+    fn test_pull_request_builder_stacked() {
+        let template = PullRequestBuilder::new(
+            "30617:pubkey123:repo456",
+            "Layer 2: Wire service into auth flow",
+            "This layer wires the FooService...",
+        )
+        .commit("def456ghi789")
+        .depends_on("pr_layer_1_event_id")
+        .stack("stack_uuid_123")
+        .layer(2, 4)
+        .build();
+
+        assert_eq!(template.kind, 1618);
+        assert!(template.tags.iter().any(|t| t[0] == "depends_on" && t[1] == "pr_layer_1_event_id"));
+        assert!(template.tags.iter().any(|t| t[0] == "stack" && t[1] == "stack_uuid_123"));
+        assert!(template.tags.iter().any(|t| t.len() == 3 && t[0] == "layer" && t[1] == "2" && t[2] == "4"));
     }
 }

@@ -1103,6 +1103,96 @@ impl EventCache {
         info!("Cache cleared");
         Ok(())
     }
+
+    /// Get all pull requests in a stack by stack ID
+    ///
+    /// Returns PRs ordered by layer position (layer 1, 2, 3, etc.)
+    #[allow(dead_code)]
+    pub fn get_pull_requests_by_stack(&self, stack_id: &str) -> Result<Vec<Event>> {
+        // First get all PR events with the stack tag
+        let mut stmt = self.conn.prepare(
+            "SELECT id, kind, pubkey, created_at, content, tags, sig
+             FROM events
+             WHERE kind = 1618
+             ORDER BY created_at ASC",
+        )?;
+
+        let events = stmt
+            .query_map([], |row| {
+                let tags_json: String = row.get(5)?;
+                let tags: Vec<Vec<String>> = serde_json::from_str(&tags_json)
+                    .map_err(|e| rusqlite::Error::FromSqlConversionFailure(
+                        5,
+                        rusqlite::types::Type::Text,
+                        Box::new(e),
+                    ))?;
+
+                Ok(Event {
+                    id: row.get(0)?,
+                    kind: row.get(1)?,
+                    pubkey: row.get(2)?,
+                    created_at: row.get(3)?,
+                    content: row.get(4)?,
+                    tags,
+                    sig: row.get(6)?,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+
+        // Filter events that have the stack tag matching stack_id
+        let mut stack_prs: Vec<Event> = events.into_iter()
+            .filter(|event| {
+                event.tags.iter().any(|tag| {
+                    tag.len() >= 2 && tag[0] == "stack" && tag[1] == stack_id
+                })
+            })
+            .collect();
+
+        // Sort by layer position (extract layer number from tags)
+        stack_prs.sort_by_key(|event| {
+            event.tags.iter()
+                .find(|tag| tag.len() >= 2 && tag[0] == "layer")
+                .and_then(|tag| tag.get(1))
+                .and_then(|s| s.parse::<u32>().ok())
+                .unwrap_or(0)
+        });
+
+        Ok(stack_prs)
+    }
+
+    /// Get the dependency PR for a given PR (via depends_on tag)
+    #[allow(dead_code)]
+    pub fn get_dependency_pr(&self, pr_event: &Event) -> Result<Option<Event>> {
+        // Find depends_on tag
+        let dep_id = pr_event.tags.iter()
+            .find(|tag| tag.len() >= 2 && tag[0] == "depends_on")
+            .and_then(|tag| tag.get(1));
+
+        if let Some(event_id) = dep_id {
+            self.get_event(event_id)
+        } else {
+            Ok(None)
+        }
+    }
+
+    /// Check if a PR's dependencies are satisfied (all dependent PRs are merged)
+    #[allow(dead_code)]
+    pub fn is_pr_mergeable(&self, pr_event: &Event) -> Result<bool> {
+        // If no depends_on tag, it's mergeable
+        let dep_id = pr_event.tags.iter()
+            .find(|tag| tag.len() >= 2 && tag[0] == "depends_on")
+            .and_then(|tag| tag.get(1));
+
+        if let Some(event_id) = dep_id {
+            // Check if dependency PR is merged (has a status event of kind 1631)
+            let status_events = self.get_status_events_for_pr(event_id)?;
+            let is_merged = status_events.iter().any(|e| e.kind == 1631);
+            Ok(is_merged)
+        } else {
+            // No dependency, mergeable
+            Ok(true)
+        }
+    }
 }
 
 /// Cache statistics

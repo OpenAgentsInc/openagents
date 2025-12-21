@@ -314,4 +314,22 @@ impl NostrClient {
     pub async fn get_watched_repositories(&self) -> Result<Vec<String>> {
         self.cache.lock().await.get_watched_repositories()
     }
+
+    /// Get all pull requests in a stack by stack ID
+    #[allow(dead_code)]
+    pub async fn get_pull_requests_by_stack(&self, stack_id: &str) -> Result<Vec<Event>> {
+        self.cache.lock().await.get_pull_requests_by_stack(stack_id)
+    }
+
+    /// Get the dependency PR for a given PR
+    #[allow(dead_code)]
+    pub async fn get_dependency_pr(&self, pr_event: &Event) -> Result<Option<Event>> {
+        self.cache.lock().await.get_dependency_pr(pr_event)
+    }
+
+    /// Check if a PR's dependencies are satisfied (mergeable)
+    #[allow(dead_code)]
+    pub async fn is_pr_mergeable(&self, pr_event: &Event) -> Result<bool> {
+        self.cache.lock().await.is_pr_mergeable(pr_event)
+    }
 }
