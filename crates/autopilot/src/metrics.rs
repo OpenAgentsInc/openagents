@@ -493,6 +493,330 @@ impl MetricsDb {
             None => PathBuf::from(":memory:"),
         }
     }
+
+    /// Get baseline for a metric dimension
+    pub fn get_baseline(&self, dimension: &str) -> Result<Option<Baseline>> {
+        let mut stmt = self.conn.prepare(
+            r#"
+            SELECT dimension, mean, stddev, p50, p90, p99, sample_count, updated_at
+            FROM baselines WHERE dimension = ?1
+            "#,
+        )?;
+
+        let result = stmt.query_row(params![dimension], |row| {
+            Ok(Baseline {
+                dimension: row.get(0)?,
+                mean: row.get(1)?,
+                stddev: row.get(2)?,
+                p50: row.get(3)?,
+                p90: row.get(4)?,
+                p99: row.get(5)?,
+                sample_count: row.get(6)?,
+                updated_at: row.get::<_, String>(7)?.parse().unwrap(),
+            })
+        });
+
+        match result {
+            Ok(baseline) => Ok(Some(baseline)),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(e.into()),
+        }
+    }
+
+    /// Calculate baseline statistics for a metric dimension from historical sessions
+    pub fn calculate_baseline(&self, dimension: &str, min_samples: usize) -> Result<Option<Baseline>> {
+        use statrs::statistics::{Data, Distribution, OrderStatistics};
+
+        // Get historical values for this dimension
+        let values: Vec<f64> = match dimension {
+            "tool_error_rate" => {
+                let mut stmt = self.conn.prepare(
+                    "SELECT tool_calls, tool_errors FROM sessions WHERE tool_calls > 0"
+                )?;
+                stmt.query_map([], |row| {
+                    let calls: i32 = row.get(0)?;
+                    let errors: i32 = row.get(1)?;
+                    Ok((errors as f64) / (calls as f64))
+                })?
+                .collect::<Result<Vec<_>, _>>()?
+            }
+            "tokens_per_issue" => {
+                let mut stmt = self.conn.prepare(
+                    "SELECT tokens_in, tokens_out, issues_completed FROM sessions WHERE issues_completed > 0"
+                )?;
+                stmt.query_map([], |row| {
+                    let tokens_in: i64 = row.get(0)?;
+                    let tokens_out: i64 = row.get(1)?;
+                    let issues: i32 = row.get(2)?;
+                    Ok(((tokens_in + tokens_out) as f64) / (issues as f64))
+                })?
+                .collect::<Result<Vec<_>, _>>()?
+            }
+            "duration_per_issue" => {
+                let mut stmt = self.conn.prepare(
+                    "SELECT duration_seconds, issues_completed FROM sessions WHERE issues_completed > 0"
+                )?;
+                stmt.query_map([], |row| {
+                    let duration: f64 = row.get(0)?;
+                    let issues: i32 = row.get(1)?;
+                    Ok(duration / (issues as f64))
+                })?
+                .collect::<Result<Vec<_>, _>>()?
+            }
+            "cost_per_issue" => {
+                let mut stmt = self.conn.prepare(
+                    "SELECT cost_usd, issues_completed FROM sessions WHERE issues_completed > 0"
+                )?;
+                stmt.query_map([], |row| {
+                    let cost: f64 = row.get(0)?;
+                    let issues: i32 = row.get(1)?;
+                    Ok(cost / (issues as f64))
+                })?
+                .collect::<Result<Vec<_>, _>>()?
+            }
+            "session_duration" => {
+                let mut stmt = self.conn.prepare("SELECT duration_seconds FROM sessions")?;
+                stmt.query_map([], |row| row.get(0))?
+                    .collect::<Result<Vec<_>, _>>()?
+            }
+            "completion_rate" => {
+                let mut stmt = self.conn.prepare(
+                    "SELECT issues_claimed, issues_completed FROM sessions WHERE issues_claimed > 0"
+                )?;
+                stmt.query_map([], |row| {
+                    let claimed: i32 = row.get(0)?;
+                    let completed: i32 = row.get(1)?;
+                    Ok((completed as f64) / (claimed as f64))
+                })?
+                .collect::<Result<Vec<_>, _>>()?
+            }
+            _ => return Ok(None),
+        };
+
+        if values.len() < min_samples {
+            return Ok(None);
+        }
+
+        let mut data = Data::new(values);
+        let mean = data.mean().unwrap_or(0.0);
+        let stddev = data.std_dev().unwrap_or(0.0);
+        let p50 = data.median();
+        let p90 = data.percentile(90);
+        let p99 = data.percentile(99);
+
+        Ok(Some(Baseline {
+            dimension: dimension.to_string(),
+            mean,
+            stddev,
+            p50,
+            p90,
+            p99,
+            sample_count: data.len() as i32,
+            updated_at: Utc::now(),
+        }))
+    }
+
+    /// Update all baselines from recent session data
+    pub fn update_baselines(&self, min_samples: usize) -> Result<Vec<String>> {
+        let dimensions = vec![
+            "tool_error_rate",
+            "tokens_per_issue",
+            "duration_per_issue",
+            "cost_per_issue",
+            "session_duration",
+            "completion_rate",
+        ];
+
+        let mut updated = Vec::new();
+
+        for dimension in dimensions {
+            if let Some(baseline) = self.calculate_baseline(dimension, min_samples)? {
+                self.store_baseline(&baseline)?;
+                updated.push(dimension.to_string());
+            }
+        }
+
+        Ok(updated)
+    }
+
+    /// Detect anomalies in session metrics by comparing against baselines
+    pub fn detect_anomalies(&self, session: &SessionMetrics) -> Result<Vec<Anomaly>> {
+        let mut anomalies = Vec::new();
+
+        // Tool error rate
+        if session.tool_calls > 0 {
+            let error_rate = (session.tool_errors as f64) / (session.tool_calls as f64);
+
+            // Rule-based thresholds
+            if error_rate > 0.20 {
+                anomalies.push(Anomaly {
+                    session_id: session.id.clone(),
+                    dimension: "tool_error_rate".to_string(),
+                    expected_value: 0.10,
+                    actual_value: error_rate,
+                    severity: AnomalySeverity::Error,
+                    investigated: false,
+                    issue_number: None,
+                });
+            } else if error_rate > 0.10 {
+                anomalies.push(Anomaly {
+                    session_id: session.id.clone(),
+                    dimension: "tool_error_rate".to_string(),
+                    expected_value: 0.05,
+                    actual_value: error_rate,
+                    severity: AnomalySeverity::Warning,
+                    investigated: false,
+                    issue_number: None,
+                });
+            }
+
+            // Baseline comparison (if available)
+            if let Some(baseline) = self.get_baseline("tool_error_rate")? {
+                if baseline.stddev > 0.0 {
+                    let z_score = (error_rate - baseline.mean).abs() / baseline.stddev;
+                    if z_score > 3.0 {
+                        anomalies.push(Anomaly {
+                            session_id: session.id.clone(),
+                            dimension: "tool_error_rate_zscore".to_string(),
+                            expected_value: baseline.mean,
+                            actual_value: error_rate,
+                            severity: AnomalySeverity::Critical,
+                            investigated: false,
+                            issue_number: None,
+                        });
+                    } else if z_score > 2.0 {
+                        anomalies.push(Anomaly {
+                            session_id: session.id.clone(),
+                            dimension: "tool_error_rate_zscore".to_string(),
+                            expected_value: baseline.mean,
+                            actual_value: error_rate,
+                            severity: AnomalySeverity::Warning,
+                            investigated: false,
+                            issue_number: None,
+                        });
+                    }
+                }
+            }
+        }
+
+        // Tokens per issue
+        if session.issues_completed > 0 {
+            let total_tokens = session.tokens_in + session.tokens_out;
+            let tokens_per_issue = (total_tokens as f64) / (session.issues_completed as f64);
+
+            if let Some(baseline) = self.get_baseline("tokens_per_issue")? {
+                if baseline.stddev > 0.0 {
+                    let z_score = (tokens_per_issue - baseline.mean).abs() / baseline.stddev;
+                    if z_score > 3.0 {
+                        anomalies.push(Anomaly {
+                            session_id: session.id.clone(),
+                            dimension: "tokens_per_issue".to_string(),
+                            expected_value: baseline.mean,
+                            actual_value: tokens_per_issue,
+                            severity: AnomalySeverity::Critical,
+                            investigated: false,
+                            issue_number: None,
+                        });
+                    } else if z_score > 2.0 {
+                        anomalies.push(Anomaly {
+                            session_id: session.id.clone(),
+                            dimension: "tokens_per_issue".to_string(),
+                            expected_value: baseline.mean,
+                            actual_value: tokens_per_issue,
+                            severity: AnomalySeverity::Warning,
+                            investigated: false,
+                            issue_number: None,
+                        });
+                    }
+                }
+            }
+        }
+
+        // Cost per issue
+        if session.issues_completed > 0 {
+            let cost_per_issue = session.cost_usd / (session.issues_completed as f64);
+
+            if let Some(baseline) = self.get_baseline("cost_per_issue")? {
+                if baseline.stddev > 0.0 {
+                    let z_score = (cost_per_issue - baseline.mean).abs() / baseline.stddev;
+                    if z_score > 3.0 {
+                        anomalies.push(Anomaly {
+                            session_id: session.id.clone(),
+                            dimension: "cost_per_issue".to_string(),
+                            expected_value: baseline.mean,
+                            actual_value: cost_per_issue,
+                            severity: AnomalySeverity::Error,
+                            investigated: false,
+                            issue_number: None,
+                        });
+                    } else if z_score > 2.0 {
+                        anomalies.push(Anomaly {
+                            session_id: session.id.clone(),
+                            dimension: "cost_per_issue".to_string(),
+                            expected_value: baseline.mean,
+                            actual_value: cost_per_issue,
+                            severity: AnomalySeverity::Warning,
+                            investigated: false,
+                            issue_number: None,
+                        });
+                    }
+                }
+            }
+        }
+
+        // Session duration
+        if let Some(baseline) = self.get_baseline("session_duration")? {
+            if baseline.stddev > 0.0 {
+                let z_score = (session.duration_seconds - baseline.mean).abs() / baseline.stddev;
+                if z_score > 3.0 {
+                    anomalies.push(Anomaly {
+                        session_id: session.id.clone(),
+                        dimension: "session_duration".to_string(),
+                        expected_value: baseline.mean,
+                        actual_value: session.duration_seconds,
+                        severity: AnomalySeverity::Warning,
+                        investigated: false,
+                        issue_number: None,
+                    });
+                }
+            }
+        }
+
+        // Completion rate
+        if session.issues_claimed > 0 {
+            let completion_rate = (session.issues_completed as f64) / (session.issues_claimed as f64);
+
+            if let Some(baseline) = self.get_baseline("completion_rate")? {
+                if baseline.stddev > 0.0 {
+                    let z_score = (completion_rate - baseline.mean).abs() / baseline.stddev;
+                    // Low completion rate is more concerning
+                    if completion_rate < baseline.mean - 2.0 * baseline.stddev {
+                        anomalies.push(Anomaly {
+                            session_id: session.id.clone(),
+                            dimension: "completion_rate".to_string(),
+                            expected_value: baseline.mean,
+                            actual_value: completion_rate,
+                            severity: AnomalySeverity::Error,
+                            investigated: false,
+                            issue_number: None,
+                        });
+                    } else if z_score > 2.0 {
+                        anomalies.push(Anomaly {
+                            session_id: session.id.clone(),
+                            dimension: "completion_rate".to_string(),
+                            expected_value: baseline.mean,
+                            actual_value: completion_rate,
+                            severity: AnomalySeverity::Warning,
+                            investigated: false,
+                            issue_number: None,
+                        });
+                    }
+                }
+            }
+        }
+
+        Ok(anomalies)
+    }
 }
 
 /// Get default metrics database path
@@ -928,5 +1252,209 @@ mod tests {
             assert!(session.tokens_in > 0);
             assert!(!tool_calls.is_empty());
         }
+    }
+
+    #[test]
+    fn test_calculate_baseline() {
+        let db = MetricsDb::in_memory().unwrap();
+
+        // Create several sessions with varying tool error rates
+        for i in 0..10 {
+            let session = SessionMetrics {
+                id: format!("session-{}", i),
+                timestamp: Utc::now(),
+                model: "sonnet".to_string(),
+                prompt: "Test".to_string(),
+                duration_seconds: 100.0 + i as f64 * 10.0,
+                tokens_in: 1000,
+                tokens_out: 500,
+                tokens_cached: 0,
+                cost_usd: 0.05,
+                issues_claimed: 1,
+                issues_completed: 1,
+                tool_calls: 100,
+                tool_errors: i, // 0% to 9% error rate
+                final_status: SessionStatus::Completed,
+            };
+            db.store_session(&session).unwrap();
+        }
+
+        // Calculate baseline with min 5 samples
+        let baseline = db.calculate_baseline("tool_error_rate", 5).unwrap();
+        assert!(baseline.is_some());
+
+        let baseline = baseline.unwrap();
+        assert_eq!(baseline.dimension, "tool_error_rate");
+        assert!(baseline.mean > 0.0);
+        assert!(baseline.stddev > 0.0);
+        assert_eq!(baseline.sample_count, 10);
+    }
+
+    #[test]
+    fn test_update_baselines() {
+        let db = MetricsDb::in_memory().unwrap();
+
+        // Create sessions with completed issues
+        for i in 0..10 {
+            let session = SessionMetrics {
+                id: format!("session-{}", i),
+                timestamp: Utc::now(),
+                model: "sonnet".to_string(),
+                prompt: "Test".to_string(),
+                duration_seconds: 100.0 + i as f64 * 10.0,
+                tokens_in: 1000 * (i + 1) as i64,
+                tokens_out: 500 * (i + 1) as i64,
+                tokens_cached: 0,
+                cost_usd: 0.05 * (i + 1) as f64,
+                issues_claimed: 2,
+                issues_completed: 1,
+                tool_calls: 100,
+                tool_errors: i,
+                final_status: SessionStatus::Completed,
+            };
+            db.store_session(&session).unwrap();
+        }
+
+        // Update baselines with min 5 samples
+        let updated = db.update_baselines(5).unwrap();
+        assert!(updated.len() > 0);
+
+        // Verify baselines were stored
+        let baseline = db.get_baseline("tool_error_rate").unwrap();
+        assert!(baseline.is_some());
+    }
+
+    #[test]
+    fn test_detect_anomalies_rule_based() {
+        let db = MetricsDb::in_memory().unwrap();
+
+        // Session with high error rate (should trigger warning)
+        let session_warning = SessionMetrics {
+            id: "session-warning".to_string(),
+            timestamp: Utc::now(),
+            model: "sonnet".to_string(),
+            prompt: "Test".to_string(),
+            duration_seconds: 100.0,
+            tokens_in: 1000,
+            tokens_out: 500,
+            tokens_cached: 0,
+            cost_usd: 0.05,
+            issues_claimed: 1,
+            issues_completed: 1,
+            tool_calls: 100,
+            tool_errors: 15, // 15% error rate - should trigger warning
+            final_status: SessionStatus::Completed,
+        };
+
+        let anomalies = db.detect_anomalies(&session_warning).unwrap();
+        assert!(anomalies.len() > 0);
+        assert!(anomalies.iter().any(|a| a.dimension == "tool_error_rate"));
+
+        // Session with very high error rate (should trigger error)
+        let session_error = SessionMetrics {
+            id: "session-error".to_string(),
+            timestamp: Utc::now(),
+            model: "sonnet".to_string(),
+            prompt: "Test".to_string(),
+            duration_seconds: 100.0,
+            tokens_in: 1000,
+            tokens_out: 500,
+            tokens_cached: 0,
+            cost_usd: 0.05,
+            issues_claimed: 1,
+            issues_completed: 1,
+            tool_calls: 100,
+            tool_errors: 25, // 25% error rate - should trigger error
+            final_status: SessionStatus::Completed,
+        };
+
+        let anomalies = db.detect_anomalies(&session_error).unwrap();
+        assert!(anomalies.len() > 0);
+        let error_anomaly = anomalies
+            .iter()
+            .find(|a| a.dimension == "tool_error_rate")
+            .unwrap();
+        assert_eq!(error_anomaly.severity, AnomalySeverity::Error);
+    }
+
+    #[test]
+    fn test_detect_anomalies_with_baseline() {
+        let db = MetricsDb::in_memory().unwrap();
+
+        // Create baseline sessions with varying token usage
+        for i in 0..20 {
+            let session = SessionMetrics {
+                id: format!("baseline-{}", i),
+                timestamp: Utc::now(),
+                model: "sonnet".to_string(),
+                prompt: "Test".to_string(),
+                duration_seconds: 100.0,
+                tokens_in: 10000 + (i * 100) as i64, // Add variance: 10000-11900
+                tokens_out: 5000 + (i * 50) as i64,  // Add variance: 5000-5950
+                tokens_cached: 0,
+                cost_usd: 0.05,
+                issues_claimed: 1,
+                issues_completed: 1,
+                tool_calls: 100,
+                tool_errors: 2, // Consistent 2% error rate
+                final_status: SessionStatus::Completed,
+            };
+            db.store_session(&session).unwrap();
+        }
+
+        // Update baselines
+        db.update_baselines(10).unwrap();
+
+        // Now test with an anomalous session (much higher tokens per issue)
+        let anomalous_session = SessionMetrics {
+            id: "anomalous".to_string(),
+            timestamp: Utc::now(),
+            model: "sonnet".to_string(),
+            prompt: "Test".to_string(),
+            duration_seconds: 100.0,
+            tokens_in: 100000, // Much more tokens than baseline
+            tokens_out: 50000,
+            tokens_cached: 0,
+            cost_usd: 0.50,
+            issues_claimed: 1,
+            issues_completed: 1,
+            tool_calls: 100,
+            tool_errors: 2,
+            final_status: SessionStatus::Completed,
+        };
+
+        let anomalies = db.detect_anomalies(&anomalous_session).unwrap();
+        assert!(anomalies.len() > 0);
+
+        // Should detect anomaly in tokens_per_issue
+        let tokens_anomaly = anomalies
+            .iter()
+            .find(|a| a.dimension == "tokens_per_issue");
+        assert!(tokens_anomaly.is_some());
+    }
+
+    #[test]
+    fn test_store_and_retrieve_baseline() {
+        let db = MetricsDb::in_memory().unwrap();
+
+        let baseline = Baseline {
+            dimension: "test_metric".to_string(),
+            mean: 100.0,
+            stddev: 10.0,
+            p50: 95.0,
+            p90: 120.0,
+            p99: 150.0,
+            sample_count: 100,
+            updated_at: Utc::now(),
+        };
+
+        db.store_baseline(&baseline).unwrap();
+
+        let retrieved = db.get_baseline("test_metric").unwrap();
+        assert!(retrieved.is_some());
+        let retrieved = retrieved.unwrap();
+        assert_eq!(retrieved.dimension, "test_metric");
+        assert_eq!(retrieved.mean, 100.0);
+        assert_eq!(retrieved.sample_count, 100);
     }
 }
