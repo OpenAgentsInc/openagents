@@ -26,6 +26,7 @@
 //! - NIP-27: Text Note References
 //! - NIP-28: Public Chat (channels, messages, moderation)
 //! - NIP-29: Relay-based Groups (group chat with member management)
+//! - NIP-30: Custom Emoji (emoji tags with shortcodes and image URLs)
 //! - NIP-31: Alt Tag for Unknown Events (graceful degradation)
 //! - NIP-32: Labeling (content moderation and categorization)
 //! - NIP-33: Parameterized Replaceable Events (deprecated, moved to NIP-01)
@@ -97,6 +98,7 @@ mod nip26;
 mod nip27;
 mod nip28;
 mod nip29;
+mod nip30;
 mod nip31;
 mod nip32;
 mod nip33;
@@ -287,6 +289,13 @@ pub use nip29::{
     KIND_MOD_REMOVE_USER, LeaveRequest, ModerationAction, Nip29Error, PREVIOUS_TAG, Role,
     format_group_identifier, is_group_kind, is_group_metadata_kind, is_group_moderation_kind,
     parse_group_identifier, validate_group_id,
+};
+
+// NIP-30: Custom Emoji
+pub use nip30::{
+    CustomEmoji, EMOJI_TAG, Nip30Error, add_emoji_tag, contains_shortcodes, emojify,
+    emojify_with, extract_shortcodes, get_emoji, get_emoji_tags, has_emoji,
+    remove_all_emoji_tags, remove_emoji_tag, validate_shortcode,
 };
 
 // NIP-31: Alt Tag for Unknown Events
