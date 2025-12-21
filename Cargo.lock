@@ -241,6 +241,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "agentgit"
+version = "0.1.0"
+dependencies = [
+ "actix-web",
+ "actix-ws",
+ "anyhow",
+ "futures-util",
+ "maud",
+ "nostr",
+ "serde",
+ "serde_json",
+ "tao",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+ "ui",
+ "wry",
+]
+
+[[package]]
 name = "ahash"
 version = "0.8.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"

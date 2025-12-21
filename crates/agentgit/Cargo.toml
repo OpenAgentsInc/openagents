@@ -1,0 +1,44 @@
+[package]
+name = "agentgit"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "AgentGit - Nostr-native GitHub alternative for agent-first collaboration"
+
+[[bin]]
+name = "agentgit"
+path = "src/main.rs"
+
+[dependencies]
+# Window + WebView
+wry = "0.50"
+tao = "0.33"
+
+# Async runtime
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "sync"] }
+
+# Web server
+actix-web = "4"
+actix-ws = "0.3"
+futures-util = "0.3"
+
+# Templating
+maud = { version = "0.26", features = ["actix-web"] }
+
+# UI components
+ui = { path = "../ui" }
+
+# Nostr
+nostr = { path = "../nostr/core" }
+
+# Utilities
+anyhow = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+[lints]
+workspace = true
