@@ -1604,6 +1604,9 @@ async fn run_task(
     println!("{}", "=".repeat(60).dimmed());
     print_summary(&trajectory);
 
+    // Extract and store metrics
+    store_trajectory_metrics(&trajectory);
+
     // Save outputs
     if !dry_run {
         std::fs::create_dir_all(&output_dir)?;
@@ -1992,6 +1995,53 @@ fn print_summary(traj: &Trajectory) {
     );
 }
 
+/// Store trajectory metrics in the metrics database
+fn store_trajectory_metrics(trajectory: &Trajectory) {
+    use autopilot::metrics::{extract_metrics_from_trajectory, MetricsDb, default_db_path};
+
+    match extract_metrics_from_trajectory(trajectory) {
+        Ok((session_metrics, tool_call_metrics)) => {
+            match MetricsDb::open(default_db_path()) {
+                Ok(db) => {
+                    // Store session metrics
+                    if let Err(e) = db.store_session(&session_metrics) {
+                        eprintln!("Warning: Failed to store session metrics: {}", e);
+                        return;
+                    }
+
+                    // Store tool call metrics
+                    let mut stored = 0;
+                    let mut errors = 0;
+                    for tool_call in &tool_call_metrics {
+                        match db.store_tool_call(tool_call) {
+                            Ok(_) => stored += 1,
+                            Err(e) => {
+                                eprintln!("Warning: Failed to store tool call: {}", e);
+                                errors += 1;
+                            }
+                        }
+                    }
+
+                    println!(
+                        "{}",
+                        format!(
+                            "✓ Stored metrics: {} tool calls ({} errors)",
+                            stored, errors
+                        )
+                        .green()
+                    );
+                }
+                Err(e) => {
+                    eprintln!("Warning: Failed to open metrics database: {}", e);
+                }
+            }
+        }
+        Err(e) => {
+            eprintln!("Warning: Failed to extract metrics from trajectory: {}", e);
+        }
+    }
+}
+
 fn truncate(s: &str, max: usize) -> String {
     let first_line = s.lines().next().unwrap_or("");
     if first_line.chars().count() <= max {
@@ -2191,6 +2241,9 @@ async fn resume_task(
     println!();
     println!("{}", "=".repeat(60).dimmed());
     print_summary(&trajectory);
+
+    // Extract and store metrics
+    store_trajectory_metrics(&trajectory);
 
     // Save outputs
     // Write .rlog
