@@ -705,7 +705,7 @@ pub use nip_sa::{
     AgentState, AgentStateContent, Goal, GoalStatus, MemoryEntry, StateError, KIND_AGENT_STATE,
     STATE_VERSION,
     // Schedule (kind:38002)
-    AgentSchedule, TriggerType,
+    AgentSchedule, ScheduleError, TriggerType, KIND_AGENT_SCHEDULE,
     // Goals (kind:38003)
     PublicGoals,
     // Tick (kinds:38010, 38011)
