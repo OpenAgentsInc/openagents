@@ -458,7 +458,7 @@ mod tests {
 
     #[test]
     fn test_parse_address_with_colon_in_dtag() {
-        let (kind, pubkey, d_tag) = parse_address(
+        let (kind, _pubkey, d_tag) = parse_address(
             "30023:3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d:my:complex:identifier",
         )
         .unwrap();

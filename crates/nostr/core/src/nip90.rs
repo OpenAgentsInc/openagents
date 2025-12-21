@@ -567,12 +567,95 @@ impl JobResult {
             tags.push(amount_tag);
         }
 
+        // Add status tag (default: success)
+        tags.push(vec!["status".to_string(), "success".to_string()]);
+
         // Add encrypted tag if needed
         if self.encrypted {
             tags.push(vec!["encrypted".to_string()]);
         }
 
         tags
+    }
+
+    /// Parse a JobResult from an event.
+    pub fn from_event(event: &Event) -> Result<Self, Nip90Error> {
+        if !is_job_result_kind(event.kind) {
+            return Err(Nip90Error::InvalidKind(event.kind, "6000-6999".to_string()));
+        }
+
+        let mut request_id = String::new();
+        let mut customer_pubkey = String::new();
+        let mut request_relay = None;
+        let mut inputs = Vec::new();
+        let mut amount = None;
+        let mut bolt11 = None;
+        let mut encrypted = false;
+        let mut request = None;
+
+        for tag in &event.tags {
+            if tag.is_empty() {
+                continue;
+            }
+            match tag[0].as_str() {
+                "e" if tag.len() >= 2 => {
+                    request_id = tag[1].clone();
+                    if tag.len() >= 3 {
+                        request_relay = Some(tag[2].clone());
+                    }
+                }
+                "p" if tag.len() >= 2 => {
+                    customer_pubkey = tag[1].clone();
+                }
+                "i" if tag.len() >= 3 => {
+                    let input_type = InputType::from_str(&tag[2])?;
+                    let relay = tag.get(3).cloned();
+                    let marker = tag.get(4).cloned();
+                    inputs.push(JobInput {
+                        data: tag[1].clone(),
+                        input_type,
+                        relay,
+                        marker,
+                    });
+                }
+                "amount" if tag.len() >= 2 => {
+                    amount = tag[1].parse().ok();
+                    if tag.len() >= 3 {
+                        bolt11 = Some(tag[2].clone());
+                    }
+                }
+                "bolt11" if tag.len() >= 2 => {
+                    bolt11 = Some(tag[1].clone());
+                }
+                "encrypted" => {
+                    encrypted = true;
+                }
+                "request" if tag.len() >= 2 => {
+                    request = Some(tag[1].clone());
+                }
+                _ => {}
+            }
+        }
+
+        if request_id.is_empty() {
+            return Err(Nip90Error::MissingTag("e (request event id)".to_string()));
+        }
+        if customer_pubkey.is_empty() {
+            return Err(Nip90Error::MissingTag("p (customer pubkey)".to_string()));
+        }
+
+        Ok(Self {
+            kind: event.kind,
+            content: event.content.clone(),
+            request,
+            request_id,
+            request_relay,
+            inputs,
+            customer_pubkey,
+            amount,
+            bolt11,
+            encrypted,
+        })
     }
 }
 
