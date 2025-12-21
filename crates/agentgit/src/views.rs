@@ -163,6 +163,8 @@ pub fn repository_detail_page(repository: &Event) -> Markup {
                                 h2 { "Navigation" }
                                 div.repo-nav-links {
                                     a.nav-link href={"/repo/" (identifier) "/issues"} { "View Issues" }
+                                    a.nav-link href={"/repo/" (identifier) "/patches"} { "View Patches" }
+                                    a.nav-link href={"/repo/" (identifier) "/pulls"} { "View Pull Requests" }
                                 }
                             }
 
@@ -532,6 +534,203 @@ pub fn issue_create_form_page(repository: &Event, identifier: &str) -> Markup {
                                 div.form-actions {
                                     button.btn-primary type="submit" { "Create Issue" }
                                     a.btn-secondary href={"/repo/" (identifier) "/issues"} { "Cancel" }
+                                }
+                            }
+                        }
+                    }
+                }
+                footer {
+                    p { "Powered by NIP-34 (Git Stuff) • NIP-SA (Sovereign Agents) • NIP-57 (Zaps)" }
+                }
+            }
+        }
+    }
+}
+
+/// Patches list page for a repository
+pub fn patches_list_page(repository: &Event, patches: &[Event], identifier: &str) -> Markup {
+    let repo_name = get_tag_value(repository, "name").unwrap_or_else(|| "Repository".to_string());
+
+    html! {
+        (DOCTYPE)
+        html lang="en" {
+            head {
+                meta charset="utf-8";
+                meta name="viewport" content="width=device-width, initial-scale=1.0";
+                title { (repo_name) " - Patches - AgentGit" }
+                script src="https://unpkg.com/htmx.org@2.0.4" {}
+                script src="https://unpkg.com/htmx-ext-ws@2.0.1/ws.js" {}
+                style {
+                    (include_str!("./styles.css"))
+                }
+            }
+            body hx-ext="ws" ws-connect="/ws" {
+                header {
+                    h1 { "⚡ AgentGit" }
+                    p.subtitle { "Nostr-native GitHub Alternative" }
+                }
+                main {
+                    nav {
+                        a href="/" { "Repositories" }
+                        a href="/issues" { "Issues" }
+                        a href="/agents" { "Agents" }
+                    }
+                    div.content {
+                        div.issues-container {
+                            div.issues-header {
+                                div {
+                                    h1.issues-title { (repo_name) " - Patches" }
+                                    p.issues-subtitle { "Viewing patches for repository: " (identifier) }
+                                }
+                                div.issues-actions {
+                                    a.back-link href={"/repo/" (identifier)} { "← Back to Repository" }
+                                }
+                            }
+
+                            @if patches.is_empty() {
+                                div.empty-state {
+                                    p { "No patches found for this repository." }
+                                    p.info-text { "Patches will appear here as they are created on the Nostr network." }
+                                }
+                            } @else {
+                                div.issues-count {
+                                    span { (patches.len()) " patch" @if patches.len() != 1 { "es" } " found" }
+                                }
+
+                                div.issues-list {
+                                    @for patch in patches {
+                                        @let patch_title = get_tag_value(patch, "subject")
+                                            .unwrap_or_else(|| "Untitled Patch".to_string());
+                                        @let patch_author = if patch.pubkey.len() > 16 {
+                                            format!("{}...{}", &patch.pubkey[..8], &patch.pubkey[patch.pubkey.len()-8..])
+                                        } else {
+                                            patch.pubkey.clone()
+                                        };
+
+                                        div.issue-card {
+                                            div.issue-header {
+                                                div.issue-title-row {
+                                                    h3.issue-title { (patch_title) }
+                                                }
+                                                div.issue-meta {
+                                                    span.issue-author { "by " (patch_author) }
+                                                    span.issue-separator { "•" }
+                                                    span.issue-time { "Created " (patch.created_at) }
+                                                }
+                                            }
+                                            @if !patch.content.is_empty() {
+                                                div.issue-preview {
+                                                    @let preview = if patch.content.len() > 200 {
+                                                        format!("{}...", &patch.content[..200])
+                                                    } else {
+                                                        patch.content.clone()
+                                                    };
+                                                    p { (preview) }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                footer {
+                    p { "Powered by NIP-34 (Git Stuff) • NIP-SA (Sovereign Agents) • NIP-57 (Zaps)" }
+                }
+            }
+        }
+    }
+}
+
+/// Pull requests list page for a repository
+pub fn pull_requests_list_page(repository: &Event, pull_requests: &[Event], identifier: &str) -> Markup {
+    let repo_name = get_tag_value(repository, "name").unwrap_or_else(|| "Repository".to_string());
+
+    html! {
+        (DOCTYPE)
+        html lang="en" {
+            head {
+                meta charset="utf-8";
+                meta name="viewport" content="width=device-width, initial-scale=1.0";
+                title { (repo_name) " - Pull Requests - AgentGit" }
+                script src="https://unpkg.com/htmx.org@2.0.4" {}
+                script src="https://unpkg.com/htmx-ext-ws@2.0.1/ws.js" {}
+                style {
+                    (include_str!("./styles.css"))
+                }
+            }
+            body hx-ext="ws" ws-connect="/ws" {
+                header {
+                    h1 { "⚡ AgentGit" }
+                    p.subtitle { "Nostr-native GitHub Alternative" }
+                }
+                main {
+                    nav {
+                        a href="/" { "Repositories" }
+                        a href="/issues" { "Issues" }
+                        a href="/agents" { "Agents" }
+                    }
+                    div.content {
+                        div.issues-container {
+                            div.issues-header {
+                                div {
+                                    h1.issues-title { (repo_name) " - Pull Requests" }
+                                    p.issues-subtitle { "Viewing pull requests for repository: " (identifier) }
+                                }
+                                div.issues-actions {
+                                    a.back-link href={"/repo/" (identifier)} { "← Back to Repository" }
+                                }
+                            }
+
+                            @if pull_requests.is_empty() {
+                                div.empty-state {
+                                    p { "No pull requests found for this repository." }
+                                    p.info-text { "Pull requests will appear here as they are created on the Nostr network." }
+                                }
+                            } @else {
+                                div.issues-count {
+                                    span { (pull_requests.len()) " pull request" @if pull_requests.len() != 1 { "s" } " found" }
+                                }
+
+                                div.issues-list {
+                                    @for pr in pull_requests {
+                                        @let pr_title = get_tag_value(pr, "subject")
+                                            .unwrap_or_else(|| "Untitled Pull Request".to_string());
+                                        @let pr_status = get_tag_value(pr, "status")
+                                            .unwrap_or_else(|| "open".to_string());
+                                        @let pr_author = if pr.pubkey.len() > 16 {
+                                            format!("{}...{}", &pr.pubkey[..8], &pr.pubkey[pr.pubkey.len()-8..])
+                                        } else {
+                                            pr.pubkey.clone()
+                                        };
+
+                                        div.issue-card {
+                                            div.issue-header {
+                                                div.issue-title-row {
+                                                    h3.issue-title { (pr_title) }
+                                                    span class={"issue-status " (pr_status)} {
+                                                        (pr_status)
+                                                    }
+                                                }
+                                                div.issue-meta {
+                                                    span.issue-author { "by " (pr_author) }
+                                                    span.issue-separator { "•" }
+                                                    span.issue-time { "Created " (pr.created_at) }
+                                                }
+                                            }
+                                            @if !pr.content.is_empty() {
+                                                div.issue-preview {
+                                                    @let preview = if pr.content.len() > 200 {
+                                                        format!("{}...", &pr.content[..200])
+                                                    } else {
+                                                        pr.content.clone()
+                                                    };
+                                                    p { (preview) }
+                                                }
+                                            }
+                                        }
+                                    }
                                 }
                             }
                         }
