@@ -762,6 +762,50 @@ impl EventCache {
         Ok(filtered)
     }
 
+    /// Get status events for a PR or patch
+    /// Status events are kinds 1630-1633 that reference the PR via e tag
+    pub fn get_status_events_for_pr(&self, pr_event_id: &str) -> Result<Vec<Event>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, kind, pubkey, created_at, content, tags, sig
+             FROM events
+             WHERE kind IN (1630, 1631, 1632, 1633)
+             ORDER BY created_at DESC",
+        )?;
+
+        let events = stmt
+            .query_map([], |row| {
+                let tags_json: String = row.get(5)?;
+                let tags: Vec<Vec<String>> = serde_json::from_str(&tags_json)
+                    .map_err(|e| rusqlite::Error::FromSqlConversionFailure(
+                        5,
+                        rusqlite::types::Type::Text,
+                        Box::new(e),
+                    ))?;
+
+                Ok(Event {
+                    id: row.get(0)?,
+                    kind: row.get(1)?,
+                    pubkey: row.get(2)?,
+                    created_at: row.get(3)?,
+                    content: row.get(4)?,
+                    tags,
+                    sig: row.get(6)?,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+
+        // Filter events that reference this PR
+        let filtered: Vec<Event> = events.into_iter()
+            .filter(|event| {
+                event.tags.iter().any(|tag| {
+                    tag.len() >= 2 && tag[0] == "e" && tag[1] == pr_event_id
+                })
+            })
+            .collect();
+
+        Ok(filtered)
+    }
+
     /// Clear all cached events
     #[allow(dead_code)]
     pub fn clear(&self) -> Result<()> {
