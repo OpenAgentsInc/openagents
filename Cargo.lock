@@ -509,6 +509,7 @@ dependencies = [
  "colored",
  "criterion",
  "dirs 5.0.1",
+ "flate2",
  "futures",
  "hex",
  "issues",
@@ -533,6 +534,7 @@ dependencies = [
  "tokio",
  "toml",
  "ui",
+ "walkdir",
  "wallet",
 ]
 

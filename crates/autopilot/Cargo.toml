@@ -82,6 +82,8 @@ rusqlite = { version = "0.32", features = ["bundled"] }
 statrs = "0.17"
 actix-web = "4.12.1"
 actix-ws = "0.3.0"
+walkdir.workspace = true
+flate2 = "1.1.5"
 
 # Unix process groups
 [target.'cfg(unix)'.dependencies]
