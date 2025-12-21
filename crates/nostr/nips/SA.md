@@ -21,11 +21,13 @@ Traditional agent architectures treat agents as tools that humans wield. Soverei
 
 This NIP builds on several existing NIPs:
 - [NIP-01](01.md): Basic protocol (agent identity as npub)
+- [NIP-28](28.md): Public chat (trajectory channels)
 - [NIP-44](44.md): Versioned encryption (skill protection)
+- [NIP-57](57.md): Lightning zaps (agent payments)
 - [NIP-59](59.md): Gift wrap (private skill delivery)
 - [NIP-78](78.md): Application-specific data (agent state storage)
 - [NIP-90](90.md): Data vending machines (compute/inference)
-- [NIP-57](57.md): Lightning zaps (agent payments)
+- [NIP-EE](EE.md): MLS encryption (private trajectory groups)
 
 Additionally, this NIP recommends integration with:
 - [FROSTR](https://github.com/FROSTR-ORG): Threshold signatures for key protection
@@ -56,6 +58,8 @@ This NIP reserves the following event kinds:
 | 38011 | Agent Tick Result | Ephemeral |
 | 38020 | Skill License | Addressable |
 | 38021 | Skill Delivery | Ephemeral |
+| 38030 | Agent Trajectory Session | Addressable |
+| 38031 | Agent Trajectory Event | Regular |
 
 ## Agent Identity
 
@@ -334,6 +338,138 @@ The response includes:
 - Reasoning about the situation
 - Recommended action(s)
 - Expected outcomes
+
+## Agent Trajectories
+
+### Overview
+
+An agent trajectory is a sequence of events that records an agent's execution. Trajectories serve multiple purposes:
+
+1. **Audit trail** - Prove what work was done, for payment settlement or dispute resolution
+2. **Live coordination** - Multiple parties observe and contribute to a run in real-time
+3. **Training data** - Successful sessions become training data for future agents
+4. **Debugging** - Replay and analyze agent behavior
+
+Trajectories are designed for streaming: each event is self-contained and publishable as it occurs. They can be posted to:
+- **Public channels** ([NIP-28](28.md)) for transparent, open runs
+- **Private groups** ([NIP-EE](EE.md)) for confidential multi-party runs
+- **Direct delivery** for single-party runs
+
+### Trajectory Session Event (`kind:38030`)
+
+A trajectory session is an addressable event that defines a run:
+
+```jsonc
+{
+  "kind": 38030,
+  "pubkey": "<agent-pubkey>",
+  "content": "",
+  "tags": [
+    ["d", "<session-id>"],
+    ["model", "claude-opus-4"],
+    ["started_at", "<unix-timestamp>"],
+    ["h", "<group-id>"],  // if posted to a group
+    ["p", "<compute-provider-pubkey>"],  // participants
+    ["p", "<other-agent-pubkey>"],
+    ["repo", "<repo-url>"],
+    ["sha", "<commit-sha>"]
+  ]
+}
+```
+
+The `d` tag contains a unique session identifier. All trajectory events reference this session.
+
+### Trajectory Event (`kind:38031`)
+
+Individual events within a trajectory:
+
+```jsonc
+{
+  "kind": 38031,
+  "pubkey": "<event-author-pubkey>",
+  "content": "<JSON payload>",
+  "tags": [
+    ["e", "<session-event-id>", "<relay>", "root"],
+    ["e", "<prev-event-id>", "<relay>", "reply"],  // for threading
+    ["seq", "<sequence-number>"],
+    ["h", "<group-id>"]  // if in a group
+  ]
+}
+```
+
+The `content` field contains a JSON object with the event payload:
+
+```json
+{
+  "type": "agent",
+  "content": "I'll investigate the auth module.",
+  "step": 3,
+  "ts": "2025-01-01T00:00:00Z",
+  "tokens_in": 100,
+  "tokens_out": 50
+}
+```
+
+### Event Types
+
+| Type | Description | Example Content |
+|------|-------------|-----------------|
+| `user` | Human/operator message | `{"type":"user","content":"Fix the login bug"}` |
+| `agent` | Agent response | `{"type":"agent","content":"Looking now."}` |
+| `tool` | Tool invocation result | `{"type":"tool","name":"Read","call_id":"c1","path":"src/auth.rs","result":"[186 lines]"}` |
+| `tool_start` | Tool invocation started | `{"type":"tool_start","name":"Bash","call_id":"c2","command":"cargo test"}` |
+| `tool_progress` | Tool progress update | `{"type":"tool_progress","call_id":"c2","progress":"64/128 passed"}` |
+| `observation` | Tool result observation | `{"type":"observation","call_id":"c1","status":"ok"}` |
+| `thinking` | Agent reasoning (may be redacted) | `{"type":"thinking","content":"Analyzing...","sig":"<signature>"}` |
+| `subagent` | Subagent spawn/result | `{"type":"subagent","name":"explore","query":"find auth","result":"..."}` |
+| `question` | Agent asks operator | `{"type":"question","content":"Which auth method?","options":["OAuth","JWT"]}` |
+| `todos` | Task list update | `{"type":"todos","items":[{"status":"pending","content":"Fix bug"}]}` |
+| `phase` | Execution phase change | `{"type":"phase","phase":"explore"}` |
+| `session_end` | Session completed | `{"type":"session_end","summary":"Fixed auth bug","tokens_total":5000}` |
+
+### Multi-Party Coordination
+
+When multiple parties collaborate on an agent run (e.g., agent + compute provider + auditor), trajectories can be posted to a shared group:
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│              MULTI-PARTY TRAJECTORY FLOW                     │
+├─────────────────────────────────────────────────────────────┤
+│                                                             │
+│  Participants:                                              │
+│  • Agent A (initiator)                                      │
+│  • Compute Provider B (inference)                           │
+│  • Auditor C (observer)                                     │
+│                                                             │
+│  1. Agent A creates MLS group (NIP-EE)                      │
+│  2. Agent A invites B and C to group                        │
+│  3. Agent A publishes session event (kind:38030)            │
+│  4. As run proceeds:                                        │
+│     - A posts user/agent events                             │
+│     - B posts inference results                             │
+│     - All parties see full trajectory in real-time          │
+│  5. Session ends with summary event                         │
+│  6. Trajectory hash can be used for payment settlement      │
+│                                                             │
+└─────────────────────────────────────────────────────────────┘
+```
+
+For public transparency, trajectories can instead be posted to a NIP-28 public channel.
+
+### Trajectory Verification
+
+Trajectories can be verified and referenced:
+
+```jsonc
+{
+  "tags": [
+    ["trajectory", "<session-event-id>", "<relay>"],
+    ["trajectory_hash", "<sha256-of-all-events>"]
+  ]
+}
+```
+
+This allows payment events, reputation updates, or dispute claims to reference the work that was done.
 
 ## Skill Protection
 
@@ -794,6 +930,7 @@ class AgentRunner {
 ## References
 
 - [NIP-01](01.md): Basic protocol
+- [NIP-28](28.md): Public chat (trajectory channels)
 - [NIP-44](44.md): Versioned encryption
 - [NIP-46](46.md): Nostr remote signing
 - [NIP-57](57.md): Lightning zaps
@@ -801,4 +938,5 @@ class AgentRunner {
 - [NIP-78](78.md): Application-specific data
 - [NIP-89](89.md): Recommended application handlers
 - [NIP-90](90.md): Data vending machines
+- [NIP-EE](EE.md): MLS encryption (private trajectory groups)
 - [FROSTR](https://github.com/FROSTR-ORG): Threshold signatures for Nostr
