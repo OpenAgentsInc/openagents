@@ -378,39 +378,27 @@ pub fn profile_set(
 }
 
 pub fn contacts_list() -> Result<()> {
-    println!("{}", "Contacts".cyan().bold());
-    println!();
-
-    // TODO: Fetch contact list
-    // TODO: Display contacts with metadata
-
-    println!("No contacts yet");
-
-    Ok(())
+    // Contact list management requires Nostr relay integration which is not yet implemented.
+    // Per d-012 (No Stubs), we return an explicit error instead of pretending to work.
+    Err(anyhow::anyhow!(
+        "Contact list management not yet implemented. Requires Nostr relay client integration for fetching and publishing kind:3 contact list events."
+    ))
 }
 
-pub fn contacts_add(npub: String, name: Option<String>) -> Result<()> {
-    println!("{}", "Adding contact...".cyan());
-
-    // TODO: Validate npub
-    // TODO: Add to contact list
-    // TODO: Publish updated contact list
-
-    let display_name = name.unwrap_or_else(|| npub.clone());
-    println!("  {} {}", "Added".green(), display_name);
-
-    Ok(())
+pub fn contacts_add(_npub: String, _name: Option<String>) -> Result<()> {
+    // Contact list management requires Nostr relay integration which is not yet implemented.
+    // Per d-012 (No Stubs), we return an explicit error instead of pretending to work.
+    Err(anyhow::anyhow!(
+        "Contact list management not yet implemented. Requires Nostr relay client integration for fetching and publishing kind:3 contact list events."
+    ))
 }
 
-pub fn contacts_remove(npub: String) -> Result<()> {
-    println!("{}", "Removing contact...".cyan());
-
-    // TODO: Remove from contact list
-    // TODO: Publish updated contact list
-
-    println!("  {} {}", "Removed".green(), npub);
-
-    Ok(())
+pub fn contacts_remove(_npub: String) -> Result<()> {
+    // Contact list management requires Nostr relay integration which is not yet implemented.
+    // Per d-012 (No Stubs), we return an explicit error instead of pretending to work.
+    Err(anyhow::anyhow!(
+        "Contact list management not yet implemented. Requires Nostr relay client integration for fetching and publishing kind:3 contact list events."
+    ))
 }
 
 pub fn post(content: String) -> Result<()> {
