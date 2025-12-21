@@ -62,6 +62,14 @@ enum ClientMessage {
 
     #[serde(rename = "abort")]
     Abort,
+
+    #[serde(rename = "permission_response")]
+    PermissionResponse {
+        request_id: String,
+        action: String,
+        pattern: Option<String>,
+        persistent: bool,
+    },
 }
 
 /// Server -> Client message types
@@ -97,6 +105,15 @@ enum ServerMessage {
         tool: String,
         output: String,
         elapsed_ms: Option<u64>,
+    },
+
+    #[serde(rename = "permission_request")]
+    PermissionRequest {
+        id: String,
+        tool: String,
+        input: serde_json::Value,
+        description: Option<String>,
+        timestamp: String,
     },
 }
 
@@ -139,6 +156,21 @@ async fn handle_client_message(msg: ClientMessage, session: &mut Session) {
             };
 
             send_message(session, response).await;
+        }
+        ClientMessage::PermissionResponse {
+            request_id,
+            action,
+            pattern,
+            persistent,
+        } => {
+            debug!(
+                "Permission response: {} -> {} (persistent: {})",
+                request_id, action, persistent
+            );
+
+            // TODO: Send response to permission handler channel
+            // For now, just log it
+            let _ = (request_id, action, pattern, persistent);
         }
     }
 }
