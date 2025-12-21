@@ -281,6 +281,7 @@ pub fn send_page() -> String {
 }
 
 /// Receive payment page
+#[allow(dead_code)]
 pub fn receive_page(address: &str) -> String {
     let content = html! {
         div .card {
