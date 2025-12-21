@@ -7,6 +7,7 @@
 //!
 //! Messages are JSON arrays following the Nostr protocol specification.
 
+use crate::broadcast::{BroadcastEvent, create_broadcast_channel};
 use crate::db::Database;
 use crate::error::{RelayError, Result};
 use crate::subscription::{Filter, SubscriptionManager};
@@ -16,6 +17,7 @@ use serde_json::{json, Value};
 use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::net::{TcpListener, TcpStream};
+use tokio::sync::broadcast;
 use tokio_tungstenite::{accept_async, tungstenite::Message};
 use tracing::{debug, error, info, warn};
 
@@ -41,14 +43,17 @@ impl Default for RelayConfig {
 pub struct RelayServer {
     config: RelayConfig,
     db: Arc<Database>,
+    broadcast_tx: broadcast::Sender<BroadcastEvent>,
 }
 
 impl RelayServer {
     /// Create a new relay server
     pub fn new(config: RelayConfig, db: Database) -> Self {
+        let (broadcast_tx, _) = create_broadcast_channel();
         Self {
             config,
             db: Arc::new(db),
+            broadcast_tx,
         }
     }
 
@@ -62,8 +67,9 @@ impl RelayServer {
                 Ok((stream, addr)) => {
                     debug!("New connection from {}", addr);
                     let db = Arc::clone(&self.db);
+                    let broadcast_tx = self.broadcast_tx.clone();
                     tokio::spawn(async move {
-                        if let Err(e) = handle_connection(stream, addr, db).await {
+                        if let Err(e) = handle_connection(stream, addr, db, broadcast_tx).await {
                             error!("Error handling connection from {}: {}", addr, e);
                         }
                     });
@@ -81,6 +87,7 @@ async fn handle_connection(
     stream: TcpStream,
     addr: SocketAddr,
     db: Arc<Database>,
+    broadcast_tx: broadcast::Sender<BroadcastEvent>,
 ) -> Result<()> {
     let ws_stream = accept_async(stream)
         .await
@@ -90,44 +97,94 @@ async fn handle_connection(
 
     let (mut write, mut read) = ws_stream.split();
     let mut subscriptions = SubscriptionManager::new();
+    let mut broadcast_rx = broadcast_tx.subscribe();
 
-    while let Some(msg) = read.next().await {
-        match msg {
-            Ok(Message::Text(text)) => {
-                debug!("Received message from {}: {}", addr, text);
+    // Spawn task to handle broadcasts
+    let subscriptions_clone = Arc::new(tokio::sync::Mutex::new(SubscriptionManager::new()));
+    let subscriptions_for_broadcast = Arc::clone(&subscriptions_clone);
+    let (broadcast_event_tx, mut broadcast_event_rx) = tokio::sync::mpsc::unbounded_channel();
 
-                // Parse the Nostr message
-                match serde_json::from_str::<Value>(&text) {
-                    Ok(value) => {
-                        let responses = handle_nostr_message(&value, &db, &mut subscriptions).await;
-                        for response in responses {
-                            let response_text = serde_json::to_string(&response)?;
-                            if let Err(e) = write.send(Message::Text(response_text)).await {
-                                error!("Failed to send response to {}: {}", addr, e);
-                                break;
+    tokio::spawn(async move {
+        loop {
+            match broadcast_rx.recv().await {
+                Ok(broadcast_event) => {
+                    let subs = subscriptions_for_broadcast.lock().await;
+                    let matching_sub_ids = subs.matches_any(&broadcast_event.event);
+
+                    for sub_id in matching_sub_ids {
+                        let event_msg = json!(["EVENT", sub_id, broadcast_event.event]);
+                        let _ = broadcast_event_tx.send(event_msg);
+                    }
+                }
+                Err(broadcast::error::RecvError::Lagged(n)) => {
+                    warn!("Broadcast receiver lagged by {} messages", n);
+                }
+                Err(broadcast::error::RecvError::Closed) => {
+                    debug!("Broadcast channel closed");
+                    break;
+                }
+            }
+        }
+    });
+
+    loop {
+        tokio::select! {
+            // Handle incoming WebSocket messages
+            msg = read.next() => {
+                match msg {
+                    Some(Ok(Message::Text(text))) => {
+                        debug!("Received message from {}: {}", addr, text);
+
+                        // Parse the Nostr message
+                        match serde_json::from_str::<Value>(&text) {
+                            Ok(value) => {
+                                let responses = handle_nostr_message(&value, &db, &mut subscriptions, &broadcast_tx).await;
+
+                                // Update the shared subscriptions
+                                *subscriptions_clone.lock().await = subscriptions.clone();
+
+                                for response in responses {
+                                    let response_text = serde_json::to_string(&response)?;
+                                    if let Err(e) = write.send(Message::Text(response_text)).await {
+                                        error!("Failed to send response to {}: {}", addr, e);
+                                        return Ok(());
+                                    }
+                                }
+                            }
+                            Err(e) => {
+                                warn!("Invalid JSON from {}: {}", addr, e);
+                                let notice = json!(["NOTICE", format!("Invalid JSON: {}", e)]);
+                                let _ = write.send(Message::Text(notice.to_string())).await;
                             }
                         }
                     }
-                    Err(e) => {
-                        warn!("Invalid JSON from {}: {}", addr, e);
-                        let notice = json!(["NOTICE", format!("Invalid JSON: {}", e)]);
-                        let _ = write.send(Message::Text(notice.to_string())).await;
+                    Some(Ok(Message::Close(_))) => {
+                        info!("Client {} disconnected", addr);
+                        break;
+                    }
+                    Some(Ok(Message::Ping(data))) => {
+                        debug!("Ping from {}", addr);
+                        let _ = write.send(Message::Pong(data)).await;
+                    }
+                    Some(Err(e)) => {
+                        error!("WebSocket error from {}: {}", addr, e);
+                        break;
+                    }
+                    None => break,
+                    _ => {}
+                }
+            }
+
+            // Handle broadcast events
+            event_msg = broadcast_event_rx.recv() => {
+                if let Some(msg) = event_msg {
+                    let response_text = serde_json::to_string(&msg)?;
+                    if let Err(e) = write.send(Message::Text(response_text)).await {
+                        error!("Failed to send broadcast event to {}: {}", addr, e);
+                        break;
                     }
                 }
             }
-            Ok(Message::Close(_)) => {
-                info!("Client {} disconnected", addr);
-                break;
-            }
-            Ok(Message::Ping(data)) => {
-                debug!("Ping from {}", addr);
-                let _ = write.send(Message::Pong(data)).await;
-            }
-            Err(e) => {
-                error!("WebSocket error from {}: {}", addr, e);
-                break;
-            }
-            _ => {}
         }
     }
 
@@ -140,6 +197,7 @@ async fn handle_nostr_message(
     msg: &Value,
     db: &Database,
     subscriptions: &mut SubscriptionManager,
+    broadcast_tx: &broadcast::Sender<BroadcastEvent>,
 ) -> Vec<Value> {
     let mut responses = Vec::new();
 
@@ -188,6 +246,14 @@ async fn handle_nostr_message(
                         Ok(_) => {
                             debug!("Stored event: {}", event.id);
                             responses.push(json!(["OK", event.id, true, ""]));
+
+                            // Broadcast the event to all subscribers
+                            let broadcast_event = BroadcastEvent {
+                                event: event.clone(),
+                            };
+                            if let Err(e) = broadcast_tx.send(broadcast_event) {
+                                warn!("Failed to broadcast event: {}", e);
+                            }
                         }
                         Err(e) => {
                             error!("Failed to store event {}: {}", event.id, e);
@@ -311,6 +377,7 @@ mod tests {
         };
         let db = Database::new(config).unwrap();
         let mut subs = SubscriptionManager::new();
+        let (broadcast_tx, _) = create_broadcast_channel();
 
         // Create a test event (simplified - in real use would use nostr crate)
         let event_json = json!({
@@ -324,7 +391,7 @@ mod tests {
         });
 
         let msg = json!(["EVENT", event_json]);
-        let responses = handle_nostr_message(&msg, &db, &mut subs).await;
+        let responses = handle_nostr_message(&msg, &db, &mut subs, &broadcast_tx).await;
 
         assert!(!responses.is_empty());
         let resp = &responses[0];
@@ -341,9 +408,10 @@ mod tests {
         };
         let db = Database::new(config).unwrap();
         let mut subs = SubscriptionManager::new();
+        let (broadcast_tx, _) = create_broadcast_channel();
 
         let msg = json!(["REQ", "sub_123", {"kinds": [1]}]);
-        let responses = handle_nostr_message(&msg, &db, &mut subs).await;
+        let responses = handle_nostr_message(&msg, &db, &mut subs, &broadcast_tx).await;
 
         assert!(!responses.is_empty());
         // Last response should be EOSE
@@ -365,15 +433,16 @@ mod tests {
         };
         let db = Database::new(config).unwrap();
         let mut subs = SubscriptionManager::new();
+        let (broadcast_tx, _) = create_broadcast_channel();
 
         // First create a subscription
         let msg1 = json!(["REQ", "sub_123", {"kinds": [1]}]);
-        handle_nostr_message(&msg1, &db, &mut subs).await;
+        handle_nostr_message(&msg1, &db, &mut subs, &broadcast_tx).await;
         assert_eq!(subs.len(), 1);
 
         // Now close it
         let msg2 = json!(["CLOSE", "sub_123"]);
-        let responses = handle_nostr_message(&msg2, &db, &mut subs).await;
+        let responses = handle_nostr_message(&msg2, &db, &mut subs, &broadcast_tx).await;
 
         assert!(responses.is_empty()); // CLOSE doesn't send responses
         assert_eq!(subs.len(), 0); // Subscription removed
@@ -389,9 +458,10 @@ mod tests {
         };
         let db = Database::new(config).unwrap();
         let mut subs = SubscriptionManager::new();
+        let (broadcast_tx, _) = create_broadcast_channel();
 
         let msg = json!(["UNKNOWN", "data"]);
-        let responses = handle_nostr_message(&msg, &db, &mut subs).await;
+        let responses = handle_nostr_message(&msg, &db, &mut subs, &broadcast_tx).await;
 
         assert!(!responses.is_empty());
         let resp = &responses[0];

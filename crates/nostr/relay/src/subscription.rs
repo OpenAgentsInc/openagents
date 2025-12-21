@@ -173,7 +173,7 @@ impl Subscription {
 }
 
 /// Manages all subscriptions for a connection
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct SubscriptionManager {
     subscriptions: HashMap<String, Subscription>,
 }
