@@ -125,3 +125,6 @@ docs/profiles/heaptrack-*
 # Rogue autopilot databases in subdirectories
 crates/*/autopilot.db
 crates/*/*/autopilot.db
+
+# Snapshot testing - DO track snapshots
+!**/snapshots/
