@@ -37,6 +37,7 @@ use stories::organisms::recorder::index::recorder_index_story;
 use stories::organisms::recorder::molecules::recorder_molecules_story;
 use stories::organisms::recorder::organisms::recorder_organisms_story;
 use stories::organisms::recorder::sections::recorder_sections_story;
+use stories::atoms::base_document::base_document_story;
 use stories::atoms::button::button_story;
 use ui::{TAILWIND_CDN, TAILWIND_THEME};
 
@@ -56,6 +57,7 @@ fn sidebar_nav(active_story: &str) -> Markup {
             h1 class="font-bold mb-3 text-foreground" { "Storybook" }
             nav {
                 h2 class="uppercase text-muted-foreground mb-1 mt-3 pl-1 tracking-wide text-xs" { "Atoms" }
+                a href="/stories/base-document" class=(link_class("base-document")) { "Base Document" }
                 a href="/stories/button" class=(link_class("button")) { "Button" }
                 h2 class="uppercase text-muted-foreground mb-1 mt-4 pl-1 tracking-wide text-xs" { "Molecules" }
                 p class="text-muted-foreground text-xs pl-1 py-1" { "No stories yet" }
@@ -176,6 +178,14 @@ async fn index() -> impl Responder {
 }
 
 /// Button story page
+async fn base_document_story_page() -> impl Responder {
+    let content = base_document_story();
+    let html = base_layout("Base Document", "base-document", content);
+    HttpResponse::Ok()
+        .content_type("text/html; charset=utf-8")
+        .body(html.into_string())
+}
+
 async fn button_story_page() -> impl Responder {
     let content = button_story();
     let html = base_layout("Button", "button", content);
@@ -343,6 +353,7 @@ async fn main() -> std::io::Result<()> {
     let server = HttpServer::new(|| {
         App::new()
             .route("/", web::get().to(index))
+            .route("/stories/base-document", web::get().to(base_document_story_page))
             .route("/stories/button", web::get().to(button_story_page))
             .route("/stories/recorder", web::get().to(recorder_index_page))
             .route("/stories/recorder/molecules", web::get().to(recorder_molecules_page))
