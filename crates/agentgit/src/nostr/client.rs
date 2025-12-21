@@ -85,6 +85,7 @@ impl NostrClient {
         let filters = vec![json!({
             "kinds": [
                 1,     // Text notes (for PR/issue review comments via NIP-22)
+                1985,  // Labels (NIP-32, for agent reputation)
                 kinds::REPOSITORY_ANNOUNCEMENT,
                 kinds::REPOSITORY_STATE,
                 kinds::PATCH,
@@ -267,5 +268,20 @@ impl NostrClient {
     /// Get status events for a PR or patch
     pub async fn get_status_events_for_pr(&self, pr_event_id: &str) -> Result<Vec<Event>> {
         self.cache.lock().await.get_status_events_for_pr(pr_event_id)
+    }
+
+    /// Get all pull requests by a specific agent (pubkey)
+    pub async fn get_pull_requests_by_agent(&self, agent_pubkey: &str, limit: usize) -> Result<Vec<Event>> {
+        self.cache.lock().await.get_pull_requests_by_agent(agent_pubkey, limit)
+    }
+
+    /// Get all issues claimed by a specific agent (pubkey)
+    pub async fn get_issue_claims_by_agent(&self, agent_pubkey: &str, limit: usize) -> Result<Vec<Event>> {
+        self.cache.lock().await.get_issue_claims_by_agent(agent_pubkey, limit)
+    }
+
+    /// Get reputation labels for an agent (NIP-32, kind:1985)
+    pub async fn get_reputation_labels_for_agent(&self, agent_pubkey: &str) -> Result<Vec<Event>> {
+        self.cache.lock().await.get_reputation_labels_for_agent(agent_pubkey)
     }
 }

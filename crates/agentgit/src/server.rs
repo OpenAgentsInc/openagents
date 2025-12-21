@@ -4,7 +4,7 @@ use actix_web::{web, App, HttpResponse, HttpServer};
 use std::sync::Arc;
 
 use crate::nostr::NostrClient;
-use crate::views::{home_page_with_repos, issue_create_form_page, issue_detail_page, issues_list_page, patch_detail_page, patches_list_page, pull_request_detail_page, pull_requests_list_page, repository_detail_page, trajectory_viewer_page};
+use crate::views::{agent_profile_page, home_page_with_repos, issue_create_form_page, issue_detail_page, issues_list_page, patch_detail_page, patches_list_page, pull_request_detail_page, pull_requests_list_page, repository_detail_page, trajectory_viewer_page};
 use crate::ws::{ws_handler, WsBroadcaster};
 
 /// Application state shared across handlers
@@ -41,6 +41,7 @@ pub async fn start_server(
             .route("/repo/{identifier}/pulls/{pr_id}/review", web::post().to(pr_review_submit))
             .route("/repo/{identifier}/pulls/{pr_id}/status", web::post().to(pr_status_change))
             .route("/trajectory/{session_id}", web::get().to(trajectory_detail))
+            .route("/agent/{pubkey}", web::get().to(agent_profile))
             .route("/ws", web::get().to(ws_route))
     })
     .bind("127.0.0.1:0")?;
@@ -724,6 +725,45 @@ async fn trajectory_detail(
     HttpResponse::Ok()
         .content_type("text/html; charset=utf-8")
         .body(trajectory_viewer_page(&session, &events).into_string())
+}
+
+/// Agent profile page
+async fn agent_profile(
+    state: web::Data<AppState>,
+    path: web::Path<String>,
+) -> HttpResponse {
+    let pubkey = path.into_inner();
+
+    // Fetch pull requests by this agent
+    let pull_requests = match state.nostr_client.get_pull_requests_by_agent(&pubkey, 50).await {
+        Ok(prs) => prs,
+        Err(e) => {
+            tracing::warn!("Failed to fetch pull requests for agent {}: {}", pubkey, e);
+            Vec::new()
+        }
+    };
+
+    // Fetch issue claims by this agent
+    let issue_claims = match state.nostr_client.get_issue_claims_by_agent(&pubkey, 50).await {
+        Ok(claims) => claims,
+        Err(e) => {
+            tracing::warn!("Failed to fetch issue claims for agent {}: {}", pubkey, e);
+            Vec::new()
+        }
+    };
+
+    // Fetch reputation labels for this agent
+    let reputation_labels = match state.nostr_client.get_reputation_labels_for_agent(&pubkey).await {
+        Ok(labels) => labels,
+        Err(e) => {
+            tracing::warn!("Failed to fetch reputation labels for agent {}: {}", pubkey, e);
+            Vec::new()
+        }
+    };
+
+    HttpResponse::Ok()
+        .content_type("text/html; charset=utf-8")
+        .body(agent_profile_page(&pubkey, &pull_requests, &issue_claims, &reputation_labels).into_string())
 }
 
 /// WebSocket upgrade

@@ -806,6 +806,119 @@ impl EventCache {
         Ok(filtered)
     }
 
+    /// Get all pull requests by a specific agent (pubkey)
+    pub fn get_pull_requests_by_agent(&self, agent_pubkey: &str, limit: usize) -> Result<Vec<Event>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, kind, pubkey, created_at, content, tags, sig
+             FROM events
+             WHERE kind = 1618 AND pubkey = ?
+             ORDER BY created_at DESC
+             LIMIT ?",
+        )?;
+
+        let events = stmt
+            .query_map(params![agent_pubkey, limit as i64], |row| {
+                let tags_json: String = row.get(5)?;
+                let tags: Vec<Vec<String>> = serde_json::from_str(&tags_json)
+                    .map_err(|e| rusqlite::Error::FromSqlConversionFailure(
+                        5,
+                        rusqlite::types::Type::Text,
+                        Box::new(e),
+                    ))?;
+
+                Ok(Event {
+                    id: row.get(0)?,
+                    kind: row.get(1)?,
+                    pubkey: row.get(2)?,
+                    created_at: row.get(3)?,
+                    content: row.get(4)?,
+                    tags,
+                    sig: row.get(6)?,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+
+        Ok(events)
+    }
+
+    /// Get all issues claimed by a specific agent (pubkey)
+    pub fn get_issue_claims_by_agent(&self, agent_pubkey: &str, limit: usize) -> Result<Vec<Event>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, kind, pubkey, created_at, content, tags, sig
+             FROM events
+             WHERE kind = 1634 AND pubkey = ?
+             ORDER BY created_at DESC
+             LIMIT ?",
+        )?;
+
+        let events = stmt
+            .query_map(params![agent_pubkey, limit as i64], |row| {
+                let tags_json: String = row.get(5)?;
+                let tags: Vec<Vec<String>> = serde_json::from_str(&tags_json)
+                    .map_err(|e| rusqlite::Error::FromSqlConversionFailure(
+                        5,
+                        rusqlite::types::Type::Text,
+                        Box::new(e),
+                    ))?;
+
+                Ok(Event {
+                    id: row.get(0)?,
+                    kind: row.get(1)?,
+                    pubkey: row.get(2)?,
+                    created_at: row.get(3)?,
+                    content: row.get(4)?,
+                    tags,
+                    sig: row.get(6)?,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+
+        Ok(events)
+    }
+
+    /// Get reputation labels for an agent (NIP-32, kind:1985)
+    pub fn get_reputation_labels_for_agent(&self, agent_pubkey: &str) -> Result<Vec<Event>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, kind, pubkey, created_at, content, tags, sig
+             FROM events
+             WHERE kind = 1985
+             ORDER BY created_at DESC",
+        )?;
+
+        let events = stmt
+            .query_map([], |row| {
+                let tags_json: String = row.get(5)?;
+                let tags: Vec<Vec<String>> = serde_json::from_str(&tags_json)
+                    .map_err(|e| rusqlite::Error::FromSqlConversionFailure(
+                        5,
+                        rusqlite::types::Type::Text,
+                        Box::new(e),
+                    ))?;
+
+                Ok(Event {
+                    id: row.get(0)?,
+                    kind: row.get(1)?,
+                    pubkey: row.get(2)?,
+                    created_at: row.get(3)?,
+                    content: row.get(4)?,
+                    tags,
+                    sig: row.get(6)?,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+
+        // Filter events that reference this agent via p tag
+        let filtered: Vec<Event> = events.into_iter()
+            .filter(|event| {
+                event.tags.iter().any(|tag| {
+                    tag.len() >= 2 && tag[0] == "p" && tag[1] == agent_pubkey
+                })
+            })
+            .collect();
+
+        Ok(filtered)
+    }
+
     /// Clear all cached events
     #[allow(dead_code)]
     pub fn clear(&self) -> Result<()> {
