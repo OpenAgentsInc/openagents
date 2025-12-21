@@ -28,6 +28,7 @@
 //! - NIP-40: Expiration Timestamp
 //! - NIP-42: Authentication of Clients to Relays
 //! - NIP-44: Versioned Encryption (requires `full` feature)
+//! - NIP-45: Event Counts (COUNT verb for relays)
 //! - NIP-46: Nostr Remote Signing (requires `full` feature)
 //! - NIP-47: Nostr Wallet Connect (requires `full` feature)
 //! - NIP-49: Private Key Encryption (requires `full` feature)
@@ -84,7 +85,7 @@ mod nip40;
 mod nip42;
 #[cfg(feature = "full")]
 mod nip44;
-#[cfg(feature = "full")]
+mod nip45;
 #[cfg(feature = "full")]
 mod nip46;
 mod nip47;
@@ -268,6 +269,9 @@ pub use nip44::{
     MIN_PADDED_LEN, MIN_PLAINTEXT_LEN, NONCE_SIZE, Nip44Error, VERSION,
     decrypt as decrypt_v2, encrypt as encrypt_v2,
 };
+
+// NIP-45: Event Counts
+pub use nip45::{CountRequest, CountResponse, Nip45Error};
 
 // NIP-47: Nostr Wallet Connect (requires full feature)
 
