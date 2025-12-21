@@ -39,6 +39,7 @@ mod error;
 mod subscription;
 mod broadcast;
 mod rate_limit;
+mod relay_info;
 
 pub use db::{Database, DatabaseConfig, ConnectionPool};
 pub use server::{RelayServer, RelayConfig};
@@ -46,3 +47,4 @@ pub use error::{RelayError, Result};
 pub use subscription::{Filter, Subscription, SubscriptionManager};
 pub use broadcast::{BroadcastEvent, create_broadcast_channel};
 pub use rate_limit::{RateLimiter, RateLimitConfig};
+pub use relay_info::{RelayInformation, Limitation, RetentionPolicy, Fees, FeeSchedule, KindOrRange};
