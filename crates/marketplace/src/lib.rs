@@ -3,6 +3,15 @@
 //! This crate provides infrastructure for discovering, installing, and managing
 //! marketplace items including plugins, skills, and agents.
 
+// d-008 Unified Marketplace modules
+pub mod core;
+pub mod compute;
+pub mod data;
+pub mod cli;
+pub mod gui;
+pub mod views;
+
+// Existing marketplace modules
 pub mod agent_commerce;
 pub mod agent_governance;
 pub mod agent_lifecycle;

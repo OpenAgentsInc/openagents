@@ -1,22 +1,15 @@
-//! Skills module
-//!
-//! Skills are predefined task templates that can be installed and executed.
-//! This module implements the Agent Skills open standard (agentskills.io).
+//! Skills marketplace - NIP-SA skill licensing and execution
 
+// Existing modules
 pub mod agentskill;
 pub mod execution;
 pub mod versioning;
 
-pub use agentskill::{
-    Skill, SkillError, SkillManifest, SkillMetadata,
-    discover_skills, validate_skill_name,
-};
+// d-008 new modules
+pub mod publish;
+pub mod install;
+pub mod invoke;
+pub mod license;
 
-pub use execution::{
-    ExecutionError, ExecutionResult, FilesystemAccess, ResourceUsage,
-    SandboxConfig, ScriptExecution,
-};
-
-pub use versioning::{
-    SkillVersion, UpgradePath, VersionError, VersionRegistry,
-};
+// Re-exports for backwards compatibility
+pub use agentskill::{Skill, SkillError, SkillManifest, SkillMetadata, discover_skills, validate_skill_name};
