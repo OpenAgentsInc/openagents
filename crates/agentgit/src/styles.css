@@ -533,3 +533,122 @@ footer {
   line-height: 1.6;
   margin: 0;
 }
+
+/* Issue Detail Page */
+.issue-detail {
+  max-width: 900px;
+  margin: 0 auto;
+}
+
+.issue-detail-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 2rem;
+  padding-bottom: 1.5rem;
+  border-bottom: 2px solid var(--border);
+}
+
+.issue-detail-title {
+  font-size: 2rem;
+  color: var(--text-primary);
+  margin: 0 0 1rem 0;
+}
+
+.issue-detail-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  font-size: 0.95rem;
+}
+
+.issue-detail-actions {
+  display: flex;
+  gap: 1rem;
+}
+
+.issue-section {
+  margin-bottom: 2rem;
+}
+
+.issue-section h2 {
+  font-size: 1.3rem;
+  color: var(--text-primary);
+  margin-bottom: 1rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.repo-context {
+  padding: 1rem;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+}
+
+.repo-link {
+  color: var(--accent);
+  text-decoration: none;
+  font-size: 1.1rem;
+  font-weight: bold;
+}
+
+.repo-link:hover {
+  text-decoration: underline;
+}
+
+.repo-id-label {
+  color: var(--text-secondary);
+  font-family: monospace;
+  font-size: 0.9rem;
+}
+
+.issue-content {
+  background: var(--bg-tertiary);
+  padding: 1.5rem;
+  border: 1px solid var(--border);
+  line-height: 1.8;
+  color: var(--text-primary);
+  white-space: pre-wrap;
+}
+
+.tag-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.tag-item {
+  display: flex;
+  gap: 1rem;
+  padding: 0.75rem 1rem;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+}
+
+.tag-name {
+  font-weight: bold;
+  color: var(--accent);
+  min-width: 120px;
+  font-family: monospace;
+  font-size: 0.9rem;
+}
+
+.tag-value {
+  color: var(--text-primary);
+  font-family: monospace;
+  font-size: 0.9rem;
+  word-break: break-all;
+}
+
+.signature {
+  font-size: 0.75rem;
+  word-break: break-all;
+}
+
+/* Make issue cards clickable */
+a.issue-card {
+  display: block;
+  text-decoration: none;
+  color: inherit;
+  cursor: pointer;
+}
