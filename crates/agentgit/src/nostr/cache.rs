@@ -78,6 +78,12 @@ impl EventCache {
                 status TEXT,
                 FOREIGN KEY (event_id) REFERENCES events(id)
             );
+
+            CREATE TABLE IF NOT EXISTS watched_repos (
+                repo_identifier TEXT PRIMARY KEY,
+                repo_address TEXT NOT NULL,
+                watched_at INTEGER NOT NULL
+            );
             "#,
         )
         .context("Failed to initialize database schema")?;
@@ -1037,6 +1043,57 @@ impl EventCache {
             .collect();
 
         Ok(filtered)
+    }
+
+    /// Watch a repository
+    pub fn watch_repository(&self, repo_identifier: &str, repo_address: &str) -> Result<()> {
+        let watched_at = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as i64;
+
+        self.conn.execute(
+            "INSERT OR REPLACE INTO watched_repos (repo_identifier, repo_address, watched_at) VALUES (?, ?, ?)",
+            params![repo_identifier, repo_address, watched_at],
+        )?;
+
+        debug!("Watching repository: {}", repo_identifier);
+        Ok(())
+    }
+
+    /// Unwatch a repository
+    pub fn unwatch_repository(&self, repo_identifier: &str) -> Result<()> {
+        self.conn.execute(
+            "DELETE FROM watched_repos WHERE repo_identifier = ?",
+            params![repo_identifier],
+        )?;
+
+        debug!("Unwatched repository: {}", repo_identifier);
+        Ok(())
+    }
+
+    /// Check if a repository is watched
+    pub fn is_repository_watched(&self, repo_identifier: &str) -> Result<bool> {
+        let count: i64 = self.conn.query_row(
+            "SELECT COUNT(*) FROM watched_repos WHERE repo_identifier = ?",
+            params![repo_identifier],
+            |row| row.get(0),
+        )?;
+
+        Ok(count > 0)
+    }
+
+    /// Get all watched repositories
+    pub fn get_watched_repositories(&self) -> Result<Vec<String>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT repo_identifier FROM watched_repos ORDER BY watched_at DESC",
+        )?;
+
+        let identifiers = stmt
+            .query_map([], |row| row.get::<_, String>(0))?
+            .collect::<Result<Vec<_>, _>>()?;
+
+        Ok(identifiers)
     }
 
     /// Clear all cached events
