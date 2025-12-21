@@ -29,6 +29,12 @@ tracing = "0.1"
 # URL parsing
 url = "2"
 
+# Database
+rusqlite = { version = "0.32", features = ["bundled"] }
+
+# Random (for tests)
+rand = "0.8"
+
 [dev-dependencies]
 tokio-test = "0.4"
 tracing-subscriber = "0.3"
