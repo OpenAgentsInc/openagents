@@ -60,6 +60,7 @@
 //! - NIP-84: Highlights (highlighting valuable content)
 //! - NIP-89: Application Handlers (social discovery of skills/agents)
 //! - NIP-90: Data Vending Machine (DVM) job requests/results/feedback
+//! - NIP-92: Media Attachments (inline media metadata)
 //! - NIP-94: File Metadata
 //! - NIP-96: HTTP File Storage Integration (deprecated, use NIP-B7)
 //! - NIP-98: HTTP Auth (requires `full` feature)
@@ -142,6 +143,7 @@ mod nip78;
 mod nip84;
 mod nip89;
 mod nip90;
+mod nip92;
 mod nip94;
 mod nip96;
 mod nip99;
@@ -544,6 +546,12 @@ pub use nip90::{
     KIND_JOB_TEXT_EXTRACTION, KIND_JOB_TEXT_GENERATION, KIND_JOB_TRANSLATION, Nip90Error,
     get_request_kind, get_result_kind, is_dvm_kind, is_job_feedback_kind, is_job_request_kind,
     is_job_result_kind,
+};
+
+// NIP-92: Media Attachments
+pub use nip92::{
+    IMETA_TAG, MediaAttachment, Nip92Error, add_media_attachment, get_media_attachments,
+    has_media_attachments,
 };
 
 // NIP-94: File Metadata
