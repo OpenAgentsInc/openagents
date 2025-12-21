@@ -115,99 +115,24 @@ pub fn receive(amount: Option<u64>) -> Result<()> {
     Ok(())
 }
 
-pub fn send(address: String, amount: u64) -> Result<()> {
-    println!("{}", "Send Payment".cyan().bold());
-    println!();
-
-    // Check if wallet exists
-    if !SecureKeychain::has_mnemonic() {
-        anyhow::bail!("No wallet found. Use 'wallet init' to create one.");
-    }
-
-    println!("{}: {}", "To".bold(), address);
-    println!("{}: {} sats", "Amount".bold(), amount);
-    println!();
-
-    // Show warning for stub implementation
-    println!("{}", "Spark integration is in progress. This is a stub implementation.".yellow());
-    println!();
-    println!("{}", "Payment would be sent via Spark L2".dimmed());
-    println!("{}: (not implemented)", "Transaction ID".dimmed());
-
-    Ok(())
+pub fn send(_address: String, _amount: u64) -> Result<()> {
+    anyhow::bail!("Send payments require Breez SDK integration. See directive d-001 for integration roadmap.")
 }
 
-pub fn invoice(amount: u64, description: Option<String>) -> Result<()> {
-    println!("{}", "Generate Invoice".cyan().bold());
-    println!();
-
-    // Check if wallet exists
-    if !SecureKeychain::has_mnemonic() {
-        anyhow::bail!("No wallet found. Use 'wallet init' to create one.");
-    }
-
-    println!("{}: {} sats", "Amount".bold(), amount);
-    if let Some(desc) = &description {
-        println!("{}: {}", "Description".bold(), desc);
-    }
-    println!();
-
-    // Stub invoice
-    println!("{}: lnbc... (stub)", "Invoice".bold().dimmed());
-    println!();
-    println!("{}", "Spark integration is in progress. Lightning invoice generation not yet implemented.".yellow());
-
-    Ok(())
+pub fn invoice(_amount: u64, _description: Option<String>) -> Result<()> {
+    anyhow::bail!("Lightning invoice generation requires Breez SDK integration. See directive d-001 for integration roadmap.")
 }
 
-pub fn pay(invoice: String) -> Result<()> {
-    println!("{}", "Pay Invoice".cyan().bold());
-    println!();
-
-    // Check if wallet exists
-    if !SecureKeychain::has_mnemonic() {
-        anyhow::bail!("No wallet found. Use 'wallet init' to create one.");
-    }
-
-    println!("{}: {}", "Invoice".bold(), invoice);
-    println!("{}: {} sats", "Amount".bold().dimmed(), 0);
-    println!();
-    println!("{}", "Spark integration is in progress. Lightning invoice payment not yet implemented.".yellow());
-    println!();
-    println!("{}: (not implemented)", "Payment status".dimmed());
-
-    Ok(())
+pub fn pay(_invoice: String) -> Result<()> {
+    anyhow::bail!("Lightning invoice payment requires Breez SDK integration. See directive d-001 for integration roadmap.")
 }
 
-pub fn history(limit: usize) -> Result<()> {
-    println!("{}", "Transaction History".cyan().bold());
-    println!();
-
-    // Check if wallet exists
-    if !SecureKeychain::has_mnemonic() {
-        anyhow::bail!("No wallet found. Use 'wallet init' to create one.");
-    }
-
-    println!("Showing last {} transactions...", limit);
-    println!();
-    println!("No transactions yet");
-    println!();
-    println!("{}", "Spark integration is in progress. Transaction history not yet implemented.".yellow());
-
-    Ok(())
+pub fn history(_limit: usize) -> Result<()> {
+    anyhow::bail!("Transaction history requires Breez SDK integration. See directive d-001 for integration roadmap.")
 }
 
 pub fn deposit() -> Result<()> {
-    println!("{}", "On-chain Deposit".cyan().bold());
-    println!();
-
-    // TODO: Get on-chain deposit address from Spark
-
-    println!("{}: bc1...", "Address".bold());
-    println!();
-    println!("Send Bitcoin to this address to fund your wallet");
-
-    Ok(())
+    anyhow::bail!("On-chain deposits require Breez SDK integration. See directive d-001 for integration roadmap.")
 }
 
 pub fn withdraw(address: String, amount: u64) -> Result<()> {
