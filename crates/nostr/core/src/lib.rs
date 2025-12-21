@@ -41,6 +41,7 @@
 //! - NIP-45: Event Counts (COUNT verb for relays)
 //! - NIP-46: Nostr Remote Signing (requires `full` feature)
 //! - NIP-47: Nostr Wallet Connect (requires `full` feature)
+//! - NIP-48: Proxy Tags (bridging from other protocols)
 //! - NIP-49: Private Key Encryption (requires `full` feature)
 //! - NIP-50: Search Capability
 //! - NIP-51: Lists (mute lists, pin lists, bookmarks, etc.)
@@ -119,6 +120,7 @@ mod nip45;
 #[cfg(feature = "full")]
 mod nip46;
 mod nip47;
+mod nip48;
 #[cfg(feature = "full")]
 mod nip49;
 mod nip50;
@@ -398,6 +400,12 @@ pub use nip47::{
     PayInvoiceParams, PayInvoiceResult, PayKeysendParams, Request, RequestParams, Response,
     ResponseResult, TlvRecord, Transaction, TransactionType, INFO_EVENT_KIND,
     NOTIFICATION_KIND_NIP04, NOTIFICATION_KIND_NIP44, REQUEST_KIND, RESPONSE_KIND,
+};
+
+// NIP-48: Proxy Tags
+pub use nip48::{
+    Nip48Error, PROXY_TAG, ProxyProtocol, ProxyTag, add_proxy_tag, get_proxy_tag,
+    get_proxy_tags, has_proxy_tag, is_bridged_event,
 };
 
 // NIP-49: Private Key Encryption (requires full feature)
