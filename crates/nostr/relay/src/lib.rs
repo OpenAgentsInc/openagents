@@ -40,6 +40,8 @@ mod subscription;
 mod broadcast;
 mod rate_limit;
 mod relay_info;
+mod metrics;
+mod admin;
 
 pub use db::{Database, DatabaseConfig, ConnectionPool};
 pub use server::{RelayServer, RelayConfig};
@@ -48,3 +50,5 @@ pub use subscription::{Filter, Subscription, SubscriptionManager};
 pub use broadcast::{BroadcastEvent, create_broadcast_channel};
 pub use rate_limit::{RateLimiter, RateLimitConfig};
 pub use relay_info::{RelayInformation, Limitation, RetentionPolicy, Fees, FeeSchedule, KindOrRange};
+pub use metrics::{RelayMetrics, MetricsSnapshot};
+pub use admin::{AdminConfig, start_admin_server, HealthResponse, StatsResponse};
