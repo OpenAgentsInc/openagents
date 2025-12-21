@@ -194,6 +194,11 @@ impl NostrClient {
         self.cache.lock().await.get_event(event_id)
     }
 
+    /// Get a repository by its identifier (d tag)
+    pub async fn get_repository_by_identifier(&self, identifier: &str) -> Result<Option<Event>> {
+        self.cache.lock().await.get_repository_by_identifier(identifier)
+    }
+
     /// Get cache statistics
     #[allow(dead_code)]
     pub async fn get_cache_stats(&self) -> Result<crate::nostr::cache::CacheStats> {
