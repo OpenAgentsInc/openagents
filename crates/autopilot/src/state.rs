@@ -8,6 +8,8 @@ use anyhow::{Context, Result};
 use nostr::{AgentState, AgentStateContent, KIND_AGENT_STATE};
 use nostr_client::{RelayPool, PoolConfig};
 use std::time::{SystemTime, UNIX_EPOCH};
+use wallet::core::UnifiedIdentity;
+use std::sync::Arc;
 
 /// Agent state manager
 pub struct StateManager {
@@ -15,6 +17,8 @@ pub struct StateManager {
     agent_secret_key: [u8; 32],
     /// Agent public key
     agent_public_key: [u8; 33],
+    /// Optional identity for signing events
+    identity: Option<Arc<UnifiedIdentity>>,
 }
 
 impl StateManager {
@@ -23,6 +27,20 @@ impl StateManager {
         Self {
             agent_secret_key,
             agent_public_key,
+            identity: None,
+        }
+    }
+
+    /// Create a new state manager with identity for signing
+    pub fn with_identity(
+        agent_secret_key: [u8; 32],
+        agent_public_key: [u8; 33],
+        identity: Arc<UnifiedIdentity>,
+    ) -> Self {
+        Self {
+            agent_secret_key,
+            agent_public_key,
+            identity: Some(identity),
         }
     }
 
@@ -107,16 +125,59 @@ impl StateManager {
         // Wait a moment for connections
         tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
 
-        // Note: In a real implementation, we would sign the event here with the agent's secret key
-        // For now, we'll return a placeholder event ID since signing requires the full nostr Event API
-        // This will be completed when we integrate with the agent keypair system
+        // Check if we have identity for signing
+        let identity = match &self.identity {
+            Some(id) => id,
+            None => {
+                // No identity - graceful degradation
+                eprintln!("Warning: No identity configured, agent state will not be published");
+                let _ = pool.disconnect_all().await;
+                // Return a mock event ID for backwards compatibility
+                return Ok("mock_event_id_".to_string() + &hex::encode(&self.agent_public_key[..8]));
+            }
+        };
+
+        // Build Nostr event template
+        let template = nostr::EventTemplate {
+            created_at: _created_at,
+            kind: KIND_AGENT_STATE,
+            tags: _tags,
+            content: _encrypted_content.clone(),
+        };
+
+        // Sign event
+        let event = identity
+            .sign_event(template)
+            .context("Failed to sign agent state event")?;
+
+        let event_id = event.id.clone();
 
         // Publish to all relays
-        // TODO: Implement actual event signing and publishing
-        // let event_id = pool.publish_event(&signed_event).await?;
+        let publish_result = pool.publish(&event).await;
 
-        // For now, return a mock event ID to demonstrate the interface
-        let event_id = "mock_event_id_".to_string() + &hex::encode(&self.agent_public_key[..8]);
+        match publish_result {
+            Ok(results) => {
+                let success_count = results.iter().filter(|r| r.accepted).count();
+                let total_count = results.len();
+
+                if success_count > 0 {
+                    eprintln!(
+                        "✓ Published agent state {} to {}/{} relays",
+                        event_id,
+                        success_count,
+                        total_count
+                    );
+                } else {
+                    eprintln!(
+                        "⚠ Failed to publish agent state {} to any relays",
+                        event_id
+                    );
+                }
+            }
+            Err(e) => {
+                eprintln!("✗ Failed to publish agent state: {}", e);
+            }
+        }
 
         // Disconnect from pool
         let _ = pool.disconnect_all().await;
