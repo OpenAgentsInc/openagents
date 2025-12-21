@@ -1,7 +1,5 @@
 //! Wallet configuration management
 
-#![allow(dead_code)]
-
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::fs;
@@ -64,9 +62,16 @@ impl WalletConfig {
     }
 
     /// Get database path (expanded)
+    #[allow(dead_code)]
     pub fn db_path(&self) -> Result<PathBuf> {
         let path = shellexpand::tilde(&self.storage.db_path);
         Ok(PathBuf::from(path.as_ref()))
+    }
+
+    /// Get profile path
+    pub fn profile_path(&self) -> Result<PathBuf> {
+        let home = dirs::home_dir().ok_or_else(|| anyhow::anyhow!("Could not find home directory"))?;
+        Ok(home.join(".openagents").join("profile.json"))
     }
 }
 

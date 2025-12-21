@@ -139,6 +139,8 @@ pub fn export() -> Result<()> {
 
 pub fn whoami() -> Result<()> {
     use bip39::Mnemonic;
+    use crate::core::nostr::Profile;
+    use crate::storage::config::WalletConfig;
 
     println!("{}", "Wallet Information".cyan().bold());
     println!();
@@ -160,6 +162,17 @@ pub fn whoami() -> Result<()> {
     let identity = UnifiedIdentity::from_mnemonic(mnemonic)
         .context("Failed to derive identity")?;
 
+    // Try to load profile
+    let config = WalletConfig::load()?;
+    let profile_path = config.profile_path()?;
+
+    let profile = if profile_path.exists() {
+        let content = std::fs::read_to_string(&profile_path)?;
+        Profile::from_json(&content)?
+    } else {
+        Profile::default()
+    };
+
     // Display information
     println!("{}", "Identity".bold());
     println!("  {}: {}", "Nostr Public Key".bold(), identity.nostr_public_key());
@@ -168,21 +181,60 @@ pub fn whoami() -> Result<()> {
     println!("  {}: {} sats", "Total".bold(), 0);
     println!();
     println!("{}", "Profile".bold());
-    println!("  Name: (not set)");
-    println!("  About: (not set)");
+    if profile.is_empty() {
+        println!("  (not set - use 'wallet profile set' to create)");
+    } else {
+        if let Some(name) = &profile.name {
+            println!("  {}: {}", "Name".bold(), name);
+        }
+        if let Some(about) = &profile.about {
+            println!("  {}: {}", "About".bold(), about);
+        }
+    }
 
     Ok(())
 }
 
 pub fn profile_show() -> Result<()> {
+    use crate::core::nostr::Profile;
+    use crate::storage::config::WalletConfig;
+
     println!("{}", "Profile Information".cyan().bold());
     println!();
 
-    // TODO: Fetch profile from relays
-    // TODO: Display metadata
+    // Check if wallet exists
+    if !SecureKeychain::has_mnemonic() {
+        anyhow::bail!("No wallet found. Use 'wallet init' to create one.");
+    }
 
-    println!("{}: (not set)", "Name".bold());
-    println!("{}: (not set)", "About".bold());
+    // Try to load profile from config
+    let config = WalletConfig::load()?;
+    let profile_path = config.profile_path()?;
+
+    let profile = if profile_path.exists() {
+        let content = std::fs::read_to_string(&profile_path)?;
+        Profile::from_json(&content)?
+    } else {
+        Profile::default()
+    };
+
+    // Display profile
+    if profile.is_empty() {
+        println!("  Profile not set. Use 'wallet profile set' to create one.");
+    } else {
+        if let Some(name) = &profile.name {
+            println!("  {}: {}", "Name".bold(), name);
+        }
+        if let Some(about) = &profile.about {
+            println!("  {}: {}", "About".bold(), about);
+        }
+        if let Some(picture) = &profile.picture {
+            println!("  {}: {}", "Picture".bold(), picture);
+        }
+        if let Some(nip05) = &profile.nip05 {
+            println!("  {}: {}", "NIP-05".bold(), nip05);
+        }
+    }
 
     Ok(())
 }
@@ -193,27 +245,70 @@ pub fn profile_set(
     picture: Option<String>,
     nip05: Option<String>,
 ) -> Result<()> {
+    use bip39::Mnemonic;
+    use crate::core::nostr::{Profile, ProfileUpdate, create_profile_event};
+    use crate::storage::config::WalletConfig;
+
     println!("{}", "Updating profile...".cyan());
 
-    // TODO: Load current profile
-    // TODO: Merge changes
-    // TODO: Create kind:0 event
-    // TODO: Publish to relays
+    // Check if wallet exists
+    if !SecureKeychain::has_mnemonic() {
+        anyhow::bail!("No wallet found. Use 'wallet init' to create one.");
+    }
 
-    if let Some(n) = name {
+    // Load identity
+    let mnemonic_phrase = SecureKeychain::retrieve_mnemonic()?;
+    let mnemonic = Mnemonic::parse(&mnemonic_phrase)?;
+    let identity = UnifiedIdentity::from_mnemonic(mnemonic)?;
+
+    // Load or create profile
+    let config = WalletConfig::load()?;
+    let profile_path = config.profile_path()?;
+
+    let mut profile = if profile_path.exists() {
+        let content = std::fs::read_to_string(&profile_path)?;
+        Profile::from_json(&content)?
+    } else {
+        Profile::default()
+    };
+
+    // Merge updates
+    let updates = ProfileUpdate {
+        name: name.clone(),
+        about: about.clone(),
+        picture: picture.clone(),
+        nip05: nip05.clone(),
+    };
+    profile.merge(updates);
+
+    // Save profile locally
+    if let Some(parent) = profile_path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    std::fs::write(&profile_path, profile.to_json())?;
+
+    // Create and sign the event
+    let event = create_profile_event(&identity, &profile)?;
+
+    println!();
+    if let Some(n) = &name {
         println!("  {} → {}", "Name".bold(), n);
     }
-    if let Some(a) = about {
+    if let Some(a) = &about {
         println!("  {} → {}", "About".bold(), a);
     }
-    if let Some(p) = picture {
+    if let Some(p) = &picture {
         println!("  {} → {}", "Picture".bold(), p);
     }
-    if let Some(n) = nip05 {
+    if let Some(n) = &nip05 {
         println!("  {} → {}", "NIP-05".bold(), n);
     }
 
-    println!("{}", "✓ Profile updated".green());
+    println!();
+    println!("{}", "✓ Profile updated locally".green());
+    println!();
+    println!("{}", "Note: Profile saved locally. Relay publishing coming in future update.".yellow());
+    println!("{}: {}", "Event ID".bold(), event.id);
 
     Ok(())
 }
