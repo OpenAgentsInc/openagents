@@ -53,6 +53,7 @@
 //! - NIP-57: Lightning Zaps (tipping with Lightning payments)
 //! - NIP-58: Badges (badge definitions, awards, and profile display)
 //! - NIP-59: Gift Wrap (encapsulation and metadata obscuring, requires `full` feature)
+//! - NIP-70: Protected Events (author-only publishing with authentication)
 //! - NIP-71: Video Events (video content with metadata)
 //! - NIP-72: Moderated Communities (Reddit-style communities)
 //! - NIP-73: External Content IDs (ISBN, podcast GUID, ISAN, blockchain references)
@@ -137,6 +138,7 @@ mod nip57;
 mod nip58;
 #[cfg(feature = "full")]
 mod nip59;
+mod nip70;
 mod nip71;
 mod nip72;
 mod nip73;
@@ -502,6 +504,12 @@ pub use nip17::{
     ChatMessage, DmRelayList, FileMessage, KIND_CHAT_MESSAGE, KIND_DM_RELAY_LIST,
     KIND_FILE_MESSAGE, Nip17Error, QuotedEvent, receive_chat_message, receive_file_message,
     send_chat_message, send_file_message,
+};
+
+// NIP-70: Protected Events
+pub use nip70::{
+    Nip70Error, PROTECTED_TAG, add_protected_tag, get_protected_tag, is_protected,
+    remove_protected_tag, validate_protected_event,
 };
 
 // NIP-71: Video Events
