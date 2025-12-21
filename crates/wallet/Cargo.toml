@@ -60,4 +60,5 @@ actix-web = "4"
 maud = { version = "0.26", features = ["actix-web"] }
 
 [dev-dependencies]
+reqwest = { workspace = true, features = ["blocking"] }
 tempfile = "3"

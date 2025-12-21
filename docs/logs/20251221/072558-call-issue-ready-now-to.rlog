@@ -493,3 +493,68 @@ t!:Bash id=ndGTBsBf cmd="cargo build -p agentgit 2>&1 | grep -E "(warnin..." →
 o: id=ndGTBsBf → [ok] 
 a: Perfect! No warnings. Let's commit and push: tokens_in=0 tokens_out=1 tokens_cached=98327
 t!:Bash id=VFEkUsZe cmd="git add -A && git commit --amend --no-edit" → [running] tokens_in=0 tokens_out=100 tokens_cached=98327
+o: id=VFEkUsZe → [ok] [main 33a898d57] Add comprehensive error handling to AgentGit event publishing
+t!:Bash id=2SM3SkAS cmd="git push origin main" → [running] tokens_in=0 tokens_out=25 tokens_cached=98682
+o: id=2SM3SkAS → [ok] [0;36m🔍 Running cargo build to check for errors and warnings...[0m
+a: Excellent! Now let's complete the issue: tokens_in=0 tokens_out=4 tokens_cached=98978
+t!:TodoWrite id=R7X6kr4G  → [running] tokens_in=0 tokens_out=359 tokens_cached=98978
+o: id=R7X6kr4G → [ok] Todos have been modified successfully. Ensure that you continue to use the todo list to track you...
+t!:mcp__issues__issue_complete id=xjWaL4ah  → [running] tokens_in=0 tokens_out=32 tokens_cached=99375
+o: id=xjWaL4ah → [ok] Completed issue #374
+t!:TodoWrite id=sDpGyMw6  → [running] tokens_in=0 tokens_out=79 tokens_cached=99776
+o: id=sDpGyMw6 → [ok] Todos have been modified successfully. Ensure that you continue to use the todo list to track you...
+a: Perfect! Issue #374 is complete. Now let me call issue_ready to get the next task: tokens_in=0 tokens_out=1 tokens_cached=99851
+t!:mcp__issues__issue_ready id=9equmr2z  → [running] tokens_in=0 tokens_out=1 tokens_cached=99851
+o: id=9equmr2z → [ok] {
+t!:mcp__issues__issue_claim id=zCGQ5GzP  → [running] tokens_in=0 tokens_out=27 tokens_cached=99972
+o: id=zCGQ5GzP → [ok] Claimed issue #373
+a: Now I'll start working on issue #373. Let me first examine the wallet GUI structure: tokens_in=0 tokens_out=1 tokens_cached=100229
+t!:Read id=NCscC2TQ file_path=/home/christopherdavid/code/openagents/crates/wallet/src/gui/server.rs → [running] tokens_in=0 tokens_out=1 tokens_cached=100229
+o: id=NCscC2TQ → [ok]      1→//! Actix-web server for Wallet GUI
+a: Let me continue reading the server.rs file to understand all the routes: tokens_in=0 tokens_out=4 tokens_cached=100327
+t!:Read id=3ac5qvnD file_path=/home/christopherdavid/code/openagents/crates/wallet/src/gui/server.rs → [running] tokens_in=0 tokens_out=112 tokens_cached=100327
+o: id=3ac5qvnD → [ok]    100→struct SendPaymentForm {
+a: Now I'll create comprehensive integration tests for the wallet GUI: tokens_in=0 tokens_out=1 tokens_cached=101767
+t!:TodoWrite id=pqnuUE6m  → [running] tokens_in=0 tokens_out=345 tokens_cached=101767
+o: id=pqnuUE6m → [ok] Todos have been modified successfully. Ensure that you continue to use the todo list to track you...
+t!:Write id=cYCPRsgD file_path=/home/christopherdavid/code/openagents/crates/wallet/tests/wallet_gui_integration.rs → [running] tokens_in=0 tokens_out=2786 tokens_cached=103061
+o: id=cYCPRsgD → [ok] File created successfully at: /home/christopherdavid/code/openagents/crates/wallet/tests/wallet_g...
+a: Now I need to add reqwest as a dev dependency for the wallet crate: tokens_in=0 tokens_out=2 tokens_cached=103448
+t!:Bash id=C6BD7fPJ cmd="cargo add reqwest -p wallet --dev --features bl..." → [running] tokens_in=0 tokens_out=104 tokens_cached=103448
+o: id=C6BD7fPJ → [ok]     Updating crates.io index
+a: Let me also check if the wallet crate has a lib entry point so we can access the modules from tests: tokens_in=0 tokens_out=3 tokens_cached=106278
+t!:Read id=CghnPBzQ file_path=/home/christopherdavid/code/openagents/crates/wallet/Cargo.toml → [running] tokens_in=0 tokens_out=101 tokens_cached=106278
+o: id=CghnPBzQ → [ok]      1→[package]
+a: I need to add a lib.rs to expose the modules for testing: tokens_in=0 tokens_out=1 tokens_cached=106520
+t!:Bash id=uWMhkLEE cmd="ls -la crates/wallet/src/" → [running] tokens_in=0 tokens_out=1 tokens_cached=106520
+o: id=uWMhkLEE → [ok] Permissions Size User             Date Modified Name
+a: Great! lib.rs already exists. Let me check it and update if needed: tokens_in=0 tokens_out=1 tokens_cached=107415
+t!:Read id=7t3FYzWM file_path=/home/christopherdavid/code/openagents/crates/wallet/src/lib.rs → [running] tokens_in=0 tokens_out=95 tokens_cached=107415
+o: id=7t3FYzWM → [ok]      1→//! OpenAgents Wallet
+a: I need to add the gui module to lib.rs: tokens_in=0 tokens_out=1 tokens_cached=107919
+t!:Edit id=JbabukN7 file_path=/home/christopherdavid/code/openagents/crates/wallet/src/lib.rs → [running] tokens_in=0 tokens_out=253 tokens_cached=107919
+o: id=JbabukN7 → [ok] The file /home/christopherdavid/code/openagents/crates/wallet/src/lib.rs has been updated. Here's...
+t!:TodoWrite id=GWLefYoZ  → [running] tokens_in=0 tokens_out=166 tokens_cached=108194
+o: id=GWLefYoZ → [ok] Todos have been modified successfully. Ensure that you continue to use the todo list to track you...
+a: Now let's run the tests: tokens_in=0 tokens_out=1 tokens_cached=108835
+t!:Bash id=u3GxnjnD cmd="cargo test -p wallet --test wallet_gui_integrat..." → [running] tokens_in=0 tokens_out=1 tokens_cached=108835
+o: id=u3GxnjnD → [ok]    Compiling nostr-client v0.1.0 (/home/christopherdavid/code/openagents/crates/nostr/client)
+a: I need to make the server module public: tokens_in=0 tokens_out=1 tokens_cached=109043
+t!:Read id=6PJogbUu file_path=/home/christopherdavid/code/openagents/crates/wallet/src/gui/mod.rs → [running] tokens_in=0 tokens_out=89 tokens_cached=109043
+o: id=6PJogbUu → [ok]      1→//! GUI module for wallet application
+t!:Edit id=xsfz5KVU file_path=/home/christopherdavid/code/openagents/crates/wallet/src/gui/mod.rs → [running] tokens_in=0 tokens_out=154 tokens_cached=109412
+o: id=xsfz5KVU → [ok] The file /home/christopherdavid/code/openagents/crates/wallet/src/gui/mod.rs has been updated. He...
+a: Now let's run the tests again: tokens_in=0 tokens_out=1 tokens_cached=109687
+t!:Bash id=Ac9uaBpS cmd="cargo test -p wallet --test wallet_gui_integrat..." → [running] tokens_in=0 tokens_out=1 tokens_cached=109687
+o: id=Ac9uaBpS → [ok]    Compiling wallet v0.1.0 (/home/christopherdavid/code/openagents/crates/wallet)
+a: Let me fix that compilation error: tokens_in=0 tokens_out=1 tokens_cached=110001
+t!:Read id=82FKpykQ file_path=/home/christopherdavid/code/openagents/crates/wallet/tests/wallet_gui_integration.rs → [running] tokens_in=0 tokens_out=123 tokens_cached=110001
+o: id=82FKpykQ → [ok]     25→/// Test server startup and shutdown
+t!:Edit id=j3bxcCLL file_path=/home/christopherdavid/code/openagents/crates/wallet/tests/wallet_gui_integration.rs → [running] tokens_in=0 tokens_out=159 tokens_cached=110548
+o: id=j3bxcCLL → [ok] The file /home/christopherdavid/code/openagents/crates/wallet/tests/wallet_gui_integration.rs has...
+t!:Bash id=MxyRoxdb cmd="cargo test -p wallet --test wallet_gui_integrat..." → [running] tokens_in=0 tokens_out=26 tokens_cached=110920
+o: id=MxyRoxdb → [ok]    Compiling wallet v0.1.0 (/home/christopherdavid/code/openagents/crates/wallet)
+a: Perfect! All 15 tests pass! Let's update the todo and commit: tokens_in=0 tokens_out=1 tokens_cached=111399
+t!:TodoWrite id=qWA4HD9R  → [running] tokens_in=0 tokens_out=184 tokens_cached=111399
+o: id=qWA4HD9R → [ok] Todos have been modified successfully. Ensure that you continue to use the todo list to track you...
+t!:Bash id=ewVNghid cmd="git add -A && git status" → [running] tokens_in=0 tokens_out=25 tokens_cached=111833

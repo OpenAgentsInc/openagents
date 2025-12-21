@@ -4,4 +4,5 @@
 //! with Bitcoin payments (Spark SDK) from a single BIP39 mnemonic.
 
 pub mod core;
+pub mod gui;
 pub mod storage;
