@@ -1,5 +1,6 @@
 //! Compute CLI commands
 
+use crate::core::discovery::{ProviderDiscovery, ProviderQuery, SortBy};
 use clap::Subcommand;
 
 #[derive(Debug, Subcommand)]
@@ -13,6 +14,18 @@ pub enum ComputeCommands {
         /// Filter by region
         #[arg(long)]
         region: Option<String>,
+
+        /// Filter by maximum price (in millisats)
+        #[arg(long)]
+        max_price: Option<u64>,
+
+        /// Filter by minimum trust score (0.0-1.0)
+        #[arg(long)]
+        min_trust: Option<f32>,
+
+        /// Sort by (trust, price, recommendations)
+        #[arg(long, default_value = "trust")]
+        sort: String,
 
         /// Output as JSON
         #[arg(long)]
@@ -84,8 +97,18 @@ impl ComputeCommands {
             ComputeCommands::Providers {
                 model,
                 region,
+                max_price,
+                min_trust,
+                sort,
                 json,
-            } => self.providers(model.as_deref(), region.as_deref(), *json),
+            } => self.providers(
+                model.as_deref(),
+                region.as_deref(),
+                *max_price,
+                *min_trust,
+                sort,
+                *json,
+            ),
 
             ComputeCommands::Submit {
                 job_type,
@@ -117,23 +140,132 @@ impl ComputeCommands {
         &self,
         model: Option<&str>,
         region: Option<&str>,
-        json: bool,
+        max_price: Option<u64>,
+        min_trust: Option<f32>,
+        sort: &str,
+        json_output: bool,
     ) -> anyhow::Result<()> {
-        if json {
-            println!("{{\"providers\": []}}");
+        // Create provider discovery (in real impl, this would fetch from relays)
+        let discovery = ProviderDiscovery::new();
+
+        // Build query from filters
+        let mut query = ProviderQuery::new();
+
+        if let Some(m) = model {
+            query = query.with_model(m);
+        }
+
+        if let Some(r) = region {
+            query = query.with_region(r);
+        }
+
+        if let Some(price) = max_price {
+            query = query.with_max_price(price);
+        }
+
+        if let Some(trust) = min_trust {
+            query = query.with_min_trust_score(trust);
+        }
+
+        // Parse sort option
+        let sort_by = match sort.to_lowercase().as_str() {
+            "price" => SortBy::Price,
+            "recommendations" | "recs" => SortBy::Recommendations,
+            "trust" | _ => SortBy::TrustScore,
+        };
+        query = query.sort_by(sort_by);
+
+        // Query providers
+        let providers = discovery.query(&query);
+
+        if json_output {
+            // JSON output
+            let json = serde_json::json!({
+                "providers": providers.iter().map(|p| serde_json::json!({
+                    "pubkey": p.pubkey,
+                    "name": p.metadata.name,
+                    "description": p.metadata.description,
+                    "capabilities": p.capabilities,
+                    "pricing": p.pricing.as_ref().map(|pr| serde_json::json!({
+                        "amount_msats": pr.amount_msats,
+                        "model": pr.model,
+                    })),
+                    "trust_score": p.trust_score,
+                    "recommendations": p.recommendation_count,
+                    "region": p.metadata.region,
+                })).collect::<Vec<_>>(),
+                "count": providers.len(),
+            });
+            println!("{}", serde_json::to_string_pretty(&json)?);
         } else {
+            // Human-readable table output
             println!("Compute Providers");
             println!("=================\n");
 
-            if let Some(model) = model {
-                println!("Filtering by model: {}", model);
+            // Show active filters
+            let mut filters = Vec::new();
+            if let Some(m) = model {
+                filters.push(format!("model={}", m));
             }
-            if let Some(region) = region {
-                println!("Filtering by region: {}", region);
+            if let Some(r) = region {
+                filters.push(format!("region={}", r));
+            }
+            if let Some(price) = max_price {
+                filters.push(format!("max_price={}", price));
+            }
+            if let Some(trust) = min_trust {
+                filters.push(format!("min_trust={:.2}", trust));
             }
 
-            println!("\nNo providers found (discovery not yet implemented)");
+            if !filters.is_empty() {
+                println!("Filters: {}", filters.join(", "));
+            }
+            println!("Sort by: {}\n", sort);
+
+            if providers.is_empty() {
+                println!("No providers found matching criteria");
+                println!("\nNote: Provider discovery from relays not yet implemented.");
+                println!("      This is a placeholder showing the CLI structure.");
+            } else {
+                // Print table header
+                println!(
+                    "{:<16} {:<30} {:<15} {:<10} {:<8}",
+                    "Pubkey", "Name", "Models", "Trust", "Recs"
+                );
+                println!("{}", "-".repeat(85));
+
+                // Print providers
+                for p in &providers {
+                    let pubkey_short = if p.pubkey.len() > 16 {
+                        format!("{}...", &p.pubkey[..13])
+                    } else {
+                        p.pubkey.clone()
+                    };
+
+                    let name = if p.metadata.name.len() > 30 {
+                        format!("{}...", &p.metadata.name[..27])
+                    } else {
+                        p.metadata.name.clone()
+                    };
+
+                    let models = if p.capabilities.is_empty() {
+                        "-".to_string()
+                    } else if p.capabilities.len() == 1 {
+                        p.capabilities[0].clone()
+                    } else {
+                        format!("{} models", p.capabilities.len())
+                    };
+
+                    println!(
+                        "{:<16} {:<30} {:<15} {:<10.2} {:<8}",
+                        pubkey_short, name, models, p.trust_score, p.recommendation_count
+                    );
+                }
+
+                println!("\nTotal: {} providers", providers.len());
+            }
         }
+
         Ok(())
     }
 
@@ -185,10 +317,7 @@ impl ComputeCommands {
 
     fn status(&self, job_id: &str, json: bool) -> anyhow::Result<()> {
         if json {
-            println!(
-                "{{\"job_id\": \"{}\", \"status\": \"unknown\"}}",
-                job_id
-            );
+            println!("{{\"job_id\": \"{}\", \"status\": \"unknown\"}}", job_id);
         } else {
             println!("Job Status");
             println!("==========\n");
@@ -231,6 +360,9 @@ mod tests {
         let _providers = ComputeCommands::Providers {
             model: None,
             region: None,
+            max_price: None,
+            min_trust: None,
+            sort: "trust".to_string(),
             json: false,
         };
 
@@ -277,5 +409,54 @@ mod tests {
             .unwrap_err()
             .to_string()
             .contains("Either --prompt or --file must be provided"));
+    }
+
+    #[test]
+    fn test_providers_command_with_filters() {
+        let cmd = ComputeCommands::Providers {
+            model: Some("llama3".to_string()),
+            region: Some("us-west".to_string()),
+            max_price: Some(5000),
+            min_trust: Some(0.5),
+            sort: "trust".to_string(),
+            json: false,
+        };
+
+        // Should execute without error (even though no providers found)
+        let result = cmd.execute();
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_providers_json_output() {
+        let cmd = ComputeCommands::Providers {
+            model: None,
+            region: None,
+            max_price: None,
+            min_trust: None,
+            sort: "trust".to_string(),
+            json: true,
+        };
+
+        let result = cmd.execute();
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_providers_sort_options() {
+        // Test different sort options
+        for sort in &["trust", "price", "recommendations", "recs"] {
+            let cmd = ComputeCommands::Providers {
+                model: None,
+                region: None,
+                max_price: None,
+                min_trust: None,
+                sort: sort.to_string(),
+                json: false,
+            };
+
+            let result = cmd.execute();
+            assert!(result.is_ok());
+        }
     }
 }
