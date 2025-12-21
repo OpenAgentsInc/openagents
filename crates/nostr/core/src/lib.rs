@@ -36,6 +36,7 @@
 //! - NIP-51: Lists (mute lists, pin lists, bookmarks, etc.)
 //! - NIP-52: Calendar Events (date-based, time-based, calendars, RSVPs)
 //! - NIP-53: Live Activities (live streaming, meetings, presence)
+//! - NIP-54: Wiki (collaborative wiki articles)
 //! - NIP-56: Reporting
 //! - NIP-57: Lightning Zaps (tipping with Lightning payments)
 //! - NIP-58: Badges (badge definitions, awards, and profile display)
@@ -99,6 +100,7 @@ mod nip50;
 mod nip51;
 mod nip52;
 mod nip53;
+mod nip54;
 mod nip56;
 mod nip57;
 mod nip58;
@@ -341,6 +343,12 @@ pub use nip53::{
     KIND_LIVE_CHAT_MESSAGE, KIND_LIVE_STREAMING, KIND_MEETING_ROOM_EVENT, KIND_MEETING_SPACE,
     KIND_ROOM_PRESENCE, LiveChatMessage, LiveParticipant, LiveStatus, LiveStreamingEvent,
     MeetingRoomEvent, MeetingSpace, Nip53Error, RoomPresence, SpaceStatus, is_nip53_kind,
+};
+
+// NIP-54: Wiki
+pub use nip54::{
+    KIND_WIKI_ARTICLE, KIND_WIKI_MERGE_REQUEST, KIND_WIKI_REDIRECT, Nip54Error, WikiArticle,
+    WikiMergeRequest, WikiRedirect, WikiReference, is_nip54_kind, normalize_d_tag,
 };
 
 // NIP-56: Reporting
