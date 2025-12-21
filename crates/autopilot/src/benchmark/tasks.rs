@@ -1163,6 +1163,587 @@ impl BenchmarkTask for B010DependencyUpdate {
     }
 }
 
+/// B-011: Error Recovery
+///
+/// Task: Complete a task despite initial errors (missing file)
+pub struct B011ErrorRecovery;
+
+impl BenchmarkTask for B011ErrorRecovery {
+    fn id(&self) -> &str {
+        "B-011"
+    }
+
+    fn name(&self) -> &str {
+        "Error Recovery"
+    }
+
+    fn category(&self) -> &str {
+        "resilience"
+    }
+
+    fn setup(&self, workspace: &Path) -> Result<()> {
+        // Create a config file with a reference to a missing data file
+        std::fs::write(
+            workspace.join("config.json"),
+            r#"{"data_file": "data.json", "output": "result.txt"}"#,
+        )?;
+
+        // Deliberately NOT creating data.json - this will cause an error
+        // The agent needs to either create it or handle the error gracefully
+
+        Ok(())
+    }
+
+    fn prompt(&self) -> &str {
+        "Read config.json, load the data file specified in it, and write 'SUCCESS' to the output file. Handle any errors you encounter."
+    }
+
+    fn validate(&self, workspace: &Path) -> Result<ValidationResult> {
+        let mut messages = Vec::new();
+        let mut custom_metrics = HashMap::new();
+
+        // Check if output file exists
+        let output_path = workspace.join("result.txt");
+        let output_exists = output_path.exists();
+
+        if output_exists {
+            let content = std::fs::read_to_string(&output_path)?;
+            let has_success = content.contains("SUCCESS");
+
+            if has_success {
+                messages.push("✓ Output file created with SUCCESS".to_string());
+                custom_metrics.insert("output_correct".to_string(), 1.0);
+            } else {
+                messages.push(format!("✗ Output file exists but content is wrong: {}", content));
+                custom_metrics.insert("output_correct".to_string(), 0.0);
+            }
+        } else {
+            messages.push("✗ Output file not created".to_string());
+            custom_metrics.insert("output_correct".to_string(), 0.0);
+        }
+
+        // Check if data.json was created (one way to handle the error)
+        let data_created = workspace.join("data.json").exists();
+        if data_created {
+            messages.push("✓ Missing data file was created".to_string());
+        }
+        custom_metrics.insert("data_created".to_string(), if data_created { 1.0 } else { 0.0 });
+
+        let success = output_exists && output_path.exists();
+
+        Ok(ValidationResult {
+            success,
+            messages,
+            custom_metrics,
+        })
+    }
+
+    fn teardown(&self, workspace: &Path) -> Result<()> {
+        if workspace.exists() {
+            std::fs::remove_dir_all(workspace)?;
+        }
+        Ok(())
+    }
+}
+
+/// B-012: Context Gathering
+///
+/// Task: Find specific functionality in a large codebase
+pub struct B012ContextGathering;
+
+impl BenchmarkTask for B012ContextGathering {
+    fn id(&self) -> &str {
+        "B-012"
+    }
+
+    fn name(&self) -> &str {
+        "Context Gathering"
+    }
+
+    fn category(&self) -> &str {
+        "exploration"
+    }
+
+    fn setup(&self, workspace: &Path) -> Result<()> {
+        // Create a realistic directory structure with 50+ files
+        let dirs = vec!["src", "src/api", "src/models", "src/utils", "src/auth", "tests", "docs"];
+        for dir in dirs {
+            std::fs::create_dir_all(workspace.join(dir))?;
+        }
+
+        // Create various files
+        for i in 1..=20 {
+            std::fs::write(
+                workspace.join(format!("src/api/endpoint{}.rs", i)),
+                format!("pub fn handle_request{}() {{}}\n", i),
+            )?;
+        }
+
+        // Create the actual auth logic (what we're looking for)
+        std::fs::write(
+            workspace.join("src/auth/login.rs"),
+            "pub fn authenticate_user(username: &str, password: &str) -> bool {\n\
+             // Authentication logic here\n\
+             verify_password_hash(username, password)\n\
+             }\n\
+             \n\
+             fn verify_password_hash(username: &str, password: &str) -> bool {\n\
+             true // Simplified\n\
+             }\n",
+        )?;
+
+        std::fs::write(
+            workspace.join("src/auth/mod.rs"),
+            "pub mod login;\n\
+             pub mod session;\n",
+        )?;
+
+        std::fs::write(
+            workspace.join("src/auth/session.rs"),
+            "pub fn create_session(user_id: u64) -> String {\n\
+             format!(\"session_{}\", user_id)\n\
+             }\n",
+        )?;
+
+        // Create many unrelated files
+        for i in 1..=30 {
+            std::fs::write(
+                workspace.join(format!("src/models/model{}.rs", i)),
+                format!("pub struct Model{} {{}}\n", i),
+            )?;
+        }
+
+        // Create answer file where agent should document findings
+        std::fs::write(
+            workspace.join("ANSWER.md"),
+            "# Authentication Implementation\n\n(Write your findings here)\n",
+        )?;
+
+        Ok(())
+    }
+
+    fn prompt(&self) -> &str {
+        "Find where the authentication logic is implemented in this codebase. Update ANSWER.md with the file paths and a brief description of what you found."
+    }
+
+    fn validate(&self, workspace: &Path) -> Result<ValidationResult> {
+        let mut messages = Vec::new();
+        let mut custom_metrics = HashMap::new();
+
+        let answer_content = std::fs::read_to_string(workspace.join("ANSWER.md"))?;
+
+        // Check if key files were identified
+        let found_login = answer_content.contains("auth/login") || answer_content.contains("login.rs");
+        let found_session = answer_content.contains("session") || answer_content.contains("session.rs");
+        let found_authenticate = answer_content.contains("authenticate") || answer_content.contains("verify");
+
+        if found_login {
+            messages.push("✓ Identified auth/login.rs".to_string());
+        } else {
+            messages.push("✗ Did not identify login module".to_string());
+        }
+
+        if found_authenticate {
+            messages.push("✓ Mentioned authentication function".to_string());
+        } else {
+            messages.push("✗ Did not describe authentication".to_string());
+        }
+
+        custom_metrics.insert("found_login".to_string(), if found_login { 1.0 } else { 0.0 });
+        custom_metrics.insert("found_session".to_string(), if found_session { 1.0 } else { 0.0 });
+        custom_metrics.insert("found_authenticate".to_string(), if found_authenticate { 1.0 } else { 0.0 });
+
+        let success = found_login && found_authenticate;
+
+        Ok(ValidationResult {
+            success,
+            messages,
+            custom_metrics,
+        })
+    }
+
+    fn teardown(&self, workspace: &Path) -> Result<()> {
+        if workspace.exists() {
+            std::fs::remove_dir_all(workspace)?;
+        }
+        Ok(())
+    }
+}
+
+/// B-013: Cross-File Consistency
+///
+/// Task: Add a field to a struct and update all usages
+pub struct B013CrossFileConsistency;
+
+impl BenchmarkTask for B013CrossFileConsistency {
+    fn id(&self) -> &str {
+        "B-013"
+    }
+
+    fn name(&self) -> &str {
+        "Cross-File Consistency"
+    }
+
+    fn category(&self) -> &str {
+        "refactor"
+    }
+
+    fn setup(&self, workspace: &Path) -> Result<()> {
+        // Create struct definition
+        std::fs::write(
+            workspace.join("types.rs"),
+            "pub struct User {\n\
+             pub id: u64,\n\
+             pub name: String,\n\
+             }\n",
+        )?;
+
+        // Create file with constructor
+        std::fs::write(
+            workspace.join("repository.rs"),
+            "use crate::types::User;\n\
+             \n\
+             pub fn create_user(id: u64, name: String) -> User {\n\
+             User { id, name }\n\
+             }\n\
+             \n\
+             pub fn default_user() -> User {\n\
+             User { id: 0, name: String::from(\"Guest\") }\n\
+             }\n",
+        )?;
+
+        // Create file with another usage
+        std::fs::write(
+            workspace.join("service.rs"),
+            "use crate::types::User;\n\
+             \n\
+             pub fn make_admin(id: u64) -> User {\n\
+             User { id, name: String::from(\"Admin\") }\n\
+             }\n",
+        )?;
+
+        std::fs::write(
+            workspace.join("Cargo.toml"),
+            "[package]\n\
+             name = \"consistency-test\"\n\
+             version = \"0.1.0\"\n\
+             edition = \"2021\"\n",
+        )?;
+
+        std::fs::write(
+            workspace.join("lib.rs"),
+            "pub mod types;\n\
+             pub mod repository;\n\
+             pub mod service;\n",
+        )?;
+
+        Ok(())
+    }
+
+    fn prompt(&self) -> &str {
+        "Add a new field 'email: String' to the User struct in types.rs. Update all constructors in repository.rs and service.rs to include this field. Use empty string as default for email."
+    }
+
+    fn validate(&self, workspace: &Path) -> Result<ValidationResult> {
+        let mut messages = Vec::new();
+        let mut custom_metrics = HashMap::new();
+
+        // Check types.rs has the new field
+        let types_content = std::fs::read_to_string(workspace.join("types.rs"))?;
+        let field_added = types_content.contains("email") && types_content.contains("String");
+
+        if field_added {
+            messages.push("✓ Email field added to User struct".to_string());
+        } else {
+            messages.push("✗ Email field not added to User struct".to_string());
+        }
+
+        // Check repository.rs constructors updated
+        let repo_content = std::fs::read_to_string(workspace.join("repository.rs"))?;
+        let repo_create_updated = repo_content.contains("email");
+        let repo_default_updated = repo_content.contains("email");
+
+        if repo_create_updated && repo_default_updated {
+            messages.push("✓ All constructors in repository.rs updated".to_string());
+        } else {
+            messages.push("✗ Not all constructors in repository.rs updated".to_string());
+        }
+
+        // Check service.rs updated
+        let service_content = std::fs::read_to_string(workspace.join("service.rs"))?;
+        let service_updated = service_content.contains("email");
+
+        if service_updated {
+            messages.push("✓ Constructor in service.rs updated".to_string());
+        } else {
+            messages.push("✗ Constructor in service.rs not updated".to_string());
+        }
+
+        // Check compilation
+        let compiles = std::process::Command::new("cargo")
+            .arg("check")
+            .current_dir(workspace)
+            .output()
+            .map(|output| output.status.success())
+            .unwrap_or(false);
+
+        if compiles {
+            messages.push("✓ Code compiles successfully".to_string());
+        } else {
+            messages.push("✗ Code does not compile".to_string());
+        }
+
+        custom_metrics.insert("field_added".to_string(), if field_added { 1.0 } else { 0.0 });
+        custom_metrics.insert("repo_updated".to_string(), if repo_create_updated && repo_default_updated { 1.0 } else { 0.0 });
+        custom_metrics.insert("service_updated".to_string(), if service_updated { 1.0 } else { 0.0 });
+        custom_metrics.insert("compiles".to_string(), if compiles { 1.0 } else { 0.0 });
+
+        let success = field_added && repo_create_updated && repo_default_updated && service_updated && compiles;
+
+        Ok(ValidationResult {
+            success,
+            messages,
+            custom_metrics,
+        })
+    }
+
+    fn teardown(&self, workspace: &Path) -> Result<()> {
+        if workspace.exists() {
+            std::fs::remove_dir_all(workspace)?;
+        }
+        Ok(())
+    }
+}
+
+/// B-014: Performance Optimization
+///
+/// Task: Optimize inefficient code to reduce allocations
+pub struct B014PerformanceOptimization;
+
+impl BenchmarkTask for B014PerformanceOptimization {
+    fn id(&self) -> &str {
+        "B-014"
+    }
+
+    fn name(&self) -> &str {
+        "Performance Optimization"
+    }
+
+    fn category(&self) -> &str {
+        "optimization"
+    }
+
+    fn setup(&self, workspace: &Path) -> Result<()> {
+        // Create inefficient code that allocates unnecessarily
+        std::fs::write(
+            workspace.join("lib.rs"),
+            "pub fn process_numbers(numbers: &[i32]) -> Vec<i32> {\n\
+             let mut result = Vec::new();\n\
+             for num in numbers {\n\
+             let doubled = num * 2;\n\
+             let temp_vec = vec![doubled]; // Unnecessary allocation!\n\
+             result.push(temp_vec[0]);\n\
+             }\n\
+             result\n\
+             }\n\
+             \n\
+             #[cfg(test)]\n\
+             mod tests {\n\
+             use super::*;\n\
+             \n\
+             #[test]\n\
+             fn test_process_numbers() {\n\
+             assert_eq!(process_numbers(&[1, 2, 3]), vec![2, 4, 6]);\n\
+             }\n\
+             }\n",
+        )?;
+
+        std::fs::write(
+            workspace.join("Cargo.toml"),
+            "[package]\n\
+             name = \"optimize-test\"\n\
+             version = \"0.1.0\"\n\
+             edition = \"2021\"\n",
+        )?;
+
+        Ok(())
+    }
+
+    fn prompt(&self) -> &str {
+        "Optimize the process_numbers function in lib.rs to remove unnecessary allocations. The function should still pass the test."
+    }
+
+    fn validate(&self, workspace: &Path) -> Result<ValidationResult> {
+        let mut messages = Vec::new();
+        let mut custom_metrics = HashMap::new();
+
+        let lib_content = std::fs::read_to_string(workspace.join("lib.rs"))?;
+
+        // Check that temp_vec allocation was removed
+        let allocation_removed = !lib_content.contains("vec![doubled]") && !lib_content.contains("temp_vec");
+
+        if allocation_removed {
+            messages.push("✓ Unnecessary allocation removed".to_string());
+        } else {
+            messages.push("✗ Unnecessary allocation still present".to_string());
+        }
+
+        // Check that the logic is simpler now
+        let is_optimized = allocation_removed && lib_content.contains("result.push(");
+
+        if is_optimized {
+            messages.push("✓ Code appears optimized".to_string());
+        }
+
+        // Run tests to ensure correctness
+        let test_output = std::process::Command::new("cargo")
+            .args(["test"])
+            .current_dir(workspace)
+            .output()?;
+
+        let tests_pass = test_output.status.success();
+        if tests_pass {
+            messages.push("✓ Tests still pass".to_string());
+        } else {
+            messages.push("✗ Tests failing after optimization".to_string());
+        }
+
+        custom_metrics.insert("allocation_removed".to_string(), if allocation_removed { 1.0 } else { 0.0 });
+        custom_metrics.insert("tests_pass".to_string(), if tests_pass { 1.0 } else { 0.0 });
+
+        let success = allocation_removed && tests_pass;
+
+        Ok(ValidationResult {
+            success,
+            messages,
+            custom_metrics,
+        })
+    }
+
+    fn teardown(&self, workspace: &Path) -> Result<()> {
+        if workspace.exists() {
+            std::fs::remove_dir_all(workspace)?;
+        }
+        Ok(())
+    }
+}
+
+/// B-015: Security Fix
+///
+/// Task: Fix SQL injection vulnerability
+pub struct B015SecurityFix;
+
+impl BenchmarkTask for B015SecurityFix {
+    fn id(&self) -> &str {
+        "B-015"
+    }
+
+    fn name(&self) -> &str {
+        "Security Fix"
+    }
+
+    fn category(&self) -> &str {
+        "security"
+    }
+
+    fn setup(&self, workspace: &Path) -> Result<()> {
+        // Create code with SQL injection vulnerability
+        std::fs::write(
+            workspace.join("lib.rs"),
+            "use rusqlite::{Connection, Result};\n\
+             \n\
+             pub fn get_user_by_name(conn: &Connection, name: &str) -> Result<Option<String>> {\n\
+             // VULNERABLE: String concatenation with user input\n\
+             let query = format!(\"SELECT email FROM users WHERE name = '{}'\", name);\n\
+             let mut stmt = conn.prepare(&query)?;\n\
+             let mut rows = stmt.query([])?;\n\
+             \n\
+             if let Some(row) = rows.next()? {\n\
+             let email: String = row.get(0)?;\n\
+             Ok(Some(email))\n\
+             } else {\n\
+             Ok(None)\n\
+             }\n\
+             }\n",
+        )?;
+
+        std::fs::write(
+            workspace.join("Cargo.toml"),
+            "[package]\n\
+             name = \"security-test\"\n\
+             version = \"0.1.0\"\n\
+             edition = \"2021\"\n\
+             \n\
+             [dependencies]\n\
+             rusqlite = \"0.32\"\n",
+        )?;
+
+        Ok(())
+    }
+
+    fn prompt(&self) -> &str {
+        "Fix the SQL injection vulnerability in lib.rs by using parameterized queries instead of string concatenation."
+    }
+
+    fn validate(&self, workspace: &Path) -> Result<ValidationResult> {
+        let mut messages = Vec::new();
+        let mut custom_metrics = HashMap::new();
+
+        let lib_content = std::fs::read_to_string(workspace.join("lib.rs"))?;
+
+        // Check that format! with SQL is removed
+        let format_removed = !lib_content.contains("format!(") || !lib_content.contains("SELECT");
+
+        // Check that parameterized query is used
+        let uses_params = lib_content.contains("?") && lib_content.contains("query(");
+
+        if format_removed {
+            messages.push("✓ String concatenation removed from SQL query".to_string());
+        } else {
+            messages.push("✗ String concatenation still used in SQL query".to_string());
+        }
+
+        if uses_params {
+            messages.push("✓ Parameterized query used".to_string());
+        } else {
+            messages.push("✗ Parameters not used properly".to_string());
+        }
+
+        // Check compilation
+        let compiles = std::process::Command::new("cargo")
+            .arg("check")
+            .current_dir(workspace)
+            .output()
+            .map(|output| output.status.success())
+            .unwrap_or(false);
+
+        if compiles {
+            messages.push("✓ Code compiles successfully".to_string());
+        } else {
+            messages.push("✗ Code does not compile".to_string());
+        }
+
+        custom_metrics.insert("format_removed".to_string(), if format_removed { 1.0 } else { 0.0 });
+        custom_metrics.insert("uses_params".to_string(), if uses_params { 1.0 } else { 0.0 });
+        custom_metrics.insert("compiles".to_string(), if compiles { 1.0 } else { 0.0 });
+
+        let success = format_removed && uses_params && compiles;
+
+        Ok(ValidationResult {
+            success,
+            messages,
+            custom_metrics,
+        })
+    }
+
+    fn teardown(&self, workspace: &Path) -> Result<()> {
+        if workspace.exists() {
+            std::fs::remove_dir_all(workspace)?;
+        }
+        Ok(())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
