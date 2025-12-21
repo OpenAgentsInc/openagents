@@ -732,6 +732,154 @@ crates/marketplace/
 - [ ] Skill composition (combining multiple skills)
 - [ ] Automated market making for compute resources
 
+## Trajectory Contributions
+
+Contribute your AI coding trajectories to the marketplace and earn Bitcoin payments for valuable training data.
+
+### Overview
+
+The trajectory contribution system enables developers to contribute real coding session data from Claude Code, Cursor, Codex, and other AI assistants. These trajectories provide genuine training signal:
+
+- **Initial state**: Git commit hash (real environment, no simulation)
+- **Task trajectory**: Tool calls, thinking blocks, user interactions
+- **Reward signal**: Final commit + CI/CD results (build success, tests pass)
+- **Task instructions**: Inferred from commit messages or auto-generated
+
+This eliminates the need for synthetic environment generation, artificial task construction, and simulated rewards.
+
+### Privacy & Security
+
+All data is processed locally before contribution:
+- **Secret redaction**: API keys, tokens, passwords, private keys
+- **PII anonymization**: Usernames, emails, identifying information
+- **Path sanitization**: Absolute paths replaced with relative
+- **User control**: Review and approve each contribution
+- **Opt-in only**: Never auto-contribute without explicit consent
+
+### CLI Commands
+
+```bash
+# Scan local sources for trajectory data
+cargo marketplace trajectories scan --verbose
+
+# Preview what would be contributed
+cargo marketplace trajectories preview --limit 10 --detailed
+
+# Submit trajectories with review
+cargo marketplace trajectories contribute --review
+
+# Submit trajectories in batch mode
+cargo marketplace trajectories contribute --batch
+
+# Check contribution status
+cargo marketplace trajectories status
+
+# View earnings
+cargo marketplace trajectories earnings --detail
+```
+
+### Configuration
+
+Configure trajectory contribution settings:
+
+```bash
+# Enable auto-contribution
+cargo marketplace trajectories config --auto true
+
+# Set minimum quality score
+cargo marketplace trajectories config --min-quality 0.7
+
+# Configure sources
+cargo marketplace trajectories config --sources claude,cursor
+```
+
+### Quality Scoring
+
+Trajectories are scored based on completeness and reward signals:
+
+```rust
+// Quality factors (weighted)
+quality_score =
+    0.40 * git_commit_correlation +    // Has initial/final commits
+    0.30 * complexity +                 // Token count + tool calls
+    0.30 * reward_signal;               // CI/CD results
+
+// Minimum quality threshold: 0.50 (configurable)
+```
+
+### Reward Calculation
+
+Rewards are calculated based on trajectory quality and value:
+
+```rust
+use marketplace::trajectories::RewardCalculator;
+
+let calculator = RewardCalculator::default();
+let reward = calculator.calculate_reward(&session, quality_score, min_quality);
+
+// Base reward from complexity
+// + Quality multiplier (1.0-2.0x)
+// + CI/CD bonus (if tests passed)
+// = Total reward in sats
+```
+
+### API Usage
+
+```rust
+use marketplace::trajectories::{
+    TrajectoryCollector, TrajectoryConfig, ContributionClient,
+    RedactionLevel, validate_trajectory
+};
+
+// Scan for trajectories
+let config = TrajectoryConfig::default();
+let collector = TrajectoryCollector::new(config.clone());
+let results = collector.scan_all()?;
+
+// Validate and calculate rewards
+for result in results {
+    for session in result.sessions {
+        let validation = validate_trajectory(&session, config.min_quality_score);
+        if validation.passed {
+            let calculator = RewardCalculator::default();
+            let reward = calculator.calculate_reward(
+                &session,
+                validation.quality_score,
+                config.min_quality_score
+            );
+            println!("Estimated reward: {} sats", reward.total_sats);
+        }
+    }
+}
+
+// Submit contribution
+let mut client = ContributionClient::new(ContributionConfig::default())?;
+let response = client.submit(session).await?;
+println!("Contributed! Event ID: {}", response.nostr_event_id);
+```
+
+### Database Schema
+
+```sql
+CREATE TABLE trajectory_contributions (
+    contribution_id TEXT PRIMARY KEY,
+    session_id TEXT NOT NULL,
+    source TEXT NOT NULL,
+    trajectory_hash TEXT NOT NULL,
+    nostr_event_id TEXT,
+    status TEXT NOT NULL DEFAULT 'pending',
+    quality_score REAL NOT NULL,
+    estimated_reward_sats INTEGER NOT NULL,
+    actual_reward_sats INTEGER,
+    lightning_address TEXT,
+    payment_preimage TEXT,
+    submitted_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    paid_at TEXT,
+    rejection_reason TEXT
+);
+```
+
 ## Related Crates
 
 - **compute**: NIP-90 DVM provider implementation
