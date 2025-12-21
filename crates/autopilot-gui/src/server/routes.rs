@@ -22,10 +22,27 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
 /// Dashboard route
 #[get("/")]
 async fn index() -> impl Responder {
-    let html = layout::page_with_current("Autopilot GUI", layout::dashboard(), Some("dashboard"));
+    // Try to load session data from metrics database
+    let content = match load_dashboard_data().await {
+        Ok((sessions, stats)) => layout::dashboard_with_data(sessions, stats),
+        Err(_) => layout::dashboard(),
+    };
+
+    let html = layout::page_with_current("Autopilot GUI", content, Some("dashboard"));
     HttpResponse::Ok()
         .content_type("text/html; charset=utf-8")
         .body(html)
+}
+
+/// Load dashboard data from metrics database
+async fn load_dashboard_data() -> anyhow::Result<(
+    Vec<crate::sessions::SessionInfo>,
+    crate::sessions::DashboardStats,
+)> {
+    let db_path = "autopilot-metrics.db";
+    let sessions = crate::sessions::get_recent_sessions(db_path, 10)?;
+    let stats = crate::sessions::get_dashboard_stats(db_path)?;
+    Ok((sessions, stats))
 }
 
 /// Chat interface route
