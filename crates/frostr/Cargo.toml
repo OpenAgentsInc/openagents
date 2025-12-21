@@ -33,6 +33,7 @@ anyhow = "1"
 thiserror = "1"
 frost-core = "2.2"
 hex.workspace = true
+bitcoin = { version = "0.32.8", features = ["serde"] }
 
 [dev-dependencies]
 tokio-test = "0.4"

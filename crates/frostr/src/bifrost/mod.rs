@@ -69,16 +69,11 @@
 //! # Usage
 //!
 //! ```rust,no_run
-//! use frostr::bifrost::{BifrostNode, BifrostConfig};
-//! use frostr::credential::GroupCredential;
+//! use frostr::bifrost::BifrostNode;
 //!
 //! # async fn example() -> anyhow::Result<()> {
-//! // Load group credential (contains threshold config + peers)
-//! let group_cred = GroupCredential::from_bech32("bfgroup1...")?;
-//!
 //! // Create and start node
-//! let config = BifrostConfig::default();
-//! let mut node = BifrostNode::new(group_cred, config)?;
+//! let mut node = BifrostNode::new()?;
 //! node.start().await?;
 //!
 //! // Sign an event hash
