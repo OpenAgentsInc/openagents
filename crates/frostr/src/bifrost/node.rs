@@ -3,6 +3,51 @@
 use crate::bifrost::peer::PeerManager;
 use crate::Result;
 
+/// Timeout configuration for different operations
+#[derive(Debug, Clone)]
+pub struct TimeoutConfig {
+    /// Signing operation timeout in milliseconds
+    pub sign_timeout_ms: u64,
+    /// ECDH operation timeout in milliseconds
+    pub ecdh_timeout_ms: u64,
+    /// Default timeout for other operations in milliseconds
+    pub default_timeout_ms: u64,
+}
+
+impl Default for TimeoutConfig {
+    fn default() -> Self {
+        Self {
+            sign_timeout_ms: 30000, // 30 seconds
+            ecdh_timeout_ms: 10000, // 10 seconds
+            default_timeout_ms: 30000, // 30 seconds
+        }
+    }
+}
+
+/// Retry configuration for failed operations
+#[derive(Debug, Clone)]
+pub struct RetryConfig {
+    /// Maximum number of retry attempts
+    pub max_retries: u32,
+    /// Initial retry delay in milliseconds
+    pub initial_delay_ms: u64,
+    /// Maximum retry delay in milliseconds
+    pub max_delay_ms: u64,
+    /// Backoff multiplier
+    pub multiplier: f64,
+}
+
+impl Default for RetryConfig {
+    fn default() -> Self {
+        Self {
+            max_retries: 3,
+            initial_delay_ms: 1000, // 1 second
+            max_delay_ms: 300000,   // 5 minutes
+            multiplier: 2.0,
+        }
+    }
+}
+
 /// Bifrost node configuration
 #[derive(Debug, Clone)]
 pub struct BifrostConfig {
@@ -10,6 +55,10 @@ pub struct BifrostConfig {
     pub peer_timeout: u64,
     /// Default relays for fallback
     pub default_relays: Vec<String>,
+    /// Timeout configuration
+    pub timeouts: TimeoutConfig,
+    /// Retry configuration
+    pub retries: RetryConfig,
 }
 
 impl Default for BifrostConfig {
@@ -20,6 +69,8 @@ impl Default for BifrostConfig {
                 "wss://relay.damus.io".to_string(),
                 "wss://nos.lol".to_string(),
             ],
+            timeouts: TimeoutConfig::default(),
+            retries: RetryConfig::default(),
         }
     }
 }
@@ -83,6 +134,24 @@ impl BifrostNode {
         self.peer_manager.health_check().await
     }
 
+    /// Calculate retry delay using exponential backoff
+    pub fn calculate_retry_delay(&self, attempt: u32) -> tokio::time::Duration {
+        let delay_ms = self.config.retries.initial_delay_ms as f64
+            * self.config.retries.multiplier.powi(attempt as i32);
+        let delay_ms = delay_ms.min(self.config.retries.max_delay_ms as f64) as u64;
+        tokio::time::Duration::from_millis(delay_ms)
+    }
+
+    /// Get timeout for a specific operation type
+    pub fn get_timeout(&self, operation: &str) -> tokio::time::Duration {
+        let timeout_ms = match operation {
+            "sign" => self.config.timeouts.sign_timeout_ms,
+            "ecdh" => self.config.timeouts.ecdh_timeout_ms,
+            _ => self.config.timeouts.default_timeout_ms,
+        };
+        tokio::time::Duration::from_millis(timeout_ms)
+    }
+
     /// Sign an event hash using threshold shares
     pub async fn sign(&self, _event_hash: &[u8; 32]) -> Result<[u8; 64]> {
         todo!("Implement threshold signing")
@@ -139,11 +208,115 @@ mod tests {
         let config = BifrostConfig {
             peer_timeout: 600,
             default_relays: vec!["wss://custom.relay.com".to_string()],
+            timeouts: TimeoutConfig::default(),
+            retries: RetryConfig::default(),
         };
 
         let node = BifrostNode::with_config(config).unwrap();
 
         assert_eq!(node.config.peer_timeout, 600);
         assert_eq!(node.config.default_relays.len(), 1);
+    }
+
+    #[test]
+    fn test_timeout_config_default() {
+        let config = TimeoutConfig::default();
+        assert_eq!(config.sign_timeout_ms, 30000);
+        assert_eq!(config.ecdh_timeout_ms, 10000);
+        assert_eq!(config.default_timeout_ms, 30000);
+    }
+
+    #[test]
+    fn test_retry_config_default() {
+        let config = RetryConfig::default();
+        assert_eq!(config.max_retries, 3);
+        assert_eq!(config.initial_delay_ms, 1000);
+        assert_eq!(config.max_delay_ms, 300000);
+        assert_eq!(config.multiplier, 2.0);
+    }
+
+    #[test]
+    fn test_calculate_retry_delay() {
+        let node = BifrostNode::new().unwrap();
+
+        // First attempt: 1 second
+        let delay0 = node.calculate_retry_delay(0);
+        assert_eq!(delay0.as_millis(), 1000);
+
+        // Second attempt: 2 seconds
+        let delay1 = node.calculate_retry_delay(1);
+        assert_eq!(delay1.as_millis(), 2000);
+
+        // Third attempt: 4 seconds
+        let delay2 = node.calculate_retry_delay(2);
+        assert_eq!(delay2.as_millis(), 4000);
+
+        // Fourth attempt: 8 seconds
+        let delay3 = node.calculate_retry_delay(3);
+        assert_eq!(delay3.as_millis(), 8000);
+
+        // Many attempts: capped at max_delay_ms (300000 ms = 5 minutes)
+        let delay_max = node.calculate_retry_delay(20);
+        assert_eq!(delay_max.as_millis(), 300000);
+    }
+
+    #[test]
+    fn test_get_timeout() {
+        let node = BifrostNode::new().unwrap();
+
+        // Sign timeout
+        let sign_timeout = node.get_timeout("sign");
+        assert_eq!(sign_timeout.as_millis(), 30000);
+
+        // ECDH timeout
+        let ecdh_timeout = node.get_timeout("ecdh");
+        assert_eq!(ecdh_timeout.as_millis(), 10000);
+
+        // Default timeout
+        let default_timeout = node.get_timeout("unknown");
+        assert_eq!(default_timeout.as_millis(), 30000);
+    }
+
+    #[test]
+    fn test_custom_timeout_config() {
+        let mut config = BifrostConfig::default();
+        config.timeouts.sign_timeout_ms = 60000; // 60 seconds
+        config.timeouts.ecdh_timeout_ms = 20000; // 20 seconds
+
+        let node = BifrostNode::with_config(config).unwrap();
+
+        assert_eq!(node.get_timeout("sign").as_millis(), 60000);
+        assert_eq!(node.get_timeout("ecdh").as_millis(), 20000);
+    }
+
+    #[test]
+    fn test_custom_retry_config() {
+        let mut config = BifrostConfig::default();
+        config.retries.max_retries = 5;
+        config.retries.initial_delay_ms = 500;
+        config.retries.multiplier = 3.0;
+
+        let node = BifrostNode::with_config(config).unwrap();
+
+        // First attempt: 500ms
+        assert_eq!(node.calculate_retry_delay(0).as_millis(), 500);
+
+        // Second attempt: 1500ms (500 * 3)
+        assert_eq!(node.calculate_retry_delay(1).as_millis(), 1500);
+
+        // Third attempt: 4500ms (500 * 9)
+        assert_eq!(node.calculate_retry_delay(2).as_millis(), 4500);
+    }
+
+    #[test]
+    fn test_retry_delay_caps_at_max() {
+        let mut config = BifrostConfig::default();
+        config.retries.max_delay_ms = 5000; // Cap at 5 seconds
+
+        let node = BifrostNode::with_config(config).unwrap();
+
+        // Many attempts should cap at 5000ms
+        let delay = node.calculate_retry_delay(10);
+        assert_eq!(delay.as_millis(), 5000);
     }
 }
