@@ -88,6 +88,12 @@ pub fn chat_interface() -> Markup {
                             isProcessing = false;
                             updateUI();
                             break;
+                        case 'tool_call':
+                            addToolCall(msg.tool, msg.input, msg.status);
+                            break;
+                        case 'tool_result':
+                            addToolResult(msg.tool, msg.output, msg.elapsed_ms);
+                            break;
                     }
                 }
 
@@ -99,6 +105,73 @@ pub fn chat_interface() -> Markup {
 
                 function addSystemMessage(text) {
                     addMessage('system', text);
+                }
+
+                function addToolCall(tool, input, status) {
+                    const panel = createToolCallPanel(tool, input, status);
+                    messages.appendChild(panel);
+                    messages.scrollTop = messages.scrollHeight;
+                }
+
+                function addToolResult(tool, output, elapsedMs) {
+                    const panel = createToolResultPanel(tool, output, elapsedMs);
+                    messages.appendChild(panel);
+                    messages.scrollTop = messages.scrollHeight;
+                }
+
+                function createToolCallPanel(tool, input, status) {
+                    const statusColors = {
+                        running: { bg: '#1a2a1a', border: '#3a5a3a', text: 'Running...', color: '#7dff7d' },
+                        success: { bg: '#1a1a2a', border: '#3a3a5a', text: 'Complete', color: '#7d7dff' },
+                        error: { bg: '#2a1a1a', border: '#5a3a3a', text: 'Failed', color: '#ff7d7d' }
+                    };
+                    const sc = statusColors[status] || statusColors.running;
+
+                    const panel = document.createElement('div');
+                    panel.style.cssText = `background: ${sc.bg}; border: 1px solid ${sc.border}; padding: 1rem; margin-bottom: 1rem;`;
+
+                    const header = document.createElement('div');
+                    header.style.cssText = 'display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;';
+                    header.innerHTML = `
+                        <div style="display: flex; align-items: center; gap: 0.5rem;">
+                            <span style="font-weight: bold; color: #4a9eff;">🔧 ${tool}</span>
+                            <span style="font-size: 0.75rem; color: ${sc.color};">${sc.text}</span>
+                        </div>
+                    `;
+
+                    const details = document.createElement('details');
+                    details.setAttribute('open', '');
+                    details.innerHTML = `
+                        <summary style="cursor: pointer; color: #b0b0b0; margin-bottom: 0.5rem;">Input</summary>
+                        <pre style="background: #0a0a0a; padding: 0.75rem; overflow-x: auto; font-size: 0.875rem; color: #d0d0d0; border: 1px solid #2a2a2a;"><code>${JSON.stringify(input, null, 2)}</code></pre>
+                    `;
+
+                    panel.appendChild(header);
+                    panel.appendChild(details);
+                    return panel;
+                }
+
+                function createToolResultPanel(tool, output, elapsedMs) {
+                    const panel = document.createElement('div');
+                    panel.style.cssText = 'background: #1a1a2a; border: 1px solid #3a3a5a; padding: 1rem; margin-bottom: 1rem;';
+
+                    const header = document.createElement('div');
+                    header.style.cssText = 'display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;';
+                    header.innerHTML = `
+                        <span style="font-weight: bold; color: #7d7dff;">✓ ${tool} result</span>
+                        ${elapsedMs ? `<span style="font-size: 0.75rem; color: #b0b0b0;">${elapsedMs}ms</span>` : ''}
+                    `;
+
+                    const details = document.createElement('details');
+                    details.setAttribute('open', '');
+                    details.innerHTML = `
+                        <summary style="cursor: pointer; color: #b0b0b0; margin-bottom: 0.5rem;">Output</summary>
+                        <pre style="background: #0a0a0a; padding: 0.75rem; overflow-x: auto; font-size: 0.875rem; color: #d0d0d0; border: 1px solid #2a2a2a; white-space: pre-wrap; word-break: break-word;"><code>${output}</code></pre>
+                    `;
+
+                    panel.appendChild(header);
+                    panel.appendChild(details);
+                    return panel;
                 }
 
                 function createMessageBubble(role, content) {

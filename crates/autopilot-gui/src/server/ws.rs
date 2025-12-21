@@ -84,6 +84,20 @@ enum ServerMessage {
     Error {
         message: String,
     },
+
+    #[serde(rename = "tool_call")]
+    ToolCall {
+        tool: String,
+        input: serde_json::Value,
+        status: String,
+    },
+
+    #[serde(rename = "tool_result")]
+    ToolResult {
+        tool: String,
+        output: String,
+        elapsed_ms: Option<u64>,
+    },
 }
 
 async fn handle_client_message(msg: ClientMessage, session: &mut Session) {
@@ -91,12 +105,30 @@ async fn handle_client_message(msg: ClientMessage, session: &mut Session) {
         ClientMessage::Prompt { text } => {
             debug!("Handling prompt: {}", text);
 
-            // Echo back for now (will integrate with agent in future)
+            // Demo: Send tool call
+            let tool_call = ServerMessage::ToolCall {
+                tool: "Bash".to_string(),
+                input: serde_json::json!({"command": "echo Demo"}),
+                status: "running".to_string(),
+            };
+            send_message(session, tool_call).await;
+
+            // Simulate delay
+            tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+
+            // Demo: Send tool result
+            let tool_result = ServerMessage::ToolResult {
+                tool: "Bash".to_string(),
+                output: "Demo\n".to_string(),
+                elapsed_ms: Some(500),
+            };
+            send_message(session, tool_result).await;
+
+            // Echo back
             let response = ServerMessage::Message {
                 role: "assistant".to_string(),
                 content: format!("Echo: {}", text),
             };
-
             send_message(session, response).await;
         }
         ClientMessage::Abort => {
