@@ -305,6 +305,90 @@ impl Database {
 
         Ok(rows_affected > 0)
     }
+
+    /// Query events matching a filter
+    pub fn query_events(&self, filter: &crate::subscription::Filter) -> Result<Vec<Event>> {
+        let conn = self.pool.reader()?;
+
+        // Build the SQL query based on filter criteria
+        let mut sql = String::from("SELECT raw_event FROM events WHERE 1=1");
+        let mut params_vec: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
+
+        // Filter by IDs (using prefix matching)
+        if let Some(ref ids) = filter.ids {
+            if !ids.is_empty() {
+                let placeholders = ids.iter().map(|_| "id LIKE ?").collect::<Vec<_>>().join(" OR ");
+                sql.push_str(&format!(" AND ({})", placeholders));
+                for id in ids {
+                    params_vec.push(Box::new(format!("{}%", id)));
+                }
+            }
+        }
+
+        // Filter by authors (using prefix matching)
+        if let Some(ref authors) = filter.authors {
+            if !authors.is_empty() {
+                let placeholders = authors.iter().map(|_| "pubkey LIKE ?").collect::<Vec<_>>().join(" OR ");
+                sql.push_str(&format!(" AND ({})", placeholders));
+                for author in authors {
+                    params_vec.push(Box::new(format!("{}%", author)));
+                }
+            }
+        }
+
+        // Filter by kinds
+        if let Some(ref kinds) = filter.kinds {
+            if !kinds.is_empty() {
+                let placeholders = kinds.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+                sql.push_str(&format!(" AND kind IN ({})", placeholders));
+                for kind in kinds {
+                    params_vec.push(Box::new(*kind));
+                }
+            }
+        }
+
+        // Filter by since timestamp
+        if let Some(since) = filter.since {
+            sql.push_str(" AND created_at >= ?");
+            params_vec.push(Box::new(since as i64));
+        }
+
+        // Filter by until timestamp
+        if let Some(until) = filter.until {
+            sql.push_str(" AND created_at <= ?");
+            params_vec.push(Box::new(until as i64));
+        }
+
+        // Order by created_at descending
+        sql.push_str(" ORDER BY created_at DESC");
+
+        // Apply limit
+        let limit = filter.limit.unwrap_or(500).min(5000);
+        sql.push_str(" LIMIT ?");
+        params_vec.push(Box::new(limit as i64));
+
+        // Execute query
+        let mut stmt = conn.prepare(&sql)?;
+        let params_refs: Vec<&dyn rusqlite::ToSql> = params_vec.iter().map(|p| p.as_ref()).collect();
+
+        let rows = stmt.query_map(params_refs.as_slice(), |row| {
+            let raw_event: String = row.get(0)?;
+            Ok(raw_event)
+        })?;
+
+        let mut events = Vec::new();
+        for row in rows {
+            let raw_event = row?;
+            let event: Event = serde_json::from_str(&raw_event)?;
+
+            // Additional filtering for tag-based queries (not easily done in SQL)
+            if filter.matches(&event) {
+                events.push(event);
+            }
+        }
+
+        Ok(events)
+    }
 }
 
 #[cfg(test)]
