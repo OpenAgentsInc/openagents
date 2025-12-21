@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use crate::git::{clone_repository, get_repository_path, is_repository_cloned};
 use crate::nostr::NostrClient;
-use crate::views::{agent_profile_page, home_page_with_repos, issue_create_form_page, issue_detail_page, issues_list_page, patch_detail_page, patches_list_page, pull_request_detail_page, pull_requests_list_page, repository_detail_page, search_results_page, trajectory_viewer_page};
+use crate::views::{agent_profile_page, home_page_with_repos, issue_create_form_page, issue_detail_page, issues_list_page, patch_create_form_page, patch_detail_page, patches_list_page, pr_create_form_page, pull_request_detail_page, pull_requests_list_page, repository_detail_page, search_results_page, trajectory_viewer_page};
 use crate::ws::{ws_handler, WsBroadcaster};
 
 /// Application state shared across handlers
@@ -36,8 +36,12 @@ pub async fn start_server(
             .route("/repo/{identifier}/issues/{issue_id}/claim", web::post().to(issue_claim))
             .route("/repo/{identifier}/issues/{issue_id}/bounty", web::post().to(issue_bounty_create))
             .route("/repo/{identifier}/patches", web::get().to(repository_patches))
+            .route("/repo/{identifier}/patches/new", web::get().to(patch_create_form))
+            .route("/repo/{identifier}/patches", web::post().to(patch_create))
             .route("/repo/{identifier}/patches/{patch_id}", web::get().to(patch_detail))
             .route("/repo/{identifier}/pulls", web::get().to(repository_pulls))
+            .route("/repo/{identifier}/pulls/new", web::get().to(pr_create_form))
+            .route("/repo/{identifier}/pulls", web::post().to(pr_create))
             .route("/repo/{identifier}/pulls/{pr_id}", web::get().to(pull_request_detail))
             .route("/repo/{identifier}/pulls/{pr_id}/review", web::post().to(pr_review_submit))
             .route("/repo/{identifier}/pulls/{pr_id}/status", web::post().to(pr_status_change))
@@ -1029,6 +1033,229 @@ async fn search(
     HttpResponse::Ok()
         .content_type("text/html; charset=utf-8")
         .body(search_results_page(q, &repositories, &issues).into_string())
+}
+
+/// Pull request creation form
+async fn pr_create_form(
+    state: web::Data<AppState>,
+    path: web::Path<String>,
+) -> HttpResponse {
+    let identifier = path.into_inner();
+
+    // Fetch repository from cache by identifier
+    let repository = match state.nostr_client.get_repository_by_identifier(&identifier).await {
+        Ok(Some(repo)) => repo,
+        Ok(None) => {
+            tracing::warn!("Repository not found: {}", identifier);
+            return HttpResponse::NotFound()
+                .content_type("text/html; charset=utf-8")
+                .body("<h1>Repository not found</h1>");
+        }
+        Err(e) => {
+            tracing::error!("Failed to fetch repository: {}", e);
+            return HttpResponse::InternalServerError()
+                .content_type("text/html; charset=utf-8")
+                .body("<h1>Error fetching repository</h1>");
+        }
+    };
+
+    HttpResponse::Ok()
+        .content_type("text/html; charset=utf-8")
+        .body(pr_create_form_page(&repository, &identifier).into_string())
+}
+
+/// Pull request creation handler
+async fn pr_create(
+    state: web::Data<AppState>,
+    path: web::Path<String>,
+    form: web::Form<PrCreateForm>,
+) -> HttpResponse {
+    let identifier = path.into_inner();
+
+    // Fetch repository to get pubkey and build address
+    let repository = match state.nostr_client.get_repository_by_identifier(&identifier).await {
+        Ok(Some(repo)) => repo,
+        Ok(None) => {
+            return HttpResponse::NotFound()
+                .content_type("text/html; charset=utf-8")
+                .body("<h1>Repository not found</h1>");
+        }
+        Err(e) => {
+            tracing::error!("Failed to fetch repository: {}", e);
+            return HttpResponse::InternalServerError()
+                .content_type("text/html; charset=utf-8")
+                .body("<h1>Error</h1>");
+        }
+    };
+
+    // Build repository address (30617:pubkey:identifier)
+    let repo_address = format!("30617:{}:{}", repository.pubkey, identifier);
+
+    // TODO: Implement event creation and publishing
+    // For now, return a placeholder message
+    tracing::warn!("PR creation not yet implemented - need identity/signing integration");
+    tracing::info!(
+        "Would create PR: subject='{}', commit_id='{}', clone_url='{}', repo={}",
+        form.subject,
+        form.commit_id,
+        form.clone_url,
+        repo_address
+    );
+
+    let mut details = format!(
+        "<h1>Pull Request Creation Not Yet Implemented</h1>\
+         <p><strong>Title:</strong> {}</p>\
+         <p><strong>Repository:</strong> {}</p>\
+         <p><strong>Commit ID:</strong> {}</p>\
+         <p><strong>Clone URL:</strong> {}</p>\
+         <p><strong>Description:</strong> {}</p>",
+        form.subject,
+        repo_address,
+        form.commit_id,
+        form.clone_url,
+        form.description.as_deref().unwrap_or("None"),
+    );
+
+    if let Some(traj) = &form.trajectory_session {
+        details.push_str(&format!("<p><strong>Trajectory Session:</strong> {}</p>", traj));
+    }
+
+    if let Some(hash) = &form.trajectory_hash {
+        details.push_str(&format!("<p><strong>Trajectory Hash:</strong> {}</p>", hash));
+    }
+
+    if let Some(dep) = &form.depends_on {
+        details.push_str(&format!("<p><strong>Depends On:</strong> {}</p>", dep));
+    }
+
+    if let Some(stack) = &form.stack_id {
+        details.push_str(&format!("<p><strong>Stack ID:</strong> {}</p>", stack));
+    }
+
+    if form.layer_current.is_some() && form.layer_total.is_some() {
+        details.push_str(&format!(
+            "<p><strong>Layer:</strong> {} of {}</p>",
+            form.layer_current.unwrap(),
+            form.layer_total.unwrap()
+        ));
+    }
+
+    details.push_str(&format!(
+        "<p>This feature requires identity/wallet integration for event signing.</p>\
+         <p><a href=\"/repo/{}/pulls\">Back to pull requests</a></p>",
+        identifier
+    ));
+
+    HttpResponse::Ok()
+        .content_type("text/html; charset=utf-8")
+        .body(details)
+}
+
+/// Form data for PR creation
+#[derive(Debug, serde::Deserialize)]
+struct PrCreateForm {
+    subject: String,
+    description: Option<String>,
+    commit_id: String,
+    clone_url: String,
+    trajectory_session: Option<String>,
+    trajectory_hash: Option<String>,
+    depends_on: Option<String>,
+    stack_id: Option<String>,
+    layer_current: Option<u32>,
+    layer_total: Option<u32>,
+}
+
+/// Patch creation form
+async fn patch_create_form(
+    state: web::Data<AppState>,
+    path: web::Path<String>,
+) -> HttpResponse {
+    let identifier = path.into_inner();
+
+    // Fetch repository from cache by identifier
+    let repository = match state.nostr_client.get_repository_by_identifier(&identifier).await {
+        Ok(Some(repo)) => repo,
+        Ok(None) => {
+            tracing::warn!("Repository not found: {}", identifier);
+            return HttpResponse::NotFound()
+                .content_type("text/html; charset=utf-8")
+                .body("<h1>Repository not found</h1>");
+        }
+        Err(e) => {
+            tracing::error!("Failed to fetch repository: {}", e);
+            return HttpResponse::InternalServerError()
+                .content_type("text/html; charset=utf-8")
+                .body("<h1>Error fetching repository</h1>");
+        }
+    };
+
+    HttpResponse::Ok()
+        .content_type("text/html; charset=utf-8")
+        .body(patch_create_form_page(&repository, &identifier).into_string())
+}
+
+/// Patch creation handler
+async fn patch_create(
+    state: web::Data<AppState>,
+    path: web::Path<String>,
+    form: web::Form<PatchCreateForm>,
+) -> HttpResponse {
+    let identifier = path.into_inner();
+
+    // Fetch repository to get pubkey and build address
+    let repository = match state.nostr_client.get_repository_by_identifier(&identifier).await {
+        Ok(Some(repo)) => repo,
+        Ok(None) => {
+            return HttpResponse::NotFound()
+                .content_type("text/html; charset=utf-8")
+                .body("<h1>Repository not found</h1>");
+        }
+        Err(e) => {
+            tracing::error!("Failed to fetch repository: {}", e);
+            return HttpResponse::InternalServerError()
+                .content_type("text/html; charset=utf-8")
+                .body("<h1>Error</h1>");
+        }
+    };
+
+    // Build repository address (30617:pubkey:identifier)
+    let repo_address = format!("30617:{}:{}", repository.pubkey, identifier);
+
+    // TODO: Implement event creation and publishing
+    // For now, return a placeholder message
+    tracing::warn!("Patch creation not yet implemented - need identity/signing integration");
+    tracing::info!(
+        "Would create patch: title='{}', patch_length={} bytes, repo={}",
+        form.title,
+        form.patch_content.len(),
+        repo_address
+    );
+
+    HttpResponse::Ok()
+        .content_type("text/html; charset=utf-8")
+        .body(format!(
+            "<h1>Patch Creation Not Yet Implemented</h1>\
+             <p><strong>Title:</strong> {}</p>\
+             <p><strong>Repository:</strong> {}</p>\
+             <p><strong>Patch Size:</strong> {} bytes</p>\
+             <p><strong>Description:</strong> {}</p>\
+             <p>This feature requires identity/wallet integration for event signing.</p>\
+             <p><a href=\"/repo/{}/patches\">Back to patches</a></p>",
+            form.title,
+            repo_address,
+            form.patch_content.len(),
+            form.description.as_deref().unwrap_or("None"),
+            identifier
+        ))
+}
+
+/// Form data for patch creation
+#[derive(Debug, serde::Deserialize)]
+struct PatchCreateForm {
+    title: String,
+    patch_content: String,
+    description: Option<String>,
 }
 
 /// WebSocket upgrade
