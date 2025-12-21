@@ -26,6 +26,7 @@
 //! - NIP-32: Labeling (content moderation and categorization)
 //! - NIP-33: Parameterized Replaceable Events (deprecated, moved to NIP-01)
 //! - NIP-36: Sensitive Content / Content Warning
+//! - NIP-39: External Identities in Profiles
 //! - NIP-40: Expiration Timestamp
 //! - NIP-42: Authentication of Clients to Relays
 //! - NIP-44: Versioned Encryption (requires `full` feature)
@@ -90,6 +91,7 @@ mod nip28;
 mod nip32;
 mod nip33;
 mod nip36;
+mod nip39;
 mod nip40;
 mod nip42;
 #[cfg(feature = "full")]
@@ -268,6 +270,12 @@ pub use nip33::{
 pub use nip36::{
     CONTENT_WARNING_TAG, Nip36Error, add_content_warning, get_content_warning,
     has_content_warning, reasons, remove_content_warning,
+};
+
+// NIP-39: External Identities in Profiles
+pub use nip39::{
+    ExternalIdentity, GenericIdentity, GitHubIdentity, MastodonIdentity, Nip39Error,
+    TelegramIdentity, TwitterIdentity, normalize_identity, validate_platform_name,
 };
 
 // NIP-40: Expiration Timestamp
