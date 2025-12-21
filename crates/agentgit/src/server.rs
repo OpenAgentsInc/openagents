@@ -284,8 +284,23 @@ async fn issue_claim(
     // Build repository address
     let repo_address = format!("30617:{}:{}", repository.pubkey, identifier);
 
-    // TODO: Fetch issue to get author pubkey - for now use repo owner
-    let issue_author_pubkey = &repository.pubkey;
+    // Fetch issue to get author pubkey
+    let issue = match state.nostr_client.get_cached_event(&issue_id).await {
+        Ok(Some(iss)) => iss,
+        Ok(None) => {
+            return HttpResponse::NotFound()
+                .content_type("text/html; charset=utf-8")
+                .body("<h1>Issue not found</h1>");
+        }
+        Err(e) => {
+            tracing::error!("Failed to fetch issue: {}", e);
+            return HttpResponse::InternalServerError()
+                .content_type("text/html; charset=utf-8")
+                .body("<h1>Error fetching issue</h1>");
+        }
+    };
+
+    let issue_author_pubkey = &issue.pubkey;
 
     // Build issue claim event
     let mut builder = IssueClaimBuilder::new(
