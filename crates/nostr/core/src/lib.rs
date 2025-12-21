@@ -70,6 +70,7 @@
 //! - NIP-90: Data Vending Machine (DVM) job requests/results/feedback
 //! - NIP-92: Media Attachments (inline media metadata)
 //! - NIP-94: File Metadata
+//! - NIP-95: File Storage on Relays (deprecated, use NIP-96)
 //! - NIP-96: HTTP File Storage Integration (deprecated, use NIP-B7)
 //! - NIP-98: HTTP Auth (requires `full` feature)
 //! - NIP-99: Classified Listings (marketplace ads)
@@ -162,6 +163,7 @@ mod nip89;
 mod nip90;
 mod nip92;
 mod nip94;
+mod nip95;
 mod nip96;
 mod nip99;
 #[cfg(feature = "full")]
@@ -629,6 +631,13 @@ pub use nip92::{
 // NIP-94: File Metadata
 pub use nip94::{
     Dimensions, FileImage, FileMetadata, FILE_METADATA_KIND, Nip94Error, is_file_metadata_kind,
+};
+
+// NIP-95: File Storage on Relays
+pub use nip95::{
+    FILE_CONTENT_KIND, FILE_HEADER_KIND, FileContent, FileHeader, Nip95Error,
+    get_alt, get_block_size, get_content_events, get_hash, get_mime_type, get_size, get_summary,
+    is_file_content_kind, is_file_header_kind, is_nip95_kind,
 };
 
 // NIP-96: HTTP File Storage Integration
