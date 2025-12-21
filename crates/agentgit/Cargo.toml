@@ -34,6 +34,10 @@ ui = { path = "../ui" }
 nostr = { path = "../nostr/core" }
 nostr-client = { path = "../nostr/client" }
 
+# Wallet for identity
+wallet = { path = "../wallet" }
+bip39 = "2"
+
 # Utilities
 anyhow = "1"
 serde = { version = "1", features = ["derive"] }
