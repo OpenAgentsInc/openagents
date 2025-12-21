@@ -43,3 +43,8 @@ nonzero_ext = "0.3"
 [dev-dependencies]
 tokio-test = "0.4"
 tempfile = "3"
+criterion = { version = "0.5", features = ["html_reports"] }
+
+[[bench]]
+name = "relay_benchmarks"
+harness = false
