@@ -86,3 +86,95 @@
 
 ## Overall Assessment
 The commit set is feature-heavy and generally coherent, especially around marketplace compute/skills/data/trajectory workflows and the autopilot-gui foundation. However, several process issues (force pushes, unapproved amend commits, ambiguous test results, and incomplete logs) materially reduce audit confidence. Addressing the recommendations above would improve reliability, traceability, and adherence to repo policies.
+
+## Directive-Focused Codebase Audit (Broader)
+This section expands beyond the 2025-12-21 commit range and reviews current code against the directives in `.openagents/directives/`. Evidence references point to code as it exists now.
+
+### d-001: Spark SDK Integration
+Observed:
+- `crates/spark/` exists with signer, wallet types, and documented Phase 1 completion (`crates/spark/src/lib.rs`).
+- Spark signer is wired into UnifiedIdentity (`crates/compute/src/domain/identity.rs`).
+Gaps / Risks:
+- Wallet operations are stubbed with TODOs (balance, sync, address) (`crates/spark/src/wallet.rs`).
+- No Breez/Spark SDK dependency is wired yet (`crates/spark/Cargo.toml`).
+- Wallet CLI shows stub warnings and TODOs (`crates/wallet/src/cli/bitcoin.rs`).
+
+### d-002: Nostr Protocol (Client + Relay + Core)
+Observed:
+- Core module exports extensive NIP coverage (NIP-01..NIP-99 + NIP-SA) (`crates/nostr/core/src/lib.rs`).
+- Client and relay crates exist with documented architecture and public APIs (`crates/nostr/client/src/lib.rs`, `crates/nostr/relay/src/lib.rs`).
+Gaps / Risks:
+- No conformance test suite or end-to-end NIP coverage validation observed; implementation completeness per NIP is not verified.
+- Relay/client integration tests and interop checks are not visible in this audit.
+
+### d-003: Wallet (Identity + Payments)
+Observed:
+- `crates/wallet/` includes CLI, GUI, core identity, and storage modules (`crates/wallet/src/`).
+Gaps / Risks:
+- Payment flows are stubbed (Spark balance, send, receive, history) (`crates/wallet/src/cli/bitcoin.rs`, `crates/wallet/src/gui/server.rs`).
+- Contact list management, NIP-57 zaps, NWC, and relay sync are marked TODO (`crates/wallet/src/cli/identity.rs`, `crates/wallet/src/cli/bitcoin.rs`).
+- Keychain, persistence, and full identity synchronization are not fully implemented.
+
+### d-004: Autopilot Continual Improvement
+Observed:
+- Metrics pipeline, baselines, and analysis tools exist (`crates/autopilot/src/metrics/mod.rs`, `crates/autopilot/src/analyze.rs`, `crates/autopilot/src/metrics/baseline.rs`).
+- CLI commands cover metrics import/show/analyze and dashboard start (`crates/autopilot/src/main.rs`).
+- Dashboard exists with API endpoints and a WebSocket endpoint (`crates/autopilot/src/dashboard.rs`).
+- Benchmarks and tasks are implemented with docs (`crates/autopilot/src/benchmark/`, `docs/autopilot/benchmarks/README.md`).
+Gaps / Risks:
+- Dashboard WebSocket is currently an echo/demo stream, not real-time metrics push (`crates/autopilot/src/dashboard.rs`).
+- Modular refactor plan exists but monolithic dashboard still in use (`crates/autopilot/src/dashboard/README.md`).
+- Automated improvement loop exists in code, but integration into CI or daemon workflows is not verified.
+
+### d-005: AgentGit
+Observed:
+- Full desktop app scaffold exists (wry/tao + Actix), Nostr client and NIP-34 event builders, stacked PR metadata support, and UI views (`crates/agentgit/src/main.rs`, `crates/agentgit/src/nostr/events.rs`, `crates/agentgit/src/views.rs`).
+Gaps / Risks:
+- Payment/bounty settlement (NIP-57) and wallet integration are not evidenced in code paths reviewed.
+- Trajectory verification and enforcement appears partial; UI references exist but full verification flow is not validated in this audit.
+
+### d-006: NIP-SA Operationalization
+Observed:
+- NIP-SA types implemented in core (profile, state, schedule, goals, tick, trajectory, skill) (`crates/nostr/core/src/nip_sa/`).
+- Autopilot includes Nostr tick and trajectory mapping utilities (`crates/autopilot/src/nostr_agent.rs`, `crates/autopilot/src/nip_sa_trajectory.rs`).
+- Marketplace includes skill license wrappers (`crates/marketplace/src/skills/license.rs`).
+Gaps / Risks:
+- Wallet integration for sovereign identity and threshold signing is not wired.
+- Autopilot does not appear to publish tick/trajectory events to relays yet.
+- State encryption/agent scheduling triggers are not observed.
+
+### d-007: FROSTR (Threshold Signatures)
+Observed:
+- `crates/frostr/` includes keygen, signing, ECDH, credential encoding, and Bifrost protocol modules (`crates/frostr/src/lib.rs`).
+Gaps / Risks:
+- Peer health/ping workflows are TODO (`crates/frostr/src/bifrost/peer.rs`).
+- Wallet/agent integration and Nostr transport wiring are not evidenced in this audit.
+
+### d-008: Unified Marketplace (Compute/Skills/Data/Trajectories)
+Observed:
+- Core marketplace CLI and modules exist for compute, skills, data, trajectories, plus relay integration (`crates/marketplace/src/cli/`, `crates/marketplace/src/compute/`, `crates/marketplace/src/skills/`, `crates/marketplace/src/data/`, `crates/marketplace/src/relay.rs`, `crates/marketplace/src/trajectories/`).
+Gaps / Risks:
+- Many network operations are TODO (fetching from relays, publishing job events) (`crates/marketplace/src/data/discover.rs`, `crates/marketplace/src/skills/browse.rs`, `crates/marketplace/src/compute/consumer.rs`).
+- Payment flow (Lightning) and revenue splits are not implemented in reviewed paths.
+- GUI exists in tree but not assessed here for feature completeness (`crates/marketplace/src/gui`, `crates/marketplace/src/views`).
+
+### d-009: Autopilot GUI
+Observed:
+- `crates/autopilot-gui/` provides a wry/tao window, Actix server, WebSocket chat, tool call UI, and permission storage (`crates/autopilot-gui/src/`).
+Gaps / Risks:
+- WebSocket handler is demo-only (echo + simulated tool calls) and does not integrate Claude Agent SDK yet (`crates/autopilot-gui/src/server/ws.rs`).
+- Permission responses are not wired to a handler channel (`crates/autopilot-gui/src/server/ws.rs`).
+- Session management, context inspector, token gauges, and real agent control are not implemented.
+
+## Additional Codebase Observations (Non-Directive)
+- `crates/compute/src/services/ollama_service.rs` is explicitly stubbed; DVM publish flow has TODOs (`crates/compute/src/services/dvm_service.rs`).
+- Desktop replay duration uses a TODO placeholder (`crates/desktop/src/replay.rs`).
+- Claude/Codex SDK crates contain minor TODOs (e.g., query pattern matching) (`crates/claude-agent-sdk/src/query.rs`).
+
+## Updated Recommendations (Directive-Oriented)
+1. **d-001/d-003**: Replace Spark stubs with Breez SDK wiring, and explicitly gate CLI commands until real balances are available.
+2. **d-002**: Add conformance/integration tests that exercise relay + client across a subset of NIPs, then expand coverage.
+3. **d-004**: Replace dashboard WebSocket echo with live metrics updates; complete the planned refactor or split into modules to unblock streaming.
+4. **d-006/d-007**: Wire FROSTR into wallet + NIP-SA signing flows; add relay transport tests for Bifrost.
+5. **d-008**: Prioritize relay publish/fetch in compute/skills/data and add a minimal Lightning payment flow before GUI work.
+6. **d-009**: Integrate Claude Agent SDK session lifecycle and permission callbacks before expanding UI features.
