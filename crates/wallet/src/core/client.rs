@@ -58,6 +58,66 @@ impl NostrClient {
         // This will require subscribing to kind:0 events for the pubkey
         Ok(None)
     }
+
+    /// Fetch feed events from relays
+    pub async fn fetch_feed(&self, limit: usize) -> Result<Vec<Event>> {
+        use nostr_client::RelayMessage;
+        use serde_json::json;
+
+        if self.relay_urls.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        // For simplicity, just use the first relay
+        // In a real implementation, we'd merge events from multiple relays
+        let url = &self.relay_urls[0];
+
+        let relay = RelayConnection::new(url)
+            .with_context(|| format!("Failed to create relay connection to {}", url))?;
+
+        relay
+            .connect()
+            .await
+            .with_context(|| format!("Failed to connect to {}", url))?;
+
+        // Subscribe to kind:1 (text notes) events
+        let filters = vec![json!({
+            "kinds": [1],
+            "limit": limit
+        })];
+
+        relay.subscribe("feed", &filters).await?;
+
+        // Collect events
+        let mut events = Vec::new();
+        let timeout_duration = Duration::from_secs(5);
+        let start = std::time::Instant::now();
+
+        while events.len() < limit && start.elapsed() < timeout_duration {
+            match tokio::time::timeout(Duration::from_secs(1), relay.recv()).await {
+                Ok(Ok(Some(msg))) => match msg {
+                    RelayMessage::Event(_sub_id, event) => {
+                        events.push(event);
+                    }
+                    RelayMessage::Eose(_sub_id) => {
+                        // End of stored events, we can stop
+                        break;
+                    }
+                    _ => {}
+                },
+                Ok(Ok(None)) => break, // Channel closed
+                Ok(Err(_)) => break,   // Error receiving
+                Err(_) => continue,    // Timeout, keep trying
+            }
+        }
+
+        relay.disconnect().await.ok();
+
+        // Sort by timestamp (newest first)
+        events.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+
+        Ok(events)
+    }
 }
 
 /// Result of publishing to a relay

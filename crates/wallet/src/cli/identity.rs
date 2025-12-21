@@ -387,13 +387,68 @@ pub fn contacts_remove(npub: String) -> Result<()> {
 }
 
 pub fn post(content: String) -> Result<()> {
+    use bip39::Mnemonic;
+    use crate::core::nostr::create_note_event;
+    use crate::core::client::NostrClient;
+    use crate::storage::config::WalletConfig;
+
     println!("{}", "Publishing note...".cyan());
 
-    // TODO: Create kind:1 event
-    // TODO: Publish to relays
+    // Check if wallet exists
+    if !SecureKeychain::has_mnemonic() {
+        anyhow::bail!("No wallet found. Use 'wallet init' to create one.");
+    }
+
+    // Load identity
+    let mnemonic_phrase = SecureKeychain::retrieve_mnemonic()?;
+    let mnemonic = Mnemonic::parse(&mnemonic_phrase)?;
+    let identity = UnifiedIdentity::from_mnemonic(mnemonic)?;
+
+    // Create note event
+    let event = create_note_event(&identity, &content)?;
 
     println!("  {}", content);
-    println!("{}", "✓ Published".green());
+    println!();
+
+    // Load config and publish to relays
+    let config = WalletConfig::load()?;
+
+    if config.nostr.relays.is_empty() {
+        println!("{}", "⚠ No relays configured. Use 'wallet relays add <url>' to add relays.".yellow());
+        println!("{}: {}", "Event ID".bold(), event.id);
+        return Ok(());
+    }
+
+    println!("{}", "Publishing to relays...".cyan());
+
+    let client = NostrClient::new(config.nostr.relays.clone());
+    let rt = tokio::runtime::Runtime::new()?;
+    let results = rt.block_on(client.publish_event(&event))?;
+
+    let mut success_count = 0;
+    let mut fail_count = 0;
+
+    for result in results {
+        if result.is_success() {
+            println!("  {} {}", "✓".green(), result.relay_url);
+            success_count += 1;
+        } else {
+            let error = result.error_message().unwrap_or_else(|| "Unknown error".to_string());
+            println!("  {} {} - {}", "✗".red(), result.relay_url, error);
+            fail_count += 1;
+        }
+    }
+
+    println!();
+    if success_count > 0 {
+        println!("{} Published to {}/{} relay(s)", "✓".green(), success_count, success_count + fail_count);
+    }
+    if fail_count > 0 {
+        println!("{} {} relay(s) failed", "⚠".yellow(), fail_count);
+    }
+
+    println!();
+    println!("{}: {}", "Event ID".bold(), event.id);
 
     Ok(())
 }
@@ -413,14 +468,55 @@ pub fn dm(recipient: String, message: String) -> Result<()> {
 }
 
 pub fn feed(limit: usize) -> Result<()> {
+    use crate::core::client::NostrClient;
+    use crate::storage::config::WalletConfig;
+    use chrono::{DateTime, Utc};
+
     println!("{}", "Nostr Feed".cyan().bold());
     println!();
 
-    // TODO: Subscribe to feed from contacts
-    // TODO: Display events
+    // Load config
+    let config = WalletConfig::load()?;
 
-    println!("Fetching {} events...", limit);
-    println!("No events yet");
+    if config.nostr.relays.is_empty() {
+        println!("{}", "⚠ No relays configured. Use 'wallet relays add <url>' to add relays.".yellow());
+        return Ok(());
+    }
+
+    println!("Fetching {} events from {}...", limit, config.nostr.relays[0]);
+    println!();
+
+    // Fetch feed
+    let client = NostrClient::new(config.nostr.relays.clone());
+    let rt = tokio::runtime::Runtime::new()?;
+    let events = rt.block_on(client.fetch_feed(limit))?;
+
+    if events.is_empty() {
+        println!("No events found");
+        return Ok(());
+    }
+
+    // Display events
+    for (i, event) in events.iter().enumerate() {
+        // Format timestamp
+        let dt = DateTime::<Utc>::from_timestamp(event.created_at as i64, 0)
+            .unwrap_or_else(|| DateTime::UNIX_EPOCH);
+        let time_str = dt.format("%Y-%m-%d %H:%M:%S UTC");
+
+        // Truncate pubkey for display
+        let pubkey_short = if event.pubkey.len() > 16 {
+            format!("{}...", &event.pubkey[..16])
+        } else {
+            event.pubkey.clone()
+        };
+
+        println!("{} {}", format!("{}.", i + 1).bold(), time_str.to_string().dimmed());
+        println!("  {} {}", "From:".bold(), pubkey_short.dimmed());
+        println!("  {}", event.content);
+        println!();
+    }
+
+    println!("{} events displayed", events.len());
 
     Ok(())
 }
