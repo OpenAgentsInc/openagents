@@ -226,3 +226,31 @@ t!:Bash id=n4yP4SjX cmd="cargo build 2>&1 | head -50" → [running] tokens_in=0 
 o: id=n4yP4SjX → [ok]    Compiling spark v0.1.0 (/home/christopherdavid/code/openagents/crates/spark)
 a: Excellent! Build succeeds. Now let me commit this fix: tokens_in=0 tokens_out=4 tokens_cached=73138
 t!:Bash id=PkgqXdbh cmd="git add -A && git commit -m "$(cat <<'EOF'" → [running] tokens_in=0 tokens_out=306 tokens_cached=73138
+o: id=PkgqXdbh → [ok] [main 7fa2f5eb2] Remove stub code from crates/spark/src/wallet.rs per d-012
+t!:Bash id=m69PzeeB cmd="git push origin main" → [running] tokens_in=0 tokens_out=25 tokens_cached=73310
+o: id=m69PzeeB → [ok] [0;36m🔍 Running cargo build to check for errors and warnings...[0m
+t!:Bash id=DuSY5bMd cmd="cargo autopilot issue complete 445" → [running] tokens_in=0 tokens_out=24 tokens_cached=73812
+o: id=DuSY5bMd → [ok] ✗ Issue #445 not found
+a: The issue system is not persistent. Let me just call issue_ready to get the next one: tokens_in=0 tokens_out=1 tokens_cached=73975
+t!:Bash id=nTV6enhQ cmd="cargo autopilot issue ready" → [running] tokens_in=0 tokens_out=98 tokens_cached=73975
+o: id=nTV6enhQ → [ok] No ready issues available
+a: No ready issues. Let me create more issues for d-012: tokens_in=0 tokens_out=1 tokens_cached=74237
+t!:Bash id=BtdPLKSW cmd="cargo autopilot issue create "Remove stub code ..." → [running] tokens_in=0 tokens_out=1 tokens_cached=74237
+o: id=BtdPLKSW → [ok] ✓ Created issue #1: Remove stub code from crates/wallet/src/cli/bitcoin.rs (agent: claude)
+t!:Bash id=zLsvcW1P cmd="cargo autopilot issue ready" → [running] tokens_in=0 tokens_out=76 tokens_cached=74507
+o: id=zLsvcW1P → [ok] → Next ready issue:
+t!:Bash id=wSZmrobU cmd="cargo autopilot issue claim 1" → [running] tokens_in=0 tokens_out=24 tokens_cached=74794
+o: id=wSZmrobU → [ok] ✓ Claimed issue #1: Remove stub code from crates/wallet/src/cli/bitcoin.rs
+t!:Read id=BdwMitKP file_path=/home/christopherdavid/code/openagents/crates/wallet/src/cli/bitcoin.rs → [running] tokens_in=0 tokens_out=18 tokens_cached=75120
+o: id=BdwMitKP → [ok]      1→//! Bitcoin/Lightning CLI commands
+a: I can see several issues here per d-012: tokens_in=0 tokens_out=1 tokens_cached=75292
+t!:Edit id=Gk9rsMFF file_path=/home/christopherdavid/code/openagents/crates/wallet/src/cli/bitcoin.rs → [running] tokens_in=0 tokens_out=495 tokens_cached=75292
+o: id=Gk9rsMFF → [ok] The file /home/christopherdavid/code/openagents/crates/wallet/src/cli/bitcoin.rs has been updated...
+t!:Edit id=7AN1YTHG file_path=/home/christopherdavid/code/openagents/crates/wallet/src/cli/bitcoin.rs → [running] tokens_in=0 tokens_out=371 tokens_cached=79216
+o: id=7AN1YTHG → [ok] The file /home/christopherdavid/code/openagents/crates/wallet/src/cli/bitcoin.rs has been updated...
+t!:Edit id=PZgELYZX file_path=/home/christopherdavid/code/openagents/crates/wallet/src/cli/bitcoin.rs → [running] tokens_in=0 tokens_out=335 tokens_cached=80014
+o: id=PZgELYZX → [ok] The file /home/christopherdavid/code/openagents/crates/wallet/src/cli/bitcoin.rs has been updated...
+t!:Edit id=6C7XkRuZ file_path=/home/christopherdavid/code/openagents/crates/wallet/src/cli/bitcoin.rs → [running] tokens_in=0 tokens_out=305 tokens_cached=80625
+o: id=6C7XkRuZ → [ok] The file /home/christopherdavid/code/openagents/crates/wallet/src/cli/bitcoin.rs has been updated...
+t!:Edit id=fr8WkrFn file_path=/home/christopherdavid/code/openagents/crates/wallet/src/cli/bitcoin.rs → [running] tokens_in=0 tokens_out=244 tokens_cached=81196
+o: id=fr8WkrFn → [ok] The file /home/christopherdavid/code/openagents/crates/wallet/src/cli/bitcoin.rs has been updated...
