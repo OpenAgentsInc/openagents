@@ -30,6 +30,7 @@
 //! - NIP-44: Versioned Encryption (requires `full` feature)
 //! - NIP-46: Nostr Remote Signing (requires `full` feature)
 //! - NIP-47: Nostr Wallet Connect (requires `full` feature)
+//! - NIP-49: Private Key Encryption (requires `full` feature)
 //! - NIP-51: Lists (mute lists, pin lists, bookmarks, etc.)
 //! - NIP-57: Lightning Zaps (tipping with Lightning payments)
 //! - NIP-59: Gift Wrap (encapsulation and metadata obscuring, requires `full` feature)
@@ -82,6 +83,8 @@ mod nip44;
 #[cfg(feature = "full")]
 mod nip46;
 mod nip47;
+#[cfg(feature = "full")]
+mod nip49;
 mod nip51;
 mod nip57;
 #[cfg(feature = "full")]
@@ -272,6 +275,15 @@ pub use nip47::{
     PayInvoiceParams, PayInvoiceResult, PayKeysendParams, Request, RequestParams, Response,
     ResponseResult, TlvRecord, Transaction, TransactionType, INFO_EVENT_KIND,
     NOTIFICATION_KIND_NIP04, NOTIFICATION_KIND_NIP44, REQUEST_KIND, RESPONSE_KIND,
+};
+
+// NIP-49: Private Key Encryption (requires full feature)
+#[cfg(feature = "full")]
+pub use nip49::{
+    KeySecurity, Nip49Error, ENCRYPTED_SIZE, PRIVATE_KEY_SIZE, SALT_SIZE, TAG_SIZE,
+    decrypt as nip49_decrypt, derive_key as nip49_derive_key, encrypt as nip49_encrypt,
+    normalize_password,
+    NONCE_SIZE as NIP49_NONCE_SIZE, VERSION as NIP49_VERSION,
 };
 
 // NIP-51: Lists
