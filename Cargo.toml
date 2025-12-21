@@ -9,7 +9,6 @@ members = [
     "crates/issues-mcp",
     "crates/marketplace",
     "crates/recorder",
-    "crates/desktop",
     "crates/ui",
     "crates/fm-bridge",
     "crates/claude-agent-sdk",
@@ -24,6 +23,54 @@ members = [
     "crates/spark",
     "crates/wallet",
 ]
+
+# Unified OpenAgents binary
+[package]
+name = "openagents"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "OpenAgents - Unified desktop application and CLI"
+
+[[bin]]
+name = "openagents"
+path = "src/main.rs"
+
+[dependencies]
+# OpenAgents crates
+wallet = { path = "crates/wallet" }
+marketplace = { path = "crates/marketplace" }
+autopilot = { path = "crates/autopilot" }
+agentgit = { path = "crates/agentgit" }
+
+# GUI
+wry = "0.50"
+tao = "0.33"
+actix-web = "4"
+actix-ws = "0.3"
+
+# CLI
+clap = { version = "4.4", features = ["derive", "wrap_help"] }
+
+# Async
+tokio = { version = "1", features = ["full", "signal"] }
+futures-util = "0.3"
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Error handling
+anyhow = "1"
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Utilities
+shellexpand = "2.1"
 
 [workspace.lints.rust]
 missing_docs = "allow"

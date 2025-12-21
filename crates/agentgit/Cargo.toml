@@ -11,9 +11,10 @@ description = "AgentGit - Nostr-native GitHub alternative for agent-first collab
 name = "agentgit"
 path = "src/lib.rs"
 
-[[bin]]
-name = "agentgit"
-path = "src/main.rs"
+# Binary removed - use `openagents agentgit` instead
+# [[bin]]
+# name = "agentgit"
+# path = "src/main.rs"
 
 [dependencies]
 # Window + WebView

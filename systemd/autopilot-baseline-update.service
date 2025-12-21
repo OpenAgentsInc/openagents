@@ -6,7 +6,7 @@ After=network.target
 [Service]
 Type=oneshot
 WorkingDirectory=%h/code/openagents
-ExecStart=/usr/bin/cargo autopilot baseline update
+ExecStart=%h/.cargo/bin/openagents autopilot baseline update
 StandardOutput=journal
 StandardError=journal
 

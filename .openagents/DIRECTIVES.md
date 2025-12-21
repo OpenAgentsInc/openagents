@@ -132,5 +132,7 @@ A good directive body should include:
 | d-007 | Native Rust FROSTR Implementation (Threshold Signatures) | Cryptography |
 | d-008 | Unified Data/Compute/Skills Marketplace | Marketplace/Economy |
 | d-009 | Autopilot GUI - Visual Agent Interface | Application/GUI |
+| d-010 | Unify All Binaries into Single openagents Binary | Architecture/UX |
+| d-011 | Comprehensive Storybook Coverage for All Rust Components | UI/Documentation |
 
 View details with `cargo autopilot directive show <id>`

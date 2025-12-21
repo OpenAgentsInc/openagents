@@ -4,9 +4,14 @@ version = "0.1.0"
 edition = "2024"
 rust-version = "1.85"
 
-[[bin]]
-name = "autopilot-gui"
-path = "src/main.rs"
+# Binary removed - use `openagents` GUI instead
+# [[bin]]
+# name = "autopilot-gui"
+# path = "src/main.rs"
+
+[lib]
+name = "autopilot_gui"
+path = "src/lib.rs"
 
 [dependencies]
 # GUI - Native window

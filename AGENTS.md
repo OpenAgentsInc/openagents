@@ -94,24 +94,62 @@ When implementing NIPs (Nostr Implementation Possibilities):
 
 ---
 
+## Unified OpenAgents Binary
+
+All OpenAgents functionality is available through a single `openagents` binary:
+
+```bash
+# Launch GUI (default)
+openagents
+
+# Wallet commands
+openagents wallet init          # Initialize wallet
+openagents wallet whoami        # Show identity
+openagents wallet balance       # Show balance
+openagents wallet send <addr> <amt>
+
+# Marketplace commands
+openagents marketplace compute providers
+openagents marketplace skills browse
+openagents marketplace data search
+openagents marketplace trajectories contribute
+
+# Autopilot commands
+openagents autopilot run "task"
+openagents autopilot dashboard
+openagents autopilot replay <file>
+
+# AgentGit commands
+openagents agentgit gui
+
+# Daemon commands
+openagents daemon start --workdir /path --project myproject
+openagents daemon status
+openagents daemon stop
+```
+
+**Note:** The legacy separate binaries (`wallet`, `marketplace`, `autopilot`, `autopilotd`, `agentgit`) have been deprecated. Use the unified `openagents` binary instead.
+
+---
+
 ## Autopilot Daemon
 
-The `autopilotd` daemon supervises autopilot worker processes, handling crashes and memory pressure.
+The `openagents daemon` (formerly `autopilotd`) supervises autopilot worker processes, handling crashes and memory pressure.
 
 **Starting the daemon:**
 ```bash
 # Development
-cargo daemon --workdir /path/to/project --project myproject
+openagents daemon start --workdir /path/to/project --project myproject
 
 # Production (systemd)
-systemctl --user start autopilotd
+systemctl --user start openagents-daemon
 ```
 
 **Commands:**
 ```bash
-autopilotd status         # Check daemon and worker status
-autopilotd restart-worker # Restart worker without restarting daemon
-autopilotd stop           # Stop daemon
+openagents daemon status         # Check daemon and worker status
+openagents daemon restart-worker # Restart worker without restarting daemon
+openagents daemon stop           # Stop daemon
 ```
 
 **Viewing logs:**
