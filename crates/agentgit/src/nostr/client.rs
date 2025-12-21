@@ -84,6 +84,7 @@ impl NostrClient {
         // Create filter for NIP-34 git events and trajectory events
         let filters = vec![json!({
             "kinds": [
+                1,     // Text notes (for PR/issue review comments via NIP-22)
                 kinds::REPOSITORY_ANNOUNCEMENT,
                 kinds::REPOSITORY_STATE,
                 kinds::PATCH,
@@ -256,5 +257,10 @@ impl NostrClient {
     /// Get trajectory events for a session
     pub async fn get_trajectory_events(&self, session_id: &str) -> Result<Vec<Event>> {
         self.cache.lock().await.get_trajectory_events(session_id)
+    }
+
+    /// Get review comments for a PR or patch
+    pub async fn get_reviews_for_pr(&self, pr_event_id: &str) -> Result<Vec<Event>> {
+        self.cache.lock().await.get_reviews_for_pr(pr_event_id)
     }
 }
