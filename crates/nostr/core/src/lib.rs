@@ -709,7 +709,8 @@ pub use nip_sa::{
     // Goals (kind:38003)
     PublicGoals,
     // Tick (kinds:38010, 38011)
-    TickAction, TickResultContent, TickStatus, TickTrigger,
+    TickAction, TickError, TickRequest, TickResult, TickResultContent, TickStatus, TickTrigger,
+    KIND_TICK_REQUEST, KIND_TICK_RESULT,
     // Trajectory (kinds:38030, 38031)
     StepType, TrajectoryEventContent, TrajectorySessionContent, TrajectoryVisibility,
     // Skill (kinds:38020, 38021)
