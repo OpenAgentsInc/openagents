@@ -1,6 +1,7 @@
 //! Marketplace CLI - Unified marketplace for compute, skills, and data
 
 use clap::Parser;
+use marketplace::cli::compute::ComputeCommands;
 
 #[derive(Parser)]
 #[command(name = "marketplace")]
@@ -13,7 +14,10 @@ struct Cli {
 #[derive(clap::Subcommand)]
 enum Commands {
     /// Compute marketplace commands
-    Compute,
+    Compute {
+        #[command(subcommand)]
+        command: ComputeCommands,
+    },
     /// Skills marketplace commands
     Skills,
     /// Data marketplace commands
@@ -28,9 +32,7 @@ fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
 
     match cli.command {
-        Commands::Compute => {
-            println!("Compute marketplace - coming soon");
-        }
+        Commands::Compute { command } => command.execute()?,
         Commands::Skills => {
             println!("Skills marketplace - coming soon");
         }
