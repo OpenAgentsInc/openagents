@@ -1,6 +1,7 @@
 [workspace]
 resolver = "2"
 members = [
+    "crates/agentgit",
     "crates/autopilot",
     "crates/issues",
     "crates/issues-mcp",
