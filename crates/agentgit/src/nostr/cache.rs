@@ -421,6 +421,78 @@ impl EventCache {
         Ok(events)
     }
 
+    /// Get patches for a specific repository by its address tag
+    pub fn get_patches_by_repo(&self, repo_address: &str, limit: usize) -> Result<Vec<Event>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT e.id, e.kind, e.pubkey, e.created_at, e.content, e.tags, e.sig
+             FROM events e
+             JOIN patches p ON e.id = p.event_id
+             WHERE p.repo_address = ?1
+             ORDER BY e.created_at DESC
+             LIMIT ?2",
+        )?;
+
+        let events = stmt
+            .query_map(params![repo_address, limit], |row| {
+                let tags_json: String = row.get(5)?;
+                let tags: Vec<Vec<String>> = serde_json::from_str(&tags_json)
+                    .map_err(|e| rusqlite::Error::FromSqlConversionFailure(
+                        5,
+                        rusqlite::types::Type::Text,
+                        Box::new(e),
+                    ))?;
+
+                Ok(Event {
+                    id: row.get(0)?,
+                    kind: row.get(1)?,
+                    pubkey: row.get(2)?,
+                    created_at: row.get(3)?,
+                    content: row.get(4)?,
+                    tags,
+                    sig: row.get(6)?,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+
+        Ok(events)
+    }
+
+    /// Get pull requests for a specific repository by its address tag
+    pub fn get_pull_requests_by_repo(&self, repo_address: &str, limit: usize) -> Result<Vec<Event>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT e.id, e.kind, e.pubkey, e.created_at, e.content, e.tags, e.sig
+             FROM events e
+             JOIN pull_requests pr ON e.id = pr.event_id
+             WHERE pr.repo_address = ?1
+             ORDER BY e.created_at DESC
+             LIMIT ?2",
+        )?;
+
+        let events = stmt
+            .query_map(params![repo_address, limit], |row| {
+                let tags_json: String = row.get(5)?;
+                let tags: Vec<Vec<String>> = serde_json::from_str(&tags_json)
+                    .map_err(|e| rusqlite::Error::FromSqlConversionFailure(
+                        5,
+                        rusqlite::types::Type::Text,
+                        Box::new(e),
+                    ))?;
+
+                Ok(Event {
+                    id: row.get(0)?,
+                    kind: row.get(1)?,
+                    pubkey: row.get(2)?,
+                    created_at: row.get(3)?,
+                    content: row.get(4)?,
+                    tags,
+                    sig: row.get(6)?,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+
+        Ok(events)
+    }
+
     /// Delete events older than the specified age (in seconds)
     #[allow(dead_code)]
     pub fn delete_old_events(&self, max_age_seconds: i64) -> Result<usize> {

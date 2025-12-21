@@ -4,7 +4,7 @@ use actix_web::{web, App, HttpResponse, HttpServer};
 use std::sync::Arc;
 
 use crate::nostr::NostrClient;
-use crate::views::{home_page_with_repos, issue_create_form_page, issue_detail_page, issues_list_page, repository_detail_page};
+use crate::views::{home_page_with_repos, issue_create_form_page, issue_detail_page, issues_list_page, patches_list_page, pull_requests_list_page, repository_detail_page};
 use crate::ws::{ws_handler, WsBroadcaster};
 
 /// Application state shared across handlers
@@ -32,6 +32,8 @@ pub async fn start_server(
             .route("/repo/{identifier}/issues/new", web::get().to(issue_create_form))
             .route("/repo/{identifier}/issues", web::post().to(issue_create))
             .route("/repo/{identifier}/issues/{issue_id}", web::get().to(issue_detail))
+            .route("/repo/{identifier}/patches", web::get().to(repository_patches))
+            .route("/repo/{identifier}/pulls", web::get().to(repository_pulls))
             .route("/ws", web::get().to(ws_route))
     })
     .bind("127.0.0.1:0")?;
@@ -272,6 +274,102 @@ struct IssueCreateForm {
     title: String,
     description: Option<String>,
     labels: Option<String>,
+}
+
+/// Repository patches list page
+async fn repository_patches(
+    state: web::Data<AppState>,
+    path: web::Path<String>,
+) -> HttpResponse {
+    let identifier = path.into_inner();
+
+    // Fetch repository from cache by identifier
+    let repository = match state.nostr_client.get_repository_by_identifier(&identifier).await {
+        Ok(Some(repo)) => repo,
+        Ok(None) => {
+            tracing::warn!("Repository not found: {}", identifier);
+            return HttpResponse::NotFound()
+                .content_type("text/html; charset=utf-8")
+                .body("<h1>Repository not found</h1>");
+        }
+        Err(e) => {
+            tracing::error!("Failed to fetch repository: {}", e);
+            return HttpResponse::InternalServerError()
+                .content_type("text/html; charset=utf-8")
+                .body("<h1>Error fetching repository</h1>");
+        }
+    };
+
+    // Build repository address (30617:pubkey:identifier)
+    let repo_address = format!("30617:{}:{}",
+        repository.pubkey,
+        repository.tags.iter()
+            .find(|t| t.first().map(|s| s == "d").unwrap_or(false))
+            .and_then(|t| t.get(1))
+            .map(|s| s.as_str())
+            .unwrap_or(&identifier)
+    );
+
+    // Fetch patches for this repository
+    let patches = match state.nostr_client.get_patches_by_repo(&repo_address, 100).await {
+        Ok(p) => p,
+        Err(e) => {
+            tracing::warn!("Failed to fetch patches: {}", e);
+            vec![]
+        }
+    };
+
+    HttpResponse::Ok()
+        .content_type("text/html; charset=utf-8")
+        .body(patches_list_page(&repository, &patches, &identifier).into_string())
+}
+
+/// Repository pull requests list page
+async fn repository_pulls(
+    state: web::Data<AppState>,
+    path: web::Path<String>,
+) -> HttpResponse {
+    let identifier = path.into_inner();
+
+    // Fetch repository from cache by identifier
+    let repository = match state.nostr_client.get_repository_by_identifier(&identifier).await {
+        Ok(Some(repo)) => repo,
+        Ok(None) => {
+            tracing::warn!("Repository not found: {}", identifier);
+            return HttpResponse::NotFound()
+                .content_type("text/html; charset=utf-8")
+                .body("<h1>Repository not found</h1>");
+        }
+        Err(e) => {
+            tracing::error!("Failed to fetch repository: {}", e);
+            return HttpResponse::InternalServerError()
+                .content_type("text/html; charset=utf-8")
+                .body("<h1>Error fetching repository</h1>");
+        }
+    };
+
+    // Build repository address (30617:pubkey:identifier)
+    let repo_address = format!("30617:{}:{}",
+        repository.pubkey,
+        repository.tags.iter()
+            .find(|t| t.first().map(|s| s == "d").unwrap_or(false))
+            .and_then(|t| t.get(1))
+            .map(|s| s.as_str())
+            .unwrap_or(&identifier)
+    );
+
+    // Fetch pull requests for this repository
+    let pull_requests = match state.nostr_client.get_pull_requests_by_repo(&repo_address, 100).await {
+        Ok(prs) => prs,
+        Err(e) => {
+            tracing::warn!("Failed to fetch pull requests: {}", e);
+            vec![]
+        }
+    };
+
+    HttpResponse::Ok()
+        .content_type("text/html; charset=utf-8")
+        .body(pull_requests_list_page(&repository, &pull_requests, &identifier).into_string())
 }
 
 /// WebSocket upgrade
