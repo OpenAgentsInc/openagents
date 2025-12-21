@@ -6,6 +6,7 @@
 //! - NIP-04: Encrypted Direct Messages (requires `full` feature)
 //! - NIP-05: Mapping Nostr Keys to DNS-based Internet Identifiers
 //! - NIP-06: Key derivation from BIP39 mnemonic seed phrases (requires `full` feature)
+//! - NIP-07: window.nostr capability for web browsers
 //! - NIP-09: Event Deletion Request
 //! - NIP-10: Text Notes and Threads
 //! - NIP-11: Relay Information Document
@@ -80,6 +81,7 @@ mod nip04;
 mod nip05;
 #[cfg(feature = "full")]
 mod nip06;
+mod nip07;
 mod nip09;
 mod nip10;
 mod nip11;
@@ -178,6 +180,12 @@ pub use nip06::{
     Keypair, Nip06Error, derive_keypair, derive_keypair_full, derive_keypair_with_account,
     mnemonic_to_seed, npub_to_public_key, nsec_to_private_key, private_key_to_nsec,
     public_key_to_npub,
+};
+
+// NIP-07: window.nostr capability for web browsers
+pub use nip07::{
+    Nip07Error, SignEventTemplate, WindowNostr, WindowNostrNip04, WindowNostrNip44,
+    WindowNostrProvider, is_available as nip07_is_available,
 };
 
 // NIP-09: Event Deletion Request
