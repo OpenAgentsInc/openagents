@@ -1,7 +1,122 @@
 //! NIP-34 event builders for AgentGit
 //!
-//! Provides builder functions for creating NIP-34 git events and extensions
-//! for agent-native workflows (issue claims, bounties, etc.).
+//! Provides builder pattern for creating Nostr events related to git collaboration.
+//! All builders return [`EventTemplate`] which must be signed before publishing.
+//!
+//! ## Standard NIP-34 Builders
+//!
+//! - [`PullRequestBuilder`] - kind:1618, create pull requests with commits
+//! - [`PatchBuilder`] - kind:1617, create patches from git diffs
+//! - [`StatusEventBuilder`] - kinds:1630-1633, set PR/patch status
+//!
+//! ## AgentGit Extensions
+//!
+//! These extend NIP-34 with agent-native workflows:
+//!
+//! - [`IssueClaimBuilder`] - kind:1634, agent claims issue for work
+//! - [`BountyOfferBuilder`] - kind:1636, attach Lightning bounty to issue
+//! - [`WorkAssignmentBuilder`] - kind:1635, maintainer assigns work to agent
+//! - [`BountyClaimBuilder`] - kind:1637, claim bounty payment on PR merge
+//!
+//! ## Usage
+//!
+//! All builders follow the same pattern:
+//!
+//! ```rust
+//! use agentgit::nostr::events::PullRequestBuilder;
+//!
+//! // Build event template
+//! let template = PullRequestBuilder::new(
+//!     "30617:pubkey:repo-id",       // Repository address
+//!     "Fix authentication bug",     // Subject/title
+//!     "This PR fixes the bug by...", // Description
+//! )
+//! .commit("abc123def456")            // Required: commit ID
+//! .clone_url("https://github.com/user/repo.git") // Required: clone URL
+//! .trajectory("session_xyz")         // Optional: trajectory session ID
+//! .build();
+//!
+//! // Sign with identity (requires wallet integration)
+//! // let event = identity.sign_event(template)?;
+//! // client.publish_event(event).await?;
+//! ```
+//!
+//! ## Stacked Diffs
+//!
+//! Pull requests support stacked diffs for breaking large changes into reviewable layers:
+//!
+//! ```rust
+//! use agentgit::nostr::events::PullRequestBuilder;
+//!
+//! // Layer 1: Foundation
+//! let layer1 = PullRequestBuilder::new(
+//!     "30617:pubkey:repo-id",
+//!     "Layer 1: Add FooService interface",
+//!     "Defines the interface for FooService",
+//! )
+//! .commit("abc123")
+//! .clone_url("https://github.com/user/repo.git")
+//! .stack("stack_uuid_123")  // Groups all layers
+//! .layer(1, 4)              // Layer 1 of 4
+//! .build();
+//!
+//! // Layer 2: Build on Layer 1
+//! let layer2 = PullRequestBuilder::new(
+//!     "30617:pubkey:repo-id",
+//!     "Layer 2: Implement FooService",
+//!     "Concrete implementation of FooService",
+//! )
+//! .commit("def456")
+//! .clone_url("https://github.com/user/repo.git")
+//! .depends_on("layer1_event_id")  // Must merge after Layer 1
+//! .stack("stack_uuid_123")
+//! .layer(2, 4)
+//! .build();
+//! ```
+//!
+//! Tags used for stacked diffs:
+//! - `depends_on`: Event ID of dependency PR (must be merged first)
+//! - `stack`: UUID grouping related PRs
+//! - `layer`: Position in stack (e.g., "2 of 4")
+//!
+//! ## Trajectory Integration
+//!
+//! PRs can link to agent trajectory sessions for transparent work verification:
+//!
+//! ```rust
+//! use agentgit::nostr::events::PullRequestBuilder;
+//!
+//! let pr = PullRequestBuilder::new(...)
+//!     .trajectory("session_id")          // NIP-SA trajectory session
+//!     .trajectory_hash("sha256_hash")    // Hash for verification
+//!     .build();
+//! ```
+//!
+//! ## Event Publishing
+//!
+//! Event templates must be signed before publishing:
+//!
+//! ```rust,ignore
+//! // 1. Build template
+//! let template = PullRequestBuilder::new(...).build();
+//!
+//! // 2. Sign with identity (requires wallet::UnifiedIdentity)
+//! let event = identity.sign_event(template)?;
+//!
+//! // 3. Publish to relays (not yet implemented in AgentGit)
+//! client.publish_event(event).await?;
+//!
+//! // 4. Cache locally for immediate display
+//! client.cache_event(event).await?;
+//! ```
+//!
+//! ## Testing
+//!
+//! All builders have comprehensive unit tests:
+//!
+//! ```bash
+//! cargo test -p agentgit events
+//! ```
 
 use nostr::EventTemplate;
 use std::time::{SystemTime, UNIX_EPOCH};
