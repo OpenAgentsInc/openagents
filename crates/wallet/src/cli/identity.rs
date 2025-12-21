@@ -480,7 +480,7 @@ pub fn post(content: String) -> Result<()> {
     Ok(())
 }
 
-pub fn dm(recipient: String, message: String) -> Result<()> {
+pub fn dm_send(recipient: String, message: String) -> Result<()> {
     use bip39::Mnemonic;
     use crate::core::client::NostrClient;
     use crate::storage::config::WalletConfig;
@@ -575,6 +575,185 @@ pub fn dm(recipient: String, message: String) -> Result<()> {
 
     println!();
     println!("{}: {}", "Event ID".bold(), event.id);
+
+    Ok(())
+}
+
+pub fn dm_list(limit: usize) -> Result<()> {
+    use bip39::Mnemonic;
+    use crate::core::client::NostrClient;
+    use crate::storage::config::WalletConfig;
+    use chrono::{DateTime, Utc};
+
+    println!("{}", "Direct Messages".cyan().bold());
+    println!();
+
+    // Check if wallet exists
+    if !SecureKeychain::has_mnemonic() {
+        anyhow::bail!("No wallet found. Use 'wallet init' to create one.");
+    }
+
+    // Load identity
+    let mnemonic_str = SecureKeychain::retrieve_mnemonic()?;
+    let mnemonic = Mnemonic::parse(&mnemonic_str)?;
+    let identity = UnifiedIdentity::from_mnemonic(mnemonic)?;
+
+    let our_pubkey_hex = identity.nostr_public_key();
+
+    // Load config
+    let config = WalletConfig::load()?;
+
+    if config.nostr.relays.is_empty() {
+        println!("{}", "⚠ No relays configured. Use 'wallet relays add <url>' to add relays.".yellow());
+        return Ok(());
+    }
+
+    println!("Fetching encrypted DMs from relays...");
+    println!();
+
+    // Fetch DMs (kind:4 events with p tag matching our pubkey)
+    let client = NostrClient::new(config.nostr.relays.clone());
+    let rt = tokio::runtime::Runtime::new()?;
+
+    // Create filter for DMs sent to us
+    let filter = serde_json::json!({
+        "kinds": [nostr::ENCRYPTED_DM_KIND],
+        "#p": [our_pubkey_hex],
+        "limit": limit
+    });
+
+    let events = rt.block_on(client.fetch_events(vec![filter]))?;
+
+    if events.is_empty() {
+        println!("No direct messages found");
+        return Ok(());
+    }
+
+    // Get sender's private key for decryption
+    let sender_privkey_hex = identity.nostr_secret_key();
+    let sender_privkey_vec = hex::decode(sender_privkey_hex)?;
+    let sender_privkey: [u8; 32] = sender_privkey_vec.try_into()
+        .map_err(|_| anyhow::anyhow!("Invalid private key length"))?;
+
+    // Display DMs
+    for (i, event) in events.iter().enumerate() {
+        // Format timestamp
+        let dt = DateTime::<Utc>::from_timestamp(event.created_at as i64, 0)
+            .unwrap_or_else(|| DateTime::UNIX_EPOCH);
+        let time_str = dt.format("%Y-%m-%d %H:%M:%S UTC");
+
+        // Truncate sender pubkey for display
+        let sender_short = if event.pubkey.len() > 16 {
+            format!("{}...", &event.pubkey[..16])
+        } else {
+            event.pubkey.clone()
+        };
+
+        // Try to parse sender pubkey and decrypt
+        let decrypted = if let Ok(sender_bytes) = hex::decode(&event.pubkey) {
+            if sender_bytes.len() == 32 {
+                let mut sender_pk_compressed = [0u8; 33];
+                sender_pk_compressed[0] = 0x02; // Even y-coordinate
+                sender_pk_compressed[1..].copy_from_slice(&sender_bytes);
+
+                nostr::decrypt(&sender_privkey, &sender_pk_compressed, &event.content)
+                    .unwrap_or_else(|_| "[Decryption failed]".to_string())
+            } else {
+                "[Invalid sender pubkey]".to_string()
+            }
+        } else {
+            "[Invalid sender pubkey]".to_string()
+        };
+
+        println!("{} {}", format!("{}.", i + 1).bold(), time_str.to_string().dimmed());
+        println!("  {} {}", "From:".bold(), sender_short.dimmed());
+        println!("  {} {}", "ID:".bold(), event.id.dimmed());
+        println!("  {}", decrypted);
+        println!();
+    }
+
+    println!("{} message(s) displayed", events.len());
+
+    Ok(())
+}
+
+pub fn dm_read(event_id: String) -> Result<()> {
+    use bip39::Mnemonic;
+    use crate::core::client::NostrClient;
+    use crate::storage::config::WalletConfig;
+    use chrono::{DateTime, Utc};
+
+    println!("{}", "Reading Direct Message".cyan().bold());
+    println!();
+
+    // Check if wallet exists
+    if !SecureKeychain::has_mnemonic() {
+        anyhow::bail!("No wallet found. Use 'wallet init' to create one.");
+    }
+
+    // Load identity
+    let mnemonic_str = SecureKeychain::retrieve_mnemonic()?;
+    let mnemonic = Mnemonic::parse(&mnemonic_str)?;
+    let identity = UnifiedIdentity::from_mnemonic(mnemonic)?;
+
+    // Load config
+    let config = WalletConfig::load()?;
+
+    if config.nostr.relays.is_empty() {
+        println!("{}", "⚠ No relays configured. Use 'wallet relays add <url>' to add relays.".yellow());
+        return Ok(());
+    }
+
+    // Fetch specific event by ID
+    let client = NostrClient::new(config.nostr.relays.clone());
+    let rt = tokio::runtime::Runtime::new()?;
+
+    let filter = serde_json::json!({
+        "ids": [event_id],
+        "kinds": [nostr::ENCRYPTED_DM_KIND]
+    });
+
+    let events = rt.block_on(client.fetch_events(vec![filter]))?;
+
+    if events.is_empty() {
+        println!("Message not found");
+        return Ok(());
+    }
+
+    let event = &events[0];
+
+    // Get sender's private key for decryption
+    let sender_privkey_hex = identity.nostr_secret_key();
+    let sender_privkey_vec = hex::decode(sender_privkey_hex)?;
+    let sender_privkey: [u8; 32] = sender_privkey_vec.try_into()
+        .map_err(|_| anyhow::anyhow!("Invalid private key length"))?;
+
+    // Decrypt message
+    let decrypted = if let Ok(sender_bytes) = hex::decode(&event.pubkey) {
+        if sender_bytes.len() == 32 {
+            let mut sender_pk_compressed = [0u8; 33];
+            sender_pk_compressed[0] = 0x02; // Even y-coordinate
+            sender_pk_compressed[1..].copy_from_slice(&sender_bytes);
+
+            nostr::decrypt(&sender_privkey, &sender_pk_compressed, &event.content)
+                .unwrap_or_else(|_| "[Decryption failed]".to_string())
+        } else {
+            "[Invalid sender pubkey]".to_string()
+        }
+    } else {
+        "[Invalid sender pubkey]".to_string()
+    };
+
+    // Format timestamp
+    let dt = DateTime::<Utc>::from_timestamp(event.created_at as i64, 0)
+        .unwrap_or_else(|| DateTime::UNIX_EPOCH);
+    let time_str = dt.format("%Y-%m-%d %H:%M:%S UTC");
+
+    println!("{} {}", "From:".bold(), event.pubkey);
+    println!("{} {}", "Time:".bold(), time_str);
+    println!("{} {}", "Event ID:".bold(), event.id);
+    println!();
+    println!("{}", decrypted);
 
     Ok(())
 }

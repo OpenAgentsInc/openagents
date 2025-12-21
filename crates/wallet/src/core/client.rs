@@ -59,10 +59,9 @@ impl NostrClient {
         Ok(None)
     }
 
-    /// Fetch feed events from relays
-    pub async fn fetch_feed(&self, limit: usize) -> Result<Vec<Event>> {
+    /// Fetch events from relays with custom filters
+    pub async fn fetch_events(&self, filters: Vec<serde_json::Value>) -> Result<Vec<Event>> {
         use nostr_client::RelayMessage;
-        use serde_json::json;
 
         if self.relay_urls.is_empty() {
             return Ok(Vec::new());
@@ -80,20 +79,14 @@ impl NostrClient {
             .await
             .with_context(|| format!("Failed to connect to {}", url))?;
 
-        // Subscribe to kind:1 (text notes) events
-        let filters = vec![json!({
-            "kinds": [1],
-            "limit": limit
-        })];
-
-        relay.subscribe("feed", &filters).await?;
+        relay.subscribe("fetch", &filters).await?;
 
         // Collect events
         let mut events = Vec::new();
         let timeout_duration = Duration::from_secs(5);
         let start = std::time::Instant::now();
 
-        while events.len() < limit && start.elapsed() < timeout_duration {
+        while start.elapsed() < timeout_duration {
             match tokio::time::timeout(Duration::from_secs(1), relay.recv()).await {
                 Ok(Ok(Some(msg))) => match msg {
                     RelayMessage::Event(_sub_id, event) => {
@@ -117,6 +110,18 @@ impl NostrClient {
         events.sort_by(|a, b| b.created_at.cmp(&a.created_at));
 
         Ok(events)
+    }
+
+    /// Fetch feed events from relays
+    pub async fn fetch_feed(&self, limit: usize) -> Result<Vec<Event>> {
+        use serde_json::json;
+
+        let filters = vec![json!({
+            "kinds": [1],
+            "limit": limit
+        })];
+
+        self.fetch_events(filters).await
     }
 }
 
