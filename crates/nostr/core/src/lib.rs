@@ -36,6 +36,7 @@
 //! - NIP-59: Gift Wrap (encapsulation and metadata obscuring, requires `full` feature)
 //! - NIP-89: Application Handlers (social discovery of skills/agents)
 //! - NIP-90: Data Vending Machine (DVM) job requests/results/feedback
+//! - NIP-94: File Metadata
 //! - Identity types for marketplace participants (agents, creators, providers)
 //! - Lightning payment types for marketplace transactions
 //! - Compute provider types for decentralized compute marketplace
@@ -91,6 +92,7 @@ mod nip57;
 mod nip59;
 mod nip89;
 mod nip90;
+mod nip94;
 #[cfg(feature = "full")]
 mod payments;
 mod provider;
@@ -334,6 +336,11 @@ pub use nip90::{
     KIND_JOB_TEXT_EXTRACTION, KIND_JOB_TEXT_GENERATION, KIND_JOB_TRANSLATION, Nip90Error,
     get_request_kind, get_result_kind, is_dvm_kind, is_job_feedback_kind, is_job_request_kind,
     is_job_result_kind,
+};
+
+// NIP-94: File Metadata
+pub use nip94::{
+    Dimensions, FileImage, FileMetadata, FILE_METADATA_KIND, Nip94Error, is_file_metadata_kind,
 };
 
 // Identity types for marketplace (base types always available)
