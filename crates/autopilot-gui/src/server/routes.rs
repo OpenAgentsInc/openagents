@@ -22,7 +22,7 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
 /// Dashboard route
 #[get("/")]
 async fn index() -> impl Responder {
-    let html = layout::page("Autopilot GUI", layout::dashboard());
+    let html = layout::page_with_current("Autopilot GUI", layout::dashboard(), Some("dashboard"));
     HttpResponse::Ok()
         .content_type("text/html; charset=utf-8")
         .body(html)
@@ -31,7 +31,7 @@ async fn index() -> impl Responder {
 /// Chat interface route
 #[get("/chat")]
 async fn chat_view() -> impl Responder {
-    let html = layout::page("Chat - Autopilot GUI", chat::chat_interface());
+    let html = layout::page_with_current("Chat - Autopilot GUI", chat::chat_interface(), Some("chat"));
     HttpResponse::Ok()
         .content_type("text/html; charset=utf-8")
         .body(html)
@@ -49,10 +49,11 @@ async fn context_inspector() -> impl Responder {
         }
     };
 
-    let html = context::context_inspector(context_info);
+    let content = context::context_inspector(context_info);
+    let html = layout::page_with_current("Context - Autopilot GUI", content, Some("context"));
     HttpResponse::Ok()
         .content_type("text/html; charset=utf-8")
-        .body(html.into_string())
+        .body(html)
 }
 
 /// Collect context information from the workspace
@@ -241,10 +242,11 @@ async fn permissions_manager() -> impl Responder {
         }
     };
 
-    let html = permissions_view(rules);
+    let content = permissions_view(rules);
+    let html = layout::page_with_current("Permissions - Autopilot GUI", content, Some("permissions"));
     HttpResponse::Ok()
         .content_type("text/html; charset=utf-8")
-        .body(html.into_string())
+        .body(html)
 }
 
 /// Delete a permission rule
