@@ -56,6 +56,14 @@ pub enum ClientError {
     /// Invalid event
     #[error("Invalid event: {0}")]
     InvalidEvent(String),
+
+    /// Protocol error
+    #[error("Protocol error: {0}")]
+    Protocol(String),
+
+    /// Internal error
+    #[error("Internal error: {0}")]
+    Internal(String),
 }
 
 /// Client result type
