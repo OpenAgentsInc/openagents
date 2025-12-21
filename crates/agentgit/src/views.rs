@@ -346,7 +346,7 @@ pub fn issues_list_page(repository: &Event, issues: &[Event]) -> Markup {
     }
 }
 /// Issue detail page
-pub fn issue_detail_page(repository: &Event, issue: &Event, claims: &[Event], identifier: &str) -> Markup {
+pub fn issue_detail_page(repository: &Event, issue: &Event, claims: &[Event], bounties: &[Event], identifier: &str) -> Markup {
     let repo_name = get_tag_value(repository, "name").unwrap_or_else(|| "Repository".to_string());
     let issue_title = get_tag_value(issue, "subject").unwrap_or_else(|| "Untitled Issue".to_string());
     let issue_status = get_tag_value(issue, "status").unwrap_or_else(|| "open".to_string());
@@ -418,6 +418,49 @@ pub fn issue_detail_page(repository: &Event, issue: &Event, claims: &[Event], id
                                     h2 { "Description" }
                                     div.issue-content {
                                         p { (issue.content) }
+                                    }
+                                }
+                            }
+
+                            @if !bounties.is_empty() {
+                                section.issue-section {
+                                    h2 { "💰 Bounties" }
+                                    div.bounties-list {
+                                        @for bounty in bounties {
+                                            @let bounty_creator = if bounty.pubkey.len() > 16 {
+                                                format!("{}...{}", &bounty.pubkey[..8], &bounty.pubkey[bounty.pubkey.len()-8..])
+                                            } else {
+                                                bounty.pubkey.clone()
+                                            };
+                                            @let amount = get_tag_value(bounty, "amount");
+                                            @let expiry = get_tag_value(bounty, "expiry");
+                                            @let conditions = get_all_tag_values(bounty, "conditions");
+
+                                            div.bounty-card {
+                                                div.bounty-header {
+                                                    @if let Some(amt) = amount {
+                                                        span.bounty-amount { "⚡ " (amt) " sats" }
+                                                    }
+                                                    span.bounty-creator { "offered by " (bounty_creator) }
+                                                }
+                                                @if let Some(exp) = expiry {
+                                                    div.bounty-expiry {
+                                                        span.label { "Expires: " }
+                                                        span { (exp) }
+                                                    }
+                                                }
+                                                @if !conditions.is_empty() {
+                                                    div.bounty-conditions {
+                                                        h4 { "Conditions:" }
+                                                        ul {
+                                                            @for condition in conditions {
+                                                                li { (condition) }
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
                                     }
                                 }
                             }

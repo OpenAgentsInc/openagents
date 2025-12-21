@@ -240,4 +240,9 @@ impl NostrClient {
     pub async fn get_claims_for_issue(&self, issue_event_id: &str) -> Result<Vec<Event>> {
         self.cache.lock().await.get_claims_for_issue(issue_event_id)
     }
+
+    /// Get bounty offers for a specific issue
+    pub async fn get_bounties_for_issue(&self, issue_event_id: &str) -> Result<Vec<Event>> {
+        self.cache.lock().await.get_bounties_for_issue(issue_event_id)
+    }
 }
