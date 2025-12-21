@@ -1,6 +1,6 @@
 //! HTML layout templates using Maud
 
-use maud::{html, Markup, DOCTYPE};
+use maud::{html, Markup, PreEscaped, DOCTYPE};
 
 /// Base page layout with navigation
 pub fn page(title: &str, content: Markup) -> String {
@@ -90,7 +90,113 @@ pub fn page_with_current(title: &str, content: Markup, current_page: Option<&str
                             gap: 1rem;
                         }
                     }
+                    .live-indicator {
+                        display: inline-flex;
+                        align-items: center;
+                        gap: 0.5rem;
+                        padding: 0.25rem 0.75rem;
+                        background: #2d5016;
+                        color: #7dff7d;
+                        font-size: 0.75rem;
+                        font-weight: 600;
+                    }
+                    .live-dot {
+                        width: 8px;
+                        height: 8px;
+                        background: #7dff7d;
+                        animation: pulse 2s infinite;
+                    }
+                    @keyframes pulse {
+                        0%, 100% { opacity: 1; }
+                        50% { opacity: 0.3; }
+                    }
                     "#
+                }
+                script {
+                    (PreEscaped(r#"
+                    // WebSocket connection for live updates
+                    let ws = null;
+                    let reconnectTimer = null;
+
+                    function connectWebSocket() {
+                        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+                        const wsUrl = `${protocol}//${window.location.host}/ws`;
+
+                        ws = new WebSocket(wsUrl);
+
+                        ws.onopen = () => {
+                            console.log('WebSocket connected');
+                            updateConnectionStatus(true);
+                            if (reconnectTimer) {
+                                clearTimeout(reconnectTimer);
+                                reconnectTimer = null;
+                            }
+                        };
+
+                        ws.onmessage = (event) => {
+                            try {
+                                const msg = JSON.parse(event.data);
+                                handleWebSocketMessage(msg);
+                            } catch (e) {
+                                console.error('Failed to parse WebSocket message:', e);
+                            }
+                        };
+
+                        ws.onerror = (error) => {
+                            console.error('WebSocket error:', error);
+                        };
+
+                        ws.onclose = () => {
+                            console.log('WebSocket disconnected');
+                            updateConnectionStatus(false);
+                            // Reconnect after 3 seconds
+                            reconnectTimer = setTimeout(connectWebSocket, 3000);
+                        };
+                    }
+
+                    function updateConnectionStatus(connected) {
+                        const indicator = document.getElementById('live-indicator');
+                        if (indicator) {
+                            if (connected) {
+                                indicator.innerHTML = '<span class="live-dot"></span>LIVE';
+                                indicator.style.background = '#2d5016';
+                                indicator.style.color = '#7dff7d';
+                            } else {
+                                indicator.innerHTML = 'DISCONNECTED';
+                                indicator.style.background = '#5d1616';
+                                indicator.style.color = '#ff7d7d';
+                            }
+                        }
+                    }
+
+                    function handleWebSocketMessage(msg) {
+                        console.log('WebSocket message:', msg);
+
+                        switch (msg.type) {
+                            case 'session_started':
+                                console.log('Session started:', msg.session_id);
+                                // Reload page to show new session
+                                setTimeout(() => window.location.reload(), 1000);
+                                break;
+
+                            case 'session_completed':
+                                console.log('Session completed:', msg.session_id);
+                                // Reload page to update stats
+                                setTimeout(() => window.location.reload(), 1000);
+                                break;
+
+                            case 'stats_updated':
+                                console.log('Stats updated');
+                                // Could update stats in-place without reload
+                                break;
+                        }
+                    }
+
+                    // Connect on page load
+                    if (window.location.pathname === '/') {
+                        connectWebSocket();
+                    }
+                    "#))
                 }
             }
             body {
@@ -156,7 +262,13 @@ pub fn dashboard_with_data(
 
             // Recent Sessions
             div class="card" {
-                h2 { "Recent Sessions" }
+                div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;" {
+                    h2 style="margin: 0;" { "Recent Sessions" }
+                    span id="live-indicator" class="live-indicator" {
+                        "CONNECTING..."
+                    }
+                }
+
                 @if recent_sessions.is_empty() {
                     p style="color: #a0a0a0; margin-top: 1rem;" { "No sessions found. Run autopilot to see sessions here." }
                 } @else {
