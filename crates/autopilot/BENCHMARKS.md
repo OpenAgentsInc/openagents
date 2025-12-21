@@ -164,7 +164,24 @@ Full workflow tasks.
 
 ## Benchmark Runner
 
-Implementation: `crates/autopilot/src/benchmark.rs`
+Implementation: `crates/autopilot/src/benchmark/mod.rs`
+
+### How It Works
+
+The benchmark runner now executes **real autopilot agents** (not placeholder metrics). Here's how:
+
+1. **Agent Execution**: Each benchmark uses the Claude Agent SDK to spawn an actual agent
+2. **Trajectory Collection**: A `TrajectoryCollector` captures all tool calls, thinking, and responses
+3. **Metrics Extraction**: Real metrics are extracted from the trajectory:
+   - Token counts from Claude API responses
+   - Tool call counts from trajectory steps
+   - Tool errors from failed operations
+   - Duration from wall-clock measurement
+   - Cost calculated from token usage
+
+This means benchmarks consume API tokens and take real time to execute.
+
+### Running Benchmarks
 
 ```bash
 # Run all benchmarks
@@ -183,30 +200,72 @@ cargo autopilot benchmark --baseline v0.1.0
 cargo autopilot benchmark --save-baseline v0.1.0
 ```
 
+**Note**: Benchmarks consume Claude API tokens. A simple benchmark (B-001) typically uses:
+- ~500-2000 input tokens
+- ~200-800 output tokens
+- ~$0.01-0.05 per run
+- 10-60 seconds execution time
+
+### Integration Tests
+
+The benchmark system includes comprehensive integration tests in `tests/benchmark_execution.rs`:
+
+```bash
+# Run fast tests (database, schema validation)
+cargo test --package autopilot --test benchmark_execution
+
+# Run expensive tests (actual agent execution)
+cargo test --package autopilot --test benchmark_execution --ignored
+
+# Run specific expensive test
+cargo test --package autopilot --test benchmark_execution test_simple_file_edit_benchmark_execution --ignored
+```
+
+**Test Categories**:
+- **Fast tests** (default): Database creation, schema validation, result persistence
+- **Expensive tests** (`#[ignore]`): Full agent execution with real API calls
+
+The `#[ignore]` attribute prevents expensive tests from running in CI by default, but they can be run manually for verification.
+
 ## Metrics Collected
 
-For each benchmark run:
+For each benchmark run (extracted from trajectory data):
 
 1. **Performance**
-   - Total time (wall clock)
-   - Token usage (input/output/cached)
-   - Cost (USD)
+   - Total time (wall clock measurement)
+   - Token usage (input/output/cached from API responses)
+   - Cost (calculated: $3/MTok input + $15/MTok output for Sonnet)
 
 2. **Behavior**
-   - Tool calls (count, types)
-   - Parallelization rate
-   - Read-before-edit compliance
-   - Error rate
+   - Tool calls (counted from `StepType::ToolCall` in trajectory)
+   - Tool errors (counted from `StepType::ToolResult { success: false }`)
+   - Actual tools used (extracted from trajectory steps)
 
 3. **Outcome**
-   - Success (task completed correctly)
-   - Correctness (solution matches expected)
+   - Success (validation function passes)
+   - Correctness (solution matches expected output)
    - Completeness (all requirements met)
 
 4. **Efficiency**
    - Time per task
    - Tokens per task
-   - First-try success rate
+   - Tool error rate (tool_errors / tool_calls)
+
+### Performance Characteristics by Benchmark Type
+
+| Benchmark Type | Typical Tokens | Typical Duration | Typical Cost | Tool Calls |
+|----------------|----------------|------------------|--------------|------------|
+| Simple Edit (B-001) | 500-2000 | 10-60s | $0.01-0.05 | 2-5 |
+| Multi-File (B-002) | 2000-5000 | 30-120s | $0.05-0.15 | 10-30 |
+| Refactor (B-003) | 3000-8000 | 60-180s | $0.10-0.30 | 15-40 |
+| Git Operations | 1000-3000 | 20-90s | $0.03-0.10 | 5-15 |
+| Testing | 2000-6000 | 40-150s | $0.06-0.20 | 10-25 |
+
+**Note**: These are estimates based on Sonnet 4.5 usage. Actual values depend on:
+- Workspace complexity
+- Git repository state
+- Cached token availability
+- Agent decision-making path
 
 ## Storage
 

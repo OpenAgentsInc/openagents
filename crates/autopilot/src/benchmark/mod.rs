@@ -518,7 +518,50 @@ impl BenchmarkRunner {
         Ok(result)
     }
 
-    /// Execute a benchmark task by running autopilot agent
+    /// Execute a benchmark task by running an actual autopilot agent.
+    ///
+    /// This method spawns a real Claude agent using the SDK and captures its execution
+    /// trajectory to extract benchmark metrics. The agent runs with:
+    /// - Working directory set to the isolated benchmark workspace
+    /// - Sonnet 4.5 model
+    /// - Permissions dangerously skipped (benchmarks are trusted tasks)
+    ///
+    /// # Process
+    ///
+    /// 1. **Git Context**: Extracts current commit SHA and branch from workspace
+    /// 2. **Trajectory Setup**: Creates a `TrajectoryCollector` to capture all agent activity
+    /// 3. **Agent Execution**: Streams messages from Claude SDK's `query()` function
+    /// 4. **Metric Extraction**: Extracts real metrics from the completed trajectory:
+    ///    - Token counts from `trajectory.usage` (input, output, cached)
+    ///    - Tool call counts by filtering `StepType::ToolCall` events
+    ///    - Tool error counts by filtering failed `StepType::ToolResult` events
+    ///    - Duration from wall-clock measurement
+    ///    - Cost calculated using Sonnet pricing ($3/MTok input, $15/MTok output)
+    ///
+    /// # Returns
+    ///
+    /// `BenchmarkMetrics` containing:
+    /// - `duration_ms`: Total execution time in milliseconds
+    /// - `tokens_in`: Input tokens consumed (from API)
+    /// - `tokens_out`: Output tokens generated (from API)
+    /// - `tokens_cached`: Cached tokens used (from API)
+    /// - `cost_usd`: Estimated cost in USD
+    /// - `tool_calls`: Number of tool invocations
+    /// - `tool_errors`: Number of failed tool calls
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// let task = B001SimpleFileEdit;
+    /// let metrics = runner.execute_benchmark_task(&task, &workspace).await?;
+    /// assert!(metrics.tool_calls > 0); // Agent used tools
+    /// assert!(metrics.tokens_in > 0);  // Consumed input tokens
+    /// ```
+    ///
+    /// # Note
+    ///
+    /// This method consumes real API tokens and can take 10-180 seconds depending on
+    /// task complexity. For testing without API calls, use the unit test mocks.
     async fn execute_benchmark_task(
         &self,
         task: &dyn BenchmarkTask,
