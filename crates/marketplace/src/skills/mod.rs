@@ -6,6 +6,7 @@ pub mod execution;
 pub mod versioning;
 
 // d-008 new modules
+pub mod browse;
 pub mod publish;
 pub mod install;
 pub mod invoke;
@@ -22,3 +23,8 @@ pub use nostr::{
 
 // Re-export license manager
 pub use license::{LicenseManager, LicenseError};
+
+// Re-export browse functionality
+pub use browse::{
+    BrowseError, SearchFilters, SkillBrowser, SkillCategory, SkillListing, SortBy,
+};
