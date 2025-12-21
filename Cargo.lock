@@ -5859,6 +5859,7 @@ dependencies = [
  "anyhow",
  "bip39",
  "bitcoin",
+ "chrono",
  "clap",
  "colored",
  "dirs 5.0.1",
