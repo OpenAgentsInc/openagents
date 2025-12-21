@@ -3,6 +3,8 @@
 //! Combines Nostr identity (NIP-06) with Bitcoin wallet (Spark)
 //! Both derived from the same BIP39 mnemonic seed.
 
+#![allow(dead_code)]
+
 use anyhow::Result;
 use bip39::Mnemonic;
 use bitcoin::bip32::{DerivationPath, Xpriv};
@@ -27,7 +29,7 @@ impl UnifiedIdentity {
     /// Generate a new unified identity with random mnemonic
     pub fn generate() -> Result<Self> {
         use rand::Rng;
-        let mut rng = rand::thread_rng();
+        let mut rng = rand::rng();
         let mut entropy = [0u8; 32]; // 256 bits for 24 words
         rng.fill(&mut entropy);
         let mnemonic = Mnemonic::from_entropy(&entropy)?;

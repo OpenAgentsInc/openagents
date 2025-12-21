@@ -2,6 +2,8 @@
 //!
 //! Provides high-level Nostr operations for the wallet
 
+#![allow(dead_code)]
+
 use anyhow::Result;
 
 /// Nostr wallet client
