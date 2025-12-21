@@ -3,6 +3,7 @@
 use actix_web::{web, App, HttpResponse, HttpServer};
 use std::sync::Arc;
 
+use crate::git::{clone_repository, get_repository_path, is_repository_cloned};
 use crate::nostr::NostrClient;
 use crate::views::{agent_profile_page, home_page_with_repos, issue_create_form_page, issue_detail_page, issues_list_page, patch_detail_page, patches_list_page, pull_request_detail_page, pull_requests_list_page, repository_detail_page, search_results_page, trajectory_viewer_page};
 use crate::ws::{ws_handler, WsBroadcaster};
@@ -46,6 +47,7 @@ pub async fn start_server(
             .route("/watched", web::get().to(watched_repositories))
             .route("/repo/{identifier}/watch", web::post().to(watch_repository))
             .route("/repo/{identifier}/unwatch", web::post().to(unwatch_repository))
+            .route("/repo/{identifier}/clone", web::post().to(clone_repo))
             .route("/ws", web::get().to(ws_route))
     })
     .bind("127.0.0.1:0")?;
@@ -97,9 +99,17 @@ async fn repository_detail(
         }
     };
 
+    // Check if repository is cloned locally
+    let is_cloned = is_repository_cloned(&identifier);
+    let local_path = if is_cloned {
+        Some(get_repository_path(&identifier).to_string_lossy().to_string())
+    } else {
+        None
+    };
+
     HttpResponse::Ok()
         .content_type("text/html; charset=utf-8")
-        .body(repository_detail_page(&repository).into_string())
+        .body(repository_detail_page(&repository, is_cloned, local_path).into_string())
 }
 
 /// Repository issues list page
@@ -864,6 +874,87 @@ async fn watched_repositories(
     HttpResponse::Ok()
         .content_type("text/html; charset=utf-8")
         .body(crate::views::watched_repositories_page(&repositories).into_string())
+}
+
+/// Clone a repository to local workspace
+async fn clone_repo(
+    state: web::Data<AppState>,
+    path: web::Path<String>,
+) -> HttpResponse {
+    let identifier = path.into_inner();
+
+    // Fetch repository from cache to get clone URL
+    let repository = match state.nostr_client.get_repository_by_identifier(&identifier).await {
+        Ok(Some(repo)) => repo,
+        Ok(None) => {
+            return HttpResponse::NotFound()
+                .content_type("text/html; charset=utf-8")
+                .body(r#"<div class="error-message"><p>❌ Repository not found</p></div>"#);
+        }
+        Err(e) => {
+            tracing::error!("Failed to fetch repository: {}", e);
+            return HttpResponse::InternalServerError()
+                .content_type("text/html; charset=utf-8")
+                .body(r#"<div class="error-message"><p>❌ Error fetching repository</p></div>"#);
+        }
+    };
+
+    // Get clone URL from repository tags
+    let clone_url = repository.tags.iter()
+        .find(|tag| tag.first().map(|t| t == "clone").unwrap_or(false))
+        .and_then(|tag| tag.get(1).cloned());
+
+    let clone_url = match clone_url {
+        Some(url) => url,
+        None => {
+            return HttpResponse::BadRequest()
+                .content_type("text/html; charset=utf-8")
+                .body(r#"<div class="error-message"><p>❌ No clone URL available for this repository</p></div>"#);
+        }
+    };
+
+    // Check if already cloned
+    if is_repository_cloned(&identifier) {
+        let path = get_repository_path(&identifier);
+        return HttpResponse::Ok()
+            .content_type("text/html; charset=utf-8")
+            .body(format!(
+                r#"<div class="success-message">
+                    <p>✅ Repository already cloned</p>
+                    <p>Path: <code>{}</code></p>
+                </div>"#,
+                path.display()
+            ));
+    }
+
+    // Clone the repository
+    let dest_path = get_repository_path(&identifier);
+    match clone_repository(&clone_url, &dest_path, None) {
+        Ok(_) => {
+            tracing::info!("Successfully cloned repository {} to {:?}", identifier, dest_path);
+            HttpResponse::Ok()
+                .content_type("text/html; charset=utf-8")
+                .body(format!(
+                    r#"<div class="success-message">
+                        <p>✅ Repository cloned successfully!</p>
+                        <p>Path: <code>{}</code></p>
+                    </div>"#,
+                    dest_path.display()
+                ))
+        }
+        Err(e) => {
+            tracing::error!("Failed to clone repository {}: {}", identifier, e);
+            HttpResponse::InternalServerError()
+                .content_type("text/html; charset=utf-8")
+                .body(format!(
+                    r#"<div class="error-message">
+                        <p>❌ Failed to clone repository</p>
+                        <p>Error: {}</p>
+                    </div>"#,
+                    e
+                ))
+        }
+    }
 }
 
 /// Search page
