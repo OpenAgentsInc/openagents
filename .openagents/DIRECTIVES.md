@@ -129,5 +129,6 @@ A good directive body should include:
 | d-004 | Continual Constant Improvement of Autopilot | Meta/Infrastructure |
 | d-005 | Build Nostr GitHub Alternative (AgentGit) | Agent Infrastructure |
 | d-006 | Operationalize NIP-SA (Sovereign Agents Protocol) | Agent Infrastructure |
+| d-007 | Native Rust FROSTR Implementation (Threshold Signatures) | Cryptography |
 
 View details with `cargo autopilot directive show <id>`
