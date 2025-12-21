@@ -23,6 +23,7 @@ issues.workspace = true
 ui.workspace = true
 nostr.workspace = true
 nostr-client = { path = "../nostr/client" }
+wallet = { path = "../wallet" }
 
 # UI
 maud = "0.26"
