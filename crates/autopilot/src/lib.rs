@@ -10,6 +10,7 @@ pub mod daemon;
 pub mod goals;
 pub mod guardrails;
 pub mod metrics;
+pub mod nip_sa_trajectory;
 pub mod nostr_agent;
 pub mod planmode;
 pub mod redact;
