@@ -103,7 +103,7 @@ pub fn home_page_with_repos(repositories: &[Event]) -> Markup {
 }
 
 /// Repository detail page
-pub fn repository_detail_page(repository: &Event) -> Markup {
+pub fn repository_detail_page(repository: &Event, is_cloned: bool, local_path: Option<String>) -> Markup {
     let name = get_tag_value(repository, "name").unwrap_or_else(|| "Unnamed Repository".to_string());
     let description = get_tag_value(repository, "description").unwrap_or_default();
     let identifier = get_tag_value(repository, "d").unwrap_or_default();
@@ -197,13 +197,42 @@ pub fn repository_detail_page(repository: &Event) -> Markup {
                                 section.repo-section {
                                     h2 { "Clone URLs" }
                                     div.clone-urls {
-                                        @for url in clone_urls {
+                                        @for url in &clone_urls {
                                             @let onclick_code = format!("navigator.clipboard.writeText('{}')", url);
                                             div.clone-url-item {
                                                 code { (url) }
                                                 button.copy-btn onclick=(onclick_code) { "Copy" }
                                             }
                                         }
+                                    }
+                                }
+                            }
+
+                            section.repo-section {
+                                h2 { "Local Clone" }
+                                @if is_cloned {
+                                    @if let Some(path) = local_path {
+                                        div.clone-status {
+                                            p { "✅ Repository cloned locally" }
+                                            div.clone-path {
+                                                code { (path) }
+                                            }
+                                        }
+                                    }
+                                } @else {
+                                    @if !clone_urls.is_empty() {
+                                        div.clone-action {
+                                            p { "Clone this repository to your local workspace for development" }
+                                            form
+                                                hx-post={"/repo/" (identifier) "/clone"}
+                                                hx-target="#clone-result"
+                                            {
+                                                button type="submit" { "Clone Repository" }
+                                            }
+                                            div id="clone-result" {}
+                                        }
+                                    } @else {
+                                        p.placeholder { "No clone URLs available for this repository" }
                                     }
                                 }
                             }
