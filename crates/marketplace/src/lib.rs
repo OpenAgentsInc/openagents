@@ -10,6 +10,7 @@ pub mod data;
 pub mod cli;
 pub mod gui;
 pub mod views;
+pub mod relay;
 
 // Existing marketplace modules
 pub mod agent_commerce;

@@ -45,6 +45,7 @@ tracing = "0.1"
 # File system walking
 walkdir = "2.5"
 toml.workspace = true
+nostr-client = { version = "0.1.0", path = "../nostr/client" }
 
 [[bin]]
 name = "marketplace"
