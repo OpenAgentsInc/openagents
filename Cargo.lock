@@ -526,6 +526,7 @@ dependencies = [
  "tokio",
  "toml",
  "ui",
+ "wallet",
 ]
 
 [[package]]

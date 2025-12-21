@@ -6,6 +6,8 @@
 use anyhow::{Context, Result};
 use nostr::{TrajectorySession, TrajectorySessionContent, TrajectoryVisibility, KIND_TRAJECTORY_SESSION};
 use nostr_client::{PoolConfig, RelayPool};
+use wallet::core::UnifiedIdentity;
+use std::sync::Arc;
 
 /// Configuration for trajectory publishing
 #[derive(Debug, Clone)]
@@ -63,12 +65,19 @@ impl TrajectoryPublishConfig {
 pub struct TrajectorySessionPublisher {
     /// Configuration
     config: TrajectoryPublishConfig,
+    /// Agent identity for signing events (optional)
+    identity: Option<Arc<UnifiedIdentity>>,
 }
 
 impl TrajectorySessionPublisher {
     /// Create new publisher
     pub fn new(config: TrajectoryPublishConfig) -> Self {
-        Self { config }
+        Self { config, identity: None }
+    }
+
+    /// Create new publisher with identity for signing
+    pub fn with_identity(config: TrajectoryPublishConfig, identity: Arc<UnifiedIdentity>) -> Self {
+        Self { config, identity: Some(identity) }
     }
 
     /// Publish a trajectory session event
@@ -128,16 +137,66 @@ impl TrajectorySessionPublisher {
         // Wait for connections
         tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
 
-        // TODO: Actually publish the event
-        // This requires:
-        // 1. Agent keypair for signing
-        // 2. Event builder to create kind:38030 event with tags and content
-        // 3. Pool.publish_event() to broadcast
-        //
-        // For now, we'll return a mock event ID to demonstrate the interface
-        // The full implementation will be completed when agent identity integration is ready
+        // Check if we have identity for signing
+        let identity = match &self.identity {
+            Some(id) => id,
+            None => {
+                // No identity - graceful degradation
+                eprintln!("Warning: No identity configured, trajectory session will not be published");
+                let _ = pool.disconnect_all().await;
+                return Ok(None);
+            }
+        };
 
-        let event_id = format!("mock_trajectory_session_{}", &session_id[..8]);
+        // Build Nostr event template
+        let tags = session.build_tags();
+        let content_json = session
+            .content
+            .to_json()
+            .context("Failed to serialize trajectory session content")?;
+
+        let template = nostr::EventTemplate {
+            created_at: std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)?
+                .as_secs(),
+            kind: KIND_TRAJECTORY_SESSION,
+            tags,
+            content: content_json,
+        };
+
+        // Sign event
+        let event = identity
+            .sign_event(template)
+            .context("Failed to sign trajectory session event")?;
+
+        let event_id = event.id.clone();
+
+        // Publish to all relays
+        let publish_result = pool.publish(&event).await;
+
+        match publish_result {
+            Ok(results) => {
+                let success_count = results.iter().filter(|r| r.accepted).count();
+                let total_count = results.len();
+
+                if success_count > 0 {
+                    eprintln!(
+                        "✓ Published trajectory session {} to {}/{} relays",
+                        event_id,
+                        success_count,
+                        total_count
+                    );
+                } else {
+                    eprintln!(
+                        "⚠ Failed to publish trajectory session {} to any relays",
+                        event_id
+                    );
+                }
+            }
+            Err(e) => {
+                eprintln!("✗ Failed to publish trajectory session: {}", e);
+            }
+        }
 
         // Disconnect from pool
         let _ = pool.disconnect_all().await;
@@ -210,7 +269,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_publish_session_enabled() {
+    async fn test_publish_session_enabled_no_identity() {
+        // Without identity, publishing should gracefully return None
         let config =
             TrajectoryPublishConfig::new(vec!["wss://relay.example.com".to_string()]).enable();
         let publisher = TrajectorySessionPublisher::new(config);
@@ -221,8 +281,7 @@ mod tests {
 
         assert!(result.is_ok());
         let event_id = result.unwrap();
-        assert!(event_id.is_some());
-        assert!(event_id.unwrap().starts_with("mock_trajectory_session_"));
+        assert_eq!(event_id, None); // Should return None without identity
     }
 
     #[test]
