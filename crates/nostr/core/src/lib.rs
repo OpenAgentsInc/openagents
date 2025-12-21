@@ -45,6 +45,7 @@
 //! - NIP-59: Gift Wrap (encapsulation and metadata obscuring, requires `full` feature)
 //! - NIP-71: Video Events (video content with metadata)
 //! - NIP-72: Moderated Communities (Reddit-style communities)
+//! - NIP-78: Application-specific Data (arbitrary app data storage)
 //! - NIP-84: Highlights (highlighting valuable content)
 //! - NIP-89: Application Handlers (social discovery of skills/agents)
 //! - NIP-90: Data Vending Machine (DVM) job requests/results/feedback
@@ -114,6 +115,7 @@ mod nip58;
 mod nip59;
 mod nip71;
 mod nip72;
+mod nip78;
 mod nip84;
 mod nip89;
 mod nip90;
@@ -416,6 +418,9 @@ pub use nip72::{
     KIND_COMMUNITY_APPROVAL, KIND_COMMUNITY_DEFINITION, KIND_COMMUNITY_POST, Nip72Error,
     is_nip72_kind,
 };
+
+// NIP-78: Application-specific Data
+pub use nip78::{AppData, KIND_APP_DATA, Nip78Error, is_app_data_kind};
 
 // NIP-84: Highlights
 pub use nip84::{
