@@ -1,0 +1,6 @@
+---
+source: crates/autopilot/src/tests/dashboard_snapshots.rs
+assertion_line: 157
+expression: html
+---
+<div class="sessions-section"><h2>Recent Sessions (0)</h2><p class="placeholder">No sessions recorded yet</p></div>

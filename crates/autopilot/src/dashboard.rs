@@ -243,7 +243,7 @@ impl Default for SummaryStats {
 }
 
 /// Render dashboard home page
-fn dashboard_page(sessions: &[SessionMetrics], stats: &SummaryStats) -> String {
+pub(crate) fn dashboard_page(sessions: &[SessionMetrics], stats: &SummaryStats) -> String {
     let markup = html! {
         (DOCTYPE)
         html lang="en" {
@@ -316,7 +316,7 @@ fn charts_section() -> Markup {
 }
 
 /// Render summary statistics card
-fn summary_card(stats: &SummaryStats) -> Markup {
+pub(crate) fn summary_card(stats: &SummaryStats) -> Markup {
     html! {
         div.summary-card {
             h2 { "Summary Statistics" }
@@ -351,7 +351,7 @@ fn summary_card(stats: &SummaryStats) -> Markup {
 }
 
 /// Render sessions table
-fn sessions_table(sessions: &[SessionMetrics]) -> Markup {
+pub(crate) fn sessions_table(sessions: &[SessionMetrics]) -> Markup {
     html! {
         div.sessions-section {
             h2 { "Recent Sessions (" (sessions.len()) ")" }

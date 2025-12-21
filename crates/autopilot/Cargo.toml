@@ -101,6 +101,7 @@ criterion = { version = "0.5", features = ["html_reports"] }
 rand = "0.9"
 tokio-tungstenite = "0.24"
 futures-util = "0.3"
+insta.workspace = true
 
 [[bench]]
 name = "nip_sa_state"
