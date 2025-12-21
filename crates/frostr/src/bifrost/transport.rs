@@ -12,7 +12,7 @@ use tokio::time::{sleep, Duration};
 
 // NIP-44 encryption support
 use bitcoin::secp256k1::{PublicKey, SecretKey, SECP256K1};
-use nostr::{decrypt_v2, encrypt_v2};
+use nostr::{decrypt_v2, encrypt_v2, Event};
 
 /// Event kind for Bifrost messages (ephemeral, not stored by relays)
 pub const BIFROST_EVENT_KIND: u16 = 28000;
@@ -147,6 +147,56 @@ impl NostrTransport {
         Ok(pk.x_only_public_key().0.serialize())
     }
 
+    /// Process an incoming event from a relay
+    async fn process_incoming_event(
+        event: Event,
+        secret_key: &[u8; 32],
+        peer_pubkeys: &[[u8; 32]],
+        incoming_tx: &mpsc::Sender<BifrostMessage>,
+    ) -> Result<()> {
+        // Find the sender's pubkey from the event author
+        let author_pubkey_hex = event.pubkey.clone();
+        let author_pubkey_bytes = hex::decode(&author_pubkey_hex)
+            .map_err(|e| Error::Encoding(format!("Invalid author pubkey: {}", e)))?;
+
+        if author_pubkey_bytes.len() != 32 {
+            return Err(Error::Encoding("Author pubkey must be 32 bytes".to_string()));
+        }
+
+        let mut author_pubkey = [0u8; 32];
+        author_pubkey.copy_from_slice(&author_pubkey_bytes);
+
+        // Verify sender is a known peer
+        if !peer_pubkeys.contains(&author_pubkey) {
+            return Err(Error::Protocol(format!(
+                "Received message from unknown peer: {}",
+                author_pubkey_hex
+            )));
+        }
+
+        // Decrypt the event content using NIP-44
+        let pk = PublicKey::from_slice(&[vec![0x02], author_pubkey.to_vec()].concat())
+            .map_err(|e| Error::Crypto(format!("Invalid peer public key: {}", e)))?;
+
+        let pk_bytes = pk.serialize();
+        let decrypted_content = decrypt_v2(secret_key, &pk_bytes, &event.content)
+            .map_err(|e| Error::Crypto(format!("Failed to decrypt event: {}", e)))?;
+
+        // Deserialize the envelope
+        let envelope: MessageEnvelope = serde_json::from_str(&decrypted_content)
+            .map_err(|e| Error::Encoding(format!("Invalid message envelope: {}", e)))?;
+
+        // Deserialize the inner message
+        let message: BifrostMessage = serde_json::from_str(&envelope.message)
+            .map_err(|e| Error::Encoding(format!("Invalid Bifrost message: {}", e)))?;
+
+        // Forward to incoming channel
+        incoming_tx.send(message).await
+            .map_err(|e| Error::Transport(format!("Failed to forward message: {}", e)))?;
+
+        Ok(())
+    }
+
     /// Connect to Nostr relays and start listening for messages
     pub async fn connect(&mut self) -> Result<()> {
         // Create relay pool with default config
@@ -168,7 +218,40 @@ impl NostrTransport {
         // Mark as connected
         *self.connected.write().await = true;
 
-        // TODO: Start subscription listener in background task
+        // Start subscription listener for incoming Bifrost messages
+        let our_pubkey = self.get_our_pubkey()?;
+        let our_pubkey_hex = hex::encode(our_pubkey);
+
+        // Create filter for Bifrost messages directed to us
+        let filter = serde_json::json!({
+            "kinds": [self.config.event_kind],
+            "#p": [our_pubkey_hex],
+        });
+
+        // Subscribe to relays
+        let subscription_id = format!("bifrost-{}", hex::encode(&our_pubkey[..8]));
+        let mut event_rx = pool.subscribe(&subscription_id, &[filter]).await
+            .map_err(|e| Error::Transport(format!("Failed to subscribe to relays: {}", e)))?;
+
+        // Spawn background task to process incoming events
+        let incoming_tx = self.incoming_tx.clone();
+        let secret_key = self.config.secret_key;
+        let peer_pubkeys = self.config.peer_pubkeys.clone();
+
+        tokio::spawn(async move {
+            while let Some(event) = event_rx.recv().await {
+                // Try to decrypt and process the event
+                if let Err(e) = Self::process_incoming_event(
+                    event,
+                    &secret_key,
+                    &peer_pubkeys,
+                    &incoming_tx,
+                ).await {
+                    // Log error but continue processing
+                    eprintln!("Failed to process incoming Bifrost event: {}", e);
+                }
+            }
+        });
 
         Ok(())
     }
