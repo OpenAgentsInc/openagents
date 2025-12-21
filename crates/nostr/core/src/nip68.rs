@@ -299,6 +299,7 @@ pub fn is_picture_kind(kind: u16) -> bool {
 }
 
 /// Create title tag
+#[allow(dead_code)]
 pub fn create_title_tag(title: String) -> Vec<String> {
     vec!["title".to_string(), title]
 }
