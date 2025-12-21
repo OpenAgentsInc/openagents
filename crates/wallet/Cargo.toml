@@ -26,7 +26,7 @@ rusqlite = { version = "0.32", features = ["bundled"] }
 keyring = "3"
 
 # Nostr (internal crates)
-nostr = { path = "../nostr/core" }
+nostr = { path = "../nostr/core", features = ["full"] }
 nostr-client = { path = "../nostr/client" }
 
 # Async

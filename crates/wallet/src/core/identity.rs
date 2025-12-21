@@ -87,6 +87,24 @@ impl UnifiedIdentity {
     pub fn bitcoin_xpriv(&self) -> &Xpriv {
         &self.bitcoin_xpriv
     }
+
+    /// Sign a Nostr event
+    pub fn sign_event(&self, template: nostr::EventTemplate) -> Result<nostr::Event> {
+        // Convert hex secret key to bytes
+        let secret_key_bytes = hex::decode(&self.nostr_secret_key)?;
+
+        // Convert to [u8; 32]
+        if secret_key_bytes.len() != 32 {
+            anyhow::bail!("Invalid secret key length");
+        }
+        let mut key_array = [0u8; 32];
+        key_array.copy_from_slice(&secret_key_bytes);
+
+        // Finalize the event (add id and signature)
+        let signed_event = nostr::finalize_event(&template, &key_array)?;
+
+        Ok(signed_event)
+    }
 }
 
 #[cfg(test)]
