@@ -121,3 +121,7 @@ perf.data.old
 docs/profiles/*.svg
 docs/profiles/*.gz
 docs/profiles/heaptrack-*
+
+# Rogue autopilot databases in subdirectories
+crates/*/autopilot.db
+crates/*/*/autopilot.db
