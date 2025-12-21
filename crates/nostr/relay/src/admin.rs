@@ -165,7 +165,22 @@ pub fn create_admin_routes(
             warp::reply::with_header(prometheus, "Content-Type", "text/plain; version=0.0.4")
         });
 
-    health
+    let dashboard = warp::path!("admin" / "dashboard")
+        .and(warp::get())
+        .map(|| {
+            let html = include_str!("dashboard.html");
+            warp::reply::html(html)
+        });
+
+    let admin_root = warp::path!("admin")
+        .and(warp::get())
+        .map(|| {
+            warp::redirect::redirect(warp::http::Uri::from_static("/admin/dashboard"))
+        });
+
+    admin_root
+        .or(dashboard)
+        .or(health)
         .or(stats)
         .or(metrics_endpoint)
         .with(warp::cors().allow_any_origin())
@@ -194,6 +209,7 @@ pub async fn start_admin_server(
     let routes = create_admin_routes(metrics, rate_limiter);
 
     tracing::info!("Admin server listening on http://{}", config.bind_addr);
+    tracing::info!("  - Dashboard: http://{}/admin/dashboard", config.bind_addr);
     tracing::info!("  - Health: http://{}/admin/health", config.bind_addr);
     tracing::info!("  - Stats: http://{}/admin/stats", config.bind_addr);
     tracing::info!("  - Metrics: http://{}/admin/metrics", config.bind_addr);
