@@ -448,6 +448,11 @@ enum Commands {
         #[command(subcommand)]
         command: DirectiveCommands,
     },
+    /// Manage metrics
+    Metrics {
+        #[command(subcommand)]
+        command: MetricsCommands,
+    },
 }
 
 #[derive(Subcommand)]
@@ -692,6 +697,44 @@ enum DirectiveCommands {
     },
 }
 
+#[derive(Subcommand)]
+enum MetricsCommands {
+    /// Import metrics from trajectory logs
+    Import {
+        /// Directory containing trajectory logs (default: docs/logs/YYYYMMDD)
+        #[arg(required = true)]
+        log_dir: PathBuf,
+
+        /// Path to metrics database (default: autopilot-metrics.db)
+        #[arg(long)]
+        db: Option<PathBuf>,
+    },
+    /// Show detailed metrics for a session
+    Show {
+        /// Session ID
+        #[arg(required = true)]
+        session_id: String,
+
+        /// Path to metrics database (default: autopilot-metrics.db)
+        #[arg(long)]
+        db: Option<PathBuf>,
+    },
+    /// List all recorded sessions
+    List {
+        /// Filter by status (completed, crashed, budget_exhausted, max_turns, running)
+        #[arg(short, long)]
+        status: Option<String>,
+
+        /// Limit number of results
+        #[arg(short, long, default_value_t = 20)]
+        limit: usize,
+
+        /// Path to metrics database (default: autopilot-metrics.db)
+        #[arg(long)]
+        db: Option<PathBuf>,
+    },
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     // Setup cleanup handlers for signals and panics
@@ -757,6 +800,9 @@ async fn main() -> Result<()> {
         }
         Commands::Directive { command } => {
             handle_directive_command(command).await
+        }
+        Commands::Metrics { command } => {
+            handle_metrics_command(command).await
         }
     }
 }
@@ -2871,4 +2917,230 @@ async fn handle_directive_command(command: DirectiveCommands) -> Result<()> {
     }
 
     Ok(())
+}
+
+/// Handle metrics commands
+async fn handle_metrics_command(command: MetricsCommands) -> Result<()> {
+    use autopilot::metrics::{extract_metrics_from_json_file, MetricsDb, default_db_path};
+
+    match command {
+        MetricsCommands::Import { log_dir, db } => {
+            let db_path = db.unwrap_or_else(default_db_path);
+            let metrics_db = MetricsDb::open(&db_path)?;
+
+            println!("{} Opening metrics database: {:?}", "📊".cyan(), db_path);
+
+            // Find all .json files in the directory
+            let json_files: Vec<_> = std::fs::read_dir(&log_dir)?
+                .filter_map(|entry| entry.ok())
+                .filter(|entry| {
+                    entry.path().extension().and_then(|s| s.to_str()) == Some("json")
+                })
+                .map(|entry| entry.path())
+                .collect();
+
+            if json_files.is_empty() {
+                println!("{} No JSON trajectory files found in {:?}", "⚠".yellow(), log_dir);
+                return Ok(());
+            }
+
+            println!("{} Found {} trajectory files", "🔍".cyan(), json_files.len());
+            println!();
+
+            let mut imported = 0;
+            let mut skipped = 0;
+            let mut errors = 0;
+
+            for (i, json_file) in json_files.iter().enumerate() {
+                let filename = json_file.file_name().unwrap().to_string_lossy();
+                print!("[{}/{}] Importing {}... ", i + 1, json_files.len(), filename);
+
+                match extract_metrics_from_json_file(&json_file) {
+                    Ok((session_metrics, tool_call_metrics)) => {
+                        // Check if session already exists
+                        if metrics_db.get_session(&session_metrics.id)?.is_some() {
+                            println!("{}", "SKIPPED (already exists)".yellow());
+                            skipped += 1;
+                            continue;
+                        }
+
+                        // Store session metrics
+                        metrics_db.store_session(&session_metrics)?;
+
+                        // Store tool call metrics
+                        for tool_call in &tool_call_metrics {
+                            metrics_db.store_tool_call(tool_call)?;
+                        }
+
+                        println!(
+                            "{} ({} tools, {} errors)",
+                            "✓".green(),
+                            tool_call_metrics.len(),
+                            session_metrics.tool_errors
+                        );
+                        imported += 1;
+                    }
+                    Err(e) => {
+                        println!("{} {}", "✗".red(), e);
+                        errors += 1;
+                    }
+                }
+            }
+
+            println!();
+            println!("{}", "=".repeat(60));
+            println!("{} Import complete:", "📊".cyan().bold());
+            println!("  Imported: {}", imported.to_string().green());
+            println!("  Skipped:  {}", skipped.to_string().yellow());
+            println!("  Errors:   {}", errors.to_string().red());
+            println!("{}", "=".repeat(60));
+        }
+        MetricsCommands::Show { session_id, db } => {
+            let db_path = db.unwrap_or_else(default_db_path);
+            let metrics_db = MetricsDb::open(&db_path)?;
+
+            let session = metrics_db
+                .get_session(&session_id)?
+                .ok_or_else(|| anyhow::anyhow!("Session '{}' not found", session_id))?;
+
+            let tool_calls = metrics_db.get_tool_calls(&session_id)?;
+
+            println!("{}", "=".repeat(60));
+            println!("{} Session: {}", "📊".cyan().bold(), session.id);
+            println!("{}", "=".repeat(60));
+            println!();
+            println!("{} Model:      {}", "🤖", session.model);
+            println!("{} Timestamp:  {}", "📅", session.timestamp.format("%Y-%m-%d %H:%M:%S UTC"));
+            println!("{} Duration:   {:.1}s", "⏱", session.duration_seconds);
+            println!("{} Status:     {:?}", "📍", session.final_status);
+            println!();
+            println!("{} Tokens:", "💰".cyan().bold());
+            println!("  Input:   {}", format_number(session.tokens_in));
+            println!("  Output:  {}", format_number(session.tokens_out));
+            println!("  Cached:  {}", format_number(session.tokens_cached));
+            println!("  Cost:    ${:.4}", session.cost_usd);
+            println!();
+            println!("{} Tasks:", "📋".cyan().bold());
+            println!("  Claimed:   {}", session.issues_claimed);
+            println!("  Completed: {}", session.issues_completed);
+            println!();
+            println!("{} Tool Calls:", "🔧".cyan().bold());
+            println!("  Total:  {}", session.tool_calls);
+            println!("  Errors: {} ({:.1}%)",
+                session.tool_errors,
+                if session.tool_calls > 0 {
+                    (session.tool_errors as f64 / session.tool_calls as f64) * 100.0
+                } else {
+                    0.0
+                }
+            );
+            println!();
+
+            if !tool_calls.is_empty() {
+                println!("{} Tool Call Breakdown:", "🔧".cyan().bold());
+                for (i, tc) in tool_calls.iter().take(10).enumerate() {
+                    let status = if tc.success {
+                        "✓".green()
+                    } else {
+                        format!("✗ ({})", tc.error_type.as_deref().unwrap_or("unknown")).red()
+                    };
+                    println!(
+                        "  {:2}. {} {:20} {}ms",
+                        i + 1,
+                        status,
+                        tc.tool_name,
+                        tc.duration_ms
+                    );
+                }
+                if tool_calls.len() > 10 {
+                    println!("  ... and {} more", tool_calls.len() - 10);
+                }
+            }
+
+            println!();
+            println!("{} Prompt:", "📝".cyan().bold());
+            let prompt_preview = if session.prompt.len() > 200 {
+                format!("{}...", &session.prompt[..200])
+            } else {
+                session.prompt.clone()
+            };
+            println!("{}", prompt_preview);
+            println!("{}", "=".repeat(60));
+        }
+        MetricsCommands::List { status, limit, db } => {
+            let db_path = db.unwrap_or_else(default_db_path);
+            let metrics_db = MetricsDb::open(&db_path)?;
+
+            let sessions = metrics_db.get_all_sessions()?;
+
+            let filtered: Vec<_> = if let Some(status_filter) = status {
+                sessions
+                    .into_iter()
+                    .filter(|s| format!("{:?}", s.final_status).to_lowercase() == status_filter.to_lowercase())
+                    .take(limit)
+                    .collect()
+            } else {
+                sessions.into_iter().take(limit).collect()
+            };
+
+            if filtered.is_empty() {
+                println!("{} No sessions found", "⚠".yellow());
+                return Ok(());
+            }
+
+            println!("{}", "=".repeat(100));
+            println!("{} Sessions (showing {} of total)", "📊".cyan().bold(), filtered.len());
+            println!("{}", "=".repeat(100));
+            println!(
+                "{:20} {:8} {:12} {:>8} {:>8} {:>6} {:>6}  {}",
+                "TIMESTAMP", "MODEL", "STATUS", "TOKENS", "COST", "TOOLS", "ERRS", "PROMPT"
+            );
+            println!("{}", "-".repeat(100));
+
+            for session in &filtered {
+                let prompt_preview = if session.prompt.len() > 30 {
+                    format!("{}...", &session.prompt[..27])
+                } else {
+                    session.prompt.clone()
+                };
+
+                let status_str = format!("{:?}", session.final_status);
+                let status_colored = match session.final_status {
+                    autopilot::metrics::SessionStatus::Completed => status_str.green(),
+                    autopilot::metrics::SessionStatus::Crashed => status_str.red(),
+                    autopilot::metrics::SessionStatus::BudgetExhausted => status_str.yellow(),
+                    autopilot::metrics::SessionStatus::MaxTurns => status_str.yellow(),
+                    autopilot::metrics::SessionStatus::Running => status_str.cyan(),
+                };
+
+                println!(
+                    "{:20} {:8} {:12} {:>8} ${:>7.4} {:>6} {:>6}  {}",
+                    session.timestamp.format("%Y-%m-%d %H:%M:%S"),
+                    session.model,
+                    status_colored,
+                    format_number(session.tokens_in + session.tokens_out),
+                    session.cost_usd,
+                    session.tool_calls,
+                    session.tool_errors,
+                    prompt_preview
+                );
+            }
+
+            println!("{}", "=".repeat(100));
+        }
+    }
+
+    Ok(())
+}
+
+/// Format large numbers with commas
+fn format_number(n: i64) -> String {
+    n.to_string()
+        .as_bytes()
+        .rchunks(3)
+        .rev()
+        .map(std::str::from_utf8)
+        .collect::<Result<Vec<&str>, _>>()
+        .unwrap()
+        .join(",")
 }
