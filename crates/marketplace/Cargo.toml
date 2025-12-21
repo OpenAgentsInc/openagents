@@ -5,8 +5,24 @@ edition = "2024"
 rust-version = "1.85"
 
 [dependencies]
+# Nostr
+nostr = { path = "../nostr/core" }
+
+# CLI
+clap = { version = "4", features = ["derive"] }
+
+# GUI
+wry = "0.35"
+tao = "0.24"
+actix-web = "4"
+actix-ws = "0.3"
+maud = "0.26"
+
 # Database
 rusqlite = { version = "0.32", features = ["bundled"] }
+
+# Async
+tokio = { version = "1", features = ["full"] }
 
 # Serialization
 serde = { version = "1.0", features = ["derive"] }
@@ -21,8 +37,20 @@ uuid = { version = "1.0", features = ["v4", "serde"] }
 
 # Error handling
 thiserror = "2.0"
+anyhow = "1"
+
+# Utilities
+tracing = "0.1"
 
 # File system walking
 walkdir = "2.5"
+
+[[bin]]
+name = "marketplace"
+path = "src/main.rs"
+
+[lib]
+name = "marketplace"
+path = "src/lib.rs"
 
 [dev-dependencies]
