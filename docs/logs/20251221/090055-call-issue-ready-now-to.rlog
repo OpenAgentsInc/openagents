@@ -115,3 +115,32 @@ t!:TodoWrite id=o4XeQqro  → [running] tokens_in=1 tokens_out=247 tokens_cached
 o: id=o4XeQqro → [ok] Todos have been modified successfully. Ensure that you continue to use the todo list to track you...
 a: Perfect! All tests pass. Now let me commit the changes: tokens_in=1 tokens_out=1 tokens_cached=96590
 t!:Bash id=Tc2np6vY cmd="git add -A && git diff --cached --stat" → [running] tokens_in=1 tokens_out=99 tokens_cached=96590
+o: id=Tc2np6vY → [ok]  crates/autopilot/src/benchmark/mod.rs              | 283 ++++++++++++++++++---
+t!:Bash id=98qeVRt3 cmd="git commit -m "$(cat <<'EOF'" → [running] tokens_in=0 tokens_out=419 tokens_cached=96879
+o: id=98qeVRt3 → [ok] [main e997dc178] Add benchmark baseline storage and regression detection
+t!:Bash id=eMJcSJVt cmd="git push origin main" → [running] tokens_in=0 tokens_out=75 tokens_cached=97100
+o: id=eMJcSJVt → [ok] [0;36m🔍 Running cargo build to check for errors and warnings...[0m
+t!:TodoWrite id=jrJZmagD  → [running] tokens_in=0 tokens_out=245 tokens_cached=97597
+o: id=jrJZmagD → [ok] Todos have been modified successfully. Ensure that you continue to use the todo list to track you...
+t!:mcp__issues__issue_complete id=VVzCrcU2  → [running] tokens_in=0 tokens_out=58 tokens_cached=97758
+o: id=VVzCrcU2 → [ok] Completed issue #385
+t!:mcp__issues__issue_ready id=KzBdwSWu  → [running] tokens_in=0 tokens_out=25 tokens_cached=98045
+o: id=KzBdwSWu → [ok] {
+t!:mcp__issues__issue_claim id=SiignAsZ  → [running] tokens_in=0 tokens_out=85 tokens_cached=98120
+o: id=SiignAsZ → [ok] Claimed issue #383
+t!:TodoWrite id=7w2Sp5PN  → [running] tokens_in=0 tokens_out=307 tokens_cached=98630
+o: id=7w2Sp5PN → [ok] Todos have been modified successfully. Ensure that you continue to use the todo list to track you...
+t!:Read id=fGUp7uty file_path=/home/christopherdavid/code/openagents/crates/autopilot/src/benchmark/tasks.rs → [running] tokens_in=0 tokens_out=25 tokens_cached=98732
+o: id=fGUp7uty → [ok]    550→    fn teardown(&self, workspace: &Path) -> Result<()> {
+t!:TodoWrite id=VKzkCBRL  → [running] tokens_in=0 tokens_out=309 tokens_cached=99081
+o: id=VKzkCBRL → [ok] Todos have been modified successfully. Ensure that you continue to use the todo list to track you...
+a: Now let me add the new benchmark tasks. I'll add them before the tests section: tokens_in=0 tokens_out=1 tokens_cached=99980
+t!:Edit id=1fNPLuvw file_path=/home/christopherdavid/code/openagents/crates/autopilot/src/benchmark/tasks.rs → [running] tokens_in=0 tokens_out=5854 tokens_cached=99980
+o: id=1fNPLuvw → [ok] The file /home/christopherdavid/code/openagents/crates/autopilot/src/benchmark/tasks.rs has been ...
+a: Good! Now let me check if the code compiles: tokens_in=0 tokens_out=1 tokens_cached=100331
+t!:Bash id=mKbBDpP8 cmd="cargo check -p autopilot 2>&1 | grep -E "(error..." → [running] tokens_in=0 tokens_out=1 tokens_cached=100331
+o: id=mKbBDpP8 → [ok]     Checking autopilot v0.1.0 (/home/christopherdavid/code/openagents/crates/autopilot)
+a: Perfect! Now let me update the todos and commit: tokens_in=0 tokens_out=1 tokens_cached=114131
+t!:TodoWrite id=YW4uUc5s  → [running] tokens_in=0 tokens_out=321 tokens_cached=114131
+o: id=YW4uUc5s → [ok] Todos have been modified successfully. Ensure that you continue to use the todo list to track you...
+t!:Bash id=jQkqj6kd cmd="git add -A && git diff --cached --stat" → [running] tokens_in=0 tokens_out=83 tokens_cached=114325
