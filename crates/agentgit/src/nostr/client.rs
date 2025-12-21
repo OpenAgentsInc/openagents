@@ -24,6 +24,12 @@ pub mod kinds {
     pub const STATUS_APPLIED: u16 = 1631;
     pub const STATUS_CLOSED: u16 = 1632;
     pub const STATUS_DRAFT: u16 = 1633;
+
+    // NIP-34 extensions for agent workflows
+    pub const ISSUE_CLAIM: u16 = 1634;
+    pub const WORK_ASSIGNMENT: u16 = 1635;
+    pub const BOUNTY_OFFER: u16 = 1636;
+    pub const BOUNTY_CLAIM: u16 = 1637;
 }
 
 /// Nostr client for AgentGit
@@ -88,6 +94,10 @@ impl NostrClient {
                 kinds::STATUS_APPLIED,
                 kinds::STATUS_CLOSED,
                 kinds::STATUS_DRAFT,
+                kinds::ISSUE_CLAIM,
+                kinds::WORK_ASSIGNMENT,
+                kinds::BOUNTY_OFFER,
+                kinds::BOUNTY_CLAIM,
             ],
             "limit": 100
         })];
