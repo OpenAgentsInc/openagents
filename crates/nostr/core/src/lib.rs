@@ -52,6 +52,7 @@
 //! - NIP-59: Gift Wrap (encapsulation and metadata obscuring, requires `full` feature)
 //! - NIP-71: Video Events (video content with metadata)
 //! - NIP-72: Moderated Communities (Reddit-style communities)
+//! - NIP-73: External Content IDs (ISBN, podcast GUID, ISAN, blockchain references)
 //! - NIP-78: Application-specific Data (arbitrary app data storage)
 //! - NIP-84: Highlights (highlighting valuable content)
 //! - NIP-89: Application Handlers (social discovery of skills/agents)
@@ -129,6 +130,7 @@ mod nip58;
 mod nip59;
 mod nip71;
 mod nip72;
+mod nip73;
 mod nip78;
 mod nip84;
 mod nip89;
@@ -481,6 +483,14 @@ pub use nip72::{
     Community, CommunityApproval, CommunityModerator, CommunityPost, CommunityRelay,
     KIND_COMMUNITY_APPROVAL, KIND_COMMUNITY_DEFINITION, KIND_COMMUNITY_POST, Nip72Error,
     is_nip72_kind,
+};
+
+// NIP-73: External Content IDs
+pub use nip73::{
+    EXTERNAL_ID_TAG, EXTERNAL_KIND_TAG, ExternalContent, ExternalContentType, Nip73Error,
+    add_external_content, bitcoin_address, bitcoin_tx, doi, ethereum_address, ethereum_tx,
+    geohash, get_external_content_refs, hashtag, isan, isbn, podcast_episode, podcast_feed,
+    podcast_publisher, web,
 };
 
 // NIP-78: Application-specific Data
