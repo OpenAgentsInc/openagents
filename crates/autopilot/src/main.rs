@@ -453,6 +453,35 @@ enum Commands {
         #[command(subcommand)]
         command: MetricsCommands,
     },
+    /// Run performance benchmarks
+    Benchmark {
+        /// Specific benchmark to run (e.g., B-001)
+        benchmark_id: Option<String>,
+
+        /// Category to run (e.g., file-ops, git)
+        #[arg(short, long)]
+        category: Option<String>,
+
+        /// Compare against baseline version
+        #[arg(short, long)]
+        baseline: Option<String>,
+
+        /// Save results as baseline version
+        #[arg(short, long)]
+        save_baseline: Option<String>,
+
+        /// List all baselines
+        #[arg(long)]
+        list_baselines: bool,
+
+        /// Path to benchmarks database (default: autopilot-benchmarks.db)
+        #[arg(long)]
+        db: Option<PathBuf>,
+
+        /// Workspace directory for benchmark execution
+        #[arg(short, long)]
+        workspace: Option<PathBuf>,
+    },
 }
 
 #[derive(Subcommand)]
@@ -852,6 +881,26 @@ async fn main() -> Result<()> {
         }
         Commands::Metrics { command } => {
             handle_metrics_command(command).await
+        }
+        Commands::Benchmark {
+            benchmark_id,
+            category,
+            baseline,
+            save_baseline,
+            list_baselines,
+            db,
+            workspace,
+        } => {
+            handle_benchmark_command(
+                benchmark_id,
+                category,
+                baseline,
+                save_baseline,
+                list_baselines,
+                db,
+                workspace,
+            )
+            .await
         }
     }
 }
@@ -3712,4 +3761,110 @@ fn format_metric_value(metric_name: &str, value: f64) -> String {
         "tokens_per_issue" => format!("{:.0}", value),
         _ => format!("{:.2}", value),
     }
+}
+
+/// Handle benchmark command
+async fn handle_benchmark_command(
+    benchmark_id: Option<String>,
+    category: Option<String>,
+    baseline: Option<String>,
+    save_baseline: Option<String>,
+    list_baselines: bool,
+    db: Option<PathBuf>,
+    workspace: Option<PathBuf>,
+) -> Result<()> {
+    use autopilot::benchmark::{
+        BenchmarkRunner, B001SimpleFileEdit, B002MultiFileEdit, B003StructRename,
+        B004SimpleCommit, B005BranchWorkflow,
+    };
+
+    let db_path = db.unwrap_or_else(|| PathBuf::from("autopilot-benchmarks.db"));
+    let workspace_path = workspace.unwrap_or_else(|| PathBuf::from("benchmark-workspace"));
+    let version = save_baseline.clone().unwrap_or_else(|| "current".to_string());
+
+    let mut runner = BenchmarkRunner::new(workspace_path.clone(), db_path.clone(), version.clone())?;
+
+    // All available tasks
+    let all_tasks: Vec<(&str, Box<dyn autopilot::benchmark::BenchmarkTask>)> = vec![
+        ("file-ops", Box::new(B001SimpleFileEdit)),
+        ("file-ops", Box::new(B002MultiFileEdit)),
+        ("file-ops", Box::new(B003StructRename)),
+        ("git", Box::new(B004SimpleCommit)),
+        ("git", Box::new(B005BranchWorkflow)),
+    ];
+
+    // Handle list baselines
+    if list_baselines {
+        println!("Baseline versions:");
+        // TODO: Implement baseline listing from database
+        println!("  (baseline listing not yet implemented)");
+        return Ok(());
+    }
+
+    // Determine which tasks to run
+    let tasks_to_run: Vec<&Box<dyn autopilot::benchmark::BenchmarkTask>> = if let Some(id) = &benchmark_id {
+        all_tasks.iter().filter(|(_, t)| t.id() == id).map(|(_, t)| t).collect()
+    } else if let Some(cat) = &category {
+        all_tasks.iter().filter(|(c, _)| *c == cat).map(|(_, t)| t).collect()
+    } else {
+        all_tasks.iter().map(|(_, t)| t).collect()
+    };
+
+    if tasks_to_run.is_empty() {
+        println!("No benchmarks match the specified criteria");
+        return Ok(());
+    }
+
+    println!("{}", "=".repeat(80));
+    println!("{} Autopilot Benchmark Suite", "🏁".cyan().bold());
+    println!("{}", "=".repeat(80));
+    println!();
+    println!("  Version: {}", version);
+    println!("  Database: {}", db_path.display());
+    println!("  Workspace: {}", workspace_path.display());
+    println!("  Tasks: {}", tasks_to_run.len());
+    println!();
+
+    // Run benchmarks
+    let mut results = Vec::new();
+    for task in tasks_to_run {
+        match runner.run_benchmark(task.as_ref()) {
+            Ok(result) => {
+                let status = if result.success {
+                    "PASS".green().bold()
+                } else {
+                    "FAIL".red().bold()
+                };
+                println!("  {} {} - {}", status, result.benchmark_id, task.name());
+                results.push(result);
+            }
+            Err(e) => {
+                println!("  {} {} - Error: {}", "ERR".yellow().bold(), task.id(), e);
+            }
+        }
+    }
+
+    println!();
+    println!("{}", "=".repeat(80));
+    println!("{} Results", "📊".cyan().bold());
+    println!("{}", "=".repeat(80));
+    println!();
+
+    let passed = results.iter().filter(|r| r.success).count();
+    let failed = results.len() - passed;
+
+    println!("  Total: {}", results.len());
+    println!("  Passed: {}", passed.to_string().green().bold());
+    if failed > 0 {
+        println!("  Failed: {}", failed.to_string().red().bold());
+    }
+    println!();
+
+    // Compare to baseline if requested
+    if let Some(baseline_ver) = baseline {
+        let report = runner.compare_to_baseline(&results, &baseline_ver)?;
+        report.print();
+    }
+
+    Ok(())
 }

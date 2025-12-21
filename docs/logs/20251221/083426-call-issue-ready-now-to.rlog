@@ -180,3 +180,104 @@ o: id=Lzr5EuM1 → [ok] test result: ok. 4 passed; 0 failed; 0 ignored; 0 measur
 t!:Bash id=YHPx6RpM cmd="cargo build -p autopilot 2>&1 | tail -5" → [running] tokens_in=1 tokens_out=25 tokens_cached=91730
 o: id=YHPx6RpM → [ok]    Compiling autopilot v0.1.0 (/home/christopherdavid/code/openagents/crates/autopilot)
 t!:Bash id=d339n195 cmd="git add -A && git commit -m "$(cat <<'EOF'" → [running] tokens_in=0 tokens_out=466 tokens_cached=92101
+o: id=d339n195 → [ok] [main 76ff33fa6] Implement first 5 benchmark tasks (B-001 to B-005)
+t!:Bash id=HhTUVae5 cmd="git push origin main" → [running] tokens_in=0 tokens_out=74 tokens_cached=92263
+o: id=HhTUVae5 → [ok] [0;36m🔍 Running cargo build to check for errors and warnings...[0m
+t!:Bash id=B83UdzwV cmd="cargo autopilot issue complete 380" → [running] tokens_in=0 tokens_out=25 tokens_cached=92836
+o: id=B83UdzwV → [ok] ✓ Completed issue #380: Implement first 5 benchmark tasks (B-001 to B-005)
+t!:Bash id=aCHtA7ZR cmd="cargo autopilot issue ready" → [running] tokens_in=0 tokens_out=77 tokens_cached=93100
+o: id=aCHtA7ZR → [ok] No ready issues available
+t!:Bash id=mL3bGeKF cmd="cargo autopilot directive list" → [running] tokens_in=0 tokens_out=24 tokens_cached=93259
+o: id=mL3bGeKF → [ok] ID           Status   Progress   Title                                    Priority
+t!:Bash id=jaccQwfz cmd="cargo autopilot issue create "Add CLI commands ..." → [running] tokens_in=0 tokens_out=24 tokens_cached=93391
+o: id=jaccQwfz → [ok] ✓ Created issue #381: Add CLI commands for benchmark execution and analysis (agent: claude)
+t!:Bash id=yTVeWPPw cmd="cargo autopilot issue claim 381" → [running] tokens_in=0 tokens_out=24 tokens_cached=93824
+o: id=yTVeWPPw → [ok] ✓ Claimed issue #381: Add CLI commands for benchmark execution and analysis
+t!:Read id=LFXyJphb file_path=/home/christopherdavid/code/openagents/crates/autopilot/src/main.rs → [running] tokens_in=0 tokens_out=18 tokens_cached=94107
+o: id=LFXyJphb → [ok]      1→//! Autopilot CLI - Run autonomous tasks with Claude and log trajectories
+t!:Read id=csLksUUg file_path=/home/christopherdavid/code/openagents/crates/autopilot/src/main.rs → [running] tokens_in=0 tokens_out=18 tokens_cached=94257
+o: id=csLksUUg → [ok]    120→fn format_bytes(bytes: u64) -> String {
+t!:Grep id=HtEVEnNC pattern="^enum Commands" → [running] tokens_in=0 tokens_out=134 tokens_cached=95979
+o: id=HtEVEnNC → [ok] 304:enum Commands {
+t!:Grep id=uptkrjxa pattern="^\s+Replay" → [running] tokens_in=0 tokens_out=154 tokens_cached=96952
+o: id=uptkrjxa → [ok] 363-        /// Launch desktop UI alongside autopilot
+t!:Grep id=Gga3yWqr pattern="^\s+Analyze" → [running] tokens_in=0 tokens_out=136 tokens_cached=97430
+o: id=Gga3yWqr → [ok] 388:    Analyze {
+a: Let me find where Commands enum ends and add the benchmark command: tokens_in=0 tokens_out=1 tokens_cached=97814
+t!:Grep id=aBAWemrt pattern="^}\s*$" → [running] tokens_in=0 tokens_out=169 tokens_cached=97814
+o: id=aBAWemrt → [ok] 29-/// Returns (available_bytes, is_ok)
+t!:Grep id=DPXbpVcf pattern="Dashboard \{" → [running] tokens_in=0 tokens_out=24 tokens_cached=98440
+o: id=DPXbpVcf → [ok] 776:    Dashboard {
+a: I can see the Commands enum ends at line 785. Let me add the Benchmark command there: tokens_in=0 tokens_out=1 tokens_cached=98808
+t!:Read id=NrR4LSNr file_path=/home/christopherdavid/code/openagents/crates/autopilot/src/main.rs → [running] tokens_in=0 tokens_out=135 tokens_cached=98808
+o: id=NrR4LSNr → [ok]    775→    /// Start web dashboard for metrics visualization
+t!:Edit id=ixwxMNJS file_path=/home/christopherdavid/code/openagents/crates/autopilot/src/main.rs → [running] tokens_in=0 tokens_out=526 tokens_cached=99315
+o: id=ixwxMNJS → [ok] The file /home/christopherdavid/code/openagents/crates/autopilot/src/main.rs has been updated. He...
+a: Now I need to add the handler for the Benchmark command. Let me find where the match statement for Commands is: tokens_in=0 tokens_out=1 tokens_cached=99816
+t!:Grep id=DwVwNn3C pattern="Commands::Dashboard" → [running] tokens_in=0 tokens_out=1 tokens_cached=99816
+o: id=DwVwNn3C → [ok] 3566:        MetricsCommands::Dashboard {
+t!:Grep id=xbVms61P pattern="match cli.command" → [running] tokens_in=0 tokens_out=25 tokens_cached=100926
+o: id=xbVms61P → [ok] 823:    match cli.command {
+a: Let me find the end of the match block to add the Benchmark handler: tokens_in=0 tokens_out=5 tokens_cached=101315
+t!:Grep id=tyHXEHKp pattern="Commands::Metrics" → [running] tokens_in=0 tokens_out=171 tokens_cached=101315
+o: id=tyHXEHKp → [ok] 882:        Commands::Metrics { command } => {
+t!:Edit id=9d4FXTvm file_path=/home/christopherdavid/code/openagents/crates/autopilot/src/main.rs → [running] tokens_in=0 tokens_out=271 tokens_cached=101503
+o: id=9d4FXTvm → [ok] The file /home/christopherdavid/code/openagents/crates/autopilot/src/main.rs has been updated. He...
+a: Now I need to add the handle_benchmark_command function. Let me find where handle_metrics_command is defined: tokens_in=0 tokens_out=1 tokens_cached=102465
+t!:Grep id=fQJ4U5Xr pattern="^async fn handle_metrics_co..." → [running] tokens_in=0 tokens_out=1 tokens_cached=102465
+o: id=fQJ4U5Xr → [ok] 3107:async fn handle_metrics_command(command: MetricsCommands) -> Result<()> {
+a: Let me add the handler function after the metrics handler. First, let me find where handle_metrics_command ends: tokens_in=0 tokens_out=3 tokens_cached=103115
+t!:Bash id=wxGno988 cmd="grep -n "^async fn handle" crates/autopilot/src..." → [running] tokens_in=0 tokens_out=3 tokens_cached=103115
+o: id=wxGno988 → [ok] 2479:async fn handle_session_command(command: SessionCommands) -> Result<()> {
+t!:Read id=EhRVW3TC file_path=/home/christopherdavid/code/openagents/crates/autopilot/src/main.rs → [running] tokens_in=0 tokens_out=114 tokens_cached=103466
+o: id=EhRVW3TC → [ok]   3600→            println!();
+t!:Bash id=cw9aJ6FU cmd="wc -l crates/autopilot/src/main.rs" → [running] tokens_in=0 tokens_out=25 tokens_cached=103723
+o: id=cw9aJ6FU → [ok] 3764 crates/autopilot/src/main.rs
+t!:Read id=1SADZAZE file_path=/home/christopherdavid/code/openagents/crates/autopilot/src/main.rs → [running] tokens_in=0 tokens_out=24 tokens_cached=104325
+o: id=1SADZAZE → [ok]   3750→        )),
+a: Now I'll add the handle_benchmark_command function at the end of the file: tokens_in=0 tokens_out=1 tokens_cached=104438
+t!:Edit id=WfxoCuiH file_path=/home/christopherdavid/code/openagents/crates/autopilot/src/main.rs → [running] tokens_in=0 tokens_out=1588 tokens_cached=104438
+o: id=WfxoCuiH → [ok] The file /home/christopherdavid/code/openagents/crates/autopilot/src/main.rs has been updated. He...
+t!:Bash id=2xZinFHx cmd="cargo build -p autopilot 2>&1 | tail -40" → [running] tokens_in=0 tokens_out=26 tokens_cached=104861
+o: id=2xZinFHx → [ok]    Compiling autopilot v0.1.0 (/home/christopherdavid/code/openagents/crates/autopilot)
+a: I see the issue - I added Benchmark to Commands but it was also added to MetricsCommands. Let me check the code structure: tokens_in=0 tokens_out=1 tokens_cached=108427
+t!:Grep id=iyDo1Gc3 pattern="^enum MetricsCommands" → [running] tokens_in=0 tokens_out=1 tokens_cached=108427
+o: id=iyDo1Gc3 → [ok] 701:enum MetricsCommands {
+a: I see - Benchmark was mistakenly added to MetricsCommands as well. Let me check where this happened: tokens_in=0 tokens_out=2 tokens_cached=108949
+t!:Grep id=QtdqRAia pattern="^\s+Benchmark \{" → [running] tokens_in=0 tokens_out=2 tokens_cached=108949
+o: id=QtdqRAia → [ok] 784-    },
+a: This is the one in Commands which is correct. Let me check if there's another one: tokens_in=0 tokens_out=1 tokens_cached=109591
+t!:Bash id=mXZBFqe2 cmd="grep -n "Benchmark {" crates/autopilot/src/main.rs" → [running] tokens_in=0 tokens_out=1 tokens_cached=109591
+o: id=mXZBFqe2 → [ok] 786:    Benchmark {
+a: Only two occurrences as expected. The error message says Benchmark is in MetricsCommands at line 786. Let me check what's actually around line 786: tokens_in=0 tokens_out=1 tokens_cached=109788
+t!:Read id=Ld4dzYnw file_path=/home/christopherdavid/code/openagents/crates/autopilot/src/main.rs → [running] tokens_in=0 tokens_out=1 tokens_cached=109788
+o: id=Ld4dzYnw → [ok]    780→
+a: I need to check what enum this is in. Let me read backwards: tokens_in=0 tokens_out=1 tokens_cached=110030
+t!:Read id=9KXbLMWZ file_path=/home/christopherdavid/code/openagents/crates/autopilot/src/main.rs → [running] tokens_in=0 tokens_out=129 tokens_cached=110030
+o: id=9KXbLMWZ → [ok]    695→        #[arg(required = true)]
+a: Oh! I accidentally added Benchmark to MetricsCommands instead of Commands. The Metrics command already existed and takes a MetricsCommands subcommand. Let me find where Commands enum actually is an... tokens_in=0 tokens_out=1 tokens_cached=110651
+t!:Grep id=9MBrBJE7 pattern="^enum Commands \{" → [running] tokens_in=0 tokens_out=187 tokens_cached=110651
+o: id=9MBrBJE7 → [error] <tool_use_error>InputValidationError: Grep failed due to the following issue:
+t!:Bash id=RnMPQMET cmd="grep -n "^enum Commands" crates/autopilot/src/m..." → [running] tokens_in=1 tokens_out=26 tokens_cached=112176
+o: id=RnMPQMET → [ok] 304:enum Commands {
+t!:Read id=x6bc4D1f file_path=/home/christopherdavid/code/openagents/crates/autopilot/src/main.rs → [running] tokens_in=0 tokens_out=113 tokens_cached=112427
+o: id=x6bc4D1f → [ok]    415→        /// Additional prompt to send on resume
+a: I see - Commands ends after Metrics at line 454. I need to add Benchmark after that, not within MetricsCommands. Let me remove it from MetricsCommands and add it to Commands: tokens_in=0 tokens_out=1 tokens_cached=112638
+t!:Read id=7pNsWZGH file_path=/home/christopherdavid/code/openagents/crates/autopilot/src/main.rs → [running] tokens_in=0 tokens_out=1 tokens_cached=112638
+o: id=7pNsWZGH → [ok]    450→    },
+a: Now I need to: tokens_in=0 tokens_out=1 tokens_cached=113256
+t!:Edit id=ePmiYGVT file_path=/home/christopherdavid/code/openagents/crates/autopilot/src/main.rs → [running] tokens_in=0 tokens_out=443 tokens_cached=113256
+o: id=ePmiYGVT → [ok] The file /home/christopherdavid/code/openagents/crates/autopilot/src/main.rs has been updated. He...
+a: Now I need to remove the duplicate Benchmark from MetricsCommands: tokens_in=0 tokens_out=1 tokens_cached=113753
+t!:Edit id=ypkjBmkY file_path=/home/christopherdavid/code/openagents/crates/autopilot/src/main.rs → [running] tokens_in=0 tokens_out=543 tokens_cached=113753
+o: id=ypkjBmkY → [ok] The file /home/christopherdavid/code/openagents/crates/autopilot/src/main.rs has been updated. He...
+t!:Bash id=CCZFwgTd cmd="cargo build -p autopilot 2>&1 | tail -20" → [running] tokens_in=0 tokens_out=26 tokens_cached=114703
+o: id=CCZFwgTd → [ok]    Compiling autopilot v0.1.0 (/home/christopherdavid/code/openagents/crates/autopilot)
+a: Great! Now let me test the CLI: tokens_in=0 tokens_out=1 tokens_cached=115619
+t!:Bash id=kY9DEjkx cmd="cargo autopilot benchmark --help" → [running] tokens_in=0 tokens_out=88 tokens_cached=115619
+o: id=kY9DEjkx → [ok] Run performance benchmarks
+a: Perfect! Let me test running a benchmark: tokens_in=0 tokens_out=1 tokens_cached=115780
+t!:Bash id=wrwcBJtV cmd="cargo autopilot benchmark B-001 2>&1 | head -30" → [running] tokens_in=0 tokens_out=101 tokens_cached=115780
+o: id=wrwcBJtV → [ok]     Finished `dev` profile [optimized + debuginfo] target(s) in 0.17s
+a: Excellent! The CLI is working. The benchmark failed as expected since it only runs setup/validation without actually executing the agent. Let me commit this: tokens_in=0 tokens_out=2 tokens_cached=116208
+t!:Bash id=uQK2rMHV cmd="git add -A && git commit -m "$(cat <<'EOF'" → [running] tokens_in=0 tokens_out=2 tokens_cached=116208
