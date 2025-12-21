@@ -4,7 +4,7 @@ use actix_web::{web, App, HttpResponse, HttpServer};
 use std::sync::Arc;
 
 use crate::nostr::NostrClient;
-use crate::views::{home_page_with_repos, issue_create_form_page, issue_detail_page, issues_list_page, patch_detail_page, patches_list_page, pull_request_detail_page, pull_requests_list_page, repository_detail_page};
+use crate::views::{home_page_with_repos, issue_create_form_page, issue_detail_page, issues_list_page, patch_detail_page, patches_list_page, pull_request_detail_page, pull_requests_list_page, repository_detail_page, trajectory_viewer_page};
 use crate::ws::{ws_handler, WsBroadcaster};
 
 /// Application state shared across handlers
@@ -37,6 +37,7 @@ pub async fn start_server(
             .route("/repo/{identifier}/patches/{patch_id}", web::get().to(patch_detail))
             .route("/repo/{identifier}/pulls", web::get().to(repository_pulls))
             .route("/repo/{identifier}/pulls/{pr_id}", web::get().to(pull_request_detail))
+            .route("/trajectory/{session_id}", web::get().to(trajectory_detail))
             .route("/ws", web::get().to(ws_route))
     })
     .bind("127.0.0.1:0")?;
@@ -514,6 +515,44 @@ async fn pull_request_detail(
     HttpResponse::Ok()
         .content_type("text/html; charset=utf-8")
         .body(pull_request_detail_page(&repository, &pull_request, &identifier).into_string())
+}
+
+/// Trajectory detail page
+async fn trajectory_detail(
+    state: web::Data<AppState>,
+    path: web::Path<String>,
+) -> HttpResponse {
+    let session_id = path.into_inner();
+
+    // Fetch trajectory session
+    let session = match state.nostr_client.get_trajectory_session(&session_id).await {
+        Ok(Some(s)) => s,
+        Ok(None) => {
+            tracing::warn!("Trajectory session not found: {}", session_id);
+            return HttpResponse::NotFound()
+                .content_type("text/html; charset=utf-8")
+                .body("<h1>Trajectory session not found</h1>");
+        }
+        Err(e) => {
+            tracing::error!("Failed to fetch trajectory session: {}", e);
+            return HttpResponse::InternalServerError()
+                .content_type("text/html; charset=utf-8")
+                .body("<h1>Error fetching trajectory session</h1>");
+        }
+    };
+
+    // Fetch trajectory events
+    let events = match state.nostr_client.get_trajectory_events(&session_id).await {
+        Ok(evts) => evts,
+        Err(e) => {
+            tracing::warn!("Failed to fetch trajectory events for session {}: {}", session_id, e);
+            Vec::new() // Continue with empty events if fetch fails
+        }
+    };
+
+    HttpResponse::Ok()
+        .content_type("text/html; charset=utf-8")
+        .body(trajectory_viewer_page(&session, &events).into_string())
 }
 
 /// WebSocket upgrade
