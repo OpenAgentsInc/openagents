@@ -4172,7 +4172,7 @@ async fn handle_benchmark_command(
     // Run benchmarks
     let mut results = Vec::new();
     for task in tasks_to_run {
-        match runner.run_benchmark(task.as_ref()) {
+        match runner.run_benchmark(task.as_ref()).await {
             Ok(result) => {
                 let status = if result.success {
                     "PASS".green().bold()
