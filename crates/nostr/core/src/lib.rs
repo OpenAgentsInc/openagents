@@ -77,6 +77,7 @@
 //! - NIP-98: HTTP Auth (requires `full` feature)
 //! - NIP-99: Classified Listings (marketplace ads)
 //! - NIP-C7: Chats (simple chat protocol with quote replies)
+//! - NIP-SA: Sovereign Agents (autonomous agents with their own identity)
 //! - Identity types for marketplace participants (agents, creators, providers)
 //! - Lightning payment types for marketplace transactions
 //! - Compute provider types for decentralized compute marketplace
@@ -173,6 +174,7 @@ mod nip99;
 #[cfg(feature = "full")]
 mod nip98;
 mod nipc7;
+mod nip_sa;
 #[cfg(feature = "full")]
 mod payments;
 mod provider;
@@ -692,6 +694,24 @@ pub use nip98::{
     AUTH_SCHEME, DEFAULT_TIMESTAMP_WINDOW, HttpAuth, HttpMethod, KIND_HTTP_AUTH, Nip98Error,
     ValidationParams, decode_authorization_header, encode_authorization_header, hash_payload,
     validate_http_auth_event,
+};
+
+// NIP-SA: Sovereign Agents
+pub use nip_sa::{
+    // Profile (kind:38000)
+    AgentProfileContent, AutonomyLevel,
+    // State (kind:38001)
+    AgentStateContent, Goal, GoalStatus, MemoryEntry,
+    // Schedule (kind:38002)
+    AgentSchedule, TriggerType,
+    // Goals (kind:38003)
+    PublicGoals,
+    // Tick (kinds:38010, 38011)
+    TickAction, TickResultContent, TickStatus, TickTrigger,
+    // Trajectory (kinds:38030, 38031)
+    StepType, TrajectoryEventContent, TrajectorySessionContent, TrajectoryVisibility,
+    // Skill (kinds:38020, 38021)
+    SkillDeliveryContent, SkillLicenseContent,
 };
 
 // Identity types for marketplace (base types always available)
