@@ -116,3 +116,53 @@ o: id=Ca2btP16 → [ok] The file /home/christopherdavid/code/openagents/crates/a
 t!:Bash id=Mo7jYwUD cmd="cargo build --package agentgit 2>&1 | head -50" → [running] tokens_in=0 tokens_out=93 tokens_cached=92602
 o: id=Mo7jYwUD → [ok]    Compiling hyper v1.8.1
 t!:Bash id=2D1nMs5b cmd="git add -A && git diff --cached --stat" → [running] tokens_in=0 tokens_out=83 tokens_cached=94566
+o: id=2D1nMs5b → [ok]  Cargo.lock                                         |  2 ++
+t!:Bash id=jhej93op cmd="git commit -m "$(cat <<'EOF'" → [running] tokens_in=0 tokens_out=400 tokens_cached=94919
+o: id=jhej93op → [ok] [main 344c394cb] Add identity management to AgentGit for event signing
+t!:Bash id=jDfg3jyt cmd="git push origin main" → [running] tokens_in=0 tokens_out=24 tokens_cached=95159
+o: id=jDfg3jyt → [ok] [0;36m🔍 Running cargo build to check for errors and warnings...[0m
+t!:mcp__issues__issue_complete id=kfWWJo6G  → [running] tokens_in=0 tokens_out=32 tokens_cached=95714
+o: id=kfWWJo6G → [ok] Completed issue #360
+t!:mcp__issues__issue_ready id=EJXG4tTq  → [running] tokens_in=0 tokens_out=25 tokens_cached=95875
+o: id=EJXG4tTq → [ok] {
+t!:mcp__issues__issue_claim id=Jaw8aJen  → [running] tokens_in=0 tokens_out=86 tokens_cached=95950
+o: id=Jaw8aJen → [ok] Claimed issue #361
+t!:Read id=kXq4fKRR file_path=/home/christopherdavid/code/openagents/crates/nostr/core/src/nip44.rs → [running] tokens_in=3 tokens_out=82 tokens_cached=96860
+o: id=kXq4fKRR → [ok]      1→//! NIP-44: Versioned Encryption
+t!:Read id=prBJuHdT file_path=/home/christopherdavid/code/openagents/crates/nostr/core/src/lib.rs → [running] tokens_in=3 tokens_out=80 tokens_cached=96961
+o: id=prBJuHdT → [ok]      1→//! Nostr protocol implementation for OpenAgents.
+a: The NIP-44 implementation is already complete and exported in lib.rs (lines 424-428)! The API provides `encrypt_v2` and `decrypt_v2` functions. Let me verify the tests exist and add integration tes... tokens_in=2 tokens_out=2 tokens_cached=103829
+t!:Glob id=b5xJao5y pattern="crates/nostr/core/tests/*.rs" → [running] tokens_in=2 tokens_out=118 tokens_cached=103829
+o: id=b5xJao5y → [ok] /home/christopherdavid/code/openagents/crates/nostr/core/tests/nip06_integration.rs
+t!:Write id=LdrJynSQ file_path=/home/christopherdavid/code/openagents/crates/nostr/core/tests/nip44_integration.rs → [running] tokens_in=2 tokens_out=1877 tokens_cached=116902
+o: id=LdrJynSQ → [ok] File created successfully at: /home/christopherdavid/code/openagents/crates/nostr/core/tests/nip4...
+t!:Bash id=LoBDMvxv cmd="cargo test --package nostr --test nip44_integra..." → [running] tokens_in=1 tokens_out=113 tokens_cached=117229
+o: id=LoBDMvxv → [ok]     |                       ----------              ^^^^^^^^^^^^^^^^^ expected `&[u8]`, found `&R...
+t!:Read id=TvEoHLWP file_path=/home/christopherdavid/code/openagents/crates/nostr/core/src/nip01.rs → [running] tokens_in=1 tokens_out=18 tokens_cached=119193
+o: id=TvEoHLWP → [ok]    640→    // sort_events tests (mirrors nostr-tools core.test.ts)
+t!:Grep id=djHuSEYW pattern="pub fn get_public_key" → [running] tokens_in=1 tokens_out=26 tokens_cached=119717
+o: id=djHuSEYW → [ok] 119-    key
+a: I see the issue - `get_public_key` returns a `Result`, and `encrypt_v2` expects a byte slice. Let me fix the tests: tokens_in=0 tokens_out=1 tokens_cached=120276
+t!:Edit id=GvwS5hTp file_path=/home/christopherdavid/code/openagents/crates/nostr/core/tests/nip44_integration.rs → [running] tokens_in=0 tokens_out=732 tokens_cached=120276
+o: id=GvwS5hTp → [ok] The file /home/christopherdavid/code/openagents/crates/nostr/core/tests/nip44_integration.rs has ...
+t!:Edit id=9HmFaqy8 file_path=/home/christopherdavid/code/openagents/crates/nostr/core/tests/nip44_integration.rs → [running] tokens_in=0 tokens_out=587 tokens_cached=120827
+o: id=9HmFaqy8 → [ok] The file /home/christopherdavid/code/openagents/crates/nostr/core/tests/nip44_integration.rs has ...
+t!:Edit id=EVaXAykp file_path=/home/christopherdavid/code/openagents/crates/nostr/core/tests/nip44_integration.rs → [running] tokens_in=0 tokens_out=533 tokens_cached=122216
+o: id=EVaXAykp → [ok] The file /home/christopherdavid/code/openagents/crates/nostr/core/tests/nip44_integration.rs has ...
+a: Let me update all the remaining tests in one go: tokens_in=0 tokens_out=3 tokens_cached=123426
+t!:Read id=EqBKxK25 file_path=/home/christopherdavid/code/openagents/crates/nostr/core/tests/nip44_integration.rs → [running] tokens_in=0 tokens_out=3 tokens_cached=123426
+o: id=EqBKxK25 → [ok]     82→
+t!:Edit id=ebjbFsf2 file_path=/home/christopherdavid/code/openagents/crates/nostr/core/tests/nip44_integration.rs → [running] tokens_in=0 tokens_out=2485 tokens_cached=124419
+o: id=ebjbFsf2 → [ok] The file /home/christopherdavid/code/openagents/crates/nostr/core/tests/nip44_integration.rs has ...
+t!:Bash id=mD4tzX1A cmd="cargo test --package nostr --test nip44_integra..." → [running] tokens_in=0 tokens_out=97 tokens_cached=126252
+o: id=mD4tzX1A → [ok]    Compiling nostr v0.1.0 (/home/christopherdavid/code/openagents/crates/nostr/core)
+t!:Edit id=5mqthvsn file_path=/home/christopherdavid/code/openagents/crates/nostr/core/tests/nip44_integration.rs → [running] tokens_in=0 tokens_out=352 tokens_cached=130529
+o: id=5mqthvsn → [ok] The file /home/christopherdavid/code/openagents/crates/nostr/core/tests/nip44_integration.rs has ...
+t!:Bash id=G2zXCgMj cmd="cargo test --package nostr --test nip44_integra..." → [running] tokens_in=0 tokens_out=97 tokens_cached=130853
+o: id=G2zXCgMj → [ok]   |    ^^^^^^^^^^^^^^^^^^^
+a: Perfect! All tests pass. Let me remove the unused helper function warning: tokens_in=0 tokens_out=1 tokens_cached=131619
+t!:Edit id=DNX7szBe file_path=/home/christopherdavid/code/openagents/crates/nostr/core/tests/nip44_integration.rs → [running] tokens_in=0 tokens_out=339 tokens_cached=131619
+o: id=DNX7szBe → [ok] The file /home/christopherdavid/code/openagents/crates/nostr/core/tests/nip44_integration.rs has ...
+t!:Bash id=PgN2Ekfp cmd="cargo test --package nostr --test nip44_integra..." → [running] tokens_in=0 tokens_out=105 tokens_cached=132004
+o: id=PgN2Ekfp → [ok] running 8 tests
+t!:Bash id=BF6xvXAa cmd="git add -A && git diff --cached --stat" → [running] tokens_in=0 tokens_out=83 tokens_cached=132770
