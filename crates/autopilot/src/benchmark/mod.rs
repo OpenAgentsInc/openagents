@@ -85,6 +85,25 @@ pub struct BenchmarkResult {
     pub metrics: BenchmarkMetrics,
 }
 
+/// Baseline metrics for a benchmark across multiple runs
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BaselineMetrics {
+    /// Success rate (0.0 - 1.0)
+    pub success_rate: f64,
+    /// Average duration in milliseconds
+    pub avg_duration_ms: f64,
+    /// Average input tokens
+    pub avg_tokens_in: i64,
+    /// Average output tokens
+    pub avg_tokens_out: i64,
+    /// Average cost in USD
+    pub avg_cost_usd: f64,
+    /// Number of runs used to compute baseline
+    pub sample_count: i64,
+    /// When baseline was last updated
+    pub updated_at: chrono::DateTime<chrono::Utc>,
+}
+
 /// Database for storing benchmark results
 pub struct BenchmarkDatabase {
     conn: Connection,
@@ -131,6 +150,22 @@ impl BenchmarkDatabase {
                 run_id INTEGER NOT NULL,
                 message TEXT NOT NULL,
                 FOREIGN KEY (run_id) REFERENCES benchmark_runs(id)
+            )",
+            [],
+        )?;
+
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS benchmark_baselines (
+                benchmark_id TEXT NOT NULL,
+                version TEXT NOT NULL,
+                success_rate REAL NOT NULL,
+                avg_duration_ms REAL NOT NULL,
+                avg_tokens_in INTEGER NOT NULL,
+                avg_tokens_out INTEGER NOT NULL,
+                avg_cost_usd REAL NOT NULL,
+                sample_count INTEGER NOT NULL,
+                updated_at DATETIME NOT NULL,
+                PRIMARY KEY (benchmark_id, version)
             )",
             [],
         )?;
@@ -321,6 +356,100 @@ impl BenchmarkDatabase {
 
         Ok(full_results)
     }
+
+    /// Compute and store baseline metrics for a version
+    pub fn update_baseline(&mut self, version: &str) -> Result<()> {
+        let results = self.get_baseline(version)?;
+
+        // Group results by benchmark_id
+        let mut by_benchmark: HashMap<String, Vec<&BenchmarkResult>> = HashMap::new();
+        for result in &results {
+            by_benchmark
+                .entry(result.benchmark_id.clone())
+                .or_insert_with(Vec::new)
+                .push(result);
+        }
+
+        let tx = self.conn.transaction()?;
+
+        for (benchmark_id, runs) in by_benchmark {
+            if runs.is_empty() {
+                continue;
+            }
+
+            let sample_count = runs.len() as i64;
+            let successes = runs.iter().filter(|r| r.success).count();
+            let success_rate = successes as f64 / sample_count as f64;
+
+            let avg_duration_ms = runs.iter().map(|r| r.metrics.duration_ms).sum::<u64>() as f64
+                / sample_count as f64;
+            let avg_tokens_in = runs.iter().map(|r| r.metrics.tokens_in).sum::<u64>() as i64
+                / sample_count;
+            let avg_tokens_out = runs.iter().map(|r| r.metrics.tokens_out).sum::<u64>() as i64
+                / sample_count;
+            let avg_cost_usd =
+                runs.iter().map(|r| r.metrics.cost_usd).sum::<f64>() / sample_count as f64;
+
+            tx.execute(
+                "INSERT OR REPLACE INTO benchmark_baselines (
+                    benchmark_id, version, success_rate, avg_duration_ms,
+                    avg_tokens_in, avg_tokens_out, avg_cost_usd,
+                    sample_count, updated_at
+                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+                params![
+                    benchmark_id,
+                    version,
+                    success_rate,
+                    avg_duration_ms,
+                    avg_tokens_in,
+                    avg_tokens_out,
+                    avg_cost_usd,
+                    sample_count,
+                    Utc::now().to_rfc3339(),
+                ],
+            )?;
+        }
+
+        tx.commit()?;
+        Ok(())
+    }
+
+    /// Get baseline metrics for a specific benchmark and version
+    pub fn get_baseline_metrics(
+        &self,
+        benchmark_id: &str,
+        version: &str,
+    ) -> Result<Option<BaselineMetrics>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT success_rate, avg_duration_ms, avg_tokens_in, avg_tokens_out,
+                    avg_cost_usd, sample_count, updated_at
+             FROM benchmark_baselines
+             WHERE benchmark_id = ?1 AND version = ?2",
+        )?;
+
+        let result = stmt.query_row(params![benchmark_id, version], |row| {
+            let updated_at_str: String = row.get(6)?;
+            let updated_at = chrono::DateTime::parse_from_rfc3339(&updated_at_str)
+                .map(|dt| dt.with_timezone(&chrono::Utc))
+                .unwrap_or_else(|_| Utc::now());
+
+            Ok(BaselineMetrics {
+                success_rate: row.get(0)?,
+                avg_duration_ms: row.get(1)?,
+                avg_tokens_in: row.get(2)?,
+                avg_tokens_out: row.get(3)?,
+                avg_cost_usd: row.get(4)?,
+                sample_count: row.get(5)?,
+                updated_at,
+            })
+        });
+
+        match result {
+            Ok(metrics) => Ok(Some(metrics)),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(e.into()),
+        }
+    }
 }
 
 /// Runner for executing benchmark tasks
@@ -413,54 +542,81 @@ impl BenchmarkRunner {
         results: &[BenchmarkResult],
         baseline_version: &str,
     ) -> Result<ComparisonReport> {
-        let baseline = self.database.get_baseline(baseline_version)?;
-
         let mut regressions = Vec::new();
         let mut improvements = Vec::new();
+        let mut comparisons = Vec::new();
 
         for result in results {
-            if let Some(base) = baseline
-                .iter()
-                .find(|b| b.benchmark_id == result.benchmark_id)
+            // Try to get baseline metrics first (aggregated)
+            if let Some(base_metrics) = self
+                .database
+                .get_baseline_metrics(&result.benchmark_id, baseline_version)?
             {
-                // Check for success regression
-                if base.success && !result.success {
+                let current_success_rate = if result.success { 1.0 } else { 0.0 };
+
+                // Compare success rate
+                if current_success_rate < base_metrics.success_rate {
                     regressions.push(format!(
-                        "{}: Now failing (was passing)",
-                        result.benchmark_id
+                        "{}: Success rate dropped from {:.1}% to {:.1}%",
+                        result.benchmark_id,
+                        base_metrics.success_rate * 100.0,
+                        current_success_rate * 100.0
+                    ));
+                } else if current_success_rate > base_metrics.success_rate {
+                    improvements.push(format!(
+                        "{}: Success rate improved from {:.1}% to {:.1}%",
+                        result.benchmark_id,
+                        base_metrics.success_rate * 100.0,
+                        current_success_rate * 100.0
                     ));
                 }
 
-                // Check for performance regression (>10% slower)
-                let duration_increase = (result.metrics.duration_ms as f64
-                    - base.metrics.duration_ms as f64)
-                    / base.metrics.duration_ms as f64;
-                if duration_increase > 0.1 {
+                // Compare performance (>10% threshold)
+                let duration_change = (result.metrics.duration_ms as f64 - base_metrics.avg_duration_ms)
+                    / base_metrics.avg_duration_ms;
+
+                if duration_change > 0.1 {
                     regressions.push(format!(
-                        "{}: {:.1}% slower ({} ms vs {} ms)",
+                        "{}: {:.1}% slower ({} ms vs {:.0} ms avg)",
                         result.benchmark_id,
-                        duration_increase * 100.0,
+                        duration_change * 100.0,
                         result.metrics.duration_ms,
-                        base.metrics.duration_ms
+                        base_metrics.avg_duration_ms
+                    ));
+                } else if duration_change < -0.1 {
+                    improvements.push(format!(
+                        "{}: {:.1}% faster ({} ms vs {:.0} ms avg)",
+                        result.benchmark_id,
+                        duration_change.abs() * 100.0,
+                        result.metrics.duration_ms,
+                        base_metrics.avg_duration_ms
                     ));
                 }
 
-                // Check for improvements
-                if !base.success && result.success {
-                    improvements.push(format!(
-                        "{}: Now passing (was failing)",
-                        result.benchmark_id
-                    ));
-                }
-                if duration_increase < -0.1 {
-                    improvements.push(format!(
-                        "{}: {:.1}% faster ({} ms vs {} ms)",
+                // Compare token usage
+                let tokens_total = result.metrics.tokens_in + result.metrics.tokens_out;
+                let base_tokens_total = base_metrics.avg_tokens_in + base_metrics.avg_tokens_out;
+                let token_change = (tokens_total as f64 - base_tokens_total as f64) / base_tokens_total as f64;
+
+                if token_change > 0.2 {
+                    // 20% threshold for token usage
+                    regressions.push(format!(
+                        "{}: {:.1}% more tokens ({} vs {:.0} avg)",
                         result.benchmark_id,
-                        duration_increase.abs() * 100.0,
-                        result.metrics.duration_ms,
-                        base.metrics.duration_ms
+                        token_change * 100.0,
+                        tokens_total,
+                        base_tokens_total
                     ));
                 }
+
+                comparisons.push(BenchmarkComparison {
+                    benchmark_id: result.benchmark_id.clone(),
+                    current: result.clone(),
+                    baseline: base_metrics.clone(),
+                    duration_change_pct: duration_change * 100.0,
+                    token_change_pct: token_change * 100.0,
+                    success_rate_change: current_success_rate - base_metrics.success_rate,
+                });
             }
         }
 
@@ -469,8 +625,20 @@ impl BenchmarkRunner {
             current_version: self.version.clone(),
             regressions,
             improvements,
+            comparisons,
         })
     }
+}
+
+/// Detailed comparison for a single benchmark
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BenchmarkComparison {
+    pub benchmark_id: String,
+    pub current: BenchmarkResult,
+    pub baseline: BaselineMetrics,
+    pub duration_change_pct: f64,
+    pub token_change_pct: f64,
+    pub success_rate_change: f64,
 }
 
 /// Report comparing benchmark results to a baseline
@@ -480,6 +648,7 @@ pub struct ComparisonReport {
     pub current_version: String,
     pub regressions: Vec<String>,
     pub improvements: Vec<String>,
+    pub comparisons: Vec<BenchmarkComparison>,
 }
 
 impl ComparisonReport {
@@ -490,29 +659,69 @@ impl ComparisonReport {
 
     /// Print the report to stdout
     pub fn print(&self) {
-        println!("\n=== Benchmark Comparison Report ===");
-        println!("Baseline: {}", self.baseline_version);
-        println!("Current:  {}", self.current_version);
+        println!("\n╔═══════════════════════════════════════════════════════════╗");
+        println!("║          Benchmark Comparison Report                      ║");
+        println!("╚═══════════════════════════════════════════════════════════╝");
+        println!("  Baseline: {}", self.baseline_version);
+        println!("  Current:  {}", self.current_version);
         println!();
 
         if !self.regressions.is_empty() {
-            println!("⚠️  Regressions ({}):", self.regressions.len());
+            println!("⚠️  REGRESSIONS ({}):", self.regressions.len());
             for regression in &self.regressions {
-                println!("  - {}", regression);
+                println!("  ❌ {}", regression);
             }
             println!();
         }
 
         if !self.improvements.is_empty() {
-            println!("✅ Improvements ({}):", self.improvements.len());
+            println!("✅ IMPROVEMENTS ({}):", self.improvements.len());
             for improvement in &self.improvements {
-                println!("  + {}", improvement);
+                println!("  ✓ {}", improvement);
             }
             println!();
         }
 
         if self.regressions.is_empty() && self.improvements.is_empty() {
-            println!("No significant changes detected.");
+            println!("  No significant changes detected.");
+        }
+
+        // Print detailed comparison table
+        if !self.comparisons.is_empty() {
+            println!("\n┌────────────────────────────────────────────────────────────┐");
+            println!("│ Detailed Comparison                                        │");
+            println!("├─────────────┬──────────┬───────────┬───────────┬───────────┤");
+            println!("│ Benchmark   │ Success  │ Duration  │ Tokens    │ Cost      │");
+            println!("│ ID          │ Rate     │ Change    │ Change    │ Change    │");
+            println!("├─────────────┼──────────┼───────────┼───────────┼───────────┤");
+
+            for comp in &self.comparisons {
+                let success_icon = if comp.success_rate_change >= 0.0 {
+                    "✓"
+                } else {
+                    "✗"
+                };
+                let duration_icon = if comp.duration_change_pct <= 0.0 {
+                    "↓"
+                } else {
+                    "↑"
+                };
+                let token_icon = if comp.token_change_pct <= 0.0 { "↓" } else { "↑" };
+
+                println!(
+                    "│ {:<11} │ {} {:>5.1}% │ {} {:>6.1}% │ {} {:>6.1}% │ ${:>7.4} │",
+                    comp.benchmark_id,
+                    success_icon,
+                    comp.success_rate_change * 100.0,
+                    duration_icon,
+                    comp.duration_change_pct.abs(),
+                    token_icon,
+                    comp.token_change_pct.abs(),
+                    comp.current.metrics.cost_usd
+                );
+            }
+
+            println!("└─────────────┴──────────┴───────────┴───────────┴───────────┘");
         }
     }
 }
