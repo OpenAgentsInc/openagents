@@ -3,6 +3,41 @@
 //! This module implements automated baseline calculation and comparison
 //! for autopilot metrics. It enables tracking of performance over time
 //! and automatic detection of regressions.
+//!
+//! # CLI Commands
+//!
+//! ```bash
+//! # Update baselines from recent sessions (last 100 by default)
+//! cargo autopilot metrics baseline update
+//!
+//! # Update with custom session count
+//! cargo autopilot metrics baseline update --sessions 200
+//!
+//! # Show current baselines
+//! cargo autopilot metrics baseline show
+//!
+//! # Show as JSON
+//! cargo autopilot metrics baseline show --format json
+//!
+//! # Check for regressions
+//! cargo autopilot metrics baseline check
+//!
+//! # Generate baseline report
+//! cargo autopilot metrics baseline report
+//! ```
+//!
+//! # Automated Updates
+//!
+//! Baselines can be updated automatically:
+//! - Via CLI: `cargo autopilot metrics baseline update`
+//! - Via API: `BaselineCalculator::update_all_baselines()`
+//! - Schedule weekly updates with cron or systemd timer
+//!
+//! # Baseline History
+//!
+//! Baselines are versioned by timestamp in the `updated_at` field.
+//! Historical tracking can detect performance trends over time.
+//! The database maintains one current baseline per dimension.
 
 use anyhow::Result;
 use chrono::Utc;
