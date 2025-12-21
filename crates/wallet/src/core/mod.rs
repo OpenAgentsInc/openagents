@@ -7,4 +7,5 @@
 
 pub mod client;
 pub mod identity;
+pub mod nip05;
 pub mod nostr;

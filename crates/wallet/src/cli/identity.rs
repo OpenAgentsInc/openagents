@@ -140,6 +140,7 @@ pub fn export() -> Result<()> {
 pub fn whoami() -> Result<()> {
     use bip39::Mnemonic;
     use crate::core::nostr::Profile;
+    use crate::core::nip05::verify_nip05_cached;
     use crate::storage::config::WalletConfig;
 
     println!("{}", "Wallet Information".cyan().bold());
@@ -190,13 +191,26 @@ pub fn whoami() -> Result<()> {
         if let Some(about) = &profile.about {
             println!("  {}: {}", "About".bold(), about);
         }
+        if let Some(nip05) = &profile.nip05 {
+            // Verify NIP-05
+            let verified = verify_nip05_cached(nip05, identity.nostr_public_key())
+                .unwrap_or(false);
+
+            if verified {
+                println!("  {}: {} {}", "NIP-05".bold(), nip05, "✓".green());
+            } else {
+                println!("  {}: {} {}", "NIP-05".bold(), nip05, "✗".dimmed());
+            }
+        }
     }
 
     Ok(())
 }
 
 pub fn profile_show() -> Result<()> {
+    use bip39::Mnemonic;
     use crate::core::nostr::Profile;
+    use crate::core::nip05::verify_nip05_cached;
     use crate::storage::config::WalletConfig;
 
     println!("{}", "Profile Information".cyan().bold());
@@ -206,6 +220,11 @@ pub fn profile_show() -> Result<()> {
     if !SecureKeychain::has_mnemonic() {
         anyhow::bail!("No wallet found. Use 'wallet init' to create one.");
     }
+
+    // Load identity for pubkey
+    let mnemonic_phrase = SecureKeychain::retrieve_mnemonic()?;
+    let mnemonic = Mnemonic::parse(&mnemonic_phrase)?;
+    let identity = UnifiedIdentity::from_mnemonic(mnemonic)?;
 
     // Try to load profile from config
     let config = WalletConfig::load()?;
@@ -232,7 +251,15 @@ pub fn profile_show() -> Result<()> {
             println!("  {}: {}", "Picture".bold(), picture);
         }
         if let Some(nip05) = &profile.nip05 {
-            println!("  {}: {}", "NIP-05".bold(), nip05);
+            // Verify NIP-05
+            let verified = verify_nip05_cached(nip05, identity.nostr_public_key())
+                .unwrap_or(false);
+
+            if verified {
+                println!("  {}: {} {}", "NIP-05".bold(), nip05, "✓".green());
+            } else {
+                println!("  {}: {} {}", "NIP-05".bold(), nip05, "✗".red());
+            }
         }
     }
 
