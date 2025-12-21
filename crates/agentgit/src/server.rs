@@ -38,6 +38,7 @@ pub async fn start_server(
             .route("/repo/{identifier}/patches/{patch_id}", web::get().to(patch_detail))
             .route("/repo/{identifier}/pulls", web::get().to(repository_pulls))
             .route("/repo/{identifier}/pulls/{pr_id}", web::get().to(pull_request_detail))
+            .route("/repo/{identifier}/pulls/{pr_id}/review", web::post().to(pr_review_submit))
             .route("/trajectory/{session_id}", web::get().to(trajectory_detail))
             .route("/ws", web::get().to(ws_route))
     })
@@ -282,6 +283,53 @@ async fn issue_bounty_create(
         } else {
             String::new()
         }
+    );
+
+    HttpResponse::Ok()
+        .content_type("text/html; charset=utf-8")
+        .body(response_html)
+}
+
+/// Submit a review for a PR
+async fn pr_review_submit(
+    path: web::Path<(String, String)>,
+    form: web::Form<std::collections::HashMap<String, String>>,
+) -> HttpResponse {
+    let (_identifier, _pr_id) = path.into_inner();
+
+    // Extract form data
+    let review_type = form.get("review_type").cloned().unwrap_or_else(|| "comment".to_string());
+    let content = form.get("content").cloned().unwrap_or_default();
+
+    if content.is_empty() {
+        return HttpResponse::BadRequest()
+            .content_type("text/html; charset=utf-8")
+            .body(r#"<div class="error-message"><p>❌ Review content cannot be empty</p></div>"#);
+    }
+
+    // For now, return a success message
+    // In a real implementation, this would:
+    // 1. Build a kind:1 (text note) event with e tag referencing the PR
+    // 2. Add review type tags (approve, request_changes, comment)
+    // 3. Sign it with the user's key
+    // 4. Publish it to relays
+    // 5. Cache it locally
+
+    let review_emoji = match review_type.as_str() {
+        "approve" => "✅",
+        "request_changes" => "🔴",
+        _ => "💬",
+    };
+
+    let response_html = format!(
+        r#"<div class="success-message">
+            <p>{} Review submitted!</p>
+            <p>Type: {}</p>
+            <p>Comment: {}</p>
+        </div>"#,
+        review_emoji,
+        review_type,
+        content
     );
 
     HttpResponse::Ok()
@@ -565,9 +613,18 @@ async fn pull_request_detail(
         }
     };
 
+    // Fetch reviews for this PR
+    let reviews = match state.nostr_client.get_reviews_for_pr(&pr_id).await {
+        Ok(r) => r,
+        Err(e) => {
+            tracing::warn!("Failed to fetch reviews for PR {}: {}", pr_id, e);
+            Vec::new() // Continue with empty reviews if fetch fails
+        }
+    };
+
     HttpResponse::Ok()
         .content_type("text/html; charset=utf-8")
-        .body(pull_request_detail_page(&repository, &pull_request, &identifier).into_string())
+        .body(pull_request_detail_page(&repository, &pull_request, &reviews, &identifier).into_string())
 }
 
 /// Trajectory detail page

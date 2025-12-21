@@ -1043,7 +1043,7 @@ pub fn patch_detail_page(repository: &Event, patch: &Event, identifier: &str) ->
 }
 
 /// Pull request detail page
-pub fn pull_request_detail_page(repository: &Event, pull_request: &Event, identifier: &str) -> Markup {
+pub fn pull_request_detail_page(repository: &Event, pull_request: &Event, reviews: &[Event], identifier: &str) -> Markup {
     let repo_name = get_tag_value(repository, "name").unwrap_or_else(|| "Repository".to_string());
     let pr_title = get_tag_value(pull_request, "subject").unwrap_or_else(|| "Untitled Pull Request".to_string());
     let pr_status = get_tag_value(pull_request, "status").unwrap_or_else(|| "open".to_string());
@@ -1174,6 +1174,72 @@ pub fn pull_request_detail_page(repository: &Event, pull_request: &Event, identi
                                             }
                                         }
                                     }
+                                }
+                            }
+
+                            section.issue-section {
+                                h2 { "Reviews" }
+                                @if reviews.is_empty() {
+                                    p.empty-state { "No reviews yet. Be the first to review this PR!" }
+                                } @else {
+                                    div.claims-list {
+                                        @for review in reviews {
+                                            @let reviewer_pubkey = if review.pubkey.len() > 16 {
+                                                format!("{}...{}", &review.pubkey[..8], &review.pubkey[review.pubkey.len()-8..])
+                                            } else {
+                                                review.pubkey.clone()
+                                            };
+                                            @let review_type = get_tag_value(review, "review_type").unwrap_or_else(|| "comment".to_string());
+                                            @let review_emoji = match review_type.as_str() {
+                                                "approve" => "✅",
+                                                "request_changes" => "🔴",
+                                                _ => "💬"
+                                            };
+
+                                            div.claim-card {
+                                                div.claim-header {
+                                                    span.claim-author { (review_emoji) " " (reviewer_pubkey) }
+                                                    span.claim-time { (review.created_at) }
+                                                }
+                                                @if !review.content.is_empty() {
+                                                    div.claim-content {
+                                                        p { (review.content) }
+                                                    }
+                                                }
+                                                @if review_type != "comment" {
+                                                    div.claim-estimate {
+                                                        span.label { "Review: " }
+                                                        span { (review_type) }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+
+                                form.claim-form
+                                    hx-post={"/repo/" (identifier) "/pulls/" (pull_request.id) "/review"}
+                                    hx-target="this"
+                                    hx-swap="outerHTML" {
+                                    h3 { "Submit Review" }
+                                    div.form-group {
+                                        label for="review_type" { "Review Type" }
+                                        select name="review_type" id="review_type" {
+                                            option value="comment" { "💬 Comment" }
+                                            option value="approve" { "✅ Approve" }
+                                            option value="request_changes" { "🔴 Request Changes" }
+                                        }
+                                    }
+                                    div.form-group {
+                                        label for="review_content" { "Comment" }
+                                        textarea
+                                            name="content"
+                                            id="review_content"
+                                            placeholder="Leave your review comments here..."
+                                            rows="4"
+                                            required {}
+                                    }
+                                    button.submit-button type="submit" { "Submit Review" }
                                 }
                             }
 
