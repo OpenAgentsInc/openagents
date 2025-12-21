@@ -6698,6 +6698,7 @@ dependencies = [
  "clap",
  "colored",
  "dirs 5.0.1",
+ "frostr",
  "hex",
  "keyring",
  "maud",

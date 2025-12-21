@@ -29,6 +29,9 @@ keyring = "3"
 nostr = { path = "../nostr/core", features = ["full"] }
 nostr-client = { path = "../nostr/client" }
 
+# FROSTR threshold signatures
+frostr = { path = "../frostr" }
+
 # Async
 tokio = { version = "1", features = ["full"] }
 
