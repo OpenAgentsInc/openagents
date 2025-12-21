@@ -290,26 +290,130 @@ impl ComputeCommands {
             prompt.unwrap().to_string()
         };
 
-        if json {
-            println!(
-                "{{\"job_id\": \"placeholder\", \"status\": \"pending\", \"type\": \"{}\"}}",
-                job_type
-            );
-        } else {
-            println!("Submitting {} job...", job_type);
-            println!("Input: {}", input.chars().take(100).collect::<String>());
-            if let Some(model) = model {
-                println!("Model: {}", model);
+        // Create job request based on job type
+        use crate::compute::events::ComputeJobRequest;
+        let mut request = match job_type.to_lowercase().as_str() {
+            "text-generation" => ComputeJobRequest::text_generation(&input)?,
+            "summarization" => ComputeJobRequest::summarization(&input)?,
+            "translation" => {
+                // TODO: Allow target language to be specified
+                ComputeJobRequest::translation(&input, "en")?
             }
-            if let Some(budget) = budget {
-                println!("Budget: {} sats", budget);
-            }
-            if stream {
-                println!("Streaming: enabled");
+            "text-extraction" | "ocr" => ComputeJobRequest::text_extraction(&input)?,
+            "image-generation" => ComputeJobRequest::image_generation(&input)?,
+            "speech-to-text" => ComputeJobRequest::speech_to_text(&input)?,
+            _ => anyhow::bail!("Unknown job type: {}", job_type),
+        };
+
+        // Add optional parameters
+        if let Some(model) = model {
+            request = request.with_model(model);
+        }
+        if let Some(budget) = budget {
+            // Convert from sats to millisats
+            request = request.with_bid(budget * 1000);
+        }
+
+        // Create consumer and submit job
+        use crate::compute::consumer::Consumer;
+        let consumer = Consumer::new();
+        let mut handle = consumer.submit_job(request)?;
+
+        if stream {
+            // Streaming mode - wait for updates
+            if json {
+                // JSON streaming output
+                println!("{{\"job_id\": \"{}\", \"status\": \"pending\"}}", handle.job_id);
+            } else {
+                println!("Submitting {} job...", job_type);
+                println!("Job ID: {}", handle.job_id);
+                println!("\nWaiting for updates...");
             }
 
-            println!("\nJob submitted (placeholder - not yet implemented)");
-            println!("Job ID: placeholder-job-id");
+            // Use tokio runtime to handle async updates
+            use crate::compute::consumer::JobUpdate;
+            let rt = tokio::runtime::Runtime::new()?;
+            rt.block_on(async {
+                while let Some(update) = handle.next_update().await {
+                    match update {
+                        JobUpdate::StateChange { new_state, .. } => {
+                            if json {
+                                println!("{{\"status\": \"{:?}\"}}", new_state);
+                            } else {
+                                println!("Status: {:?}", new_state);
+                            }
+                        }
+                        JobUpdate::PaymentRequired { amount_msats, bolt11, .. } => {
+                            if json {
+                                println!("{{\"status\": \"payment_required\", \"amount_msats\": {}, \"bolt11\": {}}}",
+                                    amount_msats,
+                                    bolt11.as_ref().map(|b| format!("\"{}\"", b)).unwrap_or("null".to_string())
+                                );
+                            } else {
+                                println!("Payment required: {} msats", amount_msats);
+                                if let Some(bolt11) = bolt11 {
+                                    println!("Invoice: {}", bolt11);
+                                }
+                            }
+                        }
+                        JobUpdate::Processing { provider, extra, .. } => {
+                            if json {
+                                println!("{{\"status\": \"processing\", \"provider\": \"{}\"}}", provider);
+                            } else {
+                                println!("Processing by provider: {}", provider);
+                                if let Some(extra) = extra {
+                                    println!("  {}", extra);
+                                }
+                            }
+                        }
+                        JobUpdate::Partial { content, .. } => {
+                            if json {
+                                println!("{{\"partial\": \"{}\"}}", content.replace('"', "\\\""));
+                            } else {
+                                print!("{}", content);
+                            }
+                        }
+                        JobUpdate::Completed { result, .. } => {
+                            if json {
+                                println!("{{\"status\": \"completed\", \"result\": \"{}\"}}",
+                                    result.replace('"', "\\\""));
+                            } else {
+                                println!("\n\nResult:\n{}", result);
+                            }
+                            break;
+                        }
+                        JobUpdate::Failed { error, .. } => {
+                            if json {
+                                println!("{{\"status\": \"failed\", \"error\": \"{}\"}}",
+                                    error.replace('"', "\\\""));
+                            } else {
+                                println!("\nError: {}", error);
+                            }
+                            break;
+                        }
+                    }
+                }
+            });
+        } else {
+            // Non-streaming mode - just return job ID
+            if json {
+                println!(
+                    "{{\"job_id\": \"{}\", \"status\": \"pending\", \"type\": \"{}\"}}",
+                    handle.job_id, job_type
+                );
+            } else {
+                println!("Job submitted successfully");
+                println!("Job ID: {}", handle.job_id);
+                println!("Type: {}", job_type);
+                if let Some(model) = model {
+                    println!("Model: {}", model);
+                }
+                if let Some(budget) = budget {
+                    println!("Budget: {} sats", budget);
+                }
+                println!("\nNote: Job tracking from relays not yet implemented.");
+                println!("      Use 'status' command to check job status.");
+            }
         }
 
         Ok(())
@@ -458,5 +562,54 @@ mod tests {
             let result = cmd.execute();
             assert!(result.is_ok());
         }
+    }
+
+    #[test]
+    fn test_submit_text_generation() {
+        let cmd = ComputeCommands::Submit {
+            job_type: "text-generation".to_string(),
+            prompt: Some("Hello world".to_string()),
+            file: None,
+            model: Some("llama3".to_string()),
+            budget: Some(100),
+            stream: false,
+            json: false,
+        };
+
+        let result = cmd.execute();
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_submit_json_output() {
+        let cmd = ComputeCommands::Submit {
+            job_type: "summarization".to_string(),
+            prompt: Some("Long text to summarize".to_string()),
+            file: None,
+            model: None,
+            budget: None,
+            stream: false,
+            json: true,
+        };
+
+        let result = cmd.execute();
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_submit_unsupported_job_type() {
+        let cmd = ComputeCommands::Submit {
+            job_type: "unsupported-type".to_string(),
+            prompt: Some("test".to_string()),
+            file: None,
+            model: None,
+            budget: None,
+            stream: false,
+            json: false,
+        };
+
+        let result = cmd.execute();
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("Unknown job type"));
     }
 }
