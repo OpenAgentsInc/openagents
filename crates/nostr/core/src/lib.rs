@@ -54,6 +54,7 @@
 //! - NIP-57: Lightning Zaps (tipping with Lightning payments)
 //! - NIP-58: Badges (badge definitions, awards, and profile display)
 //! - NIP-59: Gift Wrap (encapsulation and metadata obscuring, requires `full` feature)
+//! - NIP-64: Chess (Portable Game Notation)
 //! - NIP-70: Protected Events (author-only publishing with authentication)
 //! - NIP-71: Video Events (video content with metadata)
 //! - NIP-72: Moderated Communities (Reddit-style communities)
@@ -140,6 +141,7 @@ mod nip57;
 mod nip58;
 #[cfg(feature = "full")]
 mod nip59;
+mod nip64;
 mod nip70;
 mod nip71;
 mod nip72;
@@ -504,6 +506,12 @@ pub use nip58::{
 pub use nip59::{
     KIND_GIFT_WRAP, KIND_SEAL, Nip59Error, Rumor, create_gift_wrap, create_seal, gift_wrap,
     random_timestamp, unwrap_gift_wrap, unwrap_gift_wrap_full, unwrap_seal,
+};
+
+// NIP-64: Chess (Portable Game Notation)
+pub use nip64::{
+    CHESS_GAME_KIND, ChessGame, GameResult, Nip64Error, create_alt_description, create_chess_game,
+    create_chess_game_with_tags, is_chess_game_kind,
 };
 
 // NIP-17: Private Direct Messages (requires full feature)
