@@ -712,7 +712,9 @@ pub use nip_sa::{
     TickAction, TickError, TickRequest, TickResult, TickResultContent, TickStatus, TickTrigger,
     KIND_TICK_REQUEST, KIND_TICK_RESULT,
     // Trajectory (kinds:38030, 38031)
-    StepType, TrajectoryEventContent, TrajectorySessionContent, TrajectoryVisibility,
+    StepType, TrajectoryError, TrajectoryEvent, TrajectoryEventContent, TrajectorySession,
+    TrajectorySessionContent, TrajectoryVisibility, KIND_TRAJECTORY_EVENT,
+    KIND_TRAJECTORY_SESSION,
     // Skill (kinds:38020, 38021)
     SkillDeliveryContent, SkillLicenseContent,
 };
