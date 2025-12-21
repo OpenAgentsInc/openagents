@@ -5,6 +5,8 @@
 //! - Event publishing and subscription
 //! - Automatic reconnection
 //! - Connection health monitoring
+//! - Outbox model for intelligent relay selection (NIP-65)
+//! - Local event caching
 //!
 //! # Example
 //!
@@ -39,11 +41,15 @@
 //! }
 //! ```
 
+mod cache;
 mod error;
+mod outbox;
 mod relay;
 mod subscription;
 
+pub use cache::{CacheConfig, EventCache};
 pub use error::{ClientError, Result};
+pub use outbox::{OutboxConfig, OutboxModel};
 pub use relay::{
     ConnectionState, PublishConfirmation, RelayConfig, RelayConnection, RelayMessage,
 };
