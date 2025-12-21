@@ -91,6 +91,29 @@ pub enum ComputeCommands {
     },
 }
 
+/// Format a unix timestamp as a human-readable string
+fn format_timestamp(ts: u64) -> String {
+    use std::time::{Duration, SystemTime, UNIX_EPOCH};
+
+    let timestamp = UNIX_EPOCH + Duration::from_secs(ts);
+    let now = SystemTime::now();
+
+    if let Ok(duration) = now.duration_since(timestamp) {
+        let secs = duration.as_secs();
+        if secs < 60 {
+            format!("{}s ago", secs)
+        } else if secs < 3600 {
+            format!("{}m ago", secs / 60)
+        } else if secs < 86400 {
+            format!("{}h ago", secs / 3600)
+        } else {
+            format!("{}d ago", secs / 86400)
+        }
+    } else {
+        "in future".to_string()
+    }
+}
+
 impl ComputeCommands {
     pub fn execute(&self) -> anyhow::Result<()> {
         match self {
@@ -316,8 +339,14 @@ impl ComputeCommands {
 
         // Create consumer and submit job
         use crate::compute::consumer::Consumer;
+        use crate::compute::db::JobDatabase;
+
         let consumer = Consumer::new();
         let mut handle = consumer.submit_job(request)?;
+
+        // Save job to database for tracking
+        let db = JobDatabase::new(None)?;
+        db.save_job(&handle.info())?;
 
         if stream {
             // Streaming mode - wait for updates
@@ -420,14 +449,58 @@ impl ComputeCommands {
     }
 
     fn status(&self, job_id: &str, json: bool) -> anyhow::Result<()> {
-        if json {
-            println!("{{\"job_id\": \"{}\", \"status\": \"unknown\"}}", job_id);
+        use crate::compute::db::JobDatabase;
+
+        let db = JobDatabase::new(None)?;
+        let job_opt = db.get_job(job_id)?;
+
+        if let Some(job) = job_opt {
+            if json {
+                let json_str = serde_json::to_string_pretty(&job)?;
+                println!("{}", json_str);
+            } else {
+                println!("Job Status");
+                println!("==========\n");
+                println!("Job ID: {}", job.job_id);
+                println!("State: {:?}", job.state);
+                println!("Submitted: {}", format_timestamp(job.submitted_at));
+
+                if let Some(provider) = &job.provider {
+                    println!("Provider: {}", provider);
+                }
+
+                if let Some(amount) = job.payment_amount {
+                    println!("Payment: {} msats", amount);
+                    if let Some(ref bolt11) = job.payment_bolt11 {
+                        println!("Invoice: {}", bolt11);
+                    }
+                }
+
+                if let Some(completed) = job.completed_at {
+                    println!("Completed: {}", format_timestamp(completed));
+                }
+
+                if let Some(ref result) = job.result {
+                    println!("\nResult:");
+                    println!("{}", result);
+                }
+
+                if let Some(ref error) = job.error {
+                    println!("\nError:");
+                    println!("{}", error);
+                }
+            }
         } else {
-            println!("Job Status");
-            println!("==========\n");
-            println!("Job ID: {}", job_id);
-            println!("Status: Unknown (tracking not yet implemented)");
+            if json {
+                println!("{{\"error\": \"Job not found\"}}");
+            } else {
+                println!("Job ID: {}", job_id);
+                println!("Status: Not found");
+                println!("\nNote: Job may not have been submitted from this machine");
+                println!("      or database tracking may not have been enabled.");
+            }
         }
+
         Ok(())
     }
 
@@ -438,18 +511,70 @@ impl ComputeCommands {
     }
 
     fn history(&self, json: bool, limit: Option<usize>) -> anyhow::Result<()> {
+        use crate::compute::db::JobDatabase;
+
+        let db = JobDatabase::new(None)?;
+        let jobs = db.get_jobs(None, limit)?;
+
         if json {
-            println!("{{\"jobs\": []}}");
+            let json_data = serde_json::json!({
+                "jobs": jobs,
+                "count": jobs.len(),
+            });
+            println!("{}", serde_json::to_string_pretty(&json_data)?);
         } else {
             println!("Job History");
             println!("===========\n");
 
             if let Some(limit) = limit {
-                println!("Showing last {} jobs", limit);
+                println!("Showing last {} jobs\n", limit);
             }
 
-            println!("No jobs found (tracking not yet implemented)");
+            if jobs.is_empty() {
+                println!("No jobs found");
+                println!("\nJobs are tracked when submitted via this CLI.");
+            } else {
+                // Print table header
+                println!(
+                    "{:<20} {:<15} {:<20} {:<10}",
+                    "Job ID", "State", "Submitted", "Provider"
+                );
+                println!("{}", "-".repeat(70));
+
+                // Print jobs
+                for job in &jobs {
+                    let job_id_short = if job.job_id.len() > 20 {
+                        format!("{}...", &job.job_id[..17])
+                    } else {
+                        job.job_id.clone()
+                    };
+
+                    let provider = job
+                        .provider
+                        .as_ref()
+                        .map(|p| {
+                            if p.len() > 10 {
+                                format!("{}...", &p[..7])
+                            } else {
+                                p.clone()
+                            }
+                        })
+                        .unwrap_or_else(|| "-".to_string());
+
+                    println!(
+                        "{:<20} {:<15} {:<20} {:<10}",
+                        job_id_short,
+                        format!("{:?}", job.state),
+                        format_timestamp(job.submitted_at),
+                        provider
+                    );
+                }
+
+                println!("\nTotal: {} jobs", jobs.len());
+                println!("\nUse 'status <job-id>' for full job details");
+            }
         }
+
         Ok(())
     }
 }
