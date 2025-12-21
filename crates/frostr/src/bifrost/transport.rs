@@ -2,6 +2,7 @@
 
 use crate::bifrost::BifrostMessage;
 use crate::{Error, Result};
+use nostr_client::{PoolConfig, RelayPool};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -75,6 +76,8 @@ struct PendingRequest {
 pub struct NostrTransport {
     /// Configuration
     config: TransportConfig,
+    /// Relay pool for Nostr connections
+    relay_pool: Option<Arc<RelayPool>>,
     /// Pending requests (by session ID)
     pending: Arc<RwLock<HashMap<String, PendingRequest>>>,
     /// Received messages (deduplicated by message ID)
@@ -83,24 +86,62 @@ pub struct NostrTransport {
     incoming_tx: mpsc::Sender<BifrostMessage>,
     /// Incoming message receiver
     incoming_rx: Arc<RwLock<mpsc::Receiver<BifrostMessage>>>,
+    /// Connection state tracking
+    connected: Arc<RwLock<bool>>,
 }
 
 impl NostrTransport {
-    /// Create a new Nostr transport
+    /// Create a new Nostr transport (not yet connected)
     pub fn new(config: TransportConfig) -> Result<Self> {
         let (incoming_tx, incoming_rx) = mpsc::channel(100);
 
         Ok(Self {
             config,
+            relay_pool: None,
             pending: Arc::new(RwLock::new(HashMap::new())),
             seen_messages: Arc::new(RwLock::new(HashMap::new())),
             incoming_tx,
             incoming_rx: Arc::new(RwLock::new(incoming_rx)),
+            connected: Arc::new(RwLock::new(false)),
         })
+    }
+
+    /// Connect to Nostr relays and start listening for messages
+    pub async fn connect(&mut self) -> Result<()> {
+        // Create relay pool with default config
+        let pool_config = PoolConfig::default();
+        let pool = Arc::new(RelayPool::new(pool_config));
+
+        // Add all configured relays
+        for relay_url in &self.config.relays {
+            pool.add_relay(relay_url).await
+                .map_err(|e| Error::Transport(format!("Failed to add relay {}: {}", relay_url, e)))?;
+        }
+
+        // Connect to all relays
+        pool.connect_all().await
+            .map_err(|e| Error::Transport(format!("Failed to connect to relays: {}", e)))?;
+
+        self.relay_pool = Some(pool.clone());
+
+        // Mark as connected
+        *self.connected.write().await = true;
+
+        // TODO: Start subscription listener in background task
+
+        Ok(())
     }
 
     /// Broadcast a Bifrost message to threshold peers
     pub async fn broadcast(&self, message: &BifrostMessage) -> Result<()> {
+        // Check if connected
+        if !*self.connected.read().await {
+            return Err(Error::Transport("Not connected to relays".to_string()));
+        }
+
+        let pool = self.relay_pool.as_ref()
+            .ok_or_else(|| Error::Transport("Relay pool not initialized".to_string()))?;
+
         // Serialize message
         let message_json = serde_json::to_string(message)
             .map_err(|e| Error::Encoding(format!("failed to serialize message: {}", e)))?;
@@ -116,10 +157,41 @@ impl NostrTransport {
                 .as_secs(),
         };
 
-        // For now, just store in memory (TODO: actual Nostr publishing)
-        // This is a mock implementation for testing
-        let _envelope_json = serde_json::to_string(&envelope)
+        // Serialize envelope
+        let envelope_json = serde_json::to_string(&envelope)
             .map_err(|e| Error::Encoding(format!("failed to serialize envelope: {}", e)))?;
+
+        // Build Nostr event
+        // TODO: Implement NIP-44 encryption for content
+        // For now, use plaintext (will be encrypted in future iteration)
+        let mut tags = Vec::new();
+
+        // Add p-tags for each peer
+        for peer_pk in &self.config.peer_pubkeys {
+            let peer_hex = hex::encode(peer_pk);
+            tags.push(vec!["p".to_string(), peer_hex]);
+        }
+
+        // Add protocol tag
+        tags.push(vec!["protocol".to_string(), "bifrost".to_string()]);
+
+        // Add message type tag
+        tags.push(vec!["msg_type".to_string(), envelope.msg_type.clone()]);
+
+        let event_template = nostr::EventTemplate {
+            created_at: envelope.timestamp,
+            kind: self.config.event_kind,
+            tags,
+            content: envelope_json,
+        };
+
+        // Sign event
+        let event = nostr::finalize_event(&event_template, &self.config.secret_key)
+            .map_err(|e| Error::Signing(format!("Failed to sign event: {}", e)))?;
+
+        // Publish to relay pool
+        pool.publish(&event).await
+            .map_err(|e| Error::Transport(format!("Failed to publish to relays: {}", e)))?;
 
         Ok(())
     }
@@ -311,15 +383,17 @@ impl NostrTransport {
     }
 
     /// Check connection health
-    pub fn is_connected(&self) -> bool {
-        // TODO: Implement actual relay connection check
-        true
+    pub async fn is_connected(&self) -> bool {
+        *self.connected.read().await
     }
 
     /// Get list of connected relays
-    pub fn connected_relays(&self) -> Vec<String> {
-        // TODO: Implement actual relay connection tracking
-        self.config.relays.clone()
+    pub async fn connected_relays(&self) -> Vec<String> {
+        if let Some(pool) = &self.relay_pool {
+            pool.connected_relays().await
+        } else {
+            Vec::new()
+        }
     }
 
     /// Get configuration
@@ -345,7 +419,8 @@ mod tests {
     async fn test_transport_new() {
         let config = TransportConfig::default();
         let transport = NostrTransport::new(config).unwrap();
-        assert!(transport.is_connected());
+        // Transport starts disconnected until connect() is called
+        assert!(!transport.is_connected().await);
     }
 
     #[tokio::test]
@@ -360,8 +435,9 @@ mod tests {
             participants: vec![1, 2, 3],
         });
 
+        // Broadcast should fail if not connected
         let result = transport.broadcast(&message).await;
-        assert!(result.is_ok());
+        assert!(result.is_err());
     }
 
     #[tokio::test]
@@ -505,9 +581,8 @@ mod tests {
         };
         let transport = NostrTransport::new(config).unwrap();
 
-        let relays = transport.connected_relays();
-        assert_eq!(relays.len(), 2);
-        assert_eq!(relays[0], "wss://relay1.com");
-        assert_eq!(relays[1], "wss://relay2.com");
+        // Transport is not connected, so no relays
+        let relays = transport.connected_relays().await;
+        assert_eq!(relays.len(), 0);
     }
 }

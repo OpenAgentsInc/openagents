@@ -1961,6 +1961,7 @@ dependencies = [
  "bech32",
  "frost-core",
  "frost-secp256k1",
+ "hex",
  "nostr",
  "nostr-client",
  "rand 0.8.5",

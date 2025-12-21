@@ -65,6 +65,12 @@ pub enum Error {
     #[error("Protocol error: {0}")]
     Protocol(String),
 
+    #[error("Transport error: {0}")]
+    Transport(String),
+
+    #[error("Signing error: {0}")]
+    Signing(String),
+
     #[error("Timeout waiting for threshold peers")]
     Timeout,
 
