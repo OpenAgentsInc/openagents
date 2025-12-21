@@ -126,6 +126,7 @@ A good directive body should include:
 | d-001 | Integrate Breez Spark SDK for Bitcoin Payments | Payments |
 | d-002 | Implement 100% of Nostr Protocol | Protocol |
 | d-003 | OpenAgents Wallet - Complete Identity & Payment Solution | Application |
+| d-004 | Continual Constant Improvement of Autopilot | Meta/Infrastructure |
 | d-005 | Build Nostr GitHub Alternative (AgentGit) | Agent Infrastructure |
 
 View details with `cargo autopilot directive show <id>`
