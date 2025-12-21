@@ -68,11 +68,11 @@ pub fn context_inspector(info: ContextInfo) -> Markup {
         div class="p-6 space-y-6" {
             // Header
             div class="flex items-center justify-between" {
-                h1 class="text-2xl font-bold text-gray-900 dark:text-white" { "Context Inspector" }
+                h1 class="text-2xl font-bold text-foreground" { "Context Inspector" }
                 div class="flex items-center gap-2" {
                     (token_usage_badge(&info.token_usage))
                     button
-                        class="px-4 py-2 bg-blue-600 text-white hover:bg-blue-700"
+                        class="px-4 py-2 bg-primary text-primary-foreground hover:bg-primary/90"
                         onclick="compactConversation()"
                     {
                         "Compact Conversation"
@@ -81,9 +81,9 @@ pub fn context_inspector(info: ContextInfo) -> Markup {
             }
 
             // Working Directory
-            div class="bg-white dark:bg-gray-800 shadow p-4" {
-                h2 class="text-lg font-semibold mb-2 text-gray-900 dark:text-white" { "Working Directory" }
-                p class="text-sm text-gray-600 dark:text-gray-400 font-mono" { (info.cwd) }
+            div class="bg-card shadow p-4" {
+                h2 class="text-lg font-semibold mb-2 text-foreground" { "Working Directory" }
+                p class="text-sm text-muted-foreground font-mono" { (info.cwd) }
             }
 
             div class="grid grid-cols-1 lg:grid-cols-2 gap-6" {
@@ -119,23 +119,23 @@ pub fn context_inspector(info: ContextInfo) -> Markup {
             id="compact-dialog"
             class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
         {
-            div class="bg-white dark:bg-gray-800 p-6 max-w-md" {
-                h3 class="text-lg font-semibold mb-4 text-gray-900 dark:text-white" {
+            div class="bg-card p-6 max-w-md" {
+                h3 class="text-lg font-semibold mb-4 text-foreground" {
                     "Compact Conversation?"
                 }
-                p class="text-gray-600 dark:text-gray-400 mb-4" {
+                p class="text-muted-foreground mb-4" {
                     "This will remove older messages and tool results to free up context space. "
                     "The conversation will be summarized."
                 }
                 div class="flex gap-2 justify-end" {
                     button
-                        class="px-4 py-2 border border-gray-300 hover:bg-gray-50"
+                        class="px-4 py-2 border border-border hover:bg-muted"
                         onclick="closeCompactDialog()"
                     {
                         "Cancel"
                     }
                     button
-                        class="px-4 py-2 bg-red-600 text-white hover:bg-red-700"
+                        class="px-4 py-2 bg-destructive text-destructive-foreground hover:bg-destructive/90"
                         onclick="executeCompact()"
                     {
                         "Compact"
@@ -176,8 +176,8 @@ function toggleDirectory(path) {
 /// Git status panel
 fn git_status_panel(status: Option<GitStatus>) -> Markup {
     html! {
-        div class="bg-white dark:bg-gray-800 shadow p-4" {
-            h2 class="text-lg font-semibold mb-4 text-gray-900 dark:text-white flex items-center gap-2" {
+        div class="bg-card shadow p-4" {
+            h2 class="text-lg font-semibold mb-4 text-foreground flex items-center gap-2" {
                 svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20" {
                     path d="M10 2a8 8 0 100 16 8 8 0 000-16zM9 5a1 1 0 112 0v4a1 1 0 11-2 0V5zm1 9a1 1 0 100-2 1 1 0 000 2z" {}
                 }
@@ -188,27 +188,27 @@ fn git_status_panel(status: Option<GitStatus>) -> Markup {
                 div class="space-y-3" {
                     // Branch info
                     div class="flex items-center gap-2" {
-                        span class="text-sm font-medium text-gray-600 dark:text-gray-400" { "Branch:" }
-                        code class="text-sm bg-gray-100 dark:bg-gray-700 px-2 py-1" {
+                        span class="text-sm font-medium text-muted-foreground" { "Branch:" }
+                        code class="text-sm bg-muted px-2 py-1" {
                             (git.branch)
                         }
                         @if git.ahead > 0 {
-                            span class="text-xs text-green-600" { "↑" (git.ahead) }
+                            span class="text-xs text-accent" { "↑" (git.ahead) }
                         }
                         @if git.behind > 0 {
-                            span class="text-xs text-red-600" { "↓" (git.behind) }
+                            span class="text-xs text-destructive" { "↓" (git.behind) }
                         }
                     }
 
                     // Modified files
                     @if !git.modified_files.is_empty() {
                         div {
-                            span class="text-sm font-medium text-yellow-600" {
+                            span class="text-sm font-medium text-accent" {
                                 "Modified (" (git.modified_files.len()) ")"
                             }
                             ul class="mt-1 space-y-1" {
                                 @for file in git.modified_files.iter().take(5) {
-                                    li class="text-sm text-gray-600 dark:text-gray-400 font-mono truncate" {
+                                    li class="text-sm text-muted-foreground font-mono truncate" {
                                         (file)
                                     }
                                 }
@@ -219,12 +219,12 @@ fn git_status_panel(status: Option<GitStatus>) -> Markup {
                     // Added files
                     @if !git.added_files.is_empty() {
                         div {
-                            span class="text-sm font-medium text-green-600" {
+                            span class="text-sm font-medium text-accent" {
                                 "Added (" (git.added_files.len()) ")"
                             }
                             ul class="mt-1 space-y-1" {
                                 @for file in git.added_files.iter().take(5) {
-                                    li class="text-sm text-gray-600 dark:text-gray-400 font-mono truncate" {
+                                    li class="text-sm text-muted-foreground font-mono truncate" {
                                         (file)
                                     }
                                 }
@@ -235,12 +235,12 @@ fn git_status_panel(status: Option<GitStatus>) -> Markup {
                     // Deleted files
                     @if !git.deleted_files.is_empty() {
                         div {
-                            span class="text-sm font-medium text-red-600" {
+                            span class="text-sm font-medium text-destructive" {
                                 "Deleted (" (git.deleted_files.len()) ")"
                             }
                             ul class="mt-1 space-y-1" {
                                 @for file in git.deleted_files.iter().take(5) {
-                                    li class="text-sm text-gray-600 dark:text-gray-400 font-mono truncate" {
+                                    li class="text-sm text-muted-foreground font-mono truncate" {
                                         (file)
                                     }
                                 }
@@ -251,21 +251,21 @@ fn git_status_panel(status: Option<GitStatus>) -> Markup {
                     // Recent commits
                     @if !git.commits.is_empty() {
                         div class="mt-4" {
-                            h3 class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2" {
+                            h3 class="text-sm font-medium text-foreground mb-2" {
                                 "Recent Commits"
                             }
                             ul class="space-y-2" {
                                 @for commit in git.commits.iter() {
                                     li class="text-xs" {
                                         div class="flex items-start gap-2" {
-                                            code class="text-blue-600 dark:text-blue-400" {
+                                            code class="text-primary" {
                                                 (commit.hash[..7].to_string())
                                             }
-                                            span class="text-gray-600 dark:text-gray-400 flex-1" {
+                                            span class="text-muted-foreground flex-1" {
                                                 (commit.message)
                                             }
                                         }
-                                        div class="text-gray-500 ml-12" {
+                                        div class="text-muted-foreground ml-12" {
                                             (commit.author) " • " (commit.timestamp)
                                         }
                                     }
@@ -275,7 +275,7 @@ fn git_status_panel(status: Option<GitStatus>) -> Markup {
                     }
                 }
             } @else {
-                p class="text-sm text-gray-500 dark:text-gray-400" {
+                p class="text-sm text-muted-foreground" {
                     "Not a git repository"
                 }
             }
@@ -286,35 +286,35 @@ fn git_status_panel(status: Option<GitStatus>) -> Markup {
 /// Token usage panel with gauge
 fn token_usage_panel(usage: &TokenUsage) -> Markup {
     let color_class = if usage.percent >= 80.0 {
-        "text-red-600"
+        "text-destructive"
     } else if usage.percent >= 60.0 {
-        "text-yellow-600"
+        "text-accent"
     } else {
-        "text-green-600"
+        "text-accent"
     };
 
     html! {
-        div class="bg-white dark:bg-gray-800 shadow p-4" {
-            h2 class="text-lg font-semibold mb-4 text-gray-900 dark:text-white" { "Token Usage" }
+        div class="bg-card shadow p-4" {
+            h2 class="text-lg font-semibold mb-4 text-foreground" { "Token Usage" }
 
             // Gauge
             div class="mb-4" {
                 div class="flex justify-between mb-2" {
-                    span class="text-sm font-medium text-gray-700 dark:text-gray-300" {
+                    span class="text-sm font-medium text-foreground" {
                         (format!("{} / {} tokens", usage.used, usage.max))
                     }
                     span class={"text-sm font-bold " (color_class)} {
                         (format!("{:.1}%", usage.percent))
                     }
                 }
-                div class="w-full bg-gray-200 dark:bg-gray-700 h-4" {
+                div class="w-full bg-muted h-4" {
                     div
                         class={"h-4 transition-all " @if usage.percent >= 80.0 {
-                            "bg-red-600"
+                            "bg-destructive"
                         } @else if usage.percent >= 60.0 {
-                            "bg-yellow-500"
+                            "bg-accent"
                         } @else {
-                            "bg-green-500"
+                            "bg-accent"
                         }}
                         style=(format!("width: {}%", usage.percent.min(100.0)))
                     {}
@@ -323,14 +323,14 @@ fn token_usage_panel(usage: &TokenUsage) -> Markup {
 
             // Warning thresholds
             @if usage.percent >= 80.0 {
-                div class="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 mb-4" {
-                    p class="text-sm text-red-800 dark:text-red-300" {
+                div class="p-3 bg-destructive/10 border border-destructive mb-4" {
+                    p class="text-sm text-destructive" {
                         "⚠️ Critical: Context nearly full. Consider compacting conversation."
                     }
                 }
             } @else if usage.percent >= 60.0 {
-                div class="p-3 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 mb-4" {
-                    p class="text-sm text-yellow-800 dark:text-yellow-300" {
+                div class="p-3 bg-accent/10 border border-accent mb-4" {
+                    p class="text-sm text-accent" {
                         "⚠️ Warning: Approaching context limit."
                     }
                 }
@@ -340,8 +340,8 @@ fn token_usage_panel(usage: &TokenUsage) -> Markup {
             div class="space-y-2" {
                 @for item in &usage.breakdown {
                     div class="flex justify-between text-sm" {
-                        span class="text-gray-600 dark:text-gray-400" { (item.source) }
-                        span class="text-gray-900 dark:text-white font-mono" {
+                        span class="text-muted-foreground" { (item.source) }
+                        span class="text-foreground font-mono" {
                             (format!("{} tokens", item.tokens))
                         }
                     }
@@ -354,11 +354,11 @@ fn token_usage_panel(usage: &TokenUsage) -> Markup {
 /// Token usage badge for header
 fn token_usage_badge(usage: &TokenUsage) -> Markup {
     let (bg_class, text_class) = if usage.percent >= 80.0 {
-        ("bg-red-100 dark:bg-red-900/20", "text-red-700 dark:text-red-300")
+        ("bg-destructive/10", "text-destructive")
     } else if usage.percent >= 60.0 {
-        ("bg-yellow-100 dark:bg-yellow-900/20", "text-yellow-700 dark:text-yellow-300")
+        ("bg-accent/10", "text-accent")
     } else {
-        ("bg-green-100 dark:bg-green-900/20", "text-green-700 dark:text-green-300")
+        ("bg-accent/10", "text-accent")
     };
 
     html! {
@@ -373,17 +373,17 @@ fn token_usage_badge(usage: &TokenUsage) -> Markup {
 /// CLAUDE.md panel
 fn claude_md_panel(content: Option<String>) -> Markup {
     html! {
-        div class="bg-white dark:bg-gray-800 shadow p-4" {
-            h2 class="text-lg font-semibold mb-4 text-gray-900 dark:text-white" { "CLAUDE.md" }
+        div class="bg-card shadow p-4" {
+            h2 class="text-lg font-semibold mb-4 text-foreground" { "CLAUDE.md" }
 
             @if let Some(md) = content {
                 div class="prose prose-sm dark:prose-invert max-w-none" {
-                    div class="bg-gray-50 dark:bg-gray-900 p-4 font-mono text-sm overflow-x-auto" {
+                    div class="bg-muted p-4 font-mono text-sm overflow-x-auto" {
                         pre { (md) }
                     }
                 }
             } @else {
-                p class="text-sm text-gray-500 dark:text-gray-400 italic" {
+                p class="text-sm text-muted-foreground italic" {
                     "No CLAUDE.md file found in working directory"
                 }
             }
@@ -394,8 +394,8 @@ fn claude_md_panel(content: Option<String>) -> Markup {
 /// Directory tree panel
 fn directory_tree_panel(root: &FileEntry) -> Markup {
     html! {
-        div class="bg-white dark:bg-gray-800 shadow p-4" {
-            h2 class="text-lg font-semibold mb-4 text-gray-900 dark:text-white" { "Directory Structure" }
+        div class="bg-card shadow p-4" {
+            h2 class="text-lg font-semibold mb-4 text-foreground" { "Directory Structure" }
 
             div class="font-mono text-sm" {
                 (render_file_tree(root, 0))
@@ -410,21 +410,21 @@ fn render_file_tree(entry: &FileEntry, depth: usize) -> Markup {
 
     html! {
         div {
-            div class="flex items-center gap-2 py-1 hover:bg-gray-100 dark:hover:bg-gray-700 px-2" {
-                span class="text-gray-500" { (indent) }
+            div class="flex items-center gap-2 py-1 hover:bg-muted px-2" {
+                span class="text-muted-foreground" { (indent) }
 
                 @if entry.is_dir {
                     button
-                        class="text-blue-600 dark:text-blue-400 hover:underline cursor-pointer"
+                        class="text-primary hover:underline cursor-pointer"
                         onclick=(format!("toggleDirectory('{}')", entry.path.replace("'", "\\'")))
                     {
                         "📁 " (entry.name)
                     }
                 } @else {
-                    span class="text-gray-700 dark:text-gray-300" {
+                    span class="text-foreground" {
                         (file_icon(&entry.name)) " " (entry.name)
                     }
-                    span class="text-gray-500 text-xs ml-auto" {
+                    span class="text-muted-foreground text-xs ml-auto" {
                         (format_bytes(entry.size))
                     }
                 }
@@ -474,58 +474,58 @@ fn format_bytes(bytes: u64) -> String {
 /// Context breakdown panel
 fn context_breakdown_panel(usage: &TokenUsage) -> Markup {
     html! {
-        div class="bg-white dark:bg-gray-800 shadow p-4" {
-            h2 class="text-lg font-semibold mb-4 text-gray-900 dark:text-white" {
+        div class="bg-card shadow p-4" {
+            h2 class="text-lg font-semibold mb-4 text-foreground" {
                 "Context Size Breakdown"
             }
 
             div class="overflow-x-auto" {
-                table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700" {
-                    thead class="bg-gray-50 dark:bg-gray-900" {
+                table class="min-w-full divide-y divide-border" {
+                    thead class="bg-muted" {
                         tr {
-                            th class="px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider" {
+                            th class="px-4 py-2 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider" {
                                 "Source"
                             }
-                            th class="px-4 py-2 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider" {
+                            th class="px-4 py-2 text-right text-xs font-medium text-muted-foreground uppercase tracking-wider" {
                                 "Tokens"
                             }
-                            th class="px-4 py-2 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider" {
+                            th class="px-4 py-2 text-right text-xs font-medium text-muted-foreground uppercase tracking-wider" {
                                 "Bytes"
                             }
-                            th class="px-4 py-2 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider" {
+                            th class="px-4 py-2 text-right text-xs font-medium text-muted-foreground uppercase tracking-wider" {
                                 "% of Total"
                             }
                         }
                     }
-                    tbody class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700" {
+                    tbody class="bg-card divide-y divide-border" {
                         @for item in &usage.breakdown {
-                            tr class="hover:bg-gray-50 dark:hover:bg-gray-700" {
-                                td class="px-4 py-2 text-sm text-gray-900 dark:text-white" {
+                            tr class="hover:bg-muted" {
+                                td class="px-4 py-2 text-sm text-foreground" {
                                     (item.source)
                                 }
-                                td class="px-4 py-2 text-sm text-gray-600 dark:text-gray-400 text-right font-mono" {
+                                td class="px-4 py-2 text-sm text-muted-foreground text-right font-mono" {
                                     (format!("{}", item.tokens))
                                 }
-                                td class="px-4 py-2 text-sm text-gray-600 dark:text-gray-400 text-right font-mono" {
+                                td class="px-4 py-2 text-sm text-muted-foreground text-right font-mono" {
                                     (format_bytes(item.bytes as u64))
                                 }
-                                td class="px-4 py-2 text-sm text-gray-600 dark:text-gray-400 text-right" {
+                                td class="px-4 py-2 text-sm text-muted-foreground text-right" {
                                     (format!("{:.1}%", (item.tokens as f64 / usage.used as f64) * 100.0))
                                 }
                             }
                         }
                         // Total row
-                        tr class="bg-gray-100 dark:bg-gray-900 font-semibold" {
-                            td class="px-4 py-2 text-sm text-gray-900 dark:text-white" {
+                        tr class="bg-muted font-semibold" {
+                            td class="px-4 py-2 text-sm text-foreground" {
                                 "Total"
                             }
-                            td class="px-4 py-2 text-sm text-gray-900 dark:text-white text-right font-mono" {
+                            td class="px-4 py-2 text-sm text-foreground text-right font-mono" {
                                 (format!("{}", usage.used))
                             }
-                            td class="px-4 py-2 text-sm text-gray-900 dark:text-white text-right font-mono" {
+                            td class="px-4 py-2 text-sm text-foreground text-right font-mono" {
                                 (format_bytes(usage.breakdown.iter().map(|b| b.bytes as u64).sum()))
                             }
-                            td class="px-4 py-2 text-sm text-gray-900 dark:text-white text-right" {
+                            td class="px-4 py-2 text-sm text-foreground text-right" {
                                 "100%"
                             }
                         }
