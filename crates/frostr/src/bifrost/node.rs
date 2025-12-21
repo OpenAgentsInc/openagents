@@ -1,6 +1,7 @@
 //! Bifrost node implementation
 
 use crate::bifrost::peer::PeerManager;
+use crate::bifrost::transport::{NostrTransport, TransportConfig};
 use crate::Result;
 
 /// Timeout configuration for different operations
@@ -59,6 +60,10 @@ pub struct BifrostConfig {
     pub timeouts: TimeoutConfig,
     /// Retry configuration
     pub retries: RetryConfig,
+    /// Secret key for Nostr transport (32 bytes)
+    pub secret_key: Option<[u8; 32]>,
+    /// Peer public keys for threshold operations
+    pub peer_pubkeys: Vec<[u8; 32]>,
 }
 
 impl Default for BifrostConfig {
@@ -71,6 +76,8 @@ impl Default for BifrostConfig {
             ],
             timeouts: TimeoutConfig::default(),
             retries: RetryConfig::default(),
+            secret_key: None,
+            peer_pubkeys: Vec::new(),
         }
     }
 }
@@ -81,6 +88,8 @@ pub struct BifrostNode {
     config: BifrostConfig,
     /// Peer manager for tracking threshold peers
     peer_manager: PeerManager,
+    /// Nostr transport for message publishing (optional until initialized)
+    transport: Option<NostrTransport>,
 }
 
 impl BifrostNode {
@@ -93,9 +102,25 @@ impl BifrostNode {
     pub fn with_config(config: BifrostConfig) -> Result<Self> {
         let peer_manager = PeerManager::new(config.peer_timeout);
 
+        // Create transport if secret key is provided
+        let transport = if let Some(secret_key) = config.secret_key {
+            let transport_config = TransportConfig {
+                relays: config.default_relays.clone(),
+                secret_key,
+                peer_pubkeys: config.peer_pubkeys.clone(),
+                event_kind: crate::bifrost::transport::BIFROST_EVENT_KIND,
+                message_timeout: config.timeouts.default_timeout_ms / 1000,
+                max_retries: config.retries.max_retries,
+            };
+            Some(NostrTransport::new(transport_config)?)
+        } else {
+            None
+        };
+
         Ok(Self {
             config,
             peer_manager,
+            transport,
         })
     }
 
@@ -122,6 +147,16 @@ impl BifrostNode {
     /// Get configuration reference
     pub fn config(&self) -> &BifrostConfig {
         &self.config
+    }
+
+    /// Get transport reference
+    pub fn transport(&self) -> Option<&NostrTransport> {
+        self.transport.as_ref()
+    }
+
+    /// Check if transport is initialized
+    pub fn has_transport(&self) -> bool {
+        self.transport.is_some()
     }
 
     /// Ping a peer to check connectivity
@@ -160,15 +195,28 @@ impl BifrostNode {
     /// 3. Aggregates partial signatures into final signature
     /// 4. Broadcasts SignResult to all participants
     ///
-    /// Note: This is a coordinator-side stub. Full implementation requires:
-    /// - NostrTransport integration for message publishing
-    /// - Access to local FrostShare for aggregation
-    /// - Session management for correlating requests/responses
+    /// Requires:
+    /// - NostrTransport must be initialized (secret_key in config)
+    /// - Local FrostShare for signing (to be added in future issue)
     pub async fn sign(&self, _event_hash: &[u8; 32]) -> Result<[u8; 64]> {
+        // Check if transport is available
+        let _transport = self.transport.as_ref().ok_or_else(|| {
+            crate::Error::Protocol(
+                "NostrTransport not initialized. Provide secret_key in BifrostConfig.".into()
+            )
+        })?;
+
+        // Full implementation will:
+        // 1. Generate signing nonces (round1_commit) using local FrostShare
+        // 2. Create SignRequest with nonce commitment and session ID
+        // 3. Use transport.publish_and_wait() to broadcast and collect responses
+        // 4. Aggregate partial signatures using SigningAggregator
+        // 5. Broadcast SignResult with final signature
+        // 6. Return 64-byte signature
+
         Err(crate::Error::Protocol(
-            "Sign operation requires NostrTransport integration and FrostShare. \
-             This will be implemented when BifrostNode is extended with transport \
-             and local share management.".into()
+            "Sign operation requires FrostShare integration. \
+             Transport is ready but full signing flow not yet implemented.".into()
         ))
     }
 
@@ -179,10 +227,21 @@ impl BifrostNode {
     /// 2. Collects k-of-n EcdhResponse messages
     /// 3. Aggregates partial ECDH results into shared secret
     ///
-    /// Note: This is currently not implemented because threshold ECDH
-    /// requires multiplicative secret sharing which FROST shares don't
-    /// directly support. See crate::ecdh module documentation for details.
+    /// Requires:
+    /// - NostrTransport must be initialized (secret_key in config)
+    /// - Threshold ECDH implementation (currently not supported)
+    ///
+    /// Note: Threshold ECDH requires multiplicative secret sharing which
+    /// FROST shares don't directly support. See crate::ecdh module docs.
     pub async fn ecdh(&self, _peer_pubkey: &[u8; 32]) -> Result<[u8; 32]> {
+        // Check if transport is available
+        let _transport = self.transport.as_ref().ok_or_else(|| {
+            crate::Error::Protocol(
+                "NostrTransport not initialized. Provide secret_key in BifrostConfig.".into()
+            )
+        })?;
+
+        // Transport is ready, but ECDH aggregation not implemented
         Err(crate::Error::Protocol(
             "Threshold ECDH not yet implemented. FROST shares require \
              multiplicative threshold ECDH. See crate::ecdh documentation.".into()
@@ -237,6 +296,8 @@ mod tests {
             default_relays: vec!["wss://custom.relay.com".to_string()],
             timeouts: TimeoutConfig::default(),
             retries: RetryConfig::default(),
+            secret_key: None,
+            peer_pubkeys: Vec::new(),
         };
 
         let node = BifrostNode::with_config(config).unwrap();
@@ -345,5 +406,132 @@ mod tests {
         // Many attempts should cap at 5000ms
         let delay = node.calculate_retry_delay(10);
         assert_eq!(delay.as_millis(), 5000);
+    }
+
+    #[test]
+    fn test_node_without_transport() {
+        let node = BifrostNode::new().unwrap();
+
+        // Node without secret_key should have no transport
+        assert!(!node.has_transport());
+        assert!(node.transport().is_none());
+    }
+
+    #[test]
+    fn test_node_with_transport() {
+        let mut config = BifrostConfig::default();
+        config.secret_key = Some([0x42; 32]);
+        config.peer_pubkeys = vec![[0x01; 32], [0x02; 32], [0x03; 32]];
+
+        let node = BifrostNode::with_config(config).unwrap();
+
+        // Node with secret_key should have transport
+        assert!(node.has_transport());
+        assert!(node.transport().is_some());
+
+        let transport = node.transport().unwrap();
+        assert_eq!(transport.config().relays.len(), 2); // Default relays
+        assert_eq!(transport.config().peer_pubkeys.len(), 3);
+    }
+
+    #[test]
+    fn test_transport_config_mapping() {
+        let mut config = BifrostConfig::default();
+        config.secret_key = Some([0x99; 32]);
+        config.default_relays = vec![
+            "wss://relay1.com".to_string(),
+            "wss://relay2.com".to_string(),
+            "wss://relay3.com".to_string(),
+        ];
+        config.timeouts.default_timeout_ms = 60000; // 60 seconds
+        config.retries.max_retries = 5;
+
+        let node = BifrostNode::with_config(config).unwrap();
+        let transport = node.transport().unwrap();
+
+        // Verify transport config matches node config
+        assert_eq!(transport.config().relays.len(), 3);
+        assert_eq!(transport.config().message_timeout, 60); // Converted to seconds
+        assert_eq!(transport.config().max_retries, 5);
+    }
+
+    #[tokio::test]
+    async fn test_sign_requires_transport() {
+        let node = BifrostNode::new().unwrap();
+        let event_hash = [0x42; 32];
+
+        // Should fail because no transport
+        let result = node.sign(&event_hash).await;
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("NostrTransport not initialized"));
+    }
+
+    #[tokio::test]
+    async fn test_sign_with_transport_not_fully_implemented() {
+        let mut config = BifrostConfig::default();
+        config.secret_key = Some([0x42; 32]);
+
+        let node = BifrostNode::with_config(config).unwrap();
+        let event_hash = [0x42; 32];
+
+        // Should fail because FrostShare not integrated yet
+        let result = node.sign(&event_hash).await;
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("FrostShare integration"));
+    }
+
+    #[tokio::test]
+    async fn test_ecdh_requires_transport() {
+        let node = BifrostNode::new().unwrap();
+        let peer_pubkey = [0x42; 32];
+
+        // Should fail because no transport
+        let result = node.ecdh(&peer_pubkey).await;
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("NostrTransport not initialized"));
+    }
+
+    #[tokio::test]
+    async fn test_ecdh_with_transport_not_implemented() {
+        let mut config = BifrostConfig::default();
+        config.secret_key = Some([0x42; 32]);
+
+        let node = BifrostNode::with_config(config).unwrap();
+        let peer_pubkey = [0x42; 32];
+
+        // Should fail because threshold ECDH not implemented
+        let result = node.ecdh(&peer_pubkey).await;
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("not yet implemented"));
+    }
+
+    #[test]
+    fn test_config_with_peers_and_key() {
+        let config = BifrostConfig {
+            peer_timeout: 300,
+            default_relays: vec!["wss://relay.test.com".to_string()],
+            timeouts: TimeoutConfig::default(),
+            retries: RetryConfig::default(),
+            secret_key: Some([0xAB; 32]),
+            peer_pubkeys: vec![[0x01; 32], [0x02; 32]],
+        };
+
+        let node = BifrostNode::with_config(config).unwrap();
+
+        assert!(node.has_transport());
+        assert_eq!(node.config().peer_pubkeys.len(), 2);
+        assert_eq!(node.config().secret_key, Some([0xAB; 32]));
     }
 }
