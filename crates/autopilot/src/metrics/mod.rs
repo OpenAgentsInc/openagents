@@ -11,6 +11,8 @@
 //! The metrics enable data-driven optimization of autopilot performance across
 //! 50+ dimensions defined in docs/autopilot/IMPROVEMENT-DIMENSIONS.md.
 
+pub mod baseline;
+
 use anyhow::{Context, Result};
 use chrono::{DateTime, Utc};
 use rusqlite::{params, Connection};

@@ -835,6 +835,57 @@ enum MetricsCommands {
         #[arg(short, long, default_value = "text")]
         format: String,
     },
+
+    /// Baseline management commands
+    #[command(subcommand)]
+    Baseline(BaselineCommands),
+}
+
+#[derive(Subcommand)]
+enum BaselineCommands {
+    /// Update baselines from recent sessions
+    Update {
+        /// Path to metrics database (default: autopilot-metrics.db)
+        #[arg(long)]
+        metrics_db: Option<PathBuf>,
+
+        /// Number of recent sessions to use for baseline calculation
+        #[arg(long, default_value_t = 100)]
+        sessions: usize,
+    },
+
+    /// Show current baselines
+    Show {
+        /// Path to metrics database (default: autopilot-metrics.db)
+        #[arg(long)]
+        metrics_db: Option<PathBuf>,
+
+        /// Output format (json or text)
+        #[arg(short, long, default_value = "text")]
+        format: String,
+    },
+
+    /// Check for regressions against baselines
+    Check {
+        /// Path to metrics database (default: autopilot-metrics.db)
+        #[arg(long)]
+        metrics_db: Option<PathBuf>,
+
+        /// Number of recent sessions to check
+        #[arg(long, default_value_t = 20)]
+        sessions: usize,
+    },
+
+    /// Generate baseline report
+    Report {
+        /// Path to metrics database (default: autopilot-metrics.db)
+        #[arg(long)]
+        metrics_db: Option<PathBuf>,
+
+        /// Output file (default: docs/autopilot/BASELINES.md)
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+    },
 }
 
 #[derive(Subcommand)]
@@ -3748,6 +3799,113 @@ async fn handle_metrics_command(command: MetricsCommands) -> Result<()> {
                         println!("{} {} issues created", "📋".cyan(), report.issues_created.len());
                         println!();
                     }
+                }
+            }
+        }
+        MetricsCommands::Baseline(cmd) => {
+            use autopilot::metrics::baseline::{BaselineCalculator, BaselineComparator, BaselineReportGenerator};
+
+            let db_path = match cmd {
+                BaselineCommands::Update { ref metrics_db, .. } |
+                BaselineCommands::Show { ref metrics_db, .. } |
+                BaselineCommands::Check { ref metrics_db, .. } |
+                BaselineCommands::Report { ref metrics_db, .. } => {
+                    metrics_db.clone().unwrap_or_else(default_db_path)
+                }
+            };
+            let db = MetricsDb::open(&db_path)?;
+
+            match cmd {
+                BaselineCommands::Update { .. } => {
+                    println!("{}", "=".repeat(80));
+                    println!("{} Updating Baselines", "📊".cyan().bold());
+                    println!("{}", "=".repeat(80));
+                    println!();
+
+                    let calculator = BaselineCalculator::new(&db);
+                    let count = calculator.update_all_baselines()?;
+
+                    println!("{} Updated {} baseline metrics", "✅".green(), count);
+                }
+                BaselineCommands::Show { format, .. } => {
+                    use autopilot::metrics::baseline::MetricDimension;
+
+                    println!("{}", "=".repeat(80));
+                    println!("{} Current Baselines", "📊".cyan().bold());
+                    println!("{}", "=".repeat(80));
+                    println!();
+
+                    match format.as_str() {
+                        "json" => {
+                            let mut baselines = std::collections::HashMap::new();
+                            for dimension in MetricDimension::all() {
+                                if let Ok(Some(baseline)) = db.get_baseline(dimension.as_str()) {
+                                    baselines.insert(dimension.as_str(), baseline);
+                                }
+                            }
+                            println!("{}", serde_json::to_string_pretty(&baselines)?);
+                        }
+                        _ => {
+                            for dimension in MetricDimension::all() {
+                                if let Ok(Some(baseline)) = db.get_baseline(dimension.as_str()) {
+                                    println!("{}", dimension.as_str());
+                                    println!("  Mean:    {:.4}", baseline.mean);
+                                    println!("  StdDev:  {:.4}", baseline.stddev);
+                                    println!("  p50:     {:.4}", baseline.p50);
+                                    println!("  p90:     {:.4}", baseline.p90);
+                                    println!("  p99:     {:.4}", baseline.p99);
+                                    println!("  Samples: {}", baseline.sample_count);
+                                    println!();
+                                }
+                            }
+                        }
+                    }
+                }
+                BaselineCommands::Check { sessions, .. } => {
+                    println!("{}", "=".repeat(80));
+                    println!("{} Checking for Regressions", "🔍".cyan().bold());
+                    println!("{}", "=".repeat(80));
+                    println!();
+
+                    let recent_sessions = db.get_recent_sessions(sessions)?;
+                    let comparator = BaselineComparator::new(&db);
+                    let regressions = comparator.detect_regressions(&recent_sessions)?;
+
+                    if regressions.is_empty() {
+                        println!("{} No regressions detected", "✅".green());
+                    } else {
+                        println!("{} {} regressions detected:", "⚠️".yellow(), regressions.len());
+                        println!();
+
+                        for regression in &regressions {
+                            println!("{} {:?} ({:?})", "🔴".red(), regression.dimension, regression.severity);
+                            println!("  Baseline: {:.4}", regression.baseline_value);
+                            println!("  Current:  {:.4}", regression.current_value);
+                            println!("  Change:   {:+.2}%", regression.percent_change);
+                            println!();
+                        }
+                    }
+                }
+                BaselineCommands::Report { output, .. } => {
+                    let generator = BaselineReportGenerator::new(&db);
+                    let report = generator.generate_report()?;
+
+                    let output_path = output.unwrap_or_else(|| {
+                        PathBuf::from("docs/autopilot/BASELINES.md")
+                    });
+
+                    // Ensure parent directory exists
+                    if let Some(parent) = output_path.parent() {
+                        std::fs::create_dir_all(parent)?;
+                    }
+
+                    std::fs::write(&output_path, report)?;
+
+                    println!("{}", "=".repeat(80));
+                    println!("{} Baseline Report Generated", "📝".cyan().bold());
+                    println!("{}", "=".repeat(80));
+                    println!();
+                    println!("  Output: {}", output_path.display());
                 }
             }
         }
