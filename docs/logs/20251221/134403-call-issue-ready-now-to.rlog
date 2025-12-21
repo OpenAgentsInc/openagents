@@ -125,3 +125,43 @@ t!:Bash id=97EoFchh cmd="cargo build --package autopilot 2>&1 | tail -20" → [r
 o: id=97EoFchh → [ok]    Compiling autopilot v0.1.0 (/home/christopherdavid/code/openagents/crates/autopilot)
 a: Excellent! Now let me commit and push these changes: tokens_in=0 tokens_out=4 tokens_cached=117940
 t!:Bash id=69Y4EwpL cmd="git add -A && git diff --cached --stat" → [running] tokens_in=0 tokens_out=97 tokens_cached=117940
+o: id=69Y4EwpL → [ok]  .../20251221/134403-call-issue-ready-now-to.rlog   |  46 ++++++
+t!:Bash id=yLYi4gpG cmd="git commit -m "$(cat <<'EOF'" → [running] tokens_in=0 tokens_out=470 tokens_cached=118224
+o: id=yLYi4gpG → [ok] [main 303e9916f] Implement automated weekly baseline updates from metrics analysis
+t!:mcp__issues__issue_complete id=83vS7xZK  → [running] tokens_in=0 tokens_out=32 tokens_cached=118457
+o: id=83vS7xZK → [ok] Completed issue #431
+t!:mcp__issues__issue_ready id=JoaPcTtj  → [running] tokens_in=0 tokens_out=27 tokens_cached=119218
+o: id=JoaPcTtj → [ok] {
+t!:mcp__issues__issue_claim id=sS3bzM9B  → [running] tokens_in=0 tokens_out=84 tokens_cached=119293
+o: id=sS3bzM9B → [ok] Claimed issue #433
+t!:Glob id=bVxVYKAm pattern="**/trajectory*.rs" → [running] tokens_in=0 tokens_out=91 tokens_cached=119564
+o: id=bVxVYKAm → [ok] No files found
+t!:Bash id=pCPdY4bA cmd="find /home/christopherdavid/code/openagents/cra..." → [running] tokens_in=3 tokens_out=106 tokens_cached=119773
+o: id=pCPdY4bA → [ok] /home/christopherdavid/code/openagents/crates/marketplace/src/cli/trajectories.rs
+t!:Read id=onfe6Mrj file_path=/home/christopherdavid/code/openagents/crates/marketplace/src/trajectories/validate.rs → [running] tokens_in=3 tokens_out=80 tokens_cached=119877
+o: id=onfe6Mrj → [ok]      1→//! Trajectory quality validation
+a: Good! The validation logic exists but needs to be enhanced with actual git commit detection and CI/CD signal extraction. Let me check the collect module: tokens_in=2 tokens_out=1 tokens_cached=120227
+t!:Read id=9QwGB8d8 file_path=/home/christopherdavid/code/openagents/crates/marketplace/src/trajectories/collect.rs → [running] tokens_in=2 tokens_out=128 tokens_cached=120227
+o: id=9QwGB8d8 → [ok]      1→//! Trajectory collection from local AI coding assistant logs
+a: Let me see more of this file to find where git commit detection should be added: tokens_in=2 tokens_out=3 tokens_cached=122603
+t!:Read id=UV8ezzRW file_path=/home/christopherdavid/code/openagents/crates/marketplace/src/trajectories/collect.rs → [running] tokens_in=2 tokens_out=3 tokens_cached=122603
+o: id=UV8ezzRW → [ok]    150→    }
+a: I can see that functions `extract_git_commits` and `detect_ci_results` are being called at lines 209 and 212, but they need to be implemented. Let me check if they exist: tokens_in=1 tokens_out=1 tokens_cached=124587
+t!:Read id=SybknzbA file_path=/home/christopherdavid/code/openagents/crates/marketplace/src/trajectories/collect.rs → [running] tokens_in=1 tokens_out=161 tokens_cached=124587
+o: id=SybknzbA → [ok]    300→                );
+a: Excellent! The git commit extraction and CI/CD detection are already implemented (lines 322-436). This code looks good and comprehensive. Now I need to verify the integration with the rewards syste... tokens_in=1 tokens_out=5 tokens_cached=126804
+t!:Read id=kD1AHpgB file_path=/home/christopherdavid/code/openagents/crates/marketplace/src/trajectories/rewards.rs → [running] tokens_in=1 tokens_out=129 tokens_cached=126804
+o: id=kD1AHpgB → [ok]      1→//! Reward calculation for trajectory contributions
+a: Perfect! The system is already well-implemented with: tokens_in=0 tokens_out=1 tokens_cached=129760
+t!:Bash id=jVYFsAmh cmd="cargo test --package marketplace --lib trajecto..." → [running] tokens_in=0 tokens_out=1 tokens_cached=129760
+o: id=jVYFsAmh → [ok]     Finished `test` profile [optimized + debuginfo] target(s) in 0.19s
+a: Excellent! All 11 trajectory collection tests are passing. Let me also check the validation tests: tokens_in=0 tokens_out=8 tokens_cached=132086
+t!:Bash id=L8kW6H8L cmd="cargo test --package marketplace --lib trajecto..." → [running] tokens_in=0 tokens_out=118 tokens_cached=132086
+o: id=L8kW6H8L → [ok]     Finished `test` profile [optimized + debuginfo] target(s) in 0.18s
+t!:Bash id=e8vrJYoL cmd="cargo test --package marketplace --lib trajecto..." → [running] tokens_in=0 tokens_out=25 tokens_cached=132602
+o: id=e8vrJYoL → [ok]     Finished `test` profile [optimized + debuginfo] target(s) in 0.18s
+a: Perfect! All tests are passing. The implementation is complete and working. Let me create comprehensive documentation showing how the system works: tokens_in=0 tokens_out=1 tokens_cached=132969
+t!:Write id=2jes2Uqa file_path=/home/christopherdavid/code/openagents/crates/marketplace/TRAJECTORY_QUALITY.md → [running] tokens_in=0 tokens_out=2783 tokens_cached=132969
+o: id=2jes2Uqa → [ok] File created successfully at: /home/christopherdavid/code/openagents/crates/marketplace/TRAJECTOR...
+a: Perfect! Now let me commit this documentation and mark the issue as complete: tokens_in=0 tokens_out=1 tokens_cached=133214
+t!:Bash id=UwU5cNUC cmd="git add -A && git diff --cached --stat" → [running] tokens_in=0 tokens_out=99 tokens_cached=133214
