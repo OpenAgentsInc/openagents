@@ -20,6 +20,7 @@ pub mod state;
 pub mod timestamp;
 pub mod tool_patterns;
 pub mod trajectory;
+pub mod trajectory_publisher;
 pub mod ui_renderer;
 
 use chrono::Utc;
@@ -30,6 +31,9 @@ use serde_json::Value;
 use trajectory::{StepType, TokenUsage, Trajectory, TrajectoryResult};
 use rlog::RlogWriter;
 
+/// Callback invoked when session_id becomes available
+pub type SessionIdCallback = Box<dyn FnOnce(&str) + Send>;
+
 /// Collects SdkMessages into a Trajectory
 pub struct TrajectoryCollector {
     trajectory: Trajectory,
@@ -37,6 +41,8 @@ pub struct TrajectoryCollector {
     rlog_writer: Option<RlogWriter>,
     /// Path to the rlog file for header updates
     rlog_path: Option<std::path::PathBuf>,
+    /// Callback invoked when session_id is set
+    session_id_callback: Option<SessionIdCallback>,
 }
 
 impl TrajectoryCollector {
@@ -52,7 +58,16 @@ impl TrajectoryCollector {
             trajectory: Trajectory::new(prompt, model, cwd, repo_sha, branch),
             rlog_writer: None,
             rlog_path: None,
+            session_id_callback: None,
         }
+    }
+
+    /// Set a callback to be invoked when session_id becomes available
+    pub fn on_session_id<F>(&mut self, callback: F)
+    where
+        F: FnOnce(&str) + Send + 'static,
+    {
+        self.session_id_callback = Some(Box::new(callback));
     }
 
     /// Enable streaming rlog output to a file
@@ -101,6 +116,11 @@ impl TrajectoryCollector {
                 // Update the header now that we have the session_id
                 if let (Some(writer), Some(path)) = (&mut self.rlog_writer, &self.rlog_path) {
                     let _ = writer.update_header(path, &self.trajectory);
+                }
+
+                // Invoke session_id callback if set
+                if let Some(callback) = self.session_id_callback.take() {
+                    callback(&init.session_id);
                 }
 
                 self.stream_last_step();
