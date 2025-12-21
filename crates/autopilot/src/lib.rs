@@ -26,6 +26,9 @@ pub mod trajectory;
 pub mod trajectory_publisher;
 pub mod ui_renderer;
 
+#[cfg(test)]
+mod tests;
+
 use chrono::Utc;
 use claude_agent_sdk::{
     SdkAssistantMessage, SdkMessage, SdkResultMessage, SdkSystemMessage, SdkUserMessage,
