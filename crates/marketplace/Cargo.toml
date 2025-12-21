@@ -44,6 +44,7 @@ tracing = "0.1"
 
 # File system walking
 walkdir = "2.5"
+toml.workspace = true
 
 [[bin]]
 name = "marketplace"
