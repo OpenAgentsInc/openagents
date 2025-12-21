@@ -288,3 +288,19 @@ o: id=iCb4yEw5 → [ok]
 t!:mcp__issues__issue_complete id=E6iW8kks  → [running] tokens_in=2 tokens_out=32 tokens_cached=102439
 o: id=E6iW8kks → [ok] Completed issue #452
 t!:Bash id=kH7CziRH cmd="git add -A && git commit -m "$(cat <<'EOF'" → [running] tokens_in=1 tokens_out=24 tokens_cached=102560
+o: id=kH7CziRH → [ok] [main fbc2a3d6e] Fix marketplace data discover stub - return explicit errors
+t!:mcp__issues__issue_ready id=yCXn4M5t  → [running] tokens_in=0 tokens_out=27 tokens_cached=102636
+o: id=yCXn4M5t → [ok] {
+t!:mcp__issues__issue_claim id=rgRM1Z69  → [running] tokens_in=0 tokens_out=83 tokens_cached=103245
+o: id=rgRM1Z69 → [ok] Claimed issue #456
+t!:Read id=SvKgKuhh file_path=/home/christopherdavid/code/openagents/crates/autopilot/src/state.rs → [running] tokens_in=0 tokens_out=25 tokens_cached=103523
+o: id=SvKgKuhh → [ok]    125→        // Wait a moment for connections
+t!:Read id=tNy1JHUw file_path=/home/christopherdavid/code/openagents/crates/autopilot/src/state.rs → [running] tokens_in=0 tokens_out=25 tokens_cached=103623
+o: id=tNy1JHUw → [ok]      1→//! Agent State Management
+t!:Edit id=BvDnJHgJ file_path=/home/christopherdavid/code/openagents/crates/autopilot/src/state.rs → [running] tokens_in=0 tokens_out=374 tokens_cached=104201
+o: id=BvDnJHgJ → [ok] The file /home/christopherdavid/code/openagents/crates/autopilot/src/state.rs has been updated. H...
+t!:Bash id=Wm94AA5F cmd="cargo build --bin openagents 2>&1 | grep -E "(e..." → [running] tokens_in=0 tokens_out=26 tokens_cached=104909
+o: id=Wm94AA5F → [ok] 
+t!:mcp__issues__issue_complete id=eZJ3WNt3  → [running] tokens_in=0 tokens_out=32 tokens_cached=105606
+o: id=eZJ3WNt3 → [ok] Completed issue #456
+t!:Bash id=CnYx9SZn cmd="git add -A && git commit -m "$(cat <<'EOF'" → [running] tokens_in=0 tokens_out=302 tokens_cached=105817
