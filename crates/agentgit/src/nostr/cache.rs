@@ -351,6 +351,40 @@ impl EventCache {
         self.get_events_by_kind(1618, limit)
     }
 
+    /// Get a repository by its identifier (d tag)
+    pub fn get_repository_by_identifier(&self, identifier: &str) -> Result<Option<Event>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT e.id, e.kind, e.pubkey, e.created_at, e.content, e.tags, e.sig
+             FROM events e
+             JOIN repositories r ON e.id = r.event_id
+             WHERE r.identifier = ?1",
+        )?;
+
+        match stmt.query_row(params![identifier], |row| {
+            let tags_json: String = row.get(5)?;
+            let tags: Vec<Vec<String>> = serde_json::from_str(&tags_json)
+                .map_err(|e| rusqlite::Error::FromSqlConversionFailure(
+                    5,
+                    rusqlite::types::Type::Text,
+                    Box::new(e),
+                ))?;
+
+            Ok(Event {
+                id: row.get(0)?,
+                kind: row.get(1)?,
+                pubkey: row.get(2)?,
+                created_at: row.get(3)?,
+                content: row.get(4)?,
+                tags,
+                sig: row.get(6)?,
+            })
+        }) {
+            Ok(event) => Ok(Some(event)),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(e.into()),
+        }
+    }
+
     /// Delete events older than the specified age (in seconds)
     #[allow(dead_code)]
     pub fn delete_old_events(&self, max_age_seconds: i64) -> Result<usize> {

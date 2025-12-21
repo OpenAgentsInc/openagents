@@ -4,7 +4,7 @@ use actix_web::{web, App, HttpResponse, HttpServer};
 use std::sync::Arc;
 
 use crate::nostr::NostrClient;
-use crate::views::home_page_with_repos;
+use crate::views::{home_page_with_repos, repository_detail_page};
 use crate::ws::{ws_handler, WsBroadcaster};
 
 /// Application state shared across handlers
@@ -27,6 +27,7 @@ pub async fn start_server(
         App::new()
             .app_data(state.clone())
             .route("/", web::get().to(index))
+            .route("/repo/{identifier}", web::get().to(repository_detail))
             .route("/ws", web::get().to(ws_route))
     })
     .bind("127.0.0.1:0")?;
@@ -52,6 +53,35 @@ async fn index(state: web::Data<AppState>) -> HttpResponse {
     HttpResponse::Ok()
         .content_type("text/html; charset=utf-8")
         .body(home_page_with_repos(&repositories).into_string())
+}
+
+/// Repository detail page
+async fn repository_detail(
+    state: web::Data<AppState>,
+    path: web::Path<String>,
+) -> HttpResponse {
+    let identifier = path.into_inner();
+
+    // Fetch repository from cache by identifier
+    let repository = match state.nostr_client.get_repository_by_identifier(&identifier).await {
+        Ok(Some(repo)) => repo,
+        Ok(None) => {
+            tracing::warn!("Repository not found: {}", identifier);
+            return HttpResponse::NotFound()
+                .content_type("text/html; charset=utf-8")
+                .body("<h1>Repository not found</h1>");
+        }
+        Err(e) => {
+            tracing::error!("Failed to fetch repository: {}", e);
+            return HttpResponse::InternalServerError()
+                .content_type("text/html; charset=utf-8")
+                .body("<h1>Error fetching repository</h1>");
+        }
+    };
+
+    HttpResponse::Ok()
+        .content_type("text/html; charset=utf-8")
+        .body(repository_detail_page(&repository).into_string())
 }
 
 /// WebSocket upgrade
