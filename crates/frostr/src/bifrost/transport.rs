@@ -14,7 +14,7 @@ impl NostrTransport {
     }
 
     /// Send a message to threshold peers
-    pub async fn broadcast(&self, message: &[u8]) -> Result<()> {
+    pub async fn broadcast(&self, _message: &[u8]) -> Result<()> {
         todo!("Implement message broadcast")
     }
 

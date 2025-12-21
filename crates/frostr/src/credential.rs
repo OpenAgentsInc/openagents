@@ -2,7 +2,7 @@
 //!
 //! This module handles bech32 encoding of group and share credentials.
 
-use crate::{Error, Result};
+use crate::Result;
 use serde::{Deserialize, Serialize};
 
 /// Group credential (bfgroup1...)
@@ -26,7 +26,7 @@ impl GroupCredential {
     }
 
     /// Decode from bech32 string
-    pub fn from_bech32(s: &str) -> Result<Self> {
+    pub fn from_bech32(_s: &str) -> Result<Self> {
         // TODO: Implement bech32 decoding
         todo!("Implement bech32 decoding")
     }
@@ -53,7 +53,7 @@ impl ShareCredential {
     }
 
     /// Decode from bech32 string
-    pub fn from_bech32(s: &str) -> Result<Self> {
+    pub fn from_bech32(_s: &str) -> Result<Self> {
         // TODO: Implement bech32 decoding
         todo!("Implement bech32 decoding")
     }
