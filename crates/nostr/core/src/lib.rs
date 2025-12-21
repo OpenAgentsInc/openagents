@@ -41,6 +41,7 @@
 //! - NIP-58: Badges (badge definitions, awards, and profile display)
 //! - NIP-59: Gift Wrap (encapsulation and metadata obscuring, requires `full` feature)
 //! - NIP-71: Video Events (video content with metadata)
+//! - NIP-72: Moderated Communities (Reddit-style communities)
 //! - NIP-89: Application Handlers (social discovery of skills/agents)
 //! - NIP-90: Data Vending Machine (DVM) job requests/results/feedback
 //! - NIP-94: File Metadata
@@ -104,6 +105,7 @@ mod nip58;
 #[cfg(feature = "full")]
 mod nip59;
 mod nip71;
+mod nip72;
 mod nip89;
 mod nip90;
 mod nip94;
@@ -378,6 +380,13 @@ pub use nip17::{
 pub use nip71::{
     KIND_SHORT_VIDEO, KIND_VIDEO, Nip71Error, TextTrack, VideoEvent, VideoSegment, VideoVariant,
     is_video_kind,
+};
+
+// NIP-72: Moderated Communities
+pub use nip72::{
+    Community, CommunityApproval, CommunityModerator, CommunityPost, CommunityRelay,
+    KIND_COMMUNITY_APPROVAL, KIND_COMMUNITY_DEFINITION, KIND_COMMUNITY_POST, Nip72Error,
+    is_nip72_kind,
 };
 
 // NIP-89: Application Handlers
