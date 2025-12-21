@@ -262,44 +262,178 @@ async fn execute_redact(session_id: &str, dry_run: bool, level: &str) -> Result<
 
 /// Execute contribute command
 async fn execute_contribute(batch: bool, review: bool) -> Result<()> {
+    use crate::trajectories::ContributionClient;
+    use crate::trajectories::ContributionConfig;
+
     println!("Contributing trajectories to marketplace...\n");
 
-    if batch {
-        println!("Batch mode: Contributing all eligible sessions");
-    } else if review {
-        println!("Review mode: You will be prompted for each session");
+    // Load configuration
+    let config = TrajectoryConfig::default();
+    let mut contrib_config = ContributionConfig::default();
+    contrib_config.redaction_level = RedactionLevel::from_str(&config.redaction_level)
+        .unwrap_or(RedactionLevel::Standard);
+    contrib_config.min_quality = config.min_quality_score;
+
+    // Initialize contribution client
+    let mut client = ContributionClient::new(contrib_config)
+        .map_err(|e| anyhow::anyhow!("Failed to initialize contribution client: {}", e))?;
+
+    // Scan for trajectories
+    let collector = TrajectoryCollector::new(config.clone());
+    let results = collector.scan_all()?;
+
+    let mut contributed = 0;
+    let mut total_reward = 0u64;
+    let mut skipped = 0;
+
+    for result in results {
+        for session in result.sessions {
+            // Check if meets minimum quality
+            let validation = validate_trajectory(&session, config.min_quality_score);
+
+            if !validation.passed {
+                skipped += 1;
+                if !batch {
+                    println!("⊗ Skipping {} - {}", session.session_id,
+                        validation.failure_reasons.join(", "));
+                }
+                continue;
+            }
+
+            // Calculate reward estimate
+            let calculator = RewardCalculator::default();
+            let reward = calculator.calculate_reward(
+                &session,
+                validation.quality_score,
+                config.min_quality_score
+            );
+
+            // Review mode - ask for confirmation
+            if review && !batch {
+                println!("\nSession: {}", session.session_id);
+                println!("  Quality: {:.2}", validation.quality_score.value());
+                println!("  Estimated reward: {} sats", reward.total_sats);
+                println!("  Tokens: {}, Tool calls: {}", session.token_count, session.tool_calls);
+                print!("\nContribute this session? [y/N]: ");
+                std::io::Write::flush(&mut std::io::stdout())?;
+
+                let mut input = String::new();
+                std::io::stdin().read_line(&mut input)?;
+
+                if !input.trim().eq_ignore_ascii_case("y") {
+                    println!("  Skipped.");
+                    skipped += 1;
+                    continue;
+                }
+            }
+
+            // Submit contribution
+            match client.submit(session.clone()).await {
+                Ok(response) => {
+                    contributed += 1;
+                    total_reward += response.estimated_reward_sats;
+                    println!("✓ Contributed {} - {} sats",
+                        session.session_id, response.estimated_reward_sats);
+                }
+                Err(e) => {
+                    eprintln!("✗ Failed to contribute {}: {}", session.session_id, e);
+                    skipped += 1;
+                }
+            }
+
+            // In batch mode, add a small delay to avoid overwhelming relays
+            if batch && contributed % 10 == 0 {
+                tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+            }
+        }
     }
 
-    // Would scan, redact, and submit sessions here
-    println!("\n✓ Contributed 3 sessions");
-    println!("  Total estimated reward: 1,500 sats");
+    println!("\n═══════════════════════════════════════");
+    println!("✓ Contributed {} sessions", contributed);
+    println!("⊗ Skipped {} sessions", skipped);
+    println!("  Total estimated reward: {} sats", total_reward);
+    println!("═══════════════════════════════════════");
 
     Ok(())
 }
 
 /// Execute status command
 async fn execute_status(pending: bool, accepted: bool, rejected: bool) -> Result<()> {
+    use crate::trajectories::{ContributionClient, ContributionConfig, ContributionStatus};
+
     println!("Trajectory Contribution Status");
-    println!("==============================\n");
+    println!("═══════════════════════════════════════\n");
 
-    if pending || (!pending && !accepted && !rejected) {
-        println!("Pending (3):");
-        println!("  • session-123 (submitted 2 hours ago)");
-        println!("  • session-456 (submitted 1 day ago)");
-        println!("  • session-789 (submitted 3 days ago)");
+    // Initialize client
+    let config = ContributionConfig::default();
+    let client = ContributionClient::new(config)
+        .map_err(|e| anyhow::anyhow!("Failed to initialize client: {}", e))?;
+
+    // Determine which statuses to show
+    let show_all = !pending && !accepted && !rejected;
+
+    if pending || show_all {
+        let pending_contribs = client.list_contributions(Some(ContributionStatus::Pending))?;
+        println!("Pending ({}):", pending_contribs.len());
+        if pending_contribs.is_empty() {
+            println!("  (none)");
+        } else {
+            for contrib in pending_contribs.iter().take(10) {
+                println!("  • {} (quality: {:.2}, {} sats)",
+                    contrib.session_id,
+                    contrib.quality_score,
+                    contrib.estimated_reward_sats
+                );
+            }
+            if pending_contribs.len() > 10 {
+                println!("  ... and {} more", pending_contribs.len() - 10);
+            }
+        }
         println!();
     }
 
-    if accepted || (!pending && !accepted && !rejected) {
-        println!("Accepted (5):");
-        println!("  ✓ session-001 - 500 sats (paid)");
-        println!("  ✓ session-002 - 750 sats (paid)");
+    if accepted || show_all {
+        let accepted_contribs = client.list_contributions(Some(ContributionStatus::Accepted))?;
+        let total_earned: u64 = accepted_contribs.iter()
+            .filter_map(|c| c.actual_reward_sats)
+            .sum();
+
+        println!("Accepted ({}):", accepted_contribs.len());
+        if accepted_contribs.is_empty() {
+            println!("  (none)");
+        } else {
+            for contrib in accepted_contribs.iter().take(10) {
+                let reward = contrib.actual_reward_sats.unwrap_or(contrib.estimated_reward_sats);
+                println!("  ✓ {} - {} sats{}",
+                    contrib.session_id,
+                    reward,
+                    if contrib.paid_at.is_some() { " (paid)" } else { "" }
+                );
+            }
+            if accepted_contribs.len() > 10 {
+                println!("  ... and {} more", accepted_contribs.len() - 10);
+            }
+            println!("  Total earned: {} sats", total_earned);
+        }
         println!();
     }
 
-    if rejected {
-        println!("Rejected (1):");
-        println!("  ✗ session-bad - reason: Below quality threshold");
+    if rejected || show_all {
+        let rejected_contribs = client.list_contributions(Some(ContributionStatus::Rejected))?;
+        println!("Rejected ({}):", rejected_contribs.len());
+        if rejected_contribs.is_empty() {
+            println!("  (none)");
+        } else {
+            for contrib in rejected_contribs.iter().take(10) {
+                println!("  ✗ {} (quality: {:.2})",
+                    contrib.session_id,
+                    contrib.quality_score
+                );
+            }
+            if rejected_contribs.len() > 10 {
+                println!("  ... and {} more", rejected_contribs.len() - 10);
+            }
+        }
         println!();
     }
 
@@ -308,17 +442,36 @@ async fn execute_status(pending: bool, accepted: bool, rejected: bool) -> Result
 
 /// Execute earnings command
 async fn execute_earnings(detail: bool, _since: Option<String>) -> Result<()> {
+    use crate::trajectories::{ContributionClient, ContributionConfig};
+
     println!("Trajectory Contribution Earnings");
-    println!("================================\n");
+    println!("═══════════════════════════════════════\n");
 
-    println!("Total earned: 3,750 sats");
-    println!("Contributions: 7 accepted, 2 pending");
+    // Initialize client
+    let config = ContributionConfig::default();
+    let client = ContributionClient::new(config)
+        .map_err(|e| anyhow::anyhow!("Failed to initialize client: {}", e))?;
 
-    if detail {
+    // Get earnings
+    let earnings = client.get_earnings()?;
+    let total_earned: u64 = earnings.iter().map(|e| e.reward_sats).sum();
+
+    println!("Total earned: {} sats", total_earned);
+    println!("Paid contributions: {}", earnings.len());
+
+    if detail && !earnings.is_empty() {
         println!("\nDetailed breakdown:");
-        println!("  session-001: 500 sats (2024-01-15)");
-        println!("  session-002: 750 sats (2024-01-16)");
-        println!("  session-003: 600 sats (2024-01-17)");
+        for earning in earnings.iter() {
+            let date = earning.paid_at.format("%Y-%m-%d");
+            println!("  {} - {} sats ({})",
+                earning.session_id,
+                earning.reward_sats,
+                date
+            );
+            if let Some(ref preimage) = earning.payment_preimage {
+                println!("    Proof: {}...", &preimage[..16.min(preimage.len())]);
+            }
+        }
     }
 
     Ok(())

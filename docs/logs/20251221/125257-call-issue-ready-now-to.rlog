@@ -196,3 +196,29 @@ t!:Bash id=MaNdUpNW cmd="cargo run --package marketplace -- trajectories..." →
 o: id=MaNdUpNW → [ok]      Running `target/debug/marketplace trajectories preview --limit 5`
 a: Good! The preview is working. The validate_trajectory function is using the default min_quality_score of 0.5, so they're all being rejected. Let me commit what we have so far: tokens_in=0 tokens_out=1 tokens_cached=113886
 t!:Bash id=xmQz1qBc cmd="git add -A && git diff --cached --stat" → [running] tokens_in=0 tokens_out=127 tokens_cached=113886
+o: id=xmQz1qBc → [ok]  crates/marketplace/src/main.rs                     |  7 ++-
+t!:Bash id=HkcnoYkJ cmd="git commit -m "$(cat <<'EOF'" → [running] tokens_in=0 tokens_out=512 tokens_cached=114340
+o: id=HkcnoYkJ → [ok] [main 7663f22b1] Implement marketplace trajectory CLI commands for scan and preview
+t!:Bash id=4KcuzmGA cmd="git push origin main" → [running] tokens_in=0 tokens_out=25 tokens_cached=114706
+o: id=4KcuzmGA → [ok] [0;36m🔍 Running cargo build to check for errors and warnings...[0m
+t!:mcp__issues__issue_complete id=7Ep3FV5Y  → [running] tokens_in=0 tokens_out=58 tokens_cached=115270
+o: id=7Ep3FV5Y → [ok] Completed issue #422
+t!:mcp__issues__issue_ready id=7qLRxShA  → [running] tokens_in=0 tokens_out=5 tokens_cached=115433
+o: id=7qLRxShA → [ok] No ready issues available
+t!:mcp__issues__directive_get id=v9dgf7w3  → [running] tokens_in=3 tokens_out=60 tokens_cached=115616
+o: id=v9dgf7w3 → [ok] {
+t!:mcp__issues__directive_get id=VwzRK1nY  → [running] tokens_in=2 tokens_out=60 tokens_cached=115671
+o: id=VwzRK1nY → [ok] {
+t!:mcp__issues__issue_create id=gX8uHctm  → [running] tokens_in=0 tokens_out=437 tokens_cached=117810
+o: id=gX8uHctm → [ok] Created issue #423: Add trajectory validation quality scoring with git commit detection (agent: c...
+t!:mcp__issues__issue_create id=x62d9i6u  → [running] tokens_in=3 tokens_out=446 tokens_cached=126208
+o: id=x62d9i6u → [ok] Created issue #424: Implement trajectory contribution upload to marketplace relays (agent: claude...
+t!:mcp__issues__issue_claim id=KfQBjW7X  → [running] tokens_in=3 tokens_out=32 tokens_cached=126681
+o: id=KfQBjW7X → [ok] Claimed issue #423
+t!:Read id=2waVcpTp file_path=/home/christopherdavid/code/openagents/docs/logs/20251221/125257-call-issue-ready-now-to.rlog → [running] tokens_in=0 tokens_out=5 tokens_cached=127165
+o: id=2waVcpTp → [ok]      1→---
+a: Perfect! I can see the actual format of the rlog files. They have structured metadata at the top and then a sequence of tool calls and outputs. Let me examine a bit more to understand the git commi... tokens_in=3 tokens_out=1 tokens_cached=127376
+t!:Bash id=HAPuL16S cmd="grep -n "git commit\|git push\|git add" docs/lo..." → [running] tokens_in=3 tokens_out=161 tokens_cached=127376
+o: id=HAPuL16S → [ok] 129:t!:Bash id=rLjqnck3 cmd="git add -A && git diff --cached --stat" → [running] tokens_in=0 toke...
+t!:Bash id=pqRt23zR cmd="grep -A 3 "git commit" docs/logs/20251221/12525..." → [running] tokens_in=2 tokens_out=24 tokens_cached=131947
+o: id=pqRt23zR → [ok] t!:Bash id=NLdejeSA cmd="git commit -m "$(cat <<'EOF'" → [running] tokens_in=0 tokens_out=379 tok...

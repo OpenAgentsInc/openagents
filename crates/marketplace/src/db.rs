@@ -95,6 +95,30 @@ fn migrate_v1(conn: &Connection) -> Result<()> {
 
         CREATE INDEX IF NOT EXISTS idx_skill_versions_skill_id ON skill_versions(skill_id);
         CREATE INDEX IF NOT EXISTS idx_skill_versions_version ON skill_versions(version);
+
+        -- Trajectory contributions table
+        CREATE TABLE IF NOT EXISTS trajectory_contributions (
+            contribution_id TEXT PRIMARY KEY,
+            session_id TEXT NOT NULL,
+            source TEXT NOT NULL,
+            trajectory_hash TEXT NOT NULL,
+            nostr_event_id TEXT,
+            status TEXT NOT NULL DEFAULT 'pending',
+            quality_score REAL NOT NULL,
+            estimated_reward_sats INTEGER NOT NULL,
+            actual_reward_sats INTEGER,
+            lightning_address TEXT,
+            payment_preimage TEXT,
+            submitted_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            paid_at TEXT,
+            rejection_reason TEXT
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_traj_contrib_status ON trajectory_contributions(status);
+        CREATE INDEX IF NOT EXISTS idx_traj_contrib_session_id ON trajectory_contributions(session_id);
+        CREATE INDEX IF NOT EXISTS idx_traj_contrib_nostr_event_id ON trajectory_contributions(nostr_event_id);
+        CREATE INDEX IF NOT EXISTS idx_traj_contrib_submitted_at ON trajectory_contributions(submitted_at);
         "#,
     )?;
 
