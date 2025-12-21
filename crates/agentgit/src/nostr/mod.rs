@@ -4,5 +4,6 @@
 
 pub mod cache;
 pub mod client;
+pub mod events;
 
 pub use client::NostrClient;
