@@ -7,10 +7,11 @@ use crate::error::{ClientError, Result};
 use futures::{SinkExt, StreamExt};
 use nostr::Event;
 use serde_json::{json, Value};
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::net::TcpStream;
-use tokio::sync::{mpsc, Mutex, RwLock};
+use tokio::sync::{mpsc, oneshot, Mutex, RwLock};
 use tokio::time::timeout;
 use tokio_tungstenite::{connect_async, tungstenite::Message, MaybeTlsStream, WebSocketStream};
 use tracing::{debug, info, warn};
@@ -43,6 +44,19 @@ pub enum RelayMessage {
     /// AUTH message: ["AUTH", challenge]
     Auth(String),
 }
+
+/// Confirmation result for event publishing
+#[derive(Debug, Clone)]
+pub struct PublishConfirmation {
+    /// Event ID that was published
+    pub event_id: String,
+    /// Whether the relay accepted the event
+    pub accepted: bool,
+    /// Message from the relay (empty if accepted, error message if rejected)
+    pub message: String,
+}
+
+type ConfirmationSender = oneshot::Sender<PublishConfirmation>;
 
 /// Relay connection configuration
 #[derive(Debug, Clone)]
@@ -87,6 +101,8 @@ pub struct RelayConnection {
     _rx: Arc<Mutex<mpsc::UnboundedReceiver<RelayMessage>>>,
     /// Outgoing message channel (for future background task)
     _tx: mpsc::UnboundedSender<Value>,
+    /// Pending event confirmations (event_id -> oneshot sender)
+    pending_confirmations: Arc<Mutex<HashMap<String, ConfirmationSender>>>,
 }
 
 impl RelayConnection {
@@ -117,6 +133,7 @@ impl RelayConnection {
             ws: Arc::new(Mutex::new(None)),
             _rx: Arc::new(Mutex::new(msg_rx)),
             _tx: out_tx,
+            pending_confirmations: Arc::new(Mutex::new(HashMap::new())),
         })
     }
 
@@ -193,6 +210,56 @@ impl RelayConnection {
         self.send_message(&msg).await
     }
 
+    /// Publish an event and wait for confirmation from the relay
+    ///
+    /// This method sends the event and waits for an OK message response.
+    /// Returns PublishConfirmation indicating whether the relay accepted the event.
+    pub async fn publish_event(
+        &self,
+        event: &Event,
+        confirmation_timeout: Duration,
+    ) -> Result<PublishConfirmation> {
+        // Create oneshot channel for confirmation
+        let (tx, rx) = oneshot::channel();
+
+        // Get event ID (already hex-encoded string)
+        let event_id = event.id.clone();
+
+        // Register pending confirmation
+        {
+            let mut confirmations = self.pending_confirmations.lock().await;
+            confirmations.insert(event_id.clone(), tx);
+        }
+
+        // Send the event
+        if let Err(e) = self.send_event(event).await {
+            // Remove pending confirmation on send error
+            let mut confirmations = self.pending_confirmations.lock().await;
+            confirmations.remove(&event_id);
+            return Err(e);
+        }
+
+        // Wait for confirmation with timeout
+        match timeout(confirmation_timeout, rx).await {
+            Ok(Ok(confirmation)) => Ok(confirmation),
+            Ok(Err(_)) => {
+                // Channel was dropped (shouldn't happen)
+                Err(ClientError::PublishFailed(
+                    "Confirmation channel closed".to_string(),
+                ))
+            }
+            Err(_) => {
+                // Timeout - remove pending confirmation
+                let mut confirmations = self.pending_confirmations.lock().await;
+                confirmations.remove(&event_id);
+                Err(ClientError::Timeout(format!(
+                    "Event confirmation timeout after {:?}",
+                    confirmation_timeout
+                )))
+            }
+        }
+    }
+
     /// Subscribe to events matching filters
     pub async fn subscribe(&self, subscription_id: &str, filters: &[Value]) -> Result<()> {
         let mut msg = vec![json!("REQ"), json!(subscription_id)];
@@ -238,7 +305,22 @@ impl RelayConnection {
             match stream.next().await {
                 Some(Ok(Message::Text(text))) => {
                     debug!("Received from {}: {}", self.url, text);
-                    Self::parse_relay_message(&text)
+                    let msg = Self::parse_relay_message(&text)?;
+
+                    // Handle OK messages for pending confirmations
+                    if let Some(RelayMessage::Ok(event_id, accepted, message)) = &msg {
+                        let mut confirmations = self.pending_confirmations.lock().await;
+                        if let Some(tx) = confirmations.remove(event_id) {
+                            let confirmation = PublishConfirmation {
+                                event_id: event_id.clone(),
+                                accepted: *accepted,
+                                message: message.clone(),
+                            };
+                            let _ = tx.send(confirmation); // Ignore error if receiver dropped
+                        }
+                    }
+
+                    Ok(msg)
                 }
                 Some(Ok(Message::Close(_))) => {
                     info!("Relay closed connection: {}", self.url);
@@ -408,5 +490,85 @@ mod tests {
         let relay = RelayConnection::new("wss://relay.example.com").unwrap();
         assert_eq!(relay.state().await, ConnectionState::Disconnected);
         assert!(!relay.is_connected().await);
+    }
+
+    #[test]
+    fn test_publish_confirmation_creation() {
+        let confirmation = PublishConfirmation {
+            event_id: "abc123".to_string(),
+            accepted: true,
+            message: "".to_string(),
+        };
+        assert_eq!(confirmation.event_id, "abc123");
+        assert!(confirmation.accepted);
+        assert_eq!(confirmation.message, "");
+    }
+
+    #[test]
+    fn test_publish_confirmation_rejected() {
+        let confirmation = PublishConfirmation {
+            event_id: "abc123".to_string(),
+            accepted: false,
+            message: "duplicate: already have this event".to_string(),
+        };
+        assert_eq!(confirmation.event_id, "abc123");
+        assert!(!confirmation.accepted);
+        assert_eq!(confirmation.message, "duplicate: already have this event");
+    }
+
+    #[test]
+    fn test_parse_ok_message_accepted() {
+        let text = r#"["OK","5c83da77af1dec6d7289834998ad7aafbd9e2191396d75ec3cc27f5a77226f36",true,""]"#;
+        let msg = RelayConnection::parse_relay_message(text).unwrap();
+        assert!(msg.is_some());
+        match msg.unwrap() {
+            RelayMessage::Ok(id, success, message) => {
+                assert_eq!(id, "5c83da77af1dec6d7289834998ad7aafbd9e2191396d75ec3cc27f5a77226f36");
+                assert!(success);
+                assert_eq!(message, "");
+            }
+            _ => panic!("Expected OK message"),
+        }
+    }
+
+    #[test]
+    fn test_parse_ok_message_rejected() {
+        let text = r#"["OK","5c83da77af1dec6d7289834998ad7aafbd9e2191396d75ec3cc27f5a77226f36",false,"duplicate: already have this event"]"#;
+        let msg = RelayConnection::parse_relay_message(text).unwrap();
+        assert!(msg.is_some());
+        match msg.unwrap() {
+            RelayMessage::Ok(id, success, message) => {
+                assert_eq!(id, "5c83da77af1dec6d7289834998ad7aafbd9e2191396d75ec3cc27f5a77226f36");
+                assert!(!success);
+                assert_eq!(message, "duplicate: already have this event");
+            }
+            _ => panic!("Expected OK message"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_pending_confirmations_tracking() {
+        let relay = RelayConnection::new("wss://relay.example.com").unwrap();
+        let (tx, _rx) = oneshot::channel();
+
+        // Add pending confirmation
+        {
+            let mut confirmations = relay.pending_confirmations.lock().await;
+            confirmations.insert("event123".to_string(), tx);
+            assert_eq!(confirmations.len(), 1);
+        }
+
+        // Check it exists
+        {
+            let confirmations = relay.pending_confirmations.lock().await;
+            assert!(confirmations.contains_key("event123"));
+        }
+
+        // Remove it
+        {
+            let mut confirmations = relay.pending_confirmations.lock().await;
+            confirmations.remove("event123");
+            assert_eq!(confirmations.len(), 0);
+        }
     }
 }
