@@ -3,6 +3,7 @@
 use clap::Parser;
 use marketplace::cli::compute::ComputeCommands;
 use marketplace::cli::skills::SkillsCommands;
+use marketplace::cli::data::DataCommands;
 
 #[derive(Parser)]
 #[command(name = "marketplace")]
@@ -25,7 +26,10 @@ enum Commands {
         command: SkillsCommands,
     },
     /// Data marketplace commands
-    Data,
+    Data {
+        #[command(subcommand)]
+        command: DataCommands,
+    },
     /// Provider commands
     Provider,
     /// Earnings and payouts
@@ -38,9 +42,7 @@ fn main() -> anyhow::Result<()> {
     match cli.command {
         Commands::Compute { command } => command.execute()?,
         Commands::Skills { command } => command.execute()?,
-        Commands::Data => {
-            println!("Data marketplace - coming soon");
-        }
+        Commands::Data { command } => command.execute()?,
         Commands::Provider => {
             println!("Provider management - coming soon");
         }
