@@ -8,7 +8,7 @@ use crate::Result;
 /// Perform threshold ECDH
 ///
 /// Computes a shared secret with a peer using threshold shares.
-pub fn threshold_ecdh(peer_pubkey: &[u8; 32]) -> Result<[u8; 32]> {
+pub fn threshold_ecdh(_peer_pubkey: &[u8; 32]) -> Result<[u8; 32]> {
     // TODO: Implement threshold ECDH
     todo!("Implement threshold ECDH")
 }

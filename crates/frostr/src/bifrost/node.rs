@@ -14,12 +14,12 @@ impl BifrostNode {
     }
 
     /// Sign an event hash using threshold shares
-    pub async fn sign(&self, event_hash: &[u8; 32]) -> Result<[u8; 64]> {
+    pub async fn sign(&self, _event_hash: &[u8; 32]) -> Result<[u8; 64]> {
         todo!("Implement threshold signing")
     }
 
     /// Perform threshold ECDH with a peer
-    pub async fn ecdh(&self, peer_pubkey: &[u8; 32]) -> Result<[u8; 32]> {
+    pub async fn ecdh(&self, _peer_pubkey: &[u8; 32]) -> Result<[u8; 32]> {
         todo!("Implement threshold ECDH")
     }
 }

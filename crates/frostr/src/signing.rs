@@ -2,8 +2,6 @@
 //!
 //! This module implements the FROST threshold signing protocol for Schnorr signatures.
 
-use crate::Result;
-
 /// FROST signing round
 ///
 /// Implements the multi-round FROST protocol for threshold Schnorr signatures.
