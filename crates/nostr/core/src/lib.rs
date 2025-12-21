@@ -57,6 +57,7 @@
 //! - NIP-60: Cashu Wallets (ecash wallet state management)
 //! - NIP-61: Nutzaps (Cashu-based zaps with P2PK tokens)
 //! - NIP-64: Chess (Portable Game Notation)
+//! - NIP-65: Relay List Metadata (user's preferred read/write relays)
 //! - NIP-68: Picture-first Feeds (Instagram-style image posts)
 //! - NIP-69: Peer-to-peer Order Events (decentralized marketplace orders)
 //! - NIP-70: Protected Events (author-only publishing with authentication)
@@ -150,6 +151,7 @@ mod nip59;
 mod nip60;
 mod nip61;
 mod nip64;
+mod nip65;
 mod nip68;
 mod nip69;
 mod nip70;
@@ -539,6 +541,12 @@ pub use nip61::{
 pub use nip64::{
     CHESS_GAME_KIND, ChessGame, GameResult, Nip64Error, create_alt_description, create_chess_game,
     create_chess_game_with_tags, is_chess_game_kind,
+};
+
+// NIP-65: Relay List Metadata
+pub use nip65::{
+    Nip65Error, READ_MARKER, RELAY_LIST_METADATA_KIND, RelayEntry, RelayListMetadata, RelayMarker,
+    WRITE_MARKER, get_relay_entries, is_relay_list_metadata_kind,
 };
 
 // NIP-68: Picture-first Feeds
