@@ -5,7 +5,7 @@ use serde::Deserialize;
 use std::sync::Arc;
 
 use crate::core::identity::UnifiedIdentity;
-use super::views::{dashboard_page, send_page, receive_page, history_page, settings_page};
+use super::views::{dashboard_page, send_page, history_page, settings_page};
 
 /// Application state shared across handlers
 pub struct AppState {
@@ -127,12 +127,20 @@ async fn send_payment(
 async fn receive_page_route(state: web::Data<AppState>) -> ActixResult<HttpResponse> {
     match &state.identity {
         Some(_identity) => {
-            // TODO: Generate actual Spark address
-            let address = "spark1...placeholder".to_string();
-
-            Ok(HttpResponse::Ok()
+            // Receive functionality not yet available - requires Spark SDK integration (see d-001)
+            Ok(HttpResponse::ServiceUnavailable()
                 .content_type("text/html; charset=utf-8")
-                .body(receive_page(&address)))
+                .body(r#"<!DOCTYPE html>
+<html>
+<head><title>Receive Not Available</title></head>
+<body>
+<h1>Receive Functionality Not Available</h1>
+<p>Lightning address generation is not yet implemented. This requires Spark SDK integration (directive d-001).</p>
+<p>The wallet GUI currently only supports viewing identity information.</p>
+<p><strong>Do not share any placeholder addresses - they will not work and funds sent to them will be lost.</strong></p>
+<p><a href="/">Return to Home</a></p>
+</body>
+</html>"#))
         }
         None => {
             Ok(HttpResponse::Unauthorized().body("No wallet identity"))
