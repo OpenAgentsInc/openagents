@@ -742,9 +742,42 @@ async fn pull_request_detail(
         Vec::new()
     };
 
+    // Fetch stacked diff metadata
+    let stack_id = pull_request.tags.iter()
+        .find(|tag| tag.len() >= 2 && tag[0] == "stack")
+        .map(|tag| tag[1].clone());
+
+    let stack_prs = if let Some(sid) = stack_id.as_ref() {
+        match state.nostr_client.get_pull_requests_by_stack(sid).await {
+            Ok(prs) => prs,
+            Err(e) => {
+                tracing::warn!("Failed to fetch stack PRs for {}: {}", sid, e);
+                Vec::new()
+            }
+        }
+    } else {
+        Vec::new()
+    };
+
+    let dependency_pr = match state.nostr_client.get_dependency_pr(&pull_request).await {
+        Ok(dep) => dep,
+        Err(e) => {
+            tracing::warn!("Failed to fetch dependency PR: {}", e);
+            None
+        }
+    };
+
+    let is_mergeable = match state.nostr_client.is_pr_mergeable(&pull_request).await {
+        Ok(mergeable) => mergeable,
+        Err(e) => {
+            tracing::warn!("Failed to check if PR is mergeable: {}", e);
+            false
+        }
+    };
+
     HttpResponse::Ok()
         .content_type("text/html; charset=utf-8")
-        .body(pull_request_detail_page(&repository, &pull_request, &reviews, &status_events, &identifier, trajectory_session.as_ref(), &trajectory_events).into_string())
+        .body(pull_request_detail_page(&repository, &pull_request, &reviews, &status_events, &identifier, trajectory_session.as_ref(), &trajectory_events, &stack_prs, dependency_pr.as_ref(), is_mergeable).into_string())
 }
 
 /// Trajectory detail page

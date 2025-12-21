@@ -1096,7 +1096,7 @@ pub fn patch_detail_page(repository: &Event, patch: &Event, identifier: &str) ->
 }
 
 /// Pull request detail page
-pub fn pull_request_detail_page(repository: &Event, pull_request: &Event, reviews: &[Event], status_events: &[Event], identifier: &str, trajectory_session: Option<&Event>, trajectory_events: &[Event]) -> Markup {
+pub fn pull_request_detail_page(repository: &Event, pull_request: &Event, reviews: &[Event], status_events: &[Event], identifier: &str, trajectory_session: Option<&Event>, trajectory_events: &[Event], stack_prs: &[Event], dependency_pr: Option<&Event>, is_mergeable: bool) -> Markup {
     let repo_name = get_tag_value(repository, "name").unwrap_or_else(|| "Repository".to_string());
     let pr_title = get_tag_value(pull_request, "subject").unwrap_or_else(|| "Untitled Pull Request".to_string());
     let pr_status = get_tag_value(pull_request, "status").unwrap_or_else(|| "open".to_string());
@@ -1285,25 +1285,118 @@ pub fn pull_request_detail_page(repository: &Event, pull_request: &Event, review
 
                             @if depends_on.is_some() || stack.is_some() || !layer.is_empty() {
                                 section.issue-section {
-                                    h2 { "Stacked PR Information" }
+                                    h2 { "🔗 Stacked Diff Information" }
+
+                                    @if !layer.is_empty() && layer.len() == 2 {
+                                        div.stack-badge style="display: inline-block; padding: 8px 16px; background: #3b82f6; color: white; font-weight: bold; margin-bottom: 16px;" {
+                                            "📊 Layer " (layer[0]) " of " (layer[1])
+                                        }
+                                    }
+
+                                    @if !is_mergeable && dependency_pr.is_some() {
+                                        div.merge-warning style="padding: 12px; background: #fef3c7; border-left: 4px solid #f59e0b; margin-bottom: 16px;" {
+                                            "⚠️ This PR cannot be merged until its dependencies are merged first."
+                                        }
+                                    } @else if is_mergeable && dependency_pr.is_some() {
+                                        div.merge-info style="padding: 12px; background: #d1fae5; border-left: 4px solid #10b981; margin-bottom: 16px;" {
+                                            "✅ All dependencies are satisfied. This PR is ready to merge."
+                                        }
+                                    }
+
                                     div.event-details {
-                                        @if let Some(dep) = depends_on {
-                                            div.event-detail-item {
-                                                span.label { "Depends On:" }
-                                                code { (dep) }
+                                        @if let Some(dep_pr) = dependency_pr {
+                                            div.event-detail-item style="margin-bottom: 16px;" {
+                                                span.label { "⬆️ Depends On:" }
+                                                div style="margin-top: 8px; padding: 12px; background: #f3f4f6;" {
+                                                    @let dep_title = get_tag_value(dep_pr, "subject").unwrap_or_else(|| "Untitled PR".to_string());
+                                                    @let dep_status = get_tag_value(dep_pr, "status").unwrap_or_else(|| "unknown".to_string());
+                                                    @let dep_status_emoji = match dep_status.as_str() {
+                                                        "open" => "🟢",
+                                                        "merged" | "applied" => "✅",
+                                                        "closed" => "🔴",
+                                                        "draft" => "📝",
+                                                        _ => "❓"
+                                                    };
+                                                    div {
+                                                        a.repo-link href={"/repo/" (identifier) "/pulls/" (dep_pr.id)} style="font-weight: 600;" {
+                                                            (dep_status_emoji) " " (dep_title)
+                                                        }
+                                                    }
+                                                    div style="margin-top: 4px; font-size: 0.875rem; color: #6b7280;" {
+                                                        "Status: " span class={"issue-status " (dep_status)} { (dep_status) }
+                                                    }
+                                                }
                                             }
                                         }
+
                                         @if let Some(s) = stack {
-                                            div.event-detail-item {
-                                                span.label { "Stack ID:" }
-                                                code { (s) }
+                                            @if !stack_prs.is_empty() {
+                                                div.event-detail-item style="margin-top: 16px;" {
+                                                    span.label { "📚 Stack Group (" (stack_prs.len()) " PRs)" }
+                                                    div style="margin-top: 12px;" {
+                                                        @for stack_pr in stack_prs {
+                                                            @let is_current = stack_pr.id == pull_request.id;
+                                                            @let stack_pr_title = get_tag_value(stack_pr, "subject").unwrap_or_else(|| "Untitled PR".to_string());
+                                                            @let stack_pr_status = get_tag_value(stack_pr, "status").unwrap_or_else(|| "unknown".to_string());
+                                                            @let stack_pr_layer = get_all_tag_values(stack_pr, "layer");
+                                                            @let stack_status_emoji = match stack_pr_status.as_str() {
+                                                                "open" => "🟢",
+                                                                "merged" | "applied" => "✅",
+                                                                "closed" => "🔴",
+                                                                "draft" => "📝",
+                                                                _ => "❓"
+                                                            };
+
+                                                            div style={
+                                                                "padding: 12px; margin-bottom: 8px; background: "
+                                                                (if is_current { "#dbeafe" } else { "#f9fafb" })
+                                                                "; border-left: 4px solid "
+                                                                (if is_current { "#3b82f6" } else { "#e5e7eb" })
+                                                                ";"
+                                                            } {
+                                                                div style="display: flex; justify-content: space-between; align-items: center;" {
+                                                                    div {
+                                                                        @if !stack_pr_layer.is_empty() && stack_pr_layer.len() == 2 {
+                                                                            span style="display: inline-block; padding: 2px 8px; background: #6366f1; color: white; font-size: 0.75rem; margin-right: 8px;" {
+                                                                                "L" (stack_pr_layer[0])
+                                                                            }
+                                                                        }
+                                                                        @if is_current {
+                                                                            span style="font-weight: 700; color: #1e40af;" {
+                                                                                (stack_status_emoji) " " (stack_pr_title) " (current)"
+                                                                            }
+                                                                        } @else {
+                                                                            a.repo-link href={"/repo/" (identifier) "/pulls/" (stack_pr.id)} {
+                                                                                (stack_status_emoji) " " (stack_pr_title)
+                                                                            }
+                                                                        }
+                                                                    }
+                                                                    span class={"issue-status " (stack_pr_status)} style="font-size: 0.875rem;" {
+                                                                        (stack_pr_status)
+                                                                    }
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                }
+
+                                                div.event-detail-item style="margin-top: 12px; font-size: 0.875rem; color: #6b7280;" {
+                                                    span.label { "Stack ID:" }
+                                                    code style="font-size: 0.75rem;" { (s) }
+                                                }
+                                            } @else {
+                                                div.event-detail-item {
+                                                    span.label { "Stack ID:" }
+                                                    code { (s) }
+                                                }
                                             }
                                         }
-                                        @if !layer.is_empty() {
-                                            div.event-detail-item {
-                                                span.label { "Layer:" }
-                                                span { (layer.join(" of ")) }
-                                            }
+                                    }
+
+                                    div style="margin-top: 16px; padding: 12px; background: #eff6ff; font-size: 0.875rem;" {
+                                        p style="margin: 0;" {
+                                            "💡 " strong { "Stacked Diffs: " }
+                                            "This PR is part of a stack of smaller, reviewable changes. Each layer must be merged in order to maintain the dependency chain."
                                         }
                                     }
                                 }
