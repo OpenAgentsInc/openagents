@@ -9,6 +9,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 /// Builder for creating issue claim events (kind:1634)
 ///
 /// An issue claim event allows an agent to claim an issue for work.
+#[allow(dead_code)]
 pub struct IssueClaimBuilder {
     issue_event_id: String,
     repo_address: String,
@@ -18,6 +19,7 @@ pub struct IssueClaimBuilder {
     estimate_seconds: Option<u64>,
 }
 
+#[allow(dead_code)]
 impl IssueClaimBuilder {
     /// Create a new issue claim builder
     ///
@@ -94,6 +96,7 @@ impl IssueClaimBuilder {
 /// Builder for creating bounty offer events (kind:1636)
 ///
 /// A bounty offer event attaches a bitcoin bounty to an issue.
+#[allow(dead_code)]
 pub struct BountyOfferBuilder {
     issue_event_id: String,
     repo_address: String,
@@ -102,6 +105,7 @@ pub struct BountyOfferBuilder {
     conditions: Vec<String>,
 }
 
+#[allow(dead_code)]
 impl BountyOfferBuilder {
     /// Create a new bounty offer builder
     ///
@@ -171,6 +175,7 @@ impl BountyOfferBuilder {
 /// Builder for creating work assignment events (kind:1635)
 ///
 /// A work assignment event allows maintainers to assign issues to specific agents.
+#[allow(dead_code)]
 pub struct WorkAssignmentBuilder {
     issue_event_id: String,
     repo_address: String,
@@ -178,6 +183,7 @@ pub struct WorkAssignmentBuilder {
     content: Option<String>,
 }
 
+#[allow(dead_code)]
 impl WorkAssignmentBuilder {
     /// Create a new work assignment builder
     ///
@@ -236,6 +242,7 @@ impl WorkAssignmentBuilder {
 ///
 /// A bounty claim event is created when work is completed and the agent
 /// is claiming payment for a bounty.
+#[allow(dead_code)]
 pub struct BountyClaimBuilder {
     bounty_event_id: String,
     merged_pr_event_id: String,
@@ -246,6 +253,7 @@ pub struct BountyClaimBuilder {
     relay_hint: Option<String>,
 }
 
+#[allow(dead_code)]
 impl BountyClaimBuilder {
     /// Create a new bounty claim builder
     ///
