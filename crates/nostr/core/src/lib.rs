@@ -716,7 +716,8 @@ pub use nip_sa::{
     TrajectorySessionContent, TrajectoryVisibility, KIND_TRAJECTORY_EVENT,
     KIND_TRAJECTORY_SESSION,
     // Skill (kinds:38020, 38021)
-    SkillDeliveryContent, SkillLicenseContent,
+    SkillDelivery, SkillDeliveryContent, SkillError, SkillLicense, SkillLicenseContent,
+    KIND_SKILL_DELIVERY, KIND_SKILL_LICENSE,
 };
 
 // Identity types for marketplace (base types always available)
