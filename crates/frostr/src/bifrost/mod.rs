@@ -11,5 +11,6 @@ pub mod transport;
 pub use messages::{
     BifrostMessage, EcdhRequest, EcdhResponse, SignError, SignRequest, SignResponse, SignResult,
 };
-pub use node::BifrostNode;
-pub use peer::{PeerInfo, PeerManager, PeerStatus, RetryConfig};
+pub use node::{BifrostConfig, BifrostNode, RetryConfig as NodeRetryConfig, TimeoutConfig};
+pub use peer::{PeerInfo, PeerManager, PeerStatus, RetryConfig as PeerRetryConfig};
+pub use transport::{NostrTransport, TransportConfig, BIFROST_EVENT_KIND};
