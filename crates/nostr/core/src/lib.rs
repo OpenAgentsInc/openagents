@@ -123,6 +123,7 @@ mod nip30;
 mod nip31;
 mod nip32;
 mod nip33;
+mod nip34;
 mod nip35;
 mod nip36;
 mod nip37;
@@ -354,6 +355,14 @@ pub use nip31::{
 pub use nip32::{
     KIND_LABEL, Label, LabelEvent, LabelTarget, Nip32Error, SelfLabel, UGC_NAMESPACE,
     is_label_kind,
+};
+
+// NIP-34: Git Stuff
+pub use nip34::{
+    CommitterInfo, Issue, Patch, PullRequest, RefState, RepositoryAnnouncement, RepositoryState,
+    Status, StatusUpdate, KIND_ISSUE, KIND_PATCH, KIND_PULL_REQUEST, KIND_PULL_REQUEST_UPDATE,
+    KIND_REPOSITORY_ANNOUNCEMENT, KIND_REPOSITORY_STATE, KIND_STATUS_APPLIED, KIND_STATUS_CLOSED,
+    KIND_STATUS_DRAFT, KIND_STATUS_OPEN, KIND_USER_GRASP_LIST,
 };
 
 // NIP-33: Parameterized Replaceable Events (deprecated, moved to NIP-01)
