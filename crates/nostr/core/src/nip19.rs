@@ -583,11 +583,21 @@ mod tests {
 
     #[test]
     fn test_decode_invalid_hrp() {
-        let result = decode("invalid1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqthqsx8");
+        // Create a valid bech32 string with "invalid" HRP
+        // This uses a valid checksum so bech32 decode succeeds, but our code rejects the HRP
+        use bech32::{Bech32, Hrp};
+        let hrp = Hrp::parse("invalid").unwrap();
+        let data = vec![0u8; 32]; // 32 bytes of zeros
+        let invalid_bech32 = bech32::encode::<Bech32>(hrp, &data).unwrap();
+
+        let result = decode(&invalid_bech32);
         assert!(result.is_err());
         match result.unwrap_err() {
-            Nip19Error::InvalidHrp { .. } => {}
-            _ => panic!("expected InvalidHrp error"),
+            Nip19Error::InvalidHrp { expected, got } => {
+                assert_eq!(got, "invalid");
+                assert!(expected.contains(&"npub".to_string()));
+            }
+            other => panic!("expected InvalidHrp error, got: {:?}", other),
         }
     }
 
