@@ -112,3 +112,12 @@ __pycache__/
 # Test artifacts
 regex.txt
 test_regex.py
+
+# Profiling outputs
+flamegraph.svg
+flamegraph-*.svg
+perf.data
+perf.data.old
+docs/profiles/*.svg
+docs/profiles/*.gz
+docs/profiles/heaptrack-*
