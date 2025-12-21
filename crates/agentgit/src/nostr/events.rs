@@ -331,6 +331,89 @@ impl BountyClaimBuilder {
     }
 }
 
+/// Builder for creating status events (kinds 1630-1633)
+///
+/// Status events are used to mark PRs/patches as:
+/// - 1630: Open
+/// - 1631: Applied/Merged
+/// - 1632: Closed
+/// - 1633: Draft
+#[allow(dead_code)]
+pub struct StatusEventBuilder {
+    target_event_id: String,
+    repo_address: String,
+    status_kind: u16,
+    reason: Option<String>,
+}
+
+#[allow(dead_code)]
+impl StatusEventBuilder {
+    /// Create a new status event builder
+    ///
+    /// # Arguments
+    /// * `target_event_id` - The event ID of the PR/patch being updated
+    /// * `repo_address` - The repository address tag (e.g., "30617:<pubkey>:<repo-id>")
+    /// * `status_kind` - The status kind (1630=Open, 1631=Applied, 1632=Closed, 1633=Draft)
+    pub fn new(
+        target_event_id: impl Into<String>,
+        repo_address: impl Into<String>,
+        status_kind: u16,
+    ) -> Self {
+        Self {
+            target_event_id: target_event_id.into(),
+            repo_address: repo_address.into(),
+            status_kind,
+            reason: None,
+        }
+    }
+
+    /// Create a status event for marking as Open (1630)
+    pub fn open(target_event_id: impl Into<String>, repo_address: impl Into<String>) -> Self {
+        Self::new(target_event_id, repo_address, 1630)
+    }
+
+    /// Create a status event for marking as Applied/Merged (1631)
+    pub fn applied(target_event_id: impl Into<String>, repo_address: impl Into<String>) -> Self {
+        Self::new(target_event_id, repo_address, 1631)
+    }
+
+    /// Create a status event for marking as Closed (1632)
+    pub fn closed(target_event_id: impl Into<String>, repo_address: impl Into<String>) -> Self {
+        Self::new(target_event_id, repo_address, 1632)
+    }
+
+    /// Create a status event for marking as Draft (1633)
+    pub fn draft(target_event_id: impl Into<String>, repo_address: impl Into<String>) -> Self {
+        Self::new(target_event_id, repo_address, 1633)
+    }
+
+    /// Set an optional reason/message for the status change
+    pub fn reason(mut self, reason: impl Into<String>) -> Self {
+        self.reason = Some(reason.into());
+        self
+    }
+
+    /// Build the event template
+    pub fn build(self) -> EventTemplate {
+        let tags = vec![
+            // Reference to target PR/patch (root marker)
+            vec!["e".to_string(), self.target_event_id, "".to_string(), "root".to_string()],
+            // Repository reference
+            vec!["a".to_string(), self.repo_address],
+        ];
+
+        EventTemplate {
+            created_at: SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_secs(),
+            kind: self.status_kind,
+            tags,
+            content: self.reason.unwrap_or_default(),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

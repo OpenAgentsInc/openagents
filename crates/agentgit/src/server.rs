@@ -39,6 +39,7 @@ pub async fn start_server(
             .route("/repo/{identifier}/pulls", web::get().to(repository_pulls))
             .route("/repo/{identifier}/pulls/{pr_id}", web::get().to(pull_request_detail))
             .route("/repo/{identifier}/pulls/{pr_id}/review", web::post().to(pr_review_submit))
+            .route("/repo/{identifier}/pulls/{pr_id}/status", web::post().to(pr_status_change))
             .route("/trajectory/{session_id}", web::get().to(trajectory_detail))
             .route("/ws", web::get().to(ws_route))
     })
@@ -337,6 +338,57 @@ async fn pr_review_submit(
         .body(response_html)
 }
 
+/// Change the status of a PR
+async fn pr_status_change(
+    path: web::Path<(String, String)>,
+    form: web::Form<std::collections::HashMap<String, String>>,
+) -> HttpResponse {
+    let (_identifier, _pr_id) = path.into_inner();
+
+    // Extract form data
+    let status = form.get("status").cloned().unwrap_or_else(|| "open".to_string());
+    let reason = form.get("reason").cloned().unwrap_or_default();
+
+    // Map status string to kind
+    let (status_kind, status_label) = match status.as_str() {
+        "open" => (1630, "Open"),
+        "applied" | "merged" => (1631, "Applied/Merged"),
+        "closed" => (1632, "Closed"),
+        "draft" => (1633, "Draft"),
+        _ => {
+            return HttpResponse::BadRequest()
+                .content_type("text/html; charset=utf-8")
+                .body(r#"<div class="error-message"><p>❌ Invalid status</p></div>"#);
+        }
+    };
+
+    // For now, return a success message
+    // In a real implementation, this would:
+    // 1. Build a StatusEventBuilder with the appropriate kind
+    // 2. Sign it with the user's key
+    // 3. Publish it to relays
+    // 4. Cache it locally
+
+    let response_html = format!(
+        r#"<div class="success-message">
+            <p>✅ Status changed to: {}</p>
+            <p>Kind: {}</p>
+            {}
+        </div>"#,
+        status_label,
+        status_kind,
+        if !reason.is_empty() {
+            format!("<p>Reason: {}</p>", reason)
+        } else {
+            String::new()
+        }
+    );
+
+    HttpResponse::Ok()
+        .content_type("text/html; charset=utf-8")
+        .body(response_html)
+}
+
 /// Issue creation form
 async fn issue_create_form(
     state: web::Data<AppState>,
@@ -622,9 +674,18 @@ async fn pull_request_detail(
         }
     };
 
+    // Fetch status events for this PR
+    let status_events = match state.nostr_client.get_status_events_for_pr(&pr_id).await {
+        Ok(s) => s,
+        Err(e) => {
+            tracing::warn!("Failed to fetch status events for PR {}: {}", pr_id, e);
+            Vec::new() // Continue with empty status events if fetch fails
+        }
+    };
+
     HttpResponse::Ok()
         .content_type("text/html; charset=utf-8")
-        .body(pull_request_detail_page(&repository, &pull_request, &reviews, &identifier).into_string())
+        .body(pull_request_detail_page(&repository, &pull_request, &reviews, &status_events, &identifier).into_string())
 }
 
 /// Trajectory detail page

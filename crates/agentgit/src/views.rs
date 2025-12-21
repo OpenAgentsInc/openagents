@@ -1043,7 +1043,7 @@ pub fn patch_detail_page(repository: &Event, patch: &Event, identifier: &str) ->
 }
 
 /// Pull request detail page
-pub fn pull_request_detail_page(repository: &Event, pull_request: &Event, reviews: &[Event], identifier: &str) -> Markup {
+pub fn pull_request_detail_page(repository: &Event, pull_request: &Event, reviews: &[Event], status_events: &[Event], identifier: &str) -> Markup {
     let repo_name = get_tag_value(repository, "name").unwrap_or_else(|| "Repository".to_string());
     let pr_title = get_tag_value(pull_request, "subject").unwrap_or_else(|| "Untitled Pull Request".to_string());
     let pr_status = get_tag_value(pull_request, "status").unwrap_or_else(|| "open".to_string());
@@ -1124,6 +1124,85 @@ pub fn pull_request_detail_page(repository: &Event, pull_request: &Event, review
                                     h2 { "Description" }
                                     div.issue-content {
                                         p { (pull_request.content) }
+                                    }
+                                }
+                            }
+
+                            section.issue-section {
+                                h2 { "Status Management" }
+
+                                @let current_status = if let Some(latest) = status_events.first() {
+                                    match latest.kind {
+                                        1630 => "Open",
+                                        1631 => "Applied/Merged",
+                                        1632 => "Closed",
+                                        1633 => "Draft",
+                                        _ => "Unknown"
+                                    }
+                                } else {
+                                    &pr_status
+                                };
+
+                                div.status-current {
+                                    h3 { "Current Status: " span class={"issue-status " (current_status.to_lowercase())} { (current_status) } }
+                                }
+
+                                form.claim-form
+                                    hx-post={"/repo/" (identifier) "/pulls/" (pull_request.id) "/status"}
+                                    hx-target="this"
+                                    hx-swap="outerHTML" {
+                                    h3 { "Change Status" }
+                                    div.form-group {
+                                        label for="status_select" { "New Status" }
+                                        select name="status" id="status_select" {
+                                            option value="open" { "🟢 Open (1630)" }
+                                            option value="applied" { "✅ Applied/Merged (1631)" }
+                                            option value="closed" { "🔴 Closed (1632)" }
+                                            option value="draft" { "📝 Draft (1633)" }
+                                        }
+                                    }
+                                    div.form-group {
+                                        label for="status_reason" { "Reason (optional)" }
+                                        textarea
+                                            name="reason"
+                                            id="status_reason"
+                                            placeholder="Optional reason for status change..."
+                                            rows="2" {}
+                                    }
+                                    button.submit-button type="submit" { "Update Status" }
+                                }
+
+                                @if !status_events.is_empty() {
+                                    div.status-history {
+                                        h3 { "Status History" }
+                                        div.claims-list {
+                                            @for status_event in status_events {
+                                                @let status_name = match status_event.kind {
+                                                    1630 => "🟢 Open",
+                                                    1631 => "✅ Applied/Merged",
+                                                    1632 => "🔴 Closed",
+                                                    1633 => "📝 Draft",
+                                                    _ => "❓ Unknown"
+                                                };
+                                                @let status_author = if status_event.pubkey.len() > 16 {
+                                                    format!("{}...{}", &status_event.pubkey[..8], &status_event.pubkey[status_event.pubkey.len()-8..])
+                                                } else {
+                                                    status_event.pubkey.clone()
+                                                };
+
+                                                div.claim-card {
+                                                    div.claim-header {
+                                                        span.claim-author { (status_name) " by " (status_author) }
+                                                        span.claim-time { (status_event.created_at) }
+                                                    }
+                                                    @if !status_event.content.is_empty() {
+                                                        div.claim-content {
+                                                            p { (status_event.content) }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
                                     }
                                 }
                             }

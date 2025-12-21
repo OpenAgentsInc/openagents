@@ -263,4 +263,9 @@ impl NostrClient {
     pub async fn get_reviews_for_pr(&self, pr_event_id: &str) -> Result<Vec<Event>> {
         self.cache.lock().await.get_reviews_for_pr(pr_event_id)
     }
+
+    /// Get status events for a PR or patch
+    pub async fn get_status_events_for_pr(&self, pr_event_id: &str) -> Result<Vec<Event>> {
+        self.cache.lock().await.get_status_events_for_pr(pr_event_id)
+    }
 }
