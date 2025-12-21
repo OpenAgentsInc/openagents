@@ -10,6 +10,7 @@
 
 use actix_web::{web, App, HttpResponse, HttpServer, Result as ActixResult};
 use actix_ws::Message;
+use chrono::Utc;
 use maud::{html, Markup, DOCTYPE};
 use serde::{Deserialize, Serialize};
 use crate::metrics::{MetricsDb, SessionMetrics, SessionStatus};
@@ -39,6 +40,13 @@ pub async fn start_dashboard(db_path: &str, port: u16) -> anyhow::Result<()> {
             .route("/export/sessions.json", web::get().to(export_json))
             .route("/export/sessions.csv", web::get().to(export_csv))
             .route("/ws", web::get().to(websocket))
+            // API endpoints
+            .route("/api/sessions", web::get().to(api_sessions))
+            .route("/api/sessions/{id}", web::get().to(api_session_detail))
+            .route("/api/metrics", web::get().to(api_metrics))
+            .route("/api/anomalies", web::get().to(api_anomalies))
+            .route("/api/trends", web::get().to(api_trends))
+            .route("/ws/metrics", web::get().to(websocket_metrics))
     })
     .bind(("127.0.0.1", port))?
     .run()
@@ -589,4 +597,441 @@ footer a:hover {
     text-decoration: underline;
 }
 "#
+}
+
+// ============================================================================
+// API Endpoints (JSON)
+// ============================================================================
+
+/// Query parameters for sessions list API
+#[derive(Debug, Deserialize)]
+struct SessionsQuery {
+    /// Number of sessions to return (default: 50, max: 1000)
+    #[serde(default = "default_limit")]
+    limit: usize,
+    /// Offset for pagination (default: 0)
+    #[serde(default)]
+    offset: usize,
+    /// Filter by status (optional)
+    status: Option<String>,
+    /// Sort by field (default: timestamp)
+    #[serde(default = "default_sort")]
+    sort: String,
+    /// Sort direction: asc or desc (default: desc)
+    #[serde(default = "default_order")]
+    order: String,
+}
+
+fn default_limit() -> usize { 50 }
+fn default_sort() -> String { "timestamp".to_string() }
+fn default_order() -> String { "desc".to_string() }
+
+/// API endpoint: GET /api/sessions
+/// Returns paginated list of sessions with filtering and sorting
+async fn api_sessions(
+    state: web::Data<DashboardState>,
+    query: web::Query<SessionsQuery>,
+) -> ActixResult<HttpResponse> {
+    let store = MetricsDb::open(&state.db_path)
+        .map_err(|e| actix_web::error::ErrorInternalServerError(e))?;
+
+    // Cap limit at 1000
+    let limit = query.limit.min(1000);
+
+    // Get all sessions (we'll filter and sort in memory for simplicity)
+    let mut sessions = store.get_all_sessions()
+        .map_err(|e| actix_web::error::ErrorInternalServerError(e))?;
+
+    // Filter by status if provided
+    if let Some(ref status) = query.status {
+        sessions.retain(|s| {
+            format!("{:?}", s.final_status).to_lowercase() == status.to_lowercase()
+        });
+    }
+
+    // Sort
+    match query.sort.as_str() {
+        "duration" => sessions.sort_by(|a, b| a.duration_seconds.partial_cmp(&b.duration_seconds).unwrap()),
+        "cost" => sessions.sort_by(|a, b| a.cost_usd.partial_cmp(&b.cost_usd).unwrap()),
+        "tokens" => sessions.sort_by(|a, b| {
+            let a_total = a.tokens_in + a.tokens_out;
+            let b_total = b.tokens_in + b.tokens_out;
+            a_total.cmp(&b_total)
+        }),
+        _ => sessions.sort_by(|a, b| a.timestamp.cmp(&b.timestamp)),
+    }
+
+    // Reverse if descending
+    if query.order == "desc" {
+        sessions.reverse();
+    }
+
+    // Apply pagination
+    let total = sessions.len();
+    let sessions: Vec<_> = sessions.into_iter()
+        .skip(query.offset)
+        .take(limit)
+        .collect();
+
+    let response = serde_json::json!({
+        "sessions": sessions,
+        "total": total,
+        "limit": limit,
+        "offset": query.offset,
+    });
+
+    Ok(HttpResponse::Ok().json(response))
+}
+
+/// API endpoint: GET /api/sessions/{id}
+/// Returns detailed metrics for a specific session
+async fn api_session_detail(
+    state: web::Data<DashboardState>,
+    path: web::Path<String>,
+) -> ActixResult<HttpResponse> {
+    let session_id = path.into_inner();
+    let store = MetricsDb::open(&state.db_path)
+        .map_err(|e| actix_web::error::ErrorInternalServerError(e))?;
+
+    let session = store.get_session(&session_id)
+        .map_err(|e| actix_web::error::ErrorInternalServerError(e))?;
+
+    match session {
+        Some(session) => {
+            let tool_calls = store.get_tool_calls(&session_id).unwrap_or_default();
+            let anomalies = store.get_anomalies(&session_id).unwrap_or_default();
+
+            let response = serde_json::json!({
+                "session": session,
+                "tool_calls": tool_calls,
+                "anomalies": anomalies,
+            });
+
+            Ok(HttpResponse::Ok().json(response))
+        }
+        None => Ok(HttpResponse::NotFound().json(serde_json::json!({
+            "error": "Session not found",
+            "session_id": session_id,
+        }))),
+    }
+}
+
+/// API endpoint: GET /api/metrics
+/// Returns aggregate metrics summary
+async fn api_metrics(
+    state: web::Data<DashboardState>,
+) -> ActixResult<HttpResponse> {
+    let store = MetricsDb::open(&state.db_path)
+        .map_err(|e| actix_web::error::ErrorInternalServerError(e))?;
+
+    let stats = store.get_summary_stats()
+        .map_err(|e| actix_web::error::ErrorInternalServerError(e))?;
+
+    Ok(HttpResponse::Ok().json(stats))
+}
+
+/// Query parameters for anomalies API
+#[derive(Debug, Deserialize)]
+struct AnomaliesQuery {
+    /// Number of anomalies to return (default: 50, max: 500)
+    #[serde(default = "default_anomalies_limit")]
+    limit: usize,
+    /// Filter by severity (optional): warning, error, critical
+    severity: Option<String>,
+    /// Show only uninvestigated anomalies (default: false)
+    #[serde(default)]
+    uninvestigated_only: bool,
+}
+
+fn default_anomalies_limit() -> usize { 50 }
+
+/// API endpoint: GET /api/anomalies
+/// Returns recent anomalies with optional filtering
+async fn api_anomalies(
+    state: web::Data<DashboardState>,
+    query: web::Query<AnomaliesQuery>,
+) -> ActixResult<HttpResponse> {
+    let store = MetricsDb::open(&state.db_path)
+        .map_err(|e| actix_web::error::ErrorInternalServerError(e))?;
+
+    // Get recent sessions to find their anomalies
+    let sessions = store.get_recent_sessions(200)
+        .map_err(|e| actix_web::error::ErrorInternalServerError(e))?;
+
+    let mut all_anomalies = Vec::new();
+    for session in sessions {
+        if let Ok(anomalies) = store.get_anomalies(&session.id) {
+            all_anomalies.extend(anomalies);
+        }
+    }
+
+    // Filter by severity if provided
+    if let Some(ref severity) = query.severity {
+        all_anomalies.retain(|a| {
+            format!("{:?}", a.severity).to_lowercase() == severity.to_lowercase()
+        });
+    }
+
+    // Filter by investigation status if requested
+    if query.uninvestigated_only {
+        all_anomalies.retain(|a| !a.investigated);
+    }
+
+    // Sort by most recent first (would need timestamps on anomalies for this)
+    // For now, just take the limit
+    let total = all_anomalies.len();
+    let anomalies: Vec<_> = all_anomalies.into_iter()
+        .take(query.limit.min(500))
+        .collect();
+
+    let response = serde_json::json!({
+        "anomalies": anomalies,
+        "total": total,
+        "limit": query.limit.min(500),
+    });
+
+    Ok(HttpResponse::Ok().json(response))
+}
+
+/// Query parameters for trends API
+#[derive(Debug, Deserialize)]
+struct TrendsQuery {
+    /// Metric dimension to trend (e.g., "tool_error_rate", "completion_rate")
+    dimension: String,
+    /// Time range in hours (default: 168 = 1 week, max: 720 = 30 days)
+    #[serde(default = "default_hours")]
+    hours: i64,
+    /// Granularity: hour, day, week (default: day)
+    #[serde(default = "default_granularity")]
+    granularity: String,
+}
+
+fn default_hours() -> i64 { 168 } // 1 week
+fn default_granularity() -> String { "day".to_string() }
+
+/// API endpoint: GET /api/trends
+/// Returns metric trends over time
+async fn api_trends(
+    state: web::Data<DashboardState>,
+    query: web::Query<TrendsQuery>,
+) -> ActixResult<HttpResponse> {
+    let store = MetricsDb::open(&state.db_path)
+        .map_err(|e| actix_web::error::ErrorInternalServerError(e))?;
+
+    // Cap at 30 days
+    let hours = query.hours.min(720);
+
+    // Get all sessions within the time range
+    let all_sessions = store.get_all_sessions()
+        .map_err(|e| actix_web::error::ErrorInternalServerError(e))?;
+
+    let cutoff = Utc::now() - chrono::Duration::hours(hours);
+    let sessions: Vec<_> = all_sessions.into_iter()
+        .filter(|s| s.timestamp >= cutoff)
+        .collect();
+
+    // Calculate the requested metric trend
+    let data_points = match query.dimension.as_str() {
+        "tool_error_rate" => calculate_error_rate_trend(&sessions, &query.granularity),
+        "completion_rate" => calculate_completion_rate_trend(&sessions, &query.granularity),
+        "avg_duration" => calculate_duration_trend(&sessions, &query.granularity),
+        "avg_cost" => calculate_cost_trend(&sessions, &query.granularity),
+        "avg_tokens" => calculate_tokens_trend(&sessions, &query.granularity),
+        _ => {
+            return Ok(HttpResponse::BadRequest().json(serde_json::json!({
+                "error": "Unknown dimension",
+                "dimension": query.dimension,
+                "supported": ["tool_error_rate", "completion_rate", "avg_duration", "avg_cost", "avg_tokens"],
+            })));
+        }
+    };
+
+    let response = serde_json::json!({
+        "dimension": query.dimension,
+        "hours": hours,
+        "granularity": query.granularity,
+        "data": data_points,
+    });
+
+    Ok(HttpResponse::Ok().json(response))
+}
+
+/// Calculate tool error rate trend
+fn calculate_error_rate_trend(sessions: &[SessionMetrics], _granularity: &str) -> Vec<serde_json::Value> {
+    // Simple implementation: daily buckets
+    use std::collections::HashMap;
+
+    let mut buckets: HashMap<String, (i32, i32)> = HashMap::new();
+
+    for session in sessions {
+        let day = session.timestamp.format("%Y-%m-%d").to_string();
+        let entry = buckets.entry(day.clone()).or_insert((0, 0));
+        entry.0 += session.tool_calls;
+        entry.1 += session.tool_errors;
+    }
+
+    let mut result: Vec<_> = buckets.into_iter()
+        .map(|(day, (calls, errors))| {
+            let rate = if calls > 0 {
+                (errors as f64 / calls as f64) * 100.0
+            } else {
+                0.0
+            };
+            serde_json::json!({
+                "date": day,
+                "value": rate,
+                "tool_calls": calls,
+                "tool_errors": errors,
+            })
+        })
+        .collect();
+
+    result.sort_by(|a, b| a["date"].as_str().cmp(&b["date"].as_str()));
+    result
+}
+
+/// Calculate completion rate trend
+fn calculate_completion_rate_trend(sessions: &[SessionMetrics], _granularity: &str) -> Vec<serde_json::Value> {
+    use std::collections::HashMap;
+
+    let mut buckets: HashMap<String, (i32, i32)> = HashMap::new();
+
+    for session in sessions {
+        let day = session.timestamp.format("%Y-%m-%d").to_string();
+        let entry = buckets.entry(day.clone()).or_insert((0, 0));
+        entry.0 += session.issues_claimed;
+        entry.1 += session.issues_completed;
+    }
+
+    let mut result: Vec<_> = buckets.into_iter()
+        .map(|(day, (claimed, completed))| {
+            let rate = if claimed > 0 {
+                (completed as f64 / claimed as f64) * 100.0
+            } else {
+                0.0
+            };
+            serde_json::json!({
+                "date": day,
+                "value": rate,
+                "issues_claimed": claimed,
+                "issues_completed": completed,
+            })
+        })
+        .collect();
+
+    result.sort_by(|a, b| a["date"].as_str().cmp(&b["date"].as_str()));
+    result
+}
+
+/// Calculate average duration trend
+fn calculate_duration_trend(sessions: &[SessionMetrics], _granularity: &str) -> Vec<serde_json::Value> {
+    use std::collections::HashMap;
+
+    let mut buckets: HashMap<String, Vec<f64>> = HashMap::new();
+
+    for session in sessions {
+        let day = session.timestamp.format("%Y-%m-%d").to_string();
+        buckets.entry(day).or_default().push(session.duration_seconds);
+    }
+
+    let mut result: Vec<_> = buckets.into_iter()
+        .map(|(day, durations)| {
+            let avg = durations.iter().sum::<f64>() / durations.len() as f64;
+            serde_json::json!({
+                "date": day,
+                "value": avg,
+                "count": durations.len(),
+            })
+        })
+        .collect();
+
+    result.sort_by(|a, b| a["date"].as_str().cmp(&b["date"].as_str()));
+    result
+}
+
+/// Calculate average cost trend
+fn calculate_cost_trend(sessions: &[SessionMetrics], _granularity: &str) -> Vec<serde_json::Value> {
+    use std::collections::HashMap;
+
+    let mut buckets: HashMap<String, Vec<f64>> = HashMap::new();
+
+    for session in sessions {
+        let day = session.timestamp.format("%Y-%m-%d").to_string();
+        buckets.entry(day).or_default().push(session.cost_usd);
+    }
+
+    let mut result: Vec<_> = buckets.into_iter()
+        .map(|(day, costs)| {
+            let avg = costs.iter().sum::<f64>() / costs.len() as f64;
+            serde_json::json!({
+                "date": day,
+                "value": avg,
+                "count": costs.len(),
+            })
+        })
+        .collect();
+
+    result.sort_by(|a, b| a["date"].as_str().cmp(&b["date"].as_str()));
+    result
+}
+
+/// Calculate average tokens trend
+fn calculate_tokens_trend(sessions: &[SessionMetrics], _granularity: &str) -> Vec<serde_json::Value> {
+    use std::collections::HashMap;
+
+    let mut buckets: HashMap<String, Vec<i64>> = HashMap::new();
+
+    for session in sessions {
+        let day = session.timestamp.format("%Y-%m-%d").to_string();
+        let total_tokens = session.tokens_in + session.tokens_out;
+        buckets.entry(day).or_default().push(total_tokens);
+    }
+
+    let mut result: Vec<_> = buckets.into_iter()
+        .map(|(day, tokens)| {
+            let avg = tokens.iter().sum::<i64>() as f64 / tokens.len() as f64;
+            serde_json::json!({
+                "date": day,
+                "value": avg,
+                "count": tokens.len(),
+            })
+        })
+        .collect();
+
+    result.sort_by(|a, b| a["date"].as_str().cmp(&b["date"].as_str()));
+    result
+}
+
+/// WebSocket endpoint for real-time metrics updates
+async fn websocket_metrics(
+    req: actix_web::HttpRequest,
+    stream: web::Payload,
+) -> ActixResult<HttpResponse> {
+    let (response, mut session, mut msg_stream) = actix_ws::handle(&req, stream)?;
+
+    actix_web::rt::spawn(async move {
+        // Send initial connection message
+        let _ = session.text(serde_json::json!({
+            "type": "connected",
+            "message": "Real-time metrics stream connected",
+        }).to_string()).await;
+
+        while let Some(Ok(msg)) = msg_stream.recv().await {
+            match msg {
+                Message::Ping(bytes) => {
+                    let _ = session.pong(&bytes).await;
+                }
+                Message::Text(text) => {
+                    // In production, this would subscribe to metrics updates
+                    // For now, echo back the request
+                    let _ = session.text(format!("Echo: {}", text)).await;
+                }
+                Message::Close(_) => break,
+                _ => {}
+            }
+        }
+        let _ = session.close(None).await;
+    });
+
+    Ok(response)
 }
