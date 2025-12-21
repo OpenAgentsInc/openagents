@@ -31,6 +31,7 @@
 //! - NIP-32: Labeling (content moderation and categorization)
 //! - NIP-33: Parameterized Replaceable Events (deprecated, moved to NIP-01)
 //! - NIP-36: Sensitive Content / Content Warning
+//! - NIP-37: Draft Wraps (encrypted draft storage and private relay lists)
 //! - NIP-38: User Statuses (live status updates)
 //! - NIP-39: External Identities in Profiles
 //! - NIP-40: Expiration Timestamp
@@ -103,6 +104,7 @@ mod nip31;
 mod nip32;
 mod nip33;
 mod nip36;
+mod nip37;
 mod nip38;
 mod nip39;
 mod nip40;
@@ -321,6 +323,13 @@ pub use nip33::{
 pub use nip36::{
     CONTENT_WARNING_TAG, Nip36Error, add_content_warning, get_content_warning,
     has_content_warning, reasons, remove_content_warning,
+};
+
+// NIP-37: Draft Wraps
+pub use nip37::{
+    DRAFT_WRAP_KIND, DraftWrap, Nip37Error, PRIVATE_CONTENT_RELAY_LIST_KIND,
+    PrivateContentRelayList, is_draft_wrap_kind, is_nip37_kind,
+    is_private_content_relay_list_kind,
 };
 
 // NIP-38: User Statuses
