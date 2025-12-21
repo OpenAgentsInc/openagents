@@ -699,7 +699,8 @@ pub use nip98::{
 // NIP-SA: Sovereign Agents
 pub use nip_sa::{
     // Profile (kind:38000)
-    AgentProfileContent, AutonomyLevel,
+    AgentProfile, AgentProfileContent, AutonomyLevel, ProfileError, ThresholdConfig,
+    KIND_AGENT_PROFILE,
     // State (kind:38001)
     AgentStateContent, Goal, GoalStatus, MemoryEntry,
     // Schedule (kind:38002)
