@@ -647,3 +647,374 @@ fn format_tokens(tokens: u64) -> String {
         tokens.to_string()
     }
 }
+
+//
+// ===== Aggregate Metrics Analysis =====
+//
+
+use crate::metrics::{MetricsDb, SessionMetrics};
+
+/// Aggregate statistics for a metric dimension from metrics database
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MetricAggregateStats {
+    pub dimension: String,
+    pub count: usize,
+    pub mean: f64,
+    pub median: f64,
+    pub p90: f64,
+    pub p99: f64,
+    pub min: f64,
+    pub max: f64,
+    pub stddev: f64,
+}
+
+/// Trend direction for a metric
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum TrendDirection {
+    Improving,
+    Stable,
+    Degrading,
+}
+
+/// Trend analysis for a metric over time
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MetricTrend {
+    pub dimension: String,
+    pub direction: TrendDirection,
+    pub percent_change: f64,
+    pub recent: MetricAggregateStats,
+    pub baseline: Option<MetricAggregateStats>,
+}
+
+/// Detected regression in metrics
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Regression {
+    pub dimension: String,
+    pub baseline_value: f64,
+    pub current_value: f64,
+    pub percent_worse: f64,
+    pub is_critical: bool,
+}
+
+/// Time period for analysis
+#[derive(Debug, Clone, Copy)]
+pub enum TimePeriod {
+    Last7Days,
+    Last30Days,
+    LastWeek,
+    ThisWeek,
+    Custom { start: DateTime<Utc>, end: DateTime<Utc> },
+}
+
+impl TimePeriod {
+    /// Get the start and end timestamps for this period
+    pub fn bounds(&self) -> (DateTime<Utc>, DateTime<Utc>) {
+        use chrono::Datelike;
+
+        let now = Utc::now();
+        match self {
+            TimePeriod::Last7Days => (now - chrono::Duration::days(7), now),
+            TimePeriod::Last30Days => (now - chrono::Duration::days(30), now),
+            TimePeriod::LastWeek => {
+                let days_since_monday = now.weekday().num_days_from_monday();
+                let last_monday = now - chrono::Duration::days((days_since_monday + 7) as i64);
+                let last_sunday = last_monday + chrono::Duration::days(6);
+                (last_monday, last_sunday)
+            }
+            TimePeriod::ThisWeek => {
+                let days_since_monday = now.weekday().num_days_from_monday();
+                let this_monday = now - chrono::Duration::days(days_since_monday as i64);
+                (this_monday, now)
+            }
+            TimePeriod::Custom { start, end } => (*start, *end),
+        }
+    }
+
+    pub fn name(&self) -> &'static str {
+        match self {
+            TimePeriod::Last7Days => "Last 7 Days",
+            TimePeriod::Last30Days => "Last 30 Days",
+            TimePeriod::LastWeek => "Last Week",
+            TimePeriod::ThisWeek => "This Week",
+            TimePeriod::Custom { .. } => "Custom Period",
+        }
+    }
+}
+
+/// Calculate aggregate statistics from a list of values
+fn calculate_metric_stats(dimension: &str, values: &[f64]) -> Option<MetricAggregateStats> {
+    if values.is_empty() {
+        return None;
+    }
+
+    use statrs::statistics::{Data, Distribution, OrderStatistics, Min, Max};
+
+    let mut data = Data::new(values.to_vec());
+    let mean = data.mean().unwrap_or(0.0);
+    let stddev = data.std_dev().unwrap_or(0.0);
+    let median = data.median();
+    let p90 = data.percentile(90);
+    let p99 = data.percentile(99);
+    let min = data.min();
+    let max = data.max();
+
+    Some(MetricAggregateStats {
+        dimension: dimension.to_string(),
+        count: values.len(),
+        mean,
+        median,
+        p90,
+        p99,
+        min,
+        max,
+        stddev,
+    })
+}
+
+/// Get sessions within a time period
+pub fn get_sessions_in_period(
+    db: &MetricsDb,
+    period: TimePeriod,
+) -> anyhow::Result<Vec<SessionMetrics>> {
+    let (start, end) = period.bounds();
+    let all_sessions = db.get_all_sessions()?;
+
+    Ok(all_sessions
+        .into_iter()
+        .filter(|s| s.timestamp >= start && s.timestamp <= end)
+        .collect())
+}
+
+/// Calculate aggregate statistics for all metrics from sessions
+pub fn calculate_aggregate_stats_from_sessions(sessions: &[SessionMetrics]) -> HashMap<String, MetricAggregateStats> {
+    let mut stats_map = HashMap::new();
+
+    // Tool error rate
+    let error_rates: Vec<f64> = sessions
+        .iter()
+        .filter(|s| s.tool_calls > 0)
+        .map(|s| (s.tool_errors as f64) / (s.tool_calls as f64))
+        .collect();
+    if let Some(stats) = calculate_metric_stats("tool_error_rate", &error_rates) {
+        stats_map.insert("tool_error_rate".to_string(), stats);
+    }
+
+    // Tokens per issue
+    let tokens_per_issue: Vec<f64> = sessions
+        .iter()
+        .filter(|s| s.issues_completed > 0)
+        .map(|s| ((s.tokens_in + s.tokens_out) as f64) / (s.issues_completed as f64))
+        .collect();
+    if let Some(stats) = calculate_metric_stats("tokens_per_issue", &tokens_per_issue) {
+        stats_map.insert("tokens_per_issue".to_string(), stats);
+    }
+
+    // Duration per issue
+    let duration_per_issue: Vec<f64> = sessions
+        .iter()
+        .filter(|s| s.issues_completed > 0)
+        .map(|s| s.duration_seconds / (s.issues_completed as f64))
+        .collect();
+    if let Some(stats) = calculate_metric_stats("duration_per_issue", &duration_per_issue) {
+        stats_map.insert("duration_per_issue".to_string(), stats);
+    }
+
+    // Cost per issue
+    let cost_per_issue: Vec<f64> = sessions
+        .iter()
+        .filter(|s| s.issues_completed > 0)
+        .map(|s| s.cost_usd / (s.issues_completed as f64))
+        .collect();
+    if let Some(stats) = calculate_metric_stats("cost_per_issue", &cost_per_issue) {
+        stats_map.insert("cost_per_issue".to_string(), stats);
+    }
+
+    // Session duration
+    let durations: Vec<f64> = sessions.iter().map(|s| s.duration_seconds).collect();
+    if let Some(stats) = calculate_metric_stats("session_duration", &durations) {
+        stats_map.insert("session_duration".to_string(), stats);
+    }
+
+    // Completion rate
+    let completion_rates: Vec<f64> = sessions
+        .iter()
+        .filter(|s| s.issues_claimed > 0)
+        .map(|s| (s.issues_completed as f64) / (s.issues_claimed as f64))
+        .collect();
+    if let Some(stats) = calculate_metric_stats("completion_rate", &completion_rates) {
+        stats_map.insert("completion_rate".to_string(), stats);
+    }
+
+    stats_map
+}
+
+/// Detect trends by comparing recent vs baseline periods
+pub fn detect_trends(
+    db: &MetricsDb,
+    recent_period: TimePeriod,
+    baseline_period: Option<TimePeriod>,
+) -> anyhow::Result<Vec<MetricTrend>> {
+    let recent_sessions = get_sessions_in_period(db, recent_period)?;
+    let recent_stats = calculate_aggregate_stats_from_sessions(&recent_sessions);
+
+    let baseline_sessions = if let Some(bp) = baseline_period {
+        Some(get_sessions_in_period(db, bp)?)
+    } else {
+        None
+    };
+
+    let baseline_stats = baseline_sessions
+        .as_ref()
+        .map(|sessions| calculate_aggregate_stats_from_sessions(sessions));
+
+    let mut trends = Vec::new();
+
+    for (dimension, recent) in recent_stats {
+        let baseline = baseline_stats
+            .as_ref()
+            .and_then(|map| map.get(&dimension).cloned());
+
+        let (direction, percent_change) = if let Some(ref base) = baseline {
+            let change = if base.mean != 0.0 {
+                ((recent.mean - base.mean) / base.mean) * 100.0
+            } else {
+                0.0
+            };
+
+            // Determine if change is improvement or degradation based on metric type
+            let direction = match dimension.as_str() {
+                "tool_error_rate" | "cost_per_issue" | "duration_per_issue" => {
+                    // Lower is better
+                    if change < -5.0 {
+                        TrendDirection::Improving
+                    } else if change > 5.0 {
+                        TrendDirection::Degrading
+                    } else {
+                        TrendDirection::Stable
+                    }
+                }
+                "completion_rate" => {
+                    // Higher is better
+                    if change > 5.0 {
+                        TrendDirection::Improving
+                    } else if change < -5.0 {
+                        TrendDirection::Degrading
+                    } else {
+                        TrendDirection::Stable
+                    }
+                }
+                _ => TrendDirection::Stable,
+            };
+
+            (direction, change)
+        } else {
+            (TrendDirection::Stable, 0.0)
+        };
+
+        trends.push(MetricTrend {
+            dimension,
+            direction,
+            percent_change,
+            recent,
+            baseline,
+        });
+    }
+
+    Ok(trends)
+}
+
+/// Detect regressions by comparing against baselines
+pub fn detect_regressions(db: &MetricsDb, period: TimePeriod) -> anyhow::Result<Vec<Regression>> {
+    let sessions = get_sessions_in_period(db, period)?;
+    let current_stats = calculate_aggregate_stats_from_sessions(&sessions);
+    let mut regressions = Vec::new();
+
+    // Check each dimension against stored baseline
+    for (dimension, current) in current_stats {
+        if let Some(baseline) = db.get_baseline(&dimension)? {
+            let percent_worse = match dimension.as_str() {
+                "tool_error_rate" | "cost_per_issue" | "duration_per_issue" => {
+                    // Lower is better - check if current is higher than baseline
+                    if current.mean > baseline.mean && baseline.mean > 0.0 {
+                        ((current.mean - baseline.mean) / baseline.mean) * 100.0
+                    } else {
+                        continue; // Not a regression
+                    }
+                }
+                "completion_rate" => {
+                    // Higher is better - check if current is lower than baseline
+                    if current.mean < baseline.mean && baseline.mean > 0.0 {
+                        ((baseline.mean - current.mean) / baseline.mean) * 100.0
+                    } else {
+                        continue; // Not a regression
+                    }
+                }
+                _ => continue,
+            };
+
+            // Only report if regression is >10%
+            if percent_worse > 10.0 {
+                regressions.push(Regression {
+                    dimension,
+                    baseline_value: baseline.mean,
+                    current_value: current.mean,
+                    percent_worse,
+                    is_critical: percent_worse > 50.0,
+                });
+            }
+        }
+    }
+
+    Ok(regressions)
+}
+
+/// Get top error tools from sessions
+pub fn get_top_error_tools(db: &MetricsDb, period: TimePeriod, limit: usize) -> anyhow::Result<Vec<(String, u32)>> {
+    let sessions = get_sessions_in_period(db, period)?;
+    let mut error_counts: HashMap<String, u32> = HashMap::new();
+
+    for session in &sessions {
+        let tool_calls = db.get_tool_calls(&session.id)?;
+        for tc in tool_calls {
+            if !tc.success {
+                *error_counts.entry(tc.tool_name).or_insert(0) += 1;
+            }
+        }
+    }
+
+    let mut errors: Vec<(String, u32)> = error_counts.into_iter().collect();
+    errors.sort_by(|a, b| b.1.cmp(&a.1));
+    errors.truncate(limit);
+
+    Ok(errors)
+}
+
+/// Get slowest tools by average duration
+pub fn get_slowest_tools(db: &MetricsDb, period: TimePeriod, limit: usize) -> anyhow::Result<Vec<(String, f64, usize)>> {
+    let sessions = get_sessions_in_period(db, period)?;
+    let mut tool_durations: HashMap<String, Vec<i64>> = HashMap::new();
+
+    for session in &sessions {
+        let tool_calls = db.get_tool_calls(&session.id)?;
+        for tc in tool_calls {
+            tool_durations
+                .entry(tc.tool_name)
+                .or_default()
+                .push(tc.duration_ms);
+        }
+    }
+
+    let mut slowest: Vec<(String, f64, usize)> = tool_durations
+        .into_iter()
+        .map(|(tool, durations)| {
+            let count = durations.len();
+            let avg = durations.iter().sum::<i64>() as f64 / count as f64;
+            (tool, avg, count)
+        })
+        .collect();
+
+    slowest.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
+    slowest.truncate(limit);
+
+    Ok(slowest)
+}

@@ -733,6 +733,30 @@ enum MetricsCommands {
         #[arg(long)]
         db: Option<PathBuf>,
     },
+    /// Analyze aggregate metrics and detect regressions
+    Analyze {
+        /// Time period (7d, 30d, last-week, this-week)
+        #[arg(short, long, default_value = "7d")]
+        period: String,
+
+        /// Path to metrics database (default: autopilot-metrics.db)
+        #[arg(long)]
+        db: Option<PathBuf>,
+    },
+    /// Show trends by comparing periods
+    Trends {
+        /// Recent period (7d, 30d, last-week, this-week)
+        #[arg(short = 'r', long, default_value = "this-week")]
+        recent: String,
+
+        /// Baseline period (7d, 30d, last-week, this-week)
+        #[arg(short = 'b', long, default_value = "last-week")]
+        baseline: String,
+
+        /// Path to metrics database (default: autopilot-metrics.db)
+        #[arg(long)]
+        db: Option<PathBuf>,
+    },
 }
 
 #[tokio::main]
@@ -3181,6 +3205,191 @@ async fn handle_metrics_command(command: MetricsCommands) -> Result<()> {
 
             println!("{}", "=".repeat(100));
         }
+        MetricsCommands::Analyze { period, db } => {
+            use autopilot::analyze::{
+                calculate_aggregate_stats_from_sessions, detect_regressions,
+                get_sessions_in_period, get_slowest_tools, get_top_error_tools,
+            };
+
+            let db_path = db.unwrap_or_else(default_db_path);
+            let metrics_db = MetricsDb::open(&db_path)?;
+
+            // Parse period
+            let time_period = parse_time_period(&period)?;
+
+            // Get sessions
+            let sessions = get_sessions_in_period(&metrics_db, time_period)?;
+
+            if sessions.is_empty() {
+                println!("{} No sessions found in {}", "⚠".yellow(), time_period.name());
+                return Ok(());
+            }
+
+            // Calculate aggregate stats
+            let stats = calculate_aggregate_stats_from_sessions(&sessions);
+
+            // Detect regressions
+            let regressions = detect_regressions(&metrics_db, time_period)?;
+
+            // Get top error tools
+            let top_errors = get_top_error_tools(&metrics_db, time_period, 5)?;
+
+            // Get slowest tools
+            let slowest_tools = get_slowest_tools(&metrics_db, time_period, 5)?;
+
+            // Print report
+            println!("{}", "=".repeat(80));
+            println!(
+                "{} Metrics Analysis: {}",
+                "📊".cyan().bold(),
+                time_period.name()
+            );
+            println!("{}", "=".repeat(80));
+            println!();
+            println!("{} Overview:", "📈".cyan().bold());
+            println!("  Sessions:       {}", sessions.len());
+            println!();
+
+            // Print aggregate statistics
+            println!("{} Aggregate Statistics:", "📊".cyan().bold());
+            let metrics_order = vec![
+                "tool_error_rate",
+                "completion_rate",
+                "tokens_per_issue",
+                "cost_per_issue",
+                "duration_per_issue",
+                "session_duration",
+            ];
+
+            for metric_name in metrics_order {
+                if let Some(stat) = stats.get(metric_name) {
+                    let formatted = format_metric_value(metric_name, stat.mean);
+                    println!(
+                        "  {:20} mean={} p50={} p90={}",
+                        metric_name,
+                        formatted,
+                        format_metric_value(metric_name, stat.median),
+                        format_metric_value(metric_name, stat.p90)
+                    );
+                }
+            }
+            println!();
+
+            // Print regressions
+            if !regressions.is_empty() {
+                println!("{} Regressions Detected:", "⚠".red().bold());
+                for reg in &regressions {
+                    let severity = if reg.is_critical {
+                        "CRITICAL".red().bold()
+                    } else {
+                        "WARNING".yellow()
+                    };
+                    println!(
+                        "  {} {:20} {:.1}% worse (expected: {}, actual: {})",
+                        severity,
+                        reg.dimension,
+                        reg.percent_worse,
+                        format_metric_value(&reg.dimension, reg.baseline_value),
+                        format_metric_value(&reg.dimension, reg.current_value)
+                    );
+                }
+                println!();
+            } else {
+                println!("{} No regressions detected", "✓".green().bold());
+                println!();
+            }
+
+            // Print top error tools
+            if !top_errors.is_empty() {
+                println!("{} Top Error Tools:", "🔧".cyan().bold());
+                for (tool, count) in &top_errors {
+                    println!("  {:30} {} errors", tool, count);
+                }
+                println!();
+            }
+
+            // Print slowest tools
+            if !slowest_tools.is_empty() {
+                println!("{} Slowest Tools (avg duration):", "⏱".cyan().bold());
+                for (tool, avg_ms, count) in &slowest_tools {
+                    println!("  {:30} {:.0}ms avg (n={})", tool, avg_ms, count);
+                }
+                println!();
+            }
+
+            println!("{}", "=".repeat(80));
+        }
+        MetricsCommands::Trends { recent, baseline, db } => {
+            use autopilot::analyze::{detect_trends, TrendDirection};
+
+            let db_path = db.unwrap_or_else(default_db_path);
+            let metrics_db = MetricsDb::open(&db_path)?;
+
+            // Parse periods
+            let recent_period = parse_time_period(&recent)?;
+            let baseline_period = Some(parse_time_period(&baseline)?);
+
+            // Detect trends
+            let trends = detect_trends(&metrics_db, recent_period, baseline_period)?;
+
+            if trends.is_empty() {
+                println!("{} No trend data available", "⚠".yellow());
+                return Ok(());
+            }
+
+            // Print trends report
+            println!("{}", "=".repeat(80));
+            println!(
+                "{} Trend Analysis: {} vs {}",
+                "📈".cyan().bold(),
+                recent_period.name(),
+                baseline_period.unwrap().name()
+            );
+            println!("{}", "=".repeat(80));
+            println!();
+
+            for trend in &trends {
+                let direction_icon = match trend.direction {
+                    TrendDirection::Improving => "↑".green(),
+                    TrendDirection::Stable => "→".yellow(),
+                    TrendDirection::Degrading => "↓".red(),
+                };
+
+                let direction_str = match trend.direction {
+                    TrendDirection::Improving => "IMPROVING".green().bold(),
+                    TrendDirection::Stable => "STABLE".yellow(),
+                    TrendDirection::Degrading => "DEGRADING".red().bold(),
+                };
+
+                println!("{} {} {}", direction_icon, trend.dimension, direction_str);
+                println!(
+                    "    Recent:   {} (n={})",
+                    format_metric_value(&trend.dimension, trend.recent.mean),
+                    trend.recent.count
+                );
+                if let Some(ref base) = trend.baseline {
+                    println!(
+                        "    Baseline: {} (n={})",
+                        format_metric_value(&trend.dimension, base.mean),
+                        base.count
+                    );
+                    if trend.percent_change.abs() > 0.1 {
+                        let change_str = format!("{:+.1}%", trend.percent_change);
+                        let change_colored = if trend.direction == TrendDirection::Improving {
+                            change_str.green()
+                        } else if trend.direction == TrendDirection::Degrading {
+                            change_str.red()
+                        } else {
+                            change_str.normal()
+                        };
+                        println!("    Change:   {}", change_colored);
+                    }
+                }
+                println!();
+            }
+
+            println!("{}", "=".repeat(80));
+        }
     }
 
     Ok(())
@@ -3196,4 +3405,32 @@ fn format_number(n: i64) -> String {
         .collect::<Result<Vec<&str>, _>>()
         .unwrap()
         .join(",")
+}
+
+/// Parse time period string to TimePeriod enum
+fn parse_time_period(period_str: &str) -> Result<autopilot::analyze::TimePeriod> {
+    use autopilot::analyze::TimePeriod;
+
+    match period_str {
+        "7d" => Ok(TimePeriod::Last7Days),
+        "30d" => Ok(TimePeriod::Last30Days),
+        "last-week" => Ok(TimePeriod::LastWeek),
+        "this-week" => Ok(TimePeriod::ThisWeek),
+        _ => Err(anyhow::anyhow!(
+            "Invalid period: {}. Valid options: 7d, 30d, last-week, this-week",
+            period_str
+        )),
+    }
+}
+
+/// Format metric value for display
+fn format_metric_value(metric_name: &str, value: f64) -> String {
+    match metric_name {
+        "tool_error_rate" | "completion_rate" => format!("{:.1}%", value * 100.0),
+        "cost_per_issue" => format!("${:.4}", value),
+        "duration_per_issue" => format!("{:.1}s", value),
+        "session_duration" => format!("{:.1}s", value),
+        "tokens_per_issue" => format!("{:.0}", value),
+        _ => format!("{:.2}", value),
+    }
 }
