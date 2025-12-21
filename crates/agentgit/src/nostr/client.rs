@@ -4,10 +4,12 @@ use anyhow::Result;
 use nostr::Event;
 use nostr_client::{PoolConfig, RelayPool};
 use serde_json::json;
+use std::path::PathBuf;
 use std::sync::Arc;
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, Mutex};
 use tracing::{debug, error, info};
 
+use crate::nostr::cache::EventCache;
 use crate::ws::WsBroadcaster;
 
 /// NIP-34 event kinds for git operations
@@ -28,15 +30,27 @@ pub mod kinds {
 pub struct NostrClient {
     pool: Arc<RelayPool>,
     broadcaster: Arc<WsBroadcaster>,
+    cache: Arc<Mutex<EventCache>>,
 }
 
 impl NostrClient {
     /// Create a new Nostr client with relay URLs
-    pub fn new(_relay_urls: Vec<String>, broadcaster: Arc<WsBroadcaster>) -> Self {
+    pub fn new(_relay_urls: Vec<String>, broadcaster: Arc<WsBroadcaster>) -> Result<Self> {
         let config = PoolConfig::default();
         let pool = Arc::new(RelayPool::new(config));
 
-        Self { pool, broadcaster }
+        // Initialize cache in user's data directory
+        let cache_dir = dirs::data_local_dir()
+            .unwrap_or_else(|| PathBuf::from("."))
+            .join("agentgit");
+        let cache_path = cache_dir.join("events.db");
+        let cache = Arc::new(Mutex::new(EventCache::new(cache_path)?));
+
+        Ok(Self {
+            pool,
+            broadcaster,
+            cache,
+        })
     }
 
     /// Connect to all configured relays
@@ -88,9 +102,15 @@ impl NostrClient {
 
         // Spawn task to handle incoming events
         let broadcaster = Arc::clone(&self.broadcaster);
+        let cache = Arc::clone(&self.cache);
         tokio::spawn(async move {
             while let Some(event) = event_rx.recv().await {
                 debug!("Received event: kind={} id={}", event.kind, event.id);
+
+                // Cache the event
+                if let Err(e) = cache.lock().await.insert_event(&event) {
+                    error!("Failed to cache event: {}", e);
+                }
 
                 // Convert event to JSON and broadcast to WebSocket clients
                 match serde_json::to_string(&event) {
@@ -142,5 +162,47 @@ impl NostrClient {
         info!("Disconnecting from relays...");
         self.pool.disconnect_all().await?;
         Ok(())
+    }
+
+    /// Get cached repositories (useful for offline viewing)
+    #[allow(dead_code)]
+    pub async fn get_cached_repositories(&self, limit: usize) -> Result<Vec<Event>> {
+        self.cache.lock().await.get_repositories(limit)
+    }
+
+    /// Get cached issues (useful for offline viewing)
+    #[allow(dead_code)]
+    pub async fn get_cached_issues(&self, limit: usize) -> Result<Vec<Event>> {
+        self.cache.lock().await.get_issues(limit)
+    }
+
+    /// Get cached patches (useful for offline viewing)
+    #[allow(dead_code)]
+    pub async fn get_cached_patches(&self, limit: usize) -> Result<Vec<Event>> {
+        self.cache.lock().await.get_patches(limit)
+    }
+
+    /// Get cached pull requests (useful for offline viewing)
+    #[allow(dead_code)]
+    pub async fn get_cached_pull_requests(&self, limit: usize) -> Result<Vec<Event>> {
+        self.cache.lock().await.get_pull_requests(limit)
+    }
+
+    /// Get a specific cached event by ID
+    #[allow(dead_code)]
+    pub async fn get_cached_event(&self, event_id: &str) -> Result<Option<Event>> {
+        self.cache.lock().await.get_event(event_id)
+    }
+
+    /// Get cache statistics
+    #[allow(dead_code)]
+    pub async fn get_cache_stats(&self) -> Result<crate::nostr::cache::CacheStats> {
+        self.cache.lock().await.get_stats()
+    }
+
+    /// Clear old cached events (events older than max_age_seconds)
+    #[allow(dead_code)]
+    pub async fn cleanup_cache(&self, max_age_seconds: i64) -> Result<usize> {
+        self.cache.lock().await.delete_old_events(max_age_seconds)
     }
 }

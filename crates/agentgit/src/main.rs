@@ -48,13 +48,18 @@ fn main() -> Result<()> {
                 "wss://relay.nostr.band".to_string(),
             ];
 
-            let nostr_client = NostrClient::new(relay_urls.clone(), broadcaster_clone);
-
-            // Connect and subscribe to git events
-            if let Err(e) = nostr_client.connect(relay_urls).await {
-                tracing::warn!("Failed to connect to Nostr relays: {}", e);
-            } else if let Err(e) = nostr_client.subscribe_to_git_events().await {
-                tracing::warn!("Failed to subscribe to git events: {}", e);
+            match NostrClient::new(relay_urls.clone(), broadcaster_clone) {
+                Ok(nostr_client) => {
+                    // Connect and subscribe to git events
+                    if let Err(e) = nostr_client.connect(relay_urls).await {
+                        tracing::warn!("Failed to connect to Nostr relays: {}", e);
+                    } else if let Err(e) = nostr_client.subscribe_to_git_events().await {
+                        tracing::warn!("Failed to subscribe to git events: {}", e);
+                    }
+                }
+                Err(e) => {
+                    tracing::error!("Failed to initialize Nostr client: {}", e);
+                }
             }
 
             // Keep runtime alive
