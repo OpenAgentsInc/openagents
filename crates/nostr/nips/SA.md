@@ -6,7 +6,7 @@ Sovereign Agents
 
 `draft` `optional`
 
-This NIP defines a protocol for autonomous software agents that have their own Nostr identity, can take initiative without human prompting, and can own assets and skills that are cryptographically protected from their human operators.
+This NIP defines a protocol for autonomous agents that have their own Nostr identity, can take initiative without human prompting, and can hold assets and skills under their own cryptographic identity.
 
 ## Rationale
 
