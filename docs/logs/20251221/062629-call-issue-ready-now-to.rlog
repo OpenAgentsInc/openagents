@@ -778,3 +778,53 @@ t!:Bash id=BGvxdGJJ cmd="cargo test -p wallet 2>&1 | tail -30" → [running] tok
 o: id=BGvxdGJJ → [ok] test core::nostr::tests::test_profile_to_json ... ok
 a: All tests pass! Let's commit and push: tokens_in=1 tokens_out=1 tokens_cached=86519
 t!:Bash id=BoAiZmM4 cmd="git add -A && git commit -m "$(cat <<'EOF'" → [running] tokens_in=1 tokens_out=326 tokens_cached=86519
+o: id=BoAiZmM4 → [ok] [main 1e698e988] Implement profile fetching in wallet NostrClient
+t!:Bash id=hiaPe5Qr cmd="git push" → [running] tokens_in=0 tokens_out=25 tokens_cached=87161
+o: id=hiaPe5Qr → [ok] [0;36m🔍 Running cargo build to check for errors and warnings...[0m
+t!:mcp__issues__issue_complete id=pBM8TQbF  → [running] tokens_in=0 tokens_out=58 tokens_cached=87539
+o: id=pBM8TQbF → [ok] Completed issue #367
+t!:mcp__issues__issue_ready id=zzxDZNV1  → [running] tokens_in=0 tokens_out=27 tokens_cached=87803
+o: id=zzxDZNV1 → [ok] {
+t!:mcp__issues__issue_claim id=oz14fdMX  → [running] tokens_in=0 tokens_out=77 tokens_cached=87878
+o: id=oz14fdMX → [ok] Claimed issue #368
+t!:Read id=ABMPPRHv file_path=/home/christopherdavid/code/openagents/crates/agentgit/src/server.rs → [running] tokens_in=0 tokens_out=114 tokens_cached=88490
+o: id=ABMPPRHv → [ok]    280→                .body("<h1>Error</h1>");
+t!:Read id=2N5DChyo file_path=/home/christopherdavid/code/openagents/crates/agentgit/src/server.rs → [running] tokens_in=3 tokens_out=114 tokens_cached=88692
+o: id=2N5DChyo → [ok]    250→        }
+a: I see the issue - I need to fetch the actual issue event to get the author. Let me check what data I have available. The `issue_id` is the "d" tag value. Let me check the NostrClient to see what me... tokens_in=3 tokens_out=1 tokens_cached=89511
+t!:Grep id=mD963yyW pattern="pub async fn get_issue" → [running] tokens_in=3 tokens_out=1 tokens_cached=89511
+o: id=mD963yyW → [ok] /home/christopherdavid/code/openagents/crates/agentgit/src/nostr/client.rs-214-    }
+a: Let me check if there's a method to get a specific issue: tokens_in=2 tokens_out=4 tokens_cached=90269
+t!:Bash id=qnmVf7fw cmd="grep -n "get_issue" /home/christopherdavid/code..." → [running] tokens_in=2 tokens_out=131 tokens_cached=90269
+o: id=qnmVf7fw → [ok] 190:        self.cache.lock().await.get_issues(limit)
+a: I need to check if there's a way to get a specific issue by its ID. Let me check the cache module: tokens_in=1 tokens_out=1 tokens_cached=91174
+t!:Grep id=aNcWfGnk pattern="pub fn get_issue" → [running] tokens_in=1 tokens_out=1 tokens_cached=91174
+o: id=aNcWfGnk → [ok] 339-        self.get_events_by_kind(30617, limit)
+a: I see there's a `get_issues_by_repo` method. I can use that and filter for the specific issue. But it would be better to add a dedicated method. Let me check how issues are indexed - I need to get ... tokens_in=0 tokens_out=1 tokens_cached=91466
+t!:Grep id=JzB3bseE pattern="CREATE TABLE.*issues" → [running] tokens_in=0 tokens_out=190 tokens_cached=91466
+o: id=JzB3bseE → [ok] 49-            );
+a: I need to check how issues are stored. The issue_id is the "d" tag, not the event_id. Let me check the issue event structure by looking at where they're inserted: tokens_in=0 tokens_out=4 tokens_cached=92170
+t!:Grep id=rbVdT2rE pattern="INSERT INTO issues" → [running] tokens_in=0 tokens_out=165 tokens_cached=92170
+o: id=rbVdT2rE → [ok] No matches found
+t!:Bash id=PeTsHsTv cmd="grep -n "issues.*VALUES" /home/christopherdavid..." → [running] tokens_in=0 tokens_out=110 tokens_cached=92550
+o: id=PeTsHsTv → [ok] 
+a: Let me look at how issues are stored by checking the cache_event function: tokens_in=1 tokens_out=1 tokens_cached=92833
+t!:Grep id=6CQ3jQFo pattern="1621.*=>.*\{" → [running] tokens_in=1 tokens_out=1 tokens_cached=92833
+o: id=6CQ3jQFo → [ok] No matches found
+a: Let me take a simpler approach - I'll just fetch the issue from the existing data. Looking at the code, I can see we're on the issue detail page, so we must already have the issue. Let me look at h... tokens_in=0 tokens_out=1 tokens_cached=92968
+t!:Read id=aq1YJpv9 file_path=/home/christopherdavid/code/openagents/crates/agentgit/src/server.rs → [running] tokens_in=0 tokens_out=171 tokens_cached=92968
+o: id=aq1YJpv9 → [ok]    220→        Ok(Some(iss)) => iss,
+a: I can see there's a method to get an issue! Let me check what that method is: tokens_in=0 tokens_out=1 tokens_cached=93231
+t!:Read id=PHikMwt8 file_path=/home/christopherdavid/code/openagents/crates/agentgit/src/server.rs → [running] tokens_in=0 tokens_out=1 tokens_cached=93231
+o: id=PHikMwt8 → [ok]    200→
+a: Perfect! I can use `get_cached_event(&issue_id)` to get the issue event. Now I'll update the issue_claim handler: tokens_in=0 tokens_out=1 tokens_cached=94046
+t!:Edit id=LxZp1bn3 file_path=/home/christopherdavid/code/openagents/crates/agentgit/src/server.rs → [running] tokens_in=0 tokens_out=448 tokens_cached=94046
+o: id=LxZp1bn3 → [ok] The file /home/christopherdavid/code/openagents/crates/agentgit/src/server.rs has been updated. H...
+a: Perfect! Now let's build to verify: tokens_in=0 tokens_out=1 tokens_cached=94739
+t!:Bash id=6ggnjMev cmd="cargo build -p agentgit 2>&1 | head -50" → [running] tokens_in=0 tokens_out=1 tokens_cached=94739
+o: id=6ggnjMev → [ok]    Compiling wallet v0.1.0 (/home/christopherdavid/code/openagents/crates/wallet)
+a: Great! Let's run the tests: tokens_in=0 tokens_out=3 tokens_cached=95632
+t!:Bash id=jCvfD6Ns cmd="cargo test -p agentgit 2>&1 | tail -20" → [running] tokens_in=0 tokens_out=117 tokens_cached=95632
+o: id=jCvfD6Ns → [ok]     Finished `test` profile [optimized + debuginfo] target(s) in 12.40s
+a: Perfect! All tests pass. Let's commit and push: tokens_in=0 tokens_out=1 tokens_cached=95963
+t!:Bash id=oADaMJc9 cmd="git add -A && git commit -m "$(cat <<'EOF'" → [running] tokens_in=0 tokens_out=1 tokens_cached=95963
