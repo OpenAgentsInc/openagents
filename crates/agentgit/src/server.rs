@@ -4,7 +4,7 @@ use actix_web::{web, App, HttpResponse, HttpServer};
 use std::sync::Arc;
 
 use crate::nostr::NostrClient;
-use crate::views::{agent_profile_page, home_page_with_repos, issue_create_form_page, issue_detail_page, issues_list_page, patch_detail_page, patches_list_page, pull_request_detail_page, pull_requests_list_page, repository_detail_page, trajectory_viewer_page};
+use crate::views::{agent_profile_page, home_page_with_repos, issue_create_form_page, issue_detail_page, issues_list_page, patch_detail_page, patches_list_page, pull_request_detail_page, pull_requests_list_page, repository_detail_page, search_results_page, trajectory_viewer_page};
 use crate::ws::{ws_handler, WsBroadcaster};
 
 /// Application state shared across handlers
@@ -42,6 +42,7 @@ pub async fn start_server(
             .route("/repo/{identifier}/pulls/{pr_id}/status", web::post().to(pr_status_change))
             .route("/trajectory/{session_id}", web::get().to(trajectory_detail))
             .route("/agent/{pubkey}", web::get().to(agent_profile))
+            .route("/search", web::get().to(search))
             .route("/ws", web::get().to(ws_route))
     })
     .bind("127.0.0.1:0")?;
@@ -764,6 +765,44 @@ async fn agent_profile(
     HttpResponse::Ok()
         .content_type("text/html; charset=utf-8")
         .body(agent_profile_page(&pubkey, &pull_requests, &issue_claims, &reputation_labels).into_string())
+}
+
+/// Search page
+async fn search(
+    state: web::Data<AppState>,
+    query: web::Query<std::collections::HashMap<String, String>>,
+) -> HttpResponse {
+    // Get query parameter
+    let q = query.get("q").map(|s| s.as_str()).unwrap_or("");
+
+    if q.is_empty() {
+        // Return empty search page
+        return HttpResponse::Ok()
+            .content_type("text/html; charset=utf-8")
+            .body(search_results_page("", &[], &[]).into_string());
+    }
+
+    // Search repositories
+    let repositories = match state.nostr_client.search_repositories(q, 50).await {
+        Ok(repos) => repos,
+        Err(e) => {
+            tracing::warn!("Failed to search repositories for '{}': {}", q, e);
+            Vec::new()
+        }
+    };
+
+    // Search issues
+    let issues = match state.nostr_client.search_issues(q, 50).await {
+        Ok(iss) => iss,
+        Err(e) => {
+            tracing::warn!("Failed to search issues for '{}': {}", q, e);
+            Vec::new()
+        }
+    };
+
+    HttpResponse::Ok()
+        .content_type("text/html; charset=utf-8")
+        .body(search_results_page(q, &repositories, &issues).into_string())
 }
 
 /// WebSocket upgrade

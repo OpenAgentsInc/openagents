@@ -284,4 +284,14 @@ impl NostrClient {
     pub async fn get_reputation_labels_for_agent(&self, agent_pubkey: &str) -> Result<Vec<Event>> {
         self.cache.lock().await.get_reputation_labels_for_agent(agent_pubkey)
     }
+
+    /// Search repositories by query string (NIP-50)
+    pub async fn search_repositories(&self, query: &str, limit: usize) -> Result<Vec<Event>> {
+        self.cache.lock().await.search_repositories(query, limit)
+    }
+
+    /// Search issues by query string (NIP-50)
+    pub async fn search_issues(&self, query: &str, limit: usize) -> Result<Vec<Event>> {
+        self.cache.lock().await.search_issues(query, limit)
+    }
 }
