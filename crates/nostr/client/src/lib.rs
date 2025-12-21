@@ -45,6 +45,7 @@ mod cache;
 mod contacts;
 mod error;
 mod outbox;
+mod queue;
 mod relay;
 mod subscription;
 
@@ -52,6 +53,7 @@ pub use cache::{CacheConfig, EventCache};
 pub use contacts::{ContactManager, MergeStrategy};
 pub use error::{ClientError, Result};
 pub use outbox::{OutboxConfig, OutboxModel};
+pub use queue::{MessageQueue, MessageStatus, QueueConfig, QueuedMessage};
 pub use relay::{
     ConnectionState, PublishConfirmation, RelayConfig, RelayConnection, RelayMessage,
 };
