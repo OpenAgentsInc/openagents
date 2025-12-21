@@ -309,6 +309,9 @@ impl MetricsDb {
         )
         .context("Failed to store session metrics")?;
 
+        // Broadcast update to dashboard WebSocket clients (if dashboard is running)
+        crate::dashboard::broadcast_metrics_update("session_updated", Some(metrics.id.clone()));
+
         Ok(())
     }
 
