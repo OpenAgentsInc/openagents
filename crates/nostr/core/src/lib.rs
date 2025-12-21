@@ -55,6 +55,7 @@
 //! - NIP-58: Badges (badge definitions, awards, and profile display)
 //! - NIP-59: Gift Wrap (encapsulation and metadata obscuring, requires `full` feature)
 //! - NIP-60: Cashu Wallets (ecash wallet state management)
+//! - NIP-61: Nutzaps (Cashu-based zaps with P2PK tokens)
 //! - NIP-64: Chess (Portable Game Notation)
 //! - NIP-70: Protected Events (author-only publishing with authentication)
 //! - NIP-71: Video Events (video content with metadata)
@@ -143,6 +144,7 @@ mod nip58;
 #[cfg(feature = "full")]
 mod nip59;
 mod nip60;
+mod nip61;
 mod nip64;
 mod nip70;
 mod nip71;
@@ -516,6 +518,13 @@ pub use nip60::{
     TokenEvent, TransactionDirection, WalletEvent, QUOTE_KIND, SPENDING_HISTORY_KIND, TOKEN_KIND,
     WALLET_KIND, is_nip60_kind, is_quote_kind, is_spending_history_kind, is_token_kind,
     is_wallet_kind,
+};
+
+// NIP-61: Nutzaps
+pub use nip61::{
+    MintInfo, Nip61Error, Nutzap, NutzapInfo, NutzapProof, NUTZAP_INFO_KIND, NUTZAP_KIND,
+    create_mint_tag, create_proof_tag, create_pubkey_tag, create_relay_tag, create_u_tag,
+    create_unit_tag, is_nip61_kind, is_nutzap_info_kind, is_nutzap_kind,
 };
 
 // NIP-64: Chess (Portable Game Notation)
