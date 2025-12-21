@@ -500,6 +500,171 @@ pub fn default_db_path() -> PathBuf {
     PathBuf::from("autopilot-metrics.db")
 }
 
+/// Extract metrics from a Trajectory
+pub fn extract_metrics_from_trajectory(
+    traj: &crate::trajectory::Trajectory,
+) -> Result<(SessionMetrics, Vec<ToolCallMetrics>)> {
+    use crate::trajectory::StepType;
+    use std::collections::HashMap;
+
+    // Calculate session-level metrics
+    let duration_seconds = if let Some(ended_at) = traj.ended_at {
+        (ended_at - traj.started_at).num_milliseconds() as f64 / 1000.0
+    } else {
+        // Session still running or incomplete
+        0.0
+    };
+
+    // Count tool calls and errors
+    let mut tool_calls_count = 0;
+    let mut tool_errors_count = 0;
+    let mut tool_call_map: HashMap<String, (String, DateTime<Utc>)> = HashMap::new();
+    let mut tool_call_metrics = Vec::new();
+
+    for step in &traj.steps {
+        match &step.step_type {
+            StepType::ToolCall { tool, tool_id, .. } => {
+                tool_calls_count += 1;
+                tool_call_map.insert(
+                    tool_id.clone(),
+                    (tool.clone(), step.timestamp),
+                );
+            }
+            StepType::ToolResult {
+                tool_id,
+                success,
+                ..
+            } => {
+                if !success {
+                    tool_errors_count += 1;
+                }
+
+                // Create ToolCallMetrics if we have the matching ToolCall
+                if let Some((tool_name, call_timestamp)) = tool_call_map.get(tool_id) {
+                    let duration_ms = (step.timestamp - *call_timestamp).num_milliseconds();
+
+                    let error_type = if !success {
+                        // Extract error type from output if available
+                        if let StepType::ToolResult { output, .. } = &step.step_type {
+                            output.as_ref().and_then(|o| {
+                                // Try to extract error type from output
+                                if o.contains("EISDIR") {
+                                    Some("EISDIR".to_string())
+                                } else if o.contains("ENOENT") {
+                                    Some("ENOENT".to_string())
+                                } else if o.contains("Exit code") {
+                                    Some("NonZeroExit".to_string())
+                                } else {
+                                    Some("Unknown".to_string())
+                                }
+                            })
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    };
+
+                    tool_call_metrics.push(ToolCallMetrics {
+                        session_id: traj.session_id.clone(),
+                        timestamp: *call_timestamp,
+                        tool_name: tool_name.clone(),
+                        duration_ms,
+                        success: *success,
+                        error_type,
+                        tokens_in: step.tokens_in.unwrap_or(0) as i64,
+                        tokens_out: step.tokens_out.unwrap_or(0) as i64,
+                    });
+                }
+            }
+            _ => {}
+        }
+    }
+
+    // Determine final status
+    let final_status = if let Some(result) = &traj.result {
+        if result.success {
+            SessionStatus::Completed
+        } else if result.errors.iter().any(|e| e.contains("budget")) {
+            SessionStatus::BudgetExhausted
+        } else if result.errors.iter().any(|e| e.contains("max turns") || e.contains("MaxTurns")) {
+            SessionStatus::MaxTurns
+        } else {
+            SessionStatus::Crashed
+        }
+    } else {
+        SessionStatus::Running
+    };
+
+    // Count issues completed (from result or by scanning steps)
+    let issues_completed = if let Some(result) = &traj.result {
+        result.issues_completed as i32
+    } else {
+        // Count issue_complete tool calls
+        traj.steps
+            .iter()
+            .filter(|s| matches!(&s.step_type, StepType::ToolCall { tool, .. } if tool == "mcp__issues__issue_complete"))
+            .count() as i32
+    };
+
+    // Count issues claimed
+    let issues_claimed = traj
+        .steps
+        .iter()
+        .filter(|s| matches!(&s.step_type, StepType::ToolCall { tool, .. } if tool == "mcp__issues__issue_claim"))
+        .count() as i32;
+
+    let session_metrics = SessionMetrics {
+        id: traj.session_id.clone(),
+        timestamp: traj.started_at,
+        model: traj.model.clone(),
+        prompt: traj.prompt.clone(),
+        duration_seconds,
+        tokens_in: traj.usage.input_tokens as i64,
+        tokens_out: traj.usage.output_tokens as i64,
+        tokens_cached: traj.usage.cache_read_tokens as i64,
+        cost_usd: traj.usage.cost_usd,
+        issues_claimed,
+        issues_completed,
+        tool_calls: tool_calls_count,
+        tool_errors: tool_errors_count,
+        final_status,
+    };
+
+    Ok((session_metrics, tool_call_metrics))
+}
+
+/// Extract metrics from a JSON trajectory file
+pub fn extract_metrics_from_json_file<P: AsRef<Path>>(
+    path: P,
+) -> Result<(SessionMetrics, Vec<ToolCallMetrics>)> {
+    let content = std::fs::read_to_string(path.as_ref())
+        .with_context(|| format!("Failed to read trajectory file: {:?}", path.as_ref()))?;
+
+    let traj: crate::trajectory::Trajectory = serde_json::from_str(&content)
+        .context("Failed to parse trajectory JSON")?;
+
+    extract_metrics_from_trajectory(&traj)
+}
+
+/// Extract metrics from an rlog file by parsing it into a Trajectory first
+pub fn extract_metrics_from_rlog_file<P: AsRef<Path>>(
+    path: P,
+) -> Result<(SessionMetrics, Vec<ToolCallMetrics>)> {
+    // For now, we'll look for the corresponding .json file
+    // In the future, we could implement direct .rlog parsing
+    let json_path = path.as_ref().with_extension("json");
+
+    if json_path.exists() {
+        extract_metrics_from_json_file(json_path)
+    } else {
+        Err(anyhow::anyhow!(
+            "No corresponding .json file found for .rlog file: {:?}",
+            path.as_ref()
+        ))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -636,5 +801,132 @@ mod tests {
         };
 
         db.store_baseline(&baseline).unwrap();
+    }
+
+    #[test]
+    fn test_extract_metrics_from_trajectory() {
+        use crate::trajectory::{Step, StepType, TokenUsage, Trajectory, TrajectoryResult};
+
+        // Create a sample trajectory
+        let mut traj = Trajectory {
+            session_id: "test-123".to_string(),
+            prompt: "Test task".to_string(),
+            model: "sonnet".to_string(),
+            cwd: "/test".to_string(),
+            repo_sha: "abc123".to_string(),
+            branch: Some("main".to_string()),
+            started_at: Utc::now(),
+            ended_at: Some(Utc::now() + chrono::Duration::seconds(120)),
+            steps: vec![],
+            result: Some(TrajectoryResult {
+                success: true,
+                duration_ms: 120000,
+                num_turns: 5,
+                result_text: Some("Done".to_string()),
+                errors: vec![],
+                issues_completed: 1,
+            }),
+            usage: TokenUsage {
+                input_tokens: 1000,
+                output_tokens: 500,
+                cache_read_tokens: 200,
+                cache_creation_tokens: 100,
+                cost_usd: 0.05,
+            },
+        };
+
+        // Add some steps
+        let tool_call_time = Utc::now();
+        traj.steps.push(Step {
+            step_id: 1,
+            timestamp: tool_call_time,
+            step_type: StepType::ToolCall {
+                tool: "Read".to_string(),
+                tool_id: "tool-1".to_string(),
+                input: serde_json::json!({"file_path": "test.txt"}),
+            },
+            tokens_in: Some(10),
+            tokens_out: Some(5),
+            tokens_cached: None,
+        });
+
+        traj.steps.push(Step {
+            step_id: 2,
+            timestamp: tool_call_time + chrono::Duration::milliseconds(50),
+            step_type: StepType::ToolResult {
+                tool_id: "tool-1".to_string(),
+                success: true,
+                output: Some("file contents".to_string()),
+            },
+            tokens_in: None,
+            tokens_out: None,
+            tokens_cached: None,
+        });
+
+        // Add a failed tool call
+        traj.steps.push(Step {
+            step_id: 3,
+            timestamp: tool_call_time + chrono::Duration::milliseconds(100),
+            step_type: StepType::ToolCall {
+                tool: "Read".to_string(),
+                tool_id: "tool-2".to_string(),
+                input: serde_json::json!({"file_path": "missing.txt"}),
+            },
+            tokens_in: Some(10),
+            tokens_out: Some(5),
+            tokens_cached: None,
+        });
+
+        traj.steps.push(Step {
+            step_id: 4,
+            timestamp: tool_call_time + chrono::Duration::milliseconds(120),
+            step_type: StepType::ToolResult {
+                tool_id: "tool-2".to_string(),
+                success: false,
+                output: Some("Error: ENOENT: no such file".to_string()),
+            },
+            tokens_in: None,
+            tokens_out: None,
+            tokens_cached: None,
+        });
+
+        // Extract metrics
+        let (session, tool_calls) = extract_metrics_from_trajectory(&traj).unwrap();
+
+        // Verify session metrics
+        assert_eq!(session.id, "test-123");
+        assert_eq!(session.model, "sonnet");
+        assert_eq!(session.tokens_in, 1000);
+        assert_eq!(session.tokens_out, 500);
+        assert_eq!(session.tool_calls, 2);
+        assert_eq!(session.tool_errors, 1);
+        assert_eq!(session.final_status, SessionStatus::Completed);
+
+        // Verify tool call metrics
+        assert_eq!(tool_calls.len(), 2);
+        assert_eq!(tool_calls[0].tool_name, "Read");
+        assert!(tool_calls[0].success);
+        assert_eq!(tool_calls[0].duration_ms, 50);
+
+        assert_eq!(tool_calls[1].tool_name, "Read");
+        assert!(!tool_calls[1].success);
+        assert_eq!(tool_calls[1].error_type, Some("ENOENT".to_string()));
+    }
+
+    #[test]
+    fn test_extract_metrics_from_json_file() {
+        // Test with actual trajectory file if it exists
+        let test_file = "docs/logs/20251220/020941-start-working.json";
+        if std::path::Path::new(test_file).exists() {
+            let result = extract_metrics_from_json_file(test_file);
+            assert!(result.is_ok(), "Failed to extract metrics: {:?}", result.err());
+
+            let (session, tool_calls) = result.unwrap();
+            // Verify we got valid metrics
+            assert!(!session.id.is_empty());
+            assert!(!session.model.is_empty());
+            assert!(session.tokens_in > 0);
+            assert!(!tool_calls.is_empty());
+        }
     }
 }
