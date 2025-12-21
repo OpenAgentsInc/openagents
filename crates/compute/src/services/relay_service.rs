@@ -79,24 +79,21 @@ impl RelayService {
     }
 
     /// Subscribe to NIP-90 job requests for a specific pubkey
-    pub async fn subscribe_job_requests(&self, pubkey: &str) -> Result<String, RelayError> {
-        if self.connected.read().await.is_empty() {
-            return Err(RelayError::SubscriptionFailed("Not connected".into()));
-        }
-
-        // Placeholder until a lightweight relay client is wired in.
-        log::info!("Subscribed to job requests for pubkey: {}", pubkey);
-        Ok("relay-subscription-placeholder".to_string())
+    pub async fn subscribe_job_requests(&self, _pubkey: &str) -> Result<String, RelayError> {
+        // Relay subscription requires Nostr relay client integration which is not yet implemented.
+        // Per d-012 (No Stubs), we return an explicit error instead of a fake subscription ID.
+        Err(RelayError::SubscriptionFailed(
+            "Relay subscriptions not yet implemented. Requires Nostr relay client integration for subscribing to NIP-90 job request events.".to_string()
+        ))
     }
 
     /// Publish an event to all connected relays
-    pub async fn publish(&self, event: nostr::Event) -> Result<(), RelayError> {
-        if self.connected.read().await.is_empty() {
-            return Err(RelayError::PublishFailed("Not connected".into()));
-        }
-
-        log::debug!("Publishing event: {:?}", event.id);
-        Ok(())
+    pub async fn publish(&self, _event: nostr::Event) -> Result<(), RelayError> {
+        // Relay publishing requires Nostr relay client integration which is not yet implemented.
+        // Per d-012 (No Stubs), we return an explicit error instead of silently succeeding.
+        Err(RelayError::PublishFailed(
+            "Relay publishing not yet implemented. Requires Nostr relay client integration for publishing events to relays.".to_string()
+        ))
     }
 
     /// Check if connected to any relays
