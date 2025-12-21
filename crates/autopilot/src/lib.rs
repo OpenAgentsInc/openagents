@@ -7,6 +7,7 @@ pub mod analyze;
 pub mod auto_issues;
 pub mod compaction;
 pub mod daemon;
+pub mod goals;
 pub mod guardrails;
 pub mod metrics;
 pub mod planmode;
