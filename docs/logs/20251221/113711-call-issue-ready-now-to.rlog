@@ -247,3 +247,40 @@ t!:Bash id=PzysEzsf cmd="cargo test -p marketplace --lib data::discover ..." →
 o: id=PzysEzsf → [ok]    Compiling marketplace v0.1.0 (/home/christopherdavid/code/openagents/crates/marketplace)
 a: Perfect! All tests pass. Let me commit this work: tokens_in=0 tokens_out=1 tokens_cached=132796
 t!:Bash id=RsoynzcY cmd="git add -A && git diff --cached --stat" → [running] tokens_in=0 tokens_out=1 tokens_cached=132796
+o: id=RsoynzcY → [ok]  crates/marketplace/src/data/discover.rs            | 481 ++++++++++++++++++++-
+t!:Bash id=RE73rgUE cmd="git commit -m "$(cat <<'EOF'" → [running] tokens_in=0 tokens_out=25 tokens_cached=133281
+o: id=RE73rgUE → [ok] [main bdd57648e] Implement data marketplace browse/search functionality
+t!:Bash id=5otcvZu1 cmd="git push origin main" → [running] tokens_in=0 tokens_out=25 tokens_cached=133484
+o: id=5otcvZu1 → [ok] [0;36m🔍 Running cargo build to check for errors and warnings...[0m
+t!:mcp__issues__issue_complete id=e8GuyX4R  → [running] tokens_in=0 tokens_out=58 tokens_cached=133918
+o: id=e8GuyX4R → [ok] Completed issue #411
+t!:mcp__issues__issue_ready id=kJvqex76  → [running] tokens_in=0 tokens_out=25 tokens_cached=134080
+o: id=kJvqex76 → [ok] {
+t!:mcp__issues__issue_claim id=JDi5sVUf  → [running] tokens_in=0 tokens_out=81 tokens_cached=134155
+o: id=JDi5sVUf → [ok] Claimed issue #412
+t!:Read id=6q1Zoaaw file_path=/home/christopherdavid/code/openagents/crates/marketplace/src/cli/data.rs → [running] tokens_in=3 tokens_out=79 tokens_cached=134425
+o: id=6q1Zoaaw → [ok]      1→//! Data CLI commands
+t!:Write id=N8ZkSJ6J file_path=/home/christopherdavid/code/openagents/crates/marketplace/src/cli/data.rs → [running] tokens_in=3 tokens_out=2411 tokens_cached=134521
+o: id=N8ZkSJ6J → [ok] The file /home/christopherdavid/code/openagents/crates/marketplace/src/cli/data.rs has been updat...
+a: Now update the CLI mod to export DataCommands and update main.rs to wire it up: tokens_in=2 tokens_out=1 tokens_cached=134704
+t!:Edit id=Mqdt1CD9 file_path=/home/christopherdavid/code/openagents/crates/marketplace/src/cli/mod.rs → [running] tokens_in=2 tokens_out=229 tokens_cached=134704
+o: id=Mqdt1CD9 → [error] <tool_use_error>File has not been read yet. Read it first before writing to it.</tool_use_error>
+t!:Read id=uKAh1E7f file_path=/home/christopherdavid/code/openagents/crates/marketplace/src/cli/mod.rs → [running] tokens_in=3 tokens_out=79 tokens_cached=140551
+o: id=uKAh1E7f → [ok]      1→//! CLI commands for marketplace
+t!:Edit id=QU1KpQ8w file_path=/home/christopherdavid/code/openagents/crates/marketplace/src/cli/mod.rs → [running] tokens_in=1 tokens_out=208 tokens_cached=140825
+o: id=QU1KpQ8w → [ok] The file /home/christopherdavid/code/openagents/crates/marketplace/src/cli/mod.rs has been update...
+t!:Edit id=ow7jkBX7 file_path=/home/christopherdavid/code/openagents/crates/marketplace/src/main.rs → [running] tokens_in=1 tokens_out=881 tokens_cached=141175
+o: id=ow7jkBX7 → [error] <tool_use_error>File has not been read yet. Read it first before writing to it.</tool_use_error>
+t!:Read id=ZWAQCps2 file_path=/home/christopherdavid/code/openagents/crates/marketplace/src/main.rs → [running] tokens_in=2 tokens_out=77 tokens_cached=141536
+o: id=ZWAQCps2 → [ok]      1→//! Marketplace CLI - Unified marketplace for compute, skills, and data
+t!:Edit id=CgucTxjG file_path=/home/christopherdavid/code/openagents/crates/marketplace/src/main.rs → [running] tokens_in=0 tokens_out=881 tokens_cached=142462
+o: id=CgucTxjG → [ok] The file /home/christopherdavid/code/openagents/crates/marketplace/src/main.rs has been updated. ...
+a: Now test the build and CLI: tokens_in=0 tokens_out=2 tokens_cached=143275
+t!:Bash id=vi45HsfA cmd="cargo build -p marketplace --bin marketplace 2>..." → [running] tokens_in=0 tokens_out=2 tokens_cached=143275
+o: id=vi45HsfA → [ok]    Compiling marketplace v0.1.0 (/home/christopherdavid/code/openagents/crates/marketplace)
+t!:Bash id=EDRKm9NH cmd="cargo run -p marketplace --bin marketplace -- d..." → [running] tokens_in=0 tokens_out=25 tokens_cached=144792
+o: id=EDRKm9NH → [ok] Data marketplace commands
+t!:Bash id=S8jjbgHr cmd="cargo run -p marketplace --bin marketplace -- d..." → [running] tokens_in=0 tokens_out=24 tokens_cached=145077
+o: id=S8jjbgHr → [ok] No datasets found matching criteria
+a: Perfect! Let me commit this work: tokens_in=0 tokens_out=1 tokens_cached=145331
+t!:Bash id=k9SkqJMx cmd="git add -A && git diff --cached --stat" → [running] tokens_in=0 tokens_out=91 tokens_cached=145331

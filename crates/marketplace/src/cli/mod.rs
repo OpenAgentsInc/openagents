@@ -7,3 +7,4 @@ pub mod earnings;
 pub mod provider;
 
 pub use skills::SkillsCommands;
+pub use data::DataCommands;
