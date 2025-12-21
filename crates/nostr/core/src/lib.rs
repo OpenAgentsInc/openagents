@@ -31,6 +31,7 @@
 //! - NIP-46: Nostr Remote Signing (requires `full` feature)
 //! - NIP-47: Nostr Wallet Connect (requires `full` feature)
 //! - NIP-49: Private Key Encryption (requires `full` feature)
+//! - NIP-50: Search Capability
 //! - NIP-51: Lists (mute lists, pin lists, bookmarks, etc.)
 //! - NIP-57: Lightning Zaps (tipping with Lightning payments)
 //! - NIP-59: Gift Wrap (encapsulation and metadata obscuring, requires `full` feature)
@@ -86,6 +87,7 @@ mod nip46;
 mod nip47;
 #[cfg(feature = "full")]
 mod nip49;
+mod nip50;
 mod nip51;
 mod nip57;
 #[cfg(feature = "full")]
@@ -286,6 +288,11 @@ pub use nip49::{
     decrypt as nip49_decrypt, derive_key as nip49_derive_key, encrypt as nip49_encrypt,
     normalize_password,
     NONCE_SIZE as NIP49_NONCE_SIZE, VERSION as NIP49_VERSION,
+};
+
+// NIP-50: Search Capability
+pub use nip50::{
+    Nip50Error, SearchExtensions, SearchQuery, Sentiment, validate_query,
 };
 
 // NIP-51: Lists
