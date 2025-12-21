@@ -110,7 +110,35 @@ impl ComputeApp {
         }
 
         // Try to load from encrypted storage (backed up)
-        // TODO: Implement password prompt for encrypted storage
+        if self.storage.exists().await {
+            // Check for password from environment variable (for non-interactive mode)
+            if let Ok(password) = std::env::var("OPENAGENTS_PASSWORD") {
+                match self.storage.load(&password).await {
+                    Ok(mnemonic) => {
+                        match UnifiedIdentity::from_mnemonic(&mnemonic, "") {
+                            Ok(identity) => {
+                                let npub = identity.npub().unwrap_or_else(|_| "unknown".to_string());
+                                log::info!("Loaded encrypted identity: {}", npub);
+                                self.state.set_identity(identity);
+                                self.state.is_backed_up.set(true); // Encrypted storage means backed up
+                                return Ok(());
+                            }
+                            Err(e) => {
+                                log::warn!("Failed to restore identity from encrypted mnemonic: {}", e);
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        log::warn!("Failed to load encrypted identity (wrong password?): {}", e);
+                        // Continue to generate new identity
+                    }
+                }
+            } else {
+                log::info!("Encrypted identity exists but no OPENAGENTS_PASSWORD env var set");
+                // TODO: Implement GUI password prompt for interactive mode
+                // For now, fall through to generate new identity
+            }
+        }
 
         // No identity found, generate a new one
         log::info!("No identity found, generating new one");
