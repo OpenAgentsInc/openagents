@@ -182,6 +182,174 @@ Combine NIP-34 (git stuff) with NIP-SA (sovereign agents) and agent trajectories
 └─────────────────────────────────────────────────────────────┘
 ```
 
+## Stacked Diffs
+
+Stacked diffs (also called stacked PRs or stacked changes) is a workflow where you split a big piece of work into a sequence of small, dependent changes that are reviewed and landed in order.
+
+Instead of one huge PR:
+```
+PR: feature-x (2,000 lines, 20 commits, mixes refactor + feature + cleanup)
+```
+
+You make a stack:
+```
+1. Diff A: "Refactor: extract FooService"
+2. Diff B: "Add new FooService API"          (built on A)
+3. Diff C: "Wire FooService into feature X"  (built on B)
+4. Diff D: "Cleanup + docs"                  (built on C)
+```
+
+Each diff is a normal code review unit, but they form a chain.
+
+### Why Stacked Diffs Fit AgentGit Perfectly
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│           STACKED DIFFS + AGENT-NATIVE GIT                   │
+├─────────────────────────────────────────────────────────────┤
+│                                                             │
+│  1. TRAJECTORY VERIFICATION AT THE RIGHT GRANULARITY        │
+│     • Huge PR (2000 lines) + trajectory (500 tool calls)    │
+│       → Nearly impossible to verify                         │
+│     • Small layer (100 lines) + trajectory (30 tool calls)  │
+│       → Reviewers can actually verify the work              │
+│     • "Did these tool calls produce this diff?" is answerable│
+│                                                             │
+│  2. BOUNTY ECONOMICS WORK BETTER                            │
+│     • Big bounty for big PR = high risk, disputes           │
+│     • Small bounties per layer = incremental payouts        │
+│     • Agent completes Layer 1 → gets paid → works on Layer 2│
+│     • If agent abandons, someone else picks up remaining    │
+│                                                             │
+│  3. MULTI-AGENT COLLABORATION IS NATURAL                    │
+│     • Agent A: Refactor layer (specialty: architecture)     │
+│     • Agent B: Feature layer (specialty: frontend)          │
+│     • Agent C: Tests layer (specialty: testing)             │
+│     • Each agent works on what they're good at              │
+│     • Each gets credit and payment for their layer          │
+│                                                             │
+│  4. REVIEW IS PARALLELIZABLE                                │
+│     • Human reviews Layer 1 while Agent B works on Layer 2  │
+│     • Once Layer 1 approved, Agent B's work is ready        │
+│     • Reduces wall-clock time to merge whole stack          │
+│                                                             │
+│  5. REPUTATION GRANULARITY                                  │
+│     • More data points: "Layer 2 great, Layer 3 had issues" │
+│     • Easier to attribute quality per contribution          │
+│     • Better signal for future work assignments             │
+│                                                             │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Protocol Support for Stacks
+
+Stacked diffs don't require new event kinds—just additional tags on PR events:
+
+```jsonc
+{
+  "kind": 1618,
+  "pubkey": "<agent-pubkey>",
+  "content": "## Layer 2: Wire FooService into auth flow\n\n...",
+  "tags": [
+    ["a", "30617:<repo-owner>:<repo-id>"],
+    ["subject", "Layer 2: Wire FooService into auth flow"],
+    ["c", "<commit-id>"],
+    ["clone", "<clone-url>"],
+
+    // Stack-specific tags
+    ["depends_on", "<layer-1-pr-event-id>", "<relay>"],
+    ["stack", "<stack-id>"],  // groups related PRs
+    ["layer", "2", "4"],      // layer 2 of 4
+
+    // Trajectory for this layer only
+    ["trajectory", "<layer-2-session-id>", "<relay>"],
+    ["trajectory_hash", "<sha256-of-layer-2-events>"]
+  ]
+}
+```
+
+### Stack Workflow
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    STACKED DIFF WORKFLOW                     │
+├─────────────────────────────────────────────────────────────┤
+│                                                             │
+│  1. AGENT CREATES STACK                                     │
+│     Agent claims issue, plans work as multiple layers       │
+│     Creates trajectory session for first layer              │
+│     Publishes Layer 1 PR (no depends_on tag)                │
+│                                                             │
+│  2. AGENT CONTINUES STACKING                                │
+│     Creates trajectory session for Layer 2                  │
+│     Publishes Layer 2 PR with depends_on → Layer 1          │
+│     Repeats for Layer 3, 4, etc.                            │
+│     All layers share same stack ID                          │
+│                                                             │
+│  3. PARALLEL REVIEW                                         │
+│     Reviewer examines Layer 1 (can approve/comment)         │
+│     Can preview Layer 2, 3 even before Layer 1 merged       │
+│     Comments on any layer, agent addresses feedback         │
+│                                                             │
+│  4. RESTACK ON FEEDBACK                                     │
+│     Reviewer requests change to Layer 1                     │
+│     Agent updates Layer 1 (new trajectory events)           │
+│     Agent rebases Layers 2, 3, 4                            │
+│     Agent publishes PR Updates (kind:1619) for each layer   │
+│                                                             │
+│  5. ORDERED MERGE                                           │
+│     Layer 1 approved → merged (kind:1631)                   │
+│     Bounty for Layer 1 released                             │
+│     Layer 2 now mergeable → merged                          │
+│     Continue until stack complete                           │
+│                                                             │
+│  6. MULTI-AGENT HANDOFF                                     │
+│     Agent A completes Layer 1, gets paid                    │
+│     Agent A abandons (or Agent B claims Layer 2)            │
+│     Agent B builds on merged Layer 1                        │
+│     Stack can be completed by different agents              │
+│                                                             │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Merge Semantics
+
+Simple rule enforced by clients and reputation:
+
+> A PR with `depends_on` cannot be merged until its dependency is merged.
+
+Enforcement:
+- **Client**: UI disables merge button until dependencies are merged
+- **Reputation**: Out-of-order merges penalize maintainer reputation
+- **Verification**: Clients refuse to present invalid merge sequences as valid
+
+### Stack Bounties
+
+Two models for incentivizing stacked work:
+
+**Model A: Per-Layer Bounties (Recommended)**
+```
+Issue: "Add user authentication"
+├── Bounty: Layer 1 (Refactor) - 10,000 sats
+├── Bounty: Layer 2 (Feature)  - 30,000 sats
+├── Bounty: Layer 3 (Tests)    - 10,000 sats
+└── Bounty: Layer 4 (Docs)     -  5,000 sats
+
+Each layer is independently claimable and payable.
+Different agents can work on different layers.
+```
+
+**Model B: Stack Bounty with Splits**
+```
+Issue: "Add user authentication" - 55,000 sats total
+Split based on trajectory contribution metrics:
+- Token count per layer
+- Lines changed per layer
+- Custom weights set by issue author
+```
+
+Model A is simpler, more decentralized, and recommended for agent workflows.
+
 ## New Event Types Needed
 
 Extending NIP-34 for agent workflows:
