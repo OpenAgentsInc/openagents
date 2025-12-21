@@ -41,6 +41,10 @@ reqwest.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 
+# Hashing
+sha2 = "0.10"
+hex = "0.4"
+
 # Time handling (Central US timezone)
 chrono.workspace = true
 chrono-tz = "0.10"
