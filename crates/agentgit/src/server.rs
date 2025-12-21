@@ -5,6 +5,7 @@ use std::sync::Arc;
 
 use crate::git::{clone_repository, get_repository_path, is_repository_cloned};
 use crate::nostr::NostrClient;
+use crate::nostr::events::{PatchBuilder, PullRequestBuilder};
 use crate::views::{agent_profile_page, home_page_with_repos, issue_create_form_page, issue_detail_page, issues_list_page, patch_create_form_page, patch_detail_page, patches_list_page, pr_create_form_page, pull_request_detail_page, pull_requests_list_page, repository_detail_page, search_results_page, trajectory_viewer_page};
 use crate::ws::{ws_handler, WsBroadcaster};
 
@@ -1091,64 +1092,88 @@ async fn pr_create(
     // Build repository address (30617:pubkey:identifier)
     let repo_address = format!("30617:{}:{}", repository.pubkey, identifier);
 
-    // TODO: Implement event creation and publishing
-    // For now, return a placeholder message
-    tracing::warn!("PR creation not yet implemented - need identity/signing integration");
+    // Build the PR event using PullRequestBuilder
+    let mut builder = PullRequestBuilder::new(
+        &repo_address,
+        &form.subject,
+        form.description.as_deref().unwrap_or(""),
+    )
+    .commit(&form.commit_id)
+    .clone_url(&form.clone_url);
+
+    // Add optional trajectory data
+    if let Some(traj) = &form.trajectory_session {
+        builder = builder.trajectory(traj);
+    }
+    if let Some(hash) = &form.trajectory_hash {
+        builder = builder.trajectory_hash(hash);
+    }
+
+    // Add optional stacked diff data
+    if let Some(dep) = &form.depends_on {
+        builder = builder.depends_on(dep);
+    }
+    if let Some(stack) = &form.stack_id {
+        builder = builder.stack(stack);
+    }
+    if let (Some(current), Some(total)) = (form.layer_current, form.layer_total) {
+        builder = builder.layer(current, total);
+    }
+
+    let event_template = builder.build();
+
+    // TODO: Sign the event template with user's identity
+    // TODO: Publish to relays
+    // TODO: Cache locally for immediate display
+    // For now, log what would be published
     tracing::info!(
-        "Would create PR: subject='{}', commit_id='{}', clone_url='{}', repo={}",
+        "Would publish PR event: kind={}, subject='{}', repo={}",
+        event_template.kind,
         form.subject,
-        form.commit_id,
-        form.clone_url,
         repo_address
     );
+    tracing::debug!("Event template: {:?}", event_template);
 
-    let mut details = format!(
-        "<h1>Pull Request Creation Not Yet Implemented</h1>\
+    // Return success message with event details
+    let mut response = format!(
+        "<div style=\"padding: 2rem; max-width: 600px; margin: 0 auto;\">\
+         <h1 style=\"color: #4ade80;\">✅ Pull Request Event Created</h1>\
+         <p style=\"color: #888;\">Event built successfully. Publishing requires identity/wallet integration.</p>\
+         <div style=\"background: #1a1a1a; padding: 1rem; margin: 1rem 0; border-left: 3px solid #4ade80;\">\
+         <p><strong>Kind:</strong> {}</p>\
          <p><strong>Title:</strong> {}</p>\
          <p><strong>Repository:</strong> {}</p>\
          <p><strong>Commit ID:</strong> {}</p>\
          <p><strong>Clone URL:</strong> {}</p>\
-         <p><strong>Description:</strong> {}</p>",
+         <p><strong>Tags:</strong> {} tags</p>\
+         </div>",
+        event_template.kind,
         form.subject,
         repo_address,
         form.commit_id,
         form.clone_url,
-        form.description.as_deref().unwrap_or("None"),
+        event_template.tags.len()
     );
 
-    if let Some(traj) = &form.trajectory_session {
-        details.push_str(&format!("<p><strong>Trajectory Session:</strong> {}</p>", traj));
+    if form.trajectory_session.is_some() || form.trajectory_hash.is_some() {
+        response.push_str("<p><strong>Trajectory:</strong> Linked ✓</p>");
     }
 
-    if let Some(hash) = &form.trajectory_hash {
-        details.push_str(&format!("<p><strong>Trajectory Hash:</strong> {}</p>", hash));
+    if form.depends_on.is_some() || form.stack_id.is_some() {
+        response.push_str("<p><strong>Stacked Diff:</strong> Configured ✓</p>");
     }
 
-    if let Some(dep) = &form.depends_on {
-        details.push_str(&format!("<p><strong>Depends On:</strong> {}</p>", dep));
-    }
-
-    if let Some(stack) = &form.stack_id {
-        details.push_str(&format!("<p><strong>Stack ID:</strong> {}</p>", stack));
-    }
-
-    if form.layer_current.is_some() && form.layer_total.is_some() {
-        details.push_str(&format!(
-            "<p><strong>Layer:</strong> {} of {}</p>",
-            form.layer_current.unwrap(),
-            form.layer_total.unwrap()
-        ));
-    }
-
-    details.push_str(&format!(
-        "<p>This feature requires identity/wallet integration for event signing.</p>\
-         <p><a href=\"/repo/{}/pulls\">Back to pull requests</a></p>",
+    response.push_str(&format!(
+        "<p style=\"margin-top: 2rem;\">\
+         <a href=\"/repo/{}/pulls\" style=\"color: #4ade80;\">← Back to pull requests</a>\
+         </p>\
+         </div>",
         identifier
     ));
 
     HttpResponse::Ok()
         .content_type("text/html; charset=utf-8")
-        .body(details)
+        .body(response)
 }
 
 /// Form data for PR creation
@@ -1222,32 +1247,62 @@ async fn patch_create(
     // Build repository address (30617:pubkey:identifier)
     let repo_address = format!("30617:{}:{}", repository.pubkey, identifier);
 
-    // TODO: Implement event creation and publishing
-    // For now, return a placeholder message
-    tracing::warn!("Patch creation not yet implemented - need identity/signing integration");
+    // Build the patch event using PatchBuilder
+    let mut builder = PatchBuilder::new(
+        &repo_address,
+        &form.title,
+        &form.patch_content,
+    );
+
+    // Add optional description
+    if let Some(desc) = &form.description {
+        builder = builder.description(desc);
+    }
+
+    let event_template = builder.build();
+
+    // TODO: Sign the event template with user's identity
+    // TODO: Publish to relays
+    // TODO: Cache locally for immediate display
+    // For now, log what would be published
     tracing::info!(
-        "Would create patch: title='{}', patch_length={} bytes, repo={}",
+        "Would publish patch event: kind={}, title='{}', patch_size={} bytes, repo={}",
+        event_template.kind,
         form.title,
         form.patch_content.len(),
         repo_address
     );
+    tracing::debug!("Event template content length: {} bytes", event_template.content.len());
+
+    // Return success message with event details
+    let response = format!(
+        "<div style=\"padding: 2rem; max-width: 600px; margin: 0 auto;\">\
+         <h1 style=\"color: #4ade80;\">✅ Patch Event Created</h1>\
+         <p style=\"color: #888;\">Event built successfully. Publishing requires identity/wallet integration.</p>\
+         <div style=\"background: #1a1a1a; padding: 1rem; margin: 1rem 0; border-left: 3px solid #4ade80;\">\
+         <p><strong>Kind:</strong> {}</p>\
+         <p><strong>Title:</strong> {}</p>\
+         <p><strong>Repository:</strong> {}</p>\
+         <p><strong>Patch Size:</strong> {} bytes</p>\
+         <p><strong>Tags:</strong> {} tags</p>\
+         <p><strong>Has Description:</strong> {}</p>\
+         </div>\
+         <p style=\"margin-top: 2rem;\">\
+         <a href=\"/repo/{}/patches\" style=\"color: #4ade80;\">← Back to patches</a>\
+         </p>\
+         </div>",
+        event_template.kind,
+        form.title,
+        repo_address,
+        form.patch_content.len(),
+        event_template.tags.len(),
+        if form.description.is_some() { "Yes ✓" } else { "No" },
+        identifier
+    );
 
     HttpResponse::Ok()
         .content_type("text/html; charset=utf-8")
-        .body(format!(
-            "<h1>Patch Creation Not Yet Implemented</h1>\
-             <p><strong>Title:</strong> {}</p>\
-             <p><strong>Repository:</strong> {}</p>\
-             <p><strong>Patch Size:</strong> {} bytes</p>\
-             <p><strong>Description:</strong> {}</p>\
-             <p>This feature requires identity/wallet integration for event signing.</p>\
-             <p><a href=\"/repo/{}/patches\">Back to patches</a></p>",
-            form.title,
-            repo_address,
-            form.patch_content.len(),
-            form.description.as_deref().unwrap_or("None"),
-            identifier
-        ))
+        .body(response)
 }
 
 /// Form data for patch creation

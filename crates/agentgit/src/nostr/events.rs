@@ -483,6 +483,73 @@ impl PullRequestBuilder {
     }
 }
 
+/// Builder for creating patch events (kind:1617)
+///
+/// A patch event contains a git diff/patch for a repository.
+#[allow(dead_code)]
+pub struct PatchBuilder {
+    repo_address: String,
+    subject: String,
+    patch_content: String,
+    description: Option<String>,
+}
+
+#[allow(dead_code)]
+impl PatchBuilder {
+    /// Create a new patch builder
+    ///
+    /// # Arguments
+    /// * `repo_address` - The repository address tag (e.g., "30617:<pubkey>:<repo-id>")
+    /// * `subject` - The patch title/subject
+    /// * `patch_content` - The git diff/patch content
+    pub fn new(
+        repo_address: impl Into<String>,
+        subject: impl Into<String>,
+        patch_content: impl Into<String>,
+    ) -> Self {
+        Self {
+            repo_address: repo_address.into(),
+            subject: subject.into(),
+            patch_content: patch_content.into(),
+            description: None,
+        }
+    }
+
+    /// Set an optional description for the patch
+    pub fn description(mut self, desc: impl Into<String>) -> Self {
+        self.description = Some(desc.into());
+        self
+    }
+
+    /// Build the event template
+    pub fn build(self) -> EventTemplate {
+        let tags = vec![
+            // Repository reference
+            vec!["a".to_string(), self.repo_address],
+            // Subject/title
+            vec!["subject".to_string(), self.subject],
+        ];
+
+        // Patch content goes in the event content
+        // Description is separate if provided
+        let content = if let Some(desc) = self.description {
+            format!("{}\n\n{}", desc, self.patch_content)
+        } else {
+            self.patch_content
+        };
+
+        EventTemplate {
+            created_at: SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_secs(),
+            kind: 1617, // Patch
+            tags,
+            content,
+        }
+    }
+}
+
 /// Builder for creating status events (kinds 1630-1633)
 ///
 /// Status events are used to mark PRs/patches as:
@@ -680,5 +747,24 @@ mod tests {
         assert!(template.tags.iter().any(|t| t[0] == "depends_on" && t[1] == "pr_layer_1_event_id"));
         assert!(template.tags.iter().any(|t| t[0] == "stack" && t[1] == "stack_uuid_123"));
         assert!(template.tags.iter().any(|t| t.len() == 3 && t[0] == "layer" && t[1] == "2" && t[2] == "4"));
+    }
+
+    #[test]
+    fn test_patch_builder() {
+        let patch_content = "diff --git a/file.rs b/file.rs\nindex abc123..def456 100644\n--- a/file.rs\n+++ b/file.rs\n@@ -1,3 +1,4 @@\n+// New comment\n fn main() {";
+
+        let template = PatchBuilder::new(
+            "30617:pubkey123:repo456",
+            "Fix typo in documentation",
+            patch_content,
+        )
+        .description("This patch fixes a typo in the docs")
+        .build();
+
+        assert_eq!(template.kind, 1617);
+        assert!(template.tags.iter().any(|t| t[0] == "a" && t[1] == "30617:pubkey123:repo456"));
+        assert!(template.tags.iter().any(|t| t[0] == "subject" && t[1] == "Fix typo in documentation"));
+        assert!(template.content.contains("This patch fixes a typo in the docs"));
+        assert!(template.content.contains("diff --git"));
     }
 }
