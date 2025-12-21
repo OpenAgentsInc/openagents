@@ -422,3 +422,53 @@ a: Excellent! The log management is working. Let me update the todo and commit: 
 t!:TodoWrite id=wdKtxtNo  → [running] tokens_in=0 tokens_out=125 tokens_cached=124422
 o: id=wdKtxtNo → [ok] Todos have been modified successfully. Ensure that you continue to use the todo list to track you...
 t!:Bash id=ey492FcJ cmd="git add -A && git commit -m "$(cat <<'EOF'" → [running] tokens_in=0 tokens_out=448 tokens_cached=125523
+o: id=ey492FcJ → [ok] [main 6610c64d2] Implement trajectory log rotation and cleanup for autopilot
+t!:Bash id=m5WUypBK cmd="git push" → [running] tokens_in=0 tokens_out=73 tokens_cached=125690
+o: id=m5WUypBK → [ok] [0;36m🔍 Running cargo build to check for errors and warnings...[0m
+t!:TodoWrite id=gL9ZZgu8  → [running] tokens_in=0 tokens_out=25 tokens_cached=126205
+o: id=gL9ZZgu8 → [ok] Todos have been modified successfully. Ensure that you continue to use the todo list to track you...
+t!:mcp__issues__issue_complete id=3R65iJGJ  → [running] tokens_in=0 tokens_out=32 tokens_cached=126368
+o: id=3R65iJGJ → [ok] Completed issue #391
+t!:mcp__issues__issue_ready id=PgCPvtpu  → [running] tokens_in=0 tokens_out=27 tokens_cached=126489
+o: id=PgCPvtpu → [ok] {
+t!:mcp__issues__issue_claim id=6ZiXT6or  → [running] tokens_in=0 tokens_out=27 tokens_cached=126564
+o: id=6ZiXT6or → [ok] Claimed issue #390
+t!:TodoWrite id=DPr6cNG9  → [running] tokens_in=0 tokens_out=332 tokens_cached=126802
+o: id=DPr6cNG9 → [ok] Todos have been modified successfully. Ensure that you continue to use the todo list to track you...
+t!:Read id=1mu7SuNC file_path=/home/christopherdavid/code/openagents/crates/autopilot/tests/trajectory.rs → [running] tokens_in=0 tokens_out=25 tokens_cached=126900
+o: id=1mu7SuNC → [ok]      1→//! Unit tests for the trajectory module
+a: Let me check how many tests are already in that file and add the error handling tests at the end: tokens_in=0 tokens_out=1 tokens_cached=127274
+t!:Bash id=RcoN2MBq cmd="wc -l /home/christopherdavid/code/openagents/cr..." → [running] tokens_in=0 tokens_out=126 tokens_cached=127274
+o: id=RcoN2MBq → [ok] 638 /home/christopherdavid/code/openagents/crates/autopilot/tests/trajectory.rs
+t!:Read id=yW5riLL4 file_path=/home/christopherdavid/code/openagents/crates/autopilot/tests/trajectory.rs → [running] tokens_in=0 tokens_out=25 tokens_cached=128063
+o: id=yW5riLL4 → [ok]    620→    assert_eq!(traj.usage.cost_usd, 0.0234);
+a: Now let me add comprehensive error handling tests at the end of the file: tokens_in=0 tokens_out=1 tokens_cached=128230
+t!:Edit id=qVxnRRyb file_path=/home/christopherdavid/code/openagents/crates/autopilot/tests/trajectory.rs → [running] tokens_in=0 tokens_out=3066 tokens_cached=128230
+o: id=qVxnRRyb → [ok] The file /home/christopherdavid/code/openagents/crates/autopilot/tests/trajectory.rs has been upd...
+a: Now let's run the tests to make sure they all pass: tokens_in=0 tokens_out=1 tokens_cached=128666
+t!:TodoWrite id=TS54BP4s  → [running] tokens_in=0 tokens_out=291 tokens_cached=128666
+o: id=TS54BP4s → [ok] Todos have been modified successfully. Ensure that you continue to use the todo list to track you...
+t!:Bash id=pw35Sa6u cmd="cargo test --package autopilot --test trajector..." → [running] tokens_in=0 tokens_out=107 tokens_cached=135840
+o: id=pw35Sa6u → [ok]     |     Option<TrajectoryResult>
+a: I need to fix the compilation errors. Let me address them: tokens_in=0 tokens_out=1 tokens_cached=136173
+t!:Edit id=EqBf8Vz3 file_path=/home/christopherdavid/code/openagents/crates/autopilot/tests/trajectory.rs → [running] tokens_in=0 tokens_out=454 tokens_cached=136173
+o: id=EqBf8Vz3 → [ok] The file /home/christopherdavid/code/openagents/crates/autopilot/tests/trajectory.rs has been upd...
+t!:Edit id=9hJYitH6 file_path=/home/christopherdavid/code/openagents/crates/autopilot/tests/trajectory.rs → [running] tokens_in=0 tokens_out=326 tokens_cached=136975
+o: id=9hJYitH6 → [ok] The file /home/christopherdavid/code/openagents/crates/autopilot/tests/trajectory.rs has been upd...
+t!:Edit id=dgSJNE1d file_path=/home/christopherdavid/code/openagents/crates/autopilot/tests/trajectory.rs → [running] tokens_in=0 tokens_out=738 tokens_cached=137789
+o: id=dgSJNE1d → [ok] The file /home/christopherdavid/code/openagents/crates/autopilot/tests/trajectory.rs has been upd...
+a: Now I need to fix the PartialEq issue. Let me change the test to not use assert_eq for comparing StepType with large content: tokens_in=0 tokens_out=2 tokens_cached=138427
+t!:Edit id=7fBdcJbv file_path=/home/christopherdavid/code/openagents/crates/autopilot/tests/trajectory.rs → [running] tokens_in=0 tokens_out=372 tokens_cached=138427
+o: id=7fBdcJbv → [ok] The file /home/christopherdavid/code/openagents/crates/autopilot/tests/trajectory.rs has been upd...
+a: Now let's run the tests again: tokens_in=0 tokens_out=1 tokens_cached=139700
+t!:Bash id=aFjYpePn cmd="cargo test --package autopilot --test trajector..." → [running] tokens_in=0 tokens_out=117 tokens_cached=139700
+o: id=aFjYpePn → [ok]    Compiling autopilot v0.1.0 (/home/christopherdavid/code/openagents/crates/autopilot)
+a: I need to fix that last assert_eq as well: tokens_in=0 tokens_out=1 tokens_cached=140596
+t!:Edit id=6BEAfN2L file_path=/home/christopherdavid/code/openagents/crates/autopilot/tests/trajectory.rs → [running] tokens_in=0 tokens_out=286 tokens_cached=140596
+o: id=6BEAfN2L → [ok] The file /home/christopherdavid/code/openagents/crates/autopilot/tests/trajectory.rs has been upd...
+t!:Bash id=L1b48Ft8 cmd="cargo test --package autopilot --test trajector..." → [running] tokens_in=0 tokens_out=108 tokens_cached=141032
+o: id=L1b48Ft8 → [ok] test test_token_usage_default ... ok
+a: Excellent! All tests pass. Let's update the todo and commit: tokens_in=0 tokens_out=5 tokens_cached=141761
+t!:TodoWrite id=dyAaPio5  → [running] tokens_in=0 tokens_out=122 tokens_cached=141761
+o: id=dyAaPio5 → [ok] Todos have been modified successfully. Ensure that you continue to use the todo list to track you...
+t!:Bash id=soeuk3yt cmd="git add -A && git commit -m "$(cat <<'EOF'" → [running] tokens_in=0 tokens_out=25 tokens_cached=142139

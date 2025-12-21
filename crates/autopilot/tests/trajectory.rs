@@ -636,3 +636,298 @@ fn test_empty_trajectory_json() {
     assert_eq!(parsed["steps"].as_array().unwrap().len(), 0);
     assert!(parsed["result"].is_null());
 }
+
+// ============================================================================
+// Error Handling Tests
+// ============================================================================
+
+#[test]
+fn test_trajectory_with_empty_session_id() {
+    let traj = Trajectory::new(
+        "Test".to_string(),
+        "claude".to_string(),
+        "/test".to_string(),
+        "sha".to_string(),
+        None,
+    );
+
+    // Session ID starts empty
+    assert_eq!(traj.session_id, "");
+
+    // Should be able to serialize even with empty session_id
+    let json = traj.to_json();
+    let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+    assert_eq!(parsed["session_id"], "");
+}
+
+#[test]
+fn test_trajectory_with_very_long_session_id() {
+    use autopilot::TrajectoryCollector;
+
+    let mut collector = TrajectoryCollector::new(
+        "Test".to_string(),
+        "claude".to_string(),
+        "/test".to_string(),
+        "sha".to_string(),
+        None,
+    );
+
+    // Set an extremely long session ID (simulating corruption or attack)
+    let long_id = "x".repeat(10000);
+    collector.set_session_id(long_id.clone());
+
+    let traj = collector.into_trajectory();
+    assert_eq!(traj.session_id, long_id);
+
+    // Should still serialize successfully
+    let json = traj.to_json();
+    assert!(json.contains(&long_id));
+}
+
+#[test]
+fn test_corrupted_trajectory_json_parsing() {
+    // Test parsing various corrupted JSON inputs
+    let test_cases = vec![
+        (r#"{}"#, "empty object"),
+        (r#"{"steps": null}"#, "null steps"),
+        (r#"{"steps": "invalid"}"#, "invalid steps type"),
+        (r#"{"usage": "invalid"}"#, "invalid usage"),
+        (r#"{"started_at": "not a date"}"#, "invalid date"),
+    ];
+
+    for (json_str, desc) in test_cases {
+        let result: Result<Trajectory, _> = serde_json::from_str(json_str);
+        // All of these should fail to parse
+        assert!(result.is_err(), "Should fail to parse: {}", desc);
+    }
+}
+
+#[test]
+fn test_trajectory_with_extremely_large_step_count() {
+    let mut traj = Trajectory::new(
+        "Large test".to_string(),
+        "claude".to_string(),
+        "/test".to_string(),
+        "sha".to_string(),
+        None,
+    );
+
+    // Add 10,000 steps to test memory handling
+    for i in 0..10000 {
+        traj.add_step(StepType::User {
+            content: format!("Step {}", i),
+        });
+    }
+
+    assert_eq!(traj.steps.len(), 10000);
+
+    // Should be able to serialize (though it will be large)
+    let json = traj.to_json();
+    assert!(json.len() > 100000); // At least 100KB
+
+    // Should be able to deserialize
+    let parsed: Trajectory = serde_json::from_str(&json).unwrap();
+    assert_eq!(parsed.steps.len(), 10000);
+}
+
+#[test]
+fn test_trajectory_with_large_step_content() {
+    let mut traj = Trajectory::new(
+        "Large content test".to_string(),
+        "claude".to_string(),
+        "/test".to_string(),
+        "sha".to_string(),
+        None,
+    );
+
+    // Add a step with 1MB of content
+    let large_content = "x".repeat(1024 * 1024);
+    traj.add_step(StepType::User {
+        content: large_content.clone(),
+    });
+
+    assert_eq!(traj.steps.len(), 1);
+
+    // Verify the content matches (can't use assert_eq due to size)
+    if let StepType::User { content } = &traj.steps[0].step_type {
+        assert_eq!(content.len(), 1024 * 1024);
+    } else {
+        panic!("Expected User step type");
+    }
+
+    // Should be able to serialize
+    let json = traj.to_json();
+    assert!(json.len() > 1024 * 1024);
+}
+
+#[test]
+fn test_concurrent_step_additions() {
+    use std::sync::{Arc, Mutex};
+    use std::thread;
+
+    let traj = Arc::new(Mutex::new(Trajectory::new(
+        "Concurrent test".to_string(),
+        "claude".to_string(),
+        "/test".to_string(),
+        "sha".to_string(),
+        None,
+    )));
+
+    let mut handles = vec![];
+
+    // Spawn 10 threads each adding 100 steps
+    for thread_id in 0..10 {
+        let traj_clone = Arc::clone(&traj);
+        let handle = thread::spawn(move || {
+            for i in 0..100 {
+                let mut traj = traj_clone.lock().unwrap();
+                traj.add_step(StepType::User {
+                    content: format!("Thread {} step {}", thread_id, i),
+                });
+            }
+        });
+        handles.push(handle);
+    }
+
+    // Wait for all threads to complete
+    for handle in handles {
+        handle.join().unwrap();
+    }
+
+    // Should have 1000 total steps
+    let traj = traj.lock().unwrap();
+    assert_eq!(traj.steps.len(), 1000);
+
+    // All step IDs should be unique and sequential
+    for (i, step) in traj.steps.iter().enumerate() {
+        assert_eq!(step.step_id as usize, i + 1);
+    }
+}
+
+#[test]
+fn test_trajectory_with_invalid_utf8_sequences() {
+    // Test handling of potentially invalid UTF-8 in content
+    let mut traj = Trajectory::new(
+        "UTF-8 test".to_string(),
+        "claude".to_string(),
+        "/test".to_string(),
+        "sha".to_string(),
+        None,
+    );
+
+    // Add various unicode edge cases
+    let test_strings = vec![
+        "\u{0000}",              // Null character
+        "\u{FFFD}",              // Replacement character
+        "🚀🎉💻",                 // Emojis
+        "日本語",                 // Japanese
+        "🏴󠁧󠁢󠁥󠁮󠁧󠁿",                  // Flag emoji
+        "\n\r\t",                // Control characters
+    ];
+
+    let expected_len = test_strings.len();
+
+    for s in test_strings {
+        traj.add_step(StepType::User {
+            content: s.to_string(),
+        });
+    }
+
+    // Should serialize without panicking
+    let json = traj.to_json();
+    let parsed: Trajectory = serde_json::from_str(&json).unwrap();
+    assert_eq!(parsed.steps.len(), expected_len);
+}
+
+#[test]
+fn test_trajectory_serialization_with_special_characters() {
+    let mut traj = Trajectory::new(
+        "Special chars test".to_string(),
+        "claude".to_string(),
+        "/test".to_string(),
+        "sha".to_string(),
+        None,
+    );
+
+    // Add content with JSON-problematic characters
+    traj.add_step(StepType::User {
+        content: r#"{"key": "value", "quote": "\"", "newline": "\n"}"#.to_string(),
+    });
+
+    traj.add_step(StepType::ToolCall {
+        tool: "Read".to_string(),
+        tool_id: "test-id".to_string(),
+        input: json!({
+            "path": "/path/with\"quotes/and\nnewlines",
+            "special": "</script><script>alert('xss')</script>"
+        }),
+    });
+
+    // Should serialize and deserialize correctly
+    let json_str = traj.to_json();
+    let parsed: Trajectory = serde_json::from_str(&json_str).unwrap();
+    assert_eq!(parsed.steps.len(), 2);
+}
+
+#[test]
+fn test_trajectory_with_missing_optional_fields() {
+    // Test deserialization with minimal JSON (only required fields)
+    let minimal_json = r#"{
+        "session_id": "",
+        "prompt": "Test",
+        "model": "claude",
+        "cwd": "/test",
+        "repo_sha": "sha",
+        "started_at": "2024-01-01T00:00:00Z",
+        "steps": [],
+        "usage": {
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "cache_read_tokens": 0,
+            "cache_creation_tokens": 0,
+            "cost_usd": 0.0
+        }
+    }"#;
+
+    let traj: Trajectory = serde_json::from_str(minimal_json).unwrap();
+    assert_eq!(traj.prompt, "Test");
+    assert_eq!(traj.branch, None);
+    assert_eq!(traj.ended_at, None);
+    assert!(traj.result.is_none());
+}
+
+#[test]
+fn test_trajectory_token_usage_overflow() {
+    use autopilot::TrajectoryCollector;
+
+    let collector = TrajectoryCollector::new(
+        "Overflow test".to_string(),
+        "claude".to_string(),
+        "/test".to_string(),
+        "sha".to_string(),
+        None,
+    );
+
+    let traj = collector.into_trajectory();
+
+    // Token counts should handle large numbers
+    assert_eq!(traj.usage.input_tokens, 0);
+    assert_eq!(traj.usage.output_tokens, 0);
+
+    // Max u64 should be representable
+    let max_tokens = u64::MAX;
+    let mut traj_with_max = Trajectory::new(
+        "Max test".to_string(),
+        "claude".to_string(),
+        "/test".to_string(),
+        "sha".to_string(),
+        None,
+    );
+
+    traj_with_max.usage.input_tokens = max_tokens;
+
+    // Should serialize without overflow
+    let json = traj_with_max.to_json();
+    let parsed: Trajectory = serde_json::from_str(&json).unwrap();
+    assert_eq!(parsed.usage.input_tokens, max_tokens);
+}
