@@ -332,4 +332,37 @@ impl NostrClient {
     pub async fn is_pr_mergeable(&self, pr_event: &Event) -> Result<bool> {
         self.cache.lock().await.is_pr_mergeable(pr_event)
     }
+
+    /// Publish a signed event to all connected relays
+    #[allow(dead_code)]
+    pub async fn publish_event(&self, event: Event) -> Result<String> {
+        info!("Publishing event: kind={} id={}", event.kind, event.id);
+
+        // Store in local cache first
+        if let Err(e) = self.cache.lock().await.insert_event(&event) {
+            error!("Failed to cache event: {}", e);
+        }
+
+        // Publish to relay pool
+        let confirmations = self.pool.publish(&event).await?;
+
+        debug!("Received {} publish confirmations", confirmations.len());
+
+        // Broadcast via WebSocket to UI for real-time updates
+        match serde_json::to_string(&event) {
+            Ok(json) => {
+                self.broadcaster.broadcast(&format!(
+                    r#"<div class="event" data-kind="{}">{}</div>"#,
+                    event.kind, json
+                ));
+            }
+            Err(e) => {
+                error!("Failed to serialize event for broadcast: {}", e);
+            }
+        }
+
+        let event_id = event.id.clone();
+        info!("Successfully published event: {} to {} relays", event_id, confirmations.len());
+        Ok(event_id)
+    }
 }
