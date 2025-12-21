@@ -5,8 +5,6 @@
 //! - Linux: Secret Service (GNOME Keyring, KWallet)
 //! - Windows: Credential Manager
 
-#![allow(dead_code)]
-
 use anyhow::Result;
 use keyring::Entry;
 

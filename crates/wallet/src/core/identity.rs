@@ -3,8 +3,6 @@
 //! Combines Nostr identity (NIP-06) with Bitcoin wallet (Spark)
 //! Both derived from the same BIP39 mnemonic seed.
 
-#![allow(dead_code)]
-
 use anyhow::Result;
 use bip39::Mnemonic;
 use bitcoin::bip32::{DerivationPath, Xpriv};
