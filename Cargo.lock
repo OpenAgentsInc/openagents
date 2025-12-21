@@ -3845,6 +3845,7 @@ dependencies = [
  "clap",
  "maud",
  "nostr",
+ "nostr-client",
  "rusqlite",
  "serde",
  "serde_json",
