@@ -4,6 +4,7 @@
 //! message handling, and health monitoring.
 
 use crate::error::{ClientError, Result};
+use crate::subscription::Subscription;
 use futures::{SinkExt, StreamExt};
 use nostr::Event;
 use serde_json::{json, Value};
@@ -103,6 +104,8 @@ pub struct RelayConnection {
     _tx: mpsc::UnboundedSender<Value>,
     /// Pending event confirmations (event_id -> oneshot sender)
     pending_confirmations: Arc<Mutex<HashMap<String, ConfirmationSender>>>,
+    /// Active subscriptions (subscription_id -> Subscription)
+    subscriptions: Arc<Mutex<HashMap<String, Subscription>>>,
 }
 
 impl RelayConnection {
@@ -134,6 +137,7 @@ impl RelayConnection {
             _rx: Arc::new(Mutex::new(msg_rx)),
             _tx: out_tx,
             pending_confirmations: Arc::new(Mutex::new(HashMap::new())),
+            subscriptions: Arc::new(Mutex::new(HashMap::new())),
         })
     }
 
@@ -267,6 +271,78 @@ impl RelayConnection {
         self.send_message(&Value::Array(msg)).await
     }
 
+    /// Subscribe with a callback for handling received events
+    pub async fn subscribe_with_callback(
+        &self,
+        subscription_id: &str,
+        filters: &[Value],
+        callback: crate::subscription::EventCallback,
+    ) -> Result<()> {
+        // Create subscription
+        let subscription = Subscription::with_callback(
+            subscription_id.to_string(),
+            filters.to_vec(),
+            callback,
+        );
+
+        // Store subscription
+        {
+            let mut subs = self.subscriptions.lock().await;
+            subs.insert(subscription_id.to_string(), subscription);
+        }
+
+        // Send REQ message to relay
+        self.subscribe(subscription_id, filters).await
+    }
+
+    /// Subscribe and receive events through a channel
+    pub async fn subscribe_with_channel(
+        &self,
+        subscription_id: &str,
+        filters: &[Value],
+    ) -> Result<mpsc::UnboundedReceiver<Event>> {
+        // Create subscription with channel
+        let (subscription, rx) = Subscription::with_channel(
+            subscription_id.to_string(),
+            filters.to_vec(),
+        );
+
+        // Store subscription
+        {
+            let mut subs = self.subscriptions.lock().await;
+            subs.insert(subscription_id.to_string(), subscription);
+        }
+
+        // Send REQ message to relay
+        self.subscribe(subscription_id, filters).await?;
+
+        Ok(rx)
+    }
+
+    /// Unsubscribe from a subscription
+    pub async fn unsubscribe(&self, subscription_id: &str) -> Result<()> {
+        // Remove subscription
+        {
+            let mut subs = self.subscriptions.lock().await;
+            subs.remove(subscription_id);
+        }
+
+        // Send CLOSE message to relay
+        self.close_subscription(subscription_id).await
+    }
+
+    /// Get a subscription by ID
+    pub async fn get_subscription(&self, subscription_id: &str) -> Option<Subscription> {
+        let subs = self.subscriptions.lock().await;
+        subs.get(subscription_id).cloned()
+    }
+
+    /// Get all active subscription IDs
+    pub async fn active_subscriptions(&self) -> Vec<String> {
+        let subs = self.subscriptions.lock().await;
+        subs.keys().cloned().collect()
+    }
+
     /// Close a subscription
     pub async fn close_subscription(&self, subscription_id: &str) -> Result<()> {
         let msg = json!(["CLOSE", subscription_id]);
@@ -317,6 +393,24 @@ impl RelayConnection {
                                 message: message.clone(),
                             };
                             let _ = tx.send(confirmation); // Ignore error if receiver dropped
+                        }
+                    }
+
+                    // Route EVENT messages to subscriptions
+                    if let Some(RelayMessage::Event(sub_id, event)) = &msg {
+                        let subs = self.subscriptions.lock().await;
+                        if let Some(subscription) = subs.get(sub_id) {
+                            if let Err(e) = subscription.handle_event(event.clone()) {
+                                warn!("Error handling event for subscription {}: {}", sub_id, e);
+                            }
+                        }
+                    }
+
+                    // Handle EOSE messages for subscriptions
+                    if let Some(RelayMessage::Eose(sub_id)) = &msg {
+                        let subs = self.subscriptions.lock().await;
+                        if let Some(subscription) = subs.get(sub_id) {
+                            subscription.mark_eose();
                         }
                     }
 
@@ -569,6 +663,103 @@ mod tests {
             let mut confirmations = relay.pending_confirmations.lock().await;
             confirmations.remove("event123");
             assert_eq!(confirmations.len(), 0);
+        }
+    }
+
+    #[tokio::test]
+    async fn test_subscription_tracking() {
+        let relay = RelayConnection::new("wss://relay.example.com").unwrap();
+
+        // Initially no subscriptions
+        assert_eq!(relay.active_subscriptions().await.len(), 0);
+
+        // Add a subscription manually
+        {
+            let subscription = Subscription::new(
+                "test-sub".to_string(),
+                vec![serde_json::json!({"kinds": [1]})],
+            );
+            let mut subs = relay.subscriptions.lock().await;
+            subs.insert("test-sub".to_string(), subscription);
+        }
+
+        // Check it was added
+        assert_eq!(relay.active_subscriptions().await.len(), 1);
+        assert!(relay.get_subscription("test-sub").await.is_some());
+
+        // Check subscription details
+        let sub = relay.get_subscription("test-sub").await.unwrap();
+        assert_eq!(sub.id(), "test-sub");
+        assert_eq!(sub.filters().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_subscription_eose_handling() {
+        let relay = RelayConnection::new("wss://relay.example.com").unwrap();
+
+        // Add a subscription
+        {
+            let subscription = Subscription::new(
+                "test-sub".to_string(),
+                vec![serde_json::json!({"kinds": [1]})],
+            );
+            let mut subs = relay.subscriptions.lock().await;
+            subs.insert("test-sub".to_string(), subscription);
+        }
+
+        // Get subscription and check EOSE not received
+        let sub = relay.get_subscription("test-sub").await.unwrap();
+        assert!(!sub.has_eose());
+
+        // Simulate EOSE message handling (what recv() does)
+        {
+            let subs = relay.subscriptions.lock().await;
+            if let Some(subscription) = subs.get("test-sub") {
+                subscription.mark_eose();
+            }
+        }
+
+        // Check EOSE was marked
+        let sub = relay.get_subscription("test-sub").await.unwrap();
+        assert!(sub.has_eose());
+    }
+
+    #[tokio::test]
+    async fn test_active_subscriptions() {
+        let relay = RelayConnection::new("wss://relay.example.com").unwrap();
+
+        // Add multiple subscriptions
+        {
+            let sub1 = Subscription::new(
+                "sub1".to_string(),
+                vec![serde_json::json!({"kinds": [1]})],
+            );
+            let sub2 = Subscription::new(
+                "sub2".to_string(),
+                vec![serde_json::json!({"kinds": [3]})],
+            );
+            let mut subs = relay.subscriptions.lock().await;
+            subs.insert("sub1".to_string(), sub1);
+            subs.insert("sub2".to_string(), sub2);
+        }
+
+        // Check active subscriptions
+        let active = relay.active_subscriptions().await;
+        assert_eq!(active.len(), 2);
+        assert!(active.contains(&"sub1".to_string()));
+        assert!(active.contains(&"sub2".to_string()));
+    }
+
+    #[test]
+    fn test_parse_eose_for_subscription() {
+        let text = r#"["EOSE","my-subscription"]"#;
+        let msg = RelayConnection::parse_relay_message(text).unwrap();
+        assert!(msg.is_some());
+        match msg.unwrap() {
+            RelayMessage::Eose(sub_id) => {
+                assert_eq!(sub_id, "my-subscription");
+            }
+            _ => panic!("Expected EOSE message"),
         }
     }
 }

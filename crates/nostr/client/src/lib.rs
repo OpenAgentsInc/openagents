@@ -41,8 +41,10 @@
 
 mod error;
 mod relay;
+mod subscription;
 
 pub use error::{ClientError, Result};
 pub use relay::{
     ConnectionState, PublishConfirmation, RelayConfig, RelayConnection, RelayMessage,
 };
+pub use subscription::{EventCallback, Subscription};
