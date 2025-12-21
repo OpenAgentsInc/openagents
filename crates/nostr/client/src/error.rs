@@ -1,0 +1,54 @@
+//! Client error types
+
+use thiserror::Error;
+
+/// Client error type
+#[derive(Error, Debug)]
+pub enum ClientError {
+    /// WebSocket error
+    #[error("WebSocket error: {0}")]
+    WebSocket(String),
+
+    /// Connection error
+    #[error("Connection error: {0}")]
+    Connection(String),
+
+    /// Invalid URL
+    #[error("Invalid URL: {0}")]
+    InvalidUrl(String),
+
+    /// Serialization error
+    #[error("Serialization error: {0}")]
+    Serialization(#[from] serde_json::Error),
+
+    /// IO error
+    #[error("IO error: {0}")]
+    Io(#[from] std::io::Error),
+
+    /// URL parse error
+    #[error("URL parse error: {0}")]
+    UrlParse(#[from] url::ParseError),
+
+    /// Relay error response
+    #[error("Relay error: {0}")]
+    RelayError(String),
+
+    /// Subscription error
+    #[error("Subscription error: {0}")]
+    Subscription(String),
+
+    /// Timeout error
+    #[error("Timeout error: {0}")]
+    Timeout(String),
+
+    /// Not connected
+    #[error("Not connected to relay")]
+    NotConnected,
+
+    /// Already connected
+    #[error("Already connected to relay")]
+    AlreadyConnected,
+}
+
+/// Client result type
+pub type Result<T> = std::result::Result<T, ClientError>;

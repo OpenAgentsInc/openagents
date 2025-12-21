@@ -13,6 +13,7 @@ members = [
     "crates/codex-agent-sdk",
     "crates/nostr/core",
     "crates/nostr/relay",
+    "crates/nostr/client",
     "crates/compute",
     "crates/config",
     "crates/storybook",
