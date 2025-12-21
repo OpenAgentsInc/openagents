@@ -919,6 +919,126 @@ impl EventCache {
         Ok(filtered)
     }
 
+    /// Search repositories by query string (searches name, description, identifier)
+    pub fn search_repositories(&self, query: &str, limit: usize) -> Result<Vec<Event>> {
+        let query_lower = query.to_lowercase();
+
+        let mut stmt = self.conn.prepare(
+            "SELECT e.id, e.kind, e.pubkey, e.created_at, e.content, e.tags, e.sig
+             FROM events e
+             JOIN repositories r ON e.id = r.event_id
+             WHERE e.kind = 30617
+             ORDER BY e.created_at DESC
+             LIMIT ?",
+        )?;
+
+        let events = stmt
+            .query_map(params![limit as i64], |row| {
+                let tags_json: String = row.get(5)?;
+                let tags: Vec<Vec<String>> = serde_json::from_str(&tags_json)
+                    .map_err(|e| rusqlite::Error::FromSqlConversionFailure(
+                        5,
+                        rusqlite::types::Type::Text,
+                        Box::new(e),
+                    ))?;
+
+                Ok(Event {
+                    id: row.get(0)?,
+                    kind: row.get(1)?,
+                    pubkey: row.get(2)?,
+                    created_at: row.get(3)?,
+                    content: row.get(4)?,
+                    tags,
+                    sig: row.get(6)?,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+
+        // Filter by query string (search in name, description, tags)
+        let filtered: Vec<Event> = events.into_iter()
+            .filter(|event| {
+                // Search in content (description)
+                if event.content.to_lowercase().contains(&query_lower) {
+                    return true;
+                }
+
+                // Search in tags
+                for tag in &event.tags {
+                    if tag.len() >= 2 {
+                        let tag_value = tag[1].to_lowercase();
+                        if tag_value.contains(&query_lower) {
+                            return true;
+                        }
+                    }
+                }
+
+                false
+            })
+            .collect();
+
+        Ok(filtered)
+    }
+
+    /// Search issues by query string (searches title, content, labels)
+    pub fn search_issues(&self, query: &str, limit: usize) -> Result<Vec<Event>> {
+        let query_lower = query.to_lowercase();
+
+        let mut stmt = self.conn.prepare(
+            "SELECT e.id, e.kind, e.pubkey, e.created_at, e.content, e.tags, e.sig
+             FROM events e
+             JOIN issues i ON e.id = i.event_id
+             WHERE e.kind = 1621
+             ORDER BY e.created_at DESC
+             LIMIT ?",
+        )?;
+
+        let events = stmt
+            .query_map(params![limit as i64], |row| {
+                let tags_json: String = row.get(5)?;
+                let tags: Vec<Vec<String>> = serde_json::from_str(&tags_json)
+                    .map_err(|e| rusqlite::Error::FromSqlConversionFailure(
+                        5,
+                        rusqlite::types::Type::Text,
+                        Box::new(e),
+                    ))?;
+
+                Ok(Event {
+                    id: row.get(0)?,
+                    kind: row.get(1)?,
+                    pubkey: row.get(2)?,
+                    created_at: row.get(3)?,
+                    content: row.get(4)?,
+                    tags,
+                    sig: row.get(6)?,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+
+        // Filter by query string
+        let filtered: Vec<Event> = events.into_iter()
+            .filter(|event| {
+                // Search in content
+                if event.content.to_lowercase().contains(&query_lower) {
+                    return true;
+                }
+
+                // Search in tags (title, labels, etc.)
+                for tag in &event.tags {
+                    if tag.len() >= 2 {
+                        let tag_value = tag[1].to_lowercase();
+                        if tag_value.contains(&query_lower) {
+                            return true;
+                        }
+                    }
+                }
+
+                false
+            })
+            .collect();
+
+        Ok(filtered)
+    }
+
     /// Clear all cached events
     #[allow(dead_code)]
     pub fn clear(&self) -> Result<()> {
