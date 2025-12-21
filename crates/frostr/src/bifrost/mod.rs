@@ -5,9 +5,11 @@
 
 pub mod messages;
 pub mod node;
+pub mod peer;
 pub mod transport;
 
 pub use messages::{
     BifrostMessage, EcdhRequest, EcdhResponse, SignError, SignRequest, SignResponse, SignResult,
 };
 pub use node::BifrostNode;
+pub use peer::{PeerInfo, PeerManager, PeerStatus, RetryConfig};
