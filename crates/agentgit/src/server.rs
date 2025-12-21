@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use crate::git::{clone_repository, get_repository_path, is_repository_cloned};
 use crate::nostr::NostrClient;
-use crate::nostr::events::{PatchBuilder, PullRequestBuilder};
+use crate::nostr::events::{PatchBuilder, PullRequestBuilder, RepositoryAnnouncementBuilder};
 use crate::views::{agent_profile_page, home_page_with_repos, issue_create_form_page, issue_detail_page, issues_list_page, patch_create_form_page, patch_detail_page, patches_list_page, pr_create_form_page, pull_request_detail_page, pull_requests_list_page, repository_create_form_page, repository_detail_page, search_results_page, trajectory_viewer_page};
 use crate::ws::{ws_handler, WsBroadcaster};
 
@@ -1384,15 +1384,6 @@ async fn repository_create(
     _state: web::Data<AppState>,
     form: web::Form<RepositoryCreateForm>,
 ) -> HttpResponse {
-    // TODO: Build kind:30617 repository announcement event
-    // For now, log the form data
-    tracing::info!(
-        "Would create repository: identifier={}, name='{}', git_url={}",
-        form.identifier,
-        form.name,
-        form.clone_url_git
-    );
-
     // Parse maintainers (one npub per line)
     let maintainers: Vec<String> = form
         .maintainers
@@ -1400,23 +1391,94 @@ async fn repository_create(
         .map(|m| m.lines().map(|l| l.trim().to_string()).filter(|l| !l.is_empty()).collect())
         .unwrap_or_default();
 
-    tracing::info!("Maintainers: {:?}", maintainers);
+    // Build repository announcement event using RepositoryAnnouncementBuilder
+    let mut builder = RepositoryAnnouncementBuilder::new(&form.identifier, &form.name);
 
-    // TODO: Create event builder when RepositoryAnnouncementBuilder is implemented
-    // TODO: Sign with identity
+    // Add optional description
+    if let Some(desc) = &form.description {
+        if !desc.is_empty() {
+            builder = builder.description(desc);
+        }
+    }
+
+    // Add clone URLs
+    builder = builder.clone_url(&form.clone_url_git);
+    if let Some(https_url) = &form.clone_url_https {
+        if !https_url.is_empty() {
+            builder = builder.clone_url(https_url);
+        }
+    }
+
+    // Add web URL
+    if let Some(web) = &form.web_url {
+        if !web.is_empty() {
+            builder = builder.web_url(web);
+        }
+    }
+
+    // Add maintainers
+    for maintainer in &maintainers {
+        builder = builder.maintainer(maintainer);
+    }
+
+    // Add earliest commit
+    if let Some(commit) = &form.earliest_commit {
+        if !commit.is_empty() {
+            builder = builder.earliest_commit(commit);
+        }
+    }
+
+    // Add default branch
+    if let Some(branch) = &form.default_branch {
+        if !branch.is_empty() {
+            builder = builder.default_branch(branch);
+        }
+    }
+
+    let event_template = builder.build();
+
+    // Log event details for debugging
+    tracing::info!(
+        "Created repository announcement event template: kind={}, identifier='{}', name='{}', tags_count={}",
+        event_template.kind,
+        form.identifier,
+        form.name,
+        event_template.tags.len()
+    );
+    tracing::debug!("Event template tags: {:?}", event_template.tags);
+
+    // TODO: Sign with identity (requires wallet integration)
     // TODO: Publish to relays
+    // TODO: Cache locally
     // TODO: Redirect to /repo/{identifier}
 
     HttpResponse::Ok()
         .content_type("text/html; charset=utf-8")
         .body(format!(
             r#"<div class="success-message" style="padding: 1rem; background: #d1fae5; border-left: 4px solid #10b981;">
-                <h3>Repository Event Template Created</h3>
-                <p>Identifier: <code>{}</code></p>
-                <p>Name: {}</p>
-                <p>⚠️ Publishing blocked on identity integration (issue #342)</p>
-                <p><a href="/">← Back to Repositories</a></p>
+                <h3>Repository Event Template Created Successfully</h3>
+                <p><strong>Identifier:</strong> <code>{}</code></p>
+                <p><strong>Name:</strong> {}</p>
+                <p><strong>Event Kind:</strong> 30617 (Repository Announcement)</p>
+                <p><strong>Tags:</strong> {} tags generated</p>
+                <p><strong>Clone URLs:</strong> {}</p>
+                {}
+                <div style="margin-top: 1rem; padding: 12px; background: #fef3c7; border-left: 4px solid #f59e0b;">
+                    <p style="margin: 0; font-size: 0.875rem;">
+                        ⚠️ <strong>Note:</strong> Event signing and publishing requires identity integration (issue #342).
+                        The event template has been created but not published to relays.
+                    </p>
+                </div>
+                <p style="margin-top: 1rem;"><a href="/">← Back to Repositories</a></p>
             </div>"#,
-            form.identifier, form.name
+            form.identifier,
+            form.name,
+            event_template.tags.len(),
+            if form.clone_url_https.is_some() { "Git + HTTPS" } else { "Git" },
+            if !maintainers.is_empty() {
+                format!("<p><strong>Maintainers:</strong> {} additional maintainers</p>", maintainers.len())
+            } else {
+                String::new()
+            }
         ))
 }
