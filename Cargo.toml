@@ -18,6 +18,7 @@ members = [
     "crates/config",
     "crates/storybook",
     "crates/spark",
+    "crates/wallet",
 ]
 
 [workspace.lints.rust]
