@@ -701,9 +701,45 @@ async fn pull_request_detail(
         }
     };
 
+    // Fetch trajectory session linked to this PR via "trajectory" tag
+    let trajectory_session_id = pull_request.tags.iter()
+        .find(|tag| tag.len() >= 2 && tag[0] == "trajectory")
+        .map(|tag| tag[1].clone());
+
+    let trajectory_session = if let Some(session_id) = trajectory_session_id {
+        match state.nostr_client.get_trajectory_session(&session_id).await {
+            Ok(session) => {
+                tracing::debug!("Found trajectory session for PR {}: {}", pr_id, session_id);
+                session
+            }
+            Err(e) => {
+                tracing::warn!("Failed to fetch trajectory session {}: {}", session_id, e);
+                None
+            }
+        }
+    } else {
+        None
+    };
+
+    // Fetch trajectory events if session exists
+    let trajectory_events = if let Some(ref session) = trajectory_session {
+        match state.nostr_client.get_trajectory_events(&session.id).await {
+            Ok(events) => {
+                tracing::debug!("Found {} trajectory events for session {}", events.len(), session.id);
+                events
+            }
+            Err(e) => {
+                tracing::warn!("Failed to fetch trajectory events for session {}: {}", session.id, e);
+                Vec::new()
+            }
+        }
+    } else {
+        Vec::new()
+    };
+
     HttpResponse::Ok()
         .content_type("text/html; charset=utf-8")
-        .body(pull_request_detail_page(&repository, &pull_request, &reviews, &status_events, &identifier).into_string())
+        .body(pull_request_detail_page(&repository, &pull_request, &reviews, &status_events, &identifier, trajectory_session.as_ref(), &trajectory_events).into_string())
 }
 
 /// Trajectory detail page
