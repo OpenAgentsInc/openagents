@@ -570,7 +570,7 @@ mod tests {
             anomalies: vec![],
         };
 
-        let issues = generate_issues(vec![pattern]);
+        let issues = generate_issues(vec![Pattern::Anomaly(pattern)]);
 
         assert_eq!(issues.len(), 1);
         assert!(issues[0].title.contains("tool error rate"));
