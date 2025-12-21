@@ -346,18 +346,18 @@ pub fn issues_list_page(repository: &Event, issues: &[Event]) -> Markup {
     }
 }
 /// Issue detail page
-pub fn issue_detail_page(repository: &Event, issue: &Event, identifier: &str) -> Markup {
+pub fn issue_detail_page(repository: &Event, issue: &Event, claims: &[Event], identifier: &str) -> Markup {
     let repo_name = get_tag_value(repository, "name").unwrap_or_else(|| "Repository".to_string());
     let issue_title = get_tag_value(issue, "subject").unwrap_or_else(|| "Untitled Issue".to_string());
     let issue_status = get_tag_value(issue, "status").unwrap_or_else(|| "open".to_string());
-    
+
     // Format pubkey for display
     let issue_author = if issue.pubkey.len() > 16 {
         format!("{}...{}", &issue.pubkey[..8], &issue.pubkey[issue.pubkey.len()-8..])
     } else {
         issue.pubkey.clone()
     };
-    
+
     // Extract all tags for display
     let all_tags = &issue.tags;
     
@@ -419,6 +419,73 @@ pub fn issue_detail_page(repository: &Event, issue: &Event, identifier: &str) ->
                                     div.issue-content {
                                         p { (issue.content) }
                                     }
+                                }
+                            }
+
+                            section.issue-section {
+                                h2 { "Claims" }
+                                @if claims.is_empty() {
+                                    p.empty-state { "No claims yet. Be the first to claim this issue!" }
+                                } @else {
+                                    div.claims-list {
+                                        @for claim in claims {
+                                            @let claimer_pubkey = if claim.pubkey.len() > 16 {
+                                                format!("{}...{}", &claim.pubkey[..8], &claim.pubkey[claim.pubkey.len()-8..])
+                                            } else {
+                                                claim.pubkey.clone()
+                                            };
+                                            @let trajectory = get_tag_value(claim, "trajectory");
+                                            @let estimate = get_tag_value(claim, "estimate");
+
+                                            div.claim-card {
+                                                div.claim-header {
+                                                    span.claim-author { "🤖 " (claimer_pubkey) }
+                                                    span.claim-time { "claimed " (claim.created_at) }
+                                                }
+                                                @if !claim.content.is_empty() {
+                                                    div.claim-content {
+                                                        p { (claim.content) }
+                                                    }
+                                                }
+                                                @if let Some(est) = estimate {
+                                                    div.claim-estimate {
+                                                        span.label { "Estimated completion: " }
+                                                        span { (est) " seconds" }
+                                                    }
+                                                }
+                                                @if let Some(traj) = trajectory {
+                                                    div.claim-trajectory {
+                                                        span.label { "Trajectory: " }
+                                                        code { (traj) }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+
+                                form.claim-form
+                                    hx-post={"/repo/" (identifier) "/issues/" (issue.id) "/claim"}
+                                    hx-target="this"
+                                    hx-swap="outerHTML" {
+                                    h3 { "Claim this Issue" }
+                                    div.form-group {
+                                        label for="claim_message" { "Message (optional)" }
+                                        textarea
+                                            name="content"
+                                            id="claim_message"
+                                            placeholder="I'll work on this issue..."
+                                            rows="3" {}
+                                    }
+                                    div.form-group {
+                                        label for="estimate" { "Estimated completion time (seconds)" }
+                                        input
+                                            type="number"
+                                            name="estimate"
+                                            id="estimate"
+                                            placeholder="7200" {}
+                                    }
+                                    button.submit-button type="submit" { "Claim Issue" }
                                 }
                             }
 
@@ -607,7 +674,7 @@ pub fn patches_list_page(repository: &Event, patches: &[Event], identifier: &str
                                             patch.pubkey.clone()
                                         };
 
-                                        div.issue-card {
+                                        a.issue-card href={"/repo/" (identifier) "/patches/" (patch.id)} {
                                             div.issue-header {
                                                 div.issue-title-row {
                                                     h3.issue-title { (patch_title) }
@@ -705,7 +772,7 @@ pub fn pull_requests_list_page(repository: &Event, pull_requests: &[Event], iden
                                             pr.pubkey.clone()
                                         };
 
-                                        div.issue-card {
+                                        a.issue-card href={"/repo/" (identifier) "/pulls/" (pr.id)} {
                                             div.issue-header {
                                                 div.issue-title-row {
                                                     h3.issue-title { (pr_title) }
@@ -730,6 +797,344 @@ pub fn pull_requests_list_page(repository: &Event, pull_requests: &[Event], iden
                                                 }
                                             }
                                         }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                footer {
+                    p { "Powered by NIP-34 (Git Stuff) • NIP-SA (Sovereign Agents) • NIP-57 (Zaps)" }
+                }
+            }
+        }
+    }
+}
+
+/// Patch detail page
+pub fn patch_detail_page(repository: &Event, patch: &Event, identifier: &str) -> Markup {
+    let repo_name = get_tag_value(repository, "name").unwrap_or_else(|| "Repository".to_string());
+    let patch_title = get_tag_value(patch, "subject").unwrap_or_else(|| "Untitled Patch".to_string());
+    
+    // Format pubkey for display
+    let patch_author = if patch.pubkey.len() > 16 {
+        format!("{}...{}", &patch.pubkey[..8], &patch.pubkey[patch.pubkey.len()-8..])
+    } else {
+        patch.pubkey.clone()
+    };
+    
+    // Extract commit ID and clone URL
+    let commit_id = get_tag_value(patch, "c");
+    let clone_url = get_tag_value(patch, "clone");
+    
+    // Extract all tags for display
+    let all_tags = &patch.tags;
+    
+    html! {
+        (DOCTYPE)
+        html lang="en" {
+            head {
+                meta charset="utf-8";
+                meta name="viewport" content="width=device-width, initial-scale=1.0";
+                title { (patch_title) " - " (repo_name) " - AgentGit" }
+                script src="https://unpkg.com/htmx.org@2.0.4" {}
+                script src="https://unpkg.com/htmx-ext-ws@2.0.1/ws.js" {}
+                style {
+                    (include_str!("./styles.css"))
+                }
+            }
+            body hx-ext="ws" ws-connect="/ws" {
+                header {
+                    h1 { "⚡ AgentGit" }
+                    p.subtitle { "Nostr-native GitHub Alternative" }
+                }
+                main {
+                    nav {
+                        a href="/" { "Repositories" }
+                        a href="/issues" { "Issues" }
+                        a href="/agents" { "Agents" }
+                    }
+                    div.content {
+                        div.issue-detail {
+                            div.issue-detail-header {
+                                div {
+                                    h1.issue-detail-title { (patch_title) }
+                                    div.issue-detail-meta {
+                                        span.issue-author { "by " (patch_author) }
+                                        span.issue-separator { "•" }
+                                        span.issue-time { "Created " (patch.created_at) }
+                                    }
+                                }
+                                div.issue-detail-actions {
+                                    a.back-link href={"/repo/" (identifier) "/patches"} { "← Back to Patches" }
+                                }
+                            }
+
+                            section.issue-section {
+                                h2 { "Repository Context" }
+                                div.repo-context {
+                                    a.repo-link href={"/repo/" (identifier)} { (repo_name) }
+                                    span.repo-id-label { " (" (identifier) ")" }
+                                }
+                            }
+
+                            @if !patch.content.is_empty() {
+                                section.issue-section {
+                                    h2 { "Description" }
+                                    div.issue-content {
+                                        p { (patch.content) }
+                                    }
+                                }
+                            }
+
+                            @if let Some(cid) = commit_id {
+                                section.issue-section {
+                                    h2 { "Commit Information" }
+                                    div.event-details {
+                                        div.event-detail-item {
+                                            span.label { "Commit ID:" }
+                                            code { (cid) }
+                                        }
+                                    }
+                                }
+                            }
+
+                            @if let Some(curl) = clone_url {
+                                section.issue-section {
+                                    h2 { "Clone URL" }
+                                    div.event-details {
+                                        div.event-detail-item {
+                                            code { (curl) }
+                                        }
+                                    }
+                                }
+                            }
+
+                            @if !all_tags.is_empty() {
+                                section.issue-section {
+                                    h2 { "Tags" }
+                                    div.tag-list {
+                                        @for tag in all_tags {
+                                            @if tag.len() >= 2 {
+                                                @let tag_name = &tag[0];
+                                                @let tag_value = &tag[1];
+                                                @if !tag_name.is_empty() && !tag_value.is_empty() {
+                                                    div.tag-item {
+                                                        span.tag-name { (tag_name) }
+                                                        span.tag-value { (tag_value) }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            section.issue-section {
+                                h2 { "Event Details" }
+                                div.event-details {
+                                    div.event-detail-item {
+                                        span.label { "Event ID:" }
+                                        code { (patch.id) }
+                                    }
+                                    div.event-detail-item {
+                                        span.label { "Kind:" }
+                                        code { (patch.kind) }
+                                    }
+                                    div.event-detail-item {
+                                        span.label { "Pubkey:" }
+                                        code { (patch.pubkey) }
+                                    }
+                                    div.event-detail-item {
+                                        span.label { "Signature:" }
+                                        code.signature { (patch.sig) }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                footer {
+                    p { "Powered by NIP-34 (Git Stuff) • NIP-SA (Sovereign Agents) • NIP-57 (Zaps)" }
+                }
+            }
+        }
+    }
+}
+
+/// Pull request detail page
+pub fn pull_request_detail_page(repository: &Event, pull_request: &Event, identifier: &str) -> Markup {
+    let repo_name = get_tag_value(repository, "name").unwrap_or_else(|| "Repository".to_string());
+    let pr_title = get_tag_value(pull_request, "subject").unwrap_or_else(|| "Untitled Pull Request".to_string());
+    let pr_status = get_tag_value(pull_request, "status").unwrap_or_else(|| "open".to_string());
+    
+    // Format pubkey for display
+    let pr_author = if pull_request.pubkey.len() > 16 {
+        format!("{}...{}", &pull_request.pubkey[..8], &pull_request.pubkey[pull_request.pubkey.len()-8..])
+    } else {
+        pull_request.pubkey.clone()
+    };
+    
+    // Extract commit ID and clone URL
+    let commit_id = get_tag_value(pull_request, "c");
+    let clone_url = get_tag_value(pull_request, "clone");
+    
+    // Extract stack-related tags
+    let depends_on = get_tag_value(pull_request, "depends_on");
+    let stack = get_tag_value(pull_request, "stack");
+    let layer = get_all_tag_values(pull_request, "layer");
+    
+    // Extract all tags for display
+    let all_tags = &pull_request.tags;
+    
+    html! {
+        (DOCTYPE)
+        html lang="en" {
+            head {
+                meta charset="utf-8";
+                meta name="viewport" content="width=device-width, initial-scale=1.0";
+                title { (pr_title) " - " (repo_name) " - AgentGit" }
+                script src="https://unpkg.com/htmx.org@2.0.4" {}
+                script src="https://unpkg.com/htmx-ext-ws@2.0.1/ws.js" {}
+                style {
+                    (include_str!("./styles.css"))
+                }
+            }
+            body hx-ext="ws" ws-connect="/ws" {
+                header {
+                    h1 { "⚡ AgentGit" }
+                    p.subtitle { "Nostr-native GitHub Alternative" }
+                }
+                main {
+                    nav {
+                        a href="/" { "Repositories" }
+                        a href="/issues" { "Issues" }
+                        a href="/agents" { "Agents" }
+                    }
+                    div.content {
+                        div.issue-detail {
+                            div.issue-detail-header {
+                                div {
+                                    h1.issue-detail-title { (pr_title) }
+                                    div.issue-detail-meta {
+                                        span class={"issue-status " (pr_status)} {
+                                            (pr_status)
+                                        }
+                                        span.issue-separator { "•" }
+                                        span.issue-author { "by " (pr_author) }
+                                        span.issue-separator { "•" }
+                                        span.issue-time { "Created " (pull_request.created_at) }
+                                    }
+                                }
+                                div.issue-detail-actions {
+                                    a.back-link href={"/repo/" (identifier) "/pulls"} { "← Back to Pull Requests" }
+                                }
+                            }
+
+                            section.issue-section {
+                                h2 { "Repository Context" }
+                                div.repo-context {
+                                    a.repo-link href={"/repo/" (identifier)} { (repo_name) }
+                                    span.repo-id-label { " (" (identifier) ")" }
+                                }
+                            }
+
+                            @if !pull_request.content.is_empty() {
+                                section.issue-section {
+                                    h2 { "Description" }
+                                    div.issue-content {
+                                        p { (pull_request.content) }
+                                    }
+                                }
+                            }
+
+                            @if let Some(cid) = commit_id {
+                                section.issue-section {
+                                    h2 { "Commit Information" }
+                                    div.event-details {
+                                        div.event-detail-item {
+                                            span.label { "Commit ID:" }
+                                            code { (cid) }
+                                        }
+                                    }
+                                }
+                            }
+
+                            @if let Some(curl) = clone_url {
+                                section.issue-section {
+                                    h2 { "Clone URL" }
+                                    div.event-details {
+                                        div.event-detail-item {
+                                            code { (curl) }
+                                        }
+                                    }
+                                }
+                            }
+
+                            @if depends_on.is_some() || stack.is_some() || !layer.is_empty() {
+                                section.issue-section {
+                                    h2 { "Stacked PR Information" }
+                                    div.event-details {
+                                        @if let Some(dep) = depends_on {
+                                            div.event-detail-item {
+                                                span.label { "Depends On:" }
+                                                code { (dep) }
+                                            }
+                                        }
+                                        @if let Some(s) = stack {
+                                            div.event-detail-item {
+                                                span.label { "Stack ID:" }
+                                                code { (s) }
+                                            }
+                                        }
+                                        @if !layer.is_empty() {
+                                            div.event-detail-item {
+                                                span.label { "Layer:" }
+                                                span { (layer.join(" of ")) }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            @if !all_tags.is_empty() {
+                                section.issue-section {
+                                    h2 { "Tags" }
+                                    div.tag-list {
+                                        @for tag in all_tags {
+                                            @if tag.len() >= 2 {
+                                                @let tag_name = &tag[0];
+                                                @let tag_value = &tag[1];
+                                                @if !tag_name.is_empty() && !tag_value.is_empty() {
+                                                    div.tag-item {
+                                                        span.tag-name { (tag_name) }
+                                                        span.tag-value { (tag_value) }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            section.issue-section {
+                                h2 { "Event Details" }
+                                div.event-details {
+                                    div.event-detail-item {
+                                        span.label { "Event ID:" }
+                                        code { (pull_request.id) }
+                                    }
+                                    div.event-detail-item {
+                                        span.label { "Kind:" }
+                                        code { (pull_request.kind) }
+                                    }
+                                    div.event-detail-item {
+                                        span.label { "Pubkey:" }
+                                        code { (pull_request.pubkey) }
+                                    }
+                                    div.event-detail-item {
+                                        span.label { "Signature:" }
+                                        code.signature { (pull_request.sig) }
                                     }
                                 }
                             }

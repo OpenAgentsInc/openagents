@@ -551,6 +551,51 @@ impl EventCache {
         })
     }
 
+    /// Get claims for a specific issue
+    /// Claims are kind:1634 events that reference the issue via an "e" tag
+    pub fn get_claims_for_issue(&self, issue_event_id: &str) -> Result<Vec<Event>> {
+        // Query for kind:1634 events where tags contains ["e", "<issue_event_id>", ...]
+        let mut stmt = self.conn.prepare(
+            "SELECT id, kind, pubkey, created_at, content, tags, sig
+             FROM events
+             WHERE kind = 1634
+             ORDER BY created_at DESC",
+        )?;
+
+        let events = stmt
+            .query_map([], |row| {
+                let tags_json: String = row.get(5)?;
+                let tags: Vec<Vec<String>> = serde_json::from_str(&tags_json)
+                    .map_err(|e| rusqlite::Error::FromSqlConversionFailure(
+                        5,
+                        rusqlite::types::Type::Text,
+                        Box::new(e),
+                    ))?;
+
+                Ok(Event {
+                    id: row.get(0)?,
+                    kind: row.get(1)?,
+                    pubkey: row.get(2)?,
+                    created_at: row.get(3)?,
+                    content: row.get(4)?,
+                    tags,
+                    sig: row.get(6)?,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+
+        // Filter events that reference this issue
+        let filtered: Vec<Event> = events.into_iter()
+            .filter(|event| {
+                event.tags.iter().any(|tag| {
+                    tag.len() >= 2 && tag[0] == "e" && tag[1] == issue_event_id
+                })
+            })
+            .collect();
+
+        Ok(filtered)
+    }
+
     /// Clear all cached events
     #[allow(dead_code)]
     pub fn clear(&self) -> Result<()> {

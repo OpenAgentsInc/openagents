@@ -4,7 +4,7 @@ use actix_web::{web, App, HttpResponse, HttpServer};
 use std::sync::Arc;
 
 use crate::nostr::NostrClient;
-use crate::views::{home_page_with_repos, issue_create_form_page, issue_detail_page, issues_list_page, patches_list_page, pull_requests_list_page, repository_detail_page};
+use crate::views::{home_page_with_repos, issue_create_form_page, issue_detail_page, issues_list_page, patch_detail_page, patches_list_page, pull_request_detail_page, pull_requests_list_page, repository_detail_page};
 use crate::ws::{ws_handler, WsBroadcaster};
 
 /// Application state shared across handlers
@@ -32,8 +32,11 @@ pub async fn start_server(
             .route("/repo/{identifier}/issues/new", web::get().to(issue_create_form))
             .route("/repo/{identifier}/issues", web::post().to(issue_create))
             .route("/repo/{identifier}/issues/{issue_id}", web::get().to(issue_detail))
+            .route("/repo/{identifier}/issues/{issue_id}/claim", web::post().to(issue_claim))
             .route("/repo/{identifier}/patches", web::get().to(repository_patches))
+            .route("/repo/{identifier}/patches/{patch_id}", web::get().to(patch_detail))
             .route("/repo/{identifier}/pulls", web::get().to(repository_pulls))
+            .route("/repo/{identifier}/pulls/{pr_id}", web::get().to(pull_request_detail))
             .route("/ws", web::get().to(ws_route))
     })
     .bind("127.0.0.1:0")?;
@@ -178,9 +181,49 @@ async fn issue_detail(
         }
     };
 
+    // Fetch claims for this issue
+    let claims = match state.nostr_client.get_claims_for_issue(&issue_id).await {
+        Ok(c) => c,
+        Err(e) => {
+            tracing::warn!("Failed to fetch claims for issue {}: {}", issue_id, e);
+            Vec::new() // Continue with empty claims if fetch fails
+        }
+    };
+
     HttpResponse::Ok()
         .content_type("text/html; charset=utf-8")
-        .body(issue_detail_page(&repository, &issue, &identifier).into_string())
+        .body(issue_detail_page(&repository, &issue, &claims, &identifier).into_string())
+}
+
+/// Claim an issue
+async fn issue_claim(
+    path: web::Path<(String, String)>,
+    form: web::Form<std::collections::HashMap<String, String>>,
+) -> HttpResponse {
+    let (_identifier, _issue_id) = path.into_inner();
+    let content = form.get("content").cloned().unwrap_or_default();
+    let estimate = form.get("estimate").and_then(|s| s.parse::<u64>().ok());
+
+    // For now, return a success message
+    // In a real implementation, this would:
+    // 1. Build an IssueClaimBuilder event
+    // 2. Sign it with the user's key
+    // 3. Publish it to relays
+    // 4. Cache it locally
+
+    let response_html = format!(
+        r#"<div class="success-message">
+            <p>✅ Issue claim submitted!</p>
+            <p>Message: {}</p>
+            {}
+        </div>"#,
+        if content.is_empty() { "No message" } else { &content },
+        estimate.map(|e| format!("<p>Estimate: {} seconds</p>", e)).unwrap_or_default()
+    );
+
+    HttpResponse::Ok()
+        .content_type("text/html; charset=utf-8")
+        .body(response_html)
 }
 
 /// Issue creation form
@@ -370,6 +413,98 @@ async fn repository_pulls(
     HttpResponse::Ok()
         .content_type("text/html; charset=utf-8")
         .body(pull_requests_list_page(&repository, &pull_requests, &identifier).into_string())
+}
+
+/// Patch detail page
+async fn patch_detail(
+    state: web::Data<AppState>,
+    path: web::Path<(String, String)>,
+) -> HttpResponse {
+    let (identifier, patch_id) = path.into_inner();
+
+    // Fetch repository from cache by identifier
+    let repository = match state.nostr_client.get_repository_by_identifier(&identifier).await {
+        Ok(Some(repo)) => repo,
+        Ok(None) => {
+            tracing::warn!("Repository not found: {}", identifier);
+            return HttpResponse::NotFound()
+                .content_type("text/html; charset=utf-8")
+                .body("<h1>Repository not found</h1>");
+        }
+        Err(e) => {
+            tracing::error!("Failed to fetch repository: {}", e);
+            return HttpResponse::InternalServerError()
+                .content_type("text/html; charset=utf-8")
+                .body("<h1>Error fetching repository</h1>");
+        }
+    };
+
+    // Fetch patch by event ID
+    let patch = match state.nostr_client.get_cached_event(&patch_id).await {
+        Ok(Some(p)) => p,
+        Ok(None) => {
+            tracing::warn!("Patch not found: {}", patch_id);
+            return HttpResponse::NotFound()
+                .content_type("text/html; charset=utf-8")
+                .body("<h1>Patch not found</h1>");
+        }
+        Err(e) => {
+            tracing::error!("Failed to fetch patch: {}", e);
+            return HttpResponse::InternalServerError()
+                .content_type("text/html; charset=utf-8")
+                .body("<h1>Error fetching patch</h1>");
+        }
+    };
+
+    HttpResponse::Ok()
+        .content_type("text/html; charset=utf-8")
+        .body(patch_detail_page(&repository, &patch, &identifier).into_string())
+}
+
+/// Pull request detail page
+async fn pull_request_detail(
+    state: web::Data<AppState>,
+    path: web::Path<(String, String)>,
+) -> HttpResponse {
+    let (identifier, pr_id) = path.into_inner();
+
+    // Fetch repository from cache by identifier
+    let repository = match state.nostr_client.get_repository_by_identifier(&identifier).await {
+        Ok(Some(repo)) => repo,
+        Ok(None) => {
+            tracing::warn!("Repository not found: {}", identifier);
+            return HttpResponse::NotFound()
+                .content_type("text/html; charset=utf-8")
+                .body("<h1>Repository not found</h1>");
+        }
+        Err(e) => {
+            tracing::error!("Failed to fetch repository: {}", e);
+            return HttpResponse::InternalServerError()
+                .content_type("text/html; charset=utf-8")
+                .body("<h1>Error fetching repository</h1>");
+        }
+    };
+
+    // Fetch pull request by event ID
+    let pull_request = match state.nostr_client.get_cached_event(&pr_id).await {
+        Ok(Some(pr)) => pr,
+        Ok(None) => {
+            tracing::warn!("Pull request not found: {}", pr_id);
+            return HttpResponse::NotFound()
+                .content_type("text/html; charset=utf-8")
+                .body("<h1>Pull request not found</h1>");
+        }
+        Err(e) => {
+            tracing::error!("Failed to fetch pull request: {}", e);
+            return HttpResponse::InternalServerError()
+                .content_type("text/html; charset=utf-8")
+                .body("<h1>Error fetching pull request</h1>");
+        }
+    };
+
+    HttpResponse::Ok()
+        .content_type("text/html; charset=utf-8")
+        .body(pull_request_detail_page(&repository, &pull_request, &identifier).into_string())
 }
 
 /// WebSocket upgrade
