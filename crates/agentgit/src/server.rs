@@ -4,7 +4,7 @@ use actix_web::{web, App, HttpResponse, HttpServer};
 use std::sync::Arc;
 
 use crate::nostr::NostrClient;
-use crate::views::{home_page_with_repos, issue_detail_page, issues_list_page, repository_detail_page};
+use crate::views::{home_page_with_repos, issue_create_form_page, issue_detail_page, issues_list_page, repository_detail_page};
 use crate::ws::{ws_handler, WsBroadcaster};
 
 /// Application state shared across handlers
@@ -29,6 +29,8 @@ pub async fn start_server(
             .route("/", web::get().to(index))
             .route("/repo/{identifier}", web::get().to(repository_detail))
             .route("/repo/{identifier}/issues", web::get().to(repository_issues))
+            .route("/repo/{identifier}/issues/new", web::get().to(issue_create_form))
+            .route("/repo/{identifier}/issues", web::post().to(issue_create))
             .route("/repo/{identifier}/issues/{issue_id}", web::get().to(issue_detail))
             .route("/ws", web::get().to(ws_route))
     })
@@ -177,6 +179,99 @@ async fn issue_detail(
     HttpResponse::Ok()
         .content_type("text/html; charset=utf-8")
         .body(issue_detail_page(&repository, &issue, &identifier).into_string())
+}
+
+/// Issue creation form
+async fn issue_create_form(
+    state: web::Data<AppState>,
+    path: web::Path<String>,
+) -> HttpResponse {
+    let identifier = path.into_inner();
+
+    // Fetch repository from cache by identifier
+    let repository = match state.nostr_client.get_repository_by_identifier(&identifier).await {
+        Ok(Some(repo)) => repo,
+        Ok(None) => {
+            tracing::warn!("Repository not found: {}", identifier);
+            return HttpResponse::NotFound()
+                .content_type("text/html; charset=utf-8")
+                .body("<h1>Repository not found</h1>");
+        }
+        Err(e) => {
+            tracing::error!("Failed to fetch repository: {}", e);
+            return HttpResponse::InternalServerError()
+                .content_type("text/html; charset=utf-8")
+                .body("<h1>Error fetching repository</h1>");
+        }
+    };
+
+    HttpResponse::Ok()
+        .content_type("text/html; charset=utf-8")
+        .body(issue_create_form_page(&repository, &identifier).into_string())
+}
+
+/// Issue creation handler
+async fn issue_create(
+    state: web::Data<AppState>,
+    path: web::Path<String>,
+    form: web::Form<IssueCreateForm>,
+) -> HttpResponse {
+    let identifier = path.into_inner();
+
+    // Fetch repository to get pubkey and build address
+    let repository = match state.nostr_client.get_repository_by_identifier(&identifier).await {
+        Ok(Some(repo)) => repo,
+        Ok(None) => {
+            return HttpResponse::NotFound()
+                .content_type("text/html; charset=utf-8")
+                .body("<h1>Repository not found</h1>");
+        }
+        Err(e) => {
+            tracing::error!("Failed to fetch repository: {}", e);
+            return HttpResponse::InternalServerError()
+                .content_type("text/html; charset=utf-8")
+                .body("<h1>Error</h1>");
+        }
+    };
+
+    // Build repository address (30617:pubkey:identifier)
+    let repo_address = format!("30617:{}:{}", repository.pubkey, identifier);
+
+    // TODO: Implement event creation and publishing
+    // For now, return a placeholder message
+    tracing::warn!("Issue creation not yet implemented - need identity/signing integration");
+    tracing::info!(
+        "Would create issue: title='{}', description={:?}, labels={:?}, repo={}",
+        form.title,
+        form.description,
+        form.labels,
+        repo_address
+    );
+
+    HttpResponse::Ok()
+        .content_type("text/html; charset=utf-8")
+        .body(format!(
+            "<h1>Issue Creation Not Yet Implemented</h1>\
+             <p><strong>Title:</strong> {}</p>\
+             <p><strong>Repository:</strong> {}</p>\
+             <p><strong>Description:</strong> {}</p>\
+             <p><strong>Labels:</strong> {}</p>\
+             <p>This feature requires identity/wallet integration for event signing.</p>\
+             <p><a href=\"/repo/{}/issues\">Back to issues</a></p>",
+            form.title,
+            repo_address,
+            form.description.as_deref().unwrap_or("None"),
+            form.labels.as_deref().unwrap_or("None"),
+            identifier
+        ))
+}
+
+/// Form data for issue creation
+#[derive(Debug, serde::Deserialize)]
+struct IssueCreateForm {
+    title: String,
+    description: Option<String>,
+    labels: Option<String>,
 }
 
 /// WebSocket upgrade
