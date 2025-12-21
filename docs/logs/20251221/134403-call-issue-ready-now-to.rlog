@@ -79,3 +79,49 @@ o: id=34a23RsV → [ok] The file /home/christopherdavid/code/openagents/crates/a
 t!:Edit id=eJF4kRf3 file_path=/home/christopherdavid/code/openagents/crates/autopilot/src/dashboard.rs → [running] tokens_in=0 tokens_out=179 tokens_cached=100620
 o: id=eJF4kRf3 → [ok] The file /home/christopherdavid/code/openagents/crates/autopilot/src/dashboard.rs has been update...
 t!:Bash id=iqdsrNzi cmd="git add -A && git commit --amend --no-edit && g..." → [running] tokens_in=0 tokens_out=26 tokens_cached=101078
+o: id=iqdsrNzi → [ok] [main fd7552021] Complete dashboard metrics visualization with real-time charts
+t!:mcp__issues__issue_complete id=UfXBEhz6  → [running] tokens_in=0 tokens_out=32 tokens_cached=101557
+o: id=UfXBEhz6 → [ok] Completed issue #430
+t!:mcp__issues__issue_ready id=drFsmzkQ  → [running] tokens_in=0 tokens_out=41 tokens_cached=101832
+o: id=drFsmzkQ → [ok] {
+t!:mcp__issues__issue_claim id=bKf51ESM  → [running] tokens_in=0 tokens_out=84 tokens_cached=101907
+o: id=bKf51ESM → [ok] Claimed issue #431
+t!:Read id=E757CHQP file_path=/home/christopherdavid/code/openagents/crates/autopilot/src/metrics.rs → [running] tokens_in=3 tokens_out=25 tokens_cached=102249
+o: id=E757CHQP → [error] <tool_use_error>File does not exist. Did you mean metrics?</tool_use_error>
+t!:Glob id=EcFMdRYm pattern="**/metrics*.rs" → [running] tokens_in=4 tokens_out=95 tokens_cached=102348
+o: id=EcFMdRYm → [ok] No files found
+t!:Bash id=3A1duq9z cmd="find /home/christopherdavid/code/openagents/cra..." → [running] tokens_in=2 tokens_out=26 tokens_cached=102485
+o: id=3A1duq9z → [ok] /home/christopherdavid/code/openagents/crates/autopilot/src/metrics/mod.rs
+t!:Read id=d4bk3aaa file_path=/home/christopherdavid/code/openagents/crates/autopilot/src/metrics/baseline.rs → [running] tokens_in=2 tokens_out=81 tokens_cached=102700
+o: id=d4bk3aaa → [ok]      1→//! Baseline metrics tracking and regression detection
+a: Good! The baseline calculation infrastructure exists. Now I need to add the automated weekly update functionality and CLI command. Let me check the main autopilot CLI: tokens_in=2 tokens_out=1 tokens_cached=102884
+t!:Bash id=ggoptP2j cmd="grep -n "baseline" /home/christopherdavid/code/..." → [running] tokens_in=2 tokens_out=141 tokens_cached=102884
+o: id=ggoptP2j → [ok] 465:        /// Compare against baseline version
+a: Great! I can see baseline commands already exist (lines 846-879). Let me look at that section: tokens_in=1 tokens_out=1 tokens_cached=108993
+t!:Read id=iLG9BR9V file_path=/home/christopherdavid/code/openagents/crates/autopilot/src/main.rs → [running] tokens_in=1 tokens_out=1 tokens_cached=108993
+o: id=iLG9BR9V → [ok]    846→    /// Update baselines from recent sessions
+a: Perfect! The CLI commands exist. Now let me look at their implementation around line 3806: tokens_in=1 tokens_out=1 tokens_cached=110656
+t!:Read id=17odkGZd file_path=/home/christopherdavid/code/openagents/crates/autopilot/src/main.rs → [running] tokens_in=1 tokens_out=135 tokens_cached=110656
+o: id=17odkGZd → [ok]   3806→            use autopilot::metrics::baseline::{BaselineCalculator, BaselineComparator, Bas...
+a: Perfect! The CLI commands are fully implemented. Now I need to add a scheduled task for weekly baseline updates. Let me create a simple systemd timer or add this to the daemon. Let me check the dae... tokens_in=0 tokens_out=1 tokens_cached=111439
+t!:Bash id=vmzDcgBW cmd="find /home/christopherdavid/code/openagents/cra..." → [running] tokens_in=0 tokens_out=1 tokens_cached=111439
+o: id=vmzDcgBW → [ok] /home/christopherdavid/code/openagents/crates/autopilot/src/daemon/supervisor.rs
+t!:Read id=c8uxuo9L file_path=/home/christopherdavid/code/openagents/crates/autopilot/src/daemon/supervisor.rs → [running] tokens_in=0 tokens_out=98 tokens_cached=113694
+o: id=c8uxuo9L → [ok]      1→//! Worker supervisor - spawns, monitors, and restarts the autopilot worker
+a: Rather than modifying the supervisor, I'll create a simple systemd timer for the weekly baseline update. Let me create the service and timer files: tokens_in=0 tokens_out=1 tokens_cached=113893
+t!:Write id=MT45wtRL file_path=/home/christopherdavid/code/openagents/systemd/autopilot-baseline-update.service → [running] tokens_in=0 tokens_out=224 tokens_cached=113893
+o: id=MT45wtRL → [ok] File created successfully at: /home/christopherdavid/code/openagents/systemd/autopilot-baseline-u...
+t!:Write id=ziEuK5di file_path=/home/christopherdavid/code/openagents/systemd/autopilot-baseline-update.timer → [running] tokens_in=0 tokens_out=193 tokens_cached=115398
+o: id=ziEuK5di → [ok] File created successfully at: /home/christopherdavid/code/openagents/systemd/autopilot-baseline-u...
+a: Now let me create a setup script to install the systemd timer and a README for the systemd files: tokens_in=0 tokens_out=1 tokens_cached=115666
+t!:Write id=cUwWHVNV file_path=/home/christopherdavid/code/openagents/systemd/install.sh → [running] tokens_in=0 tokens_out=572 tokens_cached=115666
+o: id=cUwWHVNV → [ok] File created successfully at: /home/christopherdavid/code/openagents/systemd/install.sh
+t!:Bash id=TjYHWG1c cmd="chmod +x /home/christopherdavid/code/openagents..." → [running] tokens_in=0 tokens_out=25 tokens_cached=116006
+o: id=TjYHWG1c → [ok] 
+t!:Write id=Mj1XxPmw file_path=/home/christopherdavid/code/openagents/systemd/README.md → [running] tokens_in=0 tokens_out=1078 tokens_cached=116616
+o: id=Mj1XxPmw → [ok] File created successfully at: /home/christopherdavid/code/openagents/systemd/README.md
+a: Perfect! Now let me test the baseline update command to ensure it works: tokens_in=0 tokens_out=1 tokens_cached=116824
+t!:Bash id=97EoFchh cmd="cargo build --package autopilot 2>&1 | tail -20" → [running] tokens_in=0 tokens_out=1 tokens_cached=116824
+o: id=97EoFchh → [ok]    Compiling autopilot v0.1.0 (/home/christopherdavid/code/openagents/crates/autopilot)
+a: Excellent! Now let me commit and push these changes: tokens_in=0 tokens_out=4 tokens_cached=117940
+t!:Bash id=69Y4EwpL cmd="git add -A && git diff --cached --stat" → [running] tokens_in=0 tokens_out=97 tokens_cached=117940
