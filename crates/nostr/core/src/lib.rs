@@ -35,6 +35,7 @@
 //! - NIP-50: Search Capability
 //! - NIP-51: Lists (mute lists, pin lists, bookmarks, etc.)
 //! - NIP-52: Calendar Events (date-based, time-based, calendars, RSVPs)
+//! - NIP-53: Live Activities (live streaming, meetings, presence)
 //! - NIP-56: Reporting
 //! - NIP-57: Lightning Zaps (tipping with Lightning payments)
 //! - NIP-58: Badges (badge definitions, awards, and profile display)
@@ -95,6 +96,7 @@ mod nip49;
 mod nip50;
 mod nip51;
 mod nip52;
+mod nip53;
 mod nip56;
 mod nip57;
 mod nip58;
@@ -329,6 +331,13 @@ pub use nip52::{
     is_calendar_event_kind, is_nip52_kind,
 };
 // Note: KIND_CALENDAR (31924) is already exported from nip51
+
+// NIP-53: Live Activities
+pub use nip53::{
+    KIND_LIVE_CHAT_MESSAGE, KIND_LIVE_STREAMING, KIND_MEETING_ROOM_EVENT, KIND_MEETING_SPACE,
+    KIND_ROOM_PRESENCE, LiveChatMessage, LiveParticipant, LiveStatus, LiveStreamingEvent,
+    MeetingRoomEvent, MeetingSpace, Nip53Error, RoomPresence, SpaceStatus, is_nip53_kind,
+};
 
 // NIP-56: Reporting
 pub use nip56::{
