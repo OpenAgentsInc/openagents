@@ -11,6 +11,7 @@ use crate::broadcast::{BroadcastEvent, create_broadcast_channel};
 use crate::db::Database;
 use crate::error::{RelayError, Result};
 use crate::rate_limit::{RateLimiter, RateLimitConfig};
+use crate::relay_info::RelayInformation;
 use crate::subscription::{Filter, SubscriptionManager};
 use futures::{SinkExt, StreamExt};
 use nostr::Event;
@@ -21,6 +22,7 @@ use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::broadcast;
 use tokio_tungstenite::{accept_async, tungstenite::Message};
 use tracing::{debug, error, info, warn};
+use warp::Filter as WarpFilter;
 
 /// Relay server configuration
 #[derive(Debug, Clone)]
@@ -31,6 +33,8 @@ pub struct RelayConfig {
     pub max_message_size: usize,
     /// Rate limiting configuration
     pub rate_limit: RateLimitConfig,
+    /// Relay information (NIP-11)
+    pub relay_info: RelayInformation,
 }
 
 impl Default for RelayConfig {
@@ -39,6 +43,7 @@ impl Default for RelayConfig {
             bind_addr: "127.0.0.1:7000".parse().unwrap(),
             max_message_size: 512 * 1024, // 512 KB
             rate_limit: RateLimitConfig::default(),
+            relay_info: RelayInformation::default(),
         }
     }
 }
@@ -64,7 +69,7 @@ impl RelayServer {
         }
     }
 
-    /// Start the relay server
+    /// Start the relay server (WebSocket only, NIP-11 HTTP endpoint to be added separately)
     pub async fn start(&self) -> Result<()> {
         let listener = TcpListener::bind(&self.config.bind_addr).await?;
         info!("Relay server listening on {}", self.config.bind_addr);
@@ -109,6 +114,45 @@ impl RelayServer {
                 }
             }
         }
+    }
+
+    /// Get the relay information document (NIP-11)
+    pub fn relay_info(&self) -> RelayInformation {
+        self.config.relay_info.clone()
+    }
+
+    /// Start HTTP server for NIP-11 relay information endpoint
+    ///
+    /// This should be run concurrently with start() to provide NIP-11 support.
+    /// Serves relay information at the given address with Accept: application/nostr+json header.
+    pub async fn start_info_server(&self, http_addr: SocketAddr) -> Result<()> {
+        let relay_info = self.config.relay_info.clone();
+
+        // NIP-11: Relay information endpoint
+        let info_route = warp::path::end()
+            .and(warp::header::exact("accept", "application/nostr+json"))
+            .and(warp::any().map(move || relay_info.clone()))
+            .map(|info: RelayInformation| {
+                warp::reply::json(&info)
+            })
+            .with(warp::reply::with::header(
+                "Access-Control-Allow-Origin",
+                "*",
+            ))
+            .with(warp::reply::with::header(
+                "Access-Control-Allow-Headers",
+                "*",
+            ))
+            .with(warp::reply::with::header(
+                "Access-Control-Allow-Methods",
+                "GET, POST, OPTIONS",
+            ));
+
+        info!("NIP-11 relay info server listening on http://{}", http_addr);
+        info!("Query with: curl -H 'Accept: application/nostr+json' http://{}", http_addr);
+
+        warp::serve(info_route).run(http_addr).await;
+        Ok(())
     }
 }
 
