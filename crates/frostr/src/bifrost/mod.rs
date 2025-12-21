@@ -78,7 +78,7 @@
 //!
 //! // Create and start node
 //! let config = BifrostConfig::default();
-//! let mut node = BifrostNode::new(group_cred, config).await?;
+//! let mut node = BifrostNode::new(group_cred, config)?;
 //! node.start().await?;
 //!
 //! // Sign an event hash

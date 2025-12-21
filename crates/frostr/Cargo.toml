@@ -32,6 +32,7 @@ serde_with = "3"
 anyhow = "1"
 thiserror = "1"
 frost-core = "2.2"
+hex.workspace = true
 
 [dev-dependencies]
 tokio-test = "0.4"
