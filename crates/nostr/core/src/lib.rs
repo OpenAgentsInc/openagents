@@ -180,6 +180,9 @@ mod nip_sa;
 mod payments;
 mod provider;
 
+#[cfg(test)]
+mod tests;
+
 // NIP-01: Basic protocol (Event type always available)
 pub use nip01::{
     Event, EventTemplate, KIND_CONTACTS, KIND_METADATA, KIND_RECOMMEND_RELAY, KIND_SHORT_TEXT_NOTE,
