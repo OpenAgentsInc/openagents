@@ -14,6 +14,7 @@ members = [
     "crates/nostr/core",
     "crates/nostr/relay",
     "crates/nostr/client",
+    "crates/nostr/tests",
     "crates/compute",
     "crates/config",
     "crates/storybook",
