@@ -1952,6 +1952,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "bech32",
+ "frost-core",
  "frost-secp256k1",
  "nostr",
  "rand 0.8.5",
