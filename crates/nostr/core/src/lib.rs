@@ -43,6 +43,7 @@
 //! - NIP-59: Gift Wrap (encapsulation and metadata obscuring, requires `full` feature)
 //! - NIP-71: Video Events (video content with metadata)
 //! - NIP-72: Moderated Communities (Reddit-style communities)
+//! - NIP-84: Highlights (highlighting valuable content)
 //! - NIP-89: Application Handlers (social discovery of skills/agents)
 //! - NIP-90: Data Vending Machine (DVM) job requests/results/feedback
 //! - NIP-94: File Metadata
@@ -108,6 +109,7 @@ mod nip58;
 mod nip59;
 mod nip71;
 mod nip72;
+mod nip84;
 mod nip89;
 mod nip90;
 mod nip94;
@@ -395,6 +397,11 @@ pub use nip72::{
     Community, CommunityApproval, CommunityModerator, CommunityPost, CommunityRelay,
     KIND_COMMUNITY_APPROVAL, KIND_COMMUNITY_DEFINITION, KIND_COMMUNITY_POST, Nip72Error,
     is_nip72_kind,
+};
+
+// NIP-84: Highlights
+pub use nip84::{
+    Attribution, Highlight, HighlightSource, KIND_HIGHLIGHT, Nip84Error, is_nip84_kind,
 };
 
 // NIP-89: Application Handlers
