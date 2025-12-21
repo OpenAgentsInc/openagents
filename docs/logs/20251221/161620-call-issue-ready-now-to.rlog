@@ -266,3 +266,25 @@ o: id=DiYudVvB → [ok]
 t!:mcp__issues__issue_complete id=vDgNRBzy  → [running] tokens_in=2 tokens_out=32 tokens_cached=97747
 o: id=vDgNRBzy → [ok] Completed issue #459
 t!:Bash id=b5DPe5Gs cmd="git add -A && git commit -m "$(cat <<'EOF'" → [running] tokens_in=0 tokens_out=335 tokens_cached=97869
+o: id=b5DPe5Gs → [ok] [main 3f5fda2e6] Add pre-commit hook to enforce d-012 (No Stubs policy)
+t!:mcp__issues__issue_ready id=3BPvTnD3  → [running] tokens_in=3 tokens_out=27 tokens_cached=98054
+o: id=3BPvTnD3 → [ok] {
+t!:mcp__issues__issue_claim id=sjx4okrw  → [running] tokens_in=2 tokens_out=27 tokens_cached=98581
+o: id=sjx4okrw → [ok] Claimed issue #452
+t!:Read id=uVUwdmZw file_path=/home/christopherdavid/code/openagents/crates/marketplace/src/data/discover.rs → [running] tokens_in=0 tokens_out=5 tokens_cached=98807
+o: id=uVUwdmZw → [ok]    275→
+t!:Read id=VqrM9mA8 file_path=/home/christopherdavid/code/openagents/crates/marketplace/src/data/discover.rs → [running] tokens_in=3 tokens_out=113 tokens_cached=99017
+o: id=VqrM9mA8 → [ok]      1→//! Dataset discovery and browsing via NIP-94/95
+t!:Edit id=1MKEi149 file_path=/home/christopherdavid/code/openagents/crates/marketplace/src/data/discover.rs → [running] tokens_in=3 tokens_out=447 tokens_cached=99722
+o: id=1MKEi149 → [ok] The file /home/christopherdavid/code/openagents/crates/marketplace/src/data/discover.rs has been ...
+t!:Edit id=ZcUuMJRb file_path=/home/christopherdavid/code/openagents/crates/marketplace/src/data/discover.rs → [running] tokens_in=2 tokens_out=319 tokens_cached=100246
+o: id=ZcUuMJRb → [ok] The file /home/christopherdavid/code/openagents/crates/marketplace/src/data/discover.rs has been ...
+t!:Bash id=CoHdW4TB cmd="cargo build --bin openagents 2>&1 | grep -E "(e..." → [running] tokens_in=2 tokens_out=98 tokens_cached=101140
+o: id=CoHdW4TB → [ok] warning: method `sort_listings` is never used
+t!:Edit id=cVxZZDvq file_path=/home/christopherdavid/code/openagents/crates/marketplace/src/data/discover.rs → [running] tokens_in=2 tokens_out=199 tokens_cached=101784
+o: id=cVxZZDvq → [ok] The file /home/christopherdavid/code/openagents/crates/marketplace/src/data/discover.rs has been ...
+t!:Bash id=iCb4yEw5 cmd="cargo build --bin openagents 2>&1 | grep -E "(e..." → [running] tokens_in=1 tokens_out=24 tokens_cached=101919
+o: id=iCb4yEw5 → [ok] 
+t!:mcp__issues__issue_complete id=E6iW8kks  → [running] tokens_in=2 tokens_out=32 tokens_cached=102439
+o: id=E6iW8kks → [ok] Completed issue #452
+t!:Bash id=kH7CziRH cmd="git add -A && git commit -m "$(cat <<'EOF'" → [running] tokens_in=1 tokens_out=24 tokens_cached=102560

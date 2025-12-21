@@ -278,18 +278,14 @@ impl DatasetBrowser {
     /// This will fetch all dataset metadata from relays and return them as listings.
     pub async fn browse(
         &self,
-        filters: SearchFilters,
-        sort_by: SortBy,
+        _filters: SearchFilters,
+        _sort_by: SortBy,
     ) -> Result<Vec<DatasetListing>, DiscoverError> {
-        // TODO: Fetch from relays
-        // For now, return empty list
-        let mut listings = Vec::new();
-
-        // Filter and sort
-        listings.retain(|listing: &DatasetListing| listing.matches_filters(&filters));
-        self.sort_listings(&mut listings, sort_by);
-
-        Ok(listings)
+        // Dataset browsing requires Nostr relay integration which is not yet implemented.
+        // Per d-012 (No Stubs), we return an explicit error instead of an empty list.
+        Err(DiscoverError::Network(
+            "Dataset browsing not yet implemented. Requires Nostr relay client integration for fetching NIP-94 dataset metadata events.".to_string()
+        ))
     }
 
     /// Search for datasets by query
@@ -304,11 +300,15 @@ impl DatasetBrowser {
 
     /// Get a specific dataset by ID
     pub async fn get_dataset(&self, _dataset_id: &str) -> Result<DatasetListing, DiscoverError> {
-        // TODO: Fetch specific dataset from relays
-        Err(DiscoverError::NoDatasetsFound)
+        // Dataset fetching requires Nostr relay integration which is not yet implemented.
+        // Per d-012 (No Stubs), we return an explicit error.
+        Err(DiscoverError::Network(
+            "Dataset fetching not yet implemented. Requires Nostr relay client integration for fetching NIP-94 dataset metadata events.".to_string()
+        ))
     }
 
     /// Sort listings according to the specified order
+    #[allow(dead_code)]
     fn sort_listings(&self, listings: &mut [DatasetListing], sort_by: SortBy) {
         match sort_by {
             SortBy::Recent => {
