@@ -1,64 +1,175 @@
 //! Nostr identity CLI commands
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use colored::Colorize;
+use crate::core::identity::UnifiedIdentity;
+use crate::storage::keychain::SecureKeychain;
 
 pub fn init(show_mnemonic: bool) -> Result<()> {
     println!("{}", "Initializing new wallet...".cyan());
 
-    if show_mnemonic {
-        println!("{}", "WARNING: Showing mnemonic is insecure".yellow());
+    // Check if wallet already exists
+    if SecureKeychain::has_mnemonic() {
+        anyhow::bail!("Wallet already exists! Use 'wallet import' to replace or 'wallet export' to view.");
     }
 
-    // TODO: Generate mnemonic
-    // TODO: Derive Nostr keypair
-    // TODO: Store in keychain
+    // Generate new identity
+    let identity = UnifiedIdentity::generate()
+        .context("Failed to generate identity")?;
+
+    // Get mnemonic phrase
+    let mnemonic_phrase = identity.mnemonic().to_string();
+
+    // Store in keychain
+    SecureKeychain::store_mnemonic(&mnemonic_phrase)
+        .context("Failed to store mnemonic in keychain")?;
 
     println!("{}", "✓ Wallet initialized".green());
-    println!("\n{}", "IMPORTANT: Write down your recovery phrase and store it safely!".yellow().bold());
+    println!();
+
+    if show_mnemonic {
+        println!("{}", "WARNING: Anyone with this phrase can access your wallet!".red().bold());
+        println!();
+        println!("{}", "Your recovery phrase:".bold());
+        println!("{}", mnemonic_phrase.yellow());
+        println!();
+    }
+
+    println!("{}", "IMPORTANT: Write down your recovery phrase and store it safely!".yellow().bold());
+    println!("{}", "Use 'wallet export' to view it again.".cyan());
+    println!();
+    println!("{}: {}", "Nostr Public Key".bold(), identity.nostr_public_key());
 
     Ok(())
 }
 
 pub fn import(mnemonic: Option<String>) -> Result<()> {
+    use bip39::Mnemonic;
+    use std::io::{self, Write};
+
     println!("{}", "Importing wallet from mnemonic...".cyan());
+    println!();
 
-    let _mnemonic = mnemonic.ok_or_else(|| {
-        anyhow::anyhow!("Mnemonic required (use --mnemonic or interactive prompt)")
-    })?;
+    // Get mnemonic phrase
+    let mnemonic_phrase = if let Some(phrase) = mnemonic {
+        phrase
+    } else {
+        // Prompt for mnemonic
+        print!("Enter your 12 or 24 word recovery phrase: ");
+        io::stdout().flush()?;
+        let mut input = String::new();
+        io::stdin().read_line(&mut input)?;
+        input.trim().to_string()
+    };
 
-    // TODO: Validate mnemonic
-    // TODO: Derive Nostr keypair
-    // TODO: Store in keychain
+    // Validate mnemonic
+    let mnemonic = Mnemonic::parse(&mnemonic_phrase)
+        .context("Invalid mnemonic phrase")?;
+
+    // Derive identity to validate
+    let identity = UnifiedIdentity::from_mnemonic(mnemonic)
+        .context("Failed to derive identity from mnemonic")?;
+
+    // Check if wallet already exists
+    if SecureKeychain::has_mnemonic() {
+        println!("{}", "WARNING: This will replace your existing wallet!".red().bold());
+        print!("Type 'yes' to confirm: ");
+        io::stdout().flush()?;
+        let mut confirm = String::new();
+        io::stdin().read_line(&mut confirm)?;
+        if confirm.trim().to_lowercase() != "yes" {
+            println!("Import cancelled.");
+            return Ok(());
+        }
+        // Delete existing mnemonic
+        SecureKeychain::delete_mnemonic()?;
+    }
+
+    // Store in keychain
+    SecureKeychain::store_mnemonic(&mnemonic_phrase)
+        .context("Failed to store mnemonic in keychain")?;
 
     println!("{}", "✓ Wallet imported".green());
+    println!();
+    println!("{}: {}", "Nostr Public Key".bold(), identity.nostr_public_key());
 
     Ok(())
 }
 
 pub fn export() -> Result<()> {
+    use std::io::{self, Write};
+
     println!("{}", "Exporting wallet mnemonic...".cyan());
+    println!();
 
-    // TODO: Require confirmation
-    // TODO: Retrieve from keychain
-    // TODO: Display mnemonic
+    // Check if wallet exists
+    if !SecureKeychain::has_mnemonic() {
+        anyhow::bail!("No wallet found. Use 'wallet init' to create one.");
+    }
 
-    println!("{}", "WARNING: Keep your mnemonic private!".red().bold());
+    // Require confirmation
+    println!("{}", "WARNING: This will display your recovery phrase on screen!".yellow().bold());
+    println!("{}", "Anyone who sees this can steal your funds!".yellow());
+    print!("\nType 'yes' to confirm: ");
+    io::stdout().flush()?;
+    let mut confirm = String::new();
+    io::stdin().read_line(&mut confirm)?;
+
+    if confirm.trim().to_lowercase() != "yes" {
+        println!("Export cancelled.");
+        return Ok(());
+    }
+
+    println!();
+
+    // Retrieve from keychain
+    let mnemonic_phrase = SecureKeychain::retrieve_mnemonic()
+        .context("Failed to retrieve mnemonic from keychain")?;
+
+    // Display mnemonic
+    println!("{}", "Your recovery phrase:".bold());
+    println!();
+    println!("{}", mnemonic_phrase.yellow());
+    println!();
+    println!("{}", "IMPORTANT: Write this down and store it safely!".red().bold());
+    println!("{}", "Never share it with anyone!".red().bold());
 
     Ok(())
 }
 
 pub fn whoami() -> Result<()> {
+    use bip39::Mnemonic;
+
     println!("{}", "Wallet Information".cyan().bold());
     println!();
 
-    // TODO: Load wallet
-    // TODO: Display npub
-    // TODO: Display profile info
-    // TODO: Display balances
+    // Check if wallet exists
+    if !SecureKeychain::has_mnemonic() {
+        anyhow::bail!("No wallet found. Use 'wallet init' to create one.");
+    }
 
-    println!("{}: npub1...", "Nostr Public Key".bold());
-    println!("{}: 0 sats", "Balance".bold());
+    // Retrieve mnemonic
+    let mnemonic_phrase = SecureKeychain::retrieve_mnemonic()
+        .context("Failed to retrieve mnemonic from keychain")?;
+
+    // Parse mnemonic
+    let mnemonic = Mnemonic::parse(&mnemonic_phrase)
+        .context("Invalid mnemonic in keychain")?;
+
+    // Derive identity
+    let identity = UnifiedIdentity::from_mnemonic(mnemonic)
+        .context("Failed to derive identity")?;
+
+    // Display information
+    println!("{}", "Identity".bold());
+    println!("  {}: {}", "Nostr Public Key".bold(), identity.nostr_public_key());
+    println!();
+    println!("{}", "Balance".bold());
+    println!("  {}: {} sats", "Total".bold(), 0);
+    println!();
+    println!("{}", "Profile".bold());
+    println!("  Name: (not set)");
+    println!("  About: (not set)");
 
     Ok(())
 }
