@@ -199,30 +199,67 @@ fn dashboard_page(sessions: &[SessionMetrics], stats: &SummaryStats) -> String {
                 meta name="viewport" content="width=device-width, initial-scale=1.0";
                 title { "Autopilot Metrics Dashboard" }
                 style { (dashboard_styles()) }
+                script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js" {}
+                script { (raw_html(dashboard_script())) }
             }
             body {
                 header {
                     h1 { "⚡ Autopilot Metrics Dashboard" }
                     p.subtitle { "Continual Constant Improvement (d-004)" }
+                    nav.header-nav {
+                        a href="/" class="active" { "Dashboard" }
+                        a href="/sessions" { "All Sessions" }
+                        a href="/export/sessions.json" { "Export JSON" }
+                        a href="/export/sessions.csv" { "Export CSV" }
+                    }
                 }
 
                 main {
                     (summary_card(stats))
+                    (charts_section())
                     (sessions_table(sessions))
                 }
 
                 footer {
-                    p { "OpenAgents Autopilot • "
-                        a href="/export/sessions.json" { "JSON" }
-                        " | "
-                        a href="/export/sessions.csv" { "CSV" }
-                    }
+                    p { "OpenAgents Autopilot • Real-time metrics powered by WebSocket" }
                 }
             }
         }
     };
 
     markup.into_string()
+}
+
+/// Helper to insert raw HTML (for script content)
+fn raw_html(s: &str) -> maud::PreEscaped<String> {
+    maud::PreEscaped(s.to_string())
+}
+
+/// Render charts section with real-time visualizations
+fn charts_section() -> Markup {
+    html! {
+        div.charts-section {
+            h2 { "Metrics Trends" }
+            div.charts-grid {
+                div.chart-container {
+                    h3 { "Tool Error Rate (Last 7 Days)" }
+                    canvas id="errorRateChart" {}
+                }
+                div.chart-container {
+                    h3 { "Completion Rate (Last 7 Days)" }
+                    canvas id="completionRateChart" {}
+                }
+                div.chart-container {
+                    h3 { "Average Cost per Session (Last 7 Days)" }
+                    canvas id="costChart" {}
+                }
+                div.chart-container {
+                    h3 { "Token Usage Trend (Last 7 Days)" }
+                    canvas id="tokensChart" {}
+                }
+            }
+        }
+    }
 }
 
 /// Render summary statistics card
@@ -449,6 +486,30 @@ h1 {
     font-size: 0.9rem;
 }
 
+.header-nav {
+    margin-top: 1rem;
+    display: flex;
+    gap: 1rem;
+}
+
+.header-nav a {
+    color: var(--text-secondary);
+    text-decoration: none;
+    padding: 0.5rem 1rem;
+    transition: all 0.2s;
+}
+
+.header-nav a:hover {
+    background: var(--bg-tertiary);
+    color: var(--text-primary);
+}
+
+.header-nav a.active {
+    background: var(--accent);
+    color: var(--bg-primary);
+    font-weight: 600;
+}
+
 main {
     max-width: 1400px;
     margin: 0 auto;
@@ -485,6 +546,37 @@ main {
     font-size: 1.75rem;
     font-weight: 600;
     color: var(--accent);
+}
+
+.charts-section {
+    margin-bottom: 2rem;
+}
+
+.charts-section h2 {
+    margin-bottom: 1.5rem;
+}
+
+.charts-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(500px, 1fr));
+    gap: 2rem;
+}
+
+.chart-container {
+    background: var(--bg-secondary);
+    padding: 1.5rem;
+}
+
+.chart-container h3 {
+    color: var(--text-secondary);
+    font-size: 0.875rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 1rem;
+}
+
+.chart-container canvas {
+    max-height: 300px;
 }
 
 .sessions-section {
@@ -595,6 +687,241 @@ footer a {
 
 footer a:hover {
     text-decoration: underline;
+}
+"#
+}
+
+/// JavaScript for dashboard interactivity and real-time charts
+fn dashboard_script() -> &'static str {
+    r#"
+// Chart.js configuration with dark theme
+const chartColors = {
+    primary: '#7aa2f7',
+    green: '#9ece6a',
+    red: '#f7768e',
+    orange: '#ff9e64',
+    yellow: '#e0af68',
+    bg: '#1a1b26',
+    gridColor: '#414868',
+    textColor: '#c0caf5',
+};
+
+const chartOptions = {
+    responsive: true,
+    maintainAspectRatio: true,
+    plugins: {
+        legend: {
+            display: false,
+        },
+    },
+    scales: {
+        x: {
+            grid: {
+                color: chartColors.gridColor,
+            },
+            ticks: {
+                color: chartColors.textColor,
+            },
+        },
+        y: {
+            grid: {
+                color: chartColors.gridColor,
+            },
+            ticks: {
+                color: chartColors.textColor,
+            },
+        },
+    },
+};
+
+// Load charts when page loads
+document.addEventListener('DOMContentLoaded', async () => {
+    await loadAllCharts();
+    setupWebSocket();
+
+    // Refresh charts every 60 seconds
+    setInterval(loadAllCharts, 60000);
+});
+
+async function loadAllCharts() {
+    await Promise.all([
+        loadErrorRateChart(),
+        loadCompletionRateChart(),
+        loadCostChart(),
+        loadTokensChart(),
+    ]);
+}
+
+async function loadErrorRateChart() {
+    try {
+        const response = await fetch('/api/trends?dimension=tool_error_rate&hours=168&granularity=day');
+        const data = await response.json();
+
+        const ctx = document.getElementById('errorRateChart').getContext('2d');
+
+        // Destroy existing chart if it exists
+        if (window.errorRateChart) {
+            window.errorRateChart.destroy();
+        }
+
+        window.errorRateChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: data.data.map(d => d.date),
+                datasets: [{
+                    label: 'Error Rate (%)',
+                    data: data.data.map(d => d.value),
+                    borderColor: chartColors.red,
+                    backgroundColor: chartColors.red + '20',
+                    fill: true,
+                    tension: 0.3,
+                }],
+            },
+            options: {
+                ...chartOptions,
+                scales: {
+                    ...chartOptions.scales,
+                    y: {
+                        ...chartOptions.scales.y,
+                        min: 0,
+                        max: 100,
+                    },
+                },
+            },
+        });
+    } catch (error) {
+        console.error('Failed to load error rate chart:', error);
+    }
+}
+
+async function loadCompletionRateChart() {
+    try {
+        const response = await fetch('/api/trends?dimension=completion_rate&hours=168&granularity=day');
+        const data = await response.json();
+
+        const ctx = document.getElementById('completionRateChart').getContext('2d');
+
+        if (window.completionRateChart) {
+            window.completionRateChart.destroy();
+        }
+
+        window.completionRateChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: data.data.map(d => d.date),
+                datasets: [{
+                    label: 'Completion Rate (%)',
+                    data: data.data.map(d => d.value),
+                    borderColor: chartColors.green,
+                    backgroundColor: chartColors.green + '20',
+                    fill: true,
+                    tension: 0.3,
+                }],
+            },
+            options: {
+                ...chartOptions,
+                scales: {
+                    ...chartOptions.scales,
+                    y: {
+                        ...chartOptions.scales.y,
+                        min: 0,
+                        max: 100,
+                    },
+                },
+            },
+        });
+    } catch (error) {
+        console.error('Failed to load completion rate chart:', error);
+    }
+}
+
+async function loadCostChart() {
+    try {
+        const response = await fetch('/api/trends?dimension=avg_cost&hours=168&granularity=day');
+        const data = await response.json();
+
+        const ctx = document.getElementById('costChart').getContext('2d');
+
+        if (window.costChart) {
+            window.costChart.destroy();
+        }
+
+        window.costChart = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: data.data.map(d => d.date),
+                datasets: [{
+                    label: 'Avg Cost ($)',
+                    data: data.data.map(d => d.value),
+                    backgroundColor: chartColors.orange,
+                    borderColor: chartColors.orange,
+                    borderWidth: 1,
+                }],
+            },
+            options: chartOptions,
+        });
+    } catch (error) {
+        console.error('Failed to load cost chart:', error);
+    }
+}
+
+async function loadTokensChart() {
+    try {
+        const response = await fetch('/api/trends?dimension=avg_tokens&hours=168&granularity=day');
+        const data = await response.json();
+
+        const ctx = document.getElementById('tokensChart').getContext('2d');
+
+        if (window.tokensChart) {
+            window.tokensChart.destroy();
+        }
+
+        window.tokensChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: data.data.map(d => d.date),
+                datasets: [{
+                    label: 'Avg Tokens',
+                    data: data.data.map(d => d.value),
+                    borderColor: chartColors.primary,
+                    backgroundColor: chartColors.primary + '20',
+                    fill: true,
+                    tension: 0.3,
+                }],
+            },
+            options: chartOptions,
+        });
+    } catch (error) {
+        console.error('Failed to load tokens chart:', error);
+    }
+}
+
+function setupWebSocket() {
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const ws = new WebSocket(`${protocol}//${window.location.host}/ws/metrics`);
+
+    ws.onopen = () => {
+        console.log('WebSocket connected for real-time metrics');
+    };
+
+    ws.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+        console.log('Received metrics update:', data);
+
+        // Reload charts when metrics update
+        if (data.type === 'metrics_update') {
+            loadAllCharts();
+        }
+    };
+
+    ws.onerror = (error) => {
+        console.error('WebSocket error:', error);
+    };
+
+    ws.onclose = () => {
+        console.log('WebSocket disconnected, reconnecting in 5s...');
+        setTimeout(setupWebSocket, 5000);
+    };
 }
 "#
 }
