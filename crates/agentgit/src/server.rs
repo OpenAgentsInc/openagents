@@ -4,7 +4,7 @@ use actix_web::{web, App, HttpResponse, HttpServer};
 use std::sync::Arc;
 
 use crate::nostr::NostrClient;
-use crate::views::{home_page_with_repos, issues_list_page, repository_detail_page};
+use crate::views::{home_page_with_repos, issue_detail_page, issues_list_page, repository_detail_page};
 use crate::ws::{ws_handler, WsBroadcaster};
 
 /// Application state shared across handlers
@@ -29,6 +29,7 @@ pub async fn start_server(
             .route("/", web::get().to(index))
             .route("/repo/{identifier}", web::get().to(repository_detail))
             .route("/repo/{identifier}/issues", web::get().to(repository_issues))
+            .route("/repo/{identifier}/issues/{issue_id}", web::get().to(issue_detail))
             .route("/ws", web::get().to(ws_route))
     })
     .bind("127.0.0.1:0")?;
@@ -130,6 +131,52 @@ async fn repository_issues(
     HttpResponse::Ok()
         .content_type("text/html; charset=utf-8")
         .body(issues_list_page(&repository, &issues).into_string())
+}
+
+/// Issue detail page
+async fn issue_detail(
+    state: web::Data<AppState>,
+    path: web::Path<(String, String)>,
+) -> HttpResponse {
+    let (identifier, issue_id) = path.into_inner();
+
+    // Fetch repository from cache by identifier
+    let repository = match state.nostr_client.get_repository_by_identifier(&identifier).await {
+        Ok(Some(repo)) => repo,
+        Ok(None) => {
+            tracing::warn!("Repository not found: {}", identifier);
+            return HttpResponse::NotFound()
+                .content_type("text/html; charset=utf-8")
+                .body("<h1>Repository not found</h1>");
+        }
+        Err(e) => {
+            tracing::error!("Failed to fetch repository: {}", e);
+            return HttpResponse::InternalServerError()
+                .content_type("text/html; charset=utf-8")
+                .body("<h1>Error fetching repository</h1>");
+        }
+    };
+
+    // Fetch issue by event ID
+    let issue = match state.nostr_client.get_cached_event(&issue_id).await {
+        Ok(Some(iss)) => iss,
+        Ok(None) => {
+            tracing::warn!("Issue not found: {}", issue_id);
+            return HttpResponse::NotFound()
+                .content_type("text/html; charset=utf-8")
+                .body("<h1>Issue not found</h1>");
+        }
+        Err(e) => {
+            tracing::error!("Failed to fetch issue: {}", e);
+            return HttpResponse::InternalServerError()
+                .content_type("text/html; charset=utf-8")
+                .body("<h1>Error fetching issue</h1>");
+        }
+    };
+
+    HttpResponse::Ok()
+        .content_type("text/html; charset=utf-8")
+        .body(issue_detail_page(&repository, &issue, &identifier).into_string())
 }
 
 /// WebSocket upgrade

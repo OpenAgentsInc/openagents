@@ -304,7 +304,7 @@ pub fn issues_list_page(repository: &Event, issues: &[Event]) -> Markup {
                                             issue.pubkey.clone()
                                         };
 
-                                        div.issue-card {
+                                        a.issue-card href={"/repo/" (identifier) "/issues/" (issue.id)} {
                                             div.issue-header {
                                                 div.issue-title-row {
                                                     h3.issue-title { (issue_title) }
@@ -329,6 +329,134 @@ pub fn issues_list_page(repository: &Event, issues: &[Event]) -> Markup {
                                                 }
                                             }
                                         }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                footer {
+                    p { "Powered by NIP-34 (Git Stuff) • NIP-SA (Sovereign Agents) • NIP-57 (Zaps)" }
+                }
+            }
+        }
+    }
+}
+/// Issue detail page
+pub fn issue_detail_page(repository: &Event, issue: &Event, identifier: &str) -> Markup {
+    let repo_name = get_tag_value(repository, "name").unwrap_or_else(|| "Repository".to_string());
+    let issue_title = get_tag_value(issue, "subject").unwrap_or_else(|| "Untitled Issue".to_string());
+    let issue_status = get_tag_value(issue, "status").unwrap_or_else(|| "open".to_string());
+    
+    // Format pubkey for display
+    let issue_author = if issue.pubkey.len() > 16 {
+        format!("{}...{}", &issue.pubkey[..8], &issue.pubkey[issue.pubkey.len()-8..])
+    } else {
+        issue.pubkey.clone()
+    };
+    
+    // Extract all tags for display
+    let all_tags = &issue.tags;
+    
+    html! {
+        (DOCTYPE)
+        html lang="en" {
+            head {
+                meta charset="utf-8";
+                meta name="viewport" content="width=device-width, initial-scale=1.0";
+                title { (issue_title) " - " (repo_name) " - AgentGit" }
+                script src="https://unpkg.com/htmx.org@2.0.4" {}
+                script src="https://unpkg.com/htmx-ext-ws@2.0.1/ws.js" {}
+                style {
+                    (include_str!("./styles.css"))
+                }
+            }
+            body hx-ext="ws" ws-connect="/ws" {
+                header {
+                    h1 { "⚡ AgentGit" }
+                    p.subtitle { "Nostr-native GitHub Alternative" }
+                }
+                main {
+                    nav {
+                        a href="/" { "Repositories" }
+                        a href="/issues" { "Issues" }
+                        a href="/agents" { "Agents" }
+                    }
+                    div.content {
+                        div.issue-detail {
+                            div.issue-detail-header {
+                                div {
+                                    h1.issue-detail-title { (issue_title) }
+                                    div.issue-detail-meta {
+                                        span class={"issue-status " (issue_status)} {
+                                            (issue_status)
+                                        }
+                                        span.issue-separator { "•" }
+                                        span.issue-author { "by " (issue_author) }
+                                        span.issue-separator { "•" }
+                                        span.issue-time { "Created " (issue.created_at) }
+                                    }
+                                }
+                                div.issue-detail-actions {
+                                    a.back-link href={"/repo/" (identifier) "/issues"} { "← Back to Issues" }
+                                }
+                            }
+
+                            section.issue-section {
+                                h2 { "Repository Context" }
+                                div.repo-context {
+                                    a.repo-link href={"/repo/" (identifier)} { (repo_name) }
+                                    span.repo-id-label { " (" (identifier) ")" }
+                                }
+                            }
+
+                            @if !issue.content.is_empty() {
+                                section.issue-section {
+                                    h2 { "Description" }
+                                    div.issue-content {
+                                        p { (issue.content) }
+                                    }
+                                }
+                            }
+
+                            @if !all_tags.is_empty() {
+                                section.issue-section {
+                                    h2 { "Tags" }
+                                    div.tag-list {
+                                        @for tag in all_tags {
+                                            @if tag.len() >= 2 {
+                                                @let tag_name = &tag[0];
+                                                @let tag_value = &tag[1];
+                                                @if !tag_name.is_empty() && !tag_value.is_empty() {
+                                                    div.tag-item {
+                                                        span.tag-name { (tag_name) }
+                                                        span.tag-value { (tag_value) }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            section.issue-section {
+                                h2 { "Event Details" }
+                                div.event-details {
+                                    div.event-detail-item {
+                                        span.label { "Event ID:" }
+                                        code { (issue.id) }
+                                    }
+                                    div.event-detail-item {
+                                        span.label { "Kind:" }
+                                        code { (issue.kind) }
+                                    }
+                                    div.event-detail-item {
+                                        span.label { "Pubkey:" }
+                                        code { (issue.pubkey) }
+                                    }
+                                    div.event-detail-item {
+                                        span.label { "Signature:" }
+                                        code.signature { (issue.sig) }
                                     }
                                 }
                             }
