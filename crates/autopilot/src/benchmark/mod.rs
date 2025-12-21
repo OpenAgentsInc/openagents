@@ -1,7 +1,8 @@
 //! Benchmark runner for autopilot task performance testing
-//!
-//! This module provides infrastructure for running standard benchmark tasks
-//! to measure autopilot performance across versions and detect regressions.
+
+mod tasks;
+
+pub use tasks::*;
 
 use anyhow::{Context, Result};
 use chrono::Utc;
