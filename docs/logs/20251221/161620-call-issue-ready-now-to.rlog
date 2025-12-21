@@ -224,3 +224,23 @@ o: id=3uULfBrz → [ok]
 t!:mcp__issues__issue_complete id=QZz8WPs7  → [running] tokens_in=3 tokens_out=32 tokens_cached=87522
 o: id=QZz8WPs7 → [ok] Completed issue #455
 t!:Bash id=sV3xoNjy cmd="git add -A && git commit -m "$(cat <<'EOF'" → [running] tokens_in=0 tokens_out=5 tokens_cached=87645
+o: id=sV3xoNjy → [ok] [main bc73748c0] Fix compute relay service stubs - return explicit errors
+t!:mcp__issues__issue_ready id=Th6ye6L8  → [running] tokens_in=3 tokens_out=41 tokens_cached=87831
+o: id=Th6ye6L8 → [ok] {
+t!:mcp__issues__issue_claim id=aRVQNJVD  → [running] tokens_in=2 tokens_out=83 tokens_cached=88260
+o: id=aRVQNJVD → [ok] Claimed issue #457
+t!:Read id=EtXv4APN file_path=/home/christopherdavid/code/openagents/crates/spark/src/wallet.rs → [running] tokens_in=0 tokens_out=5 tokens_cached=88556
+o: id=EtXv4APN → [ok]    110→/// Spark wallet for Bitcoin/Lightning payments
+t!:Read id=AGi798Mg file_path=/home/christopherdavid/code/openagents/crates/spark/src/wallet.rs → [running] tokens_in=3 tokens_out=24 tokens_cached=88766
+o: id=AGi798Mg → [ok]    190→
+t!:Edit id=nVBR68Ds file_path=/home/christopherdavid/code/openagents/crates/spark/src/wallet.rs → [running] tokens_in=3 tokens_out=366 tokens_cached=89593
+o: id=nVBR68Ds → [ok] The file /home/christopherdavid/code/openagents/crates/spark/src/wallet.rs has been updated. Here...
+t!:Edit id=fNZ1PR6z file_path=/home/christopherdavid/code/openagents/crates/spark/src/wallet.rs → [running] tokens_in=2 tokens_out=745 tokens_cached=90153
+o: id=fNZ1PR6z → [ok] The file /home/christopherdavid/code/openagents/crates/spark/src/wallet.rs has been updated. Here...
+t!:Edit id=iTB8pv94 file_path=/home/christopherdavid/code/openagents/crates/spark/src/wallet.rs → [running] tokens_in=1 tokens_out=316 tokens_cached=90940
+o: id=iTB8pv94 → [ok] The file /home/christopherdavid/code/openagents/crates/spark/src/wallet.rs has been updated. Here...
+t!:Bash id=xBjM1aH2 cmd="cargo build --bin openagents 2>&1 | grep -E "(e..." → [running] tokens_in=1 tokens_out=97 tokens_cached=92233
+o: id=xBjM1aH2 → [ok] 
+t!:mcp__issues__issue_complete id=UYnPnXKy  → [running] tokens_in=0 tokens_out=32 tokens_cached=92825
+o: id=UYnPnXKy → [ok] Completed issue #457
+t!:Bash id=ZqVkDCXu cmd="git add -A && git commit -m "$(cat <<'EOF'" → [running] tokens_in=0 tokens_out=312 tokens_cached=93036

@@ -111,15 +111,26 @@ impl Default for WalletConfig {
 ///
 /// This wraps the Breez SDK to provide self-custodial Bitcoin payments
 /// via Lightning, Spark Layer 2, and on-chain.
+///
+/// **NOTE**: This is a placeholder structure. Full functionality requires Breez SDK
+/// integration (directive d-001). Current implementation only provides basic signer
+/// access and configuration storage.
 pub struct SparkWallet {
     signer: SparkSigner,
     config: WalletConfig,
-    // TODO: Add actual Breez SDK client when we integrate the dependency
+    // Breez SDK client will be added when dependency is integrated (see d-001)
     // client: Arc<BreezServices>,
 }
 
 impl SparkWallet {
     /// Create a new Spark wallet with the given signer and configuration
+    ///
+    /// **NOTE**: Currently only stores signer and config. Full initialization requires
+    /// Breez SDK integration (d-001) which will:
+    /// 1. Set up SDK configuration
+    /// 2. Connect to Spark operators
+    /// 3. Load or create wallet state
+    /// 4. Start background sync
     ///
     /// # Arguments
     /// * `signer` - The SparkSigner for signing transactions
@@ -137,13 +148,6 @@ impl SparkWallet {
     /// let wallet = SparkWallet::new(signer, config).await?;
     /// ```
     pub async fn new(signer: SparkSigner, config: WalletConfig) -> Result<Self, SparkError> {
-        // TODO: Initialize Breez SDK client
-        // This will require:
-        // 1. Setting up SDK configuration
-        // 2. Connecting to Spark operators
-        // 3. Loading or creating wallet state
-        // 4. Starting background sync
-
         Ok(Self {
             signer,
             config,
@@ -190,11 +194,10 @@ impl SparkWallet {
 
     /// Get the wallet's Spark address for receiving payments
     ///
-    /// **STUB**: Currently returns the public key hex. Will generate proper
-    /// Spark address once Breez SDK is integrated.
+    /// **NOTE**: Currently returns the public key hex as a placeholder.
+    /// Proper Spark address generation requires Breez SDK integration (d-001).
+    /// Spark addresses have a specific format for the protocol.
     pub fn get_spark_address(&self) -> String {
-        // TODO: Generate proper Spark address from Breez SDK
-        // Spark addresses have a specific format for the protocol
         self.signer.public_key_hex()
     }
 
