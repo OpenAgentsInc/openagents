@@ -48,6 +48,10 @@ pub enum ClientError {
     /// Already connected
     #[error("Already connected to relay")]
     AlreadyConnected,
+
+    /// Event publish failed
+    #[error("Event publish failed: {0}")]
+    PublishFailed(String),
 }
 
 /// Client result type

@@ -43,4 +43,6 @@ mod error;
 mod relay;
 
 pub use error::{ClientError, Result};
-pub use relay::{ConnectionState, RelayConfig, RelayConnection, RelayMessage};
+pub use relay::{
+    ConnectionState, PublishConfirmation, RelayConfig, RelayConnection, RelayMessage,
+};
