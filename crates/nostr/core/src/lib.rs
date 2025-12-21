@@ -28,6 +28,7 @@
 //! - NIP-32: Labeling (content moderation and categorization)
 //! - NIP-33: Parameterized Replaceable Events (deprecated, moved to NIP-01)
 //! - NIP-36: Sensitive Content / Content Warning
+//! - NIP-38: User Statuses (live status updates)
 //! - NIP-39: External Identities in Profiles
 //! - NIP-40: Expiration Timestamp
 //! - NIP-42: Authentication of Clients to Relays
@@ -96,6 +97,7 @@ mod nip31;
 mod nip32;
 mod nip33;
 mod nip36;
+mod nip38;
 mod nip39;
 mod nip40;
 mod nip42;
@@ -288,6 +290,12 @@ pub use nip33::{
 pub use nip36::{
     CONTENT_WARNING_TAG, Nip36Error, add_content_warning, get_content_warning,
     has_content_warning, reasons, remove_content_warning,
+};
+
+// NIP-38: User Statuses
+pub use nip38::{
+    KIND_USER_STATUS, Nip38Error, STATUS_GENERAL, STATUS_MUSIC, StatusLink, StatusType,
+    UserStatus, is_user_status_kind,
 };
 
 // NIP-39: External Identities in Profiles
