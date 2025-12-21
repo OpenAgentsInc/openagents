@@ -12,6 +12,7 @@ members = [
     "crates/claude-agent-sdk",
     "crates/codex-agent-sdk",
     "crates/nostr/core",
+    "crates/nostr/relay",
     "crates/compute",
     "crates/config",
     "crates/storybook",
