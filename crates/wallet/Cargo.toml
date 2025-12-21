@@ -53,5 +53,11 @@ chrono.workspace = true
 spark = { version = "0.1.0", path = "../spark" }
 reqwest = { workspace = true, features = ["json", "blocking"] }
 
+# GUI dependencies
+wry = "0.50"
+tao = "0.33"
+actix-web = "4"
+maud = { version = "0.26", features = ["actix-web"] }
+
 [dev-dependencies]
 tempfile = "3"

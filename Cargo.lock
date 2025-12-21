@@ -6670,6 +6670,7 @@ dependencies = [
 name = "wallet"
 version = "0.1.0"
 dependencies = [
+ "actix-web",
  "anyhow",
  "bip39",
  "bitcoin",
@@ -6679,6 +6680,7 @@ dependencies = [
  "dirs 5.0.1",
  "hex",
  "keyring",
+ "maud",
  "nostr",
  "nostr-client",
  "rand 0.9.2",
@@ -6689,12 +6691,14 @@ dependencies = [
  "serde_json",
  "shellexpand",
  "spark",
+ "tao",
  "tempfile",
  "thiserror 2.0.17",
  "tokio",
  "toml",
  "tracing",
  "tracing-subscriber",
+ "wry",
 ]
 
 [[package]]
