@@ -184,3 +184,25 @@ o: id=1QNzqjZF → [ok]
 t!:mcp__issues__issue_complete id=Cx7KDM5L  → [running] tokens_in=0 tokens_out=32 tokens_cached=78967
 o: id=Cx7KDM5L → [ok] Completed issue #450
 t!:Bash id=i35YcV6Q cmd="git add -A && git commit -m "$(cat <<'EOF'" → [running] tokens_in=0 tokens_out=308 tokens_cached=79176
+o: id=i35YcV6Q → [ok] [main a1a380afa] Fix marketplace compute consumer submit_job stub
+t!:mcp__issues__issue_ready id=LCeZonfL  → [running] tokens_in=0 tokens_out=27 tokens_cached=79251
+o: id=LCeZonfL → [ok] {
+t!:mcp__issues__issue_claim id=YoffaRfa  → [running] tokens_in=0 tokens_out=5 tokens_cached=79687
+o: id=YoffaRfa → [ok] Claimed issue #451
+t!:Read id=zCEDajo1 file_path=/home/christopherdavid/code/openagents/crates/marketplace/src/skills/browse.rs → [running] tokens_in=3 tokens_out=113 tokens_cached=80042
+o: id=zCEDajo1 → [ok]    230→
+t!:Read id=hiVAbJwj file_path=/home/christopherdavid/code/openagents/crates/marketplace/src/skills/browse.rs → [running] tokens_in=3 tokens_out=24 tokens_cached=80140
+o: id=hiVAbJwj → [ok]      1→//! Skill browsing and search via NIP-89 discovery
+t!:Edit id=EeUX4uxm file_path=/home/christopherdavid/code/openagents/crates/marketplace/src/skills/browse.rs → [running] tokens_in=2 tokens_out=452 tokens_cached=80852
+o: id=EeUX4uxm → [ok] The file /home/christopherdavid/code/openagents/crates/marketplace/src/skills/browse.rs has been ...
+t!:Edit id=vhdMHTtX file_path=/home/christopherdavid/code/openagents/crates/marketplace/src/skills/browse.rs → [running] tokens_in=2 tokens_out=323 tokens_cached=81482
+o: id=vhdMHTtX → [ok] The file /home/christopherdavid/code/openagents/crates/marketplace/src/skills/browse.rs has been ...
+t!:Bash id=2ZoZacRh cmd="cargo build --bin openagents 2>&1 | grep -E "(e..." → [running] tokens_in=2 tokens_out=98 tokens_cached=82280
+o: id=2ZoZacRh → [ok] warning: method `sort_listings` is never used
+t!:Edit id=oTBGmK2p file_path=/home/christopherdavid/code/openagents/crates/marketplace/src/skills/browse.rs → [running] tokens_in=1 tokens_out=201 tokens_cached=82932
+o: id=oTBGmK2p → [ok] The file /home/christopherdavid/code/openagents/crates/marketplace/src/skills/browse.rs has been ...
+t!:Bash id=JNJHBdaP cmd="cargo build --bin openagents 2>&1 | grep -E "(e..." → [running] tokens_in=1 tokens_out=24 tokens_cached=83171
+o: id=JNJHBdaP → [ok] 
+t!:mcp__issues__issue_complete id=QfbfUJsX  → [running] tokens_in=2 tokens_out=58 tokens_cached=83591
+o: id=QfbfUJsX → [ok] Completed issue #451
+t!:Bash id=WKFGf1Lf cmd="git add -A && git commit -m "$(cat <<'EOF'" → [running] tokens_in=0 tokens_out=312 tokens_cached=83712

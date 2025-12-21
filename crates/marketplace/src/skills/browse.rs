@@ -233,18 +233,14 @@ impl SkillBrowser {
     /// This will fetch all skill handlers from relays and return them as listings.
     pub async fn browse(
         &self,
-        filters: SearchFilters,
-        sort_by: SortBy,
+        _filters: SearchFilters,
+        _sort_by: SortBy,
     ) -> Result<Vec<SkillListing>, BrowseError> {
-        // TODO: Fetch from relays
-        // For now, return empty list
-        let mut listings = Vec::new();
-
-        // Filter and sort
-        listings.retain(|listing: &SkillListing| listing.matches_filters(&filters));
-        self.sort_listings(&mut listings, sort_by);
-
-        Ok(listings)
+        // Skill browsing requires Nostr relay integration which is not yet implemented.
+        // Per d-012 (No Stubs), we return an explicit error instead of an empty list.
+        Err(BrowseError::Network(
+            "Skill browsing not yet implemented. Requires Nostr relay client integration for fetching NIP-89 skill handler events.".to_string()
+        ))
     }
 
     /// Search for skills by query
@@ -259,11 +255,15 @@ impl SkillBrowser {
 
     /// Get a specific skill by ID
     pub async fn get_skill(&self, _skill_id: &str) -> Result<SkillListing, BrowseError> {
-        // TODO: Fetch specific skill from relays
-        Err(BrowseError::NoSkillsFound)
+        // Skill fetching requires Nostr relay integration which is not yet implemented.
+        // Per d-012 (No Stubs), we return an explicit error.
+        Err(BrowseError::Network(
+            "Skill fetching not yet implemented. Requires Nostr relay client integration for fetching NIP-89 skill handler events.".to_string()
+        ))
     }
 
     /// Sort listings according to the specified order
+    #[allow(dead_code)]
     fn sort_listings(&self, listings: &mut [SkillListing], sort_by: SortBy) {
         match sort_by {
             SortBy::Recent => {
