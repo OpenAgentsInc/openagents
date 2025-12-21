@@ -16,6 +16,10 @@ use std::collections::HashMap;
 use std::path::Path;
 
 use crate::metrics::{Anomaly, AnomalySeverity, MetricsDb};
+use crate::tool_patterns::{
+    detect_tool_patterns, generate_tool_pattern_description, generate_tool_pattern_priority,
+    generate_tool_pattern_title, ToolErrorPattern,
+};
 
 /// Pattern of related anomalies
 #[derive(Debug, Clone)]
@@ -32,6 +36,13 @@ pub struct AnomalyPattern {
     pub anomalies: Vec<Anomaly>,
 }
 
+/// Pattern type - either anomaly-based or tool-error-based
+#[derive(Debug, Clone)]
+pub enum Pattern {
+    Anomaly(AnomalyPattern),
+    ToolError(ToolErrorPattern),
+}
+
 /// Proposed improvement issue
 #[derive(Debug, Clone)]
 pub struct ImprovementIssue {
@@ -42,7 +53,26 @@ pub struct ImprovementIssue {
     /// Priority (urgent, high, medium, low)
     pub priority: String,
     /// Related pattern
-    pub pattern: AnomalyPattern,
+    pub pattern: Pattern,
+}
+
+/// Detect all patterns: both anomaly-based and tool-error-based
+pub fn detect_all_patterns(db: &MetricsDb) -> Result<Vec<Pattern>> {
+    let mut all_patterns = Vec::new();
+
+    // Detect anomaly patterns
+    let anomaly_patterns = detect_patterns(db)?;
+    for pattern in anomaly_patterns {
+        all_patterns.push(Pattern::Anomaly(pattern));
+    }
+
+    // Detect tool error patterns (min 10 calls to be significant)
+    let tool_patterns = detect_tool_patterns(db, 10)?;
+    for pattern in tool_patterns {
+        all_patterns.push(Pattern::ToolError(pattern));
+    }
+
+    Ok(all_patterns)
 }
 
 /// Detect patterns from uninvestigated anomalies
@@ -153,11 +183,18 @@ fn get_uninvestigated_anomalies(db: &MetricsDb) -> Result<Vec<Anomaly>> {
 }
 
 /// Generate improvement issues from patterns
-pub fn generate_issues(patterns: Vec<AnomalyPattern>) -> Vec<ImprovementIssue> {
+pub fn generate_issues(patterns: Vec<Pattern>) -> Vec<ImprovementIssue> {
     patterns
         .into_iter()
         .map(|pattern| {
-            let (title, description, priority) = generate_issue_content(&pattern);
+            let (title, description, priority) = match &pattern {
+                Pattern::Anomaly(p) => generate_anomaly_issue_content(p),
+                Pattern::ToolError(p) => (
+                    generate_tool_pattern_title(p),
+                    generate_tool_pattern_description(p),
+                    generate_tool_pattern_priority(p),
+                ),
+            };
             ImprovementIssue {
                 title,
                 description,
@@ -168,8 +205,8 @@ pub fn generate_issues(patterns: Vec<AnomalyPattern>) -> Vec<ImprovementIssue> {
         .collect()
 }
 
-/// Generate issue title, description, and priority from a pattern
-fn generate_issue_content(pattern: &AnomalyPattern) -> (String, String, String) {
+/// Generate issue title, description, and priority from an anomaly pattern
+fn generate_anomaly_issue_content(pattern: &AnomalyPattern) -> (String, String, String) {
     let title = match pattern.dimension.as_str() {
         "tool_error_rate" => {
             format!(
@@ -427,8 +464,15 @@ pub fn create_issues(
 
         created_issue_numbers.push(next_number);
 
-        // Mark anomalies as investigated and link to issue
-        mark_anomalies_with_issue(metrics_db, &issue.pattern.anomalies, next_number)?;
+        // Mark anomalies as investigated and link to issue (only for anomaly patterns)
+        match &issue.pattern {
+            Pattern::Anomaly(p) => {
+                mark_anomalies_with_issue(metrics_db, &p.anomalies, next_number)?;
+            }
+            Pattern::ToolError(_) => {
+                // Tool error patterns don't have anomalies to mark
+            }
+        }
 
         println!(
             "  ✓ Created issue #{}: {} [{}]",

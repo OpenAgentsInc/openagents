@@ -3409,7 +3409,7 @@ async fn handle_metrics_command(command: MetricsCommands) -> Result<()> {
             issues_db,
             dry_run,
         } => {
-            use autopilot::auto_issues::{create_issues, detect_patterns, generate_issues};
+            use autopilot::auto_issues::{create_issues, detect_all_patterns, generate_issues, Pattern};
 
             let metrics_db_path = metrics_db.unwrap_or_else(default_db_path);
             let metrics = MetricsDb::open(&metrics_db_path)?;
@@ -3422,24 +3422,34 @@ async fn handle_metrics_command(command: MetricsCommands) -> Result<()> {
 
             println!("{}", "=".repeat(80));
             println!(
-                "{} Automated Issue Creation from Anomalies",
+                "{} Automated Issue Creation from Pattern Detection",
                 "🤖".cyan().bold()
             );
             println!("{}", "=".repeat(80));
             println!();
 
-            // Detect patterns
-            println!("{} Detecting anomaly patterns...", "🔍".cyan());
-            let patterns = detect_patterns(&metrics)?;
+            // Detect all patterns (both anomaly and tool error patterns)
+            println!("{} Detecting patterns...", "🔍".cyan());
+            let patterns = detect_all_patterns(&metrics)?;
 
             if patterns.is_empty() {
-                println!("{} No anomaly patterns detected", "✓".green());
-                println!("  All metrics appear normal, or anomalies have already been investigated.");
+                println!("{} No patterns detected", "✓".green());
+                println!("  All metrics appear normal, or issues have already been created.");
                 println!();
                 return Ok(());
             }
 
-            println!("{} Found {} anomaly patterns", "📊".cyan(), patterns.len());
+            // Count pattern types
+            let anomaly_count = patterns.iter().filter(|p| matches!(p, Pattern::Anomaly(_))).count();
+            let tool_error_count = patterns.iter().filter(|p| matches!(p, Pattern::ToolError(_))).count();
+
+            println!("{} Found {} patterns:", "📊".cyan(), patterns.len());
+            if anomaly_count > 0 {
+                println!("  - {} anomaly patterns", anomaly_count);
+            }
+            if tool_error_count > 0 {
+                println!("  - {} tool error patterns", tool_error_count);
+            }
             println!();
 
             // Generate issues
@@ -3458,11 +3468,25 @@ async fn handle_metrics_command(command: MetricsCommands) -> Result<()> {
                     issue.title.bold(),
                     priority_colored
                 );
-                println!("   Pattern: {} ({} occurrences, {:?} severity)",
-                    issue.pattern.dimension,
-                    issue.pattern.occurrence_count,
-                    issue.pattern.severity
-                );
+                // Show pattern-specific details
+                match &issue.pattern {
+                    Pattern::Anomaly(p) => {
+                        println!("   Type: Anomaly pattern");
+                        println!("   Dimension: {} ({} sessions, {:?} severity)",
+                            p.dimension,
+                            p.occurrence_count,
+                            p.severity
+                        );
+                    }
+                    Pattern::ToolError(p) => {
+                        println!("   Type: Tool error pattern");
+                        println!("   Tool: {} ({:.1}% error rate, {} failures)",
+                            p.tool_name,
+                            p.error_rate * 100.0,
+                            p.failed_calls
+                        );
+                    }
+                }
             }
             println!();
 
