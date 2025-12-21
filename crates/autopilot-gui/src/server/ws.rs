@@ -115,6 +115,41 @@ enum ServerMessage {
         description: Option<String>,
         timestamp: String,
     },
+
+    #[serde(rename = "session_started")]
+    SessionStarted {
+        session_id: String,
+        timestamp: String,
+        model: String,
+        prompt: String,
+    },
+
+    #[serde(rename = "session_updated")]
+    SessionUpdated {
+        session_id: String,
+        tokens_in: i64,
+        tokens_out: i64,
+        tool_calls: i64,
+        tool_errors: i64,
+    },
+
+    #[serde(rename = "session_completed")]
+    SessionCompleted {
+        session_id: String,
+        duration_seconds: f64,
+        final_status: String,
+        issues_completed: i64,
+        cost_usd: f64,
+    },
+
+    #[serde(rename = "stats_updated")]
+    StatsUpdated {
+        sessions_today: i64,
+        success_rate: f64,
+        total_tokens: i64,
+        total_cost: f64,
+        avg_duration: f64,
+    },
 }
 
 async fn handle_client_message(msg: ClientMessage, session: &mut Session) {
