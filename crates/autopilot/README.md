@@ -359,6 +359,57 @@ If resume fails:
 - Verify session_id exists in the file
 - Try `--continue` flag for automatic resume
 
+## Running Benchmarks
+
+Autopilot includes a comprehensive benchmark suite to measure performance and detect regressions. Benchmarks execute **real agents** (not mocks) and consume API tokens.
+
+### Run Benchmarks
+
+```bash
+# Run all benchmarks
+cargo autopilot benchmark
+
+# Run specific benchmark
+cargo autopilot benchmark B-001
+
+# Run benchmarks in a category
+cargo autopilot benchmark --category file-ops
+
+# Compare against baseline
+cargo autopilot benchmark --baseline v0.1.0
+
+# Save current results as new baseline
+cargo autopilot benchmark --save-baseline v0.2.0
+```
+
+### Benchmark vs Tests
+
+| Aspect | Benchmarks | Tests |
+|--------|-----------|-------|
+| **Purpose** | Measure performance | Verify correctness |
+| **API Calls** | Real (consumes tokens) | Mock or real (selective) |
+| **Duration** | 10-180s per task | <1s per test |
+| **Cost** | $0.01-0.30 per run | Free (mocked) |
+| **When to Run** | Before releases, manually | On every commit, CI |
+
+### Benchmark Test Suite
+
+The benchmark system itself has integration tests:
+
+```bash
+# Run fast tests (no API calls)
+cargo test --package autopilot --test benchmark_execution
+
+# Run expensive tests (real agent execution)
+cargo test --package autopilot --test benchmark_execution --ignored
+```
+
+See `BENCHMARKS.md` for complete documentation on:
+- Available benchmarks (B-001 through B-015+)
+- Performance characteristics and costs
+- Metrics collection and analysis
+- Baseline management
+
 ## Performance Profiling
 
 Autopilot supports CPU profiling via flamegraphs to identify performance bottlenecks.
