@@ -3174,6 +3174,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "nostr-integration-tests"
+version = "0.1.0"
+dependencies = [
+ "nostr",
+ "nostr-client",
+ "nostr-relay",
+ "serde_json",
+ "tempfile",
+ "tokio",
+]
+
+[[package]]
 name = "nostr-relay"
 version = "0.1.0"
 dependencies = [
