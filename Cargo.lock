@@ -508,6 +508,7 @@ dependencies = [
  "lazy_static",
  "libc",
  "maud",
+ "nostr",
  "once_cell",
  "regex",
  "reqwest",
