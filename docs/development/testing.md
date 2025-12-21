@@ -26,6 +26,63 @@ cargo test -- --nocapture
 cargo test test_issue_lifecycle
 ```
 
+## Snapshot Testing
+
+We use `insta` for snapshot testing of UI components and other structured output.
+
+### Installation
+
+```bash
+cargo install cargo-insta
+```
+
+### Writing Snapshot Tests
+
+```rust
+use insta::assert_snapshot;
+
+#[test]
+fn test_dashboard_renders_correctly() {
+    let dashboard = Dashboard::new()
+        .with_balance(50000)
+        .render();
+
+    assert_snapshot!(dashboard.into_string());
+}
+```
+
+### Reviewing Snapshots
+
+When a snapshot test fails or you add a new one:
+
+```bash
+# Review all pending snapshots
+cargo insta review
+
+# Accept all changes
+cargo insta accept
+
+# Reject all changes
+cargo insta reject
+```
+
+### Snapshot Files
+
+Snapshots are stored in `snapshots/` directories next to your test files and **are tracked in git**.
+
+```
+crates/ui/
+  src/
+    tests/
+      dashboard.rs
+    snapshots/                    # Tracked in git
+      dashboard__renders.snap
+```
+
+### Pre-commit Hook
+
+The pre-commit hook will block commits with pending snapshot changes. You must review and accept/reject them first.
+
 ## Code Coverage
 
 We use `cargo-llvm-cov` to track code coverage. Minimum requirement: **70%**
