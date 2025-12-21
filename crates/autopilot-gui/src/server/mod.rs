@@ -2,6 +2,7 @@
 
 mod routes;
 mod state;
+pub mod ws;
 
 pub use state::AppState;
 

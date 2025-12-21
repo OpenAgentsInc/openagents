@@ -60,7 +60,13 @@ pub fn page(title: &str, content: Markup) -> String {
             }
             body {
                 nav {
-                    h1 { "🤖 Autopilot GUI" }
+                    div style="display: flex; justify-content: space-between; align-items: center;" {
+                        h1 { "🤖 Autopilot GUI" }
+                        div style="display: flex; gap: 1rem;" {
+                            a href="/" style="color: #4a9eff; text-decoration: none;" { "Dashboard" }
+                            a href="/chat" style="color: #4a9eff; text-decoration: none;" { "Chat" }
+                        }
+                    }
                 }
                 (content)
             }
