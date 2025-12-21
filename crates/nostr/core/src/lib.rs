@@ -19,6 +19,7 @@
 //! - NIP-21: nostr: URI scheme
 //! - NIP-22: Comment
 //! - NIP-23: Long-form Content
+//! - NIP-24: Extra Metadata Fields and Tags
 //! - NIP-25: Reactions
 //! - NIP-26: Delegated Event Signing
 //! - NIP-27: Text Note References
@@ -85,6 +86,7 @@ mod nip20;
 mod nip21;
 mod nip22;
 mod nip23;
+mod nip24;
 mod nip25;
 mod nip26;
 mod nip27;
@@ -226,6 +228,12 @@ pub use nip22::{
 // NIP-23: Long-form Content
 pub use nip23::{
     ARTICLE_KIND, Article, DRAFT_ARTICLE_KIND, Nip23Error, is_article_kind,
+};
+
+// NIP-24: Extra Metadata Fields and Tags
+pub use nip24::{
+    Birthday, ExtraMetadata, Nip24Error, normalize_hashtag, remove_deprecated_fields,
+    validate_hashtag,
 };
 
 // NIP-25: Reactions
