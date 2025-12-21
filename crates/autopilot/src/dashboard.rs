@@ -13,11 +13,56 @@ use actix_ws::Message;
 use chrono::Utc;
 use maud::{html, Markup, DOCTYPE};
 use serde::{Deserialize, Serialize};
+use tokio::sync::broadcast;
 use crate::metrics::{MetricsDb, SessionMetrics, SessionStatus};
+
+/// Global broadcast sender for metrics updates
+/// This allows the metrics collection system to push updates without direct coupling
+static METRICS_BROADCAST: once_cell::sync::OnceCell<broadcast::Sender<MetricsUpdate>> = once_cell::sync::OnceCell::new();
+
+/// Set the global metrics broadcast sender (called when dashboard starts)
+pub fn set_metrics_broadcast(sender: broadcast::Sender<MetricsUpdate>) {
+    let _ = METRICS_BROADCAST.set(sender);
+}
+
+/// Broadcast a metrics update globally (can be called from anywhere)
+pub fn broadcast_metrics_update(update_type: &str, session_id: Option<String>) {
+    if let Some(tx) = METRICS_BROADCAST.get() {
+        let update = MetricsUpdate {
+            update_type: update_type.to_string(),
+            session_id,
+            timestamp: Utc::now().to_rfc3339(),
+        };
+        let _ = tx.send(update);
+    }
+}
+
+/// Metrics update event for WebSocket broadcasting
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MetricsUpdate {
+    pub update_type: String,
+    pub session_id: Option<String>,
+    pub timestamp: String,
+}
 
 /// Dashboard application state
 pub struct DashboardState {
     db_path: String,
+    /// Broadcast channel for real-time metrics updates
+    pub metrics_tx: broadcast::Sender<MetricsUpdate>,
+}
+
+impl DashboardState {
+    /// Broadcast a metrics update to all connected WebSocket clients
+    pub fn broadcast_update(&self, update_type: &str, session_id: Option<String>) {
+        let update = MetricsUpdate {
+            update_type: update_type.to_string(),
+            session_id,
+            timestamp: Utc::now().to_rfc3339(),
+        };
+        // Ignore send errors (no receivers is fine)
+        let _ = self.metrics_tx.send(update);
+    }
 }
 
 /// Start the metrics dashboard server
@@ -25,8 +70,16 @@ pub async fn start_dashboard(db_path: &str, port: u16) -> anyhow::Result<()> {
     // Test that we can open the database
     MetricsDb::open(db_path)?;
 
+    // Create broadcast channel for real-time metrics updates
+    // Buffer of 100 messages should be sufficient for live updates
+    let (metrics_tx, _) = broadcast::channel::<MetricsUpdate>(100);
+
+    // Set the global broadcast sender so metrics collection can use it
+    set_metrics_broadcast(metrics_tx.clone());
+
     let state = web::Data::new(DashboardState {
         db_path: db_path.to_string(),
+        metrics_tx,
     });
 
     println!("Starting autopilot metrics dashboard on http://127.0.0.1:{}", port);
@@ -901,27 +954,56 @@ function setupWebSocket() {
     const ws = new WebSocket(`${protocol}//${window.location.host}/ws/metrics`);
 
     ws.onopen = () => {
-        console.log('WebSocket connected for real-time metrics');
+        console.log('✅ WebSocket connected for real-time metrics');
+        // Show connection indicator
+        showConnectionStatus('connected');
     };
 
     ws.onmessage = (event) => {
         const data = JSON.parse(event.data);
-        console.log('Received metrics update:', data);
+        console.log('📊 Received metrics update:', data);
 
-        // Reload charts when metrics update
-        if (data.type === 'metrics_update') {
+        if (data.update_type === 'connected') {
+            console.log('🔌 ' + data.message);
+            return;
+        }
+
+        // Reload charts and session list on any metrics update
+        if (data.update_type === 'session_updated' ||
+            data.update_type === 'session_created' ||
+            data.update_type === 'metrics_update') {
             loadAllCharts();
+
+            // If we're on the main page, reload the session list too
+            if (window.location.pathname === '/') {
+                setTimeout(() => {
+                    window.location.reload();
+                }, 500);
+            }
         }
     };
 
     ws.onerror = (error) => {
-        console.error('WebSocket error:', error);
+        console.error('❌ WebSocket error:', error);
+        showConnectionStatus('error');
     };
 
     ws.onclose = () => {
-        console.log('WebSocket disconnected, reconnecting in 5s...');
+        console.log('🔌 WebSocket disconnected, reconnecting in 5s...');
+        showConnectionStatus('disconnected');
         setTimeout(setupWebSocket, 5000);
     };
+}
+
+function showConnectionStatus(status) {
+    // You could add a UI indicator here
+    // For now just log to console
+    const statusEmoji = {
+        'connected': '🟢',
+        'disconnected': '🔴',
+        'error': '🟠'
+    };
+    console.log(`${statusEmoji[status] || '⚪'} Connection status: ${status}`);
 }
 "#
 }
@@ -1333,28 +1415,54 @@ fn calculate_tokens_trend(sessions: &[SessionMetrics], _granularity: &str) -> Ve
 async fn websocket_metrics(
     req: actix_web::HttpRequest,
     stream: web::Payload,
+    state: web::Data<DashboardState>,
 ) -> ActixResult<HttpResponse> {
     let (response, mut session, mut msg_stream) = actix_ws::handle(&req, stream)?;
+
+    // Subscribe to metrics updates
+    let mut metrics_rx = state.metrics_tx.subscribe();
 
     actix_web::rt::spawn(async move {
         // Send initial connection message
         let _ = session.text(serde_json::json!({
-            "type": "connected",
+            "update_type": "connected",
             "message": "Real-time metrics stream connected",
+            "timestamp": Utc::now().to_rfc3339(),
         }).to_string()).await;
 
-        while let Some(Ok(msg)) = msg_stream.recv().await {
-            match msg {
-                Message::Ping(bytes) => {
-                    let _ = session.pong(&bytes).await;
+        loop {
+            tokio::select! {
+                // Handle incoming WebSocket messages
+                Some(Ok(msg)) = msg_stream.recv() => {
+                    match msg {
+                        Message::Ping(bytes) => {
+                            let _ = session.pong(&bytes).await;
+                        }
+                        Message::Text(_) => {
+                            // Client sent text, send back acknowledgment
+                            let _ = session.text(serde_json::json!({
+                                "type": "ack",
+                                "message": "Message received",
+                            }).to_string()).await;
+                        }
+                        Message::Close(_) => break,
+                        _ => {}
+                    }
                 }
-                Message::Text(text) => {
-                    // In production, this would subscribe to metrics updates
-                    // For now, echo back the request
-                    let _ = session.text(format!("Echo: {}", text)).await;
+                // Handle broadcast metrics updates
+                Ok(update) = metrics_rx.recv() => {
+                    // Send the update to the WebSocket client
+                    if let Ok(json) = serde_json::to_string(&update) {
+                        if session.text(json).await.is_err() {
+                            // Connection closed
+                            break;
+                        }
+                    }
                 }
-                Message::Close(_) => break,
-                _ => {}
+                else => {
+                    // Both channels closed
+                    break;
+                }
             }
         }
         let _ = session.close(None).await;
