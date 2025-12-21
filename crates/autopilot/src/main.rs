@@ -757,6 +757,20 @@ enum MetricsCommands {
         #[arg(long)]
         db: Option<PathBuf>,
     },
+    /// Automatically create improvement issues from detected anomalies
+    CreateIssues {
+        /// Path to metrics database (default: autopilot-metrics.db)
+        #[arg(long)]
+        metrics_db: Option<PathBuf>,
+
+        /// Path to issues database (default: autopilot.db in cwd)
+        #[arg(long)]
+        issues_db: Option<PathBuf>,
+
+        /// Dry run - show what would be created without creating issues
+        #[arg(long)]
+        dry_run: bool,
+    },
 }
 
 #[tokio::main]
@@ -3388,6 +3402,94 @@ async fn handle_metrics_command(command: MetricsCommands) -> Result<()> {
                 println!();
             }
 
+            println!("{}", "=".repeat(80));
+        }
+        MetricsCommands::CreateIssues {
+            metrics_db,
+            issues_db,
+            dry_run,
+        } => {
+            use autopilot::auto_issues::{create_issues, detect_patterns, generate_issues};
+
+            let metrics_db_path = metrics_db.unwrap_or_else(default_db_path);
+            let metrics = MetricsDb::open(&metrics_db_path)?;
+
+            let issues_db_path = issues_db.unwrap_or_else(|| {
+                std::env::current_dir()
+                    .unwrap_or_else(|_| PathBuf::from("."))
+                    .join("autopilot.db")
+            });
+
+            println!("{}", "=".repeat(80));
+            println!(
+                "{} Automated Issue Creation from Anomalies",
+                "🤖".cyan().bold()
+            );
+            println!("{}", "=".repeat(80));
+            println!();
+
+            // Detect patterns
+            println!("{} Detecting anomaly patterns...", "🔍".cyan());
+            let patterns = detect_patterns(&metrics)?;
+
+            if patterns.is_empty() {
+                println!("{} No anomaly patterns detected", "✓".green());
+                println!("  All metrics appear normal, or anomalies have already been investigated.");
+                println!();
+                return Ok(());
+            }
+
+            println!("{} Found {} anomaly patterns", "📊".cyan(), patterns.len());
+            println!();
+
+            // Generate issues
+            let improvement_issues = generate_issues(patterns);
+
+            println!("{} Proposed Issues:", "📝".cyan().bold());
+            for (i, issue) in improvement_issues.iter().enumerate() {
+                let priority_colored = match issue.priority.as_str() {
+                    "urgent" => issue.priority.red().bold(),
+                    "high" => issue.priority.yellow(),
+                    _ => issue.priority.normal(),
+                };
+                println!(
+                    "\n{}. {} [{}]",
+                    i + 1,
+                    issue.title.bold(),
+                    priority_colored
+                );
+                println!("   Pattern: {} ({} occurrences, {:?} severity)",
+                    issue.pattern.dimension,
+                    issue.pattern.occurrence_count,
+                    issue.pattern.severity
+                );
+            }
+            println!();
+
+            if dry_run {
+                println!("{} Dry run mode - no issues created", "ℹ".cyan());
+                println!();
+                return Ok(());
+            }
+
+            // Create issues
+            println!("{} Creating issues...", "🚀".cyan());
+            let issue_numbers = create_issues(&issues_db_path, &improvement_issues, &metrics)?;
+
+            println!();
+            println!("{}", "=".repeat(80));
+            println!(
+                "{} Created {} improvement issues linked to d-004",
+                "✓".green().bold(),
+                issue_numbers.len()
+            );
+            println!();
+            println!("Issue numbers: {}", issue_numbers.iter()
+                .map(|n| format!("#{}", n))
+                .collect::<Vec<_>>()
+                .join(", "));
+            println!();
+            println!("View issues: cargo autopilot issue list");
             println!("{}", "=".repeat(80));
         }
     }

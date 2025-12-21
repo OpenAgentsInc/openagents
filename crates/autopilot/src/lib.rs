@@ -4,6 +4,7 @@
 //! and logs the complete trajectory in both rlog and JSON formats.
 
 pub mod analyze;
+pub mod auto_issues;
 pub mod compaction;
 pub mod daemon;
 pub mod guardrails;
