@@ -129,7 +129,7 @@ impl Default for TrajectoryConfig {
         Self {
             sources: vec!["claude".to_string()],
             auto_contribute: false,
-            min_quality_score: 0.5,
+            min_quality_score: 0.1, // Low threshold for scanning
             require_ci_signal: false,
             redaction_level: "standard".to_string(),
             redact_file_paths: true,
