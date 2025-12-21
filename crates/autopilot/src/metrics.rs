@@ -359,6 +359,35 @@ impl MetricsDb {
         Ok(())
     }
 
+    /// Get anomalies for a specific session
+    pub fn get_anomalies(&self, session_id: &str) -> Result<Vec<Anomaly>> {
+        let mut stmt = self.conn.prepare(
+            r#"
+            SELECT session_id, dimension, expected_value, actual_value, severity,
+                   investigated, issue_number
+            FROM anomalies
+            WHERE session_id = ?1
+            ORDER BY severity DESC
+            "#,
+        )?;
+
+        let anomalies = stmt
+            .query_map(params![session_id], |row| {
+                Ok(Anomaly {
+                    session_id: row.get(0)?,
+                    dimension: row.get(1)?,
+                    expected_value: row.get(2)?,
+                    actual_value: row.get(3)?,
+                    severity: AnomalySeverity::from_str(&row.get::<_, String>(4)?).unwrap(),
+                    investigated: row.get::<_, i32>(5)? != 0,
+                    issue_number: row.get(6)?,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+
+        Ok(anomalies)
+    }
+
     /// Store baseline
     pub fn store_baseline(&self, baseline: &Baseline) -> Result<()> {
         self.conn.execute(

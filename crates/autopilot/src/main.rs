@@ -3182,6 +3182,92 @@ async fn handle_metrics_command(command: MetricsCommands) -> Result<()> {
             }
 
             println!();
+
+            // Show anomalies if any detected
+            let anomalies = metrics_db.get_anomalies(&session_id)?;
+            if !anomalies.is_empty() {
+                println!("{} Anomalies Detected:", "⚠".yellow().bold());
+                for anomaly in &anomalies {
+                    let severity_str = match anomaly.severity {
+                        autopilot::metrics::AnomalySeverity::Critical => "CRITICAL".red().bold(),
+                        autopilot::metrics::AnomalySeverity::Error => "ERROR".red(),
+                        autopilot::metrics::AnomalySeverity::Warning => "WARNING".yellow(),
+                    };
+                    println!(
+                        "  [{}] {}: expected {:.3}, got {:.3}",
+                        severity_str,
+                        anomaly.dimension,
+                        anomaly.expected_value,
+                        anomaly.actual_value
+                    );
+                }
+                println!();
+            }
+
+            // Show comparison to baselines
+            println!("{} Comparison to Baselines:", "📈".cyan().bold());
+
+            // Tool error rate
+            if session.tool_calls > 0 {
+                let error_rate = (session.tool_errors as f64) / (session.tool_calls as f64);
+                if let Ok(Some(baseline)) = metrics_db.get_baseline("tool_error_rate") {
+                    let deviation = ((error_rate - baseline.mean) / baseline.stddev).abs();
+                    let status = if deviation > 2.0 {
+                        format!("({:.1}σ above baseline)", deviation).red()
+                    } else if error_rate > baseline.mean {
+                        format!("({:.1}σ above baseline)", deviation).yellow()
+                    } else {
+                        format!("({:.1}σ below baseline)", deviation).green()
+                    };
+                    println!(
+                        "  Tool error rate:   {:.1}% vs {:.1}% baseline {}",
+                        error_rate * 100.0,
+                        baseline.mean * 100.0,
+                        status
+                    );
+                }
+            }
+
+            // Tokens per issue
+            if session.issues_completed > 0 {
+                let total_tokens = session.tokens_in + session.tokens_out;
+                let tokens_per_issue = (total_tokens as f64) / (session.issues_completed as f64);
+                if let Ok(Some(baseline)) = metrics_db.get_baseline("tokens_per_issue") {
+                    let deviation = ((tokens_per_issue - baseline.mean) / baseline.stddev).abs();
+                    let status = if deviation > 2.0 {
+                        format!("({:.1}σ from baseline)", deviation).yellow()
+                    } else {
+                        format!("({:.1}σ from baseline)", deviation).dimmed()
+                    };
+                    println!(
+                        "  Tokens per issue:  {} vs {} baseline {}",
+                        format_number(tokens_per_issue as i64),
+                        format_number(baseline.mean as i64),
+                        status
+                    );
+                }
+            }
+
+            // Cost per issue
+            if session.issues_completed > 0 {
+                let cost_per_issue = session.cost_usd / (session.issues_completed as f64);
+                if let Ok(Some(baseline)) = metrics_db.get_baseline("cost_per_issue") {
+                    let deviation = ((cost_per_issue - baseline.mean) / baseline.stddev).abs();
+                    let status = if deviation > 2.0 {
+                        format!("({:.1}σ from baseline)", deviation).yellow()
+                    } else {
+                        format!("({:.1}σ from baseline)", deviation).dimmed()
+                    };
+                    println!(
+                        "  Cost per issue:    ${:.4} vs ${:.4} baseline {}",
+                        cost_per_issue,
+                        baseline.mean,
+                        status
+                    );
+                }
+            }
+
+            println!();
             println!("{} Prompt:", "📝".cyan().bold());
             let prompt_preview = if session.prompt.len() > 200 {
                 format!("{}...", &session.prompt[..200])
