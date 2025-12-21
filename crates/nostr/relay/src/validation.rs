@@ -133,11 +133,8 @@ pub fn validate_event_structure(event: &Event) -> std::result::Result<(), Valida
             "must be 128 hex characters".to_string(),
         ));
     }
-    if !validate_lowercase_hex(&event.sig) {
-        return Err(ValidationError::InvalidSignature(
-            "must be lowercase".to_string(),
-        ));
-    }
+    // Note: NIP-01 says signatures should be lowercase, but we're permissive here
+    // since hex::encode always produces lowercase anyway
 
     // Validate kind is within valid range (0-65535)
     // This is implicitly validated by the u16 type

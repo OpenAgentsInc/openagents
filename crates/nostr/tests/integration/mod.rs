@@ -6,6 +6,7 @@ pub mod client_relay;
 pub mod subscriptions;
 pub mod filters;
 pub mod error_handling;
+pub mod nip01_protocol_messages;
 
 use nostr_relay::{Database, DatabaseConfig, RelayConfig, RelayServer};
 use std::net::SocketAddr;
