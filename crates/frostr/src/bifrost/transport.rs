@@ -10,6 +10,10 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::sync::{mpsc, RwLock};
 use tokio::time::{sleep, Duration};
 
+// NIP-44 encryption support
+use bitcoin::secp256k1::{PublicKey, SecretKey, SECP256K1};
+use nostr::{decrypt_v2, encrypt_v2};
+
 /// Event kind for Bifrost messages (ephemeral, not stored by relays)
 pub const BIFROST_EVENT_KIND: u16 = 28000;
 
@@ -106,6 +110,43 @@ impl NostrTransport {
         })
     }
 
+    /// Encrypt content for a specific peer using NIP-44
+    fn encrypt_for_peer(&self, content: &str, peer_pubkey: &[u8; 32]) -> Result<String> {
+        // Convert peer pubkey to compressed format for NIP-44
+        let pk = PublicKey::from_slice(&[vec![0x02], peer_pubkey.to_vec()].concat())
+            .map_err(|e| Error::Crypto(format!("Invalid peer public key: {}", e)))?;
+
+        let pk_bytes = pk.serialize();
+
+        encrypt_v2(&self.config.secret_key, &pk_bytes, content)
+            .map_err(|e| Error::Crypto(format!("NIP-44 encryption failed: {}", e)))
+    }
+
+    /// Decrypt content from a specific peer using NIP-44
+    #[allow(dead_code)]
+    fn decrypt_from_peer(&self, encrypted: &str, peer_pubkey: &[u8; 32]) -> Result<String> {
+        // Convert peer pubkey to compressed format for NIP-44
+        let pk = PublicKey::from_slice(&[vec![0x02], peer_pubkey.to_vec()].concat())
+            .map_err(|e| Error::Crypto(format!("Invalid peer public key: {}", e)))?;
+
+        let pk_bytes = pk.serialize();
+
+        decrypt_v2(&self.config.secret_key, &pk_bytes, encrypted)
+            .map_err(|e| Error::Crypto(format!("NIP-44 decryption failed: {}", e)))
+    }
+
+    /// Get our public key from secret key
+    #[allow(dead_code)]
+    fn get_our_pubkey(&self) -> Result<[u8; 32]> {
+        let sk = SecretKey::from_slice(&self.config.secret_key)
+            .map_err(|e| Error::Crypto(format!("Invalid secret key: {}", e)))?;
+
+        let pk = PublicKey::from_secret_key(SECP256K1, &sk);
+
+        // Return x-only pubkey (32 bytes)
+        Ok(pk.x_only_public_key().0.serialize())
+    }
+
     /// Connect to Nostr relays and start listening for messages
     pub async fn connect(&mut self) -> Result<()> {
         // Create relay pool with default config
@@ -161,37 +202,35 @@ impl NostrTransport {
         let envelope_json = serde_json::to_string(&envelope)
             .map_err(|e| Error::Encoding(format!("failed to serialize envelope: {}", e)))?;
 
-        // Build Nostr event
-        // TODO: Implement NIP-44 encryption for content
-        // For now, use plaintext (will be encrypted in future iteration)
-        let mut tags = Vec::new();
-
-        // Add p-tags for each peer
+        // Publish encrypted message to each peer individually
+        // This ensures only the intended recipient can read the message
         for peer_pk in &self.config.peer_pubkeys {
+            // Encrypt content for this specific peer using NIP-44
+            let encrypted_content = self.encrypt_for_peer(&envelope_json, peer_pk)?;
+
             let peer_hex = hex::encode(peer_pk);
+
+            // Build tags for this peer
+            let mut tags = Vec::new();
             tags.push(vec!["p".to_string(), peer_hex]);
+            tags.push(vec!["protocol".to_string(), "bifrost".to_string()]);
+            tags.push(vec!["msg_type".to_string(), envelope.msg_type.clone()]);
+
+            let event_template = nostr::EventTemplate {
+                created_at: envelope.timestamp,
+                kind: self.config.event_kind,
+                tags,
+                content: encrypted_content,
+            };
+
+            // Sign event
+            let event = nostr::finalize_event(&event_template, &self.config.secret_key)
+                .map_err(|e| Error::Signing(format!("Failed to sign event: {}", e)))?;
+
+            // Publish to relay pool
+            pool.publish(&event).await
+                .map_err(|e| Error::Transport(format!("Failed to publish to relays: {}", e)))?;
         }
-
-        // Add protocol tag
-        tags.push(vec!["protocol".to_string(), "bifrost".to_string()]);
-
-        // Add message type tag
-        tags.push(vec!["msg_type".to_string(), envelope.msg_type.clone()]);
-
-        let event_template = nostr::EventTemplate {
-            created_at: envelope.timestamp,
-            kind: self.config.event_kind,
-            tags,
-            content: envelope_json,
-        };
-
-        // Sign event
-        let event = nostr::finalize_event(&event_template, &self.config.secret_key)
-            .map_err(|e| Error::Signing(format!("Failed to sign event: {}", e)))?;
-
-        // Publish to relay pool
-        pool.publish(&event).await
-            .map_err(|e| Error::Transport(format!("Failed to publish to relays: {}", e)))?;
 
         Ok(())
     }
