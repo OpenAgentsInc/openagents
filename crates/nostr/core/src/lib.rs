@@ -23,6 +23,7 @@
 //! - NIP-26: Delegated Event Signing
 //! - NIP-27: Text Note References
 //! - NIP-28: Public Chat (channels, messages, moderation)
+//! - NIP-32: Labeling (content moderation and categorization)
 //! - NIP-33: Parameterized Replaceable Events (deprecated, moved to NIP-01)
 //! - NIP-36: Sensitive Content / Content Warning
 //! - NIP-40: Expiration Timestamp
@@ -86,6 +87,7 @@ mod nip25;
 mod nip26;
 mod nip27;
 mod nip28;
+mod nip32;
 mod nip33;
 mod nip36;
 mod nip40;
@@ -247,6 +249,12 @@ pub use nip28::{
     KIND_CHANNEL_MESSAGE, KIND_CHANNEL_METADATA, KIND_CHANNEL_MUTE_USER, ModerationReason,
     Nip28Error, is_channel_creation_kind, is_channel_kind, is_channel_message_kind,
     is_channel_metadata_kind, is_moderation_kind,
+};
+
+// NIP-32: Labeling
+pub use nip32::{
+    KIND_LABEL, Label, LabelEvent, LabelTarget, Nip32Error, SelfLabel, UGC_NAMESPACE,
+    is_label_kind,
 };
 
 // NIP-33: Parameterized Replaceable Events (deprecated, moved to NIP-01)
