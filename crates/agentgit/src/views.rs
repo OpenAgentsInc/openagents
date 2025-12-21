@@ -1,7 +1,12 @@
 //! Maud view templates for AgentGit
 
+pub mod publish_status;
+
 use maud::{html, Markup, DOCTYPE};
 use nostr::Event;
+
+#[allow(unused_imports)]
+pub use publish_status::{publish_status_notification, publish_status_styles};
 
 /// Helper function to extract tag value from event
 fn get_tag_value(event: &Event, tag_name: &str) -> Option<String> {

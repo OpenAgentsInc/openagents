@@ -7,6 +7,10 @@ license.workspace = true
 publish.workspace = true
 description = "AgentGit - Nostr-native GitHub alternative for agent-first collaboration"
 
+[lib]
+name = "agentgit"
+path = "src/lib.rs"
+
 [[bin]]
 name = "agentgit"
 path = "src/main.rs"
@@ -47,6 +51,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 rusqlite = { version = "0.32", features = ["bundled"] }
 dirs = "6.0.0"
 git2 = "0.20.3"
+html-escape = "0.2.13"
 
 [lints]
 workspace = true

@@ -10,6 +10,8 @@ use tokio::sync::{mpsc, Mutex};
 use tracing::{debug, error, info};
 
 use crate::nostr::cache::EventCache;
+use crate::nostr::publish_result::{ErrorCategory, PublishResult, RelayFailure};
+use crate::nostr::retry::{retry_with_backoff, RetryConfig};
 use crate::ws::WsBroadcaster;
 
 /// NIP-34 event kinds for git operations
@@ -37,6 +39,7 @@ pub struct NostrClient {
     pool: Arc<RelayPool>,
     broadcaster: Arc<WsBroadcaster>,
     cache: Arc<Mutex<EventCache>>,
+    retry_config: RetryConfig,
 }
 
 impl NostrClient {
@@ -56,6 +59,31 @@ impl NostrClient {
             pool,
             broadcaster,
             cache,
+            retry_config: RetryConfig::default(),
+        })
+    }
+
+    /// Create a new Nostr client with custom retry configuration
+    #[allow(dead_code)]
+    pub fn with_retry_config(
+        _relay_urls: Vec<String>,
+        broadcaster: Arc<WsBroadcaster>,
+        retry_config: RetryConfig,
+    ) -> Result<Self> {
+        let config = PoolConfig::default();
+        let pool = Arc::new(RelayPool::new(config));
+
+        let cache_dir = dirs::data_local_dir()
+            .unwrap_or_else(|| PathBuf::from("."))
+            .join("agentgit");
+        let cache_path = cache_dir.join("events.db");
+        let cache = Arc::new(Mutex::new(EventCache::new(cache_path)?));
+
+        Ok(Self {
+            pool,
+            broadcaster,
+            cache,
+            retry_config,
         })
     }
 
@@ -333,36 +361,133 @@ impl NostrClient {
         self.cache.lock().await.is_pr_mergeable(pr_event)
     }
 
-    /// Publish a signed event to all connected relays
+    /// Publish a signed event to all connected relays with retry and error handling
     #[allow(dead_code)]
-    pub async fn publish_event(&self, event: Event) -> Result<String> {
+    pub async fn publish_event(&self, event: Event) -> Result<PublishResult> {
         info!("Publishing event: kind={} id={}", event.kind, event.id);
+        let event_id = event.id.clone();
+
+        // Store in local cache first (best effort)
+        if let Err(e) = self.cache.lock().await.insert_event(&event) {
+            error!("Failed to cache event: {}", e);
+        }
+
+        // Publish to relay pool with retry
+        let pool = Arc::clone(&self.pool);
+        let event_clone = event.clone();
+
+        let publish_result = retry_with_backoff(
+            &self.retry_config,
+            "relay publish",
+            || {
+                let pool = Arc::clone(&pool);
+                let event = event_clone.clone();
+                async move {
+                    // Add timeout to prevent indefinite hanging
+                    tokio::time::timeout(
+                        std::time::Duration::from_secs(10),
+                        pool.publish(&event)
+                    )
+                    .await
+                    .map_err(|_| anyhow::anyhow!("Publish timeout"))
+                    .and_then(|r| r.map_err(|e| anyhow::anyhow!("Publish failed: {}", e)))
+                }
+            },
+        )
+        .await;
+
+        // Build detailed result
+        let result = match publish_result {
+            Ok(confirmations) => {
+                let confirmation_count = confirmations.len();
+                debug!("Received {} publish confirmations", confirmation_count);
+
+                // Broadcast to UI for real-time updates
+                if let Ok(json) = serde_json::to_string(&event) {
+                    self.broadcaster.broadcast(&format!(
+                        r#"<div class="event event-published" data-kind="{}">{}</div>"#,
+                        event.kind, json
+                    ));
+                }
+
+                info!(
+                    "Successfully published event: {} to {} relays",
+                    event_id, confirmation_count
+                );
+
+                PublishResult::success(event_id, confirmation_count, confirmation_count)
+            }
+            Err(e) => {
+                error!("Failed to publish event {}: {}", event_id, e);
+
+                // Create detailed failure result
+                let error_msg = e.to_string();
+                let category = ErrorCategory::from_error_message(&error_msg);
+
+                let failure = RelayFailure {
+                    relay_url: "pool".to_string(),
+                    error: error_msg.clone(),
+                    category,
+                };
+
+                // Broadcast failure to UI
+                self.broadcaster.broadcast(&format!(
+                    r#"<div class="event event-failed" data-kind="{}" data-error="{}">Failed to publish event</div>"#,
+                    event.kind,
+                    html_escape::encode_text(&error_msg)
+                ));
+
+                PublishResult::failure(event_id, 0, 1, vec![failure])
+            }
+        };
+
+        Ok(result)
+    }
+
+    /// Publish a signed event without retry (for time-sensitive operations)
+    #[allow(dead_code)]
+    pub async fn publish_event_no_retry(&self, event: Event) -> Result<PublishResult> {
+        info!("Publishing event (no retry): kind={} id={}", event.kind, event.id);
+        let event_id = event.id.clone();
 
         // Store in local cache first
         if let Err(e) = self.cache.lock().await.insert_event(&event) {
             error!("Failed to cache event: {}", e);
         }
 
-        // Publish to relay pool
-        let confirmations = self.pool.publish(&event).await?;
+        // Publish with timeout
+        let publish_result = tokio::time::timeout(
+            std::time::Duration::from_secs(5),
+            self.pool.publish(&event)
+        )
+        .await;
 
-        debug!("Received {} publish confirmations", confirmations.len());
+        let result = match publish_result {
+            Ok(Ok(confirmations)) => {
+                let count = confirmations.len();
+                info!("Published event {} to {} relays", event_id, count);
 
-        // Broadcast via WebSocket to UI for real-time updates
-        match serde_json::to_string(&event) {
-            Ok(json) => {
-                self.broadcaster.broadcast(&format!(
-                    r#"<div class="event" data-kind="{}">{}</div>"#,
-                    event.kind, json
-                ));
+                PublishResult::success(event_id, count, count)
             }
-            Err(e) => {
-                error!("Failed to serialize event for broadcast: {}", e);
+            Ok(Err(e)) => {
+                let error_msg = e.to_string();
+                let failure = RelayFailure {
+                    relay_url: "pool".to_string(),
+                    error: error_msg.clone(),
+                    category: ErrorCategory::from_error_message(&error_msg),
+                };
+                PublishResult::failure(event_id, 0, 1, vec![failure])
             }
-        }
+            Err(_) => {
+                let failure = RelayFailure {
+                    relay_url: "pool".to_string(),
+                    error: "Publish timeout (5s)".to_string(),
+                    category: ErrorCategory::Timeout,
+                };
+                PublishResult::failure(event_id, 0, 1, vec![failure])
+            }
+        };
 
-        let event_id = event.id.clone();
-        info!("Successfully published event: {} to {} relays", event_id, confirmations.len());
-        Ok(event_id)
+        Ok(result)
     }
 }

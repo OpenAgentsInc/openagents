@@ -83,7 +83,7 @@
 //!
 //! PRs can link to agent trajectory sessions for transparent work verification:
 //!
-//! ```rust
+//! ```rust,ignore
 //! use agentgit::nostr::events::PullRequestBuilder;
 //!
 //! let pr = PullRequestBuilder::new(...)
