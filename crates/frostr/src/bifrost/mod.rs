@@ -7,5 +7,7 @@ pub mod messages;
 pub mod node;
 pub mod transport;
 
-pub use messages::{BifrostMessage, SignRequest, SignResponse};
+pub use messages::{
+    BifrostMessage, EcdhRequest, EcdhResponse, SignError, SignRequest, SignResponse, SignResult,
+};
 pub use node::BifrostNode;
