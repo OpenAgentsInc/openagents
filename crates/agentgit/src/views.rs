@@ -422,9 +422,11 @@ pub fn issue_detail_page(repository: &Event, issue: &Event, claims: &[Event], bo
                                 }
                             }
 
-                            @if !bounties.is_empty() {
-                                section.issue-section {
-                                    h2 { "💰 Bounties" }
+                            section.issue-section {
+                                h2 { "💰 Bounties" }
+                                @if bounties.is_empty() {
+                                    p.empty-state { "No bounties yet. Create one to incentivize work on this issue!" }
+                                } @else {
                                     div.bounties-list {
                                         @for bounty in bounties {
                                             @let bounty_creator = if bounty.pubkey.len() > 16 {
@@ -462,6 +464,39 @@ pub fn issue_detail_page(repository: &Event, issue: &Event, claims: &[Event], bo
                                             }
                                         }
                                     }
+                                }
+
+                                form.bounty-form
+                                    hx-post={"/repo/" (identifier) "/issues/" (issue.id) "/bounty"}
+                                    hx-target="this"
+                                    hx-swap="outerHTML" {
+                                    h3 { "Create Bounty" }
+                                    div.form-group {
+                                        label for="bounty_amount" { "Amount (sats)" }
+                                        input
+                                            type="number"
+                                            name="amount"
+                                            id="bounty_amount"
+                                            placeholder="50000"
+                                            required {}
+                                    }
+                                    div.form-group {
+                                        label for="bounty_expiry" { "Expiry (Unix timestamp, optional)" }
+                                        input
+                                            type="number"
+                                            name="expiry"
+                                            id="bounty_expiry"
+                                            placeholder="1700000000" {}
+                                    }
+                                    div.form-group {
+                                        label for="bounty_conditions" { "Conditions (one per line, optional)" }
+                                        textarea
+                                            name="conditions"
+                                            id="bounty_conditions"
+                                            placeholder="Must include tests\nMust pass CI\nMust update docs"
+                                            rows="3" {}
+                                    }
+                                    button.submit-button type="submit" { "Create Bounty" }
                                 }
                             }
 

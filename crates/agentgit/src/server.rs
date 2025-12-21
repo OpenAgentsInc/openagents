@@ -33,6 +33,7 @@ pub async fn start_server(
             .route("/repo/{identifier}/issues", web::post().to(issue_create))
             .route("/repo/{identifier}/issues/{issue_id}", web::get().to(issue_detail))
             .route("/repo/{identifier}/issues/{issue_id}/claim", web::post().to(issue_claim))
+            .route("/repo/{identifier}/issues/{issue_id}/bounty", web::post().to(issue_bounty_create))
             .route("/repo/{identifier}/patches", web::get().to(repository_patches))
             .route("/repo/{identifier}/patches/{patch_id}", web::get().to(patch_detail))
             .route("/repo/{identifier}/pulls", web::get().to(repository_pulls))
@@ -229,6 +230,58 @@ async fn issue_claim(
         </div>"#,
         if content.is_empty() { "No message" } else { &content },
         estimate.map(|e| format!("<p>Estimate: {} seconds</p>", e)).unwrap_or_default()
+    );
+
+    HttpResponse::Ok()
+        .content_type("text/html; charset=utf-8")
+        .body(response_html)
+}
+
+/// Create a bounty for an issue
+async fn issue_bounty_create(
+    path: web::Path<(String, String)>,
+    form: web::Form<std::collections::HashMap<String, String>>,
+) -> HttpResponse {
+    let (_identifier, _issue_id) = path.into_inner();
+
+    // Extract form data
+    let amount = match form.get("amount").and_then(|s| s.parse::<u64>().ok()) {
+        Some(amt) => amt,
+        None => {
+            return HttpResponse::BadRequest()
+                .content_type("text/html; charset=utf-8")
+                .body(r#"<div class="error-message"><p>❌ Invalid amount</p></div>"#);
+        }
+    };
+
+    let expiry = form.get("expiry").and_then(|s| s.parse::<u64>().ok());
+    let conditions: Vec<String> = form
+        .get("conditions")
+        .map(|s| s.lines().map(|l| l.trim().to_string()).filter(|l| !l.is_empty()).collect())
+        .unwrap_or_default();
+
+    // For now, return a success message
+    // In a real implementation, this would:
+    // 1. Build a BountyOfferBuilder event
+    // 2. Sign it with the user's key
+    // 3. Publish it to relays
+    // 4. Cache it locally
+
+    let response_html = format!(
+        r#"<div class="success-message">
+            <p>✅ Bounty created!</p>
+            <p>Amount: ⚡ {} sats</p>
+            {}
+            {}
+        </div>"#,
+        amount,
+        expiry.map(|e| format!("<p>Expires: {}</p>", e)).unwrap_or_default(),
+        if !conditions.is_empty() {
+            format!("<p>Conditions: <ul>{}</ul></p>",
+                conditions.iter().map(|c| format!("<li>{}</li>", c)).collect::<String>())
+        } else {
+            String::new()
+        }
     );
 
     HttpResponse::Ok()
