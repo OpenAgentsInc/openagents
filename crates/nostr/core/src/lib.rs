@@ -35,6 +35,7 @@
 //! - NIP-51: Lists (mute lists, pin lists, bookmarks, etc.)
 //! - NIP-56: Reporting
 //! - NIP-57: Lightning Zaps (tipping with Lightning payments)
+//! - NIP-58: Badges (badge definitions, awards, and profile display)
 //! - NIP-59: Gift Wrap (encapsulation and metadata obscuring, requires `full` feature)
 //! - NIP-89: Application Handlers (social discovery of skills/agents)
 //! - NIP-90: Data Vending Machine (DVM) job requests/results/feedback
@@ -93,6 +94,7 @@ mod nip50;
 mod nip51;
 mod nip56;
 mod nip57;
+mod nip58;
 #[cfg(feature = "full")]
 mod nip59;
 mod nip89;
@@ -321,6 +323,14 @@ pub use nip56::{
 // NIP-57: Lightning Zaps
 pub use nip57::{
     Nip57Error, ZapReceipt, ZapRequest, ZAP_RECEIPT_KIND, ZAP_REQUEST_KIND,
+};
+
+// NIP-58: Badges
+pub use nip58::{
+    BadgeAward, BadgeDefinition, BadgeThumbnail, ImageDimensions, KIND_BADGE_AWARD,
+    KIND_BADGE_DEFINITION, KIND_PROFILE_BADGES, Nip58Error, PROFILE_BADGES_D_TAG,
+    ProfileBadgePair, ProfileBadges, is_badge_award_kind, is_badge_definition_kind,
+    is_nip58_kind, is_profile_badges_kind,
 };
 
 // NIP-59: Gift Wrap (requires full feature)
