@@ -129,11 +129,12 @@ impl StateManager {
         let identity = match &self.identity {
             Some(id) => id,
             None => {
-                // No identity - graceful degradation
-                eprintln!("Warning: No identity configured, agent state will not be published");
+                // No identity - cannot publish state
+                // Per d-012 (No Stubs), return an error instead of a mock event ID
                 let _ = pool.disconnect_all().await;
-                // Return a mock event ID for backwards compatibility
-                return Ok("mock_event_id_".to_string() + &hex::encode(&self.agent_public_key[..8]));
+                return Err(anyhow::anyhow!(
+                    "Cannot publish agent state: No identity configured. Use StateManager::with_identity() to provide an identity for signing."
+                ));
             }
         };
 
