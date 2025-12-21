@@ -482,6 +482,11 @@ enum Commands {
         #[arg(short, long)]
         workspace: Option<PathBuf>,
     },
+    /// Manage trajectory logs
+    Logs {
+        #[command(subcommand)]
+        command: LogsCommands,
+    },
 }
 
 #[derive(Subcommand)]
@@ -813,6 +818,48 @@ enum MetricsCommands {
     },
 }
 
+#[derive(Subcommand)]
+enum LogsCommands {
+    /// Show log statistics
+    Stats {
+        /// Logs directory (default: docs/logs)
+        #[arg(short, long)]
+        logs_dir: Option<PathBuf>,
+    },
+    /// Archive old logs (compress to .gz)
+    Archive {
+        /// Age in days before archiving (default: 30)
+        #[arg(short, long, default_value_t = 30)]
+        days: i64,
+
+        /// Logs directory (default: docs/logs)
+        #[arg(short, long)]
+        logs_dir: Option<PathBuf>,
+
+        /// Dry run (show what would be archived)
+        #[arg(long)]
+        dry_run: bool,
+    },
+    /// Clean up old archived logs
+    Cleanup {
+        /// Age in days before deletion (default: 90)
+        #[arg(short, long, default_value_t = 90)]
+        days: i64,
+
+        /// Logs directory (default: docs/logs)
+        #[arg(short, long)]
+        logs_dir: Option<PathBuf>,
+
+        /// Path to issues database (default: autopilot.db in cwd)
+        #[arg(long)]
+        db: Option<PathBuf>,
+
+        /// Dry run (show what would be deleted)
+        #[arg(long)]
+        dry_run: bool,
+    },
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     // Setup cleanup handlers for signals and panics
@@ -902,6 +949,7 @@ async fn main() -> Result<()> {
             )
             .await
         }
+        Commands::Logs { command } => handle_logs_command(command).await,
     }
 }
 
@@ -3921,4 +3969,62 @@ async fn handle_benchmark_command(
     }
 
     Ok(())
+}
+
+/// Handle logs commands
+async fn handle_logs_command(command: LogsCommands) -> Result<()> {
+    use autopilot::logs::{self, LogsConfig};
+
+    match command {
+        LogsCommands::Stats { logs_dir } => {
+            let config = LogsConfig {
+                logs_dir: logs_dir.unwrap_or_else(|| PathBuf::from("docs/logs")),
+                ..Default::default()
+            };
+
+            let stats = logs::calculate_log_size(&config)?;
+            logs::print_stats(&stats);
+
+            Ok(())
+        }
+        LogsCommands::Archive { days, logs_dir, dry_run } => {
+            let config = LogsConfig {
+                logs_dir: logs_dir.unwrap_or_else(|| PathBuf::from("docs/logs")),
+                archive_after_days: days,
+                ..Default::default()
+            };
+
+            if dry_run {
+                println!("{} Running in dry-run mode (no changes will be made)\n", "ℹ️ ".cyan());
+            }
+
+            println!("{} Archiving logs older than {} days...\n", "📦".cyan(), days);
+
+            let archived = logs::archive_logs(&config, dry_run)?;
+
+            println!("\n{} Archived {} files", "✓".green(), archived.len());
+
+            Ok(())
+        }
+        LogsCommands::Cleanup { days, logs_dir, db, dry_run } => {
+            let config = LogsConfig {
+                logs_dir: logs_dir.unwrap_or_else(|| PathBuf::from("docs/logs")),
+                delete_after_days: days,
+                db_path: db.or_else(|| Some(PathBuf::from("autopilot.db"))),
+                ..Default::default()
+            };
+
+            if dry_run {
+                println!("{} Running in dry-run mode (no changes will be made)\n", "ℹ️ ".cyan());
+            }
+
+            println!("{} Cleaning up archived logs older than {} days...\n", "🗑️ ".cyan(), days);
+
+            let deleted = logs::cleanup_logs(&config, dry_run)?;
+
+            println!("\n{} Deleted {} files", "✓".green(), deleted.len());
+
+            Ok(())
+        }
+    }
 }
