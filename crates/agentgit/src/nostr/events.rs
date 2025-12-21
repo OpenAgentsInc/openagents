@@ -883,3 +883,238 @@ mod tests {
         assert!(template.content.contains("diff --git"));
     }
 }
+
+/// Builder for NIP-34 kind:30617 repository announcement events
+///
+/// Creates repository announcement events that advertise a git repository on Nostr.
+/// These are parameterized replaceable events keyed by the repository identifier.
+///
+/// # Example
+///
+/// ```rust
+/// use agentgit::nostr::events::RepositoryAnnouncementBuilder;
+///
+/// let template = RepositoryAnnouncementBuilder::new(
+///     "my-awesome-project",
+///     "My Awesome Project",
+/// )
+/// .description("A revolutionary new protocol for...")
+/// .clone_url("git@github.com:user/my-awesome-project.git")
+/// .clone_url("https://github.com/user/my-awesome-project.git")
+/// .web_url("https://github.com/user/my-awesome-project")
+/// .maintainer("npub1abc...")
+/// .earliest_commit("abc123def456")
+/// .default_branch("main")
+/// .build();
+///
+/// // Sign and publish
+/// // let event = identity.sign_event(template)?;
+/// // client.publish_event(event).await?;
+/// ```
+///
+/// # Tags
+///
+/// - `d`: Repository identifier (required, makes it parameterized replaceable)
+/// - `name`: Human-readable repository name
+/// - `description`: Repository description
+/// - `clone`: Clone URL (can have multiple for different protocols)
+/// - `web`: Web interface URL
+/// - `p`: Maintainer pubkeys (can have multiple)
+/// - `r`: Earliest unique commit for fork tracking
+/// - `default_branch`: Default branch name
+pub struct RepositoryAnnouncementBuilder {
+    identifier: String,
+    name: String,
+    description: Option<String>,
+    clone_urls: Vec<String>,
+    web_url: Option<String>,
+    maintainers: Vec<String>,
+    earliest_commit: Option<String>,
+    default_branch: Option<String>,
+}
+
+#[allow(dead_code)]
+impl RepositoryAnnouncementBuilder {
+    /// Create a new repository announcement builder
+    ///
+    /// # Arguments
+    /// * `identifier` - Unique repository identifier (e.g., "my-awesome-project")
+    /// * `name` - Human-readable repository name
+    pub fn new(identifier: impl Into<String>, name: impl Into<String>) -> Self {
+        Self {
+            identifier: identifier.into(),
+            name: name.into(),
+            description: None,
+            clone_urls: Vec::new(),
+            web_url: None,
+            maintainers: Vec::new(),
+            earliest_commit: None,
+            default_branch: None,
+        }
+    }
+
+    /// Set the repository description
+    pub fn description(mut self, desc: impl Into<String>) -> Self {
+        self.description = Some(desc.into());
+        self
+    }
+
+    /// Add a clone URL (can be called multiple times for different protocols)
+    ///
+    /// # Arguments
+    /// * `url` - Clone URL (e.g., "git@github.com:user/repo.git" or "https://...")
+    pub fn clone_url(mut self, url: impl Into<String>) -> Self {
+        self.clone_urls.push(url.into());
+        self
+    }
+
+    /// Set the web interface URL
+    pub fn web_url(mut self, url: impl Into<String>) -> Self {
+        self.web_url = Some(url.into());
+        self
+    }
+
+    /// Add a maintainer pubkey (can be called multiple times)
+    ///
+    /// # Arguments
+    /// * `pubkey` - Maintainer Nostr pubkey (npub or hex)
+    pub fn maintainer(mut self, pubkey: impl Into<String>) -> Self {
+        self.maintainers.push(pubkey.into());
+        self
+    }
+
+    /// Set the earliest unique commit SHA for fork tracking
+    ///
+    /// # Arguments
+    /// * `sha` - Git commit SHA of the earliest commit unique to this repository
+    pub fn earliest_commit(mut self, sha: impl Into<String>) -> Self {
+        self.earliest_commit = Some(sha.into());
+        self
+    }
+
+    /// Set the default branch name
+    pub fn default_branch(mut self, branch: impl Into<String>) -> Self {
+        self.default_branch = Some(branch.into());
+        self
+    }
+
+    /// Build the repository announcement event template
+    ///
+    /// Returns an [`EventTemplate`] with kind:30617 that must be signed before publishing.
+    pub fn build(self) -> EventTemplate {
+        let mut tags = vec![
+            vec!["d".to_string(), self.identifier],
+            vec!["name".to_string(), self.name.clone()],
+        ];
+
+        if let Some(desc) = &self.description {
+            tags.push(vec!["description".to_string(), desc.clone()]);
+        }
+
+        for url in &self.clone_urls {
+            tags.push(vec!["clone".to_string(), url.clone()]);
+        }
+
+        if let Some(web) = &self.web_url {
+            tags.push(vec!["web".to_string(), web.clone()]);
+        }
+
+        for maintainer in &self.maintainers {
+            tags.push(vec!["p".to_string(), maintainer.clone()]);
+        }
+
+        if let Some(commit) = &self.earliest_commit {
+            tags.push(vec!["r".to_string(), commit.clone()]);
+        }
+
+        if let Some(branch) = &self.default_branch {
+            tags.push(vec!["default_branch".to_string(), branch.clone()]);
+        }
+
+        EventTemplate {
+            created_at: SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_secs(),
+            kind: 30617,
+            content: self.description.unwrap_or_default(),
+            tags,
+        }
+    }
+}
+
+#[cfg(test)]
+mod repository_announcement_tests {
+    use super::*;
+
+    #[test]
+    fn test_minimal_repository_announcement() {
+        let template = RepositoryAnnouncementBuilder::new("test-repo", "Test Repository").build();
+
+        assert_eq!(template.kind, 30617);
+        assert_eq!(template.content, "");
+        assert!(template.tags.contains(&vec!["d".to_string(), "test-repo".to_string()]));
+        assert!(template.tags.contains(&vec!["name".to_string(), "Test Repository".to_string()]));
+    }
+
+    #[test]
+    fn test_full_repository_announcement() {
+        let template = RepositoryAnnouncementBuilder::new("awesome-project", "Awesome Project")
+            .description("A revolutionary protocol")
+            .clone_url("git@github.com:user/awesome-project.git")
+            .clone_url("https://github.com/user/awesome-project.git")
+            .web_url("https://github.com/user/awesome-project")
+            .maintainer("npub1alice")
+            .maintainer("npub1bob")
+            .earliest_commit("abc123def456")
+            .default_branch("main")
+            .build();
+
+        assert_eq!(template.kind, 30617);
+        assert_eq!(template.content, "A revolutionary protocol");
+
+        // Check required tags
+        assert!(template.tags.contains(&vec!["d".to_string(), "awesome-project".to_string()]));
+        assert!(template.tags.contains(&vec!["name".to_string(), "Awesome Project".to_string()]));
+
+        // Check optional tags
+        assert!(template.tags.contains(&vec!["description".to_string(), "A revolutionary protocol".to_string()]));
+        assert!(template.tags.contains(&vec!["clone".to_string(), "git@github.com:user/awesome-project.git".to_string()]));
+        assert!(template.tags.contains(&vec!["clone".to_string(), "https://github.com/user/awesome-project.git".to_string()]));
+        assert!(template.tags.contains(&vec!["web".to_string(), "https://github.com/user/awesome-project".to_string()]));
+        assert!(template.tags.contains(&vec!["p".to_string(), "npub1alice".to_string()]));
+        assert!(template.tags.contains(&vec!["p".to_string(), "npub1bob".to_string()]));
+        assert!(template.tags.contains(&vec!["r".to_string(), "abc123def456".to_string()]));
+        assert!(template.tags.contains(&vec!["default_branch".to_string(), "main".to_string()]));
+    }
+
+    #[test]
+    fn test_multiple_clone_urls() {
+        let template = RepositoryAnnouncementBuilder::new("multi-clone", "Multi Clone")
+            .clone_url("git@github.com:user/repo.git")
+            .clone_url("https://github.com/user/repo.git")
+            .clone_url("git@gitlab.com:user/repo.git")
+            .build();
+
+        let clone_tags: Vec<_> = template.tags.iter()
+            .filter(|tag| tag.len() >= 2 && tag[0] == "clone")
+            .collect();
+
+        assert_eq!(clone_tags.len(), 3);
+    }
+
+    #[test]
+    fn test_multiple_maintainers() {
+        let template = RepositoryAnnouncementBuilder::new("team-repo", "Team Repository")
+            .maintainer("npub1alice")
+            .maintainer("npub1bob")
+            .maintainer("npub1charlie")
+            .build();
+
+        let maintainer_tags: Vec<_> = template.tags.iter()
+            .filter(|tag| tag.len() >= 2 && tag[0] == "p")
+            .collect();
+
+        assert_eq!(maintainer_tags.len(), 3);
+    }
+}
