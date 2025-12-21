@@ -3852,6 +3852,7 @@ dependencies = [
  "tao 0.24.1",
  "thiserror 2.0.17",
  "tokio",
+ "toml",
  "tracing",
  "uuid",
  "walkdir",
