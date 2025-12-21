@@ -43,6 +43,9 @@ pub async fn start_server(
             .route("/trajectory/{session_id}", web::get().to(trajectory_detail))
             .route("/agent/{pubkey}", web::get().to(agent_profile))
             .route("/search", web::get().to(search))
+            .route("/watched", web::get().to(watched_repositories))
+            .route("/repo/{identifier}/watch", web::post().to(watch_repository))
+            .route("/repo/{identifier}/unwatch", web::post().to(unwatch_repository))
             .route("/ws", web::get().to(ws_route))
     })
     .bind("127.0.0.1:0")?;
@@ -132,6 +135,9 @@ async fn repository_issues(
             .unwrap_or(&identifier)
     );
 
+    // Check if repository is watched
+    let is_watched = state.nostr_client.is_repository_watched(&identifier).await.unwrap_or(false);
+
     // Fetch issues for this repository
     let issues = match state.nostr_client.get_issues_by_repo(&repo_address, 100).await {
         Ok(iss) => iss,
@@ -143,7 +149,7 @@ async fn repository_issues(
 
     HttpResponse::Ok()
         .content_type("text/html; charset=utf-8")
-        .body(issues_list_page(&repository, &issues).into_string())
+        .body(issues_list_page(&repository, &issues, is_watched, &identifier).into_string())
 }
 
 /// Issue detail page
@@ -765,6 +771,99 @@ async fn agent_profile(
     HttpResponse::Ok()
         .content_type("text/html; charset=utf-8")
         .body(agent_profile_page(&pubkey, &pull_requests, &issue_claims, &reputation_labels).into_string())
+}
+
+/// Watch a repository
+async fn watch_repository(
+    state: web::Data<AppState>,
+    path: web::Path<String>,
+) -> HttpResponse {
+    let identifier = path.into_inner();
+
+    // Get repository to extract address
+    let repository = match state.nostr_client.get_repository_by_identifier(&identifier).await {
+        Ok(Some(repo)) => repo,
+        Ok(None) => {
+            return HttpResponse::NotFound()
+                .content_type("text/html; charset=utf-8")
+                .body(r#"<div class="error-message"><p>❌ Repository not found</p></div>"#);
+        }
+        Err(e) => {
+            tracing::error!("Failed to fetch repository: {}", e);
+            return HttpResponse::InternalServerError()
+                .content_type("text/html; charset=utf-8")
+                .body(r#"<div class="error-message"><p>❌ Error fetching repository</p></div>"#);
+        }
+    };
+
+    // Build repository address
+    let repo_address = format!("30617:{}:{}", repository.pubkey,
+        repository.tags.iter()
+            .find(|t| t.first().map(|s| s == "d").unwrap_or(false))
+            .and_then(|t| t.get(1))
+            .map(|s| s.as_str())
+            .unwrap_or(&identifier)
+    );
+
+    // Watch the repository
+    if let Err(e) = state.nostr_client.watch_repository(&identifier, &repo_address).await {
+        tracing::error!("Failed to watch repository {}: {}", identifier, e);
+        return HttpResponse::InternalServerError()
+            .content_type("text/html; charset=utf-8")
+            .body(r#"<div class="error-message"><p>❌ Failed to watch repository</p></div>"#);
+    }
+
+    HttpResponse::Ok()
+        .content_type("text/html; charset=utf-8")
+        .body(r#"<div class="success-message"><p>✅ Watching repository!</p></div>"#)
+}
+
+/// Unwatch a repository
+async fn unwatch_repository(
+    state: web::Data<AppState>,
+    path: web::Path<String>,
+) -> HttpResponse {
+    let identifier = path.into_inner();
+
+    // Unwatch the repository
+    if let Err(e) = state.nostr_client.unwatch_repository(&identifier).await {
+        tracing::error!("Failed to unwatch repository {}: {}", identifier, e);
+        return HttpResponse::InternalServerError()
+            .content_type("text/html; charset=utf-8")
+            .body(r#"<div class="error-message"><p>❌ Failed to unwatch repository</p></div>"#);
+    }
+
+    HttpResponse::Ok()
+        .content_type("text/html; charset=utf-8")
+        .body(r#"<div class="success-message"><p>✅ Unwatched repository</p></div>"#)
+}
+
+/// Watched repositories page
+async fn watched_repositories(
+    state: web::Data<AppState>,
+) -> HttpResponse {
+    // Get list of watched repository identifiers
+    let watched_ids = match state.nostr_client.get_watched_repositories().await {
+        Ok(ids) => ids,
+        Err(e) => {
+            tracing::error!("Failed to get watched repositories: {}", e);
+            return HttpResponse::InternalServerError()
+                .content_type("text/html; charset=utf-8")
+                .body("<h1>Error loading watched repositories</h1>");
+        }
+    };
+
+    // Fetch repository details for each watched identifier
+    let mut repositories = Vec::new();
+    for id in watched_ids {
+        if let Ok(Some(repo)) = state.nostr_client.get_repository_by_identifier(&id).await {
+            repositories.push(repo);
+        }
+    }
+
+    HttpResponse::Ok()
+        .content_type("text/html; charset=utf-8")
+        .body(crate::views::watched_repositories_page(&repositories).into_string())
 }
 
 /// Search page

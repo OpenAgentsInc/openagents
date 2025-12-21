@@ -244,9 +244,8 @@ pub fn repository_detail_page(repository: &Event) -> Markup {
 }
 
 /// Issues list page for a repository
-pub fn issues_list_page(repository: &Event, issues: &[Event]) -> Markup {
+pub fn issues_list_page(repository: &Event, issues: &[Event], is_watched: bool, identifier: &str) -> Markup {
     let repo_name = get_tag_value(repository, "name").unwrap_or_else(|| "Repository".to_string());
-    let identifier = get_tag_value(repository, "d").unwrap_or_default();
 
     html! {
         (DOCTYPE)
@@ -280,6 +279,23 @@ pub fn issues_list_page(repository: &Event, issues: &[Event]) -> Markup {
                                     p.issues-subtitle { "Viewing issues for repository: " (identifier) }
                                 }
                                 div.issues-actions {
+                                    @if is_watched {
+                                        form
+                                            hx-post={"/repo/" (identifier) "/unwatch"}
+                                            hx-target="this"
+                                            hx-swap="outerHTML"
+                                            style="display: inline;" {
+                                            button.watch-button type="submit" { "⭐ Unwatch" }
+                                        }
+                                    } @else {
+                                        form
+                                            hx-post={"/repo/" (identifier) "/watch"}
+                                            hx-target="this"
+                                            hx-swap="outerHTML"
+                                            style="display: inline;" {
+                                            button.watch-button type="submit" { "☆ Watch" }
+                                        }
+                                    }
                                     a.nav-link href={"/repo/" (identifier) "/issues/new"} { "+ New Issue" }
                                     a.back-link href={"/repo/" (identifier)} { "← Back to Repository" }
                                 }
@@ -1910,6 +1926,88 @@ pub fn search_results_page(query: &str, repositories: &[Event], issues: &[Event]
                             div.empty-state {
                                 p { "No results found for \"" (query) "\"" }
                                 p { "Try different keywords or check your spelling." }
+                            }
+                        }
+                    }
+                }
+                footer {
+                    p { "Powered by NIP-34 (Git Stuff) • NIP-50 (Search) • NIP-57 (Zaps)" }
+                }
+            }
+        }
+    }
+}
+
+/// Watched repositories page
+pub fn watched_repositories_page(repositories: &[Event]) -> Markup {
+    html! {
+        (DOCTYPE)
+        html lang="en" {
+            head {
+                meta charset="utf-8";
+                meta name="viewport" content="width=device-width, initial-scale=1.0";
+                title { "Watched Repositories - AgentGit" }
+                script src="https://unpkg.com/htmx.org@2.0.4" {}
+                style {
+                    (include_str!("./styles.css"))
+                }
+            }
+            body {
+                header {
+                    h1 { "⚡ AgentGit" }
+                    p.subtitle { "Nostr-native GitHub Alternative" }
+                }
+                main {
+                    nav {
+                        a href="/" { "Repositories" }
+                        a href="/watched" class="active" { "Watched" }
+                        a href="/search" { "Search" }
+                    }
+                    div.content {
+                        div.repositories-container {
+                            h1 { "⭐ Watched Repositories" }
+                            
+                            @if repositories.is_empty() {
+                                div.empty-state {
+                                    p { "You're not watching any repositories yet." }
+                                    p.info-text { "Watch repositories to get notified about new issues and pull requests." }
+                                    a href="/" { "Browse repositories →" }
+                                }
+                            } @else {
+                                p.repositories-count { (repositories.len()) " watched repositories" }
+                                
+                                div.repositories-list {
+                                    @for repo in repositories {
+                                        @let repo_name = get_tag_value(repo, "name")
+                                            .unwrap_or_else(|| "Unnamed Repository".to_string());
+                                        @let description = if !repo.content.is_empty() {
+                                            repo.content.clone()
+                                        } else {
+                                            "No description provided".to_string()
+                                        };
+                                        @let identifier = get_tag_value(repo, "d")
+                                            .unwrap_or_else(|| repo.id.clone());
+
+                                        div.repo-card {
+                                            a.repo-link href={"/repo/" (identifier)} {
+                                                h3.repo-name { (repo_name) }
+                                            }
+                                            p.repo-description { (description) }
+                                            div.repo-meta {
+                                                span.repo-author {
+                                                    @let author_short = if repo.pubkey.len() > 16 {
+                                                        format!("{}...{}", &repo.pubkey[..8], &repo.pubkey[repo.pubkey.len()-8..])
+                                                    } else {
+                                                        repo.pubkey.clone()
+                                                    };
+                                                    "by " (author_short)
+                                                }
+                                                span.repo-separator { "•" }
+                                                a.repo-link href={"/repo/" (identifier)} { "View Issues" }
+                                            }
+                                        }
+                                    }
+                                }
                             }
                         }
                     }

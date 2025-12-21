@@ -294,4 +294,24 @@ impl NostrClient {
     pub async fn search_issues(&self, query: &str, limit: usize) -> Result<Vec<Event>> {
         self.cache.lock().await.search_issues(query, limit)
     }
+
+    /// Watch a repository
+    pub async fn watch_repository(&self, repo_identifier: &str, repo_address: &str) -> Result<()> {
+        self.cache.lock().await.watch_repository(repo_identifier, repo_address)
+    }
+
+    /// Unwatch a repository
+    pub async fn unwatch_repository(&self, repo_identifier: &str) -> Result<()> {
+        self.cache.lock().await.unwatch_repository(repo_identifier)
+    }
+
+    /// Check if a repository is watched
+    pub async fn is_repository_watched(&self, repo_identifier: &str) -> Result<bool> {
+        self.cache.lock().await.is_repository_watched(repo_identifier)
+    }
+
+    /// Get all watched repositories
+    pub async fn get_watched_repositories(&self) -> Result<Vec<String>> {
+        self.cache.lock().await.get_watched_repositories()
+    }
 }
