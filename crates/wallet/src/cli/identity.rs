@@ -481,15 +481,100 @@ pub fn post(content: String) -> Result<()> {
 }
 
 pub fn dm(recipient: String, message: String) -> Result<()> {
-    println!("{}", "Sending direct message...".cyan());
+    use bip39::Mnemonic;
+    use crate::core::client::NostrClient;
+    use crate::storage::config::WalletConfig;
 
-    // TODO: Validate recipient npub
-    // TODO: Create NIP-17 DM event
-    // TODO: Encrypt and publish
+    println!("{}", "Sending encrypted DM (NIP-04)...".cyan());
 
-    println!("  {} → {}", "To".bold(), recipient);
+    // Check if wallet exists
+    if !SecureKeychain::has_mnemonic() {
+        anyhow::bail!("No wallet found. Use 'wallet init' to create one.");
+    }
+
+    // Parse recipient npub
+    let recipient_pubkey = match nostr::decode(&recipient) {
+        Ok(nostr::Nip19Entity::Pubkey(pk)) => pk,
+        Ok(nostr::Nip19Entity::Profile(p)) => p.pubkey,
+        _ => anyhow::bail!("Invalid recipient. Expected npub or nprofile."),
+    };
+
+    // Load identity
+    let mnemonic_str = SecureKeychain::retrieve_mnemonic()?;
+    let mnemonic = Mnemonic::parse(&mnemonic_str)?;
+    let identity = UnifiedIdentity::from_mnemonic(mnemonic)?;
+
+    // Get sender's private key bytes (nostr_secret_key returns hex string)
+    let sender_privkey_hex = identity.nostr_secret_key();
+    let sender_privkey_vec = hex::decode(sender_privkey_hex)?;
+    let sender_privkey: [u8; 32] = sender_privkey_vec.try_into()
+        .map_err(|_| anyhow::anyhow!("Invalid private key length"))?;
+
+    // Convert recipient pubkey to compressed format (33 bytes with 0x02 or 0x03 prefix)
+    // The NIP-04 encrypt function expects a secp256k1 public key
+    let mut recipient_pk_compressed = [0u8; 33];
+    recipient_pk_compressed[0] = 0x02; // Even y-coordinate (standard convention for x-only pubkeys)
+    recipient_pk_compressed[1..].copy_from_slice(&recipient_pubkey);
+
+    // Encrypt message using NIP-04
+    let encrypted_content = nostr::encrypt(&sender_privkey, &recipient_pk_compressed, &message)
+        .map_err(|e| anyhow::anyhow!("Encryption failed: {}", e))?;
+
+    // Create kind:4 event with encrypted content and p-tag
+    let template = nostr::EventTemplate {
+        created_at: std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)?
+            .as_secs(),
+        kind: nostr::ENCRYPTED_DM_KIND,
+        tags: vec![
+            vec!["p".to_string(), hex::encode(recipient_pubkey)],
+        ],
+        content: encrypted_content,
+    };
+
+    let event = identity.sign_event(template)
+        .context("Failed to sign DM event")?;
+
+    println!("  {} → {}", "To".bold(), &recipient[..20]);
     println!("  {}", message);
-    println!("{}", "✓ Sent".green());
+    println!();
+
+    // Load config and publish to relays
+    let config = WalletConfig::load()?;
+
+    if config.nostr.relays.is_empty() {
+        println!("{}", "⚠ No relays configured. Use 'wallet relays add <url>' to add relays.".yellow());
+        println!("{}: {}", "Event ID".bold(), event.id);
+        return Ok(());
+    }
+
+    println!("{}", "Publishing to relays...".cyan());
+
+    let client = NostrClient::new(config.nostr.relays.clone());
+    let rt = tokio::runtime::Runtime::new()?;
+    let results = rt.block_on(client.publish_event(&event))?;
+
+    let mut success_count = 0;
+    let mut fail_count = 0;
+
+    for result in results {
+        if result.is_success() {
+            success_count += 1;
+        } else {
+            fail_count += 1;
+        }
+    }
+
+    println!();
+    if success_count > 0 {
+        println!("{} Sent to {}/{} relay(s)", "✓".green(), success_count, success_count + fail_count);
+    }
+    if fail_count > 0 {
+        println!("{} {} relay(s) failed", "⚠".yellow(), fail_count);
+    }
+
+    println!();
+    println!("{}: {}", "Event ID".bold(), event.id);
 
     Ok(())
 }
