@@ -199,6 +199,11 @@ impl NostrClient {
         self.cache.lock().await.get_repository_by_identifier(identifier)
     }
 
+    /// Get issues for a specific repository by its address tag
+    pub async fn get_issues_by_repo(&self, repo_address: &str, limit: usize) -> Result<Vec<Event>> {
+        self.cache.lock().await.get_issues_by_repo(repo_address, limit)
+    }
+
     /// Get cache statistics
     #[allow(dead_code)]
     pub async fn get_cache_stats(&self) -> Result<crate::nostr::cache::CacheStats> {
