@@ -134,9 +134,10 @@ pub fn run(cmd: AutopilotCommands) -> anyhow::Result<()> {
         AutopilotCommands::Dashboard { port } => {
             let runtime = tokio::runtime::Runtime::new()?;
             runtime.block_on(async {
-                // Use default db path
-                let db_path = "autopilot.db";
-                autopilot::dashboard::start_dashboard(db_path, port).await
+                // Use workspace root db path
+                let db_path = autopilot::default_db_path();
+                let db_str = db_path.to_string_lossy();
+                autopilot::dashboard::start_dashboard(&db_str, port).await
             })
         }
         AutopilotCommands::Replay { trajectory } => {

@@ -3,6 +3,8 @@
 //! This crate provides a CLI tool that executes tasks via the Claude Agent SDK
 //! and logs the complete trajectory in both rlog and JSON formats.
 
+use std::path::PathBuf;
+
 pub mod analyze;
 pub mod auto_issues;
 pub mod benchmark;
@@ -555,4 +557,43 @@ pub fn extract_session_id_from_rlog(path: &std::path::Path) -> anyhow::Result<Op
     }
 
     Ok(None)
+}
+
+/// Find the workspace root directory by looking for Cargo.toml with [workspace].
+///
+/// Starts from the current directory and walks up until it finds a Cargo.toml
+/// containing `[workspace]`. This ensures autopilot.db is always created at
+/// the workspace root, not in subdirectories.
+///
+/// Returns the current directory if no workspace root is found (fallback).
+pub fn find_workspace_root() -> PathBuf {
+    let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+    let mut current = cwd.as_path();
+
+    loop {
+        let cargo_toml = current.join("Cargo.toml");
+        if cargo_toml.exists() {
+            if let Ok(content) = std::fs::read_to_string(&cargo_toml) {
+                if content.contains("[workspace]") {
+                    return current.to_path_buf();
+                }
+            }
+        }
+
+        match current.parent() {
+            Some(parent) => current = parent,
+            None => break,
+        }
+    }
+
+    // Fallback to current directory if no workspace found
+    cwd
+}
+
+/// Get the default path for autopilot.db at the workspace root.
+///
+/// This ensures the database is always created in a consistent location
+/// regardless of which subdirectory the command is run from.
+pub fn default_db_path() -> PathBuf {
+    find_workspace_root().join("autopilot.db")
 }

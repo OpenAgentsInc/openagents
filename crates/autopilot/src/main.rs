@@ -264,7 +264,7 @@ async fn check_and_handle_stale_lockfile(cwd: &PathBuf) -> Result<()> {
             );
 
             use issues::{db, issue};
-            let db_path = cwd.join("autopilot.db");
+            let db_path = autopilot::default_db_path();
             let conn = db::init_db(&db_path)?;
 
             if let Some(i) = issue::get_issue_by_number(&conn, issue_num)? {
@@ -354,7 +354,7 @@ enum Commands {
         #[arg(long)]
         with_issues: bool,
 
-        /// Path to issues database (default: autopilot.db in cwd)
+        /// Path to issues database (default: autopilot.db in workspace root)
         #[arg(long)]
         issues_db: Option<PathBuf>,
 
@@ -430,7 +430,7 @@ enum Commands {
         #[arg(long)]
         with_issues: bool,
 
-        /// Path to issues database (default: autopilot.db in cwd)
+        /// Path to issues database (default: autopilot.db in workspace root)
         #[arg(long)]
         issues_db: Option<PathBuf>,
     },
@@ -503,7 +503,7 @@ enum IssueCommands {
         #[arg(short, long)]
         status: Option<String>,
 
-        /// Path to issues database (default: autopilot.db in cwd)
+        /// Path to issues database (default: autopilot.db in workspace root)
         #[arg(long)]
         db: Option<PathBuf>,
     },
@@ -529,7 +529,7 @@ enum IssueCommands {
         #[arg(short, long, default_value = "claude")]
         agent: String,
 
-        /// Path to issues database (default: autopilot.db in cwd)
+        /// Path to issues database (default: autopilot.db in workspace root)
         #[arg(long)]
         db: Option<PathBuf>,
     },
@@ -543,7 +543,7 @@ enum IssueCommands {
         #[arg(short, long)]
         run_id: Option<String>,
 
-        /// Path to issues database (default: autopilot.db in cwd)
+        /// Path to issues database (default: autopilot.db in workspace root)
         #[arg(long)]
         db: Option<PathBuf>,
     },
@@ -553,7 +553,7 @@ enum IssueCommands {
         #[arg(required = true)]
         number: i32,
 
-        /// Path to issues database (default: autopilot.db in cwd)
+        /// Path to issues database (default: autopilot.db in workspace root)
         #[arg(long)]
         db: Option<PathBuf>,
     },
@@ -567,7 +567,7 @@ enum IssueCommands {
         #[arg(required = true)]
         reason: String,
 
-        /// Path to issues database (default: autopilot.db in cwd)
+        /// Path to issues database (default: autopilot.db in workspace root)
         #[arg(long)]
         db: Option<PathBuf>,
     },
@@ -577,7 +577,7 @@ enum IssueCommands {
         #[arg(short, long)]
         agent: Option<String>,
 
-        /// Path to issues database (default: autopilot.db in cwd)
+        /// Path to issues database (default: autopilot.db in workspace root)
         #[arg(long)]
         db: Option<PathBuf>,
     },
@@ -591,7 +591,7 @@ enum IssueCommands {
         #[arg(long)]
         include_completed: bool,
 
-        /// Path to issues database (default: autopilot.db in cwd)
+        /// Path to issues database (default: autopilot.db in workspace root)
         #[arg(long)]
         db: Option<PathBuf>,
     },
@@ -605,7 +605,7 @@ enum IssueCommands {
         #[arg(long)]
         force: bool,
 
-        /// Path to issues database (default: autopilot.db in cwd)
+        /// Path to issues database (default: autopilot.db in workspace root)
         #[arg(long)]
         db: Option<PathBuf>,
     },
@@ -635,13 +635,13 @@ enum ProjectCommands {
         #[arg(short, long)]
         budget: Option<f64>,
 
-        /// Path to issues database (default: autopilot.db in cwd)
+        /// Path to issues database (default: autopilot.db in workspace root)
         #[arg(long)]
         db: Option<PathBuf>,
     },
     /// List all projects
     List {
-        /// Path to issues database (default: autopilot.db in cwd)
+        /// Path to issues database (default: autopilot.db in workspace root)
         #[arg(long)]
         db: Option<PathBuf>,
     },
@@ -651,7 +651,7 @@ enum ProjectCommands {
         #[arg(required = true)]
         name: String,
 
-        /// Path to issues database (default: autopilot.db in cwd)
+        /// Path to issues database (default: autopilot.db in workspace root)
         #[arg(long)]
         db: Option<PathBuf>,
     },
@@ -665,7 +665,7 @@ enum SessionCommands {
         #[arg(short, long)]
         project: Option<String>,
 
-        /// Path to issues database (default: autopilot.db in cwd)
+        /// Path to issues database (default: autopilot.db in workspace root)
         #[arg(long)]
         db: Option<PathBuf>,
     },
@@ -675,7 +675,7 @@ enum SessionCommands {
         #[arg(required = true)]
         id: String,
 
-        /// Path to issues database (default: autopilot.db in cwd)
+        /// Path to issues database (default: autopilot.db in workspace root)
         #[arg(long)]
         db: Option<PathBuf>,
     },
@@ -803,7 +803,7 @@ enum MetricsCommands {
         #[arg(long)]
         metrics_db: Option<PathBuf>,
 
-        /// Path to issues database (default: autopilot.db in cwd)
+        /// Path to issues database (default: autopilot.db in workspace root)
         #[arg(long)]
         issues_db: Option<PathBuf>,
 
@@ -926,7 +926,7 @@ enum LogsCommands {
         #[arg(short, long)]
         logs_dir: Option<PathBuf>,
 
-        /// Path to issues database (default: autopilot.db in cwd)
+        /// Path to issues database (default: autopilot.db in workspace root)
         #[arg(long)]
         db: Option<PathBuf>,
 
@@ -1400,7 +1400,7 @@ async fn run_full_auto_loop(
         }
 
         // Check if there are more issues to work on
-        let default_db = cwd.join("autopilot.db");
+        let default_db = autopilot::default_db_path();
         let db_path = issues_db.unwrap_or(&default_db);
 
         let has_more_work = if let Ok(conn) = db::init_db(db_path) {
@@ -1711,7 +1711,7 @@ async fn run_task(
     let (cwd, issues_db, project_id) = if let Some(project_name) = project {
         use issues::{db, project};
 
-        let default_db = std::env::current_dir()?.join("autopilot.db");
+        let default_db = autopilot::default_db_path();
         let conn = db::init_db(&default_db)?;
 
         match project::get_project_by_name(&conn, &project_name)? {
@@ -1740,7 +1740,7 @@ async fn run_task(
     let session_id = if let Some(ref proj_id) = project_id {
         use issues::{db, session};
 
-        let default_db = cwd.join("autopilot.db");
+        let default_db = autopilot::default_db_path();
         let db_path = issues_db.as_ref().unwrap_or(&default_db);
         let conn = db::init_db(db_path)?;
 
@@ -1886,7 +1886,7 @@ async fn run_task(
     // Write .mcp.json file for issue tracking MCP server if requested
     if with_issues {
         let mcp_json_path = cwd.join(".mcp.json");
-        let default_issues_db = cwd.join("autopilot.db");
+        let default_issues_db = autopilot::default_db_path();
         let db_path = issues_db
             .as_ref()
             .unwrap_or(&default_issues_db)
@@ -2023,7 +2023,7 @@ async fn run_task(
         // Update session with trajectory path if we have a session
         if let Some(ref sess_id) = session_id {
             use issues::{db, session};
-            let default_db = cwd.join("autopilot.db");
+            let default_db = autopilot::default_db_path();
             let db_path = issues_db.as_ref().unwrap_or(&default_db);
             if let Ok(conn) = db::init_db(db_path) {
                 let _ = session::update_session_trajectory(&conn, sess_id, &json_path.display().to_string());
@@ -2034,7 +2034,7 @@ async fn run_task(
     // Update session status on completion
     if let Some(ref sess_id) = session_id {
         use issues::{db, session, SessionStatus};
-        let default_db = cwd.join("autopilot.db");
+        let default_db = autopilot::default_db_path();
         let db_path = issues_db.as_ref().unwrap_or(&default_db);
         if let Ok(conn) = db::init_db(db_path) {
             let status = if trajectory.result.as_ref().map(|r| r.success).unwrap_or(false) {
@@ -2555,7 +2555,7 @@ async fn resume_task(
     if with_issues {
         let mcp_json_path = cwd.join(".mcp.json");
         let db_path = issues_db
-            .unwrap_or_else(|| cwd.join("autopilot.db"))
+            .unwrap_or_else(|| autopilot::default_db_path())
             .display()
             .to_string();
 
@@ -2757,7 +2757,7 @@ async fn analyze_trajectories(path: PathBuf, aggregate: bool, json_output: bool)
 async fn handle_session_command(command: SessionCommands) -> Result<()> {
     use issues::{db, project, session};
 
-    let default_db = std::env::current_dir()?.join("autopilot.db");
+    let default_db = autopilot::default_db_path();
 
     match command {
         SessionCommands::List { project: proj_name, db } => {
@@ -2851,7 +2851,7 @@ async fn handle_session_command(command: SessionCommands) -> Result<()> {
 async fn handle_project_command(command: ProjectCommands) -> Result<()> {
     use issues::{db, project, session};
 
-    let default_db = std::env::current_dir()?.join("autopilot.db");
+    let default_db = autopilot::default_db_path();
 
     match command {
         ProjectCommands::Add {
@@ -2946,7 +2946,7 @@ async fn handle_project_command(command: ProjectCommands) -> Result<()> {
 async fn handle_issue_command(command: IssueCommands) -> Result<()> {
     use issues::{db, issue, IssueType, Priority, Status};
 
-    let default_db = std::env::current_dir()?.join("autopilot.db");
+    let default_db = autopilot::default_db_path();
 
     match command {
         IssueCommands::List { status, db } => {
@@ -3227,7 +3227,7 @@ async fn handle_issue_command(command: IssueCommands) -> Result<()> {
 async fn handle_directive_command(command: DirectiveCommands) -> Result<()> {
     use issues::{db, directive, DirectiveStatus};
 
-    let default_db = std::env::current_dir()?.join("autopilot.db");
+    let default_db = autopilot::default_db_path();
     let directives_dir = std::env::current_dir()?.join(".openagents/directives");
 
     match command {

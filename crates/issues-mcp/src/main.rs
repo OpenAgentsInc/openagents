@@ -896,11 +896,35 @@ impl McpServer {
     }
 }
 
+/// Find workspace root by looking for Cargo.toml with [workspace]
+fn find_workspace_root() -> PathBuf {
+    let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+    let mut current = cwd.as_path();
+
+    loop {
+        let cargo_toml = current.join("Cargo.toml");
+        if cargo_toml.exists() {
+            if let Ok(content) = std::fs::read_to_string(&cargo_toml) {
+                if content.contains("[workspace]") {
+                    return current.to_path_buf();
+                }
+            }
+        }
+
+        match current.parent() {
+            Some(parent) => current = parent,
+            None => break,
+        }
+    }
+
+    cwd
+}
+
 fn main() -> Result<()> {
-    // Get database path from environment or use default
+    // Get database path from environment or use default at workspace root
     let db_path = std::env::var("ISSUES_DB")
         .map(PathBuf::from)
-        .unwrap_or_else(|_| PathBuf::from("autopilot.db"));
+        .unwrap_or_else(|_| find_workspace_root().join("autopilot.db"));
 
     let server = McpServer::new(db_path)?;
 
