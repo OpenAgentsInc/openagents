@@ -29,11 +29,10 @@ Both frameworks reject the "single genius AGI" assumption that dominates most AI
 **DeepMind's Formulation:**
 > "AGI may initially emerge as a patchwork system, distributed across entities within a network. A Patchwork AGI would be comprised of a group of individual sub-AGI agents, with complementary skills and affordances. General intelligence in the patchwork AGI system would arise primarily as collective intelligence."
 
-**OpenAgents' Formulation (via Séb Krier, Google DeepMind):**
-> "People overrate individual intelligence: most innovations are the product of social organisations (cooperation) and market dynamics (competition), not a single genius savant."
-
-And from OpenAgents' Reed's Law synthesis:
+**OpenAgents' Formulation (from Reed's Law Synthesis):**
 > "The value isn't in individual agent capability—it's in the combinatorial explosion of possible agent coalitions. A single genius agent: value = 1. N cooperating agents: value approaches 2^N. The math strongly favors organization over raw capability."
+
+Reed's Law (V ∝ 2^N) mathematically demonstrates why coordination dominates raw capability. For N agents, the possible coalitions are 2^N - N - 1. The exponential nature of coalition formation means that organizational infrastructure—how agents discover, coordinate with, and settle payments between each other—determines more value than any individual agent's capabilities.
 
 **Key Agreement**: Both recognize that AGI-level capabilities may first emerge through coordination of sub-AGI agents, not through a single breakthrough model. This is a profound convergence—two independent analyses arriving at the same structural prediction.
 
