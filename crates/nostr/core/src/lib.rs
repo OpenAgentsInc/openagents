@@ -31,6 +31,7 @@
 //! - NIP-31: Alt Tag for Unknown Events (graceful degradation)
 //! - NIP-32: Labeling (content moderation and categorization)
 //! - NIP-33: Parameterized Replaceable Events (deprecated, moved to NIP-01)
+//! - NIP-35: Torrents (BitTorrent file sharing index)
 //! - NIP-36: Sensitive Content / Content Warning
 //! - NIP-37: Draft Wraps (encrypted draft storage and private relay lists)
 //! - NIP-38: User Statuses (live status updates)
@@ -110,6 +111,7 @@ mod nip30;
 mod nip31;
 mod nip32;
 mod nip33;
+mod nip35;
 mod nip36;
 mod nip37;
 mod nip38;
@@ -335,6 +337,14 @@ pub use nip33::{
     ADDRESSABLE_KIND_MAX, ADDRESSABLE_KIND_MIN, D_TAG, Nip33Error, create_a_tag, create_address,
     get_a_tags, get_d_tag, get_event_address, parse_address, set_d_tag,
     validate_addressable_event,
+};
+
+// NIP-35: Torrents
+pub use nip35::{
+    FILE_TAG, INFO_HASH_TAG, Nip35Error, TITLE_TAG, TORRENT_COMMENT_KIND, TORRENT_KIND,
+    TRACKER_TAG, Torrent, TorrentFile, create_info_hash_tag, create_title_tag,
+    create_tracker_tag, get_external_ids, is_nip35_kind, is_torrent_comment_kind,
+    is_torrent_kind,
 };
 
 // NIP-36: Sensitive Content / Content Warning
