@@ -7,6 +7,7 @@ use super::ws::WsBroadcaster;
 
 /// Tab identifiers for navigation
 #[derive(Clone, Copy, PartialEq, Eq, Default)]
+#[allow(dead_code)] // Future feature - tabs not yet implemented in UI
 pub enum Tab {
     #[default]
     Wallet,
@@ -18,6 +19,7 @@ pub enum Tab {
 }
 
 impl Tab {
+    #[allow(dead_code)] // Future feature - tabs not yet implemented in UI
     pub fn as_str(&self) -> &'static str {
         match self {
             Tab::Wallet => "wallet",
@@ -36,6 +38,7 @@ pub struct AppState {
     pub broadcaster: Arc<WsBroadcaster>,
 
     /// Currently active tab
+    #[allow(dead_code)] // Future feature - tabs not yet implemented in UI
     pub active_tab: RwLock<Tab>,
 }
 
