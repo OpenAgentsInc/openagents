@@ -2,7 +2,7 @@
 
 use anyhow::{Context, Result};
 use nostr::Event;
-use rusqlite::{params, Connection};
+use rusqlite::{params, Connection, OptionalExtension};
 use std::path::PathBuf;
 use tracing::{debug, info};
 
@@ -634,6 +634,82 @@ impl EventCache {
             .filter(|event| {
                 event.tags.iter().any(|tag| {
                     tag.len() >= 2 && tag[0] == "e" && tag[1] == issue_event_id
+                })
+            })
+            .collect();
+
+        Ok(filtered)
+    }
+
+    /// Get trajectory session by ID
+    /// Trajectory sessions are kind:38030 events
+    pub fn get_trajectory_session(&self, session_id: &str) -> Result<Option<Event>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, kind, pubkey, created_at, content, tags, sig
+             FROM events
+             WHERE kind = 38030 AND id = ?1",
+        )?;
+
+        let event = stmt.query_row(params![session_id], |row| {
+            let tags_json: String = row.get(5)?;
+            let tags: Vec<Vec<String>> = serde_json::from_str(&tags_json)
+                .map_err(|e| rusqlite::Error::FromSqlConversionFailure(
+                    5,
+                    rusqlite::types::Type::Text,
+                    Box::new(e),
+                ))?;
+
+            Ok(Event {
+                id: row.get(0)?,
+                kind: row.get(1)?,
+                pubkey: row.get(2)?,
+                created_at: row.get(3)?,
+                content: row.get(4)?,
+                tags,
+                sig: row.get(6)?,
+            })
+        }).optional()?;
+
+        Ok(event)
+    }
+
+    /// Get trajectory events for a session
+    /// Trajectory events are kind:38031 events that reference a session via e tag
+    pub fn get_trajectory_events(&self, session_id: &str) -> Result<Vec<Event>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, kind, pubkey, created_at, content, tags, sig
+             FROM events
+             WHERE kind = 38031
+             ORDER BY created_at ASC",
+        )?;
+
+        let events = stmt
+            .query_map([], |row| {
+                let tags_json: String = row.get(5)?;
+                let tags: Vec<Vec<String>> = serde_json::from_str(&tags_json)
+                    .map_err(|e| rusqlite::Error::FromSqlConversionFailure(
+                        5,
+                        rusqlite::types::Type::Text,
+                        Box::new(e),
+                    ))?;
+
+                Ok(Event {
+                    id: row.get(0)?,
+                    kind: row.get(1)?,
+                    pubkey: row.get(2)?,
+                    created_at: row.get(3)?,
+                    content: row.get(4)?,
+                    tags,
+                    sig: row.get(6)?,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+
+        // Filter events that reference this session
+        let filtered: Vec<Event> = events.into_iter()
+            .filter(|event| {
+                event.tags.iter().any(|tag| {
+                    tag.len() >= 2 && tag[0] == "e" && tag[1] == session_id
                 })
             })
             .collect();

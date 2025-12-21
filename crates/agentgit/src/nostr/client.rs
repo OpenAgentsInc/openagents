@@ -81,7 +81,7 @@ impl NostrClient {
     pub async fn subscribe_to_git_events(&self) -> Result<()> {
         info!("Subscribing to NIP-34 git events...");
 
-        // Create filter for NIP-34 git events
+        // Create filter for NIP-34 git events and trajectory events
         let filters = vec![json!({
             "kinds": [
                 kinds::REPOSITORY_ANNOUNCEMENT,
@@ -98,6 +98,8 @@ impl NostrClient {
                 kinds::WORK_ASSIGNMENT,
                 kinds::BOUNTY_OFFER,
                 kinds::BOUNTY_CLAIM,
+                38030, // Trajectory Session
+                38031, // Trajectory Event
             ],
             "limit": 100
         })];
@@ -244,5 +246,15 @@ impl NostrClient {
     /// Get bounty offers for a specific issue
     pub async fn get_bounties_for_issue(&self, issue_event_id: &str) -> Result<Vec<Event>> {
         self.cache.lock().await.get_bounties_for_issue(issue_event_id)
+    }
+
+    /// Get trajectory session by ID
+    pub async fn get_trajectory_session(&self, session_id: &str) -> Result<Option<Event>> {
+        self.cache.lock().await.get_trajectory_session(session_id)
+    }
+
+    /// Get trajectory events for a session
+    pub async fn get_trajectory_events(&self, session_id: &str) -> Result<Vec<Event>> {
+        self.cache.lock().await.get_trajectory_events(session_id)
     }
 }
