@@ -846,6 +846,83 @@ impl MetricsDb {
 
         Ok(anomalies)
     }
+
+    /// Get recent sessions (most recent first)
+    pub fn get_recent_sessions(&self, limit: usize) -> Result<Vec<SessionMetrics>> {
+        let mut stmt = self.conn.prepare(
+            r#"
+            SELECT id, timestamp, model, prompt, duration_seconds,
+                   tokens_in, tokens_out, tokens_cached, cost_usd,
+                   issues_claimed, issues_completed, tool_calls,
+                   tool_errors, final_status
+            FROM sessions
+            ORDER BY timestamp DESC
+            LIMIT ?1
+            "#,
+        )?;
+
+        let sessions = stmt
+            .query_map(params![limit as i64], |row| {
+                Ok(SessionMetrics {
+                    id: row.get(0)?,
+                    timestamp: row.get::<_, String>(1)?.parse().unwrap(),
+                    model: row.get(2)?,
+                    prompt: row.get(3)?,
+                    duration_seconds: row.get(4)?,
+                    tokens_in: row.get(5)?,
+                    tokens_out: row.get(6)?,
+                    tokens_cached: row.get(7)?,
+                    cost_usd: row.get(8)?,
+                    issues_claimed: row.get(9)?,
+                    issues_completed: row.get(10)?,
+                    tool_calls: row.get(11)?,
+                    tool_errors: row.get(12)?,
+                    final_status: match row.get::<_, String>(13)?.as_str() {
+                        "completed" => SessionStatus::Completed,
+                        "crashed" => SessionStatus::Crashed,
+                        "budget_exhausted" => SessionStatus::BudgetExhausted,
+                        "max_turns" => SessionStatus::MaxTurns,
+                        "running" => SessionStatus::Running,
+                        _ => SessionStatus::Crashed,
+                    },
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+
+        Ok(sessions)
+    }
+
+    /// Get summary statistics for dashboard
+    pub fn get_summary_stats(&self) -> Result<crate::dashboard::SummaryStats> {
+        let mut stmt = self.conn.prepare(
+            r#"
+            SELECT
+                COUNT(*) as total_sessions,
+                COALESCE(SUM(issues_completed), 0) as total_issues,
+                COALESCE(SUM(cost_usd), 0) as total_cost,
+                COALESCE(AVG(duration_seconds), 0) as avg_duration,
+                COALESCE(AVG(tokens_in + tokens_out), 0) as avg_tokens,
+                COALESCE(
+                    CAST(SUM(issues_completed) AS REAL) / NULLIF(SUM(issues_claimed), 0),
+                    0
+                ) as completion_rate
+            FROM sessions
+            "#,
+        )?;
+
+        let stats = stmt.query_row([], |row| {
+            Ok(crate::dashboard::SummaryStats {
+                total_sessions: row.get(0)?,
+                total_issues_completed: row.get(1)?,
+                total_cost_usd: row.get(2)?,
+                avg_duration_seconds: row.get(3)?,
+                avg_tokens_per_session: row.get(4)?,
+                completion_rate: row.get(5)?,
+            })
+        })?;
+
+        Ok(stats)
+    }
 }
 
 /// Get default metrics database path
@@ -1487,3 +1564,4 @@ mod tests {
         assert_eq!(retrieved.sample_count, 100);
     }
 }
+

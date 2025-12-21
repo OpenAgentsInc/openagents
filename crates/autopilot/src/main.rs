@@ -771,6 +771,17 @@ enum MetricsCommands {
         #[arg(long)]
         dry_run: bool,
     },
+
+    /// Start web dashboard for metrics visualization
+    Dashboard {
+        /// Path to metrics database (default: autopilot-metrics.db)
+        #[arg(long)]
+        metrics_db: Option<PathBuf>,
+
+        /// Port to bind to (default: 3000)
+        #[arg(short, long, default_value_t = 3000)]
+        port: u16,
+    },
 }
 
 #[tokio::main]
@@ -3522,6 +3533,29 @@ async fn handle_metrics_command(command: MetricsCommands) -> Result<()> {
             }
 
             println!("{}", "=".repeat(80));
+        }
+        MetricsCommands::Dashboard {
+            metrics_db,
+            port,
+        } => {
+            use autopilot::dashboard::start_dashboard;
+
+            let db_path = metrics_db
+                .unwrap_or_else(default_db_path)
+                .to_string_lossy()
+                .to_string();
+
+            println!("{}", "=".repeat(80));
+            println!("{} Starting Autopilot Metrics Dashboard", "📊".cyan().bold());
+            println!("{}", "=".repeat(80));
+            println!();
+            println!("  Database: {}", db_path);
+            println!("  URL: http://127.0.0.1:{}", port);
+            println!();
+            println!("  Press Ctrl+C to stop");
+            println!();
+
+            start_dashboard(&db_path, port).await?;
         }
         MetricsCommands::CreateIssues {
             metrics_db,
