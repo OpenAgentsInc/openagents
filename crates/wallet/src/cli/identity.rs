@@ -306,8 +306,45 @@ pub fn profile_set(
 
     println!();
     println!("{}", "✓ Profile updated locally".green());
+
+    // Publish to relays
+    if !config.nostr.relays.is_empty() {
+        println!();
+        println!("{}", "Publishing to relays...".cyan());
+
+        use crate::core::client::NostrClient;
+
+        let client = NostrClient::new(config.nostr.relays.clone());
+        let rt = tokio::runtime::Runtime::new()?;
+        let results = rt.block_on(client.publish_event(&event))?;
+
+        let mut success_count = 0;
+        let mut fail_count = 0;
+
+        for result in results {
+            if result.is_success() {
+                println!("  {} {}", "✓".green(), result.relay_url);
+                success_count += 1;
+            } else {
+                let error = result.error_message().unwrap_or_else(|| "Unknown error".to_string());
+                println!("  {} {} - {}", "✗".red(), result.relay_url, error);
+                fail_count += 1;
+            }
+        }
+
+        println!();
+        if success_count > 0 {
+            println!("{} Published to {}/{} relay(s)", "✓".green(), success_count, success_count + fail_count);
+        }
+        if fail_count > 0 {
+            println!("{} {} relay(s) failed", "⚠".yellow(), fail_count);
+        }
+    } else {
+        println!();
+        println!("{}", "Note: No relays configured. Use 'wallet relays add <url>' to add relays.".yellow());
+    }
+
     println!();
-    println!("{}", "Note: Profile saved locally. Relay publishing coming in future update.".yellow());
     println!("{}: {}", "Event ID".bold(), event.id);
 
     Ok(())

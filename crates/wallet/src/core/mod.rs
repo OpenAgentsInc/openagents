@@ -5,5 +5,6 @@
 //! - Nostr client operations
 //! - Bitcoin/Lightning operations via Spark
 
+pub mod client;
 pub mod identity;
 pub mod nostr;
