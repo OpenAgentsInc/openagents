@@ -39,6 +39,7 @@
 //! - NIP-89: Application Handlers (social discovery of skills/agents)
 //! - NIP-90: Data Vending Machine (DVM) job requests/results/feedback
 //! - NIP-94: File Metadata
+//! - NIP-98: HTTP Auth (requires `full` feature)
 //! - Identity types for marketplace participants (agents, creators, providers)
 //! - Lightning payment types for marketplace transactions
 //! - Compute provider types for decentralized compute marketplace
@@ -97,6 +98,8 @@ mod nip59;
 mod nip89;
 mod nip90;
 mod nip94;
+#[cfg(feature = "full")]
+mod nip98;
 #[cfg(feature = "full")]
 mod payments;
 mod provider;
@@ -355,6 +358,14 @@ pub use nip90::{
 // NIP-94: File Metadata
 pub use nip94::{
     Dimensions, FileImage, FileMetadata, FILE_METADATA_KIND, Nip94Error, is_file_metadata_kind,
+};
+
+// NIP-98: HTTP Auth (requires full feature)
+#[cfg(feature = "full")]
+pub use nip98::{
+    AUTH_SCHEME, DEFAULT_TIMESTAMP_WINDOW, HttpAuth, HttpMethod, KIND_HTTP_AUTH, Nip98Error,
+    ValidationParams, decode_authorization_header, encode_authorization_header, hash_payload,
+    validate_http_auth_event,
 };
 
 // Identity types for marketplace (base types always available)
