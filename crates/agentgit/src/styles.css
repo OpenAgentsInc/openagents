@@ -119,6 +119,85 @@ footer {
   font-size: 0.85rem;
 }
 
+/* Repository List */
+.repo-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+  gap: 1.5rem;
+  margin-top: 1.5rem;
+}
+
+.repo-card {
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  padding: 1.5rem;
+  transition: all 0.2s;
+}
+
+.repo-card:hover {
+  border-color: var(--accent);
+  transform: translateY(-2px);
+}
+
+.repo-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 0.75rem;
+}
+
+.repo-name {
+  font-size: 1.2rem;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.repo-id {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  background: var(--bg-secondary);
+  padding: 0.25rem 0.5rem;
+  font-family: monospace;
+}
+
+.repo-description {
+  color: var(--text-secondary);
+  margin: 0.75rem 0;
+  line-height: 1.5;
+  font-size: 0.95rem;
+}
+
+.repo-meta {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border);
+  font-size: 0.85rem;
+}
+
+.repo-author {
+  color: var(--text-secondary);
+  font-family: monospace;
+  flex: 1;
+}
+
+.repo-clone,
+.repo-web {
+  color: var(--accent);
+  text-decoration: none;
+  padding: 0.25rem 0.75rem;
+  border: 1px solid var(--accent);
+  transition: all 0.2s;
+}
+
+.repo-clone:hover,
+.repo-web:hover {
+  background: var(--accent);
+  color: var(--bg-primary);
+}
+
 /* Utility classes */
 .mt-1 { margin-top: 0.5rem; }
 .mt-2 { margin-top: 1rem; }
