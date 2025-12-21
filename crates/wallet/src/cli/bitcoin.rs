@@ -27,13 +27,12 @@ pub fn balance() -> Result<()> {
     };
 
     // Create wallet and get balance (async)
+    // Note: This will fail until Breez SDK is integrated (see directive d-001)
     let rt = tokio::runtime::Runtime::new()?;
     let wallet = rt.block_on(SparkWallet::new(signer, config))?;
     let balance = rt.block_on(wallet.get_balance())?;
 
     println!("{}: {} sats", "Total".bold(), balance.total_sats());
-    println!();
-    println!("{}", "Note: Spark integration is in progress. Balances are currently stub values.".yellow());
 
     Ok(())
 }
@@ -60,6 +59,7 @@ pub fn balance_detailed() -> Result<()> {
     };
 
     // Create wallet and get balance (async)
+    // Note: This will fail until Breez SDK is integrated (see directive d-001)
     let rt = tokio::runtime::Runtime::new()?;
     let wallet = rt.block_on(SparkWallet::new(signer, config))?;
     let balance = rt.block_on(wallet.get_balance())?;
@@ -69,8 +69,6 @@ pub fn balance_detailed() -> Result<()> {
     println!("{}: {} sats", "On-chain".bold(), balance.onchain_sats);
     println!("─────────────────────");
     println!("{}: {} sats", "Total".bold(), balance.total_sats());
-    println!();
-    println!("{}", "Note: Spark integration is in progress. Balances are currently stub values.".yellow());
 
     Ok(())
 }
@@ -106,11 +104,10 @@ pub fn receive(amount: Option<u64>) -> Result<()> {
         println!();
     }
 
-    println!("{}: {}", "Address".bold(), address);
+    println!("{}: {}", "Address (Public Key)".bold(), address);
     println!();
-    println!("Share this address to receive payment");
-    println!();
-    println!("{}", "Note: Spark integration is in progress. Address generation uses public key stub.".yellow());
+    println!("{}", "WARNING: This is a temporary public key representation, not a proper Spark address.".yellow());
+    println!("{}", "Full Spark address generation requires Breez SDK integration (directive d-001).".yellow());
 
     Ok(())
 }
@@ -135,93 +132,26 @@ pub fn deposit() -> Result<()> {
     anyhow::bail!("On-chain deposits require Breez SDK integration. See directive d-001 for integration roadmap.")
 }
 
-pub fn withdraw(address: String, amount: u64) -> Result<()> {
-    println!("{}", "On-chain Withdrawal".cyan().bold());
-    println!();
-
-    // TODO: Validate address
-    // TODO: Create cooperative exit via Spark
-
-    println!("{}: {}", "To".bold(), address);
-    println!("{}: {} sats", "Amount".bold(), amount);
-    println!();
-    println!("{}", "This will perform a cooperative exit from Spark L2".yellow());
-    println!("{}", "Confirm? (y/n)".yellow());
-
-    // TODO: Get user confirmation
-    // TODO: Execute withdrawal
-
-    println!("{}", "✓ Withdrawal initiated".green());
-
-    Ok(())
+pub fn withdraw(_address: String, _amount: u64) -> Result<()> {
+    anyhow::bail!("On-chain withdrawals require Breez SDK integration. See directive d-001 for integration roadmap.")
 }
 
-pub fn zap(note_id: String, amount: u64) -> Result<()> {
-    println!("{}", "Send Zap".cyan().bold());
-    println!();
-
-    // TODO: Fetch note
-    // TODO: Create zap request (NIP-57)
-    // TODO: Pay zap
-
-    println!("{}: {}", "Note".bold(), note_id);
-    println!("{}: {} sats", "Amount".bold(), amount);
-    println!();
-    println!("{}", "✓ Zap sent".green());
-
-    Ok(())
+pub fn zap(_note_id: String, _amount: u64) -> Result<()> {
+    anyhow::bail!("Zap payments require Breez SDK integration. See directive d-001 for integration roadmap.")
 }
 
-pub fn zaps(note_id: String) -> Result<()> {
-    println!("{}", "Zaps on Note".cyan().bold());
-    println!();
-
-    // TODO: Fetch zap receipts for note
-    // TODO: Display zaps with totals
-
-    println!("{}: {}", "Note".bold(), note_id);
-    println!();
-    println!("No zaps yet");
-
-    Ok(())
+pub fn zaps(_note_id: String) -> Result<()> {
+    anyhow::bail!("Zap queries require Nostr relay integration. See directive d-002 for implementation.")
 }
 
-pub fn nwc_create(name: Option<String>) -> Result<()> {
-    println!("{}", "Create NWC Connection".cyan().bold());
-    println!();
-
-    // TODO: Create NWC connection (NIP-47)
-    // TODO: Generate connection string
-
-    let conn_name = name.unwrap_or_else(|| "Default".to_string());
-    println!("{}: {}", "Name".bold(), conn_name);
-    println!();
-    println!("{}: nostr+walletconnect://...", "Connection String".bold());
-    println!();
-    println!("Use this connection string in compatible apps");
-
-    Ok(())
+pub fn nwc_create(_name: Option<String>) -> Result<()> {
+    anyhow::bail!("NIP-47 Nostr Wallet Connect requires Breez SDK integration. See directive d-001 for integration roadmap.")
 }
 
 pub fn nwc_list() -> Result<()> {
-    println!("{}", "Active NWC Connections".cyan().bold());
-    println!();
-
-    // TODO: List active NWC connections
-
-    println!("No active connections");
-
-    Ok(())
+    anyhow::bail!("NIP-47 Nostr Wallet Connect requires Breez SDK integration. See directive d-001 for integration roadmap.")
 }
 
-pub fn nwc_revoke(id: String) -> Result<()> {
-    println!("{}", "Revoke NWC Connection".cyan().bold());
-    println!();
-
-    // TODO: Revoke connection
-
-    println!("{}: {}", "Connection".bold(), id);
-    println!("{}", "✓ Connection revoked".green());
-
-    Ok(())
+pub fn nwc_revoke(_id: String) -> Result<()> {
+    anyhow::bail!("NIP-47 Nostr Wallet Connect requires Breez SDK integration. See directive d-001 for integration roadmap.")
 }
