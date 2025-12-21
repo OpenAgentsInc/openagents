@@ -157,42 +157,35 @@ impl SparkWallet {
     /// - Lightning channels
     /// - On-chain (cooperative exit funds)
     ///
-    /// **STUB**: Currently returns zero balance. Will query Breez SDK once integrated.
+    /// # Errors
+    ///
+    /// Returns error until Breez SDK integration is complete (see directive d-001).
     pub async fn get_balance(&self) -> Result<Balance, SparkError> {
-        // TODO: Query actual balance from Breez SDK
-        // This will involve:
-        // 1. Syncing with Spark operators
-        // 2. Querying Lightning channel balances
-        // 3. Checking on-chain funds
-        // 4. Aggregating all balance types
-
-        Ok(Balance::default())
+        Err(SparkError::NotImplemented(
+            "Balance querying requires Breez SDK integration. See directive d-001 for integration roadmap.".to_string()
+        ))
     }
 
     /// Get wallet information and status
     ///
-    /// **STUB**: Currently returns minimal info. Will query Breez SDK once integrated.
+    /// # Errors
+    ///
+    /// Returns error until Breez SDK integration is complete (see directive d-001).
     pub async fn get_info(&self) -> Result<WalletInfo, SparkError> {
-        Ok(WalletInfo {
-            public_key: self.signer.public_key_hex(),
-            network: self.config.network,
-            synced: false,
-            pending_ops: 0,
-        })
+        Err(SparkError::NotImplemented(
+            "Wallet info requires Breez SDK integration. See directive d-001 for integration roadmap.".to_string()
+        ))
     }
 
     /// Force sync wallet state with Spark operators
     ///
-    /// **STUB**: Currently does nothing. Will trigger Breez SDK sync once integrated.
+    /// # Errors
+    ///
+    /// Returns error until Breez SDK integration is complete (see directive d-001).
     pub async fn sync(&self) -> Result<(), SparkError> {
-        // TODO: Trigger Breez SDK sync
-        // This will:
-        // 1. Connect to Spark operators
-        // 2. Fetch latest balance and transaction state
-        // 3. Update local wallet state
-        // 4. Process any pending operations
-
-        Ok(())
+        Err(SparkError::NotImplemented(
+            "Wallet sync requires Breez SDK integration. See directive d-001 for integration roadmap.".to_string()
+        ))
     }
 
     /// Get the wallet's Spark address for receiving payments
@@ -231,37 +224,39 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_get_balance_stub() {
+    async fn test_get_balance_not_implemented() {
         let mnemonic = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
         let signer = SparkSigner::from_mnemonic(mnemonic, "").expect("should create signer");
         let wallet = SparkWallet::new(signer, WalletConfig::default()).await.expect("should create wallet");
 
-        let balance = wallet.get_balance().await.expect("should get balance");
-        // Stub implementation returns zero
-        assert_eq!(balance.total_sats(), 0);
-        assert!(balance.is_empty());
+        // Should return NotImplemented error until Breez SDK is integrated
+        let result = wallet.get_balance().await;
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("not implemented"));
     }
 
     #[tokio::test]
-    async fn test_get_info_stub() {
+    async fn test_get_info_not_implemented() {
         let mnemonic = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
         let signer = SparkSigner::from_mnemonic(mnemonic, "").expect("should create signer");
         let wallet = SparkWallet::new(signer, WalletConfig::default()).await.expect("should create wallet");
 
-        let info = wallet.get_info().await.expect("should get info");
-        assert_eq!(info.network, Network::Testnet);
-        assert!(!info.synced); // Stub returns false
-        assert_eq!(info.pending_ops, 0);
+        // Should return NotImplemented error until Breez SDK is integrated
+        let result = wallet.get_info().await;
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("not implemented"));
     }
 
     #[tokio::test]
-    async fn test_sync_stub() {
+    async fn test_sync_not_implemented() {
         let mnemonic = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
         let signer = SparkSigner::from_mnemonic(mnemonic, "").expect("should create signer");
         let wallet = SparkWallet::new(signer, WalletConfig::default()).await.expect("should create wallet");
 
-        // Stub implementation should not error
-        wallet.sync().await.expect("should sync");
+        // Should return NotImplemented error until Breez SDK is integrated
+        let result = wallet.sync().await;
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("not implemented"));
     }
 
     #[tokio::test]
