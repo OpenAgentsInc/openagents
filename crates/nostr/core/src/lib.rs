@@ -57,6 +57,7 @@
 //! - NIP-60: Cashu Wallets (ecash wallet state management)
 //! - NIP-61: Nutzaps (Cashu-based zaps with P2PK tokens)
 //! - NIP-64: Chess (Portable Game Notation)
+//! - NIP-68: Picture-first Feeds (Instagram-style image posts)
 //! - NIP-70: Protected Events (author-only publishing with authentication)
 //! - NIP-71: Video Events (video content with metadata)
 //! - NIP-72: Moderated Communities (Reddit-style communities)
@@ -146,6 +147,7 @@ mod nip59;
 mod nip60;
 mod nip61;
 mod nip64;
+mod nip68;
 mod nip70;
 mod nip71;
 mod nip72;
@@ -531,6 +533,13 @@ pub use nip61::{
 pub use nip64::{
     CHESS_GAME_KIND, ChessGame, GameResult, Nip64Error, create_alt_description, create_chess_game,
     create_chess_game_with_tags, is_chess_game_kind,
+};
+
+// NIP-68: Picture-first Feeds
+pub use nip68::{
+    ALLOWED_MEDIA_TYPES, Nip68Error, PICTURE_KIND, PictureEvent, UserAnnotation,
+    create_content_warning_tag, create_geohash_tag, create_language_tags, create_location_tag,
+    is_allowed_media_type, is_picture_kind,
 };
 
 // NIP-17: Private Direct Messages (requires full feature)
