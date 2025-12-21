@@ -206,3 +206,21 @@ o: id=JNJHBdaP → [ok]
 t!:mcp__issues__issue_complete id=QfbfUJsX  → [running] tokens_in=2 tokens_out=58 tokens_cached=83591
 o: id=QfbfUJsX → [ok] Completed issue #451
 t!:Bash id=WKFGf1Lf cmd="git add -A && git commit -m "$(cat <<'EOF'" → [running] tokens_in=0 tokens_out=312 tokens_cached=83712
+o: id=WKFGf1Lf → [ok] [main fd4d6f51d] Fix marketplace skills browse stub - return explicit errors
+t!:mcp__issues__issue_ready id=vGzyjZ1S  → [running] tokens_in=3 tokens_out=27 tokens_cached=83897
+o: id=vGzyjZ1S → [ok] {
+t!:mcp__issues__issue_claim id=UEtiMh1d  → [running] tokens_in=2 tokens_out=83 tokens_cached=84339
+o: id=UEtiMh1d → [ok] Claimed issue #455
+t!:Read id=99x1VsaR file_path=/home/christopherdavid/code/openagents/crates/compute/src/services/relay_service.rs → [running] tokens_in=0 tokens_out=115 tokens_cached=84623
+o: id=99x1VsaR → [ok]     75→
+t!:Read id=uh5cnHNK file_path=/home/christopherdavid/code/openagents/crates/compute/src/services/relay_service.rs → [running] tokens_in=3 tokens_out=25 tokens_cached=84833
+o: id=uh5cnHNK → [ok]      1→//! Nostr relay service
+t!:Edit id=kKvgNPDH file_path=/home/christopherdavid/code/openagents/crates/compute/src/services/relay_service.rs → [running] tokens_in=3 tokens_out=405 tokens_cached=85447
+o: id=kKvgNPDH → [ok] The file /home/christopherdavid/code/openagents/crates/compute/src/services/relay_service.rs has ...
+t!:Edit id=nBHdpPwu file_path=/home/christopherdavid/code/openagents/crates/compute/src/services/relay_service.rs → [running] tokens_in=2 tokens_out=349 tokens_cached=85989
+o: id=nBHdpPwu → [ok] The file /home/christopherdavid/code/openagents/crates/compute/src/services/relay_service.rs has ...
+t!:Bash id=3uULfBrz cmd="cargo build --bin openagents 2>&1 | grep -E "(e..." → [running] tokens_in=2 tokens_out=98 tokens_cached=86842
+o: id=3uULfBrz → [ok] 
+t!:mcp__issues__issue_complete id=QZz8WPs7  → [running] tokens_in=3 tokens_out=32 tokens_cached=87522
+o: id=QZz8WPs7 → [ok] Completed issue #455
+t!:Bash id=sV3xoNjy cmd="git add -A && git commit -m "$(cat <<'EOF'" → [running] tokens_in=0 tokens_out=5 tokens_cached=87645
