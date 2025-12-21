@@ -77,14 +77,9 @@ enum Commands {
         content: String,
     },
 
-    /// Send direct message
-    Dm {
-        /// Recipient npub
-        recipient: String,
-
-        /// Message content
-        message: String,
-    },
+    /// Direct message commands
+    #[command(subcommand)]
+    Dm(DmCommands),
 
     /// Show Nostr feed
     Feed {
@@ -189,6 +184,31 @@ enum ProfileCommands {
         /// NIP-05 identifier
         #[arg(long)]
         nip05: Option<String>,
+    },
+}
+
+#[derive(Subcommand)]
+enum DmCommands {
+    /// Send encrypted direct message
+    Send {
+        /// Recipient npub
+        recipient: String,
+
+        /// Message content
+        message: String,
+    },
+
+    /// List received direct messages
+    List {
+        /// Number of messages to display
+        #[arg(short, long, default_value = "20")]
+        limit: usize,
+    },
+
+    /// Read a specific direct message
+    Read {
+        /// Event ID of the message
+        event_id: String,
     },
 }
 
@@ -335,8 +355,16 @@ fn run(command: Commands) -> anyhow::Result<()> {
         Commands::Post { content } => {
             cli::identity::post(content)
         }
-        Commands::Dm { recipient, message } => {
-            cli::identity::dm(recipient, message)
+        Commands::Dm(cmd) => match cmd {
+            DmCommands::Send { recipient, message } => {
+                cli::identity::dm_send(recipient, message)
+            }
+            DmCommands::List { limit } => {
+                cli::identity::dm_list(limit)
+            }
+            DmCommands::Read { event_id } => {
+                cli::identity::dm_read(event_id)
+            }
         }
         Commands::Feed { limit } => {
             cli::identity::feed(limit)
