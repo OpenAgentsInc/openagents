@@ -2068,6 +2068,39 @@ fn store_trajectory_metrics(trajectory: &Trajectory) {
                         )
                         .green()
                     );
+
+                    // Detect and report anomalies (PostRun hook behavior)
+                    match db.detect_anomalies(&session_metrics) {
+                        Ok(anomalies) => {
+                            if !anomalies.is_empty() {
+                                println!("\n{}", "⚠ Anomalies Detected:".yellow().bold());
+                                for anomaly in &anomalies {
+                                    let severity_str = match anomaly.severity {
+                                        autopilot::metrics::AnomalySeverity::Critical => "CRITICAL".red().bold(),
+                                        autopilot::metrics::AnomalySeverity::Error => "ERROR".red(),
+                                        autopilot::metrics::AnomalySeverity::Warning => "WARNING".yellow(),
+                                    };
+                                    println!(
+                                        "  [{}] {}: expected {:.3}, got {:.3}",
+                                        severity_str,
+                                        anomaly.dimension,
+                                        anomaly.expected_value,
+                                        anomaly.actual_value
+                                    );
+                                }
+
+                                // Store anomalies in database
+                                for anomaly in &anomalies {
+                                    if let Err(e) = db.store_anomaly(anomaly) {
+                                        eprintln!("Warning: Failed to store anomaly: {}", e);
+                                    }
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            eprintln!("Warning: Failed to detect anomalies: {}", e);
+                        }
+                    }
                 }
                 Err(e) => {
                     eprintln!("Warning: Failed to open metrics database: {}", e);
