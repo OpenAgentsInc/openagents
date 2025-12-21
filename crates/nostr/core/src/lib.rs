@@ -58,6 +58,7 @@
 //! - NIP-61: Nutzaps (Cashu-based zaps with P2PK tokens)
 //! - NIP-64: Chess (Portable Game Notation)
 //! - NIP-68: Picture-first Feeds (Instagram-style image posts)
+//! - NIP-69: Peer-to-peer Order Events (decentralized marketplace orders)
 //! - NIP-70: Protected Events (author-only publishing with authentication)
 //! - NIP-71: Video Events (video content with metadata)
 //! - NIP-72: Moderated Communities (Reddit-style communities)
@@ -148,6 +149,7 @@ mod nip60;
 mod nip61;
 mod nip64;
 mod nip68;
+mod nip69;
 mod nip70;
 mod nip71;
 mod nip72;
@@ -540,6 +542,12 @@ pub use nip68::{
     ALLOWED_MEDIA_TYPES, Nip68Error, PICTURE_KIND, PictureEvent, UserAnnotation,
     create_content_warning_tag, create_geohash_tag, create_language_tags, create_location_tag,
     is_allowed_media_type, is_picture_kind,
+};
+
+// NIP-69: Peer-to-peer Order Events
+pub use nip69::{
+    BitcoinLayer, Nip69Error, OrderStatus, OrderType, P2POrder, P2P_ORDER_KIND, Rating,
+    DOCUMENT_TYPE, is_p2p_order_kind,
 };
 
 // NIP-17: Private Direct Messages (requires full feature)
