@@ -145,22 +145,36 @@ struct RedactionPattern {
 }
 
 /// Standard redaction patterns (common secrets)
+/// NOTE: Order matters! More specific patterns must come before general ones.
 fn standard_patterns() -> Vec<RedactionPattern> {
     vec![
-        RedactionPattern {
-            name: "api_key".to_string(),
-            regex: Regex::new(r#"(?i)(api[_-]?key|apikey)[\s:=]+['"]?([a-zA-Z0-9_-]{20,})"#).unwrap(),
-            replacement: "[REDACTED-API-KEY]",
-        },
-        RedactionPattern {
-            name: "secret_key".to_string(),
-            regex: Regex::new(r#"(?i)(secret[_-]?key|secretkey)[\s:=]+['"]?([a-zA-Z0-9_-]{20,})"#).unwrap(),
-            replacement: "[REDACTED-SECRET-KEY]",
-        },
+        // Private keys (catch-all for PEM format)
         RedactionPattern {
             name: "private-key".to_string(),
             regex: Regex::new(r"-----BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY-----[\s\S]+?-----END (RSA |EC |OPENSSH )?PRIVATE KEY-----").unwrap(),
             replacement: "[REDACTED-PRIVATE-KEY]",
+        },
+        RedactionPattern {
+            name: "ssh_key".to_string(),
+            regex: Regex::new(r"-----BEGIN OPENSSH PRIVATE KEY-----[\s\S]+?-----END OPENSSH PRIVATE KEY-----").unwrap(),
+            replacement: "[REDACTED-SSH-KEY]",
+        },
+        // Specific API keys (must come before generic sk- pattern)
+        RedactionPattern {
+            name: "anthropic_key".to_string(),
+            regex: Regex::new(r"sk-ant-[a-zA-Z0-9_-]{20,}").unwrap(),
+            replacement: "[REDACTED-ANTHROPIC-KEY]",
+        },
+        RedactionPattern {
+            name: "stripe_key".to_string(),
+            regex: Regex::new(r"[sp]k_(test|live)_[a-zA-Z0-9]{20,}").unwrap(),
+            replacement: "[REDACTED-STRIPE-KEY]",
+        },
+        // Generic OpenAI key (after more specific patterns)
+        RedactionPattern {
+            name: "openai_key".to_string(),
+            regex: Regex::new(r"sk-[a-zA-Z0-9]{20,}").unwrap(),
+            replacement: "[REDACTED-OPENAI-KEY]",
         },
         RedactionPattern {
             name: "aws-key".to_string(),
@@ -169,8 +183,28 @@ fn standard_patterns() -> Vec<RedactionPattern> {
         },
         RedactionPattern {
             name: "github_token".to_string(),
-            regex: Regex::new(r"ghp_[a-zA-Z0-9]{36}").unwrap(),
+            regex: Regex::new(r"gh[pousr]_[a-zA-Z0-9]{20,}").unwrap(),
             replacement: "[REDACTED-GITHUB-TOKEN]",
+        },
+        RedactionPattern {
+            name: "slack_token".to_string(),
+            regex: Regex::new(r"xox[baprs]-[a-zA-Z0-9-]+").unwrap(),
+            replacement: "[REDACTED-SLACK-TOKEN]",
+        },
+        RedactionPattern {
+            name: "google_api_key".to_string(),
+            regex: Regex::new(r"AIza[a-zA-Z0-9_-]{20,}").unwrap(),
+            replacement: "[REDACTED-GOOGLE-API-KEY]",
+        },
+        RedactionPattern {
+            name: "mailgun_key".to_string(),
+            regex: Regex::new(r"key-[a-zA-Z0-9]{32}").unwrap(),
+            replacement: "[REDACTED-MAILGUN-KEY]",
+        },
+        RedactionPattern {
+            name: "twilio_key".to_string(),
+            regex: Regex::new(r"SK[a-z0-9]{32}").unwrap(),
+            replacement: "[REDACTED-TWILIO-KEY]",
         },
         RedactionPattern {
             name: "jwt".to_string(),
@@ -187,6 +221,17 @@ fn standard_patterns() -> Vec<RedactionPattern> {
             regex: Regex::new(r"(?i)bearer\s+[a-zA-Z0-9_.-=]{20,}").unwrap(),
             replacement: "[REDACTED-BEARER-TOKEN]",
         },
+        // Generic patterns (last resort, after specific patterns)
+        RedactionPattern {
+            name: "api_key".to_string(),
+            regex: Regex::new(r#"(?i)(api[_-]?key|apikey)[\s:=]+['"]?([a-zA-Z0-9_-]{20,})"#).unwrap(),
+            replacement: "[REDACTED-API-KEY]",
+        },
+        RedactionPattern {
+            name: "secret_key".to_string(),
+            regex: Regex::new(r#"(?i)(secret[_-]?key|secretkey)[\s:=]+['"]?([a-zA-Z0-9_-]{20,})"#).unwrap(),
+            replacement: "[REDACTED-SECRET-KEY]",
+        },
     ]
 }
 
@@ -194,8 +239,28 @@ fn standard_patterns() -> Vec<RedactionPattern> {
 fn strict_patterns() -> Vec<RedactionPattern> {
     vec![
         RedactionPattern {
+            name: "bitcoin_privkey".to_string(),
+            regex: Regex::new(r"\b[5KL][1-9A-HJ-NP-Za-km-z]{50,51}\b").unwrap(),
+            replacement: "[REDACTED-BITCOIN-KEY]",
+        },
+        RedactionPattern {
+            name: "ethereum_privkey".to_string(),
+            regex: Regex::new(r"0x[a-fA-F0-9]{64}").unwrap(),
+            replacement: "[REDACTED-ETH-KEY]",
+        },
+        RedactionPattern {
+            name: "nostr_nsec".to_string(),
+            regex: Regex::new(r"nsec1[a-z0-9]{58,}").unwrap(),
+            replacement: "[REDACTED-NOSTR-KEY]",
+        },
+        RedactionPattern {
+            name: "lightning_invoice".to_string(),
+            regex: Regex::new(r"ln(bc|tb|bcrt)[a-z0-9]{100,}").unwrap(),
+            replacement: "[REDACTED-LIGHTNING-INVOICE]",
+        },
+        RedactionPattern {
             name: "hex_string".to_string(),
-            regex: Regex::new(r"\b[a-fA-F0-9]{32,}\b").unwrap(),
+            regex: Regex::new(r"\b[a-fA-F0-9]{64,}\b").unwrap(),
             replacement: "[REDACTED-HEX]",
         },
         RedactionPattern {
@@ -207,6 +272,11 @@ fn strict_patterns() -> Vec<RedactionPattern> {
             name: "ipv4".to_string(),
             regex: Regex::new(r"\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b").unwrap(),
             replacement: "[REDACTED-IP]",
+        },
+        RedactionPattern {
+            name: "uuid".to_string(),
+            regex: Regex::new(r"\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b").unwrap(),
+            replacement: "[REDACTED-UUID]",
         },
     ]
 }
@@ -239,11 +309,11 @@ mod tests {
     #[test]
     fn test_api_key_redaction() {
         let engine = RedactionEngine::new(RedactionLevel::Standard, vec![]).unwrap();
-        let content = "API_KEY=sk_test_1234567890abcdefghij";
+        let content = "API_KEY=myapikey_1234567890abcdefghij";
         let result = engine.redact(content).unwrap();
 
         assert!(result.content.contains("[REDACTED-API-KEY]"));
-        assert!(!result.content.contains("sk_test"));
+        assert!(!result.content.contains("myapikey_"));
         assert_eq!(result.secrets_redacted, 1);
     }
 
@@ -262,6 +332,11 @@ mod tests {
         let engine = RedactionEngine::new(RedactionLevel::Standard, vec![]).unwrap();
         let content = "token: ghp_1234567890abcdefghijklmnopqrstuv";
         let result = engine.redact(content).unwrap();
+
+        eprintln!("Original: {}", content);
+        eprintln!("Redacted: {}", result.content);
+        eprintln!("Secrets redacted: {}", result.secrets_redacted);
+        eprintln!("Secret types: {:?}", result.secret_types);
 
         assert!(result.content.contains("[REDACTED-GITHUB-TOKEN]"));
         assert!(!result.content.contains("ghp_"));
@@ -285,5 +360,172 @@ mod tests {
         let result = engine.redact(content).unwrap();
 
         assert!(result.content.contains("[REDACTED-IP]"));
+    }
+
+    #[test]
+    fn test_anthropic_key_redaction() {
+        let engine = RedactionEngine::new(RedactionLevel::Standard, vec![]).unwrap();
+        let content = "ANTHROPIC_API_KEY=sk-ant-api03-1234567890abcdefghijklmnopqrstuvwxyz1234567890abcdefghijklmnopqrstuvwxyz1234567890abcd";
+        let result = engine.redact(content).unwrap();
+
+        eprintln!("Anthropic - Secrets redacted: {}", result.secrets_redacted);
+        eprintln!("Anthropic - Content: {}", result.content);
+
+        assert!(result.content.contains("[REDACTED-ANTHROPIC-KEY]"));
+        assert!(!result.content.contains("sk-ant-"));
+    }
+
+    #[test]
+    fn test_openai_key_redaction() {
+        let engine = RedactionEngine::new(RedactionLevel::Standard, vec![]).unwrap();
+        let content = "OPENAI_API_KEY=sk-1234567890abcdefghijklmnopqrstuvwxyz";
+        let result = engine.redact(content).unwrap();
+
+        assert!(result.content.contains("[REDACTED-OPENAI-KEY]"));
+        assert!(!result.content.contains("sk-1234567890"));
+    }
+
+    #[test]
+    fn test_aws_key_redaction() {
+        let engine = RedactionEngine::new(RedactionLevel::Standard, vec![]).unwrap();
+        let content = "AWS_ACCESS_KEY_ID=AKIAIOSFODNN7EXAMPLE";
+        let result = engine.redact(content).unwrap();
+
+        assert!(result.content.contains("[REDACTED-AWS-KEY]"));
+        assert!(!result.content.contains("AKIAIOSFODNN7EXAMPLE"));
+    }
+
+    #[test]
+    fn test_slack_token_redaction() {
+        let engine = RedactionEngine::new(RedactionLevel::Standard, vec![]).unwrap();
+        let content = "SLACK_TOKEN=xoxb-EXAMPLE-TOKEN-NOT-REAL";
+        let result = engine.redact(content).unwrap();
+
+        assert!(result.content.contains("[REDACTED-SLACK-TOKEN]"));
+        assert!(!result.content.contains("xoxb-"));
+    }
+
+    #[test]
+    fn test_stripe_key_redaction() {
+        let engine = RedactionEngine::new(RedactionLevel::Standard, vec![]).unwrap();
+        let content = "STRIPE_SECRET_KEY=sk_test_abcdefghijklmnopqrstuvwxyz123456";
+        let result = engine.redact(content).unwrap();
+
+        assert!(result.content.contains("[REDACTED-STRIPE-KEY]"));
+        assert!(!result.content.contains("sk_test_"));
+    }
+
+    #[test]
+    fn test_google_api_key_redaction() {
+        let engine = RedactionEngine::new(RedactionLevel::Standard, vec![]).unwrap();
+        let content = "GOOGLE_API_KEY=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI";
+        let result = engine.redact(content).unwrap();
+
+        assert!(result.content.contains("[REDACTED-GOOGLE-API-KEY]"));
+        assert!(!result.content.contains("AIzaSy"));
+    }
+
+    #[test]
+    fn test_bitcoin_key_redaction() {
+        let engine = RedactionEngine::new(RedactionLevel::Strict, vec![]).unwrap();
+        let content = "BTC_PRIVKEY=5HueCGU8rMjxEXxiPuD5BDku4MkFqeZyd4dZ1jvhTVqvbTLvyTJ";
+        let result = engine.redact(content).unwrap();
+
+        assert!(result.content.contains("[REDACTED-BITCOIN-KEY]"));
+        assert!(!result.content.contains("5HueCGU8"));
+    }
+
+    #[test]
+    fn test_nostr_nsec_redaction() {
+        let engine = RedactionEngine::new(RedactionLevel::Strict, vec![]).unwrap();
+        let content = "NOSTR_KEY=nsec1vl029mgpspedva04g90vltkh6fvh240zqtv9k0t9af8935ke9laqsnlfe5";
+        let result = engine.redact(content).unwrap();
+
+        assert!(result.content.contains("[REDACTED-NOSTR-KEY]"));
+        assert!(!result.content.contains("nsec1"));
+    }
+
+    #[test]
+    fn test_multiple_secrets() {
+        let engine = RedactionEngine::new(RedactionLevel::Standard, vec![]).unwrap();
+        let content = r#"
+            ANTHROPIC_API_KEY=sk-ant-api03-abc123xyz789def456ghi012jkl345mno678pqr901stu234vwx567yza890bcd123efg456hij789klm012nop345qrs678tuv901wxy234
+            GITHUB_TOKEN=ghp_1234567890abcdefghijklmnopqrstuv
+            AWS_KEY=AKIAIOSFODNN7EXAMPLE
+        "#;
+        let result = engine.redact(content).unwrap();
+
+        assert!(result.secrets_redacted >= 3);
+        assert!(result.content.contains("[REDACTED-ANTHROPIC-KEY]"));
+        assert!(result.content.contains("[REDACTED-GITHUB-TOKEN]"));
+        assert!(result.content.contains("[REDACTED-AWS-KEY]"));
+        assert!(!result.content.contains("sk-ant-"));
+        assert!(!result.content.contains("ghp_"));
+        assert!(!result.content.contains("AKIAIOSFODNN7"));
+    }
+
+    #[test]
+    fn test_ssh_private_key_redaction() {
+        let engine = RedactionEngine::new(RedactionLevel::Standard, vec![]).unwrap();
+        let content = "-----BEGIN OPENSSH PRIVATE KEY-----\nb3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAAAAAABAAAAMwAAAAtzc2gtZW\n-----END OPENSSH PRIVATE KEY-----";
+        let result = engine.redact(content).unwrap();
+
+        // SSH keys are caught by both ssh_key and private-key patterns
+        // Either redaction is acceptable
+        assert!(result.content.contains("[REDACTED-SSH-KEY]") || result.content.contains("[REDACTED-PRIVATE-KEY]"));
+        assert!(!result.content.contains("b3BlbnNzaC"));
+    }
+
+    #[test]
+    fn test_jwt_redaction() {
+        let engine = RedactionEngine::new(RedactionLevel::Standard, vec![]).unwrap();
+        let content = "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c";
+        let result = engine.redact(content).unwrap();
+
+        assert!(result.content.contains("[REDACTED-JWT]"));
+        assert!(!result.content.contains("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9"));
+    }
+
+    #[test]
+    fn test_redaction_level_escalation() {
+        let standard_engine = RedactionEngine::new(RedactionLevel::Standard, vec![]).unwrap();
+        let strict_engine = RedactionEngine::new(RedactionLevel::Strict, vec![]).unwrap();
+        let paranoid_engine = RedactionEngine::new(RedactionLevel::Paranoid, vec![]).unwrap();
+
+        let content = "Contact me at user@example.com with IP 192.168.1.1";
+
+        let standard_result = standard_engine.redact(content).unwrap();
+        let strict_result = strict_engine.redact(content).unwrap();
+        let paranoid_result = paranoid_engine.redact(content).unwrap();
+
+        // Standard: no email/IP redaction
+        assert!(standard_result.content.contains("user@example.com"));
+        assert!(standard_result.content.contains("192.168.1.1"));
+
+        // Strict: IP redaction but no email
+        assert!(strict_result.content.contains("user@example.com"));
+        assert!(strict_result.content.contains("[REDACTED-IP]"));
+
+        // Paranoid: both redacted
+        assert!(paranoid_result.content.contains("[REDACTED-EMAIL]"));
+        assert!(paranoid_result.content.contains("[REDACTED-IP]"));
+    }
+
+    #[test]
+    fn test_dry_run_statistics() {
+        let engine = RedactionEngine::new(RedactionLevel::Standard, vec![]).unwrap();
+        let content = r#"
+            API_KEY=myapikey_1234567890abcdefghij
+            SECRET_KEY=secret_abcdefghijklmnopqrstuvwxyz
+            GITHUB_TOKEN=ghp_1234567890abcdefghijklmnopqrstuv
+        "#;
+        let result = engine.redact(content).unwrap();
+
+        // Verify statistics are accurate
+        assert_eq!(result.secrets_redacted, 3);
+        assert_eq!(result.secret_types.len(), 3);
+        assert!(result.secret_types.contains(&"api_key".to_string()));
+        assert!(result.secret_types.contains(&"secret_key".to_string()));
+        assert!(result.secret_types.contains(&"github_token".to_string()));
     }
 }
