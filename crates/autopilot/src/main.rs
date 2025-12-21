@@ -3774,8 +3774,13 @@ async fn handle_benchmark_command(
     workspace: Option<PathBuf>,
 ) -> Result<()> {
     use autopilot::benchmark::{
-        BenchmarkRunner, B001SimpleFileEdit, B002MultiFileEdit, B003StructRename,
+        BenchmarkRunner, BenchmarkDatabase,
+        B001SimpleFileEdit, B002MultiFileEdit, B003StructRename,
         B004SimpleCommit, B005BranchWorkflow,
+        B006IssueWorkflow, B007MultiStepRefactor, B008TestDrivenFix,
+        B009DocumentationGeneration, B010DependencyUpdate,
+        B011ErrorRecovery, B012ContextGathering, B013CrossFileConsistency,
+        B014PerformanceOptimization, B015SecurityFix,
     };
 
     let db_path = db.unwrap_or_else(|| PathBuf::from("autopilot-benchmarks.db"));
@@ -3791,13 +3796,49 @@ async fn handle_benchmark_command(
         ("file-ops", Box::new(B003StructRename)),
         ("git", Box::new(B004SimpleCommit)),
         ("git", Box::new(B005BranchWorkflow)),
+        ("autopilot", Box::new(B006IssueWorkflow)),
+        ("file-ops", Box::new(B007MultiStepRefactor)),
+        ("testing", Box::new(B008TestDrivenFix)),
+        ("docs", Box::new(B009DocumentationGeneration)),
+        ("tooling", Box::new(B010DependencyUpdate)),
+        ("resilience", Box::new(B011ErrorRecovery)),
+        ("exploration", Box::new(B012ContextGathering)),
+        ("refactor", Box::new(B013CrossFileConsistency)),
+        ("optimization", Box::new(B014PerformanceOptimization)),
+        ("security", Box::new(B015SecurityFix)),
     ];
 
     // Handle list baselines
     if list_baselines {
-        println!("Baseline versions:");
-        // TODO: Implement baseline listing from database
-        println!("  (baseline listing not yet implemented)");
+        println!("\n{}", "═".repeat(80));
+        println!("{} Benchmark Baselines", "📊".cyan().bold());
+        println!("{}", "═".repeat(80));
+        println!();
+
+        // Query all distinct versions with baselines
+        let conn = rusqlite::Connection::open(&db_path)?;
+        let mut stmt = conn.prepare(
+            "SELECT DISTINCT version FROM benchmark_baselines ORDER BY version"
+        )?;
+        let versions: Vec<String> = stmt
+            .query_map([], |row| row.get(0))?
+            .collect::<std::result::Result<_, _>>()?;
+
+        if versions.is_empty() {
+            println!("  No baselines found. Run benchmarks with --save-baseline to create one.");
+        } else {
+            for version in versions {
+                // Get sample count and last updated for this version
+                let (count, updated): (i64, String) = conn.query_row(
+                    "SELECT COUNT(*), MAX(updated_at) FROM benchmark_baselines WHERE version = ?1",
+                    [&version],
+                    |row| Ok((row.get(0)?, row.get(1)?)),
+                )?;
+                println!("  {} - {} benchmarks (updated: {})",
+                    version.cyan().bold(), count, updated);
+            }
+        }
+        println!();
         return Ok(());
     }
 
@@ -3859,6 +3900,19 @@ async fn handle_benchmark_command(
         println!("  Failed: {}", failed.to_string().red().bold());
     }
     println!();
+
+    // Save baseline if requested
+    if save_baseline.is_some() {
+        let mut db = BenchmarkDatabase::open(&db_path)?;
+        println!("{}", "─".repeat(80));
+        println!("{} Saving Baseline", "💾".cyan().bold());
+        println!("{}", "─".repeat(80));
+        println!();
+        println!("  Version: {}", version.cyan().bold());
+        db.update_baseline(&version)?;
+        println!("  ✓ Baseline metrics computed and stored");
+        println!();
+    }
 
     // Compare to baseline if requested
     if let Some(baseline_ver) = baseline {

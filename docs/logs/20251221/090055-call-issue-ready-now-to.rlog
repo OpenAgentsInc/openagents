@@ -171,3 +171,80 @@ a: Perfect! Let me update todos and commit: tokens_in=0 tokens_out=1 tokens_cach
 t!:TodoWrite id=CXzy4GKM  → [running] tokens_in=0 tokens_out=311 tokens_cached=130912
 o: id=CXzy4GKM → [ok] Todos have been modified successfully. Ensure that you continue to use the todo list to track you...
 t!:Bash id=ngScZugf cmd="git add -A && git diff --cached --stat" → [running] tokens_in=0 tokens_out=25 tokens_cached=131101
+o: id=ngScZugf → [ok]  crates/autopilot/src/benchmark/tasks.rs            | 581 +++++++++++++++++++++
+t!:Bash id=jF4zx67i cmd="git commit -m "$(cat <<'EOF'" → [running] tokens_in=0 tokens_out=561 tokens_cached=131454
+o: id=jF4zx67i → [ok] [main 4aff40a10] Add benchmark tasks B-011 to B-015 for advanced testing scenarios
+t!:Bash id=ZEuPANML cmd="git push origin main" → [running] tokens_in=0 tokens_out=75 tokens_cached=131619
+o: id=ZEuPANML → [ok] [0;36m🔍 Running cargo build to check for errors and warnings...[0m
+t!:TodoWrite id=4rr3QvAL  → [running] tokens_in=0 tokens_out=299 tokens_cached=132231
+o: id=4rr3QvAL → [ok] Todos have been modified successfully. Ensure that you continue to use the todo list to track you...
+t!:mcp__issues__issue_complete id=wfbwtoNB  → [running] tokens_in=0 tokens_out=32 tokens_cached=132395
+o: id=wfbwtoNB → [ok] Completed issue #384
+t!:mcp__issues__issue_ready id=hmurF4nJ  → [running] tokens_in=0 tokens_out=41 tokens_cached=132736
+o: id=hmurF4nJ → [ok] No ready issues available
+a: No ready issues. Let me create more issues to continue working. Let me check what other work is needed based on the directives. Since all the highest priority directives are complete or nearly comp... tokens_in=0 tokens_out=1 tokens_cached=132811
+t!:mcp__issues__issue_create id=wQiPYeVp  → [running] tokens_in=0 tokens_out=443 tokens_cached=132811
+o: id=wQiPYeVp → [ok] Created issue #386: Add CLI commands for benchmark baseline management (agent: claude) [directive...
+t!:mcp__issues__issue_ready id=DVMLxxiv  → [running] tokens_in=0 tokens_out=32 tokens_cached=132868
+o: id=DVMLxxiv → [ok] {
+t!:mcp__issues__issue_claim id=K2LUD8MR  → [running] tokens_in=0 tokens_out=32 tokens_cached=133347
+o: id=K2LUD8MR → [ok] Claimed issue #386
+t!:TodoWrite id=UftUYiyR  → [running] tokens_in=0 tokens_out=217 tokens_cached=133742
+o: id=UftUYiyR → [ok] Todos have been modified successfully. Ensure that you continue to use the todo list to track you...
+t!:Read id=prkeCARA file_path=/home/christopherdavid/code/openagents/crates/autopilot/src/cli/mod.rs → [running] tokens_in=3 tokens_out=25 tokens_cached=133952
+o: id=prkeCARA → [error] <tool_use_error>File does not exist.</tool_use_error>
+t!:Glob id=wu9CQb32 pattern="crates/autopilot/src/**/*.rs" → [running] tokens_in=4 tokens_out=62 tokens_cached=134209
+o: id=wu9CQb32 → [ok] /home/christopherdavid/code/openagents/crates/autopilot/src/compaction.rs
+t!:Read id=sFZTksn1 file_path=/home/christopherdavid/code/openagents/crates/autopilot/src/main.rs → [running] tokens_in=3 tokens_out=96 tokens_cached=134342
+o: id=sFZTksn1 → [ok]      1→//! Autopilot CLI - Run autonomous tasks with Claude and log trajectories
+t!:Read id=GqvH8wDT file_path=/home/christopherdavid/code/openagents/crates/autopilot/src/main.rs → [running] tokens_in=3 tokens_out=113 tokens_cached=135298
+o: id=GqvH8wDT → [ok]    150→        }
+a: Let me look for the CLI structure further in the file: tokens_in=3 tokens_out=3 tokens_cached=137579
+t!:Grep id=veSKmn17 pattern="enum Commands|struct Cli|Su..." → [running] tokens_in=3 tokens_out=3 tokens_cached=137579
+o: id=veSKmn17 → [ok] 4:use clap::{Parser, Subcommand};
+t!:Read id=oopWCSbM file_path=/home/christopherdavid/code/openagents/crates/autopilot/src/main.rs → [running] tokens_in=2 tokens_out=25 tokens_cached=139135
+o: id=oopWCSbM → [ok]    725→        id: String,
+a: Good! I can see there's a `MetricsCommands` enum. Now let me find where benchmark commands would go: tokens_in=2 tokens_out=1 tokens_cached=139576
+t!:Grep id=RMxpoo6P pattern="BenchmarkCommands|Benchmark \{" → [running] tokens_in=2 tokens_out=169 tokens_cached=139576
+o: id=RMxpoo6P → [ok] 457:    Benchmark {
+t!:Read id=54B1kTDo file_path=/home/christopherdavid/code/openagents/crates/autopilot/src/main.rs → [running] tokens_in=1 tokens_out=18 tokens_cached=140356
+o: id=54B1kTDo → [ok]    455→    },
+a: Perfect! I can see the benchmark command already has flags for baseline management. Let me check the implementation to see what's already there: tokens_in=1 tokens_out=1 tokens_cached=140733
+t!:Read id=9cuKH6VA file_path=/home/christopherdavid/code/openagents/crates/autopilot/src/main.rs → [running] tokens_in=1 tokens_out=1 tokens_cached=140733
+o: id=9cuKH6VA → [ok]    880→            handle_directive_command(command).await
+a: Now let me find the `handle_benchmark_command` function: tokens_in=0 tokens_out=1 tokens_cached=141298
+t!:Grep id=WUDnW7nV pattern="async fn handle_benchmark_c..." → [running] tokens_in=0 tokens_out=1 tokens_cached=141298
+o: id=WUDnW7nV → [ok] 3766-/// Handle benchmark command
+t!:Read id=E2roKDW7 file_path=/home/christopherdavid/code/openagents/crates/autopilot/src/main.rs → [running] tokens_in=0 tokens_out=25 tokens_cached=142963
+o: id=E2roKDW7 → [ok]   3766→/// Handle benchmark command
+a: Perfect! I can see that the command structure already exists but the baseline listing is not implemented (line 3799-3801). The save_baseline flag also isn't being used. Let me update the function t... tokens_in=0 tokens_out=1 tokens_cached=143178
+t!:TodoWrite id=r4HX7gQo  → [running] tokens_in=0 tokens_out=271 tokens_cached=143178
+o: id=r4HX7gQo → [ok] Todos have been modified successfully. Ensure that you continue to use the todo list to track you...
+t!:Edit id=X3aLjVQe file_path=/home/christopherdavid/code/openagents/crates/autopilot/src/main.rs → [running] tokens_in=0 tokens_out=1578 tokens_cached=145137
+o: id=X3aLjVQe → [ok] The file /home/christopherdavid/code/openagents/crates/autopilot/src/main.rs has been updated. He...
+a: Now let me add the save_baseline functionality after benchmarks complete: tokens_in=0 tokens_out=1 tokens_cached=145450
+t!:Read id=XDmnQetC file_path=/home/christopherdavid/code/openagents/crates/autopilot/src/main.rs → [running] tokens_in=0 tokens_out=129 tokens_cached=145450
+o: id=XDmnQetC → [ok]   3863→    println!();
+t!:Read id=syR2Wy1Y file_path=/home/christopherdavid/code/openagents/crates/autopilot/src/main.rs → [running] tokens_in=0 tokens_out=25 tokens_cached=148555
+o: id=syR2Wy1Y → [ok]   3895→    let passed = results.iter().filter(|r| r.success).count();
+t!:Edit id=GvqcQLF8 file_path=/home/christopherdavid/code/openagents/crates/autopilot/src/main.rs → [running] tokens_in=0 tokens_out=510 tokens_cached=148986
+o: id=GvqcQLF8 → [ok] The file /home/christopherdavid/code/openagents/crates/autopilot/src/main.rs has been updated. He...
+a: Now let me check if it compiles: tokens_in=0 tokens_out=1 tokens_cached=149433
+t!:Bash id=VrUSvtFi cmd="cargo check -p autopilot 2>&1 | grep -E "(error..." → [running] tokens_in=0 tokens_out=113 tokens_cached=149433
+o: id=VrUSvtFi → [ok]     Checking autopilot v0.1.0 (/home/christopherdavid/code/openagents/crates/autopilot)
+a: Good! It compiles with just warnings. Let me update the todos and commit what we have so far: tokens_in=0 tokens_out=1 tokens_cached=150446
+t!:TodoWrite id=pMcWdg75  → [running] tokens_in=0 tokens_out=242 tokens_cached=150446
+o: id=pMcWdg75 → [ok] Todos have been modified successfully. Ensure that you continue to use the todo list to track you...
+t!:Bash id=DvvqN9Sv cmd="git add -A && git diff --cached --stat" → [running] tokens_in=0 tokens_out=25 tokens_cached=150873
+o: id=DvvqN9Sv → [ok]  crates/autopilot/src/main.rs                       | 63 +++++++++++++++++++--
+t!:Bash id=2cZunLxM cmd="git commit -m "$(cat <<'EOF'" → [running] tokens_in=0 tokens_out=508 tokens_cached=151157
+o: id=2cZunLxM → [ok] [main 1ca8ecba4] Implement benchmark baseline CLI commands
+t!:Bash id=1FwQEdVp cmd="git push origin main" → [running] tokens_in=0 tokens_out=75 tokens_cached=151335
+o: id=1FwQEdVp → [error] Exit code 1
+a: I need to fix the warnings. Let me update the code: tokens_in=1 tokens_out=1 tokens_cached=151891
+t!:Edit id=D9KXnSsu file_path=/home/christopherdavid/code/openagents/crates/autopilot/src/main.rs → [running] tokens_in=1 tokens_out=335 tokens_cached=151891
+o: id=D9KXnSsu → [ok] The file /home/christopherdavid/code/openagents/crates/autopilot/src/main.rs has been updated. He...
+t!:Bash id=8bzfLtb8 cmd="cargo check -p autopilot 2>&1 | grep -E "(error..." → [running] tokens_in=0 tokens_out=97 tokens_cached=152436
+o: id=8bzfLtb8 → [ok]     Checking autopilot v0.1.0 (/home/christopherdavid/code/openagents/crates/autopilot)
+a: Perfect! Now let me amend the commit and push: tokens_in=0 tokens_out=1 tokens_cached=153081
+t!:Bash id=3sqZbXUH cmd="git add -A && git commit --amend --no-edit" → [running] tokens_in=0 tokens_out=1 tokens_cached=153081
