@@ -146,3 +146,41 @@ o: id=N9LeBdPs → [ok]
 t!:mcp__issues__issue_complete id=5S34JUGd  → [running] tokens_in=1 tokens_out=32 tokens_cached=71169
 o: id=5S34JUGd → [ok] Completed issue #454
 t!:Bash id=HypV8xqa cmd="git add -A && git commit -m "$(cat <<'EOF'" → [running] tokens_in=0 tokens_out=5 tokens_cached=71293
+o: id=HypV8xqa → [ok] [main fd8cf7933] Fix wallet GUI receive_page stub - return explicit error instead
+t!:mcp__issues__issue_ready id=ZTkrAgsQ  → [running] tokens_in=3 tokens_out=27 tokens_cached=71477
+o: id=ZTkrAgsQ → [ok] {
+t!:mcp__issues__issue_claim id=bZA51jLU  → [running] tokens_in=2 tokens_out=83 tokens_cached=71918
+o: id=bZA51jLU → [ok] Claimed issue #450
+t!:Read id=DTn49WPM file_path=/home/christopherdavid/code/openagents/crates/marketplace/src/compute/consumer.rs → [running] tokens_in=0 tokens_out=8 tokens_cached=72184
+o: id=DTn49WPM → [ok]    250→            jobs: Arc::new(Mutex::new(HashMap::new())),
+t!:Read id=zMk5Yzuh file_path=/home/christopherdavid/code/openagents/crates/marketplace/src/compute/consumer.rs → [running] tokens_in=3 tokens_out=24 tokens_cached=72394
+o: id=zMk5Yzuh → [ok]      1→//! Consumer module - Submit and manage compute jobs
+t!:Edit id=EL1vUgtB file_path=/home/christopherdavid/code/openagents/crates/marketplace/src/compute/consumer.rs → [running] tokens_in=3 tokens_out=563 tokens_cached=73247
+o: id=EL1vUgtB → [ok] The file /home/christopherdavid/code/openagents/crates/marketplace/src/compute/consumer.rs has be...
+t!:Bash id=UNuSQdcn cmd="cargo build --bin openagents 2>&1 | grep -E "(e..." → [running] tokens_in=2 tokens_out=98 tokens_cached=74049
+o: id=UNuSQdcn → [ok] error[E0599]: no variant or associated item named `RelayError` found for enum `Nip90Error` in the...
+t!:Grep id=3jQ8fw7M pattern="enum Nip90Error" → [running] tokens_in=2 tokens_out=26 tokens_cached=75023
+o: id=3jQ8fw7M → [ok] crates/nostr/core/src/nip90.rs:48:pub enum Nip90Error {
+t!:Read id=xPcKdFf2 file_path=/home/christopherdavid/code/openagents/crates/nostr/core/src/nip90.rs → [running] tokens_in=2 tokens_out=116 tokens_cached=75201
+o: id=xPcKdFf2 → [ok]     45→
+t!:Edit id=a8r2MWX4 file_path=/home/christopherdavid/code/openagents/crates/marketplace/src/compute/consumer.rs → [running] tokens_in=1 tokens_out=399 tokens_cached=75353
+o: id=a8r2MWX4 → [ok] The file /home/christopherdavid/code/openagents/crates/marketplace/src/compute/consumer.rs has be...
+t!:Bash id=aNng4Vot cmd="cargo build --bin openagents 2>&1 | grep -E "(e..." → [running] tokens_in=1 tokens_out=98 tokens_cached=76004
+o: id=aNng4Vot → [ok] warning: associated function `new` is never used
+t!:Grep id=LfRdH66J pattern="fn new\(job_id:" → [running] tokens_in=1 tokens_out=26 tokens_cached=76710
+o: id=LfRdH66J → [ok] 70:    pub fn new(job_id: impl Into<String>, request: impl Into<String>) -> Self {
+t!:Read id=ycZCCNrP file_path=/home/christopherdavid/code/openagents/crates/marketplace/src/compute/consumer.rs → [running] tokens_in=0 tokens_out=25 tokens_cached=76844
+o: id=ycZCCNrP → [ok]     68→impl JobInfo {
+t!:Edit id=42TnUdxf file_path=/home/christopherdavid/code/openagents/crates/marketplace/src/compute/consumer.rs → [running] tokens_in=0 tokens_out=199 tokens_cached=77144
+o: id=42TnUdxf → [ok] The file /home/christopherdavid/code/openagents/crates/marketplace/src/compute/consumer.rs has be...
+t!:Bash id=TVBXacRQ cmd="cargo build --bin openagents 2>&1 | grep -E "(e..." → [running] tokens_in=0 tokens_out=100 tokens_cached=77572
+o: id=TVBXacRQ → [ok] warning: associated function `new` is never used
+t!:Read id=PaHAWgFy file_path=/home/christopherdavid/code/openagents/crates/marketplace/src/compute/consumer.rs → [running] tokens_in=0 tokens_out=113 tokens_cached=77981
+o: id=PaHAWgFy → [ok]    200→}
+t!:Edit id=yy8R6aVG file_path=/home/christopherdavid/code/openagents/crates/marketplace/src/compute/consumer.rs → [running] tokens_in=0 tokens_out=221 tokens_cached=78220
+o: id=yy8R6aVG → [ok] The file /home/christopherdavid/code/openagents/crates/marketplace/src/compute/consumer.rs has be...
+t!:Bash id=1QNzqjZF cmd="cargo build --bin openagents 2>&1 | grep -E "(e..." → [running] tokens_in=0 tokens_out=96 tokens_cached=78541
+o: id=1QNzqjZF → [ok] 
+t!:mcp__issues__issue_complete id=Cx7KDM5L  → [running] tokens_in=0 tokens_out=32 tokens_cached=78967
+o: id=Cx7KDM5L → [ok] Completed issue #450
+t!:Bash id=i35YcV6Q cmd="git add -A && git commit -m "$(cat <<'EOF'" → [running] tokens_in=0 tokens_out=308 tokens_cached=79176

@@ -67,6 +67,7 @@ pub struct JobInfo {
 
 impl JobInfo {
     /// Create a new pending job
+    #[allow(dead_code)]
     pub fn new(job_id: impl Into<String>, request: impl Into<String>) -> Self {
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -200,6 +201,7 @@ pub struct JobHandle {
 
 impl JobHandle {
     /// Create a new job handle
+    #[allow(dead_code)]
     fn new(job_id: String, info: Arc<Mutex<JobInfo>>, updates: mpsc::Receiver<JobUpdate>) -> Self {
         Self { job_id, updates, info }
     }
@@ -253,33 +255,12 @@ impl Consumer {
     }
 
     /// Submit a job and get a handle for tracking
-    pub fn submit_job(&self, request: ComputeJobRequest) -> Result<JobHandle, Nip90Error> {
-        // Generate job ID (in real impl, this would be the event ID after signing/publishing)
-        let job_id = format!("job_{}", uuid::Uuid::new_v4());
-
-        // Serialize request for storage (just store job ID for now)
-        let request_json = format!("{{\"kind\":{}}}", request.kind());
-
-        // Create job info
-        let info = Arc::new(Mutex::new(JobInfo::new(&job_id, request_json)));
-
-        // Create update channel
-        let (tx, rx) = mpsc::channel(100);
-
-        // Store job and sender
-        {
-            let mut jobs = self.jobs.lock().unwrap();
-            jobs.insert(job_id.clone(), info.clone());
-        }
-        {
-            let mut senders = self.update_senders.lock().unwrap();
-            senders.insert(job_id.clone(), tx);
-        }
-
-        // TODO: Publish job request to relays
-        // TODO: Subscribe to feedback and result events
-
-        Ok(JobHandle::new(job_id, info, rx))
+    pub fn submit_job(&self, _request: ComputeJobRequest) -> Result<JobHandle, Nip90Error> {
+        // Job submission requires Nostr relay integration which is not yet implemented.
+        // Per d-012 (No Stubs), we return an explicit error instead of pretending to work.
+        Err(Nip90Error::Serialization(
+            "Job submission not yet implemented. Requires Nostr relay client integration for publishing job requests and subscribing to feedback/result events.".to_string()
+        ))
     }
 
     /// Handle a feedback event from a provider
