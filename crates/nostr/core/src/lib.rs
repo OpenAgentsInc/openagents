@@ -53,6 +53,7 @@
 //! - NIP-71: Video Events (video content with metadata)
 //! - NIP-72: Moderated Communities (Reddit-style communities)
 //! - NIP-73: External Content IDs (ISBN, podcast GUID, ISAN, blockchain references)
+//! - NIP-75: Zap Goals (fundraising goals with zap tracking)
 //! - NIP-78: Application-specific Data (arbitrary app data storage)
 //! - NIP-84: Highlights (highlighting valuable content)
 //! - NIP-89: Application Handlers (social discovery of skills/agents)
@@ -131,6 +132,7 @@ mod nip59;
 mod nip71;
 mod nip72;
 mod nip73;
+mod nip75;
 mod nip78;
 mod nip84;
 mod nip89;
@@ -491,6 +493,14 @@ pub use nip73::{
     add_external_content, bitcoin_address, bitcoin_tx, doi, ethereum_address, ethereum_tx,
     geohash, get_external_content_refs, hashtag, isan, isbn, podcast_episode, podcast_feed,
     podcast_publisher, web,
+};
+
+// NIP-75: Zap Goals
+pub use nip75::{
+    AMOUNT_TAG, CLOSED_AT_TAG, GOAL_TAG, IMAGE_TAG, Nip75Error, RELAYS_TAG, SUMMARY_TAG,
+    ZAP_GOAL_KIND, ZapGoal, add_goal_tag, create_amount_tag, create_closed_at_tag,
+    create_image_tag, create_relays_tag, create_summary_tag, get_goal_reference,
+    is_zap_goal_kind,
 };
 
 // NIP-78: Application-specific Data
