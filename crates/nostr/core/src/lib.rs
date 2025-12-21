@@ -40,6 +40,7 @@
 //! - NIP-57: Lightning Zaps (tipping with Lightning payments)
 //! - NIP-58: Badges (badge definitions, awards, and profile display)
 //! - NIP-59: Gift Wrap (encapsulation and metadata obscuring, requires `full` feature)
+//! - NIP-71: Video Events (video content with metadata)
 //! - NIP-89: Application Handlers (social discovery of skills/agents)
 //! - NIP-90: Data Vending Machine (DVM) job requests/results/feedback
 //! - NIP-94: File Metadata
@@ -102,6 +103,7 @@ mod nip57;
 mod nip58;
 #[cfg(feature = "full")]
 mod nip59;
+mod nip71;
 mod nip89;
 mod nip90;
 mod nip94;
@@ -370,6 +372,12 @@ pub use nip17::{
     ChatMessage, DmRelayList, FileMessage, KIND_CHAT_MESSAGE, KIND_DM_RELAY_LIST,
     KIND_FILE_MESSAGE, Nip17Error, QuotedEvent, receive_chat_message, receive_file_message,
     send_chat_message, send_file_message,
+};
+
+// NIP-71: Video Events
+pub use nip71::{
+    KIND_SHORT_VIDEO, KIND_VIDEO, Nip71Error, TextTrack, VideoEvent, VideoSegment, VideoVariant,
+    is_video_kind,
 };
 
 // NIP-89: Application Handlers
