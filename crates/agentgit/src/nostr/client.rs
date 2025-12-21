@@ -235,4 +235,9 @@ impl NostrClient {
     pub async fn cleanup_cache(&self, max_age_seconds: i64) -> Result<usize> {
         self.cache.lock().await.delete_old_events(max_age_seconds)
     }
+
+    /// Get claims for a specific issue
+    pub async fn get_claims_for_issue(&self, issue_event_id: &str) -> Result<Vec<Event>> {
+        self.cache.lock().await.get_claims_for_issue(issue_event_id)
+    }
 }
