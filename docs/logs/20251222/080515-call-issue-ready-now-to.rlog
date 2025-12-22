@@ -226,3 +226,104 @@ a: Perfect! It compiles. Let me update the todo and commit: tokens_in=0 tokens_o
 t!:TodoWrite id=5rYPKSQq  → [running] tokens_in=0 tokens_out=192 tokens_cached=116825
 o: id=5rYPKSQq → [ok] Todos have been modified successfully. Ensure that you continue to use the todo list to track you...
 t!:Bash id=BGbX4YiG cmd="git add -A && git commit -m "$(cat <<'EOF'" → [running] tokens_in=0 tokens_out=25 tokens_cached=117254
+o: id=BGbX4YiG → [ok] [main 8d72a2f3c] Add issue filtering UI to AgentGit
+t!:Bash id=bvpkwPpq cmd="git push origin main" → [running] tokens_in=0 tokens_out=25 tokens_cached=117488
+o: id=bvpkwPpq → [ok] [0;36m🔍 Running cargo build to check for errors and warnings...[0m
+t!:TodoWrite id=5wRin9PE  → [running] tokens_in=0 tokens_out=110 tokens_cached=118030
+o: id=5wRin9PE → [ok] Todos have been modified successfully. Ensure that you continue to use the todo list to track you...
+t!:Bash id=1y5HSRkF cmd="cargo autopilot issue complete 593" → [running] tokens_in=0 tokens_out=24 tokens_cached=118195
+o: id=1y5HSRkF → [ok] ✓ Completed issue #593: Add issue filtering UI in AgentGit
+t!:Bash id=QbY2yBw6 cmd="cargo autopilot issue list | grep "^[0-9]" | gr..." → [running] tokens_in=0 tokens_out=25 tokens_cached=118347
+o: id=QbY2yBw6 → [ok]     Finished `dev` profile [optimized + debuginfo] target(s) in 0.18s
+a: No open issues available. Let me create another issue from d-005 incomplete items. Let me look at what else needs work: tokens_in=0 tokens_out=1 tokens_cached=118511
+t!:Bash id=HfPst417 cmd="cargo autopilot issue create "Implement NIP-22 ..." → [running] tokens_in=0 tokens_out=185 tokens_cached=118511
+o: id=HfPst417 → [ok] ✓ Created issue #594: Implement NIP-22 comment threads for issues in AgentGit (agent: claude)
+t!:Bash id=sfoCTNr9 cmd="cargo autopilot issue claim 594" → [running] tokens_in=0 tokens_out=24 tokens_cached=118690
+o: id=sfoCTNr9 → [ok] ✓ Claimed issue #594: Implement NIP-22 comment threads for issues in AgentGit
+t!:TodoWrite id=gjSTcJhb  → [running] tokens_in=0 tokens_out=261 tokens_cached=119048
+o: id=gjSTcJhb → [ok] Todos have been modified successfully. Ensure that you continue to use the todo list to track you...
+a: Let me check the NostrClient to see if there's a method to get comments: tokens_in=0 tokens_out=1 tokens_cached=119220
+t!:Glob id=gJ6CUeVf pattern="crates/agentgit/src/nostr/*.rs" → [running] tokens_in=0 tokens_out=84 tokens_cached=119220
+o: id=gJ6CUeVf → [ok] /home/christopherdavid/code/openagents/crates/agentgit/src/nostr/cache.rs
+t!:Grep id=HiGAabTn pattern="pub async fn get_.*comments" → [running] tokens_in=0 tokens_out=109 tokens_cached=119523
+o: id=HiGAabTn → [error] <tool_use_error>Path does not exist: crates/agentgit/src/nostr/client.rs</tool_use_error>
+t!:Grep id=inS34EE6 pattern="pub async fn get_" → [running] tokens_in=1 tokens_out=26 tokens_cached=119811
+o: id=inS34EE6 → [error] <tool_use_error>Path does not exist: crates/agentgit/src/nostr</tool_use_error>
+t!:Read id=xxDMBAYx file_path=/home/christopherdavid/code/openagents/crates/agentgit/src/nostr/mod.rs → [running] tokens_in=1 tokens_out=100 tokens_cached=119972
+o: id=xxDMBAYx → [ok]      1→//! Nostr integration for AgentGit
+t!:Grep id=BkG2JRFQ pattern="pub struct NostrClient" → [running] tokens_in=0 tokens_out=24 tokens_cached=120143
+o: id=BkG2JRFQ → [error] <tool_use_error>Path does not exist: crates/agentgit/src/nostr</tool_use_error>
+t!:Bash id=SMssaZyU cmd="find crates/agentgit/src/nostr -name "*.rs" -ty..." → [running] tokens_in=1 tokens_out=25 tokens_cached=121060
+o: id=SMssaZyU → [ok] find: ‘crates/agentgit/src/nostr’: No such file or directory
+t!:Bash id=RD74ryVe cmd="ls -la crates/agentgit/src/" → [running] tokens_in=0 tokens_out=24 tokens_cached=121416
+o: id=RD74ryVe → [error] Exit code 2
+t!:Bash id=9y6AVqt1 cmd="pwd && ls -la crates/agentgit/ 2>&1 | head -20" → [running] tokens_in=1 tokens_out=24 tokens_cached=121545
+o: id=9y6AVqt1 → [ok] /home/christopherdavid/code/openagents/crates/agentgit
+t!:Bash id=wRgbAVj6 cmd="cd /home/christopherdavid/code/openagents && ls..." → [running] tokens_in=0 tokens_out=112 tokens_cached=121678
+o: id=wRgbAVj6 → [ok] Permissions Size User             Date Modified Name
+t!:Bash id=B9aTWdR1 cmd="ls crates/agentgit/src/nostr*.rs" → [running] tokens_in=0 tokens_out=24 tokens_cached=122026
+o: id=B9aTWdR1 → [error] Exit code 2
+t!:Bash id=fXPuwbE9 cmd="ls crates/agentgit/src/*.rs" → [running] tokens_in=1 tokens_out=24 tokens_cached=122326
+o: id=fXPuwbE9 → [ok] Permissions Size User             Date Modified Name
+a: Let me look at the lib file to see the module structure: tokens_in=0 tokens_out=1 tokens_cached=122468
+t!:Read id=mHvFN21s file_path=/home/christopherdavid/code/openagents/crates/agentgit/src/lib.rs → [running] tokens_in=0 tokens_out=1 tokens_cached=122468
+o: id=mHvFN21s → [ok]      1→//! AgentGit - Nostr-native GitHub alternative for agent-first collaboration
+t!:Bash id=Dy6JbVmk cmd="ls -la crates/agentgit/src/" → [running] tokens_in=0 tokens_out=26 tokens_cached=122972
+o: id=Dy6JbVmk → [ok] Permissions Size User             Date Modified Name
+t!:Bash id=kopPUJ4o cmd="ls crates/agentgit/src/nostr/" → [running] tokens_in=0 tokens_out=24 tokens_cached=123269
+o: id=kopPUJ4o → [ok] Permissions Size User             Date Modified Name
+a: Good! Now let me check the client.rs to see what methods are available: tokens_in=0 tokens_out=1 tokens_cached=123827
+t!:Grep id=uwqnWB53 pattern="pub async fn get_.*for_issue" → [running] tokens_in=0 tokens_out=1 tokens_cached=123827
+o: id=uwqnWB53 → [ok] 272:    pub async fn get_claims_for_issue(&self, issue_event_id: &str) -> Result<Vec<Event>> {
+a: Perfect! There are methods for claims and bounties. Let me read those to understand the pattern, then add a similar one for comments: tokens_in=0 tokens_out=1 tokens_cached=124099
+t!:Read id=nL2ViN8y file_path=/home/christopherdavid/code/openagents/crates/agentgit/src/nostr/client.rs → [running] tokens_in=0 tokens_out=1 tokens_cached=124099
+o: id=nL2ViN8y → [ok]    272→    pub async fn get_claims_for_issue(&self, issue_event_id: &str) -> Result<Vec<Event>> {
+a: Great! I can see the pattern - these methods call the cache. Let me add a method for getting comments for an issue. First, let me check the cache to see if this method already exists: tokens_in=0 tokens_out=1 tokens_cached=124508
+t!:Grep id=wyZUhpy2 pattern="pub fn get_comments_for_issue" → [running] tokens_in=0 tokens_out=1 tokens_cached=124508
+o: id=wyZUhpy2 → [ok] No matches found
+a: Let me check how the claims method is implemented in cache: tokens_in=0 tokens_out=4 tokens_cached=125250
+t!:Grep id=FMHbUHvi pattern="pub fn get_claims_for_issue" → [running] tokens_in=0 tokens_out=4 tokens_cached=125250
+o: id=FMHbUHvi → [ok] 542-            |row| row.get(0),
+a: Let me read more to see the complete implementation: tokens_in=0 tokens_out=3 tokens_cached=125618
+t!:Read id=D2YTrXJq file_path=/home/christopherdavid/code/openagents/crates/agentgit/src/nostr/cache.rs → [running] tokens_in=0 tokens_out=3 tokens_cached=125618
+o: id=D2YTrXJq → [ok]    562→    pub fn get_claims_for_issue(&self, issue_event_id: &str) -> Result<Vec<Event>> {
+a: Perfect! I understand the pattern. For comments (NIP-22), we need kind:1 events that reference the issue. Let me add a method for getting comments. First, let me find where to insert it in the cach... tokens_in=0 tokens_out=1 tokens_cached=126277
+t!:Read id=iDZ2C58M file_path=/home/christopherdavid/code/openagents/crates/agentgit/src/nostr/cache.rs → [running] tokens_in=0 tokens_out=1 tokens_cached=126277
+o: id=iDZ2C58M → [ok]    635→            })?
+a: Let me insert the get_comments_for_issue method after get_bounties_for_issue: tokens_in=0 tokens_out=3 tokens_cached=127406
+t!:Edit id=zbCZz3yY file_path=/home/christopherdavid/code/openagents/crates/agentgit/src/nostr/cache.rs → [running] tokens_in=0 tokens_out=721 tokens_cached=127406
+o: id=zbCZz3yY → [ok] The file /home/christopherdavid/code/openagents/crates/agentgit/src/nostr/cache.rs has been updat...
+a: Now let me add the corresponding method in client.rs: tokens_in=0 tokens_out=1 tokens_cached=128090
+t!:Edit id=fqvg9giw file_path=/home/christopherdavid/code/openagents/crates/agentgit/src/nostr/client.rs → [running] tokens_in=0 tokens_out=420 tokens_cached=128090
+o: id=fqvg9giw → [error] <tool_use_error>File has not been read yet. Read it first before writing to it.</tool_use_error>
+t!:Read id=CB1Pihq1 file_path=/home/christopherdavid/code/openagents/crates/agentgit/src/nostr/client.rs → [running] tokens_in=1 tokens_out=117 tokens_cached=129849
+o: id=CB1Pihq1 → [ok]    276→    /// Get bounty offers for a specific issue
+t!:Edit id=CorZ4jvS file_path=/home/christopherdavid/code/openagents/crates/agentgit/src/nostr/client.rs → [running] tokens_in=0 tokens_out=453 tokens_cached=130314
+o: id=CorZ4jvS → [ok] The file /home/christopherdavid/code/openagents/crates/agentgit/src/nostr/client.rs has been upda...
+a: Good! Now I need to update the server.rs issue_detail handler to fetch comments and pass them to the view. Let me check the current implementation: tokens_in=0 tokens_out=1 tokens_cached=130960
+t!:Read id=jDBNSq9Q file_path=/home/christopherdavid/code/openagents/crates/agentgit/src/server.rs → [running] tokens_in=0 tokens_out=147 tokens_cached=130960
+o: id=jDBNSq9Q → [ok]    242→/// Issue detail page
+t!:Read id=ERwE7EWp file_path=/home/christopherdavid/code/openagents/crates/agentgit/src/server.rs → [running] tokens_in=0 tokens_out=25 tokens_cached=131871
+o: id=ERwE7EWp → [ok]    291→
+a: Now I'll add fetching of comments and update the function signature: tokens_in=0 tokens_out=1 tokens_cached=133002
+t!:Edit id=hywUzbnt file_path=/home/christopherdavid/code/openagents/crates/agentgit/src/server.rs → [running] tokens_in=0 tokens_out=552 tokens_cached=133002
+o: id=hywUzbnt → [ok] The file /home/christopherdavid/code/openagents/crates/agentgit/src/server.rs has been updated. H...
+a: Good! Now I need to update the issue_detail_page function signature to accept comments and display them. Let me update the views.rs file: tokens_in=0 tokens_out=1 tokens_cached=133486
+t!:Edit id=YGmSmvhp file_path=/home/christopherdavid/code/openagents/crates/agentgit/src/views.rs → [running] tokens_in=0 tokens_out=244 tokens_cached=133486
+o: id=YGmSmvhp → [ok] The file /home/christopherdavid/code/openagents/crates/agentgit/src/views.rs has been updated. He...
+a: Now I need to add the comments section to the page. Let me find where to insert it (after the claims section would be appropriate): tokens_in=0 tokens_out=1 tokens_cached=134707
+t!:Read id=oAuW4mqC file_path=/home/christopherdavid/code/openagents/crates/agentgit/src/views.rs → [running] tokens_in=0 tokens_out=1 tokens_cached=134707
+o: id=oAuW4mqC → [ok]    628→                                                }
+a: Let me insert the comments section after the claims section (before the tags section): tokens_in=5 tokens_out=1 tokens_cached=18619
+t!:Edit id=GxaoqUsW file_path=/home/christopherdavid/code/openagents/crates/agentgit/src/views.rs → [running] tokens_in=5 tokens_out=979 tokens_cached=18619
+o: id=GxaoqUsW → [error] <tool_use_error>Found 3 matches of the string to replace, but replace_all is false. To replace al...
+a: Let me provide more context: tokens_in=6 tokens_out=1 tokens_cached=90199
+t!:Edit id=KBuoqiBJ file_path=/home/christopherdavid/code/openagents/crates/agentgit/src/views.rs → [running] tokens_in=6 tokens_out=1033 tokens_cached=90199
+o: id=KBuoqiBJ → [ok] The file /home/christopherdavid/code/openagents/crates/agentgit/src/views.rs has been updated. He...
+a: Perfect! Now let me check if the code compiles: tokens_in=4 tokens_out=1 tokens_cached=91315
+t!:Bash id=EHwtZFzu cmd="cd crates/agentgit && cargo check 2>&1 | head -100" → [running] tokens_in=4 tokens_out=102 tokens_cached=91315
+o: id=EHwtZFzu → [ok]     Checking agentgit v0.1.0 (/home/christopherdavid/code/openagents/crates/agentgit)
+a: Excellent! Let me update the TodoWrite and commit: tokens_in=4 tokens_out=6 tokens_cached=93754
+t!:TodoWrite id=QYKKGDi3  → [running] tokens_in=4 tokens_out=222 tokens_cached=93754
+o: id=QYKKGDi3 → [ok] Todos have been modified successfully. Ensure that you continue to use the todo list to track you...
+t!:Bash id=xQ6waiGj cmd="git add -A && git commit -m "$(cat <<'EOF'" → [running] tokens_in=4 tokens_out=441 tokens_cached=93931

@@ -441,7 +441,7 @@ pub fn issues_list_page(repository: &Event, issues: &[Event], is_watched: bool, 
     }
 }
 /// Issue detail page
-pub fn issue_detail_page(repository: &Event, issue: &Event, claims: &[Event], bounties: &[Event], identifier: &str) -> Markup {
+pub fn issue_detail_page(repository: &Event, issue: &Event, claims: &[Event], bounties: &[Event], comments: &[Event], identifier: &str) -> Markup {
     let repo_name = get_tag_value(repository, "name").unwrap_or_else(|| "Repository".to_string());
     let issue_title = get_tag_value(issue, "subject").unwrap_or_else(|| "Untitled Issue".to_string());
     let issue_status = get_tag_value(issue, "status").unwrap_or_else(|| "open".to_string());
@@ -661,6 +661,58 @@ pub fn issue_detail_page(repository: &Event, issue: &Event, claims: &[Event], bo
                                             placeholder="7200" {}
                                     }
                                     button.submit-button type="submit" { "Claim Issue" }
+                                }
+                            }
+
+                            section.issue-section {
+                                h2 { "💬 Comments" }
+                                @if comments.is_empty() {
+                                    p.empty-state { "No comments yet. Be the first to comment!" }
+                                } @else {
+                                    div.comments-list style="display: flex; flex-direction: column; gap: 1rem;" {
+                                        @for comment in comments {
+                                            @let commenter_pubkey = if comment.pubkey.len() > 16 {
+                                                format!("{}...{}", &comment.pubkey[..8], &comment.pubkey[comment.pubkey.len()-8..])
+                                            } else {
+                                                comment.pubkey.clone()
+                                            };
+
+                                            div.comment-card style="background: var(--card-bg, #1a1a1a); border: 1px solid var(--border-color, #333); padding: 1rem;" {
+                                                div.comment-header style="display: flex; justify-content: space-between; margin-bottom: 0.75rem;" {
+                                                    span.comment-author style="font-weight: 600; color: var(--accent-color, #0ea5e9);" { (commenter_pubkey) }
+                                                    span.comment-time style="font-size: 0.875rem; color: var(--muted-color, #888);" { (comment.created_at) }
+                                                }
+                                                @if !comment.content.is_empty() {
+                                                    div.comment-content style="white-space: pre-wrap;" {
+                                                        (comment.content)
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+
+                                form.claim-form
+                                    hx-post={"/repo/" (identifier) "/issues/" (issue.id) "/comment"}
+                                    hx-target=".comments-list"
+                                    hx-swap="beforeend" {
+                                    h3 { "Add Comment" }
+                                    div.form-group {
+                                        label for="comment_content" { "Comment" }
+                                        textarea
+                                            name="content"
+                                            id="comment_content"
+                                            placeholder="Write your comment..."
+                                            rows="4"
+                                            required {}
+                                    }
+                                    div style="padding: 12px; background: #fef3c7; border-left: 4px solid #f59e0b; margin-bottom: 1rem;" {
+                                        p style="margin: 0; font-size: 0.875rem;" {
+                                            "⚠️ " strong { "Note: " }
+                                            "Event publishing requires identity integration (issue #342). Comments cannot be posted yet."
+                                        }
+                                    }
+                                    button.submit-button type="submit" { "Post Comment" }
                                 }
                             }
 
