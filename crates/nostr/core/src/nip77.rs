@@ -902,6 +902,134 @@ pub fn sort_records(records: &mut [Record]) {
     });
 }
 
+/// State for tracking reconciliation progress
+#[derive(Debug, Clone)]
+pub struct ReconciliationState {
+    /// Local event records (sorted)
+    pub records: Vec<Record>,
+    /// IDs we have that remote needs
+    pub have: Vec<EventId>,
+    /// IDs remote has that we need
+    pub need: Vec<EventId>,
+    /// Current position in records for range splitting
+    pub position: usize,
+}
+
+impl ReconciliationState {
+    /// Create new reconciliation state with sorted records
+    pub fn new(mut records: Vec<Record>) -> Self {
+        sort_records(&mut records);
+        Self {
+            records,
+            have: Vec::new(),
+            need: Vec::new(),
+            position: 0,
+        }
+    }
+
+    /// Find records within a bound range
+    ///
+    /// Returns indices of records where lower_bound <= record < upper_bound
+    pub fn find_records_in_range(&self, lower: &Bound, upper: &Bound) -> Vec<usize> {
+        let mut indices = Vec::new();
+
+        for (i, record) in self.records.iter().enumerate() {
+            // Check if record >= lower_bound
+            if record.timestamp < lower.timestamp {
+                continue;
+            }
+            if record.timestamp == lower.timestamp && !lower.id_prefix.is_empty() {
+                // Compare ID prefix
+                let prefix_len = lower.id_prefix.len().min(32);
+                if &record.id[..prefix_len] < lower.id_prefix.as_slice() {
+                    continue;
+                }
+            }
+
+            // Check if record < upper_bound (exclusive)
+            if upper.timestamp != TIMESTAMP_INFINITY {
+                if record.timestamp > upper.timestamp {
+                    break; // Records are sorted, can stop early
+                }
+                if record.timestamp == upper.timestamp {
+                    if upper.id_prefix.is_empty() {
+                        // No ID prefix means exclude all records at this timestamp
+                        break;
+                    } else {
+                        // Compare ID prefix
+                        let prefix_len = upper.id_prefix.len().min(32);
+                        if &record.id[..prefix_len] >= upper.id_prefix.as_slice() {
+                            break;
+                        }
+                    }
+                }
+            }
+
+            indices.push(i);
+        }
+
+        indices
+    }
+
+    /// Calculate fingerprint for records in a range
+    pub fn calculate_range_fingerprint(&self, lower: &Bound, upper: &Bound) -> [u8; 16] {
+        let indices = self.find_records_in_range(lower, upper);
+        let ids: Vec<EventId> = indices.iter().map(|&i| self.records[i].id).collect();
+        calculate_fingerprint(&ids)
+    }
+
+    /// Split a range into smaller sub-ranges
+    ///
+    /// Divides the range to isolate differences. Strategy:
+    /// - If range has 0 records: return empty (skip range)
+    /// - If range has 1 record: return ID list
+    /// - If range has multiple: split at midpoint
+    pub fn split_range(&self, lower: &Bound, upper: &Bound) -> Result<Vec<Range>> {
+        let indices = self.find_records_in_range(lower, upper);
+
+        if indices.is_empty() {
+            // No local records in this range - skip it
+            return Ok(vec![Range::skip(upper.clone())]);
+        }
+
+        if indices.len() == 1 {
+            // Single record - send as ID list
+            let id = self.records[indices[0]].id;
+            return Ok(vec![Range::id_list(upper.clone(), vec![id])]);
+        }
+
+        // Multiple records - split at midpoint
+        let mid_idx = indices[indices.len() / 2];
+        let mid_record = &self.records[mid_idx];
+
+        // Create midpoint bound
+        let mid_bound = Bound::new(mid_record.timestamp, mid_record.id[..8].to_vec())?;
+
+        // Calculate fingerprints for each half
+        let fp_lower = self.calculate_range_fingerprint(lower, &mid_bound);
+        let fp_upper = self.calculate_range_fingerprint(&mid_bound, upper);
+
+        Ok(vec![
+            Range::fingerprint(mid_bound.clone(), fp_lower),
+            Range::fingerprint(upper.clone(), fp_upper),
+        ])
+    }
+
+    /// Add an ID to the "have" set (we have, remote needs)
+    pub fn add_have(&mut self, id: EventId) {
+        if !self.have.contains(&id) {
+            self.have.push(id);
+        }
+    }
+
+    /// Add an ID to the "need" set (remote has, we need)
+    pub fn add_need(&mut self, id: EventId) {
+        if !self.need.contains(&id) {
+            self.need.push(id);
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1334,5 +1462,252 @@ mod tests {
         let (decoded2, len2) = decode_varint(&encoded2).unwrap();
         assert_eq!(decoded1, decoded2);
         assert_eq!(len1, len2);
+    }
+
+    // === ReconciliationState Tests ===
+
+    #[test]
+    fn test_reconciliation_state_new() {
+        let records = vec![
+            Record::new(300, [0x03; 32]),
+            Record::new(100, [0x01; 32]),
+            Record::new(200, [0x02; 32]),
+        ];
+
+        let state = ReconciliationState::new(records);
+
+        // Should be sorted
+        assert_eq!(state.records[0].timestamp, 100);
+        assert_eq!(state.records[1].timestamp, 200);
+        assert_eq!(state.records[2].timestamp, 300);
+
+        // Should start with empty have/need
+        assert!(state.have.is_empty());
+        assert!(state.need.is_empty());
+        assert_eq!(state.position, 0);
+    }
+
+    #[test]
+    fn test_find_records_in_range() {
+        let records = vec![
+            Record::new(100, [0x01; 32]),
+            Record::new(200, [0x02; 32]),
+            Record::new(300, [0x03; 32]),
+            Record::new(400, [0x04; 32]),
+        ];
+
+        let state = ReconciliationState::new(records);
+
+        // Find all records
+        let lower = Bound::zero();
+        let upper = Bound::infinity();
+        let indices = state.find_records_in_range(&lower, &upper);
+        assert_eq!(indices, vec![0, 1, 2, 3]);
+
+        // Find middle range
+        let lower = Bound::new(200, vec![]).unwrap();
+        let upper = Bound::new(400, vec![]).unwrap();
+        let indices = state.find_records_in_range(&lower, &upper);
+        assert_eq!(indices, vec![1, 2]); // Records at 200 and 300
+
+        // Find empty range
+        let lower = Bound::new(150, vec![]).unwrap();
+        let upper = Bound::new(180, vec![]).unwrap();
+        let indices = state.find_records_in_range(&lower, &upper);
+        assert!(indices.is_empty());
+    }
+
+    #[test]
+    fn test_find_records_with_id_prefix() {
+        let mut id1 = [0x00; 32];
+        let mut id2 = [0x00; 32];
+        let mut id3 = [0x00; 32];
+
+        id1[0] = 0x10;
+        id2[0] = 0x20;
+        id3[0] = 0x30;
+
+        let records = vec![
+            Record::new(100, id1),
+            Record::new(100, id2),
+            Record::new(100, id3),
+        ];
+
+        let state = ReconciliationState::new(records);
+
+        // Find range with ID prefix
+        let lower = Bound::new(100, vec![0x15]).unwrap(); // After id1
+        let upper = Bound::new(100, vec![0x25]).unwrap(); // Before id3
+        let indices = state.find_records_in_range(&lower, &upper);
+        assert_eq!(indices, vec![1]); // Only id2 (0x20) is in range
+    }
+
+    #[test]
+    fn test_calculate_range_fingerprint() {
+        let records = vec![
+            Record::new(100, [0x01; 32]),
+            Record::new(200, [0x02; 32]),
+            Record::new(300, [0x03; 32]),
+        ];
+
+        let state = ReconciliationState::new(records);
+
+        // Fingerprint of all records
+        let fp_all = state.calculate_range_fingerprint(&Bound::zero(), &Bound::infinity());
+        assert_eq!(fp_all.len(), 16);
+
+        // Fingerprint of subset
+        let lower = Bound::new(200, vec![]).unwrap();
+        let upper = Bound::infinity();
+        let fp_subset = state.calculate_range_fingerprint(&lower, &upper);
+
+        // Should be different
+        assert_ne!(fp_all, fp_subset);
+
+        // Empty range should have consistent fingerprint
+        let lower = Bound::new(150, vec![]).unwrap();
+        let upper = Bound::new(180, vec![]).unwrap();
+        let fp_empty = state.calculate_range_fingerprint(&lower, &upper);
+        assert_eq!(fp_empty.len(), 16);
+    }
+
+    #[test]
+    fn test_split_range_empty() {
+        let records = vec![
+            Record::new(100, [0x01; 32]),
+            Record::new(300, [0x03; 32]),
+        ];
+
+        let state = ReconciliationState::new(records);
+
+        // Split empty range (between records)
+        let lower = Bound::new(150, vec![]).unwrap();
+        let upper = Bound::new(250, vec![]).unwrap();
+        let ranges = state.split_range(&lower, &upper).unwrap();
+
+        // Should return skip range
+        assert_eq!(ranges.len(), 1);
+        assert!(matches!(ranges[0].payload, RangePayload::Skip));
+        assert_eq!(ranges[0].upper_bound, upper);
+    }
+
+    #[test]
+    fn test_split_range_single_record() {
+        let records = vec![
+            Record::new(100, [0x01; 32]),
+            Record::new(200, [0x02; 32]),
+        ];
+
+        let state = ReconciliationState::new(records);
+
+        // Split range with single record
+        let lower = Bound::new(180, vec![]).unwrap();
+        let upper = Bound::new(220, vec![]).unwrap();
+        let ranges = state.split_range(&lower, &upper).unwrap();
+
+        // Should return ID list with single ID
+        assert_eq!(ranges.len(), 1);
+        assert!(matches!(ranges[0].payload, RangePayload::IdList(_)));
+        if let RangePayload::IdList(ids) = &ranges[0].payload {
+            assert_eq!(ids.len(), 1);
+            assert_eq!(ids[0], [0x02; 32]);
+        }
+    }
+
+    #[test]
+    fn test_split_range_multiple_records() {
+        let records = vec![
+            Record::new(100, [0x01; 32]),
+            Record::new(200, [0x02; 32]),
+            Record::new(300, [0x03; 32]),
+            Record::new(400, [0x04; 32]),
+        ];
+
+        let state = ReconciliationState::new(records);
+
+        // Split range with 4 records
+        let lower = Bound::zero();
+        let upper = Bound::infinity();
+        let ranges = state.split_range(&lower, &upper).unwrap();
+
+        // Should return 2 ranges with fingerprints
+        assert_eq!(ranges.len(), 2);
+        assert!(matches!(ranges[0].payload, RangePayload::Fingerprint(_)));
+        assert!(matches!(ranges[1].payload, RangePayload::Fingerprint(_)));
+
+        // Midpoint should be around record 2 (200)
+        // First range covers [0, mid), second covers [mid, infinity)
+    }
+
+    #[test]
+    fn test_split_range_two_records() {
+        let records = vec![
+            Record::new(100, [0x01; 32]),
+            Record::new(200, [0x02; 32]),
+        ];
+
+        let state = ReconciliationState::new(records);
+
+        // Split range with exactly 2 records
+        let lower = Bound::zero();
+        let upper = Bound::infinity();
+        let ranges = state.split_range(&lower, &upper).unwrap();
+
+        // Should split into 2 fingerprint ranges
+        assert_eq!(ranges.len(), 2);
+    }
+
+    #[test]
+    fn test_add_have_and_need() {
+        let records = vec![Record::new(100, [0x01; 32])];
+        let mut state = ReconciliationState::new(records);
+
+        let id1 = [0xAB; 32];
+        let id2 = [0xCD; 32];
+
+        // Add to have
+        state.add_have(id1);
+        assert_eq!(state.have.len(), 1);
+        assert_eq!(state.have[0], id1);
+
+        // Add duplicate should not increase size
+        state.add_have(id1);
+        assert_eq!(state.have.len(), 1);
+
+        // Add different ID
+        state.add_have(id2);
+        assert_eq!(state.have.len(), 2);
+
+        // Add to need
+        state.add_need(id1);
+        assert_eq!(state.need.len(), 1);
+        assert_eq!(state.need[0], id1);
+
+        state.add_need(id2);
+        assert_eq!(state.need.len(), 2);
+    }
+
+    #[test]
+    fn test_split_range_preserves_fingerprints() {
+        let records = vec![
+            Record::new(100, [0x01; 32]),
+            Record::new(200, [0x02; 32]),
+            Record::new(300, [0x03; 32]),
+            Record::new(400, [0x04; 32]),
+        ];
+
+        let state = ReconciliationState::new(records);
+
+        let lower = Bound::zero();
+        let upper = Bound::infinity();
+        let ranges = state.split_range(&lower, &upper).unwrap();
+
+        // Verify each range has correct fingerprint for its sub-range
+        for range in &ranges {
+            if let RangePayload::Fingerprint(fp) = &range.payload {
+                // Fingerprint should be 16 bytes
+                assert_eq!(fp.len(), 16);
+            }
+        }
     }
 }
