@@ -12,6 +12,23 @@ use std::collections::BTreeMap;
 ///
 /// Each signer generates nonces and commitments for a signing round.
 /// The nonces must be kept secret, and commitments are shared with all participants.
+///
+/// # Examples
+///
+/// ```
+/// use frostr::keygen::generate_key_shares;
+/// use frostr::signing::round1_commit;
+///
+/// // Generate 2-of-3 shares
+/// let shares = generate_key_shares(2, 3).unwrap();
+///
+/// // Each signer generates commitments
+/// let (nonces1, commitments1) = round1_commit(&shares[0]);
+/// let (nonces2, commitments2) = round1_commit(&shares[1]);
+///
+/// // Nonces are kept secret, commitments are shared
+/// // Note: nonces and commitments types are from frost_secp256k1 crate
+/// ```
 pub fn round1_commit(
     frost_share: &FrostShare,
 ) -> (round1::SigningNonces, round1::SigningCommitments) {
@@ -37,6 +54,42 @@ pub fn round2_sign(
 ///
 /// The coordinator collects all signature shares and aggregates them
 /// into a complete signature that can be verified with the group public key.
+///
+/// # Examples
+///
+/// ```no_run
+/// use frostr::keygen::generate_key_shares;
+/// use frostr::signing::{round1_commit, round2_sign, aggregate_signatures};
+/// use frost_secp256k1::SigningPackage;
+/// use std::collections::BTreeMap;
+///
+/// # fn example() -> Result<(), frostr::Error> {
+/// let shares = generate_key_shares(2, 3)?;
+/// let message = b"Sign this message";
+///
+/// // Round 1: Generate commitments
+/// let (nonces1, commitments1) = round1_commit(&shares[0]);
+/// let (nonces2, commitments2) = round1_commit(&shares[1]);
+///
+/// let mut signing_commitments = BTreeMap::new();
+/// signing_commitments.insert(*shares[0].key_package.identifier(), commitments1);
+/// signing_commitments.insert(*shares[1].key_package.identifier(), commitments2);
+///
+/// let signing_package = SigningPackage::new(signing_commitments, message);
+///
+/// // Round 2: Generate signature shares
+/// let sig_share1 = round2_sign(&shares[0], &nonces1, &signing_package)?;
+/// let sig_share2 = round2_sign(&shares[1], &nonces2, &signing_package)?;
+///
+/// let mut signature_shares = BTreeMap::new();
+/// signature_shares.insert(*shares[0].key_package.identifier(), sig_share1);
+/// signature_shares.insert(*shares[1].key_package.identifier(), sig_share2);
+///
+/// // Aggregate into final signature
+/// let signature = aggregate_signatures(&signing_package, &signature_shares, &shares[0])?;
+/// # Ok(())
+/// # }
+/// ```
 pub fn aggregate_signatures(
     signing_package: &SigningPackage,
     signature_shares: &BTreeMap<Identifier, round2::SignatureShare>,
