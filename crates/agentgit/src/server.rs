@@ -6,7 +6,7 @@ use wallet::core::identity::UnifiedIdentity;
 
 use crate::git::{clone_repository, get_repository_path, is_repository_cloned};
 use crate::nostr::NostrClient;
-use crate::nostr::events::{BountyOfferBuilder, IssueClaimBuilder, PatchBuilder, PullRequestBuilder, RepositoryAnnouncementBuilder, StatusEventBuilder};
+use crate::nostr::events::{BountyClaimBuilder, BountyOfferBuilder, IssueClaimBuilder, PatchBuilder, PullRequestBuilder, RepositoryAnnouncementBuilder, StatusEventBuilder};
 use crate::views::{agent_profile_page, home_page_with_repos, issue_create_form_page, issue_detail_page, issues_list_page, patch_create_form_page, patch_detail_page, patches_list_page, pr_create_form_page, pull_request_detail_page, pull_requests_list_page, repository_create_form_page, repository_detail_page, search_results_page, trajectory_viewer_page};
 use crate::ws::{ws_handler, WsBroadcaster};
 use nostr::{EventTemplate, Issue, KIND_ISSUE};
@@ -613,6 +613,140 @@ async fn pr_review_submit(
         .body(response_html)
 }
 
+/// Helper function to extract tag value from event
+fn get_tag_value_from_event(event: &nostr::Event, tag_name: &str) -> Option<String> {
+    event.tags.iter()
+        .find(|tag| tag.first().map(|t| t == tag_name).unwrap_or(false))
+        .and_then(|tag| tag.get(1))
+        .map(|s| s.to_string())
+}
+
+/// Try to create a bounty claim when a PR is merged
+/// Returns Ok(Some(message)) if bounty claim was created successfully
+/// Returns Ok(None) if no bounty was found
+/// Returns Err if there was an error
+async fn try_create_bounty_claim(
+    state: &web::Data<AppState>,
+    pr_id: &str,
+    repo_address: &str,
+) -> Result<Option<String>, String> {
+    // 1. Get the PR event to extract trajectory and issue reference
+    let pr_event = match state.nostr_client.get_cached_event(pr_id).await {
+        Ok(Some(event)) => event,
+        Ok(None) => {
+            return Err(format!("PR event {} not found in cache", pr_id));
+        }
+        Err(e) => {
+            return Err(format!("Failed to fetch PR event: {}", e));
+        }
+    };
+
+    // 2. Extract trajectory session ID and hash from PR tags
+    let trajectory_session_id = match get_tag_value_from_event(&pr_event, "trajectory") {
+        Some(id) => id,
+        None => {
+            tracing::debug!("PR {} has no trajectory tag, skipping bounty claim", pr_id);
+            return Ok(None);
+        }
+    };
+
+    let trajectory_hash = get_tag_value_from_event(&pr_event, "trajectory_hash")
+        .unwrap_or_else(|| "unknown".to_string());
+
+    // 3. Find issue reference in PR
+    // PRs can reference issues via "e" tags with "mention" or "reply" markers
+    // Or they might reference issue claims
+    let issue_event_id = pr_event.tags.iter()
+        .find(|tag| {
+            tag.len() >= 2 && tag[0] == "e" &&
+            (tag.len() < 4 || (tag.get(3).map(|m| m == "mention" || m == "reply" || m == "root").unwrap_or(false)))
+        })
+        .and_then(|tag| tag.get(1))
+        .map(|s| s.to_string());
+
+    let issue_id = match issue_event_id {
+        Some(id) => id,
+        None => {
+            tracing::debug!("PR {} does not reference an issue, skipping bounty claim", pr_id);
+            return Ok(None);
+        }
+    };
+
+    // 4. Check if there's a bounty on this issue
+    let bounties = match state.nostr_client.get_bounties_for_issue(&issue_id).await {
+        Ok(b) => b,
+        Err(e) => {
+            return Err(format!("Failed to fetch bounties for issue {}: {}", issue_id, e));
+        }
+    };
+
+    if bounties.is_empty() {
+        tracing::debug!("No bounties found for issue {}", issue_id);
+        return Ok(None);
+    }
+
+    // 5. Get the first (most recent) bounty
+    let bounty = &bounties[0];
+    let bounty_id = bounty.id.clone();
+
+    // Extract bounty amount for display
+    let bounty_amount = get_tag_value_from_event(bounty, "amount")
+        .unwrap_or_else(|| "unknown".to_string());
+
+    // 6. Get Lightning address from identity (if available)
+    let lightning_address = state.identity.as_ref()
+        .and_then(|id| {
+            // Try to get lud16 from identity metadata
+            // For now, we'll leave this optional
+            None::<String>
+        });
+
+    // 7. Build and publish bounty claim event
+    let mut builder = BountyClaimBuilder::new(
+        &bounty_id,
+        pr_id,
+        repo_address,
+        &trajectory_session_id,
+        &trajectory_hash,
+    );
+
+    if let Some(lud16) = lightning_address {
+        builder = builder.lightning_address(lud16);
+    }
+
+    // Add relay hint for trajectory events
+    builder = builder.relay("wss://relay.nostr.bg");
+
+    let bounty_claim_template = builder.build();
+
+    // Sign and publish the bounty claim
+    match state.sign_event(bounty_claim_template) {
+        Ok(signed_event) => {
+            let claim_event_id = signed_event.id.clone();
+
+            match state.nostr_client.publish_event(signed_event).await {
+                Ok(_) => {
+                    tracing::info!(
+                        "Published bounty claim: claim_id={}, bounty_id={}, pr_id={}, amount={}",
+                        claim_event_id, bounty_id, pr_id, bounty_amount
+                    );
+                    Ok(Some(format!(
+                        "Bounty claim created! Amount: {} sats. Claim ID: {}",
+                        bounty_amount,
+                        &claim_event_id[..8]
+                    )))
+                }
+                Err(e) => {
+                    Err(format!("Failed to publish bounty claim event: {}", e))
+                }
+            }
+        }
+        Err(e) => {
+            Err(format!("Failed to sign bounty claim event: {}", e))
+        }
+    }
+}
+
 /// Change the status of a PR
 async fn pr_status_change(
     state: web::Data<AppState>,
@@ -680,6 +814,24 @@ async fn pr_status_change(
                 Ok(_) => {
                     tracing::info!("Published status change: event_id={}, pr_id={}, status={}", event_id, pr_id, status_label);
 
+                    // If PR was merged (status_kind == 1631), try to create bounty claim
+                    let mut bounty_claim_message = String::new();
+                    if status_kind == 1631 {
+                        match try_create_bounty_claim(&state, &pr_id, &repo_address).await {
+                            Ok(Some(msg)) => {
+                                bounty_claim_message = format!("<p>⚡ {}</p>", msg);
+                            }
+                            Ok(None) => {
+                                // No bounty to claim, this is fine
+                                tracing::debug!("No bounty found for merged PR: {}", pr_id);
+                            }
+                            Err(e) => {
+                                tracing::warn!("Failed to create bounty claim for PR {}: {}", pr_id, e);
+                                bounty_claim_message = format!("<p>⚠️ Could not create bounty claim: {}</p>", e);
+                            }
+                        }
+                    }
+
                     // Return success message
                     HttpResponse::Ok()
                         .content_type("text/html; charset=utf-8")
@@ -688,6 +840,7 @@ async fn pr_status_change(
                                 <p>✅ Status changed to: {}</p>
                                 <p>Kind: {}</p>
                                 {}
+                                {}
                             </div>"#,
                             status_label,
                             status_kind,
@@ -695,7 +848,8 @@ async fn pr_status_change(
                                 format!("<p>Reason: {}</p>", reason)
                             } else {
                                 String::new()
-                            }
+                            },
+                            bounty_claim_message
                         ))
                 }
                 Err(e) => {
