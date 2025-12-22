@@ -3,7 +3,7 @@
 use actix_web::{web, HttpResponse};
 use ui::ClaudeStatus;
 
-use crate::gui::state::AppState;
+use crate::gui::state::{AppState, fetch_usage_limits};
 
 /// Configure Claude API routes
 pub fn configure_api(cfg: &mut web::ServiceConfig) {
@@ -50,6 +50,23 @@ async fn get_status(state: web::Data<AppState>) -> HttpResponse {
             usage.cost_usd,
             usage.context_window,
         );
+    }
+
+    // Fetch and add usage/quota limits (5h session and 7d weekly)
+    // Note: This makes an API call to get live quota data
+    if let Some(limits) = fetch_usage_limits().await {
+        if let Some(pct) = limits.session_percent {
+            let resets = limits.session_resets_at.as_deref().unwrap_or("later");
+            status = status.add_usage_limit("Current session (5h)", pct, resets);
+        }
+        if let Some(pct) = limits.weekly_all_percent {
+            let resets = limits.weekly_all_resets_at.as_deref().unwrap_or("later");
+            status = status.add_usage_limit("Current week (all models)", pct, resets);
+        }
+        if let (Some(spent), Some(limit)) = (limits.extra_spent, limits.extra_limit) {
+            let resets = limits.extra_resets_at.as_deref().unwrap_or("later");
+            status = status.add_extra_usage(spent, limit, resets);
+        }
     }
 
     HttpResponse::Ok()
