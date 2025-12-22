@@ -311,7 +311,7 @@ pub fn encrypt(
     let padded = pad(plaintext)?;
 
     // Encrypt with ChaCha20
-    let mut ciphertext = padded.clone();
+    let mut ciphertext = padded;
     let mut cipher = ChaCha20::new(&chacha_key.into(), &chacha_nonce.into());
     cipher.apply_keystream(&mut ciphertext);
 
