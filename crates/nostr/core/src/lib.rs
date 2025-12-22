@@ -1,6 +1,108 @@
 //! Nostr protocol implementation for OpenAgents.
 //!
-//! This crate provides:
+//! This crate provides a comprehensive implementation of the Nostr protocol and related
+//! specifications (NIPs) for decentralized social networking and data exchange. It forms
+//! the foundation for OpenAgents' marketplace, agent communication, and data vending machine
+//! capabilities.
+//!
+//! # Architecture
+//!
+//! The crate is organized around several key components:
+//!
+//! - **Core Protocol** (NIP-01): Event structure, signing, verification, and serialization
+//! - **Identity Management** (NIP-06): BIP39 mnemonic-based key derivation
+//! - **Encryption** (NIP-04, NIP-44): Encrypted direct messages with versioned encryption
+//! - **Social Features** (NIP-02, NIP-25, NIP-28, NIP-72): Following, reactions, chat, communities
+//! - **Content Types** (NIP-23, NIP-71, NIP-84): Long-form, video, highlights
+//! - **Lightning Integration** (NIP-47, NIP-57, NIP-61): Wallet Connect, zaps, Cashu payments
+//! - **Marketplace** (NIP-15, NIP-69, NIP-99): Products, orders, classified listings
+//! - **Data Vending** (NIP-90): Compute job requests and results
+//! - **Agent Protocol** (NIP-SA, NIP-89): Autonomous agents with sovereign identity
+//!
+//! # Protocol Compliance
+//!
+//! This implementation follows the Nostr protocol specification as defined at
+//! https://github.com/nostr-protocol/nips. All NIPs are implemented according to their
+//! current specifications, with appropriate feature flags for cryptographic operations.
+//!
+//! # Features
+//!
+//! - `full` (default): Full crypto support (signing, encryption, key derivation)
+//! - `minimal`: Event types and serialization only (for WASM/relay use)
+//!
+//! # Usage
+//!
+//! ## Creating and Signing Events
+//!
+//! ```
+//! use nostr::{generate_secret_key, EventTemplate, finalize_event, KIND_SHORT_TEXT_NOTE};
+//!
+//! // Generate a new keypair
+//! let secret_key = generate_secret_key();
+//!
+//! // Create an event template
+//! let template = EventTemplate {
+//!     kind: KIND_SHORT_TEXT_NOTE,
+//!     tags: vec![],
+//!     content: "Hello Nostr!".to_string(),
+//!     created_at: std::time::SystemTime::now()
+//!         .duration_since(std::time::UNIX_EPOCH)
+//!         .unwrap()
+//!         .as_secs(),
+//! };
+//!
+//! // Sign and finalize the event
+//! let event = finalize_event(&template, &secret_key).unwrap();
+//! # Ok::<(), nostr::Nip01Error>(())
+//! ```
+//!
+//! ## Event Verification
+//!
+//! ```
+//! use nostr::{generate_secret_key, EventTemplate, finalize_event, verify_event, KIND_SHORT_TEXT_NOTE};
+//!
+//! // Create and sign an event
+//! let secret_key = generate_secret_key();
+//! let template = EventTemplate {
+//!     kind: KIND_SHORT_TEXT_NOTE,
+//!     tags: vec![],
+//!     content: "Test".to_string(),
+//!     created_at: 1234567890,
+//! };
+//! let event = finalize_event(&template, &secret_key).unwrap();
+//!
+//! // Verify the event signature
+//! let is_valid = verify_event(&event).unwrap();
+//! assert!(is_valid);
+//! # Ok::<(), nostr::Nip01Error>(())
+//! ```
+//!
+//! ## Working with Tags
+//!
+//! ```
+//! use nostr::{generate_secret_key, EventTemplate, finalize_event};
+//!
+//! let secret_key = generate_secret_key();
+//!
+//! // Create event with tags
+//! let template = EventTemplate {
+//!     kind: 1,
+//!     tags: vec![
+//!         vec!["e".to_string(), "event_id_here".to_string()],
+//!         vec!["p".to_string(), "pubkey_here".to_string()],
+//!     ],
+//!     content: "Reply to an event".to_string(),
+//!     created_at: 1234567890,
+//! };
+//!
+//! let event = finalize_event(&template, &secret_key).unwrap();
+//! assert_eq!(event.tags.len(), 2);
+//! # Ok::<(), nostr::Nip01Error>(())
+//! ```
+//!
+//! # NIP Coverage
+//!
+//! This crate implements:
 //! - NIP-01: Basic protocol (events, signing, verification)
 //! - NIP-02: Follow List (Contact List and Petnames)
 //! - NIP-04: Encrypted Direct Messages (requires `full` feature)
