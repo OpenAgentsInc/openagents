@@ -349,6 +349,22 @@ impl MetricsDb {
         )
         .context("Failed to initialize database schema")?;
 
+        // Migrate existing sessions table to add APM fields
+        // This is safe because we're adding nullable columns with defaults
+        let columns: Vec<String> = self.conn.prepare("PRAGMA table_info(sessions)")?
+            .query_map([], |row| row.get::<_, String>(1))?
+            .collect::<Result<Vec<_>, _>>()?;
+
+        if !columns.contains(&"apm".to_string()) {
+            self.conn.execute("ALTER TABLE sessions ADD COLUMN apm REAL", [])?;
+        }
+        if !columns.contains(&"source".to_string()) {
+            self.conn.execute("ALTER TABLE sessions ADD COLUMN source TEXT DEFAULT 'autopilot'", [])?;
+        }
+        if !columns.contains(&"messages".to_string()) {
+            self.conn.execute("ALTER TABLE sessions ADD COLUMN messages INTEGER NOT NULL DEFAULT 0", [])?;
+        }
+
         Ok(())
     }
 
@@ -1216,6 +1232,74 @@ pub fn extract_metrics_from_rlog_file<P: AsRef<Path>>(
             path.as_ref()
         ))
     }
+}
+
+/// Backfill APM data for existing sessions in the database
+///
+/// Calculates APM for all sessions that don't have it set yet and updates them.
+pub fn backfill_apm_for_sessions(db_path: &Path) -> Result<usize> {
+    use crate::apm::calculate_apm;
+
+    let db = MetricsDb::open(db_path)?;
+    let conn = &db.conn;
+
+    // Get all sessions without APM
+    let mut stmt = conn.prepare(
+        "SELECT id, duration_seconds, tool_calls, messages FROM sessions WHERE apm IS NULL"
+    )?;
+
+    let sessions: Vec<(String, f64, u32, u32)> = stmt
+        .query_map([], |row| {
+            Ok((
+                row.get(0)?,
+                row.get(1)?,
+                row.get(2)?,
+                row.get(3)?,
+            ))
+        })?
+        .collect::<std::result::Result<Vec<_>, _>>()?;
+
+    let mut updated = 0;
+    for (id, duration_seconds, tool_calls, messages) in sessions {
+        let duration_minutes = duration_seconds / 60.0;
+
+        if let Some(apm) = calculate_apm(messages, tool_calls, duration_minutes) {
+            conn.execute(
+                "UPDATE sessions SET apm = ?1 WHERE id = ?2",
+                rusqlite::params![apm, id],
+            )?;
+            updated += 1;
+        }
+    }
+
+    Ok(updated)
+}
+
+/// Store an APM snapshot
+pub fn store_apm_snapshot(
+    db_path: &Path,
+    snapshot: &crate::apm::APMSnapshot,
+) -> Result<()> {
+    let db = MetricsDb::open(db_path)?;
+
+    db.conn.execute(
+        r#"
+        INSERT INTO apm_snapshots (timestamp, source, window, apm, actions, duration_minutes, messages, tool_calls)
+        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+        "#,
+        rusqlite::params![
+            snapshot.timestamp.to_rfc3339(),
+            snapshot.source.as_str(),
+            snapshot.window.as_str(),
+            snapshot.apm,
+            snapshot.actions,
+            snapshot.duration_minutes,
+            snapshot.messages,
+            snapshot.tool_calls,
+        ],
+    )?;
+
+    Ok(())
 }
 
 #[cfg(test)]
