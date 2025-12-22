@@ -5,7 +5,7 @@ use crate::server::state::AppState;
 use crate::server::ws;
 use crate::storage::PermissionStorage;
 use crate::views::{chat, context, layout, permissions_view};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::Arc;
 
@@ -210,7 +210,7 @@ fn collect_token_usage(_workdir: &PathBuf) -> anyhow::Result<context::TokenUsage
 }
 
 /// Build directory tree
-fn build_directory_tree(workdir: &PathBuf) -> anyhow::Result<context::FileEntry> {
+fn build_directory_tree(workdir: &Path) -> anyhow::Result<context::FileEntry> {
     // Build a simple tree for the workspace root
     let mut children = Vec::new();
 

@@ -67,12 +67,11 @@ pub fn list_remotes(repo_path: &Path) -> Result<Vec<String>> {
     let repo = Repository::open(repo_path)?;
     let remotes = repo.remotes()?;
 
-    let mut remote_names = Vec::new();
-    for remote in remotes.iter() {
-        if let Some(name) = remote {
-            remote_names.push(name.to_string());
-        }
-    }
+    let remote_names: Vec<String> = remotes
+        .iter()
+        .flatten()
+        .map(|name| name.to_string())
+        .collect();
 
     Ok(remote_names)
 }
