@@ -3,8 +3,6 @@
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
-use claude_agent_sdk::AccountInfo;
-
 use super::ws::WsBroadcaster;
 
 /// Tab identifiers for navigation
@@ -34,6 +32,17 @@ impl Tab {
     }
 }
 
+/// Claude status info
+#[derive(Clone, Default)]
+pub struct ClaudeInfo {
+    pub authenticated: bool,
+    pub model: Option<String>,
+    pub version: Option<String>,
+    pub total_sessions: Option<u64>,
+    pub total_messages: Option<u64>,
+    pub today_tokens: Option<u64>,
+}
+
 /// Unified application state shared across all routes
 pub struct AppState {
     /// WebSocket broadcaster for real-time updates
@@ -46,8 +55,8 @@ pub struct AppState {
     /// Full auto mode enabled
     pub full_auto: RwLock<bool>,
 
-    /// Claude account info (fetched on startup)
-    pub claude_account: RwLock<Option<AccountInfo>>,
+    /// Claude status info
+    pub claude_info: RwLock<ClaudeInfo>,
 }
 
 impl AppState {
@@ -56,76 +65,86 @@ impl AppState {
             broadcaster: Arc::new(WsBroadcaster::new(64)),
             active_tab: RwLock::new(Tab::default()),
             full_auto: RwLock::new(false),
-            claude_account: RwLock::new(None),
+            claude_info: RwLock::new(ClaudeInfo::default()),
         }
     }
 }
 
-/// Fetch Claude account info by running CLI with a simple prompt
-pub async fn fetch_claude_account_info() -> Option<AccountInfo> {
+/// Fetch Claude info by running CLI and parsing stats
+pub async fn fetch_claude_info() -> ClaudeInfo {
     use std::process::Stdio;
     use tokio::io::{AsyncBufReadExt, BufReader};
     use tokio::process::Command;
 
+    let mut info = ClaudeInfo::default();
+
+    // First, read stats-cache.json for usage data
+    let stats_path = shellexpand::tilde("~/.claude/stats-cache.json").to_string();
+    if let Ok(content) = tokio::fs::read_to_string(&stats_path).await {
+        if let Ok(json) = serde_json::from_str::<serde_json::Value>(&content) {
+            info.total_sessions = json.get("totalSessions").and_then(|v| v.as_u64());
+            info.total_messages = json.get("totalMessages").and_then(|v| v.as_u64());
+
+            // Get today's tokens
+            let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+            if let Some(daily) = json.get("dailyModelTokens").and_then(|v| v.as_array()) {
+                for day in daily.iter().rev() {
+                    if day.get("date").and_then(|d| d.as_str()) == Some(&today) {
+                        if let Some(by_model) = day.get("tokensByModel").and_then(|v| v.as_object()) {
+                            let total: u64 = by_model.values()
+                                .filter_map(|v| v.as_u64())
+                                .sum();
+                            info.today_tokens = Some(total);
+                        }
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+    // Now check auth by running CLI
     let claude_path = shellexpand::tilde("~/.claude/local/claude").to_string();
 
-    let mut child = Command::new(&claude_path)
+    let child_result = Command::new(&claude_path)
         .args(["-p", "x", "--output-format", "stream-json", "--verbose"])
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
-        .spawn()
-        .ok()?;
+        .spawn();
 
-    let stdout = child.stdout.take()?;
+    let mut child = match child_result {
+        Ok(c) => c,
+        Err(_) => return info,
+    };
+
+    let stdout = match child.stdout.take() {
+        Some(s) => s,
+        None => return info,
+    };
+
     let mut reader = BufReader::new(stdout).lines();
 
     // Read lines looking for the init message
     while let Ok(Some(line)) = reader.next_line().await {
         if line.contains("\"subtype\":\"init\"") {
-            // Parse init message to check auth
             if let Ok(json) = serde_json::from_str::<serde_json::Value>(&line) {
-                let api_key_source = json.get("apiKeySource").and_then(|v| v.as_str());
-                let model = json.get("model").and_then(|v| v.as_str());
-
-                // If we got a model, we're authenticated
-                if model.is_some() {
-                    // Kill the process since we have what we need
-                    let _ = child.kill().await;
-
-                    let token_source = match api_key_source {
-                        Some("none") | None => Some("oauth".to_string()),
-                        Some(other) => Some(other.to_string()),
-                    };
-
-                    return Some(AccountInfo {
-                        email: Some("Authenticated".to_string()),
-                        organization: None,
-                        subscription_type: Some("claude-max".to_string()),
-                        token_source,
-                        api_key_source: api_key_source.map(|s| s.to_string()),
-                    });
-                }
+                info.authenticated = true;
+                info.model = json.get("model").and_then(|v| v.as_str()).map(|s| s.to_string());
+                info.version = json.get("claude_code_version").and_then(|v| v.as_str()).map(|s| s.to_string());
             }
+            let _ = child.kill().await;
             break;
         }
 
         // Also check for result which means query completed (we're authed)
         if line.contains("\"type\":\"result\"") {
+            info.authenticated = true;
             let _ = child.kill().await;
-
-            return Some(AccountInfo {
-                email: Some("Authenticated".to_string()),
-                organization: None,
-                subscription_type: Some("claude-max".to_string()),
-                token_source: Some("oauth".to_string()),
-                api_key_source: None,
-            });
+            break;
         }
     }
 
-    // Wait for process to finish
     let _ = child.wait().await;
-
-    None
+    info
 }
