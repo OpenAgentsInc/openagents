@@ -27,17 +27,8 @@ pub fn show() -> Result<()> {
     Ok(())
 }
 
-pub fn set(key: String, value: String) -> Result<()> {
-    println!("{}", "Update Setting".cyan());
-
-    // TODO: Validate key
-    // TODO: Update configuration
-    // TODO: Save to disk
-
-    println!("  {} = {}", key.bold(), value);
-    println!("{}", "✓ Setting updated".green());
-
-    Ok(())
+pub fn set(_key: String, _value: String) -> Result<()> {
+    anyhow::bail!("Generic setting updates are not yet implemented. Use specific commands like 'wallet relays add/remove' to modify configuration.")
 }
 
 pub fn relays_list() -> Result<()> {
