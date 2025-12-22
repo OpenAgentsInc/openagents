@@ -5,6 +5,7 @@ pub mod publish_status;
 use maud::{html, Markup, DOCTYPE};
 use nostr::Event;
 use chrono::{DateTime, Utc};
+use crate::reputation::{calculate_review_weight, ReputationTier};
 
 #[allow(unused_imports)]
 pub use publish_status::{publish_status_notification, publish_status_styles};
@@ -1649,15 +1650,7 @@ pub fn pull_request_detail_page(repository: &Event, pull_request: &Event, review
                                             };
                                             if base_score != 0.0 {
                                                 let reputation = reviewer_reputations.get(&review.pubkey).copied().unwrap_or(0);
-                                                let weight = if reputation > 100 {
-                                                    2.0
-                                                } else if reputation >= 50 {
-                                                    1.5
-                                                } else if reputation < 0 {
-                                                    0.5
-                                                } else {
-                                                    1.0
-                                                };
+                                                let weight = calculate_review_weight(reputation);
                                                 ws += base_score * weight;
                                                 tw += weight;
                                             }
@@ -1716,21 +1709,22 @@ pub fn pull_request_detail_page(repository: &Event, pull_request: &Event, review
                                                 _ => "💬"
                                             };
                                             @let reputation = reviewer_reputations.get(&review.pubkey).copied().unwrap_or(0);
-                                            @let is_high_rep = reputation > 100;
-                                            @let card_style = if is_high_rep {
-                                                "background: linear-gradient(135deg, #1c1f26 0%, #2a2f3a 100%); border: 1px solid #fbbf24;"
-                                            } else {
-                                                ""
-                                            };
+                                            @let tier = ReputationTier::from_score(reputation);
+                                            @let weight = calculate_review_weight(reputation);
+                                            @let tier_color = tier.color();
+                                            @let tier_emoji = tier.emoji();
+                                            @let tier_name = tier.name();
+                                            @let card_style = format!("background: linear-gradient(135deg, #1c1f26 0%, #2a2f3a 100%); border-left: 3px solid {}", tier_color);
 
                                             div.claim-card style=(card_style) {
                                                 div.claim-header {
                                                     span.claim-author {
                                                         (review_emoji) " " (reviewer_pubkey)
-                                                        @if is_high_rep {
-                                                            span style="color: #fbbf24; margin-left: 0.5rem;" { "⭐ High Rep (" (reputation) ")" }
-                                                        } @else if reputation >= 50 {
-                                                            span style="color: #9ca3af; margin-left: 0.5rem; font-size: 0.875rem;" { "Rep: " (reputation) }
+                                                        span style={"color: " (tier_color) "; margin-left: 0.5rem;"} {
+                                                            (tier_emoji) " " (tier_name) " (" (reputation) ")"
+                                                        }
+                                                        span style="color: #6b7280; margin-left: 0.5rem; font-size: 0.875rem;" {
+                                                            "• Weight: " (format!("{:.0}x", weight))
                                                         }
                                                     }
                                                     span.claim-time { (review.created_at) }
