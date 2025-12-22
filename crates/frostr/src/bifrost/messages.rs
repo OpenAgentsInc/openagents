@@ -34,6 +34,14 @@ pub enum BifrostMessage {
     /// Response with partial ECDH result
     #[serde(rename = "/ecdh/res")]
     EcdhResponse(EcdhResponse),
+
+    /// Final aggregated ECDH shared secret
+    #[serde(rename = "/ecdh/result")]
+    EcdhResult(EcdhResult),
+
+    /// ECDH computation error
+    #[serde(rename = "/ecdh/error")]
+    EcdhError(EcdhError),
 }
 
 /// Request to sign an event hash
@@ -121,6 +129,29 @@ pub struct EcdhResponse {
 
     /// Partial ECDH computation (32 bytes)
     pub partial_ecdh: [u8; 32],
+}
+
+/// Final aggregated ECDH shared secret
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct EcdhResult {
+    /// Session ID
+    pub session_id: String,
+
+    /// Shared secret for NIP-44 encryption (32 bytes)
+    pub shared_secret: [u8; 32],
+}
+
+/// ECDH computation error message
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct EcdhError {
+    /// Session ID
+    pub session_id: String,
+
+    /// Error description
+    pub reason: String,
+
+    /// Optional error code
+    pub code: Option<String>,
 }
 
 #[cfg(test)]
@@ -252,6 +283,15 @@ mod tests {
                 participant_id: 1,
                 partial_ecdh: [7; 32],
             }),
+            BifrostMessage::EcdhResult(EcdhResult {
+                session_id: "e1".into(),
+                shared_secret: [8; 32],
+            }),
+            BifrostMessage::EcdhError(EcdhError {
+                session_id: "e1".into(),
+                reason: "ECDH computation failed".into(),
+                code: Some("ERR_ECDH".into()),
+            }),
         ];
 
         for msg in messages {
@@ -259,5 +299,34 @@ mod tests {
             let deserialized: BifrostMessage = serde_json::from_str(&json).unwrap();
             assert_eq!(msg, deserialized);
         }
+    }
+
+    #[test]
+    fn test_ecdh_result_serialize() {
+        let msg = BifrostMessage::EcdhResult(EcdhResult {
+            session_id: "ecdh-session-2".to_string(),
+            shared_secret: [0xAB; 32],
+        });
+
+        let json = serde_json::to_string(&msg).unwrap();
+        assert!(json.contains(r#""type":"/ecdh/result""#));
+
+        let deserialized: BifrostMessage = serde_json::from_str(&json).unwrap();
+        assert_eq!(msg, deserialized);
+    }
+
+    #[test]
+    fn test_ecdh_error_serialize() {
+        let msg = BifrostMessage::EcdhError(EcdhError {
+            session_id: "ecdh-session-3".to_string(),
+            reason: "Insufficient threshold participants".to_string(),
+            code: Some("ERR_THRESHOLD".to_string()),
+        });
+
+        let json = serde_json::to_string(&msg).unwrap();
+        assert!(json.contains(r#""type":"/ecdh/error""#));
+
+        let deserialized: BifrostMessage = serde_json::from_str(&json).unwrap();
+        assert_eq!(msg, deserialized);
     }
 }
