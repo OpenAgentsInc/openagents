@@ -1241,9 +1241,35 @@ async fn patch_detail(
         }
     };
 
+    // Fetch reviews for this patch (patches use same review mechanism as PRs)
+    let reviews = match state.nostr_client.get_reviews_for_pr(&patch_id).await {
+        Ok(r) => r,
+        Err(e) => {
+            tracing::warn!("Failed to fetch reviews for patch {}: {}", patch_id, e);
+            Vec::new()
+        }
+    };
+
+    // Fetch reviewer reputation scores
+    let mut reviewer_reputations = std::collections::HashMap::new();
+    for review in &reviews {
+        let reviewer_pubkey = &review.pubkey;
+        if !reviewer_reputations.contains_key(reviewer_pubkey) {
+            let reputation_labels = match state.nostr_client.get_reputation_labels_for_agent(reviewer_pubkey).await {
+                Ok(labels) => labels,
+                Err(e) => {
+                    tracing::warn!("Failed to fetch reputation for {}: {}", reviewer_pubkey, e);
+                    Vec::new()
+                }
+            };
+            let reputation_score = calculate_reputation_score(&reputation_labels);
+            reviewer_reputations.insert(reviewer_pubkey.clone(), reputation_score);
+        }
+    }
+
     HttpResponse::Ok()
         .content_type("text/html; charset=utf-8")
-        .body(patch_detail_page(&repository, &patch, &identifier).into_string())
+        .body(patch_detail_page(&repository, &patch, &reviews, &reviewer_reputations, &identifier).into_string())
 }
 
 /// Pull request detail page
@@ -1295,6 +1321,23 @@ async fn pull_request_detail(
             Vec::new() // Continue with empty reviews if fetch fails
         }
     };
+
+    // Fetch reviewer reputation scores and calculate weighted reviews
+    let mut reviewer_reputations = std::collections::HashMap::new();
+    for review in &reviews {
+        let reviewer_pubkey = &review.pubkey;
+        if !reviewer_reputations.contains_key(reviewer_pubkey) {
+            let reputation_labels = match state.nostr_client.get_reputation_labels_for_agent(reviewer_pubkey).await {
+                Ok(labels) => labels,
+                Err(e) => {
+                    tracing::warn!("Failed to fetch reputation for {}: {}", reviewer_pubkey, e);
+                    Vec::new()
+                }
+            };
+            let reputation_score = calculate_reputation_score(&reputation_labels);
+            reviewer_reputations.insert(reviewer_pubkey.clone(), reputation_score);
+        }
+    }
 
     // Fetch status events for this PR
     let status_events = match state.nostr_client.get_status_events_for_pr(&pr_id).await {
@@ -1385,7 +1428,7 @@ async fn pull_request_detail(
 
     HttpResponse::Ok()
         .content_type("text/html; charset=utf-8")
-        .body(pull_request_detail_page(&repository, &pull_request, &reviews, &status_events, &identifier, trajectory_session.as_ref(), &trajectory_events, &stack_prs, dependency_pr.as_ref(), is_mergeable, &pr_updates).into_string())
+        .body(pull_request_detail_page(&repository, &pull_request, &reviews, &reviewer_reputations, &status_events, &identifier, trajectory_session.as_ref(), &trajectory_events, &stack_prs, dependency_pr.as_ref(), is_mergeable, &pr_updates).into_string())
 }
 
 /// Trajectory detail page
@@ -2741,25 +2784,8 @@ async fn bounty_payment(
     // 6. Try to get recipient's Lightning address from claim
     let recipient_lud16 = get_tag_value_from_event(&claim_event, "lud16");
 
-    // If not in claim, try to fetch from recipient's profile (kind:0 or kind:38000)
-    let lud16 = if recipient_lud16.is_none() {
-        // Try to fetch user metadata
-        match state.nostr_client.get_user_metadata(&recipient_pubkey).await {
-            Ok(Some(metadata)) => {
-                // Try to parse lud16 from metadata JSON
-                if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&metadata.content) {
-                    parsed.get("lud16")
-                        .and_then(|v| v.as_str())
-                        .map(|s| s.to_string())
-                } else {
-                    None
-                }
-            }
-            _ => None,
-        }
-    } else {
-        recipient_lud16
-    };
+    // Use lud16 from claim (full LNURL implementation requires fetching from kind:0 profile)
+    let lud16 = recipient_lud16;
 
     // 7. Build zap request
     let mut zap_builder = ZapRequestBuilder::new(&recipient_pubkey)
