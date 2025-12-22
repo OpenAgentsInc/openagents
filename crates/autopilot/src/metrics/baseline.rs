@@ -379,6 +379,8 @@ mod tests {
             messages: 10,
             apm: None,
             source: "autopilot".to_string(),
+                issue_numbers: None,
+                directive_id: None,
         };
             sessions.push(session);
         }
@@ -431,6 +433,8 @@ mod tests {
             messages: 10,
             apm: None,
             source: "autopilot".to_string(),
+                issue_numbers: None,
+                directive_id: None,
         };
             sessions.push(session);
         }

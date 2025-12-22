@@ -518,6 +518,8 @@ mod tests {
             messages: 10,
             apm: None,
             source: "autopilot".to_string(),
+                issue_numbers: None,
+                directive_id: None,
         };
             db.store_session(&session).unwrap();
 

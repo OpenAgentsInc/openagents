@@ -34,6 +34,8 @@ fn test_sessions_api_data_filtering() {
             messages: 10,
             apm: None,
             source: "autopilot".to_string(),
+            issue_numbers: None,
+            directive_id: None,
         };
         store.store_session(&metrics).unwrap();
     }
@@ -82,6 +84,8 @@ fn test_sessions_api_sorting() {
             messages: 10,
             apm: None,
             source: "autopilot".to_string(),
+            issue_numbers: None,
+            directive_id: None,
         };
         store.store_session(&metrics).unwrap();
     }
@@ -125,6 +129,8 @@ fn test_session_detail_data() {
             messages: 10,
             apm: None,
             source: "autopilot".to_string(),
+            issue_numbers: None,
+            directive_id: None,
         };
     store.store_session(&metrics).unwrap();
 
@@ -172,6 +178,8 @@ fn test_metrics_summary_stats() {
             messages: 10,
             apm: None,
             source: "autopilot".to_string(),
+            issue_numbers: None,
+            directive_id: None,
         };
         store.store_session(&metrics).unwrap();
     }
@@ -212,6 +220,8 @@ fn test_trends_calculation_error_rate() {
             messages: 10,
             apm: None,
             source: "autopilot".to_string(),
+            issue_numbers: None,
+            directive_id: None,
         };
         store.store_session(&metrics).unwrap();
     }
@@ -256,6 +266,8 @@ fn test_pagination_logic() {
             messages: 10,
             apm: None,
             source: "autopilot".to_string(),
+            issue_numbers: None,
+            directive_id: None,
         };
         store.store_session(&metrics).unwrap();
     }
