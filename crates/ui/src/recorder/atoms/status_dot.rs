@@ -1,7 +1,7 @@
 use maud::{Markup, html};
 
 /// Status indicator dot with color variants.
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum StatusState {
     Success,
     Running,
