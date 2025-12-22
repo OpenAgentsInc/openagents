@@ -1175,7 +1175,7 @@ pub fn pull_requests_list_page(repository: &Event, pull_requests: &[Event], iden
 }
 
 /// Patch detail page
-pub fn patch_detail_page(repository: &Event, patch: &Event, identifier: &str) -> Markup {
+pub fn patch_detail_page(repository: &Event, patch: &Event, _reviews: &[Event], _reviewer_reputations: &std::collections::HashMap<String, i32>, identifier: &str) -> Markup {
     let repo_name = get_tag_value(repository, "name").unwrap_or_else(|| "Repository".to_string());
     let patch_title = get_tag_value(patch, "subject").unwrap_or_else(|| "Untitled Patch".to_string());
     
@@ -1326,7 +1326,7 @@ pub fn patch_detail_page(repository: &Event, patch: &Event, identifier: &str) ->
 }
 
 /// Pull request detail page
-pub fn pull_request_detail_page(repository: &Event, pull_request: &Event, reviews: &[Event], status_events: &[Event], identifier: &str, trajectory_session: Option<&Event>, trajectory_events: &[Event], stack_prs: &[Event], dependency_pr: Option<&Event>, is_mergeable: bool, pr_updates: &[Event]) -> Markup {
+pub fn pull_request_detail_page(repository: &Event, pull_request: &Event, reviews: &[Event], reviewer_reputations: &std::collections::HashMap<String, i32>, status_events: &[Event], identifier: &str, trajectory_session: Option<&Event>, trajectory_events: &[Event], stack_prs: &[Event], dependency_pr: Option<&Event>, is_mergeable: bool, pr_updates: &[Event]) -> Markup {
     let repo_name = get_tag_value(repository, "name").unwrap_or_else(|| "Repository".to_string());
     let pr_title = get_tag_value(pull_request, "subject").unwrap_or_else(|| "Untitled Pull Request".to_string());
     let pr_status = get_tag_value(pull_request, "status").unwrap_or_else(|| "open".to_string());
@@ -1637,8 +1637,73 @@ pub fn pull_request_detail_page(repository: &Event, pull_request: &Event, review
                                 @if reviews.is_empty() {
                                     p.empty-state { "No reviews yet. Be the first to review this PR!" }
                                 } @else {
+                                    @let (weighted_score, total_weight) = {
+                                        let mut ws = 0.0;
+                                        let mut tw = 0.0;
+                                        for review in reviews {
+                                            let review_type = get_tag_value(review, "review_type").unwrap_or_else(|| "comment".to_string());
+                                            let base_score = match review_type.as_str() {
+                                                "approve" => 1.0,
+                                                "request_changes" => -1.0,
+                                                _ => 0.0
+                                            };
+                                            if base_score != 0.0 {
+                                                let reputation = reviewer_reputations.get(&review.pubkey).copied().unwrap_or(0);
+                                                let weight = if reputation > 100 {
+                                                    2.0
+                                                } else if reputation >= 50 {
+                                                    1.5
+                                                } else if reputation < 0 {
+                                                    0.5
+                                                } else {
+                                                    1.0
+                                                };
+                                                ws += base_score * weight;
+                                                tw += weight;
+                                            }
+                                        }
+                                        (ws, tw)
+                                    };
+                                    @let avg_weighted_score = if total_weight > 0.0 { weighted_score / total_weight } else { 0.0 };
+
+                                    @if total_weight > 0.0 {
+                                        div style="background: #1c1f26; padding: 1rem; margin-bottom: 1rem; border-left: 4px solid #3b82f6;" {
+                                            h3 style="margin: 0 0 0.5rem 0; font-size: 1rem;" { "Weighted Review Score" }
+                                            @let score_color = if avg_weighted_score > 0.3 {
+                                                "#22c55e"
+                                            } else if avg_weighted_score < -0.3 {
+                                                "#ef4444"
+                                            } else {
+                                                "#f59e0b"
+                                            };
+                                            @let score_emoji = if avg_weighted_score > 0.3 {
+                                                "✅"
+                                            } else if avg_weighted_score < -0.3 {
+                                                "🔴"
+                                            } else {
+                                                "⚠️"
+                                            };
+                                            div style={"font-size: 1.5rem; font-weight: 700; color: " (score_color)} {
+                                                (score_emoji) " " (format!("{:.2}", avg_weighted_score))
+                                            }
+                                            p style="margin: 0.5rem 0 0 0; font-size: 0.875rem; color: #9ca3af;" {
+                                                "Score calculated from " (reviews.len()) " review(s) weighted by reputation"
+                                            }
+                                        }
+                                    }
+
+                                    @let sorted_reviews = {
+                                        let mut sorted: Vec<_> = reviews.iter().collect();
+                                        sorted.sort_by(|a, b| {
+                                            let rep_a = reviewer_reputations.get(&a.pubkey).copied().unwrap_or(0);
+                                            let rep_b = reviewer_reputations.get(&b.pubkey).copied().unwrap_or(0);
+                                            rep_b.cmp(&rep_a)
+                                        });
+                                        sorted
+                                    };
+
                                     div.claims-list {
-                                        @for review in reviews {
+                                        @for review in sorted_reviews {
                                             @let reviewer_pubkey = if review.pubkey.len() > 16 {
                                                 format!("{}...{}", &review.pubkey[..8], &review.pubkey[review.pubkey.len()-8..])
                                             } else {
@@ -1650,10 +1715,24 @@ pub fn pull_request_detail_page(repository: &Event, pull_request: &Event, review
                                                 "request_changes" => "🔴",
                                                 _ => "💬"
                                             };
+                                            @let reputation = reviewer_reputations.get(&review.pubkey).copied().unwrap_or(0);
+                                            @let is_high_rep = reputation > 100;
+                                            @let card_style = if is_high_rep {
+                                                "background: linear-gradient(135deg, #1c1f26 0%, #2a2f3a 100%); border: 1px solid #fbbf24;"
+                                            } else {
+                                                ""
+                                            };
 
-                                            div.claim-card {
+                                            div.claim-card style=(card_style) {
                                                 div.claim-header {
-                                                    span.claim-author { (review_emoji) " " (reviewer_pubkey) }
+                                                    span.claim-author {
+                                                        (review_emoji) " " (reviewer_pubkey)
+                                                        @if is_high_rep {
+                                                            span style="color: #fbbf24; margin-left: 0.5rem;" { "⭐ High Rep (" (reputation) ")" }
+                                                        } @else if reputation >= 50 {
+                                                            span style="color: #9ca3af; margin-left: 0.5rem; font-size: 0.875rem;" { "Rep: " (reputation) }
+                                                        }
+                                                    }
                                                     span.claim-time { (review.created_at) }
                                                 }
                                                 @if !review.content.is_empty() {
