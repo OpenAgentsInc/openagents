@@ -205,6 +205,23 @@ async fn repository_issues(
     let filter_has_bounty = query.filter_has_bounty.as_deref() == Some("true");
     let filter_claimed = query.filter_claimed.as_deref() == Some("true");
 
+    // Pre-fetch bounties and claims for all issues if needed
+    let mut issue_bounties = std::collections::HashMap::new();
+    let mut issue_claims = std::collections::HashMap::new();
+
+    if filter_has_bounty || filter_claimed {
+        for issue in &issues {
+            if filter_has_bounty {
+                let bounties = state.nostr_client.get_bounties_for_issue(&issue.id).await.unwrap_or_default();
+                issue_bounties.insert(issue.id.clone(), !bounties.is_empty());
+            }
+            if filter_claimed {
+                let claims = state.nostr_client.get_claims_for_issue(&issue.id).await.unwrap_or_default();
+                issue_claims.insert(issue.id.clone(), !claims.is_empty());
+            }
+        }
+    }
+
     issues.retain(|issue| {
         // Get issue status
         let status = issue.tags.iter()
@@ -213,12 +230,11 @@ async fn repository_issues(
             .map(|s| s.as_str())
             .unwrap_or("open");
 
-        // Check if issue has bounty (we'll need to fetch bounties for each issue)
-        // For now, simplified check - we'll implement this properly later
-        let has_bounty = false; // TODO: check if issue has associated bounties
+        // Check if issue has bounty
+        let has_bounty = issue_bounties.get(&issue.id).copied().unwrap_or(false);
 
         // Check if issue is claimed
-        let is_claimed = false; // TODO: check if issue has associated claims
+        let is_claimed = issue_claims.get(&issue.id).copied().unwrap_or(false);
 
         // Apply filter logic
         let status_match = if filter_open && !filter_closed {
