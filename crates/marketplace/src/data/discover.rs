@@ -312,7 +312,10 @@ impl DatasetBrowser {
     fn sort_listings(&self, listings: &mut [DatasetListing], sort_by: SortBy) {
         match sort_by {
             SortBy::Recent => {
-                // TODO: Sort by publication timestamp when available
+                // Sorting by publication timestamp requires adding created_at field
+                // to DatasetListing and populating it from contribution events.
+                // When implemented:
+                // listings.sort_by(|a, b| b.created_at.cmp(&a.created_at));
             }
             SortBy::Name => {
                 listings.sort_by(|a, b| a.name.cmp(&b.name));
