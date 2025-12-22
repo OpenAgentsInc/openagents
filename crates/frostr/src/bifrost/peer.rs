@@ -30,6 +30,8 @@ pub struct PeerInfo {
     pub status: PeerStatus,
     /// Number of failed connection attempts
     pub failed_attempts: u32,
+    /// Last measured round-trip latency in milliseconds (None if never measured)
+    pub latency_ms: Option<u64>,
 }
 
 impl PeerInfo {
@@ -41,6 +43,7 @@ impl PeerInfo {
             last_seen: 0,
             status: PeerStatus::Unknown,
             failed_attempts: 0,
+            latency_ms: None,
         }
     }
 
@@ -72,6 +75,16 @@ impl PeerInfo {
             .unwrap()
             .as_secs();
         now - self.last_seen < timeout_secs
+    }
+
+    /// Update peer's latency measurement
+    pub fn update_latency(&mut self, latency_ms: u64) {
+        self.latency_ms = Some(latency_ms);
+    }
+
+    /// Get peer's current latency in milliseconds
+    pub fn latency(&self) -> Option<u64> {
+        self.latency_ms
     }
 }
 
@@ -239,11 +252,19 @@ impl PeerManager {
         }
     }
 
-    /// Mark peer as responding to ping (used by BifrostNode after successful ping/pong)
-    pub fn mark_peer_responsive(&mut self, pubkey: &[u8; 32]) {
+    /// Mark peer as responding to ping with latency measurement
+    pub fn mark_peer_responsive(&mut self, pubkey: &[u8; 32], latency_ms: Option<u64>) {
         if let Some(peer) = self.peers.get_mut(pubkey) {
             peer.mark_online();
+            if let Some(latency) = latency_ms {
+                peer.update_latency(latency);
+            }
         }
+    }
+
+    /// Get peer latency in milliseconds
+    pub fn get_peer_latency(&self, pubkey: &[u8; 32]) -> Option<u64> {
+        self.peers.get(pubkey).and_then(|p| p.latency())
     }
 
     /// Health check for all peers
