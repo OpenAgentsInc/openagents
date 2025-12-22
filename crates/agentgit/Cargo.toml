@@ -53,6 +53,7 @@ rusqlite = { version = "0.32", features = ["bundled"] }
 dirs = "6.0.0"
 git2 = "0.20.3"
 html-escape = "0.2.13"
+chrono.workspace = true
 
 [lints]
 workspace = true

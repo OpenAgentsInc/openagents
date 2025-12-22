@@ -6,7 +6,7 @@ use wallet::core::identity::UnifiedIdentity;
 
 use crate::git::{clone_repository, get_repository_path, is_repository_cloned, create_branch, get_status, generate_patch, apply_patch, push_branch, current_branch, diff_commits};
 use crate::nostr::NostrClient;
-use crate::nostr::events::{BountyClaimBuilder, BountyOfferBuilder, IssueClaimBuilder, PatchBuilder, PullRequestBuilder, RepositoryAnnouncementBuilder, StatusEventBuilder};
+use crate::nostr::events::{BountyClaimBuilder, BountyOfferBuilder, IssueClaimBuilder, PatchBuilder, PullRequestBuilder, RepositoryAnnouncementBuilder, StatusEventBuilder, ZapRequestBuilder};
 use crate::views::{agent_profile_page, agents_list_page, diff_viewer_page, git_branch_create_form_page, git_status_page, home_page_with_repos, issue_create_form_page, issue_detail_page, issues_list_page, patch_create_form_page, patch_detail_page, patches_list_page, pr_create_form_page, pull_request_detail_page, pull_requests_list_page, repository_create_form_page, repository_detail_page, search_results_page, trajectory_viewer_page};
 use crate::ws::{ws_handler, WsBroadcaster};
 use nostr::{EventTemplate, Issue, KIND_ISSUE};
@@ -87,6 +87,7 @@ pub async fn start_server(
             .route("/repo/{identifier}/git/patch/generate", web::post().to(git_patch_generate))
             .route("/repo/{identifier}/git/patch/apply", web::post().to(git_patch_apply))
             .route("/repo/{identifier}/git/push", web::post().to(git_push))
+            .route("/bounty/{bounty_claim_id}/pay", web::post().to(bounty_payment))
             .route("/ws", web::get().to(ws_route))
     })
     .bind("127.0.0.1:0")?;
@@ -2628,4 +2629,213 @@ fn calculate_reputation_score(labels: &[nostr::Event]) -> i32 {
     }
 
     score
+}
+
+/// Process bounty payment via NIP-57 zap
+///
+/// This handler receives a bounty claim ID, fetches the claim details,
+/// extracts the recipient's Lightning address, builds a zap request,
+/// and initiates the payment flow.
+///
+/// NOTE: This is a simplified implementation that creates the zap request
+/// but does not complete the full LNURL payment flow. Full implementation
+/// requires:
+/// 1. Fetching recipient's LNURL endpoint from their profile
+/// 2. Making HTTP request to LNURL callback with zap request
+/// 3. Receiving Lightning invoice from callback
+/// 4. Paying invoice via wallet integration
+/// 5. Waiting for zap receipt (kind:9735) from recipient's wallet
+///
+/// For now, this creates the zap request and returns a placeholder response.
+async fn bounty_payment(
+    state: web::Data<AppState>,
+    path: web::Path<String>,
+) -> HttpResponse {
+    let bounty_claim_id = path.into_inner();
+
+    // 1. Fetch bounty claim event
+    let claim_event = match state.nostr_client.get_cached_event(&bounty_claim_id).await {
+        Ok(Some(event)) => event,
+        Ok(None) => {
+            return HttpResponse::NotFound()
+                .content_type("text/html; charset=utf-8")
+                .body("<h1>Bounty claim not found</h1>");
+        }
+        Err(e) => {
+            tracing::error!("Failed to fetch bounty claim: {}", e);
+            return HttpResponse::InternalServerError()
+                .content_type("text/html; charset=utf-8")
+                .body("<h1>Error fetching bounty claim</h1>");
+        }
+    };
+
+    // 2. Extract bounty ID from claim (e tag referencing kind:1636)
+    let bounty_id = match get_tag_value_from_event(&claim_event, "e") {
+        Some(id) => id,
+        None => {
+            return HttpResponse::BadRequest()
+                .content_type("text/html; charset=utf-8")
+                .body("<h1>Invalid claim: missing bounty reference</h1>");
+        }
+    };
+
+    // 3. Fetch bounty offer event to get amount
+    let bounty_event = match state.nostr_client.get_cached_event(&bounty_id).await {
+        Ok(Some(event)) => event,
+        Ok(None) => {
+            return HttpResponse::NotFound()
+                .content_type("text/html; charset=utf-8")
+                .body("<h1>Bounty offer not found</h1>");
+        }
+        Err(e) => {
+            tracing::error!("Failed to fetch bounty offer: {}", e);
+            return HttpResponse::InternalServerError()
+                .content_type("text/html; charset=utf-8")
+                .body("<h1>Error fetching bounty offer</h1>");
+        }
+    };
+
+    // 4. Extract bounty amount (in sats)
+    let amount_sats = match get_tag_value_from_event(&bounty_event, "amount") {
+        Some(amount_str) => match amount_str.parse::<u64>() {
+            Ok(amt) => amt,
+            Err(_) => {
+                return HttpResponse::BadRequest()
+                    .content_type("text/html; charset=utf-8")
+                    .body("<h1>Invalid bounty amount</h1>");
+            }
+        },
+        None => {
+            return HttpResponse::BadRequest()
+                .content_type("text/html; charset=utf-8")
+                .body("<h1>Bounty has no amount specified</h1>");
+        }
+    };
+
+    // 5. Get recipient pubkey from claim event (the author of the claim)
+    let recipient_pubkey = claim_event.pubkey.clone();
+
+    // 6. Try to get recipient's Lightning address from claim
+    let recipient_lud16 = get_tag_value_from_event(&claim_event, "lud16");
+
+    // If not in claim, try to fetch from recipient's profile (kind:0 or kind:38000)
+    let lud16 = if recipient_lud16.is_none() {
+        // Try to fetch user metadata
+        match state.nostr_client.get_user_metadata(&recipient_pubkey).await {
+            Ok(Some(metadata)) => {
+                // Try to parse lud16 from metadata JSON
+                if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&metadata.content) {
+                    parsed.get("lud16")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_string())
+                } else {
+                    None
+                }
+            }
+            _ => None,
+        }
+    } else {
+        recipient_lud16
+    };
+
+    // 7. Build zap request
+    let mut zap_builder = ZapRequestBuilder::new(&recipient_pubkey)
+        .amount_sats(amount_sats)
+        .relay("wss://relay.damus.io")
+        .relay("wss://relay.snort.social")
+        .event(&bounty_claim_id)  // Zap the bounty claim event
+        .content(format!("Bounty payment: {} sats", amount_sats));
+
+    let zap_template = zap_builder.build();
+
+    // 8. Sign the zap request
+    match state.sign_event(zap_template) {
+        Ok(signed_zap_request) => {
+            let zap_request_json = match serde_json::to_string_pretty(&signed_zap_request) {
+                Ok(json) => json,
+                Err(e) => {
+                    tracing::error!("Failed to serialize zap request: {}", e);
+                    return HttpResponse::InternalServerError()
+                        .content_type("text/html; charset=utf-8")
+                        .body("<h1>Error creating payment</h1>");
+                }
+            };
+
+            // TODO: Complete LNURL payment flow
+            // This would involve:
+            // - Fetching LNURL callback URL from lud16
+            // - Making HTTP POST to callback with zap request
+            // - Receiving bolt11 invoice
+            // - Paying invoice via wallet
+            // - Waiting for zap receipt
+
+            tracing::info!(
+                "Created zap request for bounty claim {}: {} sats to {}",
+                &bounty_claim_id[..8],
+                amount_sats,
+                &recipient_pubkey[..8]
+            );
+
+            // Return payment confirmation UI
+            HttpResponse::Ok()
+                .content_type("text/html; charset=utf-8")
+                .body(format!(
+                    r#"<!DOCTYPE html>
+                    <html>
+                    <head>
+                        <meta charset="utf-8">
+                        <title>Payment Initiated</title>
+                        <style>{}</style>
+                    </head>
+                    <body>
+                        <main>
+                            <h2>⚡ Payment Initiated</h2>
+                            <div style="padding: 1rem; background: #f0fdf4; border-left: 4px solid #22c55e;">
+                                <p><strong>Bounty Claim:</strong> {}</p>
+                                <p><strong>Amount:</strong> {} sats</p>
+                                <p><strong>Recipient:</strong> {}...{}</p>
+                                {}
+                            </div>
+
+                            <h3>Zap Request (NIP-57)</h3>
+                            <pre style="background: #1e1e1e; color: #d4d4d4; padding: 1rem; overflow-x: auto;">{}</pre>
+
+                            <div style="padding: 1rem; background: #fef3c7; border-left: 4px solid #f59e0b; margin-top: 1rem;">
+                                <p><strong>⚠️ Payment Not Completed</strong></p>
+                                <p>Full LNURL payment flow not yet implemented. Required steps:</p>
+                                <ol>
+                                    <li>Fetch recipient's LNURL callback URL</li>
+                                    <li>Send zap request to callback</li>
+                                    <li>Receive Lightning invoice (bolt11)</li>
+                                    <li>Pay invoice via wallet integration</li>
+                                    <li>Wait for zap receipt (kind:9735)</li>
+                                </ol>
+                            </div>
+
+                            <div style="margin-top: 1rem;">
+                                <a href="/repo/TODO/pulls">← Back to Pull Requests</a>
+                            </div>
+                        </main>
+                    </body>
+                    </html>"#,
+                    include_str!("./styles.css"),
+                    &bounty_claim_id[..16],
+                    amount_sats,
+                    &recipient_pubkey[..8],
+                    &recipient_pubkey[recipient_pubkey.len()-8..],
+                    if let Some(lud16) = lud16 {
+                        format!("<p><strong>Lightning Address:</strong> {}</p>", lud16)
+                    } else {
+                        "<p><strong>Lightning Address:</strong> Not found (required for payment)</p>".to_string()
+                    },
+                    zap_request_json
+                ))
+        }
+        Err(e) => {
+            tracing::error!("Failed to sign zap request: {}", e);
+            HttpResponse::InternalServerError()
+                .content_type("text/html; charset=utf-8")
+                .body(format!("<h1>Error</h1><p>Failed to sign payment request: {}</p>", e))
+        }
+    }
 }
