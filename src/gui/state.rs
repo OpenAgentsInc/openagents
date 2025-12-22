@@ -164,15 +164,24 @@ pub async fn fetch_claude_info_fast() -> ClaudeInfo {
             // Get per-model usage
             if let Some(model_usage) = json.get("modelUsage").and_then(|v| v.as_object()) {
                 for (model, stats) in model_usage {
+                    let input_tokens = stats.get("inputTokens").and_then(|v| v.as_u64()).unwrap_or(0);
+                    let output_tokens = stats.get("outputTokens").and_then(|v| v.as_u64()).unwrap_or(0);
+                    let cache_read = stats.get("cacheReadInputTokens").and_then(|v| v.as_u64()).unwrap_or(0);
+                    let cache_create = stats.get("cacheCreationInputTokens").and_then(|v| v.as_u64()).unwrap_or(0);
+
+                    // Calculate cost from tokens (stats-cache.json doesn't store cost)
+                    let cost_usd = calculate_model_cost(model, input_tokens, output_tokens, cache_read, cache_create);
+                    let context_window = get_model_context_window(model);
+
                     let usage = ModelUsage {
                         model: model.clone(),
-                        input_tokens: stats.get("inputTokens").and_then(|v| v.as_u64()).unwrap_or(0),
-                        output_tokens: stats.get("outputTokens").and_then(|v| v.as_u64()).unwrap_or(0),
-                        cache_read_tokens: stats.get("cacheReadInputTokens").and_then(|v| v.as_u64()).unwrap_or(0),
-                        cache_creation_tokens: stats.get("cacheCreationInputTokens").and_then(|v| v.as_u64()).unwrap_or(0),
+                        input_tokens,
+                        output_tokens,
+                        cache_read_tokens: cache_read,
+                        cache_creation_tokens: cache_create,
                         web_search_requests: stats.get("webSearchRequests").and_then(|v| v.as_u64()).unwrap_or(0),
-                        cost_usd: stats.get("costUSD").and_then(|v| v.as_f64()).unwrap_or(0.0),
-                        context_window: stats.get("contextWindow").and_then(|v| v.as_u64()).unwrap_or(200_000),
+                        cost_usd,
+                        context_window,
                     };
                     info.model_usage.push(usage);
                 }
@@ -218,4 +227,45 @@ pub async fn fetch_claude_model() -> Option<String> {
     let _ = child.kill().await;
     let _ = child.wait().await;
     None
+}
+
+/// Calculate cost for a model based on token usage.
+/// Prices per million tokens (as of Dec 2024):
+/// - Opus 4.5: $15 input, $75 output, $1.50 cache read, $18.75 cache write
+/// - Sonnet 4.5: $3 input, $15 output, $0.30 cache read, $3.75 cache write
+/// - Sonnet 4: $3 input, $15 output, $0.30 cache read, $3.75 cache write
+/// - Haiku 4.5: $0.80 input, $4 output, $0.08 cache read, $1 cache write
+fn calculate_model_cost(
+    model: &str,
+    input_tokens: u64,
+    output_tokens: u64,
+    cache_read: u64,
+    cache_create: u64,
+) -> f64 {
+    let (input_price, output_price, cache_read_price, cache_write_price) =
+        if model.contains("opus") {
+            (15.0, 75.0, 1.5, 18.75)
+        } else if model.contains("haiku") {
+            (0.80, 4.0, 0.08, 1.0)
+        } else {
+            // sonnet (default)
+            (3.0, 15.0, 0.30, 3.75)
+        };
+
+    let million = 1_000_000.0;
+    (input_tokens as f64 / million * input_price)
+        + (output_tokens as f64 / million * output_price)
+        + (cache_read as f64 / million * cache_read_price)
+        + (cache_create as f64 / million * cache_write_price)
+}
+
+/// Get context window size for a model.
+fn get_model_context_window(model: &str) -> u64 {
+    if model.contains("opus-4-5") || model.contains("sonnet-4-5") {
+        200_000
+    } else if model.contains("haiku") {
+        200_000
+    } else {
+        200_000 // default
+    }
 }
