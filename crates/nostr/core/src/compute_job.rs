@@ -28,6 +28,24 @@ pub enum ComputeJobError {
 }
 
 /// Parameters for inference/generation
+///
+/// # Examples
+///
+/// ```no_run
+/// use nostr::compute_job::InferenceParams;
+///
+/// // Create with validation
+/// let params = InferenceParams::new(2048, 0.7)
+///     .expect("valid parameters")
+///     .with_top_p(0.95)
+///     .expect("valid top_p")
+///     .add_stop_sequence("END")
+///     .add_stop_sequence("STOP");
+///
+/// assert_eq!(params.max_tokens, 2048);
+/// assert_eq!(params.temperature, 0.7);
+/// assert_eq!(params.stop_sequences.len(), 2);
+/// ```
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct InferenceParams {
     /// Maximum number of tokens to generate
@@ -90,6 +108,20 @@ impl InferenceParams {
 }
 
 /// Requirements for job execution
+///
+/// # Examples
+///
+/// ```no_run
+/// use nostr::compute_job::JobRequirements;
+/// use nostr::provider::Region;
+///
+/// let reqs = JobRequirements::new()
+///     .with_max_latency(500)           // 500ms max
+///     .with_region(Region::UsWest)     // US West only
+///     .with_min_reputation(0.95);      // 95%+ success rate
+///
+/// assert_eq!(reqs.max_latency_ms, Some(500));
+/// ```
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct JobRequirements {
     /// Maximum acceptable latency in milliseconds
@@ -154,6 +186,29 @@ impl JobRequirements {
 }
 
 /// A compute job request
+///
+/// # Examples
+///
+/// ```no_run
+/// use nostr::compute_job::{ComputeJobRequest, InferenceParams, JobRequirements};
+/// use nostr::provider::Region;
+///
+/// let params = InferenceParams::new(1024, 0.7).expect("valid params");
+/// let requirements = JobRequirements::new()
+///     .with_region(Region::UsWest)
+///     .with_max_latency(500);
+///
+/// let request = ComputeJobRequest::new(
+///     "job_123",
+///     "llama-70b",
+///     "Explain quantum computing",
+///     params,
+///     10_000, // 10k sats budget
+/// ).with_requirements(requirements);
+///
+/// assert_eq!(request.id, "job_123");
+/// assert!(request.estimate_input_tokens() > 0);
+/// ```
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ComputeJobRequest {
     /// Unique job identifier
@@ -354,6 +409,28 @@ pub enum SelectionMode {
 /// * `request` - The compute job request
 /// * `providers` - Available providers
 /// * `mode` - Selection strategy
+///
+/// # Examples
+///
+/// ```no_run
+/// use nostr::compute_job::{ComputeJobRequest, InferenceParams, SelectionMode, select_provider};
+///
+/// # fn example() -> Option<()> {
+/// let params = InferenceParams::default();
+/// let request = ComputeJobRequest::new(
+///     "job_123",
+///     "llama-70b",
+///     "Write a poem",
+///     params,
+///     5000,
+/// );
+///
+/// let providers = vec![]; // Fetch from marketplace
+/// let selected = select_provider(&request, &providers, SelectionMode::BestValue)?;
+/// println!("Selected provider: {}", selected.lightning_address);
+/// # Some(())
+/// # }
+/// ```
 pub fn select_provider(
     request: &ComputeJobRequest,
     providers: &[ComputeProvider],

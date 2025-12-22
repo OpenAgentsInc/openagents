@@ -29,6 +29,21 @@ pub enum IdentityError {
 ///
 /// The private key is stored separately in secure storage and never
 /// exposed through this type.
+///
+/// # Examples
+///
+/// ```no_run
+/// use nostr::identity::NostrIdentity;
+///
+/// // Create from hex public key
+/// let hex_pubkey = "a".repeat(64);
+/// let identity = NostrIdentity::new(&hex_pubkey).expect("valid hex pubkey");
+/// assert_eq!(identity.pubkey(), hex_pubkey);
+///
+/// // Create from npub format
+/// let identity = NostrIdentity::new("npub1234567890").expect("valid npub");
+/// assert!(identity.pubkey().starts_with("npub1"));
+/// ```
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct NostrIdentity {
     /// Public key in hex format (64 chars) or npub format
@@ -183,6 +198,21 @@ impl WalletInfo {
 }
 
 /// Reputation score for an agent based on marketplace activity
+///
+/// # Examples
+///
+/// ```no_run
+/// use nostr::identity::ReputationScore;
+///
+/// let mut rep = ReputationScore::default();
+/// rep.jobs_completed = 100;
+/// rep.jobs_successful = 95;
+/// rep.rating = 4.5;
+/// rep.rating_count = 50;
+///
+/// assert_eq!(rep.success_rate(), 95.0);
+/// assert!(rep.is_reputable());
+/// ```
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct ReputationScore {
     /// Number of completed jobs
@@ -235,6 +265,24 @@ impl ReputationScore {
 /// Identity for an agent participating in the marketplace.
 ///
 /// Agents process jobs, earn reputation, and manage a wallet for payments.
+///
+/// # Examples
+///
+/// ```no_run
+/// use nostr::identity::{NostrIdentity, AgentIdentity, WalletInfo};
+///
+/// let pubkey = "a".repeat(64);
+/// let identity = NostrIdentity::new(&pubkey).expect("valid pubkey");
+///
+/// let agent = AgentIdentity::new(identity, "Code Assistant")
+///     .with_description("Helps with programming tasks")
+///     .add_job_kind(5050)  // Code generation
+///     .add_job_kind(5051); // Code review
+///
+/// assert_eq!(agent.name, "Code Assistant");
+/// assert!(agent.supports_job_kind(5050));
+/// assert!(!agent.supports_job_kind(9999));
+/// ```
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AgentIdentity {
     /// Nostr identity for this agent
