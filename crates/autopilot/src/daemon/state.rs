@@ -16,7 +16,7 @@ pub enum WorkerStatus {
     /// Worker is restarting after a failure
     Restarting { attempt: u32, next_attempt_at: Instant },
     /// Worker has failed too many times
-    Failed { reason: String },
+    Failed { reason: String, failed_at: Instant },
 }
 
 impl WorkerStatus {
