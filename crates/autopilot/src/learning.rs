@@ -397,7 +397,7 @@ mod tests {
         db.store_session(&session).unwrap();
 
         let analyzer = InstructionAnalyzer::new(&db);
-        let improvements = analyzer.analyze(&[session.id.clone()]).unwrap();
+        let improvements = analyzer.analyze(&[session.id]).unwrap();
 
         assert!(improvements.iter().any(|i| matches!(
             i.improvement_type,
