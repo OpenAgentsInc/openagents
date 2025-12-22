@@ -672,3 +672,41 @@ o: id=VBaoP5XW → [ok] The file /home/christopherdavid/code/openagents/tests/cl
 t!:Bash id=R6dSDsVu cmd="cargo test --package openagents --test cli_inte..." → [running] tokens_in=0 tokens_out=26 tokens_cached=92489
 o: id=R6dSDsVu → [ok] test test_agentgit_gui ... ok
 t!:Bash id=nsr6SFzr cmd="git add -A && git commit -m "$(cat <<'EOF'" → [running] tokens_in=0 tokens_out=329 tokens_cached=93147
+o: id=nsr6SFzr → [ok] [main 9da203759] Add comprehensive CLI integration tests for unified openagents binary
+t!:Bash id=TSmHkD3x cmd="git push" → [running] tokens_in=0 tokens_out=24 tokens_cached=93689
+o: id=TSmHkD3x → [ok] [0;36m🔍 Running cargo build to check for errors and warnings...[0m
+t!:mcp__issues__issue_complete id=LnMx4UxP  → [running] tokens_in=0 tokens_out=58 tokens_cached=94169
+o: id=LnMx4UxP → [ok] Completed issue #543
+t!:mcp__issues__issue_ready id=MQRBNrAt  → [running] tokens_in=0 tokens_out=5 tokens_cached=94327
+o: id=MQRBNrAt → [ok] No ready issues available
+t!:mcp__issues__issue_create id=id2BMzRz  → [running] tokens_in=3 tokens_out=248 tokens_cached=94510
+o: id=id2BMzRz → [ok] Created issue #544: Add integration tests for GUI routes and server (agent: claude) [directive: d...
+t!:mcp__issues__issue_claim id=YurrMTag  → [running] tokens_in=3 tokens_out=79 tokens_cached=94565
+o: id=YurrMTag → [ok] Claimed issue #544
+t!:Glob id=dhmuGzRG pattern="src/gui/**/*.rs" → [running] tokens_in=0 tokens_out=57 tokens_cached=94850
+o: id=dhmuGzRG → [ok] /home/christopherdavid/code/openagents/src/gui/mod.rs
+t!:Read id=TxNJ5JbN file_path=/home/christopherdavid/code/openagents/src/gui/server.rs → [running] tokens_in=3 tokens_out=74 tokens_cached=95057
+o: id=TxNJ5JbN → [ok]      1→//! Unified Actix server
+t!:Read id=F9hm3wd9 file_path=/home/christopherdavid/code/openagents/src/gui/routes/mod.rs → [running] tokens_in=3 tokens_out=76 tokens_cached=95467
+o: id=F9hm3wd9 → [ok]      1→//! Route configuration for unified server
+t!:Read id=vev1XAQF file_path=/home/christopherdavid/code/openagents/src/gui/state.rs → [running] tokens_in=2 tokens_out=74 tokens_cached=96172
+o: id=vev1XAQF → [ok]      1→//! Unified application state
+t!:Write id=7BmZ2VwK file_path=/home/christopherdavid/code/openagents/tests/gui_integration.rs → [running] tokens_in=2 tokens_out=2733 tokens_cached=96845
+o: id=7BmZ2VwK → [ok] File created successfully at: /home/christopherdavid/code/openagents/tests/gui_integration.rs
+t!:Bash id=QVN4wruA cmd="cargo test --package openagents --test gui_inte..." → [running] tokens_in=2 tokens_out=26 tokens_cached=99911
+o: id=QVN4wruA → [ok]     |                 ^^^^ method not found in `WsBroadcaster`
+t!:Read id=X1C4BViD file_path=/home/christopherdavid/code/openagents/src/gui/ws.rs → [running] tokens_in=1 tokens_out=74 tokens_cached=102683
+o: id=X1C4BViD → [ok]      1→//! WebSocket broadcaster for real-time updates
+t!:Read id=MKtCU3h2 file_path=/home/christopherdavid/code/openagents/src/gui/views/mod.rs → [running] tokens_in=1 tokens_out=76 tokens_cached=103499
+o: id=MKtCU3h2 → [ok]      1→//! View templates for the unified GUI
+t!:Edit id=UtgqtXqS file_path=/home/christopherdavid/code/openagents/tests/gui_integration.rs → [running] tokens_in=1 tokens_out=1214 tokens_cached=104468
+o: id=UtgqtXqS → [error] <tool_use_error>File has not been read yet. Read it first before writing to it.</tool_use_error>
+t!:Read id=ez9Aghbx file_path=/home/christopherdavid/code/openagents/tests/gui_integration.rs → [running] tokens_in=2 tokens_out=18 tokens_cached=105425
+o: id=ez9Aghbx → [ok]      1→//! Integration tests for unified openagents binary GUI server
+t!:Bash id=QRkEgRsQ cmd="rm /home/christopherdavid/code/openagents/tests..." → [running] tokens_in=1 tokens_out=26 tokens_cached=106788
+o: id=QRkEgRsQ → [ok] 
+t!:Write id=hrygDKjQ file_path=/home/christopherdavid/code/openagents/tests/gui_server.rs → [running] tokens_in=2 tokens_out=2828 tokens_cached=107524
+o: id=hrygDKjQ → [ok] File created successfully at: /home/christopherdavid/code/openagents/tests/gui_server.rs
+t!:Bash id=LntCYTUA cmd="cargo test --package openagents --test gui_serv..." → [running] tokens_in=0 tokens_out=118 tokens_cached=107643
+o: id=LntCYTUA → [ok] test test_404_for_unknown_routes ... ok
+t!:Bash id=mRFMbfKt cmd="git add -A && git commit -m "$(cat <<'EOF'" → [running] tokens_in=0 tokens_out=354 tokens_cached=110615
