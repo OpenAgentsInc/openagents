@@ -873,6 +873,25 @@ enum MetricsCommands {
         format: String,
     },
 
+    /// Export metrics to JSON/CSV for external analysis
+    Export {
+        /// Path to metrics database (default: autopilot-metrics.db)
+        #[arg(long)]
+        db: Option<PathBuf>,
+
+        /// Time period (7d, 30d, last-week, this-week, or 'all')
+        #[arg(short, long, default_value = "all")]
+        period: String,
+
+        /// Output format (json or csv)
+        #[arg(short, long, default_value = "json")]
+        format: String,
+
+        /// Output file (default: stdout)
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+    },
+
     /// Baseline management commands
     #[command(subcommand)]
     Baseline(BaselineCommands),
@@ -4081,6 +4100,61 @@ async fn handle_metrics_command(command: MetricsCommands) -> Result<()> {
                         println!();
                     }
                 }
+            }
+        }
+        MetricsCommands::Export { db, period, format, output } => {
+            let db_path = db.unwrap_or_else(default_db_path);
+            let metrics_db = MetricsDb::open(&db_path)?;
+
+            // Get sessions based on period
+            let sessions = if period == "all" {
+                metrics_db.get_all_sessions()?
+            } else {
+                use autopilot::analyze::get_sessions_in_period;
+                get_sessions_in_period(&metrics_db, &period)?
+            };
+
+            if sessions.is_empty() {
+                eprintln!("No sessions found for period: {}", period);
+                return Ok(());
+            }
+
+            // Build export data
+            let export_data = if format == "csv" {
+                // CSV format: header + rows
+                let mut csv = String::new();
+                csv.push_str("session_id,timestamp,model,duration_s,tokens_in,tokens_out,tokens_cached,cost_usd,issues_claimed,issues_completed,tool_calls,tool_errors,final_status\n");
+
+                for session in &sessions {
+                    csv.push_str(&format!(
+                        "{},{},{},{},{},{},{},{},{},{},{},{},{:?}\n",
+                        session.id,
+                        session.timestamp.to_rfc3339(),
+                        session.model,
+                        session.duration_seconds,
+                        session.tokens_in,
+                        session.tokens_out,
+                        session.tokens_cached,
+                        session.cost_usd,
+                        session.issues_claimed,
+                        session.issues_completed,
+                        session.tool_calls,
+                        session.tool_errors,
+                        session.final_status
+                    ));
+                }
+                csv
+            } else {
+                // JSON format
+                serde_json::to_string_pretty(&sessions)?
+            };
+
+            // Output to file or stdout
+            if let Some(output_path) = output {
+                std::fs::write(&output_path, export_data)?;
+                eprintln!("Exported {} sessions to {}", sessions.len(), output_path.display());
+            } else {
+                println!("{}", export_data);
             }
         }
         MetricsCommands::Baseline(cmd) => {
