@@ -736,3 +736,56 @@ t!:Bash id=zxm17ffY cmd="cd crates/nostr/core && cargo test --features f..." →
 o: id=zxm17ffY → [ok]    Compiling nostr v0.1.0 (/home/christopherdavid/code/openagents/crates/nostr/core)
 a: Excellent! All 27 new tests pass. Now let me commit these changes: tokens_in=0 tokens_out=5 tokens_cached=64101
 t!:Bash id=b1iiPWWq cmd="cd /home/christopherdavid/code/openagents && gi..." → [running] tokens_in=0 tokens_out=5 tokens_cached=64101
+o: id=b1iiPWWq → [ok] [main 174952802] Add comprehensive property-based edge case tests for NIP-01 EventTemplate valida...
+t!:Bash id=SqmRP6di cmd="git push" → [running] tokens_in=0 tokens_out=25 tokens_cached=65911
+o: id=SqmRP6di → [ok] [0;36m🔍 Running cargo build to check for errors and warnings...[0m
+t!:Bash id=7HT42Cdg cmd="cargo autopilot issue complete 576" → [running] tokens_in=0 tokens_out=24 tokens_cached=66979
+o: id=7HT42Cdg → [ok] ✓ Completed issue #576: Add property-based tests for nostr core event template validation
+a: Now let me claim and work on the next issue #577: tokens_in=0 tokens_out=1 tokens_cached=67140
+t!:Bash id=1jYzw5NN cmd="cargo autopilot issue claim 577" → [running] tokens_in=0 tokens_out=1 tokens_cached=67140
+o: id=1jYzw5NN → [ok] ✓ Claimed issue #577: Add property-based tests for nostr filter validation
+a: Let me check if there's a filter.rs file and understand its structure: tokens_in=0 tokens_out=1 tokens_cached=67296
+t!:Bash id=g5CNDQ99 cmd="find crates/nostr/core/src -name "*.rs" | xargs..." → [running] tokens_in=0 tokens_out=120 tokens_cached=67296
+o: id=g5CNDQ99 → [ok] 
+t!:Bash id=YBHTozPN cmd="grep -r "Filter" crates/nostr/core/src/*.rs 2>/..." → [running] tokens_in=1 tokens_out=24 tokens_cached=67565
+o: id=YBHTozPN → [ok] crates/nostr/core/src/compute_job.rs:    // Filter providers that meet requirements
+a: Filters are likely in the relay crate. Let me check: tokens_in=0 tokens_out=2 tokens_cached=67710
+t!:Glob id=ZbbvdhUU pattern="crates/nostr/relay/**/*.rs" → [running] tokens_in=0 tokens_out=76 tokens_cached=67710
+o: id=ZbbvdhUU → [ok] /home/christopherdavid/code/openagents/crates/nostr/relay/src/error.rs
+a: Let me check the subscription.rs file which likely has filter handling: tokens_in=0 tokens_out=4 tokens_cached=68157
+t!:Bash id=BhsaWQGb cmd="grep -n "struct.*Filter" crates/nostr/relay/src..." → [running] tokens_in=0 tokens_out=110 tokens_cached=68157
+o: id=BhsaWQGb → [ok] 13:pub struct Filter {
+t!:Read id=4eV4CozB file_path=/home/christopherdavid/code/openagents/crates/nostr/relay/src/subscription.rs → [running] tokens_in=0 tokens_out=80 tokens_cached=68629
+o: id=4eV4CozB → [ok]      1→//! Subscription management and event filtering
+a: Now I'll create property-based tests for Filter validation. Let me create a new test file: tokens_in=0 tokens_out=1 tokens_cached=68860
+t!:Bash id=P1NSEf6x cmd="cargo add --package nostr-relay proptest --dev" → [running] tokens_in=0 tokens_out=110 tokens_cached=68860
+o: id=P1NSEf6x → [ok]     Updating crates.io index
+t!:Write id=ZFxG23ra file_path=/home/christopherdavid/code/openagents/crates/nostr/relay/src/tests/filter_properties.rs → [running] tokens_in=0 tokens_out=5531 tokens_cached=73602
+o: id=ZFxG23ra → [ok] File created successfully at: /home/christopherdavid/code/openagents/crates/nostr/relay/src/tests...
+a: Now I need to create the tests module and add this file: tokens_in=0 tokens_out=1 tokens_cached=73952
+t!:Bash id=6jEoGxYf cmd="test -f crates/nostr/relay/src/tests/mod.rs && ..." → [running] tokens_in=0 tokens_out=119 tokens_cached=73952
+o: id=6jEoGxYf → [ok] does not exist
+t!:Write id=Q6M186E8 file_path=/home/christopherdavid/code/openagents/crates/nostr/relay/src/tests/mod.rs → [running] tokens_in=0 tokens_out=124 tokens_cached=79532
+o: id=Q6M186E8 → [ok] File created successfully at: /home/christopherdavid/code/openagents/crates/nostr/relay/src/tests...
+a: Now I need to add the tests module to lib.rs: tokens_in=0 tokens_out=1 tokens_cached=79769
+t!:Read id=i51msrcH file_path=/home/christopherdavid/code/openagents/crates/nostr/relay/src/lib.rs → [running] tokens_in=0 tokens_out=94 tokens_cached=79769
+o: id=i51msrcH → [ok]      1→//! Nostr relay implementation for OpenAgents
+t!:Edit id=uMkbvCNi file_path=/home/christopherdavid/code/openagents/crates/nostr/relay/src/lib.rs → [running] tokens_in=0 tokens_out=211 tokens_cached=79940
+o: id=uMkbvCNi → [ok] The file /home/christopherdavid/code/openagents/crates/nostr/relay/src/lib.rs has been updated. H...
+a: Now let's run the tests: tokens_in=0 tokens_out=1 tokens_cached=81130
+t!:Bash id=4JbEyGuX cmd="cd crates/nostr/relay && cargo test filter_prop..." → [running] tokens_in=0 tokens_out=1 tokens_cached=81130
+o: id=4JbEyGuX → [ok]    Compiling nostr-relay v0.1.0 (/home/christopherdavid/code/openagents/crates/nostr/relay)
+a: The issue is that proptest! macro requires test functions without parameters to have explicit #[test] attributes and be outside the proptest! block. Let me fix this: tokens_in=0 tokens_out=1 tokens_cached=81594
+t!:Read id=DXsu3ctP file_path=/home/christopherdavid/code/openagents/crates/nostr/relay/src/tests/filter_properties.rs → [running] tokens_in=0 tokens_out=1 tokens_cached=81594
+o: id=DXsu3ctP → [ok]      1→//! Property-based tests for Nostr Filter validation and matching
+a: I see the issue - tests without parameters inside proptest! need to not have #[test] since proptest! macro adds it. Let me fix all the tests that don't have parameters: tokens_in=0 tokens_out=1 tokens_cached=82610
+t!:Edit id=Xvy7yXiX file_path=/home/christopherdavid/code/openagents/crates/nostr/relay/src/tests/filter_properties.rs → [running] tokens_in=0 tokens_out=999 tokens_cached=82610
+o: id=Xvy7yXiX → [ok] The file /home/christopherdavid/code/openagents/crates/nostr/relay/src/tests/filter_properties.rs...
+a: Now I need to remove the duplicate tests from the proptest! block: tokens_in=0 tokens_out=1 tokens_cached=83402
+t!:Edit id=8kXYMdWy file_path=/home/christopherdavid/code/openagents/crates/nostr/relay/src/tests/filter_properties.rs → [running] tokens_in=0 tokens_out=685 tokens_cached=83402
+o: id=8kXYMdWy → [ok] The file /home/christopherdavid/code/openagents/crates/nostr/relay/src/tests/filter_properties.rs...
+a: Now I need to remove other duplicate non-parameterized tests from the proptest! blocks. Let me look for the rest of the file and fix them: tokens_in=0 tokens_out=1 tokens_cached=85729
+t!:Bash id=BFj7reNv cmd="grep -n "fn prop_empty_ids_matches_nothing\|fn ..." → [running] tokens_in=0 tokens_out=187 tokens_cached=85729
+o: id=BFj7reNv → [error] Exit code 2
+t!:Bash id=Ew766qmf cmd="grep -n "fn prop_empty_ids_matches_nothing\|fn ..." → [running] tokens_in=1 tokens_out=168 tokens_cached=86778
+o: id=Ew766qmf → [ok] 68:fn prop_empty_ids_matches_nothing() {
