@@ -466,7 +466,7 @@ fn extract_session_times(
     }
 
     // Fall back to file modification time or current time
-    let start = start_time.unwrap_or_else(|| Utc::now());
+    let start = start_time.unwrap_or_else(Utc::now);
 
     (start, end_time)
 }

@@ -131,7 +131,7 @@ impl JobDatabase {
         };
 
         let mut stmt = self.conn.prepare(&query)?;
-        let rows = stmt.query_map([], |row| row_to_job_info(row))?;
+        let rows = stmt.query_map([], row_to_job_info)?;
 
         let mut jobs = Vec::new();
         for job_result in rows {

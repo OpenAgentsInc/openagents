@@ -268,11 +268,9 @@ impl ProviderCommands {
 
             if provider.needs_readvertisement() {
                 println!("\nAdvertisement: Needs re-advertisement");
-            } else {
-                if let Some(time_until) = provider.time_until_next_advertisement() {
-                    let secs = time_until.as_secs();
-                    println!("\nNext advertisement in: {}m {}s", secs / 60, secs % 60);
-                }
+            } else if let Some(time_until) = provider.time_until_next_advertisement() {
+                let secs = time_until.as_secs();
+                println!("\nNext advertisement in: {}m {}s", secs / 60, secs % 60);
             }
 
             println!("\nNote: Provider state is local only.");

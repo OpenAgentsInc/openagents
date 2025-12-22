@@ -490,15 +490,13 @@ impl ComputeCommands {
                     println!("{}", error);
                 }
             }
+        } else if json {
+            println!("{{\"error\": \"Job not found\"}}");
         } else {
-            if json {
-                println!("{{\"error\": \"Job not found\"}}");
-            } else {
-                println!("Job ID: {}", job_id);
-                println!("Status: Not found");
-                println!("\nNote: Job may not have been submitted from this machine");
-                println!("      or database tracking may not have been enabled.");
-            }
+            println!("Job ID: {}", job_id);
+            println!("Status: Not found");
+            println!("\nNote: Job may not have been submitted from this machine");
+            println!("      or database tracking may not have been enabled.");
         }
 
         Ok(())

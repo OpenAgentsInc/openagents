@@ -79,7 +79,7 @@ impl RedactionEngine {
 
         // Apply built-in patterns
         for pattern in self.get_patterns() {
-            let (new_content, count) = self.apply_pattern(&redacted, &pattern.regex, &pattern.replacement);
+            let (new_content, count) = self.apply_pattern(&redacted, &pattern.regex, pattern.replacement);
             if count > 0 {
                 redacted = new_content;
                 secrets_redacted += count;
