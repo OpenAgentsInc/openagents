@@ -5,6 +5,27 @@ use git2::{Diff, DiffOptions, Repository, Status, StatusOptions};
 use std::path::Path;
 
 /// Represents a file change in the working directory
+///
+/// # Examples
+///
+/// ```no_run
+/// use agentgit::git::{get_status, FileStatus};
+/// use std::path::Path;
+///
+/// # fn example() -> anyhow::Result<()> {
+/// let repo_path = Path::new("/path/to/repo");
+/// let changes = get_status(repo_path)?;
+///
+/// for change in changes {
+///     match change.status {
+///         FileStatus::Modified => println!("Modified: {}", change.path),
+///         FileStatus::Untracked => println!("Untracked: {}", change.path),
+///         _ => println!("{:?}: {}", change.status, change.path),
+///     }
+/// }
+/// # Ok(())
+/// # }
+/// ```
 #[derive(Debug, Clone)]
 pub struct FileChange {
     pub path: String,

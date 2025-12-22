@@ -334,3 +334,38 @@ t!:Bash id=nweygZ8n cmd="cargo test --doc -p ui 2>&1 | grep -E "(test cr..." →
 o: id=nweygZ8n → [ok]    Doc-tests ui
 a: Perfect! All ui examples compile. Let me commit and push: tokens_in=2 tokens_out=1 tokens_cached=104123
 t!:Bash id=gWGEuCQy cmd="git add -A && git commit -m "$(cat <<'EOF'" → [running] tokens_in=2 tokens_out=257 tokens_cached=104123
+o: id=gWGEuCQy → [ok] [main 1cd55bdf5] Add rustdoc examples to UI crate component types
+t!:Bash id=g2Q5U3Hx cmd="git push origin main" → [running] tokens_in=1 tokens_out=79 tokens_cached=104387
+o: id=g2Q5U3Hx → [ok] [0;36m🔍 Running cargo build to check for errors and warnings...[0m
+t!:mcp__issues__issue_complete id=67D9Q7DC  → [running] tokens_in=1 tokens_out=58 tokens_cached=104886
+o: id=67D9Q7DC → [ok] Completed issue #691
+t!:mcp__issues__issue_ready id=HXYBaHgy  → [running] tokens_in=1 tokens_out=41 tokens_cached=105054
+o: id=HXYBaHgy → [ok] No ready issues available
+t!:mcp__issues__issue_create id=AKLBmjqS  → [running] tokens_in=0 tokens_out=1 tokens_cached=105129
+o: id=AKLBmjqS → [ok] Created issue #692: Add rustdoc examples to agentgit core types (agent: claude)
+t!:mcp__issues__issue_claim id=ZeMLDMqj  → [running] tokens_in=2 tokens_out=83 tokens_cached=105295
+o: id=ZeMLDMqj → [ok] Claimed issue #692
+t!:Glob id=7wQdyQRY pattern="crates/agentgit/src/*.rs" → [running] tokens_in=2 tokens_out=26 tokens_cached=105536
+o: id=7wQdyQRY → [ok] /home/christopherdavid/code/openagents/crates/agentgit/src/ws.rs
+t!:Bash id=F52Yie79 cmd="find /home/christopherdavid/code/openagents/cra..." → [running] tokens_in=1 tokens_out=26 tokens_cached=105636
+o: id=F52Yie79 → [ok] /home/christopherdavid/code/openagents/crates/agentgit/src/ws.rs
+t!:Read id=zDuXedZj file_path=/home/christopherdavid/code/openagents/crates/agentgit/src/lib.rs → [running] tokens_in=1 tokens_out=18 tokens_cached=105957
+o: id=zDuXedZj → [ok]      1→//! AgentGit - Nostr-native GitHub alternative for agent-first collaboration
+t!:Read id=QUXbS5gT file_path=/home/christopherdavid/code/openagents/crates/agentgit/src/nostr/mod.rs → [running] tokens_in=1 tokens_out=25 tokens_cached=106711
+o: id=QUXbS5gT → [ok]      1→//! Nostr integration for AgentGit
+t!:Read id=QS3ug5xN file_path=/home/christopherdavid/code/openagents/crates/agentgit/src/nostr/publish_result.rs → [running] tokens_in=0 tokens_out=18 tokens_cached=107036
+o: id=QS3ug5xN → [ok]      1→//! Result types for event publishing with detailed error information
+t!:Edit id=rPoSEpqg file_path=/home/christopherdavid/code/openagents/crates/agentgit/src/nostr/publish_result.rs → [running] tokens_in=0 tokens_out=25 tokens_cached=108558
+t!:Edit id=tpUS1MPE file_path=/home/christopherdavid/code/openagents/crates/agentgit/src/nostr/publish_result.rs → [running] tokens_in=0 tokens_out=25 tokens_cached=108558
+t!:Read id=J3c7Cqj9 file_path=/home/christopherdavid/code/openagents/crates/agentgit/src/git/mod.rs → [running] tokens_in=0 tokens_out=830 tokens_cached=108558
+o: id=rPoSEpqg → [ok] The file /home/christopherdavid/code/openagents/crates/agentgit/src/nostr/publish_result.rs has b...
+o: id=tpUS1MPE → [ok] The file /home/christopherdavid/code/openagents/crates/agentgit/src/nostr/publish_result.rs has b...
+o: id=J3c7Cqj9 → [ok]      1→//! Git operations module
+t!:Read id=6QQ9rrez file_path=/home/christopherdavid/code/openagents/crates/agentgit/src/git/diff.rs → [running] tokens_in=1 tokens_out=99 tokens_cached=110347
+o: id=6QQ9rrez → [ok]      1→//! Git diff and status operations
+t!:Edit id=hGURyKgD file_path=/home/christopherdavid/code/openagents/crates/agentgit/src/git/diff.rs → [running] tokens_in=0 tokens_out=360 tokens_cached=112543
+o: id=hGURyKgD → [ok] The file /home/christopherdavid/code/openagents/crates/agentgit/src/git/diff.rs has been updated....
+t!:Bash id=wikdrCtc cmd="cargo test --doc -p agentgit 2>&1 | grep -E "(t..." → [running] tokens_in=0 tokens_out=117 tokens_cached=114219
+o: id=wikdrCtc → [ok]    Doc-tests agentgit
+a: Perfect! All agentgit examples compile. Let me commit and push: tokens_in=0 tokens_out=1 tokens_cached=115015
+t!:Bash id=gSy75qrw cmd="git add -A && git commit -m "$(cat <<'EOF'" → [running] tokens_in=0 tokens_out=262 tokens_cached=115015
