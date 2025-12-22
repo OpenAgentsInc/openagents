@@ -16,8 +16,10 @@ use nostr::{
     AgentProfile, AgentProfileContent, AgentState, AgentStateContent, AgentSchedule,
     AutonomyLevel, Goal, GoalStatus, MemoryEntry, ThresholdConfig, TriggerType,
     TickAction, TickRequest, TickResult, TickResultContent, TickStatus, TickTrigger,
+    TrajectorySession, TrajectorySessionContent, TrajectoryEvent, TrajectoryEventContent,
+    TrajectoryVisibility, StepType,
     KIND_AGENT_PROFILE, KIND_AGENT_STATE, KIND_AGENT_SCHEDULE,
-    KIND_TICK_REQUEST, KIND_TICK_RESULT,
+    KIND_TICK_REQUEST, KIND_TICK_RESULT, KIND_TRAJECTORY_SESSION, KIND_TRAJECTORY_EVENT,
 };
 
 #[test]
@@ -397,4 +399,145 @@ fn test_tick_result_publishing() {
     // - Runner updates agent state with new goals/memory
     // - Dashboard displays tick metrics and execution history
     // - Billing system charges for token usage
+}
+
+#[test]
+fn test_trajectory_session_lifecycle() {
+    // 1. Create agent identity
+    let agent_secret_key = generate_secret_key();
+
+    // 2. Create trajectory session (starts when tick begins)
+    let session_content = TrajectorySessionContent::new(
+        "session-abc123",
+        1704067200,  // 2024-01-01 00:00:00 UTC
+        "claude-sonnet-4.5",
+    );
+
+    let tick_id = hex::encode([0xCCu8; 32]);
+    let trajectory_session = TrajectorySession::new(
+        session_content,
+        tick_id.clone(),
+        TrajectoryVisibility::Public,
+    );
+
+    // 3. Convert to Nostr event
+    let content = serde_json::to_string(&trajectory_session.content)
+        .expect("should serialize session");
+
+    let template = EventTemplate {
+        kind: KIND_TRAJECTORY_SESSION,
+        content,
+        tags: trajectory_session.build_tags(),
+        created_at: std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs(),
+    };
+
+    let event = finalize_event(&template, &agent_secret_key)
+        .expect("should sign event");
+
+    // 4. Verify event structure
+    assert_eq!(event.kind, KIND_TRAJECTORY_SESSION);
+    assert!(!event.content.is_empty());
+
+    // Verify tags
+    assert!(event.tags.iter().any(|t|
+        t[0] == "d" && t[1] == "session-abc123"
+    ));
+    assert!(event.tags.iter().any(|t|
+        t[0] == "tick" && t[1] == tick_id
+    ));
+    assert!(event.tags.iter().any(|t|
+        t[0] == "visibility" && t[1] == "public"
+    ));
+    assert!(event.tags.iter().any(|t|
+        t[0] == "started_at" && t[1] == "1704067200"
+    ));
+    assert!(event.tags.iter().any(|t|
+        t[0] == "model" && t[1] == "claude-sonnet-4.5"
+    ));
+
+    // 5. Parse back the session
+    let parsed: TrajectorySessionContent = serde_json::from_str(&event.content)
+        .expect("should deserialize session");
+
+    assert_eq!(parsed.session_id, "session-abc123");
+    assert_eq!(parsed.started_at, 1704067200);
+    assert_eq!(parsed.model, "claude-sonnet-4.5");
+    assert_eq!(parsed.total_events, 0);
+    assert!(parsed.ended_at.is_none());
+}
+
+#[test]
+fn test_trajectory_event_publishing() {
+    // 1. Create agent identity
+    let agent_secret_key = generate_secret_key();
+
+    // 2. Create trajectory events for different step types
+    let session_id = "session-xyz789";
+    let tick_id = hex::encode([0xDDu8; 32]);
+
+    // Tool use step
+    let mut tool_data = serde_json::Map::new();
+    tool_data.insert("tool".to_string(), serde_json::Value::String("read_file".to_string()));
+    tool_data.insert("input".to_string(), serde_json::Value::String("{\"path\":\"/etc/passwd\"}".to_string()));
+
+    let tool_event = TrajectoryEvent::new(
+        TrajectoryEventContent {
+            step_type: StepType::ToolUse,
+            data: tool_data,
+        },
+        session_id,
+        tick_id.clone(),
+        1,  // First event in sequence
+    );
+
+    // Convert to Nostr event
+    let content = serde_json::to_string(&tool_event.content)
+        .expect("should serialize event");
+
+    let template = EventTemplate {
+        kind: KIND_TRAJECTORY_EVENT,
+        content,
+        tags: tool_event.build_tags(),
+        created_at: std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs(),
+    };
+
+    let event = finalize_event(&template, &agent_secret_key)
+        .expect("should sign event");
+
+    // 3. Verify event structure
+    assert_eq!(event.kind, KIND_TRAJECTORY_EVENT);
+    assert!(!event.content.is_empty());
+
+    // Verify tags
+    assert!(event.tags.iter().any(|t|
+        t[0] == "session" && t[1] == session_id
+    ));
+    assert!(event.tags.iter().any(|t|
+        t[0] == "tick" && t[1] == tick_id
+    ));
+    assert!(event.tags.iter().any(|t|
+        t[0] == "seq" && t[1] == "1"
+    ));
+
+    // 4. Parse back the event content
+    let parsed: TrajectoryEventContent = serde_json::from_str(&event.content)
+        .expect("should deserialize event");
+
+    assert!(matches!(parsed.step_type, StepType::ToolUse));
+    assert_eq!(parsed.data.get("tool").unwrap().as_str().unwrap(), "read_file");
+
+    // NOTE: Full trajectory workflow would include:
+    // - Agent starts tick, publishes trajectory session (kind 38030)
+    // - For each step, agent publishes trajectory event (kind 38031)
+    // - Events are ordered by sequence number
+    // - Session is finalized with ended_at timestamp and trajectory_hash
+    // - External observers subscribe to trajectory events for transparency
+    // - Trajectory data enables training, debugging, and auditing
+    // - Privacy: TrajectoryVisibility controls who can see thinking/tool details
 }
