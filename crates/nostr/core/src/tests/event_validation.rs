@@ -310,7 +310,7 @@ mod signature_verification {
         let event2 = finalize_event(&template, &secret_key2).unwrap();
 
         // Use event1 but with event2's signature
-        let mut tampered = event1.clone();
+        let mut tampered = event1;
         tampered.sig = event2.sig;
 
         assert!(
@@ -387,7 +387,7 @@ mod id_verification {
         let pubkey = get_public_key_hex(&secret_key).unwrap();
 
         let unsigned = UnsignedEvent {
-            pubkey: pubkey.clone(),
+            pubkey,
             created_at: 1234567890,
             kind: KIND_SHORT_TEXT_NOTE,
             tags: vec![],
@@ -447,7 +447,7 @@ mod id_verification {
         };
 
         let unsigned2 = UnsignedEvent {
-            pubkey: pubkey.clone(),
+            pubkey,
             created_at: 1234567890,
             kind: KIND_SHORT_TEXT_NOTE,
             tags: vec![],

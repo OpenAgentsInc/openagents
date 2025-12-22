@@ -240,3 +240,39 @@ journalctl --user -u autopilotd -f
 - Kills node processes >500MB when memory is low (<2GB)
 - Force-restarts worker when memory is critical (<1GB)
 - Automatic exponential backoff on crashes (1s → 5min max)
+
+---
+
+## Directive Completion Standards (CRITICAL)
+
+**A directive is NOT complete just because issues are marked "done".**
+
+Before marking any issue as "done", you MUST verify:
+
+1. **d-012 compliance** - No stubs, no mocks, no TODOs, no NotImplemented errors
+2. **Code actually works** - Run it, test it, verify it does what it claims
+3. **Real integrations** - If the issue references an SDK/library, it must be INTEGRATED not stubbed
+
+### Spark SDK Integration (d-001)
+
+The Spark SDK at `~/code/spark-sdk` is the reference for Breez SDK integration:
+- Public API: `crates/breez-sdk/core/src/sdk.rs` (BreezSdk struct)
+- Builder: `crates/breez-sdk/core/src/sdk_builder.rs`
+- Models: `crates/breez-sdk/core/src/models/mod.rs`
+- Examples: `docs/breez-sdk/snippets/rust/src/`
+
+**You MUST integrate this SDK directly.** Do NOT:
+- Return "requires Breez SDK integration" errors
+- Comment out code with "BLOCKED" notes
+- Mark Phase 1 complete when Phase 2+ are all stubbed
+- Say "will integrate later" - integrate NOW or don't claim it's done
+
+### Verification Before Marking Done
+
+For any payment/wallet related issue:
+- Does `cargo test -p spark` pass?
+- Can you actually call the function and get real data back?
+- Is there a dependency on `breez-sdk-spark` in Cargo.toml?
+- Are the actual SDK functions being called (not mocked)?
+
+**If ANY of these fail, the issue is NOT done.**
