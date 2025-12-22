@@ -29,22 +29,17 @@ use crate::{SparkSigner, SparkError};
 use serde::{Deserialize, Serialize};
 
 /// Bitcoin network to use for Spark wallet
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum Network {
     /// Bitcoin mainnet
     Mainnet,
     /// Bitcoin testnet
+    #[default]
     Testnet,
     /// Bitcoin signet (staging)
     Signet,
     /// Bitcoin regtest (local development)
     Regtest,
-}
-
-impl Default for Network {
-    fn default() -> Self {
-        Network::Testnet
-    }
 }
 
 /// Wallet balance information
