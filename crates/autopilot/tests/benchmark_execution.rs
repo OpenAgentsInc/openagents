@@ -72,7 +72,7 @@ async fn test_simple_file_edit_benchmark_execution() -> Result<()> {
     )?;
 
     // Create benchmark task
-    let task = B001SimpleFileEdit;
+    let _task = B001SimpleFileEdit;
 
     // Run the benchmark
     let result = runner.run_benchmark(&task).await?;
@@ -109,7 +109,7 @@ async fn test_benchmark_database_storage() -> Result<()> {
     let env = TestEnvironment::new()?;
 
     // Create runner and verify database is created
-    let runner = BenchmarkRunner::new(
+    let _runner = BenchmarkRunner::new(
         env.workspace_path(),
         env.db_path(),
         "test-v1.0.0".to_string(),
@@ -144,7 +144,7 @@ async fn test_benchmark_metrics_accuracy() -> Result<()> {
         "test-v1.0.0".to_string(),
     )?;
 
-    let task = B001SimpleFileEdit;
+    let _task = B001SimpleFileEdit;
     let result = runner.run_benchmark(&task).await?;
 
     // Verify token counts are reasonable for a simple file edit task
@@ -187,14 +187,14 @@ async fn test_benchmark_metrics_accuracy() -> Result<()> {
 async fn test_benchmark_workspace_isolation() -> Result<()> {
     let env = TestEnvironment::new()?;
 
-    let runner = BenchmarkRunner::new(
+    let _runner = BenchmarkRunner::new(
         env.workspace_path(),
         env.db_path(),
         "test-v1.0.0".to_string(),
     )?;
 
     // Each benchmark should get its own workspace subdirectory
-    let task = B001SimpleFileEdit;
+    let _task = B001SimpleFileEdit;
 
     // Verify workspace doesn't exist before running
     let benchmark_workspace = env.workspace_path().join("B-001");

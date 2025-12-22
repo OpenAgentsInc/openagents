@@ -51,7 +51,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("  Customer: {}", example_customer_pubkey);
 
     // 5. Optionally send feedback (payment required)
-    let feedback = JobFeedback::new(
+    let _feedback = JobFeedback::new(
         JobStatus::PaymentRequired,
         example_request_id,
         example_customer_pubkey,

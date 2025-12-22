@@ -57,7 +57,7 @@ async fn test_subscription_replacement() {
         created_at: now + 1,
     };
     let event2 = finalize_event(&template2, &secret_key).unwrap();
-    let event2_id = event2.id.clone();
+    let _event2_id = event2.id.clone();
     relay.publish_event(&event2, Duration::from_secs(5)).await.unwrap();
 
     // Should only receive kind 2 event

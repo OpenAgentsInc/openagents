@@ -62,16 +62,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // 6. Complex Job Chaining Example
     println!("\n6. Job Chaining Example:");
     println!("   Job 1: Extract text from PDF");
-    let job1 = JobRequest::new(5000)?  // Text extraction
+    let _job1 = JobRequest::new(5000)?  // Text extraction
         .add_input(JobInput::url("https://example.com/paper.pdf"));
 
     println!("   Job 2: Summarize extracted text (chains from Job 1)");
-    let job2 = JobRequest::new(5001)?  // Summarization
+    let _job2 = JobRequest::new(5001)?  // Summarization
         .add_input(JobInput::job("job1_result_event_id", None))
         .add_param("max_length", "500");
 
     println!("   Job 3: Translate summary (chains from Job 2)");
-    let job3 = JobRequest::new(5002)?  // Translation
+    let _job3 = JobRequest::new(5002)?  // Translation
         .add_input(JobInput::job("job2_result_event_id", None))
         .add_param("target_language", "Spanish");
 
