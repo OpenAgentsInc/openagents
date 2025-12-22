@@ -38,6 +38,40 @@ pub enum ValidationError {
 /// - Non-empty
 /// - Max 200 characters
 /// - No leading/trailing whitespace
+///
+/// # Examples
+///
+/// ```
+/// use issues::validation::{validate_title, ValidationError};
+///
+/// // Valid title
+/// assert!(validate_title("Fix authentication bug").is_ok());
+///
+/// // Empty title (error)
+/// assert_eq!(validate_title(""), Err(ValidationError::TitleEmpty));
+///
+/// // Whitespace-only title (error)
+/// assert_eq!(validate_title("   "), Err(ValidationError::TitleEmpty));
+///
+/// // Title too long (error)
+/// let long_title = "a".repeat(201);
+/// assert!(matches!(validate_title(&long_title), Err(ValidationError::TitleTooLong(201))));
+///
+/// // Leading whitespace (error)
+/// assert_eq!(
+///     validate_title("  Fix bug"),
+///     Err(ValidationError::TitleHasWhitespace)
+/// );
+///
+/// // Trailing whitespace (error)
+/// assert_eq!(
+///     validate_title("Fix bug  "),
+///     Err(ValidationError::TitleHasWhitespace)
+/// );
+///
+/// // Unicode is valid
+/// assert!(validate_title("修复认证错误").is_ok());
+/// ```
 pub fn validate_title(title: &str) -> Result<String, ValidationError> {
     let trimmed = title.trim();
 
@@ -60,6 +94,28 @@ pub fn validate_title(title: &str) -> Result<String, ValidationError> {
 ///
 /// Requirements:
 /// - Max 10,000 characters
+///
+/// # Examples
+///
+/// ```
+/// use issues::validation::{validate_description, ValidationError};
+///
+/// // None is valid
+/// assert_eq!(validate_description(None), Ok(None));
+///
+/// // Valid description
+/// assert!(validate_description(Some("This is a test description")).is_ok());
+///
+/// // Description with newlines is valid
+/// assert!(validate_description(Some("Line 1\nLine 2\nLine 3")).is_ok());
+///
+/// // Description too long (error)
+/// let long_desc = "a".repeat(10_001);
+/// assert!(matches!(
+///     validate_description(Some(&long_desc)),
+///     Err(ValidationError::DescriptionTooLong(10_001))
+/// ));
+/// ```
 pub fn validate_description(description: Option<&str>) -> Result<Option<String>, ValidationError> {
     if let Some(desc) = description {
         if desc.len() > MAX_DESCRIPTION_LENGTH {
@@ -75,6 +131,34 @@ pub fn validate_description(description: Option<&str>) -> Result<Option<String>,
 ///
 /// Requirements:
 /// - Must be "claude" or "codex"
+///
+/// # Examples
+///
+/// ```
+/// use issues::validation::{validate_agent, ValidationError};
+///
+/// // Valid agents
+/// assert_eq!(validate_agent("claude"), Ok("claude".to_string()));
+/// assert_eq!(validate_agent("codex"), Ok("codex".to_string()));
+///
+/// // Invalid agent names (error)
+/// assert_eq!(
+///     validate_agent("gpt4"),
+///     Err(ValidationError::InvalidAgent("gpt4".to_string()))
+/// );
+///
+/// // Empty string (error)
+/// assert_eq!(
+///     validate_agent(""),
+///     Err(ValidationError::InvalidAgent("".to_string()))
+/// );
+///
+/// // Case-sensitive (error)
+/// assert_eq!(
+///     validate_agent("Claude"),
+///     Err(ValidationError::InvalidAgent("Claude".to_string()))
+/// );
+/// ```
 pub fn validate_agent(agent: &str) -> Result<String, ValidationError> {
     match agent {
         "claude" | "codex" => Ok(agent.to_string()),
