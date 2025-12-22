@@ -33,7 +33,7 @@ pub fn claude_status_story() -> Markup {
             "ClaudeStatus"
         }
         p class="text-sm text-muted-foreground mb-6" {
-            "Displays Claude authentication status. Shows email, organization, subscription type, and token source."
+            "Displays Claude authentication status. Shows model, version, sessions, messages, and token usage."
         }
 
         (section_title("Not Logged In"))
@@ -43,42 +43,47 @@ pub fn claude_status_story() -> Markup {
             }
         }))
 
-        (section_title("Logged In - Pro User"))
+        (section_title("Authenticated - Pro User"))
         (section(html! {
             div class="bg-black p-4" {
-                (ClaudeStatus::logged_in(
-                    "user@example.com",
-                    Some("Anthropic".to_string()),
-                    Some("pro".to_string()),
-                    Some("oauth".to_string()),
-                    None,
-                ).build())
+                (ClaudeStatus::authenticated()
+                    .model("opus-4-5")
+                    .version("1.0.0")
+                    .total_sessions(42)
+                    .total_messages(156)
+                    .today_tokens(125000)
+                    .build())
             }
         }))
 
-        (section_title("Logged In - API Key"))
+        (section_title("Authenticated - With Model Usage"))
         (section(html! {
             div class="bg-black p-4" {
-                (ClaudeStatus::logged_in(
-                    "developer@company.com",
-                    Some("Acme Corp".to_string()),
-                    Some("enterprise".to_string()),
-                    None,
-                    Some("environment".to_string()),
-                ).build())
+                (ClaudeStatus::authenticated()
+                    .model("sonnet-4-5")
+                    .version("1.0.0")
+                    .total_sessions(128)
+                    .total_messages(512)
+                    .today_tokens(250000)
+                    .add_model_usage("sonnet-4-5".to_string(), 15000000, 3500000, 5000000, 1000000)
+                    .add_model_usage("opus-4-5".to_string(), 8000000, 2000000, 3000000, 500000)
+                    .build())
             }
         }))
 
-        (section_title("Logged In - Minimal"))
+        (section_title("Authenticated - Minimal"))
         (section(html! {
             div class="bg-black p-4" {
-                (ClaudeStatus::logged_in(
-                    "test@test.com",
-                    None,
-                    None,
-                    None,
-                    None,
-                ).build())
+                (ClaudeStatus::authenticated()
+                    .model("haiku-4")
+                    .build())
+            }
+        }))
+
+        (section_title("Loading"))
+        (section(html! {
+            div class="bg-black p-4" {
+                (ClaudeStatus::loading().build())
             }
         }))
 
@@ -88,16 +93,19 @@ pub fn claude_status_story() -> Markup {
 // Not logged in
 ClaudeStatus::not_logged_in().build()
 
-// Logged in with full info
-ClaudeStatus::logged_in(
-    "user@example.com",
-    Some("Anthropic".to_string()),
-    Some("pro".to_string()),
-    Some("oauth".to_string()),
-    None,
-).build()
+// Authenticated with full info
+ClaudeStatus::authenticated()
+    .model("opus-4-5")
+    .version("1.0.0")
+    .total_sessions(42)
+    .total_messages(156)
+    .today_tokens(125000)
+    .add_model_usage("sonnet-4-5".to_string(), 15000000, 3500000, 5000000, 1000000)
+    .build()
 
-// For positioned version (fixed bottom-right)
-ClaudeStatus::logged_in(...).build_positioned()"#))
+// For positioned version (fixed bottom-right with HTMX polling)
+ClaudeStatus::authenticated()
+    .model("sonnet-4-5")
+    .build_positioned()"#))
     }
 }
