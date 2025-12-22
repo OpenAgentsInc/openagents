@@ -1322,7 +1322,7 @@ pub fn patch_detail_page(repository: &Event, patch: &Event, _reviews: &[Event], 
 }
 
 /// Pull request detail page
-pub fn pull_request_detail_page(repository: &Event, pull_request: &Event, reviews: &[Event], reviewer_reputations: &std::collections::HashMap<String, i32>, status_events: &[Event], identifier: &str, trajectory_session: Option<&Event>, trajectory_events: &[Event], stack_prs: &[Event], dependency_pr: Option<&Event>, is_mergeable: bool, pr_updates: &[Event], diff_text: Option<&str>) -> Markup {
+pub fn pull_request_detail_page(repository: &Event, pull_request: &Event, reviews: &[Event], reviewer_reputations: &std::collections::HashMap<String, i32>, status_events: &[Event], identifier: &str, trajectory_session: Option<&Event>, trajectory_events: &[Event], stack_prs: &[Event], dependency_pr: Option<&Event>, is_mergeable: bool, pr_updates: &[Event], diff_text: Option<&str>, inline_comments: &[crate::views::diff::InlineComment]) -> Markup {
     let repo_name = get_tag_value(repository, "name").unwrap_or_else(|| "Repository".to_string());
     let pr_title = get_tag_value(pull_request, "subject").unwrap_or_else(|| "Untitled Pull Request".to_string());
     let pr_status = get_tag_value(pull_request, "status").unwrap_or_else(|| "open".to_string());
@@ -1962,7 +1962,7 @@ pub fn pull_request_detail_page(repository: &Event, pull_request: &Event, review
 
                                     (crate::views::diff::render_diff_with_comments(
                                         diff,
-                                        &[], // No inline comments for now
+                                        inline_comments,
                                         &pull_request.id,
                                         identifier,
                                     ))

@@ -1444,6 +1444,10 @@ async fn pull_request_detail(
         }
     };
 
+    // Fetch inline comment events (NIP-22 comments on the PR that may have line tags)
+    // For now, we'll use an empty vector since we need to implement get_comments_for_pr
+    let inline_comments = Vec::new();
+
     // Fetch reviewer reputation scores and calculate weighted reviews
     let mut reviewer_reputations = std::collections::HashMap::new();
     for review in &reviews {
@@ -1629,7 +1633,7 @@ async fn pull_request_detail(
 
     HttpResponse::Ok()
         .content_type("text/html; charset=utf-8")
-        .body(pull_request_detail_page(&repository, &pull_request, &reviews, &reviewer_reputations, &status_events, &identifier, trajectory_session.as_ref(), &trajectory_events, &stack_prs, dependency_pr.as_ref(), is_mergeable, &pr_updates, diff_text.as_deref()).into_string())
+        .body(pull_request_detail_page(&repository, &pull_request, &reviews, &reviewer_reputations, &status_events, &identifier, trajectory_session.as_ref(), &trajectory_events, &stack_prs, dependency_pr.as_ref(), is_mergeable, &pr_updates, diff_text.as_deref(), &inline_comments).into_string())
 }
 
 /// Trajectory detail page
