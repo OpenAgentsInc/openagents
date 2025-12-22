@@ -4950,6 +4950,7 @@ dependencies = [
  "anyhow",
  "autopilot",
  "clap",
+ "claude-agent-sdk",
  "futures-util",
  "marketplace",
  "serde",

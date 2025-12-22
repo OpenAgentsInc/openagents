@@ -49,11 +49,15 @@ impl ClaudeStatus {
     }
 
     /// Render the component for positioning (call this for the full positioned version).
+    /// Includes HTMX polling to refresh status.
     pub fn build_positioned(self) -> Markup {
         html! {
             div
                 id="claude-status"
                 style="position: fixed; bottom: 1rem; right: 1rem;"
+                hx-get="/api/claude/status"
+                hx-trigger="load, every 2s"
+                hx-swap="innerHTML"
             {
                 (self.build())
             }
