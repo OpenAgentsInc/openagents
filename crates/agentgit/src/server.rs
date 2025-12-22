@@ -239,7 +239,7 @@ async fn repository_issues(
 
     HttpResponse::Ok()
         .content_type("text/html; charset=utf-8")
-        .body(issues_list_page(&repository, &issues, is_watched, &identifier).into_string())
+        .body(issues_list_page(&repository, &issues, is_watched, &identifier, filter_open, filter_closed, filter_has_bounty, filter_claimed).into_string())
 }
 
 /// Issue detail page

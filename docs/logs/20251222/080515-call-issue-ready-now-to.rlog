@@ -568,3 +568,32 @@ o: id=52AXL87j → [ok] ✓ Claimed issue #601: Update d-005 directive with comp
 t!:Edit id=NcYtrH6J file_path=/home/christopherdavid/code/openagents/.openagents/directives/d-005.md → [running] tokens_in=0 tokens_out=245 tokens_cached=145393
 o: id=NcYtrH6J → [ok] The file /home/christopherdavid/code/openagents/.openagents/directives/d-005.md has been updated....
 t!:Bash id=LPixjvpj cmd="git add -A && git commit -m "$(cat <<'EOF'" → [running] tokens_in=0 tokens_out=24 tokens_cached=145561
+o: id=LPixjvpj → [ok] [main 3544efeba] Update d-005 directive: Mark Phase 3 items as complete
+t!:Bash id=v2vUouvk cmd="git push origin main" → [running] tokens_in=0 tokens_out=74 tokens_cached=146048
+o: id=v2vUouvk → [ok] [0;36m🔍 Running cargo build to check for errors and warnings...[0m
+t!:Bash id=9ftytoK8 cmd="cargo autopilot issue complete 601" → [running] tokens_in=0 tokens_out=24 tokens_cached=146537
+o: id=9ftytoK8 → [ok] ✓ Completed issue #601: Update d-005 directive with completed agent maintainer display
+t!:Bash id=SgBjLW3p cmd="cargo autopilot issue list | grep "^[0-9]" | gr..." → [running] tokens_in=0 tokens_out=115 tokens_cached=146698
+o: id=SgBjLW3p → [ok]     Finished `dev` profile [optimized + debuginfo] target(s) in 0.21s
+a: No ready issues. I've completed 10 issues total (#591-598, #600-601). The autonomous loop continues. Let me create one more issue from the incomplete d-005 items: tokens_in=0 tokens_out=1 tokens_cached=146865
+t!:Bash id=dtmeQ6BD cmd="cargo autopilot issue create "Add issue filteri..." → [running] tokens_in=0 tokens_out=1 tokens_cached=146865
+o: id=dtmeQ6BD → [ok] ✓ Created issue #602: Add issue filtering UI checkbox state persistence (agent: claude)
+t!:Bash id=F97BwWkR cmd="cargo autopilot issue claim 602" → [running] tokens_in=0 tokens_out=80 tokens_cached=147232
+o: id=F97BwWkR → [ok] ✓ Claimed issue #602: Add issue filtering UI checkbox state persistence
+a: I need to update the issues_list_page function to accept query parameters and set checked state. But first, let me check the current signature: tokens_in=0 tokens_out=1 tokens_cached=147571
+t!:Grep id=apf6G6vw pattern="pub fn issues_list_page" → [running] tokens_in=0 tokens_out=1 tokens_cached=147571
+o: id=apf6G6vw → [ok] 338:pub fn issues_list_page(repository: &Event, issues: &[Event], is_watched: bool, identifier: &...
+a: I need to pass the filter parameters to the view. Let me update the server handler to pass them, and the view to use them: tokens_in=0 tokens_out=1 tokens_cached=147923
+t!:Edit id=Pm3N9wXK file_path=/home/christopherdavid/code/openagents/crates/agentgit/src/server.rs → [running] tokens_in=0 tokens_out=266 tokens_cached=147923
+o: id=Pm3N9wXK → [ok] The file /home/christopherdavid/code/openagents/crates/agentgit/src/server.rs has been updated. H...
+a: Now update the view signature and use the booleans: tokens_in=0 tokens_out=1 tokens_cached=148123
+t!:Edit id=sTQg4nyb file_path=/home/christopherdavid/code/openagents/crates/agentgit/src/views.rs → [running] tokens_in=0 tokens_out=224 tokens_cached=148123
+o: id=sTQg4nyb → [ok] The file /home/christopherdavid/code/openagents/crates/agentgit/src/views.rs has been updated. He...
+a: Now update the checkbox elements to use checked attribute conditionally. Let me find the filter form: tokens_in=0 tokens_out=1 tokens_cached=148794
+t!:Read id=Rpg592iv file_path=/home/christopherdavid/code/openagents/crates/agentgit/src/views.rs → [running] tokens_in=0 tokens_out=1 tokens_cached=148794
+o: id=Rpg592iv → [ok]    395→                            // Filter controls
+t!:Edit id=55F446hw file_path=/home/christopherdavid/code/openagents/crates/agentgit/src/views.rs → [running] tokens_in=0 tokens_out=864 tokens_cached=149229
+o: id=55F446hw → [ok] The file /home/christopherdavid/code/openagents/crates/agentgit/src/views.rs has been updated. He...
+t!:Bash id=uYi4WfLU cmd="cargo check -p agentgit 2>&1 | head -5" → [running] tokens_in=0 tokens_out=86 tokens_cached=150319
+o: id=uYi4WfLU → [ok]     Checking agentgit v0.1.0 (/home/christopherdavid/code/openagents/crates/agentgit)
+t!:Bash id=r8LZmJxS cmd="git add -A && git commit -m "$(cat <<'EOF'" → [running] tokens_in=0 tokens_out=345 tokens_cached=151957
