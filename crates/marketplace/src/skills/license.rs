@@ -158,15 +158,15 @@ mod tests {
         let manager = LicenseManager::new();
 
         let license = manager
-            .issue_license(
-                "skill-123",
-                "web-scraper",
-                "1.0.0",
-                "agent-pubkey",
-                vec!["fetch".to_string(), "parse".to_string()],
-                1000,
-                1703000000,
-            )
+            .issue_license(IssueLicenseParams {
+                skill_id: "skill-123".to_string(),
+                skill_name: "web-scraper".to_string(),
+                version: "1.0.0".to_string(),
+                agent_pubkey: "agent-pubkey".to_string(),
+                capabilities: vec!["fetch".to_string(), "parse".to_string()],
+                price_sats: 1000,
+                granted_at: 1703000000,
+            })
             .unwrap();
 
         assert_eq!(license.content.skill_id, "skill-123");
@@ -180,16 +180,16 @@ mod tests {
         let manager = LicenseManager::new();
 
         let license = manager
-            .issue_expiring_license(
-                "skill-123",
-                "web-scraper",
-                "1.0.0",
-                "agent-pubkey",
-                vec!["fetch".to_string()],
-                1000,
-                1703000000,
-                1703086400,
-            )
+            .issue_expiring_license(IssueExpiringLicenseParams {
+                skill_id: "skill-123".to_string(),
+                skill_name: "web-scraper".to_string(),
+                version: "1.0.0".to_string(),
+                agent_pubkey: "agent-pubkey".to_string(),
+                capabilities: vec!["fetch".to_string()],
+                price_sats: 1000,
+                granted_at: 1703000000,
+                expires_at: 1703086400,
+            })
             .unwrap();
 
         assert_eq!(license.content.expires_at, Some(1703086400));
@@ -200,15 +200,15 @@ mod tests {
         let manager = LicenseManager::new();
 
         let license = manager
-            .issue_license(
-                "skill-123",
-                "web-scraper",
-                "1.0.0",
-                "agent-pubkey",
-                vec!["fetch".to_string()],
-                1000,
-                1703000000,
-            )
+            .issue_license(IssueLicenseParams {
+                skill_id: "skill-123".to_string(),
+                skill_name: "web-scraper".to_string(),
+                version: "1.0.0".to_string(),
+                agent_pubkey: "agent-pubkey".to_string(),
+                capabilities: vec!["fetch".to_string()],
+                price_sats: 1000,
+                granted_at: 1703000000,
+            })
             .unwrap();
 
         assert!(manager.verify_license(&license, 1703000000).is_ok());
@@ -219,16 +219,16 @@ mod tests {
         let manager = LicenseManager::new();
 
         let license = manager
-            .issue_expiring_license(
-                "skill-123",
-                "web-scraper",
-                "1.0.0",
-                "agent-pubkey",
-                vec!["fetch".to_string()],
-                1000,
-                1703000000,
-                1703086400,
-            )
+            .issue_expiring_license(IssueExpiringLicenseParams {
+                skill_id: "skill-123".to_string(),
+                skill_name: "web-scraper".to_string(),
+                version: "1.0.0".to_string(),
+                agent_pubkey: "agent-pubkey".to_string(),
+                capabilities: vec!["fetch".to_string()],
+                price_sats: 1000,
+                granted_at: 1703000000,
+                expires_at: 1703086400,
+            })
             .unwrap();
 
         assert!(manager.verify_license(&license, 1703100000).is_err());
