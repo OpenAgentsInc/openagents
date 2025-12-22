@@ -68,4 +68,9 @@ chacha20poly1305 = ["dep:chacha20poly1305"]
 unicode-normalization = ["dep:unicode-normalization"]
 
 [dev-dependencies]
+criterion = "0.8.1"
 quickcheck.workspace = true
+
+[[bench]]
+name = "nip44_crypto"
+harness = false
