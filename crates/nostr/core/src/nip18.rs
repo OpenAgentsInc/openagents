@@ -79,10 +79,8 @@ impl Repost {
 
         // Try to parse the reposted event from content field (JSON stringified)
         let reposted_event = if !event.content.is_empty() {
-            match serde_json::from_str::<Event>(&event.content) {
-                Ok(evt) => Some(evt),
-                Err(_) => None, // Content may be empty or invalid, which is allowed
-            }
+            serde_json::from_str::<Event>(&event.content).ok()
+            // Content may be empty or invalid, which is allowed
         } else {
             None
         };
@@ -213,10 +211,7 @@ impl GenericRepost {
 
         // Try to parse the reposted event from content field
         let reposted_event = if !event.content.is_empty() {
-            match serde_json::from_str::<Event>(&event.content) {
-                Ok(evt) => Some(evt),
-                Err(_) => None,
-            }
+            serde_json::from_str::<Event>(&event.content).ok()
         } else {
             None
         };
