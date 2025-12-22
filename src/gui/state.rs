@@ -269,3 +269,117 @@ fn get_model_context_window(model: &str) -> u64 {
         200_000 // default
     }
 }
+
+/// Usage limit data from Claude Code CLI
+#[derive(Debug, Clone, Default)]
+pub struct UsageLimits {
+    /// Current session usage percentage
+    pub session_percent: Option<f64>,
+    /// Current session reset time
+    pub session_resets_at: Option<String>,
+    /// Weekly (all models) usage percentage
+    pub weekly_all_percent: Option<f64>,
+    /// Weekly (all models) reset time
+    pub weekly_all_resets_at: Option<String>,
+    /// Weekly (Sonnet only) usage percentage
+    pub weekly_sonnet_percent: Option<f64>,
+    /// Weekly (Sonnet only) reset time
+    pub weekly_sonnet_resets_at: Option<String>,
+    /// Extra usage spent
+    pub extra_spent: Option<f64>,
+    /// Extra usage limit
+    pub extra_limit: Option<f64>,
+    /// Extra usage reset time
+    pub extra_resets_at: Option<String>,
+}
+
+/// Fetch usage limits from Claude Code CLI by parsing /status output.
+/// Returns None if the CLI is not available or parsing fails.
+pub async fn fetch_usage_limits() -> Option<UsageLimits> {
+    use std::process::Stdio;
+    use tokio::io::{AsyncBufReadExt, BufReader};
+    use tokio::process::Command;
+    use tokio::time::{timeout, Duration};
+
+    let claude_path = shellexpand::tilde("~/.claude/local/claude").to_string();
+
+    // Run claude with a simple command that triggers rate limit check
+    // The rate limits come from API response headers
+    let mut child = Command::new(&claude_path)
+        .args(["-p", "hi", "--output-format", "stream-json", "--max-turns", "1"])
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .ok()?;
+
+    let stdout = child.stdout.take()?;
+    let mut reader = BufReader::new(stdout).lines();
+
+    let mut limits = UsageLimits::default();
+
+    // Parse the stream-json output looking for rate limit info
+    let result = timeout(Duration::from_secs(30), async {
+        while let Ok(Some(line)) = reader.next_line().await {
+            // Look for result messages which contain rate limit info in headers
+            if let Ok(json) = serde_json::from_str::<serde_json::Value>(&line) {
+                // Check for rate limit headers in response
+                if let Some(headers) = json.get("headers").and_then(|h| h.as_object()) {
+                    // Parse rate limit headers
+                    if let Some(remaining) = headers
+                        .get("anthropic-ratelimit-tokens-remaining")
+                        .and_then(|v| v.as_str())
+                        .and_then(|s| s.parse::<u64>().ok())
+                    {
+                        if let Some(total) = headers
+                            .get("anthropic-ratelimit-tokens-limit")
+                            .and_then(|v| v.as_str())
+                            .and_then(|s| s.parse::<u64>().ok())
+                        {
+                            let used = total.saturating_sub(remaining);
+                            limits.session_percent = Some((used as f64 / total as f64) * 100.0);
+                        }
+                    }
+                    if let Some(reset) = headers
+                        .get("anthropic-ratelimit-tokens-reset")
+                        .and_then(|v| v.as_str())
+                    {
+                        limits.session_resets_at = Some(format_reset_time(reset));
+                    }
+                }
+
+                // Break after getting a result
+                if json.get("type").and_then(|t| t.as_str()) == Some("result") {
+                    break;
+                }
+            }
+        }
+    })
+    .await;
+
+    let _ = child.kill().await;
+    let _ = child.wait().await;
+
+    if result.is_err() {
+        return None;
+    }
+
+    // If we got any data, return it
+    if limits.session_percent.is_some() {
+        Some(limits)
+    } else {
+        None
+    }
+}
+
+/// Format an RFC 3339 timestamp to a human-readable reset time
+fn format_reset_time(timestamp: &str) -> String {
+    use chrono::{DateTime, Local};
+
+    if let Ok(dt) = DateTime::parse_from_rfc3339(timestamp) {
+        let local: DateTime<Local> = dt.with_timezone(&Local);
+        local.format("%l:%M%P (%Z)").to_string().trim().to_string()
+    } else {
+        timestamp.to_string()
+    }
+}

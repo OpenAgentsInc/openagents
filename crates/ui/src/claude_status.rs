@@ -8,6 +8,7 @@
 //! - Cache efficiency (read vs creation tokens)
 //! - Web search request counts
 //! - Duration and API latency
+//! - Weekly usage limits with reset times
 
 use maud::{Markup, html};
 
@@ -63,6 +64,21 @@ impl ContextWindow {
     }
 }
 
+/// Usage limit with percentage and reset time (from API rate limit headers)
+#[derive(Clone)]
+pub struct UsageLimit {
+    /// Name of the limit (e.g., "Current session", "Current week (all models)")
+    pub name: String,
+    /// Percentage used (0-100)
+    pub percent_used: f64,
+    /// When the limit resets (human-readable string)
+    pub resets_at: String,
+    /// Optional: spent amount (for extra usage)
+    pub spent: Option<f64>,
+    /// Optional: total limit (for extra usage)
+    pub limit: Option<f64>,
+}
+
 /// Claude authentication status display.
 #[derive(Default)]
 pub struct ClaudeStatus {
@@ -88,6 +104,8 @@ pub struct ClaudeStatus {
     pub context_window: Option<ContextWindow>,
     /// Total web searches this session
     pub web_searches: Option<u64>,
+    /// Usage limits (weekly, session, etc.) from API
+    pub usage_limits: Vec<UsageLimit>,
 }
 
 impl ClaudeStatus {
@@ -179,6 +197,45 @@ impl ClaudeStatus {
         self
     }
 
+    /// Add a usage limit (session, weekly, etc.)
+    pub fn add_usage_limit(
+        mut self,
+        name: impl Into<String>,
+        percent_used: f64,
+        resets_at: impl Into<String>,
+    ) -> Self {
+        self.usage_limits.push(UsageLimit {
+            name: name.into(),
+            percent_used,
+            resets_at: resets_at.into(),
+            spent: None,
+            limit: None,
+        });
+        self
+    }
+
+    /// Add extra usage limit with spent/limit amounts
+    pub fn add_extra_usage(
+        mut self,
+        spent: f64,
+        limit: f64,
+        resets_at: impl Into<String>,
+    ) -> Self {
+        let percent = if limit > 0.0 {
+            (spent / limit) * 100.0
+        } else {
+            0.0
+        };
+        self.usage_limits.push(UsageLimit {
+            name: "Extra usage".to_string(),
+            percent_used: percent,
+            resets_at: resets_at.into(),
+            spent: Some(spent),
+            limit: Some(limit),
+        });
+        self
+    }
+
     /// Render the component for positioning (call this for the full positioned version).
     /// Includes HTMX polling to refresh status.
     pub fn build_positioned(self) -> Markup {
@@ -235,6 +292,41 @@ impl ClaudeStatus {
                     @if let Some(ref model) = self.model {
                         div style="color: #fafafa; margin-bottom: 0.35rem;" {
                             (format_model(model))
+                        }
+                    }
+
+                    // Usage limits (weekly, session, extra usage)
+                    @if !self.usage_limits.is_empty() {
+                        div style="margin-top: 0.5rem;" {
+                            @for limit in &self.usage_limits {
+                                div style="margin-bottom: 0.75rem;" {
+                                    div style="color: #888; margin-bottom: 0.2rem;" {
+                                        (limit.name.as_str())
+                                    }
+                                    // Progress bar
+                                    div style="display: flex; align-items: center; gap: 0.5rem;" {
+                                        div style="flex: 1; height: 4px; background: #333;" {
+                                            div style={
+                                                "height: 100%; transition: width 0.3s; "
+                                                "width: " (format!("{:.1}%", limit.percent_used.min(100.0))) "; "
+                                                "background: " (context_bar_color(limit.percent_used)) ";"
+                                            } {}
+                                        }
+                                        span style="color: #888; min-width: 3rem; text-align: right;" {
+                                            (format!("{:.0}%", limit.percent_used)) " used"
+                                        }
+                                    }
+                                    // Reset time and optional spent/limit
+                                    div style="color: #555; font-size: 0.55rem; margin-top: 0.15rem;" {
+                                        @if let (Some(spent), Some(total)) = (limit.spent, limit.limit) {
+                                            span style="color: #888;" {
+                                                "$" (format!("{:.2}", spent)) " / $" (format!("{:.2}", total)) " spent · "
+                                            }
+                                        }
+                                        "Resets " (limit.resets_at.as_str())
+                                    }
+                                }
+                            }
                         }
                     }
 
