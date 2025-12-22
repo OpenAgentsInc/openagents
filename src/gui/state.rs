@@ -399,22 +399,24 @@ pub async fn fetch_usage_limits() -> Option<UsageLimits> {
         }
     }
 
-    // Parse overage status
-    if let Some(status) = headers.get("anthropic-ratelimit-unified-overage-status") {
-        let status_str = status.to_str().unwrap_or("");
-        if status_str == "allowed" {
-            // Overage is enabled and being used
-            limits.extra_spent = Some(0.0); // TODO: get actual spent amount
-            limits.extra_limit = Some(100.0); // TODO: get actual limit
+    // Parse extra usage/fallback info
+    // fallback-percentage indicates how much of the fallback/overage has been used
+    // The tier name like "default_claude_max_20x" suggests a $20 limit
+    if let Some(fallback_pct) = headers.get("anthropic-ratelimit-unified-fallback-percentage") {
+        if let Ok(pct) = fallback_pct.to_str().unwrap_or("0").parse::<f64>() {
+            // Assume $20 limit based on "20x" tier naming convention
+            let limit = 20.0;
+            let spent = pct * limit;
+            limits.extra_spent = Some(spent);
+            limits.extra_limit = Some(limit);
         }
-        // If "rejected" with "out_of_credits", overage is not available
     }
 
-    // Parse overage disabled reason
-    if let Some(_reason) = headers.get("anthropic-ratelimit-unified-overage-disabled-reason") {
-        // Overage is disabled (e.g., "out_of_credits")
-        limits.extra_spent = None;
-        limits.extra_limit = None;
+    // Parse overage reset time if available
+    if let Some(reset) = headers.get("anthropic-ratelimit-unified-overage-reset") {
+        if let Ok(ts) = reset.to_str().unwrap_or("0").parse::<i64>() {
+            limits.extra_resets_at = Some(format_unix_timestamp(ts));
+        }
     }
 
     // Return if we got any data
