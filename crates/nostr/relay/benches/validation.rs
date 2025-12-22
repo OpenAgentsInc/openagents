@@ -1,11 +1,12 @@
 //! Benchmarks for NIP-01 validation functions
 
-use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
+use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
 use nostr::{finalize_event, generate_secret_key, EventTemplate};
 use nostr_relay::{
     validate_close_message, validate_event_message, validate_event_structure, validate_filter,
     validate_req_message, validate_subscription_id, Filter,
 };
+use std::hint::black_box;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 fn current_timestamp() -> u64 {
