@@ -37,5 +37,9 @@ tempfile.workspace = true
 name = "database_operations"
 harness = false
 
+[[bench]]
+name = "validation"
+harness = false
+
 [lints]
 workspace = true
