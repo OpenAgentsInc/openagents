@@ -258,7 +258,7 @@ fn generate_anomaly_issue_content(pattern: &AnomalyPattern) -> (String, String, 
         AnomalySeverity::Warning => "medium",
     };
 
-    (title, description.to_string(), priority.to_string())
+    (title, description, priority.to_string())
 }
 
 /// Generate detailed description with evidence and proposed fix

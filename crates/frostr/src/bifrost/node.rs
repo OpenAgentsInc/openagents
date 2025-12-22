@@ -324,8 +324,8 @@ impl BifrostNode {
             .as_millis() as u64;
 
         for response in responses {
-            if let BifrostMessage::Pong(pong) = response {
-                if pong.session_id == session_id {
+            if let BifrostMessage::Pong(pong) = response
+                && pong.session_id == session_id {
                     // Calculate round-trip latency
                     let latency_ms = recv_time.saturating_sub(timestamp);
 
@@ -333,7 +333,6 @@ impl BifrostNode {
                     self.peer_manager.mark_peer_responsive(pubkey, Some(latency_ms));
                     return Ok(true);
                 }
-            }
         }
 
         // No valid pong received
