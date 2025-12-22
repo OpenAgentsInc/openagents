@@ -146,38 +146,28 @@ pub fn detect_patterns(db: &MetricsDb) -> Result<Vec<AnomalyPattern>> {
 
 /// Get uninvestigated anomalies from the database
 fn get_uninvestigated_anomalies(db: &MetricsDb) -> Result<Vec<Anomaly>> {
-    let conn = get_connection(db)?;
+    let rows = db.get_uninvestigated_anomalies()?;
 
-    let mut stmt = conn.prepare(
-        r#"
-        SELECT session_id, dimension, expected_value, actual_value, severity,
-               investigated, issue_number
-        FROM anomalies
-        WHERE investigated = 0 AND issue_number IS NULL
-        ORDER BY severity DESC
-        "#,
-    )?;
-
-    let anomalies = stmt
-        .query_map([], |row| {
-            let severity_str: String = row.get(4)?;
+    let anomalies = rows
+        .into_iter()
+        .map(|(session_id, dimension, expected_value, actual_value, severity_str)| {
             let severity = match severity_str.as_str() {
                 "critical" => AnomalySeverity::Critical,
                 "error" => AnomalySeverity::Error,
                 _ => AnomalySeverity::Warning,
             };
 
-            Ok(Anomaly {
-                session_id: row.get(0)?,
-                dimension: row.get(1)?,
-                expected_value: row.get(2)?,
-                actual_value: row.get(3)?,
+            Anomaly {
+                session_id,
+                dimension,
+                expected_value,
+                actual_value,
                 severity,
-                investigated: row.get::<_, i32>(5)? != 0,
-                issue_number: row.get(6)?,
-            })
-        })?
-        .collect::<Result<Vec<_>, _>>()?;
+                investigated: false,
+                issue_number: None,
+            }
+        })
+        .collect();
 
     Ok(anomalies)
 }
@@ -489,27 +479,12 @@ fn mark_anomalies_with_issue(
     anomalies: &[Anomaly],
     issue_number: i32,
 ) -> Result<()> {
-    let conn = get_connection(db)?;
+    let session_ids: Vec<_> = anomalies
+        .iter()
+        .map(|a| (a.session_id.clone(), a.dimension.clone()))
+        .collect();
 
-    for anomaly in anomalies {
-        conn.execute(
-            r#"
-            UPDATE anomalies
-            SET investigated = 1, issue_number = ?1
-            WHERE session_id = ?2 AND dimension = ?3
-            "#,
-            rusqlite::params![issue_number, anomaly.session_id, anomaly.dimension],
-        )?;
-    }
-
-    Ok(())
-}
-
-/// Get the underlying database connection (unsafe but necessary for updates)
-/// This is a workaround since MetricsDb doesn't expose execute methods
-fn get_connection(db: &MetricsDb) -> Result<Connection> {
-    // Open a new connection to the same database
-    Connection::open(db.path()).context("Failed to open metrics database connection")
+    db.mark_anomalies_investigated(&session_ids, issue_number)
 }
 
 // Note: AnomalySeverity::to_string() is already implemented in metrics.rs

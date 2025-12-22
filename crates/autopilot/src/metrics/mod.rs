@@ -928,6 +928,52 @@ impl MetricsDb {
 
         Ok(stats)
     }
+
+    /// Get uninvestigated anomalies from the database
+    pub fn get_uninvestigated_anomalies(&self) -> Result<Vec<(String, String, f64, f64, String)>> {
+        let mut stmt = self.conn.prepare(
+            r#"
+            SELECT session_id, dimension, expected_value, actual_value, severity
+            FROM anomalies
+            WHERE investigated = 0 AND issue_number IS NULL
+            ORDER BY severity DESC
+            "#,
+        )?;
+
+        let anomalies = stmt
+            .query_map([], |row| {
+                Ok((
+                    row.get(0)?,
+                    row.get(1)?,
+                    row.get(2)?,
+                    row.get(3)?,
+                    row.get(4)?,
+                ))
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+
+        Ok(anomalies)
+    }
+
+    /// Mark anomalies as investigated with issue number
+    pub fn mark_anomalies_investigated(
+        &self,
+        session_ids: &[(String, String)],
+        issue_number: i32,
+    ) -> Result<()> {
+        for (session_id, dimension) in session_ids {
+            self.conn.execute(
+                r#"
+                UPDATE anomalies
+                SET investigated = 1, issue_number = ?1
+                WHERE session_id = ?2 AND dimension = ?3
+                "#,
+                rusqlite::params![issue_number, session_id, dimension],
+            )?;
+        }
+
+        Ok(())
+    }
 }
 
 /// Get default metrics database path
