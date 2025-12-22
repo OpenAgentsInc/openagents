@@ -5,7 +5,6 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion, BenchmarkId};
 use issues::{db, issue, IssueType, Priority};
 use rusqlite::Connection;
-use std::path::PathBuf;
 use tempfile::TempDir;
 
 /// Setup a test database with N issues
