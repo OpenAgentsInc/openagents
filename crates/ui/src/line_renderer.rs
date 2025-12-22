@@ -157,7 +157,6 @@ pub fn render_line(raw: &str) -> Option<Markup> {
         let skill_name = caps.get(1).map_or("", |m| m.as_str());
         let rest = caps.get(2).map_or("", |m| m.as_str());
         let result = result_str
-            .clone()
             .map(|r| {
                 if r.contains("[ok]") {
                     ResultType::Ok
@@ -206,7 +205,6 @@ pub fn render_line(raw: &str) -> Option<Markup> {
         let args = caps.get(3).map_or("", |m| m.as_str()).trim();
         let server_method = format!("{}.{}", server, method);
         let result = result_str
-            .clone()
             .map(|r| {
                 if r.contains("[ok]") {
                     ResultType::Ok
