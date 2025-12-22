@@ -269,10 +269,12 @@ async fn execute_contribute(batch: bool, review: bool) -> Result<()> {
 
     // Load configuration
     let config = TrajectoryConfig::default();
-    let mut contrib_config = ContributionConfig::default();
-    contrib_config.redaction_level = config.redaction_level.parse::<RedactionLevel>()
-        .unwrap_or(RedactionLevel::Standard);
-    contrib_config.min_quality = config.min_quality_score;
+    let contrib_config = ContributionConfig {
+        redaction_level: config.redaction_level.parse::<RedactionLevel>()
+            .unwrap_or(RedactionLevel::Standard),
+        min_quality: config.min_quality_score,
+        ..Default::default()
+    };
 
     // Initialize contribution client
     let mut client = ContributionClient::new(contrib_config)

@@ -185,7 +185,7 @@ async fn execute_history(_json: bool, limit: usize, source_filter: Option<String
     println!();
 
     // Mock data - in production, query from earnings database
-    let records = vec![
+    let records = [
         EarningRecord {
             timestamp: 1703001000,
             source: RevenueSource::Compute,
@@ -266,8 +266,8 @@ async fn execute_history(_json: bool, limit: usize, source_filter: Option<String
     println!();
     println!("{}", format!("Showing {} of available records", filtered_len).bright_black());
 
-    if source_filter.is_some() {
-        println!("{}", format!("Filtered by source: {}", source_filter.unwrap()).bright_black());
+    if let Some(filter) = source_filter {
+        println!("{}", format!("Filtered by source: {}", filter).bright_black());
     }
 
     println!();

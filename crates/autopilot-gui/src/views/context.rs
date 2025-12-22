@@ -287,8 +287,6 @@ fn git_status_panel(status: Option<GitStatus>) -> Markup {
 fn token_usage_panel(usage: &TokenUsage) -> Markup {
     let color_class = if usage.percent >= 80.0 {
         "text-destructive"
-    } else if usage.percent >= 60.0 {
-        "text-accent"
     } else {
         "text-accent"
     };
@@ -311,8 +309,6 @@ fn token_usage_panel(usage: &TokenUsage) -> Markup {
                     div
                         class={"h-4 transition-all " @if usage.percent >= 80.0 {
                             "bg-destructive"
-                        } @else if usage.percent >= 60.0 {
-                            "bg-accent"
                         } @else {
                             "bg-accent"
                         }}
@@ -355,8 +351,6 @@ fn token_usage_panel(usage: &TokenUsage) -> Markup {
 fn token_usage_badge(usage: &TokenUsage) -> Markup {
     let (bg_class, text_class) = if usage.percent >= 80.0 {
         ("bg-destructive/10", "text-destructive")
-    } else if usage.percent >= 60.0 {
-        ("bg-accent/10", "text-accent")
     } else {
         ("bg-accent/10", "text-accent")
     };
