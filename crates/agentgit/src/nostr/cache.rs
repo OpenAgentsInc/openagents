@@ -391,6 +391,49 @@ impl EventCache {
         }
     }
 
+    /// Get repository state for a repository
+    /// Repository state is kind:30618 events with 'd' tag matching repository identifier
+    pub fn get_repository_state(&self, repo_identifier: &str) -> Result<Option<Event>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, kind, pubkey, created_at, content, tags, sig
+             FROM events
+             WHERE kind = 30618
+             ORDER BY created_at DESC",
+        )?;
+
+        let events = stmt
+            .query_map([], |row| {
+                let tags_json: String = row.get(5)?;
+                let tags: Vec<Vec<String>> = serde_json::from_str(&tags_json)
+                    .map_err(|e| rusqlite::Error::FromSqlConversionFailure(
+                        5,
+                        rusqlite::types::Type::Text,
+                        Box::new(e),
+                    ))?;
+
+                Ok(Event {
+                    id: row.get(0)?,
+                    kind: row.get(1)?,
+                    pubkey: row.get(2)?,
+                    created_at: row.get(3)?,
+                    content: row.get(4)?,
+                    tags,
+                    sig: row.get(6)?,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+
+        // Filter events that match the repository identifier
+        let state = events.into_iter()
+            .find(|event| {
+                event.tags.iter().any(|tag| {
+                    tag.len() >= 2 && tag[0] == "d" && tag[1] == repo_identifier
+                })
+            });
+
+        Ok(state)
+    }
+
     /// Get issues for a specific repository by its address tag
     pub fn get_issues_by_repo(&self, repo_address: &str, limit: usize) -> Result<Vec<Event>> {
         let mut stmt = self.conn.prepare(

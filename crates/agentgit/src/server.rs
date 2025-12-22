@@ -136,9 +136,12 @@ async fn repository_detail(
         None
     };
 
+    // Fetch repository state (kind:30618)
+    let repo_state = state.nostr_client.get_repository_state(&identifier).await.ok().flatten();
+
     HttpResponse::Ok()
         .content_type("text/html; charset=utf-8")
-        .body(repository_detail_page(&repository, is_cloned, local_path).into_string())
+        .body(repository_detail_page(&repository, is_cloned, local_path, repo_state.as_ref()).into_string())
 }
 
 /// Query parameters for issue filtering
