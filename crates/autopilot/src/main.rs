@@ -529,6 +529,10 @@ enum IssueCommands {
         #[arg(short, long, default_value = "claude")]
         agent: String,
 
+        /// Directive to link to (e.g., d-001)
+        #[arg(long)]
+        directive: Option<String>,
+
         /// Path to issues database (default: autopilot.db in workspace root)
         #[arg(long)]
         db: Option<PathBuf>,
@@ -2988,6 +2992,7 @@ async fn handle_issue_command(command: IssueCommands) -> Result<()> {
             priority,
             issue_type,
             agent,
+            directive,
             db,
         } => {
             let db_path = db.unwrap_or(default_db);
@@ -2996,7 +3001,7 @@ async fn handle_issue_command(command: IssueCommands) -> Result<()> {
             let priority = Priority::from_str(&priority);
             let issue_type = IssueType::from_str(&issue_type);
 
-            let created = issue::create_issue(&conn, &title, description.as_deref(), priority, issue_type, Some(&agent), None)?;
+            let created = issue::create_issue(&conn, &title, description.as_deref(), priority, issue_type, Some(&agent), directive.as_deref())?;
 
             println!(
                 "{} Created issue #{}: {} (agent: {})",
