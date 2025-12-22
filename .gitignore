@@ -128,3 +128,7 @@ crates/*/*/autopilot.db
 
 # Snapshot testing - DO track snapshots
 !**/snapshots/
+
+# Proptest regression files (generated during property-based testing)
+proptest-regressions/
+**/proptest-regressions/
