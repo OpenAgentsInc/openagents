@@ -277,20 +277,20 @@ impl RelayConnection {
             confirmations.remove(&event_id);
 
             // If not connected and queue is enabled, queue the event for retry
-            if matches!(e, ClientError::NotConnected) {
-                if let Some(ref queue) = self.queue {
-                    queue.enqueue(event, self.url.as_str()).map_err(|queue_err| {
-                        warn!("Failed to queue event for retry: {}", queue_err);
-                        queue_err
-                    })?;
-                    info!("Event queued for retry: {}", event_id);
-                    // Return success since event is queued
-                    return Ok(PublishConfirmation {
-                        event_id,
-                        accepted: true,
-                        message: "Queued for retry".to_string(),
-                    });
-                }
+            if matches!(e, ClientError::NotConnected)
+                && let Some(ref queue) = self.queue
+            {
+                queue.enqueue(event, self.url.as_str()).map_err(|queue_err| {
+                    warn!("Failed to queue event for retry: {}", queue_err);
+                    queue_err
+                })?;
+                info!("Event queued for retry: {}", event_id);
+                // Return success since event is queued
+                return Ok(PublishConfirmation {
+                    event_id,
+                    accepted: true,
+                    message: "Queued for retry".to_string(),
+                });
             }
 
             return Err(e);
@@ -452,10 +452,10 @@ impl RelayConnection {
                     // Route EVENT messages to subscriptions
                     if let Some(RelayMessage::Event(sub_id, event)) = &msg {
                         let subs = self.subscriptions.lock().await;
-                        if let Some(subscription) = subs.get(sub_id) {
-                            if let Err(e) = subscription.handle_event(event.clone()) {
-                                warn!("Error handling event for subscription {}: {}", sub_id, e);
-                            }
+                        if let Some(subscription) = subs.get(sub_id)
+                            && let Err(e) = subscription.handle_event(event.clone())
+                        {
+                            warn!("Error handling event for subscription {}: {}", sub_id, e);
                         }
                     }
 
