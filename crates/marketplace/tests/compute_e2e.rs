@@ -14,7 +14,7 @@
 //! Part of d-015: Comprehensive Marketplace and Agent Commerce E2E Tests
 
 use nostr::{finalize_event, generate_secret_key, EventTemplate};
-use nostr::nip90::{JobInput, JobRequest, KIND_JOB_TEXT_GENERATION};
+use nostr::nip90::{JobInput, JobRequest, JobResult, KIND_JOB_TEXT_GENERATION};
 
 #[tokio::test]
 async fn test_nip90_job_request_publish_fetch() {
@@ -63,4 +63,75 @@ async fn test_nip90_job_request_publish_fetch() {
     //
     // This requires debugging the RelayConnection recv() timeout issue.
     // For now, this test verifies the NIP-90 types and event creation work correctly.
+}
+
+#[tokio::test]
+async fn test_nip90_job_result_lifecycle() {
+    // 1. Create provider identity
+    let provider_secret_key = generate_secret_key();
+
+    // 2. Simulate receiving a job request (create request event first)
+    let customer_secret_key = generate_secret_key();
+    let job_request = JobRequest::new(KIND_JOB_TEXT_GENERATION)
+        .expect("should create job request")
+        .add_input(JobInput::text("Write a haiku"))
+        .with_bid(500);
+
+    let request_template = EventTemplate {
+        kind: job_request.kind,
+        content: job_request.content.clone(),
+        tags: job_request.to_tags(),
+        created_at: std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs(),
+    };
+
+    let request_event = finalize_event(&request_template, &customer_secret_key)
+        .expect("should sign request event");
+
+    // 3. Create a job result for the request
+    let result_content = "Code flows like streams\nDecentralized and open\nAI helps us build";
+
+    // JobResult::new takes request_kind (not result kind), request_id, customer_pubkey, content
+    let job_result = JobResult::new(
+        KIND_JOB_TEXT_GENERATION,  // Request kind (5050), will be converted to 6050
+        &hex::encode(&request_event.id),
+        &hex::encode(&request_event.pubkey),
+        result_content.to_string(),
+    )
+    .expect("should create job result");
+
+    // 4. Verify job result structure
+    let expected_result_kind = KIND_JOB_TEXT_GENERATION + 1000;
+    assert_eq!(job_result.kind, expected_result_kind);
+    assert_eq!(job_result.content, result_content);
+    assert_eq!(job_result.request_id, hex::encode(&request_event.id));
+
+    // 5. Convert to Nostr event
+    let result_template = EventTemplate {
+        kind: job_result.kind,
+        content: job_result.content.clone(),
+        tags: job_result.to_tags(),
+        created_at: std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs(),
+    };
+
+    let result_event = finalize_event(&result_template, &provider_secret_key)
+        .expect("should sign result event");
+
+    // 6. Verify result event structure
+    assert_eq!(result_event.kind, expected_result_kind);
+    assert_eq!(result_event.content, result_content);
+    assert!(result_event.tags.len() >= 2, "should have request id and customer pubkey tags");
+
+    // NOTE: Full lifecycle test would include:
+    // - Provider subscribes to job requests on relay
+    // - Customer publishes job request
+    // - Provider receives request, processes it
+    // - Provider publishes job result
+    // - Customer receives result on subscription
+    // - Verify result references original request correctly
 }
