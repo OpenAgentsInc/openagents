@@ -1124,9 +1124,18 @@ async fn pull_request_detail(
         }
     };
 
+    // Fetch PR updates (kind:1619)
+    let pr_updates = match state.nostr_client.get_pr_updates(&pr_id).await {
+        Ok(u) => u,
+        Err(e) => {
+            tracing::warn!("Failed to fetch PR updates for {}: {}", pr_id, e);
+            Vec::new()
+        }
+    };
+
     HttpResponse::Ok()
         .content_type("text/html; charset=utf-8")
-        .body(pull_request_detail_page(&repository, &pull_request, &reviews, &status_events, &identifier, trajectory_session.as_ref(), &trajectory_events, &stack_prs, dependency_pr.as_ref(), is_mergeable).into_string())
+        .body(pull_request_detail_page(&repository, &pull_request, &reviews, &status_events, &identifier, trajectory_session.as_ref(), &trajectory_events, &stack_prs, dependency_pr.as_ref(), is_mergeable, &pr_updates).into_string())
 }
 
 /// Trajectory detail page
