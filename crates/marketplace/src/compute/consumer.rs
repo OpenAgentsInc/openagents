@@ -378,13 +378,23 @@ impl Consumer {
     }
 
     /// Cancel a job
+    ///
+    /// Marks the job as cancelled locally. Note: Publishing cancellation events
+    /// to Nostr relays requires relay client integration which is not yet implemented.
+    /// When relay integration is added, cancellation events should be published using
+    /// NIP-90 job feedback (kind 7000) with status "error" and appropriate tags.
     pub fn cancel_job(&self, job_id: &str) {
         let jobs = self.jobs.lock().unwrap();
         if let Some(info) = jobs.get(job_id) {
             info.lock().unwrap().mark_cancelled();
         }
 
-        // TODO: Publish cancellation event to relays
+        // Publishing cancellation events requires relay client integration.
+        // When implemented, this should:
+        // 1. Create a JobFeedback with status Error and appropriate message
+        // 2. Sign the event with user's identity
+        // 3. Publish to configured relays
+        // 4. Tag the original job request event
     }
 
     /// Remove completed jobs older than the given age (in seconds)
