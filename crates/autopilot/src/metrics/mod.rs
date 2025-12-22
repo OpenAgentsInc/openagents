@@ -981,16 +981,16 @@ pub fn extract_metrics_from_trajectory(
                     let error_type = if !success {
                         // Extract error type from output if available
                         if let StepType::ToolResult { output, .. } = &step.step_type {
-                            output.as_ref().and_then(|o| {
+                            output.as_ref().map(|o| {
                                 // Try to extract error type from output
                                 if o.contains("EISDIR") {
-                                    Some("EISDIR".to_string())
+                                    "EISDIR".to_string()
                                 } else if o.contains("ENOENT") {
-                                    Some("ENOENT".to_string())
+                                    "ENOENT".to_string()
                                 } else if o.contains("Exit code") {
-                                    Some("NonZeroExit".to_string())
+                                    "NonZeroExit".to_string()
                                 } else {
-                                    Some("Unknown".to_string())
+                                    "Unknown".to_string()
                                 }
                             })
                         } else {
