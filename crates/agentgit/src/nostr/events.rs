@@ -1118,3 +1118,173 @@ mod repository_announcement_tests {
         assert_eq!(maintainer_tags.len(), 3);
     }
 }
+
+/// Builder for NIP-57 zap requests (kind:9734)
+///
+/// Creates a zap request that will be sent to a recipient's LNURL callback
+/// to request a Lightning invoice for payment.
+///
+/// # Example
+///
+/// ```rust
+/// use agentgit::nostr::events::ZapRequestBuilder;
+///
+/// let template = ZapRequestBuilder::new("recipient_pubkey_hex")
+///     .amount_msats(21000)
+///     .relay("wss://relay.damus.io")
+///     .relay("wss://relay.snort.social")
+///     .event("event_id_being_zapped")  // Optional: zap a specific event
+///     .content("Great work on this PR!")  // Optional message
+///     .build();
+/// ```
+pub struct ZapRequestBuilder {
+    recipient_pubkey: String,
+    zapped_event: Option<String>,
+    relays: Vec<String>,
+    amount_msats: Option<u64>,
+    content: String,
+}
+
+impl ZapRequestBuilder {
+    /// Create a new zap request builder
+    ///
+    /// # Arguments
+    /// * `recipient_pubkey` - Hex-encoded public key of the recipient
+    pub fn new(recipient_pubkey: impl Into<String>) -> Self {
+        Self {
+            recipient_pubkey: recipient_pubkey.into(),
+            zapped_event: None,
+            relays: Vec::new(),
+            amount_msats: None,
+            content: String::new(),
+        }
+    }
+
+    /// Set the amount to zap in millisatoshis
+    ///
+    /// # Arguments
+    /// * `msats` - Amount in millisatoshis (1 sat = 1000 msats)
+    pub fn amount_msats(mut self, msats: u64) -> Self {
+        self.amount_msats = Some(msats);
+        self
+    }
+
+    /// Set the amount to zap in satoshis (convenience method)
+    ///
+    /// # Arguments
+    /// * `sats` - Amount in satoshis
+    pub fn amount_sats(self, sats: u64) -> Self {
+        self.amount_msats(sats.saturating_mul(1000))
+    }
+
+    /// Add a relay where the zap receipt should be published
+    ///
+    /// # Arguments
+    /// * `relay` - WebSocket URL of the relay
+    pub fn relay(mut self, relay: impl Into<String>) -> Self {
+        self.relays.push(relay.into());
+        self
+    }
+
+    /// Set the event being zapped (optional)
+    ///
+    /// # Arguments
+    /// * `event_id` - Hex-encoded event ID
+    pub fn event(mut self, event_id: impl Into<String>) -> Self {
+        self.zapped_event = Some(event_id.into());
+        self
+    }
+
+    /// Set an optional message/comment for the zap
+    ///
+    /// # Arguments
+    /// * `content` - Message text
+    pub fn content(mut self, content: impl Into<String>) -> Self {
+        self.content = content.into();
+        self
+    }
+
+    /// Build the event template
+    ///
+    /// The template must be signed before being sent to the LNURL callback.
+    pub fn build(self) -> nostr::EventTemplate {
+        let mut tags = vec![vec!["p".to_string(), self.recipient_pubkey.clone()]];
+
+        // Add optional event tag
+        if let Some(event_id) = self.zapped_event {
+            tags.push(vec!["e".to_string(), event_id]);
+        }
+
+        // Add relays tag
+        if !self.relays.is_empty() {
+            let mut relays_tag = vec!["relays".to_string()];
+            relays_tag.extend(self.relays);
+            tags.push(relays_tag);
+        }
+
+        // Add amount tag if specified
+        if let Some(amount) = self.amount_msats {
+            tags.push(vec!["amount".to_string(), amount.to_string()]);
+        }
+
+        nostr::EventTemplate {
+            kind: 9734,
+            content: self.content,
+            tags,
+            created_at: std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_secs(),
+        }
+    }
+}
+
+#[cfg(test)]
+mod zap_tests {
+    use super::*;
+
+    #[test]
+    fn test_minimal_zap_request() {
+        let template = ZapRequestBuilder::new("recipient_pubkey").build();
+
+        assert_eq!(template.kind, 9734);
+        assert!(template.tags.contains(&vec!["p".to_string(), "recipient_pubkey".to_string()]));
+    }
+
+    #[test]
+    fn test_full_zap_request() {
+        let template = ZapRequestBuilder::new("recipient_pubkey")
+            .amount_sats(21)
+            .relay("wss://relay.damus.io")
+            .relay("wss://relay.snort.social")
+            .event("event123")
+            .content("Great work!")
+            .build();
+
+        assert_eq!(template.kind, 9734);
+        assert_eq!(template.content, "Great work!");
+        assert!(template.tags.contains(&vec!["p".to_string(), "recipient_pubkey".to_string()]));
+        assert!(template.tags.contains(&vec!["e".to_string(), "event123".to_string()]));
+        assert!(template.tags.contains(&vec!["amount".to_string(), "21000".to_string()]));
+
+        // Check relays tag
+        let relays_tag: Vec<_> = template.tags.iter()
+            .filter(|tag| tag.len() >= 1 && tag[0] == "relays")
+            .collect();
+        assert_eq!(relays_tag.len(), 1);
+        assert_eq!(relays_tag[0].len(), 3); // "relays" + 2 relay URLs
+    }
+
+    #[test]
+    fn test_zap_amount_conversion() {
+        let template = ZapRequestBuilder::new("recipient")
+            .amount_sats(1)
+            .build();
+
+        let amount_tag = template.tags.iter()
+            .find(|tag| tag.len() >= 2 && tag[0] == "amount")
+            .expect("amount tag should exist");
+
+        assert_eq!(amount_tag[1], "1000"); // 1 sat = 1000 msats
+    }
+}
