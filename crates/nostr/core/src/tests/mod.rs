@@ -8,3 +8,5 @@ mod nip01_edge_cases;
 mod nip19_properties;
 #[cfg(test)]
 mod nip90_integration;
+#[cfg(test)]
+mod event_validation;
