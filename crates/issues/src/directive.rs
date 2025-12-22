@@ -291,6 +291,19 @@ impl DirectiveProgress {
         }
         ((self.completed_issues as f64 / self.total_issues as f64) * 100.0) as u8
     }
+
+    /// Returns true if this directive needs more work.
+    /// A directive needs work if:
+    /// - It has no linked issues (needs issue creation)
+    /// - It has incomplete issues
+    pub fn needs_work(&self) -> bool {
+        self.total_issues == 0 || self.completed_issues < self.total_issues
+    }
+
+    /// Returns true if directive is truly complete (has issues AND all done)
+    pub fn is_complete(&self) -> bool {
+        self.total_issues > 0 && self.completed_issues == self.total_issues
+    }
 }
 
 /// Calculate progress for a directive from linked issues
