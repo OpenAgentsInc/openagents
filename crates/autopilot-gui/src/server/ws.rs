@@ -1,5 +1,6 @@
 //! WebSocket handler for real-time message streaming
 
+use crate::server::state::AppState;
 use actix_web::{web, Error, HttpRequest, HttpResponse};
 use actix_ws::{Message as WsMessage, Session};
 use futures::StreamExt;
@@ -10,40 +11,69 @@ use tracing::{debug, error, info};
 pub async fn websocket(
     req: HttpRequest,
     stream: web::Payload,
+    state: web::Data<AppState>,
 ) -> Result<HttpResponse, Error> {
     let (response, mut session, mut msg_stream) = actix_ws::handle(&req, stream)?;
+
+    // Subscribe to broadcast channel
+    let mut broadcast_rx = state.ws_tx.subscribe();
 
     // Spawn WebSocket handler
     actix_web::rt::spawn(async move {
         info!("WebSocket connection established");
 
-        while let Some(msg) = msg_stream.next().await {
-            match msg {
-                Ok(WsMessage::Text(text)) => {
-                    debug!("Received message: {}", text);
+        loop {
+            tokio::select! {
+                // Handle incoming WebSocket messages from client
+                msg = msg_stream.next() => {
+                    match msg {
+                        Some(Ok(WsMessage::Text(text))) => {
+                            debug!("Received message: {}", text);
 
-                    // Parse incoming message
-                    match serde_json::from_str::<ClientMessage>(&text) {
-                        Ok(client_msg) => {
-                            handle_client_message(client_msg, &mut session).await;
+                            // Parse incoming message
+                            match serde_json::from_str::<ClientMessage>(&text) {
+                                Ok(client_msg) => {
+                                    handle_client_message(client_msg, &mut session).await;
+                                }
+                                Err(e) => {
+                                    error!("Failed to parse message: {}", e);
+                                }
+                            }
+                        }
+                        Some(Ok(WsMessage::Ping(msg))) => {
+                            let _ = session.pong(&msg).await;
+                        }
+                        Some(Ok(WsMessage::Close(reason))) => {
+                            info!("WebSocket closed: {:?}", reason);
+                            break;
+                        }
+                        Some(Err(e)) => {
+                            error!("WebSocket error: {}", e);
+                            break;
+                        }
+                        None => {
+                            break;
+                        }
+                        _ => {}
+                    }
+                }
+                // Handle broadcast messages from state
+                broadcast_msg = broadcast_rx.recv() => {
+                    match broadcast_msg {
+                        Ok(msg) => {
+                            if let Ok(json) = serde_json::to_string(&msg) {
+                                if let Err(e) = session.text(json).await {
+                                    error!("Failed to send broadcast: {}", e);
+                                    break;
+                                }
+                            }
                         }
                         Err(e) => {
-                            error!("Failed to parse message: {}", e);
+                            error!("Broadcast channel error: {}", e);
+                            break;
                         }
                     }
                 }
-                Ok(WsMessage::Ping(msg)) => {
-                    let _ = session.pong(&msg).await;
-                }
-                Ok(WsMessage::Close(reason)) => {
-                    info!("WebSocket closed: {:?}", reason);
-                    break;
-                }
-                Err(e) => {
-                    error!("WebSocket error: {}", e);
-                    break;
-                }
-                _ => {}
             }
         }
 
@@ -149,6 +179,12 @@ enum ServerMessage {
         total_tokens: i64,
         total_cost: f64,
         avg_duration: f64,
+    },
+
+    #[serde(rename = "apm_updated")]
+    APMUpdated {
+        avg_apm: f64,
+        session_apm: Option<f64>,
     },
 }
 

@@ -184,6 +184,13 @@ pub fn page_with_current(title: &str, content: Markup, current_page: Option<&str
                         }
                     }
 
+                    function updateAPM(avgApm) {
+                        const apmValue = document.querySelector('#apm-indicator .apm-value');
+                        if (apmValue) {
+                            apmValue.textContent = avgApm.toFixed(1);
+                        }
+                    }
+
                     function handleWebSocketMessage(msg) {
                         console.log('WebSocket message:', msg);
 
@@ -203,6 +210,11 @@ pub fn page_with_current(title: &str, content: Markup, current_page: Option<&str
                             case 'stats_updated':
                                 console.log('Stats updated');
                                 // Could update stats in-place without reload
+                                break;
+
+                            case 'apm_updated':
+                                console.log('APM updated:', msg.avg_apm);
+                                updateAPM(msg.avg_apm);
                                 break;
                         }
                     }
