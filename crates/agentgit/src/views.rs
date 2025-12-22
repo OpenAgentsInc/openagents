@@ -843,12 +843,6 @@ pub fn issue_detail_page(repository: &Event, issue: &Event, claims: &[Event], bo
                                             rows="4"
                                             required {}
                                     }
-                                    div style="padding: 12px; background: #fef3c7; border-left: 4px solid #f59e0b; margin-bottom: 1rem;" {
-                                        p style="margin: 0; font-size: 0.875rem;" {
-                                            "⚠️ " strong { "Note: " }
-                                            "Event publishing requires identity integration (issue #342). Comments cannot be posted yet."
-                                        }
-                                    }
                                     button.submit-button type="submit" { "Post Comment" }
                                 }
                             }
