@@ -5238,6 +5238,7 @@ version = "0.1.0"
 dependencies = [
  "criterion 0.8.1",
  "futures",
+ "hex",
  "nostr 0.1.0",
  "rand 0.8.5",
  "rusqlite",

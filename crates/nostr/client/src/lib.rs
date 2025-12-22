@@ -44,6 +44,7 @@
 mod cache;
 mod contacts;
 mod error;
+mod negentropy;
 mod outbox;
 mod pool;
 mod queue;
@@ -53,6 +54,7 @@ mod subscription;
 pub use cache::{CacheConfig, EventCache};
 pub use contacts::{ContactManager, MergeStrategy};
 pub use error::{ClientError, Result};
+pub use negentropy::{SyncSession, SyncSessionId, SyncSessionManager, build_initial_message};
 pub use outbox::{OutboxConfig, OutboxModel};
 pub use pool::{PoolConfig, PoolStats, RelayPool, RelayStats};
 pub use queue::{MessageQueue, MessageStatus, QueueConfig, QueuedMessage};

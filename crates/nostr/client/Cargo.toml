@@ -34,6 +34,7 @@ rusqlite = { version = "0.32", features = ["bundled"] }
 
 # Random (for tests)
 rand = "0.8"
+hex.workspace = true
 
 [dev-dependencies]
 tokio-test = "0.4"
