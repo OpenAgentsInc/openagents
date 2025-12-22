@@ -244,3 +244,30 @@ o: id=WFUnLHgx → [ok] The file /home/christopherdavid/code/openagents/crates/n
 o: id=qECcf6A4 → [ok] The file /home/christopherdavid/code/openagents/crates/nostr/core/src/compute_job.rs has been upd...
 o: id=PecK2ccr → [ok] The file /home/christopherdavid/code/openagents/crates/nostr/core/src/compute_job.rs has been upd...
 t!:Bash id=qE3B75xf cmd="git add -A && git commit -m "$(cat <<'EOF'" → [running] tokens_in=5 tokens_out=316 tokens_cached=73320
+o: id=qE3B75xf → [ok] [main 46bd62834] Add rustdoc examples to nostr-core event builders and marketplace types
+t!:Bash id=F1WK2sFQ cmd="git push origin main" → [running] tokens_in=4 tokens_out=77 tokens_cached=75625
+o: id=F1WK2sFQ → [ok] [0;36m🔍 Running cargo build to check for errors and warnings...[0m
+t!:mcp__issues__issue_complete id=Ez2AdkeH  → [running] tokens_in=4 tokens_out=58 tokens_cached=76066
+o: id=Ez2AdkeH → [ok] Completed issue #688
+t!:mcp__issues__issue_ready id=npH54GKF  → [running] tokens_in=1 tokens_out=5 tokens_cached=76231
+o: id=npH54GKF → [ok] No ready issues available
+t!:mcp__issues__issue_list id=Het6k9Gi  → [running] tokens_in=4 tokens_out=58 tokens_cached=76417
+o: id=Het6k9Gi → [ok] [
+t!:mcp__issues__issue_create id=Tbtaf4cn  → [running] tokens_in=4 tokens_out=195 tokens_cached=76472
+o: id=Tbtaf4cn → [ok] Created issue #689: Add rustdoc examples to spark wallet types (agent: claude)
+t!:mcp__issues__issue_claim id=cvMQJrET  → [running] tokens_in=1 tokens_out=83 tokens_cached=78414
+o: id=cvMQJrET → [ok] Claimed issue #689
+t!:Glob id=KyM1uNt8 pattern="crates/spark/src/*.rs" → [running] tokens_in=4 tokens_out=26 tokens_cached=78750
+o: id=KyM1uNt8 → [ok] /home/christopherdavid/code/openagents/crates/spark/src/signer.rs
+t!:Read id=PT5Cn22K file_path=/home/christopherdavid/code/openagents/crates/spark/src/wallet.rs → [running] tokens_in=4 tokens_out=77 tokens_cached=78848
+o: id=PT5Cn22K → [ok]      1→//! Spark wallet wrapper for the Breez SDK
+t!:Edit id=Y81uECob file_path=/home/christopherdavid/code/openagents/crates/spark/src/wallet.rs → [running] tokens_in=3 tokens_out=25 tokens_cached=79022
+t!:Edit id=y79SDKaQ file_path=/home/christopherdavid/code/openagents/crates/spark/src/wallet.rs → [running] tokens_in=3 tokens_out=25 tokens_cached=79022
+t!:Edit id=vatxtTFt file_path=/home/christopherdavid/code/openagents/crates/spark/src/wallet.rs → [running] tokens_in=3 tokens_out=25 tokens_cached=79022
+o: id=Y81uECob → [ok] The file /home/christopherdavid/code/openagents/crates/spark/src/wallet.rs has been updated. Here...
+o: id=y79SDKaQ → [ok] The file /home/christopherdavid/code/openagents/crates/spark/src/wallet.rs has been updated. Here...
+o: id=vatxtTFt → [ok] The file /home/christopherdavid/code/openagents/crates/spark/src/wallet.rs has been updated. Here...
+t!:Bash id=veoTvep8 cmd="cargo test --doc -p openagents-spark 2>&1 | gre..." → [running] tokens_in=4 tokens_out=26 tokens_cached=84936
+o: id=veoTvep8 → [ok]    Doc-tests openagents_spark
+a: Perfect! All new examples compile. Now let me commit and push: tokens_in=3 tokens_out=4 tokens_cached=87614
+t!:Bash id=LcGF5gkL cmd="git add -A && git commit -m "$(cat <<'EOF'" → [running] tokens_in=3 tokens_out=4 tokens_cached=87614

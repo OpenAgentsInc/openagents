@@ -87,6 +87,22 @@ impl Balance {
 }
 
 /// Wallet information and status
+///
+/// # Examples
+///
+/// ```
+/// use openagents_spark::{WalletInfo, Network};
+///
+/// let info = WalletInfo {
+///     public_key: "02a1b2c3...".to_string(),
+///     network: Network::Testnet,
+///     synced: true,
+///     pending_ops: 0,
+/// };
+///
+/// assert!(info.synced);
+/// assert_eq!(info.pending_ops, 0);
+/// ```
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WalletInfo {
     /// Public key of the wallet (for receiving)
@@ -100,6 +116,24 @@ pub struct WalletInfo {
 }
 
 /// Configuration for initializing a Spark wallet
+///
+/// # Examples
+///
+/// ```
+/// use openagents_spark::{WalletConfig, Network};
+/// use std::path::PathBuf;
+///
+/// // Use default configuration (testnet, default storage)
+/// let config = WalletConfig::default();
+/// assert_eq!(config.network, Network::Testnet);
+///
+/// // Custom configuration for production
+/// let config = WalletConfig {
+///     network: Network::Mainnet,
+///     api_key: Some("your-breez-api-key".to_string()),
+///     storage_dir: PathBuf::from("/var/lib/openagents/spark"),
+/// };
+/// ```
 #[derive(Debug, Clone)]
 pub struct WalletConfig {
     /// Network to operate on
@@ -127,6 +161,45 @@ impl Default for WalletConfig {
 ///
 /// This wraps the Breez SDK to provide self-custodial Bitcoin payments
 /// via Lightning, Spark Layer 2, and on-chain.
+///
+/// # Examples
+///
+/// ```no_run
+/// use openagents_spark::{SparkSigner, SparkWallet, WalletConfig, Network};
+///
+/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+/// // Create signer from mnemonic
+/// let signer = SparkSigner::from_mnemonic(
+///     "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
+///     ""
+/// )?;
+///
+/// // Configure wallet
+/// let config = WalletConfig {
+///     network: Network::Testnet,
+///     ..Default::default()
+/// };
+///
+/// // Initialize wallet
+/// let wallet = SparkWallet::new(signer, config).await?;
+///
+/// // Create invoice to receive 1000 sats
+/// let invoice = wallet.create_invoice(
+///     1000,
+///     Some("Coffee payment".to_string()),
+///     None
+/// ).await?;
+/// println!("Pay this invoice: {}", invoice.payment_request);
+///
+/// // Send payment
+/// let payment = wallet.send_payment_simple(
+///     "lnbc1...",  // Lightning invoice
+///     None
+/// ).await?;
+/// println!("Payment sent: {}", payment.payment.id);
+/// # Ok(())
+/// # }
+/// ```
 pub struct SparkWallet {
     signer: SparkSigner,
     config: WalletConfig,
