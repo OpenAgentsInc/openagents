@@ -74,6 +74,15 @@ pub enum Error {
     #[error("Timeout waiting for threshold peers")]
     Timeout,
 
+    #[error("ECDH error: {0}")]
+    EcdhError(String),
+
+    #[error("Invalid public key: {0}")]
+    InvalidPublicKey(String),
+
+    #[error("Invalid secret key: {0}")]
+    InvalidSecretKey(String),
+
     #[error(transparent)]
     Other(#[from] anyhow::Error),
 }

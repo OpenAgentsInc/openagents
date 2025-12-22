@@ -34,7 +34,7 @@ pub struct FrostShare {
 
 /// Galois Field GF(256) multiplication
 /// Uses the AES polynomial x^8 + x^4 + x^3 + x + 1
-fn gf256_mul(mut a: u8, mut b: u8) -> u8 {
+pub(crate) fn gf256_mul(mut a: u8, mut b: u8) -> u8 {
     let mut p: u8 = 0;
     for _ in 0..8 {
         if b & 1 != 0 {
@@ -51,7 +51,7 @@ fn gf256_mul(mut a: u8, mut b: u8) -> u8 {
 }
 
 /// Galois Field GF(256) division
-fn gf256_div(a: u8, b: u8) -> u8 {
+pub(crate) fn gf256_div(a: u8, b: u8) -> u8 {
     if b == 0 {
         panic!("Division by zero in GF(256)");
     }
