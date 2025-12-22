@@ -3,6 +3,17 @@
 use crate::core::discovery::{ProviderDiscovery, ProviderQuery, SortBy};
 use clap::Subcommand;
 
+/// Parameters for job submission
+struct SubmitParams<'a> {
+    job_type: &'a str,
+    prompt: Option<&'a str>,
+    file: Option<&'a str>,
+    model: Option<&'a str>,
+    budget: Option<u64>,
+    stream: bool,
+    json: bool,
+}
+
 #[derive(Debug, Subcommand)]
 pub enum ComputeCommands {
     /// List available compute providers
@@ -141,15 +152,15 @@ impl ComputeCommands {
                 budget,
                 stream,
                 json,
-            } => self.submit(
+            } => self.submit(SubmitParams {
                 job_type,
-                prompt.as_deref(),
-                file.as_deref(),
-                model.as_deref(),
-                *budget,
-                *stream,
-                *json,
-            ),
+                prompt: prompt.as_deref(),
+                file: file.as_deref(),
+                model: model.as_deref(),
+                budget: *budget,
+                stream: *stream,
+                json: *json,
+            }),
 
             ComputeCommands::Status { job_id, json } => self.status(job_id, *json),
 
@@ -194,7 +205,8 @@ impl ComputeCommands {
         let sort_by = match sort.to_lowercase().as_str() {
             "price" => SortBy::Price,
             "recommendations" | "recs" => SortBy::Recommendations,
-            "trust" | _ => SortBy::TrustScore,
+            "trust" => SortBy::TrustScore,
+            _ => SortBy::TrustScore,
         };
         query = query.sort_by(sort_by);
 
@@ -292,16 +304,8 @@ impl ComputeCommands {
         Ok(())
     }
 
-    fn submit(
-        &self,
-        job_type: &str,
-        prompt: Option<&str>,
-        file: Option<&str>,
-        model: Option<&str>,
-        budget: Option<u64>,
-        stream: bool,
-        json: bool,
-    ) -> anyhow::Result<()> {
+    fn submit(&self, params: SubmitParams) -> anyhow::Result<()> {
+        let SubmitParams { job_type, prompt, file, model, budget, stream, json } = params;
         // Validate input
         if prompt.is_none() && file.is_none() {
             anyhow::bail!("Either --prompt or --file must be provided");

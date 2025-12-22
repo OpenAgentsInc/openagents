@@ -401,8 +401,8 @@ async fn handle_nostr_message(
 
             // Parse and validate filters
             let mut filters = Vec::new();
-            for i in 2..msg_array.len() {
-                let filter: Filter = match serde_json::from_value(msg_array[i].clone()) {
+            for filter_value in msg_array.iter().skip(2) {
+                let filter: Filter = match serde_json::from_value(filter_value.clone()) {
                     Ok(f) => f,
                     Err(e) => {
                         responses.push(json!(["CLOSED", sub_id, format!("invalid: failed to parse filter: {}", e)]));

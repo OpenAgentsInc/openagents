@@ -208,11 +208,9 @@ async fn update_relays(
         let url = form.relay_url.trim().to_string();
 
         // Validate URL format
-        if url.starts_with("wss://") || url.starts_with("ws://") {
-            if !config.nostr.relays.contains(&url) {
-                config.nostr.relays.push(url);
-                let _ = config.save();
-            }
+        if (url.starts_with("wss://") || url.starts_with("ws://")) && !config.nostr.relays.contains(&url) {
+            config.nostr.relays.push(url);
+            let _ = config.save();
         }
     }
 

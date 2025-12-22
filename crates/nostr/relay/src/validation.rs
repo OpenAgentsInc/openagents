@@ -537,9 +537,9 @@ pub fn validate_req_message(
     validate_subscription_id(sub_id)?;
 
     let mut filters = Vec::new();
-    for i in 2..arr.len() {
-        let filter: Filter = serde_json::from_value(arr[i].clone()).map_err(|e| {
-            ValidationError::InvalidMessage(format!("failed to parse filter {}: {}", i - 2, e))
+    for (idx, filter_value) in arr.iter().enumerate().skip(2) {
+        let filter: Filter = serde_json::from_value(filter_value.clone()).map_err(|e| {
+            ValidationError::InvalidMessage(format!("failed to parse filter {}: {}", idx - 2, e))
         })?;
         validate_filter(&filter)?;
         filters.push(filter);
