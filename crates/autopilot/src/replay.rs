@@ -171,6 +171,19 @@ fn print_step(step: &Step, index: usize, total: usize) {
         StepType::SystemStatus { status } => {
             println!("{} {}", "SYSTEM STATUS".bright_black().bold(), status);
         }
+        StepType::Subagent { agent_id, agent_type, status, summary } => {
+            use crate::trajectory::SubagentStatus;
+            let status_str = match status {
+                SubagentStatus::Started => "started".yellow(),
+                SubagentStatus::Done => "done".green(),
+                SubagentStatus::Error => "error".red(),
+            };
+            println!("{} {}:{} [{}]", "SUBAGENT".bright_cyan().bold(), agent_type, agent_id, status_str);
+            if let Some(s) = summary {
+                println!("{}", "Summary:".dimmed());
+                println!("{}", s);
+            }
+        }
     }
 
     // Print token info if available
@@ -260,6 +273,9 @@ fn print_step_compact(step: &Step, step_num: usize) {
         }
         StepType::SystemInit { .. } => "INIT".bright_black(),
         StepType::SystemStatus { .. } => "STATUS".bright_black(),
+        StepType::Subagent { agent_id, agent_type, .. } => {
+            return println!("[{}] {} {}:{}", step_num, "SUBAGENT".bright_cyan(), agent_type, agent_id);
+        }
     };
 
     if let Some(content) = step.content() {

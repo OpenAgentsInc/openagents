@@ -303,6 +303,30 @@ impl RlogWriter {
             StepType::SystemStatus { status } => {
                 format!("# status: {}", status)
             }
+            StepType::Subagent {
+                agent_id,
+                agent_type,
+                status,
+                summary,
+            } => {
+                use crate::trajectory::SubagentStatus;
+                let id_short = if agent_id.len() > 8 {
+                    &agent_id[agent_id.len() - 8..]
+                } else {
+                    agent_id
+                };
+                let status_str = match status {
+                    SubagentStatus::Started => "[started]",
+                    SubagentStatus::Done => "[done]",
+                    SubagentStatus::Error => "[error]",
+                };
+                let mut l = format!("x:{} id={} → {}", agent_type, id_short, status_str);
+                if let Some(s) = summary {
+                    let redacted = redact_secrets(s);
+                    l.push_str(&format!(" summary=\"{}\"", truncate(&redacted, 80)));
+                }
+                l
+            }
         };
 
         // Append token metadata

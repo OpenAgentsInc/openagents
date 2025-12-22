@@ -114,6 +114,7 @@
 //! - NIP-11: Relay Information Document
 //! - NIP-12: Generic Tag Queries (deprecated, moved to NIP-01)
 //! - NIP-13: Proof of Work
+//! - NIP-14: Subject Tag in Text Events (email-style subject lines)
 //! - NIP-15: Nostr Marketplace (merchant stalls, products, auctions)
 //! - NIP-16: Event Treatment (deprecated, moved to NIP-01)
 //! - NIP-17: Private Direct Messages (requires `full` feature)
@@ -208,6 +209,7 @@ mod nip10;
 mod nip11;
 mod nip12;
 mod nip13;
+mod nip14;
 mod nip15;
 mod nip16;
 #[cfg(feature = "full")]
@@ -359,6 +361,12 @@ pub use nip12::{
 // NIP-13: Proof of Work
 pub use nip13::{
     Nip13Error, calculate_difficulty, check_pow, get_difficulty, parse_nonce_tag, validate_pow,
+};
+
+// NIP-14: Subject Tag in Text Events
+pub use nip14::{
+    RECOMMENDED_MAX_LENGTH, REPLY_PREFIX, SUBJECT_TAG, add_subject, create_reply_subject,
+    get_subject, has_subject, is_subject_too_long, truncate_subject, truncate_subject_recommended,
 };
 
 // NIP-15: Nostr Marketplace

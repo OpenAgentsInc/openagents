@@ -4,6 +4,25 @@
 
 APM (Actions Per Minute) measures agent execution velocity - how many meaningful actions an agent performs per unit time. This document describes the data sources, collection methods, and calculation formulas used in APM reporting.
 
+## Data Architecture
+
+Autopilot uses a **dual-format logging system**:
+
+| Format | Purpose | Content |
+|--------|---------|---------|
+| `.rlog` | Human-readable summary | Truncated content (200 chars max) |
+| `.jsonl` | Full data capture | Untruncated, Claude Code compatible |
+
+Both files are created for each autopilot session:
+```
+docs/logs/20251222/
+  123456-task-name.rlog      # Human review
+  123456-task-name.jsonl     # APM/metrics data
+  123456-task-name.sub-*.jsonl  # Subagent sessions
+```
+
+**IMPORTANT:** APM calculations should use `.jsonl` files, NOT `.rlog` files. The rlog truncation loses data.
+
 ## Formula
 
 ```
@@ -62,49 +81,57 @@ grep -c '"type":"tool_use"' session.jsonl
 
 ### Autopilot Sessions (Autonomous)
 
-**CRITICAL LIMITATION:** Autopilot data is split across incompatible sources:
+**Location:** `docs/logs/YYYYMMDD/`
 
-1. **rlog files** (`docs/logs/YYYYMMDD/*.rlog`)
-   - Main autopilot loop activity
-   - Only captures tool calls (`t!:` lines), NOT messages
-   - Duration: Use @start timestamp and file mtime
+**File Types:**
+- **`.rlog`** - Human-readable summary (truncated, for quick review)
+- **`.jsonl`** - Full data capture (untruncated, for APM calculations)
+- **`.sub-*.jsonl`** - Subagent session data (linked to parent)
 
-2. **Agent JSONL files** (`~/.claude/projects/.../agent-*.jsonl`)
-   - Subagent processes spawned by autopilot
-   - Short-lived (avg ~23 sec) exploration/search tasks
-   - Full action logging (user + assistant + tool_use)
-
-**These cannot be meaningfully combined** because they capture different aspects of autopilot activity with different logging granularity.
-
-**rlog Parsing:**
+**For APM, always use `.jsonl` files:**
 ```bash
-# Extract start timestamp
-grep -m1 "^@start" session.rlog | sed 's/.*ts=\([^ ]*\).*/\1/'
-
-# Count tool calls (INCOMPLETE - missing messages)
-grep -c "^t!:" session.rlog
+# Count actions in autopilot JSONL
+cat session.jsonl | grep -c '"type":"user"'
+cat session.jsonl | grep -c '"type":"assistant"'
+cat session.jsonl | grep -o '"type":"tool_use"' | wc -l
 ```
 
-**Duration:** Use file modification time minus @start timestamp
+**Subagent Tracking:**
+
+Autopilot tracks subagent spawns with `x:` lines in rlog and separate `.sub-*.jsonl` files:
+```
+x:explore id=abc123 → [started]
+x:explore id=abc123 → [done] summary="found 3 files"
+```
+
+Subagent JSONL files are linked via `parent_session` header field.
+
+**Duration:** Extract from first/last timestamp in JSONL file
 
 ## Collection Scripts
 
-### Linux Collection
+### Interactive Claude Code Stats
 ```bash
-# Claude Code stats
-CLAUDE_DIR="$HOME/.claude/projects/-home-christopherdavid-code-openagents"
-find "$CLAUDE_DIR" -name '*.jsonl' -exec cat {} + | grep -c '"type":"message"'
-find "$CLAUDE_DIR" -name '*.jsonl' -exec cat {} + | grep -c '"type":"tool_use"'
+# Path varies by OS (path-encoded project directory)
+CLAUDE_DIR="$HOME/.claude/projects/-home-christopherdavid-code-openagents"  # Linux
+# CLAUDE_DIR="$HOME/.claude/projects/-Users-christopherdavid-code-openagents"  # macOS
 
-# Autopilot stats
-grep -r "^t!:" docs/logs/2025*/*.rlog | wc -l
+# Count actions
+cat "$CLAUDE_DIR"/[0-9a-f]*-*-*-*-*.jsonl | grep -c '"type":"user"'
+cat "$CLAUDE_DIR"/[0-9a-f]*-*-*-*-*.jsonl | grep -c '"type":"assistant"'
+cat "$CLAUDE_DIR"/[0-9a-f]*-*-*-*-*.jsonl | grep -o '"type":"tool_use"' | wc -l
 ```
 
-### macOS Collection
+### Autopilot Stats
 ```bash
-# Claude Code stats (different path encoding)
-CLAUDE_DIR="$HOME/.claude/projects/-Users-christopherdavid-code-openagents"
-# Same grep commands as Linux
+# Use JSONL files (full data), not rlog files (truncated)
+cat docs/logs/2025*/*.jsonl | grep -c '"type":"user"'
+cat docs/logs/2025*/*.jsonl | grep -c '"type":"assistant"'
+cat docs/logs/2025*/*.jsonl | grep -o '"type":"tool_use"' | wc -l
+
+# Include subagent sessions
+cat docs/logs/2025*/*.sub-*.jsonl | grep -c '"type":"user"'
+# ... etc
 ```
 
 ## Multi-Machine Aggregation

@@ -95,6 +95,13 @@ impl TrajectoryPublisher {
             AutopilotStepType::SystemStatus { status } => {
                 content = content.with_data("status", serde_json::json!(status));
             }
+            AutopilotStepType::Subagent { agent_id, agent_type, status, summary } => {
+                content = content
+                    .with_data("agent_id", serde_json::json!(agent_id))
+                    .with_data("agent_type", serde_json::json!(agent_type))
+                    .with_data("status", serde_json::json!(status))
+                    .with_data("summary", serde_json::json!(summary));
+            }
         }
 
         // Add token metrics if available
@@ -175,6 +182,7 @@ fn map_step_type(step: &AutopilotStepType) -> StepType {
         AutopilotStepType::User { .. } => StepType::Message,
         AutopilotStepType::SystemInit { .. } => StepType::Message,
         AutopilotStepType::SystemStatus { .. } => StepType::Message,
+        AutopilotStepType::Subagent { .. } => StepType::Message,
     }
 }
 

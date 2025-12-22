@@ -286,8 +286,10 @@ pub struct UsageLimits {
     /// Weekly (Sonnet only) reset time
     pub weekly_sonnet_resets_at: Option<String>,
     /// Extra usage spent
+    #[allow(dead_code)]
     pub extra_spent: Option<f64>,
     /// Extra usage limit
+    #[allow(dead_code)]
     pub extra_limit: Option<f64>,
     /// Extra usage reset time
     pub extra_resets_at: Option<String>,
@@ -298,10 +300,12 @@ pub struct UsageLimits {
 #[serde(rename_all = "camelCase")]
 pub struct UnifiedRateLimitStatus {
     /// Status describing usage (e.g., "normal", "limited")
+    #[allow(dead_code)]
     pub status: Option<String>,
     /// Percentage used (0-100)
     pub percentage: Option<f64>,
     /// Tier name
+    #[allow(dead_code)]
     pub tier: Option<String>,
     /// Reset timestamp (Unix epoch seconds)
     pub resets_at: Option<i64>,
@@ -478,7 +482,7 @@ pub async fn fetch_usage_limits() -> Option<UsageLimits> {
 
 /// Format a Unix timestamp to human-readable reset time
 fn format_unix_timestamp(timestamp: i64) -> String {
-    use chrono::{DateTime, Local, TimeZone};
+    use chrono::{Local, TimeZone};
 
     if let Some(dt) = Local.timestamp_opt(timestamp, 0).single() {
         dt.format("%b %d, %l:%M%P (%Z)").to_string().trim().to_string()
