@@ -46,6 +46,24 @@ impl From<Network> for SdkNetwork {
 }
 
 /// Wallet balance information
+///
+/// Represents the total balance across all layers of the Spark wallet:
+/// Spark Layer 2, Lightning Network, and on-chain Bitcoin.
+///
+/// # Examples
+///
+/// ```
+/// use openagents_spark::Balance;
+///
+/// let balance = Balance {
+///     spark_sats: 100_000,
+///     lightning_sats: 50_000,
+///     onchain_sats: 0,
+/// };
+///
+/// assert_eq!(balance.total_sats(), 150_000);
+/// assert!(!balance.is_empty());
+/// ```
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Balance {
     /// Spark layer 2 balance in satoshis
