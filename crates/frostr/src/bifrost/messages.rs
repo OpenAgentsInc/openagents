@@ -53,6 +53,22 @@ pub enum BifrostMessage {
 }
 
 /// Request to sign an event hash
+///
+/// # Examples
+///
+/// ```
+/// use frostr::bifrost::SignRequest;
+///
+/// let request = SignRequest {
+///     event_hash: [1u8; 32],
+///     nonce_commitment: [2u8; 33],
+///     session_id: "session_123".to_string(),
+///     participants: vec![1, 2],
+/// };
+///
+/// assert_eq!(request.session_id, "session_123");
+/// assert_eq!(request.participants.len(), 2);
+/// ```
 #[serde_as]
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct SignRequest {
@@ -71,6 +87,22 @@ pub struct SignRequest {
 }
 
 /// Partial signature response from a participant
+///
+/// # Examples
+///
+/// ```
+/// use frostr::bifrost::SignResponse;
+///
+/// let response = SignResponse {
+///     session_id: "session_123".to_string(),
+///     participant_id: 1,
+///     partial_sig: [3u8; 32],
+///     nonce_share: [4u8; 33],
+/// };
+///
+/// assert_eq!(response.participant_id, 1);
+/// assert_eq!(response.session_id, "session_123");
+/// ```
 #[serde_as]
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct SignResponse {
@@ -114,6 +146,21 @@ pub struct SignError {
 }
 
 /// Request for threshold ECDH computation
+///
+/// # Examples
+///
+/// ```
+/// use frostr::bifrost::EcdhRequest;
+///
+/// let request = EcdhRequest {
+///     target_pubkey: [5u8; 32],
+///     session_id: "ecdh_session_456".to_string(),
+///     participants: vec![1, 2, 3],
+/// };
+///
+/// assert_eq!(request.participants.len(), 3);
+/// assert_eq!(request.session_id, "ecdh_session_456");
+/// ```
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct EcdhRequest {
     /// Target peer public key (32 bytes x-only)
