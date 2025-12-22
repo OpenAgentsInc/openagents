@@ -258,8 +258,8 @@ pub fn generate_key_shares(threshold: u32, total: u32) -> Result<Vec<FrostShare>
 
     // Convert BTreeMap to Vec of FrostShare
     let frost_shares: Vec<FrostShare> = secret_shares
-        .into_iter()
-        .map(|(_identifier, secret_share)| {
+        .into_values()
+        .map(|secret_share| {
             // Convert SecretShare to KeyPackage (performs validation)
             let key_package: KeyPackage = secret_share.try_into().expect("Valid secret share");
 
