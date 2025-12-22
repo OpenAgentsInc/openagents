@@ -42,6 +42,14 @@ pub enum BifrostMessage {
     /// ECDH computation error
     #[serde(rename = "/ecdh/error")]
     EcdhError(EcdhError),
+
+    /// Ping request to check peer connectivity
+    #[serde(rename = "/ping")]
+    Ping(Ping),
+
+    /// Pong response to ping
+    #[serde(rename = "/pong")]
+    Pong(Pong),
 }
 
 /// Request to sign an event hash
@@ -152,6 +160,29 @@ pub struct EcdhError {
 
     /// Optional error code
     pub code: Option<String>,
+}
+
+/// Ping request to check peer connectivity
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct Ping {
+    /// Session ID for correlating ping/pong
+    pub session_id: String,
+
+    /// Timestamp of ping (milliseconds since epoch)
+    pub timestamp: u64,
+}
+
+/// Pong response to ping
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct Pong {
+    /// Session ID from the ping request
+    pub session_id: String,
+
+    /// Timestamp of original ping
+    pub ping_timestamp: u64,
+
+    /// Timestamp of pong (milliseconds since epoch)
+    pub pong_timestamp: u64,
 }
 
 #[cfg(test)]
@@ -292,6 +323,15 @@ mod tests {
                 reason: "ECDH computation failed".into(),
                 code: Some("ERR_ECDH".into()),
             }),
+            BifrostMessage::Ping(Ping {
+                session_id: "p1".into(),
+                timestamp: 9,
+            }),
+            BifrostMessage::Pong(Pong {
+                session_id: "p1".into(),
+                ping_timestamp: 9,
+                pong_timestamp: 10,
+            }),
         ];
 
         for msg in messages {
@@ -328,5 +368,63 @@ mod tests {
 
         let deserialized: BifrostMessage = serde_json::from_str(&json).unwrap();
         assert_eq!(msg, deserialized);
+    }
+
+    #[test]
+    fn test_ping_serialize() {
+        let msg = BifrostMessage::Ping(Ping {
+            session_id: "ping-session-1".to_string(),
+            timestamp: 1234567890,
+        });
+
+        let json = serde_json::to_string(&msg).unwrap();
+        assert!(json.contains(r#""type":"/ping""#));
+        assert!(json.contains("ping-session-1"));
+        assert!(json.contains("1234567890"));
+
+        let deserialized: BifrostMessage = serde_json::from_str(&json).unwrap();
+        assert_eq!(msg, deserialized);
+    }
+
+    #[test]
+    fn test_pong_serialize() {
+        let msg = BifrostMessage::Pong(Pong {
+            session_id: "ping-session-1".to_string(),
+            ping_timestamp: 1234567890,
+            pong_timestamp: 1234567900,
+        });
+
+        let json = serde_json::to_string(&msg).unwrap();
+        assert!(json.contains(r#""type":"/pong""#));
+        assert!(json.contains("ping-session-1"));
+        assert!(json.contains("1234567890"));
+        assert!(json.contains("1234567900"));
+
+        let deserialized: BifrostMessage = serde_json::from_str(&json).unwrap();
+        assert_eq!(msg, deserialized);
+    }
+
+    #[test]
+    fn test_ping_pong_round_trip() {
+        let ping = BifrostMessage::Ping(Ping {
+            session_id: "test-ping".to_string(),
+            timestamp: 9876543210,
+        });
+
+        let pong = BifrostMessage::Pong(Pong {
+            session_id: "test-ping".to_string(),
+            ping_timestamp: 9876543210,
+            pong_timestamp: 9876543220,
+        });
+
+        // Test ping serialization
+        let ping_json = serde_json::to_string(&ping).unwrap();
+        let ping_deserialized: BifrostMessage = serde_json::from_str(&ping_json).unwrap();
+        assert_eq!(ping, ping_deserialized);
+
+        // Test pong serialization
+        let pong_json = serde_json::to_string(&pong).unwrap();
+        let pong_deserialized: BifrostMessage = serde_json::from_str(&pong_json).unwrap();
+        assert_eq!(pong, pong_deserialized);
     }
 }

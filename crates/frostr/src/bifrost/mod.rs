@@ -148,7 +148,8 @@ pub mod transport;
 
 pub use aggregator::{EcdhAggregator, SigningAggregator};
 pub use messages::{
-    BifrostMessage, EcdhRequest, EcdhResponse, SignError, SignRequest, SignResponse, SignResult,
+    BifrostMessage, EcdhRequest, EcdhResponse, Ping, Pong, SignError, SignRequest, SignResponse,
+    SignResult,
 };
 pub use node::{BifrostConfig, BifrostNode, RetryConfig as NodeRetryConfig, TimeoutConfig};
 pub use peer::{PeerInfo, PeerManager, PeerStatus, RetryConfig as PeerRetryConfig};
