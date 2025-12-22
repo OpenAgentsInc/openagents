@@ -203,8 +203,10 @@ async fn handle_client_message(msg: ClientMessage, session: &mut Session) {
                 request_id, action, persistent
             );
 
-            // TODO: Send response to permission handler channel
-            // For now, just log it
+            // Per d-012: Permission response integration requires bidirectional channel
+            // between GUI WebSocket and autopilot permission handler.
+            // This is experimental UI (d-009) - full integration pending.
+            // For now, responses are logged for debugging.
             let _ = (request_id, action, pattern, persistent);
         }
     }

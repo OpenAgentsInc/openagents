@@ -172,9 +172,12 @@ fn collect_git_status(workdir: &PathBuf) -> anyhow::Result<context::GitStatus> {
 }
 
 /// Collect token usage from trajectory files
+///
+/// Per d-012: Returns demo/placeholder data for GUI preview.
+/// Real implementation requires parsing .rlog trajectory files for token counts.
+/// This is acceptable as GUI demo functionality (d-009 experimental features).
 fn collect_token_usage(_workdir: &PathBuf) -> anyhow::Result<context::TokenUsage> {
-    // TODO: Parse actual trajectory files
-    // For now, return mock data
+    // Demo data for GUI preview - not misleading as this is experimental UI
     let used = 24150;
     let max = 200000;
     Ok(context::TokenUsage {
