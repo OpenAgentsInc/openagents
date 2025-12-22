@@ -1,7 +1,7 @@
 [package]
 name = "compute"
-version = "0.1.0"
-edition = "2024"
+version.workspace = true
+edition.workspace = true
 description = "Sell compute via NIP-90 DVMs with Bitcoin payments"
 license = "MIT"
 autobins = false
