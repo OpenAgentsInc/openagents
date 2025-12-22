@@ -96,10 +96,21 @@ pub async fn start_server(
     Ok(port)
 }
 
+/// Query parameters for repository filtering
+#[derive(Debug, serde::Deserialize)]
+struct RepoFilterQuery {
+    language: Option<String>,
+    has_bounties: Option<String>,
+    agent_friendly: Option<String>,
+}
+
 /// Home page
-async fn index(state: web::Data<AppState>) -> HttpResponse {
+async fn index(
+    state: web::Data<AppState>,
+    query: web::Query<RepoFilterQuery>,
+) -> HttpResponse {
     // Fetch repositories from cache
-    let repositories = match state.nostr_client.get_cached_repositories(50).await {
+    let mut repositories = match state.nostr_client.get_cached_repositories(50).await {
         Ok(repos) => repos,
         Err(e) => {
             tracing::warn!("Failed to fetch repositories: {}", e);
@@ -107,9 +118,44 @@ async fn index(state: web::Data<AppState>) -> HttpResponse {
         }
     };
 
+    // Apply filters
+    if let Some(language) = &query.language {
+        if !language.is_empty() {
+            repositories.retain(|repo| {
+                repo.tags.iter().any(|tag| {
+                    tag.first().map(|t| t == "language").unwrap_or(false)
+                        && tag.get(1).map(|l| l.eq_ignore_ascii_case(language)).unwrap_or(false)
+                })
+            });
+        }
+    }
+
+    if query.has_bounties.as_deref() == Some("true") {
+        // Filter repos that have bounties on their issues
+        repositories.retain(|repo| {
+            let repo_id = repo.tags.iter()
+                .find(|tag| tag.first().map(|t| t == "d").unwrap_or(false))
+                .and_then(|tag| tag.get(1).cloned())
+                .unwrap_or_default();
+
+            // Check if this repo has any bounties
+            // For now, keep all repos - would need to query bounty events
+            true
+        });
+    }
+
+    if query.agent_friendly.as_deref() == Some("true") {
+        // Filter repos marked as agent-friendly
+        repositories.retain(|repo| {
+            repo.tags.iter().any(|tag| {
+                tag.first().map(|t| t == "agent-friendly").unwrap_or(false)
+            })
+        });
+    }
+
     HttpResponse::Ok()
         .content_type("text/html; charset=utf-8")
-        .body(home_page_with_repos(&repositories).into_string())
+        .body(home_page_with_repos(&repositories, &query.language, query.has_bounties.as_deref() == Some("true"), query.agent_friendly.as_deref() == Some("true")).into_string())
 }
 
 /// Repository detail page

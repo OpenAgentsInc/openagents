@@ -93,7 +93,7 @@ fn repository_card(event: &Event) -> Markup {
 }
 
 /// Home page with repository list
-pub fn home_page_with_repos(repositories: &[Event]) -> Markup {
+pub fn home_page_with_repos(repositories: &[Event], selected_language: &Option<String>, has_bounties_filter: bool, agent_friendly_filter: bool) -> Markup {
     html! {
         (DOCTYPE)
         html lang="en" {
@@ -123,6 +123,39 @@ pub fn home_page_with_repos(repositories: &[Event]) -> Markup {
                             h2 { "Repositories (" (repositories.len()) ")" }
                             a.submit-button href="/repo/new" style="text-decoration: none; padding: 10px 20px;" { "+ Create Repository" }
                         }
+
+                        // Filter controls
+                        form method="get" action="/" style="display: flex; gap: 1rem; margin-bottom: 1rem; padding: 1rem; background: #2a2a2a;" {
+                            div {
+                                label for="language" style="display: block; margin-bottom: 0.5rem; color: #aaa;" { "Language" }
+                                select name="language" id="language" style="padding: 0.5rem; background: #1a1a1a; color: #fff; border: 1px solid #444;" {
+                                    option value="" selected[selected_language.is_none()] { "All" }
+                                    option value="rust" selected[selected_language.as_deref() == Some("rust")] { "Rust" }
+                                    option value="javascript" selected[selected_language.as_deref() == Some("javascript")] { "JavaScript" }
+                                    option value="typescript" selected[selected_language.as_deref() == Some("typescript")] { "TypeScript" }
+                                    option value="python" selected[selected_language.as_deref() == Some("python")] { "Python" }
+                                    option value="go" selected[selected_language.as_deref() == Some("go")] { "Go" }
+                                }
+                            }
+
+                            div {
+                                label style="display: block; margin-bottom: 0.5rem; color: #aaa;" {
+                                    input type="checkbox" name="has_bounties" value="true" checked[has_bounties_filter];
+                                    " Has Bounties"
+                                }
+                            }
+
+                            div {
+                                label style="display: block; margin-bottom: 0.5rem; color: #aaa;" {
+                                    input type="checkbox" name="agent_friendly" value="true" checked[agent_friendly_filter];
+                                    " Agent-Friendly"
+                                }
+                            }
+
+                            button type="submit" style="padding: 0.5rem 1rem; background: #4a9eff; color: #fff; border: none; cursor: pointer;" { "Apply Filters" }
+                            a href="/" style="padding: 0.5rem 1rem; background: #444; color: #fff; text-decoration: none; display: inline-block;" { "Clear" }
+                        }
+
                         @if repositories.is_empty() {
                             p.placeholder { "No repositories found. Listening for NIP-34 events..." }
                         } @else {
