@@ -314,22 +314,37 @@ async fn get_oauth_token() -> Option<String> {
         .ok()?;
 
     if !output.status.success() {
+        tracing::warn!("Failed to get OAuth token from keychain: {:?}", output.status);
         return None;
     }
 
     let creds = String::from_utf8_lossy(&output.stdout);
-    let creds: serde_json::Value = serde_json::from_str(creds.trim()).ok()?;
+    let creds: serde_json::Value = match serde_json::from_str(creds.trim()) {
+        Ok(v) => v,
+        Err(e) => {
+            tracing::warn!("Failed to parse OAuth credentials JSON: {}", e);
+            return None;
+        }
+    };
     creds.get("accessToken").and_then(|v| v.as_str()).map(|s| s.to_string())
 }
 
 /// Fetch usage/quota limits directly from Anthropic API.
 /// Makes a minimal API call with OAuth token to capture rate limit headers.
 pub async fn fetch_usage_limits() -> Option<UsageLimits> {
-    let token = get_oauth_token().await?;
+    let token = match get_oauth_token().await {
+        Some(t) => t,
+        None => {
+            tracing::warn!("No OAuth token available");
+            return None;
+        }
+    };
+
+    tracing::debug!("Making API call to get rate limits...");
 
     // Make minimal API call to capture rate limit headers
     let client = reqwest::Client::new();
-    let response: reqwest::Response = client
+    let response: reqwest::Response = match client
         .post("https://api.anthropic.com/v1/messages")
         .header("Content-Type", "application/json")
         .header("Authorization", format!("Bearer {}", token))
@@ -342,7 +357,15 @@ pub async fn fetch_usage_limits() -> Option<UsageLimits> {
         }))
         .send()
         .await
-        .ok()?;
+    {
+        Ok(r) => r,
+        Err(e) => {
+            tracing::warn!("API call failed: {}", e);
+            return None;
+        }
+    };
+
+    tracing::debug!("API response status: {}", response.status());
 
     let headers = response.headers();
     let mut limits = UsageLimits::default();

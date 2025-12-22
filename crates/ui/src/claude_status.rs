@@ -428,34 +428,6 @@ impl ClaudeStatus {
                         }
                     }
 
-                    // Per-model usage
-                    @if !self.model_usage.is_empty() {
-                        div style="margin-top: 0.75rem; border-top: 1px solid #333; padding-top: 0.5rem;" {
-                            div style="color: #555; margin-bottom: 0.35rem; text-transform: uppercase; letter-spacing: 0.05em;" {
-                                "Model usage"
-                            }
-                            @for usage in &self.model_usage {
-                                div style="margin-bottom: 0.5rem;" {
-                                    div style="display: flex; justify-content: space-between; color: #666;" {
-                                        span style="color: #888;" { (format_model(&usage.model)) }
-                                        span style={ "color: " (cost_color(usage.cost_usd)) ";" } {
-                                            "$" (format!("{:.2}", usage.cost_usd))
-                                        }
-                                    }
-                                    div style="display: flex; gap: 0.5rem; color: #444; font-size: 0.55rem; margin-top: 0.15rem;" {
-                                        span { (format_tokens(usage.input_tokens)) " in" }
-                                        span { (format_tokens(usage.output_tokens)) " out" }
-                                        @if usage.cache_read_tokens > 0 {
-                                            span style="color: #4a9;" { (format_tokens(usage.cache_read_tokens)) " hit" }
-                                        }
-                                        @if usage.web_search_requests > 0 {
-                                            span style="color: #69b;" { (usage.web_search_requests) " web" }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
                 } @else {
                     div style="color: #666;" {
                         "Not authenticated"

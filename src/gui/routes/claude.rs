@@ -38,34 +38,26 @@ async fn get_status(state: web::Data<AppState>) -> HttpResponse {
         status = status.today_tokens(tokens);
     }
 
-    // Add model usage
-    for usage in &info.model_usage {
-        status = status.add_model_usage(
-            usage.model.clone(),
-            usage.input_tokens,
-            usage.output_tokens,
-            usage.cache_read_tokens,
-            usage.cache_creation_tokens,
-            usage.web_search_requests,
-            usage.cost_usd,
-            usage.context_window,
-        );
-    }
-
     // Fetch and add usage/quota limits (5h session and 7d weekly)
     // Note: This makes an API call to get live quota data
-    if let Some(limits) = fetch_usage_limits().await {
-        if let Some(pct) = limits.session_percent {
-            let resets = limits.session_resets_at.as_deref().unwrap_or("later");
-            status = status.add_usage_limit("Current session (5h)", pct, resets);
+    match fetch_usage_limits().await {
+        Some(limits) => {
+            tracing::debug!("Got usage limits: {:?}", limits);
+            if let Some(pct) = limits.session_percent {
+                let resets = limits.session_resets_at.as_deref().unwrap_or("later");
+                status = status.add_usage_limit("Current session (5h)", pct, resets);
+            }
+            if let Some(pct) = limits.weekly_all_percent {
+                let resets = limits.weekly_all_resets_at.as_deref().unwrap_or("later");
+                status = status.add_usage_limit("Current week (all models)", pct, resets);
+            }
+            if let (Some(spent), Some(limit)) = (limits.extra_spent, limits.extra_limit) {
+                let resets = limits.extra_resets_at.as_deref().unwrap_or("later");
+                status = status.add_extra_usage(spent, limit, resets);
+            }
         }
-        if let Some(pct) = limits.weekly_all_percent {
-            let resets = limits.weekly_all_resets_at.as_deref().unwrap_or("later");
-            status = status.add_usage_limit("Current week (all models)", pct, resets);
-        }
-        if let (Some(spent), Some(limit)) = (limits.extra_spent, limits.extra_limit) {
-            let resets = limits.extra_resets_at.as_deref().unwrap_or("later");
-            status = status.add_extra_usage(spent, limit, resets);
+        None => {
+            tracing::warn!("Failed to fetch usage limits");
         }
     }
 
