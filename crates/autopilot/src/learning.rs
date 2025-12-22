@@ -393,6 +393,9 @@ mod tests {
             tool_calls: 20,
             tool_errors: 8, // 40% error rate
             final_status: SessionStatus::Completed,
+            messages: 10,
+            apm: None,
+            source: "autopilot".to_string(),
         };
         db.store_session(&session).unwrap();
 

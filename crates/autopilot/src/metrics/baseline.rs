@@ -376,7 +376,10 @@ mod tests {
                 tool_calls: 20,
                 tool_errors: i % 5, // Varying error rates
                 final_status: SessionStatus::Completed,
-            };
+            messages: 10,
+            apm: None,
+            source: "autopilot".to_string(),
+        };
             sessions.push(session);
         }
 
@@ -425,7 +428,10 @@ mod tests {
                 tool_calls: 20,
                 tool_errors: 3, // 15% error rate (3x baseline)
                 final_status: SessionStatus::Completed,
-            };
+            messages: 10,
+            apm: None,
+            source: "autopilot".to_string(),
+        };
             sessions.push(session);
         }
 

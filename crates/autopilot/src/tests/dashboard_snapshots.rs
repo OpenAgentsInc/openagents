@@ -35,7 +35,10 @@ fn create_test_session(
         tool_calls: 25,
         tool_errors,
         final_status: status,
-    }
+            messages: 10,
+            apm: None,
+            source: "autopilot".to_string(),
+        }
 }
 
 /// Create test summary stats
