@@ -27,12 +27,14 @@
 //! ```
 
 mod button;
+mod claude_status;
 mod colors;
 mod full_auto_switch;
 mod layout;
 pub mod recorder;
 
 pub use button::{Button, ButtonSize, ButtonVariant};
+pub use claude_status::ClaudeStatus;
 pub use colors::COLOR_TOKENS;
 pub use full_auto_switch::FullAutoSwitch;
 pub use layout::base_document;

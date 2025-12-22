@@ -39,6 +39,7 @@ use stories::organisms::recorder::organisms::recorder_organisms_story;
 use stories::organisms::recorder::sections::recorder_sections_story;
 use stories::atoms::base_document::base_document_story;
 use stories::atoms::button::button_story;
+use stories::atoms::claude_status::claude_status_story;
 use ui::{TAILWIND_CDN, TAILWIND_THEME};
 
 const PORT: u16 = 3030;
@@ -59,6 +60,7 @@ fn sidebar_nav(active_story: &str) -> Markup {
                 h2 class="uppercase text-muted-foreground mb-1 mt-3 pl-1 tracking-wide text-xs" { "Atoms" }
                 a href="/stories/base-document" class=(link_class("base-document")) { "Base Document" }
                 a href="/stories/button" class=(link_class("button")) { "Button" }
+                a href="/stories/claude-status" class=(link_class("claude-status")) { "Claude Status" }
                 h2 class="uppercase text-muted-foreground mb-1 mt-4 pl-1 tracking-wide text-xs" { "Molecules" }
                 p class="text-muted-foreground text-xs pl-1 py-1" { "No stories yet" }
                 h2 class="uppercase text-muted-foreground mb-1 mt-4 pl-1 tracking-wide text-xs" { "Organisms" }
@@ -189,6 +191,14 @@ async fn base_document_story_page() -> impl Responder {
 async fn button_story_page() -> impl Responder {
     let content = button_story();
     let html = base_layout("Button", "button", content);
+    HttpResponse::Ok()
+        .content_type("text/html; charset=utf-8")
+        .body(html.into_string())
+}
+
+async fn claude_status_story_page() -> impl Responder {
+    let content = claude_status_story();
+    let html = base_layout("Claude Status", "claude-status", content);
     HttpResponse::Ok()
         .content_type("text/html; charset=utf-8")
         .body(html.into_string())
@@ -355,6 +365,7 @@ async fn main() -> std::io::Result<()> {
             .route("/", web::get().to(index))
             .route("/stories/base-document", web::get().to(base_document_story_page))
             .route("/stories/button", web::get().to(button_story_page))
+            .route("/stories/claude-status", web::get().to(claude_status_story_page))
             .route("/stories/recorder", web::get().to(recorder_index_page))
             .route("/stories/recorder/molecules", web::get().to(recorder_molecules_page))
             .route("/stories/recorder/organisms", web::get().to(recorder_organisms_page))
