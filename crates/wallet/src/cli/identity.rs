@@ -734,7 +734,7 @@ pub fn dm_read(event_id: String) -> Result<()> {
 
     // Format timestamp
     let dt = DateTime::<Utc>::from_timestamp(event.created_at as i64, 0)
-        .unwrap_or_else(|| DateTime::UNIX_EPOCH);
+        .unwrap_or(DateTime::UNIX_EPOCH);
     let time_str = dt.format("%Y-%m-%d %H:%M:%S UTC");
 
     println!("{} {}", "From:".bold(), event.pubkey);
