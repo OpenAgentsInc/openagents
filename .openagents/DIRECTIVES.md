@@ -136,5 +136,6 @@ A good directive body should include:
 | d-011 | Comprehensive Storybook Coverage for All Rust Components | UI/Documentation |
 | d-012 | No Stubs - Production-Ready Code Only | Code Quality/Policy |
 | d-013 | Comprehensive Testing Framework | Testing/Quality |
+| d-014 | Full End-to-End NIP-SA and Bifrost Integration Tests | Testing/Integration |
 
 View details with `cargo autopilot directive show <id>`
