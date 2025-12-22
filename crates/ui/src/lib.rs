@@ -27,18 +27,22 @@
 //! ```
 
 mod button;
+mod chat_pane;
 mod claude_status;
 mod colors;
 mod full_auto_switch;
 mod layout;
+mod line_renderer;
 mod log_pane;
 pub mod recorder;
 
 pub use button::{Button, ButtonSize, ButtonVariant};
+pub use chat_pane::{ChatPane, ChatViewMode};
 pub use claude_status::ClaudeStatus;
 pub use colors::COLOR_TOKENS;
 pub use full_auto_switch::FullAutoSwitch;
 pub use layout::base_document;
+pub use line_renderer::{render_line, render_line_oob};
 pub use log_pane::LogPane;
 
 /// Tailwind CDN script (Play CDN for development).

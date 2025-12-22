@@ -5,6 +5,7 @@ pub enum CallType {
     Tool,
     Mcp,
     Subagent,
+    Skill,
 }
 
 impl CallType {
@@ -13,6 +14,7 @@ impl CallType {
             CallType::Tool => "text-yellow",
             CallType::Mcp => "text-cyan",
             CallType::Subagent => "text-red",
+            CallType::Skill => "text-magenta",
         }
     }
 }

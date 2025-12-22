@@ -17,6 +17,8 @@ pub enum LineType {
     Comment,
     Lifecycle,
     Phase,
+    Thinking,
+    Todo,
 }
 
 impl LineType {
@@ -36,6 +38,8 @@ impl LineType {
             LineType::Comment => "#",
             LineType::Lifecycle => "@",
             LineType::Phase => "\u{25D0}", // ◐
+            LineType::Thinking => "THINKING",
+            LineType::Todo => "TODO",
         }
     }
 }
