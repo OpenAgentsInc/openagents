@@ -1080,4 +1080,259 @@ mod tests {
         assert!(records[0].id < records[1].id);
         assert!(records[1].id < records[2].id);
     }
+
+    // === Varint Edge Case Tests ===
+
+    #[test]
+    fn test_varint_boundary_values() {
+        // Test zero explicitly
+        let encoded = encode_varint(0).unwrap();
+        assert_eq!(encoded, vec![0x00]);
+        assert_eq!(decode_varint(&encoded).unwrap(), (0, 1));
+
+        // Test max u64
+        let max = u64::MAX;
+        let encoded = encode_varint(max).unwrap();
+        let (decoded, _) = decode_varint(&encoded).unwrap();
+        assert_eq!(decoded, max);
+
+        // Test powers of 2
+        for power in 0..=63 {
+            let value = if power == 63 {
+                1u64 << 63 // Highest bit
+            } else {
+                1u64 << power
+            };
+            let encoded = encode_varint(value).unwrap();
+            let (decoded, len) = decode_varint(&encoded).unwrap();
+            assert_eq!(decoded, value, "Failed for 2^{}", power);
+            assert_eq!(len, encoded.len());
+        }
+    }
+
+    #[test]
+    fn test_varint_encoding_lengths() {
+        // 1 byte: 0-127 (7 bits)
+        assert_eq!(encode_varint(0).unwrap().len(), 1);
+        assert_eq!(encode_varint(1).unwrap().len(), 1);
+        assert_eq!(encode_varint(127).unwrap().len(), 1);
+
+        // 2 bytes: 128-16383 (14 bits)
+        assert_eq!(encode_varint(128).unwrap().len(), 2);
+        assert_eq!(encode_varint(255).unwrap().len(), 2);
+        assert_eq!(encode_varint(256).unwrap().len(), 2);
+        assert_eq!(encode_varint(16383).unwrap().len(), 2);
+
+        // 3 bytes: 16384-2097151 (21 bits)
+        assert_eq!(encode_varint(16384).unwrap().len(), 3);
+        assert_eq!(encode_varint(65535).unwrap().len(), 3);
+        assert_eq!(encode_varint(65536).unwrap().len(), 3);
+        assert_eq!(encode_varint(2097151).unwrap().len(), 3);
+
+        // 10 bytes: max u64 (64 bits = ceiling(64/7) = 10 bytes)
+        assert_eq!(encode_varint(u64::MAX).unwrap().len(), 10);
+    }
+
+    #[test]
+    fn test_varint_specific_values() {
+        // Test specific known encodings
+        let test_cases = vec![
+            (0u64, vec![0x00]),
+            (1u64, vec![0x01]),
+            (127u64, vec![0x7F]),
+            (128u64, vec![0x81, 0x00]),
+            (255u64, vec![0x81, 0x7F]),
+            (256u64, vec![0x82, 0x00]),
+            (300u64, vec![0x82, 0x2C]),
+            (16383u64, vec![0xFF, 0x7F]),
+            (16384u64, vec![0x81, 0x80, 0x00]),
+        ];
+
+        for (value, expected_bytes) in test_cases {
+            let encoded = encode_varint(value).unwrap();
+            assert_eq!(
+                encoded, expected_bytes,
+                "Encoding mismatch for value {}",
+                value
+            );
+
+            let (decoded, len) = decode_varint(&encoded).unwrap();
+            assert_eq!(decoded, value);
+            assert_eq!(len, expected_bytes.len());
+        }
+    }
+
+    #[test]
+    fn test_varint_decode_errors() {
+        // Empty data
+        let result = decode_varint(&[]);
+        assert!(result.is_err());
+        assert!(matches!(result, Err(Nip77Error::VarintDecode(_))));
+
+        // Incomplete varint (high bit set but no continuation)
+        let result = decode_varint(&[0x80]);
+        assert!(result.is_err());
+        assert!(matches!(result, Err(Nip77Error::VarintDecode(_))));
+
+        // Incomplete multi-byte (high bit set on last byte)
+        let result = decode_varint(&[0x81, 0x80]);
+        assert!(result.is_err());
+
+        // Varint too long (>10 bytes for u64)
+        let too_long = vec![0x80; 11];
+        let result = decode_varint(&too_long);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_varint_decode_overflow() {
+        // Create a varint that would overflow u64
+        // 11 bytes with max values would exceed u64
+        let overflow_bytes = vec![0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x7F];
+        let result = decode_varint(&overflow_bytes);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_varint_continuation_bits() {
+        // Valid: high bit set on all but last
+        let valid = vec![0x81, 0x00]; // 128
+        assert!(decode_varint(&valid).is_ok());
+
+        // Valid: single byte without high bit
+        let valid_single = vec![0x7F]; // 127
+        assert!(decode_varint(&valid_single).is_ok());
+
+        // Invalid: high bit not set on intermediate byte
+        // This would actually decode successfully but give wrong value
+        // Let's test that decoding stops at first byte without high bit
+        let stops_early = vec![0x00, 0xFF]; // Should decode as 0, consuming 1 byte
+        let (value, len) = decode_varint(&stops_early).unwrap();
+        assert_eq!(value, 0);
+        assert_eq!(len, 1);
+    }
+
+    #[test]
+    fn test_varint_roundtrip_comprehensive() {
+        // Test a comprehensive set of values
+        let test_values = vec![
+            0,
+            1,
+            127,              // 1 byte boundary
+            128,              // 2 byte start
+            255,
+            256,
+            16383,            // 2 byte boundary
+            16384,            // 3 byte start
+            65535,            // Common 16-bit boundary
+            65536,
+            2097151,          // 3 byte boundary
+            2097152,          // 4 byte start
+            u32::MAX as u64,  // 32-bit max
+            u32::MAX as u64 + 1,
+            u64::MAX / 2,
+            u64::MAX - 1,
+            u64::MAX,
+        ];
+
+        for value in test_values {
+            let encoded = encode_varint(value).unwrap();
+            let (decoded, len) = decode_varint(&encoded).unwrap();
+            assert_eq!(
+                decoded, value,
+                "Roundtrip failed for value {}",
+                value
+            );
+            assert_eq!(len, encoded.len());
+
+            // Verify first byte has high bit set if multi-byte
+            if encoded.len() > 1 {
+                assert_eq!(
+                    encoded[0] & 0x80,
+                    0x80,
+                    "First byte of multi-byte varint should have high bit set"
+                );
+            }
+
+            // Verify last byte doesn't have high bit set
+            assert_eq!(
+                encoded[encoded.len() - 1] & 0x80,
+                0,
+                "Last byte should not have high bit set"
+            );
+        }
+    }
+
+    #[test]
+    fn test_varint_decode_partial_buffer() {
+        // Decode should only consume what's needed
+        // Two varints: 128 (0x81 0x00), then 127 (0x7F)
+        let multi_value_buffer = vec![0x81, 0x00, 0x7F];
+
+        let (value1, len1) = decode_varint(&multi_value_buffer).unwrap();
+        assert_eq!(value1, 128);
+        assert_eq!(len1, 2);
+
+        let (value2, len2) = decode_varint(&multi_value_buffer[len1..]).unwrap();
+        assert_eq!(value2, 127);
+        assert_eq!(len2, 1);
+    }
+
+    #[test]
+    fn test_varint_sequential_values() {
+        // Test a range of sequential values to ensure no gaps
+        for value in 0..1000u64 {
+            let encoded = encode_varint(value).unwrap();
+            let (decoded, _) = decode_varint(&encoded).unwrap();
+            assert_eq!(decoded, value);
+        }
+
+        // Test around boundaries
+        for offset in 0..100u64 {
+            let test_values = [
+                127u64.saturating_sub(offset),
+                128u64.saturating_add(offset),
+                16383u64.saturating_sub(offset),
+                16384u64.saturating_add(offset),
+            ];
+
+            for value in test_values {
+                let encoded = encode_varint(value).unwrap();
+                let (decoded, _) = decode_varint(&encoded).unwrap();
+                assert_eq!(decoded, value);
+            }
+        }
+    }
+
+    #[test]
+    fn test_varint_max_encoding_length() {
+        // u64::MAX should encode to exactly 10 bytes
+        // 64 bits / 7 bits per byte = 9.14... = ceiling 10 bytes
+        let max_encoded = encode_varint(u64::MAX).unwrap();
+        assert_eq!(max_encoded.len(), 10);
+
+        // All bytes except last should have high bit set
+        for (i, &byte) in max_encoded.iter().enumerate() {
+            if i < 9 {
+                assert_eq!(byte & 0x80, 0x80, "Byte {} should have high bit", i);
+            } else {
+                assert_eq!(byte & 0x80, 0, "Last byte should not have high bit");
+            }
+        }
+    }
+
+    #[test]
+    fn test_varint_deterministic() {
+        // Encoding should be deterministic
+        let value = 123456789u64;
+        let encoded1 = encode_varint(value).unwrap();
+        let encoded2 = encode_varint(value).unwrap();
+        assert_eq!(encoded1, encoded2);
+
+        // Decoding should be deterministic
+        let (decoded1, len1) = decode_varint(&encoded1).unwrap();
+        let (decoded2, len2) = decode_varint(&encoded2).unwrap();
+        assert_eq!(decoded1, decoded2);
+        assert_eq!(len1, len2);
+    }
 }
