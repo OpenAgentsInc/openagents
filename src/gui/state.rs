@@ -334,8 +334,8 @@ async fn get_oauth_token() -> Option<String> {
         .map(|s| s.to_string())
 }
 
-/// Fetch usage/quota limits directly from Anthropic API.
-/// Makes a minimal API call with OAuth token to capture rate limit headers.
+/// Fetch usage/quota limits from Anthropic's OAuth usage API.
+/// This endpoint returns actual usage data including extra credits.
 pub async fn fetch_usage_limits() -> Option<UsageLimits> {
     let token = match get_oauth_token().await {
         Some(t) => t,
@@ -345,96 +345,92 @@ pub async fn fetch_usage_limits() -> Option<UsageLimits> {
         }
     };
 
-    tracing::debug!("Making API call to get rate limits...");
+    tracing::debug!("Fetching usage data from /api/oauth/usage...");
 
-    // Make minimal API call to capture rate limit headers
     let client = reqwest::Client::new();
-    let response: reqwest::Response = match client
-        .post("https://api.anthropic.com/v1/messages")
-        .header("Content-Type", "application/json")
+    let response = match client
+        .get("https://api.anthropic.com/api/oauth/usage")
         .header("Authorization", format!("Bearer {}", token))
-        .header("anthropic-version", "2023-06-01")
+        .header("Content-Type", "application/json")
         .header("anthropic-beta", "oauth-2025-04-20")
-        .json(&serde_json::json!({
-            "model": "claude-3-haiku-20240307",
-            "max_tokens": 1,
-            "messages": [{"role": "user", "content": "x"}]
-        }))
         .send()
         .await
     {
         Ok(r) => r,
         Err(e) => {
-            tracing::warn!("API call failed: {}", e);
+            tracing::warn!("Usage API call failed: {}", e);
             return None;
         }
     };
 
-    tracing::debug!("API response status: {}", response.status());
+    if !response.status().is_success() {
+        tracing::warn!("Usage API returned status: {}", response.status());
+        return None;
+    }
 
-    let headers = response.headers();
+    let json: serde_json::Value = match response.json().await {
+        Ok(j) => j,
+        Err(e) => {
+            tracing::warn!("Failed to parse usage API response: {}", e);
+            return None;
+        }
+    };
+
+    tracing::debug!("Usage API response: {:?}", json);
+
     let mut limits = UsageLimits::default();
 
     // Parse 5h (session) limit
-    if let Some(util) = headers.get("anthropic-ratelimit-unified-5h-utilization") {
-        if let Ok(pct) = util.to_str().unwrap_or("0").parse::<f64>() {
-            limits.session_percent = Some(pct * 100.0);
+    if let Some(five_hour) = json.get("five_hour") {
+        if let Some(util) = five_hour.get("utilization").and_then(|v| v.as_f64()) {
+            limits.session_percent = Some(util);
         }
-    }
-    if let Some(reset) = headers.get("anthropic-ratelimit-unified-5h-reset") {
-        if let Ok(ts) = reset.to_str().unwrap_or("0").parse::<i64>() {
-            limits.session_resets_at = Some(format_unix_timestamp(ts));
+        if let Some(resets) = five_hour.get("resets_at").and_then(|v| v.as_str()) {
+            limits.session_resets_at = Some(format_iso_timestamp(resets));
         }
     }
 
     // Parse 7d (weekly) limit
-    if let Some(util) = headers.get("anthropic-ratelimit-unified-7d-utilization") {
-        if let Ok(pct) = util.to_str().unwrap_or("0").parse::<f64>() {
-            limits.weekly_all_percent = Some(pct * 100.0);
+    if let Some(seven_day) = json.get("seven_day") {
+        if let Some(util) = seven_day.get("utilization").and_then(|v| v.as_f64()) {
+            limits.weekly_all_percent = Some(util);
         }
-    }
-    if let Some(reset) = headers.get("anthropic-ratelimit-unified-7d-reset") {
-        if let Ok(ts) = reset.to_str().unwrap_or("0").parse::<i64>() {
-            limits.weekly_all_resets_at = Some(format_unix_timestamp(ts));
-        }
-    }
-
-    // Parse extra usage/fallback info
-    // fallback-percentage indicates how much of the fallback/overage has been used
-    // The tier name like "default_claude_max_20x" suggests a $20 limit
-    if let Some(fallback_pct) = headers.get("anthropic-ratelimit-unified-fallback-percentage") {
-        if let Ok(pct) = fallback_pct.to_str().unwrap_or("0").parse::<f64>() {
-            // Assume $20 limit based on "20x" tier naming convention
-            let limit = 20.0;
-            let spent = pct * limit;
-            limits.extra_spent = Some(spent);
-            limits.extra_limit = Some(limit);
+        if let Some(resets) = seven_day.get("resets_at").and_then(|v| v.as_str()) {
+            limits.weekly_all_resets_at = Some(format_iso_timestamp(resets));
         }
     }
 
-    // Parse overage reset time if available
-    if let Some(reset) = headers.get("anthropic-ratelimit-unified-overage-reset") {
-        if let Ok(ts) = reset.to_str().unwrap_or("0").parse::<i64>() {
-            limits.extra_resets_at = Some(format_unix_timestamp(ts));
+    // Parse extra usage (this is the actual credits data!)
+    if let Some(extra) = json.get("extra_usage") {
+        if extra.get("is_enabled").and_then(|v| v.as_bool()).unwrap_or(false) {
+            // monthly_limit and used_credits are in CENTS
+            if let Some(limit_cents) = extra.get("monthly_limit").and_then(|v| v.as_f64()) {
+                limits.extra_limit = Some(limit_cents / 100.0); // Convert cents to dollars
+            }
+            if let Some(used_cents) = extra.get("used_credits").and_then(|v| v.as_f64()) {
+                limits.extra_spent = Some(used_cents / 100.0); // Convert cents to dollars
+            }
+            // Note: extra_usage doesn't have a resets_at field in the API response
         }
     }
 
     // Return if we got any data
-    if limits.session_percent.is_some() || limits.weekly_all_percent.is_some() {
+    if limits.session_percent.is_some() || limits.weekly_all_percent.is_some() || limits.extra_spent.is_some() {
         Some(limits)
     } else {
         None
     }
 }
 
-/// Format a Unix timestamp to human-readable reset time
-fn format_unix_timestamp(timestamp: i64) -> String {
-    use chrono::{Local, TimeZone};
+/// Format an ISO 8601 timestamp to human-readable reset time
+fn format_iso_timestamp(iso: &str) -> String {
+    use chrono::{DateTime, Local};
 
-    if let Some(dt) = Local.timestamp_opt(timestamp, 0).single() {
-        dt.format("%b %d, %l:%M%P (%Z)").to_string().trim().to_string()
+    if let Ok(dt) = DateTime::parse_from_rfc3339(iso) {
+        let local: DateTime<Local> = dt.into();
+        local.format("%b %d, %l:%M%P").to_string().trim().to_string()
     } else {
-        format!("{}", timestamp)
+        iso.to_string()
     }
 }
 
