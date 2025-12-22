@@ -246,6 +246,35 @@ pub struct ValidationResult {
     pub stats: SessionStats,
 }
 
+/// Statistics collected from a recorder session
+///
+/// # Examples
+///
+/// ```
+/// use recorder::{parse_content, validate};
+///
+/// let content = r#"---
+/// format: rlog/1
+/// id: test
+/// repo_sha: abc123
+/// ---
+///
+/// u: Create function
+/// th: I'll write the code tokens_in=100 tokens_out=50
+/// a: Here's the implementation
+/// t:Write file="code.rs" → [ok]
+/// "#;
+///
+/// let session = parse_content(content).unwrap();
+/// let result = validate(&session);
+///
+/// assert_eq!(result.stats.user_messages, 1);
+/// assert_eq!(result.stats.agent_messages, 1);
+/// assert_eq!(result.stats.tool_calls, 1);
+/// assert_eq!(result.stats.thinking_blocks, 1);
+/// assert_eq!(result.stats.total_tokens_in, 100);
+/// assert_eq!(result.stats.total_tokens_out, 50);
+/// ```
 #[derive(Debug, Default)]
 pub struct SessionStats {
     pub total_lines: usize,
@@ -273,6 +302,33 @@ pub struct SessionStats {
 }
 
 impl ValidationResult {
+    /// Get all validation errors
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use recorder::{parse_content, validate};
+    ///
+    /// let content = r#"---
+    /// format: rlog/1
+    /// id: test
+    /// repo_sha: abc123
+    /// ---
+    ///
+    /// u: Hello
+    /// this is invalid
+    /// "#;
+    ///
+    /// let session = parse_content(content).unwrap();
+    /// let result = validate(&session);
+    ///
+    /// let errors: Vec<_> = result.errors().collect();
+    /// // Invalid lines create warnings, not errors
+    /// assert_eq!(errors.len(), 0);
+    ///
+    /// let warnings: Vec<_> = result.warnings().collect();
+    /// assert!(warnings.len() > 0);
+    /// ```
     pub fn errors(&self) -> impl Iterator<Item = &ValidationIssue> {
         self.issues.iter().filter(|i| i.severity == Severity::Error)
     }
