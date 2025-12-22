@@ -142,6 +142,23 @@ impl IssueClaimBuilder {
     /// * `issue_event_id` - The event ID of the issue being claimed
     /// * `repo_address` - The repository address tag (e.g., "30617:\<pubkey\>:\<repo-id\>")
     /// * `issue_author_pubkey` - The pubkey of the issue author
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use agentgit::nostr::events::IssueClaimBuilder;
+    ///
+    /// let claim = IssueClaimBuilder::new(
+    ///     "abc123...",  // issue event ID
+    ///     "30617:npub1...:openagents",  // repo address
+    ///     "npub1...",  // issue author
+    /// )
+    /// .content("I'll implement this feature")
+    /// .estimate(3600)  // 1 hour estimate in seconds
+    /// .trajectory("session-uuid");
+    ///
+    /// let event_template = claim.build();
+    /// ```
     pub fn new(
         issue_event_id: impl Into<String>,
         repo_address: impl Into<String>,
@@ -228,6 +245,23 @@ impl BountyOfferBuilder {
     /// * `issue_event_id` - The event ID of the issue
     /// * `repo_address` - The repository address tag (e.g., "30617:\<pubkey\>:\<repo-id\>")
     /// * `amount_sats` - The bounty amount in satoshis
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use agentgit::nostr::events::BountyOfferBuilder;
+    ///
+    /// let bounty = BountyOfferBuilder::new(
+    ///     "issue-event-id",
+    ///     "30617:npub1...:openagents",
+    ///     50000,  // 50k sats
+    /// )
+    /// .expiry(1735689600)  // Unix timestamp
+    /// .condition("Must include tests")
+    /// .condition("Must pass CI");
+    ///
+    /// let event_template = bounty.build();
+    /// ```
     pub fn new(
         issue_event_id: impl Into<String>,
         repo_address: impl Into<String>,
@@ -940,6 +974,20 @@ impl RepositoryAnnouncementBuilder {
     /// # Arguments
     /// * `identifier` - Unique repository identifier (e.g., "my-awesome-project")
     /// * `name` - Human-readable repository name
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use agentgit::nostr::events::RepositoryAnnouncementBuilder;
+    ///
+    /// let builder = RepositoryAnnouncementBuilder::new("openagents", "OpenAgents")
+    ///     .description("Decentralized autonomous agents on Nostr")
+    ///     .clone_url("https://github.com/OpenAgentsInc/openagents.git")
+    ///     .web_url("https://github.com/OpenAgentsInc/openagents")
+    ///     .maintainer("npub1...");
+    ///
+    /// let event_template = builder.build();
+    /// ```
     pub fn new(identifier: impl Into<String>, name: impl Into<String>) -> Self {
         Self {
             identifier: identifier.into(),
