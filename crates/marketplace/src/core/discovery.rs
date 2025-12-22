@@ -4,6 +4,51 @@
 //! application handler events. Providers advertise their capabilities via
 //! kind:31990 events, and users discover them through social recommendations
 //! (kind:31989) or direct queries.
+//!
+//! # Examples
+//!
+//! ## Discovering compute providers
+//!
+//! ```no_run
+//! use marketplace::core::discovery::{ProviderDiscovery, ProviderQuery, SortBy};
+//!
+//! # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+//! // Create discovery client
+//! let discovery = ProviderDiscovery::new(&["wss://relay.damus.io"]).await?;
+//!
+//! // Query for providers with specific model
+//! let query = ProviderQuery::new()
+//!     .with_model("llama3")
+//!     .with_max_price(50) // max 50 sats per 1k tokens
+//!     .with_min_trust_score(0.7)
+//!     .sort_by(SortBy::TrustScore);
+//!
+//! let providers = discovery.query(&query)?;
+//! for provider in providers {
+//!     println!("{}: {} (trust: {})",
+//!         provider.metadata.name,
+//!         provider.pubkey,
+//!         provider.trust_score
+//!     );
+//! }
+//! # Ok(())
+//! # }
+//! ```
+//!
+//! ## Building provider query with filters
+//!
+//! ```
+//! use marketplace::core::discovery::{ProviderQuery, SortBy};
+//!
+//! let query = ProviderQuery::new()
+//!     .with_model("mistral")
+//!     .with_region("us-west")
+//!     .with_max_price(100)
+//!     .sort_by(SortBy::Price);
+//!
+//! assert_eq!(query.model, Some("mistral".to_string()));
+//! assert_eq!(query.region, Some("us-west".to_string()));
+//! ```
 
 use nostr::{HandlerInfo, HandlerMetadata, PricingInfo, SocialTrustScore};
 use serde::{Deserialize, Serialize};

@@ -2,6 +2,38 @@
 //!
 //! Combines Nostr identity (NIP-06) with Bitcoin wallet (Spark)
 //! Both derived from the same BIP39 mnemonic seed.
+//!
+//! # Examples
+//!
+//! ## Generating a new identity
+//!
+//! ```no_run
+//! use wallet::core::identity::UnifiedIdentity;
+//!
+//! // Generate new identity with random mnemonic
+//! let identity = UnifiedIdentity::generate().expect("keygen failed");
+//!
+//! // Access Nostr public key
+//! let npub = identity.nostr_pubkey();
+//! println!("Nostr pubkey: {}", npub);
+//! ```
+//!
+//! ## Importing from existing mnemonic
+//!
+//! ```no_run
+//! use wallet::core::identity::UnifiedIdentity;
+//! use bip39::Mnemonic;
+//!
+//! let words = "abandon abandon abandon abandon abandon abandon \
+//!              abandon abandon abandon abandon abandon about";
+//! let mnemonic = Mnemonic::parse(words).expect("invalid mnemonic");
+//!
+//! let identity = UnifiedIdentity::from_mnemonic(mnemonic)
+//!     .expect("import failed");
+//!
+//! // Same mnemonic always produces same keys
+//! assert_eq!(identity.nostr_pubkey().len(), 64); // hex pubkey
+//! ```
 
 use anyhow::Result;
 use bip39::Mnemonic;

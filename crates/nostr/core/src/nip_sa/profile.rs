@@ -20,7 +20,34 @@
 //! - `["operator", "<pubkey>"]` - Human operator pubkey
 //! - `["lud16", "<address>"]` - Lightning address for payments
 //!
-//! ## Example
+//! # Examples
+//!
+//! ```
+//! use nostr::nip_sa::profile::{AgentProfile, AgentMetadata, AutonomyLevel};
+//!
+//! // Create agent profile metadata
+//! let metadata = AgentMetadata {
+//!     name: "ResearchBot".to_string(),
+//!     about: Some("I research topics and provide summaries".to_string()),
+//!     picture: Some("https://example.com/avatar.png".to_string()),
+//!     capabilities: vec!["research".to_string(), "summarization".to_string()],
+//!     autonomy_level: AutonomyLevel::Bounded,
+//!     version: Some("1.0.0".to_string()),
+//! };
+//!
+//! // Create profile with threshold config
+//! let profile = AgentProfile::new(metadata)
+//!     .with_threshold(2, 3)
+//!     .with_operator("operator-pubkey")
+//!     .with_signer("marketplace-pubkey")
+//!     .with_lightning_address("agent@example.com");
+//!
+//! // Metadata can be serialized to event content
+//! assert_eq!(profile.metadata.name, "ResearchBot");
+//! assert_eq!(profile.threshold, Some((2, 3)));
+//! ```
+//!
+//! ## Event JSON Structure
 //!
 //! ```json
 //! {

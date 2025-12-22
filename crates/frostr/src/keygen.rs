@@ -2,6 +2,48 @@
 //!
 //! This module provides functions for generating threshold key shares using
 //! Shamir Secret Sharing and FROST key generation.
+//!
+//! # Examples
+//!
+//! ## Generating FROST threshold shares
+//!
+//! ```
+//! use frostr::keygen::generate_key_shares;
+//!
+//! // Generate 2-of-3 threshold shares
+//! let shares = generate_key_shares(2, 3).expect("keygen failed");
+//! assert_eq!(shares.len(), 3);
+//! assert_eq!(shares[0].threshold, 2);
+//! assert_eq!(shares[0].total, 3);
+//!
+//! // All shares have the same group public key
+//! let group_pk = shares[0].public_key_package.verifying_key();
+//! assert_eq!(
+//!     shares[1].public_key_package.verifying_key(),
+//!     group_pk
+//! );
+//! ```
+//!
+//! ## Shamir Secret Sharing
+//!
+//! ```
+//! use frostr::keygen::{split_secret, reconstruct_secret};
+//!
+//! let secret = [42u8; 32];
+//!
+//! // Split into 3-of-5 shares
+//! let shares = split_secret(&secret, 3, 5).expect("split failed");
+//! assert_eq!(shares.len(), 5);
+//!
+//! // Reconstruct with any 3 shares
+//! let reconstructed = reconstruct_secret(&shares[0..3]).expect("reconstruct failed");
+//! assert_eq!(reconstructed, secret);
+//!
+//! // Can use different combination
+//! let reconstructed2 = reconstruct_secret(&[shares[1].clone(), shares[3].clone(), shares[4].clone()])
+//!     .expect("reconstruct failed");
+//! assert_eq!(reconstructed2, secret);
+//! ```
 
 use crate::{Error, Result};
 use frost_secp256k1::keys::{KeyPackage, PublicKeyPackage};
