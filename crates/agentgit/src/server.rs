@@ -7,7 +7,7 @@ use wallet::core::identity::UnifiedIdentity;
 use crate::git::{clone_repository, get_repository_path, is_repository_cloned, create_branch, get_status, generate_patch, apply_patch, push_branch, current_branch, diff_commits};
 use crate::nostr::NostrClient;
 use crate::nostr::events::{BountyClaimBuilder, BountyOfferBuilder, IssueClaimBuilder, PatchBuilder, PullRequestBuilder, RepositoryAnnouncementBuilder, StatusEventBuilder, ZapRequestBuilder};
-use crate::views::{agent_profile_page, agents_list_page, diff_viewer_page, git_branch_create_form_page, git_status_page, home_page_with_repos, issue_create_form_page, issue_detail_page, issues_list_page, patch_create_form_page, patch_detail_page, patches_list_page, pr_create_form_page, pull_request_detail_page, pull_requests_list_page, repository_create_form_page, repository_detail_page, search_results_page, trajectory_viewer_page};
+use crate::views::{agent_profile_page, agents_list_page, bounties_discovery_page, diff_viewer_page, git_branch_create_form_page, git_status_page, home_page_with_repos, issue_create_form_page, issue_detail_page, issues_list_page, patch_create_form_page, patch_detail_page, patches_list_page, pr_create_form_page, pull_request_detail_page, pull_requests_list_page, repository_create_form_page, repository_detail_page, search_results_page, trajectory_viewer_page};
 use crate::ws::{ws_handler, WsBroadcaster};
 use nostr::{EventTemplate, Issue, KIND_ISSUE};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -88,6 +88,7 @@ pub async fn start_server(
             .route("/repo/{identifier}/git/patch/apply", web::post().to(git_patch_apply))
             .route("/repo/{identifier}/git/push", web::post().to(git_push))
             .route("/bounty/{bounty_claim_id}/pay", web::post().to(bounty_payment))
+            .route("/bounties", web::get().to(bounties_discovery))
             .route("/ws", web::get().to(ws_route))
     })
     .bind("127.0.0.1:0")?;
@@ -133,17 +134,38 @@ async fn index(
         }
     }
 
-    if query.has_bounties.as_deref() == Some("true") {
-        // Filter repos that have bounties on their issues
-        repositories.retain(|repo| {
+    // Build bounty counts per repository if filtering by has_bounties
+    let mut repo_bounty_counts = std::collections::HashMap::new();
+    let has_bounties_filter = query.has_bounties.as_deref() == Some("true");
+
+    if has_bounties_filter {
+        for repo in &repositories {
             let repo_id = repo.tags.iter()
                 .find(|tag| tag.first().map(|t| t == "d").unwrap_or(false))
                 .and_then(|tag| tag.get(1).cloned())
                 .unwrap_or_default();
 
-            // Check if this repo has any bounties
-            // For now, keep all repos - would need to query bounty events
-            true
+            let repo_address = format!("30617:{}:{}", repo.pubkey, repo_id);
+
+            // Get issues for this repo
+            if let Ok(issues) = state.nostr_client.get_issues_by_repo(&repo_address, 100).await {
+                let mut bounty_count = 0;
+                for issue in issues {
+                    if let Ok(bounties) = state.nostr_client.get_bounties_for_issue(&issue.id).await {
+                        bounty_count += bounties.len();
+                    }
+                }
+                repo_bounty_counts.insert(repo_id.clone(), bounty_count);
+            }
+        }
+
+        // Filter to only repos with bounties
+        repositories.retain(|repo| {
+            let repo_id = repo.tags.iter()
+                .find(|tag| tag.first().map(|t| t == "d").unwrap_or(false))
+                .and_then(|tag| tag.get(1).cloned())
+                .unwrap_or_default();
+            repo_bounty_counts.get(&repo_id).copied().unwrap_or(0) > 0
         });
     }
 
@@ -156,9 +178,10 @@ async fn index(
         });
     }
 
+    // Pass bounty counts to the view
     HttpResponse::Ok()
         .content_type("text/html; charset=utf-8")
-        .body(home_page_with_repos(&repositories, &query.language, query.has_bounties.as_deref() == Some("true"), query.agent_friendly.as_deref() == Some("true")).into_string())
+        .body(home_page_with_repos(&repositories, &query.language, query.has_bounties.as_deref() == Some("true"), query.agent_friendly.as_deref() == Some("true"), &repo_bounty_counts).into_string())
 }
 
 /// Repository detail page
@@ -2838,4 +2861,66 @@ async fn bounty_payment(
                 .body(format!("<h1>Error</h1><p>Failed to sign payment request: {}</p>", e))
         }
     }
+}
+
+/// Bounty discovery page - list all bounties across all repositories
+async fn bounties_discovery(state: web::Data<AppState>) -> HttpResponse {
+    // Fetch all repositories
+    let repositories = match state.nostr_client.get_cached_repositories(100).await {
+        Ok(repos) => repos,
+        Err(e) => {
+            tracing::warn!("Failed to fetch repositories: {}", e);
+            vec![]
+        }
+    };
+
+    // Collect all bounties with their issue details
+    let mut all_bounties = Vec::new();
+
+    for repo in &repositories {
+        let repo_id = repo.tags.iter()
+            .find(|tag| tag.first().map(|t| t == "d").unwrap_or(false))
+            .and_then(|tag| tag.get(1).cloned())
+            .unwrap_or_default();
+
+        let repo_name = get_tag_value_from_event(repo, "name")
+            .unwrap_or_else(|| "Unnamed".to_string());
+
+        let repo_address = format!("30617:{}:{}", repo.pubkey, repo_id);
+
+        // Get issues for this repo
+        if let Ok(issues) = state.nostr_client.get_issues_by_repo(&repo_address, 100).await {
+            for issue in issues {
+                // Get bounties for this issue
+                if let Ok(bounties) = state.nostr_client.get_bounties_for_issue(&issue.id).await {
+                    for bounty in bounties {
+                        let amount = get_tag_value_from_event(&bounty, "amount")
+                            .and_then(|s| s.parse::<u64>().ok())
+                            .unwrap_or(0);
+
+                        let issue_subject = issue.tags.iter()
+                            .find(|tag| tag.first().map(|t| t == "subject").unwrap_or(false))
+                            .and_then(|tag| tag.get(1).cloned())
+                            .unwrap_or_else(|| "Untitled Issue".to_string());
+
+                        all_bounties.push((
+                            repo_name.clone(),
+                            repo_id.clone(),
+                            issue_subject,
+                            issue.id.clone(),
+                            amount,
+                            bounty.id.clone(),
+                        ));
+                    }
+                }
+            }
+        }
+    }
+
+    // Sort by amount descending
+    all_bounties.sort_by(|a, b| b.4.cmp(&a.4));
+
+    HttpResponse::Ok()
+        .content_type("text/html; charset=utf-8")
+        .body(bounties_discovery_page(&all_bounties).into_string())
 }
