@@ -1,7 +1,80 @@
 //! NIP-01 message validation
 //!
-//! Comprehensive validation of Nostr protocol messages according to NIP-01 specification.
-//! This module provides validation for events, filters, and protocol messages.
+//! Comprehensive validation of Nostr protocol messages according to the NIP-01 specification.
+//! This module ensures all incoming protocol messages comply with Nostr standards and relay
+//! resource limits.
+//!
+//! # Architecture
+//!
+//! The validation module operates in layers:
+//! 1. **Message Format**: Validate JSON structure and required fields
+//! 2. **Field Format**: Validate hex strings, timestamps, subscription IDs
+//! 3. **Event Structure**: Validate event size, content length, tag counts
+//! 4. **Filter Logic**: Validate filter parameters and limits
+//! 5. **Cryptography**: Verify event signatures (via nostr crate)
+//!
+//! # Design Decisions
+//!
+//! - **Relay Protection**: Resource limits (event size, tag count) protect the relay from
+//!   DoS attacks and resource exhaustion
+//! - **Strict Validation**: Reject malformed data immediately rather than attempting to
+//!   fix or normalize it
+//! - **Performance**: Validation is optimized for common cases (small events, simple filters)
+//!   while still handling edge cases correctly
+//! - **Lowercase Hex**: All hex strings must be lowercase to enable efficient indexing
+//!   and prevent duplicate storage of equivalent values
+//! - **Timestamp Bounds**: Events must be within reasonable time bounds (not too far in
+//!   past or future) to prevent spam and ensure data quality
+//!
+//! # NIP-01 Compliance
+//!
+//! This module implements all validation requirements from NIP-01:
+//! - Event structure and signature verification
+//! - Filter parameter validation
+//! - Protocol message format (EVENT, REQ, CLOSE)
+//! - Resource limits and DoS protection
+//!
+//! See: https://github.com/nostr-protocol/nips/blob/master/01.md
+//!
+//! # Usage
+//!
+//! ```
+//! use nostr_relay::{validate_event, validate_filter, validate_subscription_id};
+//! # use nostr::{generate_secret_key, finalize_event, EventTemplate};
+//! # use nostr_relay::Filter;
+//!
+//! # fn current_timestamp() -> u64 {
+//! #     std::time::SystemTime::now()
+//! #         .duration_since(std::time::UNIX_EPOCH)
+//! #         .unwrap()
+//! #         .as_secs()
+//! # }
+//! // Validate incoming event
+//! # let secret_key = generate_secret_key();
+//! # let template = EventTemplate {
+//! #     kind: 1,
+//! #     tags: vec![],
+//! #     content: "test".to_string(),
+//! #     created_at: current_timestamp(),
+//! # };
+//! # let event = finalize_event(&template, &secret_key).unwrap();
+//! validate_event(&event)?;
+//!
+//! // Validate subscription parameters
+//! let mut filter = Filter::new();
+//! filter.limit = Some(100);
+//! validate_filter(&filter)?;
+//!
+//! validate_subscription_id("sub-123")?;
+//! # Ok::<(), nostr_relay::ValidationError>(())
+//! ```
+//!
+//! # Testing
+//!
+//! This module includes extensive tests covering all validation rules:
+//! - Unit tests for each validation function
+//! - Property-based tests for edge cases and boundary conditions
+//! - Integration tests with real Nostr events and signatures
 
 use crate::subscription::Filter;
 use nostr::Event;
