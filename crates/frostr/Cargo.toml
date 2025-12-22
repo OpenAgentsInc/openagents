@@ -40,6 +40,12 @@ k256 = "0.13.4"
 tokio-test = "0.4"
 nostr-relay = { path = "../nostr/relay" }
 tempfile = "3"
+criterion = "0.8.1"
+sha2.workspace = true
+
+[[bench]]
+name = "threshold_operations"
+harness = false
 
 [lints.clippy]
 # Allow todo!() in this crate as it's in early development (overrides workspace deny)

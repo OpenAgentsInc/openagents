@@ -70,6 +70,7 @@ unicode-normalization = ["dep:unicode-normalization"]
 [dev-dependencies]
 criterion = "0.8.1"
 quickcheck.workspace = true
+sha2.workspace = true
 
 [[bench]]
 name = "nip44_crypto"
