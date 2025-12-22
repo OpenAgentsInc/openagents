@@ -326,7 +326,12 @@ async fn get_oauth_token() -> Option<String> {
             return None;
         }
     };
-    creds.get("accessToken").and_then(|v| v.as_str()).map(|s| s.to_string())
+    // Token is nested under claudeAiOauth.accessToken
+    creds
+        .get("claudeAiOauth")
+        .and_then(|v| v.get("accessToken"))
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string())
 }
 
 /// Fetch usage/quota limits directly from Anthropic API.
