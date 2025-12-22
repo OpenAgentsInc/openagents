@@ -16,7 +16,8 @@
 use crate::{SparkSigner, SparkError};
 use breez_sdk_spark::{
     BreezSdk, ConnectRequest, Network as SdkNetwork, PrepareSendPaymentRequest,
-    PrepareSendPaymentResponse, SendPaymentRequest, SendPaymentResponse, Seed,
+    PrepareSendPaymentResponse, ReceivePaymentMethod, ReceivePaymentRequest,
+    ReceivePaymentResponse, SendPaymentRequest, SendPaymentResponse, Seed,
 };
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -306,6 +307,90 @@ impl SparkWallet {
     ) -> Result<SendPaymentResponse, SparkError> {
         let prepare_response = self.prepare_send_payment(payment_request, amount).await?;
         self.send_payment(prepare_response, None).await
+    }
+
+    /// Get the wallet's Spark address for receiving payments
+    ///
+    /// Returns a static Spark address that can be used to receive payments.
+    /// This address is tied to the wallet's identity and can be reused.
+    ///
+    /// # Returns
+    /// A `ReceivePaymentResponse` containing the Spark address
+    ///
+    /// # Example
+    /// ```rust,ignore
+    /// let response = wallet.get_spark_address().await?;
+    /// println!("Send to: {}", response.payment_request);
+    /// ```
+    pub async fn get_receive_address(&self) -> Result<ReceivePaymentResponse, SparkError> {
+        let request = ReceivePaymentRequest {
+            payment_method: ReceivePaymentMethod::SparkAddress,
+        };
+
+        self.sdk
+            .receive_payment(request)
+            .await
+            .map_err(|e| SparkError::Wallet(format!("Failed to get Spark address: {}", e)))
+    }
+
+    /// Create a Spark invoice for receiving a specific amount
+    ///
+    /// Generates a Spark invoice (similar to Lightning BOLT-11) for receiving payments.
+    ///
+    /// # Arguments
+    /// * `amount_sats` - Amount to receive in satoshis
+    /// * `description` - Optional description to embed in the invoice
+    /// * `expiry_seconds` - Optional expiry time in seconds (default: 3600)
+    ///
+    /// # Returns
+    /// A `ReceivePaymentResponse` containing the Spark invoice
+    ///
+    /// # Example
+    /// ```rust,ignore
+    /// let response = wallet
+    ///     .create_invoice(1000, Some("Coffee".to_string()), None)
+    ///     .await?;
+    /// println!("Invoice: {}", response.payment_request);
+    /// println!("Fee: {} sats", response.fee);
+    /// ```
+    pub async fn create_invoice(
+        &self,
+        amount_sats: u64,
+        description: Option<String>,
+        expiry_seconds: Option<u64>,
+    ) -> Result<ReceivePaymentResponse, SparkError> {
+        let request = ReceivePaymentRequest {
+            payment_method: ReceivePaymentMethod::SparkInvoice {
+                amount: Some(amount_sats as u128),
+                token_identifier: None,
+                expiry_time: expiry_seconds,
+                description,
+                sender_public_key: None,
+            },
+        };
+
+        self.sdk
+            .receive_payment(request)
+            .await
+            .map_err(|e| SparkError::Wallet(format!("Failed to create invoice: {}", e)))
+    }
+
+    /// Create a Lightning invoice for receiving a specific amount
+    ///
+    /// This is an alias for `create_invoice` that provides Lightning-style naming.
+    ///
+    /// # Arguments
+    /// * `amount_sats` - Amount to receive in satoshis
+    /// * `description` - Optional description to embed in the invoice
+    ///
+    /// # Returns
+    /// A `ReceivePaymentResponse` containing the invoice
+    pub async fn create_lightning_invoice(
+        &self,
+        amount_sats: u64,
+        description: Option<String>,
+    ) -> Result<ReceivePaymentResponse, SparkError> {
+        self.create_invoice(amount_sats, description, None).await
     }
 }
 
