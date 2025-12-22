@@ -293,8 +293,64 @@ pub struct UsageLimits {
     pub extra_resets_at: Option<String>,
 }
 
-/// Fetch usage limits from Claude Code CLI by parsing /status output.
+/// Unified rate limit status from API response headers
+#[derive(Debug, Clone, Default, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UnifiedRateLimitStatus {
+    /// Status describing usage (e.g., "normal", "limited")
+    pub status: Option<String>,
+    /// Percentage used (0-100)
+    pub percentage: Option<f64>,
+    /// Tier name
+    pub tier: Option<String>,
+    /// Reset timestamp (Unix epoch seconds)
+    pub resets_at: Option<i64>,
+    /// Rate limit type (e.g., "weekly_all", "weekly_sonnet", "session")
+    pub rate_limit_type: Option<String>,
+    /// Overage status
+    pub overage_status: Option<String>,
+    /// Overage reset timestamp
+    pub overage_resets_at: Option<i64>,
+    /// Whether using overage
+    pub is_using_overage: Option<bool>,
+}
+
+/// Parse the unified rate limit status from API response headers.
+/// Headers format: anthropic-ratelimit-unified-*
+pub fn parse_unified_rate_limit_headers(
+    headers: &std::collections::HashMap<String, String>,
+) -> Option<UnifiedRateLimitStatus> {
+    // The unified status is a JSON blob in the header
+    if let Some(status_json) = headers.get("anthropic-ratelimit-unified-status") {
+        if let Ok(status) = serde_json::from_str::<UnifiedRateLimitStatus>(status_json) {
+            return Some(status);
+        }
+    }
+
+    // Or parse individual headers
+    let mut status = UnifiedRateLimitStatus::default();
+
+    if let Some(reset) = headers.get("anthropic-ratelimit-unified-reset") {
+        status.resets_at = reset.parse().ok();
+    }
+    if let Some(overage_reset) = headers.get("anthropic-ratelimit-unified-overage-reset") {
+        status.overage_resets_at = overage_reset.parse().ok();
+    }
+    if let Some(overage_status) = headers.get("anthropic-ratelimit-unified-overage-status") {
+        status.overage_status = Some(overage_status.clone());
+    }
+
+    if status.resets_at.is_some() || status.overage_resets_at.is_some() {
+        Some(status)
+    } else {
+        None
+    }
+}
+
+/// Fetch usage limits from Claude Code CLI.
+/// Note: This makes an API call to trigger rate limit header capture.
 /// Returns None if the CLI is not available or parsing fails.
+#[allow(dead_code)]
 pub async fn fetch_usage_limits() -> Option<UsageLimits> {
     use std::process::Stdio;
     use tokio::io::{AsyncBufReadExt, BufReader};
@@ -304,7 +360,6 @@ pub async fn fetch_usage_limits() -> Option<UsageLimits> {
     let claude_path = shellexpand::tilde("~/.claude/local/claude").to_string();
 
     // Run claude with a simple command that triggers rate limit check
-    // The rate limits come from API response headers
     let mut child = Command::new(&claude_path)
         .args(["-p", "hi", "--output-format", "stream-json", "--max-turns", "1"])
         .stdin(Stdio::null())
@@ -321,30 +376,76 @@ pub async fn fetch_usage_limits() -> Option<UsageLimits> {
     // Parse the stream-json output looking for rate limit info
     let result = timeout(Duration::from_secs(30), async {
         while let Ok(Some(line)) = reader.next_line().await {
-            // Look for result messages which contain rate limit info in headers
             if let Ok(json) = serde_json::from_str::<serde_json::Value>(&line) {
-                // Check for rate limit headers in response
+                // Check for rate limit info in stream events
+                // The unified rate limit headers come from API responses
                 if let Some(headers) = json.get("headers").and_then(|h| h.as_object()) {
-                    // Parse rate limit headers
-                    if let Some(remaining) = headers
-                        .get("anthropic-ratelimit-tokens-remaining")
-                        .and_then(|v| v.as_str())
-                        .and_then(|s| s.parse::<u64>().ok())
-                    {
-                        if let Some(total) = headers
-                            .get("anthropic-ratelimit-tokens-limit")
-                            .and_then(|v| v.as_str())
-                            .and_then(|s| s.parse::<u64>().ok())
-                        {
+                    let header_map: std::collections::HashMap<String, String> = headers
+                        .iter()
+                        .filter_map(|(k, v)| Some((k.to_lowercase(), v.as_str()?.to_string())))
+                        .collect();
+
+                    // Parse unified rate limit status
+                    if let Some(unified) = parse_unified_rate_limit_headers(&header_map) {
+                        if let Some(pct) = unified.percentage {
+                            // Determine which limit this is based on rate_limit_type
+                            match unified.rate_limit_type.as_deref() {
+                                Some("session") => {
+                                    limits.session_percent = Some(pct);
+                                    if let Some(reset) = unified.resets_at {
+                                        limits.session_resets_at =
+                                            Some(format_unix_timestamp(reset));
+                                    }
+                                }
+                                Some("weekly_all") | Some("week") => {
+                                    limits.weekly_all_percent = Some(pct);
+                                    if let Some(reset) = unified.resets_at {
+                                        limits.weekly_all_resets_at =
+                                            Some(format_unix_timestamp(reset));
+                                    }
+                                }
+                                Some("weekly_sonnet") => {
+                                    limits.weekly_sonnet_percent = Some(pct);
+                                    if let Some(reset) = unified.resets_at {
+                                        limits.weekly_sonnet_resets_at =
+                                            Some(format_unix_timestamp(reset));
+                                    }
+                                }
+                                _ => {
+                                    // Default to weekly all
+                                    limits.weekly_all_percent = Some(pct);
+                                    if let Some(reset) = unified.resets_at {
+                                        limits.weekly_all_resets_at =
+                                            Some(format_unix_timestamp(reset));
+                                    }
+                                }
+                            }
+                        }
+
+                        // Parse overage/extra usage
+                        if unified.is_using_overage == Some(true) {
+                            if let Some(reset) = unified.overage_resets_at {
+                                limits.extra_resets_at = Some(format_unix_timestamp(reset));
+                            }
+                        }
+                    }
+
+                    // Also check standard per-request rate limits
+                    if limits.session_percent.is_none() {
+                        if let (Some(remaining), Some(total)) = (
+                            header_map
+                                .get("anthropic-ratelimit-tokens-remaining")
+                                .and_then(|s| s.parse::<u64>().ok()),
+                            header_map
+                                .get("anthropic-ratelimit-tokens-limit")
+                                .and_then(|s| s.parse::<u64>().ok()),
+                        ) {
                             let used = total.saturating_sub(remaining);
                             limits.session_percent = Some((used as f64 / total as f64) * 100.0);
                         }
-                    }
-                    if let Some(reset) = headers
-                        .get("anthropic-ratelimit-tokens-reset")
-                        .and_then(|v| v.as_str())
-                    {
-                        limits.session_resets_at = Some(format_reset_time(reset));
+                        if let Some(reset) = header_map.get("anthropic-ratelimit-tokens-reset") {
+                            limits.session_resets_at = Some(format_reset_time(reset));
+                        }
                     }
                 }
 
@@ -365,10 +466,24 @@ pub async fn fetch_usage_limits() -> Option<UsageLimits> {
     }
 
     // If we got any data, return it
-    if limits.session_percent.is_some() {
+    if limits.session_percent.is_some()
+        || limits.weekly_all_percent.is_some()
+        || limits.weekly_sonnet_percent.is_some()
+    {
         Some(limits)
     } else {
         None
+    }
+}
+
+/// Format a Unix timestamp to human-readable reset time
+fn format_unix_timestamp(timestamp: i64) -> String {
+    use chrono::{DateTime, Local, TimeZone};
+
+    if let Some(dt) = Local.timestamp_opt(timestamp, 0).single() {
+        dt.format("%b %d, %l:%M%P (%Z)").to_string().trim().to_string()
+    } else {
+        format!("{}", timestamp)
     }
 }
 
