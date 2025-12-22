@@ -3,6 +3,42 @@
 //! This module provides open-source secret detection and redaction
 //! for trajectory contributions. All redaction happens locally before
 //! any data leaves the user's machine.
+//!
+//! # Examples
+//!
+//! Basic usage with standard redaction level:
+//!
+//! ```no_run
+//! use marketplace::trajectories::{RedactionEngine, RedactionLevel};
+//!
+//! let engine = RedactionEngine::new(RedactionLevel::Standard, vec![]).unwrap();
+//! let content = "My API key is sk-1234567890abcdef and my password is hunter2";
+//! let result = engine.redact(content).unwrap();
+//!
+//! println!("Redacted {} secrets", result.secrets_redacted);
+//! println!("Secret types: {:?}", result.secret_types);
+//! ```
+//!
+//! Using custom patterns for domain-specific secrets:
+//!
+//! ```no_run
+//! use marketplace::trajectories::{RedactionEngine, RedactionLevel};
+//!
+//! // Redact custom internal IDs
+//! let custom_patterns = vec![
+//!     r"INTERNAL-\d{6}".to_string(),
+//!     r"PROJECT-[A-Z]{4}-\d{4}".to_string(),
+//! ];
+//!
+//! let engine = RedactionEngine::new(
+//!     RedactionLevel::Strict,
+//!     custom_patterns
+//! ).unwrap();
+//!
+//! let content = "Reference INTERNAL-123456 and PROJECT-ACME-2024";
+//! let result = engine.redact(content).unwrap();
+//! assert!(result.secrets_redacted >= 2);
+//! ```
 
 use anyhow::Result;
 use regex::Regex;
