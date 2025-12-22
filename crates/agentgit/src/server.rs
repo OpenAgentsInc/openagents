@@ -4,10 +4,10 @@ use actix_web::{web, App, HttpResponse, HttpServer};
 use std::sync::Arc;
 use wallet::core::identity::UnifiedIdentity;
 
-use crate::git::{clone_repository, get_repository_path, is_repository_cloned, create_branch, get_status, generate_patch, apply_patch, push_branch, current_branch};
+use crate::git::{clone_repository, get_repository_path, is_repository_cloned, create_branch, get_status, generate_patch, apply_patch, push_branch, current_branch, diff_commits};
 use crate::nostr::NostrClient;
 use crate::nostr::events::{BountyClaimBuilder, BountyOfferBuilder, IssueClaimBuilder, PatchBuilder, PullRequestBuilder, RepositoryAnnouncementBuilder, StatusEventBuilder};
-use crate::views::{agent_profile_page, git_branch_create_form_page, git_status_page, home_page_with_repos, issue_create_form_page, issue_detail_page, issues_list_page, patch_create_form_page, patch_detail_page, patches_list_page, pr_create_form_page, pull_request_detail_page, pull_requests_list_page, repository_create_form_page, repository_detail_page, search_results_page, trajectory_viewer_page};
+use crate::views::{agent_profile_page, diff_viewer_page, git_branch_create_form_page, git_status_page, home_page_with_repos, issue_create_form_page, issue_detail_page, issues_list_page, patch_create_form_page, patch_detail_page, patches_list_page, pr_create_form_page, pull_request_detail_page, pull_requests_list_page, repository_create_form_page, repository_detail_page, search_results_page, trajectory_viewer_page};
 use crate::ws::{ws_handler, WsBroadcaster};
 use nostr::{EventTemplate, Issue, KIND_ISSUE};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -64,10 +64,12 @@ pub async fn start_server(
             .route("/repo/{identifier}/patches/new", web::get().to(patch_create_form))
             .route("/repo/{identifier}/patches", web::post().to(patch_create))
             .route("/repo/{identifier}/patches/{patch_id}", web::get().to(patch_detail))
+            .route("/repo/{identifier}/patches/{patch_id}/diff", web::get().to(patch_diff_view))
             .route("/repo/{identifier}/pulls", web::get().to(repository_pulls))
             .route("/repo/{identifier}/pulls/new", web::get().to(pr_create_form))
             .route("/repo/{identifier}/pulls", web::post().to(pr_create))
             .route("/repo/{identifier}/pulls/{pr_id}", web::get().to(pull_request_detail))
+            .route("/repo/{identifier}/pulls/{pr_id}/diff", web::get().to(pr_diff_view))
             .route("/repo/{identifier}/pulls/{pr_id}/review", web::post().to(pr_review_submit))
             .route("/repo/{identifier}/pulls/{pr_id}/status", web::post().to(pr_status_change))
             .route("/trajectory/{session_id}", web::get().to(trajectory_detail))
@@ -2280,4 +2282,134 @@ async fn git_push(
                 ))
         }
     }
+}
+
+/// View syntax-highlighted diff for a patch
+async fn patch_diff_view(
+    state: web::Data<AppState>,
+    path: web::Path<(String, String)>,
+) -> HttpResponse {
+    let (identifier, patch_id) = path.into_inner();
+
+    // Fetch patch event from cache
+    let patch_event = match state.nostr_client.get_cached_event(&patch_id).await {
+        Ok(Some(event)) => event,
+        Ok(None) => {
+            return HttpResponse::NotFound()
+                .content_type("text/html; charset=utf-8")
+                .body("<h1>Patch not found</h1>");
+        }
+        Err(e) => {
+            tracing::error!("Failed to fetch patch: {}", e);
+            return HttpResponse::InternalServerError()
+                .content_type("text/html; charset=utf-8")
+                .body("<h1>Error fetching patch</h1>");
+        }
+    };
+
+    // Extract commit IDs from patch tags
+    let commit_id = patch_event.tags.iter()
+        .find(|tag| tag.first().map(|t| t == "c").unwrap_or(false))
+        .and_then(|tag| tag.get(1).cloned());
+
+    let parent_commit = patch_event.tags.iter()
+        .find(|tag| tag.first().map(|t| t == "parent").unwrap_or(false))
+        .and_then(|tag| tag.get(1).cloned());
+
+    // Check if repository is cloned
+    if !is_repository_cloned(&identifier) {
+        return HttpResponse::BadRequest()
+            .content_type("text/html; charset=utf-8")
+            .body("<h1>Repository not cloned</h1><p>Clone the repository to view diffs.</p>");
+    }
+
+    let repo_path = get_repository_path(&identifier);
+
+    // Generate diff
+    let diff_output = match (parent_commit.as_ref(), commit_id.as_ref()) {
+        (Some(parent), Some(commit)) => {
+            match diff_commits(&repo_path, parent, commit) {
+                Ok(diff) => diff,
+                Err(e) => {
+                    return HttpResponse::InternalServerError()
+                        .content_type("text/html; charset=utf-8")
+                        .body(format!("<h1>Error generating diff</h1><p>{}</p>", e));
+                }
+            }
+        }
+        _ => {
+            return HttpResponse::BadRequest()
+                .content_type("text/html; charset=utf-8")
+                .body("<h1>Missing commit information</h1>");
+        }
+    };
+
+    HttpResponse::Ok()
+        .content_type("text/html; charset=utf-8")
+        .body(diff_viewer_page(&identifier, &patch_id, "patch", &diff_output).into_string())
+}
+
+/// View syntax-highlighted diff for a PR
+async fn pr_diff_view(
+    state: web::Data<AppState>,
+    path: web::Path<(String, String)>,
+) -> HttpResponse {
+    let (identifier, pr_id) = path.into_inner();
+
+    // Fetch PR event from cache
+    let pr_event = match state.nostr_client.get_cached_event(&pr_id).await {
+        Ok(Some(event)) => event,
+        Ok(None) => {
+            return HttpResponse::NotFound()
+                .content_type("text/html; charset=utf-8")
+                .body("<h1>Pull request not found</h1>");
+        }
+        Err(e) => {
+            tracing::error!("Failed to fetch PR: {}", e);
+            return HttpResponse::InternalServerError()
+                .content_type("text/html; charset=utf-8")
+                .body("<h1>Error fetching PR</h1>");
+        }
+    };
+
+    // Extract commit IDs from PR tags
+    let commit_id = pr_event.tags.iter()
+        .find(|tag| tag.first().map(|t| t == "c").unwrap_or(false))
+        .and_then(|tag| tag.get(1).cloned());
+
+    let parent_commit = pr_event.tags.iter()
+        .find(|tag| tag.first().map(|t| t == "parent").unwrap_or(false))
+        .and_then(|tag| tag.get(1).cloned());
+
+    // Check if repository is cloned
+    if !is_repository_cloned(&identifier) {
+        return HttpResponse::BadRequest()
+            .content_type("text/html; charset=utf-8")
+            .body("<h1>Repository not cloned</h1><p>Clone the repository to view diffs.</p>");
+    }
+
+    let repo_path = get_repository_path(&identifier);
+
+    // Generate diff
+    let diff_output = match (parent_commit.as_ref(), commit_id.as_ref()) {
+        (Some(parent), Some(commit)) => {
+            match diff_commits(&repo_path, parent, commit) {
+                Ok(diff) => diff,
+                Err(e) => {
+                    return HttpResponse::InternalServerError()
+                        .content_type("text/html; charset=utf-8")
+                        .body(format!("<h1>Error generating diff</h1><p>{}</p>", e));
+                }
+            }
+        }
+        _ => {
+            return HttpResponse::BadRequest()
+                .content_type("text/html; charset=utf-8")
+                .body("<h1>Missing commit information</h1>");
+        }
+    };
+
+    HttpResponse::Ok()
+        .content_type("text/html; charset=utf-8")
+        .body(diff_viewer_page(&identifier, &pr_id, "pr", &diff_output).into_string())
 }

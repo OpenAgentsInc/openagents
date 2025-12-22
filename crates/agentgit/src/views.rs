@@ -2988,3 +2988,208 @@ pub fn git_branch_create_form_page(identifier: &str) -> Markup {
         }
     }
 }
+
+/// Diff viewer page with syntax highlighting
+pub fn diff_viewer_page(identifier: &str, item_id: &str, item_type: &str, diff_content: &str) -> Markup {
+    html! {
+        (DOCTYPE)
+        html lang="en" {
+            head {
+                meta charset="utf-8";
+                meta name="viewport" content="width=device-width, initial-scale=1.0";
+                title { "Diff - " (item_id) " - AgentGit" }
+                style {
+                    (include_str!("./styles.css"))
+                    "
+                    .diff-viewer {
+                        font-family: 'Courier New', monospace;
+                        font-size: 0.9rem;
+                        background: #1a1a1a;
+                        padding: 1rem;
+                        overflow-x: auto;
+                    }
+                    .diff-file {
+                        margin-bottom: 2rem;
+                        border: 1px solid #333;
+                    }
+                    .diff-file-header {
+                        background: #2a2a2a;
+                        padding: 0.5rem 1rem;
+                        font-weight: bold;
+                        color: #fff;
+                        border-bottom: 1px solid #333;
+                    }
+                    .diff-line {
+                        display: flex;
+                        padding: 0.2rem 0;
+                    }
+                    .diff-line-number {
+                        width: 4rem;
+                        text-align: right;
+                        padding-right: 1rem;
+                        color: #666;
+                        user-select: none;
+                    }
+                    .diff-line-content {
+                        flex: 1;
+                        white-space: pre;
+                    }
+                    .diff-added {
+                        background: #1a3d1a;
+                        color: #66ff66;
+                    }
+                    .diff-removed {
+                        background: #3d1a1a;
+                        color: #ff6666;
+                    }
+                    .diff-context {
+                        color: #ccc;
+                    }
+                    .diff-hunk-header {
+                        background: #2a3a4a;
+                        color: #88ccff;
+                        padding: 0.3rem 1rem;
+                        font-weight: bold;
+                    }
+                    "
+                }
+            }
+            body {
+                header {
+                    h1 { "AgentGit" }
+                    nav {
+                        a href="/" { "Home" }
+                        " | "
+                        a href={"/repo/" (identifier)} { "Repository" }
+                        " | "
+                        @if item_type == "pr" {
+                            a href={"/repo/" (identifier) "/pulls/" (item_id)} { "Pull Request" }
+                        } @else {
+                            a href={"/repo/" (identifier) "/patches/" (item_id)} { "Patch" }
+                        }
+                        " | "
+                        span { "Diff" }
+                    }
+                }
+
+                main {
+                    h2 { "Diff View" }
+                    
+                    div.diff-viewer {
+                        (render_diff_lines(diff_content))
+                    }
+
+                    div.actions style="margin-top: 2rem;" {
+                        @if item_type == "pr" {
+                            a.button href={"/repo/" (identifier) "/pulls/" (item_id)} { "← Back to PR" }
+                        } @else {
+                            a.button href={"/repo/" (identifier) "/patches/" (item_id)} { "← Back to Patch" }
+                        }
+                    }
+                }
+
+                footer {
+                    p { "AgentGit - Nostr-native GitHub alternative" }
+                }
+            }
+        }
+    }
+}
+
+/// Render diff lines with proper formatting
+fn render_diff_lines(diff_content: &str) -> Markup {
+    let lines: Vec<&str> = diff_content.lines().collect();
+    let mut html_output = String::new();
+    let mut in_file = false;
+    let mut old_line_num = 0;
+    let mut new_line_num = 0;
+
+    for line in lines {
+        if line.starts_with("diff --git") {
+            if in_file {
+                html_output.push_str("</div>");
+            }
+            if let Some(filename) = extract_filename(line) {
+                html_output.push_str(&format!(
+                    r#"<div class="diff-file"><div class="diff-file-header">File: {}</div>"#,
+                    filename
+                ));
+                in_file = true;
+            }
+        } else if line.starts_with("@@") {
+            if let Some((old_start, new_start)) = parse_hunk_header(line) {
+                old_line_num = old_start;
+                new_line_num = new_start;
+            }
+            html_output.push_str(&format!(
+                r#"<div class="diff-hunk-header">{}</div>"#,
+                html_escape(line)
+            ));
+        } else if line.starts_with("+") && !line.starts_with("+++") {
+            html_output.push_str(&format!(
+                r#"<div class="diff-line diff-added"><span class="diff-line-number"></span><span class="diff-line-number">{}</span><span class="diff-line-content">{}</span></div>"#,
+                new_line_num,
+                html_escape(line)
+            ));
+            new_line_num += 1;
+        } else if line.starts_with("-") && !line.starts_with("---") {
+            html_output.push_str(&format!(
+                r#"<div class="diff-line diff-removed"><span class="diff-line-number">{}</span><span class="diff-line-number"></span><span class="diff-line-content">{}</span></div>"#,
+                old_line_num,
+                html_escape(line)
+            ));
+            old_line_num += 1;
+        } else if !line.starts_with("\\") && !line.starts_with("index ") && !line.starts_with("---") && !line.starts_with("+++") && !line.is_empty() {
+            html_output.push_str(&format!(
+                r#"<div class="diff-line diff-context"><span class="diff-line-number">{}</span><span class="diff-line-number">{}</span><span class="diff-line-content">{}</span></div>"#,
+                old_line_num,
+                new_line_num,
+                html_escape(line)
+            ));
+            old_line_num += 1;
+            new_line_num += 1;
+        }
+    }
+
+    if in_file {
+        html_output.push_str("</div>");
+    }
+
+    maud::PreEscaped(html_output)
+}
+
+/// HTML escape special characters
+fn html_escape(s: &str) -> String {
+    s.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+        .replace('\'', "&#39;")
+}
+
+/// Extract filename from git diff header
+fn extract_filename(line: &str) -> Option<String> {
+    let parts: Vec<&str> = line.split_whitespace().collect();
+    if parts.len() >= 4 {
+        let filename = parts[2].trim_start_matches("a/");
+        Some(filename.to_string())
+    } else {
+        None
+    }
+}
+
+/// Parse hunk header to extract line numbers
+fn parse_hunk_header(line: &str) -> Option<(i32, i32)> {
+    let parts: Vec<&str> = line.split_whitespace().collect();
+    if parts.len() >= 3 {
+        let old_part = parts[1].trim_start_matches('-');
+        let new_part = parts[2].trim_start_matches('+');
+        
+        let old_start = old_part.split(',').next()?.parse::<i32>().ok()?;
+        let new_start = new_part.split(',').next()?.parse::<i32>().ok()?;
+        
+        Some((old_start, new_start))
+    } else {
+        None
+    }
+}
