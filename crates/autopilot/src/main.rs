@@ -477,6 +477,20 @@ enum Commands {
         #[command(subcommand)]
         command: MetricsCommands,
     },
+    /// Show APM (Actions Per Minute) statistics
+    Apm {
+        /// Time window to display (session, 1h, 6h, 1d, 1w, 1m, lifetime)
+        #[arg(short, long)]
+        window: Option<String>,
+
+        /// Source to display (autopilot, claude_code, combined)
+        #[arg(short, long)]
+        source: Option<String>,
+
+        /// Path to metrics database (default: autopilot-metrics.db)
+        #[arg(long)]
+        metrics_db: Option<PathBuf>,
+    },
     /// Run performance benchmarks
     Benchmark {
         /// Specific benchmark to run (e.g., B-001)
@@ -1055,6 +1069,9 @@ async fn main() -> Result<()> {
         }
         Commands::Metrics { command } => {
             handle_metrics_command(command).await
+        }
+        Commands::Apm { window, source, metrics_db } => {
+            handle_apm_command(window, source, metrics_db).await
         }
         Commands::Benchmark {
             benchmark_id,
@@ -4584,6 +4601,97 @@ async fn handle_benchmark_command(
         let report = runner.compare_to_baseline(&results, &baseline_ver)?;
         report.print();
     }
+
+    Ok(())
+}
+
+/// Handle APM command
+async fn handle_apm_command(
+    window: Option<String>,
+    source: Option<String>,
+    _metrics_db: Option<PathBuf>,
+) -> Result<()> {
+    use autopilot::apm::{APMSource, APMWindow};
+    use colored::Colorize;
+
+    // Parse window if provided
+    let _window_filter = window.as_deref().map(|w| match w {
+        "session" => APMWindow::Session,
+        "1h" => APMWindow::Hour1,
+        "6h" => APMWindow::Hour6,
+        "1d" => APMWindow::Day1,
+        "1w" => APMWindow::Week1,
+        "1m" => APMWindow::Month1,
+        "lifetime" => APMWindow::Lifetime,
+        _ => {
+            eprintln!("Invalid window: {}. Valid values: session, 1h, 6h, 1d, 1w, 1m, lifetime", w);
+            std::process::exit(1);
+        }
+    });
+
+    // Parse source if provided
+    let source_filter = source.as_deref().map(|s| match s {
+        "autopilot" => APMSource::Autopilot,
+        "claude_code" | "claude" => APMSource::ClaudeCode,
+        "combined" => APMSource::Combined,
+        _ => {
+            eprintln!("Invalid source: {}. Valid values: autopilot, claude_code, combined", s);
+            std::process::exit(1);
+        }
+    });
+
+    println!("{}", "APM Statistics".cyan().bold());
+    println!("{}", "─".repeat(70).dimmed());
+    println!();
+
+    // TODO: Query actual data from metrics database
+    // For now, show placeholder data
+    println!("{:<12} {:>8} {:>8} {:>8} {:>8} {:>8}",
+        "Source".bold(),
+        "Session".bold(),
+        "1h".bold(),
+        "6h".bold(),
+        "1d".bold(),
+        "1w".bold()
+    );
+    println!("{}", "─".repeat(70).dimmed());
+
+    if source_filter.is_none() || source_filter == Some(APMSource::Autopilot) {
+        println!("{:<12} {:>8} {:>8} {:>8} {:>8} {:>8}",
+            "Autopilot".green(),
+            "-",
+            "19.2",
+            "18.5",
+            "17.8",
+            "18.1"
+        );
+    }
+
+    if source_filter.is_none() || source_filter == Some(APMSource::ClaudeCode) {
+        println!("{:<12} {:>8} {:>8} {:>8} {:>8} {:>8}",
+            "Claude Code".blue(),
+            "-",
+            "4.2",
+            "4.5",
+            "4.3",
+            "4.4"
+        );
+    }
+
+    if source_filter.is_none() || source_filter == Some(APMSource::Combined) {
+        println!("{:<12} {:>8} {:>8} {:>8} {:>8} {:>8}",
+            "Combined".cyan(),
+            "-",
+            "12.1",
+            "11.8",
+            "11.5",
+            "11.9"
+        );
+    }
+
+    println!();
+    println!("{}", "Note: APM data collection in progress. Showing placeholder values.".yellow().dimmed());
+    println!("{}", "Database integration and historical backfill coming in issues #649-651.".yellow().dimmed());
 
     Ok(())
 }
