@@ -3,7 +3,7 @@
 //! Defines events for creating fundraising goals where users can contribute
 //! by zapping the goal event.
 //!
-//! See: https://github.com/nostr-protocol/nips/blob/master/75.md
+//! See: <https://github.com/nostr-protocol/nips/blob/master/75.md>
 
 use crate::Event;
 use thiserror::Error;

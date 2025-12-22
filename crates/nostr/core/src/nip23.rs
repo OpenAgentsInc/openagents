@@ -3,7 +3,7 @@
 //! Defines how to publish long-form articles and blog posts using kind 30023
 //! (parameterized replaceable events). Kind 30024 is used for draft articles.
 //!
-//! See: https://github.com/nostr-protocol/nips/blob/master/23.md
+//! See: <https://github.com/nostr-protocol/nips/blob/master/23.md>
 
 use crate::Event;
 use thiserror::Error;

@@ -7,7 +7,7 @@
 //! - Badge Award (kind 8): Award badges to users
 //! - Profile Badges (kind 30008): Display selected badges on profile
 //!
-//! See: https://github.com/nostr-protocol/nips/blob/master/58.md
+//! See: <https://github.com/nostr-protocol/nips/blob/master/58.md>
 
 use serde::{Deserialize, Serialize};
 use thiserror::Error;

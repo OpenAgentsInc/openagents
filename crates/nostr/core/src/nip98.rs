@@ -8,7 +8,7 @@
 //! - Base64 encoding for Authorization header
 //! - Server-side validation (timestamp, URL, method, payload)
 //!
-//! See: https://github.com/nostr-protocol/nips/blob/master/98.md
+//! See: <https://github.com/nostr-protocol/nips/blob/master/98.md>
 
 use serde::{Deserialize, Serialize};
 use thiserror::Error;

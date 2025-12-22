@@ -3,7 +3,7 @@
 //! Defines how users repost/share other events using kind 6 (repost of kind 1 text notes)
 //! and kind 16 (generic repost of any event kind).
 //!
-//! See: https://github.com/nostr-protocol/nips/blob/master/18.md
+//! See: <https://github.com/nostr-protocol/nips/blob/master/18.md>
 
 use crate::Event;
 use thiserror::Error;

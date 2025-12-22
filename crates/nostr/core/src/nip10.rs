@@ -3,7 +3,7 @@
 //! Defines conventions for replies, mentions, and threading in kind 1 text notes
 //! using e-tags with markers (root, reply, mention) and p-tags for participants.
 //!
-//! See: https://github.com/nostr-protocol/nips/blob/master/10.md
+//! See: <https://github.com/nostr-protocol/nips/blob/master/10.md>
 
 use crate::Event;
 use serde::{Deserialize, Serialize};

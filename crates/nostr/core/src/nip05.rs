@@ -3,7 +3,7 @@
 //! Defines how to map Nostr public keys to human-readable internet identifiers
 //! (like email addresses) using DNS and HTTPS.
 //!
-//! See: https://github.com/nostr-protocol/nips/blob/master/05.md
+//! See: <https://github.com/nostr-protocol/nips/blob/master/05.md>
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;

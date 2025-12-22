@@ -6,7 +6,7 @@
 //! - XChaCha20-Poly1305 AEAD for encryption
 //! - bech32 encoding with 'ncryptsec' prefix
 //!
-//! See: https://github.com/nostr-protocol/nips/blob/master/49.md
+//! See: <https://github.com/nostr-protocol/nips/blob/master/49.md>
 
 #[cfg(feature = "full")]
 use bech32::{Bech32, Hrp};

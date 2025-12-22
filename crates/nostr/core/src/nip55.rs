@@ -3,7 +3,7 @@
 //! Defines types and utilities for Android signer applications that enable
 //! external apps to request event signing via Android intents and content resolvers.
 //!
-//! See: https://github.com/nostr-protocol/nips/blob/master/55.md
+//! See: <https://github.com/nostr-protocol/nips/blob/master/55.md>
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;

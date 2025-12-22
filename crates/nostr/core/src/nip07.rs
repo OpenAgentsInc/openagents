@@ -3,7 +3,7 @@
 //! Defines the window.nostr API that browser extensions provide to web applications.
 //! This module provides Rust types representing the JavaScript API.
 //!
-//! See: https://github.com/nostr-protocol/nips/blob/master/07.md
+//! See: <https://github.com/nostr-protocol/nips/blob/master/07.md>
 
 use crate::{Event, UnsignedEvent};
 use serde::{Deserialize, Serialize};

@@ -3,7 +3,7 @@
 //! Defines proxy tags for linking Nostr events back to their source objects
 //! when bridged from other protocols like ActivityPub, AT Protocol, RSS, etc.
 //!
-//! See: https://github.com/nostr-protocol/nips/blob/master/48.md
+//! See: <https://github.com/nostr-protocol/nips/blob/master/48.md>
 
 use crate::Event;
 use thiserror::Error;

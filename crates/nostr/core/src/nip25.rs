@@ -3,7 +3,7 @@
 //! Defines how users react to other notes using kind 7 events.
 //! Reactions can be likes (+), dislikes (-), or custom emoji reactions.
 //!
-//! See: https://github.com/nostr-protocol/nips/blob/master/25.md
+//! See: <https://github.com/nostr-protocol/nips/blob/master/25.md>
 
 use crate::Event;
 use serde::{Deserialize, Serialize};

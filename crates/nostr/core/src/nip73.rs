@@ -3,7 +3,7 @@
 //! Defines how to reference external content using globally established identifiers
 //! like ISBNs, Podcast GUIDs, ISANs, etc.
 //!
-//! See: https://github.com/nostr-protocol/nips/blob/master/73.md
+//! See: <https://github.com/nostr-protocol/nips/blob/master/73.md>
 
 use crate::Event;
 use thiserror::Error;

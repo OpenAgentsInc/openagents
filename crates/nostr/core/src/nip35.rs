@@ -2,7 +2,7 @@
 //!
 //! Defines torrent index events for BitTorrent file sharing via Nostr.
 //!
-//! See: https://github.com/nostr-protocol/nips/blob/master/35.md
+//! See: <https://github.com/nostr-protocol/nips/blob/master/35.md>
 
 use crate::Event;
 use thiserror::Error;

@@ -3,7 +3,7 @@
 //! Defines how to use proof-of-work to combat spam by requiring computational
 //! effort for event creation. Difficulty is measured by leading zero bits in event ID.
 //!
-//! See: https://github.com/nostr-protocol/nips/blob/master/13.md
+//! See: <https://github.com/nostr-protocol/nips/blob/master/13.md>
 
 use crate::Event;
 use thiserror::Error;

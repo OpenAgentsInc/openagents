@@ -8,7 +8,7 @@
 //! - Restricted event kinds (kind=N)
 //! - Time boundaries (created_at>T, created_at<T)
 //!
-//! See: https://github.com/nostr-protocol/nips/blob/master/26.md
+//! See: <https://github.com/nostr-protocol/nips/blob/master/26.md>
 
 use bitcoin::secp256k1::{Message, Secp256k1, SecretKey};
 use sha2::{Digest, Sha256};

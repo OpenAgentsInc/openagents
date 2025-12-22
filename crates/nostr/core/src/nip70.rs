@@ -4,7 +4,7 @@
 //! be published by their author after authentication. Relays must reject protected
 //! events unless the author is authenticated via NIP-42.
 //!
-//! See: https://github.com/nostr-protocol/nips/blob/master/70.md
+//! See: <https://github.com/nostr-protocol/nips/blob/master/70.md>
 
 use crate::Event;
 use thiserror::Error;

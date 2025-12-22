@@ -4,7 +4,7 @@
 //! Note: This NIP is deprecated in favor of NIP-B7, but this implementation
 //! provides the types for backward compatibility.
 //!
-//! See: https://github.com/nostr-protocol/nips/blob/master/96.md
+//! See: <https://github.com/nostr-protocol/nips/blob/master/96.md>
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;

@@ -3,7 +3,7 @@
 //! Defines kind 64 events representing chess games in PGN (Portable Game Notation)
 //! format, which can be read by humans and processed by chess software.
 //!
-//! See: https://github.com/nostr-protocol/nips/blob/master/64.md
+//! See: <https://github.com/nostr-protocol/nips/blob/master/64.md>
 
 use crate::Event;
 use std::collections::HashMap;

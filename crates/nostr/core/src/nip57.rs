@@ -16,7 +16,7 @@
 //! 5. Sender pays the invoice
 //! 6. Recipient's wallet publishes zap receipt (kind 9735) to specified relays
 //!
-//! See: https://github.com/nostr-protocol/nips/blob/master/57.md
+//! See: <https://github.com/nostr-protocol/nips/blob/master/57.md>
 
 use crate::nip01::{Event, Nip01Error};
 use serde::{Deserialize, Serialize};

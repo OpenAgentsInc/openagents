@@ -3,7 +3,7 @@
 //! Defines cashu-based wallet state management on Nostr relays. Enables
 //! cross-application wallet access with encrypted proof storage.
 //!
-//! See: https://github.com/nostr-protocol/nips/blob/master/60.md
+//! See: <https://github.com/nostr-protocol/nips/blob/master/60.md>
 
 use crate::Event;
 use serde::{Deserialize, Serialize};
