@@ -76,6 +76,10 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 shellexpand = "2.1"
 chrono = { version = "0.4", features = ["serde"] }
 
+[dev-dependencies]
+assert_cmd = "2.0"
+predicates = "3.0"
+
 [workspace.lints.rust]
 missing_docs = "allow"
 unexpected_cfgs = { level = "allow" }
