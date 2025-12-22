@@ -4,10 +4,10 @@ use actix_web::{web, App, HttpResponse, HttpServer};
 use std::sync::Arc;
 use wallet::core::identity::UnifiedIdentity;
 
-use crate::git::{clone_repository, get_repository_path, is_repository_cloned};
+use crate::git::{clone_repository, get_repository_path, is_repository_cloned, create_branch, get_status, generate_patch, apply_patch, push_branch, current_branch};
 use crate::nostr::NostrClient;
 use crate::nostr::events::{BountyClaimBuilder, BountyOfferBuilder, IssueClaimBuilder, PatchBuilder, PullRequestBuilder, RepositoryAnnouncementBuilder, StatusEventBuilder};
-use crate::views::{agent_profile_page, home_page_with_repos, issue_create_form_page, issue_detail_page, issues_list_page, patch_create_form_page, patch_detail_page, patches_list_page, pr_create_form_page, pull_request_detail_page, pull_requests_list_page, repository_create_form_page, repository_detail_page, search_results_page, trajectory_viewer_page};
+use crate::views::{agent_profile_page, git_branch_create_form_page, git_status_page, home_page_with_repos, issue_create_form_page, issue_detail_page, issues_list_page, patch_create_form_page, patch_detail_page, patches_list_page, pr_create_form_page, pull_request_detail_page, pull_requests_list_page, repository_create_form_page, repository_detail_page, search_results_page, trajectory_viewer_page};
 use crate::ws::{ws_handler, WsBroadcaster};
 use nostr::{EventTemplate, Issue, KIND_ISSUE};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -77,6 +77,12 @@ pub async fn start_server(
             .route("/repo/{identifier}/watch", web::post().to(watch_repository))
             .route("/repo/{identifier}/unwatch", web::post().to(unwatch_repository))
             .route("/repo/{identifier}/clone", web::post().to(clone_repo))
+            .route("/repo/{identifier}/git/status", web::get().to(git_status))
+            .route("/repo/{identifier}/git/branch/new", web::get().to(git_branch_form))
+            .route("/repo/{identifier}/git/branch", web::post().to(git_branch_create))
+            .route("/repo/{identifier}/git/patch/generate", web::post().to(git_patch_generate))
+            .route("/repo/{identifier}/git/patch/apply", web::post().to(git_patch_apply))
+            .route("/repo/{identifier}/git/push", web::post().to(git_push))
             .route("/ws", web::get().to(ws_route))
     })
     .bind("127.0.0.1:0")?;
@@ -2012,6 +2018,265 @@ async fn repository_create(
                         <p><a href="/repo/new">← Try Again</a></p>
                     </div>"#,
                     e
+                ))
+        }
+    }
+}
+
+/// Git status page - shows local changes
+async fn git_status(
+    path: web::Path<String>,
+) -> HttpResponse {
+    let identifier = path.into_inner();
+
+    // Check if repository is cloned
+    if !is_repository_cloned(&identifier) {
+        return HttpResponse::BadRequest()
+            .content_type("text/html; charset=utf-8")
+            .body("<h1>Repository not cloned locally</h1><p>Clone the repository first.</p>");
+    }
+
+    let repo_path = get_repository_path(&identifier);
+
+    // Get file status
+    match get_status(&repo_path) {
+        Ok(changes) => {
+            HttpResponse::Ok()
+                .content_type("text/html; charset=utf-8")
+                .body(git_status_page(&identifier, &changes).into_string())
+        }
+        Err(e) => {
+            tracing::error!("Failed to get git status: {}", e);
+            HttpResponse::InternalServerError()
+                .content_type("text/html; charset=utf-8")
+                .body(format!("<h1>Error</h1><p>Failed to get status: {}</p>", e))
+        }
+    }
+}
+
+/// Git branch creation form
+async fn git_branch_form(
+    path: web::Path<String>,
+) -> HttpResponse {
+    let identifier = path.into_inner();
+
+    // Check if repository is cloned
+    if !is_repository_cloned(&identifier) {
+        return HttpResponse::BadRequest()
+            .content_type("text/html; charset=utf-8")
+            .body("<h1>Repository not cloned locally</h1><p>Clone the repository first.</p>");
+    }
+
+    HttpResponse::Ok()
+        .content_type("text/html; charset=utf-8")
+        .body(git_branch_create_form_page(&identifier).into_string())
+}
+
+/// Create a new git branch
+async fn git_branch_create(
+    path: web::Path<String>,
+    form: web::Form<std::collections::HashMap<String, String>>,
+) -> HttpResponse {
+    let identifier = path.into_inner();
+    let branch_name = match form.get("branch_name") {
+        Some(name) if !name.is_empty() => name,
+        _ => {
+            return HttpResponse::BadRequest()
+                .content_type("text/html; charset=utf-8")
+                .body("<h1>Error</h1><p>Branch name is required</p>");
+        }
+    };
+
+    // Check if repository is cloned
+    if !is_repository_cloned(&identifier) {
+        return HttpResponse::BadRequest()
+            .content_type("text/html; charset=utf-8")
+            .body("<h1>Repository not cloned locally</h1><p>Clone the repository first.</p>");
+    }
+
+    let repo_path = get_repository_path(&identifier);
+
+    match create_branch(&repo_path, branch_name) {
+        Ok(_) => {
+            HttpResponse::Ok()
+                .content_type("text/html; charset=utf-8")
+                .body(format!(
+                    r#"<div style="padding: 1rem; background: #d1fae5; border-left: 4px solid #10b981;">
+                        <h3>Branch Created</h3>
+                        <p>Successfully created branch: {}</p>
+                        <p><a href="/repo/{}">← Back to Repository</a></p>
+                    </div>"#,
+                    branch_name, identifier
+                ))
+        }
+        Err(e) => {
+            tracing::error!("Failed to create branch: {}", e);
+            HttpResponse::InternalServerError()
+                .content_type("text/html; charset=utf-8")
+                .body(format!(
+                    r#"<div style="padding: 1rem; background: #fee2e2; border-left: 4px solid #dc2626;">
+                        <h3>Error Creating Branch</h3>
+                        <p>{}</p>
+                        <p><a href="/repo/{}/git/branch/new">← Try Again</a></p>
+                    </div>"#,
+                    e, identifier
+                ))
+        }
+    }
+}
+
+/// Generate patch from local commits
+async fn git_patch_generate(
+    path: web::Path<String>,
+    form: web::Form<std::collections::HashMap<String, String>>,
+) -> HttpResponse {
+    let identifier = path.into_inner();
+    let base_commit = match form.get("base_commit") {
+        Some(c) if !c.is_empty() => c,
+        _ => {
+            return HttpResponse::BadRequest()
+                .content_type("text/html; charset=utf-8")
+                .body("<h1>Error</h1><p>Base commit ID is required</p>");
+        }
+    };
+
+    let head_commit = match form.get("head_commit") {
+        Some(c) if !c.is_empty() => c,
+        _ => {
+            return HttpResponse::BadRequest()
+                .content_type("text/html; charset=utf-8")
+                .body("<h1>Error</h1><p>Head commit ID is required</p>");
+        }
+    };
+
+    // Check if repository is cloned
+    if !is_repository_cloned(&identifier) {
+        return HttpResponse::BadRequest()
+            .content_type("text/html; charset=utf-8")
+            .body("<h1>Repository not cloned locally</h1><p>Clone the repository first.</p>");
+    }
+
+    let repo_path = get_repository_path(&identifier);
+
+    match generate_patch(&repo_path, base_commit, head_commit) {
+        Ok(patch) => {
+            HttpResponse::Ok()
+                .content_type("text/plain; charset=utf-8")
+                .body(patch)
+        }
+        Err(e) => {
+            tracing::error!("Failed to generate patch: {}", e);
+            HttpResponse::InternalServerError()
+                .content_type("text/html; charset=utf-8")
+                .body(format!("<h1>Error</h1><p>Failed to generate patch: {}</p>", e))
+        }
+    }
+}
+
+/// Apply a patch to local repository
+async fn git_patch_apply(
+    path: web::Path<String>,
+    form: web::Form<std::collections::HashMap<String, String>>,
+) -> HttpResponse {
+    let identifier = path.into_inner();
+    let patch_content = match form.get("patch") {
+        Some(p) if !p.is_empty() => p,
+        _ => {
+            return HttpResponse::BadRequest()
+                .content_type("text/html; charset=utf-8")
+                .body("<h1>Error</h1><p>Patch content is required</p>");
+        }
+    };
+
+    // Check if repository is cloned
+    if !is_repository_cloned(&identifier) {
+        return HttpResponse::BadRequest()
+            .content_type("text/html; charset=utf-8")
+            .body("<h1>Repository not cloned locally</h1><p>Clone the repository first.</p>");
+    }
+
+    let repo_path = get_repository_path(&identifier);
+
+    match apply_patch(&repo_path, patch_content) {
+        Ok(_) => {
+            HttpResponse::Ok()
+                .content_type("text/html; charset=utf-8")
+                .body(format!(
+                    r#"<div style="padding: 1rem; background: #d1fae5; border-left: 4px solid #10b981;">
+                        <h3>Patch Applied</h3>
+                        <p>Successfully applied patch to repository</p>
+                        <p><a href="/repo/{}/git/status">View Changes →</a></p>
+                    </div>"#,
+                    identifier
+                ))
+        }
+        Err(e) => {
+            tracing::error!("Failed to apply patch: {}", e);
+            HttpResponse::InternalServerError()
+                .content_type("text/html; charset=utf-8")
+                .body(format!(
+                    r#"<div style="padding: 1rem; background: #fee2e2; border-left: 4px solid #dc2626;">
+                        <h3>Error Applying Patch</h3>
+                        <p>{}</p>
+                        <p><a href="/repo/{}">← Back to Repository</a></p>
+                    </div>"#,
+                    e, identifier
+                ))
+        }
+    }
+}
+
+/// Push local branch to remote
+async fn git_push(
+    path: web::Path<String>,
+    form: web::Form<std::collections::HashMap<String, String>>,
+) -> HttpResponse {
+    let identifier = path.into_inner();
+    let remote_name = form.get("remote").cloned().unwrap_or_else(|| "origin".to_string());
+
+    // Check if repository is cloned
+    if !is_repository_cloned(&identifier) {
+        return HttpResponse::BadRequest()
+            .content_type("text/html; charset=utf-8")
+            .body("<h1>Repository not cloned locally</h1><p>Clone the repository first.</p>");
+    }
+
+    let repo_path = get_repository_path(&identifier);
+
+    // Get current branch name
+    let branch_name = match current_branch(&repo_path) {
+        Ok(name) => name,
+        Err(e) => {
+            return HttpResponse::InternalServerError()
+                .content_type("text/html; charset=utf-8")
+                .body(format!("<h1>Error</h1><p>Failed to get current branch: {}</p>", e));
+        }
+    };
+
+    match push_branch(&repo_path, &remote_name, &branch_name) {
+        Ok(_) => {
+            HttpResponse::Ok()
+                .content_type("text/html; charset=utf-8")
+                .body(format!(
+                    r#"<div style="padding: 1rem; background: #d1fae5; border-left: 4px solid #10b981;">
+                        <h3>Push Successful</h3>
+                        <p>Pushed branch {} to {}</p>
+                        <p><a href="/repo/{}">← Back to Repository</a></p>
+                    </div>"#,
+                    branch_name, remote_name, identifier
+                ))
+        }
+        Err(e) => {
+            tracing::error!("Failed to push branch: {}", e);
+            HttpResponse::InternalServerError()
+                .content_type("text/html; charset=utf-8")
+                .body(format!(
+                    r#"<div style="padding: 1rem; background: #fee2e2; border-left: 4px solid #dc2626;">
+                        <h3>Error Pushing Branch</h3>
+                        <p>{}</p>
+                        <p><a href="/repo/{}">← Back to Repository</a></p>
+                    </div>"#,
+                    e, identifier
                 ))
         }
     }
