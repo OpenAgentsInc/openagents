@@ -170,7 +170,7 @@ pub fn decrypt(
     iv_array.copy_from_slice(&iv);
 
     let cipher = Aes256CbcDec::new(shared_x.into(), &iv_array.into());
-    let mut buffer = encrypted_bytes.clone();
+    let mut buffer = encrypted_bytes;
     let decrypted = cipher.decrypt_padded_mut::<cbc::cipher::block_padding::NoPadding>(&mut buffer)
         .map_err(|e| Nip04Error::Decryption(e.to_string()))?;
 
