@@ -158,6 +158,7 @@ fn test_trajectory_with_errors() {
         result_text: None,
         errors: vec!["File not found".to_string()],
         issues_completed: 0,
+                apm: Some(20.0),
     });
 
     assert!(traj.result.is_some());
@@ -259,6 +260,7 @@ fn test_trajectory_result_with_no_errors() {
         result_text: None,
         errors: vec![],
         issues_completed: 5,
+                apm: Some(20.0),
     });
 
     assert!(traj.result.is_some());
@@ -286,6 +288,7 @@ fn test_trajectory_result_with_multiple_errors() {
         result_text: None,
         errors: errors.clone(),
         issues_completed: 0,
+                apm: Some(20.0),
     });
 
     assert!(traj.result.is_some());

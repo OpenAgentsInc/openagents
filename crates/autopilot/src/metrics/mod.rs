@@ -1527,6 +1527,7 @@ mod tests {
                 result_text: Some("Done".to_string()),
                 errors: vec![],
                 issues_completed: 1,
+                apm: Some(20.0),
             }),
             usage: TokenUsage {
                 input_tokens: 1000,

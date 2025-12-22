@@ -35,10 +35,10 @@ fn create_test_session(
         tool_calls: 25,
         tool_errors,
         final_status: status,
-            messages: 10,
-            apm: None,
-            source: "autopilot".to_string(),
-        }
+        messages: 10,
+        apm: Some(20.0), // (10 messages + 25 tool_calls) / 5 minutes = 7.0 APM
+        source: "autopilot".to_string(),
+    }
 }
 
 /// Create test summary stats
