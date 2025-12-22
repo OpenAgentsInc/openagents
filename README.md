@@ -12,7 +12,7 @@ This is not another AI wrapper or chatbot framework. This is the full stack for 
 
 ### The Problem
 
-Today's AI agents are second-class citizens:
+Today's AI agents lack the infrastructure to be autonomous:
 - **Borrowed identities** — Agents use human API keys and accounts
 - **No economic agency** — Agents can't hold money or transact directly
 - **Opaque behavior** — No way to verify what an agent actually did
@@ -102,7 +102,7 @@ One global market for the agent economy:
 
 ### Autopilot
 
-Autonomous task execution with complete transparency:
+The autonomous coding agent:
 - Claims issues from queue by priority
 - Executes with full trajectory logging
 - Measures APM (Actions Per Minute) for velocity tracking
@@ -113,38 +113,38 @@ Autonomous task execution with complete transparency:
 ## Architecture at a Glance
 
 ```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                              OPENAGENTS STACK                                 │
-├─────────────────────────────────────────────────────────────────────────────┤
-│                                                                               │
-│  APPLICATIONS                                                                 │
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐         │
-│  │   Wallet    │  │  AgentGit   │  │  Autopilot  │  │ Marketplace │         │
-│  │  (Identity  │  │  (Git on    │  │ (Autonomous │  │  (Compute/  │         │
-│  │  + Bitcoin) │  │   Nostr)    │  │   Tasks)    │  │   Skills)   │         │
-│  └──────┬──────┘  └──────┬──────┘  └──────┬──────┘  └──────┬──────┘         │
-│         │                │                │                │                  │
-│         └────────────────┴────────────────┴────────────────┘                  │
-│                                   │                                           │
-│  PROTOCOL LAYER                   │                                           │
-│  ┌────────────────────────────────┴────────────────────────────────────────┐ │
-│  │                           Nostr (94 NIPs)                                │ │
-│  │  NIP-01 (Events) · NIP-06 (Keys) · NIP-34 (Git) · NIP-90 (DVMs)        │ │
-│  │  NIP-SA (Agents) · NIP-57 (Zaps) · NIP-44 (Encryption)                 │ │
-│  └─────────────────────────────────────────────────────────────────────────┘ │
-│                                   │                                           │
-│  CRYPTOGRAPHY                     │                                           │
-│  ┌─────────────────┐  ┌───────────┴───────────┐  ┌─────────────────┐        │
-│  │    FROSTR       │  │    Spark SDK          │  │    secp256k1    │        │
-│  │ (Threshold Sig) │  │ (Lightning + L2)      │  │   (Schnorr)     │        │
-│  └─────────────────┘  └───────────────────────┘  └─────────────────┘        │
-│                                                                               │
-│  INFRASTRUCTURE                                                               │
-│  ┌─────────────────────────────────────────────────────────────────────────┐ │
-│  │  Rust · Tokio · Actix · SQLite · wry/tao · Maud/HTMX                   │ │
-│  └─────────────────────────────────────────────────────────────────────────┘ │
-│                                                                               │
-└─────────────────────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────────┐
+│                            OPENAGENTS STACK                              │
+├──────────────────────────────────────────────────────────────────────────┤
+│                                                                          │
+│  APPLICATIONS                                                            │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐     │
+│  │  Autopilot  │  │   Wallet    │  │  AgentGit   │  │ Marketplace │     │
+│  │ (Autonomous │  │  (Identity  │  │  (Git on    │  │  (Compute/  │     │
+│  │   Coding)   │  │  + Bitcoin) │  │   Nostr)    │  │   Skills)   │     │
+│  └──────┬──────┘  └──────┬──────┘  └──────┬──────┘  └──────┬──────┘     │
+│         │                │                │                │             │
+│         └────────────────┴────────────────┴────────────────┘             │
+│                                   │                                      │
+│  PROTOCOL LAYER                   │                                      │
+│  ┌────────────────────────────────┴───────────────────────────────────┐  │
+│  │                         Nostr (94 NIPs)                            │  │
+│  │  NIP-01 (Events) · NIP-06 (Keys) · NIP-34 (Git) · NIP-90 (DVMs)   │  │
+│  │  NIP-SA (Agents) · NIP-57 (Zaps) · NIP-44 (Encryption)            │  │
+│  └────────────────────────────────────────────────────────────────────┘  │
+│                                   │                                      │
+│  CRYPTOGRAPHY                     │                                      │
+│  ┌─────────────────┐  ┌───────────┴───────────┐  ┌─────────────────┐    │
+│  │    FROSTR       │  │    Spark SDK          │  │    secp256k1    │    │
+│  │ (Threshold Sig) │  │ (Lightning + L2)      │  │   (Schnorr)     │    │
+│  └─────────────────┘  └───────────────────────┘  └─────────────────┘    │
+│                                                                          │
+│  INFRASTRUCTURE                                                          │
+│  ┌────────────────────────────────────────────────────────────────────┐  │
+│  │  Rust · Tokio · Actix · SQLite · wry/tao · Maud/HTMX              │  │
+│  └────────────────────────────────────────────────────────────────────┘  │
+│                                                                          │
+└──────────────────────────────────────────────────────────────────────────┘
 ```
 
 ---
@@ -972,7 +972,7 @@ This workflow leverages each agent's strengths: Claude for analysis/review, Code
 
 ## License
 
-MIT
+Apache 2.0
 
 ## Links
 
