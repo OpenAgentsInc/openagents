@@ -15,6 +15,7 @@ Summary
 - Extended pass: High 3, Medium 6, Low 2
 - Deeper pass: High 1, Medium 6, Low 2
 - Deeper pass 2: Medium 5, Low 3
-- Key themes: DB schema mismatches, unsafe process cleanup, panic-on-corrupt metrics, silent log loss, identity/secret handling, and missing integrations
+- Deeper pass 3: Medium 3, Low 3
+- Key themes: DB schema mismatches, unsafe process cleanup, panic-on-corrupt metrics, silent log loss, identity/secret handling, missing integrations, and stubbed unified interfaces
 
-See `docs/logs/20251222/audit1/findings.md` for the initial findings, `docs/logs/20251222/audit1/findings-extended.md` plus `docs/logs/20251222/audit1/coverage-extended.md` for the extended review, `docs/logs/20251222/audit1/findings-deeper.md` plus `docs/logs/20251222/audit1/coverage-deeper.md` for the deeper audit, and `docs/logs/20251222/audit1/findings-deeper-2.md` plus `docs/logs/20251222/audit1/coverage-deeper-2.md` for the latest pass.
+See `docs/logs/20251222/audit1/findings.md` for the initial findings, `docs/logs/20251222/audit1/findings-extended.md` plus `docs/logs/20251222/audit1/coverage-extended.md` for the extended review, `docs/logs/20251222/audit1/findings-deeper.md` plus `docs/logs/20251222/audit1/coverage-deeper.md` for the deeper audit, `docs/logs/20251222/audit1/findings-deeper-2.md` plus `docs/logs/20251222/audit1/coverage-deeper-2.md` for the prior pass, and `docs/logs/20251222/audit1/findings-deeper-3.md` plus `docs/logs/20251222/audit1/coverage-deeper-3.md` for the latest pass.
