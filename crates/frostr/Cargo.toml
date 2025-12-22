@@ -1,7 +1,7 @@
 [package]
 name = "frostr"
-version = "0.1.0"
-edition = "2024"
+version.workspace = true
+edition.workspace = true
 authors = ["OpenAgents"]
 description = "Native Rust implementation of FROSTR protocol for threshold Schnorr signatures"
 license = "MIT"
