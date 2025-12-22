@@ -142,6 +142,14 @@ impl MockRelay {
         self.state.events.read().await.len()
     }
 
+    /// Store an event directly (for testing)
+    ///
+    /// This bypasses WebSocket publishing and stores the event directly.
+    /// Useful for test setup.
+    pub async fn store_event(&self, event: Event) {
+        self.state.events.write().await.insert(event.id.clone(), event);
+    }
+
     /// Shutdown the relay
     ///
     /// Note: With warp 0.4, graceful shutdown is not easily supported.
