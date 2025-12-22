@@ -252,3 +252,30 @@ t!:Bash id=AkF3B1HM cmd="cargo build -p openagents-spark && cargo test -..." →
 o: id=AkF3B1HM → [ok] test signer::tests::test_deterministic_derivation ... ok
 a: Perfect! Now let me commit: tokens_in=0 tokens_out=1 tokens_cached=96116
 t!:Bash id=J2Jz4Bgw cmd="git add -A && git commit -m "$(cat <<'EOF'" → [running] tokens_in=0 tokens_out=1 tokens_cached=96116
+o: id=J2Jz4Bgw → [ok] [main 835c1439d] Remove all payment stub errors from spark crate
+t!:Bash id=Ebm7WwH3 cmd="git push origin main" → [running] tokens_in=0 tokens_out=74 tokens_cached=96768
+o: id=Ebm7WwH3 → [ok] [0;36m🔍 Running cargo build to check for errors and warnings...[0m
+t!:Bash id=Jn5pcA9D cmd="cargo autopilot issue complete 644" → [running] tokens_in=0 tokens_out=79 tokens_cached=97349
+o: id=Jn5pcA9D → [ok] ✓ Completed issue #644: Remove all payment stub errors - full SDK integration
+t!:Bash id=ihJCxPax cmd="cargo autopilot issue claim 645" → [running] tokens_in=0 tokens_out=80 tokens_cached=97510
+o: id=ihJCxPax → [ok] ✓ Claimed issue #645: Implement APM calculation module
+a: Now I need to implement APM (Actions Per Minute) calculation. Let me check the directive d-016 to understand the requirements: tokens_in=0 tokens_out=1 tokens_cached=97858
+t!:Read id=uRuoDBLZ file_path=/home/christopherdavid/code/openagents/.openagents/directives/d-016.md → [running] tokens_in=0 tokens_out=1 tokens_cached=97858
+o: id=uRuoDBLZ → [ok]      1→---
+t!:Read id=DDKsHJbV file_path=/home/christopherdavid/code/openagents/.openagents/directives/d-016.md → [running] tokens_in=0 tokens_out=18 tokens_cached=98109
+o: id=DDKsHJbV → [ok]    150→
+a: Good! Now I understand the requirements. Let me create the APM calculation module: tokens_in=0 tokens_out=1 tokens_cached=100329
+t!:Write id=EJgYBAF9 file_path=/home/christopherdavid/code/openagents/crates/autopilot/src/apm.rs → [running] tokens_in=0 tokens_out=3353 tokens_cached=100329
+o: id=EJgYBAF9 → [ok] File created successfully at: /home/christopherdavid/code/openagents/crates/autopilot/src/apm.rs
+a: Now add it to the mod.rs: tokens_in=0 tokens_out=2 tokens_cached=102047
+t!:Read id=WkB7zDAy file_path=/home/christopherdavid/code/openagents/crates/autopilot/src/lib.rs → [running] tokens_in=0 tokens_out=89 tokens_cached=102047
+o: id=WkB7zDAy → [ok]      1→//! Autopilot - Autonomous task runner with trajectory logging
+t!:Edit id=95azcurU file_path=/home/christopherdavid/code/openagents/crates/autopilot/src/lib.rs → [running] tokens_in=0 tokens_out=411 tokens_cached=105445
+o: id=95azcurU → [ok] The file /home/christopherdavid/code/openagents/crates/autopilot/src/lib.rs has been updated. Her...
+a: Now let's build and test: tokens_in=0 tokens_out=1 tokens_cached=113993
+t!:Bash id=yqpHdDMd cmd="cargo build -p autopilot 2>&1 | tail -20" → [running] tokens_in=0 tokens_out=1 tokens_cached=113993
+o: id=yqpHdDMd → [ok]    Compiling autopilot v0.1.0 (/home/christopherdavid/code/openagents/crates/autopilot)
+t!:Bash id=5MV9WQKB cmd="cargo test -p autopilot --lib apm 2>&1 | tail -30" → [running] tokens_in=0 tokens_out=25 tokens_cached=114776
+o: id=5MV9WQKB → [ok]    Compiling lightning v0.1.8
+a: Excellent! All tests pass. Now commit this work: tokens_in=0 tokens_out=5 tokens_cached=115049
+t!:Bash id=eCxP3qwR cmd="git add -A && git commit -m "$(cat <<'EOF'" → [running] tokens_in=0 tokens_out=5 tokens_cached=115049

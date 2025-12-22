@@ -6,6 +6,7 @@
 use std::path::PathBuf;
 
 pub mod analyze;
+pub mod apm;
 pub mod auto_issues;
 pub mod benchmark;
 pub mod compaction;
