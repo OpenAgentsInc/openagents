@@ -286,6 +286,7 @@ fn compute_cost(trajectory: &Trajectory) -> CostMetrics {
             StepType::User { .. } => "user",
             StepType::SystemInit { .. } => "system_init",
             StepType::SystemStatus { .. } => "system_status",
+            StepType::Subagent { .. } => "subagent",
         };
 
         let entry = tokens_by_step_type.entry(step_name.to_string()).or_insert(0);

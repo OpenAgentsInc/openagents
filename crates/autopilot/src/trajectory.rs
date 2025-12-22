@@ -3,6 +3,9 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use std::fs::{File, OpenOptions};
+use std::io::{BufWriter, Write};
+use std::path::Path;
 
 /// Complete trajectory of an agent run
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -69,6 +72,27 @@ pub enum StepType {
     SystemInit { model: String },
     /// System status
     SystemStatus { status: String },
+    /// Subagent spawn/completion (for x: lines in rlog)
+    Subagent {
+        /// Unique ID for the subagent
+        agent_id: String,
+        /// Type of subagent (explore, plan, etc.)
+        agent_type: String,
+        /// Status: started, done, error
+        status: SubagentStatus,
+        /// Summary of subagent work (only on completion)
+        #[serde(skip_serializing_if = "Option::is_none")]
+        summary: Option<String>,
+    },
+}
+
+/// Status of a subagent
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SubagentStatus {
+    Started,
+    Done,
+    Error,
 }
 
 /// Token usage statistics
@@ -150,6 +174,97 @@ impl Step {
             StepType::SystemInit { model } => Some(model),
             StepType::SystemStatus { status } => Some(status),
             StepType::ToolCall { .. } => None,
+            StepType::Subagent { summary, .. } => summary.as_deref(),
         }
+    }
+}
+
+/// Writer for JSONL files (full untruncated data)
+///
+/// Writes SDK messages in Claude Code compatible JSONL format.
+/// Each message is written as a single line of JSON.
+pub struct JsonlWriter {
+    writer: Option<BufWriter<File>>,
+    path: Option<String>,
+    session_id: String,
+    line_count: u64,
+}
+
+impl JsonlWriter {
+    /// Create a new JSONL writer
+    pub fn new() -> Self {
+        Self {
+            writer: None,
+            path: None,
+            session_id: String::new(),
+            line_count: 0,
+        }
+    }
+
+    /// Initialize the writer with a file path
+    pub fn init<P: AsRef<Path>>(&mut self, path: P, session_id: &str) -> std::io::Result<()> {
+        let file = OpenOptions::new()
+            .create(true)
+            .write(true)
+            .truncate(true)
+            .open(path.as_ref())?;
+
+        self.writer = Some(BufWriter::new(file));
+        self.path = Some(path.as_ref().to_string_lossy().to_string());
+        self.session_id = session_id.to_string();
+        self.line_count = 0;
+        Ok(())
+    }
+
+    /// Write a raw SDK message as JSONL
+    ///
+    /// This preserves the full message without any truncation.
+    pub fn write_message<T: Serialize>(&mut self, message: &T) -> std::io::Result<()> {
+        if let Some(ref mut writer) = self.writer {
+            let json = serde_json::to_string(message)?;
+            writeln!(writer, "{}", json)?;
+            self.line_count += 1;
+        }
+        Ok(())
+    }
+
+    /// Write a raw JSON value as JSONL
+    pub fn write_value(&mut self, value: &Value) -> std::io::Result<()> {
+        if let Some(ref mut writer) = self.writer {
+            let json = serde_json::to_string(value)?;
+            writeln!(writer, "{}", json)?;
+            self.line_count += 1;
+        }
+        Ok(())
+    }
+
+    /// Flush the writer
+    pub fn flush(&mut self) -> std::io::Result<()> {
+        if let Some(ref mut writer) = self.writer {
+            writer.flush()?;
+        }
+        Ok(())
+    }
+
+    /// Get the number of lines written
+    pub fn line_count(&self) -> u64 {
+        self.line_count
+    }
+
+    /// Get the file path
+    pub fn path(&self) -> Option<&str> {
+        self.path.as_deref()
+    }
+}
+
+impl Default for JsonlWriter {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl Drop for JsonlWriter {
+    fn drop(&mut self) {
+        let _ = self.flush();
     }
 }
