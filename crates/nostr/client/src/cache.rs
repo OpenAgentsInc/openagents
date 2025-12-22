@@ -260,10 +260,10 @@ impl EventCache {
             if tag.len() >= 2 {
                 let tag_name = &tag[0];
                 let tag_value = &tag[1];
-                if let Some(values) = self.by_tag.get_mut(tag_name) {
-                    if let Some(ids) = values.get_mut(tag_value) {
-                        ids.remove(event_id);
-                    }
+                if let Some(values) = self.by_tag.get_mut(tag_name)
+                    && let Some(ids) = values.get_mut(tag_value)
+                {
+                    ids.remove(event_id);
                 }
             }
         }
@@ -276,12 +276,12 @@ impl EventCache {
             }
         }
 
-        if self.is_param_replaceable_kind(event.kind) {
-            if let Some(d_tag) = self.get_d_tag(&event) {
-                let key = (event.pubkey.clone(), event.kind, d_tag);
-                if self.param_replaceable.get(&key) == Some(&event.id) {
-                    self.param_replaceable.remove(&key);
-                }
+        if self.is_param_replaceable_kind(event.kind)
+            && let Some(d_tag) = self.get_d_tag(&event)
+        {
+            let key = (event.pubkey.clone(), event.kind, d_tag);
+            if self.param_replaceable.get(&key) == Some(&event.id) {
+                self.param_replaceable.remove(&key);
             }
         }
 

@@ -207,14 +207,14 @@ impl MessageQueue {
 
         // Check if message is ready for retry (based on backoff)
         if let Some(msg) = result {
-            if msg.retry_count > 0 {
-                if let Some(last_retry) = msg.last_retry {
-                    let delay = self.calculate_backoff(msg.retry_count);
-                    let next_retry_millis = last_retry + delay.as_millis() as u64;
-                    if now < next_retry_millis {
-                        // Not ready for retry yet
-                        return Ok(None);
-                    }
+            if msg.retry_count > 0
+                && let Some(last_retry) = msg.last_retry
+            {
+                let delay = self.calculate_backoff(msg.retry_count);
+                let next_retry_millis = last_retry + delay.as_millis() as u64;
+                if now < next_retry_millis {
+                    // Not ready for retry yet
+                    return Ok(None);
                 }
             }
             Ok(Some(msg))
