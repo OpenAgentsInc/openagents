@@ -60,6 +60,7 @@ pub async fn start_server(
             .route("/repo/{identifier}/issues/{issue_id}", web::get().to(issue_detail))
             .route("/repo/{identifier}/issues/{issue_id}/claim", web::post().to(issue_claim))
             .route("/repo/{identifier}/issues/{issue_id}/bounty", web::post().to(issue_bounty_create))
+            .route("/repo/{identifier}/issues/{issue_id}/comment", web::post().to(issue_comment))
             .route("/repo/{identifier}/patches", web::get().to(repository_patches))
             .route("/repo/{identifier}/patches/new", web::get().to(patch_create_form))
             .route("/repo/{identifier}/patches", web::post().to(patch_create))
@@ -638,6 +639,120 @@ async fn issue_bounty_create(
                 .body(format!(
                     r#"<div style="padding: 1rem; background: #fee2e2; border-left: 4px solid #dc2626;">
                         <h3>Failed to Sign Bounty Event</h3>
+                        <p>Error: {}</p>
+                    </div>"#,
+                    e
+                ))
+        }
+    }
+}
+
+/// Post a comment on an issue (NIP-22)
+async fn issue_comment(
+    state: web::Data<AppState>,
+    path: web::Path<(String, String)>,
+    form: web::Form<std::collections::HashMap<String, String>>,
+) -> HttpResponse {
+    let (identifier, issue_id) = path.into_inner();
+    let content = form.get("content").cloned().unwrap_or_default();
+
+    if content.trim().is_empty() {
+        return HttpResponse::BadRequest()
+            .content_type("text/html; charset=utf-8")
+            .body(r#"<div class="error-message"><p>❌ Comment cannot be empty</p></div>"#);
+    }
+
+    // Fetch issue to get author pubkey for p tag
+    let issue = match state.nostr_client.get_cached_event(&issue_id).await {
+        Ok(Some(iss)) => iss,
+        Ok(None) => {
+            return HttpResponse::NotFound()
+                .content_type("text/html; charset=utf-8")
+                .body("<h1>Issue not found</h1>");
+        }
+        Err(e) => {
+            tracing::error!("Failed to fetch issue: {}", e);
+            return HttpResponse::InternalServerError()
+                .content_type("text/html; charset=utf-8")
+                .body("<h1>Error fetching issue</h1>");
+        }
+    };
+
+    let issue_author_pubkey = &issue.pubkey;
+
+    // Build NIP-22 comment event (kind:1 with e and p tags)
+    let event_template = EventTemplate {
+        kind: 1, // Text note (NIP-01)
+        content: content.clone(),
+        tags: vec![
+            vec!["e".to_string(), issue_id.clone(), "".to_string(), "root".to_string()],
+            vec!["p".to_string(), issue_author_pubkey.clone()],
+        ],
+    };
+
+    // Sign and publish event
+    match state.sign_event(event_template) {
+        Ok(signed_event) => {
+            let event_id = signed_event.id.clone();
+
+            // Publish to relays
+            match state.nostr_client.publish_event(signed_event).await {
+                Ok(_) => {
+                    tracing::info!("Published issue comment: event_id={}, issue_id={}", event_id, issue_id);
+
+                    // Return new comment HTML for HTMX to insert
+                    let timestamp = SystemTime::now()
+                        .duration_since(UNIX_EPOCH)
+                        .unwrap()
+                        .as_secs();
+
+                    let commenter_pubkey = if let Some(identity) = &state.identity {
+                        let pk = identity.nostr_keys().public_key().to_string();
+                        if pk.len() > 16 {
+                            format!("{}...{}", &pk[..8], &pk[pk.len()-8..])
+                        } else {
+                            pk
+                        }
+                    } else {
+                        "unknown".to_string()
+                    };
+
+                    HttpResponse::Ok()
+                        .content_type("text/html; charset=utf-8")
+                        .body(format!(
+                            r#"<div class="comment-card" style="background: var(--card-bg, #1a1a1a); border: 1px solid var(--border-color, #333); padding: 1rem;">
+                                <div class="comment-header" style="display: flex; justify-content: space-between; margin-bottom: 0.75rem;">
+                                    <span class="comment-author" style="font-weight: 600; color: var(--accent-color, #0ea5e9);">{}</span>
+                                    <span class="comment-time" style="font-size: 0.875rem; color: var(--muted-color, #888);" title="{}">just now</span>
+                                </div>
+                                <div class="comment-content" style="white-space: pre-wrap;">{}</div>
+                            </div>"#,
+                            commenter_pubkey,
+                            timestamp,
+                            content
+                        ))
+                }
+                Err(e) => {
+                    tracing::error!("Failed to publish comment: {}", e);
+                    HttpResponse::InternalServerError()
+                        .content_type("text/html; charset=utf-8")
+                        .body(format!(
+                            r#"<div style="padding: 1rem; background: #fee2e2; border-left: 4px solid #dc2626;">
+                                <h3>Failed to Publish Comment</h3>
+                                <p>Error: {}</p>
+                            </div>"#,
+                            e
+                        ))
+                }
+            }
+        }
+        Err(e) => {
+            tracing::error!("Failed to sign comment event: {}", e);
+            HttpResponse::InternalServerError()
+                .content_type("text/html; charset=utf-8")
+                .body(format!(
+                    r#"<div style="padding: 1rem; background: #fee2e2; border-left: 4px solid #dc2626;">
+                        <h3>Failed to Sign Comment Event</h3>
                         <p>Error: {}</p>
                     </div>"#,
                     e
