@@ -140,6 +140,7 @@
 //! - NIP-39: External Identities in Profiles
 //! - NIP-40: Expiration Timestamp
 //! - NIP-42: Authentication of Clients to Relays
+//! - NIP-43: Relay Access Metadata and Requests (membership lists, join/leave requests)
 //! - NIP-44: Versioned Encryption (requires `full` feature)
 //! - NIP-45: Event Counts (COUNT verb for relays)
 //! - NIP-46: Nostr Remote Signing (requires `full` feature)
@@ -233,6 +234,7 @@ mod nip38;
 mod nip39;
 mod nip40;
 mod nip42;
+mod nip43;
 #[cfg(feature = "full")]
 mod nip44;
 mod nip45;
@@ -522,6 +524,15 @@ pub use nip42::{
     RESTRICTED_PREFIX, create_auth_event_tags, create_auth_required_message,
     create_restricted_message, get_challenge, get_relay_url, is_auth_event,
     is_auth_required_error, is_restricted_error, normalize_relay_url, validate_auth_event,
+};
+
+// NIP-43: Relay Access Metadata and Requests
+pub use nip43::{
+    ADD_USER_KIND, AddUserEvent, CLAIM_TAG, INVITE_REQUEST_KIND, InviteRequestEvent,
+    JOIN_REQUEST_KIND, JoinRequestEvent, LEAVE_REQUEST_KIND, LeaveRequestEvent, MEMBER_TAG,
+    MEMBERSHIP_LIST_KIND, MembershipListEvent, Nip43Error, REMOVE_USER_KIND,
+    RemoveUserEvent, validate_add_user, validate_join_request, validate_leave_request,
+    validate_membership_list, validate_remove_user,
 };
 
 // NIP-44: Versioned Encryption (requires full feature)

@@ -1,123 +1,135 @@
-# APM Historical Report Plan
+# APM Methodology
 
-## Goal
-Generate a multi-computer APM report comparing historical data to the last 48 hours, with instructions for combining data from both systems.
+## Overview
 
-## Data Sources Discovered
+APM (Actions Per Minute) measures agent execution velocity - how many meaningful actions an agent performs per unit time. This document describes the data sources, collection methods, and calculation formulas used in APM reporting.
 
-### This Computer (macOS - christopherdavid)
+## Formula
 
-| Source | Location | Count | Date Range |
-|--------|----------|-------|------------|
-| Claude Code Sessions | `~/.claude/projects/-Users-christopherdavid-code-openagents/*.jsonl` | 2,062 files (~983MB) | Nov 28 - Dec 22 |
-| Autopilot Logs | `docs/logs/YYYYMMDD/*.rlog` | 103 files | Dec 19-22 |
-| Metrics DB | `autopilot-metrics.db` | 1 session | Dec 20 |
-
-**Autopilot logs by day:**
-- 20251219: 17 rlog files
-- 20251220: 31 rlog files
-- 20251221: 28 rlog files
-- 20251222: 27 rlog files
-
-### APM Formula
 ```
-APM = (messages + tool_calls) / duration_minutes
+APM = total_actions / duration_minutes
 ```
 
-## Implementation Plan
+Where:
+- **total_actions**: Count of user messages + assistant messages + tool calls
+- **duration_minutes**: Actual session duration from timestamps (first to last entry)
 
-### Step 1: Create APM Report Script
-Write a shell script that:
-1. Parses all rlog files to extract tool_calls count and duration
-2. Parses Claude Code JSONL files using jq to count messages and tool_use entries
-3. Calculates APM per session and aggregated
+### Counting Actions in JSONL Files
 
-### Step 2: Extract Data from rlog Files
-Parse the rlog format:
 ```
-t!:<ToolName> id=<id> ... → [running|ok|error]
-@start ts=<timestamp>
-```
-- Count lines matching `^t!:` for tool_calls
-- Extract timestamps from `@start ts=` and last `o:` line
-
-### Step 3: Extract Data from Claude Code JSONL
-Parse JSONL lines with types:
-- `"type":"message"` → increment messages
-- `"type":"tool_use"` or `"type":"tool_call"` → increment tool_calls
-
-### Step 4: Generate Report Structure
-```
-docs/logs/apm-report-YYYYMMDD.md
-
-## APM Historical Report
-### Part 1: <hostname> (INCOMPLETE - awaiting second computer)
-
-#### All-Time Statistics
-- Sessions: X
-- Total Actions: Y
-- Total Duration: Z min
-- Lifetime APM: W
-
-#### Last 48 Hours
-- Sessions: X
-- Actions: Y
-- Duration: Z min
-- 48h APM: W
-
-#### By Source
-| Source | Sessions | Actions | Duration | APM |
-|--------|----------|---------|----------|-----|
-| Autopilot | ... | ... | ... | ... |
-| Claude Code | ... | ... | ... | ... |
-
-### Instructions for Second Computer
-[script to run]
+actions = count("type":"user") + count("type":"assistant") + count("type":"tool_use")
 ```
 
-### Step 5: Script to Run on Other Computer
-Create a self-contained script that:
-1. Finds Claude Code sessions for openagents
-2. Parses rlog files if they exist
-3. Outputs JSON with stats
-4. Can be appended to the report
+- `"type":"user"` - User messages (top-level record type)
+- `"type":"assistant"` - Assistant responses (top-level record type)
+- `"type":"tool_use"` - Tool calls (nested in assistant content arrays)
 
-## Files to Create/Modify
+**Note:** Older reports may use `"type":"message"` which is different and deprecated.
 
-| File | Purpose |
-|------|---------|
-| `docs/logs/apm-report-20251222.md` | **NEW** - The APM report with Part 1 data |
+## APM Tiers
 
-## Two-Computer Strategy
+| Range | Tier | Description |
+|-------|------|-------------|
+| 0-5 | Baseline | Human-in-the-loop, lots of thinking time |
+| 5-15 | Active | Steady work pace |
+| 15-30 | Productive | Efficient autonomous execution |
+| 30-50 | High Performance | Fast parallel tool usage |
+| 50+ | Elite | Maximum efficiency |
 
-**This computer (macOS):** Generate Part 1 with:
-- All available data statistics
-- Last 48 hours statistics
-- Breakdown by source
+## Data Sources
 
-**Other computer (Linux):** Include a script in the report that:
-- Uses Linux paths (`/home/christopherdavid/`)
-- Outputs data in same format
-- Instructions for appending to report
+### Claude Code Sessions (Interactive)
 
-## Report Contents
+**Location:** `~/.claude/projects/-<path-encoded>/*.jsonl`
 
-1. **Header** - Explain this is Part 1, incomplete until second computer runs
-2. **Methodology** - How APM is calculated
-3. **This Computer's Data**:
-   - Lifetime APM (all available data)
-   - Last 48 hours APM
-   - Breakdown by source (autopilot vs claude code)
-   - Session count and distribution
-4. **Instructions for Second Computer**:
-   - Copy-paste script
-   - Where to append results
-   - How to compute combined totals
+**File Types:**
+- **UUID files** (e.g., `d7dad8fc-386b-46db-ba1a-a4d5ca4d23fe.jsonl`): Interactive sessions
+- **Agent files** (e.g., `agent-a0f54f0.jsonl`): Subagent/subprocess sessions spawned by autopilot
 
-## Execution Steps
+**Parsing:**
+```bash
+# Count messages
+grep -c '"type":"message"' session.jsonl
 
-1. Count and parse all rlog files for autopilot APM
-2. Sample/count Claude Code JSONL for claude code APM
-3. Calculate aggregate stats
-4. Write report to `docs/logs/apm-report-20251222.md`
-5. Include script for second computer
+# Count tool calls
+grep -c '"type":"tool_use"' session.jsonl
+```
+
+**Duration Calculation:**
+- Extract first and last `"timestamp"` field from the file
+- Duration = last_timestamp - first_timestamp
+- **Do NOT use arbitrary averages** (e.g., "15 min/session") - this produces garbage data
+
+### Autopilot Sessions (Autonomous)
+
+**CRITICAL LIMITATION:** Autopilot data is split across incompatible sources:
+
+1. **rlog files** (`docs/logs/YYYYMMDD/*.rlog`)
+   - Main autopilot loop activity
+   - Only captures tool calls (`t!:` lines), NOT messages
+   - Duration: Use @start timestamp and file mtime
+
+2. **Agent JSONL files** (`~/.claude/projects/.../agent-*.jsonl`)
+   - Subagent processes spawned by autopilot
+   - Short-lived (avg ~23 sec) exploration/search tasks
+   - Full action logging (user + assistant + tool_use)
+
+**These cannot be meaningfully combined** because they capture different aspects of autopilot activity with different logging granularity.
+
+**rlog Parsing:**
+```bash
+# Extract start timestamp
+grep -m1 "^@start" session.rlog | sed 's/.*ts=\([^ ]*\).*/\1/'
+
+# Count tool calls (INCOMPLETE - missing messages)
+grep -c "^t!:" session.rlog
+```
+
+**Duration:** Use file modification time minus @start timestamp
+
+## Collection Scripts
+
+### Linux Collection
+```bash
+# Claude Code stats
+CLAUDE_DIR="$HOME/.claude/projects/-home-christopherdavid-code-openagents"
+find "$CLAUDE_DIR" -name '*.jsonl' -exec cat {} + | grep -c '"type":"message"'
+find "$CLAUDE_DIR" -name '*.jsonl' -exec cat {} + | grep -c '"type":"tool_use"'
+
+# Autopilot stats
+grep -r "^t!:" docs/logs/2025*/*.rlog | wc -l
+```
+
+### macOS Collection
+```bash
+# Claude Code stats (different path encoding)
+CLAUDE_DIR="$HOME/.claude/projects/-Users-christopherdavid-code-openagents"
+# Same grep commands as Linux
+```
+
+## Multi-Machine Aggregation
+
+When combining data from multiple machines:
+
+1. **Sum actions**: Add message counts and tool_use counts across machines
+2. **Sum durations**: Add estimated duration from each machine
+3. **Calculate combined APM**: total_actions / total_duration
+
+**Note:** Avoid double-counting agent subprocess files with rlog data - they represent different views of the same autopilot sessions.
+
+## Caveats
+
+1. **Duration is estimated** - Actual session time may vary significantly from averages
+2. **Idle time included** - Sessions left open but inactive inflate duration
+3. **Error sessions** - Failed or restarted sessions still count toward totals
+4. **Agent overlap** - Agent JSONL files may overlap with rlog counts (counted separately)
+
+## File References
+
+- **Report template**: [`docs/apm/report-YYYYMMDD.md`](report-20251222.md)
+- **APM calculation code**: [`crates/autopilot/src/apm.rs`](../../crates/autopilot/src/apm.rs)
+- **APM parser**: [`crates/autopilot/src/apm_parser.rs`](../../crates/autopilot/src/apm_parser.rs)
+
+## Historical Reports
+
+- [December 22, 2025](report-20251222.md) - First comprehensive multi-machine report
