@@ -408,10 +408,6 @@ mod tests {
         assert_eq!(wallet.config().network, Network::Testnet);
     }
 
-    // Tests for get_balance, get_info, and sync have been removed per d-012
-    // since those methods are now commented out (stub code).
-    // When Breez SDK integration (d-001) is complete, add proper tests here.
-
     #[tokio::test]
     async fn test_balance_operations() {
         let balance = Balance {

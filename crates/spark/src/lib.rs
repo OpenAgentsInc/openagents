@@ -53,19 +53,27 @@
 //! ```
 //!
 //! ```rust,ignore
-//! use spark::{SparkSigner, SparkWallet, WalletConfig, Network};
+//! use openagents_spark::{SparkSigner, SparkWallet, WalletConfig, Network};
 //!
+//! # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 //! // Create a wallet (async)
-//! let signer = SparkSigner::from_mnemonic(mnemonic, "").expect("valid mnemonic");
+//! let mnemonic = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
+//! let signer = SparkSigner::from_mnemonic(mnemonic, "")?;
 //! let config = WalletConfig {
 //!     network: Network::Testnet,
 //!     ..Default::default()
 //! };
 //! let wallet = SparkWallet::new(signer, config).await?;
 //!
-//! // Get balance (currently stub - returns zero)
-//! let balance = wallet.get_balance().await?;
-//! println!("Total: {} sats", balance.total_sats());
+//! // Send a payment
+//! let response = wallet.send_payment_simple("lnbc1...", None).await?;
+//! println!("Payment sent: {}", response.payment.id);
+//!
+//! // Create an invoice to receive payment
+//! let invoice = wallet.create_invoice(1000, Some("Coffee".to_string()), None).await?;
+//! println!("Invoice: {}", invoice.payment_request);
+//! # Ok(())
+//! # }
 //! ```
 
 pub mod error;
