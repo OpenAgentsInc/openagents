@@ -2,7 +2,7 @@
 //!
 //! Provides factories for generating test data.
 
-use fake::{Fake, Faker};
+use fake::Fake;
 
 /// Generate a test keypair (deterministic for testing)
 pub fn test_keypair() -> ([u8; 32], [u8; 33]) {
