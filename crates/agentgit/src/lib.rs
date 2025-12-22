@@ -1,6 +1,8 @@
 //! AgentGit - Nostr-native GitHub alternative for agent-first collaboration
 
+pub mod git;
 pub mod nostr;
+pub mod stacks;
 pub mod views;
 pub mod ws;
 
