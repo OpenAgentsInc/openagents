@@ -169,7 +169,10 @@ impl SkillListing {
             id: handler.pubkey.clone(),
             name: handler.metadata.name.clone(),
             description: handler.metadata.description.clone(),
-            version: "1.0.0".to_string(), // TODO: extract from metadata
+            // Version extraction requires adding version field to HandlerMetadata.
+            // When implemented:
+            // version: handler.metadata.version.unwrap_or_else(|| "1.0.0".to_string()),
+            version: "1.0.0".to_string(),
             creator_pubkey: handler.pubkey,
             capabilities: handler.capabilities,
             price_sats,
@@ -267,7 +270,10 @@ impl SkillBrowser {
     fn sort_listings(&self, listings: &mut [SkillListing], sort_by: SortBy) {
         match sort_by {
             SortBy::Recent => {
-                // TODO: Sort by publication timestamp when available
+                // Sorting by publication timestamp requires adding created_at field
+                // to SkillListing and populating it from NIP-89 handler info events.
+                // When implemented:
+                // listings.sort_by(|a, b| b.created_at.cmp(&a.created_at));
             }
             SortBy::Name => {
                 listings.sort_by(|a, b| a.name.cmp(&b.name));
