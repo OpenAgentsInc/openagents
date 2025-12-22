@@ -2529,6 +2529,7 @@ dependencies = [
  "anyhow",
  "bech32",
  "bitcoin",
+ "criterion 0.8.1",
  "frost-core",
  "frost-secp256k1",
  "hex",
