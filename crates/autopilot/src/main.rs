@@ -14,6 +14,7 @@ use serde_json::json;
 use std::path::PathBuf;
 use std::sync::OnceLock;
 
+use autopilot::apm::APMTier;
 use autopilot::analyze;
 use autopilot::replay;
 use autopilot::rlog::RlogWriter;
@@ -2520,6 +2521,8 @@ fn print_progress(msg: &SdkMessage) {
 }
 
 fn print_summary(traj: &Trajectory) {
+    use autopilot::apm::APMTier;
+
     println!("{}", "Summary".cyan().bold());
     println!("  Session:  {}", traj.session_id);
     println!(
@@ -2540,6 +2543,19 @@ fn print_summary(traj: &Trajectory) {
                 "no".red()
             }
         );
+
+        // Display APM if available
+        if let Some(apm) = result.apm {
+            let tier = APMTier::from_apm(apm);
+            let colored_apm = match tier {
+                APMTier::Elite => format!("{:.1}", apm).yellow().bold(),
+                APMTier::HighPerformance => format!("{:.1}", apm).green().bold(),
+                APMTier::Productive => format!("{:.1}", apm).green(),
+                APMTier::Active => format!("{:.1}", apm).blue(),
+                APMTier::Baseline => format!("{:.1}", apm).dimmed(),
+            };
+            println!("  APM:      {} ({})", colored_apm, tier.name().dimmed());
+        }
     }
 
     // Count steps by type
@@ -3700,7 +3716,15 @@ async fn handle_metrics_command(command: MetricsCommands) -> Result<()> {
             println!("{} Performance:", "⚡".cyan().bold());
             println!("  Messages: {}", session.messages);
             if let Some(apm) = session.apm {
-                println!("  APM:      {:.2}", apm);
+                let tier = APMTier::from_apm(apm);
+                let colored_apm = match tier {
+                    APMTier::Elite => format!("{:.2}", apm).yellow().bold(),
+                    APMTier::HighPerformance => format!("{:.2}", apm).green().bold(),
+                    APMTier::Productive => format!("{:.2}", apm).green(),
+                    APMTier::Active => format!("{:.2}", apm).blue(),
+                    APMTier::Baseline => format!("{:.2}", apm).dimmed(),
+                };
+                println!("  APM:      {} ({})", colored_apm, tier.name().dimmed());
             } else {
                 println!("  APM:      {}", "Not calculated".dimmed());
             }

@@ -165,6 +165,7 @@ pub struct TokenUsage {
 ///     result_text: Some("Fixed authentication bug".to_string()),
 ///     errors: vec![],
 ///     issues_completed: 1,
+///     apm: Some(18.5),
 /// };
 ///
 /// assert!(result.success);
@@ -182,6 +183,9 @@ pub struct TrajectoryResult {
     pub errors: Vec<String>,
     #[serde(default)]
     pub issues_completed: u32,
+    /// Actions Per Minute (APM) - calculated from (messages + tool_calls) / duration_minutes
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub apm: Option<f64>,
 }
 
 impl Trajectory {
