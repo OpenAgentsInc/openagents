@@ -4,6 +4,33 @@
 
 echo "🔍 Running pre-commit checks..."
 
+# Check if commit message references issues
+COMMIT_MSG_FILE="$1"
+if [ -f "$COMMIT_MSG_FILE" ]; then
+    COMMIT_MSG=$(cat "$COMMIT_MSG_FILE")
+
+    # Extract issue numbers (#NNN pattern)
+    ISSUE_NUMS=$(echo "$COMMIT_MSG" | grep -oE '#[0-9]+' | sed 's/#//')
+
+    if [ -n "$ISSUE_NUMS" ]; then
+        echo "📝 Checking referenced issues..."
+        for ISSUE_NUM in $ISSUE_NUMS; do
+            # Try to get issue status
+            if command -v cargo autopilot &> /dev/null; then
+                ISSUE_INFO=$(cargo autopilot issue get "$ISSUE_NUM" 2>&1)
+
+                if echo "$ISSUE_INFO" | grep -q "not found"; then
+                    echo "⚠️  Warning: Issue #$ISSUE_NUM not found"
+                elif echo "$ISSUE_INFO" | grep -q "status.*done"; then
+                    echo "⚠️  Warning: Issue #$ISSUE_NUM is already complete"
+                elif echo "$ISSUE_INFO" | grep -q "claimed_by.*null"; then
+                    echo "💡 Tip: Consider claiming issue #$ISSUE_NUM before committing"
+                fi
+            fi
+        done
+    fi
+fi
+
 # Run fast unit tests
 echo "Running unit tests..."
 if ! cargo test --workspace --lib -- --test-threads=4; then
