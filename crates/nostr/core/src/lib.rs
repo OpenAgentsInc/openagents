@@ -278,7 +278,7 @@ mod nip71;
 mod nip72;
 mod nip73;
 mod nip75;
-mod nip77;
+pub mod nip77;
 mod nip78;
 mod nip84;
 mod nip86;
