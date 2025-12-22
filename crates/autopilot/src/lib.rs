@@ -47,6 +47,40 @@ use rlog::RlogWriter;
 pub type SessionIdCallback = Box<dyn FnOnce(&str) + Send>;
 
 /// Collects SdkMessages into a Trajectory
+///
+/// The TrajectoryCollector processes Claude Agent SDK messages and builds
+/// a complete trajectory of an agent's execution, including tool calls,
+/// thinking blocks, and results. It supports streaming output to both
+/// rlog (human-readable) and JSONL (Claude Code compatible) formats.
+///
+/// # Examples
+///
+/// Basic usage:
+///
+/// ```no_run
+/// use autopilot::TrajectoryCollector;
+///
+/// let mut collector = TrajectoryCollector::new(
+///     "Fix the bug in auth.rs".to_string(),
+///     "claude-sonnet-4-5-20250929".to_string(),
+///     "/home/user/project".to_string(),
+///     "abc123".to_string(),
+///     Some("main".to_string()),
+/// );
+///
+/// // Enable streaming output
+/// collector.enable_streaming("logs/session.rlog").unwrap();
+/// collector.enable_jsonl_streaming("logs/session.jsonl").unwrap();
+///
+/// // Process SDK messages as they arrive
+/// // for msg in sdk_stream {
+/// //     collector.process_message(&msg);
+/// // }
+///
+/// // Get the final trajectory
+/// let trajectory = collector.finish();
+/// println!("Session completed: {}", trajectory.session_id);
+/// ```
 pub struct TrajectoryCollector {
     trajectory: Trajectory,
     /// Optional rlog writer for streaming output (truncated, human-readable)
@@ -81,6 +115,29 @@ impl TrajectoryCollector {
     }
 
     /// Set a callback to be invoked when session_id becomes available
+    ///
+    /// This is useful for tasks that need to know the session ID as soon as
+    /// it's assigned by the SDK, such as updating databases or creating
+    /// trajectory links.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use autopilot::TrajectoryCollector;
+    ///
+    /// let mut collector = TrajectoryCollector::new(
+    ///     "Task".to_string(),
+    ///     "claude-sonnet-4-5-20250929".to_string(),
+    ///     "/home/user/project".to_string(),
+    ///     "abc123".to_string(),
+    ///     None,
+    /// );
+    ///
+    /// collector.on_session_id(|session_id| {
+    ///     println!("Session started: {}", session_id);
+    ///     // Update database, send notification, etc.
+    /// });
+    /// ```
     pub fn on_session_id<F>(&mut self, callback: F)
     where
         F: FnOnce(&str) + Send + 'static,
@@ -710,6 +767,18 @@ pub fn extract_session_id_from_rlog(path: &std::path::Path) -> anyhow::Result<Op
 /// the workspace root, not in subdirectories.
 ///
 /// Returns the current directory if no workspace root is found (fallback).
+///
+/// # Examples
+///
+/// ```no_run
+/// use autopilot::find_workspace_root;
+///
+/// let workspace_root = find_workspace_root();
+/// println!("Workspace root: {}", workspace_root.display());
+///
+/// // Use for database path
+/// let db_path = workspace_root.join("autopilot.db");
+/// ```
 pub fn find_workspace_root() -> PathBuf {
     let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
     let mut current = cwd.as_path();
