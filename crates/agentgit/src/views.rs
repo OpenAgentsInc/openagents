@@ -335,7 +335,7 @@ pub fn repository_detail_page(repository: &Event, is_cloned: bool, local_path: O
 }
 
 /// Issues list page for a repository
-pub fn issues_list_page(repository: &Event, issues: &[Event], is_watched: bool, identifier: &str) -> Markup {
+pub fn issues_list_page(repository: &Event, issues: &[Event], is_watched: bool, identifier: &str, filter_open: bool, filter_closed: bool, filter_has_bounty: bool, filter_claimed: bool) -> Markup {
     let repo_name = get_tag_value(repository, "name").unwrap_or_else(|| "Repository".to_string());
 
     html! {
@@ -403,22 +403,38 @@ pub fn issues_list_page(repository: &Event, issues: &[Event], is_watched: bool, 
                                     span style="font-weight: 600;" { "Filter:" }
 
                                     label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;" {
-                                        input type="checkbox" name="filter_open" value="true" checked;
+                                        @if filter_open {
+                                            input type="checkbox" name="filter_open" value="true" checked;
+                                        } @else {
+                                            input type="checkbox" name="filter_open" value="true";
+                                        }
                                         span { "Open" }
                                     }
 
                                     label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;" {
-                                        input type="checkbox" name="filter_closed" value="true";
+                                        @if filter_closed {
+                                            input type="checkbox" name="filter_closed" value="true" checked;
+                                        } @else {
+                                            input type="checkbox" name="filter_closed" value="true";
+                                        }
                                         span { "Closed" }
                                     }
 
                                     label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;" {
-                                        input type="checkbox" name="filter_has_bounty" value="true";
+                                        @if filter_has_bounty {
+                                            input type="checkbox" name="filter_has_bounty" value="true" checked;
+                                        } @else {
+                                            input type="checkbox" name="filter_has_bounty" value="true";
+                                        }
                                         span { "Has Bounty" }
                                     }
 
                                     label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;" {
-                                        input type="checkbox" name="filter_claimed" value="true";
+                                        @if filter_claimed {
+                                            input type="checkbox" name="filter_claimed" value="true" checked;
+                                        } @else {
+                                            input type="checkbox" name="filter_claimed" value="true";
+                                        }
                                         span { "Claimed" }
                                     }
 
