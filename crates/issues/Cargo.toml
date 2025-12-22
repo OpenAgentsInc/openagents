@@ -25,6 +25,9 @@ uuid.workspace = true
 # Error handling
 thiserror.workspace = true
 
+# Logging
+tracing.workspace = true
+
 [dev-dependencies]
 criterion = "0.8.1"
 tempfile.workspace = true
