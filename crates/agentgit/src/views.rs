@@ -1591,9 +1591,9 @@ pub fn pull_request_detail_page(repository: &Event, pull_request: &Event, review
                                                         .and_then(|t| t.as_str());
 
                                                     @let (badge_bg, badge_icon, badge_text) = if step_type == "ToolUse" {
-                                                        ("#3b82f6", "🔧", if let Some(tool) = tool_name { tool } else { "Tool Use" })
+                                                        ("#3b82f6", "🔧", tool_name.unwrap_or("Tool Use"))
                                                     } else if step_type == "ToolResult" {
-                                                        ("#10b981", "✅", if let Some(tool) = tool_name { tool } else { "Tool Result" })
+                                                        ("#10b981", "✅", tool_name.unwrap_or("Tool Result"))
                                                     } else if step_type == "Thinking" {
                                                         ("#8b5cf6", "💭", "Thinking")
                                                     } else if step_type == "Message" {

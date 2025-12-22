@@ -122,20 +122,18 @@ pub async fn fetch_claude_info_fast() -> ClaudeInfo {
         .arg("--version")
         .output()
         .await
-    {
-        if output.status.success() {
+        && output.status.success() {
             let version_str = String::from_utf8_lossy(&output.stdout);
             // Parse "2.0.73 (Claude Code)" -> "2.0.73"
             if let Some(ver) = version_str.split_whitespace().next() {
                 info.version = Some(ver.to_string());
             }
         }
-    }
 
     // Read stats-cache.json for auth check + usage data (instant file read)
     let stats_path = shellexpand::tilde("~/.claude/stats-cache.json").to_string();
-    if let Ok(content) = tokio::fs::read_to_string(&stats_path).await {
-        if let Ok(json) = serde_json::from_str::<serde_json::Value>(&content) {
+    if let Ok(content) = tokio::fs::read_to_string(&stats_path).await
+        && let Ok(json) = serde_json::from_str::<serde_json::Value>(&content) {
             info.total_sessions = json.get("totalSessions").and_then(|v| v.as_u64());
             info.total_messages = json.get("totalMessages").and_then(|v| v.as_u64());
 
@@ -176,7 +174,6 @@ pub async fn fetch_claude_info_fast() -> ClaudeInfo {
                 info.model_usage.sort_by(|a, b| b.output_tokens.cmp(&a.output_tokens));
             }
         }
-    }
 
     info.loading = false;
     info
@@ -203,14 +200,13 @@ pub async fn fetch_claude_model() -> Option<String> {
     let mut reader = BufReader::new(stdout).lines();
 
     while let Ok(Some(line)) = reader.next_line().await {
-        if line.contains("\"subtype\":\"init\"") {
-            if let Ok(json) = serde_json::from_str::<serde_json::Value>(&line) {
+        if line.contains("\"subtype\":\"init\"")
+            && let Ok(json) = serde_json::from_str::<serde_json::Value>(&line) {
                 let model = json.get("model").and_then(|v| v.as_str()).map(|s| s.to_string());
                 let _ = child.kill().await;
                 let _ = child.wait().await;
                 return model;
             }
-        }
     }
 
     let _ = child.kill().await;

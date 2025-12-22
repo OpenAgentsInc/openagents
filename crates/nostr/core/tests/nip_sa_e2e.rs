@@ -50,7 +50,7 @@ fn test_agent_profile_creation() {
 
     // 4. Create profile
     let profile = AgentProfile::new(
-        profile_content.clone(),
+        profile_content,
         threshold,
         hex::encode(&agent_pubkey),
     )

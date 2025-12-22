@@ -94,7 +94,7 @@ pub fn run(cmd: DaemonCommands) -> anyhow::Result<()> {
                     Err(e) => {
                         eprintln!("Failed to connect to daemon: {}", e);
                         eprintln!("Is the daemon running?");
-                        Err(e.into())
+                        Err(e)
                     }
                 }
             })
@@ -123,7 +123,7 @@ pub fn run(cmd: DaemonCommands) -> anyhow::Result<()> {
                     Err(e) => {
                         eprintln!("Failed to connect to daemon: {}", e);
                         eprintln!("Is the daemon running?");
-                        Err(e.into())
+                        Err(e)
                     }
                 }
             })
@@ -138,7 +138,7 @@ pub fn run(cmd: DaemonCommands) -> anyhow::Result<()> {
                     }
                     Err(e) => {
                         eprintln!("Failed to restart worker: {}", e);
-                        Err(e.into())
+                        Err(e)
                     }
                 }
             })
@@ -153,7 +153,7 @@ pub fn run(cmd: DaemonCommands) -> anyhow::Result<()> {
                     }
                     Err(e) => {
                         eprintln!("Failed to stop worker: {}", e);
-                        Err(e.into())
+                        Err(e)
                     }
                 }
             })

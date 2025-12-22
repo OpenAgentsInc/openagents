@@ -271,40 +271,36 @@ pub fn validate_filter(filter: &Filter) -> std::result::Result<(), ValidationErr
 
     // Validate kinds are valid (implicitly validated by u16 type)
     // Just check they're not empty if present
-    if let Some(ref kinds) = filter.kinds {
-        if kinds.is_empty() {
+    if let Some(ref kinds) = filter.kinds
+        && kinds.is_empty() {
             return Err(ValidationError::InvalidFilter(
                 "kinds array cannot be empty".to_string(),
             ));
         }
-    }
 
     // Validate since/until are reasonable timestamps
     let now = current_timestamp();
-    if let Some(since) = filter.since {
-        if since > now + MAX_FUTURE_SECONDS {
+    if let Some(since) = filter.since
+        && since > now + MAX_FUTURE_SECONDS {
             return Err(ValidationError::InvalidFilter(
                 "since timestamp too far in future".to_string(),
             ));
         }
-    }
 
-    if let Some(until) = filter.until {
-        if until > now + MAX_FUTURE_SECONDS {
+    if let Some(until) = filter.until
+        && until > now + MAX_FUTURE_SECONDS {
             return Err(ValidationError::InvalidFilter(
                 "until timestamp too far in future".to_string(),
             ));
         }
-    }
 
     // Validate since < until if both present
-    if let (Some(since), Some(until)) = (filter.since, filter.until) {
-        if since > until {
+    if let (Some(since), Some(until)) = (filter.since, filter.until)
+        && since > until {
             return Err(ValidationError::InvalidFilter(
                 "since must be <= until".to_string(),
             ));
         }
-    }
 
     // Validate limit is reasonable
     if let Some(limit) = filter.limit {

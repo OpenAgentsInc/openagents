@@ -184,10 +184,7 @@ fn prop_signed_events_verify(template: ArbitraryEventTemplate) -> bool {
     let secret_key = generate_secret_key();
 
     match finalize_event(&template.0, &secret_key) {
-        Ok(event) => match verify_event(&event) {
-            Ok(valid) => valid,
-            Err(_) => false,
-        },
+        Ok(event) => verify_event(&event).unwrap_or_default(),
         Err(_) => false,
     }
 }

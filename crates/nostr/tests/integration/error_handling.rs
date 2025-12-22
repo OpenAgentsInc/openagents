@@ -1,8 +1,8 @@
 //! Error handling and edge case tests
 
 use super::*;
-use nostr::{finalize_event, generate_secret_key, Event, EventTemplate};
-use nostr_client::{RelayConnection, RelayMessage};
+use nostr::{finalize_event, generate_secret_key, EventTemplate};
+use nostr_client::RelayConnection;
 use serde_json::json;
 use tokio::time::{timeout, Duration};
 

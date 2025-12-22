@@ -3669,7 +3669,7 @@ async fn handle_metrics_command(command: MetricsCommands) -> Result<()> {
             let prompt_preview = if session.prompt.len() > 200 {
                 format!("{}...", &session.prompt[..200])
             } else {
-                session.prompt.clone()
+                session.prompt
             };
             println!("{}", prompt_preview);
             println!("{}", "=".repeat(60));
@@ -3966,7 +3966,7 @@ async fn handle_metrics_command(command: MetricsCommands) -> Result<()> {
                 recent.into_iter().map(|s| s.id).collect()
             } else {
                 println!("{} Analyzing {} specific sessions...", "📊".cyan(), sessions.len());
-                sessions.clone()
+                sessions
             };
 
             if session_ids.is_empty() {

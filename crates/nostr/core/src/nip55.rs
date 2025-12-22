@@ -471,7 +471,7 @@ mod tests {
         ];
 
         let request =
-            SignerRequest::new(SignerRequestType::GetPublicKey).with_permissions(perms.clone());
+            SignerRequest::new(SignerRequestType::GetPublicKey).with_permissions(perms);
 
         let extras = request.to_intent_extras();
         assert!(extras.contains_key("permissions"));

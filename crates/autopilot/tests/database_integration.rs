@@ -27,6 +27,7 @@ fn test_create_and_retrieve_issue() {
         Priority::High,
         IssueType::Task,
         Some("claude"),
+        None,
     )
     .expect("Failed to create issue");
 
@@ -55,6 +56,7 @@ fn test_issue_lifecycle() {
         Priority::Medium,
         IssueType::Bug,
         Some("claude"),
+        None,
     )
     .expect("Failed to create issue");
 
@@ -83,6 +85,7 @@ fn test_block_issue() {
         Priority::Low,
         IssueType::Feature,
         Some("claude"),
+        None,
     )
     .expect("Failed to create issue");
 
@@ -110,6 +113,7 @@ fn test_list_issues_by_status() {
         Priority::High,
         IssueType::Task,
         Some("claude"),
+        None,
     )
     .expect("Failed to create issue");
 
@@ -120,6 +124,7 @@ fn test_list_issues_by_status() {
         Priority::Medium,
         IssueType::Task,
         Some("claude"),
+        None,
     )
     .expect("Failed to create issue");
 
@@ -130,6 +135,7 @@ fn test_list_issues_by_status() {
         Priority::Low,
         IssueType::Task,
         Some("claude"),
+        None,
     )
     .expect("Failed to create issue");
 
@@ -166,6 +172,7 @@ fn test_get_next_ready_issue() {
         Priority::Low,
         IssueType::Task,
         Some("claude"),
+        None,
     )
     .expect("Failed to create issue");
 
@@ -176,6 +183,7 @@ fn test_get_next_ready_issue() {
         Priority::High,
         IssueType::Task,
         Some("claude"),
+        None,
     )
     .expect("Failed to create issue");
 
@@ -186,6 +194,7 @@ fn test_get_next_ready_issue() {
         Priority::Urgent,
         IssueType::Bug,
         Some("claude"),
+        None,
     )
     .expect("Failed to create issue");
 
@@ -213,6 +222,7 @@ fn test_issue_agent_filter() {
         Priority::High,
         IssueType::Task,
         Some("claude"),
+        None,
     )
     .expect("Failed to create issue");
 
@@ -223,6 +233,7 @@ fn test_issue_agent_filter() {
         Priority::High,
         IssueType::Task,
         Some("codex"),
+        None,
     )
     .expect("Failed to create issue");
 
@@ -250,6 +261,7 @@ fn test_delete_issue() {
         Priority::Medium,
         IssueType::Task,
         Some("claude"),
+        None,
     )
     .expect("Failed to create issue");
 
@@ -276,6 +288,7 @@ fn test_concurrent_issue_claims() {
         Priority::High,
         IssueType::Task,
         Some("claude"),
+        None,
     )
     .expect("Failed to create issue");
 
@@ -303,6 +316,7 @@ fn test_update_issue() {
         Priority::Low,
         IssueType::Task,
         Some("claude"),
+        None,
     )
     .expect("Failed to create issue");
 
@@ -342,6 +356,7 @@ fn test_database_persistence() {
             Priority::Medium,
             IssueType::Task,
             Some("claude"),
+        None,
         )
         .expect("Failed to create issue");
     }
@@ -367,6 +382,7 @@ fn test_issue_priority_ordering() {
         Priority::Low,
         IssueType::Task,
         Some("claude"),
+        None,
     )
     .expect("Failed to create issue");
 
@@ -377,6 +393,7 @@ fn test_issue_priority_ordering() {
         Priority::Medium,
         IssueType::Task,
         Some("claude"),
+        None,
     )
     .expect("Failed to create issue");
 
@@ -387,6 +404,7 @@ fn test_issue_priority_ordering() {
         Priority::High,
         IssueType::Task,
         Some("claude"),
+        None,
     )
     .expect("Failed to create issue");
 
@@ -397,6 +415,7 @@ fn test_issue_priority_ordering() {
         Priority::Urgent,
         IssueType::Task,
         Some("claude"),
+        None,
     )
     .expect("Failed to create issue");
 

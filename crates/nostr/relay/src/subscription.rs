@@ -58,39 +58,34 @@ impl Filter {
     /// Check if an event matches this filter
     pub fn matches(&self, event: &Event) -> bool {
         // Check IDs
-        if let Some(ref ids) = self.ids {
-            if !ids.iter().any(|id| event.id.starts_with(id)) {
+        if let Some(ref ids) = self.ids
+            && !ids.iter().any(|id| event.id.starts_with(id)) {
                 return false;
             }
-        }
 
         // Check authors
-        if let Some(ref authors) = self.authors {
-            if !authors.iter().any(|author| event.pubkey.starts_with(author)) {
+        if let Some(ref authors) = self.authors
+            && !authors.iter().any(|author| event.pubkey.starts_with(author)) {
                 return false;
             }
-        }
 
         // Check kinds
-        if let Some(ref kinds) = self.kinds {
-            if !kinds.contains(&event.kind) {
+        if let Some(ref kinds) = self.kinds
+            && !kinds.contains(&event.kind) {
                 return false;
             }
-        }
 
         // Check timestamp (since)
-        if let Some(since) = self.since {
-            if event.created_at < since {
+        if let Some(since) = self.since
+            && event.created_at < since {
                 return false;
             }
-        }
 
         // Check timestamp (until)
-        if let Some(until) = self.until {
-            if event.created_at > until {
+        if let Some(until) = self.until
+            && event.created_at > until {
                 return false;
             }
-        }
 
         // Check tags
         if let Some(ref tag_filters) = self.tags {
@@ -132,13 +127,12 @@ impl Filter {
     /// Check if this filter is valid
     pub fn validate(&self) -> Result<()> {
         // Ensure limit is reasonable
-        if let Some(limit) = self.limit {
-            if limit > 5000 {
+        if let Some(limit) = self.limit
+            && limit > 5000 {
                 return Err(RelayError::Subscription(
                     "limit too large (max 5000)".to_string(),
                 ));
             }
-        }
 
         Ok(())
     }

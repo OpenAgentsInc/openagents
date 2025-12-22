@@ -51,7 +51,7 @@ fn test_job_request_to_event() {
     // Create event template
     let template = EventTemplate {
         kind: request.kind,
-        content: request.content.clone(),
+        content: request.content,
         tags,
         created_at: chrono::Utc::now().timestamp() as u64,
     };
@@ -200,7 +200,7 @@ fn test_job_result_to_event() {
     // Create and sign event
     let template = EventTemplate {
         kind: result.kind,
-        content: result.content.clone(),
+        content: result.content,
         tags,
         created_at: chrono::Utc::now().timestamp() as u64,
     };

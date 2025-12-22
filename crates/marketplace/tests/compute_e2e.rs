@@ -97,8 +97,8 @@ async fn test_nip90_job_result_lifecycle() {
     // JobResult::new takes request_kind (not result kind), request_id, customer_pubkey, content
     let job_result = JobResult::new(
         KIND_JOB_TEXT_GENERATION,  // Request kind (5050), will be converted to 6050
-        &hex::encode(&request_event.id),
-        &hex::encode(&request_event.pubkey),
+        hex::encode(&request_event.id),
+        hex::encode(&request_event.pubkey),
         result_content.to_string(),
     )
     .expect("should create job result");
@@ -165,8 +165,8 @@ async fn test_nip90_job_feedback_flow() {
     // 3. Provider sends "processing" feedback
     let processing_feedback = JobFeedback::new(
         JobStatus::Processing,
-        &hex::encode(&request_event.id),
-        &hex::encode(&request_event.pubkey),
+        hex::encode(&request_event.id),
+        hex::encode(&request_event.pubkey),
     )
     .with_status_extra("Starting analysis, ETA 2 minutes");
 
@@ -196,8 +196,8 @@ async fn test_nip90_job_feedback_flow() {
     // 7. Provider sends "success" feedback (after processing)
     let success_feedback = JobFeedback::new(
         JobStatus::Success,
-        &hex::encode(&request_event.id),
-        &hex::encode(&request_event.pubkey),
+        hex::encode(&request_event.id),
+        hex::encode(&request_event.pubkey),
     )
     .with_status_extra("Analysis complete");
 
@@ -302,7 +302,7 @@ async fn test_dvm_service_with_relay() {
     .with_website("https://openagents.com");
 
     let handler_info = HandlerInfo::new(
-        hex::encode(&provider_pubkey),
+        hex::encode(provider_pubkey),
         HandlerType::ComputeProvider,
         metadata.clone(),
     )
@@ -349,8 +349,8 @@ async fn test_dvm_service_with_relay() {
     // 4. Provider sends "processing" feedback (NIP-90)
     let processing_feedback = JobFeedback::new(
         JobStatus::Processing,
-        &hex::encode(&request_event.id),
-        &hex::encode(&customer_pubkey),
+        hex::encode(&request_event.id),
+        hex::encode(customer_pubkey),
     )
     .with_status_extra("Generating code, ETA 30 seconds");
 
@@ -383,8 +383,8 @@ async fn test_dvm_service_with_relay() {
 
     let job_result = JobResult::new(
         KIND_JOB_TEXT_GENERATION,  // Request kind
-        &hex::encode(&request_event.id),
-        &hex::encode(&customer_pubkey),
+        hex::encode(&request_event.id),
+        hex::encode(customer_pubkey),
         result_content.to_string(),
     )
     .expect("should create result");
@@ -414,14 +414,14 @@ async fn test_dvm_service_with_relay() {
 
     // Verify result is for the customer
     assert!(result_event.tags.iter().any(|t|
-        t[0] == "p" && t[1] == hex::encode(&customer_pubkey)
+        t[0] == "p" && t[1] == hex::encode(customer_pubkey)
     ));
 
     // 7. Provider sends success feedback
     let success_feedback = JobFeedback::new(
         JobStatus::Success,
-        &hex::encode(&request_event.id),
-        &hex::encode(&customer_pubkey),
+        hex::encode(&request_event.id),
+        hex::encode(customer_pubkey),
     )
     .with_status_extra("Code generated successfully");
 

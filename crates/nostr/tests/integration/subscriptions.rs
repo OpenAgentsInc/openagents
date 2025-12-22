@@ -63,11 +63,10 @@ async fn test_subscription_replacement() {
     // Should only receive kind 2 event
     let result = timeout(Duration::from_secs(2), async {
         loop {
-            if let Ok(Some(msg)) = relay.recv().await {
-                if let RelayMessage::Event(_, evt) = msg {
+            if let Ok(Some(msg)) = relay.recv().await
+                && let RelayMessage::Event(_, evt) = msg {
                     return evt.kind;
                 }
-            }
         }
     })
     .await;
@@ -89,15 +88,15 @@ async fn test_multiple_concurrent_subscriptions() {
 
     // Create 3 different subscriptions
     relay
-        .subscribe("sub-kind-1", &vec![serde_json::json!({"kinds": [1]})])
+        .subscribe("sub-kind-1", &[serde_json::json!({"kinds": [1]})])
         .await
         .unwrap();
     relay
-        .subscribe("sub-kind-2", &vec![serde_json::json!({"kinds": [2]})])
+        .subscribe("sub-kind-2", &[serde_json::json!({"kinds": [2]})])
         .await
         .unwrap();
     relay
-        .subscribe("sub-kind-3", &vec![serde_json::json!({"kinds": [3]})])
+        .subscribe("sub-kind-3", &[serde_json::json!({"kinds": [3]})])
         .await
         .unwrap();
 
@@ -133,13 +132,11 @@ async fn test_multiple_concurrent_subscriptions() {
     // Should receive event on sub-kind-1
     let result = timeout(Duration::from_secs(2), async {
         loop {
-            if let Ok(Some(msg)) = relay.recv().await {
-                if let RelayMessage::Event(sub_id, evt) = msg {
-                    if evt.id == event_id {
+            if let Ok(Some(msg)) = relay.recv().await
+                && let RelayMessage::Event(sub_id, evt) = msg
+                    && evt.id == event_id {
                         return Some(sub_id);
                     }
-                }
-            }
         }
     })
     .await;
@@ -198,13 +195,11 @@ async fn test_subscription_with_multiple_filters() {
     let mut received_kinds = Vec::new();
     timeout(Duration::from_secs(2), async {
         while received_kinds.len() < 2 {
-            if let Ok(Some(msg)) = relay.recv().await {
-                if let RelayMessage::Event(_, evt) = msg {
-                    if evt.id == event1.id || evt.id == event2.id {
+            if let Ok(Some(msg)) = relay.recv().await
+                && let RelayMessage::Event(_, evt) = msg
+                    && (evt.id == event1.id || evt.id == event2.id) {
                         received_kinds.push(evt.kind);
                     }
-                }
-            }
         }
     })
     .await
@@ -231,7 +226,7 @@ async fn test_realtime_event_delivery() {
 
     // Subscribe on relay1
     relay1
-        .subscribe("realtime", &vec![serde_json::json!({"kinds": [1]})])
+        .subscribe("realtime", &[serde_json::json!({"kinds": [1]})])
         .await
         .unwrap();
 
@@ -267,13 +262,11 @@ async fn test_realtime_event_delivery() {
     // Wait for event on relay1
     let result = timeout(Duration::from_secs(2), async {
         loop {
-            if let Ok(Some(msg)) = relay1.recv().await {
-                if let RelayMessage::Event(_, evt) = msg {
-                    if evt.id == event_id {
+            if let Ok(Some(msg)) = relay1.recv().await
+                && let RelayMessage::Event(_, evt) = msg
+                    && evt.id == event_id {
                         return std::time::Instant::now();
                     }
-                }
-            }
         }
     })
     .await;

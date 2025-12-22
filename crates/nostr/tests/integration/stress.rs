@@ -319,11 +319,8 @@ async fn test_100_clients_with_10_subscriptions_each() {
                     "limit": 10
                 })];
 
-                match timeout(Duration::from_secs(2), relay.subscribe(&sub_id, &filters)).await {
-                    Ok(Ok(_)) => {
-                        successful_subs += 1;
-                    }
-                    _ => {}
+                if let Ok(Ok(_)) = timeout(Duration::from_secs(2), relay.subscribe(&sub_id, &filters)).await {
+                    successful_subs += 1;
                 }
             }
 
@@ -445,7 +442,7 @@ async fn test_sustained_load_30_seconds() {
     for client_id in 0..num_clients {
         let url = url.clone();
         let total_events = Arc::clone(&total_events);
-        let end_time = end_time.clone();
+        let end_time = end_time;
 
         let handle = tokio::spawn(async move {
             let relay = match RelayConnection::new(&url) {

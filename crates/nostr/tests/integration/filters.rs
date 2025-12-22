@@ -16,7 +16,7 @@ async fn test_filter_by_kinds() {
 
     // Subscribe to kinds 1 and 3
     relay
-        .subscribe("kind-filter", &vec![serde_json::json!({"kinds": [1, 3]})])
+        .subscribe("kind-filter", &[serde_json::json!({"kinds": [1, 3]})])
         .await
         .unwrap();
 
@@ -44,11 +44,10 @@ async fn test_filter_by_kinds() {
     let mut received_kinds = Vec::new();
     timeout(Duration::from_secs(2), async {
         while received_kinds.len() < 2 {
-            if let Ok(Some(msg)) = relay.recv().await {
-                if let RelayMessage::Event(_, evt) = msg {
+            if let Ok(Some(msg)) = relay.recv().await
+                && let RelayMessage::Event(_, evt) = msg {
                     received_kinds.push(evt.kind);
                 }
-            }
         }
     })
     .await
@@ -81,7 +80,7 @@ async fn test_filter_by_authors() {
     relay
         .subscribe(
             "author-filter",
-            &vec![serde_json::json!({"authors": [pubkey1]})],
+            &[serde_json::json!({"authors": [pubkey1]})],
         )
         .await
         .unwrap();
@@ -117,11 +116,10 @@ async fn test_filter_by_authors() {
     // Should only receive event from key 1
     let result = timeout(Duration::from_secs(2), async {
         loop {
-            if let Ok(Some(msg)) = relay.recv().await {
-                if let RelayMessage::Event(_, evt) = msg {
+            if let Ok(Some(msg)) = relay.recv().await
+                && let RelayMessage::Event(_, evt) = msg {
                     return evt.id;
                 }
-            }
         }
     })
     .await;
@@ -167,7 +165,7 @@ async fn test_filter_by_event_ids() {
     relay
         .subscribe(
             "id-filter",
-            &vec![serde_json::json!({
+            &[serde_json::json!({
                 "ids": [event_ids[0].clone(), event_ids[2].clone()]
             })],
         )
@@ -239,7 +237,7 @@ async fn test_filter_by_tags() {
     relay
         .subscribe(
             "tag-filter",
-            &vec![serde_json::json!({
+            &[serde_json::json!({
                 "#e": [referenced_event_id]
             })],
         )
@@ -249,11 +247,10 @@ async fn test_filter_by_tags() {
     // Should receive the event
     let result = timeout(Duration::from_secs(2), async {
         loop {
-            if let Ok(Some(msg)) = relay.recv().await {
-                if let RelayMessage::Event(_, evt) = msg {
+            if let Ok(Some(msg)) = relay.recv().await
+                && let RelayMessage::Event(_, evt) = msg {
                     return evt.id;
                 }
-            }
         }
     })
     .await;
@@ -298,7 +295,7 @@ async fn test_filter_by_since_until() {
     relay
         .subscribe(
             "time-filter",
-            &vec![serde_json::json!({
+            &[serde_json::json!({
                 "since": base_time + 100,
                 "until": base_time + 200
             })],
@@ -362,7 +359,7 @@ async fn test_filter_limit() {
 
     // Subscribe with limit 3
     relay
-        .subscribe("limit-filter", &vec![serde_json::json!({"kinds": [1], "limit": 3})])
+        .subscribe("limit-filter", &[serde_json::json!({"kinds": [1], "limit": 3})])
         .await
         .unwrap();
 

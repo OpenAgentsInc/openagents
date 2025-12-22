@@ -136,11 +136,10 @@ async fn test_subscription_receives_eose() {
     // Wait for EOSE
     let result = timeout(Duration::from_secs(2), async {
         loop {
-            if let Ok(Some(msg)) = relay.recv().await {
-                if let RelayMessage::Eose(sub_id) = msg {
+            if let Ok(Some(msg)) = relay.recv().await
+                && let RelayMessage::Eose(sub_id) = msg {
                     return Some(sub_id);
                 }
-            }
         }
     })
     .await;
@@ -229,13 +228,11 @@ async fn test_multiple_clients_receive_broadcast() {
     for relay in [&relay1, &relay2, &relay3] {
         let result = timeout(timeout_duration, async {
             loop {
-                if let Ok(Some(msg)) = relay.recv().await {
-                    if let RelayMessage::Event(_, evt) = msg {
-                        if evt.id == event_id {
+                if let Ok(Some(msg)) = relay.recv().await
+                    && let RelayMessage::Event(_, evt) = msg
+                        && evt.id == event_id {
                             return true;
                         }
-                    }
-                }
             }
         })
         .await;

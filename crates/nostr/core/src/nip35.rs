@@ -376,7 +376,7 @@ mod tests {
         let event = create_test_torrent_event(
             Some("My Movie"),
             "abc123def456",
-            files.clone(),
+            files,
             vec!["udp://tracker.example.com:1337"],
             "A great movie!",
         );
