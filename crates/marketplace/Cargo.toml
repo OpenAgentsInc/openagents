@@ -23,7 +23,7 @@ maud = "0.26"
 rusqlite = { version = "0.32", features = ["bundled"] }
 
 # Async
-tokio = { version = "1", features = ["full"] }
+tokio = { version = "1", features = ["full", "time"] }
 
 # Serialization
 serde = { version = "1.0", features = ["derive"] }
@@ -49,6 +49,7 @@ walkdir = "2.5"
 toml.workspace = true
 nostr-client = { version = "0.1.0", path = "../nostr/client" }
 sha2.workspace = true
+colored = "3.0.0"
 
 # Binary removed - use `openagents marketplace` instead
 # [[bin]]

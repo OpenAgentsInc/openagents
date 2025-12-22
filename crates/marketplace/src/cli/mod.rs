@@ -10,3 +10,4 @@ pub mod provider;
 pub use skills::SkillsCommands;
 pub use data::DataCommands;
 pub use trajectories::TrajectoriesCommands;
+pub use earnings::EarningsCommands;
