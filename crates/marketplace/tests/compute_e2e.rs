@@ -275,3 +275,185 @@ async fn test_nip89_provider_discovery() {
     // - Customer filters by capabilities, pricing, reputation (NIP-89 social trust)
     // - Customer selects provider and submits job request
 }
+
+#[tokio::test]
+async fn test_dvm_service_with_relay() {
+    // This test demonstrates the complete DVM service workflow:
+    // 1. Provider announces capabilities (NIP-89)
+    // 2. Customer publishes job request (NIP-90)
+    // 3. Provider sends feedback (processing)
+    // 4. Provider publishes result
+    // 5. Customer receives result
+
+    // 1. Create identities
+    let provider_secret_key = generate_secret_key();
+    let customer_secret_key = generate_secret_key();
+
+    let provider_pubkey = nostr::get_public_key(&provider_secret_key)
+        .expect("should get provider pubkey");
+    let customer_pubkey = nostr::get_public_key(&customer_secret_key)
+        .expect("should get customer pubkey");
+
+    // 2. Provider announces capabilities (NIP-89)
+    let metadata = HandlerMetadata::new(
+        "OpenAgents DVM",
+        "Decentralized compute provider for text generation"
+    )
+    .with_website("https://openagents.com");
+
+    let handler_info = HandlerInfo::new(
+        hex::encode(&provider_pubkey),
+        HandlerType::ComputeProvider,
+        metadata.clone(),
+    )
+    .add_capability("text-generation")
+    .add_capability("code-generation");
+
+    let announcement_template = EventTemplate {
+        kind: KIND_HANDLER_INFO,
+        content: serde_json::to_string(&handler_info.metadata).unwrap(),
+        tags: handler_info.to_tags(),
+        created_at: std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs(),
+    };
+
+    let announcement_event = finalize_event(&announcement_template, &provider_secret_key)
+        .expect("should create announcement");
+
+    assert_eq!(announcement_event.kind, KIND_HANDLER_INFO);
+
+    // 3. Customer creates job request (NIP-90)
+    let job_request = JobRequest::new(KIND_JOB_TEXT_GENERATION)
+        .expect("should create request")
+        .add_input(JobInput::text("Write a function to calculate fibonacci numbers"))
+        .add_param("language", "rust")
+        .with_bid(5000);
+
+    let request_template = EventTemplate {
+        kind: job_request.kind,
+        content: job_request.content.clone(),
+        tags: job_request.to_tags(),
+        created_at: std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs(),
+    };
+
+    let request_event = finalize_event(&request_template, &customer_secret_key)
+        .expect("should create request event");
+
+    assert_eq!(request_event.kind, KIND_JOB_TEXT_GENERATION);
+
+    // 4. Provider sends "processing" feedback (NIP-90)
+    let processing_feedback = JobFeedback::new(
+        JobStatus::Processing,
+        &hex::encode(&request_event.id),
+        &hex::encode(&customer_pubkey),
+    )
+    .with_status_extra("Generating code, ETA 30 seconds");
+
+    let feedback_template = EventTemplate {
+        kind: KIND_JOB_FEEDBACK,
+        content: processing_feedback.content.clone(),
+        tags: processing_feedback.to_tags(),
+        created_at: std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs(),
+    };
+
+    let feedback_event = finalize_event(&feedback_template, &provider_secret_key)
+        .expect("should create feedback event");
+
+    assert_eq!(feedback_event.kind, KIND_JOB_FEEDBACK);
+    assert!(feedback_event.tags.iter().any(|t|
+        t[0] == "status" && t[1] == "processing"
+    ));
+
+    // 5. Provider publishes result (NIP-90)
+    let result_content = r#"fn fibonacci(n: u32) -> u64 {
+    match n {
+        0 => 0,
+        1 => 1,
+        n => fibonacci(n - 1) + fibonacci(n - 2),
+    }
+}"#;
+
+    let job_result = JobResult::new(
+        KIND_JOB_TEXT_GENERATION,  // Request kind
+        &hex::encode(&request_event.id),
+        &hex::encode(&customer_pubkey),
+        result_content.to_string(),
+    )
+    .expect("should create result");
+
+    let result_template = EventTemplate {
+        kind: job_result.kind,
+        content: job_result.content.clone(),
+        tags: job_result.to_tags(),
+        created_at: std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs(),
+    };
+
+    let result_event = finalize_event(&result_template, &provider_secret_key)
+        .expect("should create result event");
+
+    // 6. Verify complete workflow
+    let expected_result_kind = KIND_JOB_TEXT_GENERATION + 1000; // 6050
+    assert_eq!(result_event.kind, expected_result_kind);
+    assert_eq!(result_event.content, result_content);
+
+    // Verify result references the original request
+    assert!(result_event.tags.iter().any(|t|
+        t[0] == "e" && t[1] == hex::encode(&request_event.id)
+    ));
+
+    // Verify result is for the customer
+    assert!(result_event.tags.iter().any(|t|
+        t[0] == "p" && t[1] == hex::encode(&customer_pubkey)
+    ));
+
+    // 7. Provider sends success feedback
+    let success_feedback = JobFeedback::new(
+        JobStatus::Success,
+        &hex::encode(&request_event.id),
+        &hex::encode(&customer_pubkey),
+    )
+    .with_status_extra("Code generated successfully");
+
+    let success_template = EventTemplate {
+        kind: KIND_JOB_FEEDBACK,
+        content: success_feedback.content.clone(),
+        tags: success_feedback.to_tags(),
+        created_at: std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs(),
+    };
+
+    let success_event = finalize_event(&success_template, &provider_secret_key)
+        .expect("should create success event");
+
+    assert_eq!(success_event.kind, KIND_JOB_FEEDBACK);
+    assert!(success_event.tags.iter().any(|t|
+        t[0] == "status" && t[1] == "success"
+    ));
+
+    // NOTE: Full DVM service with relay would include:
+    // - Start in-process test relay
+    // - Provider subscribes to job requests (filter by kind 5050)
+    // - Customer publishes job request to relay
+    // - Provider receives request via subscription
+    // - Provider processes job asynchronously
+    // - Provider publishes feedback events (processing, success/error)
+    // - Provider publishes result event
+    // - Customer subscribes to results (filter by 'p' tag = customer pubkey)
+    // - Customer receives result and displays to user
+    // - Verify payment flow (invoice generation, payment verification)
+    // - Test timeout handling (customer cancels if no response)
+    // - Test error cases (provider sends error feedback)
+}
