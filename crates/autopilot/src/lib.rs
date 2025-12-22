@@ -5,6 +5,7 @@
 
 use std::path::PathBuf;
 
+pub mod alerts;
 pub mod analyze;
 pub mod apm;
 pub mod apm_parser;

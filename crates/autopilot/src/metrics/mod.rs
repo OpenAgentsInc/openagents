@@ -371,6 +371,10 @@ impl MetricsDb {
         )
         .context("Failed to initialize database schema")?;
 
+        // Initialize alert schema
+        crate::alerts::init_alerts_schema(&self.conn)?;
+        crate::alerts::add_default_alerts(&self.conn)?;
+
         // Migrate existing sessions table to add APM fields
         // This is safe because we're adding nullable columns with defaults
         let columns: Vec<String> = self.conn.prepare("PRAGMA table_info(sessions)")?
@@ -1095,6 +1099,11 @@ impl MetricsDb {
         }
 
         Ok(())
+    }
+
+    /// Get a reference to the database connection
+    pub fn connection(&self) -> &Connection {
+        &self.conn
     }
 }
 

@@ -916,6 +916,76 @@ enum MetricsCommands {
         #[arg(long)]
         db: Option<PathBuf>,
     },
+
+    /// Alert management commands
+    #[command(subcommand)]
+    Alerts(AlertCommands),
+}
+
+#[derive(Subcommand)]
+enum AlertCommands {
+    /// List all configured alert rules
+    List {
+        /// Path to metrics database (default: autopilot-metrics.db)
+        #[arg(long)]
+        db: Option<PathBuf>,
+    },
+
+    /// Add a new alert rule
+    Add {
+        /// Metric name to monitor
+        #[arg(long)]
+        metric: String,
+
+        /// Alert type (threshold, regression, rate_of_change)
+        #[arg(long)]
+        alert_type: String,
+
+        /// Severity (warning, error, critical)
+        #[arg(long)]
+        severity: String,
+
+        /// Threshold value
+        #[arg(long)]
+        threshold: f64,
+
+        /// Description of what this alert detects
+        #[arg(long)]
+        description: String,
+
+        /// Path to metrics database (default: autopilot-metrics.db)
+        #[arg(long)]
+        db: Option<PathBuf>,
+    },
+
+    /// Remove an alert rule
+    Remove {
+        /// Alert rule ID
+        rule_id: i64,
+
+        /// Path to metrics database (default: autopilot-metrics.db)
+        #[arg(long)]
+        db: Option<PathBuf>,
+    },
+
+    /// Show alert history
+    History {
+        /// Filter by session ID
+        #[arg(long)]
+        session: Option<String>,
+
+        /// Filter by metric name
+        #[arg(long)]
+        metric: Option<String>,
+
+        /// Limit number of results
+        #[arg(short, long, default_value_t = 50)]
+        limit: usize,
+
+        /// Path to metrics database (default: autopilot-metrics.db)
+        #[arg(long)]
+        db: Option<PathBuf>,
+    },
 }
 
 #[derive(Subcommand)]
@@ -4449,6 +4519,101 @@ async fn handle_metrics_command(command: MetricsCommands) -> Result<()> {
             println!();
             println!("View issues: cargo autopilot issue list");
             println!("{}", "=".repeat(80));
+        }
+
+        MetricsCommands::Alerts(cmd) => {
+            use autopilot::alerts;
+            use autopilot::metrics::MetricsDb;
+
+            let db_path = match &cmd {
+                AlertCommands::List { db, .. } |
+                AlertCommands::Add { db, .. } |
+                AlertCommands::Remove { db, .. } |
+                AlertCommands::History { db, .. } => db.as_ref().map(|p| p.clone()).unwrap_or_else(default_db_path),
+            };
+
+            let metrics_db = MetricsDb::open(&db_path)?;
+            let conn = metrics_db.connection();
+
+            match cmd {
+                AlertCommands::List { .. } => {
+                    let rules = alerts::list_alert_rules(conn)?;
+
+                    if rules.is_empty() {
+                        println!("{} No alert rules configured", "ℹ".cyan());
+                        println!("\nAdd a rule with: cargo autopilot metrics alerts add \\");
+                        println!("    --metric tool_error_rate \\");
+                        println!("    --alert-type threshold \\");
+                        println!("    --severity critical \\");
+                        println!("    --threshold 0.10 \\");
+                        println!("    --description \"High tool error rate\"");
+                        return Ok(());
+                    }
+
+                    println!("{} Alert Rules", "📋".cyan().bold());
+                    println!();
+                    for rule in rules {
+                        let enabled = if rule.enabled { "✓".green() } else { "✗".red() };
+                        let severity_colored = match rule.severity {
+                            alerts::AlertSeverity::Warning => "warning".yellow(),
+                            alerts::AlertSeverity::Error => "error".red(),
+                            alerts::AlertSeverity::Critical => "critical".red().bold(),
+                        };
+                        println!("{} Rule #{}: {} [{}]", enabled, rule.id, rule.metric_name, severity_colored);
+                        println!("   Type: {:?}, Threshold: {:.2}", rule.alert_type, rule.threshold);
+                        println!("   Description: {}", rule.description);
+                        println!();
+                    }
+                }
+
+                AlertCommands::Add { metric, alert_type, severity, threshold, description, .. } => {
+                    let alert_type = alerts::AlertType::from_str(&alert_type)
+                        .ok_or_else(|| anyhow::anyhow!("Invalid alert type. Use: threshold, regression, or rate_of_change"))?;
+                    let severity = alerts::AlertSeverity::from_str(&severity)
+                        .ok_or_else(|| anyhow::anyhow!("Invalid severity. Use: warning, error, or critical"))?;
+
+                    let rule_id = alerts::add_alert_rule(conn, &metric, alert_type, severity, threshold, &description)?;
+
+                    println!("{} Created alert rule #{}", "✓".green(), rule_id);
+                    println!("  Metric: {}", metric);
+                    println!("  Type: {:?}", alert_type);
+                    println!("  Severity: {:?}", severity);
+                    println!("  Threshold: {:.2}", threshold);
+                }
+
+                AlertCommands::Remove { rule_id, .. } => {
+                    alerts::remove_alert_rule(conn, rule_id)?;
+                    println!("{} Removed alert rule #{}", "✓".green(), rule_id);
+                }
+
+                AlertCommands::History { session, metric, limit, .. } => {
+                    let alerts = alerts::get_alert_history(
+                        conn,
+                        session.as_deref(),
+                        metric.as_deref(),
+                        Some(limit),
+                    )?;
+
+                    if alerts.is_empty() {
+                        println!("{} No alerts fired", "✓".green());
+                        return Ok(());
+                    }
+
+                    println!("{} Alert History ({} alerts)", "📜".cyan().bold(), alerts.len());
+                    println!();
+                    for alert in alerts {
+                        let severity_colored = match alert.severity {
+                            alerts::AlertSeverity::Warning => "WARNING".yellow(),
+                            alerts::AlertSeverity::Error => "ERROR".red(),
+                            alerts::AlertSeverity::Critical => "CRITICAL".red().bold(),
+                        };
+                        println!("[{}] {}", severity_colored, alert.fired_at.format("%Y-%m-%d %H:%M:%S"));
+                        println!("  {}", alert.message);
+                        println!("  Session: {}", alert.session_id);
+                        println!();
+                    }
+                }
+            }
         }
     }
 
