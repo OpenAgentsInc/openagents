@@ -21,6 +21,30 @@ pub enum ButtonVariant {
 }
 
 /// Button component builder.
+///
+/// # Examples
+///
+/// ```
+/// use ui::{Button, ButtonVariant, ButtonSize};
+///
+/// // Primary button
+/// let btn = Button::new("Click me")
+///     .variant(ButtonVariant::Primary)
+///     .size(ButtonSize::Default)
+///     .render();
+///
+/// // Disabled secondary button
+/// let btn = Button::new("Submit")
+///     .variant(ButtonVariant::Secondary)
+///     .disabled(true)
+///     .render();
+///
+/// // Small ghost button
+/// let btn = Button::new("Cancel")
+///     .variant(ButtonVariant::Ghost)
+///     .size(ButtonSize::Small)
+///     .render();
+/// ```
 pub struct Button {
     label: String,
     variant: ButtonVariant,

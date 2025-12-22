@@ -16,6 +16,20 @@ pub enum ChatViewMode {
 }
 
 /// Autopilot output chat pane with view toggle.
+///
+/// # Examples
+///
+/// ```
+/// use ui::{ChatPane, ChatViewMode};
+///
+/// // Create visible pane in raw mode
+/// let pane = ChatPane::new(true)
+///     .mode(ChatViewMode::Raw)
+///     .build();
+///
+/// // Create hidden pane (default formatted mode)
+/// let pane = ChatPane::new(false).build();
+/// ```
 pub struct ChatPane {
     visible: bool,
     mode: ChatViewMode,
