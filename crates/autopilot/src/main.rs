@@ -4110,8 +4110,15 @@ async fn handle_metrics_command(command: MetricsCommands) -> Result<()> {
             let sessions = if period == "all" {
                 metrics_db.get_all_sessions()?
             } else {
-                use autopilot::analyze::get_sessions_in_period;
-                get_sessions_in_period(&metrics_db, &period)?
+                use autopilot::analyze::{get_sessions_in_period, TimePeriod};
+                let time_period = match period.as_str() {
+                    "7d" => TimePeriod::Last7Days,
+                    "30d" => TimePeriod::Last30Days,
+                    "last-week" => TimePeriod::LastWeek,
+                    "this-week" => TimePeriod::ThisWeek,
+                    _ => TimePeriod::Last7Days,
+                };
+                get_sessions_in_period(&metrics_db, time_period)?
             };
 
             if sessions.is_empty() {
