@@ -57,6 +57,28 @@ impl Default for RetryConfig {
 }
 
 /// Bifrost node configuration
+///
+/// # Examples
+///
+/// ```
+/// use frostr::bifrost::BifrostConfig;
+///
+/// // Use default configuration
+/// let config = BifrostConfig::default();
+/// assert_eq!(config.peer_timeout, 300); // 5 minutes
+///
+/// // Custom configuration
+/// let config = BifrostConfig {
+///     peer_timeout: 600,
+///     default_relays: vec![
+///         "wss://relay.damus.io".to_string(),
+///         "wss://nos.lol".to_string(),
+///     ],
+///     secret_key: Some([42u8; 32]),
+///     peer_pubkeys: vec![[1u8; 32], [2u8; 32]],
+///     ..Default::default()
+/// };
+/// ```
 #[derive(Debug, Clone)]
 pub struct BifrostConfig {
     /// Peer timeout in seconds
@@ -90,6 +112,40 @@ impl Default for BifrostConfig {
 }
 
 /// Bifrost node for coordinating threshold operations
+///
+/// # Examples
+///
+/// ```no_run
+/// use frostr::bifrost::{BifrostNode, BifrostConfig};
+///
+/// # async fn example() -> anyhow::Result<()> {
+/// // Create node with default configuration
+/// let mut node = BifrostNode::new()?;
+///
+/// // Add peers
+/// let peer1_pubkey = [1u8; 32];
+/// let peer2_pubkey = [2u8; 32];
+/// node.add_peer(peer1_pubkey);
+/// node.add_peer(peer2_pubkey);
+///
+/// // Start the node
+/// node.start().await?;
+///
+/// // Perform threshold signing
+/// let event_hash = [0u8; 32];
+/// let signature = node.sign(&event_hash).await?;
+/// println!("Threshold signature created");
+///
+/// // Perform threshold ECDH
+/// let target_pubkey = [3u8; 32];
+/// let shared_secret = node.ecdh(&target_pubkey).await?;
+/// println!("Shared secret computed");
+///
+/// // Stop the node
+/// node.stop().await?;
+/// # Ok(())
+/// # }
+/// ```
 pub struct BifrostNode {
     /// Configuration
     config: BifrostConfig,
