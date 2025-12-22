@@ -401,6 +401,24 @@ cargo test -p issues
 cargo test -p issues --test integration
 ```
 
+### Pre-commit Hooks
+
+OpenAgents includes pre-commit hooks that run fast unit tests and check for uncommitted snapshot changes:
+
+```bash
+# Enable pre-commit hooks (one-time setup)
+git config core.hooksPath .githooks
+
+# The hook will automatically run before each commit:
+# - Fast unit tests (cargo test --lib)
+# - Snapshot change detection (cargo insta test)
+
+# To bypass the hook (not recommended):
+git commit --no-verify
+```
+
+The pre-commit hook ensures code quality before commits and catches issues early in development.
+
 ### Building Documentation
 
 ```bash
