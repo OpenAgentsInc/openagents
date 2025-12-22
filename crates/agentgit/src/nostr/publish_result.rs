@@ -3,6 +3,30 @@
 use serde::{Deserialize, Serialize};
 
 /// Result of publishing an event to relays
+///
+/// # Examples
+///
+/// ```
+/// use agentgit::nostr::{PublishResult, RelayFailure, ErrorCategory};
+///
+/// // Successful publish to all relays
+/// let result = PublishResult::success("event123".to_string(), 5, 5);
+/// assert!(result.success);
+/// assert_eq!(result.confirmations, 5);
+///
+/// // Partial success (some relays failed)
+/// let failures = vec![
+///     RelayFailure {
+///         relay_url: "wss://relay1.com".to_string(),
+///         error: "Connection timeout".to_string(),
+///         category: ErrorCategory::Timeout,
+///     }
+/// ];
+/// let result = PublishResult::partial_success("event123".to_string(), 4, 5, failures);
+/// assert!(result.success);
+/// assert_eq!(result.confirmations, 4);
+/// assert_eq!(result.failures.len(), 1);
+/// ```
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PublishResult {
     /// Event ID that was published
@@ -31,6 +55,22 @@ pub struct RelayFailure {
 }
 
 /// Categories of publish errors for user-friendly display
+///
+/// # Examples
+///
+/// ```
+/// use agentgit::nostr::ErrorCategory;
+///
+/// // Determine category from error message
+/// let cat = ErrorCategory::from_error_message("Connection timed out");
+/// assert_eq!(cat, ErrorCategory::Timeout);
+///
+/// let cat = ErrorCategory::from_error_message("Event rejected: invalid signature");
+/// assert_eq!(cat, ErrorCategory::Rejected);
+///
+/// // Get description
+/// assert_eq!(ErrorCategory::Auth.description(), "Authentication required");
+/// ```
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 pub enum ErrorCategory {
     /// Connection timeout
