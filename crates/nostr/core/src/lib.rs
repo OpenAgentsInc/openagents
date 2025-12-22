@@ -176,6 +176,7 @@
 //! - NIP-78: Application-specific Data (arbitrary app data storage)
 //! - NIP-84: Highlights (highlighting valuable content)
 //! - NIP-86: Relay Management API (HTTP API for relay administration)
+//! - NIP-88: Polls (decentralized polls with single/multiple choice)
 //! - NIP-89: Application Handlers (social discovery of skills/agents)
 //! - NIP-90: Data Vending Machine (DVM) job requests/results/feedback
 //! - NIP-92: Media Attachments (inline media metadata)
@@ -279,6 +280,7 @@ mod nip75;
 mod nip78;
 mod nip84;
 mod nip86;
+mod nip88;
 mod nip89;
 pub mod nip90;
 mod nip92;
@@ -803,6 +805,16 @@ pub use nip86::{
     create_list_banned_pubkeys_request, create_list_blocked_ips_request,
     create_list_events_needing_moderation_request, create_supported_methods_request,
     create_unblock_ip_request, CONTENT_TYPE as RELAY_MANAGEMENT_CONTENT_TYPE,
+};
+
+// NIP-88: Polls
+pub use nip88::{
+    ENDS_AT_TAG, KIND_POLL, KIND_POLL_RESPONSE, Nip88Error, OPTION_TAG, POLL_EVENT_TAG,
+    POLL_TYPE_TAG, PollEvent, PollOption, PollResponse, PollType, RELAY_TAG as NIP88_RELAY_TAG,
+    RESPONSE_TAG, create_poll_event, create_poll_tags, create_response_tags,
+    get_effective_responses, is_poll, is_poll_ended, is_poll_response, one_vote_per_pubkey,
+    parse_poll, parse_poll_ends_at, parse_poll_options, parse_poll_relays, parse_poll_type,
+    parse_response,
 };
 
 // NIP-89: Application Handlers
