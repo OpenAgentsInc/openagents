@@ -431,6 +431,8 @@ mod tests {
             messages: 15,
             apm: None,
             source: "autopilot".to_string(),
+            issue_numbers: None,
+            directive_id: None,
         };
         session.calculate_apm();
         db.store_session(&session).unwrap();
