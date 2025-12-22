@@ -404,3 +404,53 @@ a: Perfect! Let me test the filters: tokens_in=0 tokens_out=3 tokens_cached=1482
 t!:Bash id=uBbiyJKZ cmd="cargo autopilot apm --source autopilot 2>&1 | h..." → [running] tokens_in=0 tokens_out=102 tokens_cached=148267
 o: id=uBbiyJKZ → [ok]     Finished `dev` profile [optimized + debuginfo] target(s) in 0.19s
 t!:Bash id=Gz1Kp5w6 cmd="git add -A && git commit -m "$(cat <<'EOF'" → [running] tokens_in=0 tokens_out=24 tokens_cached=148560
+o: id=Gz1Kp5w6 → [ok] [main 093a2e5ba] Implement cargo autopilot apm CLI command
+t!:Bash id=2TnkcwSk cmd="git push origin main" → [running] tokens_in=0 tokens_out=74 tokens_cached=148931
+o: id=2TnkcwSk → [ok] [0;36m🔍 Running cargo build to check for errors and warnings...[0m
+t!:Bash id=Stg1WT85 cmd="cargo autopilot issue complete 648" → [running] tokens_in=0 tokens_out=79 tokens_cached=149548
+o: id=Stg1WT85 → [ok] ✓ Completed issue #648: Implement cargo autopilot apm CLI command
+t!:Bash id=8U663kmA cmd="cargo autopilot issue list --status ready 2>&1 ..." → [running] tokens_in=0 tokens_out=25 tokens_cached=149711
+o: id=8U663kmA → [ok] Number Status     Priority Agent    Title                                             
+t!:Bash id=mdeJAY9T cmd="cargo autopilot issue claim 649" → [running] tokens_in=0 tokens_out=24 tokens_cached=150163
+o: id=mdeJAY9T → [ok] ✓ Claimed issue #649: Add APM display widget to autopilot dashboard
+a: Issue #649 requires dashboard integration. Let me check the dashboard module to understand its structure: tokens_in=0 tokens_out=1 tokens_cached=150491
+t!:Bash id=eJraZEnk cmd="ls -la /home/christopherdavid/code/openagents/c..." → [running] tokens_in=0 tokens_out=1 tokens_cached=150491
+o: id=eJraZEnk → [ok] Permissions Size User             Date Modified Name
+t!:Bash id=rWbg5Hq4 cmd="ls -la /home/christopherdavid/code/openagents/c..." → [running] tokens_in=0 tokens_out=25 tokens_cached=150643
+o: id=rWbg5Hq4 → [ok] 
+t!:Read id=oSDCW8G1 file_path=/home/christopherdavid/code/openagents/crates/autopilot/src/dashboard/README.md → [running] tokens_in=1 tokens_out=18 tokens_cached=150965
+o: id=oSDCW8G1 → [ok]      1→# Dashboard Module Structure
+a: I see the dashboard is currently in a monolithic dashboard.rs file. Let me check it: tokens_in=0 tokens_out=1 tokens_cached=151091
+t!:Bash id=3JHBQZWT cmd="wc -l /home/christopherdavid/code/openagents/cr..." → [running] tokens_in=0 tokens_out=125 tokens_cached=151091
+o: id=3JHBQZWT → [ok] 1523 /home/christopherdavid/code/openagents/crates/autopilot/src/dashboard.rs
+a: The dashboard is large but I just need to add an APM widget. Let me find where the summary card is rendered: tokens_in=0 tokens_out=1 tokens_cached=152897
+t!:Grep id=Swt72Lcf pattern="fn summary_card|Summary.*St..." → [running] tokens_in=0 tokens_out=183 tokens_cached=152897
+o: id=Swt72Lcf → [ok] 370:pub(crate) fn summary_card(stats: &SummaryStats) -> Markup {
+a: Let me check if there's already an APM display in the dashboard: tokens_in=0 tokens_out=8 tokens_cached=153167
+t!:Grep id=3zbwjNcf pattern="apm|APM|Actions.*Per.*Minute" → [running] tokens_in=0 tokens_out=8 tokens_cached=153167
+o: id=3zbwjNcf → [ok] No matches found
+a: Good, no APM display yet. Let me check the index route to see where I should add the APM widget: tokens_in=0 tokens_out=1 tokens_cached=153474
+t!:Grep id=wDns5Vhy pattern="async fn index|fn.*dashboar..." → [running] tokens_in=0 tokens_out=184 tokens_cached=153474
+o: id=wDns5Vhy → [ok] 163:async fn index(state: web::Data<DashboardState>) -> ActixResult<HttpResponse> {
+t!:Read id=2Exxc4ac file_path=/home/christopherdavid/code/openagents/crates/autopilot/src/dashboard.rs → [running] tokens_in=6 tokens_out=25 tokens_cached=18579
+o: id=2Exxc4ac → [ok]    315→                        a href="/sessions" { "All Sessions" }
+a: I'll add an APM card after the summary card. Let me create an apm_card function: tokens_in=5 tokens_out=1 tokens_cached=131113
+t!:Read id=4wZmD7Hx file_path=/home/christopherdavid/code/openagents/crates/autopilot/src/dashboard.rs → [running] tokens_in=5 tokens_out=1 tokens_cached=131113
+o: id=4wZmD7Hx → [ok]    365→        }
+a: Let me add the APM card function after the summary_card function: tokens_in=5 tokens_out=8 tokens_cached=131998
+t!:Edit id=iy5M3pC7 file_path=/home/christopherdavid/code/openagents/crates/autopilot/src/dashboard.rs → [running] tokens_in=5 tokens_out=743 tokens_cached=131998
+o: id=iy5M3pC7 → [ok] The file /home/christopherdavid/code/openagents/crates/autopilot/src/dashboard.rs has been update...
+a: Now I need to add the apm_card to the dashboard_page function. Let me update that: tokens_in=4 tokens_out=1 tokens_cached=132858
+t!:Edit id=LELwDCb6 file_path=/home/christopherdavid/code/openagents/crates/autopilot/src/dashboard.rs → [running] tokens_in=4 tokens_out=215 tokens_cached=132858
+o: id=LELwDCb6 → [ok] The file /home/christopherdavid/code/openagents/crates/autopilot/src/dashboard.rs has been update...
+a: Now let's also add a stat-unit CSS class since we're using it. Let me find the styles section: tokens_in=4 tokens_out=3 tokens_cached=134613
+t!:Grep id=yKC2eEVd pattern="fn dashboard_styles|\.stat-..." → [running] tokens_in=4 tokens_out=3 tokens_cached=134613
+o: id=yKC2eEVd → [ok] 377:                    span.stat-label { "Total Sessions" }
+t!:Read id=wUs7ktTx file_path=/home/christopherdavid/code/openagents/crates/autopilot/src/dashboard.rs → [running] tokens_in=3 tokens_out=18 tokens_cached=135036
+o: id=wUs7ktTx → [ok]    697→.stat-value {
+t!:Edit id=GtrwTzVs file_path=/home/christopherdavid/code/openagents/crates/autopilot/src/dashboard.rs → [running] tokens_in=3 tokens_out=264 tokens_cached=136353
+o: id=GtrwTzVs → [ok] The file /home/christopherdavid/code/openagents/crates/autopilot/src/dashboard.rs has been update...
+a: Now let's build and test: tokens_in=3 tokens_out=1 tokens_cached=136645
+t!:Bash id=A4zUT74B cmd="cargo build -p autopilot 2>&1 | tail -5" → [running] tokens_in=3 tokens_out=1 tokens_cached=136645
+o: id=A4zUT74B → [ok]    Compiling autopilot v0.1.0 (/home/christopherdavid/code/openagents/crates/autopilot)
+t!:Bash id=p1QmdKVZ cmd="git add -A && git commit -m "$(cat <<'EOF'" → [running] tokens_in=2 tokens_out=455 tokens_cached=137196

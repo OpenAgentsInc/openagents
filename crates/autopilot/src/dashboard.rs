@@ -320,6 +320,7 @@ pub(crate) fn dashboard_page(sessions: &[SessionMetrics], stats: &SummaryStats) 
 
                 main {
                     (summary_card(stats))
+                    (apm_card())
                     (charts_section())
                     (sessions_table(sessions))
                 }
@@ -396,6 +397,53 @@ pub(crate) fn summary_card(stats: &SummaryStats) -> Markup {
                     span.stat-label { "Completion Rate" }
                     span.stat-value { (format!("{:.1}%", stats.completion_rate * 100.0)) }
                 }
+            }
+        }
+    }
+}
+
+/// Render APM (Actions Per Minute) card
+pub(crate) fn apm_card() -> Markup {
+    html! {
+        div.summary-card {
+            h2 { "APM (Actions Per Minute)" }
+            p.subtitle style="margin-bottom: 1rem; color: #666;" {
+                "Agent velocity metrics • Autopilot vs Claude Code"
+            }
+            div.stats-grid {
+                div.stat {
+                    span.stat-label { "Autopilot (7d avg)" }
+                    span.stat-value style="color: #10b981;" { "18.1" }
+                    span.stat-unit { "APM" }
+                }
+                div.stat {
+                    span.stat-label { "Claude Code (7d avg)" }
+                    span.stat-value style="color: #3b82f6;" { "4.4" }
+                    span.stat-unit { "APM" }
+                }
+                div.stat {
+                    span.stat-label { "Efficiency Ratio" }
+                    span.stat-value style="color: #f59e0b;" { "4.1x" }
+                    span.stat-unit { "faster" }
+                }
+                div.stat {
+                    span.stat-label { "Current Session" }
+                    span.stat-value { "23.4" }
+                    span.stat-unit { "APM" }
+                }
+                div.stat {
+                    span.stat-label { "Performance Tier" }
+                    span.stat-value style="color: #10b981;" { "Productive" }
+                    span.stat-unit { "15-30 APM" }
+                }
+                div.stat {
+                    span.stat-label { "Total Actions" }
+                    span.stat-value { "1,247" }
+                    span.stat-unit { "last 7d" }
+                }
+            }
+            p.note style="margin-top: 1rem; font-size: 0.85rem; color: #666; font-style: italic;" {
+                "Note: Showing placeholder data. Database integration in progress (d-016)."
             }
         }
     }
@@ -650,6 +698,14 @@ main {
     font-size: 1.75rem;
     font-weight: 600;
     color: var(--accent);
+}
+
+.stat-unit {
+    color: var(--text-secondary);
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-top: 0.25rem;
 }
 
 .charts-section {
