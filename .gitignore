@@ -132,3 +132,6 @@ crates/*/*/autopilot.db
 # Proptest regression files (generated during property-based testing)
 proptest-regressions/
 **/proptest-regressions/
+
+# Machine-specific MCP config
+.mcp.json
