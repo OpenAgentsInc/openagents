@@ -489,6 +489,10 @@ impl TrajectoryCollector {
                     cache_creation_tokens: success.usage.cache_creation_input_tokens.unwrap_or(0),
                     cost_usd: success.total_cost_usd,
                 };
+
+                // Calculate APM for the trajectory
+                let apm = self.calculate_trajectory_apm();
+
                 self.trajectory.result = Some(TrajectoryResult {
                     success: !success.is_error,
                     duration_ms: success.duration_ms,
@@ -496,6 +500,7 @@ impl TrajectoryCollector {
                     result_text: Some(success.result.clone()),
                     errors: Vec::new(),
                     issues_completed: 0,
+                    apm,
                 });
             }
             SdkResultMessage::ErrorDuringExecution(err)
@@ -509,6 +514,10 @@ impl TrajectoryCollector {
                     cache_creation_tokens: err.usage.cache_creation_input_tokens.unwrap_or(0),
                     cost_usd: err.total_cost_usd,
                 };
+
+                // Calculate APM for the trajectory
+                let apm = self.calculate_trajectory_apm();
+
                 self.trajectory.result = Some(TrajectoryResult {
                     success: false,
                     duration_ms: err.duration_ms,
@@ -516,9 +525,31 @@ impl TrajectoryCollector {
                     result_text: None,
                     errors: err.errors.clone(),
                     issues_completed: 0,
+                    apm,
                 });
             }
         }
+    }
+
+    /// Calculate APM (Actions Per Minute) for the current trajectory
+    fn calculate_trajectory_apm(&self) -> Option<f64> {
+        use crate::apm::calculate_apm_from_timestamps;
+
+        // Count messages (user + assistant)
+        let messages = self.trajectory.steps.iter()
+            .filter(|s| matches!(&s.step_type, StepType::User { .. } | StepType::Assistant { .. }))
+            .count() as u32;
+
+        // Count tool calls
+        let tool_calls = self.trajectory.steps.iter()
+            .filter(|s| matches!(&s.step_type, StepType::ToolCall { .. }))
+            .count() as u32;
+
+        // Get start and end times
+        let start_time = self.trajectory.started_at;
+        let end_time = self.trajectory.ended_at.unwrap_or_else(|| Utc::now());
+
+        calculate_apm_from_timestamps(messages, tool_calls, start_time, end_time)
     }
 
     fn extract_tool_result_content(&self, block: &Value) -> String {
