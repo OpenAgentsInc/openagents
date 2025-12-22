@@ -12,9 +12,10 @@ use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 
 /// Merge strategy for contact list conflicts
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum MergeStrategy {
     /// Replace with newest (by created_at timestamp)
+    #[default]
     ReplaceNewest,
     /// Union of both lists (merge contacts from both)
     Union,
@@ -22,12 +23,6 @@ pub enum MergeStrategy {
     KeepLocal,
     /// Keep remote version
     KeepRemote,
-}
-
-impl Default for MergeStrategy {
-    fn default() -> Self {
-        Self::ReplaceNewest
-    }
 }
 
 /// Contact list manager for synchronizing and caching contact lists
