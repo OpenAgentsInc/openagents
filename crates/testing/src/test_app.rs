@@ -65,7 +65,7 @@ impl TestApp {
 
     /// Send GET request
     pub async fn get(&self, path: &str) -> reqwest::Result<Response> {
-        self.client.get(&self.url(path)).send().await
+        self.client.get(self.url(path)).send().await
     }
 
     /// Send POST request with JSON body
@@ -74,7 +74,7 @@ impl TestApp {
         path: &str,
         json: &T,
     ) -> reqwest::Result<Response> {
-        self.client.post(&self.url(path)).json(json).send().await
+        self.client.post(self.url(path)).json(json).send().await
     }
 
     /// Send PUT request with JSON body
@@ -83,12 +83,12 @@ impl TestApp {
         path: &str,
         json: &T,
     ) -> reqwest::Result<Response> {
-        self.client.put(&self.url(path)).json(json).send().await
+        self.client.put(self.url(path)).json(json).send().await
     }
 
     /// Send DELETE request
     pub async fn delete(&self, path: &str) -> reqwest::Result<Response> {
-        self.client.delete(&self.url(path)).send().await
+        self.client.delete(self.url(path)).send().await
     }
 
     /// Send PATCH request with JSON body
@@ -97,12 +97,12 @@ impl TestApp {
         path: &str,
         json: &T,
     ) -> reqwest::Result<Response> {
-        self.client.patch(&self.url(path)).json(json).send().await
+        self.client.patch(self.url(path)).json(json).send().await
     }
 
     /// Send custom request
     pub async fn request(&self, method: Method, path: &str) -> reqwest::Result<Response> {
-        self.client.request(method, &self.url(path)).send().await
+        self.client.request(method, self.url(path)).send().await
     }
 }
 
