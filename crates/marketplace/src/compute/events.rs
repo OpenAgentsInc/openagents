@@ -129,7 +129,6 @@ impl ComputeJobRequest {
     }
 
     /// Common LLM parameters
-
     /// Set the model parameter
     pub fn with_model(self, model: impl Into<String>) -> Self {
         self.with_param("model", model)
