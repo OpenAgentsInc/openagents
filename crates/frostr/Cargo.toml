@@ -34,6 +34,7 @@ thiserror = "1"
 frost-core = "2.2"
 hex.workspace = true
 bitcoin = { version = "0.32.8", features = ["serde"] }
+k256 = "0.13.4"
 
 [dev-dependencies]
 tokio-test = "0.4"

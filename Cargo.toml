@@ -161,7 +161,7 @@ walkdir = "2.5"
 [profile.dev]
 opt-level = 1
 split-debuginfo = "unpacked"
-incremental = false
+incremental = true
 codegen-units = 16
 
 [profile.dev.build-override]
