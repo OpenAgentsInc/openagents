@@ -37,6 +37,27 @@ Conventions:
 - NEVER use `-i` flag (interactive not supported)
 - NEVER use destructive git commands (`git reset --hard`, `git checkout -- .`, `git restore .`) without asking first
 
+**CRITICAL: Do NOT discard other agents' work!**
+
+Multiple agents may be working on this repo simultaneously. If you see uncommitted changes in files you didn't modify:
+- **DO NOT** run `git restore` on those files
+- **DO NOT** run `git checkout -- <file>` on those files
+- **DO NOT** run `git stash` without checking what you're stashing
+- **DO** use `git diff <file>` to understand what changed
+- **DO** commit your own changes in separate files, or wait
+
+If a file has changes that conflict with your work, ASK the user before discarding anything. Another agent may have spent significant time on that implementation.
+
+Example of what NOT to do:
+```bash
+# WRONG - discards another agent's work without checking
+git restore crates/frostr/src/ecdh.rs
+
+# RIGHT - check what's there first
+git diff crates/frostr/src/ecdh.rs
+# Then ask user: "This file has uncommitted changes. Should I discard them?"
+```
+
 **Autopilot Commits:**
 When running in autopilot mode (autonomous issue processing), include an additional co-author line to identify work done through the autopilot system:
 
