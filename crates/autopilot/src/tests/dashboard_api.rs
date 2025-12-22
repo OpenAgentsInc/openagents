@@ -66,7 +66,7 @@ fn test_sessions_api_sorting() {
 
     // Create sessions with different durations
     for i in 0..5 {
-        let mut metrics = SessionMetrics {
+        let metrics = SessionMetrics {
             id: format!("session-{}", i),
             timestamp: Utc::now(),
             model: "sonnet".to_string(),
@@ -160,7 +160,7 @@ fn test_metrics_summary_stats() {
 
     // Add multiple sessions
     for i in 0..10 {
-        let mut metrics = SessionMetrics {
+        let metrics = SessionMetrics {
             id: format!("session-{}", i),
             timestamp: Utc::now(),
             model: "sonnet".to_string(),
@@ -202,7 +202,7 @@ fn test_trends_calculation_error_rate() {
 
     // Add sessions with varying error rates
     for i in 0..5 {
-        let mut metrics = SessionMetrics {
+        let metrics = SessionMetrics {
             id: format!("session-{}", i),
             timestamp: Utc::now(),
             model: "sonnet".to_string(),
@@ -248,7 +248,7 @@ fn test_pagination_logic() {
 
     // Create 20 sessions
     for i in 0..20 {
-        let mut metrics = SessionMetrics {
+        let metrics = SessionMetrics {
             id: format!("session-{:02}", i),
             timestamp: Utc::now(),
             model: "sonnet".to_string(),
