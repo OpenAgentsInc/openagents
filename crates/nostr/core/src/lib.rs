@@ -109,6 +109,7 @@
 //! - NIP-05: Mapping Nostr Keys to DNS-based Internet Identifiers
 //! - NIP-06: Key derivation from BIP39 mnemonic seed phrases (requires `full` feature)
 //! - NIP-07: window.nostr capability for web browsers
+//! - NIP-08: Handling Mentions (deprecated, use NIP-27)
 //! - NIP-09: Event Deletion Request
 //! - NIP-10: Text Notes and Threads
 //! - NIP-11: Relay Information Document
@@ -204,6 +205,7 @@ mod nip05;
 #[cfg(feature = "full")]
 mod nip06;
 mod nip07;
+mod nip08;
 mod nip09;
 mod nip10;
 mod nip11;
@@ -332,6 +334,12 @@ pub use nip06::{
 pub use nip07::{
     Nip07Error, SignEventTemplate, WindowNostr, WindowNostrNip04, WindowNostrNip44,
     WindowNostrProvider, is_available as nip07_is_available,
+};
+
+// NIP-08: Handling Mentions (deprecated, use NIP-27)
+pub use nip08::{
+    Mention, Nip08Error, create_tags_from_mentions, extract_mentions, extract_mentions_detailed,
+    format_mention, get_mention_value, parse_mention, replace_mentions, validate_mention,
 };
 
 // NIP-09: Event Deletion Request

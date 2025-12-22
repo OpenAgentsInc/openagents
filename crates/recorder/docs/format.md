@@ -17,6 +17,80 @@ u: User message
 u: Another line
 ```
 
+## Dual-Format System (rlog + JSONL)
+
+Autopilot uses a **dual-format logging system** to balance human readability with complete data capture:
+
+| File | Purpose | Content |
+|------|---------|---------|
+| `.rlog` | Human-readable summary | Truncated content (200 chars messages, 150 thinking, 100 tool output) |
+| `.jsonl` | Full data capture | Untruncated, Claude Code SDK compatible |
+
+**File naming convention:**
+```
+docs/logs/20251222/
+  123456-task-name.rlog           # Human review
+  123456-task-name.jsonl          # Full data (APM, replay, NIP-SA)
+  123456-task-name.sub-abc123.jsonl  # Subagent session
+```
+
+### Why Dual Format?
+
+- **rlog truncates intentionally** - Large tool outputs (10KB+) make logs unreadable
+- **JSONL preserves everything** - Required for APM calculations, trajectory replay, NIP-SA publishing
+- **Same session ID** - Both files share the session identifier for correlation
+
+### JSONL Companion Format
+
+The JSONL companion file uses Claude Code SDK format (same as `~/.claude/projects/*.jsonl`):
+
+```jsonl
+{"type":"user","message":{"content":"Fix the login bug"},"timestamp":"2025-12-22T10:00:00Z"}
+{"type":"assistant","message":{"content":"I'll investigate..."},"timestamp":"2025-12-22T10:00:05Z"}
+{"type":"tool_use","tool":"Read","input":{"file_path":"src/auth.rs"},"timestamp":"2025-12-22T10:00:06Z"}
+{"type":"tool_result","tool_use_id":"toolu_1","content":"[file contents...]","timestamp":"2025-12-22T10:00:07Z"}
+```
+
+**Key differences from rlog:**
+- No truncation - full content preserved
+- Machine-parseable JSON
+- Includes token metrics per message
+- Compatible with Claude Code tooling
+
+### Subagent Sessions
+
+When autopilot spawns subagents (via Task tool), each subagent gets its own JSONL file:
+
+**Parent session header (rlog):**
+```yaml
+---
+format: rlog/1
+id: 123456-task-name
+repo_sha: abc123
+---
+```
+
+**Subagent session header (JSONL):**
+```json
+{"type":"header","session_id":"sub-abc123","parent_session":"123456-task-name","agent_type":"explore","started_at":"2025-12-22T10:05:00Z"}
+```
+
+**Subagent tracking in parent rlog:**
+```
+x:explore id=abc123 → [started]
+... (other work) ...
+x:explore id=abc123 → [done] summary="found 3 files matching pattern"
+```
+
+### APM Data Source Priority
+
+For APM (Actions Per Minute) calculations, always use JSONL files:
+
+1. **Autopilot sessions**: `docs/logs/**/*.jsonl` (includes subagent files)
+2. **Interactive sessions**: `~/.claude/projects/*.jsonl`
+
+**Never use rlog for APM** - truncation loses action counts.
+
 ### Required Header Fields
 
 - `format` (must start with `rlog/`)

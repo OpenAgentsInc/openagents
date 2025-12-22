@@ -1969,6 +1969,16 @@ async fn run_task(
         None
     };
 
+    // Enable JSONL streaming for full data capture (alongside rlog)
+    if !dry_run {
+        let jsonl_path = output_dir.join(filename(&slug, "jsonl"));
+        if let Err(e) = collector.enable_jsonl_streaming(&jsonl_path) {
+            eprintln!("Warning: Failed to enable JSONL streaming: {}", e);
+        } else {
+            println!("{} {} {}", "Full data:".dimmed(), jsonl_path.display(), "(APM source)".dimmed());
+        }
+    }
+
     // Setup query options with hooks
     let plan_mode_hook = std::sync::Arc::new(PlanModeHook);
     let plan_hook_matcher = HookCallbackMatcher::new().hook(plan_mode_hook);
@@ -2688,13 +2698,14 @@ async fn resume_task(
     }
 
     // Determine output paths - append to original files if resuming from a file
-    let (rlog_path, json_path) = if let Some(ref orig_path) = original_trajectory_path {
+    let (rlog_path, json_path, jsonl_path) = if let Some(ref orig_path) = original_trajectory_path {
         // Use same directory and derive paths from original
         let parent = orig_path.parent().unwrap_or(std::path::Path::new("."));
         let stem = orig_path.file_stem().and_then(|s| s.to_str()).unwrap_or("resumed");
         (
             parent.join(format!("{}.rlog", stem)),
             parent.join(format!("{}.json", stem)),
+            parent.join(format!("{}.jsonl", stem)),
         )
     } else {
         // Create new files in standard location for --continue-last
@@ -2704,6 +2715,7 @@ async fn resume_task(
         (
             output_dir.join(filename(&slug, "rlog")),
             output_dir.join(filename(&slug, "json")),
+            output_dir.join(filename(&slug, "jsonl")),
         )
     };
 
@@ -2731,6 +2743,13 @@ async fn resume_task(
         eprintln!("Warning: Failed to enable rlog streaming: {}", e);
     } else {
         println!("{} {} {}", "Streaming to:".dimmed(), rlog_path.display(), "(tail -f to watch)".dimmed());
+    }
+
+    // Enable JSONL streaming for full data capture
+    if let Err(e) = collector.enable_jsonl_streaming(&jsonl_path) {
+        eprintln!("Warning: Failed to enable JSONL streaming: {}", e);
+    } else {
+        println!("{} {} {}", "Full data:".dimmed(), jsonl_path.display(), "(APM source)".dimmed());
     }
 
     // Create session
