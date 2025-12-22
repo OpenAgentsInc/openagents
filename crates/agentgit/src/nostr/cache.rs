@@ -690,6 +690,50 @@ impl EventCache {
         Ok(filtered)
     }
 
+    /// Get PR updates for a pull request
+    /// PR updates are kind:1619 events that reference the PR via an "e" tag
+    pub fn get_pr_updates(&self, pr_event_id: &str) -> Result<Vec<Event>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, kind, pubkey, created_at, content, tags, sig
+             FROM events
+             WHERE kind = 1619
+             ORDER BY created_at ASC",
+        )?;
+
+        let events = stmt
+            .query_map([], |row| {
+                let tags_json: String = row.get(5)?;
+                let tags: Vec<Vec<String>> = serde_json::from_str(&tags_json)
+                    .map_err(|e| rusqlite::Error::FromSqlConversionFailure(
+                        5,
+                        rusqlite::types::Type::Text,
+                        Box::new(e),
+                    ))?;
+
+                Ok(Event {
+                    id: row.get(0)?,
+                    kind: row.get(1)?,
+                    pubkey: row.get(2)?,
+                    created_at: row.get(3)?,
+                    content: row.get(4)?,
+                    tags,
+                    sig: row.get(6)?,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+
+        // Filter events that reference this PR
+        let filtered: Vec<Event> = events.into_iter()
+            .filter(|event| {
+                event.tags.iter().any(|tag| {
+                    tag.len() >= 2 && tag[0] == "e" && tag[1] == pr_event_id
+                })
+            })
+            .collect();
+
+        Ok(filtered)
+    }
+
     /// Get comments for a specific issue
     /// Comments are kind:1 (text note) events that reference the issue via an "e" tag (NIP-22)
     pub fn get_comments_for_issue(&self, issue_event_id: &str) -> Result<Vec<Event>> {

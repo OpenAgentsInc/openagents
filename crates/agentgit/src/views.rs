@@ -1232,7 +1232,7 @@ pub fn patch_detail_page(repository: &Event, patch: &Event, identifier: &str) ->
 }
 
 /// Pull request detail page
-pub fn pull_request_detail_page(repository: &Event, pull_request: &Event, reviews: &[Event], status_events: &[Event], identifier: &str, trajectory_session: Option<&Event>, trajectory_events: &[Event], stack_prs: &[Event], dependency_pr: Option<&Event>, is_mergeable: bool) -> Markup {
+pub fn pull_request_detail_page(repository: &Event, pull_request: &Event, reviews: &[Event], status_events: &[Event], identifier: &str, trajectory_session: Option<&Event>, trajectory_events: &[Event], stack_prs: &[Event], dependency_pr: Option<&Event>, is_mergeable: bool, pr_updates: &[Event]) -> Markup {
     let repo_name = get_tag_value(repository, "name").unwrap_or_else(|| "Repository".to_string());
     let pr_title = get_tag_value(pull_request, "subject").unwrap_or_else(|| "Untitled Pull Request".to_string());
     let pr_status = get_tag_value(pull_request, "status").unwrap_or_else(|| "open".to_string());
@@ -1801,6 +1801,33 @@ pub fn pull_request_detail_page(repository: &Event, pull_request: &Event, review
                                     div.event-detail-item {
                                         span.label { "Signature:" }
                                         code.signature { (pull_request.sig) }
+                                    }
+                                }
+                            }
+
+                            @if !pr_updates.is_empty() {
+                                section.issue-section {
+                                    h2 { "📝 Pull Request Updates (" (pr_updates.len()) ")" }
+                                    div style="display: flex; flex-direction: column; gap: 1rem;" {
+                                        @for update in pr_updates {
+                                            @let update_author = if update.pubkey.len() > 16 {
+                                                format!("{}...{}", &update.pubkey[..8], &update.pubkey[update.pubkey.len()-8..])
+                                            } else {
+                                                update.pubkey.clone()
+                                            };
+
+                                            div style="background: var(--card-bg, #1a1a1a); border: 1px solid var(--border-color, #333); padding: 1rem;" {
+                                                div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem;" {
+                                                    span style="font-weight: 600; color: var(--accent-color, #0ea5e9);" { (update_author) }
+                                                    span style="font-size: 0.875rem; color: var(--muted-color, #888);" { (update.created_at) }
+                                                }
+                                                @if !update.content.is_empty() {
+                                                    div style="white-space: pre-wrap; color: var(--text-color, #ccc);" {
+                                                        (update.content)
+                                                    }
+                                                }
+                                            }
+                                        }
                                     }
                                 }
                             }
