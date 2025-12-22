@@ -396,11 +396,11 @@ fn generate_investigation_steps(pattern: &AnomalyPattern) -> String {
     }
     steps.push_str("   ```\n\n");
 
-    steps.push_str(&format!(
+    steps.push_str(
         "2. Query tool error breakdown:\n   ```bash\n   \
          cargo autopilot metrics analyze --period 7d\n   \
          ```\n\n"
-    ));
+    );
 
     steps.push_str(
         "3. Review trajectory logs for common patterns:\n   ```bash\n   \
