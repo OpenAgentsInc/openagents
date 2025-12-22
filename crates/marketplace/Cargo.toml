@@ -62,3 +62,4 @@ path = "src/lib.rs"
 tempfile.workspace = true
 nostr-relay = { path = "../nostr/relay" }
 frostr = { path = "../frostr" }
+hex.workspace = true
