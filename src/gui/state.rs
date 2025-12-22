@@ -93,20 +93,40 @@ impl AppState {
     }
 }
 
-/// Fetch Claude info by running CLI and parsing stats
-pub async fn fetch_claude_info() -> ClaudeInfo {
-    use std::process::Stdio;
-    use tokio::io::{AsyncBufReadExt, BufReader};
+/// Fast check: installed + version + basic auth from stats file
+/// This is instant - no API calls
+pub async fn fetch_claude_info_fast() -> ClaudeInfo {
     use tokio::process::Command;
 
     let mut info = ClaudeInfo::default();
+    let claude_path = shellexpand::tilde("~/.claude/local/claude").to_string();
 
-    // First, read stats-cache.json for usage data
+    // Check if installed by running --version (instant)
+    if let Ok(output) = Command::new(&claude_path)
+        .arg("--version")
+        .output()
+        .await
+    {
+        if output.status.success() {
+            let version_str = String::from_utf8_lossy(&output.stdout);
+            // Parse "2.0.73 (Claude Code)" -> "2.0.73"
+            if let Some(ver) = version_str.split_whitespace().next() {
+                info.version = Some(ver.to_string());
+            }
+        }
+    }
+
+    // Read stats-cache.json for auth check + usage data (instant file read)
     let stats_path = shellexpand::tilde("~/.claude/stats-cache.json").to_string();
     if let Ok(content) = tokio::fs::read_to_string(&stats_path).await {
         if let Ok(json) = serde_json::from_str::<serde_json::Value>(&content) {
             info.total_sessions = json.get("totalSessions").and_then(|v| v.as_u64());
             info.total_messages = json.get("totalMessages").and_then(|v| v.as_u64());
+
+            // If we have sessions, user is authenticated
+            if info.total_sessions.unwrap_or(0) > 0 {
+                info.authenticated = true;
+            }
 
             // Get today's tokens
             let today = chrono::Local::now().format("%Y-%m-%d").to_string();
@@ -142,55 +162,42 @@ pub async fn fetch_claude_info() -> ClaudeInfo {
         }
     }
 
-    // Now check auth by running CLI
+    info.loading = false;
+    info
+}
+
+/// Slow check: Actually runs CLI to get current model (makes API call)
+/// Only call this if you need the current model name
+pub async fn fetch_claude_model() -> Option<String> {
+    use std::process::Stdio;
+    use tokio::io::{AsyncBufReadExt, BufReader};
+    use tokio::process::Command;
+
     let claude_path = shellexpand::tilde("~/.claude/local/claude").to_string();
 
-    let child_result = Command::new(&claude_path)
+    let mut child = Command::new(&claude_path)
         .args(["-p", "x", "--output-format", "stream-json", "--verbose"])
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
-        .spawn();
+        .spawn()
+        .ok()?;
 
-    let mut child = match child_result {
-        Ok(c) => c,
-        Err(_) => {
-            info.loading = false;
-            return info;
-        }
-    };
-
-    let stdout = match child.stdout.take() {
-        Some(s) => s,
-        None => {
-            info.loading = false;
-            return info;
-        }
-    };
-
+    let stdout = child.stdout.take()?;
     let mut reader = BufReader::new(stdout).lines();
 
-    // Read lines looking for the init message
     while let Ok(Some(line)) = reader.next_line().await {
         if line.contains("\"subtype\":\"init\"") {
             if let Ok(json) = serde_json::from_str::<serde_json::Value>(&line) {
-                info.authenticated = true;
-                info.model = json.get("model").and_then(|v| v.as_str()).map(|s| s.to_string());
-                info.version = json.get("claude_code_version").and_then(|v| v.as_str()).map(|s| s.to_string());
+                let model = json.get("model").and_then(|v| v.as_str()).map(|s| s.to_string());
+                let _ = child.kill().await;
+                let _ = child.wait().await;
+                return model;
             }
-            let _ = child.kill().await;
-            break;
-        }
-
-        // Also check for result which means query completed (we're authed)
-        if line.contains("\"type\":\"result\"") {
-            info.authenticated = true;
-            let _ = child.kill().await;
-            break;
         }
     }
 
+    let _ = child.kill().await;
     let _ = child.wait().await;
-    info.loading = false;
-    info
+    None
 }
