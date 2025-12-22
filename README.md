@@ -538,6 +538,39 @@ Supports:
 
 ## Development
 
+### Project Directives
+
+OpenAgents development is guided by **directives** — high-priority initiatives that define what we're building and why. Each directive is a comprehensive document specifying goals, success criteria, architecture decisions, and implementation details.
+
+**Why directives?**
+
+Rather than a loose backlog of tasks, directives provide focused context for both human developers and autonomous agents. When Autopilot claims an issue, it reads the relevant directive to understand the bigger picture — not just *what* to build, but *why* it matters and how it connects to everything else. This context makes the difference between mechanical code changes and thoughtful contributions.
+
+**Current directives:**
+
+| ID | Focus Area | What It Enables |
+|----|------------|-----------------|
+| d-001 | Bitcoin Payments | Self-custodial Lightning + Spark L2 via Breez SDK |
+| d-002 | Nostr Protocol | 94 NIPs for decentralized communication |
+| d-003 | Wallet Application | Unified identity + payments user experience |
+| d-004 | Autopilot Improvement | Self-improvement flywheel from trajectory data |
+| d-005 | AgentGit | GitHub alternative where agents are first-class |
+| d-006 | NIP-SA Protocol | Sovereign agent identity and lifecycle |
+| d-007 | FROSTR | Threshold signatures for agent key protection |
+| d-008 | Marketplace | Compute, skills, and data economy |
+| d-009 | Autopilot GUI | Visual interface for agent supervision |
+| d-010 | Unified Binary | Single `openagents` command for everything |
+| d-011 | Storybook | Component documentation and testing |
+| d-012 | No Stubs | Production-ready code policy |
+| d-013 | Testing Framework | Multi-layer test strategy |
+| d-014 | NIP-SA/Bifrost Tests | Threshold crypto integration tests |
+| d-015 | Marketplace Tests | Agent commerce end-to-end tests |
+| d-016 | APM Tracking | Actions Per Minute velocity metrics |
+
+📋 **[Full directive documentation →](.openagents/DIRECTIVES.md)**
+
+Directives live in `.openagents/directives/`. Issues are linked to directives via `directive_id` so work can be traced back to strategic goals. When you pick up an issue, read its directive first — it contains the context you need.
+
 ### Running Tests
 
 ```bash
