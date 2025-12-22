@@ -1,7 +1,8 @@
 //! Benchmarks for input validation functions
 
-use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
+use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
 use issues::validation::{validate_agent, validate_description, validate_title};
+use std::hint::black_box;
 
 fn bench_validate_title(c: &mut Criterion) {
     let mut group = c.benchmark_group("validate_title");
