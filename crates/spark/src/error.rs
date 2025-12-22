@@ -28,7 +28,4 @@ pub enum SparkError {
 
     #[error("payment failed: {0}")]
     PaymentFailed(String),
-
-    #[error("not implemented: {0}")]
-    NotImplemented(String),
 }
