@@ -27,6 +27,10 @@ reqwest = { version = "0.12", default-features = false, features = ["json", "rus
 # Fake data generation
 fake = { version = "2.9", features = ["derive"] }
 rand = "0.8"
+tokio-tungstenite = { workspace = true, features = ["native-tls"] }
+warp = { version = "0.4.2", features = ["websocket", "server"] }
+nostr = { version = "0.1.0", path = "../nostr/core" }
+futures-util = "0.3.31"
 
 [dev-dependencies]
 tokio = { version = "1", features = ["full", "test-util"] }
