@@ -35,6 +35,7 @@ pub mod directive;
 pub mod issue;
 pub mod project;
 pub mod session;
+pub mod validation;
 
 // Re-export commonly used types
 pub use db::{init_db, init_memory_db};
@@ -42,3 +43,4 @@ pub use directive::{Directive, DirectiveError, DirectivePriority, DirectiveProgr
 pub use issue::{Issue, IssueType, Priority, Status};
 pub use project::Project;
 pub use session::{Session, SessionStatus};
+pub use validation::{validate_agent, validate_description, validate_title, ValidationError};
