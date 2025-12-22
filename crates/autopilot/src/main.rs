@@ -3697,6 +3697,14 @@ async fn handle_metrics_command(command: MetricsCommands) -> Result<()> {
                 }
             );
             println!();
+            println!("{} Performance:", "⚡".cyan().bold());
+            println!("  Messages: {}", session.messages);
+            if let Some(apm) = session.apm {
+                println!("  APM:      {:.2}", apm);
+            } else {
+                println!("  APM:      {}", "Not calculated".dimmed());
+            }
+            println!();
 
             if !tool_calls.is_empty() {
                 println!("{} Tool Call Breakdown:", "🔧".cyan().bold());
