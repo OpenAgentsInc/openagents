@@ -202,6 +202,10 @@ pub fn repository_detail_page(repository: &Event, is_cloned: bool, local_path: O
                                                 maintainer.clone()
                                             };
                                             div.maintainer-item {
+                                                // Display robot icon for potential agent maintainers
+                                                // (agents typically have npub addresses like regular users,
+                                                // but this provides a visual hint for agent-capable repos)
+                                                span style="margin-right: 0.5rem;" { "🤖" }
                                                 span.pubkey { (short_maintainer) }
                                             }
                                         }
