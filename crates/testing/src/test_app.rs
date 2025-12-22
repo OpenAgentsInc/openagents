@@ -2,7 +2,6 @@
 //!
 //! Provides a test application instance with isolated database and configuration.
 
-use actix_web::{App, dev::ServiceResponse, test, web, HttpServer};
 use rusqlite::Connection;
 use std::sync::Arc;
 use tempfile::TempDir;
