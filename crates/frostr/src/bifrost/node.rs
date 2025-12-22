@@ -292,7 +292,7 @@ impl BifrostNode {
     }
 
     /// Perform health check on all peers
-    pub async fn health_check(&mut self) -> Result<()> {
+    pub async fn health_check(&mut self) -> Result<usize> {
         self.peer_manager.health_check().await
     }
 

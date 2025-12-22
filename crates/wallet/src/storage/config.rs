@@ -6,21 +6,11 @@ use std::fs;
 use std::path::PathBuf;
 
 /// Wallet configuration
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct WalletConfig {
     pub network: NetworkConfig,
     pub nostr: NostrConfig,
     pub storage: StorageConfig,
-}
-
-impl Default for WalletConfig {
-    fn default() -> Self {
-        Self {
-            network: NetworkConfig::default(),
-            nostr: NostrConfig::default(),
-            storage: StorageConfig::default(),
-        }
-    }
 }
 
 impl WalletConfig {

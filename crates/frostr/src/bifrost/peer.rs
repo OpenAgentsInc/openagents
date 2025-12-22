@@ -247,9 +247,27 @@ impl PeerManager {
     }
 
     /// Health check for all peers
-    pub async fn health_check(&mut self) -> Result<()> {
-        // TODO: Implement health check for all peers
-        Ok(())
+    ///
+    /// Checks the health of all tracked peers based on their last_seen timestamp
+    /// and current status. Marks peers as offline if they haven't been seen
+    /// within the timeout period.
+    ///
+    /// Returns the number of unhealthy peers detected.
+    pub async fn health_check(&mut self) -> Result<usize> {
+        let mut unhealthy_count = 0;
+
+        for peer in self.peers.values_mut() {
+            // Check if peer hasn't been seen recently
+            if !peer.is_recently_seen(self.peer_timeout) {
+                // Mark as offline if it was online or unknown
+                if peer.status != PeerStatus::Offline {
+                    peer.mark_offline();
+                    unhealthy_count += 1;
+                }
+            }
+        }
+
+        Ok(unhealthy_count)
     }
 }
 
