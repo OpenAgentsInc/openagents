@@ -141,8 +141,8 @@ async fn execute_scan(source: Option<String>, verbose: bool) -> Result<()> {
     let collector = TrajectoryCollector::new(config);
 
     let results = if let Some(source_name) = source {
-        let source = TrajectorySource::from_str(&source_name)
-            .ok_or_else(|| anyhow::anyhow!("Unknown source: {}", source_name))?;
+        let source = source_name.parse::<TrajectorySource>()
+            .map_err(|e| anyhow::anyhow!("{}", e))?;
         vec![collector.scan_source(&source)?]
     } else {
         collector.scan_all()?
@@ -241,8 +241,8 @@ async fn execute_preview(limit: usize, detailed: bool) -> Result<()> {
 
 /// Execute redact command
 async fn execute_redact(session_id: &str, dry_run: bool, level: &str) -> Result<()> {
-    let redaction_level = RedactionLevel::from_str(level)
-        .ok_or_else(|| anyhow::anyhow!("Invalid redaction level: {}", level))?;
+    let redaction_level = level.parse::<RedactionLevel>()
+        .map_err(|e| anyhow::anyhow!("{}", e))?;
 
     println!("Redacting session: {}", session_id);
     println!("Level: {:?}", redaction_level);
@@ -270,7 +270,7 @@ async fn execute_contribute(batch: bool, review: bool) -> Result<()> {
     // Load configuration
     let config = TrajectoryConfig::default();
     let mut contrib_config = ContributionConfig::default();
-    contrib_config.redaction_level = RedactionLevel::from_str(&config.redaction_level)
+    contrib_config.redaction_level = config.redaction_level.parse::<RedactionLevel>()
         .unwrap_or(RedactionLevel::Standard);
     contrib_config.min_quality = config.min_quality_score;
 

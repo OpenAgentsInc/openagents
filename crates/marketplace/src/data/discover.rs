@@ -4,6 +4,7 @@
 
 use nostr::FileMetadata;
 use serde::{Deserialize, Serialize};
+use std::str::FromStr;
 use thiserror::Error;
 
 /// Errors that can occur during dataset browsing operations
@@ -63,9 +64,13 @@ impl DatasetCategory {
             DatasetCategory::Other(s) => s.as_str(),
         }
     }
+}
 
-    pub fn from_str(s: &str) -> Self {
-        match s {
+impl FromStr for DatasetCategory {
+    type Err = std::convert::Infallible;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(match s {
             "embeddings" => DatasetCategory::Embeddings,
             "code" => DatasetCategory::Code,
             "documentation" => DatasetCategory::Documentation,
@@ -73,7 +78,7 @@ impl DatasetCategory {
             "benchmarks" => DatasetCategory::Benchmarks,
             "research" => DatasetCategory::Research,
             other => DatasetCategory::Other(other.to_string()),
-        }
+        })
     }
 }
 

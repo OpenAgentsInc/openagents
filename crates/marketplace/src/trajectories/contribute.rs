@@ -8,6 +8,7 @@ use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::path::PathBuf;
+use std::str::FromStr;
 
 /// Status of a trajectory contribution
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -21,22 +22,25 @@ pub enum ContributionStatus {
 }
 
 impl ContributionStatus {
-    /// Parse from string
-    pub fn from_str(s: &str) -> Option<Self> {
-        match s {
-            "pending" => Some(Self::Pending),
-            "accepted" => Some(Self::Accepted),
-            "rejected" => Some(Self::Rejected),
-            _ => None,
-        }
-    }
-
     /// Convert to string
     pub fn as_str(&self) -> &'static str {
         match self {
             Self::Pending => "pending",
             Self::Accepted => "accepted",
             Self::Rejected => "rejected",
+        }
+    }
+}
+
+impl FromStr for ContributionStatus {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "pending" => Ok(Self::Pending),
+            "accepted" => Ok(Self::Accepted),
+            "rejected" => Ok(Self::Rejected),
+            _ => Err(format!("Unknown contribution status: {}", s)),
         }
     }
 }
@@ -257,8 +261,8 @@ impl ContributionClient {
             |row| row.get(0),
         )?;
 
-        ContributionStatus::from_str(&status_str)
-            .ok_or_else(|| anyhow::anyhow!("Invalid status in database: {}", status_str))
+        status_str.parse::<ContributionStatus>()
+            .map_err(|e| anyhow::anyhow!("{}", e))
     }
 
     /// Get all contributions with optional status filter
@@ -287,7 +291,7 @@ impl ContributionClient {
                 contribution_id: row.get(0)?,
                 session_id: row.get(1)?,
                 source: row.get(2)?,
-                status: ContributionStatus::from_str(&row.get::<_, String>(3)?)
+                status: row.get::<_, String>(3)?.parse::<ContributionStatus>()
                     .unwrap_or(ContributionStatus::Pending),
                 quality_score: row.get(4)?,
                 estimated_reward_sats: row.get::<_, i64>(5)? as u64,

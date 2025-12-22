@@ -145,7 +145,7 @@ fn browse_datasets(
     let mut filters = SearchFilters::new();
 
     if let Some(cat) = category {
-        filters = filters.with_category(DatasetCategory::from_str(&cat));
+        filters = filters.with_category(cat.parse().unwrap_or_else(|_| DatasetCategory::Other(cat)));
     }
 
     if let Some(mime) = mime_type {

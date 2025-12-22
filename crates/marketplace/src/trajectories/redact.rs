@@ -7,6 +7,7 @@
 use anyhow::Result;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
+use std::str::FromStr;
 
 /// Redaction level determines aggressiveness of pattern matching
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -19,14 +20,15 @@ pub enum RedactionLevel {
     Paranoid,
 }
 
-impl RedactionLevel {
-    /// Parse from string
-    pub fn from_str(s: &str) -> Option<Self> {
+impl FromStr for RedactionLevel {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s.to_lowercase().as_str() {
-            "standard" => Some(Self::Standard),
-            "strict" => Some(Self::Strict),
-            "paranoid" => Some(Self::Paranoid),
-            _ => None,
+            "standard" => Ok(Self::Standard),
+            "strict" => Ok(Self::Strict),
+            "paranoid" => Ok(Self::Paranoid),
+            _ => Err(format!("Unknown redaction level: {}", s)),
         }
     }
 }
