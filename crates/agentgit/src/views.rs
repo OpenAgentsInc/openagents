@@ -2865,3 +2865,126 @@ pub fn repository_create_form_page() -> Markup {
         }
     }
 }
+
+/// Git status page showing local changes
+pub fn git_status_page(identifier: &str, changes: &[crate::git::FileChange]) -> Markup {
+    html! {
+        (DOCTYPE)
+        html lang="en" {
+            head {
+                meta charset="utf-8";
+                meta name="viewport" content="width=device-width, initial-scale=1.0";
+                title { "Git Status - " (identifier) " - AgentGit" }
+                style {
+                    (include_str!("./styles.css"))
+                }
+            }
+            body {
+                header {
+                    h1 { "AgentGit" }
+                    nav {
+                        a href="/" { "Home" }
+                        " | "
+                        a href={"/repo/" (identifier)} { "Repository" }
+                        " | "
+                        span { "Git Status" }
+                    }
+                }
+
+                main {
+                    h2 { "Local Changes - " (identifier) }
+
+                    @if changes.is_empty() {
+                        p { "No local changes" }
+                    } @else {
+                        div.file-changes {
+                            h3 { "Modified Files" }
+                            table {
+                                thead {
+                                    tr {
+                                        th { "Status" }
+                                        th { "File Path" }
+                                    }
+                                }
+                                tbody {
+                                    @for change in changes {
+                                        tr {
+                                            td.status {
+                                                @match change.status {
+                                                    crate::git::FileStatus::Untracked => span.status-untracked { "Untracked" },
+                                                    crate::git::FileStatus::Modified => span.status-modified { "Modified" },
+                                                    crate::git::FileStatus::Added => span.status-added { "Added" },
+                                                    crate::git::FileStatus::Deleted => span.status-deleted { "Deleted" },
+                                                    crate::git::FileStatus::Renamed => span.status-renamed { "Renamed" },
+                                                    crate::git::FileStatus::Conflicted => span.status-conflicted { "Conflicted" },
+                                                }
+                                            }
+                                            td.file-path { (change.path) }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    div.actions {
+                        a.button href={"/repo/" (identifier)} { "← Back to Repository" }
+                    }
+                }
+
+                footer {
+                    p { "AgentGit - Nostr-native GitHub alternative" }
+                }
+            }
+        }
+    }
+}
+
+/// Git branch creation form
+pub fn git_branch_create_form_page(identifier: &str) -> Markup {
+    html! {
+        (DOCTYPE)
+        html lang="en" {
+            head {
+                meta charset="utf-8";
+                meta name="viewport" content="width=device-width, initial-scale=1.0";
+                title { "Create Branch - " (identifier) " - AgentGit" }
+                style {
+                    (include_str!("./styles.css"))
+                }
+            }
+            body {
+                header {
+                    h1 { "AgentGit" }
+                    nav {
+                        a href="/" { "Home" }
+                        " | "
+                        a href={"/repo/" (identifier)} { "Repository" }
+                        " | "
+                        span { "Create Branch" }
+                    }
+                }
+
+                main {
+                    h2 { "Create New Branch - " (identifier) }
+
+                    form method="post" action={"/repo/" (identifier) "/git/branch"} {
+                        div.form-group {
+                            label for="branch_name" { "Branch Name" }
+                            input type="text" id="branch_name" name="branch_name" required placeholder="feature/my-feature";
+                        }
+
+                        div.form-actions {
+                            button type="submit" { "Create Branch" }
+                            a.button.secondary href={"/repo/" (identifier)} { "Cancel" }
+                        }
+                    }
+                }
+
+                footer {
+                    p { "AgentGit - Nostr-native GitHub alternative" }
+                }
+            }
+        }
+    }
+}
