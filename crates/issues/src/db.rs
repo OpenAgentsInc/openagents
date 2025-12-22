@@ -2,6 +2,7 @@
 
 use rusqlite::{Connection, Result};
 use std::path::Path;
+use tracing::{debug, error, info};
 
 /// Current schema version
 #[allow(dead_code)]
@@ -9,13 +10,22 @@ const SCHEMA_VERSION: i32 = 6;
 
 /// Initialize the database with migrations
 pub fn init_db(path: &Path) -> Result<Connection> {
-    let conn = Connection::open(path)?;
+    info!("Initializing database at {:?}", path);
+
+    let conn = Connection::open(path).map_err(|e| {
+        error!("Failed to open database at {:?}: {}", path, e);
+        e
+    })?;
 
     // Enable foreign keys
-    conn.execute_batch("PRAGMA foreign_keys = ON;")?;
+    conn.execute_batch("PRAGMA foreign_keys = ON;").map_err(|e| {
+        error!("Failed to enable foreign keys: {}", e);
+        e
+    })?;
 
     // Check current version
     let version = get_schema_version(&conn)?;
+    debug!("Current schema version: {}", version);
 
     // Run migrations
     if version < 1 {
@@ -86,12 +96,14 @@ fn get_schema_version(conn: &Connection) -> Result<i32> {
 }
 
 fn set_schema_version(conn: &Connection, version: i32) -> Result<()> {
+    debug!("Setting schema version to {}", version);
     conn.execute("DELETE FROM schema_version", [])?;
     conn.execute("INSERT INTO schema_version (version) VALUES (?)", [version])?;
     Ok(())
 }
 
 fn migrate_v1(conn: &Connection) -> Result<()> {
+    info!("Running migration v1");
     conn.execute_batch(
         r#"
         -- Issues table
@@ -138,14 +150,25 @@ fn migrate_v1(conn: &Connection) -> Result<()> {
         "#,
     )?;
 
-    set_schema_version(conn, 1)?;
+    set_schema_version(conn, 1).map_err(|e| {
+        error!("Failed to set schema version to 1: {}", e);
+        e
+    })?;
+    info!("Migration v1 completed successfully");
     Ok(())
 }
 
 fn migrate_v2(conn: &Connection) -> Result<()> {
+    info!("Running migration v2");
     // Clean up any NULL ids (from manual inserts) and delete those rows
-    conn.execute("DELETE FROM issues WHERE id IS NULL OR id = ''", [])?;
-    conn.execute("DELETE FROM issue_events WHERE id IS NULL OR id = ''", [])?;
+    conn.execute("DELETE FROM issues WHERE id IS NULL OR id = ''", []).map_err(|e| {
+        error!("Failed to clean up NULL issue ids: {}", e);
+        e
+    })?;
+    conn.execute("DELETE FROM issue_events WHERE id IS NULL OR id = ''", []).map_err(|e| {
+        error!("Failed to clean up NULL event ids: {}", e);
+        e
+    })?;
 
     // Recreate issues table with explicit NOT NULL constraint on id
     conn.execute_batch(
@@ -185,10 +208,12 @@ fn migrate_v2(conn: &Connection) -> Result<()> {
     )?;
 
     set_schema_version(conn, 2)?;
+    info!("Migration v2 completed successfully");
     Ok(())
 }
 
 fn migrate_v3(conn: &Connection) -> Result<()> {
+    info!("Running migration v3");
     // Sync issue_counter to MAX(number) + 1 to fix any desync from manual inserts
     conn.execute_batch(
         r#"
@@ -209,10 +234,12 @@ fn migrate_v3(conn: &Connection) -> Result<()> {
     )?;
 
     set_schema_version(conn, 3)?;
+    info!("Migration v3 completed successfully");
     Ok(())
 }
 
 fn migrate_v4(conn: &Connection) -> Result<()> {
+    info!("Running migration v4");
     // Add projects and sessions tables for multi-project Autopilot support
     conn.execute_batch(
         r#"
@@ -256,10 +283,12 @@ fn migrate_v4(conn: &Connection) -> Result<()> {
     )?;
 
     set_schema_version(conn, 4)?;
+    info!("Migration v4 completed successfully");
     Ok(())
 }
 
 fn migrate_v5(conn: &Connection) -> Result<()> {
+    info!("Running migration v5");
     // Add agent column to issues table for Codex integration
     conn.execute_batch(
         r#"
@@ -269,10 +298,12 @@ fn migrate_v5(conn: &Connection) -> Result<()> {
     )?;
 
     set_schema_version(conn, 5)?;
+    info!("Migration v5 completed successfully");
     Ok(())
 }
 
 fn migrate_v6(conn: &Connection) -> Result<()> {
+    info!("Running migration v6");
     // Add directive_id column to issues table for linking issues to directives
     conn.execute_batch(
         r#"
@@ -285,6 +316,8 @@ fn migrate_v6(conn: &Connection) -> Result<()> {
     )?;
 
     set_schema_version(conn, 6)?;
+    info!("Migration v6 completed successfully");
+    info!("Database initialized successfully at schema version {}", SCHEMA_VERSION);
     Ok(())
 }
 
