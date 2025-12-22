@@ -162,6 +162,7 @@
 //! - NIP-62: Request to Vanish (GDPR-compliant complete data deletion)
 //! - NIP-64: Chess (Portable Game Notation)
 //! - NIP-65: Relay List Metadata (user's preferred read/write relays)
+//! - NIP-66: Relay Discovery and Liveness Monitoring (relay characteristics and monitors)
 //! - NIP-68: Picture-first Feeds (Instagram-style image posts)
 //! - NIP-69: Peer-to-peer Order Events (decentralized marketplace orders)
 //! - NIP-70: Protected Events (author-only publishing with authentication)
@@ -261,6 +262,7 @@ mod nip61;
 mod nip62;
 mod nip64;
 mod nip65;
+mod nip66;
 mod nip68;
 mod nip69;
 mod nip70;
@@ -685,6 +687,17 @@ pub use nip64::{
 pub use nip65::{
     Nip65Error, READ_MARKER, RELAY_LIST_METADATA_KIND, RelayEntry, RelayListMetadata, RelayMarker,
     WRITE_MARKER, get_relay_entries, is_relay_list_metadata_kind,
+};
+
+// NIP-66: Relay Discovery and Liveness Monitoring
+pub use nip66::{
+    CHECK_TYPE_TAG, CheckTimeout, FREQUENCY_TAG, GEOHASH_TAG as NIP66_GEOHASH_TAG,
+    KIND_TAG as NIP66_KIND_TAG, KindPolicy, NETWORK_TYPE_TAG, NIP_SUPPORT_TAG, Nip66Error,
+    NetworkType, RELAY_DISCOVERY_KIND, RELAY_MONITOR_ANNOUNCEMENT_KIND, RELAY_TYPE_TAG,
+    REQUIREMENT_TAG, RTT_OPEN_TAG, RTT_READ_TAG, RTT_WRITE_TAG, RelayDiscovery,
+    RelayMonitorAnnouncement, Requirement, RttMetrics, TIMEOUT_TAG, TOPIC_TAG as NIP66_TOPIC_TAG,
+    is_relay_discovery, is_relay_monitor_announcement, validate_relay_discovery,
+    validate_relay_monitor_announcement,
 };
 
 // NIP-68: Picture-first Feeds
