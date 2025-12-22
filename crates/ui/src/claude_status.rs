@@ -486,6 +486,7 @@ fn context_bar_color(pct: f64) -> &'static str {
 }
 
 /// Get color for cost display
+#[allow(dead_code)]
 fn cost_color(cost: f64) -> &'static str {
     if cost < 0.10 {
         "#4a9" // green
