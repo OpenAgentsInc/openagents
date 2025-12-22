@@ -790,3 +790,30 @@ o: id=3zvCYLFK → [ok] The file /home/christopherdavid/code/openagents/crates/i
 t!:Bash id=Y8u2mGcS cmd="cargo test -p issues 2>&1 | tail -20" → [running] tokens_in=0 tokens_out=84 tokens_cached=142629
 o: id=Y8u2mGcS → [ok] test test_get_issue_by_number ... ok
 t!:Bash id=FPz3tzWM cmd="git add -A && git commit -m "$(cat <<'EOF'" → [running] tokens_in=0 tokens_out=24 tokens_cached=142922
+o: id=FPz3tzWM → [ok] [main af0fc8a12] Add comprehensive error logging to database operations
+t!:Bash id=WtHtYbs6 cmd="cargo autopilot issue complete 564" → [running] tokens_in=0 tokens_out=80 tokens_cached=143253
+o: id=WtHtYbs6 → [ok] ✓ Completed issue #564: Add comprehensive error handling for autopilot database operations
+t!:Bash id=zLiy1niY cmd="cargo autopilot issue ready" → [running] tokens_in=0 tokens_out=77 tokens_cached=143975
+o: id=zLiy1niY → [ok] No ready issues available
+t!:Bash id=Xr5sgdfp cmd="cargo autopilot issue create "Add input validat..." → [running] tokens_in=0 tokens_out=406 tokens_cached=144199
+o: id=Xr5sgdfp → [ok] ✓ Created issue #565: Add input validation and sanitization for user-provided issue data (agent: ...
+t!:Bash id=dJX3hpCc cmd="cargo autopilot issue ready" → [running] tokens_in=0 tokens_out=24 tokens_cached=144331
+o: id=dJX3hpCc → [ok] → Next ready issue:
+t!:Bash id=iyMFtiGh cmd="cargo autopilot issue claim 565" → [running] tokens_in=0 tokens_out=80 tokens_cached=145247
+o: id=iyMFtiGh → [ok] ✓ Claimed issue #565: Add input validation and sanitization for user-provided issue data
+t!:Glob id=62adz7kX pattern="crates/issues/src/*.rs" → [running] tokens_in=0 tokens_out=26 tokens_cached=145758
+o: id=62adz7kX → [ok] /home/christopherdavid/code/openagents/crates/issues/src/project.rs
+t!:Read id=C577rNGD file_path=/home/christopherdavid/code/openagents/crates/issues/src/issue.rs → [running] tokens_in=0 tokens_out=94 tokens_cached=145912
+o: id=C577rNGD → [ok]      1→//! Issue struct and CRUD operations
+a: I can see the enum types already exist. I need to add validation. Let me create a new validation module. tokens_in=0 tokens_out=1 tokens_cached=146240
+t!:Write id=KbFc3zGP file_path=/home/christopherdavid/code/openagents/crates/issues/src/validation.rs → [running] tokens_in=0 tokens_out=1924 tokens_cached=146240
+o: id=KbFc3zGP → [ok] File created successfully at: /home/christopherdavid/code/openagents/crates/issues/src/validation.rs
+t!:Read id=CveaPMXV file_path=/home/christopherdavid/code/openagents/crates/issues/src/lib.rs → [running] tokens_in=0 tokens_out=77 tokens_cached=147462
+o: id=CveaPMXV → [ok]      1→//! Local issue tracking with SQLite
+t!:Edit id=Mkg1Vojq file_path=/home/christopherdavid/code/openagents/crates/issues/src/lib.rs → [running] tokens_in=0 tokens_out=359 tokens_cached=149531
+o: id=Mkg1Vojq → [ok] The file /home/christopherdavid/code/openagents/crates/issues/src/lib.rs has been updated. Here's...
+t!:Bash id=q4yPcm5j cmd="cargo test -p issues 2>&1 | tail -30" → [running] tokens_in=0 tokens_out=26 tokens_cached=150235
+o: id=q4yPcm5j → [ok] test test_agent_filtering_in_ready_queue ... ok
+t!:Bash id=mhjRHeWn cmd="cargo test -p issues validation 2>&1 | tail -30" → [running] tokens_in=0 tokens_out=86 tokens_cached=150883
+o: id=mhjRHeWn → [ok]      Running unittests src/lib.rs (target/debug/deps/issues-4d9484216c70e74b)
+t!:Bash id=yJQGajgq cmd="git add -A && git commit -m "$(cat <<'EOF'" → [running] tokens_in=0 tokens_out=24 tokens_cached=151446
