@@ -85,6 +85,7 @@ pub fn validate_agent(agent: &str) -> Result<String, ValidationError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use proptest::prelude::*;
 
     // Title validation tests
     #[test]
@@ -220,5 +221,79 @@ mod tests {
             result,
             Err(ValidationError::InvalidAgent("Claude".to_string()))
         );
+    }
+
+    // Property-based tests
+    proptest! {
+        #[test]
+        fn prop_title_rejects_empty_and_whitespace(s in "\\s*") {
+            let result = validate_title(&s);
+            prop_assert!(result.is_err());
+            prop_assert!(matches!(result, Err(ValidationError::TitleEmpty)));
+        }
+
+        #[test]
+        fn prop_title_rejects_too_long(s in "[a-z]{201,300}") {
+            let result = validate_title(&s);
+            prop_assert!(result.is_err());
+            prop_assert!(matches!(result, Err(ValidationError::TitleTooLong(_))));
+        }
+
+        #[test]
+        fn prop_title_accepts_valid_length(s in "[a-zA-Z0-9 ]{1,200}") {
+            let trimmed = s.trim();
+            if !trimmed.is_empty() && trimmed == s.as_str() {
+                let result = validate_title(&s);
+                prop_assert!(result.is_ok());
+                prop_assert_eq!(result.unwrap(), s);
+            }
+        }
+
+        #[test]
+        fn prop_title_rejects_leading_whitespace(s in "\\s+[a-z]+") {
+            let result = validate_title(&s);
+            prop_assert!(result.is_err());
+            prop_assert!(matches!(result, Err(ValidationError::TitleHasWhitespace)));
+        }
+
+        #[test]
+        fn prop_title_rejects_trailing_whitespace(s in "[a-z]+\\s+") {
+            let result = validate_title(&s);
+            prop_assert!(result.is_err());
+            prop_assert!(matches!(result, Err(ValidationError::TitleHasWhitespace)));
+        }
+
+        #[test]
+        fn prop_description_accepts_valid_length(s in "[a-zA-Z0-9 \\n]{0,10000}") {
+            let result = validate_description(Some(&s));
+            prop_assert!(result.is_ok());
+            prop_assert_eq!(result.unwrap(), Some(s));
+        }
+
+        #[test]
+        fn prop_description_rejects_too_long(s in "[a-z]{10001,10100}") {
+            let result = validate_description(Some(&s));
+            prop_assert!(result.is_err());
+            prop_assert!(matches!(result, Err(ValidationError::DescriptionTooLong(_))));
+        }
+
+        #[test]
+        fn prop_agent_accepts_only_valid_names(s in "[a-z]{1,20}") {
+            let result = validate_agent(&s);
+            if s == "claude" || s == "codex" {
+                prop_assert!(result.is_ok());
+                prop_assert_eq!(result.unwrap(), s);
+            } else {
+                prop_assert!(result.is_err());
+                prop_assert!(matches!(result, Err(ValidationError::InvalidAgent(_))));
+            }
+        }
+    }
+
+    #[test]
+    fn test_description_none_handling() {
+        let result = validate_description(None);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), None);
     }
 }
