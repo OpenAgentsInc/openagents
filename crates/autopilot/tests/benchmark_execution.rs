@@ -72,7 +72,7 @@ async fn test_simple_file_edit_benchmark_execution() -> Result<()> {
     )?;
 
     // Create benchmark task
-    let _task = B001SimpleFileEdit;
+    let task = B001SimpleFileEdit;
 
     // Run the benchmark
     let result = runner.run_benchmark(&task).await?;
@@ -144,7 +144,7 @@ async fn test_benchmark_metrics_accuracy() -> Result<()> {
         "test-v1.0.0".to_string(),
     )?;
 
-    let _task = B001SimpleFileEdit;
+    let task = B001SimpleFileEdit;
     let result = runner.run_benchmark(&task).await?;
 
     // Verify token counts are reasonable for a simple file edit task
