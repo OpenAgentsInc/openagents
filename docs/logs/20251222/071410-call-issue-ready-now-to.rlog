@@ -698,3 +698,30 @@ o: id=9h6e6RAD → [ok]     98→- [ ] Add `cargo wallet agent profile` command
 t!:Edit id=xXMdonma file_path=/home/christopherdavid/code/openagents/.openagents/directives/d-006.md → [running] tokens_in=0 tokens_out=293 tokens_cached=66630
 o: id=xXMdonma → [ok] The file /home/christopherdavid/code/openagents/.openagents/directives/d-006.md has been updated....
 t!:Bash id=oPtKrrUc cmd="git add -A && git commit -m "$(cat <<'EOF'" → [running] tokens_in=0 tokens_out=26 tokens_cached=67030
+o: id=oPtKrrUc → [ok] [main 80c60dd5d] Update d-006 directive: Mark Phase 3 state management items as complete
+t!:Bash id=aNbNr7Ec cmd="git push" → [running] tokens_in=0 tokens_out=72 tokens_cached=67732
+o: id=aNbNr7Ec → [ok] [0;36m🔍 Running cargo build to check for errors and warnings...[0m
+t!:Bash id=qhPrFRMu cmd="cat << 'EOF' | head -1" → [running] tokens_in=0 tokens_out=25 tokens_cached=68128
+o: id=qhPrFRMu → [ok] {"jsonrpc":"2.0","id":10,"method":"tools/call","params":{"name":"issue_complete","arguments":{"is...
+t!:Bash id=uX6NLcMs cmd="echo '{"jsonrpc":"2.0","id":11,"method":"tools/..." → [running] tokens_in=0 tokens_out=24 tokens_cached=68288
+o: id=uX6NLcMs → [ok] {"jsonrpc":"2.0","id":11,"method":"tools/call","params":{"name":"issue_ready","arguments":{}}}
+a: No ready issues. Let me look at other incomplete directive items. Checking d-008 for marketplace-related work: tokens_in=0 tokens_out=1 tokens_cached=68564
+t!:Read id=q93bQwPh file_path=/home/christopherdavid/code/openagents/.openagents/directives/d-008.md → [running] tokens_in=0 tokens_out=139 tokens_cached=68564
+o: id=q93bQwPh → [ok]     70→**Reed's Law (V ∝ 2^N)**: Our unified market enables 2^N possible coalitions across ALL pa...
+t!:Bash id=thYjVEKS cmd="grep -n "^### Phase" /home/christopherdavid/cod..." → [running] tokens_in=0 tokens_out=26 tokens_cached=68721
+o: id=thYjVEKS → [ok] 202:### Phase 1: Core Infrastructure (CLI-First)
+t!:Read id=jkdxyJcd file_path=/home/christopherdavid/code/openagents/.openagents/directives/d-008.md → [running] tokens_in=0 tokens_out=18 tokens_cached=70017
+o: id=jkdxyJcd → [ok]    268→
+a: Let me check Phase 4b (Trajectory Contribution): tokens_in=0 tokens_out=1 tokens_cached=70254
+t!:Read id=MxQ39GM4 file_path=/home/christopherdavid/code/openagents/.openagents/directives/d-008.md → [running] tokens_in=0 tokens_out=1 tokens_cached=70254
+o: id=MxQ39GM4 → [ok]    245→
+a: Let me check if trajectory contribution CLI exists: tokens_in=0 tokens_out=4 tokens_cached=70878
+t!:Glob id=NdoUCyAZ pattern="crates/marketplace/src/cli/*.rs" → [running] tokens_in=0 tokens_out=71 tokens_cached=70878
+o: id=NdoUCyAZ → [ok] /home/christopherdavid/code/openagents/crates/marketplace/src/cli/earnings.rs
+a: Great! The trajectories.rs file exists. Let me check its implementation status: tokens_in=0 tokens_out=1 tokens_cached=71598
+t!:Read id=ocDnJwFp file_path=/home/christopherdavid/code/openagents/crates/marketplace/src/cli/trajectories.rs → [running] tokens_in=0 tokens_out=98 tokens_cached=71598
+o: id=ocDnJwFp → [ok]      1→//! CLI commands for trajectory contribution
+a: Excellent! The trajectory contribution CLI is fully implemented with all the commands specified in d-008 Phase 4b: tokens_in=0 tokens_out=5 tokens_cached=71876
+t!:Edit id=cVKFaf8F file_path=/home/christopherdavid/code/openagents/.openagents/directives/d-008.md → [running] tokens_in=0 tokens_out=644 tokens_cached=71876
+o: id=cVKFaf8F → [ok] The file /home/christopherdavid/code/openagents/.openagents/directives/d-008.md has been updated....
+t!:Bash id=5HjNW1ZU cmd="git add -A && git commit -m "$(cat <<'EOF'" → [running] tokens_in=0 tokens_out=372 tokens_cached=78329
