@@ -14,7 +14,9 @@ pub fn configure_api(cfg: &mut web::ServiceConfig) {
 async fn get_status(state: web::Data<AppState>) -> HttpResponse {
     let info = state.claude_info.read().await;
 
-    let mut status = if info.authenticated {
+    let mut status = if info.loading {
+        ClaudeStatus::loading()
+    } else if info.authenticated {
         ClaudeStatus::authenticated()
     } else {
         ClaudeStatus::not_logged_in()
@@ -34,6 +36,17 @@ async fn get_status(state: web::Data<AppState>) -> HttpResponse {
     }
     if let Some(tokens) = info.today_tokens {
         status = status.today_tokens(tokens);
+    }
+
+    // Add model usage
+    for usage in &info.model_usage {
+        status = status.add_model_usage(
+            usage.model.clone(),
+            usage.input_tokens,
+            usage.output_tokens,
+            usage.cache_read_tokens,
+            usage.cache_creation_tokens,
+        );
     }
 
     HttpResponse::Ok()

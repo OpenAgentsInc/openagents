@@ -1,5 +1,8 @@
 //! GUI application entry point
 
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
+
 use anyhow::Result;
 use tao::event::{Event, WindowEvent};
 use tao::event_loop::{ControlFlow, EventLoop};
@@ -11,6 +14,10 @@ use super::server::start_server;
 /// Run the unified OpenAgents GUI
 pub fn run() -> Result<()> {
     tracing::info!("Starting OpenAgents Desktop...");
+
+    // Shared shutdown signal
+    let shutdown = Arc::new(AtomicBool::new(false));
+    let shutdown_clone = shutdown.clone();
 
     // Start tokio runtime + actix server in background thread
     let (port_tx, port_rx) = std::sync::mpsc::channel();
@@ -25,8 +32,21 @@ pub fn run() -> Result<()> {
             let port = start_server().await.expect("start server");
             port_tx.send(port).expect("send port");
 
-            // Keep runtime alive
-            tokio::signal::ctrl_c().await.ok();
+            // Wait for shutdown signal or Ctrl+C
+            loop {
+                tokio::select! {
+                    _ = tokio::signal::ctrl_c() => {
+                        tracing::info!("Received Ctrl+C, shutting down...");
+                        shutdown_clone.store(true, Ordering::SeqCst);
+                        break;
+                    }
+                    _ = tokio::time::sleep(tokio::time::Duration::from_millis(100)) => {
+                        if shutdown_clone.load(Ordering::SeqCst) {
+                            break;
+                        }
+                    }
+                }
+            }
         });
     });
 
@@ -48,8 +68,14 @@ pub fn run() -> Result<()> {
         .with_url(&url)
         .build(&window)?;
 
-    // Run event loop
+    // Run event loop with shutdown check
     event_loop.run(move |event, _, control_flow| {
+        // Check if shutdown was requested
+        if shutdown.load(Ordering::SeqCst) {
+            *control_flow = ControlFlow::Exit;
+            return;
+        }
+
         *control_flow = ControlFlow::Wait;
 
         match event {
@@ -57,6 +83,7 @@ pub fn run() -> Result<()> {
                 event: WindowEvent::CloseRequested,
                 ..
             } => {
+                shutdown.store(true, Ordering::SeqCst);
                 *control_flow = ControlFlow::Exit;
             }
             _ => {}
