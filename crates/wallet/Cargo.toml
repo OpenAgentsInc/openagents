@@ -58,7 +58,7 @@ dirs = "5"
 shellexpand = "3"
 hex = "0.4"
 chrono.workspace = true
-spark = { version = "0.1.0", path = "../spark" }
+spark = { package = "openagents-spark", path = "../spark" }
 reqwest = { workspace = true, features = ["json", "blocking"] }
 
 # GUI dependencies

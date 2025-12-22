@@ -117,7 +117,7 @@ config = { path = "crates/config" }
 desktop = { path = "crates/desktop" }
 fm-bridge = { path = "crates/fm-bridge" }
 nostr = { path = "crates/nostr/core" }
-spark = { path = "crates/spark" }
+spark = { package = "openagents-spark", path = "crates/spark" }
 ui = { path = "crates/ui" }
 
 # External crates
@@ -177,3 +177,4 @@ opt-level = 3
 debug = "limited"
 lto = "thin"
 codegen-units = 1
+
