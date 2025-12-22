@@ -14,23 +14,35 @@ pub async fn home(state: web::Data<AppState>) -> HttpResponse {
     let full_auto = *state.full_auto.read().await;
     let switch = FullAutoSwitch::new(full_auto).build();
 
-    // Get real Claude account info from state
-    let claude_account = state.claude_account.read().await;
-    let claude_status = match claude_account.as_ref() {
-        Some(account) => ClaudeStatus::logged_in(
-            account.email.clone().unwrap_or_default(),
-            account.organization.clone(),
-            account.subscription_type.clone(),
-            account.token_source.clone(),
-            account.api_key_source.clone(),
-        ),
-        None => ClaudeStatus::not_logged_in(),
+    // Get Claude info from state
+    let info = state.claude_info.read().await;
+
+    let mut status = if info.authenticated {
+        ClaudeStatus::authenticated()
+    } else {
+        ClaudeStatus::not_logged_in()
     };
+
+    if let Some(ref model) = info.model {
+        status = status.model(model.clone());
+    }
+    if let Some(ref version) = info.version {
+        status = status.version(version.clone());
+    }
+    if let Some(sessions) = info.total_sessions {
+        status = status.total_sessions(sessions);
+    }
+    if let Some(messages) = info.total_messages {
+        status = status.total_messages(messages);
+    }
+    if let Some(tokens) = info.today_tokens {
+        status = status.today_tokens(tokens);
+    }
 
     let content = format!(
         "{}{}",
         switch.into_string(),
-        claude_status.build_positioned().into_string()
+        status.build_positioned().into_string()
     );
 
     HttpResponse::Ok()

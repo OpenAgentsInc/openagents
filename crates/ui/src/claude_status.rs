@@ -1,51 +1,64 @@
 //! ClaudeStatus component.
 //!
 //! Shows Claude login/authentication status in a compact card.
-//! Displays email, organization, subscription type, and token source.
+//! Displays model, version, sessions, messages, and today's tokens.
 
 use maud::{Markup, html};
 
 /// Claude authentication status display.
+#[derive(Default)]
 pub struct ClaudeStatus {
-    /// User's email address
-    pub email: Option<String>,
-    /// Organization name
-    pub organization: Option<String>,
-    /// Subscription type (pro, enterprise, etc.)
-    pub subscription_type: Option<String>,
-    /// Token source (api_key, oauth, etc.)
-    pub token_source: Option<String>,
-    /// API key source (environment, config, etc.)
-    pub api_key_source: Option<String>,
+    /// Whether authenticated
+    pub authenticated: bool,
+    /// Current model
+    pub model: Option<String>,
+    /// Claude Code version
+    pub version: Option<String>,
+    /// Total sessions
+    pub total_sessions: Option<u64>,
+    /// Total messages
+    pub total_messages: Option<u64>,
+    /// Today's token count
+    pub today_tokens: Option<u64>,
 }
 
 impl ClaudeStatus {
     /// Create a new status display with no data (not logged in).
     pub fn not_logged_in() -> Self {
-        Self {
-            email: None,
-            organization: None,
-            subscription_type: None,
-            token_source: None,
-            api_key_source: None,
-        }
+        Self::default()
     }
 
     /// Create a new status display with account info.
-    pub fn logged_in(
-        email: impl Into<String>,
-        organization: Option<String>,
-        subscription_type: Option<String>,
-        token_source: Option<String>,
-        api_key_source: Option<String>,
-    ) -> Self {
+    pub fn authenticated() -> Self {
         Self {
-            email: Some(email.into()),
-            organization,
-            subscription_type,
-            token_source,
-            api_key_source,
+            authenticated: true,
+            ..Default::default()
         }
+    }
+
+    pub fn model(mut self, model: impl Into<String>) -> Self {
+        self.model = Some(model.into());
+        self
+    }
+
+    pub fn version(mut self, version: impl Into<String>) -> Self {
+        self.version = Some(version.into());
+        self
+    }
+
+    pub fn total_sessions(mut self, sessions: u64) -> Self {
+        self.total_sessions = Some(sessions);
+        self
+    }
+
+    pub fn total_messages(mut self, messages: u64) -> Self {
+        self.total_messages = Some(messages);
+        self
+    }
+
+    pub fn today_tokens(mut self, tokens: u64) -> Self {
+        self.today_tokens = Some(tokens);
+        self
     }
 
     /// Render the component for positioning (call this for the full positioned version).
@@ -56,7 +69,7 @@ impl ClaudeStatus {
                 id="claude-status"
                 style="position: fixed; bottom: 1rem; right: 1rem;"
                 hx-get="/api/claude/status"
-                hx-trigger="load, every 2s"
+                hx-trigger="load, every 5s"
                 hx-swap="innerHTML"
             {
                 (self.build())
@@ -66,8 +79,6 @@ impl ClaudeStatus {
 
     /// Render just the card (for embedding or storybook).
     pub fn build(self) -> Markup {
-        let is_logged_in = self.email.is_some();
-
         html! {
             div
                 class="claude-status-card"
@@ -76,8 +87,8 @@ impl ClaudeStatus {
                     border: 1px solid #333;
                     padding: 0.75rem 1rem;
                     font-family: 'Berkeley Mono', ui-monospace, monospace;
-                    font-size: 0.7rem;
-                    min-width: 200px;
+                    font-size: 0.65rem;
+                    min-width: 180px;
                 "
             {
                 // Header row
@@ -85,43 +96,46 @@ impl ClaudeStatus {
                     // Status dot
                     span style={
                         "width: 6px; height: 6px; display: inline-block; "
-                        @if is_logged_in { "background: #00A645;" } @else { "background: #FF0000;" }
+                        @if self.authenticated { "background: #00A645;" } @else { "background: #FF0000;" }
                     } {}
                     span style="color: #888; text-transform: uppercase; letter-spacing: 0.05em;" {
                         "CLAUDE"
                     }
+                    @if let Some(ref ver) = self.version {
+                        span style="color: #555;" { "v" (ver) }
+                    }
                 }
 
-                @if is_logged_in {
-                    // Email
-                    @if let Some(ref email) = self.email {
-                        div style="color: #fafafa; margin-bottom: 0.25rem;" {
-                            (email)
+                @if self.authenticated {
+                    // Model
+                    @if let Some(ref model) = self.model {
+                        div style="color: #fafafa; margin-bottom: 0.35rem;" {
+                            (format_model(model))
                         }
                     }
 
-                    // Organization
-                    @if let Some(ref org) = self.organization {
-                        div style="color: #666; margin-bottom: 0.25rem;" {
-                            (org)
+                    // Stats row
+                    div style="display: flex; gap: 1rem; color: #666; margin-top: 0.5rem;" {
+                        @if let Some(sessions) = self.total_sessions {
+                            div {
+                                span style="color: #888;" { (format_number(sessions)) }
+                                span style="color: #555; margin-left: 0.25rem;" { "sessions" }
+                            }
+                        }
+                        @if let Some(messages) = self.total_messages {
+                            div {
+                                span style="color: #888;" { (format_number(messages)) }
+                                span style="color: #555; margin-left: 0.25rem;" { "msgs" }
+                            }
                         }
                     }
 
-                    // Subscription + Source row
-                    div style="display: flex; gap: 0.75rem; color: #555; margin-top: 0.5rem;" {
-                        @if let Some(ref sub) = self.subscription_type {
-                            span {
-                                (sub.to_uppercase())
-                            }
-                        }
-                        @if let Some(ref source) = self.token_source {
-                            span {
-                                (source)
-                            }
-                        } @else if let Some(ref source) = self.api_key_source {
-                            span {
-                                (source)
-                            }
+                    // Today's tokens
+                    @if let Some(tokens) = self.today_tokens {
+                        div style="color: #555; margin-top: 0.35rem;" {
+                            "Today: "
+                            span style="color: #888;" { (format_number(tokens)) }
+                            " tokens"
                         }
                     }
                 } @else {
@@ -131,5 +145,26 @@ impl ClaudeStatus {
                 }
             }
         }
+    }
+}
+
+/// Format model name to be shorter
+fn format_model(model: &str) -> String {
+    model
+        .replace("claude-", "")
+        .replace("-20251101", "")
+        .replace("-20250929", "")
+        .replace("-20250514", "")
+        .replace("-20251001", "")
+}
+
+/// Format large numbers with K/M suffix
+fn format_number(n: u64) -> String {
+    if n >= 1_000_000 {
+        format!("{:.1}M", n as f64 / 1_000_000.0)
+    } else if n >= 1_000 {
+        format!("{:.1}K", n as f64 / 1_000.0)
+    } else {
+        n.to_string()
     }
 }

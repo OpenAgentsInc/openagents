@@ -12,19 +12,31 @@ pub fn configure_api(cfg: &mut web::ServiceConfig) {
 
 /// Get current Claude auth status
 async fn get_status(state: web::Data<AppState>) -> HttpResponse {
-    let claude_account = state.claude_account.read().await;
-    let claude_status = match claude_account.as_ref() {
-        Some(account) => ClaudeStatus::logged_in(
-            account.email.clone().unwrap_or_default(),
-            account.organization.clone(),
-            account.subscription_type.clone(),
-            account.token_source.clone(),
-            account.api_key_source.clone(),
-        ),
-        None => ClaudeStatus::not_logged_in(),
+    let info = state.claude_info.read().await;
+
+    let mut status = if info.authenticated {
+        ClaudeStatus::authenticated()
+    } else {
+        ClaudeStatus::not_logged_in()
     };
+
+    if let Some(ref model) = info.model {
+        status = status.model(model.clone());
+    }
+    if let Some(ref version) = info.version {
+        status = status.version(version.clone());
+    }
+    if let Some(sessions) = info.total_sessions {
+        status = status.total_sessions(sessions);
+    }
+    if let Some(messages) = info.total_messages {
+        status = status.total_messages(messages);
+    }
+    if let Some(tokens) = info.today_tokens {
+        status = status.today_tokens(tokens);
+    }
 
     HttpResponse::Ok()
         .content_type("text/html")
-        .body(claude_status.build().into_string())
+        .body(status.build().into_string())
 }
