@@ -39,7 +39,7 @@ use claude_agent_sdk::{
     SdkAssistantMessage, SdkMessage, SdkResultMessage, SdkSystemMessage, SdkUserMessage,
 };
 use serde_json::Value;
-use trajectory::{StepType, TokenUsage, Trajectory, TrajectoryResult};
+use trajectory::{JsonlWriter, StepType, SubagentStatus, TokenUsage, Trajectory, TrajectoryResult};
 use rlog::RlogWriter;
 
 /// Callback invoked when session_id becomes available
@@ -48,12 +48,16 @@ pub type SessionIdCallback = Box<dyn FnOnce(&str) + Send>;
 /// Collects SdkMessages into a Trajectory
 pub struct TrajectoryCollector {
     trajectory: Trajectory,
-    /// Optional rlog writer for streaming output
+    /// Optional rlog writer for streaming output (truncated, human-readable)
     rlog_writer: Option<RlogWriter>,
     /// Path to the rlog file for header updates
     rlog_path: Option<std::path::PathBuf>,
+    /// Optional JSONL writer for full data capture (untruncated, Claude Code compatible)
+    jsonl_writer: Option<JsonlWriter>,
     /// Callback invoked when session_id is set
     session_id_callback: Option<SessionIdCallback>,
+    /// Active subagents: tool_id -> (agent_type, description)
+    active_subagents: std::collections::HashMap<String, (String, String)>,
 }
 
 impl TrajectoryCollector {
@@ -69,7 +73,9 @@ impl TrajectoryCollector {
             trajectory: Trajectory::new(prompt, model, cwd, repo_sha, branch),
             rlog_writer: None,
             rlog_path: None,
+            jsonl_writer: None,
             session_id_callback: None,
+            active_subagents: std::collections::HashMap::new(),
         }
     }
 
@@ -91,6 +97,14 @@ impl TrajectoryCollector {
         Ok(())
     }
 
+    /// Enable JSONL streaming for full data capture (Claude Code compatible format)
+    pub fn enable_jsonl_streaming(&mut self, path: impl AsRef<std::path::Path>) -> std::io::Result<()> {
+        let mut writer = JsonlWriter::new();
+        writer.init(path, &self.trajectory.session_id)?;
+        self.jsonl_writer = Some(writer);
+        Ok(())
+    }
+
     /// Set the session_id (useful when resuming a session)
     pub fn set_session_id(&mut self, session_id: String) {
         self.trajectory.session_id = session_id;
@@ -103,8 +117,71 @@ impl TrajectoryCollector {
         }
     }
 
+    /// Stream a raw SDK message to JSONL file (if JSONL streaming is enabled)
+    fn stream_message_to_jsonl(&mut self, msg: &SdkMessage) {
+        if let Some(writer) = &mut self.jsonl_writer {
+            // Convert SdkMessage to a serializable format
+            let json_value = match msg {
+                SdkMessage::System(sys) => {
+                    serde_json::json!({
+                        "type": "system",
+                        "message": sys,
+                        "timestamp": chrono::Utc::now().to_rfc3339()
+                    })
+                }
+                SdkMessage::Assistant(asst) => {
+                    serde_json::json!({
+                        "type": "assistant",
+                        "message": asst.message,
+                        "timestamp": chrono::Utc::now().to_rfc3339()
+                    })
+                }
+                SdkMessage::User(user) => {
+                    serde_json::json!({
+                        "type": "user",
+                        "message": user.message,
+                        "timestamp": chrono::Utc::now().to_rfc3339()
+                    })
+                }
+                SdkMessage::Result(result) => {
+                    serde_json::json!({
+                        "type": "result",
+                        "message": result,
+                        "timestamp": chrono::Utc::now().to_rfc3339()
+                    })
+                }
+                SdkMessage::ToolProgress(progress) => {
+                    serde_json::json!({
+                        "type": "tool_progress",
+                        "message": progress,
+                        "timestamp": chrono::Utc::now().to_rfc3339()
+                    })
+                }
+                SdkMessage::StreamEvent(event) => {
+                    serde_json::json!({
+                        "type": "stream_event",
+                        "message": event,
+                        "timestamp": chrono::Utc::now().to_rfc3339()
+                    })
+                }
+                SdkMessage::AuthStatus(auth) => {
+                    serde_json::json!({
+                        "type": "auth_status",
+                        "message": auth,
+                        "timestamp": chrono::Utc::now().to_rfc3339()
+                    })
+                }
+            };
+            let _ = writer.write_value(&json_value);
+        }
+    }
+
     /// Process an SdkMessage and add to trajectory
     pub fn process_message(&mut self, msg: &SdkMessage) {
+        // Stream raw message to JSONL first (full data capture)
+        self.stream_message_to_jsonl(msg);
+
+        // Then process into trajectory steps (for rlog and analysis)
         match msg {
             SdkMessage::System(sys) => self.process_system(sys),
             SdkMessage::Assistant(asst) => self.process_assistant(asst),
@@ -201,6 +278,35 @@ impl TrajectoryCollector {
                             }
                         }
 
+                        // Track Task tool calls (subagent spawns)
+                        if tool_name == "Task" {
+                            let agent_type = input
+                                .get("subagent_type")
+                                .and_then(|t| t.as_str())
+                                .unwrap_or("unknown")
+                                .to_string();
+                            let description = input
+                                .get("description")
+                                .and_then(|d| d.as_str())
+                                .unwrap_or("")
+                                .to_string();
+
+                            // Store in active subagents map
+                            self.active_subagents.insert(
+                                tool_id.to_string(),
+                                (agent_type.clone(), description.clone()),
+                            );
+
+                            // Add subagent started step
+                            self.trajectory.add_step(StepType::Subagent {
+                                agent_id: tool_id.to_string(),
+                                agent_type,
+                                status: SubagentStatus::Started,
+                                summary: Some(description),
+                            });
+                            self.stream_last_step();
+                        }
+
                         let step = self.trajectory.add_step(StepType::ToolCall {
                             tool: tool_name.to_string(),
                             tool_id: tool_id.to_string(),
@@ -257,6 +363,35 @@ impl TrajectoryCollector {
                                 .and_then(|e| e.as_bool())
                                 .unwrap_or(false);
                             let output = self.extract_tool_result_content(block);
+
+                            // Check if this is a subagent completion
+                            if let Some((agent_type, _)) = self.active_subagents.remove(tool_id) {
+                                // Extract summary from tool result
+                                let summary = if output.is_empty() {
+                                    None
+                                } else {
+                                    // Truncate summary to first 200 chars for readability
+                                    let trunc = if output.len() > 200 {
+                                        format!("{}...", &output[..200])
+                                    } else {
+                                        output.clone()
+                                    };
+                                    Some(trunc)
+                                };
+
+                                // Add subagent completion step
+                                self.trajectory.add_step(StepType::Subagent {
+                                    agent_id: tool_id.to_string(),
+                                    agent_type,
+                                    status: if is_error {
+                                        SubagentStatus::Error
+                                    } else {
+                                        SubagentStatus::Done
+                                    },
+                                    summary,
+                                });
+                                self.stream_last_step();
+                            }
 
                             self.trajectory.add_step(StepType::ToolResult {
                                 tool_id: tool_id.to_string(),
@@ -506,6 +641,12 @@ impl TrajectoryCollector {
             let _ = writer.write_footer(&self.trajectory);
             let _ = writer.close();
         }
+
+        // Flush JSONL writer if streaming is enabled
+        if let Some(writer) = &mut self.jsonl_writer {
+            let _ = writer.flush();
+        }
+
         self.trajectory
     }
 
