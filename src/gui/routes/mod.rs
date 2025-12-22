@@ -13,6 +13,8 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
     cfg
         // Root - dashboard with tab navigation
         .route("/", web::get().to(super::views::home))
+        // API routes
+        .service(web::scope("/api/autopilot").configure(autopilot::configure_api))
         // Wallet routes
         .service(web::scope("/wallet").configure(wallet::configure))
         // Marketplace routes

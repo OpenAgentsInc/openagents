@@ -43,7 +43,7 @@ pub fn base_document_story() -> Markup {
                 li { "Monospace font stack (Berkeley Mono / system monospace)" }
                 li { "Dark mode by default with semantic tokens" }
                 li { "Responsive viewport meta tag" }
-                li { "Sharp corners enforced (no rounded borders)" }
+                li { "Sharp corners only (no curves)" }
             }
         }))
 

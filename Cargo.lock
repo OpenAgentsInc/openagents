@@ -4959,6 +4959,7 @@ dependencies = [
  "tokio",
  "tracing",
  "tracing-subscriber",
+ "ui",
  "wallet",
  "wry 0.50.5",
 ]
