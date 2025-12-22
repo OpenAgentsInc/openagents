@@ -153,6 +153,9 @@ impl NostrTransport {
         secret_key: &[u8; 32],
         peer_pubkeys: &[[u8; 32]],
         incoming_tx: &mpsc::Sender<BifrostMessage>,
+        relay_pool: Option<Arc<RelayPool>>,
+        _relays: &[String],
+        event_kind: u16,
     ) -> Result<()> {
         // Find the sender's pubkey from the event author
         let author_pubkey_hex = event.pubkey.clone();
@@ -189,6 +192,68 @@ impl NostrTransport {
         // Deserialize the inner message
         let message: BifrostMessage = serde_json::from_str(&envelope.message)
             .map_err(|e| Error::Encoding(format!("Invalid Bifrost message: {}", e)))?;
+
+        // Auto-respond to ping messages with pong
+        if let BifrostMessage::Ping(ping) = &message {
+            // Send pong response automatically
+            let pong = crate::bifrost::Pong {
+                session_id: ping.session_id.clone(),
+                ping_timestamp: ping.timestamp,
+                pong_timestamp: std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_millis() as u64,
+            };
+
+            let pong_message = BifrostMessage::Pong(pong);
+
+            // Encrypt and send pong back to sender
+            if let Some(pool) = relay_pool {
+                let pong_json = serde_json::to_string(&pong_message)
+                    .map_err(|e| Error::Encoding(format!("Failed to serialize pong: {}", e)))?;
+
+                let envelope = MessageEnvelope {
+                    session_id: ping.session_id.clone(),
+                    msg_type: "pong".to_string(),
+                    message: pong_json,
+                    timestamp: std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap()
+                        .as_secs(),
+                };
+
+                let envelope_json = serde_json::to_string(&envelope)
+                    .map_err(|e| Error::Encoding(format!("Failed to serialize envelope: {}", e)))?;
+
+                // Encrypt for the sender
+                let encrypted = encrypt_v2(secret_key, &pk_bytes, &envelope_json)
+                    .map_err(|e| Error::Crypto(format!("Failed to encrypt pong: {}", e)))?;
+
+                // Create and publish event
+                let sk = SecretKey::from_slice(secret_key)
+                    .map_err(|e| Error::Crypto(format!("Invalid secret key: {}", e)))?;
+
+                let _our_pk = PublicKey::from_secret_key(SECP256K1, &sk);
+
+                // Create event template
+                let event_template = nostr::EventTemplate {
+                    created_at: std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap()
+                        .as_secs(),
+                    kind: event_kind,
+                    tags: vec![vec!["p".to_string(), author_pubkey_hex.clone()]],
+                    content: encrypted,
+                };
+
+                // Sign the event
+                let event = nostr::finalize_event(&event_template, secret_key)
+                    .map_err(|e| Error::Signing(format!("Failed to sign pong event: {}", e)))?;
+
+                // Publish to all relays
+                let _ = pool.publish(&event).await;
+            }
+        }
 
         // Forward to incoming channel
         incoming_tx.send(message).await
@@ -237,6 +302,9 @@ impl NostrTransport {
         let incoming_tx = self.incoming_tx.clone();
         let secret_key = self.config.secret_key;
         let peer_pubkeys = self.config.peer_pubkeys.clone();
+        let relay_pool_clone = pool.clone();
+        let relays = self.config.relays.clone();
+        let event_kind = self.config.event_kind;
 
         tokio::spawn(async move {
             while let Some(event) = event_rx.recv().await {
@@ -246,6 +314,9 @@ impl NostrTransport {
                     &secret_key,
                     &peer_pubkeys,
                     &incoming_tx,
+                    Some(relay_pool_clone.clone()),
+                    &relays,
+                    event_kind,
                 ).await {
                     // Log error but continue processing
                     eprintln!("Failed to process incoming Bifrost event: {}", e);
