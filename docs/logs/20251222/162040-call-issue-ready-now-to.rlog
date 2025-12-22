@@ -299,3 +299,38 @@ t!:Bash id=kJLFVKvT cmd="cargo test --doc -p autopilot 2>&1 | grep -B 10..." →
 o: id=kJLFVKvT → [ok]     Finished `test` profile [optimized + debuginfo] target(s) in 0.18s
 a: The failures are in existing docs, not my new examples. My new trajectory examples all passed! Let me commit and push: tokens_in=0 tokens_out=1 tokens_cached=95110
 t!:Bash id=dFtpsQP4 cmd="git add -A && git commit -m "$(cat <<'EOF'" → [running] tokens_in=0 tokens_out=268 tokens_cached=95110
+o: id=dFtpsQP4 → [ok] [main f93a45fd8] Add rustdoc examples to autopilot trajectory types
+t!:Bash id=1RHJEYK4 cmd="git push origin main" → [running] tokens_in=0 tokens_out=24 tokens_cached=95704
+o: id=1RHJEYK4 → [ok] [0;36m🔍 Running cargo build to check for errors and warnings...[0m
+t!:mcp__issues__issue_complete id=xbkgbHAm  → [running] tokens_in=0 tokens_out=32 tokens_cached=96109
+o: id=xbkgbHAm → [ok] Completed issue #690
+t!:mcp__issues__issue_ready id=AeMyr4RM  → [running] tokens_in=0 tokens_out=41 tokens_cached=96383
+o: id=AeMyr4RM → [ok] No ready issues available
+t!:mcp__issues__issue_create id=w1nZRvG6  → [running] tokens_in=0 tokens_out=184 tokens_cached=96458
+o: id=w1nZRvG6 → [ok] Created issue #691: Add rustdoc examples to desktop and UI crate types (agent: claude)
+t!:mcp__issues__issue_claim id=DJDLajCn  → [running] tokens_in=0 tokens_out=5 tokens_cached=96515
+o: id=DJDLajCn → [ok] Claimed issue #691
+t!:Glob id=Bp4WfjvZ pattern="crates/desktop/src/*.rs" → [running] tokens_in=3 tokens_out=26 tokens_cached=96840
+t!:Glob id=TvkoMAAD pattern="crates/ui/src/*.rs" → [running] tokens_in=3 tokens_out=26 tokens_cached=96840
+o: id=Bp4WfjvZ → [ok] No files found
+o: id=TvkoMAAD → [ok] /home/christopherdavid/code/openagents/crates/ui/src/button.rs
+t!:Bash id=bnoAyHZv cmd="find /home/christopherdavid/code/openagents/cra..." → [running] tokens_in=4 tokens_out=26 tokens_cached=96938
+o: id=bnoAyHZv → [ok] find: ‘/home/christopherdavid/code/openagents/crates/desktop’: No such file or directory
+t!:Read id=RmpZdtos file_path=/home/christopherdavid/code/openagents/crates/ui/src/lib.rs → [running] tokens_in=3 tokens_out=94 tokens_cached=97451
+o: id=RmpZdtos → [ok]      1→//! Maud/HTMX/Tailwind components for OpenAgents.
+t!:Read id=1dzTPEL9 file_path=/home/christopherdavid/code/openagents/crates/ui/src/button.rs → [running] tokens_in=3 tokens_out=18 tokens_cached=97596
+o: id=1dzTPEL9 → [ok]      1→//! Button component using Tailwind CSS with semantic color tokens.
+t!:Edit id=KfNSzGmc file_path=/home/christopherdavid/code/openagents/crates/ui/src/button.rs → [running] tokens_in=2 tokens_out=25 tokens_cached=99127
+t!:Read id=PxZYGfb8 file_path=/home/christopherdavid/code/openagents/crates/ui/src/layout.rs → [running] tokens_in=2 tokens_out=364 tokens_cached=99127
+o: id=KfNSzGmc → [ok] The file /home/christopherdavid/code/openagents/crates/ui/src/button.rs has been updated. Here's ...
+o: id=PxZYGfb8 → [ok]      1→//! Base document layout with Tailwind CSS.
+t!:Edit id=yTpv3vLp file_path=/home/christopherdavid/code/openagents/crates/ui/src/layout.rs → [running] tokens_in=3 tokens_out=25 tokens_cached=100359
+t!:Read id=BRkApvWr file_path=/home/christopherdavid/code/openagents/crates/ui/src/chat_pane.rs → [running] tokens_in=3 tokens_out=387 tokens_cached=100359
+o: id=yTpv3vLp → [ok] The file /home/christopherdavid/code/openagents/crates/ui/src/layout.rs has been updated. Here's ...
+o: id=BRkApvWr → [ok]      1→//! ChatPane component.
+t!:Edit id=X3FX9k7R file_path=/home/christopherdavid/code/openagents/crates/ui/src/chat_pane.rs → [running] tokens_in=3 tokens_out=253 tokens_cached=101568
+o: id=X3FX9k7R → [ok] The file /home/christopherdavid/code/openagents/crates/ui/src/chat_pane.rs has been updated. Here...
+t!:Bash id=nweygZ8n cmd="cargo test --doc -p ui 2>&1 | grep -E "(test cr..." → [running] tokens_in=2 tokens_out=26 tokens_cached=103582
+o: id=nweygZ8n → [ok]    Doc-tests ui
+a: Perfect! All ui examples compile. Let me commit and push: tokens_in=2 tokens_out=1 tokens_cached=104123
+t!:Bash id=gWGEuCQy cmd="git add -A && git commit -m "$(cat <<'EOF'" → [running] tokens_in=2 tokens_out=257 tokens_cached=104123
