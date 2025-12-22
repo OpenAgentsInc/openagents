@@ -113,3 +113,7 @@ harness = false
 
 [lints]
 workspace = true
+
+[[bench]]
+name = "task_execution"
+harness = false
