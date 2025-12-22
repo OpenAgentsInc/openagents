@@ -7,7 +7,7 @@ use crate::services::{OllamaService, RelayService};
 use chrono::Utc;
 use nostr::{
     finalize_event, EventTemplate, HandlerInfo, HandlerMetadata, HandlerType, JobInput,
-    PricingInfo, KIND_HANDLER_INFO, KIND_JOB_TEXT_GENERATION,
+    JobResult, PricingInfo, KIND_HANDLER_INFO, KIND_JOB_TEXT_GENERATION,
 };
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -274,8 +274,16 @@ impl DvmService {
                     timestamp: Utc::now(),
                 });
 
-                // TODO: Publish result to Nostr
-                // self.publish_result(&job).await?;
+                // Publish result to Nostr
+                match self.publish_result(&job).await {
+                    Ok(event_id) => {
+                        log::info!("Published job result with event id: {}", event_id);
+                    }
+                    Err(e) => {
+                        log::warn!("Failed to publish job result: {}", e);
+                        // Don't fail the job if publishing fails
+                    }
+                }
 
                 log::info!("Job {} completed in {}ms", job_id, duration_ms);
             }
@@ -367,6 +375,65 @@ impl DvmService {
         log::info!(
             "Published NIP-89 handler info (event id: {}) to {} relays",
             event.id,
+            self.relay_service.connected_relays().await.len()
+        );
+
+        Ok(event.id)
+    }
+
+    /// Publish a job result to Nostr relays
+    async fn publish_result(&self, job: &Job) -> Result<String, DvmError> {
+        let identity = self
+            .identity
+            .read()
+            .await
+            .clone()
+            .ok_or(DvmError::NotInitialized)?;
+
+        // Extract result content
+        let result_content = match &job.status {
+            crate::domain::job::JobStatus::Completed { result } => result,
+            _ => return Err(DvmError::InferenceFailed("Job not completed".to_string())),
+        };
+
+        // Create job result
+        let mut job_result = JobResult::new(
+            job.kind,
+            &job.request_event_id,
+            &job.customer_pubkey,
+            result_content,
+        )
+        .map_err(|e| DvmError::SigningFailed(format!("Failed to create job result: {}", e)))?;
+
+        // Add payment info if configured
+        if let Some(amount) = job.amount_msats {
+            if let Some(bolt11) = &job.bolt11 {
+                job_result = job_result.with_amount(amount, Some(bolt11.clone()));
+            }
+        }
+
+        // Create event template
+        let template = EventTemplate {
+            created_at: Utc::now().timestamp() as u64,
+            kind: job_result.kind,
+            tags: job_result.to_tags(),
+            content: job_result.content.clone(),
+        };
+
+        // Sign the event
+        let event = finalize_event(&template, identity.private_key_bytes())
+            .map_err(|e| DvmError::SigningFailed(e.to_string()))?;
+
+        // Publish to relays
+        self.relay_service
+            .publish(event.clone())
+            .await
+            .map_err(|e| DvmError::RelayError(e.to_string()))?;
+
+        log::info!(
+            "Published NIP-90 job result (event id: {}) for request {} to {} relays",
+            event.id,
+            job.request_event_id,
             self.relay_service.connected_relays().await.len()
         );
 
