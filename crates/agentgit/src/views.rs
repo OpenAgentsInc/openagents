@@ -4,6 +4,7 @@ pub mod publish_status;
 
 use maud::{html, Markup, DOCTYPE};
 use nostr::Event;
+use chrono::{DateTime, Utc};
 
 #[allow(unused_imports)]
 pub use publish_status::{publish_status_notification, publish_status_styles};
@@ -21,6 +22,37 @@ fn get_all_tag_values(event: &Event, tag_name: &str) -> Vec<String> {
         .filter(|tag| tag.first().map(|t| t == tag_name).unwrap_or(false))
         .filter_map(|tag| tag.get(1).cloned())
         .collect()
+}
+
+/// Format a Unix timestamp as relative time (e.g., "2 hours ago", "yesterday")
+fn format_relative_time(timestamp: u64) -> String {
+    let dt = DateTime::from_timestamp(timestamp as i64, 0)
+        .unwrap_or_else(|| Utc::now());
+    let now = Utc::now();
+    let duration = now.signed_duration_since(dt);
+
+    if duration.num_seconds() < 60 {
+        "just now".to_string()
+    } else if duration.num_minutes() < 60 {
+        let mins = duration.num_minutes();
+        format!("{} minute{} ago", mins, if mins == 1 { "" } else { "s" })
+    } else if duration.num_hours() < 24 {
+        let hours = duration.num_hours();
+        format!("{} hour{} ago", hours, if hours == 1 { "" } else { "s" })
+    } else if duration.num_days() < 7 {
+        let days = duration.num_days();
+        if days == 1 {
+            "yesterday".to_string()
+        } else {
+            format!("{} days ago", days)
+        }
+    } else if duration.num_weeks() < 4 {
+        let weeks = duration.num_weeks();
+        format!("{} week{} ago", weeks, if weeks == 1 { "" } else { "s" })
+    } else {
+        // For older dates, show the actual date
+        dt.format("%b %d, %Y").to_string()
+    }
 }
 
 /// Render a single repository card
@@ -475,7 +507,7 @@ pub fn issues_list_page(repository: &Event, issues: &[Event], is_watched: bool, 
                                                 div.issue-meta {
                                                     span.issue-author { "by " (issue_author) }
                                                     span.issue-separator { "•" }
-                                                    span.issue-time { "Created " (issue.created_at) }
+                                                    span.issue-time { (format_relative_time(issue.created_at)) }
                                                 }
                                             }
                                             @if !issue.content.is_empty() {
@@ -554,7 +586,7 @@ pub fn issue_detail_page(repository: &Event, issue: &Event, claims: &[Event], bo
                                         span.issue-separator { "•" }
                                         span.issue-author { "by " (issue_author) }
                                         span.issue-separator { "•" }
-                                        span.issue-time { "Created " (issue.created_at) }
+                                        span.issue-time { (format_relative_time(issue.created_at)) }
                                     }
                                 }
                                 div.issue-detail-actions {
@@ -742,7 +774,7 @@ pub fn issue_detail_page(repository: &Event, issue: &Event, claims: &[Event], bo
                                             div.comment-card style="background: var(--card-bg, #1a1a1a); border: 1px solid var(--border-color, #333); padding: 1rem;" {
                                                 div.comment-header style="display: flex; justify-content: space-between; margin-bottom: 0.75rem;" {
                                                     span.comment-author style="font-weight: 600; color: var(--accent-color, #0ea5e9);" { (commenter_pubkey) }
-                                                    span.comment-time style="font-size: 0.875rem; color: var(--muted-color, #888);" { (comment.created_at) }
+                                                    span.comment-time style="font-size: 0.875rem; color: var(--muted-color, #888);" { (format_relative_time(comment.created_at)) }
                                                 }
                                                 @if !comment.content.is_empty() {
                                                     div.comment-content style="white-space: pre-wrap;" {
@@ -971,7 +1003,7 @@ pub fn patches_list_page(repository: &Event, patches: &[Event], identifier: &str
                                                 div.issue-meta {
                                                     span.issue-author { "by " (patch_author) }
                                                     span.issue-separator { "•" }
-                                                    span.issue-time { "Created " (patch.created_at) }
+                                                    span.issue-time { (format_relative_time(patch.created_at)) }
                                                 }
                                             }
                                             @if !patch.content.is_empty() {
@@ -1072,7 +1104,7 @@ pub fn pull_requests_list_page(repository: &Event, pull_requests: &[Event], iden
                                                 div.issue-meta {
                                                     span.issue-author { "by " (pr_author) }
                                                     span.issue-separator { "•" }
-                                                    span.issue-time { "Created " (pr.created_at) }
+                                                    span.issue-time { (format_relative_time(pr.created_at)) }
                                                 }
                                             }
                                             @if !pr.content.is_empty() {
@@ -1151,7 +1183,7 @@ pub fn patch_detail_page(repository: &Event, patch: &Event, identifier: &str) ->
                                     div.issue-detail-meta {
                                         span.issue-author { "by " (patch_author) }
                                         span.issue-separator { "•" }
-                                        span.issue-time { "Created " (patch.created_at) }
+                                        span.issue-time { (format_relative_time(patch.created_at)) }
                                     }
                                 }
                                 div.issue-detail-actions {
@@ -1312,7 +1344,7 @@ pub fn pull_request_detail_page(repository: &Event, pull_request: &Event, review
                                         span.issue-separator { "•" }
                                         span.issue-author { "by " (pr_author) }
                                         span.issue-separator { "•" }
-                                        span.issue-time { "Created " (pull_request.created_at) }
+                                        span.issue-time { (format_relative_time(pull_request.created_at)) }
                                     }
                                 }
                                 div.issue-detail-actions {
@@ -2210,7 +2242,7 @@ pub fn agent_profile_page(
                                                             span.issue-author { "Repo: " (repo) }
                                                             span.issue-separator { "•" }
                                                         }
-                                                        span.issue-time { "Created " (pr.created_at) }
+                                                        span.issue-time { (format_relative_time(pr.created_at)) }
                                                     }
                                                 }
                                             }
@@ -2380,7 +2412,7 @@ pub fn search_results_page(query: &str, repositories: &[Event], issues: &[Event]
                                                             span.issue-separator { "•" }
                                                         }
                                                     }
-                                                    span.issue-time { "Created " (issue.created_at) }
+                                                    span.issue-time { (format_relative_time(issue.created_at)) }
                                                 }
                                             }
                                             @if !issue.content.is_empty() && issue.content.len() < 200 {

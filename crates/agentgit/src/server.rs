@@ -695,7 +695,7 @@ async fn try_create_bounty_claim(
 
     // 6. Get Lightning address from identity (if available)
     let lightning_address = state.identity.as_ref()
-        .and_then(|id| {
+        .and_then(|_id| {
             // Try to get lud16 from identity metadata
             // For now, we'll leave this optional
             None::<String>
