@@ -268,6 +268,11 @@ impl NostrClient {
         self.cache.lock().await.delete_old_events(max_age_seconds)
     }
 
+    /// Get repository state (kind:30618) for a repository
+    pub async fn get_repository_state(&self, repo_identifier: &str) -> Result<Option<Event>> {
+        self.cache.lock().await.get_repository_state(repo_identifier)
+    }
+
     /// Get claims for a specific issue
     pub async fn get_claims_for_issue(&self, issue_event_id: &str) -> Result<Vec<Event>> {
         self.cache.lock().await.get_claims_for_issue(issue_event_id)

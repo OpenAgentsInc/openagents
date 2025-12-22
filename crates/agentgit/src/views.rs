@@ -111,7 +111,7 @@ pub fn home_page_with_repos(repositories: &[Event]) -> Markup {
 }
 
 /// Repository detail page
-pub fn repository_detail_page(repository: &Event, is_cloned: bool, local_path: Option<String>) -> Markup {
+pub fn repository_detail_page(repository: &Event, is_cloned: bool, local_path: Option<String>, repo_state: Option<&Event>) -> Markup {
     let name = get_tag_value(repository, "name").unwrap_or_else(|| "Unnamed Repository".to_string());
     let description = get_tag_value(repository, "description").unwrap_or_default();
     let identifier = get_tag_value(repository, "d").unwrap_or_default();
@@ -220,6 +220,48 @@ pub fn repository_detail_page(repository: &Event, is_cloned: bool, local_path: O
                                                 button.copy-btn onclick=(onclick_code) { "Copy" }
                                             }
                                         }
+                                    }
+                                }
+                            }
+
+                            @if let Some(state) = repo_state {
+                                section.repo-section {
+                                    h2 { "Repository State" }
+                                    @let branches = get_all_tag_values(state, "refs/heads");
+                                    @let tags = get_all_tag_values(state, "refs/tags");
+                                    @let head = get_tag_value(state, "HEAD");
+
+                                    @if let Some(ref h) = head {
+                                        div.state-item style="margin-bottom: 1rem;" {
+                                            span.label style="font-weight: 600; margin-right: 0.5rem;" { "HEAD:" }
+                                            code { (h) }
+                                        }
+                                    }
+
+                                    @if !branches.is_empty() {
+                                        div.state-item style="margin-bottom: 1rem;" {
+                                            h3 style="font-size: 1rem; margin-bottom: 0.5rem;" { "Branches (" (branches.len()) ")" }
+                                            div.branch-list style="display: flex; flex-direction: column; gap: 0.25rem;" {
+                                                @for branch in &branches {
+                                                    div style="padding: 0.25rem 0; font-family: monospace; font-size: 0.875rem;" { "• " (branch) }
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    @if !tags.is_empty() {
+                                        div.state-item {
+                                            h3 style="font-size: 1rem; margin-bottom: 0.5rem;" { "Tags (" (tags.len()) ")" }
+                                            div.tag-list style="display: flex; flex-direction: column; gap: 0.25rem;" {
+                                                @for tag in &tags {
+                                                    div style="padding: 0.25rem 0; font-family: monospace; font-size: 0.875rem;" { "• " (tag) }
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    @if branches.is_empty() && tags.is_empty() && head.is_none() {
+                                        p.empty-state { "No repository state information available" }
                                     }
                                 }
                             }
