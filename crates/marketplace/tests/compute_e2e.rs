@@ -14,7 +14,7 @@
 //! Part of d-015: Comprehensive Marketplace and Agent Commerce E2E Tests
 
 use nostr::{finalize_event, generate_secret_key, EventTemplate};
-use nostr::nip90::{JobInput, JobRequest, JobResult, KIND_JOB_TEXT_GENERATION};
+use nostr::nip90::{JobFeedback, JobInput, JobRequest, JobResult, JobStatus, KIND_JOB_FEEDBACK, KIND_JOB_TEXT_GENERATION};
 
 #[tokio::test]
 async fn test_nip90_job_request_publish_fetch() {
@@ -134,4 +134,79 @@ async fn test_nip90_job_result_lifecycle() {
     // - Provider publishes job result
     // - Customer receives result on subscription
     // - Verify result references original request correctly
+}
+
+#[tokio::test]
+async fn test_nip90_job_feedback_flow() {
+    // 1. Create provider and customer identities
+    let provider_secret_key = generate_secret_key();
+    let customer_secret_key = generate_secret_key();
+
+    // 2. Create a job request
+    let job_request = JobRequest::new(KIND_JOB_TEXT_GENERATION)
+        .expect("should create job request")
+        .add_input(JobInput::text("Analyze the bitcoin whitepaper"))
+        .with_bid(2000);
+
+    let request_template = EventTemplate {
+        kind: job_request.kind,
+        content: job_request.content.clone(),
+        tags: job_request.to_tags(),
+        created_at: std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs(),
+    };
+
+    let request_event = finalize_event(&request_template, &customer_secret_key)
+        .expect("should sign request event");
+
+    // 3. Provider sends "processing" feedback
+    let processing_feedback = JobFeedback::new(
+        JobStatus::Processing,
+        &hex::encode(&request_event.id),
+        &hex::encode(&request_event.pubkey),
+    )
+    .with_status_extra("Starting analysis, ETA 2 minutes");
+
+    // 4. Verify feedback structure
+    assert_eq!(processing_feedback.status, JobStatus::Processing);
+    assert_eq!(processing_feedback.request_id, hex::encode(&request_event.id));
+    assert!(processing_feedback.status_extra.is_some());
+
+    // 5. Convert feedback to event
+    let feedback_template = EventTemplate {
+        kind: KIND_JOB_FEEDBACK,
+        content: processing_feedback.content.clone(),
+        tags: processing_feedback.to_tags(),
+        created_at: std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs(),
+    };
+
+    let feedback_event = finalize_event(&feedback_template, &provider_secret_key)
+        .expect("should sign feedback event");
+
+    // 6. Verify feedback event
+    assert_eq!(feedback_event.kind, KIND_JOB_FEEDBACK);
+    assert!(feedback_event.tags.len() >= 2, "should have request id and status tags");
+
+    // 7. Provider sends "success" feedback (after processing)
+    let success_feedback = JobFeedback::new(
+        JobStatus::Success,
+        &hex::encode(&request_event.id),
+        &hex::encode(&request_event.pubkey),
+    )
+    .with_status_extra("Analysis complete");
+
+    assert_eq!(success_feedback.status, JobStatus::Success);
+
+    // NOTE: Full feedback flow test would include:
+    // - Customer subscribes to feedback events for their requests
+    // - Provider publishes processing feedback
+    // - Customer receives and displays progress
+    // - Provider publishes success/error feedback
+    // - Customer handles final status appropriately
+    // - Test all status types: PaymentRequired, Processing, Error, Success, Partial
 }
