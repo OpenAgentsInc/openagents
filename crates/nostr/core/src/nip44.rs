@@ -190,7 +190,7 @@ fn calc_padded_len(unpadded_len: usize) -> usize {
         unpadded_len.next_power_of_two()
     } else {
         // For lengths > 256, round up to next multiple of 32
-        ((unpadded_len + 31) / 32) * 32
+        unpadded_len.div_ceil(32) * 32
     }
 }
 
