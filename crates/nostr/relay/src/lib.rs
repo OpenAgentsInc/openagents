@@ -44,6 +44,9 @@ mod metrics;
 mod admin;
 mod validation;
 
+#[cfg(test)]
+mod tests;
+
 pub use db::{Database, DatabaseConfig, ConnectionPool};
 pub use server::{RelayServer, RelayConfig};
 pub use error::{RelayError, Result};
