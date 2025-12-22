@@ -22,7 +22,7 @@
 //! # Protocol Compliance
 //!
 //! This implementation follows the Nostr protocol specification as defined at
-//! https://github.com/nostr-protocol/nips. All NIPs are implemented according to their
+//! <https://github.com/nostr-protocol/nips>. All NIPs are implemented according to their
 //! current specifications, with appropriate feature flags for cryptographic operations.
 //!
 //! # Features
