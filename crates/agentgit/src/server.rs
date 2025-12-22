@@ -7,7 +7,7 @@ use wallet::core::identity::UnifiedIdentity;
 use crate::git::{clone_repository, get_repository_path, is_repository_cloned, create_branch, get_status, generate_patch, apply_patch, push_branch, current_branch, diff_commits};
 use crate::nostr::NostrClient;
 use crate::nostr::events::{BountyClaimBuilder, BountyOfferBuilder, IssueClaimBuilder, PatchBuilder, PullRequestBuilder, RepositoryAnnouncementBuilder, StatusEventBuilder, ZapRequestBuilder};
-use crate::views::{agent_profile_page, agents_list_page, bounties_discovery_page, diff_viewer_page, git_branch_create_form_page, git_status_page, home_page_with_repos, issue_create_form_page, issue_detail_page, issues_list_page, patch_create_form_page, patch_detail_page, patches_list_page, pr_create_form_page, pull_request_detail_page, pull_requests_list_page, repository_create_form_page, repository_detail_page, search_results_page, trajectory_viewer_page};
+use crate::views::{agent_marketplace_page, agent_profile_page, agents_list_page, bounties_discovery_page, diff_viewer_page, git_branch_create_form_page, git_status_page, home_page_with_repos, issue_create_form_page, issue_detail_page, issues_list_page, patch_create_form_page, patch_detail_page, patches_list_page, pr_create_form_page, pull_request_detail_page, pull_requests_list_page, repository_create_form_page, repository_detail_page, search_results_page, trajectory_viewer_page};
 use crate::ws::{ws_handler, WsBroadcaster};
 use nostr::{EventTemplate, Issue, KIND_ISSUE};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -76,6 +76,7 @@ pub async fn start_server(
             .route("/trajectory/{session_id}", web::get().to(trajectory_detail))
             .route("/agent/{pubkey}", web::get().to(agent_profile))
             .route("/agents", web::get().to(agents_list))
+            .route("/agents/marketplace", web::get().to(agent_marketplace))
             .route("/agent/{pubkey}/reputation", web::post().to(publish_reputation_label))
             .route("/search", web::get().to(search))
             .route("/watched", web::get().to(watched_repositories))
@@ -2736,6 +2737,12 @@ struct AgentFilterQuery {
     min_merged_prs: Option<i32>,
 }
 
+#[derive(Debug, serde::Deserialize)]
+struct AgentMarketplaceQuery {
+    specialty: Option<String>,
+    min_reputation: Option<i32>,
+}
+
 /// Agents list page with filtering
 async fn agents_list(
     state: web::Data<AppState>,
@@ -2811,6 +2818,119 @@ async fn agents_list(
     HttpResponse::Ok()
         .content_type("text/html; charset=utf-8")
         .body(agents_list_page(&agents, &query.min_reputation, &query.min_merged_prs).into_string())
+}
+
+/// Agent marketplace page - discover agents by specialty
+async fn agent_marketplace(
+    state: web::Data<AppState>,
+    query: web::Query<AgentMarketplaceQuery>,
+) -> HttpResponse {
+    // Fetch all unique agent pubkeys from PRs and issue claims
+    let mut agent_pubkeys = std::collections::HashSet::new();
+
+    // Get agents from pull requests
+    if let Ok(prs) = state.nostr_client.get_cached_pull_requests(100).await {
+        for pr in prs {
+            agent_pubkeys.insert(pr.pubkey.clone());
+        }
+    }
+
+    // Get agents from issue claims
+    if let Ok(issues) = state.nostr_client.get_cached_issues(100).await {
+        for issue in issues {
+            if let Ok(claims) = state.nostr_client.get_claims_for_issue(&issue.id).await {
+                for claim in claims {
+                    agent_pubkeys.insert(claim.pubkey.clone());
+                }
+            }
+        }
+    }
+
+    // Build agent data with reputation and specialties
+    let mut agents_by_specialty: std::collections::HashMap<String, Vec<(String, i32, i32)>> = std::collections::HashMap::new();
+    let mut all_specialties = std::collections::HashSet::new();
+
+    for pubkey in agent_pubkeys {
+        // Fetch reputation labels
+        let reputation_labels = state.nostr_client
+            .get_reputation_labels_for_agent(&pubkey)
+            .await
+            .unwrap_or_default();
+
+        // Calculate reputation score
+        let reputation_score = calculate_reputation_score(&reputation_labels);
+
+        // Count merged PRs
+        let merged_prs = state.nostr_client
+            .get_pull_requests_by_agent(&pubkey, 100)
+            .await
+            .unwrap_or_default()
+            .iter()
+            .filter(|pr| {
+                pr.tags.iter().any(|tag| {
+                    tag.first().map(|t| t == "status").unwrap_or(false)
+                        && tag.get(1).map(|s| s == "1631").unwrap_or(false)
+                })
+            })
+            .count() as i32;
+
+        // Extract specialties from agent profile or reputation labels
+        // For now, use a simple heuristic: check reputation labels for specialty tags
+        let mut agent_specialties = vec!["general".to_string()]; // Default specialty
+
+        // Try to extract specialties from PR languages (basic heuristic)
+        if let Ok(prs) = state.nostr_client.get_pull_requests_by_agent(&pubkey, 10).await {
+            for pr in prs {
+                // Look for common file extensions in PR content or tags
+                if pr.content.contains(".rs") || pr.content.contains("rust") {
+                    agent_specialties.push("rust".to_string());
+                }
+                if pr.content.contains(".ts") || pr.content.contains("typescript") {
+                    agent_specialties.push("typescript".to_string());
+                }
+                if pr.content.contains(".py") || pr.content.contains("python") {
+                    agent_specialties.push("python".to_string());
+                }
+                if pr.content.contains(".js") || pr.content.contains("javascript") {
+                    agent_specialties.push("javascript".to_string());
+                }
+                if pr.content.contains(".go") || pr.content.contains("golang") {
+                    agent_specialties.push("go".to_string());
+                }
+            }
+        }
+
+        // Deduplicate specialties
+        agent_specialties.sort();
+        agent_specialties.dedup();
+
+        // Add agent to each specialty group
+        for specialty in &agent_specialties {
+            all_specialties.insert(specialty.clone());
+            agents_by_specialty
+                .entry(specialty.clone())
+                .or_default()
+                .push((pubkey.clone(), reputation_score, merged_prs));
+        }
+    }
+
+    // Sort all_specialties alphabetically
+    let mut sorted_specialties: Vec<String> = all_specialties.into_iter().collect();
+    sorted_specialties.sort();
+
+    // Sort agents within each specialty by reputation
+    for agents in agents_by_specialty.values_mut() {
+        agents.sort_by(|a, b| b.1.cmp(&a.1));
+    }
+
+    HttpResponse::Ok()
+        .content_type("text/html; charset=utf-8")
+        .body(agent_marketplace_page(
+            &agents_by_specialty,
+            &sorted_specialties,
+            query.specialty.as_deref(),
+            query.min_reputation,
+        ).into_string())
 }
 
 /// Publish a reputation label for an agent
