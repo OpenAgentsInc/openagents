@@ -1,6 +1,8 @@
-//! Base layout - pure black screen
+//! Base layout - pure black screen with Tailwind
 
-/// Base HTML layout - pure black with WebSocket support
+use ui::{TAILWIND_CDN, TAILWIND_THEME};
+
+/// Base HTML layout - pure black with WebSocket support and Tailwind
 pub fn base_layout(content: &str) -> String {
     format!(
         r#"<!DOCTYPE html>
@@ -11,7 +13,10 @@ pub fn base_layout(content: &str) -> String {
     <title>OpenAgents</title>
     <script src="https://unpkg.com/htmx.org@2.0.4"></script>
     <script src="https://unpkg.com/htmx-ext-ws@2.0.1/ws.js"></script>
-    <style>
+    <script>{tailwind_cdn}</script>
+    <style type="text/tailwindcss">
+        {tailwind_theme}
+
         @font-face {{
             font-family: 'Berkeley Mono';
             src: local('Berkeley Mono');
@@ -42,6 +47,8 @@ pub fn base_layout(content: &str) -> String {
     {content}
 </body>
 </html>"#,
+        tailwind_cdn = TAILWIND_CDN,
+        tailwind_theme = TAILWIND_THEME,
         content = content
     )
 }

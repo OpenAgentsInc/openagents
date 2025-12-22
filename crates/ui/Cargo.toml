@@ -9,6 +9,8 @@ description = "Maud/HTMX/Tailwind components for OpenAgents"
 
 [dependencies]
 maud = "0.26"
+lazy_static = "1.5"
+regex = "1.10"
 
 [lints]
 workspace = true

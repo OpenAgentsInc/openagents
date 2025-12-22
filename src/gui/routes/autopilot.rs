@@ -5,7 +5,7 @@ use std::sync::Arc;
 use actix_web::{web, HttpResponse};
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
-use ui::FullAutoSwitch;
+use ui::{FullAutoSwitch, render_line_oob};
 
 use crate::gui::state::{AppState, AutopilotProcess};
 use crate::gui::ws::WsBroadcaster;
@@ -38,7 +38,7 @@ async fn toggle_full_auto(state: web::Data<AppState>) -> HttpResponse {
 
             // Broadcast error
             state.broadcaster.broadcast(&format!(
-                r#"<div class="log-error">Failed to start autopilot: {}</div>"#,
+                r#"<div id="chat-content-raw" hx-swap-oob="beforeend"><div class="log-error">Failed to start autopilot: {}</div></div>"#,
                 e
             ));
 
@@ -53,12 +53,12 @@ async fn toggle_full_auto(state: web::Data<AppState>) -> HttpResponse {
     }
 
     // Return the new switch HTML for HTMX to swap
-    // Also include script to show/hide log pane
+    // Also include script to show/hide chat pane
     let switch = FullAutoSwitch::new(new_state).build();
     let script = if new_state {
-        r#"<script>document.getElementById('autopilot-log').classList.remove('hidden')</script>"#
+        r#"<script>document.getElementById('chat-pane').classList.remove('hidden')</script>"#
     } else {
-        r#"<script>document.getElementById('autopilot-log').classList.add('hidden')</script>"#
+        r#"<script>document.getElementById('chat-pane').classList.add('hidden')</script>"#
     };
 
     HttpResponse::Ok()
@@ -79,9 +79,10 @@ async fn spawn_autopilot_process(state: &web::Data<AppState>) -> anyhow::Result<
     }
 
     // Build command - same as .cargo/config.toml fullauto alias
+    // Use --quiet to suppress cargo compilation output
     let mut cmd = Command::new("cargo");
     cmd.args([
-        "run", "-p", "autopilot", "--bin", "autopilot", "--",
+        "run", "--quiet", "-p", "autopilot", "--bin", "autopilot", "--",
         "run", "--with-issues", "--full-auto", "--max-turns", "99999",
         "Begin autonomous work. Call issue_ready to get the first issue, or if none exist, review the active directives and create issues to advance them."
     ]);
@@ -97,8 +98,9 @@ async fn spawn_autopilot_process(state: &web::Data<AppState>) -> anyhow::Result<
     let (shutdown_tx, mut shutdown_rx) = tokio::sync::mpsc::channel::<()>(1);
     let broadcaster = state.broadcaster.clone();
 
-    // Broadcast startup message (hx-swap-oob tells HTMX to append to the target)
-    broadcaster.broadcast(r#"<div id="autopilot-log-content" hx-swap-oob="beforeend"><div class="log-line" style="color: #22c55e;">Autopilot starting...</div></div>"#);
+    // Broadcast startup message to both views
+    broadcaster.broadcast(r#"<div id="chat-content-raw" hx-swap-oob="beforeend"><div class="log-line log-success">Autopilot starting...</div></div>"#);
+    broadcaster.broadcast(r#"<div id="chat-content-formatted" hx-swap-oob="beforeend"><div class="px-3 py-2 text-green text-sm">Autopilot starting...</div></div>"#);
 
     // Spawn output reader task
     let output_task = tokio::spawn(async move {
@@ -131,26 +133,36 @@ async fn read_output_loop(
             biased;
 
             _ = shutdown_rx.recv() => {
-                broadcaster.broadcast(r#"<div id="autopilot-log-content" hx-swap-oob="beforeend"><div class="log-line" style="color: #888;">Autopilot stopped.</div></div>"#);
+                broadcaster.broadcast(r#"<div id="chat-content-raw" hx-swap-oob="beforeend"><div class="log-line" style="color: #888;">Autopilot stopped.</div></div>"#);
+                broadcaster.broadcast(r#"<div id="chat-content-formatted" hx-swap-oob="beforeend"><div class="px-3 py-2 text-muted-foreground text-sm">Autopilot stopped.</div></div>"#);
                 break;
             }
 
             line = stdout_reader.next_line() => {
                 match line {
                     Ok(Some(text)) => {
-                        // Escape HTML and wrap in log line with OOB swap
+                        // Broadcast to raw view (escaped HTML)
                         let escaped = html_escape(&text);
-                        let html = format!(r#"<div id="autopilot-log-content" hx-swap-oob="beforeend"><div class="log-line">{}</div></div>"#, escaped);
-                        broadcaster.broadcast(&html);
+                        let raw_html = format!(r#"<div id="chat-content-raw" hx-swap-oob="beforeend"><div class="log-line">{}</div></div>"#, escaped);
+                        broadcaster.broadcast(&raw_html);
+
+                        // Broadcast to formatted view (rendered components)
+                        let formatted_html = render_line_oob(&text);
+                        broadcaster.broadcast(&formatted_html);
                     }
                     Ok(None) => {
                         // EOF - process exited
-                        broadcaster.broadcast(r#"<div id="autopilot-log-content" hx-swap-oob="beforeend"><div class="log-error">Autopilot process exited.</div></div>"#);
+                        broadcaster.broadcast(r#"<div id="chat-content-raw" hx-swap-oob="beforeend"><div class="log-error">Autopilot process exited.</div></div>"#);
+                        broadcaster.broadcast(r#"<div id="chat-content-formatted" hx-swap-oob="beforeend"><div class="px-3 py-2 text-red text-sm">Autopilot process exited.</div></div>"#);
                         break;
                     }
                     Err(e) => {
                         broadcaster.broadcast(&format!(
-                            r#"<div id="autopilot-log-content" hx-swap-oob="beforeend"><div class="log-error">Read error: {}</div></div>"#,
+                            r#"<div id="chat-content-raw" hx-swap-oob="beforeend"><div class="log-error">Read error: {}</div></div>"#,
+                            e
+                        ));
+                        broadcaster.broadcast(&format!(
+                            r#"<div id="chat-content-formatted" hx-swap-oob="beforeend"><div class="px-3 py-2 text-red text-sm">Read error: {}</div></div>"#,
                             e
                         ));
                         break;
@@ -162,8 +174,15 @@ async fn read_output_loop(
                 match line {
                     Ok(Some(text)) => {
                         let escaped = html_escape(&text);
-                        let html = format!(r#"<div id="autopilot-log-content" hx-swap-oob="beforeend"><div class="log-error">{}</div></div>"#, escaped);
-                        broadcaster.broadcast(&html);
+                        let raw_html = format!(r#"<div id="chat-content-raw" hx-swap-oob="beforeend"><div class="log-error">{}</div></div>"#, escaped);
+                        broadcaster.broadcast(&raw_html);
+
+                        // Also show in formatted view as error
+                        let formatted_html = format!(
+                            r#"<div id="chat-content-formatted" hx-swap-oob="beforeend"><div class="px-3 py-1 text-xs text-red font-mono">{}</div></div>"#,
+                            escaped
+                        );
+                        broadcaster.broadcast(&formatted_html);
                     }
                     Ok(None) => {
                         // EOF on stderr is normal
