@@ -75,16 +75,16 @@ impl EventCache {
             let key = (event.pubkey.clone(), event.kind);
 
             // Remove old replaceable event if it exists
-            if let Some(old_id) = self.replaceable.get(&key).cloned() {
-                if old_id != event_id {
-                    // Only replace if new event is newer
-                    if let Some(old_event) = self.events.get(&old_id) {
-                        if event.created_at > old_event.created_at {
-                            self.remove_internal(&old_id);
-                        } else {
-                            // Ignore older replaceable event
-                            return Ok(());
-                        }
+            if let Some(old_id) = self.replaceable.get(&key).cloned()
+                && old_id != event_id
+            {
+                // Only replace if new event is newer
+                if let Some(old_event) = self.events.get(&old_id) {
+                    if event.created_at > old_event.created_at {
+                        self.remove_internal(&old_id);
+                    } else {
+                        // Ignore older replaceable event
+                        return Ok(());
                     }
                 }
             }
@@ -93,26 +93,25 @@ impl EventCache {
         }
 
         // Handle parameterized replaceable events (kinds 30000-39999)
-        if self.is_param_replaceable_kind(event.kind) {
-            if let Some(d_tag) = self.get_d_tag(&event) {
-                let key = (event.pubkey.clone(), event.kind, d_tag);
+        if self.is_param_replaceable_kind(event.kind)
+            && let Some(d_tag) = self.get_d_tag(&event)
+        {
+            let key = (event.pubkey.clone(), event.kind, d_tag);
 
-                // Remove old param replaceable event if it exists
-                if let Some(old_id) = self.param_replaceable.get(&key).cloned() {
-                    if old_id != event_id {
-                        if let Some(old_event) = self.events.get(&old_id) {
-                            if event.created_at > old_event.created_at {
-                                self.remove_internal(&old_id);
-                            } else {
-                                // Ignore older param replaceable event
-                                return Ok(());
-                            }
-                        }
-                    }
+            // Remove old param replaceable event if it exists
+            if let Some(old_id) = self.param_replaceable.get(&key).cloned()
+                && old_id != event_id
+                && let Some(old_event) = self.events.get(&old_id)
+            {
+                if event.created_at > old_event.created_at {
+                    self.remove_internal(&old_id);
+                } else {
+                    // Ignore older param replaceable event
+                    return Ok(());
                 }
-
-                self.param_replaceable.insert(key, event_id.clone());
             }
+
+            self.param_replaceable.insert(key, event_id.clone());
         }
 
         // Check if event already exists
@@ -124,21 +123,21 @@ impl EventCache {
         }
 
         // Evict oldest event if cache is full
-        if self.events.len() >= self.config.max_events {
-            if let Some(old_id) = self.lru_queue.pop_front() {
-                self.remove_internal(&old_id);
-            }
+        if self.events.len() >= self.config.max_events
+            && let Some(old_id) = self.lru_queue.pop_front()
+        {
+            self.remove_internal(&old_id);
         }
 
         // Add to indexes
         self.by_kind
             .entry(event.kind)
-            .or_insert_with(HashSet::new)
+            .or_default()
             .insert(event_id.clone());
 
         self.by_author
             .entry(event.pubkey.clone())
-            .or_insert_with(HashSet::new)
+            .or_default()
             .insert(event_id.clone());
 
         // Index tags
@@ -151,9 +150,9 @@ impl EventCache {
                 let tag_value = &tag[1];
                 self.by_tag
                     .entry(tag_name.clone())
-                    .or_insert_with(HashMap::new)
+                    .or_default()
                     .entry(tag_value.clone())
-                    .or_insert_with(HashSet::new)
+                    .or_default()
                     .insert(event_id.clone());
             }
         }
