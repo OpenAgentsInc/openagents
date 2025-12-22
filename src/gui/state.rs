@@ -1,9 +1,21 @@
 //! Unified application state
 
 use std::sync::Arc;
+use tokio::process::Child;
 use tokio::sync::RwLock;
+use tokio::task::JoinHandle;
 
 use super::ws::WsBroadcaster;
+
+/// Running autopilot process state
+pub struct AutopilotProcess {
+    /// The child process handle
+    pub child: Child,
+    /// Task reading stdout/stderr and broadcasting
+    pub output_task: JoinHandle<()>,
+    /// Channel to signal shutdown to output task
+    pub shutdown_tx: tokio::sync::mpsc::Sender<()>,
+}
 
 /// Tab identifiers for navigation
 #[derive(Clone, Copy, PartialEq, Eq, Default)]
@@ -77,6 +89,9 @@ pub struct AppState {
 
     /// Claude status info
     pub claude_info: RwLock<ClaudeInfo>,
+
+    /// Running autopilot process (if Full Auto is ON)
+    pub autopilot_process: RwLock<Option<AutopilotProcess>>,
 }
 
 impl AppState {
@@ -89,6 +104,7 @@ impl AppState {
                 loading: true,
                 ..Default::default()
             }),
+            autopilot_process: RwLock::new(None),
         }
     }
 }
