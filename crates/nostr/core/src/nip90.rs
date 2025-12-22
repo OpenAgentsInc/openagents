@@ -441,6 +441,31 @@ impl JobParam {
 }
 
 /// A job request event data (kind 5000-5999).
+///
+/// # Examples
+///
+/// ```
+/// use nostr::nip90::{JobRequest, JobInput, JobParam, KIND_JOB_TEXT_GENERATION};
+///
+/// # fn example() -> Result<(), nostr::nip90::Nip90Error> {
+/// // Create a text generation request
+/// let request = JobRequest::new(KIND_JOB_TEXT_GENERATION)?
+///     .add_input(JobInput::text("Write a haiku about Nostr"))
+///     .add_param("temperature", "0.7")
+///     .add_param("max_tokens", "100")
+///     .with_bid(1000)  // 1000 millisats
+///     .add_relay("wss://relay.damus.io");
+///
+/// assert_eq!(request.kind, KIND_JOB_TEXT_GENERATION);
+/// assert_eq!(request.inputs.len(), 1);
+/// assert_eq!(request.params.len(), 2);
+/// assert_eq!(request.bid, Some(1000));
+///
+/// // Convert to tags for publishing
+/// let tags = request.to_tags();
+/// # Ok(())
+/// # }
+/// ```
 #[derive(Debug, Clone)]
 pub struct JobRequest {
     /// The specific job kind (5000-5999)
@@ -625,6 +650,31 @@ impl JobRequest {
 }
 
 /// A job result event data (kind 6000-6999).
+///
+/// # Examples
+///
+/// ```
+/// use nostr::nip90::{JobResult, KIND_JOB_TEXT_GENERATION};
+///
+/// # fn example() -> Result<(), nostr::nip90::Nip90Error> {
+/// // Create a result for a text generation job
+/// let result = JobResult::new(
+///     KIND_JOB_TEXT_GENERATION,
+///     "request_event_id_abc123",
+///     "customer_pubkey_xyz",
+///     "Nostr flows free,\nDecentralized thoughts connect,\nSovereign and true.",
+/// )?
+/// .with_amount(1000, Some("lnbc1000n1...".to_string()));
+///
+/// assert_eq!(result.kind, KIND_JOB_TEXT_GENERATION + 1000);
+/// assert_eq!(result.amount, Some(1000));
+/// assert!(result.bolt11.is_some());
+///
+/// // Convert to tags for publishing
+/// let tags = result.to_tags();
+/// # Ok(())
+/// # }
+/// ```
 #[derive(Debug, Clone)]
 pub struct JobResult {
     /// The result kind (6000-6999, = request kind + 1000)
@@ -829,6 +879,38 @@ impl JobResult {
 }
 
 /// A job feedback event data (kind 7000).
+///
+/// # Examples
+///
+/// ```
+/// use nostr::nip90::{JobFeedback, JobStatus};
+///
+/// // Send processing status update
+/// let feedback = JobFeedback::new(
+///     JobStatus::Processing,
+///     "request_event_id_abc123",
+///     "customer_pubkey_xyz",
+/// )
+/// .with_status_extra("Model loaded, generating response...")
+/// .with_content("Partial result: Nostr flows...");
+///
+/// assert_eq!(feedback.status, JobStatus::Processing);
+/// assert!(feedback.status_extra.is_some());
+///
+/// // Request payment before proceeding
+/// let payment_request = JobFeedback::new(
+///     JobStatus::PaymentRequired,
+///     "request_event_id_abc123",
+///     "customer_pubkey_xyz",
+/// )
+/// .with_amount(5000, Some("lnbc5000n1...".to_string()));
+///
+/// assert_eq!(payment_request.status, JobStatus::PaymentRequired);
+/// assert_eq!(payment_request.amount, Some(5000));
+///
+/// // Convert to tags for publishing
+/// let tags = feedback.to_tags();
+/// ```
 #[derive(Debug, Clone)]
 pub struct JobFeedback {
     /// The feedback status
