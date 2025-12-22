@@ -1322,7 +1322,7 @@ pub fn patch_detail_page(repository: &Event, patch: &Event, _reviews: &[Event], 
 }
 
 /// Pull request detail page
-pub fn pull_request_detail_page(repository: &Event, pull_request: &Event, reviews: &[Event], reviewer_reputations: &std::collections::HashMap<String, i32>, status_events: &[Event], identifier: &str, trajectory_session: Option<&Event>, trajectory_events: &[Event], stack_prs: &[Event], dependency_pr: Option<&Event>, is_mergeable: bool, pr_updates: &[Event]) -> Markup {
+pub fn pull_request_detail_page(repository: &Event, pull_request: &Event, reviews: &[Event], reviewer_reputations: &std::collections::HashMap<String, i32>, status_events: &[Event], identifier: &str, trajectory_session: Option<&Event>, trajectory_events: &[Event], stack_prs: &[Event], dependency_pr: Option<&Event>, is_mergeable: bool, pr_updates: &[Event], diff_text: Option<&str>) -> Markup {
     let repo_name = get_tag_value(repository, "name").unwrap_or_else(|| "Repository".to_string());
     let pr_title = get_tag_value(pull_request, "subject").unwrap_or_else(|| "Untitled Pull Request".to_string());
     let pr_status = get_tag_value(pull_request, "status").unwrap_or_else(|| "open".to_string());
@@ -1939,6 +1939,48 @@ pub fn pull_request_detail_page(repository: &Event, pull_request: &Event, review
                                             p style="margin: 0;" {
                                                 "💡 " strong { "Trajectory Transparency: " }
                                                 "This timeline shows every step the agent took to create this PR. Reviewers can verify the agent's reasoning and catch any suspicious behavior."
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            @if let Some(diff) = diff_text {
+                                section.issue-section {
+                                    h2 { "📄 Pull Request Diff" }
+
+                                    div style="margin-bottom: 1rem; display: flex; justify-content: space-between; align-items: center;" {
+                                        p style="margin: 0; color: #9ca3af;" {
+                                            "Showing changes from this pull request"
+                                        }
+                                        a href={"data:text/plain;charset=utf-8," (urlencoding::encode(diff))}
+                                           download={(pr_title.clone()) ".patch"}
+                                           style="padding: 8px 16px; background: #3b82f6; color: white; text-decoration: none; font-weight: 600;" {
+                                            "⬇️ Download Patch"
+                                        }
+                                    }
+
+                                    (crate::views::diff::render_diff_with_comments(
+                                        diff,
+                                        &[], // No inline comments for now
+                                        &pull_request.id,
+                                        identifier,
+                                    ))
+                                }
+                            } @else {
+                                section.issue-section {
+                                    h2 { "📄 Pull Request Diff" }
+                                    div.empty-state style="padding: 2rem; background: #1e293b; text-align: center;" {
+                                        p style="margin: 0 0 1rem 0; color: #94a3b8;" {
+                                            "Diff not available. The repository needs to be cloned locally to view the diff."
+                                        }
+                                        @let clone_url = get_tag_value(pull_request, "clone");
+                                        @if let Some(url) = clone_url {
+                                            div style="margin-top: 1rem;" {
+                                                p style="margin: 0 0 0.5rem 0; font-weight: 600; color: #e2e8f0;" { "Clone this repository:" }
+                                                code style="padding: 8px 12px; background: #0f172a; display: inline-block;" {
+                                                    "git clone " (url)
+                                                }
                                             }
                                         }
                                     }

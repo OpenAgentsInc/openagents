@@ -1547,9 +1547,88 @@ async fn pull_request_detail(
         }
     };
 
+    // Try to fetch diff from locally cloned repo
+    let diff_text = {
+        // Extract commit ID from PR
+        let commit_id = pull_request.tags.iter()
+            .find(|tag| tag.len() >= 2 && tag[0] == "c")
+            .map(|tag| tag[1].as_str());
+
+        // Extract clone URL to determine local repo path
+        let clone_url = pull_request.tags.iter()
+            .find(|tag| tag.len() >= 2 && tag[0] == "clone")
+            .map(|tag| tag[1].as_str());
+
+        if let (Some(commit_id), Some(_clone_url)) = (commit_id, clone_url) {
+            // Try to find cloned repo in workspace
+            use crate::git::clone::get_workspace_path;
+            let repo_path = get_workspace_path().join(&identifier);
+
+            if repo_path.exists() {
+                // Try to generate diff for this commit (compare with parent)
+                use crate::git::diff::diff_commits;
+                match git2::Repository::open(&repo_path) {
+                    Ok(repo) => {
+                        match git2::Oid::from_str(commit_id) {
+                            Ok(oid) => {
+                                match repo.find_commit(oid) {
+                                    Ok(commit) => {
+                                        // Get parent commit (if exists)
+                                        if commit.parent_count() > 0 {
+                                            match commit.parent(0) {
+                                                Ok(parent) => {
+                                                    match diff_commits(
+                                                        &repo_path,
+                                                        &parent.id().to_string(),
+                                                        commit_id,
+                                                    ) {
+                                                        Ok(diff) => Some(diff),
+                                                        Err(e) => {
+                                                            tracing::warn!("Failed to generate diff for PR {}: {}", pr_id, e);
+                                                            None
+                                                        }
+                                                    }
+                                                }
+                                                Err(e) => {
+                                                    tracing::warn!("Failed to get parent commit for {}: {}", commit_id, e);
+                                                    None
+                                                }
+                                            }
+                                        } else {
+                                            tracing::debug!("Commit {} has no parent (initial commit)", commit_id);
+                                            None
+                                        }
+                                    }
+                                    Err(e) => {
+                                        tracing::warn!("Failed to find commit {}: {}", commit_id, e);
+                                        None
+                                    }
+                                }
+                            }
+                            Err(e) => {
+                                tracing::warn!("Invalid commit ID {}: {}", commit_id, e);
+                                None
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        tracing::debug!("Failed to open repo at {}: {}", repo_path.display(), e);
+                        None
+                    }
+                }
+            } else {
+                tracing::debug!("Repo not cloned locally: {}", repo_path.display());
+                None
+            }
+        } else {
+            tracing::debug!("PR {} missing commit ID or clone URL", pr_id);
+            None
+        }
+    };
+
     HttpResponse::Ok()
         .content_type("text/html; charset=utf-8")
-        .body(pull_request_detail_page(&repository, &pull_request, &reviews, &reviewer_reputations, &status_events, &identifier, trajectory_session.as_ref(), &trajectory_events, &stack_prs, dependency_pr.as_ref(), is_mergeable, &pr_updates).into_string())
+        .body(pull_request_detail_page(&repository, &pull_request, &reviews, &reviewer_reputations, &status_events, &identifier, trajectory_session.as_ref(), &trajectory_events, &stack_prs, dependency_pr.as_ref(), is_mergeable, &pr_updates, diff_text.as_deref()).into_string())
 }
 
 /// Trajectory detail page
