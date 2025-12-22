@@ -213,8 +213,6 @@ pub fn threshold_ecdh(shares: &[FrostShare], peer_pubkey: &[u8; 32]) -> Result<[
 mod tests {
     use super::*;
     use crate::keygen::generate_key_shares;
-    use k256::elliptic_curve::sec1::FromEncodedPoint;
-    use k256::AffinePoint;
 
     /// Generate a valid public key from a scalar (for testing)
     fn pubkey_from_scalar(scalar_bytes: &[u8; 32]) -> [u8; 32] {
