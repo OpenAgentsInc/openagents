@@ -394,7 +394,7 @@ pub fn repository_detail_page(repository: &Event, is_cloned: bool, local_path: O
                                     }
                                     div.event-detail-item {
                                         span.label { "Created:" }
-                                        span { (repository.created_at) }
+                                        span title={(repository.created_at)} { (format_relative_time(repository.created_at)) }
                                     }
                                 }
                             }
@@ -750,7 +750,7 @@ pub fn issue_detail_page(repository: &Event, issue: &Event, claims: &[Event], bo
                                             div.claim-card {
                                                 div.claim-header {
                                                     span.claim-author { "🤖 " (claimer_pubkey) }
-                                                    span.claim-time { "claimed " (claim.created_at) }
+                                                    span.claim-time title={(claim.created_at)} { "claimed " (format_relative_time(claim.created_at)) }
                                                 }
                                                 @if !claim.content.is_empty() {
                                                     div.claim-content {
@@ -1477,7 +1477,7 @@ pub fn pull_request_detail_page(repository: &Event, pull_request: &Event, review
                                                 div.claim-card {
                                                     div.claim-header {
                                                         span.claim-author { (status_name) " by " (status_author) }
-                                                        span.claim-time { (status_event.created_at) }
+                                                        span.claim-time title={(status_event.created_at)} { (format_relative_time(status_event.created_at)) }
                                                     }
                                                     @if !status_event.content.is_empty() {
                                                         div.claim-content {
@@ -1727,7 +1727,7 @@ pub fn pull_request_detail_page(repository: &Event, pull_request: &Event, review
                                                             "• Weight: " (format!("{:.0}x", weight))
                                                         }
                                                     }
-                                                    span.claim-time { (review.created_at) }
+                                                    span.claim-time title={(review.created_at)} { (format_relative_time(review.created_at)) }
                                                 }
                                                 @if !review.content.is_empty() {
                                                     div.claim-content {
@@ -1829,7 +1829,7 @@ pub fn pull_request_detail_page(repository: &Event, pull_request: &Event, review
                                             }
                                             div {
                                                 p style="margin: 0; font-size: 0.875rem; color: #94a3b8;" { "Started" }
-                                                span style="font-size: 0.875rem;" { (session.created_at) }
+                                                span style="font-size: 0.875rem;" title={(session.created_at)} { (format_relative_time(session.created_at)) }
                                             }
                                             div {
                                                 p style="margin: 0; font-size: 0.875rem; color: #94a3b8;" { "Events" }
@@ -1911,8 +1911,8 @@ pub fn pull_request_detail_page(repository: &Event, pull_request: &Event, review
                                                                         "#" (seq)
                                                                     }
                                                                 }
-                                                                span style="font-size: 0.8rem; color: #64748b;" {
-                                                                    (event.created_at)
+                                                                span style="font-size: 0.8rem; color: #64748b;" title={(event.created_at)} {
+                                                                    (format_relative_time(event.created_at))
                                                                 }
                                                             }
 
@@ -1986,7 +1986,7 @@ pub fn pull_request_detail_page(repository: &Event, pull_request: &Event, review
                                             div style="background: var(--card-bg, #1a1a1a); border: 1px solid var(--border-color, #333); padding: 1rem;" {
                                                 div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem;" {
                                                     span style="font-weight: 600; color: var(--accent-color, #0ea5e9);" { (update_author) }
-                                                    span style="font-size: 0.875rem; color: var(--muted-color, #888);" { (update.created_at) }
+                                                    span style="font-size: 0.875rem; color: var(--muted-color, #888);" title={(update.created_at)} { (format_relative_time(update.created_at)) }
                                                 }
                                                 @if !update.content.is_empty() {
                                                     div style="white-space: pre-wrap; color: var(--text-color, #ccc);" {
@@ -2113,7 +2113,7 @@ pub fn trajectory_viewer_page(session: &Event, events: &[Event]) -> Markup {
                                 div.session-meta {
                                     p { "Agent: " span.agent-pubkey { (agent_pubkey) } }
                                     p { "Session ID: " code { (session.id) } }
-                                    p { "Started: " span { (session.created_at) } }
+                                    p { "Started: " span title={(session.created_at)} { (format_relative_time(session.created_at)) } }
                                     @if let Some(task) = task_description {
                                         p { "Task: " (task) }
                                     }
@@ -2145,7 +2145,7 @@ pub fn trajectory_viewer_page(session: &Event, events: &[Event]) -> Markup {
                                                         "📝 " (event_type)
                                                     }
                                                 }
-                                                span.event-timestamp { (event.created_at) }
+                                                span.event-timestamp title={(event.created_at)} { (format_relative_time(event.created_at)) }
                                             }
 
                                             @if !event.content.is_empty() {
@@ -2316,7 +2316,7 @@ pub fn agent_profile_page(
                                                             "🏷️ Label"
                                                         }
                                                     }
-                                                    span.claim-time { (label.created_at) }
+                                                    span.claim-time title={(label.created_at)} { (format_relative_time(label.created_at)) }
                                                 }
                                                 div.claim-content {
                                                     p { "From: " (label_issuer) }
@@ -2377,7 +2377,7 @@ pub fn agent_profile_page(
                                             div.claim-card {
                                                 div.claim-header {
                                                     span.claim-author { "Issue Claim" }
-                                                    span.claim-time { (claim.created_at) }
+                                                    span.claim-time title={(claim.created_at)} { (format_relative_time(claim.created_at)) }
                                                 }
                                                 @if !claim.content.is_empty() {
                                                     div.claim-content {

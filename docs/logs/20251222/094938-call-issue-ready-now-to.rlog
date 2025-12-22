@@ -222,3 +222,76 @@ t!:Bash id=X423BN9P cmd="cargo build --package agentgit --bin agentgit 2..." →
 o: id=X423BN9P → [ok]     Finished `dev` profile [optimized + debuginfo] target(s) in 0.19s
 a: Excellent! The binary builds successfully. Now let's commit this work: tokens_in=0 tokens_out=5 tokens_cached=133860
 t!:Bash id=1fFxpW3C cmd="git add -A && git commit -m "Implement weighted..." → [running] tokens_in=0 tokens_out=345 tokens_cached=133860
+o: id=1fFxpW3C → [ok] [main 11af0f42c] Implement weighted review scoring with reputation tiers in AgentGit
+t!:Bash id=AKkknETT cmd="git push origin main" → [running] tokens_in=0 tokens_out=74 tokens_cached=134122
+o: id=AKkknETT → [ok] [0;36m🔍 Running cargo build to check for errors and warnings...[0m
+t!:mcp__issues__issue_complete id=J6zqKJyN  → [running] tokens_in=0 tokens_out=32 tokens_cached=134638
+o: id=J6zqKJyN → [ok] Completed issue #623
+t!:mcp__issues__issue_ready id=pAGjTJVn  → [running] tokens_in=0 tokens_out=27 tokens_cached=134904
+o: id=pAGjTJVn → [ok] {
+t!:mcp__issues__issue_claim id=33DhCvDC  → [running] tokens_in=0 tokens_out=32 tokens_cached=134979
+o: id=33DhCvDC → [ok] Claimed issue #624
+t!:Grep id=yPbojqZQ pattern="created_at|timestamp" → [running] tokens_in=0 tokens_out=174 tokens_cached=135253
+o: id=yPbojqZQ → [ok] 28:/// Format a Unix timestamp as relative time (e.g., "2 hours ago", "yesterday")
+a: Great! I can see that a `format_relative_time` function already exists at line 28. Let me check its implementation and see which timestamps are still using raw values: tokens_in=3 tokens_out=1 tokens_cached=135460
+t!:Read id=739ffXSG file_path=/home/christopherdavid/code/openagents/crates/agentgit/src/views.rs → [running] tokens_in=3 tokens_out=1 tokens_cached=135460
+o: id=739ffXSG → [ok]     28→/// Format a Unix timestamp as relative time (e.g., "2 hours ago", "yesterday")
+a: Good! The function exists and looks complete. Now I need to find places where timestamps are displayed as raw integers and convert them. From my grep results, I can see several places that need upd... tokens_in=2 tokens_out=1 tokens_cached=136301
+t!:Read id=W47cbiSo file_path=/home/christopherdavid/code/openagents/crates/agentgit/src/views.rs → [running] tokens_in=2 tokens_out=1 tokens_cached=136301
+t!:Read id=xsGs1pUG file_path=/home/christopherdavid/code/openagents/crates/agentgit/src/views.rs → [running] tokens_in=2 tokens_out=1 tokens_cached=136301
+t!:Read id=PpnpTABJ file_path=/home/christopherdavid/code/openagents/crates/agentgit/src/views.rs → [running] tokens_in=2 tokens_out=1 tokens_cached=136301
+o: id=W47cbiSo → [ok]    395→                                    div.event-detail-item {
+o: id=xsGs1pUG → [ok]    750→                                            div.claim-card {
+o: id=PpnpTABJ → [ok]   1478→                                                    div.claim-header {
+a: Now let me update these raw timestamps to use the formatting function: tokens_in=3 tokens_out=1 tokens_cached=137314
+t!:Edit id=oEp8QPdG file_path=/home/christopherdavid/code/openagents/crates/agentgit/src/views.rs → [running] tokens_in=3 tokens_out=1 tokens_cached=137314
+t!:Edit id=9L5DhJkX file_path=/home/christopherdavid/code/openagents/crates/agentgit/src/views.rs → [running] tokens_in=3 tokens_out=1 tokens_cached=137314
+t!:Edit id=u8gJhyNF file_path=/home/christopherdavid/code/openagents/crates/agentgit/src/views.rs → [running] tokens_in=3 tokens_out=722 tokens_cached=137314
+o: id=oEp8QPdG → [ok] The file /home/christopherdavid/code/openagents/crates/agentgit/src/views.rs has been updated. He...
+o: id=9L5DhJkX → [ok] The file /home/christopherdavid/code/openagents/crates/agentgit/src/views.rs has been updated. He...
+o: id=u8gJhyNF → [ok] The file /home/christopherdavid/code/openagents/crates/agentgit/src/views.rs has been updated. He...
+a: Now let me check for more raw timestamps: tokens_in=3 tokens_out=1 tokens_cached=138340
+t!:Read id=Crku82Lt file_path=/home/christopherdavid/code/openagents/crates/agentgit/src/views.rs → [running] tokens_in=3 tokens_out=1 tokens_cached=138340
+t!:Read id=9FZdaTW9 file_path=/home/christopherdavid/code/openagents/crates/agentgit/src/views.rs → [running] tokens_in=3 tokens_out=1 tokens_cached=138340
+t!:Read id=kYSBneMV file_path=/home/christopherdavid/code/openagents/crates/agentgit/src/views.rs → [running] tokens_in=3 tokens_out=1 tokens_cached=138340
+o: id=Crku82Lt → [ok]   1728→                                                        }
+o: id=9FZdaTW9 → [ok]   1830→                                            div {
+o: id=kYSBneMV → [ok]   1987→                                                div style="display: flex; justify-content:...
+t!:Edit id=H5vNbEHK file_path=/home/christopherdavid/code/openagents/crates/agentgit/src/views.rs → [running] tokens_in=3 tokens_out=25 tokens_cached=139979
+t!:Edit id=DemcYTNy file_path=/home/christopherdavid/code/openagents/crates/agentgit/src/views.rs → [running] tokens_in=3 tokens_out=25 tokens_cached=139979
+t!:Edit id=hfH6WzUC file_path=/home/christopherdavid/code/openagents/crates/agentgit/src/views.rs → [running] tokens_in=3 tokens_out=794 tokens_cached=139979
+o: id=H5vNbEHK → [error] <tool_use_error>String to replace not found in file.
+o: id=DemcYTNy → [ok] The file /home/christopherdavid/code/openagents/crates/agentgit/src/views.rs has been updated. He...
+o: id=hfH6WzUC → [ok] The file /home/christopherdavid/code/openagents/crates/agentgit/src/views.rs has been updated. He...
+a: Let me find the review timestamp line more carefully: tokens_in=3 tokens_out=1 tokens_cached=141042
+t!:Read id=WRgjbuf5 file_path=/home/christopherdavid/code/openagents/crates/agentgit/src/views.rs → [running] tokens_in=3 tokens_out=126 tokens_cached=141042
+o: id=WRgjbuf5 → [ok]   1726→                                                        span style="color: #6b7280; margin...
+t!:Edit id=3j6UeBvv file_path=/home/christopherdavid/code/openagents/crates/agentgit/src/views.rs → [running] tokens_in=2 tokens_out=316 tokens_cached=142781
+o: id=3j6UeBvv → [ok] The file /home/christopherdavid/code/openagents/crates/agentgit/src/views.rs has been updated. He...
+a: Now let me check for a few more timestamp locations: tokens_in=1 tokens_out=1 tokens_cached=143179
+t!:Read id=skNGGuTX file_path=/home/christopherdavid/code/openagents/crates/agentgit/src/views.rs → [running] tokens_in=1 tokens_out=1 tokens_cached=143179
+t!:Read id=yenrS3Kg file_path=/home/christopherdavid/code/openagents/crates/agentgit/src/views.rs → [running] tokens_in=1 tokens_out=1 tokens_cached=143179
+t!:Read id=wDaqTGDj file_path=/home/christopherdavid/code/openagents/crates/agentgit/src/views.rs → [running] tokens_in=1 tokens_out=1 tokens_cached=143179
+o: id=skNGGuTX → [ok]   1913→                                                                }
+o: id=yenrS3Kg → [ok]   2114→                                    p { "Agent: " span.agent-pubkey { (agent_pubkey) } }
+o: id=wDaqTGDj → [ok]   2146→                                                    }
+t!:Edit id=DrLA8JTY file_path=/home/christopherdavid/code/openagents/crates/agentgit/src/views.rs → [running] tokens_in=2 tokens_out=24 tokens_cached=143954
+t!:Edit id=cvBa19Dn file_path=/home/christopherdavid/code/openagents/crates/agentgit/src/views.rs → [running] tokens_in=2 tokens_out=24 tokens_cached=143954
+t!:Edit id=TZz6d6VC file_path=/home/christopherdavid/code/openagents/crates/agentgit/src/views.rs → [running] tokens_in=2 tokens_out=664 tokens_cached=143954
+o: id=DrLA8JTY → [ok] The file /home/christopherdavid/code/openagents/crates/agentgit/src/views.rs has been updated. He...
+o: id=cvBa19Dn → [ok] The file /home/christopherdavid/code/openagents/crates/agentgit/src/views.rs has been updated. He...
+o: id=TZz6d6VC → [ok] The file /home/christopherdavid/code/openagents/crates/agentgit/src/views.rs has been updated. He...
+a: Let me check for the remaining ones: tokens_in=2 tokens_out=1 tokens_cached=144944
+t!:Read id=M2bNuAPR file_path=/home/christopherdavid/code/openagents/crates/agentgit/src/views.rs → [running] tokens_in=2 tokens_out=1 tokens_cached=144944
+t!:Read id=bmQ2bk4q file_path=/home/christopherdavid/code/openagents/crates/agentgit/src/views.rs → [running] tokens_in=2 tokens_out=1 tokens_cached=144944
+o: id=M2bNuAPR → [ok]   2317→                                                        }
+o: id=bmQ2bk4q → [ok]   2378→                                                div.claim-header {
+t!:Edit id=oxPSe1q6 file_path=/home/christopherdavid/code/openagents/crates/agentgit/src/views.rs → [running] tokens_in=2 tokens_out=25 tokens_cached=146586
+t!:Edit id=pCb2qxdc file_path=/home/christopherdavid/code/openagents/crates/agentgit/src/views.rs → [running] tokens_in=2 tokens_out=465 tokens_cached=146586
+o: id=oxPSe1q6 → [ok] The file /home/christopherdavid/code/openagents/crates/agentgit/src/views.rs has been updated. He...
+o: id=pCb2qxdc → [ok] The file /home/christopherdavid/code/openagents/crates/agentgit/src/views.rs has been updated. He...
+a: Great! Now let's build to make sure everything compiles: tokens_in=2 tokens_out=1 tokens_cached=147279
+t!:Bash id=bzVAyVVo cmd="cargo build --package agentgit --bin agentgit 2..." → [running] tokens_in=2 tokens_out=1 tokens_cached=147279
+o: id=bzVAyVVo → [ok]     Finished `dev` profile [optimized + debuginfo] target(s) in 17.20s
+a: Perfect! Now let's commit this work: tokens_in=0 tokens_out=1 tokens_cached=148350
+t!:Bash id=XuqBv1yT cmd="git add -A && git commit -m "Add human-readable..." → [running] tokens_in=0 tokens_out=390 tokens_cached=148350
