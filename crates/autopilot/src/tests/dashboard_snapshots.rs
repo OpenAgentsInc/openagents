@@ -15,9 +15,14 @@ fn create_test_session(
     issues_completed: i32,
     tool_errors: i32,
 ) -> SessionMetrics {
+    // Use a fixed timestamp for deterministic snapshots
+    let fixed_timestamp = chrono::DateTime::parse_from_rfc3339("2025-12-22T00:00:00Z")
+        .unwrap()
+        .with_timezone(&Utc);
+
     SessionMetrics {
         id: id.to_string(),
-        timestamp: Utc::now(),
+        timestamp: fixed_timestamp,
         model: "claude-sonnet-4-5".to_string(),
         prompt: "Test task".to_string(),
         duration_seconds: 300.0,
