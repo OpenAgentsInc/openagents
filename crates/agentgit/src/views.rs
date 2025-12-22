@@ -1107,9 +1107,9 @@ pub fn patch_detail_page(repository: &Event, patch: &Event, identifier: &str) ->
 
                             @if !patch.content.is_empty() {
                                 section.issue-section {
-                                    h2 { "Description" }
-                                    div.issue-content {
-                                        p { (patch.content) }
+                                    h2 { "Patch Content" }
+                                    pre style="background: #0d1117; color: #c9d1d9; padding: 1rem; overflow-x: auto; border: 1px solid var(--border-color, #333); font-size: 0.875rem; line-height: 1.5;" {
+                                        code { (patch.content) }
                                     }
                                 }
                             }
