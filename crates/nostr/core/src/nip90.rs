@@ -1,18 +1,133 @@
-//! NIP-90: Data Vending Machine
+//! NIP-90: Data Vending Machines
 //!
-//! This NIP defines the interaction between customers and Service Providers
-//! for performing on-demand computation. Money in, data out.
+//! Data Vending Machines (DVMs) enable on-demand computation over Nostr. Customers submit job
+//! requests to service providers who perform computation and return results. Payment flows via
+//! Lightning (bolt11 invoices) or Nostr Zaps.
 //!
-//! ## Kinds
-//! - 5000-5999: Job request kinds
-//! - 6000-6999: Job result kinds (request kind + 1000)
-//! - 7000: Job feedback
+//! **Money in, data out.**
 //!
-//! ## Protocol Flow
-//! 1. Customer publishes a job request (kind 5000-5999)
-//! 2. Service Providers MAY submit job feedback events (kind 7000)
-//! 3. Upon completion, service provider publishes job result (kind 6000-6999)
-//! 4. Customer pays via bolt11 or zap
+//! ## Protocol Overview
+//!
+//! DVMs follow a simple request-response pattern:
+//!
+//! ```text
+//! Customer                Service Provider
+//!    │                           │
+//!    │──── Job Request ──────────>│
+//!    │      (kind 5000-5999)      │
+//!    │                            │
+//!    │<─── Job Feedback ──────────│ (optional)
+//!    │      (kind 7000)           │
+//!    │                            │
+//!    │<─── Job Result ────────────│
+//!    │      (kind 6000-6999)      │
+//!    │                            │
+//!    │──── Payment ───────────────>│
+//!    │   (bolt11 or zap)          │
+//! ```
+//!
+//! ## Event Kinds
+//!
+//! - **5000-5999**: Job request kinds
+//!   - 5000: Text extraction/OCR
+//!   - 5001: Summarization
+//!   - 5002: Translation
+//!   - 5050: Text generation (LLM inference)
+//!   - 5100: Image generation
+//!   - 5250: Speech-to-text
+//!
+//! - **6000-6999**: Job result kinds (= request kind + 1000)
+//!   - Result kind is automatically calculated from request kind
+//!
+//! - **7000**: Job feedback (status updates, payment requests)
+//!
+//! ## Creating a Job Request
+//!
+//! ```rust
+//! use nostr::nip90::{JobRequest, JobInput, KIND_JOB_TEXT_GENERATION};
+//!
+//! let request = JobRequest::new(KIND_JOB_TEXT_GENERATION)?
+//!     .add_input(JobInput::text("Write a haiku about Nostr"))
+//!     .add_param("temperature", "0.7")
+//!     .add_param("max_tokens", "100")
+//!     .with_bid(1000)  // millisats
+//!     .add_relay("wss://relay.damus.io");
+//!
+//! // Convert to event tags and publish
+//! let tags = request.to_tags();
+//! # Ok::<(), nostr::nip90::Nip90Error>(())
+//! ```
+//!
+//! ## Creating a Job Result
+//!
+//! ```rust
+//! use nostr::nip90::{JobResult, KIND_JOB_TEXT_GENERATION};
+//!
+//! let result = JobResult::new(
+//!     KIND_JOB_TEXT_GENERATION,
+//!     "request_event_id",
+//!     "customer_pubkey",
+//!     "Nostr flows free,\nDecentralized thoughts connect,\nSovereign and true.",
+//! )?
+//! .with_amount(1000, Some("lnbc1000n...".to_string()));
+//!
+//! // Convert to event tags and publish
+//! let tags = result.to_tags();
+//! # Ok::<(), nostr::nip90::Nip90Error>(())
+//! ```
+//!
+//! ## Input Types
+//!
+//! DVMs support four input types via the `i` tag:
+//!
+//! - **text**: Direct text input
+//! - **url**: URL to fetch data from
+//! - **event**: Nostr event ID (with optional relay hint)
+//! - **job**: Output from another job (chaining)
+//!
+//! ```rust
+//! use nostr::nip90::JobInput;
+//!
+//! // Direct text
+//! let input = JobInput::text("Translate this");
+//!
+//! // URL with marker
+//! let input = JobInput::url("https://example.com/doc.txt")
+//!     .with_marker("source");
+//!
+//! // Event reference
+//! let input = JobInput::event("event_id", Some("wss://relay.com".to_string()));
+//!
+//! // Chain from another job
+//! let input = JobInput::job("previous_job_id", None);
+//! ```
+//!
+//! ## Parameters
+//!
+//! Model-specific parameters are passed via `param` tags:
+//!
+//! ```rust
+//! use nostr::nip90::JobParam;
+//!
+//! let param = JobParam::new("temperature", "0.7");
+//! let param = JobParam::new("max_tokens", "2048");
+//! let param = JobParam::new("model", "llama3.2");
+//! ```
+//!
+//! ## Payment Flow
+//!
+//! 1. Customer includes `bid` tag in job request (optional)
+//! 2. Provider MAY send feedback (kind 7000) with `payment-required` status
+//! 3. Provider publishes result (kind 6000-6999) with `amount` and `bolt11` tags
+//! 4. Customer pays bolt11 invoice or zaps the result event
+//!
+//! ## Service Provider Discovery
+//!
+//! Providers advertise their capabilities via NIP-89 application handler events.
+//! Customers discover providers by querying relays for handlers of specific job kinds.
+//!
+//! See the [NIP-90 specification](https://github.com/nostr-protocol/nips/blob/master/90.md)
+//! for complete details.
 
 use crate::nip01::Event;
 use serde::{Deserialize, Serialize};
@@ -151,6 +266,15 @@ pub struct JobInput {
 
 impl JobInput {
     /// Create a new text input.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use nostr::nip90::JobInput;
+    ///
+    /// let input = JobInput::text("Translate this text to Spanish");
+    /// assert_eq!(input.data, "Translate this text to Spanish");
+    /// ```
     pub fn text(data: impl Into<String>) -> Self {
         Self {
             data: data.into(),
@@ -161,6 +285,15 @@ impl JobInput {
     }
 
     /// Create a new URL input.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use nostr::nip90::JobInput;
+    ///
+    /// let input = JobInput::url("https://example.com/document.pdf");
+    /// assert_eq!(input.data, "https://example.com/document.pdf");
+    /// ```
     pub fn url(url: impl Into<String>) -> Self {
         Self {
             data: url.into(),
@@ -171,6 +304,16 @@ impl JobInput {
     }
 
     /// Create a new event input.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use nostr::nip90::JobInput;
+    ///
+    /// let input = JobInput::event("event_id_123", Some("wss://relay.damus.io".to_string()));
+    /// assert_eq!(input.data, "event_id_123");
+    /// assert_eq!(input.relay, Some("wss://relay.damus.io".to_string()));
+    /// ```
     pub fn event(event_id: impl Into<String>, relay: Option<String>) -> Self {
         Self {
             data: event_id.into(),
@@ -181,6 +324,16 @@ impl JobInput {
     }
 
     /// Create a new job input (chaining from previous job).
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use nostr::nip90::JobInput;
+    ///
+    /// // Chain from a previous job's output
+    /// let input = JobInput::job("previous_job_event_id", None);
+    /// assert_eq!(input.data, "previous_job_event_id");
+    /// ```
     pub fn job(job_id: impl Into<String>, relay: Option<String>) -> Self {
         Self {
             data: job_id.into(),
@@ -244,6 +397,22 @@ pub struct JobParam {
 }
 
 impl JobParam {
+    /// Create a new job parameter.
+    ///
+    /// Parameters are model-specific settings passed via `param` tags.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use nostr::nip90::JobParam;
+    ///
+    /// let temp = JobParam::new("temperature", "0.7");
+    /// let tokens = JobParam::new("max_tokens", "2048");
+    /// let model = JobParam::new("model", "llama3.2");
+    ///
+    /// assert_eq!(temp.key, "temperature");
+    /// assert_eq!(temp.value, "0.7");
+    /// ```
     pub fn new(key: impl Into<String>, value: impl Into<String>) -> Self {
         Self {
             key: key.into(),
