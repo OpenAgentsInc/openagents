@@ -1,15 +1,89 @@
 //! NIP-77: Negentropy Syncing
 //!
-//! This module implements the Negentropy protocol for efficient event syncing.
-//! Negentropy uses Range-Based Set Reconciliation to minimize bandwidth when
-//! both sides of a sync have events in common.
+//! This module implements the Negentropy protocol for efficient event syncing between
+//! Nostr clients and relays. Negentropy uses Range-Based Set Reconciliation (RBSR) to
+//! minimize bandwidth when both sides have events in common.
 //!
-//! Protocol flow:
-//! 1. Client sends NEG-OPEN with filter and initial message
-//! 2. Relay responds with NEG-MSG
-//! 3. Client/relay alternate NEG-MSG until complete or client sends NEG-CLOSE
+//! # Overview
 //!
-//! Messages are hex-encoded binary using the Negentropy Protocol V1 format.
+//! Traditional Nostr syncing requires transferring all event IDs to determine differences.
+//! Negentropy is more efficient when:
+//! - Both sides have most events in common (typical for active users)
+//! - Event sets are large (thousands of events)
+//! - Bandwidth is constrained
+//!
+//! The protocol works by:
+//! 1. Dividing the timestamp/ID space into ranges
+//! 2. Computing fingerprints (hashes) for each range
+//! 3. Exchanging only ranges with different fingerprints
+//! 4. Recursively subdividing ranges until individual IDs are identified
+//!
+//! # Protocol Flow
+//!
+//! ```text
+//! Client                                  Relay
+//!   |                                       |
+//!   |  NEG-OPEN (filter, initial msg) ---→ |
+//!   |                                       | (compute fingerprints)
+//!   | ←--- NEG-MSG (ranges with fps)       |
+//!   |                                       |
+//!   | (compare fingerprints)                |
+//!   |  NEG-MSG (refined ranges) ---------→ |
+//!   |                                       |
+//!   | ←--- NEG-MSG (more refined)          |
+//!   |  ...continues until complete...      |
+//!   |                                       |
+//!   |  NEG-CLOSE ------------------------→ |
+//! ```
+//!
+//! After sync completes, client knows:
+//! - IDs it has that relay needs (upload with EVENT)
+//! - IDs relay has that it needs (download with REQ)
+//!
+//! # Usage Example
+//!
+//! ```
+//! use nostr::{Record, NegentropyMessage, Range, Bound, calculate_fingerprint, sort_records};
+//!
+//! // Prepare local event set
+//! let mut records = vec![
+//!     Record::new(1000, [0x01; 32]),
+//!     Record::new(2000, [0x02; 32]),
+//!     Record::new(3000, [0x03; 32]),
+//! ];
+//! sort_records(&mut records);
+//!
+//! // Create initial message covering all events
+//! let ids: Vec<_> = records.iter().map(|r| r.id).collect();
+//! let fp = calculate_fingerprint(&ids);
+//!
+//! let initial_range = Range::fingerprint(
+//!     Bound::infinity(),
+//!     fp
+//! );
+//! let message = NegentropyMessage::new(vec![initial_range]);
+//!
+//! // Encode for transmission
+//! let hex_message = message.encode_hex().unwrap();
+//! println!("Initial message: {}", hex_message);
+//!
+//! // Server would decode and compare fingerprints
+//! let decoded = NegentropyMessage::decode_hex(&hex_message).unwrap();
+//! assert_eq!(decoded.ranges.len(), 1);
+//! ```
+//!
+//! # Performance Characteristics
+//!
+//! - **Time Complexity**: O(log N) round trips for N events
+//! - **Bandwidth**: O(d log N) where d is the number of differences
+//! - **Best Case**: Both sides identical = 1 round trip
+//! - **Worst Case**: Completely different = O(N) (falls back to ID list)
+//!
+//! # References
+//!
+//! - NIP-77: <https://github.com/nostr-protocol/nips/blob/master/77.md>
+//! - Negentropy Protocol: <https://github.com/hoytech/negentropy>
+//! - RBSR Paper: <https://logperiodic.com/rbsr.html>
 
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -725,6 +799,28 @@ impl NegClose {
 /// 2. Concatenate with the number of elements, encoded as a varint
 /// 3. Hash with SHA-256
 /// 4. Take the first 16 bytes
+///
+/// # Example
+///
+/// ```
+/// use nostr::calculate_fingerprint;
+///
+/// let id1 = [0x01; 32];
+/// let id2 = [0x02; 32];
+/// let ids = vec![id1, id2];
+///
+/// let fp = calculate_fingerprint(&ids);
+/// assert_eq!(fp.len(), 16);
+///
+/// // Fingerprint is deterministic
+/// let fp2 = calculate_fingerprint(&ids);
+/// assert_eq!(fp, fp2);
+///
+/// // And commutative (order doesn't matter)
+/// let ids_reversed = vec![id2, id1];
+/// let fp3 = calculate_fingerprint(&ids_reversed);
+/// assert_eq!(fp, fp3);
+/// ```
 pub fn calculate_fingerprint(ids: &[EventId]) -> [u8; 16] {
     // Step 1: Add all IDs mod 2^256 (as little-endian)
     let mut sum = [0u8; 32];
@@ -775,6 +871,28 @@ impl Record {
 /// Records are sorted by:
 /// 1. Timestamp (ascending)
 /// 2. ID lexically (ascending) if timestamps are equal
+///
+/// # Example
+///
+/// ```
+/// use nostr::{Record, sort_records};
+///
+/// let mut records = vec![
+///     Record::new(200, [0x03; 32]),
+///     Record::new(100, [0x02; 32]),
+///     Record::new(100, [0x01; 32]),
+/// ];
+///
+/// sort_records(&mut records);
+///
+/// // Sorted by timestamp first
+/// assert_eq!(records[0].timestamp, 100);
+/// assert_eq!(records[1].timestamp, 100);
+/// assert_eq!(records[2].timestamp, 200);
+///
+/// // Then by ID when timestamps equal
+/// assert!(records[0].id < records[1].id);
+/// ```
 pub fn sort_records(records: &mut [Record]) {
     records.sort_by(|a, b| {
         match a.timestamp.cmp(&b.timestamp) {
