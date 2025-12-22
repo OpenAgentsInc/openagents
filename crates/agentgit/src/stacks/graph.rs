@@ -262,7 +262,7 @@ mod tests {
         // Create a circular dependency (which shouldn't happen in practice)
         // This test verifies our detection works
         let mut pr1 = create_test_pr("pr1", "stack1", 1, 2, Some("pr2"), None);
-        let mut pr2 = create_test_pr("pr2", "stack1", 2, 2, Some("pr1"), None);
+        let pr2 = create_test_pr("pr2", "stack1", 2, 2, Some("pr1"), None);
 
         // Manually create circular dep
         pr1.tags.push(vec!["depends_on".to_string(), "pr2".to_string()]);

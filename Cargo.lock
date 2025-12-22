@@ -284,6 +284,7 @@ dependencies = [
  "serde",
  "serde_json",
  "tao 0.33.0",
+ "tempfile",
  "tokio",
  "tracing",
  "tracing-subscriber",

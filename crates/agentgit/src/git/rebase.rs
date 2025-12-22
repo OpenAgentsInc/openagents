@@ -142,10 +142,16 @@ mod tests {
         (dir, repo)
     }
 
-    fn create_commit(repo: &Repository, message: &str, parent: Option<&git2::Commit>) -> git2::Oid {
+    fn create_commit(repo: &Repository, message: &str, parent: Option<&git2::Commit>, filename: &str, content: &str) -> git2::Oid {
         let sig = repo.signature().unwrap();
+
+        // Write file to working directory
+        std::fs::write(repo.workdir().unwrap().join(filename), content).unwrap();
+
         let tree_id = {
             let mut index = repo.index().unwrap();
+            index.add_path(std::path::Path::new(filename)).unwrap();
+            index.write().unwrap();
             index.write_tree().unwrap()
         };
         let tree = repo.find_tree(tree_id).unwrap();
@@ -171,22 +177,29 @@ mod tests {
         let (_dir, repo) = create_test_repo();
 
         // Create initial commit on main
-        let c1 = create_commit(&repo, "Initial commit", None);
+        let c1 = create_commit(&repo, "Initial commit", None, "base.txt", "base content");
         let commit1 = repo.find_commit(c1).unwrap();
 
-        // Create a branch
+        // Create main branch pointing to first commit
+        repo.branch("main", &commit1, false).unwrap();
+        repo.set_head("refs/heads/main").unwrap();
+
+        // Create a feature branch
         repo.branch("feature", &commit1, false).unwrap();
 
         // Make another commit on main
-        let c2 = create_commit(&repo, "Main commit", Some(&commit1));
+        let c2 = create_commit(&repo, "Main commit", Some(&commit1), "main.txt", "main content");
         let _commit2 = repo.find_commit(c2).unwrap();
 
         // Switch to feature branch and make a commit
         repo.set_head("refs/heads/feature").unwrap();
-        let _c3 = create_commit(&repo, "Feature commit", Some(&commit1));
+        let _c3 = create_commit(&repo, "Feature commit", Some(&commit1), "feature.txt", "feature content");
 
         // Rebase feature onto main
         let result = rebase_branch(repo.path(), "feature", "main");
+        if let Err(e) = &result {
+            eprintln!("Rebase error: {}", e);
+        }
         assert!(result.is_ok());
     }
 
