@@ -65,3 +65,9 @@ o: id=uTmJCyNn → [error] Exit code 128
 t!:Bash id=Sc2jQDG3 cmd="git status" → [running] tokens_in=4 tokens_out=72 tokens_cached=97931
 o: id=Sc2jQDG3 → [ok] On branch main
 t!:Bash id=rDTT9EPZ cmd="git add docs/logs/ && git commit --amend --no-edit" → [running] tokens_in=3 tokens_out=88 tokens_cached=98163
+o: id=rDTT9EPZ → [ok] [main f8feaf60b] Complete NIP-87 (Ecash Mint Discoverability) implementation
+t!:Bash id=83Z9tmLy cmd="git pull --rebase origin main && git push origi..." → [running] tokens_in=3 tokens_out=88 tokens_cached=98404
+o: id=83Z9tmLy → [error] Exit code 128
+t!:Bash id=KQiA94RG cmd="git status --short" → [running] tokens_in=4 tokens_out=25 tokens_cached=98692
+o: id=KQiA94RG → [ok]  M docs/logs/20251222/145424-call-issue-ready-now-to.rlog
+t!:Bash id=T9YjE732 cmd="git stash push -m "trajectory logs" && git pull..." → [running] tokens_in=3 tokens_out=25 tokens_cached=98931
