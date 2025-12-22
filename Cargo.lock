@@ -4529,6 +4529,7 @@ dependencies = [
  "hex",
  "hkdf",
  "hmac",
+ "proptest",
  "quickcheck",
  "rand 0.9.2",
  "scrypt",
