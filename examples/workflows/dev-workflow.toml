@@ -1,0 +1,105 @@
+# Autopilot Development Workflow Configuration
+# This file demonstrates typical development workflow settings
+
+[development]
+# Default model for development work
+model = "sonnet"
+
+# Budget per feature/task (USD)
+default_budget = 10.0
+
+# Output directory for logs
+output_dir = "docs/logs"
+
+[issue_management]
+# Auto-claim ready issues
+auto_claim = true
+
+# Default priority for new issues
+default_priority = "medium"
+
+# Default issue type
+default_type = "task"
+
+# Link issues to directives by default
+require_directive = false
+
+[workflow]
+# Steps to execute for each issue
+pre_implement = [
+    "Read relevant code",
+    "Understand existing patterns",
+    "Check for related tests"
+]
+
+implementation = [
+    "Write code following project patterns",
+    "Add/update tests",
+    "Run tests to verify",
+    "Fix any issues"
+]
+
+post_implement = [
+    "Run full test suite",
+    "Check for clippy warnings",
+    "Verify documentation",
+    "Commit with descriptive message",
+    "Push to remote"
+]
+
+[git]
+# Commit configuration
+auto_commit = true
+commit_message_template = "{issue_type}: {issue_title}\n\n{issue_description}\n\nResolves #{issue_number}"
+
+# Always push after successful completion
+auto_push = true
+
+# Create feature branches
+use_feature_branches = false  # Set true to create branches per issue
+branch_prefix = "autopilot/"
+
+[testing]
+# Run tests before marking complete
+run_tests = true
+
+# Run specific test suites
+test_command = "cargo test --workspace"
+
+# Minimum test coverage (if available)
+min_coverage = 80.0
+
+[quality]
+# Run clippy before completion
+run_clippy = true
+clippy_args = ["--", "-D", "warnings"]
+
+# Run formatter
+run_formatter = true
+formatter_command = "cargo fmt"
+
+# Check for security issues
+run_security_check = false
+security_tool = "cargo audit"
+
+[metrics]
+# Track APM for all runs
+track_apm = true
+
+# Export metrics after each run
+export_metrics = true
+metrics_file = "autopilot-metrics.json"
+
+# Compare with baseline
+compare_with_baseline = true
+baseline_apm = 15.0  # Expected APM for reference
+
+[notifications]
+# Notify on issue completion
+on_complete = true
+on_failure = true
+on_blocked = true
+
+# Notification channels
+slack_webhook = ""
+email = ""

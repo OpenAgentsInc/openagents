@@ -1,0 +1,49 @@
+# Autopilot CI/CD Configuration
+# This file demonstrates how to configure autopilot for CI/CD pipelines
+
+[ci]
+# Maximum budget for CI runs (USD)
+max_budget = 5.0
+
+# Model to use in CI (haiku is fast and economical)
+model = "haiku"
+
+# Auto-create issues from test failures
+create_issues_on_failure = true
+
+# Auto-fix issues if budget allows
+auto_fix = true
+
+# Priority for auto-created issues
+default_priority = "high"
+
+[test_failures]
+# Create issues when tests fail
+enabled = true
+priority = "urgent"
+agent = "claude"
+
+[clippy_warnings]
+# Create issues when clippy warnings are found
+enabled = true
+priority = "medium"
+agent = "claude"
+
+[benchmarks]
+# Run benchmarks and create optimization issues
+enabled = true
+threshold_regression = 0.10  # 10% slowdown triggers issue
+priority = "high"
+
+[git]
+# Automatically commit fixes
+auto_commit = true
+commit_message_template = "fix: {issue_title} (CI autopilot)"
+
+# Automatically push to remote
+auto_push = false  # Set true if running on dedicated branch
+
+[notifications]
+# Notify on completion
+slack_webhook = ""  # Set your webhook URL
+discord_webhook = ""  # Set your webhook URL
