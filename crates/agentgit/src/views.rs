@@ -346,6 +346,40 @@ pub fn issues_list_page(repository: &Event, issues: &[Event], is_watched: bool, 
                                 }
                             }
 
+                            // Filter controls
+                            div.filter-controls style="margin: 1.5rem 0; padding: 1rem; background: var(--card-bg, #1a1a1a); border: 1px solid var(--border-color, #333);" {
+                                form
+                                    hx-get={"/repo/" (identifier) "/issues"}
+                                    hx-target=".issues-container"
+                                    hx-swap="outerHTML"
+                                    style="display: flex; gap: 1rem; align-items: center; flex-wrap: wrap;" {
+
+                                    span style="font-weight: 600;" { "Filter:" }
+
+                                    label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;" {
+                                        input type="checkbox" name="filter_open" value="true" checked;
+                                        span { "Open" }
+                                    }
+
+                                    label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;" {
+                                        input type="checkbox" name="filter_closed" value="true";
+                                        span { "Closed" }
+                                    }
+
+                                    label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;" {
+                                        input type="checkbox" name="filter_has_bounty" value="true";
+                                        span { "Has Bounty" }
+                                    }
+
+                                    label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;" {
+                                        input type="checkbox" name="filter_claimed" value="true";
+                                        span { "Claimed" }
+                                    }
+
+                                    button.btn-secondary type="submit" style="margin-left: auto; padding: 0.5rem 1rem;" { "Apply Filters" }
+                                }
+                            }
+
                             @if issues.is_empty() {
                                 div.empty-state {
                                     p { "No issues found for this repository." }
