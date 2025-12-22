@@ -320,7 +320,7 @@ pub(crate) fn dashboard_page(sessions: &[SessionMetrics], stats: &SummaryStats) 
 
                 main {
                     (summary_card(stats))
-                    (apm_card())
+                    (apm_card(sessions))
                     (charts_section())
                     (sessions_table(sessions))
                 }
@@ -403,7 +403,47 @@ pub(crate) fn summary_card(stats: &SummaryStats) -> Markup {
 }
 
 /// Render APM (Actions Per Minute) card
-pub(crate) fn apm_card() -> Markup {
+pub(crate) fn apm_card(sessions: &[SessionMetrics]) -> Markup {
+    use crate::apm::APMTier;
+
+    // Calculate APM statistics from recent sessions
+    let autopilot_sessions: Vec<_> = sessions.iter()
+        .filter(|s| s.source == "autopilot" && s.apm.is_some())
+        .collect();
+
+    let claude_code_sessions: Vec<_> = sessions.iter()
+        .filter(|s| s.source == "claude_code" && s.apm.is_some())
+        .collect();
+
+    let autopilot_avg = if !autopilot_sessions.is_empty() {
+        autopilot_sessions.iter()
+            .filter_map(|s| s.apm)
+            .sum::<f64>() / autopilot_sessions.len() as f64
+    } else {
+        0.0
+    };
+
+    let claude_code_avg = if !claude_code_sessions.is_empty() {
+        claude_code_sessions.iter()
+            .filter_map(|s| s.apm)
+            .sum::<f64>() / claude_code_sessions.len() as f64
+    } else {
+        0.0
+    };
+
+    let efficiency_ratio = if claude_code_avg > 0.0 {
+        autopilot_avg / claude_code_avg
+    } else {
+        0.0
+    };
+
+    let current_session_apm = sessions.first().and_then(|s| s.apm);
+    let current_tier = current_session_apm.map(APMTier::from_apm);
+
+    let total_actions: i64 = sessions.iter()
+        .map(|s| s.messages as i64 + s.tool_calls as i64)
+        .sum();
+
     html! {
         div.summary-card {
             h2 { "APM (Actions Per Minute)" }
@@ -411,39 +451,97 @@ pub(crate) fn apm_card() -> Markup {
                 "Agent velocity metrics • Autopilot vs Claude Code"
             }
             div.stats-grid {
-                div.stat {
-                    span.stat-label { "Autopilot (7d avg)" }
-                    span.stat-value style="color: #10b981;" { "18.1" }
-                    span.stat-unit { "APM" }
+                @if autopilot_avg > 0.0 {
+                    div.stat {
+                        span.stat-label { "Autopilot (avg)" }
+                        span.stat-value style="color: #10b981;" { (format!("{:.1}", autopilot_avg)) }
+                        span.stat-unit { "APM" }
+                    }
+                } @else {
+                    div.stat {
+                        span.stat-label { "Autopilot (avg)" }
+                        span.stat-value style="color: #666;" { "N/A" }
+                        span.stat-unit { "" }
+                    }
                 }
-                div.stat {
-                    span.stat-label { "Claude Code (7d avg)" }
-                    span.stat-value style="color: #3b82f6;" { "4.4" }
-                    span.stat-unit { "APM" }
+                @if claude_code_avg > 0.0 {
+                    div.stat {
+                        span.stat-label { "Claude Code (avg)" }
+                        span.stat-value style="color: #3b82f6;" { (format!("{:.1}", claude_code_avg)) }
+                        span.stat-unit { "APM" }
+                    }
+                } @else {
+                    div.stat {
+                        span.stat-label { "Claude Code (avg)" }
+                        span.stat-value style="color: #666;" { "N/A" }
+                        span.stat-unit { "" }
+                    }
                 }
-                div.stat {
-                    span.stat-label { "Efficiency Ratio" }
-                    span.stat-value style="color: #f59e0b;" { "4.1x" }
-                    span.stat-unit { "faster" }
+                @if efficiency_ratio > 0.0 {
+                    div.stat {
+                        span.stat-label { "Efficiency Ratio" }
+                        span.stat-value style="color: #f59e0b;" { (format!("{:.1}x", efficiency_ratio)) }
+                        span.stat-unit { "faster" }
+                    }
+                } @else {
+                    div.stat {
+                        span.stat-label { "Efficiency Ratio" }
+                        span.stat-value style="color: #666;" { "N/A" }
+                        span.stat-unit { "" }
+                    }
                 }
-                div.stat {
-                    span.stat-label { "Current Session" }
-                    span.stat-value { "23.4" }
-                    span.stat-unit { "APM" }
+                @if let Some(apm) = current_session_apm {
+                    div.stat {
+                        span.stat-label { "Latest Session" }
+                        span.stat-value { (format!("{:.1}", apm)) }
+                        span.stat-unit { "APM" }
+                    }
+                } @else {
+                    div.stat {
+                        span.stat-label { "Latest Session" }
+                        span.stat-value style="color: #666;" { "N/A" }
+                        span.stat-unit { "" }
+                    }
                 }
-                div.stat {
-                    span.stat-label { "Performance Tier" }
-                    span.stat-value style="color: #10b981;" { "Productive" }
-                    span.stat-unit { "15-30 APM" }
+                @if let Some(tier) = current_tier {
+                    div.stat {
+                        span.stat-label { "Performance Tier" }
+                        @match tier {
+                            APMTier::Elite => {
+                                span.stat-value style="color: #fbbf24;" { (tier.name()) }
+                            }
+                            APMTier::HighPerformance => {
+                                span.stat-value style="color: #10b981;" { (tier.name()) }
+                            }
+                            APMTier::Productive => {
+                                span.stat-value style="color: #10b981;" { (tier.name()) }
+                            }
+                            APMTier::Active => {
+                                span.stat-value style="color: #3b82f6;" { (tier.name()) }
+                            }
+                            APMTier::Baseline => {
+                                span.stat-value style="color: #6b7280;" { (tier.name()) }
+                            }
+                        }
+                        span.stat-unit { (tier.color()) }
+                    }
+                } @else {
+                    div.stat {
+                        span.stat-label { "Performance Tier" }
+                        span.stat-value style="color: #666;" { "N/A" }
+                        span.stat-unit { "" }
+                    }
                 }
                 div.stat {
                     span.stat-label { "Total Actions" }
-                    span.stat-value { "1,247" }
-                    span.stat-unit { "last 7d" }
+                    span.stat-value { (format!("{}", total_actions)) }
+                    span.stat-unit { "tracked" }
                 }
             }
-            p.note style="margin-top: 1rem; font-size: 0.85rem; color: #666; font-style: italic;" {
-                "Note: Showing placeholder data. Database integration in progress (d-016)."
+            @if sessions.is_empty() {
+                p.note style="margin-top: 1rem; font-size: 0.85rem; color: #666; font-style: italic;" {
+                    "Note: No session data available yet. Run autopilot to collect APM metrics."
+                }
             }
         }
     }

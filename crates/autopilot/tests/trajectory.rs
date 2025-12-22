@@ -439,6 +439,7 @@ fn test_trajectory_result_success() {
         result_text: Some("Task completed".to_string()),
         errors: Vec::new(),
         issues_completed: 2,
+                apm: Some(20.0),
     };
 
     assert_eq!(result.success, true);
@@ -458,6 +459,7 @@ fn test_trajectory_result_failure() {
         result_text: None,
         errors: vec!["Error 1".to_string(), "Error 2".to_string()],
         issues_completed: 0,
+                apm: Some(20.0),
     };
 
     assert_eq!(result.success, false);
@@ -549,6 +551,7 @@ fn test_trajectory_with_result() {
         result_text: Some("Done".to_string()),
         errors: Vec::new(),
         issues_completed: 1,
+                apm: Some(20.0),
     });
 
     assert!(traj.result.is_some());
