@@ -49,6 +49,9 @@ pub async fn home(state: web::Data<AppState>) -> HttpResponse {
             usage.output_tokens,
             usage.cache_read_tokens,
             usage.cache_creation_tokens,
+            usage.web_search_requests,
+            usage.cost_usd,
+            usage.context_window,
         );
     }
 

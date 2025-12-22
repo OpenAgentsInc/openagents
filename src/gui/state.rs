@@ -52,6 +52,9 @@ pub struct ModelUsage {
     pub output_tokens: u64,
     pub cache_read_tokens: u64,
     pub cache_creation_tokens: u64,
+    pub web_search_requests: u64,
+    pub cost_usd: f64,
+    pub context_window: u64,
 }
 
 /// Claude status info
@@ -167,11 +170,14 @@ pub async fn fetch_claude_info_fast() -> ClaudeInfo {
                         output_tokens: stats.get("outputTokens").and_then(|v| v.as_u64()).unwrap_or(0),
                         cache_read_tokens: stats.get("cacheReadInputTokens").and_then(|v| v.as_u64()).unwrap_or(0),
                         cache_creation_tokens: stats.get("cacheCreationInputTokens").and_then(|v| v.as_u64()).unwrap_or(0),
+                        web_search_requests: stats.get("webSearchRequests").and_then(|v| v.as_u64()).unwrap_or(0),
+                        cost_usd: stats.get("costUSD").and_then(|v| v.as_f64()).unwrap_or(0.0),
+                        context_window: stats.get("contextWindow").and_then(|v| v.as_u64()).unwrap_or(200_000),
                     };
                     info.model_usage.push(usage);
                 }
-                // Sort by output tokens descending (most used models first)
-                info.model_usage.sort_by(|a, b| b.output_tokens.cmp(&a.output_tokens));
+                // Sort by cost descending (most expensive models first)
+                info.model_usage.sort_by(|a, b| b.cost_usd.partial_cmp(&a.cost_usd).unwrap_or(std::cmp::Ordering::Equal));
             }
         }
 
