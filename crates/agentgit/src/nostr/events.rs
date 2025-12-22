@@ -140,7 +140,7 @@ impl IssueClaimBuilder {
     ///
     /// # Arguments
     /// * `issue_event_id` - The event ID of the issue being claimed
-    /// * `repo_address` - The repository address tag (e.g., "30617:<pubkey>:<repo-id>")
+    /// * `repo_address` - The repository address tag (e.g., "30617:\<pubkey\>:\<repo-id\>")
     /// * `issue_author_pubkey` - The pubkey of the issue author
     pub fn new(
         issue_event_id: impl Into<String>,
@@ -226,7 +226,7 @@ impl BountyOfferBuilder {
     ///
     /// # Arguments
     /// * `issue_event_id` - The event ID of the issue
-    /// * `repo_address` - The repository address tag (e.g., "30617:<pubkey>:<repo-id>")
+    /// * `repo_address` - The repository address tag (e.g., "30617:\<pubkey\>:\<repo-id\>")
     /// * `amount_sats` - The bounty amount in satoshis
     pub fn new(
         issue_event_id: impl Into<String>,
@@ -304,7 +304,7 @@ impl WorkAssignmentBuilder {
     ///
     /// # Arguments
     /// * `issue_event_id` - The event ID of the issue being assigned
-    /// * `repo_address` - The repository address tag (e.g., "30617:<pubkey>:<repo-id>")
+    /// * `repo_address` - The repository address tag (e.g., "30617:\<pubkey\>:\<repo-id\>")
     /// * `assignee_pubkey` - The pubkey of the agent being assigned
     pub fn new(
         issue_event_id: impl Into<String>,
@@ -470,7 +470,7 @@ impl PullRequestBuilder {
     /// Create a new pull request builder
     ///
     /// # Arguments
-    /// * `repo_address` - The repository address tag (e.g., "30617:<pubkey>:<repo-id>")
+    /// * `repo_address` - The repository address tag (e.g., "30617:\<pubkey\>:\<repo-id\>")
     /// * `subject` - The PR title/subject
     /// * `content` - The PR description
     pub fn new(
@@ -614,7 +614,7 @@ impl PatchBuilder {
     /// Create a new patch builder
     ///
     /// # Arguments
-    /// * `repo_address` - The repository address tag (e.g., "30617:<pubkey>:<repo-id>")
+    /// * `repo_address` - The repository address tag (e.g., "30617:\<pubkey\>:\<repo-id\>")
     /// * `subject` - The patch title/subject
     /// * `patch_content` - The git diff/patch content
     pub fn new(
@@ -686,7 +686,7 @@ impl StatusEventBuilder {
     ///
     /// # Arguments
     /// * `target_event_id` - The event ID of the PR/patch being updated
-    /// * `repo_address` - The repository address tag (e.g., "30617:<pubkey>:<repo-id>")
+    /// * `repo_address` - The repository address tag (e.g., "30617:\<pubkey\>:\<repo-id\>")
     /// * `status_kind` - The status kind (1630=Open, 1631=Applied, 1632=Closed, 1633=Draft)
     pub fn new(
         target_event_id: impl Into<String>,

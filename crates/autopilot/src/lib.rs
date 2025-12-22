@@ -559,7 +559,7 @@ pub fn extract_session_id_from_rlog(path: &std::path::Path) -> anyhow::Result<Op
     Ok(None)
 }
 
-/// Find the workspace root directory by looking for Cargo.toml with [workspace].
+/// Find the workspace root directory by looking for Cargo.toml with `[workspace]`.
 ///
 /// Starts from the current directory and walks up until it finds a Cargo.toml
 /// containing `[workspace]`. This ensures autopilot.db is always created at

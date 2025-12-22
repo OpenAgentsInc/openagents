@@ -900,7 +900,7 @@ impl McpServer {
     }
 }
 
-/// Find workspace root by looking for Cargo.toml with [workspace]
+/// Find workspace root by looking for Cargo.toml with `[workspace]`
 fn find_workspace_root() -> PathBuf {
     let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
     let mut current = cwd.as_path();
