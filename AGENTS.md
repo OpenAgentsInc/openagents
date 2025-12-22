@@ -80,6 +80,42 @@ This makes it easy to identify commits that came through the autonomous autopilo
 
 ---
 
+## Agent Coordination (CRITICAL)
+
+**Multiple agents working on the same repo WILL cause conflicts.**
+
+When both a human-operated Claude Code session AND autopilot are running:
+1. They share the same working directory
+2. File changes can be overwritten
+3. Git operations can conflict
+4. Uncommitted work can be lost
+
+**Best practices:**
+
+1. **Commit frequently** - Don't let changes sit uncommitted
+2. **Push after committing** - Get changes into remote ASAP
+3. **Check git status before starting work** - See if other agents have uncommitted changes
+4. **Use worktrees for parallel work** (recommended):
+   ```bash
+   # Create a worktree for autopilot
+   git worktree add ../openagents-autopilot main
+
+   # Now autopilot can work in ../openagents-autopilot/
+   # while human works in ./openagents/
+   ```
+
+5. **Stop autopilot before making major UI changes** - If you're editing files that autopilot might touch
+
+**If you see "rejected because remote contains work":**
+```bash
+git stash push -m "my-work"
+git pull --rebase origin main
+git stash pop
+git push origin main
+```
+
+---
+
 ## Database Operations
 
 **NEVER use raw sqlite3 commands to insert or modify data.** Always use the provided APIs:
