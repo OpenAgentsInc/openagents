@@ -909,6 +909,13 @@ enum MetricsCommands {
     /// Baseline management commands
     #[command(subcommand)]
     Baseline(BaselineCommands),
+
+    /// Backfill APM data for existing sessions
+    BackfillApm {
+        /// Path to metrics database (default: autopilot-metrics.db)
+        #[arg(long)]
+        db: Option<PathBuf>,
+    },
 }
 
 #[derive(Subcommand)]
@@ -4181,6 +4188,30 @@ async fn handle_metrics_command(command: MetricsCommands) -> Result<()> {
                 println!("{}", export_data);
             }
         }
+        MetricsCommands::BackfillApm { db } => {
+            use autopilot::metrics::backfill_apm_for_sessions;
+            use colored::Colorize;
+
+            let db_path = db.unwrap_or_else(default_db_path);
+
+            println!("{} Backfilling APM data for existing sessions...", "📊".cyan());
+            println!("{} Database: {:?}", "📂".dimmed(), db_path);
+            println!();
+
+            match backfill_apm_for_sessions(&db_path) {
+                Ok(count) => {
+                    println!("{} Updated APM for {} sessions", "✅".green(), count);
+                    if count == 0 {
+                        println!("{}", "All sessions already have APM calculated".dimmed());
+                    }
+                }
+                Err(e) => {
+                    eprintln!("{} Failed to backfill APM: {}", "❌".red(), e);
+                    std::process::exit(1);
+                }
+            }
+        }
+
         MetricsCommands::Baseline(cmd) => {
             use autopilot::metrics::baseline::{BaselineCalculator, BaselineComparator, BaselineReportGenerator};
 

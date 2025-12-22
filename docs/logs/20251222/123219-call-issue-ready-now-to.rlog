@@ -454,3 +454,63 @@ a: Now let's build and test: tokens_in=3 tokens_out=1 tokens_cached=136645
 t!:Bash id=A4zUT74B cmd="cargo build -p autopilot 2>&1 | tail -5" → [running] tokens_in=3 tokens_out=1 tokens_cached=136645
 o: id=A4zUT74B → [ok]    Compiling autopilot v0.1.0 (/home/christopherdavid/code/openagents/crates/autopilot)
 t!:Bash id=p1QmdKVZ cmd="git add -A && git commit -m "$(cat <<'EOF'" → [running] tokens_in=2 tokens_out=455 tokens_cached=137196
+o: id=p1QmdKVZ → [ok] [main 90616173d] Add APM display widget to autopilot dashboard
+t!:Bash id=8X7gnJ6v cmd="git push origin main" → [running] tokens_in=2 tokens_out=74 tokens_cached=137468
+o: id=8X7gnJ6v → [ok] [0;36m🔍 Running cargo build to check for errors and warnings...[0m
+t!:Bash id=TCUQmBxM cmd="cargo autopilot issue complete 649" → [running] tokens_in=2 tokens_out=79 tokens_cached=138058
+o: id=TCUQmBxM → [ok] ✓ Completed issue #649: Add APM display widget to autopilot dashboard
+t!:Bash id=eH6MSwfr cmd="cargo autopilot issue list --status ready 2>&1 ..." → [running] tokens_in=1 tokens_out=24 tokens_cached=138219
+o: id=eH6MSwfr → [ok] Number Status     Priority Agent    Title                                             
+t!:Bash id=8Da4DFxm cmd="cargo autopilot issue claim 651" → [running] tokens_in=1 tokens_out=24 tokens_cached=138672
+o: id=8Da4DFxm → [ok] ✓ Claimed issue #651: Backfill APM from existing trajectory logs
+a: Issue #651 is to backfill APM data from existing trajectory logs. This requires reading existing trajectory files and calculating APM for them. Let me create a function to do this in the metrics mo... tokens_in=1 tokens_out=1 tokens_cached=138981
+t!:Grep id=iuU5Ah6a pattern="pub fn extract_metrics_from..." → [running] tokens_in=1 tokens_out=1 tokens_cached=138981
+o: id=iuU5Ah6a → [ok] crates/autopilot/src/metrics/mod.rs:1191:pub fn extract_metrics_from_json_file<P: AsRef<Path>>(
+a: Now let me add a function to calculate APM from trajectories and store them in the database. Let me check if there's a method to update sessions with APM: tokens_in=0 tokens_out=1 tokens_cached=139133
+t!:Grep id=C6a4LC7R pattern="UPDATE sessions SET|fn.*upd..." → [running] tokens_in=0 tokens_out=1 tokens_cached=139133
+o: id=C6a4LC7R → [ok] No matches found
+a: I need to add a method to update APM in existing sessions and add APM snapshots. Let me check the end of the metrics mod.rs: tokens_in=0 tokens_out=1 tokens_cached=140694
+t!:Bash id=thWk34nD cmd="tail -20 /home/christopherdavid/code/openagents..." → [running] tokens_in=0 tokens_out=1 tokens_cached=140694
+o: id=thWk34nD → [ok]             mean: 100.0,
+a: Let me add methods for APM backfill. I'll add them before the #[cfg(test)] section: tokens_in=0 tokens_out=1 tokens_cached=140883
+t!:Grep id=koq3JjE9 pattern="^#\[cfg\(test\)\]" → [running] tokens_in=0 tokens_out=1 tokens_cached=140883
+o: id=koq3JjE9 → [ok] 1221:#[cfg(test)]
+t!:Read id=DJ2MoQvE file_path=/home/christopherdavid/code/openagents/crates/autopilot/src/metrics/mod.rs → [running] tokens_in=0 tokens_out=25 tokens_cached=141310
+o: id=DJ2MoQvE → [ok]   1215→            "No corresponding .json file found for .rlog file: {:?}",
+t!:Edit id=dzqe9Xmp file_path=/home/christopherdavid/code/openagents/crates/autopilot/src/metrics/mod.rs → [running] tokens_in=0 tokens_out=775 tokens_cached=141500
+o: id=dzqe9Xmp → [ok] The file /home/christopherdavid/code/openagents/crates/autopilot/src/metrics/mod.rs has been upda...
+a: Now let's add a CLI command to backfill APM. Let me add it to the Metrics subcommands: tokens_in=0 tokens_out=1 tokens_cached=141903
+t!:Read id=2F2AgrxA file_path=/home/christopherdavid/code/openagents/crates/autopilot/src/main.rs → [running] tokens_in=0 tokens_out=1 tokens_cached=141903
+o: id=2F2AgrxA → [ok]    760→        id: String,
+t!:Read id=oS5iwbun file_path=/home/christopherdavid/code/openagents/crates/autopilot/src/main.rs → [running] tokens_in=0 tokens_out=113 tokens_cached=143778
+o: id=oS5iwbun → [ok]    885→        /// Output format (json or text)
+t!:Edit id=RnyAVddb file_path=/home/christopherdavid/code/openagents/crates/autopilot/src/main.rs → [running] tokens_in=0 tokens_out=229 tokens_cached=144407
+o: id=RnyAVddb → [ok] The file /home/christopherdavid/code/openagents/crates/autopilot/src/main.rs has been updated. He...
+a: Now add the handler in handle_metrics_command: tokens_in=0 tokens_out=1 tokens_cached=144949
+t!:Grep id=95cD9FmH pattern="MetricsCommands::Baseline|f..." → [running] tokens_in=0 tokens_out=1 tokens_cached=144949
+o: id=95cD9FmH → [ok] 2872:    match command {
+t!:Read id=i8yUA6b2 file_path=/home/christopherdavid/code/openagents/crates/autopilot/src/main.rs → [running] tokens_in=0 tokens_out=18 tokens_cached=145440
+o: id=i8yUA6b2 → [ok]   4191→        MetricsCommands::Baseline(cmd) => {
+t!:Edit id=fM4sdQXy file_path=/home/christopherdavid/code/openagents/crates/autopilot/src/main.rs → [running] tokens_in=0 tokens_out=404 tokens_cached=146434
+o: id=fM4sdQXy → [ok] The file /home/christopherdavid/code/openagents/crates/autopilot/src/main.rs has been updated. He...
+a: Now let's build and test: tokens_in=0 tokens_out=1 tokens_cached=147127
+t!:Bash id=LUdd9S6n cmd="cargo build -p autopilot 2>&1 | tail -5" → [running] tokens_in=0 tokens_out=1 tokens_cached=147127
+o: id=LUdd9S6n → [ok]    Compiling autopilot v0.1.0 (/home/christopherdavid/code/openagents/crates/autopilot)
+t!:Bash id=2z37QY6h cmd="cargo autopilot metrics backfill-apm 2>&1 | hea..." → [running] tokens_in=0 tokens_out=25 tokens_cached=148085
+o: id=2z37QY6h → [ok]     Finished `dev` profile [optimized + debuginfo] target(s) in 0.19s
+a: The messages column wasn't added to the sessions table in the migration. Let me check the actual database schema and add it properly via ALTER TABLE since we have existing data: tokens_in=0 tokens_out=1 tokens_cached=148356
+t!:Bash id=qxQX3hFU cmd="sqlite3 autopilot-metrics.db "PRAGMA table_info..." → [running] tokens_in=0 tokens_out=135 tokens_cached=148356
+o: id=qxQX3hFU → [ok] 0|id|TEXT|0||1
+a: The columns apm, source, and messages haven't been added yet. Since the schema uses CREATE TABLE IF NOT EXISTS, it won't alter existing tables. I need to add a migration. Let me add ALTER TABLE sta... tokens_in=0 tokens_out=1 tokens_cached=148574
+t!:Edit id=jfv7wr7k file_path=/home/christopherdavid/code/openagents/crates/autopilot/src/metrics/mod.rs → [running] tokens_in=0 tokens_out=774 tokens_cached=148574
+o: id=jfv7wr7k → [ok] The file /home/christopherdavid/code/openagents/crates/autopilot/src/metrics/mod.rs has been upda...
+a: Now let's build and test: tokens_in=0 tokens_out=1 tokens_cached=148986
+t!:Bash id=qgfL2Ngu cmd="cargo build -p autopilot 2>&1 | tail -5" → [running] tokens_in=0 tokens_out=1 tokens_cached=148986
+o: id=qgfL2Ngu → [ok]    Compiling autopilot v0.1.0 (/home/christopherdavid/code/openagents/crates/autopilot)
+t!:Bash id=SFVnyFBZ cmd="cargo autopilot metrics backfill-apm 2>&1 | hea..." → [running] tokens_in=0 tokens_out=25 tokens_cached=150404
+o: id=SFVnyFBZ → [ok]     Finished `dev` profile [optimized + debuginfo] target(s) in 0.19s
+a: Perfect! Let's verify the APM was calculated: tokens_in=0 tokens_out=1 tokens_cached=150675
+t!:Bash id=Hcy1mTKQ cmd="sqlite3 autopilot-metrics.db "SELECT id, durati..." → [running] tokens_in=0 tokens_out=1 tokens_cached=150675
+o: id=Hcy1mTKQ → [ok] 0f3b3756-9200-4433-b292-5a244d66b65b|3632.885|405|0|6.68889876778373
+a: Excellent! APM was calculated correctly. Now commit this work: tokens_in=0 tokens_out=4 tokens_cached=150864
+t!:Bash id=rUuzd1aj cmd="git add -A && git commit -m "$(cat <<'EOF'" → [running] tokens_in=0 tokens_out=534 tokens_cached=150864
