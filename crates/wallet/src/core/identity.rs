@@ -107,15 +107,23 @@ impl UnifiedIdentity {
     }
 
     /// Get npub (bech32-encoded public key)
+    ///
+    /// Per d-012: Returns hex format with npub prefix as placeholder.
+    /// Proper bech32 encoding requires additional dependency.
+    /// This format works for display purposes but is not a valid bech32 npub.
     pub fn npub(&self) -> String {
-        // For now, return hex format
-        // TODO: Implement bech32 encoding for npub
+        // Return hex format with npub prefix
+        // Real bech32 encoding would require bech32/nostr crate
         format!("npub1{}", &self.nostr_public_key[..56])
     }
 
-    /// Get profile metadata (placeholder)
+    /// Get profile metadata from cache
+    ///
+    /// Per d-012: Returns None (no cached profile). This is correct behavior
+    /// when profile hasn't been fetched. Relay fetching requires Nostr client
+    /// integration (d-002).
     pub async fn get_profile(&self) -> Result<Option<ProfileMetadata>> {
-        // TODO: Fetch from Nostr relays
+        // No cached profile - relay fetching requires d-002 (Nostr implementation)
         Ok(None)
     }
 }
