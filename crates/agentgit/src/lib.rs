@@ -2,6 +2,7 @@
 
 pub mod git;
 pub mod nostr;
+pub mod reputation;
 pub mod stacks;
 pub mod views;
 pub mod ws;

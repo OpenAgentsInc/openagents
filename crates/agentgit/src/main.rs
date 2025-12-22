@@ -5,6 +5,7 @@
 
 mod git;
 mod nostr;
+mod reputation;
 mod server;
 mod views;
 mod ws;
