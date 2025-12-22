@@ -294,10 +294,11 @@ impl NostrTransport {
             let peer_hex = hex::encode(peer_pk);
 
             // Build tags for this peer
-            let mut tags = Vec::new();
-            tags.push(vec!["p".to_string(), peer_hex]);
-            tags.push(vec!["protocol".to_string(), "bifrost".to_string()]);
-            tags.push(vec!["msg_type".to_string(), envelope.msg_type.clone()]);
+            let tags = vec![
+                vec!["p".to_string(), peer_hex],
+                vec!["protocol".to_string(), "bifrost".to_string()],
+                vec!["msg_type".to_string(), envelope.msg_type.clone()],
+            ];
 
             let event_template = nostr::EventTemplate {
                 created_at: envelope.timestamp,
