@@ -871,3 +871,5 @@ t!:Bash id=rX8Lmnvn cmd="cargo bench -p nostr --bench nip44_crypto --no-run" →
 o: id=rX8Lmnvn → [ok]    Compiling nostr v0.1.0 (/home/christopherdavid/code/openagents/crates/nostr/core)
 a: Benchmarks compile successfully! Now I'll commit and push: tokens_in=4 tokens_out=2 tokens_cached=47316
 t!:Bash id=vBqQB1E1 cmd="git add -A && git commit -m "$(cat <<'EOF'" → [running] tokens_in=4 tokens_out=362 tokens_cached=47316
+o: id=vBqQB1E1 → [ok] [main 4643e8632] Add comprehensive NIP-44 encryption/decryption benchmarks
+t!:Bash id=z2Yc2yVx cmd="git push" → [running] tokens_in=3 tokens_out=78 tokens_cached=49314
