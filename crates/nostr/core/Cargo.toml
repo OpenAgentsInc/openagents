@@ -69,6 +69,7 @@ unicode-normalization = ["dep:unicode-normalization"]
 
 [dev-dependencies]
 criterion = "0.8.1"
+proptest = "1.9.0"
 quickcheck.workspace = true
 sha2.workspace = true
 
