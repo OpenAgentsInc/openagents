@@ -506,6 +506,7 @@ pub fn validate_close_message(msg: &Value) -> std::result::Result<String, Valida
 mod tests {
     use super::*;
     use nostr::{finalize_event, generate_secret_key, EventTemplate};
+    use proptest::prelude::*;
 
     fn create_valid_event() -> Event {
         let secret_key = generate_secret_key();
@@ -657,5 +658,222 @@ mod tests {
 
         let bad_msg = serde_json::json!(["CLOSE"]);
         assert!(validate_close_message(&bad_msg).is_err());
+    }
+
+    // Property-based tests
+    proptest! {
+        #[test]
+        fn prop_validate_hex64_accepts_valid(s in "[0-9a-f]{64}") {
+            prop_assert!(validate_hex64(&s));
+        }
+
+        #[test]
+        fn prop_validate_hex64_rejects_wrong_length(s in "[0-9a-f]{1,63}|[0-9a-f]{65,100}") {
+            prop_assert!(!validate_hex64(&s));
+        }
+
+        #[test]
+        fn prop_validate_hex64_accepts_uppercase(s in "[0-9A-F]{64}") {
+            // validate_hex64 only checks length and hex chars, not case
+            prop_assert!(validate_hex64(&s));
+        }
+
+        #[test]
+        fn prop_validate_hex64_rejects_non_hex(
+            prefix in "[0-9a-f]{30,32}",
+            suffix in "[0-9a-f]{30,32}"
+        ) {
+            let s = format!("{}g{}", prefix, suffix);
+            if s.len() == 64 {
+                prop_assert!(!validate_hex64(&s));
+            }
+        }
+
+        #[test]
+        fn prop_validate_hex128_accepts_valid(s in "[0-9a-f]{128}") {
+            prop_assert!(validate_hex128(&s));
+        }
+
+        #[test]
+        fn prop_validate_hex128_rejects_wrong_length(s in "[0-9a-f]{1,127}|[0-9a-f]{129,200}") {
+            prop_assert!(!validate_hex128(&s));
+        }
+
+        #[test]
+        fn prop_validate_lowercase_hex_accepts_lowercase(s in "[0-9a-f]{1,100}") {
+            prop_assert!(validate_lowercase_hex(&s));
+        }
+
+        #[test]
+        fn prop_validate_lowercase_hex_rejects_uppercase(s in "[0-9a-f]{0,50}[A-F][0-9a-f]{0,49}") {
+            // Ensures at least one uppercase letter
+            prop_assert!(!validate_lowercase_hex(&s));
+        }
+
+        #[test]
+        fn prop_validate_subscription_id_accepts_printable(s in "[a-zA-Z0-9_-]{1,64}") {
+            prop_assert!(validate_subscription_id(&s).is_ok());
+        }
+
+        #[test]
+        fn prop_validate_subscription_id_rejects_too_long(s in "[a-zA-Z0-9]{65,100}") {
+            prop_assert!(validate_subscription_id(&s).is_err());
+        }
+
+        #[test]
+        fn prop_validate_subscription_id_rejects_empty(s in "\\s*") {
+            if s.is_empty() {
+                prop_assert!(validate_subscription_id(&s).is_err());
+            }
+        }
+
+        #[test]
+        fn prop_validate_content_length_accepts_valid(s in "[a-zA-Z0-9 \\n]{0,65536}") {
+            let mut event = create_valid_event();
+            event.content = s.clone();
+            if s.len() <= MAX_CONTENT_LENGTH {
+                prop_assert!(validate_event_structure(&event).is_ok());
+            } else {
+                prop_assert!(validate_event_structure(&event).is_err());
+            }
+        }
+
+        #[test]
+        fn prop_validate_tags_count(count in 0usize..2100usize) {
+            let mut event = create_valid_event();
+            event.tags = vec![vec!["t".to_string(), "test".to_string()]; count];
+
+            if count <= MAX_TAGS {
+                prop_assert!(validate_event_structure(&event).is_ok());
+            } else {
+                prop_assert!(matches!(
+                    validate_event_structure(&event),
+                    Err(ValidationError::InvalidTags(_))
+                ));
+            }
+        }
+
+        #[test]
+        fn prop_validate_tag_length(length in 0usize..1100usize) {
+            let mut event = create_valid_event();
+            event.tags = vec![vec!["x".to_string(); length]];
+
+            if length <= MAX_TAG_LENGTH {
+                prop_assert!(validate_event_structure(&event).is_ok());
+            } else {
+                prop_assert!(matches!(
+                    validate_event_structure(&event),
+                    Err(ValidationError::InvalidTags(_))
+                ));
+            }
+        }
+
+        #[test]
+        fn prop_validate_timestamp_future(offset in 0u64..MAX_FUTURE_SECONDS * 2) {
+            let mut event = create_valid_event();
+            let now = current_timestamp();
+            event.created_at = now + offset;
+
+            if offset <= MAX_FUTURE_SECONDS {
+                prop_assert!(validate_event_structure(&event).is_ok());
+            } else {
+                prop_assert!(matches!(
+                    validate_event_structure(&event),
+                    Err(ValidationError::InvalidTimestamp(_))
+                ));
+            }
+        }
+
+        #[test]
+        fn prop_validate_timestamp_past(years_ago in 0u64..15u64) {
+            let mut event = create_valid_event();
+            let now = current_timestamp();
+            let offset = years_ago * 365 * 24 * 60 * 60;
+            event.created_at = now.saturating_sub(offset);
+
+            if years_ago <= 10 {
+                prop_assert!(validate_event_structure(&event).is_ok());
+            } else {
+                prop_assert!(matches!(
+                    validate_event_structure(&event),
+                    Err(ValidationError::InvalidTimestamp(_))
+                ));
+            }
+        }
+
+        #[test]
+        fn prop_validate_filter_limit(limit in 0usize..6000usize) {
+            let mut filter = Filter::new();
+            filter.limit = Some(limit);
+
+            if limit > 0 && limit <= 5000 {
+                prop_assert!(validate_filter(&filter).is_ok());
+            } else {
+                prop_assert!(validate_filter(&filter).is_err());
+            }
+        }
+
+        #[test]
+        fn prop_validate_filter_id_prefix(s in "[0-9a-f]{1,64}") {
+            let mut filter = Filter::new();
+            filter.ids = Some(vec![s.clone()]);
+
+            prop_assert!(validate_filter(&filter).is_ok());
+        }
+
+        #[test]
+        fn prop_validate_filter_id_rejects_uppercase(s in "[0-9a-f]{0,32}[A-F][0-9a-f]{0,31}") {
+            // Ensures at least one uppercase letter
+            let mut filter = Filter::new();
+            filter.ids = Some(vec![s]);
+
+            prop_assert!(validate_filter(&filter).is_err());
+        }
+
+        #[test]
+        fn prop_validate_filter_id_rejects_non_hex(
+            prefix in "[0-9a-f]{1,30}",
+            suffix in "[0-9a-f]{0,30}"
+        ) {
+            let s = format!("{}g{}", prefix, suffix);
+            if s.len() <= 64 && s.contains('g') {
+                let mut filter = Filter::new();
+                filter.ids = Some(vec![s]);
+                prop_assert!(validate_filter(&filter).is_err());
+            }
+        }
+
+        #[test]
+        fn prop_validate_filter_author_prefix(s in "[0-9a-f]{1,64}") {
+            let mut filter = Filter::new();
+            filter.authors = Some(vec![s]);
+
+            prop_assert!(validate_filter(&filter).is_ok());
+        }
+
+        #[test]
+        fn prop_validate_filter_since_until(
+            since_offset in 0u64..1000000u64,
+            duration in 1u64..1000000u64
+        ) {
+            let mut filter = Filter::new();
+            let now = current_timestamp();
+            filter.since = Some(now - since_offset);
+            filter.until = Some(now - since_offset + duration);
+
+            prop_assert!(validate_filter(&filter).is_ok());
+        }
+
+        #[test]
+        fn prop_validate_filter_since_after_until_fails(
+            since in 1000000u64..2000000u64,
+            until in 0u64..1000000u64
+        ) {
+            let mut filter = Filter::new();
+            filter.since = Some(since);
+            filter.until = Some(until);
+
+            prop_assert!(validate_filter(&filter).is_err());
+        }
     }
 }
