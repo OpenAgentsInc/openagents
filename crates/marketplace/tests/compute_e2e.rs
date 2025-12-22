@@ -14,7 +14,8 @@
 //! Part of d-015: Comprehensive Marketplace and Agent Commerce E2E Tests
 
 use nostr::{finalize_event, generate_secret_key, EventTemplate};
-use nostr::nip90::{JobFeedback, JobInput, JobRequest, JobResult, JobStatus, KIND_JOB_FEEDBACK, KIND_JOB_TEXT_GENERATION};
+use nostr::{HandlerInfo, HandlerMetadata, HandlerType, KIND_HANDLER_INFO};
+use nostr::{JobFeedback, JobInput, JobRequest, JobResult, JobStatus, KIND_JOB_FEEDBACK, KIND_JOB_TEXT_GENERATION};
 
 #[tokio::test]
 async fn test_nip90_job_request_publish_fetch() {
@@ -209,4 +210,68 @@ async fn test_nip90_job_feedback_flow() {
     // - Provider publishes success/error feedback
     // - Customer handles final status appropriately
     // - Test all status types: PaymentRequired, Processing, Error, Success, Partial
+}
+
+#[tokio::test]
+async fn test_nip89_provider_discovery() {
+    // 1. Create provider identity
+    let provider_secret_key = generate_secret_key();
+
+    // 2. Create handler metadata (NIP-89 announcement)
+    let metadata = HandlerMetadata::new(
+        "OpenAgents Text Generator",
+        "High-quality text generation using local AI models"
+    )
+    .with_icon("https://openagents.com/logo.png")
+    .with_website("https://openagents.com");
+
+    // 3. Create handler info for a compute provider
+    let handler_info = HandlerInfo::new(
+        hex::encode(nostr::get_public_key(&provider_secret_key).expect("should get pubkey")),
+        HandlerType::ComputeProvider,
+        metadata.clone(),
+    )
+    .add_capability("text-generation")
+    .add_capability("nip-90");
+
+    // 4. Create handler info event (kind 31990)
+    let content = serde_json::to_string(&handler_info.metadata)
+        .expect("should serialize metadata");
+
+    let announcement_template = EventTemplate {
+        kind: KIND_HANDLER_INFO,
+        content,
+        tags: handler_info.to_tags(),
+        created_at: std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs(),
+    };
+
+    let announcement_event = finalize_event(&announcement_template, &provider_secret_key)
+        .expect("should sign announcement event");
+
+    // 5. Verify announcement structure
+    assert_eq!(announcement_event.kind, KIND_HANDLER_INFO);
+    assert!(!announcement_event.content.is_empty());
+
+    // Should have handler tag + capability tags
+    assert!(announcement_event.tags.len() >= 2, "should have handler type and capability tags");
+    assert!(announcement_event.tags.iter().any(|t| t[0] == "handler" && t[1] == "compute_provider"));
+    assert!(announcement_event.tags.iter().any(|t| t[0] == "capability" && t[1] == "text-generation"));
+
+    // 6. Parse back the metadata
+    let parsed_metadata: HandlerMetadata = serde_json::from_str(&announcement_event.content)
+        .expect("should deserialize metadata");
+    assert_eq!(parsed_metadata.name, "OpenAgents Text Generator");
+    assert_eq!(parsed_metadata.description, "High-quality text generation using local AI models");
+    assert_eq!(parsed_metadata.icon_url, Some("https://openagents.com/logo.png".to_string()));
+    assert_eq!(parsed_metadata.website, Some("https://openagents.com".to_string()));
+
+    // NOTE: Full provider discovery test would include:
+    // - Provider publishes NIP-89 announcement to relay
+    // - Customer queries for handlers by kind (handler tag filter)
+    // - Customer receives multiple provider announcements
+    // - Customer filters by capabilities, pricing, reputation (NIP-89 social trust)
+    // - Customer selects provider and submits job request
 }
