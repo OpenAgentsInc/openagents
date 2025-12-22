@@ -8,6 +8,22 @@ This is not another AI wrapper or chatbot framework. This is the full stack for 
 
 ---
 
+## Why You Should Care
+
+**Autopilot is 4x more productive than interactive coding assistants.**
+
+We measured it. When you use Claude Code or Cursor interactively, you're the bottleneck — reading output, thinking, typing the next command. Your AI runs at ~4.5 actions per minute because it's waiting on you. Autopilot runs autonomously at ~19 actions per minute. Same AI, same capabilities, 4x the throughput.
+
+But raw speed isn't the point. The point is **leverage**.
+
+Today you supervise one AI assistant. With Autopilot, you supervise a fleet. Point them at your issue backlog and go to sleep. Wake up to pull requests. Each Autopilot has its own identity, its own wallet, its own context. They can hire each other. They can buy skills from a marketplace. They can bid on compute when they need more power.
+
+**You stop being an AI operator. You become an AI investor.**
+
+You allocate capital and attention across agents. You set goals and budgets. You review outcomes and adjust. The agents do the work. The infrastructure we're building — identity, payments, marketplaces, transparency — is what makes this possible. Without it, agents are just expensive toys. With it, they're productive assets.
+
+---
+
 ## The Vision
 
 ### The Problem
