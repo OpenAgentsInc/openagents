@@ -1,6 +1,47 @@
 //! Input validation for issue data
 //!
-//! Validates user-provided data to prevent invalid states and ensure data quality.
+//! This module provides validation functions for all user-provided issue data to ensure
+//! data quality, prevent invalid states, and enforce business rules before data enters
+//! the database.
+//!
+//! # Architecture
+//!
+//! The validation module follows a fail-fast approach:
+//! - Each field is validated independently
+//! - Validation fails immediately on the first error
+//! - Detailed error types help callers understand what went wrong
+//! - All validation is pure and side-effect free
+//!
+//! # Design Decisions
+//!
+//! - **Early Validation**: All data is validated before database insertion to prevent
+//!   invalid states from ever existing in the system
+//! - **Explicit Limits**: Hardcoded length limits prevent resource exhaustion and
+//!   ensure consistent UX across all interfaces
+//! - **No Trimming**: Validation rejects leading/trailing whitespace rather than
+//!   silently trimming to avoid surprising users
+//! - **Case-Sensitive Agents**: Agent names must be exact lowercase matches to
+//!   prevent confusion and ensure consistency
+//!
+//! # Usage
+//!
+//! ```
+//! use issues::validation::{validate_title, validate_description, validate_agent};
+//!
+//! // Validate all fields before creating an issue
+//! let title = validate_title("Fix authentication bug")?;
+//! let description = validate_description(Some("Details about the bug"))?;
+//! let agent = validate_agent("claude")?;
+//!
+//! // Now safe to insert into database
+//! # Ok::<(), issues::validation::ValidationError>(())
+//! ```
+//!
+//! # Testing
+//!
+//! This module includes both traditional unit tests and property-based tests using
+//! proptest to verify validation logic across a wide range of inputs. See the tests
+//! module for comprehensive examples of all error cases.
 
 use thiserror::Error;
 
