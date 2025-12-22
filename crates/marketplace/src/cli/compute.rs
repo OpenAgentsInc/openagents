@@ -700,7 +700,8 @@ mod tests {
         };
 
         let result = cmd.execute();
-        assert!(result.is_ok());
+        // Job submission returns error when not implemented per d-012 (No Stubs)
+        assert!(result.is_err());
     }
 
     #[test]
@@ -716,7 +717,8 @@ mod tests {
         };
 
         let result = cmd.execute();
-        assert!(result.is_ok());
+        // Job submission returns error when not implemented per d-012 (No Stubs)
+        assert!(result.is_err());
     }
 
     #[test]

@@ -386,17 +386,17 @@ mod tests {
 
         assert_eq!(
             ContributionStatus::from_str("pending"),
-            Some(ContributionStatus::Pending)
+            Ok(ContributionStatus::Pending)
         );
         assert_eq!(
             ContributionStatus::from_str("accepted"),
-            Some(ContributionStatus::Accepted)
+            Ok(ContributionStatus::Accepted)
         );
         assert_eq!(
             ContributionStatus::from_str("rejected"),
-            Some(ContributionStatus::Rejected)
+            Ok(ContributionStatus::Rejected)
         );
-        assert_eq!(ContributionStatus::from_str("invalid"), None);
+        assert!(ContributionStatus::from_str("invalid").is_err());
     }
 
     #[test]
