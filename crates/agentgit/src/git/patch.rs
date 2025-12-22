@@ -51,7 +51,7 @@ mod tests {
         (dir, repo)
     }
 
-    fn create_commit(repo: &Repository, dir: &Path, message: &str) -> git2::Oid {
+    fn create_commit(repo: &Repository, _dir: &Path, message: &str) -> git2::Oid {
         let sig = repo.signature().unwrap();
         let tree_id = {
             let mut index = repo.index().unwrap();
