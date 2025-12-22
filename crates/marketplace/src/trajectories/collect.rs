@@ -5,6 +5,7 @@ use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use std::fs;
+use std::str::FromStr;
 
 /// Supported trajectory sources
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -52,14 +53,17 @@ impl TrajectorySource {
             Self::Codex => "codex",
         }
     }
+}
 
-    /// Parse from string identifier
-    pub fn from_str(s: &str) -> Option<Self> {
+impl FromStr for TrajectorySource {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
-            "claude" => Some(Self::ClaudeCode),
-            "cursor" => Some(Self::Cursor),
-            "codex" => Some(Self::Codex),
-            _ => None,
+            "claude" => Ok(Self::ClaudeCode),
+            "cursor" => Ok(Self::Cursor),
+            "codex" => Ok(Self::Codex),
+            _ => Err(format!("Unknown trajectory source: {}", s)),
         }
     }
 }
@@ -99,7 +103,7 @@ impl TrajectoryCollector {
         let mut results = Vec::new();
 
         for source_str in &self.config.sources {
-            if let Some(source) = TrajectorySource::from_str(source_str) {
+            if let Ok(source) = source_str.parse::<TrajectorySource>() {
                 match self.scan_source(&source) {
                     Ok(result) => results.push(result),
                     Err(e) => {

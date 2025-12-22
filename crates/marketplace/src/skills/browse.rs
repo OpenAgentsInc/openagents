@@ -4,6 +4,7 @@
 
 use nostr::HandlerInfo;
 use serde::{Deserialize, Serialize};
+use std::str::FromStr;
 use thiserror::Error;
 
 /// Errors that can occur during skill browsing operations
@@ -64,8 +65,13 @@ impl SkillCategory {
         }
     }
 
-    pub fn from_str(s: &str) -> Self {
-        match s {
+}
+
+impl FromStr for SkillCategory {
+    type Err = std::convert::Infallible;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(match s {
             "dev-tools" => SkillCategory::DevTools,
             "data-processing" => SkillCategory::DataProcessing,
             "communication" => SkillCategory::Communication,
@@ -73,7 +79,7 @@ impl SkillCategory {
             "code-generation" => SkillCategory::CodeGeneration,
             "testing" => SkillCategory::Testing,
             other => SkillCategory::Other(other.to_string()),
-        }
+        })
     }
 }
 
