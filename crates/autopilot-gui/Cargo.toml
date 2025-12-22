@@ -50,3 +50,4 @@ async-trait = "0.1"
 
 [dev-dependencies]
 tempfile.workspace = true
+tokio-tungstenite.workspace = true
