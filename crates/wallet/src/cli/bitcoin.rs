@@ -1,115 +1,17 @@
 //! Bitcoin/Lightning CLI commands
 
 use anyhow::Result;
-use colored::Colorize;
-use crate::storage::keychain::SecureKeychain;
-use bip39::Mnemonic;
 
 pub fn balance() -> Result<()> {
-    use spark::{SparkSigner, SparkWallet, WalletConfig, Network};
-
-    println!("{}", "Balance".cyan().bold());
-    println!();
-
-    // Check if wallet exists
-    if !SecureKeychain::has_mnemonic() {
-        anyhow::bail!("No wallet found. Use 'wallet init' to create one.");
-    }
-
-    // Load identity and create spark wallet
-    let mnemonic_phrase = SecureKeychain::retrieve_mnemonic()?;
-    let mnemonic = Mnemonic::parse(&mnemonic_phrase)?;
-
-    let signer = SparkSigner::from_mnemonic(&mnemonic.to_string(), "")?;
-    let config = WalletConfig {
-        network: Network::Testnet,
-        ..Default::default()
-    };
-
-    // Create wallet and get balance (async)
-    // Note: This will fail until Breez SDK is integrated (see directive d-001)
-    let rt = tokio::runtime::Runtime::new()?;
-    let wallet = rt.block_on(SparkWallet::new(signer, config))?;
-    let balance = rt.block_on(wallet.get_balance())?;
-
-    println!("{}: {} sats", "Total".bold(), balance.total_sats());
-
-    Ok(())
+    anyhow::bail!("Balance querying requires Breez SDK integration. See directive d-001 for integration roadmap.")
 }
 
 pub fn balance_detailed() -> Result<()> {
-    use spark::{SparkSigner, SparkWallet, WalletConfig, Network};
-
-    println!("{}", "Balance Breakdown".cyan().bold());
-    println!();
-
-    // Check if wallet exists
-    if !SecureKeychain::has_mnemonic() {
-        anyhow::bail!("No wallet found. Use 'wallet init' to create one.");
-    }
-
-    // Load identity and create spark wallet
-    let mnemonic_phrase = SecureKeychain::retrieve_mnemonic()?;
-    let mnemonic = Mnemonic::parse(&mnemonic_phrase)?;
-
-    let signer = SparkSigner::from_mnemonic(&mnemonic.to_string(), "")?;
-    let config = WalletConfig {
-        network: Network::Testnet,
-        ..Default::default()
-    };
-
-    // Create wallet and get balance (async)
-    // Note: This will fail until Breez SDK is integrated (see directive d-001)
-    let rt = tokio::runtime::Runtime::new()?;
-    let wallet = rt.block_on(SparkWallet::new(signer, config))?;
-    let balance = rt.block_on(wallet.get_balance())?;
-
-    println!("{}: {} sats", "Spark L2".bold(), balance.spark_sats);
-    println!("{}: {} sats", "Lightning".bold(), balance.lightning_sats);
-    println!("{}: {} sats", "On-chain".bold(), balance.onchain_sats);
-    println!("─────────────────────");
-    println!("{}: {} sats", "Total".bold(), balance.total_sats());
-
-    Ok(())
+    anyhow::bail!("Balance querying requires Breez SDK integration. See directive d-001 for integration roadmap.")
 }
 
-pub fn receive(amount: Option<u64>) -> Result<()> {
-    use spark::{SparkSigner, SparkWallet, WalletConfig, Network};
-
-    println!("{}", "Receive Payment".cyan().bold());
-    println!();
-
-    // Check if wallet exists
-    if !SecureKeychain::has_mnemonic() {
-        anyhow::bail!("No wallet found. Use 'wallet init' to create one.");
-    }
-
-    // Load identity and create spark wallet
-    let mnemonic_phrase = SecureKeychain::retrieve_mnemonic()?;
-    let mnemonic = Mnemonic::parse(&mnemonic_phrase)?;
-
-    let signer = SparkSigner::from_mnemonic(&mnemonic.to_string(), "")?;
-    let config = WalletConfig {
-        network: Network::Testnet,
-        ..Default::default()
-    };
-
-    // Create wallet and get address (async)
-    let rt = tokio::runtime::Runtime::new()?;
-    let wallet = rt.block_on(SparkWallet::new(signer, config))?;
-    let address = wallet.get_spark_address();
-
-    if let Some(amt) = amount {
-        println!("{}: {} sats", "Amount".bold(), amt);
-        println!();
-    }
-
-    println!("{}: {}", "Address (Public Key)".bold(), address);
-    println!();
-    println!("{}", "WARNING: This is a temporary public key representation, not a proper Spark address.".yellow());
-    println!("{}", "Full Spark address generation requires Breez SDK integration (directive d-001).".yellow());
-
-    Ok(())
+pub fn receive(_amount: Option<u64>) -> Result<()> {
+    anyhow::bail!("Receive address generation requires Breez SDK integration. See directive d-001 for integration roadmap.")
 }
 
 pub fn send(_address: String, _amount: u64) -> Result<()> {
