@@ -97,8 +97,8 @@ async fn spawn_autopilot_process(state: &web::Data<AppState>) -> anyhow::Result<
     let (shutdown_tx, mut shutdown_rx) = tokio::sync::mpsc::channel::<()>(1);
     let broadcaster = state.broadcaster.clone();
 
-    // Broadcast startup message
-    broadcaster.broadcast(r#"<div class="log-line" style="color: #22c55e;">Autopilot starting...</div>"#);
+    // Broadcast startup message (hx-swap-oob tells HTMX to append to the target)
+    broadcaster.broadcast(r#"<div id="autopilot-log-content" hx-swap-oob="beforeend"><div class="log-line" style="color: #22c55e;">Autopilot starting...</div></div>"#);
 
     // Spawn output reader task
     let output_task = tokio::spawn(async move {
@@ -131,26 +131,26 @@ async fn read_output_loop(
             biased;
 
             _ = shutdown_rx.recv() => {
-                broadcaster.broadcast(r#"<div class="log-line" style="color: #888;">Autopilot stopped.</div>"#);
+                broadcaster.broadcast(r#"<div id="autopilot-log-content" hx-swap-oob="beforeend"><div class="log-line" style="color: #888;">Autopilot stopped.</div></div>"#);
                 break;
             }
 
             line = stdout_reader.next_line() => {
                 match line {
                     Ok(Some(text)) => {
-                        // Escape HTML and wrap in log line
+                        // Escape HTML and wrap in log line with OOB swap
                         let escaped = html_escape(&text);
-                        let html = format!(r#"<div class="log-line">{}</div>"#, escaped);
+                        let html = format!(r#"<div id="autopilot-log-content" hx-swap-oob="beforeend"><div class="log-line">{}</div></div>"#, escaped);
                         broadcaster.broadcast(&html);
                     }
                     Ok(None) => {
                         // EOF - process exited
-                        broadcaster.broadcast(r#"<div class="log-error">Autopilot process exited.</div>"#);
+                        broadcaster.broadcast(r#"<div id="autopilot-log-content" hx-swap-oob="beforeend"><div class="log-error">Autopilot process exited.</div></div>"#);
                         break;
                     }
                     Err(e) => {
                         broadcaster.broadcast(&format!(
-                            r#"<div class="log-error">Read error: {}</div>"#,
+                            r#"<div id="autopilot-log-content" hx-swap-oob="beforeend"><div class="log-error">Read error: {}</div></div>"#,
                             e
                         ));
                         break;
@@ -162,7 +162,7 @@ async fn read_output_loop(
                 match line {
                     Ok(Some(text)) => {
                         let escaped = html_escape(&text);
-                        let html = format!(r#"<div class="log-error">{}</div>"#, escaped);
+                        let html = format!(r#"<div id="autopilot-log-content" hx-swap-oob="beforeend"><div class="log-error">{}</div></div>"#, escaped);
                         broadcaster.broadcast(&html);
                     }
                     Ok(None) => {

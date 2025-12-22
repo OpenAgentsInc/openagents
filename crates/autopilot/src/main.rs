@@ -24,20 +24,28 @@ use autopilot::TrajectoryCollector;
 use autopilot::trajectory_publisher::{TrajectoryPublishConfig, TrajectorySessionPublisher};
 use autopilot::nip_sa_trajectory::TrajectoryPublisher as NipSaTrajectoryPublisher;
 
-/// Minimum available memory in bytes before we kill the process (2 GB)
-const MIN_AVAILABLE_MEMORY_BYTES: u64 = 2 * 1024 * 1024 * 1024;
+/// Minimum available memory in bytes before we abort (500 MB)
+/// Note: macOS reports "available" memory conservatively - it doesn't count
+/// reclaimable cached/inactive memory. 500MB is enough to start Claude.
+const MIN_AVAILABLE_MEMORY_BYTES: u64 = 500 * 1024 * 1024;
+
+/// Threshold to trigger memory cleanup (1.5 GB)
+/// We try to free memory when we drop below this
+const MEMORY_CLEANUP_THRESHOLD_BYTES: u64 = 1536 * 1024 * 1024;
 
 /// Check if system has enough available memory
-/// Returns (available_bytes, is_ok)
-fn check_memory() -> (u64, bool) {
+/// Returns (available_bytes, needs_cleanup, is_critical)
+fn check_memory() -> (u64, bool, bool) {
     use sysinfo::System;
     let sys = System::new_all();
     let available = sys.available_memory();
     // If we get 0, something went wrong - don't abort, just return ok
     if available == 0 {
-        return (0, true);
+        return (0, false, false);
     }
-    (available, available >= MIN_AVAILABLE_MEMORY_BYTES)
+    let needs_cleanup = available < MEMORY_CLEANUP_THRESHOLD_BYTES;
+    let is_critical = available < MIN_AVAILABLE_MEMORY_BYTES;
+    (available, needs_cleanup, is_critical)
 }
 
 /// List top memory-consuming processes and optionally kill Claude-related ones
@@ -109,8 +117,18 @@ fn check_and_kill_memory_hogs() -> u64 {
 
     if killed > 0 {
         println!("{} Killed {} memory hog processes", "CLEANUP:".green().bold(), killed);
-        // Give processes time to die
-        std::thread::sleep(std::time::Duration::from_secs(2));
+        // Give processes time to die and memory to be reclaimed
+        std::thread::sleep(std::time::Duration::from_secs(3));
+
+        // Re-check memory after cleanup
+        sys.refresh_memory();
+        let new_available = sys.available_memory();
+        println!("{} Memory after cleanup: {} (was {})",
+            "MEM:".green().bold(),
+            format_bytes(new_available),
+            format_bytes(available));
+        println!("{}", "=".repeat(60).yellow());
+        return new_available;
     }
 
     println!("{}", "=".repeat(60).yellow());
@@ -1281,16 +1299,37 @@ async fn run_full_auto_loop(
 
     loop {
         // Check memory at start of each iteration
-        let (available_mem, mem_ok) = check_memory();
-        if !mem_ok {
-            println!("\n{} Memory low ({}) - checking for processes to kill...",
+        let (available_mem, needs_cleanup, is_critical) = check_memory();
+
+        if needs_cleanup || is_critical {
+            println!("\n{} Memory {} ({}) - checking for processes to kill...",
                 "MEMORY:".yellow().bold(),
+                if is_critical { "critical" } else { "low" },
                 format_bytes(available_mem));
 
-            // Try to free memory by killing hogs
-            let new_avail = check_and_kill_memory_hogs();
+            // Try to free memory by killing hogs with retry
+            let mut new_avail = check_and_kill_memory_hogs();
 
-            // Check again after cleanup
+            // If still critical after cleanup, wait and retry a few times
+            // macOS can take a moment to reclaim memory
+            if new_avail < MIN_AVAILABLE_MEMORY_BYTES {
+                for retry in 1..=3 {
+                    println!("{} Waiting for memory to be reclaimed (attempt {}/3)...",
+                        "MEM:".yellow().bold(), retry);
+                    std::thread::sleep(std::time::Duration::from_secs(2));
+
+                    let (new_check, _, still_critical) = check_memory();
+                    new_avail = new_check;
+
+                    if !still_critical {
+                        println!("{} Memory recovered to {} - continuing",
+                            "MEMORY:".green().bold(), format_bytes(new_avail));
+                        break;
+                    }
+                }
+            }
+
+            // Final check after all retries
             if new_avail < MIN_AVAILABLE_MEMORY_BYTES {
                 println!("\n{} Still insufficient memory ({}) after cleanup - aborting",
                     "MEMORY:".red().bold(),
@@ -1327,16 +1366,31 @@ async fn run_full_auto_loop(
 
             // Check memory every 10 messages
             if message_count % 10 == 0 {
-                let (avail, ok) = check_memory();
+                let (avail, needs_cleanup, is_critical) = check_memory();
                 if message_count % 100 == 0 {
                     println!("{} Memory: {}", "MEM:".dimmed(), format_bytes(avail));
                 }
-                if !ok {
+                if is_critical {
                     println!("\n{} Memory critical ({}) - attempting cleanup", "MEMORY:".yellow().bold(), format_bytes(avail));
-                    let new_avail = check_and_kill_memory_hogs();
+                    let mut new_avail = check_and_kill_memory_hogs();
+
+                    // Retry a couple times for memory to be reclaimed
+                    if new_avail < MIN_AVAILABLE_MEMORY_BYTES {
+                        for _ in 1..=2 {
+                            std::thread::sleep(std::time::Duration::from_secs(2));
+                            let (check, _, still_critical) = check_memory();
+                            new_avail = check;
+                            if !still_critical { break; }
+                        }
+                    }
+
                     if new_avail < MIN_AVAILABLE_MEMORY_BYTES {
                         anyhow::bail!("Memory critical after cleanup: {} available", format_bytes(new_avail));
                     }
+                } else if needs_cleanup && message_count % 50 == 0 {
+                    // Proactive cleanup when memory is getting low (not critical)
+                    println!("{} Memory getting low ({}) - proactive cleanup", "MEM:".yellow(), format_bytes(avail));
+                    check_and_kill_memory_hogs();
                 }
             }
             let msg = msg?;
