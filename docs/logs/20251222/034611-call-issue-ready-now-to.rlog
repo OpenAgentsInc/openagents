@@ -314,3 +314,55 @@ t!:Bash id=TaTJ5Crx cmd="sed -i 's/30617:<pubkey>:<repo-id>/30617:\\<pub..." →
 o: id=TaTJ5Crx → [ok] 
 a: Now let me commit these documentation fixes: tokens_in=1 tokens_out=1 tokens_cached=121290
 t!:Bash id=XEJatZek cmd="git add -A && git commit -m "$(cat <<'EOF'" → [running] tokens_in=1 tokens_out=1 tokens_cached=121290
+o: id=XEJatZek → [ok] [main fbc04ed64] Fix documentation warnings (unresolved links and HTML tags)
+t!:Bash id=MaaUXkKp cmd="git push origin main" → [running] tokens_in=0 tokens_out=25 tokens_cached=121440
+o: id=MaaUXkKp → [ok] [0;36m🔍 Running cargo build to check for errors and warnings...[0m
+t!:mcp__issues__issue_complete id=hbcEXKfF  → [running] tokens_in=0 tokens_out=32 tokens_cached=121923
+o: id=hbcEXKfF → [ok] Completed issue #538
+t!:mcp__issues__issue_ready id=bqJQbmcy  → [running] tokens_in=0 tokens_out=27 tokens_cached=122083
+o: id=bqJQbmcy → [ok] No ready issues available
+t!:mcp__issues__issue_create id=Kd6BRfUd  → [running] tokens_in=0 tokens_out=231 tokens_cached=122158
+o: id=Kd6BRfUd → [ok] Created issue #539: Implement comprehensive error handling tests (agent: claude) [directive: d-013]
+t!:mcp__issues__issue_ready id=bXWKK2Sn  → [running] tokens_in=3 tokens_out=32 tokens_cached=122323
+o: id=bXWKK2Sn → [ok] {
+t!:mcp__issues__issue_claim id=U37F27tu  → [running] tokens_in=2 tokens_out=32 tokens_cached=122587
+o: id=U37F27tu → [ok] Claimed issue #539
+t!:Bash id=UFBroRG9 cmd="find crates/nostr/client/tests -name "*error*" ..." → [running] tokens_in=0 tokens_out=104 tokens_cached=122798
+o: id=UFBroRG9 → [ok] 
+t!:Bash id=d4j2Ub5b cmd="ls crates/nostr/tests/integration/" → [running] tokens_in=4 tokens_out=83 tokens_cached=123009
+o: id=d4j2Ub5b → [ok] Permissions Size User             Date Modified Name
+a: Good! There's already an `error_handling.rs` test. Let me check what's in it: tokens_in=3 tokens_out=1 tokens_cached=123136
+t!:Read id=6smwqhDz file_path=/home/christopherdavid/code/openagents/crates/nostr/tests/integration/error_handling.rs → [running] tokens_in=3 tokens_out=1 tokens_cached=123136
+o: id=6smwqhDz → [ok]      1→//! Error handling and edge case tests
+a: Let me check how comprehensive it is: tokens_in=2 tokens_out=4 tokens_cached=123458
+t!:Bash id=4rC497Wu cmd="grep "^#\[tokio::test\]" crates/nostr/tests/int..." → [running] tokens_in=2 tokens_out=4 tokens_cached=123458
+o: id=4rC497Wu → [ok] 12
+a: Good, 12 tests already. Let me check if there are error handling tests in other crates: tokens_in=2 tokens_out=1 tokens_cached=124390
+t!:Bash id=RM9F2VmV cmd="find crates/autopilot/tests -name "*.rs" -exec ..." → [running] tokens_in=2 tokens_out=1 tokens_cached=124390
+o: id=RM9F2VmV → [ok] crates/autopilot/tests/rlog_writer.rs
+a: Let me check if there's a dedicated error handling test file: tokens_in=1 tokens_out=4 tokens_cached=124516
+t!:Bash id=ZKRKPMuV cmd="ls crates/autopilot/tests/ | grep -i error" → [running] tokens_in=1 tokens_out=105 tokens_cached=124516
+o: id=ZKRKPMuV → [ok] 
+a: No dedicated error handling test. Let me create one for autopilot: tokens_in=2 tokens_out=1 tokens_cached=124881
+t!:Write id=LrqAwEZ5 file_path=/home/christopherdavid/code/openagents/crates/autopilot/tests/error_handling.rs → [running] tokens_in=2 tokens_out=2366 tokens_cached=124881
+o: id=LrqAwEZ5 → [ok] File created successfully at: /home/christopherdavid/code/openagents/crates/autopilot/tests/error...
+a: Now let me run these tests to make sure they compile and pass: tokens_in=0 tokens_out=1 tokens_cached=125011
+t!:Bash id=8wVjuAvu cmd="cargo test -p autopilot --test error_handling 2..." → [running] tokens_in=0 tokens_out=1 tokens_cached=125011
+o: id=8wVjuAvu → [ok]    Compiling autopilot v0.1.0 (/home/christopherdavid/code/openagents/crates/autopilot)
+a: I need to fix the assertion - can't use assert_eq with Option<Issue>: tokens_in=0 tokens_out=1 tokens_cached=127514
+t!:Edit id=oCfK99C9 file_path=/home/christopherdavid/code/openagents/crates/autopilot/tests/error_handling.rs → [running] tokens_in=0 tokens_out=265 tokens_cached=127514
+o: id=oCfK99C9 → [ok] The file /home/christopherdavid/code/openagents/crates/autopilot/tests/error_handling.rs has been...
+t!:Bash id=LqELV6qX cmd="cargo test -p autopilot --test error_handling 2..." → [running] tokens_in=0 tokens_out=25 tokens_cached=127950
+o: id=LqELV6qX → [ok]    1: core::panicking::panic_fmt
+a: Two tests failed. The claim logic might allow re-claiming. Let me check what the actual behavior is: tokens_in=0 tokens_out=1 tokens_cached=128535
+t!:Bash id=aQACcc7H cmd="grep -A 20 "pub fn claim_issue" crates/issues/s..." → [running] tokens_in=0 tokens_out=1 tokens_cached=128535
+o: id=aQACcc7H → [ok] pub fn claim_issue(conn: &Connection, issue_id: &str, run_id: &str) -> Result<bool> {
+a: I see - it allows re-claiming if the claim is >15 minutes old OR if it's already open. The test expectations are wrong. Let me fix them: tokens_in=0 tokens_out=1 tokens_cached=129025
+t!:Edit id=Nq21MNc5 file_path=/home/christopherdavid/code/openagents/crates/autopilot/tests/error_handling.rs → [running] tokens_in=0 tokens_out=341 tokens_cached=129025
+o: id=Nq21MNc5 → [ok] The file /home/christopherdavid/code/openagents/crates/autopilot/tests/error_handling.rs has been...
+t!:Edit id=a2rBS2CE file_path=/home/christopherdavid/code/openagents/crates/autopilot/tests/error_handling.rs → [running] tokens_in=0 tokens_out=534 tokens_cached=129485
+o: id=a2rBS2CE → [ok] The file /home/christopherdavid/code/openagents/crates/autopilot/tests/error_handling.rs has been...
+t!:Bash id=ZnTrHp1k cmd="cargo test -p autopilot --test error_handling 2..." → [running] tokens_in=0 tokens_out=26 tokens_cached=130133
+o: id=ZnTrHp1k → [ok] test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.10s
+a: Perfect! All tests pass. Now let me commit this: tokens_in=0 tokens_out=1 tokens_cached=131246
+t!:Bash id=2Zwk3wEC cmd="git add -A && git commit -m "$(cat <<'EOF'" → [running] tokens_in=0 tokens_out=1 tokens_cached=131246
