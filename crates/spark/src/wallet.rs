@@ -14,7 +14,10 @@
 //! ```
 
 use crate::{SparkSigner, SparkError};
-use breez_sdk_spark::{BreezSdk, ConnectRequest, Network as SdkNetwork, Seed};
+use breez_sdk_spark::{
+    BreezSdk, ConnectRequest, Network as SdkNetwork, PrepareSendPaymentRequest,
+    PrepareSendPaymentResponse, SendPaymentRequest, SendPaymentResponse, Seed,
+};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
@@ -205,6 +208,104 @@ impl SparkWallet {
     /// This provides direct access to the underlying Breez SDK for advanced operations.
     pub fn sdk(&self) -> &Arc<BreezSdk> {
         &self.sdk
+    }
+
+    /// Prepare a payment by validating the payment request and calculating fees
+    ///
+    /// This method validates the payment request (Lightning invoice, Spark address, etc.)
+    /// and returns fee information before executing the payment.
+    ///
+    /// # Arguments
+    /// * `payment_request` - A Lightning invoice (BOLT-11), Spark address, or other payment identifier
+    /// * `amount` - Optional amount in satoshis (required for zero-amount invoices)
+    ///
+    /// # Returns
+    /// A `PrepareSendPaymentResponse` containing payment details and fee estimate
+    ///
+    /// # Example
+    /// ```rust,ignore
+    /// let prepare_response = wallet
+    ///     .prepare_send_payment("lnbc1...", None)
+    ///     .await?;
+    /// println!("Fee: {} sats", prepare_response.fee_sat);
+    /// ```
+    pub async fn prepare_send_payment(
+        &self,
+        payment_request: &str,
+        amount: Option<u64>,
+    ) -> Result<PrepareSendPaymentResponse, SparkError> {
+        let request = PrepareSendPaymentRequest {
+            payment_request: payment_request.to_string(),
+            amount: amount.map(|a| a as u128),
+            token_identifier: None,
+        };
+
+        self.sdk
+            .prepare_send_payment(request)
+            .await
+            .map_err(|e| SparkError::PaymentFailed(format!("Failed to prepare payment: {}", e)))
+    }
+
+    /// Send a payment using Lightning or Spark
+    ///
+    /// Executes a payment that was previously prepared with `prepare_send_payment`.
+    /// This method will attempt to route the payment through Lightning or Spark Layer 2.
+    ///
+    /// # Arguments
+    /// * `prepare_response` - The response from `prepare_send_payment`
+    /// * `idempotency_key` - Optional UUID for idempotent payment submission
+    ///
+    /// # Returns
+    /// A `SendPaymentResponse` containing the payment details and status
+    ///
+    /// # Example
+    /// ```rust,ignore
+    /// let prepare_response = wallet.prepare_send_payment("lnbc1...", None).await?;
+    /// let payment_response = wallet.send_payment(prepare_response, None).await?;
+    /// println!("Payment ID: {}", payment_response.payment.id);
+    /// ```
+    pub async fn send_payment(
+        &self,
+        prepare_response: PrepareSendPaymentResponse,
+        idempotency_key: Option<String>,
+    ) -> Result<SendPaymentResponse, SparkError> {
+        let request = SendPaymentRequest {
+            prepare_response,
+            options: None,
+            idempotency_key,
+        };
+
+        self.sdk
+            .send_payment(request)
+            .await
+            .map_err(|e| SparkError::PaymentFailed(format!("Failed to send payment: {}", e)))
+    }
+
+    /// Send a payment in one step (prepare + send)
+    ///
+    /// This is a convenience method that combines `prepare_send_payment` and `send_payment`.
+    ///
+    /// # Arguments
+    /// * `payment_request` - A Lightning invoice (BOLT-11), Spark address, or other payment identifier
+    /// * `amount` - Optional amount in satoshis (required for zero-amount invoices)
+    ///
+    /// # Returns
+    /// A `SendPaymentResponse` containing the payment details and status
+    ///
+    /// # Example
+    /// ```rust,ignore
+    /// let payment_response = wallet
+    ///     .send_payment_simple("lnbc1...", None)
+    ///     .await?;
+    /// println!("Sent payment: {}", payment_response.payment.id);
+    /// ```
+    pub async fn send_payment_simple(
+        &self,
+        payment_request: &str,
+        amount: Option<u64>,
+    ) -> Result<SendPaymentResponse, SparkError> {
+        let prepare_response = self.prepare_send_payment(payment_request, amount).await?;
+        self.send_payment(prepare_response, None).await
     }
 }
 
