@@ -129,7 +129,7 @@ fn browse_skills(
     let mut filters = SearchFilters::new();
 
     if let Some(cat) = category {
-        filters = filters.with_category(cat.parse().unwrap_or_else(|_| SkillCategory::Other(cat)));
+        filters = filters.with_category(cat.parse().unwrap_or(SkillCategory::Other(cat)));
     }
 
     if let Some(cap) = capability {

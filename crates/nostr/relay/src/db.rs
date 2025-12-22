@@ -12,7 +12,6 @@ use nostr::Event;
 use r2d2::Pool;
 use r2d2_sqlite::SqliteConnectionManager;
 use rusqlite::{params, Connection};
-use serde_json;
 use std::path::PathBuf;
 use tracing::{debug, info};
 
@@ -315,37 +314,34 @@ impl Database {
         let mut params_vec: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
 
         // Filter by IDs (using prefix matching)
-        if let Some(ref ids) = filter.ids {
-            if !ids.is_empty() {
+        if let Some(ref ids) = filter.ids
+            && !ids.is_empty() {
                 let placeholders = ids.iter().map(|_| "id LIKE ?").collect::<Vec<_>>().join(" OR ");
                 sql.push_str(&format!(" AND ({})", placeholders));
                 for id in ids {
                     params_vec.push(Box::new(format!("{}%", id)));
                 }
             }
-        }
 
         // Filter by authors (using prefix matching)
-        if let Some(ref authors) = filter.authors {
-            if !authors.is_empty() {
+        if let Some(ref authors) = filter.authors
+            && !authors.is_empty() {
                 let placeholders = authors.iter().map(|_| "pubkey LIKE ?").collect::<Vec<_>>().join(" OR ");
                 sql.push_str(&format!(" AND ({})", placeholders));
                 for author in authors {
                     params_vec.push(Box::new(format!("{}%", author)));
                 }
             }
-        }
 
         // Filter by kinds
-        if let Some(ref kinds) = filter.kinds {
-            if !kinds.is_empty() {
+        if let Some(ref kinds) = filter.kinds
+            && !kinds.is_empty() {
                 let placeholders = kinds.iter().map(|_| "?").collect::<Vec<_>>().join(",");
                 sql.push_str(&format!(" AND kind IN ({})", placeholders));
                 for kind in kinds {
                     params_vec.push(Box::new(*kind));
                 }
             }
-        }
 
         // Filter by since timestamp
         if let Some(since) = filter.since {

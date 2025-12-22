@@ -360,7 +360,7 @@ mod tests {
             content: "Hello, world!".to_string(),
         };
 
-        let rumor = Rumor::new(unsigned.clone()).unwrap();
+        let rumor = Rumor::new(unsigned).unwrap();
         assert_eq!(rumor.pubkey, pk);
         assert_eq!(rumor.kind, 1);
         assert_eq!(rumor.content, "Hello, world!");
@@ -374,7 +374,7 @@ mod tests {
 
         let rumor = Rumor {
             id: "0".repeat(64), // Valid event ID (64 hex chars)
-            pubkey: pk.clone(),
+            pubkey: pk,
             created_at: 1234567890,
             kind: 1,
             tags: vec![vec!["test".to_string()]],

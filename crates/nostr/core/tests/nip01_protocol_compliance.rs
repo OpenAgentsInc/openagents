@@ -130,7 +130,7 @@ fn test_event_serialization_format() {
 fn test_event_serialization_with_tags() {
     let pubkey = "a".repeat(64);
     let unsigned = UnsignedEvent {
-        pubkey: pubkey.clone(),
+        pubkey: pubkey,
         created_at: 1234567890,
         kind: 1,
         tags: vec![
@@ -183,7 +183,7 @@ fn test_event_serialization_special_characters() {
 fn test_event_serialization_no_extra_whitespace() {
     let pubkey = "a".repeat(64);
     let unsigned = UnsignedEvent {
-        pubkey: pubkey.clone(),
+        pubkey: pubkey,
         created_at: 1234567890,
         kind: 1,
         tags: vec![vec!["t".to_string(), "nostr".to_string()]],
@@ -208,7 +208,7 @@ fn test_event_serialization_no_extra_whitespace() {
 fn test_event_hash_is_deterministic() {
     let pubkey = "a".repeat(64);
     let unsigned = UnsignedEvent {
-        pubkey: pubkey.clone(),
+        pubkey: pubkey,
         created_at: 1234567890,
         kind: 1,
         tags: vec![],
@@ -236,7 +236,7 @@ fn test_event_hash_changes_with_content() {
     };
 
     let unsigned2 = UnsignedEvent {
-        pubkey: pubkey.clone(),
+        pubkey: pubkey,
         created_at: 1234567890,
         kind: 1,
         tags: vec![],

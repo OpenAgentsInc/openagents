@@ -89,7 +89,8 @@ fn bench_single_event_insert(c: &mut Criterion) {
     c.bench_function("insert_single_event", |b| {
         b.iter(|| {
             let event = create_test_event(1, "Benchmark event");
-            black_box(db.store_event(&event).unwrap());
+            let _: () = db.store_event(&event).unwrap();
+            black_box(());
         });
     });
 }
@@ -107,7 +108,8 @@ fn bench_batch_event_insert(c: &mut Criterion) {
                     let (db, _temp_dir) = setup_db();
                     for i in 0..size {
                         let event = create_test_event(1, &format!("Batch event {}", i));
-                        black_box(db.store_event(&event).unwrap());
+                        let _: () = db.store_event(&event).unwrap();
+                        black_box(());
                     }
                 });
             },
@@ -130,7 +132,8 @@ fn bench_concurrent_inserts(c: &mut Criterion) {
                 let handle = std::thread::spawn(move || {
                     for i in 0..10 {
                         let event = create_test_event(1, &format!("Thread {} event {}", thread_id, i));
-                        black_box(db_clone.store_event(&event).unwrap());
+                        let _: () = db_clone.store_event(&event).unwrap();
+                        black_box(());
                     }
                 });
                 handles.push(handle);
@@ -366,7 +369,8 @@ fn bench_insert_scaling(c: &mut Criterion) {
                     },
                     |(db, _temp_dir)| {
                         let event = create_test_event(1, "New event");
-                        black_box(db.store_event(&event).unwrap());
+                        let _: () = db.store_event(&event).unwrap();
+                        black_box(());
                     },
                     criterion::BatchSize::SmallInput,
                 );
@@ -403,7 +407,8 @@ fn bench_replaceable_event_update(c: &mut Criterion) {
                 created_at: counter,
             };
             let event = finalize_event(&template, &secret_key).unwrap();
-            black_box(db.store_event(&event).unwrap());
+            let _: () = db.store_event(&event).unwrap();
+            black_box(());
             counter += 1;
         });
     });

@@ -25,6 +25,7 @@ fn test_export_issues_to_json() {
         Priority::High,
         IssueType::Task,
         Some("claude"),
+        None,
     )
     .expect("Failed to create issue");
 
@@ -35,6 +36,7 @@ fn test_export_issues_to_json() {
         Priority::Medium,
         IssueType::Bug,
         Some("claude"),
+        None,
     )
     .expect("Failed to create issue");
 
@@ -81,6 +83,7 @@ fn test_export_excludes_completed() {
         Priority::High,
         IssueType::Task,
         Some("claude"),
+        None,
     )
     .expect("Failed to create issue");
 
@@ -91,6 +94,7 @@ fn test_export_excludes_completed() {
         Priority::Medium,
         IssueType::Bug,
         Some("claude"),
+        None,
     )
     .expect("Failed to create issue");
 
@@ -129,6 +133,7 @@ fn test_export_json_roundtrip() {
         Priority::Urgent,
         IssueType::Feature,
         Some("codex"),
+        None,
     )
     .expect("Failed to create issue");
 
@@ -170,6 +175,7 @@ fn test_export_preserves_number() {
         Priority::High,
         IssueType::Task,
         Some("claude"),
+        None,
     )
     .expect("Failed to create issue");
 
@@ -180,6 +186,7 @@ fn test_export_preserves_number() {
         Priority::Medium,
         IssueType::Bug,
         Some("claude"),
+        None,
     )
     .expect("Failed to create issue");
 
@@ -212,6 +219,7 @@ fn test_import_issues_from_json() {
         Priority::High,
         IssueType::Task,
         Some("claude"),
+        None,
     )
     .expect("Failed to create issue");
 
@@ -222,6 +230,7 @@ fn test_import_issues_from_json() {
         Priority::Medium,
         IssueType::Bug,
         Some("codex"),
+        None,
     )
     .expect("Failed to create issue");
 
@@ -294,6 +303,7 @@ fn test_import_skip_existing() {
         Priority::Medium,
         IssueType::Task,
         Some("claude"),
+        None,
     )
     .expect("Failed to create issue");
 
@@ -314,6 +324,7 @@ fn test_import_skip_existing() {
         created_at: existing.created_at,
         updated_at: existing.updated_at,
         completed_at: existing.completed_at,
+        directive_id: existing.directive_id.clone(),
     };
 
     // Check that issue exists
@@ -364,6 +375,7 @@ fn test_import_updates_counter() {
         created_at: chrono::Utc::now(),
         updated_at: chrono::Utc::now(),
         completed_at: None,
+        directive_id: None,
     };
 
     let now = chrono::Utc::now().to_rfc3339();
@@ -421,6 +433,7 @@ fn test_import_updates_counter() {
         Priority::Low,
         IssueType::Task,
         Some("claude"),
+        None,
     )
     .expect("Failed to create issue");
     assert_eq!(new_issue.number, high_number + 1);

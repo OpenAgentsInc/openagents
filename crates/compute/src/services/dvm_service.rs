@@ -406,11 +406,10 @@ impl DvmService {
         .map_err(|e| DvmError::SigningFailed(format!("Failed to create job result: {}", e)))?;
 
         // Add payment info if configured
-        if let Some(amount) = job.amount_msats {
-            if let Some(bolt11) = &job.bolt11 {
+        if let Some(amount) = job.amount_msats
+            && let Some(bolt11) = &job.bolt11 {
                 job_result = job_result.with_amount(amount, Some(bolt11.clone()));
             }
-        }
 
         // Create event template
         let template = EventTemplate {

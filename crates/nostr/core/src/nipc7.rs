@@ -215,7 +215,7 @@ mod tests {
             Some("wss://relay.example.com".to_string()),
             Some("pubkey456".to_string()),
         );
-        let msg = ChatMessage::reply("yes".to_string(), quote.clone());
+        let msg = ChatMessage::reply("yes".to_string(), quote);
 
         assert_eq!(msg.content, "yes");
         assert!(msg.quote.is_some());

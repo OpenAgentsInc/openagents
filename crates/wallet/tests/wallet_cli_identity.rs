@@ -42,7 +42,7 @@ fn test_identity_generation() {
 
     // Verify Nostr keys are generated
     let npub = identity.nostr_public_key();
-    assert!(npub.len() > 0, "Should have Nostr public key");
+    assert!(!npub.is_empty(), "Should have Nostr public key");
 
     let nsec = identity.nostr_secret_key();
     assert_eq!(nsec.len(), 64, "Secret key should be 32 bytes (64 hex chars)");
@@ -214,7 +214,7 @@ fn test_spark_address_generation() {
     // Verify Spark address exists (implementation detail may vary)
     // For now just verify we can get public key
     let npub = identity.nostr_public_key();
-    assert!(npub.len() > 0, "Should have address for Spark wallet");
+    assert!(!npub.is_empty(), "Should have address for Spark wallet");
 }
 
 /// Test multiple identity generation produces different keys

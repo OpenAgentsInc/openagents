@@ -48,7 +48,7 @@ impl PermissionRequest {
                     let program = command.split_whitespace().next().unwrap_or("*");
                     format!("Bash:{}", program)
                 } else {
-                    format!("Bash:*")
+                    "Bash:*".to_string()
                 }
             }
             "Edit" | "Write" | "Read" => {

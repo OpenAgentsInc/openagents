@@ -78,15 +78,12 @@ pub fn run() -> Result<()> {
 
         *control_flow = ControlFlow::Wait;
 
-        match event {
-            Event::WindowEvent {
+        if let Event::WindowEvent {
                 event: WindowEvent::CloseRequested,
                 ..
-            } => {
-                shutdown.store(true, Ordering::SeqCst);
-                *control_flow = ControlFlow::Exit;
-            }
-            _ => {}
+            } = event {
+            shutdown.store(true, Ordering::SeqCst);
+            *control_flow = ControlFlow::Exit;
         }
     });
 }

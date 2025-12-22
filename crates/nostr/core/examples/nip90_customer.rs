@@ -6,8 +6,8 @@
 //! 3. Listen for job results
 //! 4. Handle payment
 
-use nostr::nip01::{finalize_event, generate_secret_key, EventTemplate};
-use nostr::nip90::{JobInput, JobRequest, JobResult, KIND_JOB_TEXT_GENERATION};
+use nostr::{finalize_event, generate_secret_key, EventTemplate};
+use nostr::nip90::{JobInput, JobRequest, KIND_JOB_TEXT_GENERATION};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("=== NIP-90 Customer Example ===\n");

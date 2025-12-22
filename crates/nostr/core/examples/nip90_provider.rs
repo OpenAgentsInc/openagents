@@ -6,9 +6,9 @@
 //! 3. Process jobs and publish results
 //! 4. Request payment via bolt11 invoices
 
-use nostr::nip01::{finalize_event, generate_secret_key, EventTemplate};
+use nostr::{finalize_event, generate_secret_key, EventTemplate};
 use nostr::nip90::{
-    JobFeedback, JobRequest, JobResult, JobStatus, KIND_JOB_TEXT_GENERATION,
+    JobFeedback, JobResult, JobStatus, KIND_JOB_TEXT_GENERATION,
 };
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {

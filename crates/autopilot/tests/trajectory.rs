@@ -743,7 +743,7 @@ fn test_trajectory_with_large_step_content() {
     // Add a step with 1MB of content
     let large_content = "x".repeat(1024 * 1024);
     traj.add_step(StepType::User {
-        content: large_content.clone(),
+        content: large_content,
     });
 
     assert_eq!(traj.steps.len(), 1);

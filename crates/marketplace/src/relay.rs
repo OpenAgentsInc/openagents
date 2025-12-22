@@ -236,7 +236,7 @@ mod tests {
     fn test_new_marketplace_relay() {
         let relay = MarketplaceRelay::new();
         // Should create successfully
-        assert!(!relay.connected.try_read().unwrap().clone());
+        assert!(!*relay.connected.try_read().unwrap());
     }
 
     #[test]

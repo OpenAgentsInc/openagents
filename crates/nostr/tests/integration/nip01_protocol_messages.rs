@@ -194,11 +194,10 @@ async fn test_eose_message_received() {
     // Wait for EOSE
     let result = timeout(Duration::from_secs(2), async {
         loop {
-            if let Ok(Some(msg)) = relay.recv().await {
-                if let RelayMessage::Eose(sub_id) = msg {
+            if let Ok(Some(msg)) = relay.recv().await
+                && let RelayMessage::Eose(sub_id) = msg {
                     return sub_id;
                 }
-            }
         }
     })
     .await;
@@ -246,13 +245,11 @@ async fn test_event_message_with_subscription_id() {
     // Receive on relay1 - should have subscription ID
     let result = timeout(Duration::from_secs(2), async {
         loop {
-            if let Ok(Some(msg)) = relay1.recv().await {
-                if let RelayMessage::Event(sub_id, evt) = msg {
-                    if evt.id == event_id {
+            if let Ok(Some(msg)) = relay1.recv().await
+                && let RelayMessage::Event(sub_id, evt) = msg
+                    && evt.id == event_id {
                         return Some((sub_id, evt));
                     }
-                }
-            }
         }
     })
     .await;
@@ -491,12 +488,11 @@ async fn test_eose_before_new_events() {
     let mut received_eose = false;
     timeout(Duration::from_secs(2), async {
         while !received_eose {
-            if let Ok(Some(msg)) = relay1.recv().await {
-                if let RelayMessage::Eose(_) = msg {
+            if let Ok(Some(msg)) = relay1.recv().await
+                && let RelayMessage::Eose(_) = msg {
                     received_eose = true;
                     break;
                 }
-            }
         }
     })
     .await
@@ -521,11 +517,10 @@ async fn test_eose_before_new_events() {
     // Should receive event after EOSE
     let result = timeout(Duration::from_secs(2), async {
         loop {
-            if let Ok(Some(msg)) = relay1.recv().await {
-                if let RelayMessage::Event(_, evt) = msg {
+            if let Ok(Some(msg)) = relay1.recv().await
+                && let RelayMessage::Event(_, evt) = msg {
                     return Some(evt);
                 }
-            }
         }
     })
     .await;

@@ -85,7 +85,7 @@ impl PublishResult {
     /// Create a successful publish result
     pub fn success(event_id: String, confirmations: usize, relays_attempted: usize) -> Self {
         Self {
-            event_id: event_id.clone(),
+            event_id: event_id,
             confirmations,
             relays_attempted,
             success: true,
@@ -106,7 +106,7 @@ impl PublishResult {
         failures: Vec<RelayFailure>,
     ) -> Self {
         Self {
-            event_id: event_id.clone(),
+            event_id: event_id,
             confirmations,
             relays_attempted,
             success: true,

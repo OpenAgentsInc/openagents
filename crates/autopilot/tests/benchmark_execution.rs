@@ -187,7 +187,7 @@ async fn test_benchmark_metrics_accuracy() -> Result<()> {
 async fn test_benchmark_workspace_isolation() -> Result<()> {
     let env = TestEnvironment::new()?;
 
-    let mut runner = BenchmarkRunner::new(
+    let runner = BenchmarkRunner::new(
         env.workspace_path(),
         env.db_path(),
         "test-v1.0.0".to_string(),

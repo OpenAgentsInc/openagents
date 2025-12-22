@@ -211,19 +211,17 @@ async fn test_filter_compatibility() {
 
     for (i, filter) in test_filters.iter().enumerate() {
         let sub_id = format!("compat-test-{}", i);
-        let result = relay.subscribe(&sub_id, &vec![filter.clone()]).await;
+        let result = relay.subscribe(&sub_id, &[filter.clone()]).await;
         assert!(result.is_ok(), "Filter {} should be accepted", i);
 
         // Wait for EOSE
         timeout(Duration::from_secs(10), async {
             loop {
-                if let Ok(Some(msg)) = relay.recv().await {
-                    if let RelayMessage::Eose(id) = msg {
-                        if id == sub_id {
+                if let Ok(Some(msg)) = relay.recv().await
+                    && let RelayMessage::Eose(id) = msg
+                        && id == sub_id {
                             break;
                         }
-                    }
-                }
             }
         })
         .await

@@ -30,6 +30,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Priority::Urgent,
         IssueType::Bug,
         Some("claude"),
+        None,
     )?;
     println!("  #{}: {} [{:?}]", issue1.number, issue1.title, issue1.priority);
 
@@ -40,6 +41,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Priority::High,
         IssueType::Task,
         Some("claude"),
+        None,
     )?;
     println!("  #{}: {} [{:?}]", issue2.number, issue2.title, issue2.priority);
 
@@ -50,6 +52,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Priority::Medium,
         IssueType::Task,
         Some("claude"),
+        None,
     )?;
     println!("  #{}: {} [{:?}]", issue3.number, issue3.title, issue3.priority);
 
@@ -60,6 +63,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Priority::Low,
         IssueType::Feature,
         Some("claude"),
+        None,
     )?;
     println!("  #{}: {} [{:?}]", issue4.number, issue4.title, issue4.priority);
 
@@ -121,6 +125,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Priority::High,
         IssueType::Feature,
         Some("claude"),
+        None,
     )?;
     println!("Created issue #{}: {}", blocked.number, blocked.title);
 
