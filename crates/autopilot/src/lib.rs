@@ -22,6 +22,7 @@ pub mod metrics;
 pub mod nip_sa_trajectory;
 pub mod nostr_agent;
 pub mod planmode;
+pub mod profiling;
 pub mod redact;
 pub mod replay;
 pub mod rlog;
