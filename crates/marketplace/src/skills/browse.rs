@@ -314,11 +314,11 @@ mod tests {
     #[test]
     fn test_skill_category_conversions() {
         assert_eq!(SkillCategory::DevTools.as_str(), "dev-tools");
-        assert_eq!(SkillCategory::from_str("dev-tools"), SkillCategory::DevTools);
+        assert_eq!(SkillCategory::from_str("dev-tools"), Ok(SkillCategory::DevTools));
 
         let custom = SkillCategory::Other("custom".to_string());
         assert_eq!(custom.as_str(), "custom");
-        assert_eq!(SkillCategory::from_str("custom"), custom);
+        assert_eq!(SkillCategory::from_str("custom"), Ok(custom));
     }
 
     #[test]
@@ -437,7 +437,8 @@ mod tests {
     async fn test_skill_browser_empty() {
         let browser = SkillBrowser::new();
         let result = browser.browse(SearchFilters::new(), SortBy::Name).await;
-        assert!(result.is_ok());
-        assert_eq!(result.unwrap().len(), 0);
+        // Browser returns error when not implemented per d-012 (No Stubs)
+        assert!(result.is_err());
+        assert!(matches!(result.unwrap_err(), BrowseError::Network(_)));
     }
 }

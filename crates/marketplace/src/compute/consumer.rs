@@ -190,6 +190,7 @@ pub enum JobUpdate {
 }
 
 /// Handle for managing an active job
+#[derive(Debug)]
 pub struct JobHandle {
     /// Job ID
     pub job_id: String,
@@ -507,10 +508,11 @@ mod tests {
         let consumer = Consumer::new();
 
         let request = ComputeJobRequest::text_generation("What is Bitcoin?").unwrap();
-        let handle = consumer.submit_job(request).unwrap();
+        let result = consumer.submit_job(request);
 
-        let info = handle.info();
-        assert_eq!(info.state, JobState::Pending);
+        // Consumer returns error when not implemented per d-012 (No Stubs)
+        assert!(result.is_err());
+        assert!(matches!(result.unwrap_err(), Nip90Error::Serialization(_)));
     }
 
     #[tokio::test]
@@ -518,24 +520,11 @@ mod tests {
         let consumer = Consumer::new();
 
         let request = ComputeJobRequest::text_generation("What is Bitcoin?").unwrap();
-        let mut handle = consumer.submit_job(request).unwrap();
-        let job_id = handle.job_id.clone();
+        let result = consumer.submit_job(request);
 
-        // Simulate processing feedback
-        let feedback = ComputeJobFeedback::processing(&job_id, "customer");
-        consumer.handle_feedback(&job_id, feedback, "provider1");
-
-        // Receive update
-        let update = handle.next_update().await.unwrap();
-        match update {
-            JobUpdate::Processing { provider, .. } => {
-                assert_eq!(provider, "provider1");
-            }
-            _ => panic!("Expected Processing update"),
-        }
-
-        let info = handle.info();
-        assert_eq!(info.state, JobState::Processing);
+        // Consumer returns error when not implemented per d-012 (No Stubs)
+        assert!(result.is_err());
+        // Cannot test feedback handling without job submission working
     }
 
     #[tokio::test]
@@ -543,25 +532,11 @@ mod tests {
         let consumer = Consumer::new();
 
         let request = ComputeJobRequest::text_generation("What is Bitcoin?").unwrap();
-        let mut handle = consumer.submit_job(request).unwrap();
-        let job_id = handle.job_id.clone();
+        let result = consumer.submit_job(request);
 
-        // Simulate result
-        let result = ComputeJobResult::new(
-            KIND_JOB_TEXT_GENERATION,
-            &job_id,
-            "customer",
-            "Bitcoin is a cryptocurrency",
-        )
-        .unwrap();
-        consumer.handle_result(&job_id, result);
-
-        // Wait for completion
-        let result = handle.wait_for_completion().await.unwrap();
-        assert_eq!(result, "Bitcoin is a cryptocurrency");
-
-        let info = handle.info();
-        assert_eq!(info.state, JobState::Completed);
+        // Consumer returns error when not implemented per d-012 (No Stubs)
+        assert!(result.is_err());
+        // Cannot test result handling without job submission working
     }
 
     #[tokio::test]
@@ -569,29 +544,22 @@ mod tests {
         let consumer = Consumer::new();
 
         // Submit multiple jobs
-        let _handle1 = consumer
-            .submit_job(ComputeJobRequest::text_generation("Q1").unwrap())
-            .unwrap();
-        let handle2 = consumer
-            .submit_job(ComputeJobRequest::text_generation("Q2").unwrap())
-            .unwrap();
+        let result1 = consumer
+            .submit_job(ComputeJobRequest::text_generation("Q1").unwrap());
+        let result2 = consumer
+            .submit_job(ComputeJobRequest::text_generation("Q2").unwrap());
 
-        // Complete one job
-        let result = ComputeJobResult::new(
-            KIND_JOB_TEXT_GENERATION,
-            &handle2.job_id,
-            "customer",
-            "Answer",
-        )
-        .unwrap();
-        consumer.handle_result(&handle2.job_id, result);
+        // Consumer returns error when not implemented per d-012 (No Stubs)
+        assert!(result1.is_err());
+        assert!(result2.is_err());
+        // Cannot test job state queries without job submission working
 
-        // Check states
+        // Check states - should be empty
         let pending = consumer.get_jobs_by_state(JobState::Pending);
         let completed = consumer.get_jobs_by_state(JobState::Completed);
 
-        assert_eq!(pending.len(), 1);
-        assert_eq!(completed.len(), 1);
+        assert_eq!(pending.len(), 0);
+        assert_eq!(completed.len(), 0);
     }
 
     #[test]
@@ -599,24 +567,15 @@ mod tests {
         let consumer = Consumer::new();
 
         // Submit and complete a job
-        let handle = consumer
-            .submit_job(ComputeJobRequest::text_generation("Q1").unwrap())
-            .unwrap();
-        let result = ComputeJobResult::new(
-            KIND_JOB_TEXT_GENERATION,
-            &handle.job_id,
-            "customer",
-            "Answer",
-        )
-        .unwrap();
-        consumer.handle_result(&handle.job_id, result);
+        let result = consumer
+            .submit_job(ComputeJobRequest::text_generation("Q1").unwrap());
 
-        // Verify job exists
+        // Consumer returns error when not implemented per d-012 (No Stubs)
+        assert!(result.is_err());
+
+        // Verify no jobs exist
         let jobs_before = consumer.get_all_jobs();
-        assert_eq!(jobs_before.len(), 1);
-
-        // Sleep for 1 second to ensure time has passed
-        std::thread::sleep(std::time::Duration::from_secs(1));
+        assert_eq!(jobs_before.len(), 0);
 
         // Cleanup old jobs (0 seconds = cleanup immediately)
         consumer.cleanup_old_jobs(0);

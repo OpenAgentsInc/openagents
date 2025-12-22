@@ -364,12 +364,12 @@ mod tests {
         assert_eq!(DatasetCategory::Embeddings.as_str(), "embeddings");
         assert_eq!(
             DatasetCategory::from_str("embeddings"),
-            DatasetCategory::Embeddings
+            Ok(DatasetCategory::Embeddings)
         );
 
         let custom = DatasetCategory::Other("custom".to_string());
         assert_eq!(custom.as_str(), "custom");
-        assert_eq!(DatasetCategory::from_str("custom"), custom);
+        assert_eq!(DatasetCategory::from_str("custom"), Ok(custom));
     }
 
     #[test]
@@ -482,7 +482,8 @@ mod tests {
     async fn test_dataset_browser_empty() {
         let browser = DatasetBrowser::new();
         let result = browser.browse(SearchFilters::new(), SortBy::Name).await;
-        assert!(result.is_ok());
-        assert_eq!(result.unwrap().len(), 0);
+        // Browser returns error when not implemented per d-012 (No Stubs)
+        assert!(result.is_err());
+        assert!(matches!(result.unwrap_err(), DiscoverError::Network(_)));
     }
 }

@@ -481,10 +481,10 @@ mod tests {
 
     #[test]
     fn test_trajectory_source_parsing() {
-        assert_eq!(TrajectorySource::from_str("claude"), Some(TrajectorySource::ClaudeCode));
-        assert_eq!(TrajectorySource::from_str("cursor"), Some(TrajectorySource::Cursor));
-        assert_eq!(TrajectorySource::from_str("codex"), Some(TrajectorySource::Codex));
-        assert_eq!(TrajectorySource::from_str("unknown"), None);
+        assert_eq!(TrajectorySource::from_str("claude"), Ok(TrajectorySource::ClaudeCode));
+        assert_eq!(TrajectorySource::from_str("cursor"), Ok(TrajectorySource::Cursor));
+        assert_eq!(TrajectorySource::from_str("codex"), Ok(TrajectorySource::Codex));
+        assert!(TrajectorySource::from_str("unknown").is_err());
     }
 
     #[test]
