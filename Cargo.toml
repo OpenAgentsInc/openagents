@@ -76,6 +76,9 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 shellexpand = "2.1"
 chrono = { version = "0.4", features = ["serde"] }
 
+# HTTP client for quota API
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+
 [dev-dependencies]
 assert_cmd = "2.0"
 predicates = "3.0"

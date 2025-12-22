@@ -5794,6 +5794,7 @@ dependencies = [
  "futures-util",
  "marketplace",
  "predicates",
+ "reqwest",
  "serde",
  "serde_json",
  "shellexpand 2.1.2",
