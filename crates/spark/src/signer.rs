@@ -19,6 +19,10 @@ const BITCOIN_COIN_TYPE: u32 = 0;
 /// Spark signer that holds Bitcoin keypair derived from mnemonic
 #[derive(Clone)]
 pub struct SparkSigner {
+    /// The BIP39 mnemonic phrase
+    mnemonic: String,
+    /// Optional BIP39 passphrase
+    passphrase: String,
     /// The 32-byte private key
     private_key: [u8; 32],
     /// The 33-byte compressed public key
@@ -36,21 +40,27 @@ impl SparkSigner {
     ///
     /// # Example
     /// ```
-    /// use spark::SparkSigner;
+    /// use openagents_spark::SparkSigner;
     ///
     /// let mnemonic = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
     /// let signer = SparkSigner::from_mnemonic(mnemonic, "").expect("valid mnemonic");
     /// ```
     pub fn from_mnemonic(mnemonic: &str, passphrase: &str) -> Result<Self, SparkError> {
         // Parse and validate the mnemonic
-        let mnemonic = Mnemonic::parse(mnemonic)
+        let parsed_mnemonic = Mnemonic::parse(mnemonic)
             .map_err(|e| SparkError::InvalidMnemonic(e.to_string()))?;
 
         // Derive the 64-byte seed from the mnemonic
-        let seed = mnemonic.to_seed(passphrase);
+        let seed = parsed_mnemonic.to_seed(passphrase);
 
         // Derive the keypair from the seed
-        Self::from_seed(&seed)
+        let mut signer = Self::from_seed(&seed)?;
+
+        // Store the mnemonic and passphrase
+        signer.mnemonic = mnemonic.to_string();
+        signer.passphrase = passphrase.to_string();
+
+        Ok(signer)
     }
 
     /// Derive a SparkSigner from a 64-byte BIP39 seed
@@ -98,6 +108,8 @@ impl SparkSigner {
         let public_key = public_key_full.serialize();
 
         Ok(Self {
+            mnemonic: String::new(),
+            passphrase: String::new(),
             private_key,
             public_key,
         })
@@ -125,6 +137,20 @@ impl SparkSigner {
     /// Get the public key as a hex string
     pub fn public_key_hex(&self) -> String {
         hex::encode(self.public_key)
+    }
+
+    /// Get the mnemonic phrase
+    ///
+    /// WARNING: Handle with care - this is sensitive data
+    pub fn mnemonic(&self) -> &str {
+        &self.mnemonic
+    }
+
+    /// Get the passphrase
+    ///
+    /// WARNING: Handle with care - this is sensitive data
+    pub fn passphrase(&self) -> &str {
+        &self.passphrase
     }
 }
 

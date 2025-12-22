@@ -138,5 +138,6 @@ A good directive body should include:
 | d-013 | Comprehensive Testing Framework | Testing/Quality |
 | d-014 | Full End-to-End NIP-SA and Bifrost Integration Tests | Testing/Integration |
 | d-015 | Comprehensive Marketplace and Agent Commerce E2E Tests | Testing/Commerce |
+| d-016 | Measure Actions Per Minute (APM) | Metrics/Performance |
 
 View details with `cargo autopilot directive show <id>`

@@ -4,18 +4,6 @@
 //! through the Breez Spark SDK. It wraps the underlying SDK to provide a simpler API
 //! for OpenAgents applications.
 //!
-//! # Status
-//!
-//! **STUB IMPLEMENTATION** - This module currently contains placeholder methods.
-//! Full Breez SDK integration is planned for Phase 2 of directive d-001.
-//!
-//! To complete this integration, we need to:
-//! 1. Add Breez spark-wallet dependency (from GitHub or crates.io when published)
-//! 2. Implement actual wallet initialization and state management
-//! 3. Wire up real balance queries and payment operations
-//! 4. Add persistence for wallet data
-//! 5. Configure Spark operator connections
-//!
 //! # Architecture
 //!
 //! ```text
@@ -26,7 +14,9 @@
 //! ```
 
 use crate::{SparkSigner, SparkError};
+use breez_sdk_spark::{BreezSdk, ConnectRequest, Network as SdkNetwork, Seed};
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 
 /// Bitcoin network to use for Spark wallet
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
@@ -40,6 +30,15 @@ pub enum Network {
     Signet,
     /// Bitcoin regtest (local development)
     Regtest,
+}
+
+impl From<Network> for SdkNetwork {
+    fn from(network: Network) -> Self {
+        match network {
+            Network::Mainnet => SdkNetwork::Mainnet,
+            Network::Testnet | Network::Signet | Network::Regtest => SdkNetwork::Regtest,
+        }
+    }
 }
 
 /// Wallet balance information
@@ -106,26 +105,17 @@ impl Default for WalletConfig {
 ///
 /// This wraps the Breez SDK to provide self-custodial Bitcoin payments
 /// via Lightning, Spark Layer 2, and on-chain.
-///
-/// **NOTE**: This is a placeholder structure. Full functionality requires Breez SDK
-/// integration (directive d-001). Current implementation only provides basic signer
-/// access and configuration storage.
 pub struct SparkWallet {
     signer: SparkSigner,
     config: WalletConfig,
-    // Breez SDK client will be added when dependency is integrated (see d-001)
-    // client: Arc<BreezServices>,
+    sdk: Arc<BreezSdk>,
 }
 
 impl SparkWallet {
     /// Create a new Spark wallet with the given signer and configuration
     ///
-    /// **NOTE**: Currently only stores signer and config. Full initialization requires
-    /// Breez SDK integration (d-001) which will:
-    /// 1. Set up SDK configuration
-    /// 2. Connect to Spark operators
-    /// 3. Load or create wallet state
-    /// 4. Start background sync
+    /// This method initializes the Breez SDK with the wallet's mnemonic and configuration,
+    /// connecting to the Spark network and starting background synchronization.
     ///
     /// # Arguments
     /// * `signer` - The SparkSigner for signing transactions
@@ -143,30 +133,53 @@ impl SparkWallet {
     /// let wallet = SparkWallet::new(signer, config).await?;
     /// ```
     pub async fn new(signer: SparkSigner, config: WalletConfig) -> Result<Self, SparkError> {
+        // Create storage directory if it doesn't exist
+        std::fs::create_dir_all(&config.storage_dir)
+            .map_err(|e| SparkError::InitializationFailed(format!("Failed to create storage directory: {}", e)))?;
+
+        // Convert our network enum to SDK network
+        let sdk_network: SdkNetwork = config.network.into();
+
+        // Create SDK config with default settings for the network
+        let mut sdk_config = breez_sdk_spark::default_config(sdk_network);
+
+        // Apply API key if provided
+        if let Some(api_key) = &config.api_key {
+            sdk_config.api_key = Some(api_key.clone());
+        }
+
+        // Get mnemonic and passphrase from signer
+        let mnemonic = signer.mnemonic();
+        let passphrase = signer.passphrase();
+
+        // Create seed from mnemonic
+        let seed = Seed::Mnemonic {
+            mnemonic: mnemonic.to_string(),
+            passphrase: if passphrase.is_empty() {
+                None
+            } else {
+                Some(passphrase.to_string())
+            },
+        };
+
+        // Build connect request
+        let connect_request = ConnectRequest {
+            config: sdk_config,
+            seed,
+            storage_dir: config.storage_dir.to_string_lossy().to_string(),
+        };
+
+        // Connect to Breez SDK
+        let sdk = breez_sdk_spark::connect(connect_request)
+            .await
+            .map_err(|e| SparkError::InitializationFailed(format!("Failed to connect to Breez SDK: {}", e)))?;
+
         Ok(Self {
             signer,
             config,
+            sdk: Arc::new(sdk),
         })
     }
-
-    // ====================================================================
-    // BLOCKED: Breez SDK Integration Required (see directive d-001)
-    // ====================================================================
-    //
-    // The following methods are commented out per directive d-012 (No Stubs).
-    // Methods that return NotImplemented errors are still stubs and should not
-    // exist in production code.
-    //
-    // When Breez SDK integration (d-001) is complete, uncomment and implement:
-    //
-    // pub async fn get_balance(&self) -> Result<Balance, SparkError>
-    // pub async fn get_info(&self) -> Result<WalletInfo, SparkError>
-    // pub async fn sync(&self) -> Result<(), SparkError>
-    //
-    // Until then, these operations are not available. Users attempting to
-    // use balance/sync features will get errors at the CLI level (see
-    // crates/wallet/src/cli/bitcoin.rs).
-    // ====================================================================
 
     /// Get the wallet's Spark address for receiving payments
     ///
@@ -185,6 +198,13 @@ impl SparkWallet {
     /// Get the wallet configuration
     pub fn config(&self) -> &WalletConfig {
         &self.config
+    }
+
+    /// Get the Breez SDK instance
+    ///
+    /// This provides direct access to the underlying Breez SDK for advanced operations.
+    pub fn sdk(&self) -> &Arc<BreezSdk> {
+        &self.sdk
     }
 }
 

@@ -11,6 +11,9 @@ pub enum SparkError {
     #[error("key derivation failed: {0}")]
     KeyDerivation(String),
 
+    #[error("initialization failed: {0}")]
+    InitializationFailed(String),
+
     #[error("wallet error: {0}")]
     Wallet(String),
 
