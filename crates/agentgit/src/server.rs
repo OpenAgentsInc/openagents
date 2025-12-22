@@ -141,10 +141,20 @@ async fn repository_detail(
         .body(repository_detail_page(&repository, is_cloned, local_path).into_string())
 }
 
+/// Query parameters for issue filtering
+#[derive(Debug, serde::Deserialize)]
+struct IssueFilterQuery {
+    filter_open: Option<String>,
+    filter_closed: Option<String>,
+    filter_has_bounty: Option<String>,
+    filter_claimed: Option<String>,
+}
+
 /// Repository issues list page
 async fn repository_issues(
     state: web::Data<AppState>,
     path: web::Path<String>,
+    query: web::Query<IssueFilterQuery>,
 ) -> HttpResponse {
     let identifier = path.into_inner();
 
@@ -178,13 +188,51 @@ async fn repository_issues(
     let is_watched = state.nostr_client.is_repository_watched(&identifier).await.unwrap_or(false);
 
     // Fetch issues for this repository
-    let issues = match state.nostr_client.get_issues_by_repo(&repo_address, 100).await {
+    let mut issues = match state.nostr_client.get_issues_by_repo(&repo_address, 100).await {
         Ok(iss) => iss,
         Err(e) => {
             tracing::warn!("Failed to fetch issues: {}", e);
             vec![]
         }
     };
+
+    // Apply filters
+    let filter_open = query.filter_open.as_deref() == Some("true");
+    let filter_closed = query.filter_closed.as_deref() == Some("true");
+    let filter_has_bounty = query.filter_has_bounty.as_deref() == Some("true");
+    let filter_claimed = query.filter_claimed.as_deref() == Some("true");
+
+    issues.retain(|issue| {
+        // Get issue status
+        let status = issue.tags.iter()
+            .find(|tag| tag.first().map(|t| t == "status").unwrap_or(false))
+            .and_then(|tag| tag.get(1))
+            .map(|s| s.as_str())
+            .unwrap_or("open");
+
+        // Check if issue has bounty (we'll need to fetch bounties for each issue)
+        // For now, simplified check - we'll implement this properly later
+        let has_bounty = false; // TODO: check if issue has associated bounties
+
+        // Check if issue is claimed
+        let is_claimed = false; // TODO: check if issue has associated claims
+
+        // Apply filter logic
+        let status_match = if filter_open && !filter_closed {
+            status == "open"
+        } else if filter_closed && !filter_open {
+            status == "closed"
+        } else if filter_open && filter_closed {
+            true // show both
+        } else {
+            status == "open" // default to showing open issues only
+        };
+
+        let bounty_match = !filter_has_bounty || has_bounty;
+        let claimed_match = !filter_claimed || is_claimed;
+
+        status_match && bounty_match && claimed_match
+    });
 
     HttpResponse::Ok()
         .content_type("text/html; charset=utf-8")
