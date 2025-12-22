@@ -246,7 +246,7 @@ fn test_pagination_logic() {
     assert_eq!(all_sessions.len(), 20);
 
     // Test pagination: offset=0, limit=10
-    let page1: Vec<_> = all_sessions.iter().skip(0).take(10).collect();
+    let page1: Vec<_> = all_sessions.iter().take(10).collect();
     assert_eq!(page1.len(), 10);
 
     // Test pagination: offset=10, limit=10

@@ -195,7 +195,7 @@ fn test_trajectory_with_very_large_content() {
     // Add a step with very large content (1MB)
     let large_content = "x".repeat(1024 * 1024);
     let step = traj.add_step(StepType::Assistant {
-        content: large_content.clone(),
+        content: large_content,
     });
     step.tokens_in = Some(1000000);
     step.tokens_out = Some(500000);
