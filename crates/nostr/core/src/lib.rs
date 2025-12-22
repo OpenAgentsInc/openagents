@@ -159,6 +159,7 @@
 //! - NIP-59: Gift Wrap (encapsulation and metadata obscuring, requires `full` feature)
 //! - NIP-60: Cashu Wallets (ecash wallet state management)
 //! - NIP-61: Nutzaps (Cashu-based zaps with P2PK tokens)
+//! - NIP-62: Request to Vanish (GDPR-compliant complete data deletion)
 //! - NIP-64: Chess (Portable Game Notation)
 //! - NIP-65: Relay List Metadata (user's preferred read/write relays)
 //! - NIP-68: Picture-first Feeds (Instagram-style image posts)
@@ -257,6 +258,7 @@ mod nip58;
 mod nip59;
 mod nip60;
 mod nip61;
+mod nip62;
 mod nip64;
 mod nip65;
 mod nip68;
@@ -664,6 +666,13 @@ pub use nip61::{
     MintInfo, Nip61Error, Nutzap, NutzapInfo, NutzapProof, NUTZAP_INFO_KIND, NUTZAP_KIND,
     create_mint_tag, create_proof_tag, create_pubkey_tag, create_relay_tag, create_u_tag,
     create_unit_tag, is_nip61_kind, is_nutzap_info_kind, is_nutzap_kind,
+};
+
+// NIP-62: Request to Vanish
+pub use nip62::{
+    ALL_RELAYS, Nip62Error, REQUEST_TO_VANISH_KIND, RELAY_TAG as NIP62_RELAY_TAG,
+    RequestToVanish, get_target_relays, is_global_request, is_request_to_vanish,
+    validate_request_to_vanish,
 };
 
 // NIP-64: Chess (Portable Game Notation)
