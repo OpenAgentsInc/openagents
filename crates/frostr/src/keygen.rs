@@ -51,6 +51,25 @@ use rand::Rng;
 use serde::{Deserialize, Serialize};
 
 /// A secret share in a threshold scheme (for SSS)
+///
+/// # Examples
+///
+/// ```
+/// use frostr::keygen::{split_secret, Share};
+///
+/// let secret = [42u8; 32];
+///
+/// // Split into 2-of-3 shares
+/// let shares = split_secret(&secret, 2, 3).expect("split failed");
+///
+/// assert_eq!(shares.len(), 3);
+/// assert_eq!(shares[0].index, 1);
+/// assert_eq!(shares[1].index, 2);
+/// assert_eq!(shares[2].index, 3);
+///
+/// // Each share has 32 bytes
+/// assert_eq!(shares[0].secret.len(), 32);
+/// ```
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Share {
     /// Share index (1..n)
@@ -62,6 +81,24 @@ pub struct Share {
 }
 
 /// A FROST key package containing both secret and verification data
+///
+/// # Examples
+///
+/// ```
+/// use frostr::keygen::generate_key_shares;
+///
+/// // Generate 2-of-3 threshold FROST shares
+/// let shares = generate_key_shares(2, 3).expect("keygen failed");
+///
+/// assert_eq!(shares.len(), 3);
+/// assert_eq!(shares[0].threshold, 2);
+/// assert_eq!(shares[0].total, 3);
+///
+/// // All shares have the same group public key
+/// let group_pk = shares[0].public_key_package.verifying_key();
+/// assert_eq!(shares[1].public_key_package.verifying_key(), group_pk);
+/// assert_eq!(shares[2].public_key_package.verifying_key(), group_pk);
+/// ```
 #[derive(Debug, Clone)]
 pub struct FrostShare {
     /// The FROST key package with signing share

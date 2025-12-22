@@ -403,3 +403,33 @@ o: id=bWXr2yFt → [ok] The file /home/christopherdavid/code/openagents/crates/n
 t!:Bash id=sXsPgc34 cmd="cargo test --doc -p nostr 2>&1 | grep -E "(test..." → [running] tokens_in=3 tokens_out=118 tokens_cached=131501
 o: id=sXsPgc34 → [ok] test crates/nostr/core/src/nip90.rs - nip90::JobRequest (line 447) ... ok
 t!:Bash id=aPQCoadX cmd="git add -A && git commit -m "$(cat <<'EOF'" → [running] tokens_in=2 tokens_out=25 tokens_cached=132539
+o: id=aPQCoadX → [ok] [main 9b79d57bf] Add rustdoc examples to nostr NIP-90 marketplace event builders
+t!:Bash id=S2MvEK8d cmd="git push origin main" → [running] tokens_in=2 tokens_out=25 tokens_cached=133188
+o: id=S2MvEK8d → [ok] [0;36m🔍 Running cargo build to check for errors and warnings...[0m
+t!:mcp__issues__issue_complete id=ANwAdFhT  → [running] tokens_in=2 tokens_out=58 tokens_cached=133624
+o: id=ANwAdFhT → [ok] Completed issue #693
+t!:mcp__issues__issue_ready id=4Z95qTHY  → [running] tokens_in=0 tokens_out=1 tokens_cached=133794
+o: id=4Z95qTHY → [ok] No ready issues available
+t!:mcp__issues__issue_create id=VfAcLQdf  → [running] tokens_in=3 tokens_out=240 tokens_cached=133979
+o: id=VfAcLQdf → [ok] Created issue #694: Add rustdoc examples to FROSTR threshold signature types (agent: claude) [dir...
+t!:mcp__issues__issue_claim id=S2yd9SCL  → [running] tokens_in=3 tokens_out=83 tokens_cached=134034
+o: id=S2yd9SCL → [ok] Claimed issue #694
+t!:Glob id=XSNmPGrp pattern="crates/frostr/src/*.rs" → [running] tokens_in=0 tokens_out=60 tokens_cached=134315
+o: id=XSNmPGrp → [ok] /home/christopherdavid/code/openagents/crates/frostr/src/signing.rs
+t!:Read id=m8rFvEZg file_path=/home/christopherdavid/code/openagents/crates/frostr/src/lib.rs → [running] tokens_in=3 tokens_out=25 tokens_cached=134526
+o: id=m8rFvEZg → [ok]      1→//! FROSTR - Native Rust implementation of FROST threshold signatures for Nostr
+t!:Read id=vMnenGr8 file_path=/home/christopherdavid/code/openagents/crates/frostr/src/keygen.rs → [running] tokens_in=3 tokens_out=18 tokens_cached=134732
+o: id=vMnenGr8 → [ok]      1→//! Key generation and Shamir Secret Sharing
+t!:Edit id=96zbNxwv file_path=/home/christopherdavid/code/openagents/crates/frostr/src/keygen.rs → [running] tokens_in=2 tokens_out=25 tokens_cached=136014
+t!:Edit id=2VbsnSNt file_path=/home/christopherdavid/code/openagents/crates/frostr/src/keygen.rs → [running] tokens_in=2 tokens_out=25 tokens_cached=136014
+t!:Read id=A2ubbcKs file_path=/home/christopherdavid/code/openagents/crates/frostr/src/signing.rs → [running] tokens_in=2 tokens_out=784 tokens_cached=136014
+o: id=96zbNxwv → [ok] The file /home/christopherdavid/code/openagents/crates/frostr/src/keygen.rs has been updated. Her...
+o: id=2VbsnSNt → [ok] The file /home/christopherdavid/code/openagents/crates/frostr/src/keygen.rs has been updated. Her...
+o: id=A2ubbcKs → [ok]      1→//! FROST signing protocol
+t!:Edit id=eUW7tdqB file_path=/home/christopherdavid/code/openagents/crates/frostr/src/signing.rs → [running] tokens_in=3 tokens_out=25 tokens_cached=138983
+t!:Edit id=HcczMXke file_path=/home/christopherdavid/code/openagents/crates/frostr/src/signing.rs → [running] tokens_in=3 tokens_out=1039 tokens_cached=138983
+o: id=eUW7tdqB → [ok] The file /home/christopherdavid/code/openagents/crates/frostr/src/signing.rs has been updated. He...
+o: id=HcczMXke → [ok] The file /home/christopherdavid/code/openagents/crates/frostr/src/signing.rs has been updated. He...
+t!:Bash id=uMCQCvVL cmd="cargo test --doc -p frostr 2>&1 | grep -E "(tes..." → [running] tokens_in=3 tokens_out=111 tokens_cached=143180
+o: id=uMCQCvVL → [ok]    Doc-tests frostr
+t!:Bash id=raGqKDwx cmd="git add -A && git commit -m "$(cat <<'EOF'" → [running] tokens_in=1 tokens_out=283 tokens_cached=145564
