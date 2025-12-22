@@ -781,6 +781,15 @@ enum MetricsCommands {
         #[arg(long)]
         db: Option<PathBuf>,
     },
+    /// Show quick statistics for a session (concise view)
+    Stats {
+        /// Session ID (default: most recent session)
+        session_id: Option<String>,
+
+        /// Path to metrics database (default: autopilot-metrics.db)
+        #[arg(long)]
+        db: Option<PathBuf>,
+    },
     /// List all recorded sessions
     List {
         /// Filter by status (completed, crashed, budget_exhausted, max_turns, running)
@@ -3673,6 +3682,59 @@ async fn handle_metrics_command(command: MetricsCommands) -> Result<()> {
             };
             println!("{}", prompt_preview);
             println!("{}", "=".repeat(60));
+        }
+        MetricsCommands::Stats { session_id, db } => {
+            let db_path = db.unwrap_or_else(default_db_path);
+            let metrics_db = MetricsDb::open(&db_path)?;
+
+            // Get session (either specified or most recent)
+            let session = if let Some(sid) = session_id {
+                metrics_db
+                    .get_session(&sid)?
+                    .ok_or_else(|| anyhow::anyhow!("Session '{}' not found", sid))?
+            } else {
+                // Get most recent session
+                let sessions = metrics_db.get_all_sessions()?;
+                sessions
+                    .into_iter()
+                    .max_by_key(|s| s.timestamp)
+                    .ok_or_else(|| anyhow::anyhow!("No sessions found in database"))?
+            };
+
+            // Concise one-line format
+            let error_rate = if session.tool_calls > 0 {
+                (session.tool_errors as f64 / session.tool_calls as f64) * 100.0
+            } else {
+                0.0
+            };
+
+            println!(
+                "{} {} | {}s | {} → {} issues | {}k tokens | ${:.3} | {}/{} tools ({:.1}% err) | {:?}",
+                "📊".cyan(),
+                session.id,
+                session.duration_seconds,
+                session.issues_claimed,
+                session.issues_completed,
+                (session.tokens_in + session.tokens_out) / 1000,
+                session.cost_usd,
+                session.tool_calls - session.tool_errors,
+                session.tool_calls,
+                error_rate,
+                session.final_status
+            );
+
+            // Show comparison to baseline
+            if session.tool_calls > 0 {
+                if let Ok(Some(baseline)) = metrics_db.get_baseline("tool_error_rate") {
+                    let actual_error_rate = session.tool_errors as f64 / session.tool_calls as f64;
+                    let deviation = ((actual_error_rate - baseline.mean) / baseline.stddev).abs();
+                    if deviation > 2.0 {
+                        println!("  ⚠️  Error rate {:.1}σ above baseline", deviation);
+                    } else if actual_error_rate < baseline.mean - baseline.stddev {
+                        println!("  ✨ Error rate {:.1}σ below baseline", deviation);
+                    }
+                }
+            }
         }
         MetricsCommands::List { status, limit, db } => {
             let db_path = db.unwrap_or_else(default_db_path);
