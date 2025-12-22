@@ -16,6 +16,7 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
         .service(context_inspector)
         .service(permissions_manager)
         .service(delete_permission_rule)
+        .service(trigger_apm_update)
         .route("/ws", web::get().to(ws::websocket));
 }
 
@@ -293,6 +294,26 @@ async fn delete_permission_rule(
         })),
         Err(e) => HttpResponse::InternalServerError().json(serde_json::json!({
             "error": format!("Failed to delete rule: {}", e)
+        })),
+    }
+}
+
+/// Trigger APM update (for testing/manual refresh)
+#[get("/api/apm/update")]
+async fn trigger_apm_update(state: web::Data<AppState>) -> impl Responder {
+    // Load current APM from database
+    let db_path = "autopilot-metrics.db";
+    match crate::sessions::get_dashboard_stats(db_path) {
+        Ok(stats) => {
+            // Broadcast APM update to all connected WebSocket clients
+            state.broadcast_apm_update(stats.avg_apm, None);
+            HttpResponse::Ok().json(serde_json::json!({
+                "success": true,
+                "avg_apm": stats.avg_apm
+            }))
+        }
+        Err(e) => HttpResponse::InternalServerError().json(serde_json::json!({
+            "error": format!("Failed to load APM data: {}", e)
         })),
     }
 }
