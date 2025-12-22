@@ -49,10 +49,7 @@ async fn index(state: web::Data<AppState>) -> ActixResult<HttpResponse> {
             let balance_sats = 0u64;
 
             // Get profile
-            let profile = match identity.get_profile().await {
-                Ok(p) => p,
-                Err(_) => None,
-            };
+            let profile = identity.get_profile().await.unwrap_or_default();
 
             let display_name = profile
                 .as_ref()
