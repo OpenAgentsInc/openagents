@@ -292,6 +292,7 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "ui",
+ "urlencoding",
  "wallet",
  "wry 0.50.5",
 ]
