@@ -42,11 +42,12 @@ impl EventCache {
                 content TEXT NOT NULL,
                 tags TEXT NOT NULL,
                 sig TEXT NOT NULL,
-                cached_at INTEGER NOT NULL,
-                INDEX idx_kind ON events(kind),
-                INDEX idx_pubkey ON events(pubkey),
-                INDEX idx_created_at ON events(created_at)
+                cached_at INTEGER NOT NULL
             );
+
+            CREATE INDEX IF NOT EXISTS idx_kind ON events(kind);
+            CREATE INDEX IF NOT EXISTS idx_pubkey ON events(pubkey);
+            CREATE INDEX IF NOT EXISTS idx_created_at ON events(created_at);
 
             CREATE TABLE IF NOT EXISTS repositories (
                 event_id TEXT PRIMARY KEY,
