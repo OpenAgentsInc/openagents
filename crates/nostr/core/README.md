@@ -9,6 +9,7 @@ This crate implements the core Nostr protocol functionality needed by the OpenAg
 - **NIP-01**: Basic event structure, signing, and verification
 - **NIP-06**: Deterministic key derivation from BIP39 mnemonic seed phrases
 - **NIP-28**: Public chat channels with moderation
+- **NIP-77**: Negentropy protocol for efficient range-based set reconciliation
 - **NIP-89**: Application handler discovery (social discovery of skills/agents)
 - **NIP-90**: Data Vending Machine (DVM) protocol for job requests and results
 - **NIP-SA**: Sovereign Agents protocol for autonomous agents with their own identity
@@ -387,6 +388,255 @@ const SPEECH_TO_TEXT: u16 = 5250;       // Transcription
 assert_eq!(get_result_kind(5050), Some(6050));
 ```
 
+## NIP-77: Negentropy Protocol
+
+Efficient range-based set reconciliation for syncing Nostr events between clients and relays.
+
+### Overview
+
+Negentropy enables efficient event syncing with O(log N) round trips instead of O(N) for traditional filter-based approaches. It uses fingerprints to identify differences and recursively narrows down to missing events.
+
+### Protocol Flow
+
+```
+Client                           Relay
+  |                                |
+  |--NEG-OPEN (filter + ranges)--->|
+  |                                |
+  |<--NEG-MSG (diff ranges)--------|
+  |                                |
+  |--NEG-MSG (narrowed ranges)---->|
+  |                                |
+  |<--NEG-MSG (event IDs)----------|
+  |                                |
+  |--NEG-CLOSE----------------->   |
+```
+
+### Varint Encoding
+
+Base-128 variable-length unsigned integers for compact representation:
+
+```rust
+use nostr::{encode_varint, decode_varint};
+
+// Encode unsigned integers
+let encoded = encode_varint(300)?;
+assert_eq!(encoded, vec![0xAC, 0x02]);
+
+// Decode back
+let (value, bytes_read) = decode_varint(&encoded)?;
+assert_eq!(value, 300);
+assert_eq!(bytes_read, 2);
+
+// High-bit indicates continuation
+// 300 = 0b100101100 → 0xAC 0x02
+//     = [0b10101100, 0b00000010]
+//     = [172, 2]
+```
+
+### Fingerprint Calculation
+
+16-byte SHA-256 based fingerprint of event ID set:
+
+```rust
+use nostr::{calculate_fingerprint, EventId};
+
+let ids = vec![
+    "abc...".to_string(),
+    "def...".to_string(),
+];
+
+// Fingerprint = SHA-256(sum(IDs mod 2^256) || varint(count)).take(16)
+let fingerprint = calculate_fingerprint(&ids);
+assert_eq!(fingerprint.len(), 16);
+```
+
+**Algorithm:**
+1. Sum all event IDs modulo 2^256
+2. Concatenate with varint-encoded count
+3. SHA-256 hash the result
+4. Take first 16 bytes
+
+### Record Sorting
+
+Events must be sorted by timestamp, then by ID lexically:
+
+```rust
+use nostr::{sort_records, Record};
+
+let mut records = vec![
+    Record { timestamp: 1000, id: "bbb".to_string() },
+    Record { timestamp: 1000, id: "aaa".to_string() },
+    Record { timestamp: 500, id: "zzz".to_string() },
+];
+
+sort_records(&mut records);
+
+assert_eq!(records[0].timestamp, 500);  // Earliest timestamp first
+assert_eq!(records[1].id, "aaa");       // Then lexical by ID
+assert_eq!(records[2].id, "bbb");
+```
+
+### Protocol Messages
+
+#### NEG-OPEN: Start Sync Session
+
+```rust
+use nostr::{NegOpen, NegentropyMessage, PROTOCOL_VERSION_1};
+
+// Create initial message with ranges
+let message = NegentropyMessage {
+    version: PROTOCOL_VERSION_1,
+    ranges: vec![/* ranges */],
+};
+
+// Start session
+let neg_open = NegOpen {
+    subscription_id: "sub-123".to_string(),
+    filter: serde_json::json!({"kinds": [1]}),
+    initial_message: message.to_hex()?,
+};
+```
+
+#### NEG-MSG: Exchange Ranges
+
+```rust
+use nostr::{NegMsg, Range, RangeMode, RangePayload, Bound};
+
+// Build range with fingerprint
+let range = Range {
+    upper_bound: Bound {
+        timestamp: 1703000000,
+        id_prefix: vec![0xFF],
+    },
+    payload: RangePayload::Fingerprint(vec![0x12, 0x34, /* 16 bytes */]),
+};
+
+// Send message
+let neg_msg = NegMsg {
+    subscription_id: "sub-123".to_string(),
+    message: NegentropyMessage {
+        version: PROTOCOL_VERSION_1,
+        ranges: vec![range],
+    }.to_hex()?,
+};
+```
+
+#### NEG-ERR: Report Error
+
+```rust
+use nostr::NegErr;
+
+let neg_err = NegErr {
+    subscription_id: "sub-123".to_string(),
+    reason: "invalid fingerprint".to_string(),
+};
+```
+
+#### NEG-CLOSE: End Session
+
+```rust
+use nostr::NegClose;
+
+let neg_close = NegClose {
+    subscription_id: "sub-123".to_string(),
+};
+```
+
+### Range Payloads
+
+```rust
+use nostr::{RangeMode, RangePayload};
+
+// Fingerprint: 16-byte hash of IDs in range
+let fp = RangePayload::Fingerprint(vec![0u8; 16]);
+
+// HaveIds: Client has these IDs
+let have = RangePayload::HaveIds(vec!["id1".into(), "id2".into()]);
+
+// NeedIds: Client needs these IDs
+let need = RangePayload::NeedIds(vec!["id3".into(), "id4".into()]);
+```
+
+### Bounds and Timestamps
+
+```rust
+use nostr::{Bound, TIMESTAMP_INFINITY};
+
+// Range from beginning to timestamp
+let bound = Bound {
+    timestamp: 1703000000,
+    id_prefix: vec![],
+};
+
+// Open-ended range (to infinity)
+let infinity_bound = Bound {
+    timestamp: TIMESTAMP_INFINITY,  // u64::MAX
+    id_prefix: vec![0xFF; 32],
+};
+```
+
+### Integration Example
+
+```rust
+use nostr::{
+    NegOpen, NegMsg, NegClose, calculate_fingerprint,
+    sort_records, Record, NegentropyMessage, PROTOCOL_VERSION_1,
+};
+
+// 1. Client: Collect local events
+let mut local_events = vec![
+    Record { timestamp: 1000, id: "event1".into() },
+    Record { timestamp: 2000, id: "event2".into() },
+];
+sort_records(&mut local_events);
+
+// 2. Client: Calculate fingerprint
+let ids: Vec<String> = local_events.iter().map(|r| r.id.clone()).collect();
+let fp = calculate_fingerprint(&ids);
+
+// 3. Client: Start sync
+let initial_msg = NegentropyMessage {
+    version: PROTOCOL_VERSION_1,
+    ranges: vec![/* ranges with fp */],
+};
+let open = NegOpen {
+    subscription_id: "sync-1".into(),
+    filter: serde_json::json!({"kinds": [1]}),
+    initial_message: initial_msg.to_hex()?,
+};
+
+// 4. Exchange NEG-MSG until converged
+
+// 5. Client: Close session
+let close = NegClose {
+    subscription_id: "sync-1".into(),
+};
+```
+
+### Performance Characteristics
+
+- **Round Trips**: O(log N) where N is number of differences
+- **Bandwidth**: O(D) where D is actual number of differences
+- **Memory**: O(1) - streaming-friendly, no need to load all events
+- **CPU**: Dominated by fingerprint calculation (SHA-256)
+
+### Testing
+
+```bash
+# Run NIP-77 tests
+cargo test --test nip77
+
+# Test varint encoding
+cargo test nip77::tests::test_varint_encode_decode
+
+# Test fingerprint calculation
+cargo test nip77::tests::test_calculate_fingerprint
+
+# Test record sorting
+cargo test nip77::tests::test_sort_records
+```
+
 ## Identity Types
 
 ### NostrIdentity
@@ -582,6 +832,7 @@ nostr/core/src/
 ├── nip01.rs         # Basic protocol (events, signing)
 ├── nip06.rs         # Key derivation from mnemonic
 ├── nip28.rs         # Public chat channels
+├── nip77.rs         # Negentropy protocol (range-based set reconciliation)
 ├── nip89.rs         # Application handlers
 ├── nip90.rs         # Data Vending Machine
 ├── identity.rs      # Marketplace identity types
@@ -1002,6 +1253,7 @@ delivery.content.verify_hash("sha256-hash")?;
 - [NIP-28](https://github.com/nostr-protocol/nips/blob/master/28.md): Public Chat
 - [NIP-44](https://github.com/nostr-protocol/nips/blob/master/44.md): Versioned Encryption
 - [NIP-59](https://github.com/nostr-protocol/nips/blob/master/59.md): Gift Wrap
+- [NIP-77](https://github.com/nostr-protocol/nips/blob/master/77.md): Negentropy Protocol
 - [NIP-89](https://github.com/nostr-protocol/nips/blob/master/89.md): Application Handlers
 - [NIP-90](https://github.com/nostr-protocol/nips/blob/master/90.md): Data Vending Machine
 
