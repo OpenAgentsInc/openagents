@@ -463,3 +463,27 @@ o: id=1F6cMZTP → [ok] The file /home/christopherdavid/code/openagents/crates/f
 t!:Bash id=8xJPPvPB cmd="cargo test --doc -p frostr 2>&1 | grep -E "(tes..." → [running] tokens_in=7 tokens_out=112 tokens_cached=127612
 o: id=8xJPPvPB → [ok] test crates/frostr/src/bifrost/mod.rs - bifrost (line 71) - compile ... ok
 t!:Bash id=EdpJv3gc cmd="git add -A && git commit -m "$(cat <<'EOF'" → [running] tokens_in=6 tokens_out=25 tokens_cached=129889
+o: id=EdpJv3gc → [ok] [main b0ddae3f0] Add rustdoc examples to bifrost protocol types
+t!:Bash id=8GK5pddB cmd="git push origin main" → [running] tokens_in=6 tokens_out=78 tokens_cached=130243
+o: id=8GK5pddB → [ok] [0;36m🔍 Running cargo build to check for errors and warnings...[0m
+t!:mcp__issues__issue_complete id=dzM5KGHm  → [running] tokens_in=5 tokens_out=32 tokens_cached=130695
+o: id=dzM5KGHm → [ok] Completed issue #695
+t!:mcp__issues__issue_ready id=iMBLdkXv  → [running] tokens_in=5 tokens_out=27 tokens_cached=130967
+o: id=iMBLdkXv → [ok] No ready issues available
+t!:mcp__issues__issue_create id=oNMgS3Lp  → [running] tokens_in=5 tokens_out=216 tokens_cached=131042
+o: id=oNMgS3Lp → [ok] Created issue #696: Add rustdoc examples to recorder and trajectory export types (agent: claude) ...
+t!:mcp__issues__issue_claim id=EcpNtYdK  → [running] tokens_in=2 tokens_out=1 tokens_cached=131099
+o: id=EcpNtYdK → [ok] Claimed issue #696
+t!:Glob id=Y45a2BvX pattern="crates/recorder/src/*.rs" → [running] tokens_in=5 tokens_out=26 tokens_cached=131466
+o: id=Y45a2BvX → [ok] /home/christopherdavid/code/openagents/crates/recorder/src/convert.rs
+t!:Read id=C8NAiq8b file_path=/home/christopherdavid/code/openagents/crates/recorder/src/lib.rs → [running] tokens_in=5 tokens_out=77 tokens_cached=131564
+o: id=C8NAiq8b → [ok]      1→//! Recorder format parser and validator
+t!:Edit id=VvSaxJya file_path=/home/christopherdavid/code/openagents/crates/recorder/src/lib.rs → [running] tokens_in=4 tokens_out=25 tokens_cached=131737
+t!:Edit id=xHeSQfm8 file_path=/home/christopherdavid/code/openagents/crates/recorder/src/lib.rs → [running] tokens_in=4 tokens_out=25 tokens_cached=131737
+t!:Edit id=pwFCK174 file_path=/home/christopherdavid/code/openagents/crates/recorder/src/lib.rs → [running] tokens_in=4 tokens_out=1181 tokens_cached=131737
+o: id=VvSaxJya → [error] <tool_use_error>String to replace not found in file.
+o: id=xHeSQfm8 → [ok] The file /home/christopherdavid/code/openagents/crates/recorder/src/lib.rs has been updated. Here...
+o: id=pwFCK174 → [ok] The file /home/christopherdavid/code/openagents/crates/recorder/src/lib.rs has been updated. Here...
+t!:Bash id=hCWRGwBt cmd="cargo test --doc -p recorder 2>&1 | grep -E "(t..." → [running] tokens_in=5 tokens_out=26 tokens_cached=145236
+o: id=hCWRGwBt → [ok]    Doc-tests recorder
+t!:Bash id=ooZxTcfq cmd="git add -A && git commit -m "$(cat <<'EOF'" → [running] tokens_in=4 tokens_out=251 tokens_cached=147655
