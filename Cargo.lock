@@ -4526,6 +4526,7 @@ dependencies = [
 name = "nostr-client"
 version = "0.1.0"
 dependencies = [
+ "criterion 0.8.1",
  "futures",
  "nostr",
  "rand 0.8.5",
