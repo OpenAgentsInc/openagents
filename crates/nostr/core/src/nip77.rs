@@ -12,6 +12,7 @@
 //! Messages are hex-encoded binary using the Negentropy Protocol V1 format.
 
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use std::io;
 use thiserror::Error;
 
@@ -717,6 +718,72 @@ impl NegClose {
     }
 }
 
+/// Calculate the fingerprint for a set of event IDs
+///
+/// The fingerprint algorithm:
+/// 1. Compute addition mod 2^256 of element IDs (as 32-byte little-endian unsigned integers)
+/// 2. Concatenate with the number of elements, encoded as a varint
+/// 3. Hash with SHA-256
+/// 4. Take the first 16 bytes
+pub fn calculate_fingerprint(ids: &[EventId]) -> [u8; 16] {
+    // Step 1: Add all IDs mod 2^256 (as little-endian)
+    let mut sum = [0u8; 32];
+
+    for id in ids {
+        // Add this ID to sum (mod 2^256 is automatic with wrapping)
+        let mut carry = 0u16;
+        for i in 0..32 {
+            let s = sum[i] as u16 + id[i] as u16 + carry;
+            sum[i] = s as u8;
+            carry = s >> 8;
+        }
+    }
+
+    // Step 2: Concatenate with element count as varint
+    let count_varint = encode_varint(ids.len() as u64).unwrap_or_default();
+    let mut to_hash = Vec::with_capacity(32 + count_varint.len());
+    to_hash.extend_from_slice(&sum);
+    to_hash.extend_from_slice(&count_varint);
+
+    // Step 3: Hash with SHA-256
+    let hash = Sha256::digest(&to_hash);
+
+    // Step 4: Take first 16 bytes
+    let mut fingerprint = [0u8; 16];
+    fingerprint.copy_from_slice(&hash[..16]);
+    fingerprint
+}
+
+/// A record in the Negentropy protocol (timestamp + ID)
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub struct Record {
+    /// Timestamp (used for sorting)
+    pub timestamp: u64,
+    /// Event ID
+    pub id: EventId,
+}
+
+impl Record {
+    /// Create a new record
+    pub fn new(timestamp: u64, id: EventId) -> Self {
+        Self { timestamp, id }
+    }
+}
+
+/// Sort records according to Negentropy protocol rules
+///
+/// Records are sorted by:
+/// 1. Timestamp (ascending)
+/// 2. ID lexically (ascending) if timestamps are equal
+pub fn sort_records(records: &mut [Record]) {
+    records.sort_by(|a, b| {
+        match a.timestamp.cmp(&b.timestamp) {
+            std::cmp::Ordering::Equal => a.id.cmp(&b.id),
+            other => other,
+        }
+    });
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -822,5 +889,77 @@ mod tests {
         let json = neg_close.to_json();
         let parsed = NegClose::from_json(&json).unwrap();
         assert_eq!(parsed.subscription_id, neg_close.subscription_id);
+    }
+
+    #[test]
+    fn test_fingerprint_empty() {
+        let fp = calculate_fingerprint(&[]);
+        // Empty set should have consistent fingerprint
+        assert_eq!(fp.len(), 16);
+    }
+
+    #[test]
+    fn test_fingerprint_single() {
+        let id = [0x01; 32];
+        let fp = calculate_fingerprint(&[id]);
+        assert_eq!(fp.len(), 16);
+        // Should be deterministic
+        let fp2 = calculate_fingerprint(&[id]);
+        assert_eq!(fp, fp2);
+    }
+
+    #[test]
+    fn test_fingerprint_multiple() {
+        let ids = vec![[0x01; 32], [0x02; 32], [0x03; 32]];
+        let fp = calculate_fingerprint(&ids);
+        assert_eq!(fp.len(), 16);
+
+        // Order shouldn't matter for fingerprint (commutative)
+        let ids_reversed = vec![[0x03; 32], [0x02; 32], [0x01; 32]];
+        let fp_reversed = calculate_fingerprint(&ids_reversed);
+        assert_eq!(fp, fp_reversed);
+    }
+
+    #[test]
+    fn test_fingerprint_different_counts() {
+        // Same IDs but different counts should produce different fingerprints
+        let fp1 = calculate_fingerprint(&[[0x01; 32]]);
+        let fp2 = calculate_fingerprint(&[[0x01; 32], [0x01; 32]]);
+        assert_ne!(fp1, fp2);
+    }
+
+    #[test]
+    fn test_record_sorting() {
+        let mut records = vec![
+            Record::new(100, [0x03; 32]),
+            Record::new(50, [0x01; 32]),
+            Record::new(100, [0x01; 32]),
+            Record::new(200, [0x02; 32]),
+        ];
+
+        sort_records(&mut records);
+
+        // Should be sorted by timestamp, then ID
+        assert_eq!(records[0].timestamp, 50);
+        assert_eq!(records[1].timestamp, 100);
+        assert_eq!(records[1].id, [0x01; 32]);
+        assert_eq!(records[2].timestamp, 100);
+        assert_eq!(records[2].id, [0x03; 32]);
+        assert_eq!(records[3].timestamp, 200);
+    }
+
+    #[test]
+    fn test_record_sorting_same_timestamp() {
+        let mut records = vec![
+            Record::new(100, [0xFF; 32]),
+            Record::new(100, [0x00; 32]),
+            Record::new(100, [0x7F; 32]),
+        ];
+
+        sort_records(&mut records);
+
+        // Should be sorted lexically by ID when timestamps are equal
+        assert!(records[0].id < records[1].id);
+        assert!(records[1].id < records[2].id);
     }
 }

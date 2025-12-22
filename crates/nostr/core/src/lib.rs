@@ -790,8 +790,8 @@ pub use nip75::{
 // NIP-77: Negentropy Syncing
 pub use nip77::{
     Bound, EventId, NegClose, NegErr, NegMsg, NegOpen, NegentropyMessage, Nip77Error,
-    PROTOCOL_VERSION_1, Range, RangeMode, RangePayload, TIMESTAMP_INFINITY,
-    decode_varint, encode_varint,
+    PROTOCOL_VERSION_1, Range, RangeMode, RangePayload, Record, TIMESTAMP_INFINITY,
+    calculate_fingerprint, decode_varint, encode_varint, sort_records,
 };
 
 // NIP-78: Application-specific Data
