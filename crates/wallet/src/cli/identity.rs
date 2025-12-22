@@ -627,7 +627,7 @@ pub fn dm_list(limit: usize) -> Result<()> {
     for (i, event) in events.iter().enumerate() {
         // Format timestamp
         let dt = DateTime::<Utc>::from_timestamp(event.created_at as i64, 0)
-            .unwrap_or_else(|| DateTime::UNIX_EPOCH);
+            .unwrap_or(DateTime::UNIX_EPOCH);
         let time_str = dt.format("%Y-%m-%d %H:%M:%S UTC");
 
         // Truncate sender pubkey for display
@@ -779,7 +779,7 @@ pub fn feed(limit: usize) -> Result<()> {
     for (i, event) in events.iter().enumerate() {
         // Format timestamp
         let dt = DateTime::<Utc>::from_timestamp(event.created_at as i64, 0)
-            .unwrap_or_else(|| DateTime::UNIX_EPOCH);
+            .unwrap_or(DateTime::UNIX_EPOCH);
         let time_str = dt.format("%Y-%m-%d %H:%M:%S UTC");
 
         // Truncate pubkey for display
