@@ -190,7 +190,7 @@ impl WorkerSupervisor {
                     self.config.restart.max_consecutive_restarts
                 );
                 eprintln!("{}", reason);
-                self.state.status = WorkerStatus::Failed { reason };
+                self.state.status = WorkerStatus::Failed { reason, failed_at: Instant::now() };
             }
         }
     }
@@ -409,10 +409,24 @@ impl WorkerSupervisor {
                         }
                     }
 
-                    // Check if we're in failed state
-                    if let WorkerStatus::Failed { ref reason } = self.state.status {
-                        eprintln!("Worker in failed state: {}", reason);
-                        // Could exit here or wait for manual intervention
+                    // Check if we're in failed state - recover after cooldown
+                    if let WorkerStatus::Failed { ref reason, failed_at } = self.state.status {
+                        let failed_duration = failed_at.elapsed();
+                        let recovery_cooldown = Duration::from_millis(self.config.restart.recovery_cooldown_ms);
+
+                        if failed_duration >= recovery_cooldown {
+                            eprintln!("Worker failed state cooldown expired ({:?}), resetting and retrying...", failed_duration);
+                            self.state.consecutive_failures = 0;
+                            self.state.current_backoff = Duration::from_secs(1);
+                            self.state.status = WorkerStatus::Stopped;
+
+                            if let Err(e) = self.spawn_worker() {
+                                eprintln!("Failed to restart worker after cooldown: {}", e);
+                            }
+                        } else {
+                            let remaining = recovery_cooldown - failed_duration;
+                            eprintln!("Worker in failed state: {} (retry in {:?})", reason, remaining);
+                        }
                     }
                 }
                 _ = shutdown_rx.recv() => {

@@ -82,6 +82,11 @@ pub struct RestartConfig {
     /// Stall timeout - restart worker if no log activity for this long (ms)
     /// Default: 300000 (5 min)
     pub stall_timeout_ms: u64,
+
+    /// Recovery cooldown - after hitting max consecutive restarts, wait this long
+    /// before resetting failure counter and trying again (ms)
+    /// Default: 600000 (10 min)
+    pub recovery_cooldown_ms: u64,
 }
 
 impl Default for RestartConfig {
@@ -93,6 +98,7 @@ impl Default for RestartConfig {
             success_threshold_ms: 60_000,
             max_consecutive_restarts: 10,
             stall_timeout_ms: 300_000, // 5 minutes
+            recovery_cooldown_ms: 600_000, // 10 minutes
         }
     }
 }
