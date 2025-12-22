@@ -681,6 +681,11 @@ async fn issue_comment(
     let issue_author_pubkey = &issue.pubkey;
 
     // Build NIP-22 comment event (kind:1 with e and p tags)
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+
     let event_template = EventTemplate {
         kind: 1, // Text note (NIP-01)
         content: content.clone(),
@@ -688,6 +693,7 @@ async fn issue_comment(
             vec!["e".to_string(), issue_id.clone(), "".to_string(), "root".to_string()],
             vec!["p".to_string(), issue_author_pubkey.clone()],
         ],
+        created_at: now,
     };
 
     // Sign and publish event
@@ -707,11 +713,11 @@ async fn issue_comment(
                         .as_secs();
 
                     let commenter_pubkey = if let Some(identity) = &state.identity {
-                        let pk = identity.nostr_keys().public_key().to_string();
+                        let pk = identity.nostr_public_key();
                         if pk.len() > 16 {
                             format!("{}...{}", &pk[..8], &pk[pk.len()-8..])
                         } else {
-                            pk
+                            pk.to_string()
                         }
                     } else {
                         "unknown".to_string()
