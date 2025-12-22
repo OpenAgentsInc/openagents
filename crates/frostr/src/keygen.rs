@@ -114,10 +114,10 @@ pub fn split_secret(secret: &[u8; 32], threshold: u32, total: u32) -> Result<Vec
     // Then evaluate it at each x value to generate shares
     let mut polynomials: Vec<Vec<u8>> = Vec::with_capacity(32);
 
-    for byte_idx in 0..32 {
+    for &secret_byte in secret.iter() {
         // Create polynomial: f(x) = a0 + a1*x + a2*x^2 + ... + a(k-1)*x^(k-1)
-        // where a0 = secret[byte_idx]
-        let mut coeffs = vec![secret[byte_idx]];
+        // where a0 = secret_byte
+        let mut coeffs = vec![secret_byte];
         for _ in 1..threshold {
             coeffs.push(rng.r#gen::<u8>());
         }
@@ -168,7 +168,7 @@ pub fn reconstruct_secret(shares: &[Share]) -> Result<[u8; 32]> {
     let mut secret = [0u8; 32];
 
     // For each byte position, perform Lagrange interpolation in GF(256)
-    for byte_idx in 0..32 {
+    for (byte_idx, secret_byte) in secret.iter_mut().enumerate() {
         let mut result: u8 = 0;
 
         // Lagrange interpolation: f(0) = sum(y_i * L_i(0))
@@ -181,9 +181,9 @@ pub fn reconstruct_secret(shares: &[Share]) -> Result<[u8; 32]> {
             // L_i(0) = product((0 - xj) / (xi - xj)) for all j != i
             let mut li = 1u8;
 
-            for j in 0..shares.len() {
+            for (j, share_j) in shares.iter().enumerate() {
                 if i != j {
-                    let xj = shares[j].index;
+                    let xj = share_j.index;
 
                     // In GF(256): (0 - xj) / (xi - xj) = xj / (xi XOR xj)
                     // since subtraction is XOR in characteristic 2
@@ -198,7 +198,7 @@ pub fn reconstruct_secret(shares: &[Share]) -> Result<[u8; 32]> {
             result ^= gf256_mul(yi, li);
         }
 
-        secret[byte_idx] = result;
+        *secret_byte = result;
     }
 
     Ok(secret)
