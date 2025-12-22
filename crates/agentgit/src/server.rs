@@ -7,7 +7,7 @@ use wallet::core::identity::UnifiedIdentity;
 use crate::git::{clone_repository, get_repository_path, is_repository_cloned, create_branch, get_status, generate_patch, apply_patch, push_branch, current_branch, diff_commits};
 use crate::nostr::NostrClient;
 use crate::nostr::events::{BountyClaimBuilder, BountyOfferBuilder, IssueClaimBuilder, PatchBuilder, PullRequestBuilder, RepositoryAnnouncementBuilder, StatusEventBuilder};
-use crate::views::{agent_profile_page, diff_viewer_page, git_branch_create_form_page, git_status_page, home_page_with_repos, issue_create_form_page, issue_detail_page, issues_list_page, patch_create_form_page, patch_detail_page, patches_list_page, pr_create_form_page, pull_request_detail_page, pull_requests_list_page, repository_create_form_page, repository_detail_page, search_results_page, trajectory_viewer_page};
+use crate::views::{agent_profile_page, agents_list_page, diff_viewer_page, git_branch_create_form_page, git_status_page, home_page_with_repos, issue_create_form_page, issue_detail_page, issues_list_page, patch_create_form_page, patch_detail_page, patches_list_page, pr_create_form_page, pull_request_detail_page, pull_requests_list_page, repository_create_form_page, repository_detail_page, search_results_page, trajectory_viewer_page};
 use crate::ws::{ws_handler, WsBroadcaster};
 use nostr::{EventTemplate, Issue, KIND_ISSUE};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -74,6 +74,8 @@ pub async fn start_server(
             .route("/repo/{identifier}/pulls/{pr_id}/status", web::post().to(pr_status_change))
             .route("/trajectory/{session_id}", web::get().to(trajectory_detail))
             .route("/agent/{pubkey}", web::get().to(agent_profile))
+            .route("/agents", web::get().to(agents_list))
+            .route("/agent/{pubkey}/reputation", web::post().to(publish_reputation_label))
             .route("/search", web::get().to(search))
             .route("/watched", web::get().to(watched_repositories))
             .route("/repo/{identifier}/watch", web::post().to(watch_repository))
@@ -2458,4 +2460,172 @@ async fn pr_diff_view(
     HttpResponse::Ok()
         .content_type("text/html; charset=utf-8")
         .body(diff_viewer_page(&identifier, &pr_id, "pr", &diff_output).into_string())
+}
+
+/// Query parameters for agent filtering
+#[derive(Debug, serde::Deserialize)]
+struct AgentFilterQuery {
+    min_reputation: Option<i32>,
+    min_merged_prs: Option<i32>,
+}
+
+/// Agents list page with filtering
+async fn agents_list(
+    state: web::Data<AppState>,
+    query: web::Query<AgentFilterQuery>,
+) -> HttpResponse {
+    // Fetch all unique agent pubkeys from PRs and issue claims
+    let mut agent_pubkeys = std::collections::HashSet::new();
+
+    // Get agents from pull requests
+    if let Ok(prs) = state.nostr_client.get_cached_pull_requests(100).await {
+        for pr in prs {
+            agent_pubkeys.insert(pr.pubkey.clone());
+        }
+    }
+
+    // Get agents from issue claims (query all cached issues and get their claims)
+    if let Ok(issues) = state.nostr_client.get_cached_issues(100).await {
+        for issue in issues {
+            if let Ok(claims) = state.nostr_client.get_claims_for_issue(&issue.id).await {
+                for claim in claims {
+                    agent_pubkeys.insert(claim.pubkey.clone());
+                }
+            }
+        }
+    }
+
+    // Build agent data with reputation
+    let mut agents = Vec::new();
+    for pubkey in agent_pubkeys {
+        // Fetch reputation labels
+        let reputation_labels = state.nostr_client
+            .get_reputation_labels_for_agent(&pubkey)
+            .await
+            .unwrap_or_default();
+
+        // Calculate reputation score
+        let reputation_score = calculate_reputation_score(&reputation_labels);
+
+        // Count merged PRs
+        let merged_prs = state.nostr_client
+            .get_pull_requests_by_agent(&pubkey, 100)
+            .await
+            .unwrap_or_default()
+            .iter()
+            .filter(|pr| {
+                // Check for merged status events
+                pr.tags.iter().any(|tag| {
+                    tag.first().map(|t| t == "status").unwrap_or(false)
+                        && tag.get(1).map(|s| s == "1631").unwrap_or(false)
+                })
+            })
+            .count() as i32;
+
+        // Apply filters
+        if let Some(min_rep) = query.min_reputation {
+            if reputation_score < min_rep {
+                continue;
+            }
+        }
+
+        if let Some(min_prs) = query.min_merged_prs {
+            if merged_prs < min_prs {
+                continue;
+            }
+        }
+
+        agents.push((pubkey, reputation_score, merged_prs));
+    }
+
+    // Sort by reputation score descending
+    agents.sort_by(|a, b| b.1.cmp(&a.1));
+
+    HttpResponse::Ok()
+        .content_type("text/html; charset=utf-8")
+        .body(agents_list_page(&agents, &query.min_reputation, &query.min_merged_prs).into_string())
+}
+
+/// Publish a reputation label for an agent
+async fn publish_reputation_label(
+    state: web::Data<AppState>,
+    path: web::Path<String>,
+    form: web::Form<std::collections::HashMap<String, String>>,
+) -> HttpResponse {
+    let target_pubkey = path.into_inner();
+    let label = form.get("label").cloned().unwrap_or_default();
+    let rating = form.get("rating").and_then(|r| r.parse::<i32>().ok());
+
+    // Build reputation label event (kind:1985)
+    let mut tags = vec![
+        vec!["p".to_string(), target_pubkey.clone()],
+        vec!["L".to_string(), "agent.reputation".to_string()],
+        vec!["l".to_string(), label.clone(), "agent.reputation".to_string()],
+    ];
+
+    if let Some(rating_val) = rating {
+        tags.push(vec!["rating".to_string(), rating_val.to_string()]);
+    }
+
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+
+    let template = EventTemplate {
+        kind: 1985,
+        content: format!("Reputation label for agent: {}", label),
+        tags,
+        created_at: now,
+    };
+
+    // Sign and publish
+    match state.sign_event(template) {
+        Ok(event) => {
+            match state.nostr_client.publish_event(event).await {
+                Ok(_) => {
+                    HttpResponse::Ok()
+                        .content_type("text/html; charset=utf-8")
+                        .body(format!(
+                            r#"<div style="padding: 1rem; background: #d1fae5; border-left: 4px solid #10b981;">
+                                <h3>Reputation Published</h3>
+                                <p>Successfully published reputation label for agent</p>
+                                <p><a href="/agent/{}">← Back to Agent</a></p>
+                            </div>"#,
+                            target_pubkey
+                        ))
+                }
+                Err(e) => {
+                    tracing::error!("Failed to publish reputation label: {}", e);
+                    HttpResponse::InternalServerError()
+                        .content_type("text/html; charset=utf-8")
+                        .body(format!("<h1>Error</h1><p>Failed to publish: {}</p>", e))
+                }
+            }
+        }
+        Err(e) => {
+            HttpResponse::InternalServerError()
+                .content_type("text/html; charset=utf-8")
+                .body(format!("<h1>Error</h1><p>Failed to sign event: {}</p>", e))
+        }
+    }
+}
+
+/// Calculate reputation score from labels
+fn calculate_reputation_score(labels: &[nostr::Event]) -> i32 {
+    let mut score = 0;
+
+    for label in labels {
+        // Extract rating tag
+        if let Some(rating_str) = label.tags.iter()
+            .find(|tag| tag.first().map(|t| t == "rating").unwrap_or(false))
+            .and_then(|tag| tag.get(1))
+        {
+            if let Ok(rating) = rating_str.parse::<i32>() {
+                score += rating;
+            }
+        }
+    }
+
+    score
 }
