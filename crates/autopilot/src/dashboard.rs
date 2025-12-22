@@ -1,12 +1,34 @@
-//! Web dashboard for autopilot metrics visualization
+//! Web dashboard for autopilot metrics visualization and real-time monitoring.
 //!
-//! Provides an Actix-web server that displays:
-//! - Session list with key statistics
-//! - Trend charts for metrics over time
-//! - Anomaly highlighting
-//! - Session detail drill-down
-//! - Real-time updates via WebSocket
-//! - JSON/CSV export capabilities
+//! This module provides an Actix-web server with Maud/HTMX UI for visualizing
+//! autopilot performance metrics, trajectory analysis, and detecting anomalies.
+//! Launched via `cargo autopilot dashboard`.
+//!
+//! # Features
+//!
+//! - **Session List**: All trajectory sessions with key statistics
+//! - **Trend Charts**: Metrics visualization over time
+//! - **Anomaly Detection**: Highlight sessions with unusual patterns
+//! - **Drill-Down**: Detailed view of individual sessions
+//! - **Real-Time Updates**: WebSocket streaming of new metrics
+//! - **Export**: JSON/CSV export for external analysis
+//!
+//! # Usage
+//!
+//! ```no_run
+//! use autopilot::dashboard::start_dashboard;
+//!
+//! # async fn example() -> anyhow::Result<()> {
+//! let port = start_dashboard().await?;
+//! println!("Dashboard running at http://localhost:{}", port);
+//! # Ok(())
+//! # }
+//! ```
+//!
+//! # Related Modules
+//!
+//! - [`crate::metrics`]: Metrics database and storage
+//! - [`crate::analyze`]: Trajectory analysis engine
 
 use actix_web::{web, App, HttpResponse, HttpServer, Result as ActixResult};
 use actix_ws::Message;
