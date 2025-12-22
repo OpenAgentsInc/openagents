@@ -317,12 +317,20 @@ impl BifrostNode {
             .publish_and_wait(&message, 1)
             .await?;
 
-        // Check if we got a pong response
+        // Check if we got a pong response and calculate latency
+        let recv_time = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_millis() as u64;
+
         for response in responses {
             if let BifrostMessage::Pong(pong) = response {
                 if pong.session_id == session_id {
-                    // Mark peer as responsive
-                    self.peer_manager.mark_peer_responsive(pubkey);
+                    // Calculate round-trip latency
+                    let latency_ms = recv_time.saturating_sub(timestamp);
+
+                    // Mark peer as responsive with latency
+                    self.peer_manager.mark_peer_responsive(pubkey, Some(latency_ms));
                     return Ok(true);
                 }
             }
@@ -335,6 +343,11 @@ impl BifrostNode {
     /// Perform health check on all peers
     pub async fn health_check(&mut self) -> Result<usize> {
         self.peer_manager.health_check().await
+    }
+
+    /// Get the last measured latency for a peer in milliseconds
+    pub fn get_peer_latency(&self, pubkey: &[u8; 32]) -> Option<u64> {
+        self.peer_manager.get_peer_latency(pubkey)
     }
 
     /// Calculate retry delay using exponential backoff
