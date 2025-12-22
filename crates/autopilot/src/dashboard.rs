@@ -32,11 +32,40 @@
 
 use actix_web::{web, App, HttpResponse, HttpServer, Result as ActixResult};
 use actix_ws::Message;
-use chrono::Utc;
+use chrono::{DateTime, Utc};
 use maud::{html, Markup, DOCTYPE};
 use serde::{Deserialize, Serialize};
 use tokio::sync::broadcast;
 use crate::metrics::{MetricsDb, SessionMetrics, SessionStatus};
+
+/// Format a Unix timestamp as a human-readable relative time
+fn format_relative_time(dt: &DateTime<Utc>) -> String {
+    let now = Utc::now();
+    let duration = now.signed_duration_since(*dt);
+
+    if duration.num_seconds() < 60 {
+        "just now".to_string()
+    } else if duration.num_minutes() < 60 {
+        let mins = duration.num_minutes();
+        format!("{} minute{} ago", mins, if mins == 1 { "" } else { "s" })
+    } else if duration.num_hours() < 24 {
+        let hours = duration.num_hours();
+        format!("{} hour{} ago", hours, if hours == 1 { "" } else { "s" })
+    } else if duration.num_days() < 7 {
+        let days = duration.num_days();
+        if days == 1 {
+            "yesterday".to_string()
+        } else {
+            format!("{} days ago", days)
+        }
+    } else if duration.num_weeks() < 4 {
+        let weeks = duration.num_weeks();
+        format!("{} week{} ago", weeks, if weeks == 1 { "" } else { "s" })
+    } else {
+        // For older dates, show the actual date
+        dt.format("%b %d, %Y").to_string()
+    }
+}
 
 /// Global broadcast sender for metrics updates
 /// This allows the metrics collection system to push updates without direct coupling
@@ -423,7 +452,7 @@ fn session_row(session: &SessionMetrics) -> Markup {
                     (format!("{}...", &session.id[..8]))
                 }
             }
-            td { (session.timestamp.format("%Y-%m-%d %H:%M")) }
+            td title=(session.timestamp.to_rfc3339()) { (format_relative_time(&session.timestamp)) }
             td { (session.model) }
             td { (format!("{:.0}s", session.duration_seconds)) }
             td { (format!("{}", total_tokens)) }
@@ -479,7 +508,7 @@ fn session_detail_page(session: &SessionMetrics, _tool_calls: &[crate::metrics::
                         h2 { "Session Details" }
                         dl {
                             dt { "Timestamp" }
-                            dd { (session.timestamp) }
+                            dd title=(session.timestamp.to_rfc3339()) { (format_relative_time(&session.timestamp)) " (" (session.timestamp.format("%Y-%m-%d %H:%M:%S UTC")) ")" }
                             dt { "Model" }
                             dd { (session.model) }
                             dt { "Duration" }
