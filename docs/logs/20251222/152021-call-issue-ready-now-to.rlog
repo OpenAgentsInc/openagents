@@ -796,3 +796,16 @@ o: id=2Csbcehs → [ok] Completed issue #673
 t!:TodoWrite id=baGjiEnh  → [running] tokens_in=2 tokens_out=122 tokens_cached=126316
 o: id=baGjiEnh → [ok] Todos have been modified successfully. Ensure that you continue to use the todo list to track you...
 t!:Bash id=HCKQF1Em cmd="git add -A && git commit -m "$(cat <<'EOF'" → [running] tokens_in=2 tokens_out=564 tokens_cached=126391
+o: id=HCKQF1Em → [ok] [main aba3eced1] Fix NIP-77 duplicate issue tracking
+t!:mcp__issues__issue_complete id=kWV1rdPL  → [running] tokens_in=2 tokens_out=32 tokens_cached=126555
+o: id=kWV1rdPL → [ok] Completed issue #684
+t!:mcp__issues__issue_ready id=jomgcyZz  → [running] tokens_in=2 tokens_out=27 tokens_cached=127290
+o: id=jomgcyZz → [ok] No ready issues available
+t!:mcp__issues__directive_get id=jPqCfFFb  → [running] tokens_in=2 tokens_out=60 tokens_cached=127365
+o: id=jPqCfFFb → [ok] {
+t!:mcp__issues__issue_create id=9L9RuuMc  → [running] tokens_in=1 tokens_out=641 tokens_cached=127422
+o: id=9L9RuuMc → [ok] Created issue #685: Add APM (Actions Per Minute) tracking to autopilot metrics (agent: claude) [d...
+t!:mcp__issues__issue_claim id=RjvgntVK  → [running] tokens_in=1 tokens_out=32 tokens_cached=134123
+o: id=RjvgntVK → [ok] Claimed issue #685
+t!:TodoWrite id=CYxPHVgg  → [running] tokens_in=0 tokens_out=214 tokens_cached=134808
+o: id=CYxPHVgg → [ok] Todos have been modified successfully. Ensure that you continue to use the todo list to track you...
