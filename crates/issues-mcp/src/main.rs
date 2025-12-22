@@ -772,6 +772,8 @@ impl McpServer {
                     "status": d.status.as_str(),
                     "priority": d.priority.as_str(),
                     "progress": format!("{}/{} issues ({}%)", progress.completed_issues, progress.total_issues, progress.percentage()),
+                    "needs_work": progress.needs_work(),
+                    "is_complete": progress.is_complete(),
                     "created": d.created.to_string()
                 })
             })
@@ -820,7 +822,9 @@ impl McpServer {
                 "completed": progress.completed_issues,
                 "in_progress": progress.in_progress_issues,
                 "blocked": progress.blocked_issues,
-                "percentage": progress.percentage()
+                "percentage": progress.percentage(),
+                "needs_work": progress.needs_work(),
+                "is_complete": progress.is_complete()
             },
             "issues": issues_summary
         });
