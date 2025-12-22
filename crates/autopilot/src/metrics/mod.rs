@@ -284,7 +284,10 @@ impl MetricsDb {
                 issues_completed INTEGER NOT NULL,
                 tool_calls INTEGER NOT NULL,
                 tool_errors INTEGER NOT NULL,
-                final_status TEXT NOT NULL
+                final_status TEXT NOT NULL,
+                apm REAL,
+                source TEXT DEFAULT 'autopilot',
+                messages INTEGER NOT NULL DEFAULT 0
             );
 
             CREATE TABLE IF NOT EXISTS tool_calls (
@@ -323,11 +326,25 @@ impl MetricsDb {
                 updated_at TEXT NOT NULL
             );
 
+            CREATE TABLE IF NOT EXISTS apm_snapshots (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp TEXT NOT NULL,
+                source TEXT NOT NULL,
+                window TEXT NOT NULL,
+                apm REAL NOT NULL,
+                actions INTEGER NOT NULL,
+                duration_minutes REAL NOT NULL,
+                messages INTEGER NOT NULL,
+                tool_calls INTEGER NOT NULL
+            );
+
             CREATE INDEX IF NOT EXISTS idx_sessions_timestamp ON sessions(timestamp);
             CREATE INDEX IF NOT EXISTS idx_tool_calls_session_id ON tool_calls(session_id);
             CREATE INDEX IF NOT EXISTS idx_tool_calls_tool_name ON tool_calls(tool_name);
             CREATE INDEX IF NOT EXISTS idx_anomalies_session_id ON anomalies(session_id);
             CREATE INDEX IF NOT EXISTS idx_anomalies_severity ON anomalies(severity);
+            CREATE INDEX IF NOT EXISTS idx_apm_snapshots_source_window ON apm_snapshots(source, window);
+            CREATE INDEX IF NOT EXISTS idx_apm_snapshots_timestamp ON apm_snapshots(timestamp);
             "#,
         )
         .context("Failed to initialize database schema")?;

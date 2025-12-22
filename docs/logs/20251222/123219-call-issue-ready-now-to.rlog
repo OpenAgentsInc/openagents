@@ -304,3 +304,39 @@ t!:Bash id=BGHEKdPd cmd="cargo test -p autopilot --lib apm_parser 2>&1 |..." →
 o: id=BGHEKdPd → [ok]    Compiling actix-web v4.12.1
 a: Perfect! All tests pass. Now commit: tokens_in=0 tokens_out=4 tokens_cached=122621
 t!:Bash id=ZYcQksZu cmd="git add -A && git commit -m "$(cat <<'EOF'" → [running] tokens_in=0 tokens_out=461 tokens_cached=122621
+o: id=ZYcQksZu → [ok] [main 1064204e4] Implement Claude Code JSONL parser for APM extraction
+t!:Bash id=VAxmASdR cmd="git push origin main" → [running] tokens_in=0 tokens_out=25 tokens_cached=123484
+o: id=VAxmASdR → [ok] [0;36m🔍 Running cargo build to check for errors and warnings...[0m
+t!:Bash id=Gdsjk91o cmd="cargo autopilot issue complete 646" → [running] tokens_in=0 tokens_out=25 tokens_cached=124209
+o: id=Gdsjk91o → [ok] ✓ Completed issue #646: Implement Claude Code JSONL parser for APM extraction
+t!:Bash id=uTR3bX6Z cmd="cargo autopilot issue list --status ready 2>&1 ..." → [running] tokens_in=0 tokens_out=25 tokens_cached=124370
+o: id=uTR3bX6Z → [ok] Number Status     Priority Agent    Title                                             
+t!:Bash id=QSh99Zfn cmd="cargo autopilot issue claim 647" → [running] tokens_in=0 tokens_out=24 tokens_cached=124721
+o: id=QSh99Zfn → [ok] ✓ Claimed issue #647: Add APM fields and snapshots table to metrics.db
+a: Now I need to add APM fields to the database. Let me check the current database schema: tokens_in=0 tokens_out=1 tokens_cached=125194
+t!:Grep id=VP7oP5W1 pattern="CREATE TABLE sessions" → [running] tokens_in=0 tokens_out=1 tokens_cached=125194
+o: id=VP7oP5W1 → [ok] No matches found
+t!:Grep id=Zej3jNBG pattern="CREATE TABLE" → [running] tokens_in=0 tokens_out=26 tokens_cached=125348
+o: id=Zej3jNBG → [ok] crates/autopilot/src/metrics/mod.rs:273:            CREATE TABLE IF NOT EXISTS sessions (
+a: Let me check the full sessions table schema: tokens_in=0 tokens_out=1 tokens_cached=125617
+t!:Read id=LNrrTMBn file_path=/home/christopherdavid/code/openagents/crates/autopilot/src/metrics/mod.rs → [running] tokens_in=0 tokens_out=1 tokens_cached=125617
+o: id=LNrrTMBn → [ok]    270→    fn init_schema(&self) -> Result<()> {
+a: I see the schema. Now I need to add APM fields. Let me check if there's a migration system: tokens_in=0 tokens_out=1 tokens_cached=126688
+t!:Grep id=14zmYjVB pattern="migration|ALTER TABLE|PRAGM..." → [running] tokens_in=0 tokens_out=1 tokens_cached=126688
+o: id=14zmYjVB → [ok] No matches found
+a: No migration system yet. I'll need to add the APM fields directly to the schema and create the new apm_snapshots table. Let me update the schema: tokens_in=0 tokens_out=1 tokens_cached=127461
+t!:Edit id=ftU83sVr file_path=/home/christopherdavid/code/openagents/crates/autopilot/src/metrics/mod.rs → [running] tokens_in=0 tokens_out=1 tokens_cached=127461
+o: id=ftU83sVr → [ok] The file /home/christopherdavid/code/openagents/crates/autopilot/src/metrics/mod.rs has been upda...
+a: Now add the apm_snapshots table. Let me find where the schema ends: tokens_in=0 tokens_out=1 tokens_cached=127640
+t!:Read id=GwvR9QVX file_path=/home/christopherdavid/code/openagents/crates/autopilot/src/metrics/mod.rs → [running] tokens_in=0 tokens_out=1 tokens_cached=127640
+o: id=GwvR9QVX → [ok]    315→                FOREIGN KEY (session_id) REFERENCES sessions(id)
+t!:Edit id=qc6eYAng file_path=/home/christopherdavid/code/openagents/crates/autopilot/src/metrics/mod.rs → [running] tokens_in=0 tokens_out=660 tokens_cached=128561
+o: id=qc6eYAng → [ok] The file /home/christopherdavid/code/openagents/crates/autopilot/src/metrics/mod.rs has been upda...
+a: Now let's build and test: tokens_in=0 tokens_out=1 tokens_cached=129166
+t!:Bash id=P9nBCa2i cmd="cargo build -p autopilot 2>&1 | tail -10" → [running] tokens_in=0 tokens_out=97 tokens_cached=129166
+o: id=P9nBCa2i → [ok]    Compiling rusqlite v0.32.1
+a: Good! Let's also test that the database initializes correctly: tokens_in=0 tokens_out=1 tokens_cached=130507
+t!:Bash id=grNsFLTH cmd="rm -f /tmp/test-apm.db && cargo run --bin opena..." → [running] tokens_in=0 tokens_out=137 tokens_cached=130507
+o: id=grNsFLTH → [ok] Testing database schema...
+a: Now let's commit this change: tokens_in=0 tokens_out=4 tokens_cached=130934
+t!:Bash id=j8vZvvJD cmd="git add -A && git commit -m "$(cat <<'EOF'" → [running] tokens_in=0 tokens_out=477 tokens_cached=130934
