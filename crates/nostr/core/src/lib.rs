@@ -280,6 +280,7 @@ mod nip75;
 mod nip78;
 mod nip84;
 mod nip86;
+mod nip87;
 mod nip88;
 mod nip89;
 pub mod nip90;
@@ -805,6 +806,16 @@ pub use nip86::{
     create_list_banned_pubkeys_request, create_list_blocked_ips_request,
     create_list_events_needing_moderation_request, create_supported_methods_request,
     create_unblock_ip_request, CONTENT_TYPE as RELAY_MANAGEMENT_CONTENT_TYPE,
+};
+
+// NIP-87: Ecash Mint Discoverability
+pub use nip87::{
+    D_TAG as NIP87_D_TAG, EVENT_REF_TAG as NIP87_EVENT_REF_TAG, CashuMintInfo, FedimintInfo,
+    KIND_CASHU_MINT, KIND_FEDIMINT, KIND_MINT_RECOMMENDATION, KIND_TAG as NIP87_KIND_TAG,
+    MODULES_TAG, MintNetwork, MintRecommendation, NETWORK_TAG as NIP87_NETWORK_TAG, Nip87Error,
+    NUTS_TAG, URL_TAG as NIP87_URL_TAG, create_cashu_mint_tags, create_fedimint_tags,
+    create_recommendation_tags, is_cashu_mint, is_fedimint, is_mint_recommendation, is_nip87_kind,
+    parse_cashu_mint, parse_fedimint, parse_recommendation,
 };
 
 // NIP-88: Polls
