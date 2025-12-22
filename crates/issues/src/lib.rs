@@ -34,6 +34,7 @@ pub mod db;
 pub mod directive;
 pub mod issue;
 pub mod project;
+pub mod retry;
 pub mod session;
 pub mod validation;
 
@@ -42,5 +43,6 @@ pub use db::{init_db, init_memory_db};
 pub use directive::{Directive, DirectiveError, DirectivePriority, DirectiveProgress, DirectiveStatus};
 pub use issue::{Issue, IssueType, Priority, Status};
 pub use project::Project;
+pub use retry::with_retry;
 pub use session::{Session, SessionStatus};
 pub use validation::{validate_agent, validate_description, validate_title, ValidationError};
