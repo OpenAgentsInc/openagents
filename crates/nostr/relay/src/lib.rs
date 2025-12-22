@@ -43,6 +43,7 @@ mod relay_info;
 mod metrics;
 mod admin;
 mod validation;
+mod negentropy;
 
 #[cfg(test)]
 mod tests;
@@ -61,3 +62,4 @@ pub use validation::{
     validate_event_message, validate_req_message, validate_close_message, ValidationError,
     MAX_EVENT_SIZE, MAX_SUBSCRIPTION_ID_LENGTH, MAX_CONTENT_LENGTH, MAX_TAGS, MAX_TAG_LENGTH,
 };
+pub use negentropy::{NegentropySessionManager, NegentropySession, SessionId};

@@ -11,12 +11,14 @@ use crate::broadcast::{BroadcastEvent, create_broadcast_channel};
 use crate::db::Database;
 use crate::error::{RelayError, Result};
 use crate::metrics::RelayMetrics;
+use crate::negentropy::{NegentropySessionManager, SessionId};
 use crate::rate_limit::{RateLimiter, RateLimitConfig};
 use crate::relay_info::RelayInformation;
 use crate::subscription::{Filter, SubscriptionManager};
 use crate::validation;
 use futures::{SinkExt, StreamExt};
 use nostr::Event;
+use nostr::nip77::{NegentropyMessage, Record};
 use serde_json::{json, Value};
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -188,6 +190,8 @@ async fn handle_connection(
 
     let (mut write, mut read) = ws_stream.split();
     let mut subscriptions = SubscriptionManager::new();
+    let mut negentropy_sessions = NegentropySessionManager::new();
+    let connection_id = addr.to_string();
     let mut broadcast_rx = broadcast_tx.subscribe();
 
     // Spawn task to handle broadcasts
@@ -230,7 +234,7 @@ async fn handle_connection(
                         // Parse the Nostr message
                         match serde_json::from_str::<Value>(&text) {
                             Ok(value) => {
-                                let responses = handle_nostr_message(&value, &db, &mut subscriptions, &broadcast_tx, &rate_limiter, &metrics).await;
+                                let responses = handle_nostr_message(&value, &db, &mut subscriptions, &mut negentropy_sessions, &connection_id, &broadcast_tx, &rate_limiter, &metrics).await;
 
                                 // Update the shared subscriptions
                                 *subscriptions_clone.lock().await = subscriptions.clone();
@@ -292,6 +296,8 @@ async fn handle_nostr_message(
     msg: &Value,
     db: &Database,
     subscriptions: &mut SubscriptionManager,
+    negentropy_sessions: &mut NegentropySessionManager,
+    connection_id: &str,
     broadcast_tx: &broadcast::Sender<BroadcastEvent>,
     rate_limiter: &RateLimiter,
     metrics: &RelayMetrics,
@@ -485,6 +491,200 @@ async fn handle_nostr_message(
             }
             // No response needed for CLOSE
         }
+        "NEG-OPEN" => {
+            // ["NEG-OPEN", <subscription_id>, <filter>, <initial_message>]
+            if msg_array.len() != 4 {
+                responses.push(json!(["NEG-ERR", "", "invalid: NEG-OPEN must have 4 elements"]));
+                return responses;
+            }
+
+            let sub_id = match msg_array[1].as_str() {
+                Some(id) => id,
+                None => {
+                    responses.push(json!(["NEG-ERR", "", "invalid: subscription ID must be string"]));
+                    return responses;
+                }
+            };
+
+            // Validate subscription ID
+            if let Err(e) = validation::validate_subscription_id(sub_id) {
+                responses.push(json!(["NEG-ERR", sub_id, e.to_string()]));
+                return responses;
+            }
+
+            // Parse filter
+            let filter: Filter = match serde_json::from_value(msg_array[2].clone()) {
+                Ok(f) => f,
+                Err(e) => {
+                    responses.push(json!(["NEG-ERR", sub_id, format!("invalid: failed to parse filter: {}", e)]));
+                    return responses;
+                }
+            };
+
+            if let Err(e) = validation::validate_filter(&filter) {
+                responses.push(json!(["NEG-ERR", sub_id, e.to_string()]));
+                return responses;
+            }
+
+            // Decode initial message
+            let initial_message_hex = match msg_array[3].as_str() {
+                Some(hex) => hex,
+                None => {
+                    responses.push(json!(["NEG-ERR", sub_id, "invalid: initial message must be hex string"]));
+                    return responses;
+                }
+            };
+
+            let client_message = match NegentropyMessage::decode_hex(initial_message_hex) {
+                Ok(msg) => msg,
+                Err(e) => {
+                    responses.push(json!(["NEG-ERR", sub_id, format!("invalid: failed to decode message: {}", e)]));
+                    return responses;
+                }
+            };
+
+            // Query events matching filter
+            metrics.db_query();
+            let events = match db.query_events(&filter) {
+                Ok(events) => events,
+                Err(e) => {
+                    responses.push(json!(["NEG-ERR", sub_id, format!("error: failed to query events: {}", e)]));
+                    metrics.db_error();
+                    return responses;
+                }
+            };
+
+            // Convert events to records
+            let records: Vec<Record> = events
+                .iter()
+                .map(|event| {
+                    let id_bytes = hex::decode(&event.id).unwrap_or_else(|_| vec![0u8; 32]);
+                    let mut id = [0u8; 32];
+                    id.copy_from_slice(&id_bytes[..32.min(id_bytes.len())]);
+                    Record::new(event.created_at, id)
+                })
+                .collect();
+
+            debug!("NEG-OPEN: {} events for subscription {}", records.len(), sub_id);
+
+            // Create session
+            let session_id = SessionId::new(connection_id.to_string(), sub_id.to_string());
+            negentropy_sessions.create_session(session_id.clone(), records);
+
+            // Process initial message
+            if let Some(session) = negentropy_sessions.get_session_mut(&session_id) {
+                match session.state.process_message(&client_message) {
+                    Ok(response_message) => {
+                        match response_message.encode_hex() {
+                            Ok(hex) => {
+                                responses.push(json!(["NEG-MSG", sub_id, hex]));
+                            }
+                            Err(e) => {
+                                responses.push(json!(["NEG-ERR", sub_id, format!("error: failed to encode response: {}", e)]));
+                                negentropy_sessions.remove_session(&session_id);
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        responses.push(json!(["NEG-ERR", sub_id, format!("error: {}", e)]));
+                        negentropy_sessions.remove_session(&session_id);
+                    }
+                }
+            }
+        }
+        "NEG-MSG" => {
+            // ["NEG-MSG", <subscription_id>, <message>]
+            if msg_array.len() != 3 {
+                responses.push(json!(["NEG-ERR", "", "invalid: NEG-MSG must have 3 elements"]));
+                return responses;
+            }
+
+            let sub_id = match msg_array[1].as_str() {
+                Some(id) => id,
+                None => {
+                    responses.push(json!(["NEG-ERR", "", "invalid: subscription ID must be string"]));
+                    return responses;
+                }
+            };
+
+            // Decode message
+            let message_hex = match msg_array[2].as_str() {
+                Some(hex) => hex,
+                None => {
+                    responses.push(json!(["NEG-ERR", sub_id, "invalid: message must be hex string"]));
+                    return responses;
+                }
+            };
+
+            let client_message = match NegentropyMessage::decode_hex(message_hex) {
+                Ok(msg) => msg,
+                Err(e) => {
+                    responses.push(json!(["NEG-ERR", sub_id, format!("invalid: failed to decode message: {}", e)]));
+                    return responses;
+                }
+            };
+
+            // Get session
+            let session_id = SessionId::new(connection_id.to_string(), sub_id.to_string());
+            if let Some(session) = negentropy_sessions.get_session_mut(&session_id) {
+                // Check if reconciliation is complete
+                let is_complete = session.state.is_complete(&client_message);
+
+                // Process message
+                match session.state.process_message(&client_message) {
+                    Ok(response_message) => {
+                        if is_complete {
+                            // Reconciliation complete - clean up session
+                            debug!("NEG-MSG: Reconciliation complete for {}", sub_id);
+                            negentropy_sessions.remove_session(&session_id);
+                            // Send empty message to signal completion
+                            responses.push(json!(["NEG-MSG", sub_id, ""]));
+                        } else {
+                            // Send next round
+                            match response_message.encode_hex() {
+                                Ok(hex) => {
+                                    responses.push(json!(["NEG-MSG", sub_id, hex]));
+                                }
+                                Err(e) => {
+                                    responses.push(json!(["NEG-ERR", sub_id, format!("error: failed to encode response: {}", e)]));
+                                    negentropy_sessions.remove_session(&session_id);
+                                }
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        responses.push(json!(["NEG-ERR", sub_id, format!("error: {}", e)]));
+                        negentropy_sessions.remove_session(&session_id);
+                    }
+                }
+            } else {
+                responses.push(json!(["NEG-ERR", sub_id, "error: no active session"]));
+            }
+        }
+        "NEG-CLOSE" => {
+            // ["NEG-CLOSE", <subscription_id>]
+            if msg_array.len() != 2 {
+                responses.push(json!(["NOTICE", "invalid: NEG-CLOSE must have 2 elements"]));
+                return responses;
+            }
+
+            let sub_id = match msg_array[1].as_str() {
+                Some(id) => id,
+                None => {
+                    responses.push(json!(["NOTICE", "invalid: subscription ID must be string"]));
+                    return responses;
+                }
+            };
+
+            // Remove session
+            let session_id = SessionId::new(connection_id.to_string(), sub_id.to_string());
+            if negentropy_sessions.remove_session(&session_id).is_some() {
+                debug!("NEG-CLOSE: Session closed for {}", sub_id);
+            } else {
+                debug!("NEG-CLOSE: No active session for {}", sub_id);
+            }
+            // No response needed for NEG-CLOSE
+        }
         _ => {
             warn!("Unknown message type: {}", msg_type);
             responses.push(json!(["NOTICE", format!("Unknown message type: {}", msg_type)]));
@@ -509,6 +709,8 @@ mod tests {
         };
         let db = Database::new(config).unwrap();
         let mut subs = SubscriptionManager::new();
+        let mut neg_sessions = NegentropySessionManager::new();
+        let conn_id = "test-conn";
         let (broadcast_tx, _) = create_broadcast_channel();
         let rate_limiter = RateLimiter::new(RateLimitConfig::default());
 
@@ -525,7 +727,7 @@ mod tests {
 
         let msg = json!(["EVENT", event_json]);
         let metrics = RelayMetrics::new();
-        let responses = handle_nostr_message(&msg, &db, &mut subs, &broadcast_tx, &rate_limiter, &metrics).await;
+        let responses = handle_nostr_message(&msg, &db, &mut subs, &mut neg_sessions, conn_id, &broadcast_tx, &rate_limiter, &metrics).await;
 
         assert!(!responses.is_empty());
         let resp = &responses[0];
@@ -542,12 +744,14 @@ mod tests {
         };
         let db = Database::new(config).unwrap();
         let mut subs = SubscriptionManager::new();
+        let mut neg_sessions = NegentropySessionManager::new();
+        let conn_id = "test-conn";
         let (broadcast_tx, _) = create_broadcast_channel();
         let rate_limiter = RateLimiter::new(RateLimitConfig::default());
         let metrics = RelayMetrics::new();
 
         let msg = json!(["REQ", "sub_123", {"kinds": [1]}]);
-        let responses = handle_nostr_message(&msg, &db, &mut subs, &broadcast_tx, &rate_limiter, &metrics).await;
+        let responses = handle_nostr_message(&msg, &db, &mut subs, &mut neg_sessions, conn_id, &broadcast_tx, &rate_limiter, &metrics).await;
 
         assert!(!responses.is_empty());
         // Last response should be EOSE
@@ -569,18 +773,20 @@ mod tests {
         };
         let db = Database::new(config).unwrap();
         let mut subs = SubscriptionManager::new();
+        let mut neg_sessions = NegentropySessionManager::new();
+        let conn_id = "test-conn";
         let (broadcast_tx, _) = create_broadcast_channel();
         let rate_limiter = RateLimiter::new(RateLimitConfig::default());
         let metrics = RelayMetrics::new();
 
         // First create a subscription
         let msg1 = json!(["REQ", "sub_123", {"kinds": [1]}]);
-        handle_nostr_message(&msg1, &db, &mut subs, &broadcast_tx, &rate_limiter, &metrics).await;
+        handle_nostr_message(&msg1, &db, &mut subs, &mut neg_sessions, conn_id, &broadcast_tx, &rate_limiter, &metrics).await;
         assert_eq!(subs.len(), 1);
 
         // Now close it
         let msg2 = json!(["CLOSE", "sub_123"]);
-        let responses = handle_nostr_message(&msg2, &db, &mut subs, &broadcast_tx, &rate_limiter, &metrics).await;
+        let responses = handle_nostr_message(&msg2, &db, &mut subs, &mut neg_sessions, conn_id, &broadcast_tx, &rate_limiter, &metrics).await;
 
         assert!(responses.is_empty()); // CLOSE doesn't send responses
         assert_eq!(subs.len(), 0); // Subscription removed
@@ -596,12 +802,14 @@ mod tests {
         };
         let db = Database::new(config).unwrap();
         let mut subs = SubscriptionManager::new();
+        let mut neg_sessions = NegentropySessionManager::new();
+        let conn_id = "test-conn";
         let (broadcast_tx, _) = create_broadcast_channel();
         let rate_limiter = RateLimiter::new(RateLimitConfig::default());
         let metrics = RelayMetrics::new();
 
         let msg = json!(["UNKNOWN", "data"]);
-        let responses = handle_nostr_message(&msg, &db, &mut subs, &broadcast_tx, &rate_limiter, &metrics).await;
+        let responses = handle_nostr_message(&msg, &db, &mut subs, &mut neg_sessions, conn_id, &broadcast_tx, &rate_limiter, &metrics).await;
 
         assert!(!responses.is_empty());
         let resp = &responses[0];
