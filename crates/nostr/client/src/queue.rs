@@ -140,7 +140,7 @@ impl MessageQueue {
     /// Enqueue an event for delivery
     pub fn enqueue(&self, event: &Event, relay_url: &str) -> Result<i64> {
         let event_json = serde_json::to_string(event)
-            .map_err(|e| ClientError::Serialization(e))?;
+            .map_err(ClientError::Serialization)?;
 
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
