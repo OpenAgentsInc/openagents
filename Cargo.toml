@@ -45,6 +45,7 @@ wallet = { path = "crates/wallet" }
 marketplace = { path = "crates/marketplace" }
 autopilot = { path = "crates/autopilot" }
 agentgit = { path = "crates/agentgit" }
+ui = { path = "crates/ui" }
 
 # GUI
 wry = "0.50"

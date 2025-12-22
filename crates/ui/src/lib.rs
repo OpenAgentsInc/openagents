@@ -28,11 +28,13 @@
 
 mod button;
 mod colors;
+mod full_auto_switch;
 mod layout;
 pub mod recorder;
 
 pub use button::{Button, ButtonSize, ButtonVariant};
 pub use colors::COLOR_TOKENS;
+pub use full_auto_switch::FullAutoSwitch;
 pub use layout::base_document;
 
 /// Tailwind CDN script (Play CDN for development).

@@ -40,6 +40,9 @@ pub struct AppState {
     /// Currently active tab
     #[allow(dead_code)] // Future feature - tabs not yet implemented in UI
     pub active_tab: RwLock<Tab>,
+
+    /// Full auto mode enabled
+    pub full_auto: RwLock<bool>,
 }
 
 impl AppState {
@@ -47,6 +50,7 @@ impl AppState {
         Self {
             broadcaster: Arc::new(WsBroadcaster::new(64)),
             active_tab: RwLock::new(Tab::default()),
+            full_auto: RwLock::new(false),
         }
     }
 }

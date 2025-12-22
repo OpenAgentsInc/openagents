@@ -2,37 +2,20 @@
 
 mod layout;
 
-use actix_web::HttpResponse;
+use actix_web::{web, HttpResponse};
+use ui::FullAutoSwitch;
+
+use crate::gui::state::AppState;
+
 pub use layout::base_layout;
 
-/// Home page with tabbed navigation
-pub async fn home() -> HttpResponse {
-    let content = r#"
-        <div class="dashboard">
-            <h1>OpenAgents</h1>
-            <p>Unified desktop application for autonomous agents.</p>
-            <div class="quick-links">
-                <a href="/wallet" class="card">
-                    <h3>Wallet</h3>
-                    <p>Identity and payments</p>
-                </a>
-                <a href="/marketplace" class="card">
-                    <h3>Marketplace</h3>
-                    <p>Compute, skills, data</p>
-                </a>
-                <a href="/autopilot" class="card">
-                    <h3>Autopilot</h3>
-                    <p>Autonomous tasks</p>
-                </a>
-                <a href="/git" class="card">
-                    <h3>AgentGit</h3>
-                    <p>Nostr-native git</p>
-                </a>
-            </div>
-        </div>
-    "#;
+/// Home page - black screen with FullAutoSwitch centered
+pub async fn home(state: web::Data<AppState>) -> HttpResponse {
+    let full_auto = *state.full_auto.read().await;
+    let switch = FullAutoSwitch::new(full_auto).build();
+    let content = switch.into_string();
 
     HttpResponse::Ok()
         .content_type("text/html")
-        .body(base_layout("Dashboard", content))
+        .body(base_layout(&content))
 }
