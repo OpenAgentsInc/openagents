@@ -46,6 +46,7 @@ marketplace = { path = "crates/marketplace" }
 autopilot = { path = "crates/autopilot" }
 agentgit = { path = "crates/agentgit" }
 ui = { path = "crates/ui" }
+claude-agent-sdk = { path = "crates/claude-agent-sdk" }
 
 # GUI
 wry = "0.50"

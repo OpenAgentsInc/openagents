@@ -4,6 +4,7 @@ use actix_web::web;
 
 mod agentgit;
 mod autopilot;
+mod claude;
 mod daemon;
 mod marketplace;
 mod wallet;
@@ -15,6 +16,7 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
         .route("/", web::get().to(super::views::home))
         // API routes
         .service(web::scope("/api/autopilot").configure(autopilot::configure_api))
+        .service(web::scope("/api/claude").configure(claude::configure_api))
         // Wallet routes
         .service(web::scope("/wallet").configure(wallet::configure))
         // Marketplace routes
