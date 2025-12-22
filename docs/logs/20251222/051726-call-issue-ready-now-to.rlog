@@ -568,3 +568,54 @@ t!:Bash id=229Ghh4P cmd="cat .github/workflows/test.yml | head -20" → [running
 o: id=229Ghh4P → [ok] name: Tests
 a: Good! The file looks correct. Now let me commit this. tokens_in=0 tokens_out=1 tokens_cached=116059
 t!:Bash id=uhTxEVET cmd="git add -A && git status" → [running] tokens_in=0 tokens_out=92 tokens_cached=116059
+o: id=uhTxEVET → [ok] On branch main
+t!:Bash id=nLxSR1Vr cmd="git commit -m "$(cat <<'EOF'" → [running] tokens_in=0 tokens_out=410 tokens_cached=116277
+o: id=nLxSR1Vr → [ok] [main da648c35a] Add GitHub Actions workflow for comprehensive test suite
+t!:Bash id=SzUTZwZx cmd="git push" → [running] tokens_in=0 tokens_out=24 tokens_cached=116566
+o: id=SzUTZwZx → [ok] [0;36m🔍 Running cargo build to check for errors and warnings...[0m
+t!:Bash id=LM7qKTZs cmd="cargo autopilot issue complete 560" → [running] tokens_in=0 tokens_out=25 tokens_cached=117075
+o: id=LM7qKTZs → [ok] ✓ Completed issue #560: Create GitHub Actions workflow for comprehensive test suite
+a: Excellent! I've completed 3 issues so far: tokens_in=0 tokens_out=4 tokens_cached=117236
+t!:Bash id=VwgMyMob cmd="cargo autopilot issue ready" → [running] tokens_in=0 tokens_out=147 tokens_cached=117236
+o: id=VwgMyMob → [ok] No ready issues available
+a: No ready issues. According to the directives, I should create new issues from the highest priority directive that needs work. Let me check the directive list again. tokens_in=0 tokens_out=1 tokens_cached=117489
+t!:Bash id=qEfB7tDw cmd="cargo autopilot directive list" → [running] tokens_in=0 tokens_out=1 tokens_cached=117489
+o: id=qEfB7tDw → [ok] ID           Status   Progress   Title                                    Priority
+a: Directive d-013 (Comprehensive Testing Framework) is at 95% (22/23). I just completed 3 issues for it, bringing it from 19/20 to 22/23. Let me check what issue is still in progress. tokens_in=0 tokens_out=2 tokens_cached=117691
+t!:Bash id=r3ESCLJx cmd="cargo autopilot directive show d-013 | grep -A ..." → [running] tokens_in=0 tokens_out=2 tokens_cached=117691
+o: id=r3ESCLJx → [ok]   ● #552 - Add property-based tests for nostr event validation [in_progress]
+a: Issue #552 is in_progress. That's the property-based testing issue that was already claimed when I checked earlier. Since I can't work on that one, let me look at other high priority directives to ... tokens_in=0 tokens_out=1 tokens_cached=118364
+t!:Bash id=ogCpsXzs cmd="cargo autopilot issue create "Add pre-commit ho..." → [running] tokens_in=0 tokens_out=1 tokens_cached=118364
+o: id=ogCpsXzs → [ok] ✓ Created issue #561: Add pre-commit hooks for fast test feedback (agent: claude)
+a: Good! Created issue #561. Let me claim it and work on it. tokens_in=0 tokens_out=1 tokens_cached=118702
+t!:Bash id=8Wr1yvjm cmd="cargo autopilot issue ready" → [running] tokens_in=0 tokens_out=1 tokens_cached=118702
+o: id=8Wr1yvjm → [ok] → Next ready issue:
+t!:Bash id=2pbuxEYa cmd="cargo autopilot issue claim 561" → [running] tokens_in=0 tokens_out=25 tokens_cached=119709
+o: id=2pbuxEYa → [ok] ✓ Claimed issue #561: Add pre-commit hooks for fast test feedback
+a: Now I'll create the pre-commit hook. tokens_in=0 tokens_out=2 tokens_cached=120215
+t!:Bash id=w2tyjr6P cmd="mkdir -p .githooks" → [running] tokens_in=0 tokens_out=88 tokens_cached=120215
+o: id=w2tyjr6P → [ok] 
+t!:Write id=eUhpnjBm file_path=/home/christopherdavid/code/openagents/.githooks/pre-commit → [running] tokens_in=1 tokens_out=286 tokens_cached=120471
+o: id=eUhpnjBm → [ok] File created successfully at: /home/christopherdavid/code/openagents/.githooks/pre-commit
+a: Now make it executable. tokens_in=0 tokens_out=1 tokens_cached=120584
+t!:Bash id=rZZ6hyNE cmd="chmod +x .githooks/pre-commit" → [running] tokens_in=0 tokens_out=1 tokens_cached=120584
+o: id=rZZ6hyNE → [ok] 
+a: Now I need to add documentation on how to enable the hook. Let me check if there's a README or docs explaining the development setup. tokens_in=1 tokens_out=1 tokens_cached=121012
+t!:Bash id=i7A5776N cmd="ls -la README* CONTRIBUTING* .github/*.md 2>/de..." → [running] tokens_in=1 tokens_out=122 tokens_cached=121012
+o: id=i7A5776N → [ok] Permissions Size User             Date Modified Name
+a: Let me check the README to see where I should add the hooks documentation. tokens_in=0 tokens_out=3 tokens_cached=121126
+t!:Read id=GPouBB9H file_path=/home/christopherdavid/code/openagents/README.md → [running] tokens_in=0 tokens_out=3 tokens_cached=121126
+o: id=GPouBB9H → [ok]      1→# OpenAgents
+a: Let me check further down in the README for a development section. tokens_in=0 tokens_out=3 tokens_cached=121401
+t!:Grep id=ST5FrcEQ pattern="Development|Contributing|Se..." → [running] tokens_in=0 tokens_out=3 tokens_cached=121401
+o: id=ST5FrcEQ → [ok] 29-```bash
+a: Perfect! There's a Development section and a Testing section. Let me read that section and add the pre-commit hooks documentation. tokens_in=0 tokens_out=1 tokens_cached=122673
+t!:Read id=QFvfjudD file_path=/home/christopherdavid/code/openagents/README.md → [running] tokens_in=0 tokens_out=1 tokens_cached=122673
+o: id=QFvfjudD → [ok]    388→## Development
+t!:Read id=LiV16Cys file_path=/home/christopherdavid/code/openagents/README.md → [running] tokens_in=0 tokens_out=104 tokens_cached=123857
+o: id=LiV16Cys → [ok]    403→
+a: Perfect! I'll add the pre-commit hooks section right after "Running Tests" since it's part of the development workflow. tokens_in=0 tokens_out=1 tokens_cached=124285
+t!:Edit id=dH75e86a file_path=/home/christopherdavid/code/openagents/README.md → [running] tokens_in=0 tokens_out=366 tokens_cached=124285
+o: id=dH75e86a → [ok] The file /home/christopherdavid/code/openagents/README.md has been updated. Here's the result of ...
+a: Perfect! Now let me commit this work. tokens_in=0 tokens_out=1 tokens_cached=125004
+t!:Bash id=beB4zhfd cmd="git add -A && git status" → [running] tokens_in=0 tokens_out=1 tokens_cached=125004

@@ -1,0 +1,23 @@
+#!/bin/bash
+# Pre-commit hook for OpenAgents
+# Runs fast unit tests and checks for uncommitted snapshot changes
+
+echo "🔍 Running pre-commit checks..."
+
+# Run fast unit tests
+echo "Running unit tests..."
+if ! cargo test --workspace --lib -- --test-threads=4; then
+    echo "❌ Unit tests failed. Fix the failures before committing."
+    exit 1
+fi
+
+# Check for snapshot changes
+echo "Checking for snapshot changes..."
+if cargo insta test --review=fail 2>&1 | grep -q "pending"; then
+    echo "❌ ERROR: Uncommitted snapshot changes detected."
+    echo "   Run 'cargo insta review' to review and accept/reject changes."
+    exit 1
+fi
+
+echo "✅ All pre-commit checks passed!"
+exit 0
