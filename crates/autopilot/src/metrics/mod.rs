@@ -105,6 +105,28 @@ pub struct SessionMetrics {
     pub tool_errors: i32,
     /// Final session status
     pub final_status: SessionStatus,
+    /// Number of messages (user + assistant)
+    pub messages: i32,
+    /// Actions Per Minute (APM) - calculated from (messages + tool_calls) / duration_minutes
+    pub apm: Option<f64>,
+    /// Source of the session data (autopilot, claude_code, or combined)
+    pub source: String,
+}
+
+impl SessionMetrics {
+    /// Calculate and set APM for this session
+    ///
+    /// APM = (messages + tool_calls) / duration_minutes
+    pub fn calculate_apm(&mut self) {
+        use crate::apm::calculate_apm;
+
+        let duration_minutes = self.duration_seconds / 60.0;
+        self.apm = calculate_apm(
+            self.messages as u32,
+            self.tool_calls as u32,
+            duration_minutes,
+        );
+    }
 }
 
 /// Possible session termination states
@@ -375,8 +397,8 @@ impl MetricsDb {
             INSERT OR REPLACE INTO sessions
             (id, timestamp, model, prompt, duration_seconds, tokens_in, tokens_out,
              tokens_cached, cost_usd, issues_claimed, issues_completed, tool_calls,
-             tool_errors, final_status)
-            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)
+             tool_errors, final_status, messages, apm, source)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17)
             "#,
             params![
                 metrics.id,
@@ -393,6 +415,9 @@ impl MetricsDb {
                 metrics.tool_calls,
                 metrics.tool_errors,
                 metrics.final_status.to_string(),
+                metrics.messages,
+                metrics.apm,
+                metrics.source,
             ],
         )
         .context("Failed to store session metrics")?;
@@ -532,6 +557,9 @@ impl MetricsDb {
                 tool_calls: row.get(11)?,
                 tool_errors: row.get(12)?,
                 final_status: SessionStatus::from_str(&row.get::<_, String>(13)?).unwrap(),
+                messages: row.get(14).unwrap_or(0),
+                apm: row.get(15).ok(),
+                source: row.get(16).unwrap_or_else(|_| "autopilot".to_string()),
             })
         });
 
@@ -571,6 +599,9 @@ impl MetricsDb {
                     tool_calls: row.get(11)?,
                     tool_errors: row.get(12)?,
                     final_status: SessionStatus::from_str(&row.get::<_, String>(13)?).unwrap(),
+                    messages: row.get(14).unwrap_or(0),
+                    apm: row.get(15).ok(),
+                    source: row.get(16).unwrap_or_else(|_| "autopilot".to_string()),
                 })
             })?
             .collect::<Result<Vec<_>, _>>()?;
@@ -978,6 +1009,9 @@ impl MetricsDb {
                         "running" => SessionStatus::Running,
                         _ => SessionStatus::Crashed,
                     },
+                    messages: row.get(14).unwrap_or(0),
+                    apm: row.get(15).ok(),
+                    source: row.get(16).unwrap_or_else(|_| "autopilot".to_string()),
                 })
             })?
             .collect::<Result<Vec<_>, _>>()?;
@@ -1183,7 +1217,14 @@ pub fn extract_metrics_from_trajectory(
         .filter(|s| matches!(&s.step_type, StepType::ToolCall { tool, .. } if tool == "mcp__issues__issue_claim"))
         .count() as i32;
 
-    let session_metrics = SessionMetrics {
+    // Count messages (user + assistant messages)
+    let messages_count = traj
+        .steps
+        .iter()
+        .filter(|s| matches!(&s.step_type, StepType::User { .. } | StepType::Assistant { .. }))
+        .count() as i32;
+
+    let mut session_metrics = SessionMetrics {
         id: traj.session_id.clone(),
         timestamp: traj.started_at,
         model: traj.model.clone(),
@@ -1198,7 +1239,13 @@ pub fn extract_metrics_from_trajectory(
         tool_calls: tool_calls_count,
         tool_errors: tool_errors_count,
         final_status,
+        messages: messages_count,
+        apm: None,
+        source: "autopilot".to_string(),
     };
+
+    // Calculate APM
+    session_metrics.calculate_apm();
 
     Ok((session_metrics, tool_call_metrics))
 }
@@ -1333,6 +1380,9 @@ mod tests {
             tool_calls: 10,
             tool_errors: 1,
             final_status: SessionStatus::Completed,
+            messages: 10,
+            apm: None,
+            source: "autopilot".to_string(),
         };
 
         db.store_session(&metrics).unwrap();
@@ -1364,6 +1414,9 @@ mod tests {
             tool_calls: 10,
             tool_errors: 1,
             final_status: SessionStatus::Completed,
+            messages: 10,
+            apm: None,
+            source: "autopilot".to_string(),
         };
         db.store_session(&session).unwrap();
 
@@ -1406,6 +1459,9 @@ mod tests {
             tool_calls: 10,
             tool_errors: 1,
             final_status: SessionStatus::Completed,
+            messages: 10,
+            apm: None,
+            source: "autopilot".to_string(),
         };
         db.store_session(&session).unwrap();
 
@@ -1588,7 +1644,10 @@ mod tests {
                 tool_calls: 100,
                 tool_errors: i, // 0% to 9% error rate
                 final_status: SessionStatus::Completed,
-            };
+            messages: 10,
+            apm: None,
+            source: "autopilot".to_string(),
+        };
             db.store_session(&session).unwrap();
         }
 
@@ -1624,7 +1683,10 @@ mod tests {
                 tool_calls: 100,
                 tool_errors: i,
                 final_status: SessionStatus::Completed,
-            };
+            messages: 10,
+            apm: None,
+            source: "autopilot".to_string(),
+        };
             db.store_session(&session).unwrap();
         }
 
@@ -1657,6 +1719,9 @@ mod tests {
             tool_calls: 100,
             tool_errors: 15, // 15% error rate - should trigger warning
             final_status: SessionStatus::Completed,
+            messages: 10,
+            apm: None,
+            source: "autopilot".to_string(),
         };
 
         let anomalies = db.detect_anomalies(&session_warning).unwrap();
@@ -1679,6 +1744,9 @@ mod tests {
             tool_calls: 100,
             tool_errors: 25, // 25% error rate - should trigger error
             final_status: SessionStatus::Completed,
+            messages: 10,
+            apm: None,
+            source: "autopilot".to_string(),
         };
 
         let anomalies = db.detect_anomalies(&session_error).unwrap();
@@ -1711,7 +1779,10 @@ mod tests {
                 tool_calls: 100,
                 tool_errors: 2, // Consistent 2% error rate
                 final_status: SessionStatus::Completed,
-            };
+            messages: 10,
+            apm: None,
+            source: "autopilot".to_string(),
+        };
             db.store_session(&session).unwrap();
         }
 
@@ -1734,6 +1805,9 @@ mod tests {
             tool_calls: 100,
             tool_errors: 2,
             final_status: SessionStatus::Completed,
+            messages: 10,
+            apm: None,
+            source: "autopilot".to_string(),
         };
 
         let anomalies = db.detect_anomalies(&anomalous_session).unwrap();

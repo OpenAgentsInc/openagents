@@ -413,7 +413,7 @@ mod tests {
         let db = MetricsDb::in_memory().unwrap();
 
         // Create a session
-        let session = SessionMetrics {
+        let mut session = SessionMetrics {
             id: "test-session".to_string(),
             timestamp: Utc::now(),
             model: "sonnet".to_string(),
@@ -428,7 +428,11 @@ mod tests {
             tool_calls: 20,
             tool_errors: 5,
             final_status: SessionStatus::Completed,
+            messages: 15,
+            apm: None,
+            source: "autopilot".to_string(),
         };
+        session.calculate_apm();
         db.store_session(&session).unwrap();
 
         // Add tool calls with errors

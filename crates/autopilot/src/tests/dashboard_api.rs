@@ -31,6 +31,9 @@ fn test_sessions_api_data_filtering() {
             } else {
                 SessionStatus::Completed
             },
+            messages: 10,
+            apm: None,
+            source: "autopilot".to_string(),
         };
         store.store_session(&metrics).unwrap();
     }
@@ -61,7 +64,7 @@ fn test_sessions_api_sorting() {
 
     // Create sessions with different durations
     for i in 0..5 {
-        let metrics = SessionMetrics {
+        let mut metrics = SessionMetrics {
             id: format!("session-{}", i),
             timestamp: Utc::now(),
             model: "sonnet".to_string(),
@@ -76,6 +79,9 @@ fn test_sessions_api_sorting() {
             tool_calls: 10,
             tool_errors: 0,
             final_status: SessionStatus::Completed,
+            messages: 10,
+            apm: None,
+            source: "autopilot".to_string(),
         };
         store.store_session(&metrics).unwrap();
     }
@@ -101,7 +107,7 @@ fn test_session_detail_data() {
 
     let store = MetricsDb::open(&db_path).unwrap();
 
-    let metrics = SessionMetrics {
+    let mut metrics = SessionMetrics {
         id: "test-session-123".to_string(),
         timestamp: Utc::now(),
         model: "sonnet".to_string(),
@@ -116,7 +122,10 @@ fn test_session_detail_data() {
         tool_calls: 25,
         tool_errors: 2,
         final_status: SessionStatus::Completed,
-    };
+            messages: 10,
+            apm: None,
+            source: "autopilot".to_string(),
+        };
     store.store_session(&metrics).unwrap();
 
     // Retrieve session
@@ -145,7 +154,7 @@ fn test_metrics_summary_stats() {
 
     // Add multiple sessions
     for i in 0..10 {
-        let metrics = SessionMetrics {
+        let mut metrics = SessionMetrics {
             id: format!("session-{}", i),
             timestamp: Utc::now(),
             model: "sonnet".to_string(),
@@ -160,6 +169,9 @@ fn test_metrics_summary_stats() {
             tool_calls: 10,
             tool_errors: 0,
             final_status: SessionStatus::Completed,
+            messages: 10,
+            apm: None,
+            source: "autopilot".to_string(),
         };
         store.store_session(&metrics).unwrap();
     }
@@ -182,7 +194,7 @@ fn test_trends_calculation_error_rate() {
 
     // Add sessions with varying error rates
     for i in 0..5 {
-        let metrics = SessionMetrics {
+        let mut metrics = SessionMetrics {
             id: format!("session-{}", i),
             timestamp: Utc::now(),
             model: "sonnet".to_string(),
@@ -197,6 +209,9 @@ fn test_trends_calculation_error_rate() {
             tool_calls: 20,
             tool_errors: i as i32,
             final_status: SessionStatus::Completed,
+            messages: 10,
+            apm: None,
+            source: "autopilot".to_string(),
         };
         store.store_session(&metrics).unwrap();
     }
@@ -223,7 +238,7 @@ fn test_pagination_logic() {
 
     // Create 20 sessions
     for i in 0..20 {
-        let metrics = SessionMetrics {
+        let mut metrics = SessionMetrics {
             id: format!("session-{:02}", i),
             timestamp: Utc::now(),
             model: "sonnet".to_string(),
@@ -238,6 +253,9 @@ fn test_pagination_logic() {
             tool_calls: 10,
             tool_errors: 0,
             final_status: SessionStatus::Completed,
+            messages: 10,
+            apm: None,
+            source: "autopilot".to_string(),
         };
         store.store_session(&metrics).unwrap();
     }

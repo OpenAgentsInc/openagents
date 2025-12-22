@@ -515,7 +515,10 @@ mod tests {
                 tool_calls: 100,
                 tool_errors: 25, // 25% error rate - anomalous
                 final_status: SessionStatus::Completed,
-            };
+            messages: 10,
+            apm: None,
+            source: "autopilot".to_string(),
+        };
             db.store_session(&session).unwrap();
 
             // Detect and store anomalies
