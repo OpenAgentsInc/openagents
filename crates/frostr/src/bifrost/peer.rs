@@ -201,10 +201,10 @@ impl PeerManager {
 
     /// Select optimal relays for communicating with a peer
     pub fn select_relays(&self, peer: &[u8; 32], fallback: &[String]) -> Vec<String> {
-        if let Some(info) = self.peers.get(peer) {
-            if !info.relays.is_empty() {
-                return info.relays.clone();
-            }
+        if let Some(info) = self.peers.get(peer)
+            && !info.relays.is_empty()
+        {
+            return info.relays.clone();
         }
 
         // Fallback to default relays
