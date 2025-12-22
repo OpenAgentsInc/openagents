@@ -38,6 +38,8 @@ k256 = "0.13.4"
 
 [dev-dependencies]
 tokio-test = "0.4"
+nostr-relay = { path = "../nostr/relay" }
+tempfile = "3"
 
 [lints.clippy]
 # Allow todo!() in this crate as it's in early development (overrides workspace deny)
