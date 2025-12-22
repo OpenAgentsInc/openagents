@@ -146,10 +146,13 @@ async fn receive_page_route(state: web::Data<AppState>) -> ActixResult<HttpRespo
 }
 
 /// History page
+///
+/// Per d-012, transaction history requires Breez SDK integration (d-001).
+/// Shows empty state with clear message until implemented.
 async fn history_page_route(state: web::Data<AppState>) -> ActixResult<HttpResponse> {
     match &state.identity {
         Some(_identity) => {
-            // TODO: Fetch actual transaction history
+            // Transaction history requires Breez SDK integration (d-001)
             let transactions = vec![];
 
             Ok(HttpResponse::Ok()
@@ -163,14 +166,19 @@ async fn history_page_route(state: web::Data<AppState>) -> ActixResult<HttpRespo
 }
 
 /// Settings page
+///
+/// Per d-012, loads actual relay configuration from WalletConfig.
 async fn settings_page_route(state: web::Data<AppState>) -> ActixResult<HttpResponse> {
     match &state.identity {
         Some(_identity) => {
-            // TODO: Load actual relay configuration
-            let relays = vec![
-                "wss://relay.damus.io".to_string(),
-                "wss://nos.lol".to_string(),
-            ];
+            // Load relay configuration from WalletConfig
+            let relays = crate::storage::config::WalletConfig::load()
+                .ok()
+                .map(|c| c.nostr.relays)
+                .unwrap_or_else(|| vec![
+                    "wss://relay.damus.io".to_string(),
+                    "wss://nos.lol".to_string(),
+                ]);
 
             Ok(HttpResponse::Ok()
                 .content_type("text/html; charset=utf-8")
@@ -189,11 +197,24 @@ struct RelayForm {
 }
 
 /// Update relays
+///
+/// Per d-012, actually updates relay configuration.
 async fn update_relays(
     _state: web::Data<AppState>,
-    _form: web::Form<RelayForm>,
+    form: web::Form<RelayForm>,
 ) -> ActixResult<HttpResponse> {
-    // TODO: Implement relay updates
+    // Load config, add relay, save
+    if let Ok(mut config) = crate::storage::config::WalletConfig::load() {
+        let url = form.relay_url.trim().to_string();
+
+        // Validate URL format
+        if url.starts_with("wss://") || url.starts_with("ws://") {
+            if !config.nostr.relays.contains(&url) {
+                config.nostr.relays.push(url);
+                let _ = config.save();
+            }
+        }
+    }
 
     Ok(HttpResponse::SeeOther()
         .insert_header(("Location", "/settings"))
