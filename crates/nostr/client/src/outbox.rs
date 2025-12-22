@@ -107,15 +107,13 @@ impl OutboxModel {
 
         let cache = self.cache.read().unwrap();
 
-        if let Some(entry) = cache.get(pubkey) {
-            // Check if cache entry is still valid
-            if let Ok(elapsed) = entry.cached_at.elapsed() {
-                if elapsed < self.config.cache_ttl {
-                    let relays = entry.metadata.write_relays();
-                    if !relays.is_empty() {
-                        return relays;
-                    }
-                }
+        if let Some(entry) = cache.get(pubkey)
+            && let Ok(elapsed) = entry.cached_at.elapsed()
+            && elapsed < self.config.cache_ttl
+        {
+            let relays = entry.metadata.write_relays();
+            if !relays.is_empty() {
+                return relays;
             }
         }
 
@@ -131,15 +129,13 @@ impl OutboxModel {
 
         let cache = self.cache.read().unwrap();
 
-        if let Some(entry) = cache.get(pubkey) {
-            // Check if cache entry is still valid
-            if let Ok(elapsed) = entry.cached_at.elapsed() {
-                if elapsed < self.config.cache_ttl {
-                    let relays = entry.metadata.read_relays();
-                    if !relays.is_empty() {
-                        return relays;
-                    }
-                }
+        if let Some(entry) = cache.get(pubkey)
+            && let Ok(elapsed) = entry.cached_at.elapsed()
+            && elapsed < self.config.cache_ttl
+        {
+            let relays = entry.metadata.read_relays();
+            if !relays.is_empty() {
+                return relays;
             }
         }
 
@@ -188,10 +184,10 @@ impl OutboxModel {
     pub fn has_relay_list(&self, pubkey: &str) -> bool {
         let cache = self.cache.read().unwrap();
 
-        if let Some(entry) = cache.get(pubkey) {
-            if let Ok(elapsed) = entry.cached_at.elapsed() {
-                return elapsed < self.config.cache_ttl;
-            }
+        if let Some(entry) = cache.get(pubkey)
+            && let Ok(elapsed) = entry.cached_at.elapsed()
+        {
+            return elapsed < self.config.cache_ttl;
         }
 
         false
