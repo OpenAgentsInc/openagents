@@ -173,6 +173,7 @@
 //! - NIP-72: Moderated Communities (Reddit-style communities)
 //! - NIP-73: External Content IDs (ISBN, podcast GUID, ISAN, blockchain references)
 //! - NIP-75: Zap Goals (fundraising goals with zap tracking)
+//! - NIP-77: Negentropy Syncing (efficient event set reconciliation)
 //! - NIP-78: Application-specific Data (arbitrary app data storage)
 //! - NIP-84: Highlights (highlighting valuable content)
 //! - NIP-86: Relay Management API (HTTP API for relay administration)
@@ -277,6 +278,7 @@ mod nip71;
 mod nip72;
 mod nip73;
 mod nip75;
+mod nip77;
 mod nip78;
 mod nip84;
 mod nip86;
@@ -783,6 +785,13 @@ pub use nip75::{
     ZAP_GOAL_KIND, ZapGoal, add_goal_tag, create_amount_tag, create_closed_at_tag,
     create_image_tag, create_relays_tag, create_summary_tag, get_goal_reference,
     is_zap_goal_kind,
+};
+
+// NIP-77: Negentropy Syncing
+pub use nip77::{
+    Bound, EventId, NegClose, NegErr, NegMsg, NegOpen, NegentropyMessage, Nip77Error,
+    PROTOCOL_VERSION_1, Range, RangeMode, RangePayload, TIMESTAMP_INFINITY,
+    decode_varint, encode_varint,
 };
 
 // NIP-78: Application-specific Data
