@@ -3,7 +3,7 @@
 use crate::bifrost::aggregator::SigningAggregator;
 use crate::bifrost::peer::PeerManager;
 use crate::bifrost::transport::{NostrTransport, TransportConfig};
-use crate::bifrost::{BifrostMessage, SignRequest};
+use crate::bifrost::{BifrostMessage, Ping, SignRequest};
 use crate::keygen::FrostShare;
 use crate::signing::round1_commit;
 use crate::Result;
@@ -288,7 +288,48 @@ impl BifrostNode {
 
     /// Ping a peer to check connectivity
     pub async fn ping(&mut self, pubkey: &[u8; 32]) -> Result<bool> {
-        self.peer_manager.ping(pubkey).await
+        // Check if transport is initialized
+        let transport = self.transport.as_ref().ok_or_else(|| {
+            crate::Error::Protocol(
+                "NostrTransport not initialized. Provide secret_key in BifrostConfig.".into()
+            )
+        })?;
+
+        // Generate session ID for ping/pong correlation
+        let session_id = self.generate_session_id();
+
+        // Get current timestamp in milliseconds
+        let timestamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_millis() as u64;
+
+        // Create ping message
+        let ping = Ping {
+            session_id: session_id.clone(),
+            timestamp,
+        };
+
+        let message = BifrostMessage::Ping(ping);
+
+        // Send ping and wait for pong (expecting 1 response)
+        let responses = transport
+            .publish_and_wait(&message, 1)
+            .await?;
+
+        // Check if we got a pong response
+        for response in responses {
+            if let BifrostMessage::Pong(pong) = response {
+                if pong.session_id == session_id {
+                    // Mark peer as responsive
+                    self.peer_manager.mark_peer_responsive(pubkey);
+                    return Ok(true);
+                }
+            }
+        }
+
+        // No valid pong received
+        Ok(false)
     }
 
     /// Perform health check on all peers

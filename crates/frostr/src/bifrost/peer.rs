@@ -239,11 +239,11 @@ impl PeerManager {
         }
     }
 
-    /// Ping a peer to check connectivity
-    pub async fn ping(&mut self, _pubkey: &[u8; 32]) -> Result<bool> {
-        // TODO: Implement actual ping via Nostr
-        // For now, return success
-        Ok(true)
+    /// Mark peer as responding to ping (used by BifrostNode after successful ping/pong)
+    pub fn mark_peer_responsive(&mut self, pubkey: &[u8; 32]) {
+        if let Some(peer) = self.peers.get_mut(pubkey) {
+            peer.mark_online();
+        }
     }
 
     /// Health check for all peers
