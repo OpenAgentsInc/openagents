@@ -38,6 +38,8 @@ fn create_test_session(
         messages: 10,
         apm: Some(20.0), // (10 messages + 25 tool_calls) / 5 minutes = 7.0 APM
         source: "autopilot".to_string(),
+            issue_numbers: None,
+            directive_id: None,
     }
 }
 

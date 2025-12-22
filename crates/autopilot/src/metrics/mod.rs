@@ -111,6 +111,10 @@ pub struct SessionMetrics {
     pub apm: Option<f64>,
     /// Source of the session data (autopilot, claude_code, or combined)
     pub source: String,
+    /// Issue numbers claimed/completed during this session (comma-separated)
+    pub issue_numbers: Option<String>,
+    /// Directive ID this session was working on
+    pub directive_id: Option<String>,
 }
 
 impl SessionMetrics {
@@ -188,6 +192,39 @@ pub struct ToolCallMetrics {
     pub tokens_in: i64,
     /// Output tokens for this call
     pub tokens_out: i64,
+}
+
+/// Aggregate metrics for a specific issue
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct IssueAggregateMetrics {
+    pub issue_number: i32,
+    pub sessions_count: i32,
+    pub total_duration_seconds: f64,
+    pub avg_duration_seconds: f64,
+    pub total_tokens: i64,
+    pub avg_tokens: f64,
+    pub total_cost_usd: f64,
+    pub avg_cost_usd: f64,
+    pub tool_calls: i32,
+    pub tool_errors: i32,
+    pub error_rate: f64,
+}
+
+/// Aggregate metrics for a specific directive
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DirectiveAggregateMetrics {
+    pub directive_id: String,
+    pub sessions_count: i32,
+    pub issues_completed: i32,
+    pub total_duration_seconds: f64,
+    pub avg_duration_seconds: f64,
+    pub total_tokens: i64,
+    pub avg_tokens: f64,
+    pub total_cost_usd: f64,
+    pub avg_cost_usd: f64,
+    pub tool_calls: i32,
+    pub tool_errors: i32,
+    pub error_rate: f64,
 }
 
 /// Detected anomaly in metrics
@@ -390,6 +427,19 @@ impl MetricsDb {
         if !columns.contains(&"messages".to_string()) {
             self.conn.execute("ALTER TABLE sessions ADD COLUMN messages INTEGER NOT NULL DEFAULT 0", [])?;
         }
+        if !columns.contains(&"issue_numbers".to_string()) {
+            self.conn.execute("ALTER TABLE sessions ADD COLUMN issue_numbers TEXT", [])?;
+        }
+        if !columns.contains(&"directive_id".to_string()) {
+            self.conn.execute("ALTER TABLE sessions ADD COLUMN directive_id TEXT", [])?;
+        }
+
+        // Add indexes for issue and directive filtering
+        self.conn.execute_batch(
+            r#"
+            CREATE INDEX IF NOT EXISTS idx_sessions_directive ON sessions(directive_id);
+            "#
+        )?;
 
         Ok(())
     }
@@ -401,8 +451,8 @@ impl MetricsDb {
             INSERT OR REPLACE INTO sessions
             (id, timestamp, model, prompt, duration_seconds, tokens_in, tokens_out,
              tokens_cached, cost_usd, issues_claimed, issues_completed, tool_calls,
-             tool_errors, final_status, messages, apm, source)
-            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17)
+             tool_errors, final_status, messages, apm, source, issue_numbers, directive_id)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19)
             "#,
             params![
                 metrics.id,
@@ -422,6 +472,8 @@ impl MetricsDb {
                 metrics.messages,
                 metrics.apm,
                 metrics.source,
+                metrics.issue_numbers,
+                metrics.directive_id,
             ],
         )
         .context("Failed to store session metrics")?;
@@ -564,6 +616,8 @@ impl MetricsDb {
                 messages: row.get(14).unwrap_or(0),
                 apm: row.get(15).ok(),
                 source: row.get(16).unwrap_or_else(|_| "autopilot".to_string()),
+                issue_numbers: row.get(17).ok(),
+                directive_id: row.get(18).ok(),
             })
         });
 
@@ -606,6 +660,8 @@ impl MetricsDb {
                     messages: row.get(14).unwrap_or(0),
                     apm: row.get(15).ok(),
                     source: row.get(16).unwrap_or_else(|_| "autopilot".to_string()),
+                issue_numbers: row.get(17).ok(),
+                directive_id: row.get(18).ok(),
                 })
             })?
             .collect::<Result<Vec<_>, _>>()?;
@@ -1016,6 +1072,8 @@ impl MetricsDb {
                     messages: row.get(14).unwrap_or(0),
                     apm: row.get(15).ok(),
                     source: row.get(16).unwrap_or_else(|_| "autopilot".to_string()),
+                issue_numbers: row.get(17).ok(),
+                directive_id: row.get(18).ok(),
                 })
             })?
             .collect::<Result<Vec<_>, _>>()?;
@@ -1099,6 +1157,163 @@ impl MetricsDb {
         }
 
         Ok(())
+    }
+
+    /// Get sessions for a specific issue number
+    pub fn get_sessions_for_issue(&self, issue_number: i32) -> Result<Vec<SessionMetrics>> {
+        let mut stmt = self.conn.prepare(
+            r#"
+            SELECT id, timestamp, model, prompt, duration_seconds, tokens_in,
+                   tokens_out, tokens_cached, cost_usd, issues_claimed,
+                   issues_completed, tool_calls, tool_errors, final_status,
+                   messages, apm, source, issue_numbers, directive_id
+            FROM sessions
+            WHERE issue_numbers LIKE ?1
+            ORDER BY timestamp DESC
+            "#,
+        )?;
+
+        let search_pattern = format!("%{}%", issue_number);
+        let sessions = stmt
+            .query_map(params![search_pattern], |row| {
+                Ok(SessionMetrics {
+                    id: row.get(0)?,
+                    timestamp: row.get::<_, String>(1)?.parse().unwrap(),
+                    model: row.get(2)?,
+                    prompt: row.get(3)?,
+                    duration_seconds: row.get(4)?,
+                    tokens_in: row.get(5)?,
+                    tokens_out: row.get(6)?,
+                    tokens_cached: row.get(7)?,
+                    cost_usd: row.get(8)?,
+                    issues_claimed: row.get(9)?,
+                    issues_completed: row.get(10)?,
+                    tool_calls: row.get(11)?,
+                    tool_errors: row.get(12)?,
+                    final_status: SessionStatus::from_str(&row.get::<_, String>(13)?).unwrap(),
+                    messages: row.get(14).unwrap_or(0),
+                    apm: row.get(15).ok(),
+                    source: row.get(16).unwrap_or_else(|_| "autopilot".to_string()),
+                    issue_numbers: row.get(17).ok(),
+                    directive_id: row.get(18).ok(),
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+
+        Ok(sessions)
+    }
+
+    /// Get sessions for a specific directive
+    pub fn get_sessions_for_directive(&self, directive_id: &str) -> Result<Vec<SessionMetrics>> {
+        let mut stmt = self.conn.prepare(
+            r#"
+            SELECT id, timestamp, model, prompt, duration_seconds, tokens_in,
+                   tokens_out, tokens_cached, cost_usd, issues_claimed,
+                   issues_completed, tool_calls, tool_errors, final_status,
+                   messages, apm, source, issue_numbers, directive_id
+            FROM sessions
+            WHERE directive_id = ?1
+            ORDER BY timestamp DESC
+            "#,
+        )?;
+
+        let sessions = stmt
+            .query_map(params![directive_id], |row| {
+                Ok(SessionMetrics {
+                    id: row.get(0)?,
+                    timestamp: row.get::<_, String>(1)?.parse().unwrap(),
+                    model: row.get(2)?,
+                    prompt: row.get(3)?,
+                    duration_seconds: row.get(4)?,
+                    tokens_in: row.get(5)?,
+                    tokens_out: row.get(6)?,
+                    tokens_cached: row.get(7)?,
+                    cost_usd: row.get(8)?,
+                    issues_claimed: row.get(9)?,
+                    issues_completed: row.get(10)?,
+                    tool_calls: row.get(11)?,
+                    tool_errors: row.get(12)?,
+                    final_status: SessionStatus::from_str(&row.get::<_, String>(13)?).unwrap(),
+                    messages: row.get(14).unwrap_or(0),
+                    apm: row.get(15).ok(),
+                    source: row.get(16).unwrap_or_else(|_| "autopilot".to_string()),
+                    issue_numbers: row.get(17).ok(),
+                    directive_id: row.get(18).ok(),
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+
+        Ok(sessions)
+    }
+
+    /// Calculate aggregate metrics for a specific issue
+    pub fn get_issue_aggregate_metrics(&self, issue_number: i32) -> Result<Option<IssueAggregateMetrics>> {
+        let sessions = self.get_sessions_for_issue(issue_number)?;
+
+        if sessions.is_empty() {
+            return Ok(None);
+        }
+
+        let total_duration: f64 = sessions.iter().map(|s| s.duration_seconds).sum();
+        let total_tokens: i64 = sessions.iter().map(|s| s.tokens_in + s.tokens_out).sum();
+        let total_cost: f64 = sessions.iter().map(|s| s.cost_usd).sum();
+        let total_tool_calls: i32 = sessions.iter().map(|s| s.tool_calls).sum();
+        let total_tool_errors: i32 = sessions.iter().map(|s| s.tool_errors).sum();
+        let sessions_count = sessions.len() as i32;
+
+        Ok(Some(IssueAggregateMetrics {
+            issue_number,
+            sessions_count,
+            total_duration_seconds: total_duration,
+            avg_duration_seconds: total_duration / sessions_count as f64,
+            total_tokens,
+            avg_tokens: total_tokens as f64 / sessions_count as f64,
+            total_cost_usd: total_cost,
+            avg_cost_usd: total_cost / sessions_count as f64,
+            tool_calls: total_tool_calls,
+            tool_errors: total_tool_errors,
+            error_rate: if total_tool_calls > 0 {
+                (total_tool_errors as f64) / (total_tool_calls as f64)
+            } else {
+                0.0
+            },
+        }))
+    }
+
+    /// Calculate aggregate metrics for a specific directive
+    pub fn get_directive_aggregate_metrics(&self, directive_id: &str) -> Result<Option<DirectiveAggregateMetrics>> {
+        let sessions = self.get_sessions_for_directive(directive_id)?;
+
+        if sessions.is_empty() {
+            return Ok(None);
+        }
+
+        let total_duration: f64 = sessions.iter().map(|s| s.duration_seconds).sum();
+        let total_tokens: i64 = sessions.iter().map(|s| s.tokens_in + s.tokens_out).sum();
+        let total_cost: f64 = sessions.iter().map(|s| s.cost_usd).sum();
+        let total_issues_completed: i32 = sessions.iter().map(|s| s.issues_completed).sum();
+        let total_tool_calls: i32 = sessions.iter().map(|s| s.tool_calls).sum();
+        let total_tool_errors: i32 = sessions.iter().map(|s| s.tool_errors).sum();
+        let sessions_count = sessions.len() as i32;
+
+        Ok(Some(DirectiveAggregateMetrics {
+            directive_id: directive_id.to_string(),
+            sessions_count,
+            issues_completed: total_issues_completed,
+            total_duration_seconds: total_duration,
+            avg_duration_seconds: total_duration / sessions_count as f64,
+            total_tokens,
+            avg_tokens: total_tokens as f64 / sessions_count as f64,
+            total_cost_usd: total_cost,
+            avg_cost_usd: total_cost / sessions_count as f64,
+            tool_calls: total_tool_calls,
+            tool_errors: total_tool_errors,
+            error_rate: if total_tool_calls > 0 {
+                (total_tool_errors as f64) / (total_tool_calls as f64)
+            } else {
+                0.0
+            },
+        }))
     }
 
     /// Get a reference to the database connection
@@ -1250,6 +1465,8 @@ pub fn extract_metrics_from_trajectory(
         final_status,
         messages: messages_count,
         apm: None,
+                issue_numbers: None,
+                directive_id: None,
         source: "autopilot".to_string(),
     };
 
@@ -1391,6 +1608,8 @@ mod tests {
             final_status: SessionStatus::Completed,
             messages: 10,
             apm: None,
+                issue_numbers: None,
+                directive_id: None,
             source: "autopilot".to_string(),
         };
 
@@ -1425,6 +1644,8 @@ mod tests {
             final_status: SessionStatus::Completed,
             messages: 10,
             apm: None,
+                issue_numbers: None,
+                directive_id: None,
             source: "autopilot".to_string(),
         };
         db.store_session(&session).unwrap();
@@ -1470,6 +1691,8 @@ mod tests {
             final_status: SessionStatus::Completed,
             messages: 10,
             apm: None,
+                issue_numbers: None,
+                directive_id: None,
             source: "autopilot".to_string(),
         };
         db.store_session(&session).unwrap();
@@ -1656,6 +1879,8 @@ mod tests {
                 final_status: SessionStatus::Completed,
             messages: 10,
             apm: None,
+                issue_numbers: None,
+                directive_id: None,
             source: "autopilot".to_string(),
         };
             db.store_session(&session).unwrap();
@@ -1695,6 +1920,8 @@ mod tests {
                 final_status: SessionStatus::Completed,
             messages: 10,
             apm: None,
+                issue_numbers: None,
+                directive_id: None,
             source: "autopilot".to_string(),
         };
             db.store_session(&session).unwrap();
@@ -1731,6 +1958,8 @@ mod tests {
             final_status: SessionStatus::Completed,
             messages: 10,
             apm: None,
+                issue_numbers: None,
+                directive_id: None,
             source: "autopilot".to_string(),
         };
 
@@ -1756,6 +1985,8 @@ mod tests {
             final_status: SessionStatus::Completed,
             messages: 10,
             apm: None,
+                issue_numbers: None,
+                directive_id: None,
             source: "autopilot".to_string(),
         };
 
@@ -1791,6 +2022,8 @@ mod tests {
                 final_status: SessionStatus::Completed,
             messages: 10,
             apm: None,
+                issue_numbers: None,
+                directive_id: None,
             source: "autopilot".to_string(),
         };
             db.store_session(&session).unwrap();
@@ -1817,6 +2050,8 @@ mod tests {
             final_status: SessionStatus::Completed,
             messages: 10,
             apm: None,
+                issue_numbers: None,
+                directive_id: None,
             source: "autopilot".to_string(),
         };
 
