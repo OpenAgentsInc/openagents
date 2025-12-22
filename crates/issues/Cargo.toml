@@ -26,7 +26,12 @@ uuid.workspace = true
 thiserror.workspace = true
 
 [dev-dependencies]
+criterion = "0.8.1"
 tempfile.workspace = true
+
+[[bench]]
+name = "database_operations"
+harness = false
 
 [lints]
 workspace = true

@@ -366,3 +366,66 @@ t!:Bash id=ZnTrHp1k cmd="cargo test -p autopilot --test error_handling 2..." →
 o: id=ZnTrHp1k → [ok] test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.10s
 a: Perfect! All tests pass. Now let me commit this: tokens_in=0 tokens_out=1 tokens_cached=131246
 t!:Bash id=2Zwk3wEC cmd="git add -A && git commit -m "$(cat <<'EOF'" → [running] tokens_in=0 tokens_out=1 tokens_cached=131246
+o: id=2Zwk3wEC → [ok] [main a730c9923] Add comprehensive error handling tests for autopilot
+t!:Bash id=UuaHYwTd cmd="git push origin main" → [running] tokens_in=0 tokens_out=24 tokens_cached=131407
+o: id=UuaHYwTd → [ok] [0;36m🔍 Running cargo build to check for errors and warnings...[0m
+t!:mcp__issues__issue_complete id=MsX66vm3  → [running] tokens_in=0 tokens_out=58 tokens_cached=131928
+o: id=MsX66vm3 → [ok] Completed issue #539
+t!:mcp__issues__issue_ready id=aTrrhbje  → [running] tokens_in=0 tokens_out=27 tokens_cached=132089
+o: id=aTrrhbje → [ok] No ready issues available
+t!:mcp__issues__issue_create id=4Uejd7rA  → [running] tokens_in=0 tokens_out=1 tokens_cached=132164
+o: id=4Uejd7rA → [ok] Created issue #540: Add performance benchmarks for critical operations (agent: claude) [directive...
+t!:mcp__issues__issue_ready id=ZAMCqEWz  → [running] tokens_in=3 tokens_out=32 tokens_cached=132329
+o: id=ZAMCqEWz → [ok] {
+t!:mcp__issues__issue_claim id=x7PtgH9f  → [running] tokens_in=2 tokens_out=32 tokens_cached=132587
+o: id=x7PtgH9f → [ok] Claimed issue #540
+t!:Bash id=wu8nBB2F cmd="find . -name "benches" -type d | head -5" → [running] tokens_in=0 tokens_out=86 tokens_cached=132793
+o: id=wu8nBB2F → [ok] ./crates/nostr/relay/benches
+t!:Bash id=q1fA5QFW cmd="ls crates/nostr/relay/benches/" → [running] tokens_in=3 tokens_out=25 tokens_cached=133004
+o: id=q1fA5QFW → [ok] Permissions Size User             Date Modified Name
+a: Good, there are some benchmarks already. Let me check the autopilot ones: tokens_in=3 tokens_out=1 tokens_cached=133122
+t!:Bash id=ZSMjVvHp cmd="ls crates/autopilot/benches/" → [running] tokens_in=3 tokens_out=1 tokens_cached=133122
+o: id=ZSMjVvHp → [ok] Permissions Size User             Date Modified Name
+a: Let me create benchmarks for the issues database operations: tokens_in=2 tokens_out=1 tokens_cached=133281
+t!:Bash id=cc1Yg5F6 cmd="mkdir -p crates/issues/benches" → [running] tokens_in=2 tokens_out=1 tokens_cached=133281
+o: id=cc1Yg5F6 → [ok] 
+t!:Write id=y9EwsVLB file_path=/home/christopherdavid/code/openagents/crates/issues/benches/database_operations.rs → [running] tokens_in=3 tokens_out=2125 tokens_cached=133596
+o: id=y9EwsVLB → [ok] File created successfully at: /home/christopherdavid/code/openagents/crates/issues/benches/databa...
+a: Now let me add criterion as a dev-dependency to the issues crate: tokens_in=1 tokens_out=1 tokens_cached=133718
+t!:Bash id=9zKVmH6x cmd="cd crates/issues && cargo add --dev criterion" → [running] tokens_in=1 tokens_out=1 tokens_cached=133718
+o: id=9zKVmH6x → [ok]     Updating crates.io index
+a: Now add the benchmark to Cargo.toml: tokens_in=1 tokens_out=1 tokens_cached=135993
+t!:Read id=9pY5WmfV file_path=/home/christopherdavid/code/openagents/crates/issues/Cargo.toml → [running] tokens_in=1 tokens_out=89 tokens_cached=135993
+o: id=9pY5WmfV → [ok]      1→[package]
+t!:Edit id=VKfr2ZKo file_path=/home/christopherdavid/code/openagents/crates/issues/Cargo.toml → [running] tokens_in=0 tokens_out=146 tokens_cached=136276
+o: id=VKfr2ZKo → [ok] The file /home/christopherdavid/code/openagents/crates/issues/Cargo.toml has been updated. Here's...
+a: Now let me test if the benchmarks compile: tokens_in=0 tokens_out=1 tokens_cached=136842
+t!:Bash id=sgrAWy2r cmd="cargo bench -p issues --bench database_operatio..." → [running] tokens_in=0 tokens_out=124 tokens_cached=136842
+o: id=sgrAWy2r → [ok] warning: use of deprecated function `criterion::black_box`: use `std::hint::black_box()` instead
+a: There's a compilation error. Let me check what it is: tokens_in=0 tokens_out=1 tokens_cached=137135
+t!:Bash id=vbNufoo3 cmd="cargo bench -p issues --bench database_operatio..." → [running] tokens_in=0 tokens_out=1 tokens_cached=137135
+o: id=vbNufoo3 → [ok] error[E0425]: cannot find function `get_ready_issue` in module `issue`
+a: The function doesn't exist. Let me check what functions are available: tokens_in=0 tokens_out=1 tokens_cached=137522
+t!:Bash id=ce7opSS4 cmd="grep "^pub fn" crates/issues/src/issue.rs | hea..." → [running] tokens_in=0 tokens_out=1 tokens_cached=137522
+o: id=ce7opSS4 → [ok] grep: crates/issues/src/issue.rs: No such file or directory
+t!:Bash id=obdWRTY2 cmd="find crates/issues/src -name "*.rs" -exec grep ..." → [running] tokens_in=0 tokens_out=94 tokens_cached=137685
+o: id=obdWRTY2 → [ok] find: ‘crates/issues/src’: No such file or directory
+t!:Bash id=Ns5yNVHP cmd="ls crates/issues/" → [running] tokens_in=0 tokens_out=78 tokens_cached=137923
+o: id=Ns5yNVHP → [error] Exit code 2
+a: Wait, I'm in the wrong directory. Let me go to the root: tokens_in=1 tokens_out=1 tokens_cached=138045
+t!:Bash id=JkgLtPCA cmd="cd /home/christopherdavid/code/openagents && ls..." → [running] tokens_in=1 tokens_out=112 tokens_cached=138045
+o: id=JkgLtPCA → [ok] Permissions Size User             Date Modified Name
+t!:Bash id=bRCBSaFP cmd="grep "pub fn.*ready" /home/christopherdavid/cod..." → [running] tokens_in=0 tokens_out=24 tokens_cached=138164
+o: id=bRCBSaFP → [ok] pub fn get_next_ready_issue(conn: &Connection, agent: Option<&str>) -> Result<Option<Issue>> {
+a: It's called `get_next_ready_issue`. Let me fix the benchmark: tokens_in=0 tokens_out=1 tokens_cached=138578
+t!:Edit id=kXWpAwww file_path=/home/christopherdavid/code/openagents/crates/issues/benches/database_operations.rs → [running] tokens_in=0 tokens_out=1 tokens_cached=138578
+o: id=kXWpAwww → [error] <tool_use_error>File has not been read yet. Read it first before writing to it.</tool_use_error>
+t!:Bash id=bHS89LJn cmd="sed -i 's/get_ready_issue/get_next_ready_issue/..." → [running] tokens_in=1 tokens_out=120 tokens_cached=138722
+o: id=bHS89LJn → [ok] 
+t!:Bash id=MPHUwS1K cmd="sed -i 's/bench_get_ready_issue/bench_get_next_..." → [running] tokens_in=1 tokens_out=124 tokens_cached=139218
+o: id=MPHUwS1K → [ok] 
+a: Now test again: tokens_in=1 tokens_out=1 tokens_cached=139364
+t!:Bash id=CdFMoE2E cmd="cargo bench -p issues --bench database_operatio..." → [running] tokens_in=1 tokens_out=131 tokens_cached=139364
+o: id=CdFMoE2E → [ok]    Compiling issues v0.1.0 (/home/christopherdavid/code/openagents/crates/issues)
+a: Perfect! Now let me commit this: tokens_in=0 tokens_out=1 tokens_cached=139514
+t!:Bash id=GF5wecah cmd="git add -A && git commit -m "$(cat <<'EOF'" → [running] tokens_in=0 tokens_out=1 tokens_cached=139514
