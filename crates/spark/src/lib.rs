@@ -28,19 +28,20 @@
 //! **Phase 1: Core Integration (COMPLETED)**
 //! - ✅ SparkSigner with BIP44 key derivation
 //! - ✅ Integration into UnifiedIdentity
-//! - ✅ Basic wallet types and stubs
+//! - ✅ Basic wallet types
+//! - ✅ Breez SDK initialization with BreezSdk::connect()
 //!
 //! **Phase 2: Wallet Operations (IN PROGRESS)**
-//! - 🚧 Balance queries (stub implementation)
-//! - 🚧 Wallet info (stub implementation)
-//! - ⏸️ Breez SDK integration (pending)
+//! - ⏸️ Balance queries (pending)
+//! - ⏸️ Wallet info (pending)
+//! - ⏸️ Sync operations (pending)
 //!
 //! **Phase 3+: Payment Methods, Tokens, Multi-Network (PLANNED)**
 //!
 //! # Example
 //!
 //! ```rust
-//! use spark::SparkSigner;
+//! use openagents_spark::SparkSigner;
 //!
 //! // Create a signer from a BIP39 mnemonic
 //! let mnemonic = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
