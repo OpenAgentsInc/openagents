@@ -487,3 +487,11 @@ o: id=pwFCK174 → [ok] The file /home/christopherdavid/code/openagents/crates/r
 t!:Bash id=hCWRGwBt cmd="cargo test --doc -p recorder 2>&1 | grep -E "(t..." → [running] tokens_in=5 tokens_out=26 tokens_cached=145236
 o: id=hCWRGwBt → [ok]    Doc-tests recorder
 t!:Bash id=ooZxTcfq cmd="git add -A && git commit -m "$(cat <<'EOF'" → [running] tokens_in=4 tokens_out=251 tokens_cached=147655
+o: id=ooZxTcfq → [ok] [main 54d0f50d6] Add rustdoc examples to recorder and trajectory analysis types
+t!:Bash id=J9aFJbgQ cmd="git push origin main" → [running] tokens_in=4 tokens_out=25 tokens_cached=147866
+o: id=J9aFJbgQ → [error] Exit code 1
+t!:Bash id=4QFk838b cmd="git pull --rebase origin main" → [running] tokens_in=5 tokens_out=80 tokens_cached=148256
+o: id=4QFk838b → [error] Exit code 128
+t!:Bash id=pr5jMXpN cmd="git status" → [running] tokens_in=5 tokens_out=24 tokens_cached=148643
+o: id=pr5jMXpN → [ok] On branch main
+t!:Bash id=DhgiQSgm cmd="git stash push -m "autopilot-session-log" && gi..." → [running] tokens_in=4 tokens_out=25 tokens_cached=148771
