@@ -1,4 +1,39 @@
-//! Trajectory analysis and metrics computation
+//! Trajectory analysis and metrics computation for autopilot performance monitoring.
+//!
+//! This module provides comprehensive analysis of autopilot execution trajectories,
+//! extracting performance, cost, quality, and error metrics from trajectory logs.
+//! Used by the `cargo autopilot analyze` command to generate reports and detect
+//! regressions.
+//!
+//! # Key Types
+//!
+//! - [`TrajectoryAnalysis`]: Complete analysis results for a single trajectory
+//! - [`PerformanceMetrics`]: Timing and duration measurements
+//! - [`CostMetrics`]: Token usage and API cost calculations
+//! - [`ErrorMetrics`]: Tool errors and failure patterns
+//! - [`QualityMetrics`]: Task completion and success indicators
+//! - [`ToolUsageMetrics`]: Per-tool usage statistics
+//!
+//! # Usage
+//!
+//! ```no_run
+//! use autopilot::analyze::analyze_trajectory_file;
+//! use std::path::Path;
+//!
+//! let trajectory_path = Path::new("docs/logs/20251222/094938-task.json");
+//! let analysis = analyze_trajectory_file(trajectory_path)?;
+//!
+//! println!("Duration: {}ms", analysis.performance.total_duration_ms);
+//! println!("Tokens: {}", analysis.cost.total_tokens);
+//! println!("Error rate: {:.1}%", analysis.errors.error_rate * 100.0);
+//! # Ok::<(), Box<dyn std::error::Error>>(())
+//! ```
+//!
+//! # Related Modules
+//!
+//! - [`crate::dashboard`]: Web UI for viewing analysis results
+//! - [`crate::trajectory`]: Trajectory log parsing and types
+//! - [`crate::learning`]: Apply learnings from analysis
 
 use std::collections::HashMap;
 use std::path::Path;
