@@ -74,6 +74,23 @@ impl Region {
 }
 
 /// Pricing structure for compute services
+///
+/// # Examples
+///
+/// ```ignore
+/// use nostr::provider::ComputePricing;
+///
+/// // Create pricing: 10 sats per 1k input, 20 sats per 1k output, 100 sats minimum
+/// let pricing = ComputePricing::new(10, 20, 100).expect("valid pricing");
+///
+/// // Calculate cost for 5000 input + 2000 output tokens
+/// let cost = pricing.calculate_cost(5000, 2000);
+/// assert_eq!(cost, 90); // (5 * 10) + (2 * 20) = 90 sats
+///
+/// // Minimum is applied for small requests
+/// let small_cost = pricing.calculate_cost(100, 50);
+/// assert_eq!(small_cost, 100); // minimum_sats applied
+/// ```
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ComputePricing {
     /// Cost per 1,000 input tokens in satoshis
@@ -112,6 +129,26 @@ impl ComputePricing {
 }
 
 /// Capabilities of a compute provider
+///
+/// # Examples
+///
+/// ```ignore
+/// use nostr::provider::ComputeCapabilities;
+///
+/// let mut caps = ComputeCapabilities::new(
+///     vec!["llama-70b".to_string(), "mistral-7b".to_string()],
+///     8192,  // 8k context
+///     2048,  // 2k max output
+/// ).expect("valid capabilities");
+///
+/// assert!(caps.supports_model("llama-70b"));
+/// assert!(!caps.supports_model("gpt-4"));
+///
+/// // Add new model
+/// caps.add_model("mixtral-8x7b");
+/// assert!(caps.supports_model("mixtral-8x7b"));
+/// assert_eq!(caps.models.len(), 3);
+/// ```
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ComputeCapabilities {
     /// Supported models (e.g., ["llama-70b", "mistral-7b"])
@@ -262,6 +299,36 @@ impl ReputationTier {
 }
 
 /// A compute provider in the marketplace
+///
+/// # Examples
+///
+/// ```ignore
+/// use nostr::provider::{ComputeProvider, ComputePricing, ComputeCapabilities, Region};
+/// use nostr::identity::NostrIdentity;
+///
+/// # fn example() -> Result<(), Box<dyn std::error::Error>> {
+/// let identity = NostrIdentity::new("npub1...").expect("valid pubkey");
+///
+/// let pricing = ComputePricing::new(10, 20, 100)?;
+/// let capabilities = ComputeCapabilities::new(
+///     vec!["llama-70b".to_string()],
+///     8192,
+///     2048,
+/// )?;
+///
+/// let provider = ComputeProvider::new(
+///     identity,
+///     "provider@getalby.com",
+///     Region::UsWest,
+///     pricing,
+///     capabilities,
+/// )?;
+///
+/// assert_eq!(provider.region, Region::UsWest);
+/// assert!(provider.capabilities.supports_model("llama-70b"));
+/// # Ok(())
+/// # }
+/// ```
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ComputeProvider {
     /// Nostr identity for this provider
