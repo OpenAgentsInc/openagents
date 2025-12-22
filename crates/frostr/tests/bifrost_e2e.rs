@@ -11,7 +11,9 @@
 //! actual in-process Nostr relays to ensure realistic interoperability.
 
 use frostr::bifrost::{BifrostConfig, BifrostNode, TimeoutConfig};
+use frostr::ecdh::threshold_ecdh;
 use frostr::keygen::generate_key_shares;
+use nostr::generate_secret_key;
 use nostr_relay::{Database, DatabaseConfig, RelayConfig, RelayServer};
 use std::sync::Arc;
 use tokio::time::{sleep, Duration};
@@ -142,4 +144,91 @@ async fn test_bifrost_signing_2_of_3_over_relay() {
     // - Verify signature is valid Schnorr signature
     // - Check signature validates against group_pk
     // - Confirm it matches single-key Schnorr verification
+}
+
+#[tokio::test]
+async fn test_bifrost_ecdh_2_of_3_over_relay() {
+    // 1. Start test relay
+    let port = 19001;
+    let (_server, _temp_dir) = start_test_relay(port).await;
+    let relay_url = test_relay_url(port);
+
+    // 2. Generate 2-of-3 FROST shares
+    let shares = generate_key_shares(2, 3).expect("failed to generate shares");
+    assert_eq!(shares.len(), 3);
+
+    // 3. Generate an external peer public key for ECDH
+    // In a real scenario, this would be another agent's public key
+    let peer_secret_key = generate_secret_key();
+    let peer_pubkey_bytes = nostr::get_public_key(&peer_secret_key)
+        .expect("should derive public key from secret key");
+
+    // 4. Create BifrostNode instances (though ECDH is currently local-only)
+    let secret_key_1 = [0x01; 32];
+    let secret_key_2 = [0x02; 32];
+    let peer_pubkey_1 = [0x01; 32];
+    let peer_pubkey_2 = [0x02; 32];
+
+    let config_1 = BifrostConfig {
+        default_relays: vec![relay_url.clone()],
+        secret_key: Some(secret_key_1),
+        peer_pubkeys: vec![peer_pubkey_2],
+        ..Default::default()
+    };
+
+    let config_2 = BifrostConfig {
+        default_relays: vec![relay_url],
+        secret_key: Some(secret_key_2),
+        peer_pubkeys: vec![peer_pubkey_1],
+        ..Default::default()
+    };
+
+    let mut node_1 = BifrostNode::with_config(config_1).expect("failed to create node 1");
+    let mut node_2 = BifrostNode::with_config(config_2).expect("failed to create node 2");
+
+    node_1.set_frost_share(shares[0].clone());
+    node_2.set_frost_share(shares[1].clone());
+
+    // Start nodes
+    node_1.start().await.expect("failed to start node 1");
+    node_2.start().await.expect("failed to start node 2");
+
+    sleep(Duration::from_millis(500)).await;
+
+    // 5. Test BifrostNode.ecdh() method (currently returns "not implemented")
+    let result = node_1.ecdh(&peer_pubkey_bytes).await;
+    assert!(result.is_err(), "ECDH expected to fail until coordinated threshold ECDH is implemented");
+
+    let err_msg = result.unwrap_err().to_string();
+    assert!(
+        err_msg.contains("not yet implemented") || err_msg.contains("not implemented"),
+        "unexpected error: {}",
+        err_msg
+    );
+
+    // 6. Demonstrate local threshold ECDH (without relay coordination)
+    // This uses the local threshold_ecdh function directly
+    let local_shared_secret = threshold_ecdh(&shares[0..2], &peer_pubkey_bytes)
+        .expect("local threshold ECDH should succeed");
+
+    // Verify the shared secret is the correct length
+    assert_eq!(local_shared_secret.len(), 32, "shared secret should be 32 bytes");
+
+    // 7. Verify determinism: same inputs produce same output
+    let local_shared_secret_2 = threshold_ecdh(&shares[0..2], &peer_pubkey_bytes)
+        .expect("second call should also succeed");
+    assert_eq!(
+        local_shared_secret, local_shared_secret_2,
+        "threshold ECDH should be deterministic"
+    );
+
+    // 8. Clean up
+    node_1.stop().await.ok();
+    node_2.stop().await.ok();
+
+    // Once coordinated threshold ECDH over relay is implemented:
+    // - node_1.ecdh(&peer_pubkey_bytes) should coordinate with node_2 via relay
+    // - Both nodes should contribute ECDH shares
+    // - Aggregated shared secret should match local threshold_ecdh result
+    // - Should work with any 2-of-3 quorum (shares 0+1, 0+2, or 1+2)
 }
