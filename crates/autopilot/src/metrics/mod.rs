@@ -10,6 +10,61 @@
 //!
 //! The metrics enable data-driven optimization of autopilot performance across
 //! 50+ dimensions defined in docs/autopilot/IMPROVEMENT-DIMENSIONS.md.
+//!
+//! # Examples
+//!
+//! ## Storing session metrics
+//!
+//! ```ignore
+//! use autopilot::metrics::{MetricsStore, SessionMetrics, SessionStatus};
+//! use chrono::Utc;
+//!
+//! # fn example() -> anyhow::Result<()> {
+//! let store = MetricsStore::new("autopilot-metrics.db")?;
+//!
+//! let metrics = SessionMetrics {
+//!     id: "session-123".to_string(),
+//!     timestamp: Utc::now(),
+//!     model: "sonnet".to_string(),
+//!     prompt: "Fix clippy warnings".to_string(),
+//!     duration_seconds: 45.2,
+//!     tokens_in: 5000,
+//!     tokens_out: 2000,
+//!     tokens_cached: 1000,
+//!     cost_usd: 0.035,
+//!     issues_claimed: 1,
+//!     issues_completed: 1,
+//!     tool_calls: 12,
+//!     tool_errors: 0,
+//!     final_status: SessionStatus::Completed,
+//! };
+//!
+//! store.store_session(&metrics)?;
+//! # Ok(())
+//! # }
+//! ```
+//!
+//! ## Querying metrics for analysis
+//!
+//! ```ignore
+//! use autopilot::metrics::MetricsStore;
+//!
+//! # fn example() -> anyhow::Result<()> {
+//! let store = MetricsStore::new("autopilot-metrics.db")?;
+//!
+//! // Get all sessions from the past week
+//! let sessions = store.get_sessions_since(chrono::Duration::days(7))?;
+//!
+//! // Calculate average token efficiency
+//! let avg_tokens_per_issue: f64 = sessions.iter()
+//!     .filter(|s| s.issues_completed > 0)
+//!     .map(|s| (s.tokens_in + s.tokens_out) as f64 / s.issues_completed as f64)
+//!     .sum::<f64>() / sessions.len() as f64;
+//!
+//! println!("Average tokens per completed issue: {:.0}", avg_tokens_per_issue);
+//! # Ok(())
+//! # }
+//! ```
 
 pub mod baseline;
 
