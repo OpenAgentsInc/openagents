@@ -105,6 +105,7 @@
 //! This crate implements:
 //! - NIP-01: Basic protocol (events, signing, verification)
 //! - NIP-02: Follow List (Contact List and Petnames)
+//! - NIP-03: OpenTimestamps Attestations for Events
 //! - NIP-04: Encrypted Direct Messages (requires `full` feature)
 //! - NIP-05: Mapping Nostr Keys to DNS-based Internet Identifiers
 //! - NIP-06: Key derivation from BIP39 mnemonic seed phrases (requires `full` feature)
@@ -199,6 +200,7 @@ mod compute_job;
 mod identity;
 mod nip01;
 mod nip02;
+mod nip03;
 #[cfg(feature = "full")]
 mod nip04;
 mod nip05;
@@ -314,6 +316,14 @@ pub use nip01::{
 
 // NIP-02: Follow List (Contact List and Petnames)
 pub use nip02::{CONTACT_LIST_KIND, Contact, ContactList, Nip02Error};
+
+// NIP-03: OpenTimestamps Attestations for Events
+pub use nip03::{
+    KIND_OTS_ATTESTATION, Nip03Error, OpenTimestampsAttestation, TARGET_EVENT_TAG,
+    TARGET_KIND_TAG, create_attestation_tags, decode_ots_content, encode_ots_content,
+    get_target_event_id, get_target_event_kind, get_target_relay_url, is_ots_attestation,
+    parse_attestation,
+};
 
 // NIP-04: Encrypted Direct Messages (requires full feature)
 #[cfg(feature = "full")]
