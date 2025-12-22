@@ -5,6 +5,7 @@ use marketplace::cli::compute::ComputeCommands;
 use marketplace::cli::skills::SkillsCommands;
 use marketplace::cli::data::DataCommands;
 use marketplace::cli::trajectories::TrajectoriesCommands;
+use marketplace::cli::earnings::EarningsCommands;
 
 #[derive(Parser)]
 #[command(name = "marketplace")]
@@ -36,7 +37,7 @@ enum Commands {
     /// Provider commands
     Provider,
     /// Earnings and payouts
-    Earnings,
+    Earnings(EarningsCommands),
 }
 
 #[tokio::main]
@@ -51,8 +52,8 @@ async fn main() -> anyhow::Result<()> {
         Commands::Provider => {
             println!("Provider management - coming soon");
         }
-        Commands::Earnings => {
-            println!("Earnings dashboard - coming soon");
+        Commands::Earnings(command) => {
+            command.execute().await?;
         }
     }
 
