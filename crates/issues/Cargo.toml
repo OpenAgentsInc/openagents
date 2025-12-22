@@ -30,6 +30,7 @@ tracing.workspace = true
 
 [dev-dependencies]
 criterion = "0.8.1"
+proptest = "1.9.0"
 tempfile.workspace = true
 
 [[bench]]
