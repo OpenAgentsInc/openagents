@@ -1,5 +1,6 @@
 //! Maud view templates for AgentGit
 
+pub mod diff;
 pub mod publish_status;
 
 use maud::{html, Markup, DOCTYPE};
