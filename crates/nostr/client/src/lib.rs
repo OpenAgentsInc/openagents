@@ -48,6 +48,7 @@ mod negentropy;
 mod outbox;
 mod pool;
 mod queue;
+mod recovery;
 mod relay;
 mod subscription;
 
@@ -58,6 +59,7 @@ pub use negentropy::{SyncSession, SyncSessionId, SyncSessionManager, build_initi
 pub use outbox::{OutboxConfig, OutboxModel};
 pub use pool::{PoolConfig, PoolStats, RelayPool, RelayStats};
 pub use queue::{MessageQueue, MessageStatus, QueueConfig, QueuedMessage};
+pub use recovery::{CircuitBreaker, CircuitState, ExponentialBackoff, HealthMetrics};
 pub use relay::{
     ConnectionState, PublishConfirmation, RelayConfig, RelayConnection, RelayMessage,
 };
