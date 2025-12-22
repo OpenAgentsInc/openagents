@@ -278,6 +278,11 @@ impl NostrClient {
         self.cache.lock().await.get_bounties_for_issue(issue_event_id)
     }
 
+    /// Get comments for a specific issue (NIP-22)
+    pub async fn get_comments_for_issue(&self, issue_event_id: &str) -> Result<Vec<Event>> {
+        self.cache.lock().await.get_comments_for_issue(issue_event_id)
+    }
+
     /// Get trajectory session by ID
     pub async fn get_trajectory_session(&self, session_id: &str) -> Result<Option<Event>> {
         self.cache.lock().await.get_trajectory_session(session_id)

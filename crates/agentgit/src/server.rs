@@ -298,9 +298,18 @@ async fn issue_detail(
         }
     };
 
+    // Fetch comments for this issue (NIP-22)
+    let comments = match state.nostr_client.get_comments_for_issue(&issue_id).await {
+        Ok(c) => c,
+        Err(e) => {
+            tracing::warn!("Failed to fetch comments for issue {}: {}", issue_id, e);
+            Vec::new() // Continue with empty comments if fetch fails
+        }
+    };
+
     HttpResponse::Ok()
         .content_type("text/html; charset=utf-8")
-        .body(issue_detail_page(&repository, &issue, &claims, &bounties, &identifier).into_string())
+        .body(issue_detail_page(&repository, &issue, &claims, &bounties, &comments, &identifier).into_string())
 }
 
 /// Claim an issue

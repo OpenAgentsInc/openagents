@@ -647,6 +647,51 @@ impl EventCache {
         Ok(filtered)
     }
 
+    /// Get comments for a specific issue
+    /// Comments are kind:1 (text note) events that reference the issue via an "e" tag (NIP-22)
+    pub fn get_comments_for_issue(&self, issue_event_id: &str) -> Result<Vec<Event>> {
+        // Query for kind:1 events
+        let mut stmt = self.conn.prepare(
+            "SELECT id, kind, pubkey, created_at, content, tags, sig
+             FROM events
+             WHERE kind = 1
+             ORDER BY created_at ASC",
+        )?;
+
+        let events = stmt
+            .query_map([], |row| {
+                let tags_json: String = row.get(5)?;
+                let tags: Vec<Vec<String>> = serde_json::from_str(&tags_json)
+                    .map_err(|e| rusqlite::Error::FromSqlConversionFailure(
+                        5,
+                        rusqlite::types::Type::Text,
+                        Box::new(e),
+                    ))?;
+
+                Ok(Event {
+                    id: row.get(0)?,
+                    kind: row.get(1)?,
+                    pubkey: row.get(2)?,
+                    created_at: row.get(3)?,
+                    content: row.get(4)?,
+                    tags,
+                    sig: row.get(6)?,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+
+        // Filter events that reference this issue as root
+        let filtered: Vec<Event> = events.into_iter()
+            .filter(|event| {
+                event.tags.iter().any(|tag| {
+                    tag.len() >= 2 && tag[0] == "e" && tag[1] == issue_event_id
+                })
+            })
+            .collect();
+
+        Ok(filtered)
+    }
+
     /// Get trajectory session by ID
     /// Trajectory sessions are kind:38030 events
     pub fn get_trajectory_session(&self, session_id: &str) -> Result<Option<Event>> {
