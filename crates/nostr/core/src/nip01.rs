@@ -78,6 +78,51 @@ pub struct UnsignedEvent {
 }
 
 /// A template for creating events (without pubkey, which comes from the signing key).
+///
+/// Event templates are used to create events before signing. The pubkey is derived
+/// from the secret key during signing, so templates don't include it.
+///
+/// # Examples
+///
+/// Creating a text note:
+///
+/// ```
+/// use nostr::nip01::EventTemplate;
+/// use std::time::{SystemTime, UNIX_EPOCH};
+///
+/// let template = EventTemplate {
+///     created_at: SystemTime::now()
+///         .duration_since(UNIX_EPOCH)
+///         .unwrap()
+///         .as_secs(),
+///     kind: 1,  // Short text note
+///     tags: vec![],
+///     content: "Hello Nostr!".to_string(),
+///     };
+///
+/// // Sign with secret key (requires `full` feature)
+/// // let event = sign_event(template, &secret_key)?;
+/// ```
+///
+/// Creating an event with tags:
+///
+/// ```
+/// use nostr::nip01::EventTemplate;
+/// use std::time::{SystemTime, UNIX_EPOCH};
+///
+/// let template = EventTemplate {
+///     created_at: SystemTime::now()
+///         .duration_since(UNIX_EPOCH)
+///         .unwrap()
+///         .as_secs(),
+///     kind: 1,
+///     tags: vec![
+///         vec!["e".to_string(), "event_id_to_reply_to".to_string()],
+///         vec!["p".to_string(), "pubkey_to_mention".to_string()],
+///     ],
+///     content: "This is a reply with a mention".to_string(),
+/// };
+/// ```
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EventTemplate {
     /// Unix timestamp in seconds
