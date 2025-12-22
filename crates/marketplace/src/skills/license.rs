@@ -8,6 +8,29 @@ use nostr::{
 };
 use thiserror::Error;
 
+/// Parameters for issuing a skill license
+pub struct IssueLicenseParams {
+    pub skill_id: String,
+    pub skill_name: String,
+    pub version: String,
+    pub agent_pubkey: String,
+    pub capabilities: Vec<String>,
+    pub price_sats: u64,
+    pub granted_at: u64,
+}
+
+/// Parameters for issuing an expiring skill license
+pub struct IssueExpiringLicenseParams {
+    pub skill_id: String,
+    pub skill_name: String,
+    pub version: String,
+    pub agent_pubkey: String,
+    pub capabilities: Vec<String>,
+    pub price_sats: u64,
+    pub granted_at: u64,
+    pub expires_at: u64,
+}
+
 /// Errors that can occur during skill licensing operations
 #[derive(Debug, Error)]
 pub enum LicenseError {
@@ -42,51 +65,32 @@ impl LicenseManager {
     ///
     /// This creates a SkillLicense event (kind:38020) that grants an agent
     /// access to a specific skill.
-    pub fn issue_license(
-        &self,
-        skill_id: impl Into<String>,
-        skill_name: impl Into<String>,
-        version: impl Into<String>,
-        agent_pubkey: impl Into<String>,
-        capabilities: Vec<String>,
-        price_sats: u64,
-        granted_at: u64,
-    ) -> Result<SkillLicense, LicenseError> {
+    pub fn issue_license(&self, params: IssueLicenseParams) -> Result<SkillLicense, LicenseError> {
         let content = SkillLicenseContent::new(
-            skill_id,
-            skill_name,
-            version,
-            granted_at,
-            capabilities,
+            params.skill_id,
+            params.skill_name,
+            params.version,
+            params.granted_at,
+            params.capabilities,
         );
 
-        let license = SkillLicense::new(content, agent_pubkey, price_sats);
+        let license = SkillLicense::new(content, params.agent_pubkey, params.price_sats);
 
         Ok(license)
     }
 
     /// Issue a license with expiration
-    pub fn issue_expiring_license(
-        &self,
-        skill_id: impl Into<String>,
-        skill_name: impl Into<String>,
-        version: impl Into<String>,
-        agent_pubkey: impl Into<String>,
-        capabilities: Vec<String>,
-        price_sats: u64,
-        granted_at: u64,
-        expires_at: u64,
-    ) -> Result<SkillLicense, LicenseError> {
+    pub fn issue_expiring_license(&self, params: IssueExpiringLicenseParams) -> Result<SkillLicense, LicenseError> {
         let content = SkillLicenseContent::new(
-            skill_id,
-            skill_name,
-            version,
-            granted_at,
-            capabilities,
+            params.skill_id,
+            params.skill_name,
+            params.version,
+            params.granted_at,
+            params.capabilities,
         )
-        .with_expires_at(expires_at);
+        .with_expires_at(params.expires_at);
 
-        let license = SkillLicense::new(content, agent_pubkey, price_sats);
+        let license = SkillLicense::new(content, params.agent_pubkey, params.price_sats);
 
         Ok(license)
     }
