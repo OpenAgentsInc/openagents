@@ -274,11 +274,7 @@ pub fn validate_auth_event(
             .as_secs()
     });
 
-    let time_diff = if event.created_at > now {
-        event.created_at - now
-    } else {
-        now - event.created_at
-    };
+    let time_diff = event.created_at.abs_diff(now);
 
     if time_diff > MAX_TIME_DIFF {
         return Err(Nip42Error::InvalidTimestamp);
