@@ -502,6 +502,8 @@ impl NostrTransport {
             BifrostMessage::SignError(_) => "sign_err".to_string(),
             BifrostMessage::EcdhRequest(_) => "ecdh_req".to_string(),
             BifrostMessage::EcdhResponse(_) => "ecdh_res".to_string(),
+            BifrostMessage::EcdhResult(_) => "ecdh_ret".to_string(),
+            BifrostMessage::EcdhError(_) => "ecdh_err".to_string(),
         }
     }
 
