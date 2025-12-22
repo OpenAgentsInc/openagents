@@ -17,7 +17,6 @@ impl WsBroadcaster {
     }
 
     /// Broadcast HTML fragment to all connected clients
-    #[allow(dead_code)] // Future feature - broadcasting not yet used
     pub fn broadcast(&self, html: &str) {
         let _ = self.sender.send(html.to_string());
     }

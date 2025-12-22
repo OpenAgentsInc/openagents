@@ -1,6 +1,6 @@
 //! Base layout - pure black screen
 
-/// Base HTML layout - pure black
+/// Base HTML layout - pure black with WebSocket support
 pub fn base_layout(content: &str) -> String {
     format!(
         r#"<!DOCTYPE html>
@@ -10,6 +10,7 @@ pub fn base_layout(content: &str) -> String {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>OpenAgents</title>
     <script src="https://unpkg.com/htmx.org@2.0.4"></script>
+    <script src="https://unpkg.com/htmx-ext-ws@2.0.1/ws.js"></script>
     <style>
         @font-face {{
             font-family: 'Berkeley Mono';
@@ -37,7 +38,7 @@ pub fn base_layout(content: &str) -> String {
         }}
     </style>
 </head>
-<body>
+<body hx-ext="ws" ws-connect="/ws">
     {content}
 </body>
 </html>"#,

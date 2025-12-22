@@ -31,6 +31,7 @@ mod claude_status;
 mod colors;
 mod full_auto_switch;
 mod layout;
+mod log_pane;
 pub mod recorder;
 
 pub use button::{Button, ButtonSize, ButtonVariant};
@@ -38,6 +39,7 @@ pub use claude_status::ClaudeStatus;
 pub use colors::COLOR_TOKENS;
 pub use full_auto_switch::FullAutoSwitch;
 pub use layout::base_document;
+pub use log_pane::LogPane;
 
 /// Tailwind CDN script (Play CDN for development).
 pub const TAILWIND_CDN: &str = include_str!("static/tailwind.js");

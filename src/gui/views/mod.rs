@@ -3,13 +3,13 @@
 mod layout;
 
 use actix_web::{web, HttpResponse};
-use ui::{ClaudeStatus, FullAutoSwitch};
+use ui::{ClaudeStatus, FullAutoSwitch, LogPane};
 
 use crate::gui::state::AppState;
 
 pub use layout::base_layout;
 
-/// Home page - black screen with FullAutoSwitch centered, ClaudeStatus bottom right
+/// Home page - black screen with FullAutoSwitch centered, ClaudeStatus bottom right, LogPane at bottom
 pub async fn home(state: web::Data<AppState>) -> HttpResponse {
     let full_auto = *state.full_auto.read().await;
     let switch = FullAutoSwitch::new(full_auto).build();
@@ -52,10 +52,14 @@ pub async fn home(state: web::Data<AppState>) -> HttpResponse {
         );
     }
 
+    // Log pane - visible when full_auto is ON
+    let log_pane = LogPane::new(full_auto).build();
+
     let content = format!(
-        "{}{}",
+        "{}{}{}",
         switch.into_string(),
-        status.build_positioned().into_string()
+        status.build_positioned().into_string(),
+        log_pane.into_string()
     );
 
     HttpResponse::Ok()
