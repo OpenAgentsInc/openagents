@@ -166,7 +166,7 @@ mod nip78;
 mod nip84;
 mod nip86;
 mod nip89;
-mod nip90;
+pub mod nip90;
 mod nip92;
 mod nip94;
 mod nip95;
