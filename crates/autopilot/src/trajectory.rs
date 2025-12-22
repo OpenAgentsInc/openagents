@@ -8,6 +8,35 @@ use std::io::{BufWriter, Write};
 use std::path::Path;
 
 /// Complete trajectory of an agent run
+///
+/// # Examples
+///
+/// ```
+/// use autopilot::trajectory::{Trajectory, StepType};
+///
+/// let mut trajectory = Trajectory::new(
+///     "Fix bug in auth.rs".to_string(),
+///     "claude-sonnet-4-5".to_string(),
+///     "/home/user/project".to_string(),
+///     "abc123".to_string(),
+///     Some("main".to_string()),
+/// );
+///
+/// // Add a thinking step
+/// trajectory.add_step(StepType::Thinking {
+///     content: "I need to check the auth module".to_string(),
+///     signature: None,
+/// });
+///
+/// // Add a tool call
+/// trajectory.add_step(StepType::ToolCall {
+///     tool: "Read".to_string(),
+///     tool_id: "tool_1".to_string(),
+///     input: serde_json::json!({"file_path": "src/auth.rs"}),
+/// });
+///
+/// assert_eq!(trajectory.steps.len(), 2);
+/// ```
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Trajectory {
     pub session_id: String,
@@ -96,6 +125,23 @@ pub enum SubagentStatus {
 }
 
 /// Token usage statistics
+///
+/// # Examples
+///
+/// ```
+/// use autopilot::trajectory::TokenUsage;
+///
+/// let usage = TokenUsage {
+///     input_tokens: 1000,
+///     output_tokens: 500,
+///     cache_read_tokens: 2000,
+///     cache_creation_tokens: 0,
+///     cost_usd: 0.015,
+/// };
+///
+/// let total = usage.input_tokens + usage.output_tokens;
+/// assert_eq!(total, 1500);
+/// ```
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct TokenUsage {
     pub input_tokens: u64,
@@ -106,6 +152,25 @@ pub struct TokenUsage {
 }
 
 /// Result of the trajectory
+///
+/// # Examples
+///
+/// ```
+/// use autopilot::trajectory::TrajectoryResult;
+///
+/// let result = TrajectoryResult {
+///     success: true,
+///     duration_ms: 45_000,
+///     num_turns: 12,
+///     result_text: Some("Fixed authentication bug".to_string()),
+///     errors: vec![],
+///     issues_completed: 1,
+/// };
+///
+/// assert!(result.success);
+/// assert_eq!(result.duration_ms, 45_000);
+/// assert_eq!(result.issues_completed, 1);
+/// ```
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TrajectoryResult {
     pub success: bool,

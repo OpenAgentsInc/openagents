@@ -271,3 +271,31 @@ t!:Bash id=veoTvep8 cmd="cargo test --doc -p openagents-spark 2>&1 | gre..." →
 o: id=veoTvep8 → [ok]    Doc-tests openagents_spark
 a: Perfect! All new examples compile. Now let me commit and push: tokens_in=3 tokens_out=4 tokens_cached=87614
 t!:Bash id=LcGF5gkL cmd="git add -A && git commit -m "$(cat <<'EOF'" → [running] tokens_in=3 tokens_out=4 tokens_cached=87614
+o: id=LcGF5gkL → [ok] [main 5b47b7c5a] Add rustdoc examples to spark wallet types
+t!:Bash id=9N71N7kP cmd="git push origin main" → [running] tokens_in=2 tokens_out=25 tokens_cached=88148
+o: id=9N71N7kP → [ok] [0;36m🔍 Running cargo build to check for errors and warnings...[0m
+t!:mcp__issues__issue_complete id=D9TYVx3u  → [running] tokens_in=2 tokens_out=58 tokens_cached=88643
+o: id=D9TYVx3u → [ok] Completed issue #689
+t!:mcp__issues__issue_ready id=DAtAKBYB  → [running] tokens_in=2 tokens_out=27 tokens_cached=88810
+o: id=DAtAKBYB → [ok] No ready issues available
+t!:mcp__issues__issue_create id=8mboq3bt  → [running] tokens_in=0 tokens_out=1 tokens_cached=88885
+o: id=8mboq3bt → [ok] Created issue #690: Add rustdoc examples to autopilot core types (agent: claude)
+t!:mcp__issues__issue_claim id=tNGtgX8h  → [running] tokens_in=2 tokens_out=32 tokens_cached=89052
+o: id=tNGtgX8h → [ok] Claimed issue #690
+t!:Glob id=LnHUXAMZ pattern="crates/autopilot/src/*.rs" → [running] tokens_in=2 tokens_out=26 tokens_cached=89277
+o: id=LnHUXAMZ → [ok] /home/christopherdavid/code/openagents/crates/autopilot/src/compaction.rs
+t!:Read id=uzDBuo47 file_path=/home/christopherdavid/code/openagents/crates/autopilot/src/trajectory.rs → [running] tokens_in=1 tokens_out=96 tokens_cached=89377
+o: id=uzDBuo47 → [ok]      1→//! Trajectory data structures for recording agent runs
+t!:Edit id=KBbJDr6d file_path=/home/christopherdavid/code/openagents/crates/autopilot/src/trajectory.rs → [running] tokens_in=1 tokens_out=25 tokens_cached=90278
+t!:Edit id=FhUizbcn file_path=/home/christopherdavid/code/openagents/crates/autopilot/src/trajectory.rs → [running] tokens_in=1 tokens_out=25 tokens_cached=90278
+t!:Edit id=pD6uuxRL file_path=/home/christopherdavid/code/openagents/crates/autopilot/src/trajectory.rs → [running] tokens_in=1 tokens_out=1030 tokens_cached=90278
+o: id=KBbJDr6d → [ok] The file /home/christopherdavid/code/openagents/crates/autopilot/src/trajectory.rs has been updat...
+o: id=FhUizbcn → [ok] The file /home/christopherdavid/code/openagents/crates/autopilot/src/trajectory.rs has been updat...
+o: id=pD6uuxRL → [ok] The file /home/christopherdavid/code/openagents/crates/autopilot/src/trajectory.rs has been updat...
+t!:Bash id=2XmcF8dm cmd="cargo test --doc -p autopilot 2>&1 | grep -E "(..." → [running] tokens_in=2 tokens_out=124 tokens_cached=92267
+o: id=2XmcF8dm → [ok] test crates/autopilot/src/lib.rs - TrajectoryCollector (line 60) - compile ... ok
+a: Good! The trajectory examples compile. Let me check what failed: tokens_in=1 tokens_out=1 tokens_cached=94760
+t!:Bash id=kJLFVKvT cmd="cargo test --doc -p autopilot 2>&1 | grep -B 10..." → [running] tokens_in=1 tokens_out=113 tokens_cached=94760
+o: id=kJLFVKvT → [ok]     Finished `test` profile [optimized + debuginfo] target(s) in 0.18s
+a: The failures are in existing docs, not my new examples. My new trajectory examples all passed! Let me commit and push: tokens_in=0 tokens_out=1 tokens_cached=95110
+t!:Bash id=dFtpsQP4 cmd="git add -A && git commit -m "$(cat <<'EOF'" → [running] tokens_in=0 tokens_out=268 tokens_cached=95110
