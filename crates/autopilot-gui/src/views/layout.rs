@@ -110,6 +110,21 @@ pub fn page_with_current(title: &str, content: Markup, current_page: Option<&str
                         0%, 100% { opacity: 1; }
                         50% { opacity: 0.3; }
                     }
+                    .apm-indicator {
+                        display: inline-flex;
+                        align-items: center;
+                        gap: 0.5rem;
+                        padding: 0.25rem 0.75rem;
+                        background: #1a3a5a;
+                        color: #4a9eff;
+                        font-size: 0.75rem;
+                        font-weight: 600;
+                        font-family: monospace;
+                    }
+                    .apm-value {
+                        color: #7dff7d;
+                        font-weight: 700;
+                    }
                     "#
                 }
                 script {
@@ -264,8 +279,14 @@ pub fn dashboard_with_data(
             div class="card" {
                 div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;" {
                     h2 style="margin: 0;" { "Recent Sessions" }
-                    span id="live-indicator" class="live-indicator" {
-                        "CONNECTING..."
+                    div style="display: flex; gap: 0.5rem; align-items: center;" {
+                        span id="apm-indicator" class="apm-indicator" {
+                            "APM: "
+                            span class="apm-value" { (format!("{:.1}", stats.avg_apm)) }
+                        }
+                        span id="live-indicator" class="live-indicator" {
+                            "CONNECTING..."
+                        }
                     }
                 }
 

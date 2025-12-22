@@ -31,6 +31,7 @@ pub struct DashboardStats {
     pub total_tokens: i64,
     pub total_cost: f64,
     pub avg_duration: f64,
+    pub avg_apm: f64,
 }
 
 /// Get recent sessions from metrics database
@@ -119,12 +120,22 @@ pub fn get_dashboard_stats(db_path: &str) -> Result<DashboardStats> {
         |row| row.get(0),
     ).unwrap_or(0.0);
 
+    // Average APM (last 30 days)
+    let avg_apm: f64 = conn.query_row(
+        "SELECT AVG(apm) FROM sessions
+         WHERE timestamp >= datetime('now', '-30 days')
+         AND apm IS NOT NULL",
+        [],
+        |row| row.get(0),
+    ).unwrap_or(0.0);
+
     Ok(DashboardStats {
         sessions_today,
         success_rate,
         total_tokens,
         total_cost,
         avg_duration,
+        avg_apm,
     })
 }
 

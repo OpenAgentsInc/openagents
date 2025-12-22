@@ -514,3 +514,56 @@ t!:Bash id=Hcy1mTKQ cmd="sqlite3 autopilot-metrics.db "SELECT id, durati..." →
 o: id=Hcy1mTKQ → [ok] 0f3b3756-9200-4433-b292-5a244d66b65b|3632.885|405|0|6.68889876778373
 a: Excellent! APM was calculated correctly. Now commit this work: tokens_in=0 tokens_out=4 tokens_cached=150864
 t!:Bash id=rUuzd1aj cmd="git add -A && git commit -m "$(cat <<'EOF'" → [running] tokens_in=0 tokens_out=534 tokens_cached=150864
+o: id=rUuzd1aj → [ok] [main 31346cf02] Backfill APM from existing trajectory logs
+t!:Bash id=wFed9eK1 cmd="git push origin main" → [running] tokens_in=0 tokens_out=25 tokens_cached=151138
+o: id=wFed9eK1 → [ok] [0;36m🔍 Running cargo build to check for errors and warnings...[0m
+t!:Bash id=r7opd76n cmd="cargo autopilot issue complete 651" → [running] tokens_in=0 tokens_out=24 tokens_cached=151807
+o: id=r7opd76n → [ok] ✓ Completed issue #651: Backfill APM from existing trajectory logs
+t!:Bash id=kLwdaERp cmd="cargo autopilot issue list --status ready 2>&1 ..." → [running] tokens_in=0 tokens_out=25 tokens_cached=152069
+o: id=kLwdaERp → [ok] Number Status     Priority Agent    Title                                             
+t!:Bash id=Xi9ywWsQ cmd="cargo autopilot issue claim 650" → [running] tokens_in=0 tokens_out=24 tokens_cached=152418
+o: id=Xi9ywWsQ → [ok] ✓ Claimed issue #650: Add APM indicator to autopilot-gui HUD
+a: Issue #650 is to add APM to the autopilot-gui HUD. Let me check if autopilot-gui exists: tokens_in=0 tokens_out=1 tokens_cached=152708
+t!:Bash id=oxKzXwxj cmd="ls -la /home/christopherdavid/code/openagents/c..." → [running] tokens_in=0 tokens_out=129 tokens_cached=152708
+o: id=oxKzXwxj → [ok] drwxr-xr-x     - christopherdavid 22 Dec 05:50  autopilot-gui
+t!:Bash id=rN24N9qR cmd="ls -la /home/christopherdavid/code/openagents/c..." → [running] tokens_in=0 tokens_out=25 tokens_cached=152965
+o: id=rN24N9qR → [ok] Permissions Size User             Date Modified Name
+t!:Bash id=t1b29mBv cmd="ls /home/christopherdavid/code/openagents/crate..." → [running] tokens_in=0 tokens_out=25 tokens_cached=153136
+o: id=t1b29mBv → [ok] Permissions Size User             Date Modified Name
+a: Let me check the layout view which likely contains the HUD: tokens_in=0 tokens_out=1 tokens_cached=153575
+t!:Grep id=MCLM9m1S pattern="HUD|header|status.*bar|fn.*..." → [running] tokens_in=0 tokens_out=1 tokens_cached=153575
+o: id=MCLM9m1S → [ok] No matches found
+t!:Read id=4BhZCKiq file_path=/home/christopherdavid/code/openagents/crates/autopilot-gui/src/views/layout.rs → [running] tokens_in=0 tokens_out=100 tokens_cached=153852
+o: id=4BhZCKiq → [ok]      1→//! HTML layout templates using Maud
+a: The GUI exists but this is a placeholder implementation that displays APM as a note about integration in progress. Since I've already implemented the core APM module, CLI command, dashboard widget,... tokens_in=0 tokens_out=1 tokens_cached=154149
+t!:Read id=fMW5dzXW file_path=/home/christopherdavid/code/openagents/crates/autopilot-gui/src/views/layout.rs → [running] tokens_in=0 tokens_out=1 tokens_cached=154149
+o: id=fMW5dzXW → [ok]     36→                    }
+# status: Compacting
+a: I'll continue working on Issue #650: "Add APM indicator to autopilot-gui HUD". tokens_in=3 tokens_out=1 tokens_cached=18579
+t!:Read id=fGpvXMwe file_path=/home/christopherdavid/code/openagents/crates/autopilot-gui/src/views/layout.rs → [running] tokens_in=3 tokens_out=123 tokens_cached=18579
+o: id=fGpvXMwe → [ok]      1→//! HTML layout templates using Maud
+a: Now I'll add an APM indicator to the navigation bar. I'll insert it next to the LIVE indicator: tokens_in=6 tokens_out=1 tokens_cached=35567
+t!:Edit id=sgo6bRNq file_path=/home/christopherdavid/code/openagents/crates/autopilot-gui/src/views/layout.rs → [running] tokens_in=6 tokens_out=687 tokens_cached=35567
+o: id=sgo6bRNq → [ok] The file /home/christopherdavid/code/openagents/crates/autopilot-gui/src/views/layout.rs has been...
+a: Now I'll add the APM indicator HTML element in the dashboard card next to the LIVE indicator: tokens_in=6 tokens_out=1 tokens_cached=41612
+t!:Edit id=SNzVyEUH file_path=/home/christopherdavid/code/openagents/crates/autopilot-gui/src/views/layout.rs → [running] tokens_in=6 tokens_out=416 tokens_cached=41612
+o: id=SNzVyEUH → [ok] The file /home/christopherdavid/code/openagents/crates/autopilot-gui/src/views/layout.rs has been...
+a: Now I need to check the DashboardStats struct to add the avg_apm field. Let me find where it's defined: tokens_in=6 tokens_out=1 tokens_cached=42896
+t!:Grep id=Ee6tvRJQ pattern="struct DashboardStats" → [running] tokens_in=6 tokens_out=132 tokens_cached=42896
+o: id=Ee6tvRJQ → [ok] Found 1 file
+t!:Read id=Frmg1jfz file_path=/home/christopherdavid/code/openagents/crates/autopilot-gui/src/sessions.rs → [running] tokens_in=5 tokens_out=81 tokens_cached=43731
+o: id=Frmg1jfz → [ok]      1→//! Session data collection from autopilot metrics database
+a: Now I'll add the avg_apm field to DashboardStats: tokens_in=5 tokens_out=1 tokens_cached=43999
+t!:Edit id=Adpkc3KR file_path=/home/christopherdavid/code/openagents/crates/autopilot-gui/src/sessions.rs → [running] tokens_in=5 tokens_out=305 tokens_cached=43999
+o: id=Adpkc3KR → [ok] The file /home/christopherdavid/code/openagents/crates/autopilot-gui/src/sessions.rs has been upd...
+a: Now I need to calculate avg_apm in the get_dashboard_stats function: tokens_in=4 tokens_out=1 tokens_cached=46074
+t!:Edit id=hq146xi4 file_path=/home/christopherdavid/code/openagents/crates/autopilot-gui/src/sessions.rs → [running] tokens_in=4 tokens_out=485 tokens_cached=46074
+o: id=hq146xi4 → [ok] The file /home/christopherdavid/code/openagents/crates/autopilot-gui/src/sessions.rs has been upd...
+a: Now let me build the autopilot-gui to check if everything compiles: tokens_in=3 tokens_out=1 tokens_cached=46771
+t!:Bash id=dg4WieBY cmd="cargo build -p autopilot-gui" → [running] tokens_in=3 tokens_out=118 tokens_cached=46771
+o: id=dg4WieBY → [ok]    Compiling tracing-core v0.1.36
+a: Perfect! The build succeeded. Now let me run tests to make sure everything works: tokens_in=2 tokens_out=5 tokens_cached=47698
+t!:Bash id=gPua9fF4 cmd="cargo test -p autopilot-gui" → [running] tokens_in=2 tokens_out=5 tokens_cached=47698
+o: id=gPua9fF4 → [ok] running 7 tests
+a: Excellent! All tests pass. Now let me commit the changes: tokens_in=2 tokens_out=5 tokens_cached=48284
+t!:Bash id=yN8KpMt1 cmd="git add -A && git diff --cached" → [running] tokens_in=2 tokens_out=95 tokens_cached=48284
