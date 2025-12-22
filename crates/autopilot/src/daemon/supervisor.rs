@@ -213,15 +213,33 @@ impl WorkerSupervisor {
 
         let stall_timeout = Duration::from_millis(self.config.restart.stall_timeout_ms);
 
+        // Get worker start time
+        let worker_started_at = match &self.state.status {
+            WorkerStatus::Running { started_at, .. } => *started_at,
+            _ => return false,
+        };
+
         // Find the latest log file
         if let Some(log_path) = self.find_latest_log() {
             if let Ok(metadata) = std::fs::metadata(&log_path) {
                 if let Ok(modified) = metadata.modified() {
-                    if let Ok(elapsed) = modified.elapsed() {
-                        if elapsed > stall_timeout {
+                    // Convert SystemTime to Instant for comparison
+                    // If the log file was modified before the worker started,
+                    // it's from a previous worker session - skip stall check
+                    if let Ok(elapsed_since_modified) = modified.elapsed() {
+                        let worker_uptime = worker_started_at.elapsed();
+
+                        // If log file is older than worker start, worker hasn't created its log yet
+                        if elapsed_since_modified > worker_uptime {
+                            // Log file is from previous worker, skip stall check
+                            return false;
+                        }
+
+                        // Log file is from current worker, check if stalled
+                        if elapsed_since_modified > stall_timeout {
                             eprintln!(
                                 "Worker stalled: no log activity for {:?} (log: {:?})",
-                                elapsed, log_path
+                                elapsed_since_modified, log_path
                             );
                             self.stop_worker();
                             return true;

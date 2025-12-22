@@ -1,5 +1,5 @@
 [package]
-name = "spark"
+name = "openagents-spark"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
@@ -34,6 +34,9 @@ tokio.workspace = true
 
 # Directory utilities
 dirs = "6.0.0"
+
+# Breez SDK Spark - local path from modified spark-sdk clone with rusqlite 0.32
+breez-sdk-spark = { path = "../../../spark-sdk/crates/breez-sdk/core" }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt"] }
