@@ -15,7 +15,9 @@ use nostr::{finalize_event, generate_secret_key, EventTemplate};
 use nostr::{
     AgentProfile, AgentProfileContent, AgentState, AgentStateContent, AgentSchedule,
     AutonomyLevel, Goal, GoalStatus, MemoryEntry, ThresholdConfig, TriggerType,
+    TickAction, TickRequest, TickResult, TickResultContent, TickStatus, TickTrigger,
     KIND_AGENT_PROFILE, KIND_AGENT_STATE, KIND_AGENT_SCHEDULE,
+    KIND_TICK_REQUEST, KIND_TICK_RESULT,
 };
 
 #[test]
@@ -232,4 +234,167 @@ fn test_agent_schedule_creation() {
     // - State updates are published after each tick
     // - External observers can subscribe to profile and public goals
     // - Threshold signatures protect agent identity in production
+}
+
+#[test]
+fn test_tick_request_creation() {
+    // 1. Create identities
+    let agent_secret_key = generate_secret_key();
+    let runner_secret_key = generate_secret_key();
+
+    let runner_pubkey = nostr::get_public_key(&runner_secret_key)
+        .expect("should get runner pubkey");
+
+    // 2. Create tick request (runner requests agent to execute a tick)
+    let tick_request = TickRequest::new(
+        hex::encode(&runner_pubkey),
+        TickTrigger::Heartbeat,
+    );
+
+    // 3. Convert to Nostr event
+    let template = EventTemplate {
+        kind: KIND_TICK_REQUEST,
+        content: String::new(),  // Tick requests have empty content
+        tags: tick_request.build_tags(),
+        created_at: std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs(),
+    };
+
+    let event = finalize_event(&template, &agent_secret_key)
+        .expect("should sign event");
+
+    // 4. Verify event structure
+    assert_eq!(event.kind, KIND_TICK_REQUEST);
+    assert!(event.content.is_empty());
+
+    // Verify tags include runner
+    assert!(event.tags.iter().any(|t|
+        t[0] == "runner" && t[1] == hex::encode(&runner_pubkey)
+    ));
+
+    // Verify tags include trigger type
+    assert!(event.tags.iter().any(|t|
+        t[0] == "trigger" && t[1] == "heartbeat"
+    ));
+
+    // NOTE: Full tick request workflow would include:
+    // - Scheduler monitors agent schedule events
+    // - Heartbeat timer or event trigger fires
+    // - Scheduler publishes tick request to relay
+    // - Agent subscribes to tick requests for their pubkey
+    // - Agent receives tick request and begins execution
+}
+
+#[test]
+fn test_tick_result_publishing() {
+    // 1. Create identities
+    let agent_secret_key = generate_secret_key();
+    let runner_pubkey = hex::encode([0x22u8; 32]);
+
+    // 2. Simulate a previous tick request
+    let request_id = hex::encode([0x99u8; 32]);
+
+    // 3. Create tick result content with metrics and actions
+    let mut action1_meta = serde_json::Map::new();
+    action1_meta.insert("goal_id".to_string(), serde_json::Value::String("goal-001".to_string()));
+
+    let mut action2_meta = serde_json::Map::new();
+    action2_meta.insert("content".to_string(), serde_json::Value::String("Published research summary".to_string()));
+
+    let result_content = TickResultContent::new(
+        1500,    // tokens_in
+        800,     // tokens_out
+        0.0023,  // cost_usd
+        2,       // goals_updated
+    )
+    .add_action(TickAction {
+        action_type: "update_goal".to_string(),
+        id: None,
+        metadata: action1_meta,
+    })
+    .add_action(TickAction {
+        action_type: "post".to_string(),
+        id: Some(hex::encode([0xABu8; 32])),
+        metadata: action2_meta,
+    });
+
+    // 4. Create tick result
+    let tick_result = TickResult::new(
+        request_id.clone(),
+        runner_pubkey.clone(),
+        TickStatus::Success,
+        2500,  // duration_ms
+        result_content,
+    );
+
+    // 5. Convert to Nostr event
+    let content = serde_json::to_string(&tick_result.content)
+        .expect("should serialize result content");
+
+    let template = EventTemplate {
+        kind: KIND_TICK_RESULT,
+        content,
+        tags: tick_result.build_tags(),
+        created_at: std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs(),
+    };
+
+    let event = finalize_event(&template, &agent_secret_key)
+        .expect("should sign event");
+
+    // 6. Verify event structure
+    assert_eq!(event.kind, KIND_TICK_RESULT);
+    assert!(!event.content.is_empty());
+
+    // Verify tags include request ID reference
+    assert!(event.tags.iter().any(|t|
+        t[0] == "request" && t[1] == request_id
+    ));
+
+    // Verify tags include runner
+    assert!(event.tags.iter().any(|t|
+        t[0] == "runner" && t[1] == runner_pubkey
+    ));
+
+    // Verify tags include status
+    assert!(event.tags.iter().any(|t|
+        t[0] == "status" && t[1] == "success"
+    ));
+
+    // Verify tags include duration
+    assert!(event.tags.iter().any(|t|
+        t[0] == "duration_ms" && t[1] == "2500"
+    ));
+
+    // Verify tags include action count
+    assert!(event.tags.iter().any(|t|
+        t[0] == "actions" && t[1] == "2"
+    ));
+
+    // 7. Parse back the result content
+    let parsed: TickResultContent = serde_json::from_str(&event.content)
+        .expect("should deserialize result");
+
+    assert_eq!(parsed.tokens_in, 1500);
+    assert_eq!(parsed.tokens_out, 800);
+    assert_eq!(parsed.cost_usd, 0.0023);
+    assert_eq!(parsed.goals_updated, 2);
+    assert_eq!(parsed.actions.len(), 2);
+
+    assert_eq!(parsed.actions[0].action_type, "update_goal");
+    assert_eq!(parsed.actions[1].action_type, "post");
+    assert!(parsed.actions[1].id.is_some());
+
+    // NOTE: Full tick result workflow would include:
+    // - Agent completes tick execution
+    // - Agent publishes tick result with metrics
+    // - Runner monitors tick results via subscription
+    // - Runner tracks token usage and costs
+    // - Runner updates agent state with new goals/memory
+    // - Dashboard displays tick metrics and execution history
+    // - Billing system charges for token usage
 }
