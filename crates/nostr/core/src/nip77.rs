@@ -1029,11 +1029,105 @@ impl ReconciliationState {
     }
 
     /// Add an ID to the "need" set (remote has, we need)
-    #[allow(dead_code)] // Will be used in process_message() implementation
+    #[allow(dead_code)] // Will be called by process_message()
     pub fn add_need(&mut self, id: EventId) {
         if !self.need.contains(&id) {
             self.need.push(id);
         }
+    }
+
+    /// Process an incoming Negentropy message and generate response
+    ///
+    /// This is the core reconciliation algorithm. For each incoming range:
+    /// 1. If it's a Skip - no remote records in this range
+    /// 2. If it's Fingerprint - compare with local fingerprint:
+    ///    - If match: skip range (both sides agree)
+    ///    - If mismatch: split range to isolate differences
+    /// 3. If it's IdList - compare with local IDs:
+    ///    - Add IDs we have but they don't to "have" set
+    ///    - Add IDs they have but we don't to "need" set
+    ///
+    /// Returns a response message with our ranges
+    #[allow(dead_code)] // Will be used in relay/client integration
+    pub fn process_message(&mut self, incoming: &NegentropyMessage) -> Result<NegentropyMessage> {
+        let mut response_ranges = Vec::new();
+        let mut prev_bound = Bound::zero();
+
+        for incoming_range in &incoming.ranges {
+            let upper = &incoming_range.upper_bound;
+
+            match &incoming_range.payload {
+                RangePayload::Skip => {
+                    // Remote has no records in [prev_bound, upper)
+                    // Send all our records in this range
+                    let our_ranges = self.split_range(&prev_bound, upper)?;
+                    response_ranges.extend(our_ranges);
+                }
+
+                RangePayload::Fingerprint(remote_fp) => {
+                    // Compare fingerprints
+                    let local_fp = self.calculate_range_fingerprint(&prev_bound, upper);
+
+                    if &local_fp == remote_fp {
+                        // Fingerprints match - both sides agree on this range
+                        response_ranges.push(Range::skip(upper.clone()));
+                    } else {
+                        // Fingerprints differ - split to isolate differences
+                        let our_ranges = self.split_range(&prev_bound, upper)?;
+                        response_ranges.extend(our_ranges);
+                    }
+                }
+
+                RangePayload::IdList(remote_ids) => {
+                    // Get our IDs in this range
+                    let indices = self.find_records_in_range(&prev_bound, upper);
+                    let local_ids: Vec<EventId> = indices.iter().map(|&i| self.records[i].id).collect();
+
+                    // Find IDs we have that they don't
+                    for local_id in &local_ids {
+                        if !remote_ids.contains(local_id) {
+                            self.add_have(*local_id);
+                        }
+                    }
+
+                    // Find IDs they have that we don't
+                    for remote_id in remote_ids {
+                        if !local_ids.contains(remote_id) {
+                            self.add_need(*remote_id);
+                        }
+                    }
+
+                    // Respond with our IDs for this range
+                    if local_ids.is_empty() {
+                        response_ranges.push(Range::skip(upper.clone()));
+                    } else {
+                        response_ranges.push(Range::id_list(upper.clone(), local_ids));
+                    }
+                }
+            }
+
+            prev_bound = upper.clone();
+        }
+
+        // Ensure we cover the full range up to infinity
+        if prev_bound.timestamp != TIMESTAMP_INFINITY {
+            let remaining_ranges = self.split_range(&prev_bound, &Bound::infinity())?;
+            response_ranges.extend(remaining_ranges);
+        }
+
+        Ok(NegentropyMessage::new(response_ranges))
+    }
+
+    /// Check if reconciliation is complete
+    ///
+    /// Reconciliation is complete when both sides have exchanged ID lists
+    /// for all ranges (no more fingerprints to compare)
+    #[allow(dead_code)] // Will be used in relay/client integration
+    pub fn is_complete(&self, last_message: &NegentropyMessage) -> bool {
+        // If all ranges are Skip or IdList (no Fingerprint), we're done
+        last_message.ranges.iter().all(|r| {
+            matches!(r.payload, RangePayload::Skip | RangePayload::IdList(_))
+        })
     }
 }
 
@@ -1716,5 +1810,244 @@ mod tests {
                 assert_eq!(fp.len(), 16);
             }
         }
+    }
+
+    #[test]
+    fn test_process_message_identical_sets() {
+        // Both sides have same events
+        let records = vec![
+            Record::new(100, [0x01; 32]),
+            Record::new(200, [0x02; 32]),
+        ];
+
+        let mut state = ReconciliationState::new(records.clone());
+
+        // Create message with matching fingerprint
+        let ids: Vec<EventId> = records.iter().map(|r| r.id).collect();
+        let fp = calculate_fingerprint(&ids);
+        let incoming = NegentropyMessage::new(vec![
+            Range::fingerprint(Bound::infinity(), fp)
+        ]);
+
+        let response = state.process_message(&incoming).unwrap();
+
+        // Should respond with skip (fingerprints match)
+        assert_eq!(response.ranges.len(), 1);
+        assert!(matches!(response.ranges[0].payload, RangePayload::Skip));
+        assert_eq!(state.have.len(), 0);
+        assert_eq!(state.need.len(), 0);
+    }
+
+    #[test]
+    fn test_process_message_empty_sets() {
+        // Both sides have no events
+        let mut state = ReconciliationState::new(vec![]);
+
+        // Remote has no events
+        let incoming = NegentropyMessage::new(vec![
+            Range::skip(Bound::infinity())
+        ]);
+
+        let response = state.process_message(&incoming).unwrap();
+
+        // Should respond with skip (we also have nothing)
+        assert_eq!(response.ranges.len(), 1);
+        assert!(matches!(response.ranges[0].payload, RangePayload::Skip));
+    }
+
+    #[test]
+    fn test_process_message_disjoint_sets() {
+        // We have events [0x01, 0x02]
+        let our_records = vec![
+            Record::new(100, [0x01; 32]),
+            Record::new(200, [0x02; 32]),
+        ];
+
+        let mut state = ReconciliationState::new(our_records);
+
+        // They have completely different events [0x03, 0x04]
+        let their_ids = vec![[0x03; 32], [0x04; 32]];
+        let incoming = NegentropyMessage::new(vec![
+            Range::id_list(Bound::infinity(), their_ids.clone())
+        ]);
+
+        let response = state.process_message(&incoming).unwrap();
+
+        // We should send our IDs
+        assert_eq!(response.ranges.len(), 1);
+        if let RangePayload::IdList(ids) = &response.ranges[0].payload {
+            assert_eq!(ids.len(), 2);
+            assert!(ids.contains(&[0x01; 32]));
+            assert!(ids.contains(&[0x02; 32]));
+        } else {
+            panic!("Expected IdList");
+        }
+
+        // have = [0x01, 0x02] (we have, they don't)
+        assert_eq!(state.have.len(), 2);
+        assert!(state.have.contains(&[0x01; 32]));
+        assert!(state.have.contains(&[0x02; 32]));
+
+        // need = [0x03, 0x04] (they have, we don't)
+        assert_eq!(state.need.len(), 2);
+        assert!(state.need.contains(&[0x03; 32]));
+        assert!(state.need.contains(&[0x04; 32]));
+    }
+
+    #[test]
+    fn test_process_message_partial_overlap() {
+        // We have [0x01, 0x02, 0x03]
+        let our_records = vec![
+            Record::new(100, [0x01; 32]),
+            Record::new(200, [0x02; 32]),
+            Record::new(300, [0x03; 32]),
+        ];
+
+        let mut state = ReconciliationState::new(our_records);
+
+        // They have [0x02, 0x03, 0x04] (overlap on 0x02 and 0x03)
+        let their_ids = vec![[0x02; 32], [0x03; 32], [0x04; 32]];
+        let incoming = NegentropyMessage::new(vec![
+            Range::id_list(Bound::infinity(), their_ids)
+        ]);
+
+        let response = state.process_message(&incoming).unwrap();
+
+        // We should send our IDs
+        assert_eq!(response.ranges.len(), 1);
+        if let RangePayload::IdList(ids) = &response.ranges[0].payload {
+            assert_eq!(ids.len(), 3);
+        } else {
+            panic!("Expected IdList");
+        }
+
+        // have = [0x01] (we have, they don't)
+        assert_eq!(state.have.len(), 1);
+        assert!(state.have.contains(&[0x01; 32]));
+
+        // need = [0x04] (they have, we don't)
+        assert_eq!(state.need.len(), 1);
+        assert!(state.need.contains(&[0x04; 32]));
+    }
+
+    #[test]
+    fn test_process_message_fingerprint_mismatch() {
+        let records = vec![
+            Record::new(100, [0x01; 32]),
+            Record::new(200, [0x02; 32]),
+        ];
+
+        let mut state = ReconciliationState::new(records);
+
+        // Send mismatched fingerprint (all zeros)
+        let incoming = NegentropyMessage::new(vec![
+            Range::fingerprint(Bound::infinity(), [0x00; 16])
+        ]);
+
+        let response = state.process_message(&incoming).unwrap();
+
+        // Should split the range (fingerprint mismatch)
+        // With 2 records, should split into 2 fingerprint ranges
+        assert!(response.ranges.len() >= 1);
+
+        // At least one range should be a Fingerprint or IdList
+        let has_fingerprint_or_id = response.ranges.iter().any(|r| {
+            matches!(r.payload, RangePayload::Fingerprint(_) | RangePayload::IdList(_))
+        });
+        assert!(has_fingerprint_or_id);
+    }
+
+    #[test]
+    fn test_process_message_skip_range() {
+        // We have events
+        let records = vec![
+            Record::new(100, [0x01; 32]),
+            Record::new(200, [0x02; 32]),
+        ];
+
+        let mut state = ReconciliationState::new(records);
+
+        // Remote has no events (skip)
+        let incoming = NegentropyMessage::new(vec![
+            Range::skip(Bound::infinity())
+        ]);
+
+        let response = state.process_message(&incoming).unwrap();
+
+        // Should send our records
+        assert!(response.ranges.len() >= 1);
+
+        // Should have at least one non-skip range
+        let has_content = response.ranges.iter().any(|r| {
+            !matches!(r.payload, RangePayload::Skip)
+        });
+        assert!(has_content);
+    }
+
+    #[test]
+    fn test_is_complete_with_fingerprints() {
+        let state = ReconciliationState::new(vec![]);
+
+        let message = NegentropyMessage::new(vec![
+            Range::fingerprint(Bound::infinity(), [0x00; 16])
+        ]);
+
+        // Not complete - still has fingerprints to resolve
+        assert!(!state.is_complete(&message));
+    }
+
+    #[test]
+    fn test_is_complete_with_id_lists() {
+        let state = ReconciliationState::new(vec![]);
+
+        let message = NegentropyMessage::new(vec![
+            Range::id_list(Bound::new(500, vec![]).unwrap(), vec![[0x01; 32]]),
+            Range::skip(Bound::infinity()),
+        ]);
+
+        // Complete - all ranges are Skip or IdList
+        assert!(state.is_complete(&message));
+    }
+
+    #[test]
+    fn test_is_complete_with_skip_only() {
+        let state = ReconciliationState::new(vec![]);
+
+        let message = NegentropyMessage::new(vec![
+            Range::skip(Bound::infinity())
+        ]);
+
+        // Complete - all ranges are Skip
+        assert!(state.is_complete(&message));
+    }
+
+    #[test]
+    fn test_process_message_multiple_ranges() {
+        // We have events at different timestamps
+        let records = vec![
+            Record::new(100, [0x01; 32]),
+            Record::new(500, [0x05; 32]),
+        ];
+
+        let mut state = ReconciliationState::new(records);
+
+        // Remote sends multiple ranges
+        let incoming = NegentropyMessage::new(vec![
+            Range::id_list(Bound::new(300, vec![]).unwrap(), vec![[0x02; 32]]),
+            Range::skip(Bound::infinity()),
+        ]);
+
+        let response = state.process_message(&incoming).unwrap();
+
+        // Should process each range correctly
+        assert!(response.ranges.len() >= 1);
+
+        // need = [0x02] (they have in first range)
+        assert_eq!(state.need.len(), 1);
+        assert!(state.need.contains(&[0x02; 32]));
+
+        // have = [0x01] (we have in first range, they don't)
+        assert_eq!(state.have.len(), 1);
+        assert!(state.have.contains(&[0x01; 32]));
     }
 }
