@@ -3,7 +3,7 @@
 //! Defines peer-to-peer order events for decentralized marketplace trading.
 //! Creates a unified liquidity pool across P2P platforms.
 //!
-//! See: https://github.com/nostr-protocol/nips/blob/master/69.md
+//! See: <https://github.com/nostr-protocol/nips/blob/master/69.md>
 
 use crate::Event;
 use serde::{Deserialize, Serialize};

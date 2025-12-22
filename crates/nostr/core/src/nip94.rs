@@ -7,7 +7,7 @@
 //! - Torrent/magnet links
 //! - Accessibility descriptions
 //!
-//! See: https://github.com/nostr-protocol/nips/blob/master/94.md
+//! See: <https://github.com/nostr-protocol/nips/blob/master/94.md>
 
 use serde::{Deserialize, Serialize};
 use thiserror::Error;

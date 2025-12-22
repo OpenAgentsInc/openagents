@@ -386,7 +386,7 @@ pub struct Calendar {
     /// Calendar title (required)
     pub title: String,
     /// References to calendar events (a tags)
-    /// Format: "<kind>:<pubkey>:<d-identifier>"
+    /// Format: `<kind>:<pubkey>:<d-identifier>`
     pub event_refs: Vec<CalendarEventRef>,
 }
 
@@ -531,7 +531,7 @@ pub struct CalendarEventRsvp {
     /// Unique identifier (d tag)
     pub d: String,
     /// Calendar event coordinates (a tag, required)
-    /// Format: "<kind>:<pubkey>:<d-identifier>"
+    /// Format: `<kind>:<pubkey>:<d-identifier>`
     pub event_coordinates: String,
     /// Optional relay URL for the event coordinates
     pub event_relay: Option<String>,

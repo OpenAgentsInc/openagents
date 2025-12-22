@@ -24,7 +24,7 @@
 //! ## Reference
 //!
 //! Based on the algorithm in @cmdcode/frost and @frostr/bifrost.
-//! See: https://github.com/cmdruid/frost/blob/master/src/lib/ecdh.ts
+//! See: <https://github.com/cmdruid/frost/blob/master/src/lib/ecdh.ts>
 
 use crate::{keygen::FrostShare, Error, Result};
 use k256::elliptic_curve::group::ff::PrimeField;

@@ -4,7 +4,7 @@
 //! writes to and relays where the user reads mentions from. This enables better
 //! relay discovery and more efficient event distribution.
 //!
-//! See: https://github.com/nostr-protocol/nips/blob/master/65.md
+//! See: <https://github.com/nostr-protocol/nips/blob/master/65.md>
 
 use crate::Event;
 use serde::{Deserialize, Serialize};

@@ -3,7 +3,7 @@
 //! Defines inline media metadata tags for attaching rich media information
 //! to URLs in event content.
 //!
-//! See: https://github.com/nostr-protocol/nips/blob/master/92.md
+//! See: <https://github.com/nostr-protocol/nips/blob/master/92.md>
 
 use crate::Event;
 use std::collections::HashMap;

@@ -3,7 +3,7 @@
 //! Defines a simple chat protocol using kind 9 events. Chat messages can be
 //! standalone or replies that quote parent messages using a `q` tag.
 //!
-//! See: https://github.com/nostr-protocol/nips/blob/master/C7.md
+//! See: <https://github.com/nostr-protocol/nips/blob/master/C7.md>
 
 use crate::Event;
 use serde::{Deserialize, Serialize};

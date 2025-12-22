@@ -3,7 +3,7 @@
 //! Defines how users publish their follow/contact lists as kind 3 events.
 //! Each followed profile is represented by a "p" tag with optional relay URL and petname.
 //!
-//! See: https://github.com/nostr-protocol/nips/blob/master/02.md
+//! See: <https://github.com/nostr-protocol/nips/blob/master/02.md>
 
 use crate::Event;
 use serde::{Deserialize, Serialize};

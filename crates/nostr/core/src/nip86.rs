@@ -4,7 +4,7 @@
 //! API on the same URI as the WebSocket endpoint, using HTTP with a special content type.
 //! Requests must be authorized using NIP-98 authentication headers.
 //!
-//! See: https://github.com/nostr-protocol/nips/blob/master/86.md
+//! See: <https://github.com/nostr-protocol/nips/blob/master/86.md>
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;

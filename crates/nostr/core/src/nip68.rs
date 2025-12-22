@@ -3,7 +3,7 @@
 //! Defines kind 20 events for picture-first clients (Instagram-like feeds).
 //! Images are self-contained and referenced using imeta tags.
 //!
-//! See: https://github.com/nostr-protocol/nips/blob/master/68.md
+//! See: <https://github.com/nostr-protocol/nips/blob/master/68.md>
 
 use crate::Event;
 use std::collections::HashMap;
@@ -54,7 +54,7 @@ impl UserAnnotation {
         Self { pubkey, pos_x, pos_y }
     }
 
-    /// Parse from annotate-user tag value: "<pubkey>:<posX>:<posY>"
+    /// Parse from annotate-user tag value: `<pubkey>:<posX>:<posY>`
     pub fn from_str(s: &str) -> Result<Self, Nip68Error> {
         let parts: Vec<&str> = s.split(':').collect();
         if parts.len() != 3 {

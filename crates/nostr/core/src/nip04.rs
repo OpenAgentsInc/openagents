@@ -8,7 +8,7 @@
 //! - AES-256-CBC encryption with random IV
 //! - Base64 encoding with format: `<encrypted>?iv=<iv_base64>`
 //!
-//! See: https://github.com/nostr-protocol/nips/blob/master/04.md
+//! See: <https://github.com/nostr-protocol/nips/blob/master/04.md>
 
 #[cfg(feature = "full")]
 use aes::Aes256;

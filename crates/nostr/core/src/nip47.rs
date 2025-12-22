@@ -6,7 +6,7 @@
 //! **Phase 1 Implementation**: This module provides core types and API surface for NWC.
 //! Actual payment execution and encryption are deferred to future phases.
 //!
-//! See: https://github.com/nostr-protocol/nips/blob/master/47.md
+//! See: <https://github.com/nostr-protocol/nips/blob/master/47.md>
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;

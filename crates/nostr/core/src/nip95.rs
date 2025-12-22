@@ -7,7 +7,7 @@
 //! Note: This NIP is deprecated in favor of NIP-96 (HTTP File Storage), but remains
 //! useful for understanding relay-based file storage.
 //!
-//! See: https://github.com/nostr-protocol/nips/pull/345
+//! See: <https://github.com/nostr-protocol/nips/pull/345>
 
 use crate::Event;
 use serde::{Deserialize, Serialize};

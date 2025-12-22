@@ -3,4 +3,4 @@ source: crates/autopilot/src/tests/dashboard_snapshots.rs
 assertion_line: 169
 expression: html
 ---
-<div class="sessions-section"><h2>Recent Sessions (1)</h2><table class="sessions-table"><thead><tr><th>Session ID</th><th>Timestamp</th><th>Model</th><th>Duration</th><th>Tokens</th><th>Cost</th><th>Issues</th><th>Status</th></tr></thead><tbody><tr class="status-completed"><td><a href="/session/session-001">session-...</a></td><td>2025-12-22 08:06</td><td>claude-sonnet-4-5</td><td>300s</td><td>15000</td><td>$1.500</td><td>3/4</td><td>Completed</td></tr></tbody></table></div>
+<div class="sessions-section"><h2>Recent Sessions (1)</h2><table class="sessions-table"><thead><tr><th>Session ID</th><th>Timestamp</th><th>Model</th><th>Duration</th><th>Tokens</th><th>Cost</th><th>Issues</th><th>Status</th></tr></thead><tbody><tr class="status-completed"><td><a href="/session/session-001">session-...</a></td><td>2025-12-22 11:24</td><td>claude-sonnet-4-5</td><td>300s</td><td>15000</td><td>$1.500</td><td>3/4</td><td>Completed</td></tr></tbody></table></div>

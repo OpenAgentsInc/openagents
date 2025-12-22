@@ -12,7 +12,7 @@
 //! - impersonation: Someone pretending to be someone else
 //! - other: Reports that don't fit above categories
 //!
-//! See: https://github.com/nostr-protocol/nips/blob/master/56.md
+//! See: <https://github.com/nostr-protocol/nips/blob/master/56.md>
 
 use serde::{Deserialize, Serialize};
 use thiserror::Error;

@@ -8,7 +8,7 @@
 //! - Extension support (key:value pairs)
 //! - Standard extensions: include:spam, domain:, language:, sentiment:, nsfw:
 //!
-//! See: https://github.com/nostr-protocol/nips/blob/master/50.md
+//! See: <https://github.com/nostr-protocol/nips/blob/master/50.md>
 
 use serde::{Deserialize, Serialize};
 use thiserror::Error;

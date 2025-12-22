@@ -3,7 +3,7 @@
 //! Defines Cashu-based zaps using P2PK-locked tokens. Enables private,
 //! anonymous zapping with ecash.
 //!
-//! See: https://github.com/nostr-protocol/nips/blob/master/61.md
+//! See: <https://github.com/nostr-protocol/nips/blob/master/61.md>
 
 use crate::Event;
 use serde::{Deserialize, Serialize};

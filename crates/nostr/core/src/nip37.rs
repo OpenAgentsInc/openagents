@@ -3,7 +3,7 @@
 //! Defines kind 31234 as encrypted storage for unsigned draft events and kind 10013
 //! for relay lists for private content.
 //!
-//! See: https://github.com/nostr-protocol/nips/blob/master/37.md
+//! See: <https://github.com/nostr-protocol/nips/blob/master/37.md>
 
 use crate::Event;
 use serde_json;
