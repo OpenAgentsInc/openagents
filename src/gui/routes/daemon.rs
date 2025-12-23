@@ -130,6 +130,8 @@ async fn start_daemon(state: web::Data<AppState>) -> HttpResponse {
     info!("Binary exists: {}", daemon_binary.exists());
 
     // Try multiple locations for the daemon binary
+    // Note: Use inherit for stdout/stderr so daemon can write logs.
+    // Using piped without reading causes daemon to block when buffer fills.
     let (cmd_desc, result) = if daemon_binary.exists() {
         // Use known-good autopilotd binary
         let args = ["--workdir", cwd.to_str().unwrap_or("."), "--project", project];
@@ -137,8 +139,8 @@ async fn start_daemon(state: web::Data<AppState>) -> HttpResponse {
         let r = Command::new(&daemon_binary)
             .args(args)
             .stdin(Stdio::null())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
+            .stdout(Stdio::inherit())
+            .stderr(Stdio::inherit())
             .spawn();
         (format!("{:?} {:?}", daemon_binary, args), r)
     } else {
@@ -151,8 +153,8 @@ async fn start_daemon(state: web::Data<AppState>) -> HttpResponse {
             .args(args)
             .current_dir(&cwd)
             .stdin(Stdio::null())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
+            .stdout(Stdio::inherit())
+            .stderr(Stdio::inherit())
             .spawn();
         (format!("cargo {:?}", args), r)
     };
@@ -160,43 +162,38 @@ async fn start_daemon(state: web::Data<AppState>) -> HttpResponse {
     match result {
         Ok(mut child) => {
             info!("Daemon process spawned successfully, pid: {:?}", child.id());
-            // Give daemon a moment to start
-            tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
 
-            // Check if socket exists now
+            // Wait for socket to appear (daemon needs time to start)
+            for i in 0..10 {
+                tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
+                if socket_path.exists() {
+                    info!("Socket appeared after {}ms", (i + 1) * 200);
+                    break;
+                }
+            }
+
             info!("Checking for socket at: {:?}, exists: {}", socket_path, socket_path.exists());
 
-            // Check if process is still running and capture any output
+            // Check if process is still running
             match child.try_wait() {
                 Ok(Some(status)) => {
-                    // Process exited - capture output
-                    info!("Daemon process exited immediately with status: {}", status);
-                    if let Some(mut stderr) = child.stderr.take() {
-                        use tokio::io::AsyncReadExt;
-                        let mut stderr_buf = String::new();
-                        let _ = stderr.read_to_string(&mut stderr_buf).await;
-                        if !stderr_buf.is_empty() {
-                            info!("Daemon stderr: {}", stderr_buf);
-                        }
-                    }
-                    if let Some(mut stdout) = child.stdout.take() {
-                        use tokio::io::AsyncReadExt;
-                        let mut stdout_buf = String::new();
-                        let _ = stdout.read_to_string(&mut stdout_buf).await;
-                        if !stdout_buf.is_empty() {
-                            info!("Daemon stdout: {}", stdout_buf);
-                        }
-                    }
+                    info!("Daemon process exited with status: {} (check terminal for output)", status);
                     HttpResponse::InternalServerError()
                         .content_type("text/html")
-                        .body(format!("<div class='toast error'>Daemon exited: {}</div>", status))
+                        .body(format!("<div class='toast error'>Daemon exited: {} - check terminal</div>", status))
                 }
                 Ok(None) => {
-                    // Process still running
-                    info!("Daemon process still running");
-                    HttpResponse::Ok()
-                        .content_type("text/html")
-                        .body("<div class='toast'>Daemon starting...</div>")
+                    if socket_path.exists() {
+                        info!("Daemon started successfully");
+                        HttpResponse::Ok()
+                            .content_type("text/html")
+                            .body("<div class='toast'>Daemon started</div>")
+                    } else {
+                        info!("Daemon running but no socket yet - may be starting up");
+                        HttpResponse::Ok()
+                            .content_type("text/html")
+                            .body("<div class='toast'>Daemon starting...</div>")
+                    }
                 }
                 Err(e) => {
                     info!("Failed to check daemon status: {}", e);
