@@ -528,3 +528,9 @@ o: id=vnDoUJd9 → [error] Exit code 128
 t!:Bash id=9qa7VR54 cmd="git status" → [running] tokens_in=3 tokens_out=25 tokens_cached=57897
 o: id=9qa7VR54 → [ok] On branch main
 t!:Bash id=ekaYSMLD cmd="git add docs/logs/20251222/223240-call-issue-re..." → [running] tokens_in=2 tokens_out=109 tokens_cached=58025
+o: id=ekaYSMLD → [ok] [main c7b145539] Add comprehensive integration tests for GitAfter diff viewer
+t!:Bash id=21Dbycjq cmd="git pull --rebase origin main" → [running] tokens_in=1 tokens_out=24 tokens_cached=58238
+o: id=21Dbycjq → [error] Exit code 128
+t!:Bash id=87U3KEVc cmd="git status" → [running] tokens_in=2 tokens_out=24 tokens_cached=58587
+o: id=87U3KEVc → [ok] On branch main
+t!:Bash id=G5WzqFHy cmd="git stash push -m "rlog-changes" && git pull --..." → [running] tokens_in=1 tokens_out=24 tokens_cached=58714

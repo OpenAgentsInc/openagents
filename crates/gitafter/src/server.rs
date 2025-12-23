@@ -1747,9 +1747,46 @@ async fn pull_request_detail(
         }
     };
 
+    // Fetch bounties for this PR (including per-layer bounties)
+    let bounties = if let Some(sid) = stack_id.as_ref() {
+        // Get layer info for this PR
+        let layer_num = pull_request.tags.iter()
+            .find(|tag| tag.len() >= 2 && tag[0] == "layer")
+            .and_then(|tag| tag[1].parse::<u32>().ok());
+
+        if let Some(layer) = layer_num {
+            // Fetch bounties for this specific layer
+            match state.nostr_client.get_bounties_for_layer(sid, layer).await {
+                Ok(b) => b,
+                Err(e) => {
+                    tracing::warn!("Failed to fetch layer bounties for stack {} layer {}: {}", sid, layer, e);
+                    Vec::new()
+                }
+            }
+        } else {
+            // No layer tag, try to get bounties by PR ID
+            match state.nostr_client.get_bounties_for_pr(&pr_id).await {
+                Ok(b) => b,
+                Err(e) => {
+                    tracing::warn!("Failed to fetch bounties for PR {}: {}", pr_id, e);
+                    Vec::new()
+                }
+            }
+        }
+    } else {
+        // Not part of a stack, get bounties by PR ID
+        match state.nostr_client.get_bounties_for_pr(&pr_id).await {
+            Ok(b) => b,
+            Err(e) => {
+                tracing::warn!("Failed to fetch bounties for PR {}: {}", pr_id, e);
+                Vec::new()
+            }
+        }
+    };
+
     HttpResponse::Ok()
         .content_type("text/html; charset=utf-8")
-        .body(pull_request_detail_page(&repository, &pull_request, &reviews, &reviewer_reputations, &status_events, &identifier, trajectory_session.as_ref(), &trajectory_events, &stack_prs, dependency_pr.as_ref(), is_mergeable, &pr_updates, diff_text.as_deref(), &inline_comments).into_string())
+        .body(pull_request_detail_page(&repository, &pull_request, &reviews, &reviewer_reputations, &status_events, &identifier, trajectory_session.as_ref(), &trajectory_events, &stack_prs, dependency_pr.as_ref(), is_mergeable, &pr_updates, diff_text.as_deref(), &inline_comments, &bounties).into_string())
 }
 
 /// Trajectory detail page

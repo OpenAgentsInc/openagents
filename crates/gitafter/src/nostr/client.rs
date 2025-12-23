@@ -308,6 +308,21 @@ impl NostrClient {
         self.cache.lock().await.get_bounties_for_issue(issue_event_id)
     }
 
+    /// Get bounty offers for a specific PR
+    pub async fn get_bounties_for_pr(&self, pr_event_id: &str) -> Result<Vec<Event>> {
+        self.cache.lock().await.get_bounties_for_issue(pr_event_id)
+    }
+
+    /// Get bounties for a specific stack layer
+    pub async fn get_bounties_for_layer(&self, stack_id: &str, layer: u32) -> Result<Vec<Event>> {
+        self.cache.lock().await.get_bounties_for_layer(stack_id, layer)
+    }
+
+    /// Get all bounties for a stack (all layers)
+    pub async fn get_bounties_for_stack(&self, stack_id: &str) -> Result<Vec<Event>> {
+        self.cache.lock().await.get_bounties_for_stack(stack_id)
+    }
+
     /// Get the latest status for a PR (returns kind number: 1630=Open, 1631=Merged, 1632=Closed, 1633=Draft)
     pub async fn get_pr_status(&self, pr_event_id: &str) -> Result<u16> {
         let status_events = self.cache.lock().await.get_status_events_for_pr(pr_event_id)?;

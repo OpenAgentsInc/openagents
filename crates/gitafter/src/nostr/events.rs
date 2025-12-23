@@ -227,7 +227,8 @@ impl IssueClaimBuilder {
 
 /// Builder for creating bounty offer events (kind:1636)
 ///
-/// A bounty offer event attaches a bitcoin bounty to an issue.
+/// A bounty offer event attaches a bitcoin bounty to an issue or PR layer.
+/// Supports both single-issue bounties and per-layer bounties for stacked PRs.
 #[allow(dead_code)]
 pub struct BountyOfferBuilder {
     issue_event_id: String,
@@ -235,6 +236,10 @@ pub struct BountyOfferBuilder {
     amount_sats: u64,
     expiry_timestamp: Option<u64>,
     conditions: Vec<String>,
+    /// Stack UUID for per-layer bounties
+    stack_id: Option<String>,
+    /// Layer info for per-layer bounties: (current_layer, total_layers)
+    layer: Option<(u32, u32)>,
 }
 
 #[allow(dead_code)]
@@ -273,6 +278,8 @@ impl BountyOfferBuilder {
             amount_sats,
             expiry_timestamp: None,
             conditions: Vec::new(),
+            stack_id: None,
+            layer: None,
         }
     }
 
@@ -285,6 +292,30 @@ impl BountyOfferBuilder {
     /// Add a condition for claiming the bounty
     pub fn condition(mut self, condition: impl Into<String>) -> Self {
         self.conditions.push(condition.into());
+        self
+    }
+
+    /// Set stack ID for per-layer bounties in stacked PRs
+    ///
+    /// # Example
+    /// ```
+    /// # use gitafter::nostr::events::BountyOfferBuilder;
+    /// let bounty = BountyOfferBuilder::new("pr-event-id", "30617:pubkey:repo", 25000)
+    ///     .stack("550e8400-e29b-41d4-a716-446655440000")
+    ///     .layer(2, 4); // Layer 2 of 4
+    /// ```
+    pub fn stack(mut self, stack_id: impl Into<String>) -> Self {
+        self.stack_id = Some(stack_id.into());
+        self
+    }
+
+    /// Set layer information for per-layer bounties
+    ///
+    /// # Arguments
+    /// * `current` - Current layer number (1-indexed)
+    /// * `total` - Total number of layers in the stack
+    pub fn layer(mut self, current: u32, total: u32) -> Self {
+        self.layer = Some((current, total));
         self
     }
 
@@ -307,6 +338,20 @@ impl BountyOfferBuilder {
         // Add conditions
         for condition in self.conditions {
             tags.push(vec!["conditions".to_string(), condition]);
+        }
+
+        // Add stack ID for per-layer bounties
+        if let Some(stack_id) = self.stack_id {
+            tags.push(vec!["stack".to_string(), stack_id]);
+        }
+
+        // Add layer info for per-layer bounties
+        if let Some((current, total)) = self.layer {
+            tags.push(vec![
+                "layer".to_string(),
+                current.to_string(),
+                total.to_string(),
+            ]);
         }
 
         EventTemplate {
