@@ -96,6 +96,10 @@ pub struct TrajectoryCollector {
     session_id_callback: Option<SessionIdCallback>,
     /// Active subagents: tool_id -> (agent_type, description)
     active_subagents: std::collections::HashMap<String, (String, String)>,
+    /// APM session ID (if APM tracking is enabled)
+    apm_session_id: Option<String>,
+    /// Path to APM database (if APM tracking is enabled)
+    apm_db_path: Option<PathBuf>,
 }
 
 impl TrajectoryCollector {
@@ -114,6 +118,8 @@ impl TrajectoryCollector {
             jsonl_writer: None,
             session_id_callback: None,
             active_subagents: std::collections::HashMap::new(),
+            apm_session_id: None,
+            apm_db_path: None,
         }
     }
 
@@ -164,6 +170,51 @@ impl TrajectoryCollector {
         writer.init(path, &self.trajectory.session_id)?;
         self.jsonl_writer = Some(writer);
         Ok(())
+    }
+
+    /// Enable APM tracking with database storage
+    ///
+    /// Creates an APM session and records events to the database during execution.
+    /// This allows for historical APM analysis and trend tracking.
+    ///
+    /// # Arguments
+    /// * `db_path` - Path to the database file (will be initialized with APM tables if needed)
+    /// * `source` - APM source (Autopilot or ClaudeCode)
+    ///
+    /// # Returns
+    /// Result with the APM session ID on success
+    pub fn enable_apm_tracking(
+        &mut self,
+        db_path: impl AsRef<std::path::Path>,
+        source: apm::APMSource,
+    ) -> anyhow::Result<String> {
+        use apm_storage::{create_session, init_apm_tables};
+        use rusqlite::Connection;
+
+        let db_path = db_path.as_ref();
+        let conn = Connection::open(db_path)?;
+        init_apm_tables(&conn)?;
+
+        // Create APM session with a unique ID
+        let session_id = format!("apm-{}", uuid::Uuid::new_v4());
+        create_session(&conn, &session_id, source)?;
+
+        self.apm_session_id = Some(session_id.clone());
+        self.apm_db_path = Some(db_path.to_path_buf());
+
+        Ok(session_id)
+    }
+
+    /// Record an APM event (if APM tracking is enabled)
+    fn record_apm_event(&self, event_type: apm_storage::APMEventType, metadata: Option<&str>) {
+        use apm_storage::record_event;
+        use rusqlite::Connection;
+
+        if let (Some(session_id), Some(db_path)) = (&self.apm_session_id, &self.apm_db_path) {
+            if let Ok(conn) = Connection::open(db_path) {
+                let _ = record_event(&conn, session_id, event_type, metadata);
+            }
+        }
     }
 
     /// Set the session_id (useful when resuming a session)
@@ -323,6 +374,9 @@ impl TrajectoryCollector {
                         step.tokens_out = tokens_out;
                         step.tokens_cached = tokens_cached;
                         self.stream_last_step();
+
+                        // Record APM event
+                        self.record_apm_event(apm_storage::APMEventType::Message, None);
                     }
                     "tool_use" => {
                         let tool_name = block
@@ -371,12 +425,19 @@ impl TrajectoryCollector {
                         let step = self.trajectory.add_step(StepType::ToolCall {
                             tool: tool_name.to_string(),
                             tool_id: tool_id.to_string(),
-                            input,
+                            input: input.clone(),
                         });
                         step.tokens_in = tokens_in;
                         step.tokens_out = tokens_out;
                         step.tokens_cached = tokens_cached;
                         self.stream_last_step();
+
+                        // Record APM event with tool name as metadata
+                        let metadata = serde_json::json!({"tool": tool_name}).to_string();
+                        self.record_apm_event(
+                            apm_storage::APMEventType::ToolCall,
+                            Some(&metadata),
+                        );
                     }
                     _ => {}
                 }
@@ -473,6 +534,9 @@ impl TrajectoryCollector {
                         content: s.clone(),
                     });
                     self.stream_last_step();
+
+                    // Record APM event
+                    self.record_apm_event(apm_storage::APMEventType::Message, None);
                 }
                 _ => {}
             }
@@ -728,6 +792,45 @@ impl TrajectoryCollector {
 
     /// Finish collecting and return the trajectory
     pub fn finish(mut self) -> Trajectory {
+        // End APM session and save snapshot if tracking is enabled
+        if let (Some(session_id), Some(db_path)) = (&self.apm_session_id, &self.apm_db_path) {
+            use apm_storage::{end_session, get_session_stats, save_snapshot};
+            use rusqlite::Connection;
+
+            if let Ok(conn) = Connection::open(db_path) {
+                let _ = end_session(&conn, session_id);
+
+                // Calculate and save APM snapshot
+                if let (Some(apm), Ok((messages, tool_calls))) = (
+                    self.trajectory.result.as_ref().and_then(|r| r.apm),
+                    get_session_stats(&conn, session_id),
+                ) {
+                    let duration_minutes = if let (Some(_result), Some(end)) =
+                        (&self.trajectory.result, self.trajectory.ended_at)
+                    {
+                        (end.timestamp_millis() - self.trajectory.started_at.timestamp_millis())
+                            as f64
+                            / 60_000.0
+                    } else {
+                        0.0
+                    };
+
+                    let snapshot = apm::APMSnapshot {
+                        timestamp: chrono::Utc::now(),
+                        source: apm::APMSource::Autopilot, // Hardcoded for now, could be parameterized
+                        window: apm::APMWindow::Session,
+                        apm,
+                        actions: messages + tool_calls,
+                        duration_minutes,
+                        messages,
+                        tool_calls,
+                    };
+
+                    let _ = save_snapshot(&conn, &snapshot);
+                }
+            }
+        }
+
         // Write footer to rlog if streaming is enabled
         if let Some(writer) = &mut self.rlog_writer {
             let _ = writer.write_footer(&self.trajectory);
