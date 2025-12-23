@@ -140,6 +140,98 @@ impl TestApp {
         self.publish_event(template).await
     }
 
+    /// Create a bounty offer (kind 1636)
+    pub async fn create_bounty(&self, issue_id: &str, amount_sats: u64) -> Result<nostr::Event> {
+        let template = EventTemplate {
+            kind: 1636, // BOUNTY_OFFER
+            tags: vec![
+                vec!["e".to_string(), issue_id.to_string(), "".to_string(), "root".to_string()],
+                vec!["amount".to_string(), amount_sats.to_string()],
+            ],
+            content: String::new(),
+            created_at: std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_secs(),
+        };
+
+        self.publish_event(template).await
+    }
+
+    /// Create a pull request (kind 1618)
+    pub async fn create_pr(
+        &self,
+        repo_identifier: &str,
+        title: &str,
+        commit_id: &str,
+        clone_url: &str,
+        trajectory_session_id: Option<&str>,
+    ) -> Result<nostr::Event> {
+        let mut tags = vec![
+            vec!["a".to_string(), format!("30617:{}:{}", self.pubkey(), repo_identifier)],
+            vec!["subject".to_string(), title.to_string()],
+            vec!["c".to_string(), commit_id.to_string()],
+            vec!["clone".to_string(), clone_url.to_string()],
+        ];
+
+        if let Some(traj_id) = trajectory_session_id {
+            tags.push(vec!["trajectory".to_string(), traj_id.to_string()]);
+        }
+
+        let template = EventTemplate {
+            kind: 1618, // PULL_REQUEST
+            tags,
+            content: String::new(),
+            created_at: std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_secs(),
+        };
+
+        self.publish_event(template).await
+    }
+
+    /// Merge a PR (publish kind:1631 status)
+    pub async fn merge_pr(&self, pr_id: &str) -> Result<nostr::Event> {
+        let template = EventTemplate {
+            kind: 1631, // APPLIED/MERGED status
+            tags: vec![
+                vec!["e".to_string(), pr_id.to_string()],
+            ],
+            content: String::new(),
+            created_at: std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_secs(),
+        };
+
+        self.publish_event(template).await
+    }
+
+    /// Claim a bounty (kind 1637)
+    pub async fn claim_bounty(
+        &self,
+        bounty_id: &str,
+        pr_id: &str,
+        trajectory_session_id: &str,
+    ) -> Result<nostr::Event> {
+        let template = EventTemplate {
+            kind: 1637, // BOUNTY_CLAIM
+            tags: vec![
+                vec!["e".to_string(), bounty_id.to_string(), "".to_string(), "root".to_string()],
+                vec!["e".to_string(), pr_id.to_string(), "".to_string(), "mention".to_string()],
+                vec!["trajectory".to_string(), trajectory_session_id.to_string()],
+            ],
+            content: String::new(),
+            created_at: std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_secs(),
+        };
+
+        self.publish_event(template).await
+    }
+
     /// Get all events from the relay
     pub async fn get_all_events(&self) -> Vec<nostr::Event> {
         self.relay.get_events().await
