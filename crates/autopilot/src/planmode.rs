@@ -686,7 +686,7 @@ mod tests {
         // Ensure clean state - directly reset global state
         PLAN_MODE_ACTIVE.store(false, Ordering::SeqCst);
         {
-            let mut path = PLAN_FILE_PATH.write().unwrap();
+            let mut path = PLAN_FILE_PATH.write().expect("RwLock poisoned in test");
             *path = None;
         }
 

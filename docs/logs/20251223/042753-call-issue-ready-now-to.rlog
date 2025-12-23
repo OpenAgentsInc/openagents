@@ -217,3 +217,42 @@ o: id=RcdRE6Cf → [ok] The file /home/christopherdavid/code/openagents/crates/s
 t!:Bash id=AbEfqSF1 cmd="cargo build -p storybook 2>&1 | head -50" → [running] tokens_in=0 tokens_out=24 tokens_cached=86298
 o: id=AbEfqSF1 → [ok]    Compiling storybook v0.1.0 (/home/christopherdavid/code/openagents/crates/storybook)
 t!:Bash id=EZ9XNH88 cmd="git add -A && git commit -m "$(cat <<'EOF'" → [running] tokens_in=0 tokens_out=268 tokens_cached=86995
+o: id=EZ9XNH88 → [ok] [main 454415ea6] Fix Storybook WebSocket handshake panic
+t!:Bash id=cSG29NVC cmd="git push origin main" → [running] tokens_in=0 tokens_out=24 tokens_cached=87157
+o: id=cSG29NVC → [ok] [0;36m🔍 Running cargo build to check for errors and warnings...[0m
+t!:Bash id=gjMVRaBS cmd="cargo autopilot issue complete 852" → [running] tokens_in=0 tokens_out=24 tokens_cached=87568
+o: id=gjMVRaBS → [ok] ✓ Completed issue #852: PANIC-6: Fix Storybook WebSocket handshake panic
+t!:Bash id=NVwCTTBD cmd="cargo autopilot issue ready" → [running] tokens_in=0 tokens_out=77 tokens_cached=87831
+o: id=NVwCTTBD → [ok] → Next ready issue:
+t!:Bash id=SThVJwhc cmd="cargo autopilot issue claim 853" → [running] tokens_in=0 tokens_out=80 tokens_cached=88186
+o: id=SThVJwhc → [ok] ✓ Claimed issue #853: PANIC-7: Fix planmode RwLock poisoning panic
+t!:Read id=utKCoS64 file_path=/home/christopherdavid/code/openagents/crates/autopilot/src/planmode.rs → [running] tokens_in=0 tokens_out=114 tokens_cached=88449
+o: id=utKCoS64 → [ok]    625→                .ok_or("No file_path in tool input")?;
+a: This doesn't look like line 630 has the RwLock issue. Let me search for it: tokens_in=0 tokens_out=1 tokens_cached=88709
+t!:Grep id=RgPaLedv pattern="write\(\)\.unwrap\(\)" → [running] tokens_in=0 tokens_out=1 tokens_cached=88709
+o: id=RgPaLedv → [ok] 684-        let _guard = TEST_MUTEX.lock().unwrap();
+a: Found it! Let me see the context: tokens_in=0 tokens_out=1 tokens_cached=89189
+t!:Read id=Lvvicy1C file_path=/home/christopherdavid/code/openagents/crates/autopilot/src/planmode.rs → [running] tokens_in=0 tokens_out=1 tokens_cached=89189
+o: id=Lvvicy1C → [ok]    680→
+a: Let me also check if there are more occurrences: tokens_in=0 tokens_out=1 tokens_cached=89627
+t!:Grep id=KgHzCY2G pattern="PLAN_FILE_PATH\.write\(\)\...." → [running] tokens_in=0 tokens_out=1 tokens_cached=89627
+o: id=KgHzCY2G → [ok] 686-        // Ensure clean state - directly reset global state
+a: Let me check for read().unwrap() as well: tokens_in=0 tokens_out=1 tokens_cached=90288
+t!:Grep id=oU4vneSZ pattern="PLAN_FILE_PATH\.read\(\)\.u..." → [running] tokens_in=0 tokens_out=1 tokens_cached=90288
+o: id=oU4vneSZ → [ok] No matches found
+a: Let me check what PLAN_FILE_PATH is: tokens_in=0 tokens_out=1 tokens_cached=90643
+t!:Grep id=Mf6V1Yf3 pattern="static.*PLAN_FILE_PATH" → [running] tokens_in=0 tokens_out=1 tokens_cached=90643
+o: id=Mf6V1Yf3 → [ok] 104-
+a: Now let me check the enter_plan_mode and exit_plan_mode functions which likely access this: tokens_in=0 tokens_out=1 tokens_cached=90819
+t!:Grep id=Qy7nJF4S pattern="fn enter_plan_mode|fn exit_..." → [running] tokens_in=0 tokens_out=1 tokens_cached=90819
+o: id=Qy7nJF4S → [ok] 139-        // Sanitize slug to prevent path traversal
+a: Great! I can see that the code is already properly handling the lock errors in most places by using `.map_err()`. The only issue is the test code at line 689 which uses `.unwrap()`. Let me fix that: tokens_in=0 tokens_out=1 tokens_cached=91237
+t!:Edit id=PjNxtRta file_path=/home/christopherdavid/code/openagents/crates/autopilot/src/planmode.rs → [running] tokens_in=0 tokens_out=303 tokens_cached=91237
+o: id=PjNxtRta → [ok] The file /home/christopherdavid/code/openagents/crates/autopilot/src/planmode.rs has been updated...
+a: Actually, wait - using `.expect()` is still a panic. In production code we use `.map_err()` which is correct. But in test code, using `.expect()` is actually acceptable because if the lock is poiso... tokens_in=0 tokens_out=1 tokens_cached=92232
+t!:Grep id=H2xmLvXs pattern="\.write\(\)\.unwrap\(\)|\.r..." → [running] tokens_in=0 tokens_out=235 tokens_cached=92232
+o: id=H2xmLvXs → [ok] No matches found
+a: Good! All production code already uses `.map_err()`. The `.unwrap()` was only in test code. However, using `.expect()` with a descriptive message is actually better for tests since it makes the pan... tokens_in=0 tokens_out=1 tokens_cached=92916
+t!:Bash id=8Lat3dh5 cmd="cargo test -p autopilot --lib planmode::tests::..." → [running] tokens_in=0 tokens_out=1 tokens_cached=92916
+o: id=8Lat3dh5 → [ok] running 1 test
+t!:Bash id=Ae1mobhc cmd="git add -A && git commit -m "$(cat <<'EOF'" → [running] tokens_in=0 tokens_out=25 tokens_cached=93166
