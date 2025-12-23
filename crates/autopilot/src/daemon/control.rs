@@ -92,20 +92,26 @@ impl ControlServer {
         let listener = UnixListener::bind(&self.socket_path)?;
         eprintln!("Control socket listening at {:?}", self.socket_path);
 
+        // The loop will be terminated when the task is aborted
+        // tokio::select! will propagate the cancellation
         loop {
-            match listener.accept().await {
-                Ok((stream, _)) => {
-                    let supervisor = supervisor.clone();
-                    let shutdown_tx = shutdown_tx.clone();
+            tokio::select! {
+                result = listener.accept() => {
+                    match result {
+                        Ok((stream, _)) => {
+                            let supervisor = supervisor.clone();
+                            let shutdown_tx = shutdown_tx.clone();
 
-                    tokio::spawn(async move {
-                        if let Err(e) = handle_connection(stream, supervisor, shutdown_tx).await {
-                            eprintln!("Control connection error: {}", e);
+                            tokio::spawn(async move {
+                                if let Err(e) = handle_connection(stream, supervisor, shutdown_tx).await {
+                                    eprintln!("Control connection error: {}", e);
+                                }
+                            });
                         }
-                    });
-                }
-                Err(e) => {
-                    eprintln!("Error accepting connection: {}", e);
+                        Err(e) => {
+                            eprintln!("Error accepting connection: {}", e);
+                        }
+                    }
                 }
             }
         }
