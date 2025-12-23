@@ -730,6 +730,15 @@ pub struct Regression {
     pub current_value: f64,
     pub percent_worse: f64,
     pub is_critical: bool,
+    pub severity: RegressionSeverity,
+    pub deviation_sigma: f64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum RegressionSeverity {
+    Warning,
+    Error,
+    Critical,
 }
 
 /// Time period for analysis
@@ -968,6 +977,14 @@ pub fn detect_regressions(db: &MetricsDb, period: TimePeriod) -> anyhow::Result<
     // Check each dimension against stored baseline
     for (dimension, current) in current_stats {
         if let Some(baseline) = db.get_baseline(&dimension)? {
+            // Calculate standard deviation-based regression threshold
+            // A metric is regressed if it's >2 standard deviations worse than baseline
+            let deviation_sigma = if baseline.stddev > 0.0 {
+                (current.mean - baseline.mean).abs() / baseline.stddev
+            } else {
+                0.0
+            };
+
             let percent_worse = match dimension.as_str() {
                 "tool_error_rate" | "cost_per_issue" | "duration_per_issue" => {
                     // Lower is better - check if current is higher than baseline
@@ -988,16 +1005,26 @@ pub fn detect_regressions(db: &MetricsDb, period: TimePeriod) -> anyhow::Result<
                 _ => continue,
             };
 
-            // Only report if regression is >10%
-            if percent_worse > 10.0 {
-                regressions.push(Regression {
-                    dimension,
-                    baseline_value: baseline.mean,
-                    current_value: current.mean,
-                    percent_worse,
-                    is_critical: percent_worse > 50.0,
-                });
-            }
+            // Determine severity based on both percent change and standard deviations
+            let severity = if percent_worse > 50.0 || deviation_sigma > 3.0 {
+                RegressionSeverity::Critical
+            } else if percent_worse > 25.0 || deviation_sigma > 2.5 {
+                RegressionSeverity::Error
+            } else if percent_worse > 10.0 || deviation_sigma > 2.0 {
+                RegressionSeverity::Warning
+            } else {
+                continue; // Not significant enough to report
+            };
+
+            regressions.push(Regression {
+                dimension,
+                baseline_value: baseline.mean,
+                current_value: current.mean,
+                percent_worse,
+                is_critical: percent_worse > 50.0,
+                severity,
+                deviation_sigma,
+            });
         }
     }
 
@@ -1049,7 +1076,7 @@ pub fn get_slowest_tools(db: &MetricsDb, period: TimePeriod, limit: usize) -> an
         })
         .collect();
 
-    slowest.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
+    slowest.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
     slowest.truncate(limit);
 
     Ok(slowest)

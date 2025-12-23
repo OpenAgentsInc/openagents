@@ -4087,16 +4087,18 @@ async fn handle_metrics_command(command: MetricsCommands) -> Result<()> {
             if !regressions.is_empty() {
                 println!("{} Regressions Detected:", "⚠".red().bold());
                 for reg in &regressions {
-                    let severity = if reg.is_critical {
-                        "CRITICAL".red().bold()
-                    } else {
-                        "WARNING".yellow()
+                    use autopilot::analyze::RegressionSeverity;
+                    let severity_text = match reg.severity {
+                        RegressionSeverity::Critical => "CRITICAL".red().bold(),
+                        RegressionSeverity::Error => "ERROR".red(),
+                        RegressionSeverity::Warning => "WARNING".yellow(),
                     };
                     println!(
-                        "  {} {:20} {:.1}% worse (expected: {}, actual: {})",
-                        severity,
+                        "  {} {:20} {:.1}% worse, {:.1}σ (baseline: {}, current: {})",
+                        severity_text,
                         reg.dimension,
                         reg.percent_worse,
+                        reg.deviation_sigma,
                         format_metric_value(&reg.dimension, reg.baseline_value),
                         format_metric_value(&reg.dimension, reg.current_value)
                     );
