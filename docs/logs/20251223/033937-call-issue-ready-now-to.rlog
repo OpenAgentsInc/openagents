@@ -661,3 +661,76 @@ t!:Bash id=ybjS8yFA cmd="cargo test -p issues 2>&1 | tail -25" → [running] tok
 o: id=ybjS8yFA → [ok] test test_get_issue_by_number ... ok
 a: Excellent! All tests pass. Now let's commit and push: tokens_in=0 tokens_out=8 tokens_cached=72610
 t!:Bash id=qGC9exk7 cmd="git add -A && git status" → [running] tokens_in=0 tokens_out=92 tokens_cached=72610
+o: id=qGC9exk7 → [ok] On branch main
+t!:Bash id=ZgJ9V3N5 cmd="git commit -m "$(cat <<'EOF'" → [running] tokens_in=0 tokens_out=25 tokens_cached=73193
+o: id=ZgJ9V3N5 → [ok] [main 8aad34c53] Add ON DELETE CASCADE to issue_events foreign key (DATA-4)
+t!:Bash id=KCB3p7ar cmd="git push origin main" → [running] tokens_in=0 tokens_out=24 tokens_cached=73438
+o: id=KCB3p7ar → [ok] [0;36m🔍 Running cargo build to check for errors and warnings...[0m
+a: Perfect! Now let's complete this issue and get the next one: tokens_in=0 tokens_out=1 tokens_cached=74011
+t!:Bash id=iXjkqDg9 cmd="cargo autopilot issue complete 839" → [running] tokens_in=0 tokens_out=1 tokens_cached=74011
+o: id=iXjkqDg9 → [ok] ✓ Completed issue #839: DATA-4: Add ON DELETE CASCADE to issue_events foreign key
+t!:Bash id=ewVmDMUy cmd="cargo autopilot issue ready" → [running] tokens_in=0 tokens_out=77 tokens_cached=74175
+o: id=ewVmDMUy → [ok] → Next ready issue:
+a: Great! Issue #840 (DATA-5) - need to add ON DELETE CASCADE to metrics tables. Let me claim it: tokens_in=0 tokens_out=3 tokens_cached=74680
+t!:Bash id=XHmfop5q cmd="cargo autopilot issue claim 840" → [running] tokens_in=0 tokens_out=3 tokens_cached=74680
+o: id=XHmfop5q → [ok] ✓ Claimed issue #840: DATA-5: Add ON DELETE CASCADE to metrics tables
+a: Now let me check the referenced file: tokens_in=0 tokens_out=1 tokens_cached=74937
+t!:Read id=Rh7yELBb file_path=/home/christopherdavid/code/openagents/crates/autopilot/src/metrics/mod.rs → [running] tokens_in=0 tokens_out=1 tokens_cached=74937
+o: id=Rh7yELBb → [ok]    320→    pub p50: f64,
+a: Let me search for the init_schema function to see the table definitions: tokens_in=0 tokens_out=1 tokens_cached=75221
+t!:Grep id=P3Tq8UJ3 pattern="fn init_schema" → [running] tokens_in=0 tokens_out=1 tokens_cached=75221
+o: id=P3Tq8UJ3 → [ok] 361:    fn init_schema(&self) -> Result<()> {
+t!:Read id=vAv7V7Gi file_path=/home/christopherdavid/code/openagents/crates/autopilot/src/metrics/mod.rs → [running] tokens_in=0 tokens_out=115 tokens_cached=75715
+o: id=vAv7V7Gi → [ok]    361→    fn init_schema(&self) -> Result<()> {
+a: Perfect! I can see the issue: tokens_in=0 tokens_out=1 tokens_cached=75999
+t!:Grep id=yetB2ku6 pattern="schema_version|SCHEMA_VERSI..." → [running] tokens_in=0 tokens_out=233 tokens_cached=75999
+o: id=yetB2ku6 → [ok] No matches found
+a: No migration system here. This means I need to be careful. Since they're using CREATE TABLE IF NOT EXISTS, the existing tables won't be updated. I need to add a migration system or handle this diff... tokens_in=0 tokens_out=1 tokens_cached=77108
+t!:Bash id=54Ervkdu cmd="find /home/christopherdavid/code/openagents/cra..." → [running] tokens_in=0 tokens_out=174 tokens_cached=77108
+o: id=54Ervkdu → [ok] /home/christopherdavid/code/openagents/crates/autopilot/src/tests
+a: Let me check if there are any metric-specific tests: tokens_in=0 tokens_out=8 tokens_cached=77459
+t!:Grep id=kjWjeWo8 pattern="^mod metrics" → [running] tokens_in=0 tokens_out=8 tokens_cached=77459
+o: id=kjWjeWo8 → [ok] No matches found
+a: Let me add a simple migration system similar to what we have in the issues crate. I'll need to: tokens_in=0 tokens_out=3 tokens_cached=78117
+t!:Edit id=bPsHtfvr file_path=/home/christopherdavid/code/openagents/crates/autopilot/src/metrics/mod.rs → [running] tokens_in=0 tokens_out=427 tokens_cached=78117
+o: id=bPsHtfvr → [ok] The file /home/christopherdavid/code/openagents/crates/autopilot/src/metrics/mod.rs has been upda...
+a: Now I need to update the foreign key references in migrate_v1 to include ON DELETE CASCADE: tokens_in=0 tokens_out=1 tokens_cached=78362
+t!:Edit id=gkjwWpQk file_path=/home/christopherdavid/code/openagents/crates/autopilot/src/metrics/mod.rs → [running] tokens_in=0 tokens_out=354 tokens_cached=78362
+o: id=gkjwWpQk → [ok] The file /home/christopherdavid/code/openagents/crates/autopilot/src/metrics/mod.rs has been upda...
+t!:Edit id=awyDfCba file_path=/home/christopherdavid/code/openagents/crates/autopilot/src/metrics/mod.rs → [running] tokens_in=0 tokens_out=320 tokens_cached=79239
+o: id=awyDfCba → [ok] The file /home/christopherdavid/code/openagents/crates/autopilot/src/metrics/mod.rs has been upda...
+a: Now I need to close the migrate_v1 function and add the migrate_v2 function. Let me find where migrate_v1 ends: tokens_in=0 tokens_out=1 tokens_cached=79988
+t!:Read id=LZdgA5pG file_path=/home/christopherdavid/code/openagents/crates/autopilot/src/metrics/mod.rs → [running] tokens_in=0 tokens_out=1 tokens_cached=79988
+o: id=LZdgA5pG → [ok]    465→                stable_metrics INTEGER NOT NULL,
+a: Let me see what comes after line 484: tokens_in=0 tokens_out=3 tokens_cached=80593
+t!:Read id=ksCS7dXb file_path=/home/christopherdavid/code/openagents/crates/autopilot/src/metrics/mod.rs → [running] tokens_in=0 tokens_out=3 tokens_cached=80593
+o: id=ksCS7dXb → [ok]    480→        )
+a: I can see there's already some migration logic here (lines 487-494). Let me continue reading: tokens_in=0 tokens_out=1 tokens_cached=81287
+t!:Read id=6S3qvutn file_path=/home/christopherdavid/code/openagents/crates/autopilot/src/metrics/mod.rs → [running] tokens_in=0 tokens_out=138 tokens_cached=81287
+o: id=6S3qvutn → [ok]    494→            self.conn.execute("ALTER TABLE sessions ADD COLUMN apm REAL", [])?;
+a: Let me find the end of this function: tokens_in=0 tokens_out=1 tokens_cached=81740
+t!:Read id=BGh6LmmB file_path=/home/christopherdavid/code/openagents/crates/autopilot/src/metrics/mod.rs → [running] tokens_in=0 tokens_out=125 tokens_cached=81740
+o: id=BGh6LmmB → [ok]    509→        // Add indexes for issue and directive filtering
+a: Good! Now I need to move all the schema initialization logic into migrate_v1 and add a proper version tracking. Let me restructure this: tokens_in=0 tokens_out=1 tokens_cached=82379
+t!:Edit id=Mj2skWnF file_path=/home/christopherdavid/code/openagents/crates/autopilot/src/metrics/mod.rs → [running] tokens_in=0 tokens_out=1558 tokens_cached=82379
+o: id=Mj2skWnF → [ok] The file /home/christopherdavid/code/openagents/crates/autopilot/src/metrics/mod.rs has been upda...
+a: Perfect! Now let's compile to see if there are any issues: tokens_in=0 tokens_out=1 tokens_cached=82687
+t!:Bash id=QooiKgh2 cmd="cargo build -p autopilot 2>&1 | head -50" → [running] tokens_in=0 tokens_out=1 tokens_cached=82687
+o: id=QooiKgh2 → [ok]    Compiling autopilot v0.1.0 (/home/christopherdavid/code/openagents/crates/autopilot)
+a: Great! Now let's run tests to make sure everything still works: tokens_in=0 tokens_out=1 tokens_cached=85813
+t!:Bash id=u5dfWM95 cmd="cargo test -p autopilot 2>&1 | tail -30" → [running] tokens_in=0 tokens_out=1 tokens_cached=85813
+o: id=u5dfWM95 → [ok]     |
+a: The tests are failing due to unrelated compilation errors in examples. Let me just run the unit tests: tokens_in=0 tokens_out=1 tokens_cached=85991
+t!:Bash id=aNfduq22 cmd="cargo test -p autopilot --lib 2>&1 | tail -20" → [running] tokens_in=0 tokens_out=1 tokens_cached=85991
+o: id=aNfduq22 → [ok] test tests::dashboard_snapshots::test_sessions_table_high_error_rate ... ok
+a: Excellent! All library tests pass. Now let's create a simple test to verify the CASCADE delete works in the metrics database: tokens_in=0 tokens_out=3 tokens_cached=86619
+t!:Bash id=PhcEYJn9 cmd="cat > /tmp/test_metrics_cascade.rs << 'EOF'" → [running] tokens_in=0 tokens_out=3 tokens_cached=86619
+o: id=PhcEYJn9 → [ok] #[cfg(test)]
+a: Now let me add this test to the metrics module: tokens_in=0 tokens_out=1 tokens_cached=87089
+t!:Bash id=DpXfAbDb cmd="cat /tmp/test_metrics_cascade.rs >> /home/chris..." → [running] tokens_in=0 tokens_out=127 tokens_cached=87089
+o: id=DpXfAbDb → [ok] 
+a: Now let's run these specific tests: tokens_in=1 tokens_out=1 tokens_cached=89422
+t!:Bash id=j9q6RTko cmd="cargo test -p autopilot --lib metrics_cascade_t..." → [running] tokens_in=1 tokens_out=103 tokens_cached=89422
+o: id=j9q6RTko → [ok]    Compiling autopilot v0.1.0 (/home/christopherdavid/code/openagents/crates/autopilot)
+a: Perfect! The CASCADE tests pass. Now let's commit and push: tokens_in=0 tokens_out=1 tokens_cached=89574
+t!:Bash id=S7An33aq cmd="git add -A && git status" → [running] tokens_in=0 tokens_out=92 tokens_cached=89574
