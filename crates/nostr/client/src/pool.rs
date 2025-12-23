@@ -372,8 +372,15 @@ impl RelayPool {
                 self.config.min_write_confirmations
             );
 
-            if confirmations.is_empty() && !errors.is_empty() {
+            // Return error if we didn't get enough confirmations
+            if !errors.is_empty() {
                 return Err(errors.into_iter().next().unwrap());
+            } else {
+                return Err(ClientError::PublishFailed(format!(
+                    "Insufficient confirmations: got {}, required {}",
+                    confirmations.len(),
+                    self.config.min_write_confirmations
+                )));
             }
         }
 
