@@ -7,6 +7,20 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::time::sleep;
 
 /// Peer status
+///
+/// # Examples
+///
+/// ```
+/// use frostr::bifrost::PeerStatus;
+///
+/// let status = PeerStatus::Unknown;
+/// assert_eq!(status, PeerStatus::Unknown);
+///
+/// // Typical status progression
+/// let mut status = PeerStatus::Unknown;
+/// status = PeerStatus::Online;  // After successful ping
+/// assert_eq!(status, PeerStatus::Online);
+/// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum PeerStatus {
     /// Peer is online and reachable
@@ -18,6 +32,32 @@ pub enum PeerStatus {
 }
 
 /// Peer metadata
+///
+/// # Examples
+///
+/// ```
+/// use frostr::bifrost::{PeerInfo, PeerStatus};
+///
+/// // Create new peer
+/// let pubkey = [42u8; 32];
+/// let mut peer = PeerInfo::new(pubkey);
+/// assert_eq!(peer.status, PeerStatus::Unknown);
+/// assert_eq!(peer.failed_attempts, 0);
+///
+/// // Mark peer online
+/// peer.mark_online();
+/// assert_eq!(peer.status, PeerStatus::Online);
+/// assert_eq!(peer.failed_attempts, 0);
+///
+/// // Mark peer offline
+/// peer.mark_offline();
+/// assert_eq!(peer.status, PeerStatus::Offline);
+/// assert_eq!(peer.failed_attempts, 1);
+///
+/// // Update latency measurement
+/// peer.update_latency(250); // 250ms
+/// assert_eq!(peer.latency(), Some(250));
+/// ```
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PeerInfo {
     /// Peer's Nostr public key (32 bytes x-only)
@@ -89,6 +129,32 @@ impl PeerInfo {
 }
 
 /// Peer manager for tracking and connecting to threshold peers
+///
+/// # Examples
+///
+/// ```
+/// use frostr::bifrost::PeerManager;
+///
+/// // Create manager with 5-minute timeout
+/// let mut manager = PeerManager::new(300);
+///
+/// // Add peers
+/// let peer1 = [1u8; 32];
+/// let peer2 = [2u8; 32];
+/// manager.add_peer(peer1);
+/// manager.add_peer(peer2);
+///
+/// // Get peer info
+/// let info = manager.get_peer(&peer1).unwrap();
+/// assert_eq!(info.pubkey, peer1);
+///
+/// // Mark peer online
+/// manager.get_peer_mut(&peer1).unwrap().mark_online();
+///
+/// // Get all online peers
+/// let online: Vec<_> = manager.online_peers().collect();
+/// assert_eq!(online.len(), 1);
+/// ```
 pub struct PeerManager {
     /// Known peers by pubkey
     peers: HashMap<[u8; 32], PeerInfo>,
@@ -99,6 +165,30 @@ pub struct PeerManager {
 }
 
 /// Retry configuration for peer connections
+///
+/// # Examples
+///
+/// ```
+/// use frostr::bifrost::PeerRetryConfig;
+///
+/// // Use default configuration
+/// let config = PeerRetryConfig::default();
+/// assert_eq!(config.initial_delay, 1);  // 1 second
+/// assert_eq!(config.max_delay, 300);    // 5 minutes
+/// assert_eq!(config.multiplier, 2.0);
+///
+/// // Calculate exponential backoff delays
+/// let delay1 = config.calculate_delay(0);  // Attempt 1: 1s
+/// let delay2 = config.calculate_delay(1);  // Attempt 2: 2s
+/// let delay3 = config.calculate_delay(2);  // Attempt 3: 4s
+/// assert_eq!(delay1.as_secs(), 1);
+/// assert_eq!(delay2.as_secs(), 2);
+/// assert_eq!(delay3.as_secs(), 4);
+///
+/// // Delay is capped at max_delay
+/// let delay_large = config.calculate_delay(100);
+/// assert_eq!(delay_large.as_secs(), 300);  // Capped at 5 minutes
+/// ```
 #[derive(Debug, Clone)]
 pub struct RetryConfig {
     /// Initial retry delay (seconds)

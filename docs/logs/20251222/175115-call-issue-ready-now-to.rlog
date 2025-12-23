@@ -360,3 +360,10 @@ o: id=GoskwiC1 → [error] Exit code 128
 t!:Bash id=yPtQwMtT cmd="git status" → [running] tokens_in=7 tokens_out=75 tokens_cached=30758
 o: id=yPtQwMtT → [ok] On branch main
 t!:Bash id=6LAPuDmR cmd="git add docs/logs/20251222/175115-call-issue-re..." → [running] tokens_in=6 tokens_out=25 tokens_cached=30990
+o: id=6LAPuDmR → [ok] [main 721cbd402] Implement CLI commands for issue and directive aggregate metrics
+t!:Bash id=zcDdPdg3 cmd="git pull --rebase origin main" → [running] tokens_in=6 tokens_out=81 tokens_cached=31206
+o: id=zcDdPdg3 → [error] Exit code 128
+t!:Bash id=koLCa8FM cmd="git status" → [running] tokens_in=7 tokens_out=24 tokens_cached=31419
+o: id=koLCa8FM → [ok] On branch main
+a: The trajectory logs keep getting modified by the ongoing session. I'll stash them, rebase, and then pop the stash. tokens_in=6 tokens_out=1 tokens_cached=31651
+t!:Bash id=t2GBCPZJ cmd="git stash push -m "trajectory-logs" docs/logs/2..." → [running] tokens_in=6 tokens_out=157 tokens_cached=31651

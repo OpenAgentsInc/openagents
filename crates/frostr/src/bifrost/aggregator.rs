@@ -9,6 +9,25 @@ use crate::{Error, Result};
 use std::collections::BTreeMap;
 
 /// Aggregator for threshold signing operations
+///
+/// # Examples
+///
+/// ```
+/// use frostr::bifrost::SigningAggregator;
+///
+/// // Create aggregator for 2-of-3 threshold
+/// let mut aggregator = SigningAggregator::new(2, "session-123".to_string());
+///
+/// // Check if ready (need 2 responses)
+/// assert!(!aggregator.is_ready());
+/// assert_eq!(aggregator.response_count(), 0);
+///
+/// // After adding responses (see SignResponse for details)
+/// // aggregator.add_response(response1)?;
+/// // aggregator.add_response(response2)?;
+/// // assert!(aggregator.is_ready());
+/// // let signature = aggregator.aggregate(&request, &frost_share)?;
+/// ```
 pub struct SigningAggregator {
     /// Required number of signature shares (threshold k)
     threshold: usize,
@@ -101,6 +120,30 @@ impl SigningAggregator {
 }
 
 /// Aggregator for threshold ECDH operations
+///
+/// # Examples
+///
+/// ```
+/// use frostr::bifrost::EcdhAggregator;
+///
+/// // Create aggregator for 2-of-3 threshold
+/// let mut aggregator = EcdhAggregator::new(2, "ecdh-session-456".to_string());
+///
+/// // Check if ready (need 2 responses)
+/// assert!(!aggregator.is_ready());
+/// assert_eq!(aggregator.response_count(), 0);
+///
+/// // Add partial ECDH results from peers
+/// aggregator.add_response(1, [0x01; 32]).unwrap();
+/// aggregator.add_response(2, [0x02; 32]).unwrap();
+///
+/// // Now ready to aggregate
+/// assert!(aggregator.is_ready());
+/// assert_eq!(aggregator.response_count(), 2);
+///
+/// // Note: Aggregation is not yet implemented
+/// // let shared_secret = aggregator.aggregate()?;
+/// ```
 pub struct EcdhAggregator {
     /// Required number of ECDH shares (threshold k)
     threshold: usize,
