@@ -10,7 +10,7 @@ use crate::gui::state::AppState;
 
 pub use layout::base_layout_with_token;
 
-/// Home page - black screen with FullAutoSwitch centered, ClaudeStatus bottom right, DaemonStatus bottom left, ChatPane at bottom
+/// Home page - black screen with FullAutoSwitch top-right, status panels bottom-right (daemon above Claude), ChatPane at bottom
 pub async fn home(
     state: web::Data<AppState>,
     auth_token: web::Data<auth::AuthToken>,
@@ -83,11 +83,20 @@ pub async fn home(
     // Chat pane with Raw/Formatted toggle - visible when full_auto is ON
     let chat_pane = ChatPane::new(full_auto).build();
 
+    // Stack daemon and Claude panels in a flex container with 12px gap
+    let status_panels = format!(
+        r#"<div style="position: fixed; bottom: 1rem; right: 1rem; display: flex; flex-direction: column; gap: 12px;">
+            <div id="daemon-status"><div id="daemon-status-content">{}</div></div>
+            <div id="claude-status" hx-get="/api/claude/status" hx-trigger="load, every 5s" hx-swap="innerHTML">{}</div>
+        </div>"#,
+        daemon_status.build().into_string(),
+        status.build().into_string()
+    );
+
     let content = format!(
-        r#"<div style="position: fixed; top: 1rem; right: 1rem; z-index: 50;">{}</div>{}{}{}"#,
+        r#"<div style="position: fixed; top: 1rem; right: 1rem; z-index: 50;">{}</div>{}{}"#,
         switch.into_string(),
-        status.build_positioned().into_string(),
-        daemon_status.build_positioned().into_string(),
+        status_panels,
         chat_pane.into_string()
     );
 
