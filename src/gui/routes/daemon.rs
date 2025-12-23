@@ -68,7 +68,9 @@ async fn start_daemon(state: web::Data<AppState>) -> HttpResponse {
     // Check if already connected
     {
         let info = state.daemon_info.read().await;
+        info!("Current daemon state: connected={}, worker_status={}", info.connected, info.worker_status);
         if info.connected {
+            info!("Daemon already connected, returning early");
             return HttpResponse::Ok()
                 .content_type("text/html")
                 .body("<div class='toast'>Daemon already running</div>");
@@ -81,42 +83,59 @@ async fn start_daemon(state: web::Data<AppState>) -> HttpResponse {
         .file_name()
         .and_then(|n| n.to_str())
         .unwrap_or("openagents");
+    info!("Working directory: {:?}, project: {}", cwd, project);
 
     // Find the daemon binary (autopilotd)
     let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
     let autopilot_dir = std::path::PathBuf::from(&home).join(".autopilot").join("bin");
     let daemon_binary = autopilot_dir.join("autopilotd");
+    info!("Looking for daemon binary at: {:?}", daemon_binary);
+    info!("Binary exists: {}", daemon_binary.exists());
 
     // Try multiple locations for the daemon binary
-    let result = if daemon_binary.exists() {
+    let (cmd_desc, result) = if daemon_binary.exists() {
         // Use known-good autopilotd binary
-        Command::new(&daemon_binary)
-            .args(["--workdir", cwd.to_str().unwrap_or("."), "--project", project])
+        let args = ["--workdir", cwd.to_str().unwrap_or("."), "--project", project];
+        info!("Spawning: {:?} {:?}", daemon_binary, args);
+        let r = Command::new(&daemon_binary)
+            .args(args)
             .stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(Stdio::null())
-            .spawn()
+            .spawn();
+        (format!("{:?} {:?}", daemon_binary, args), r)
     } else {
         // Fall back to cargo run
-        Command::new("cargo")
-            .args(["run", "-p", "autopilot", "--bin", "autopilotd", "--",
-                   "--workdir", cwd.to_str().unwrap_or("."), "--project", project])
+        let args = ["run", "-p", "autopilot", "--bin", "autopilotd", "--",
+                   "--workdir", cwd.to_str().unwrap_or("."), "--project", project];
+        info!("Binary not found, falling back to cargo run");
+        info!("Spawning: cargo {:?}", args);
+        let r = Command::new("cargo")
+            .args(args)
             .current_dir(&cwd)
             .stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(Stdio::null())
-            .spawn()
+            .spawn();
+        (format!("cargo {:?}", args), r)
     };
 
     match result {
-        Ok(_child) => {
+        Ok(child) => {
+            info!("Daemon process spawned successfully, pid: {:?}", child.id());
             // Give daemon a moment to start
             tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+
+            // Check if socket exists now
+            let socket_path = std::path::PathBuf::from(&home).join(".autopilot").join("autopilotd.sock");
+            info!("Checking for socket at: {:?}, exists: {}", socket_path, socket_path.exists());
+
             HttpResponse::Ok()
                 .content_type("text/html")
                 .body("<div class='toast'>Daemon starting...</div>")
         }
         Err(e) => {
+            info!("Failed to spawn daemon: {} (command: {})", e, cmd_desc);
             HttpResponse::InternalServerError()
                 .content_type("text/html")
                 .body(format!("<div class='toast error'>Failed to start daemon: {}</div>", e))
