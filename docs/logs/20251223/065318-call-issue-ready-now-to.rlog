@@ -96,3 +96,23 @@ o: id=rTpPMQvS → [ok]    Compiling breez-sdk-common v0.1.0 (/home/christopherd
 t!:Bash id=VkKMkNh9 cmd="cargo build -p autopilot 2>&1 | tail -20" → [running] tokens_in=2 tokens_out=90 tokens_cached=45599
 o: id=VkKMkNh9 → [ok]    Compiling breez-sdk-common v0.1.0 (/home/christopherdavid/code/spark-sdk/crates/breez-sdk/common)
 t!:Bash id=YgQR6DYT cmd="git add -A && git commit -m "$(cat <<'EOF'" → [running] tokens_in=2 tokens_out=24 tokens_cached=46112
+o: id=YgQR6DYT → [ok] [main dd3545a9f] Fix unchecked subtraction in replay (INT-2)
+t!:Bash id=7wzVQoRg cmd="git push origin main" → [running] tokens_in=1 tokens_out=79 tokens_cached=46512
+o: id=7wzVQoRg → [ok] [0;36m🔍 Running cargo build to check for errors and warnings...[0m
+t!:mcp__issues__issue_complete id=tVuyJrLm  → [running] tokens_in=1 tokens_out=32 tokens_cached=47050
+o: id=tVuyJrLm → [ok] Completed issue #925
+t!:mcp__issues__issue_ready id=QCiBtScB  → [running] tokens_in=1 tokens_out=27 tokens_cached=47218
+o: id=QCiBtScB → [ok] {
+t!:mcp__issues__issue_claim id=3eSUPyN3  → [running] tokens_in=0 tokens_out=79 tokens_cached=47293
+o: id=3eSUPyN3 → [ok] Claimed issue #926
+t!:Read id=CAVyDJmQ file_path=/home/christopherdavid/code/openagents/crates/autopilot/src/daemon/memory.rs → [running] tokens_in=3 tokens_out=115 tokens_cached=47588
+o: id=CAVyDJmQ → [ok]    130→                        name,
+a: I don't see the `killpg` call mentioned in the issue. Let me search for it: tokens_in=3 tokens_out=1 tokens_cached=47682
+t!:Grep id=UvrWQPqn pattern="killpg" → [running] tokens_in=3 tokens_out=1 tokens_cached=47682
+o: id=UvrWQPqn → [ok] 160-    /// Kill a process group (worker and all its children)
+a: I found it! Line 165 calls `killpg(pgid as i32, libc::SIGTERM)` without validating the `pgid` argument. According to POSIX, `killpg` has specific requirements: tokens_in=2 tokens_out=3 tokens_cached=48222
+t!:Edit id=zkEZsg1E file_path=/home/christopherdavid/code/openagents/crates/autopilot/src/daemon/memory.rs → [running] tokens_in=2 tokens_out=551 tokens_cached=48222
+o: id=zkEZsg1E → [ok] The file /home/christopherdavid/code/openagents/crates/autopilot/src/daemon/memory.rs has been up...
+t!:Bash id=uYpZBpSh cmd="cargo build -p autopilot 2>&1 | tail -20" → [running] tokens_in=2 tokens_out=26 tokens_cached=48660
+o: id=uYpZBpSh → [ok]    Compiling breez-sdk-common v0.1.0 (/home/christopherdavid/code/spark-sdk/crates/breez-sdk/common)
+t!:Bash id=cBPbNWXF cmd="git add -A && git commit -m "$(cat <<'EOF'" → [running] tokens_in=1 tokens_out=25 tokens_cached=49663

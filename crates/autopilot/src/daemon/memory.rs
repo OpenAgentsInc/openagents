@@ -160,10 +160,24 @@ impl MemoryMonitor {
     /// Kill a process group (worker and all its children)
     #[cfg(unix)]
     pub fn kill_process_group(&self, pgid: u32) -> bool {
-        // Send SIGTERM to the entire process group
-        unsafe {
-            libc::killpg(pgid as i32, libc::SIGTERM) == 0
+        // Validate pgid before unsafe libc call
+        // pgid must be > 0 (0 would target calling process's group)
+        if pgid == 0 {
+            eprintln!("Invalid pgid 0: would target calling process group");
+            return false;
         }
+
+        // Check pgid fits in i32 (required by killpg)
+        let pgid_i32 = match i32::try_from(pgid) {
+            Ok(p) => p,
+            Err(_) => {
+                eprintln!("Invalid pgid {}: exceeds i32::MAX", pgid);
+                return false;
+            }
+        };
+
+        // Send SIGTERM to the entire process group
+        unsafe { libc::killpg(pgid_i32, libc::SIGTERM) == 0 }
     }
 
     #[cfg(not(unix))]
