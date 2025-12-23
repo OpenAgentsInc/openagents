@@ -5,6 +5,22 @@ use std::collections::HashSet;
 use std::path::Path;
 
 /// Review template types
+///
+/// Determines the type of checklist generated for a PR review.
+/// Each template adds specific checks relevant to that type of change.
+///
+/// # Examples
+///
+/// ```
+/// use agentgit::review::{ReviewTemplate, ChecklistGenerator};
+///
+/// // Generate a bug fix review checklist
+/// let files = vec!["src/auth.rs".to_string()];
+/// let checklist = ChecklistGenerator::generate(&files, ReviewTemplate::BugFix);
+///
+/// // Will include items like "Regression test added for the bug"
+/// assert!(checklist.iter().any(|item| item.id == "bug-regression-test"));
+/// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ReviewTemplate {
     /// Bug fix review
@@ -20,6 +36,37 @@ pub enum ReviewTemplate {
 }
 
 /// Checklist item for PR review
+///
+/// Represents a single item in a code review checklist. Items can be
+/// required or optional, manually checked or auto-checkable, and belong
+/// to categories like "tests", "docs", "security", etc.
+///
+/// # Examples
+///
+/// ```
+/// use agentgit::review::ChecklistItem;
+///
+/// // Create a required, auto-checkable item
+/// let mut item = ChecklistItem::new(
+///     "rust-clippy",
+///     "Clippy warnings addressed",
+///     "code",
+///     true,   // required
+///     true,   // auto-checkable
+/// );
+///
+/// assert!(!item.checked);
+/// assert!(item.required);
+/// assert!(item.auto_checkable);
+///
+/// // Mark as checked
+/// item.check();
+/// assert!(item.checked);
+///
+/// // Set auto-check result
+/// item.set_auto_result("0 warnings found");
+/// assert_eq!(item.auto_result, Some("0 warnings found".to_string()));
+/// ```
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChecklistItem {
     /// Unique identifier
@@ -40,6 +87,38 @@ pub struct ChecklistItem {
 
 impl ChecklistItem {
     /// Create a new checklist item
+    ///
+    /// # Arguments
+    ///
+    /// * `id` - Unique identifier for the item (e.g., "rust-clippy")
+    /// * `description` - Human-readable description of the check
+    /// * `category` - Category tag ("code", "tests", "docs", "security", etc.)
+    /// * `required` - Whether this check must pass before merge
+    /// * `auto_checkable` - Whether this can be automatically validated
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use agentgit::review::ChecklistItem;
+    ///
+    /// // Required security check that can be auto-verified
+    /// let security_check = ChecklistItem::new(
+    ///     "sql-injection",
+    ///     "No SQL injection vulnerabilities",
+    ///     "security",
+    ///     true,
+    ///     true,
+    /// );
+    ///
+    /// // Optional documentation check that needs manual review
+    /// let doc_check = ChecklistItem::new(
+    ///     "api-docs",
+    ///     "Public API documented",
+    ///     "docs",
+    ///     false,
+    ///     false,
+    /// );
+    /// ```
     pub fn new(
         id: impl Into<String>,
         description: impl Into<String>,
@@ -59,21 +138,136 @@ impl ChecklistItem {
     }
 
     /// Mark as checked
+    ///
+    /// Marks this checklist item as manually verified by a reviewer.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use agentgit::review::ChecklistItem;
+    ///
+    /// let mut item = ChecklistItem::new("test", "Test item", "code", true, false);
+    /// assert!(!item.checked);
+    ///
+    /// item.check();
+    /// assert!(item.checked);
+    /// ```
     pub fn check(&mut self) {
         self.checked = true;
     }
 
     /// Set auto-check result
+    ///
+    /// Records the result of an automated validation for this item.
+    ///
+    /// # Arguments
+    ///
+    /// * `result` - The auto-check result message (e.g., "PASS: 0 warnings", "FAIL: 3 errors")
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use agentgit::review::ChecklistItem;
+    ///
+    /// let mut item = ChecklistItem::new(
+    ///     "clippy",
+    ///     "Clippy warnings addressed",
+    ///     "code",
+    ///     true,
+    ///     true,
+    /// );
+    ///
+    /// item.set_auto_result("PASS: 0 warnings found");
+    /// assert_eq!(item.auto_result, Some("PASS: 0 warnings found".to_string()));
+    /// ```
     pub fn set_auto_result(&mut self, result: impl Into<String>) {
         self.auto_result = Some(result.into());
     }
 }
 
 /// Generator for PR review checklists
+///
+/// Analyzes changed files and generates an appropriate checklist based on:
+/// - Review template (bug fix, feature, refactor, NIP implementation)
+/// - File types (Rust, TOML, Markdown, SQL)
+/// - OpenAgents directives (d-012 no stubs, d-013 testing)
+///
+/// # Examples
+///
+/// ```
+/// use agentgit::review::{ChecklistGenerator, ReviewTemplate};
+///
+/// // Generate checklist for a Rust feature PR
+/// let changed_files = vec![
+///     "src/auth.rs".to_string(),
+///     "src/auth/mod.rs".to_string(),
+///     "Cargo.toml".to_string(),
+/// ];
+///
+/// let checklist = ChecklistGenerator::generate(&changed_files, ReviewTemplate::Feature);
+///
+/// // Will include feature-specific items
+/// assert!(checklist.iter().any(|item| item.id == "feature-tests"));
+/// assert!(checklist.iter().any(|item| item.id == "feature-docs"));
+///
+/// // Will include Rust-specific items
+/// assert!(checklist.iter().any(|item| item.id == "rust-clippy"));
+/// assert!(checklist.iter().any(|item| item.id == "rust-tests"));
+///
+/// // Will include directive checks
+/// assert!(checklist.iter().any(|item| item.id == "d012-no-stubs"));
+/// assert!(checklist.iter().any(|item| item.id == "d013-tests"));
+///
+/// // Will include TOML checks
+/// assert!(checklist.iter().any(|item| item.id == "toml-deps"));
+/// ```
+///
+/// # File Type Detection
+///
+/// The generator automatically detects file types and adds relevant checks:
+///
+/// - `.rs` files → Rust checks (clippy, unsafe, error handling, tests)
+/// - `.toml` files → Dependency and version checks
+/// - `.md` files → Documentation link and example checks
+/// - `.sql` files → Migration and security checks
 pub struct ChecklistGenerator;
 
 impl ChecklistGenerator {
     /// Generate checklist for a PR based on changed files
+    ///
+    /// # Arguments
+    ///
+    /// * `changed_files` - List of file paths modified in the PR
+    /// * `template` - Review template to use (determines template-specific checks)
+    ///
+    /// # Returns
+    ///
+    /// A vector of checklist items combining:
+    /// - Template-specific items (based on review type)
+    /// - File-type-specific items (based on extensions)
+    /// - Directive items (d-012, d-013 for Rust files)
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use agentgit::review::{ChecklistGenerator, ReviewTemplate};
+    ///
+    /// // Bug fix review for a Rust file
+    /// let files = vec!["src/parser.rs".to_string()];
+    /// let checklist = ChecklistGenerator::generate(&files, ReviewTemplate::BugFix);
+    ///
+    /// // Should include bug-specific checks
+    /// assert!(checklist.iter().any(|item| item.id == "bug-regression-test"));
+    /// assert!(checklist.iter().any(|item| item.id == "bug-root-cause"));
+    ///
+    /// // NIP implementation review
+    /// let nip_files = vec!["src/nip09.rs".to_string()];
+    /// let nip_checklist = ChecklistGenerator::generate(&nip_files, ReviewTemplate::NipImplementation);
+    ///
+    /// // Should include NIP-specific checks
+    /// assert!(nip_checklist.iter().any(|item| item.id == "nip-spec-compliance"));
+    /// assert!(nip_checklist.iter().any(|item| item.id == "nip-interop-tests"));
+    /// ```
     pub fn generate(changed_files: &[String], template: ReviewTemplate) -> Vec<ChecklistItem> {
         let mut items = Vec::new();
 
