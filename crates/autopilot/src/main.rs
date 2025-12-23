@@ -1101,6 +1101,21 @@ enum MetricsCommands {
         #[arg(long, default_value_t = -0.3)]
         warning_threshold: f64,
     },
+
+    /// Generate automated weekly trend report
+    Report {
+        /// Path to metrics database (default: autopilot-metrics.db)
+        #[arg(long)]
+        db: Option<PathBuf>,
+
+        /// Output format (console, markdown, file)
+        #[arg(short, long, default_value = "console")]
+        format: String,
+
+        /// Output file path (only used with --format=file)
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+    },
 }
 
 #[derive(Subcommand)]
@@ -5305,6 +5320,45 @@ async fn handle_metrics_command(command: MetricsCommands) -> Result<()> {
             }
 
             println!("{}", "=".repeat(80));
+        }
+
+        MetricsCommands::Report { db, format, output } => {
+            use autopilot::reports::{generate_weekly_report, format_report_markdown, print_report_console, save_report_to_file};
+
+            let db_path = db.unwrap_or_else(default_db_path);
+            let metrics_db = MetricsDb::open(&db_path)?;
+
+            println!("{} Generating weekly report...", "📊".cyan());
+            let report = generate_weekly_report(&metrics_db)?;
+
+            match format.as_str() {
+                "console" => {
+                    print_report_console(&report);
+                }
+                "markdown" => {
+                    let markdown = format_report_markdown(&report);
+                    println!("{}", markdown);
+                }
+                "file" => {
+                    let filepath = if let Some(out) = output {
+                        // Use specified output path
+                        use std::fs;
+                        let content = format_report_markdown(&report);
+                        fs::create_dir_all(out.parent().unwrap_or(&PathBuf::from(".")))?;
+                        fs::write(&out, content)?;
+                        out
+                    } else {
+                        // Use default path: docs/reports/weekly-YYYYMMDD.md
+                        save_report_to_file(&report)?
+                    };
+
+                    println!("{} Report saved to: {}", "✓".green(), filepath.display());
+                }
+                _ => {
+                    eprintln!("Unknown format: {}. Use: console, markdown, or file", format);
+                    std::process::exit(1);
+                }
+            }
         }
     }
 
