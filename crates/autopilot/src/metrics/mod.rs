@@ -242,6 +242,8 @@ pub struct VelocitySnapshot {
     pub degrading_metrics: i32,
     /// Number of stable metrics
     pub stable_metrics: i32,
+    /// Number of issues completed in this period
+    pub issues_completed: i32,
     /// Key metrics with their trends (JSON)
     pub key_metrics: Vec<MetricVelocity>,
 }
@@ -435,6 +437,7 @@ impl MetricsDb {
                 improving_metrics INTEGER NOT NULL,
                 degrading_metrics INTEGER NOT NULL,
                 stable_metrics INTEGER NOT NULL,
+                issues_completed INTEGER NOT NULL DEFAULT 0,
                 key_metrics_json TEXT NOT NULL
             );
 
@@ -1535,8 +1538,8 @@ impl MetricsDb {
             r#"
             INSERT INTO velocity_snapshots
             (timestamp, period, velocity_score, improving_metrics, degrading_metrics,
-             stable_metrics, key_metrics_json)
-            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+             stable_metrics, issues_completed, key_metrics_json)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
             "#,
             params![
                 snapshot.timestamp.to_rfc3339(),
@@ -1545,6 +1548,7 @@ impl MetricsDb {
                 snapshot.improving_metrics,
                 snapshot.degrading_metrics,
                 snapshot.stable_metrics,
+                snapshot.issues_completed,
                 key_metrics_json
             ],
         )?;
@@ -1557,7 +1561,7 @@ impl MetricsDb {
         let mut stmt = self.conn.prepare(
             r#"
             SELECT timestamp, period, velocity_score, improving_metrics,
-                   degrading_metrics, stable_metrics, key_metrics_json
+                   degrading_metrics, stable_metrics, issues_completed, key_metrics_json
             FROM velocity_snapshots
             ORDER BY timestamp DESC
             LIMIT ?1
@@ -1566,7 +1570,7 @@ impl MetricsDb {
 
         let snapshots = stmt
             .query_map([limit], |row| {
-                let key_metrics_json: String = row.get(6)?;
+                let key_metrics_json: String = row.get(7)?;
                 let key_metrics: Vec<MetricVelocity> =
                     serde_json::from_str(&key_metrics_json).unwrap_or_default();
 
@@ -1577,6 +1581,7 @@ impl MetricsDb {
                     improving_metrics: row.get(3)?,
                     degrading_metrics: row.get(4)?,
                     stable_metrics: row.get(5)?,
+                    issues_completed: row.get(6)?,
                     key_metrics,
                 })
             })?

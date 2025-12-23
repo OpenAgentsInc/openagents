@@ -4880,6 +4880,7 @@ async fn handle_metrics_command(command: MetricsCommands) -> Result<()> {
             // Current velocity
             println!("{} Current Period: {}", "📊".cyan(), velocity.period);
             println!("  Velocity Score:    {:.2} (-1.0 to 1.0)", velocity.velocity_score);
+            println!("  Issues Completed:  {}", velocity.issues_completed.to_string().cyan());
             println!("  Improving Metrics: {}", velocity.improving_metrics.to_string().green());
             println!("  Stable Metrics:    {}", velocity.stable_metrics);
             println!("  Degrading Metrics: {}", velocity.degrading_metrics.to_string().red());

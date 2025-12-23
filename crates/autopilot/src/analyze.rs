@@ -1168,6 +1168,10 @@ pub fn calculate_velocity(
         0.0
     };
 
+    // Count total issues completed in period
+    let sessions = get_sessions_in_period(db, period)?;
+    let issues_completed: i32 = sessions.iter().map(|s| s.issues_completed).sum();
+
     Ok(VelocitySnapshot {
         timestamp: Utc::now(),
         period: period.name().to_string(),
@@ -1175,6 +1179,7 @@ pub fn calculate_velocity(
         improving_metrics: improving_count,
         degrading_metrics: degrading_count,
         stable_metrics: stable_count,
+        issues_completed,
         key_metrics,
     })
 }
