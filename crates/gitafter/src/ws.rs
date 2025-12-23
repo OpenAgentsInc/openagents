@@ -4,17 +4,23 @@ use actix_web::{web, HttpRequest, HttpResponse};
 use actix_ws::Message;
 use futures_util::StreamExt;
 use std::sync::Arc;
-use tokio::sync::broadcast;
+use tokio::sync::{broadcast, Mutex};
+use tokio::task::JoinHandle;
 
 /// Broadcasts messages to all connected WebSocket clients
 pub struct WsBroadcaster {
     tx: broadcast::Sender<String>,
+    /// Active WebSocket task handles for graceful shutdown
+    tasks: Mutex<Vec<JoinHandle<()>>>,
 }
 
 impl WsBroadcaster {
     pub fn new(capacity: usize) -> Self {
         let (tx, _rx) = broadcast::channel(capacity);
-        Self { tx }
+        Self {
+            tx,
+            tasks: Mutex::new(Vec::new()),
+        }
     }
 
     /// Broadcast a message to all connected clients
@@ -26,6 +32,28 @@ impl WsBroadcaster {
     /// Subscribe to broadcasts
     pub fn subscribe(&self) -> broadcast::Receiver<String> {
         self.tx.subscribe()
+    }
+
+    /// Store a WebSocket task handle
+    async fn add_task(&self, handle: JoinHandle<()>) {
+        let mut tasks = self.tasks.lock().await;
+        tasks.push(handle);
+    }
+
+    /// Clean up completed tasks
+    async fn cleanup_tasks(&self) {
+        let mut tasks = self.tasks.lock().await;
+        tasks.retain(|task| !task.is_finished());
+    }
+
+    /// Shutdown all WebSocket tasks gracefully
+    #[allow(dead_code)]
+    pub async fn shutdown(&self) {
+        let mut tasks = self.tasks.lock().await;
+        for task in tasks.drain(..) {
+            task.abort();
+            let _ = task.await;
+        }
     }
 }
 
@@ -39,8 +67,11 @@ pub async fn ws_handler(
 
     let mut rx = broadcaster.subscribe();
 
-    // Spawn task to handle this WebSocket connection
-    actix_web::rt::spawn(async move {
+    // Clean up completed tasks periodically
+    broadcaster.cleanup_tasks().await;
+
+    // Spawn task to handle this WebSocket connection and store the handle
+    let handle = actix_web::rt::spawn(async move {
         loop {
             tokio::select! {
                 // Receive messages from client
@@ -61,6 +92,8 @@ pub async fn ws_handler(
             }
         }
     });
+
+    broadcaster.add_task(handle).await;
 
     Ok(res)
 }
