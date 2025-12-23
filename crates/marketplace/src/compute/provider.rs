@@ -3,9 +3,10 @@
 //! This module provides the provider side of the compute marketplace,
 //! allowing nodes to advertise their compute capabilities via NIP-89.
 
-use nostr::{HandlerInfo, HandlerMetadata, HandlerType, PricingInfo};
+use crate::relay::{MarketplaceRelay, RelayError};
+use nostr::{Event, EventTemplate, HandlerInfo, HandlerMetadata, HandlerType, PricingInfo, KIND_HANDLER_INFO};
 use serde::{Deserialize, Serialize};
-use std::time::{Duration, SystemTime};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 /// Provider configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -252,6 +253,93 @@ impl Provider {
                 }
             }
         }
+    }
+
+    /// Advertise capabilities on Nostr relays
+    ///
+    /// This publishes a NIP-89 handler info event (kind 31990) advertising
+    /// the provider's compute capabilities, pricing, and availability.
+    pub async fn advertise(
+        &mut self,
+        relay: &MarketplaceRelay,
+        secret_key: &str,
+    ) -> Result<Event, RelayError> {
+        // Create handler info from config
+        let pubkey = self.get_pubkey_from_secret(secret_key)?;
+        let handler_info = self.create_advertisement(&pubkey);
+
+        // Build NIP-89 event (kind 31990)
+        let event = self.build_advertisement_event(&handler_info, secret_key)?;
+
+        // Publish to relays
+        relay.publish(&event).await?;
+
+        Ok(event)
+    }
+
+    /// Parse secret key from hex string
+    fn parse_secret_key(&self, secret_key: &str) -> Result<[u8; 32], RelayError> {
+        let bytes = hex::decode(secret_key)
+            .map_err(|e| RelayError::Client(format!("Invalid secret key hex: {}", e)))?;
+
+        if bytes.len() != 32 {
+            return Err(RelayError::Client(format!(
+                "Invalid secret key length: expected 32 bytes, got {}",
+                bytes.len()
+            )));
+        }
+
+        let mut sk_bytes = [0u8; 32];
+        sk_bytes.copy_from_slice(&bytes);
+        Ok(sk_bytes)
+    }
+
+    /// Get pubkey from secret key
+    fn get_pubkey_from_secret(&self, secret_key: &str) -> Result<String, RelayError> {
+        use nostr::get_public_key_hex;
+
+        let sk_bytes = self.parse_secret_key(secret_key)?;
+        let pubkey = get_public_key_hex(&sk_bytes)
+            .map_err(|e| RelayError::Client(format!("Failed to derive pubkey: {}", e)))?;
+
+        Ok(pubkey)
+    }
+
+    /// Build advertisement event (kind 31990)
+    fn build_advertisement_event(
+        &self,
+        handler_info: &HandlerInfo,
+        secret_key: &str,
+    ) -> Result<Event, RelayError> {
+        use nostr::finalize_event;
+
+        let sk_bytes = self.parse_secret_key(secret_key)?;
+
+        // Set content from metadata
+        let content = serde_json::json!({
+            "name": handler_info.metadata.name,
+            "description": handler_info.metadata.description,
+            "icon_url": handler_info.metadata.icon_url,
+            "website": handler_info.metadata.website,
+        })
+        .to_string();
+
+        // Create event template for kind 31990 (handler info)
+        let template = EventTemplate {
+            kind: KIND_HANDLER_INFO,
+            tags: handler_info.to_tags(),
+            content,
+            created_at: SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs(),
+        };
+
+        // Sign and finalize event
+        let event = finalize_event(&template, &sk_bytes)
+            .map_err(|e| RelayError::Client(format!("Failed to sign event: {}", e)))?;
+
+        Ok(event)
     }
 }
 

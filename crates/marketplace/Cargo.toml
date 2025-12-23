@@ -50,6 +50,7 @@ toml.workspace = true
 nostr-client = { version = "0.1.0", path = "../nostr/client" }
 sha2.workspace = true
 colored = "3.0.0"
+hex.workspace = true
 
 # Binary removed - use `openagents marketplace` instead
 # [[bin]]
