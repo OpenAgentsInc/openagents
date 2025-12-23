@@ -119,6 +119,17 @@ pub struct Issue {
 }
 
 impl Issue {
+    /// Parse datetime from either RFC3339 or simple "YYYY-MM-DD HH:MM:SS" format
+    fn parse_datetime(s: &str) -> std::result::Result<DateTime<Utc>, chrono::ParseError> {
+        // Try RFC3339 first
+        if let Ok(dt) = DateTime::parse_from_rfc3339(s) {
+            return Ok(dt.with_timezone(&Utc));
+        }
+        // Fall back to simple format "YYYY-MM-DD HH:MM:SS"
+        chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%d %H:%M:%S")
+            .map(|naive| DateTime::<Utc>::from_naive_utc_and_offset(naive, Utc))
+    }
+
     fn from_row(row: &Row) -> Result<Self> {
         Ok(Issue {
             id: row.get("id")?,
@@ -136,17 +147,14 @@ impl Issue {
             claimed_by: row.get("claimed_by")?,
             claimed_at: row
                 .get::<_, Option<String>>("claimed_at")?
-                .and_then(|s| DateTime::parse_from_rfc3339(&s).ok())
-                .map(|dt| dt.with_timezone(&Utc)),
-            created_at: DateTime::parse_from_rfc3339(&row.get::<_, String>("created_at")?)
-                .map(|dt| dt.with_timezone(&Utc))
+                .and_then(|s| Self::parse_datetime(&s).ok()),
+            created_at: Self::parse_datetime(&row.get::<_, String>("created_at")?)
                 .map_err(|e| rusqlite::Error::FromSqlConversionFailure(
                     0,
                     rusqlite::types::Type::Text,
                     Box::new(e),
                 ))?,
-            updated_at: DateTime::parse_from_rfc3339(&row.get::<_, String>("updated_at")?)
-                .map(|dt| dt.with_timezone(&Utc))
+            updated_at: Self::parse_datetime(&row.get::<_, String>("updated_at")?)
                 .map_err(|e| rusqlite::Error::FromSqlConversionFailure(
                     0,
                     rusqlite::types::Type::Text,
@@ -154,8 +162,7 @@ impl Issue {
                 ))?,
             completed_at: row
                 .get::<_, Option<String>>("completed_at")?
-                .and_then(|s| DateTime::parse_from_rfc3339(&s).ok())
-                .map(|dt| dt.with_timezone(&Utc)),
+                .and_then(|s| Self::parse_datetime(&s).ok()),
             auto_created: row.get::<_, Option<i32>>("auto_created")?.unwrap_or(0) != 0,
         })
     }
