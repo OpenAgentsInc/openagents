@@ -11,8 +11,17 @@ use async_trait::async_trait;
 use colored::*;
 use futures::StreamExt;
 use serde_json::json;
+use std::io::{self, Write};
 use std::path::PathBuf;
 use std::sync::OnceLock;
+
+/// Print and flush stdout immediately (for piped output)
+macro_rules! println_flush {
+    ($($arg:tt)*) => {{
+        println!($($arg)*);
+        let _ = io::stdout().flush();
+    }};
+}
 
 use autopilot::apm::APMTier;
 use autopilot::analyze;
@@ -2040,8 +2049,8 @@ async fn run_task(
 
         match project::get_project_by_name(&conn, &project_name)? {
             Some(proj) => {
-                println!("{} Loading project '{}'", "Project:".cyan().bold(), proj.name);
-                println!("{} {}", "Path:".dimmed(), proj.path);
+                println_flush!("{} Loading project '{}'", "Project:".cyan().bold(), proj.name);
+                println_flush!("{} {}", "Path:".dimmed(), proj.path);
                 (
                     PathBuf::from(&proj.path),
                     Some(PathBuf::from(&proj.path).join("autopilot.db")),
@@ -2071,7 +2080,7 @@ async fn run_task(
         let pid = std::process::id() as i32;
         let session = session::create_session(&conn, proj_id, &prompt, &model, Some(pid))?;
 
-        println!("{} Session ID: {}", "Session:".dimmed(), &session.id[..8]);
+        println_flush!("{} Session ID: {}", "Session:".dimmed(), &session.id[..8]);
         Some(session.id)
     } else {
         None
@@ -2082,7 +2091,7 @@ async fn run_task(
 
     // Launch desktop UI if requested
     let _ui_port: Option<u16> = if ui {
-        println!("{} Launching desktop UI...", "UI:".cyan().bold());
+        println_flush!("{} Launching desktop UI...", "UI:".cyan().bold());
 
         // Spawn desktop app as subprocess
         let mut child = std::process::Command::new("cargo")
@@ -2114,7 +2123,7 @@ async fn run_task(
         };
 
         if let Some(p) = port {
-            println!("{} Desktop running at http://127.0.0.1:{}/autopilot", "UI:".cyan().bold(), p);
+            println_flush!("{} Desktop running at http://127.0.0.1:{}/autopilot", "UI:".cyan().bold(), p);
             // Open browser
             let _ = std::process::Command::new("open")
                 .arg(format!("http://127.0.0.1:{}/autopilot", p))
@@ -2151,13 +2160,13 @@ async fn run_task(
         prompt
     };
 
-    println!("{} {}", "Running:".cyan().bold(), prompt.lines().next().unwrap_or(&prompt));
-    println!("{} {}", "Model:".dimmed(), model);
-    println!("{} {}", "CWD:".dimmed(), cwd.display());
+    println_flush!("{} {}", "Running:".cyan().bold(), prompt.lines().next().unwrap_or(&prompt));
+    println_flush!("{} {}", "Model:".dimmed(), model);
+    println_flush!("{} {}", "CWD:".dimmed(), cwd.display());
     if full_auto {
-        println!("{} {}", "Mode:".magenta().bold(), "FULL AUTO");
+        println_flush!("{} {}", "Mode:".magenta().bold(), "FULL AUTO");
     }
-    println!();
+    println_flush!();
 
     // Create trajectory collector
     let mut collector = TrajectoryCollector::new(
