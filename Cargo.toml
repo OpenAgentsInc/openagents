@@ -1,6 +1,7 @@
 [workspace]
 resolver = "2"
 members = [
+    "crates/acp-adapter",
     "crates/gitafter",
     "crates/autopilot",
     "crates/autopilot-gui",
