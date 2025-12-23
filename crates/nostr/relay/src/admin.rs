@@ -21,9 +21,17 @@ pub struct AdminConfig {
 
 impl Default for AdminConfig {
     fn default() -> Self {
-        Self {
-            bind_addr: "127.0.0.1:7001".parse().unwrap(),
-        }
+        // Read port from environment or use default
+        let port = std::env::var("NOSTR_ADMIN_PORT")
+            .ok()
+            .and_then(|p| p.parse::<u16>().ok())
+            .unwrap_or(7001);
+
+        let bind_addr = format!("127.0.0.1:{}", port)
+            .parse()
+            .expect("Failed to parse admin bind address");
+
+        Self { bind_addr }
     }
 }
 

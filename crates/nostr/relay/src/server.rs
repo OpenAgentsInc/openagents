@@ -43,8 +43,18 @@ pub struct RelayConfig {
 
 impl Default for RelayConfig {
     fn default() -> Self {
+        // Read port from environment or use default
+        let port = std::env::var("NOSTR_RELAY_PORT")
+            .ok()
+            .and_then(|p| p.parse::<u16>().ok())
+            .unwrap_or(7000);
+
+        let bind_addr = format!("127.0.0.1:{}", port)
+            .parse()
+            .expect("Failed to parse relay bind address");
+
         Self {
-            bind_addr: "127.0.0.1:7000".parse().unwrap(),
+            bind_addr,
             max_message_size: 512 * 1024, // 512 KB
             rate_limit: RateLimitConfig::default(),
             relay_info: RelayInformation::default(),
