@@ -804,3 +804,5 @@ t!:Bash id=EEyQrWYF cmd="cargo test -p issues 2>&1 | tail -15" → [running] tok
 o: id=EEyQrWYF → [ok] test result: ok. 21 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s
 a: Perfect! All tests pass. Let's commit and push: tokens_in=0 tokens_out=1 tokens_cached=100638
 t!:Bash id=JZ5CgCJg cmd="git add -A && git commit -m "$(cat <<'EOF'" → [running] tokens_in=0 tokens_out=305 tokens_cached=100638
+o: id=JZ5CgCJg → [ok] [main 24d1e255a] Add missing index on issues.agent column (DB-1)
+a: Perfect! Now let's complete and continue: tokens_in=0 tokens_out=1 tokens_cached=100969
