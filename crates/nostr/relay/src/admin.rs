@@ -281,7 +281,8 @@ mod tests {
             .await;
 
         assert_eq!(response.status(), 200);
-        let body = String::from_utf8(response.body().to_vec()).unwrap();
+        let body = String::from_utf8(response.body().to_vec())
+            .expect("Response body contains invalid UTF-8");
         assert!(body.contains("nostr_relay_uptime_seconds"));
         assert!(body.contains("nostr_relay_connections_active"));
         assert!(body.contains("nostr_relay_events_received_total"));
