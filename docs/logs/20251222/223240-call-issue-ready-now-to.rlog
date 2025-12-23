@@ -208,3 +208,59 @@ t!:Bash id=rxWLtcv3 cmd="cargo test -p gitafter --lib 2>&1 | tail -20" → [runn
 o: id=rxWLtcv3 → [ok] test git::diff::tests::test_get_status_empty ... ok
 a: Excellent! All tests pass. Now let me commit this work: tokens_in=0 tokens_out=6 tokens_cached=138384
 t!:Bash id=HZqEgr3A cmd="git add -A && git diff --cached --stat" → [running] tokens_in=0 tokens_out=6 tokens_cached=138384
+o: id=HZqEgr3A → [ok]  crates/gitafter/src/views.rs                       |   3 +-
+t!:Bash id=kTbWwdhc cmd="git commit -m "$(cat <<'EOF'" → [running] tokens_in=0 tokens_out=379 tokens_cached=138922
+o: id=kTbWwdhc → [ok] [main 07822bce0] Optimize GitAfter PR diff rendering for large files
+t!:Bash id=WkPDSwCT cmd="git push origin main" → [running] tokens_in=0 tokens_out=75 tokens_cached=139161
+o: id=WkPDSwCT → [ok] [0;36m🔍 Running cargo build to check for errors and warnings...[0m
+t!:mcp__issues__issue_complete id=BmhMTgiY  → [running] tokens_in=0 tokens_out=58 tokens_cached=139787
+o: id=BmhMTgiY → [ok] Completed issue #776
+t!:mcp__issues__issue_ready id=vrAxN4Cp  → [running] tokens_in=0 tokens_out=41 tokens_cached=139950
+o: id=vrAxN4Cp → [ok] {
+t!:mcp__issues__issue_claim id=AJHDd1tH  → [running] tokens_in=0 tokens_out=5 tokens_cached=140025
+o: id=AJHDd1tH → [ok] Claimed issue #777
+t!:Read id=kLL3maUB file_path=/home/christopherdavid/code/openagents/crates/autopilot/src/state.rs → [running] tokens_in=3 tokens_out=25 tokens_cached=140324
+o: id=kLL3maUB → [ok]      1→//! Agent State Management
+t!:Grep id=fFZ4vTri pattern="struct.*Cache|cache.*issue|..." → [running] tokens_in=3 tokens_out=26 tokens_cached=140422
+o: id=fFZ4vTri → [ok] Found 6 files
+t!:Grep id=Bc9GcjUF pattern="fn.*issue_ready|claim.*issue" → [running] tokens_in=2 tokens_out=24 tokens_cached=141794
+o: id=Bc9GcjUF → [ok] crates/autopilot/src/main.rs:3377:                if issue::claim_issue(&conn, &i.id, &run_id)? {
+a: Let me look at the issue database schema to understand what we're working with: tokens_in=2 tokens_out=1 tokens_cached=142142
+t!:Bash id=QyJv5r7m cmd="sqlite3 /home/christopherdavid/code/openagents/..." → [running] tokens_in=2 tokens_out=1 tokens_cached=142142
+o: id=QyJv5r7m → [ok] CREATE TABLE IF NOT EXISTS "issues" (
+a: Now let me check how issues are currently being claimed and if there's any caching logic: tokens_in=1 tokens_out=1 tokens_cached=142764
+t!:Read id=VdJ4xS8Q file_path=/home/christopherdavid/code/openagents/crates/autopilot/src/issue.rs → [running] tokens_in=1 tokens_out=116 tokens_cached=142764
+o: id=VdJ4xS8Q → [error] <tool_use_error>File does not exist.</tool_use_error>
+t!:Bash id=fdc9UV2s cmd="find /home/christopherdavid/code/openagents/cra..." → [running] tokens_in=2 tokens_out=25 tokens_cached=143253
+o: id=fdc9UV2s → [ok] 
+t!:Bash id=bxp3Gwwn cmd="find crates/issues -name "*.rs" | xargs grep -l..." → [running] tokens_in=0 tokens_out=25 tokens_cached=143404
+o: id=bxp3Gwwn → [ok] crates/issues/src/issue.rs
+t!:Read id=KUmb45R4 file_path=/home/christopherdavid/code/openagents/crates/issues/src/issue.rs → [running] tokens_in=0 tokens_out=111 tokens_cached=143634
+o: id=KUmb45R4 → [ok]    200→    )
+a: I can see the issue claiming logic. Now let me create a caching mechanism. The key insight is that `get_next_ready_issue` already filters out completed issues (status='open'), but we need to add in... tokens_in=0 tokens_out=1 tokens_cached=143778
+t!:Write id=Vtt5tB4M file_path=/home/christopherdavid/code/openagents/crates/issues/src/cache.rs → [running] tokens_in=0 tokens_out=2845 tokens_cached=143778
+o: id=Vtt5tB4M → [ok] File created successfully at: /home/christopherdavid/code/openagents/crates/issues/src/cache.rs
+a: Now let me add the cache module to the lib.rs: tokens_in=0 tokens_out=4 tokens_cached=145156
+t!:Read id=3YtBQwiN file_path=/home/christopherdavid/code/openagents/crates/issues/src/lib.rs → [running] tokens_in=0 tokens_out=4 tokens_cached=145156
+o: id=3YtBQwiN → [ok]      1→//! Local issue tracking with SQLite
+t!:Edit id=iBuEhpAs file_path=/home/christopherdavid/code/openagents/crates/issues/src/lib.rs → [running] tokens_in=0 tokens_out=437 tokens_cached=148146
+o: id=iBuEhpAs → [ok] The file /home/christopherdavid/code/openagents/crates/issues/src/lib.rs has been updated. Here's...
+a: Now let me build and test: tokens_in=0 tokens_out=1 tokens_cached=148916
+t!:Bash id=bzYbvZwX cmd="cargo test -p issues --lib cache 2>&1 | tail -30" → [running] tokens_in=0 tokens_out=1 tokens_cached=148916
+o: id=bzYbvZwX → [ok]     |
+a: Let me check the Issue struct to see the correct field types: tokens_in=0 tokens_out=1 tokens_cached=149795
+t!:Grep id=8UrbwG2L pattern="pub struct Issue|created_at..." → [running] tokens_in=0 tokens_out=1 tokens_cached=149795
+o: id=8UrbwG2L → [ok] 97-/// An issue in the tracking system
+t!:Edit id=a8HDXFEF file_path=/home/christopherdavid/code/openagents/crates/issues/src/cache.rs → [running] tokens_in=0 tokens_out=491 tokens_cached=150287
+o: id=a8HDXFEF → [ok] The file /home/christopherdavid/code/openagents/crates/issues/src/cache.rs has been updated. Here...
+t!:Bash id=eJi22z5v cmd="cargo test -p issues --lib cache 2>&1 | tail -10" → [running] tokens_in=0 tokens_out=88 tokens_cached=150831
+o: id=eJi22z5v → [ok]     = help: items from traits can only be used if the trait is in scope
+a: I need to add anyhow to the dependencies. Let me check the Cargo.toml: tokens_in=0 tokens_out=1 tokens_cached=151708
+t!:Read id=FHtuvmZD file_path=/home/christopherdavid/code/openagents/crates/issues/Cargo.toml → [running] tokens_in=0 tokens_out=1 tokens_cached=151708
+o: id=FHtuvmZD → [ok]      1→[package]
+t!:Edit id=pbSDm2aX file_path=/home/christopherdavid/code/openagents/crates/issues/Cargo.toml → [running] tokens_in=0 tokens_out=165 tokens_cached=151952
+o: id=pbSDm2aX → [ok] The file /home/christopherdavid/code/openagents/crates/issues/Cargo.toml has been updated. Here's...
+t!:Bash id=e1uCtKEe cmd="cargo test -p issues --lib cache 2>&1 | tail -15" → [running] tokens_in=0 tokens_out=26 tokens_cached=152620
+o: id=e1uCtKEe → [ok]    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+a: Excellent! All cache tests pass. Now let me add documentation and commit this work: tokens_in=0 tokens_out=5 tokens_cached=152961
+t!:Bash id=otefAoqM cmd="git add -A && git diff --cached --stat" → [running] tokens_in=0 tokens_out=5 tokens_cached=152961
