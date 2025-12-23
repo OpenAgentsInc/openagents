@@ -101,7 +101,7 @@ pub async fn home(
     let chat_pane = ChatPane::new(full_auto).build();
 
     // Parallel agents pane (top-left) - collapsible
-    let parallel_pane = r#"<div id="parallel-pane" style="position: fixed; top: 1rem; left: 1rem; background: #111; border: 1px solid #333; font-family: monospace; font-size: 0.75rem; max-width: 320px;">
+    let parallel_pane = r###"<div id="parallel-pane" style="position: fixed; top: 1rem; left: 1rem; background: #111; border: 1px solid #333; font-family: monospace; font-size: 0.75rem; max-width: 360px;">
         <div style="padding: 0.5rem 0.75rem; border-bottom: 1px solid #333; display: flex; justify-content: space-between; align-items: center; cursor: pointer;" onclick="document.getElementById('parallel-content').classList.toggle('hidden')">
             <span style="color: #4a9eff;">Parallel Agents</span>
             <span style="color: #666;">▼</span>
@@ -110,8 +110,9 @@ pub async fn home(
             <div id="parallel-status" hx-get="/api/parallel/status" hx-trigger="load, every 5s" hx-swap="innerHTML">
                 <p style="color: #666;">Loading...</p>
             </div>
+            <div id="parallel-feedback" style="margin-top: 0.5rem;"></div>
             <div style="margin-top: 0.75rem; display: flex; gap: 0.5rem;">
-                <form hx-post="/api/parallel/start" hx-swap="none" style="display: flex; gap: 0.25rem; align-items: center;">
+                <form hx-post="/api/parallel/start" hx-target="#parallel-feedback" hx-swap="innerHTML" style="display: flex; gap: 0.25rem; align-items: center;">
                     <select name="count" style="background: #000; color: #888; border: 1px solid #333; padding: 0.25rem; font-size: 0.7rem;">
                         <option value="1">1</option>
                         <option value="2">2</option>
@@ -121,15 +122,18 @@ pub async fn home(
                     </select>
                     <button type="submit" style="background: #1a3a1a; color: #7dff7d; border: 1px solid #2d5016; padding: 0.25rem 0.5rem; cursor: pointer; font-size: 0.7rem;">Start</button>
                 </form>
-                <form hx-post="/api/parallel/stop" hx-swap="none">
+                <form hx-post="/api/parallel/stop" hx-target="#parallel-feedback" hx-swap="innerHTML">
                     <button type="submit" style="background: #3a1a1a; color: #ff7d7d; border: 1px solid #501616; padding: 0.25rem 0.5rem; cursor: pointer; font-size: 0.7rem;">Stop All</button>
                 </form>
+            </div>
+            <div style="margin-top: 0.75rem; padding-top: 0.5rem; border-top: 1px solid #333; color: #555; font-size: 0.6rem;">
+                Requires: Docker running, images built
             </div>
         </div>
     </div>
     <style>
         .hidden { display: none !important; }
-    </style>"#;
+    </style>"###;
 
     // Unified control stack: WS indicator, Agent selector, Full Auto, Daemon, Claude (top to bottom)
     let control_stack = format!(
