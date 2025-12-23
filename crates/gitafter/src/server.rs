@@ -69,6 +69,7 @@ pub async fn start_server(
             .route("/repo/{identifier}/pulls", web::get().to(repository_pulls))
             .route("/repo/{identifier}/pulls/new", web::get().to(pr_create_form))
             .route("/repo/{identifier}/pulls/available-deps", web::get().to(pr_available_deps))
+            .route("/repo/{identifier}/pulls/{pr_id}/stack-info", web::get().to(pr_stack_info))
             .route("/repo/{identifier}/pulls", web::post().to(pr_create))
             .route("/repo/{identifier}/pulls/{pr_id}", web::get().to(pull_request_detail))
             .route("/repo/{identifier}/pulls/{pr_id}/diff", web::get().to(pr_diff_view))
@@ -2142,6 +2143,78 @@ async fn pr_available_deps(
                 .body(r#"{"error": "Failed to fetch pull requests"}"#)
         }
     }
+}
+
+/// Get stack info for a PR to auto-fill stack_id and suggest layer number
+async fn pr_stack_info(
+    state: web::Data<AppState>,
+    path: web::Path<(String, String)>,
+) -> HttpResponse {
+    let (identifier, pr_id) = path.into_inner();
+
+    // Fetch the PR event
+    let pr_event = match state.nostr_client.get_cached_event(&pr_id).await {
+        Ok(Some(event)) => event,
+        Ok(None) => {
+            return HttpResponse::NotFound()
+                .content_type("text/html; charset=utf-8")
+                .body(r#"<div class="error">PR not found</div>"#);
+        }
+        Err(e) => {
+            tracing::error!("Failed to fetch PR {}: {}", pr_id, e);
+            return HttpResponse::InternalServerError()
+                .content_type("text/html; charset=utf-8")
+                .body(r#"<div class="error">Failed to fetch PR</div>"#);
+        }
+    };
+
+    // Extract stack_id and layer info from tags
+    let stack_id = pr_event.tags.iter()
+        .find(|tag| tag.len() >= 2 && tag[0] == "stack")
+        .and_then(|tag| tag.get(1))
+        .map(|s| s.to_string());
+
+    let (layer_current, layer_total) = pr_event.tags.iter()
+        .find(|tag| tag.len() >= 3 && tag[0] == "layer")
+        .and_then(|tag| {
+            let current = tag.get(1)?.parse::<u32>().ok()?;
+            let total = tag.get(2)?.parse::<u32>().ok()?;
+            Some((current, total))
+        })
+        .unwrap_or((0, 0));
+
+    // Suggest next layer number
+    let suggested_layer = if layer_current > 0 {
+        layer_current + 1
+    } else {
+        1
+    };
+
+    // Return HTML that updates form fields via HTMX
+    let html = if let Some(stack) = stack_id {
+        format!(
+            r#"<input type="hidden" id="auto_stack_id" value="{}" />
+<input type="hidden" id="auto_layer_current" value="{}" />
+<input type="hidden" id="auto_layer_total" value="{}" />
+<script>
+    document.getElementById('stack_id').value = '{}';
+    document.getElementById('layer_current').value = '{}';
+    document.getElementById('layer_total').value = '{}';
+</script>"#,
+            html_escape::encode_text(&stack),
+            suggested_layer,
+            layer_total,
+            html_escape::encode_text(&stack),
+            suggested_layer,
+            layer_total
+        )
+    } else {
+        String::new()
+    };
+
+    HttpResponse::Ok()
+        .content_type("text/html; charset=utf-8")
+        .body(html)
 }
 
 /// Pull request creation form
