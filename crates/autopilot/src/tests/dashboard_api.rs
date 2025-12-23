@@ -111,7 +111,7 @@ fn test_session_detail_data() {
 
     let store = MetricsDb::open(&db_path).unwrap();
 
-    let mut metrics = SessionMetrics {
+    let metrics = SessionMetrics {
         id: "test-session-123".to_string(),
         timestamp: Utc::now(),
         model: "sonnet".to_string(),
