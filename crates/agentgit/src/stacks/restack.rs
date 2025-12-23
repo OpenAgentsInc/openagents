@@ -1,6 +1,34 @@
 //! Restack operation for stacked diffs
 //!
 //! Handles rebasing all layers of a stack when the base changes.
+//!
+//! # Examples
+//!
+//! ```ignore
+//! use agentgit::stacks::restack::restack_layers;
+//! use std::path::Path;
+//! use std::sync::Arc;
+//!
+//! async fn example(nostr_client: Arc<NostrClient>, identity: Arc<UnifiedIdentity>) -> anyhow::Result<()> {
+//!     let pr_events = vec![/* PR events from Nostr */];
+//!
+//!     // Restack all layers after base branch update
+//!     let result = restack_layers(
+//!         Path::new("./repo"),
+//!         "stack-uuid-123",
+//!         &pr_events,
+//!         nostr_client,
+//!         identity,
+//!         "30617:pubkey:repo-id",
+//!     ).await?;
+//!
+//!     println!("Successfully restacked {} layers", result.succeeded.len());
+//!     if !result.failed.is_empty() {
+//!         println!("Failed to restack {} layers", result.failed.len());
+//!     }
+//!     Ok(())
+//! }
+//! ```
 
 use anyhow::{anyhow, Result};
 use nostr::Event;
@@ -15,6 +43,21 @@ use crate::stacks::graph::{StackGraph, LayerInfo};
 use wallet::core::identity::UnifiedIdentity;
 
 /// Result of a restack operation
+///
+/// # Examples
+///
+/// ```
+/// use agentgit::stacks::restack::RestackResult;
+/// use std::collections::HashMap;
+///
+/// let result = RestackResult {
+///     updated_prs: HashMap::new(),
+///     succeeded: vec!["pr1".to_string(), "pr2".to_string()],
+///     failed: vec![],
+/// };
+///
+/// assert_eq!(result.succeeded.len(), 2);
+/// ```
 pub struct RestackResult {
     /// Map of old PR event ID to new PR event ID
     pub updated_prs: HashMap<String, String>,
@@ -38,6 +81,32 @@ pub struct RestackResult {
 /// * `nostr_client` - Nostr client for publishing updates
 /// * `identity` - Identity for signing events
 /// * `repo_address` - Repository address tag (e.g., "30617:pubkey:repo-id")
+///
+/// # Examples
+///
+/// ```ignore
+/// use agentgit::stacks::restack::restack_layers;
+/// use std::path::Path;
+/// use std::sync::Arc;
+///
+/// async fn example(nostr_client: Arc<NostrClient>, identity: Arc<UnifiedIdentity>) -> anyhow::Result<()> {
+///     let pr_events = vec![/* PR events */];
+///
+///     let result = restack_layers(
+///         Path::new("./my-repo"),
+///         "stack-abc123",
+///         &pr_events,
+///         nostr_client,
+///         identity,
+///         "30617:pubkey:repo-id",
+///     ).await?;
+///
+///     for pr_id in &result.succeeded {
+///         println!("Restacked PR: {}", pr_id);
+///     }
+///     Ok(())
+/// }
+/// ```
 pub async fn restack_layers(
     repo_path: &Path,
     stack_id: &str,
