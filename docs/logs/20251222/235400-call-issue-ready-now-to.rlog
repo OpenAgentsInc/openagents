@@ -805,3 +805,10 @@ o: id=tALD5YvT → [ok] error: no bin target named `openagents` in default-run p
 t!:Bash id=c8x6zYQw cmd="cargo build 2>&1 | tail -10" → [running] tokens_in=0 tokens_out=81 tokens_cached=98840
 o: id=c8x6zYQw → [ok]     Finished `dev` profile [optimized + debuginfo] target(s) in 0.14s
 t!:Bash id=zw2sWg5v cmd="git add -A && git diff --cached --stat" → [running] tokens_in=0 tokens_out=24 tokens_cached=98977
+o: id=zw2sWg5v → [ok]  crates/marketplace/Cargo.toml                      |  1 +
+t!:Bash id=1gG6nahZ cmd="git commit -m "$(cat <<'EOF'" → [running] tokens_in=0 tokens_out=357 tokens_cached=99196
+o: id=1gG6nahZ → [ok] [main 50598177e] Implement NIP-90 provider capability advertisement
+t!:Bash id=mQmAN25V cmd="git push origin main" → [running] tokens_in=0 tokens_out=24 tokens_cached=99428
+o: id=mQmAN25V → [ok] [0;36m🔍 Running cargo build to check for errors and warnings...[0m
+t!:Bash id=gh2uwBwM cmd="cargo autopilot issue complete 801" → [running] tokens_in=0 tokens_out=82 tokens_cached=99927
+o: id=gh2uwBwM → [ok] ✓ Completed issue #801: Implement NIP-90 provider capability advertisement

@@ -7,9 +7,10 @@
 use anyhow::{Context, Result};
 use nostr::{AgentState, AgentStateContent, KIND_AGENT_STATE};
 use nostr_client::{RelayPool, PoolConfig};
+use openagents_spark as spark;
+use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 use wallet::core::UnifiedIdentity;
-use std::sync::Arc;
 
 /// Agent state manager
 pub struct StateManager {
@@ -72,6 +73,27 @@ impl StateManager {
     /// Create a new empty state
     pub fn create_empty_state() -> AgentStateContent {
         AgentStateContent::new()
+    }
+
+    /// Update wallet balance in state
+    ///
+    /// Queries the Spark wallet for the current balance and updates the agent state.
+    /// This should be called before publishing state to ensure it reflects current
+    /// wallet balance.
+    ///
+    /// Returns updated state content with current balance.
+    pub async fn update_wallet_balance(
+        &self,
+        mut state: AgentStateContent,
+        wallet: &spark::SparkWallet,
+    ) -> Result<AgentStateContent> {
+        let balance = wallet
+            .get_balance()
+            .await
+            .context("Failed to query wallet balance")?;
+
+        state.wallet_balance_sats = balance.total_sats();
+        Ok(state)
     }
 
     /// Get the agent state event kind
