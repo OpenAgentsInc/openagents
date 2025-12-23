@@ -61,16 +61,17 @@ jobs:
 
           # Switch back to PR branch
           git checkout -
+          cargo build --release -p autopilot
 
-          # Compare results
+          # Compare results and output to summary
           echo "## Benchmark Comparison" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
 
-          # TODO: Implement comparison logic and fail if regression > 10%
-          # For now, just show that benchmarks ran
-          echo "✅ Benchmark suite completed successfully" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "Detailed comparison coming soon - tracking in issue #753" >> $GITHUB_STEP_SUMMARY
+          cargo run --release -p autopilot -- benchmark \
+            --compare-db1 benchmarks/main-results.db \
+            --compare-db2 benchmarks/ci-results.db \
+            --threshold 0.10 \
+            >> $GITHUB_STEP_SUMMARY || exit 1
 
       - name: Update baseline (main branch only)
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'

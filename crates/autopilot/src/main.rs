@@ -517,6 +517,18 @@ enum Commands {
         #[arg(long)]
         compare_commits: Option<String>,
 
+        /// Compare two databases for regression detection
+        #[arg(long, requires = "compare_db2")]
+        compare_db1: Option<PathBuf>,
+
+        /// Second database for comparison
+        #[arg(long, requires = "compare_db1")]
+        compare_db2: Option<PathBuf>,
+
+        /// Regression threshold (default: 0.10 for 10%)
+        #[arg(long, default_value = "0.10")]
+        threshold: f64,
+
         /// Path to benchmarks database (default: autopilot-benchmarks.db)
         #[arg(long)]
         db: Option<PathBuf>,
@@ -1245,6 +1257,9 @@ async fn main() -> Result<()> {
             save_baseline,
             list_baselines,
             compare_commits,
+            compare_db1,
+            compare_db2,
+            threshold,
             db,
             workspace,
         } => {
@@ -1255,6 +1270,9 @@ async fn main() -> Result<()> {
                 save_baseline,
                 list_baselines,
                 compare_commits,
+                compare_db1,
+                compare_db2,
+                threshold,
                 db,
                 workspace,
             )
@@ -5087,6 +5105,122 @@ fn handle_compare_analysis(metrics_db: &autopilot::metrics::MetricsDb, compare_s
     Ok(())
 }
 
+/// Compare two benchmark databases for regression detection
+async fn handle_benchmark_comparison(
+    db1_path: &PathBuf,
+    db2_path: &PathBuf,
+    threshold: f64,
+) -> Result<()> {
+    use autopilot::benchmark::BenchmarkDatabase;
+
+    println!("\n## Benchmark Comparison\n");
+
+    let db1 = BenchmarkDatabase::open(db1_path)?;
+    let db2 = BenchmarkDatabase::open(db2_path)?;
+
+    // Get all benchmark IDs from both databases
+    let results1 = db1.get_all_latest_results()?;
+    let results2 = db2.get_all_latest_results()?;
+
+    if results1.is_empty() || results2.is_empty() {
+        println!("⚠ No benchmark data found in one or both databases.");
+        return Ok(());
+    }
+
+    let by_id1: std::collections::HashMap<_, _> = results1.iter()
+        .map(|r| (r.benchmark_id.clone(), r))
+        .collect();
+    let by_id2: std::collections::HashMap<_, _> = results2.iter()
+        .map(|r| (r.benchmark_id.clone(), r))
+        .collect();
+
+    println!("| Benchmark | Metric | Baseline | Current | Change | Status |");
+    println!("|-----------|--------|----------|---------|--------|--------|");
+
+    let mut has_regression = false;
+
+    for (id, r2) in &by_id2 {
+        if let Some(r1) = by_id1.get(id) {
+            // Compare duration
+            let duration_pct = ((r2.metrics.duration_ms as f64 - r1.metrics.duration_ms as f64)
+                / r1.metrics.duration_ms as f64).abs();
+            let duration_regressed = r2.metrics.duration_ms > r1.metrics.duration_ms
+                && duration_pct > threshold;
+
+            // Compare tokens
+            let tokens_in_pct = ((r2.metrics.tokens_in as f64 - r1.metrics.tokens_in as f64)
+                / r1.metrics.tokens_in as f64).abs();
+            let tokens_in_regressed = r2.metrics.tokens_in > r1.metrics.tokens_in
+                && tokens_in_pct > threshold;
+
+            let tokens_out_pct = ((r2.metrics.tokens_out as f64 - r1.metrics.tokens_out as f64)
+                / r1.metrics.tokens_out as f64).abs();
+            let tokens_out_regressed = r2.metrics.tokens_out > r1.metrics.tokens_out
+                && tokens_out_pct > threshold;
+
+            // Compare cost
+            let cost_pct = ((r2.metrics.cost_usd - r1.metrics.cost_usd)
+                / r1.metrics.cost_usd).abs();
+            let cost_regressed = r2.metrics.cost_usd > r1.metrics.cost_usd
+                && cost_pct > threshold;
+
+            // Compare errors
+            let errors_increased = r2.metrics.tool_errors > r1.metrics.tool_errors;
+
+            // Duration row
+            let duration_change = ((r2.metrics.duration_ms as f64 - r1.metrics.duration_ms as f64)
+                / r1.metrics.duration_ms as f64) * 100.0;
+            let duration_status = if duration_regressed { "❌ FAIL" } else { "✅ PASS" };
+            println!("| {} | Duration | {}ms | {}ms | {:+.1}% | {} |",
+                id, r1.metrics.duration_ms, r2.metrics.duration_ms, duration_change, duration_status);
+
+            // Tokens in row
+            let tokens_in_change = ((r2.metrics.tokens_in as f64 - r1.metrics.tokens_in as f64)
+                / r1.metrics.tokens_in as f64) * 100.0;
+            let tokens_in_status = if tokens_in_regressed { "❌ FAIL" } else { "✅ PASS" };
+            println!("| {} | Tokens In | {} | {} | {:+.1}% | {} |",
+                id, r1.metrics.tokens_in, r2.metrics.tokens_in, tokens_in_change, tokens_in_status);
+
+            // Tokens out row
+            let tokens_out_change = ((r2.metrics.tokens_out as f64 - r1.metrics.tokens_out as f64)
+                / r1.metrics.tokens_out as f64) * 100.0;
+            let tokens_out_status = if tokens_out_regressed { "❌ FAIL" } else { "✅ PASS" };
+            println!("| {} | Tokens Out | {} | {} | {:+.1}% | {} |",
+                id, r1.metrics.tokens_out, r2.metrics.tokens_out, tokens_out_change, tokens_out_status);
+
+            // Cost row
+            let cost_change = ((r2.metrics.cost_usd - r1.metrics.cost_usd)
+                / r1.metrics.cost_usd) * 100.0;
+            let cost_status = if cost_regressed { "❌ FAIL" } else { "✅ PASS" };
+            println!("| {} | Cost | ${:.4} | ${:.4} | {:+.1}% | {} |",
+                id, r1.metrics.cost_usd, r2.metrics.cost_usd, cost_change, cost_status);
+
+            // Errors row
+            let errors_status = if errors_increased { "❌ FAIL" } else { "✅ PASS" };
+            println!("| {} | Tool Errors | {} | {} | - | {} |",
+                id, r1.metrics.tool_errors, r2.metrics.tool_errors, errors_status);
+
+            if duration_regressed || tokens_in_regressed || tokens_out_regressed || cost_regressed || errors_increased {
+                has_regression = true;
+            }
+        }
+    }
+
+    println!();
+
+    if has_regression {
+        println!("❌ **Benchmark regression detected!** One or more metrics regressed by more than {:.0}%", threshold * 100.0);
+        println!();
+        println!("Detailed comparison coming soon - tracking in issue #754");
+        std::process::exit(1);
+    } else {
+        println!("✅ **All benchmarks passed!** No regressions detected.");
+        println!();
+    }
+
+    Ok(())
+}
+
 /// Handle benchmark command
 async fn handle_benchmark_command(
     benchmark_id: Option<String>,
@@ -5095,6 +5229,9 @@ async fn handle_benchmark_command(
     save_baseline: Option<String>,
     list_baselines: bool,
     compare_commits: Option<String>,
+    compare_db1: Option<PathBuf>,
+    compare_db2: Option<PathBuf>,
+    threshold: f64,
     db: Option<PathBuf>,
     workspace: Option<PathBuf>,
 ) -> Result<()> {
@@ -5165,6 +5302,11 @@ async fn handle_benchmark_command(
         }
         println!();
         return Ok(());
+    }
+
+    // Handle database comparison for regression detection
+    if let (Some(db1), Some(db2)) = (compare_db1, compare_db2) {
+        return handle_benchmark_comparison(&db1, &db2, threshold).await;
     }
 
     // Handle git commit comparison
