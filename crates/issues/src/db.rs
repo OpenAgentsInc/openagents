@@ -6,7 +6,7 @@ use tracing::{debug, error, info};
 
 /// Current schema version
 #[allow(dead_code)]
-const SCHEMA_VERSION: i32 = 8;
+const SCHEMA_VERSION: i32 = 9;
 
 /// Initialize the database with migrations
 pub fn init_db(path: &Path) -> Result<Connection> {
@@ -52,6 +52,9 @@ pub fn init_db(path: &Path) -> Result<Connection> {
     if version < 8 {
         migrate_v8(&conn)?;
     }
+    if version < 9 {
+        migrate_v9(&conn)?;
+    }
 
     Ok(conn)
 }
@@ -86,6 +89,9 @@ pub fn init_memory_db() -> Result<Connection> {
     }
     if version < 8 {
         migrate_v8(&conn)?;
+    }
+    if version < 9 {
+        migrate_v9(&conn)?;
     }
 
     Ok(conn)
@@ -389,6 +395,20 @@ fn migrate_v8(conn: &Connection) -> Result<()> {
 
     set_schema_version(conn, 8)?;
     info!("Migration v8 completed successfully");
+    Ok(())
+}
+
+fn migrate_v9(conn: &Connection) -> Result<()> {
+    info!("Running migration v9");
+    // Add index on agent column for efficient agent filtering
+    conn.execute_batch(
+        r#"
+        CREATE INDEX IF NOT EXISTS idx_issues_agent ON issues(agent);
+        "#,
+    )?;
+
+    set_schema_version(conn, 9)?;
+    info!("Migration v9 completed successfully");
     info!("Database initialized successfully at schema version {}", SCHEMA_VERSION);
     Ok(())
 }
