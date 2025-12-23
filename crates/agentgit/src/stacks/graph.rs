@@ -1,12 +1,79 @@
 //! Stack dependency graph for managing PR dependencies
 //!
 //! Builds and validates dependency graphs for stacked PRs.
+//!
+//! # Examples
+//!
+//! ```
+//! use agentgit::stacks::graph::{StackGraph, LayerInfo};
+//! use nostr::Event;
+//!
+//! # fn create_test_pr(
+//! #     event_id: &str,
+//! #     stack_id: &str,
+//! #     layer: u32,
+//! #     total: u32,
+//! #     depends_on: Option<&str>,
+//! # ) -> Event {
+//! #     let mut tags = vec![
+//! #         vec!["stack".to_string(), stack_id.to_string()],
+//! #         vec!["layer".to_string(), layer.to_string(), total.to_string()],
+//! #     ];
+//! #     if let Some(dep) = depends_on {
+//! #         tags.push(vec!["depends_on".to_string(), dep.to_string()]);
+//! #     }
+//! #     Event {
+//! #         id: event_id.to_string(),
+//! #         kind: 1618,
+//! #         pubkey: "test".to_string(),
+//! #         created_at: 0,
+//! #         content: String::new(),
+//! #         tags,
+//! #         sig: String::new(),
+//! #     }
+//! # }
+//! // Create a 3-layer stack
+//! let pr1 = create_test_pr("pr1", "stack-uuid", 1, 3, None);
+//! let pr2 = create_test_pr("pr2", "stack-uuid", 2, 3, Some("pr1"));
+//! let pr3 = create_test_pr("pr3", "stack-uuid", 3, 3, Some("pr2"));
+//!
+//! // Build dependency graph
+//! let graph = StackGraph::from_pr_events(&[pr1, pr2, pr3]).unwrap();
+//!
+//! // Get topologically sorted layers (base to top)
+//! let ordered = graph.topological_sort().unwrap();
+//! assert_eq!(ordered[0].layer_number, 1);
+//! assert_eq!(ordered[2].layer_number, 3);
+//! ```
 
 use anyhow::{anyhow, Result};
 use nostr::Event;
 use std::collections::{HashMap, HashSet};
 
 /// Represents a stack of PRs with dependency relationships
+///
+/// # Examples
+///
+/// ```
+/// use agentgit::stacks::graph::StackGraph;
+/// use nostr::Event;
+///
+/// # fn create_test_pr(id: &str, stack: &str, layer: u32, total: u32, dep: Option<&str>) -> Event {
+/// #     let mut tags = vec![
+/// #         vec!["stack".to_string(), stack.to_string()],
+/// #         vec!["layer".to_string(), layer.to_string(), total.to_string()],
+/// #     ];
+/// #     if let Some(d) = dep { tags.push(vec!["depends_on".to_string(), d.to_string()]); }
+/// #     Event { id: id.to_string(), kind: 1618, pubkey: "test".to_string(),
+/// #             created_at: 0, content: String::new(), tags, sig: String::new() }
+/// # }
+/// let pr1 = create_test_pr("pr1", "stack1", 1, 2, None);
+/// let pr2 = create_test_pr("pr2", "stack1", 2, 2, Some("pr1"));
+///
+/// let graph = StackGraph::from_pr_events(&[pr1, pr2]).unwrap();
+/// let layers = graph.get_stack_layers("stack1");
+/// assert_eq!(layers.len(), 2);
+/// ```
 pub struct StackGraph {
     /// Map of PR event ID to its layer information
     layers: HashMap<String, LayerInfo>,
@@ -27,6 +94,28 @@ pub struct LayerInfo {
 
 impl StackGraph {
     /// Create a new stack graph from a list of PR events
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use agentgit::stacks::graph::StackGraph;
+    /// use nostr::Event;
+    ///
+    /// # fn create_test_pr(id: &str, stack: &str, layer: u32, total: u32, dep: Option<&str>) -> Event {
+    /// #     let mut tags = vec![
+    /// #         vec!["stack".to_string(), stack.to_string()],
+    /// #         vec!["layer".to_string(), layer.to_string(), total.to_string()],
+    /// #     ];
+    /// #     if let Some(d) = dep { tags.push(vec!["depends_on".to_string(), d.to_string()]); }
+    /// #     Event { id: id.to_string(), kind: 1618, pubkey: "test".to_string(),
+    /// #             created_at: 0, content: String::new(), tags, sig: String::new() }
+    /// # }
+    /// let pr1 = create_test_pr("pr1", "stack1", 1, 2, None);
+    /// let pr2 = create_test_pr("pr2", "stack1", 2, 2, Some("pr1"));
+    ///
+    /// let graph = StackGraph::from_pr_events(&[pr1, pr2]).unwrap();
+    /// assert_eq!(graph.get_stack_layers("stack1").len(), 2);
+    /// ```
     pub fn from_pr_events(prs: &[Event]) -> Result<Self> {
         let mut layers = HashMap::new();
         let mut dependencies = HashMap::new();
@@ -85,6 +174,33 @@ impl StackGraph {
 
     /// Get layers in dependency order (topological sort)
     /// Returns layers from base to top
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use agentgit::stacks::graph::StackGraph;
+    /// use nostr::Event;
+    ///
+    /// # fn create_test_pr(id: &str, stack: &str, layer: u32, total: u32, dep: Option<&str>) -> Event {
+    /// #     let mut tags = vec![
+    /// #         vec!["stack".to_string(), stack.to_string()],
+    /// #         vec!["layer".to_string(), layer.to_string(), total.to_string()],
+    /// #     ];
+    /// #     if let Some(d) = dep { tags.push(vec!["depends_on".to_string(), d.to_string()]); }
+    /// #     Event { id: id.to_string(), kind: 1618, pubkey: "test".to_string(),
+    /// #             created_at: 0, content: String::new(), tags, sig: String::new() }
+    /// # }
+    /// let pr1 = create_test_pr("pr1", "stack1", 1, 3, None);
+    /// let pr2 = create_test_pr("pr2", "stack1", 2, 3, Some("pr1"));
+    /// let pr3 = create_test_pr("pr3", "stack1", 3, 3, Some("pr2"));
+    ///
+    /// let graph = StackGraph::from_pr_events(&[pr1, pr2, pr3]).unwrap();
+    /// let sorted = graph.topological_sort().unwrap();
+    ///
+    /// // Base layer first, top layer last
+    /// assert_eq!(sorted[0].layer_number, 1);
+    /// assert_eq!(sorted[2].layer_number, 3);
+    /// ```
     pub fn topological_sort(&self) -> Result<Vec<LayerInfo>> {
         let mut sorted = Vec::new();
         let mut visited = HashSet::new();
@@ -164,6 +280,30 @@ impl StackGraph {
     }
 
     /// Validate the stack structure
+    ///
+    /// Checks for circular dependencies and consecutive layer numbering.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use agentgit::stacks::graph::StackGraph;
+    /// use nostr::Event;
+    ///
+    /// # fn create_test_pr(id: &str, stack: &str, layer: u32, total: u32, dep: Option<&str>) -> Event {
+    /// #     let mut tags = vec![
+    /// #         vec!["stack".to_string(), stack.to_string()],
+    /// #         vec!["layer".to_string(), layer.to_string(), total.to_string()],
+    /// #     ];
+    /// #     if let Some(d) = dep { tags.push(vec!["depends_on".to_string(), d.to_string()]); }
+    /// #     Event { id: id.to_string(), kind: 1618, pubkey: "test".to_string(),
+    /// #             created_at: 0, content: String::new(), tags, sig: String::new() }
+    /// # }
+    /// let pr1 = create_test_pr("pr1", "stack1", 1, 2, None);
+    /// let pr2 = create_test_pr("pr2", "stack1", 2, 2, Some("pr1"));
+    ///
+    /// let graph = StackGraph::from_pr_events(&[pr1, pr2]).unwrap();
+    /// assert!(graph.validate().is_ok());
+    /// ```
     pub fn validate(&self) -> Result<()> {
         // Check for circular dependencies
         let _sorted = self.topological_sort()?;
