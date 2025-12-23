@@ -6,6 +6,7 @@ members = [
     "crates/autopilot",
     "crates/autopilot-gui",
     "crates/frostr",
+    "crates/gpt-oss",
     "crates/issues",
     "crates/issues-mcp",
     "crates/local-inference",

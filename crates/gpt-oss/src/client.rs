@@ -1,0 +1,234 @@
+/// HTTP client for GPT-OSS Responses API
+use crate::error::{GptOssError, Result};
+use crate::types::*;
+use reqwest::Client;
+use std::time::Duration;
+use tokio_stream::Stream;
+
+const DEFAULT_BASE_URL: &str = "http://localhost:8000";
+const DEFAULT_MODEL: &str = "gpt-4o-mini";
+const DEFAULT_TIMEOUT_SECS: u64 = 120;
+
+/// GPT-OSS Responses API client
+#[derive(Clone)]
+pub struct GptOssClient {
+    base_url: String,
+    http_client: Client,
+    default_model: String,
+}
+
+impl GptOssClient {
+    /// Create a new client with default settings
+    ///
+    /// The base URL can be configured via GPT_OSS_URL environment variable.
+    /// Defaults to http://localhost:8000 if not set.
+    pub fn new() -> Result<Self> {
+        let base_url =
+            std::env::var("GPT_OSS_URL").unwrap_or_else(|_| DEFAULT_BASE_URL.to_string());
+        Self::with_base_url(base_url)
+    }
+
+    /// Create a new client with custom base URL
+    pub fn with_base_url(base_url: impl Into<String>) -> Result<Self> {
+        let http_client = Client::builder()
+            .timeout(Duration::from_secs(DEFAULT_TIMEOUT_SECS))
+            .build()?;
+
+        Ok(Self {
+            base_url: base_url.into(),
+            http_client,
+            default_model: DEFAULT_MODEL.to_string(),
+        })
+    }
+
+    /// Create a builder for more configuration options
+    pub fn builder() -> GptOssClientBuilder {
+        GptOssClientBuilder::new()
+    }
+
+    /// Complete a prompt (non-streaming)
+    pub async fn complete(&self, request: GptOssRequest) -> Result<GptOssResponse> {
+        let url = format!("{}/v1/completions", self.base_url);
+
+        let response = self.http_client.post(&url).json(&request).send().await?;
+
+        if !response.status().is_success() {
+            let status = response.status().as_u16();
+            let text = response.text().await.unwrap_or_default();
+            return Err(GptOssError::ApiError {
+                status,
+                message: text,
+            });
+        }
+
+        let completion = response.json::<GptOssResponse>().await?;
+        Ok(completion)
+    }
+
+    /// Complete with simple prompt using default model
+    pub async fn complete_simple(&self, model: &str, prompt: &str) -> Result<String> {
+        let request = GptOssRequest {
+            model: model.to_string(),
+            prompt: prompt.to_string(),
+            max_tokens: None,
+            temperature: None,
+            top_p: None,
+            stop: None,
+            stream: false,
+        };
+
+        let response = self.complete(request).await?;
+        Ok(response.text)
+    }
+
+    /// Stream a completion
+    pub async fn stream(
+        &self,
+        request: GptOssRequest,
+    ) -> Result<impl Stream<Item = Result<GptOssStreamChunk>>> {
+        let url = format!("{}/v1/completions", self.base_url);
+
+        let mut stream_request = request;
+        stream_request.stream = true;
+
+        let response = self
+            .http_client
+            .post(&url)
+            .json(&stream_request)
+            .send()
+            .await?;
+
+        if !response.status().is_success() {
+            let status = response.status().as_u16();
+            let text = response.text().await.unwrap_or_default();
+            return Err(GptOssError::ApiError {
+                status,
+                message: text,
+            });
+        }
+
+        // Parse SSE stream
+        let stream = eventsource_stream::EventStream::new(response.bytes_stream());
+
+        use tokio_stream::StreamExt;
+        let chunk_stream = stream.map(|result| match result {
+            Ok(event) => {
+                // Check for [DONE] sentinel
+                if event.data == "[DONE]" {
+                    return Ok(GptOssStreamChunk {
+                        id: String::new(),
+                        model: String::new(),
+                        delta: String::new(),
+                        finish_reason: Some("stop".to_string()),
+                    });
+                }
+
+                // Parse JSON
+                match serde_json::from_str::<GptOssStreamChunk>(&event.data) {
+                    Ok(chunk) => Ok(chunk),
+                    Err(e) => Err(GptOssError::JsonError(e)),
+                }
+            }
+            Err(e) => Err(GptOssError::StreamError(e.to_string())),
+        });
+
+        Ok(chunk_stream)
+    }
+
+    /// List available models
+    pub async fn models(&self) -> Result<Vec<GptOssModelInfo>> {
+        let url = format!("{}/v1/models", self.base_url);
+
+        let response = self.http_client.get(&url).send().await?;
+
+        if !response.status().is_success() {
+            let status = response.status().as_u16();
+            let text = response.text().await.unwrap_or_default();
+            return Err(GptOssError::ApiError {
+                status,
+                message: text,
+            });
+        }
+
+        let models = response.json::<Vec<GptOssModelInfo>>().await?;
+        Ok(models)
+    }
+
+    /// Health check
+    pub async fn health(&self) -> Result<bool> {
+        let url = format!("{}/health", self.base_url);
+
+        let response = self.http_client.get(&url).send().await?;
+
+        if !response.status().is_success() {
+            return Ok(false);
+        }
+
+        let health = response.json::<HealthResponse>().await?;
+        Ok(health.status == "ok" || health.status == "healthy")
+    }
+
+    /// Get the base URL
+    pub fn base_url(&self) -> &str {
+        &self.base_url
+    }
+
+    /// Get the default model
+    pub fn default_model(&self) -> &str {
+        &self.default_model
+    }
+}
+
+impl Default for GptOssClient {
+    fn default() -> Self {
+        Self::new().expect("Failed to create default GptOssClient")
+    }
+}
+
+/// Builder for GptOssClient
+pub struct GptOssClientBuilder {
+    base_url: String,
+    default_model: String,
+    timeout: Duration,
+}
+
+impl GptOssClientBuilder {
+    pub fn new() -> Self {
+        Self {
+            base_url: DEFAULT_BASE_URL.to_string(),
+            default_model: DEFAULT_MODEL.to_string(),
+            timeout: Duration::from_secs(DEFAULT_TIMEOUT_SECS),
+        }
+    }
+
+    pub fn base_url(mut self, url: impl Into<String>) -> Self {
+        self.base_url = url.into();
+        self
+    }
+
+    pub fn default_model(mut self, model: impl Into<String>) -> Self {
+        self.default_model = model.into();
+        self
+    }
+
+    pub fn timeout(mut self, timeout: Duration) -> Self {
+        self.timeout = timeout;
+        self
+    }
+
+    pub fn build(self) -> Result<GptOssClient> {
+        let http_client = Client::builder().timeout(self.timeout).build()?;
+
+        Ok(GptOssClient {
+            base_url: self.base_url,
+            http_client,
+            default_model: self.default_model,
+        })
+    }
+}
+
+impl Default for GptOssClientBuilder {
+    fn default() -> Self {
+        Self::new()
+    }
+}
