@@ -363,6 +363,75 @@ impl BenchmarkDatabase {
         Ok(full_results)
     }
 
+    /// Get the latest result for each benchmark ID
+    pub fn get_all_latest_results(&self) -> Result<Vec<BenchmarkResult>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, benchmark_id, version, timestamp, success,
+                    duration_ms, tokens_in, tokens_out, tokens_cached,
+                    cost_usd, tool_calls, tool_errors, apm
+             FROM benchmark_runs
+             WHERE id IN (
+                 SELECT MAX(id) FROM benchmark_runs GROUP BY benchmark_id
+             )
+             ORDER BY benchmark_id",
+        )?;
+
+        let results = stmt
+            .query_map([], |row| {
+                let run_id: i64 = row.get(0)?;
+                let timestamp_str: String = row.get(3)?;
+                let timestamp = chrono::DateTime::parse_from_rfc3339(&timestamp_str)
+                    .map(|dt| dt.with_timezone(&chrono::Utc))
+                    .unwrap_or_else(|_| Utc::now());
+
+                Ok((
+                    run_id,
+                    BenchmarkResult {
+                        benchmark_id: row.get(1)?,
+                        version: row.get(2)?,
+                        timestamp,
+                        success: row.get(4)?,
+                        messages: Vec::new(),
+                        metrics: BenchmarkMetrics {
+                            duration_ms: row.get(5)?,
+                            tokens_in: row.get(6)?,
+                            tokens_out: row.get(7)?,
+                            tokens_cached: row.get(8)?,
+                            cost_usd: row.get(9)?,
+                            tool_calls: row.get(10)?,
+                            tool_errors: row.get(11)?,
+                            apm: row.get(12)?,
+                            custom_metrics: HashMap::new(),
+                        },
+                    },
+                ))
+            })?
+            .collect::<std::result::Result<Vec<_>, _>>()?;
+
+        let mut full_results = Vec::new();
+        for (run_id, mut result) in results {
+            let mut msg_stmt = self
+                .conn
+                .prepare("SELECT message FROM benchmark_messages WHERE run_id = ?1")?;
+            let messages: Vec<String> = msg_stmt
+                .query_map([run_id], |row| row.get(0))?
+                .collect::<std::result::Result<_, _>>()?;
+            result.messages = messages;
+
+            let mut metric_stmt = self.conn.prepare(
+                "SELECT metric_name, metric_value FROM benchmark_details WHERE run_id = ?1",
+            )?;
+            let metrics: HashMap<String, f64> = metric_stmt
+                .query_map([run_id], |row| Ok((row.get(0)?, row.get(1)?)))?
+                .collect::<std::result::Result<_, _>>()?;
+            result.metrics.custom_metrics = metrics;
+
+            full_results.push(result);
+        }
+
+        Ok(full_results)
+    }
+
     /// Compute and store baseline metrics for a version
     pub fn update_baseline(&mut self, version: &str) -> Result<()> {
         let results = self.get_baseline(version)?;
