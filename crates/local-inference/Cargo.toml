@@ -1,0 +1,11 @@
+[package]
+name = "local-inference"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+thiserror = "2.0"
+serde = { version = "1.0", features = ["derive"] }
+tokio = { version = "1", features = ["sync"] }
+async-trait = "0.1"
+serde_json.workspace = true

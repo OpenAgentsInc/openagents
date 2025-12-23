@@ -1,21 +1,16 @@
 # Dockerfile for parallel autopilot agents
-# Build: docker build -t autopilot-agent --build-arg HOST_UID=$(id -u) .
-# Run: docker-compose up -d
+#
+# IMPORTANT: Build the binary on the host first:
+#   cargo build --release -p autopilot
+#   mkdir -p docker/autopilot/bin
+#   cp target/release/autopilot docker/autopilot/bin/
+#
+# Then build the image:
+#   docker-compose -f docker/autopilot/docker-compose.yml build
+#
+# Run:
+#   docker-compose -f docker/autopilot/docker-compose.yml up -d
 
-# Stage 1: Build autopilot binary
-# Using nightly for edition2024 support
-FROM rustlang/rust:nightly-bookworm AS builder
-
-WORKDIR /build
-
-# Copy workspace files
-COPY Cargo.toml Cargo.lock ./
-COPY crates ./crates
-
-# Build release binary
-RUN cargo build --release -p autopilot
-
-# Stage 2: Runtime image
 FROM debian:bookworm-slim
 
 # Install runtime dependencies
@@ -33,8 +28,9 @@ RUN apt-get update && apt-get install -y \
 ARG HOST_UID=1000
 RUN useradd -m -u ${HOST_UID} -s /bin/bash agent
 
-# Copy autopilot binary
-COPY --from=builder /build/target/release/autopilot /usr/local/bin/autopilot
+# Copy pre-built autopilot binary from host
+# Build on host with: cargo build --release -p autopilot
+COPY docker/autopilot/bin/autopilot /usr/local/bin/autopilot
 RUN chmod +x /usr/local/bin/autopilot
 
 # Switch to non-root user

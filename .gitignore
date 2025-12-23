@@ -136,3 +136,4 @@ proptest-regressions/
 # Machine-specific MCP config
 .mcp.json
 *.snap.new
+docker/autopilot/bin/
