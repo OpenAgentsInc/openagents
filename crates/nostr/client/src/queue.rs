@@ -147,8 +147,9 @@ impl MessageQueue {
             .unwrap()
             .as_millis() as i64;
 
-        let db = self.db.lock().map_err(|_| {
-            ClientError::Internal("Failed to acquire database lock".to_string())
+        let db = self.db.lock().map_err(|e| {
+            tracing::error!("Database lock poisoned: {}", e);
+            ClientError::Internal("Failed to acquire database lock (poisoned)".to_string())
         })?;
 
         db.execute(
@@ -174,8 +175,9 @@ impl MessageQueue {
             .unwrap()
             .as_millis() as u64;
 
-        let db = self.db.lock().map_err(|_| {
-            ClientError::Internal("Failed to acquire database lock".to_string())
+        let db = self.db.lock().map_err(|e| {
+            tracing::error!("Database lock poisoned: {}", e);
+            ClientError::Internal("Failed to acquire database lock (poisoned)".to_string())
         })?;
 
         let mut stmt = db
@@ -225,8 +227,9 @@ impl MessageQueue {
 
     /// Mark a message as successfully sent
     pub fn mark_sent(&self, id: i64) -> Result<()> {
-        let db = self.db.lock().map_err(|_| {
-            ClientError::Internal("Failed to acquire database lock".to_string())
+        let db = self.db.lock().map_err(|e| {
+            tracing::error!("Database lock poisoned: {}", e);
+            ClientError::Internal("Failed to acquire database lock (poisoned)".to_string())
         })?;
 
         db.execute(
@@ -245,8 +248,9 @@ impl MessageQueue {
             .unwrap()
             .as_millis() as i64;
 
-        let db = self.db.lock().map_err(|_| {
-            ClientError::Internal("Failed to acquire database lock".to_string())
+        let db = self.db.lock().map_err(|e| {
+            tracing::error!("Database lock poisoned: {}", e);
+            ClientError::Internal("Failed to acquire database lock (poisoned)".to_string())
         })?;
 
         // Get current retry count
@@ -284,8 +288,9 @@ impl MessageQueue {
 
     /// Get all pending messages
     pub fn get_pending(&self) -> Result<Vec<QueuedMessage>> {
-        let db = self.db.lock().map_err(|_| {
-            ClientError::Internal("Failed to acquire database lock".to_string())
+        let db = self.db.lock().map_err(|e| {
+            tracing::error!("Database lock poisoned: {}", e);
+            ClientError::Internal("Failed to acquire database lock (poisoned)".to_string())
         })?;
 
         let mut stmt = db
@@ -320,8 +325,9 @@ impl MessageQueue {
 
     /// Get all failed messages (dead letter queue)
     pub fn get_failed(&self) -> Result<Vec<QueuedMessage>> {
-        let db = self.db.lock().map_err(|_| {
-            ClientError::Internal("Failed to acquire database lock".to_string())
+        let db = self.db.lock().map_err(|e| {
+            tracing::error!("Database lock poisoned: {}", e);
+            ClientError::Internal("Failed to acquire database lock (poisoned)".to_string())
         })?;
 
         let mut stmt = db
@@ -356,8 +362,9 @@ impl MessageQueue {
 
     /// Get queue size (pending messages)
     pub fn size(&self) -> Result<usize> {
-        let db = self.db.lock().map_err(|_| {
-            ClientError::Internal("Failed to acquire database lock".to_string())
+        let db = self.db.lock().map_err(|e| {
+            tracing::error!("Database lock poisoned: {}", e);
+            ClientError::Internal("Failed to acquire database lock (poisoned)".to_string())
         })?;
 
         let count: i64 = db
@@ -373,8 +380,9 @@ impl MessageQueue {
 
     /// Clear all messages from queue
     pub fn clear(&self) -> Result<()> {
-        let db = self.db.lock().map_err(|_| {
-            ClientError::Internal("Failed to acquire database lock".to_string())
+        let db = self.db.lock().map_err(|e| {
+            tracing::error!("Database lock poisoned: {}", e);
+            ClientError::Internal("Failed to acquire database lock (poisoned)".to_string())
         })?;
 
         db.execute("DELETE FROM message_queue", [])
@@ -385,8 +393,9 @@ impl MessageQueue {
 
     /// Clear only sent messages (for cleanup)
     pub fn clear_sent(&self) -> Result<usize> {
-        let db = self.db.lock().map_err(|_| {
-            ClientError::Internal("Failed to acquire database lock".to_string())
+        let db = self.db.lock().map_err(|e| {
+            tracing::error!("Database lock poisoned: {}", e);
+            ClientError::Internal("Failed to acquire database lock (poisoned)".to_string())
         })?;
 
         let count = db
@@ -407,8 +416,9 @@ impl MessageQueue {
 
     /// Retry a specific message immediately (resets backoff timer)
     pub fn retry_now(&self, id: i64) -> Result<()> {
-        let db = self.db.lock().map_err(|_| {
-            ClientError::Internal("Failed to acquire database lock".to_string())
+        let db = self.db.lock().map_err(|e| {
+            tracing::error!("Database lock poisoned: {}", e);
+            ClientError::Internal("Failed to acquire database lock (poisoned)".to_string())
         })?;
 
         db.execute(
@@ -422,8 +432,9 @@ impl MessageQueue {
 
     /// Retry all pending messages immediately
     pub fn retry_all(&self) -> Result<()> {
-        let db = self.db.lock().map_err(|_| {
-            ClientError::Internal("Failed to acquire database lock".to_string())
+        let db = self.db.lock().map_err(|e| {
+            tracing::error!("Database lock poisoned: {}", e);
+            ClientError::Internal("Failed to acquire database lock (poisoned)".to_string())
         })?;
 
         db.execute(
