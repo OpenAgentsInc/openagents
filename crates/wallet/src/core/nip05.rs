@@ -193,7 +193,9 @@ pub fn verify_nip05_cached(identifier: &str, pubkey: &str) -> Result<bool> {
 
     // Update cache
     cache.set(identifier, pubkey, verified);
-    cache.save().ok(); // Best effort save
+    if let Err(e) = cache.save() {
+        tracing::debug!("Failed to save NIP-05 cache: {}", e);
+    }
 
     Ok(verified)
 }

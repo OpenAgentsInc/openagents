@@ -46,7 +46,9 @@ impl NostrClient {
             .await
             .with_context(|| format!("Failed to publish event to {}", url))?;
 
-        relay.disconnect().await.ok(); // Best effort disconnect
+        if let Err(e) = relay.disconnect().await {
+            tracing::debug!("Failed to disconnect from relay after publish: {}", e);
+        }
 
         Ok(confirmation)
     }
@@ -142,7 +144,9 @@ impl NostrClient {
             }
         }
 
-        relay.disconnect().await.ok();
+        if let Err(e) = relay.disconnect().await {
+            tracing::debug!("Failed to disconnect from relay after fetch: {}", e);
+        }
 
         Ok(events)
     }
