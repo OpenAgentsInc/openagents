@@ -19,22 +19,21 @@ pub struct FMClient {
 
 impl FMClient {
     /// Create a new client with default settings
-    pub fn new() -> Self {
+    pub fn new() -> Result<Self> {
         Self::with_base_url(DEFAULT_BASE_URL)
     }
 
     /// Create a new client with custom base URL
-    pub fn with_base_url(base_url: impl Into<String>) -> Self {
+    pub fn with_base_url(base_url: impl Into<String>) -> Result<Self> {
         let http_client = Client::builder()
             .timeout(Duration::from_secs(DEFAULT_TIMEOUT_SECS))
-            .build()
-            .expect("Failed to create HTTP client");
+            .build()?;
 
-        Self {
+        Ok(Self {
             base_url: base_url.into(),
             http_client,
             default_model: DEFAULT_MODEL.to_string(),
-        }
+        })
     }
 
     /// Create a builder for more configuration options
@@ -176,7 +175,7 @@ impl FMClient {
 
 impl Default for FMClient {
     fn default() -> Self {
-        Self::new()
+        Self::new().expect("Failed to create default FMClient")
     }
 }
 
@@ -211,17 +210,16 @@ impl FMClientBuilder {
         self
     }
 
-    pub fn build(self) -> FMClient {
+    pub fn build(self) -> Result<FMClient> {
         let http_client = Client::builder()
             .timeout(self.timeout)
-            .build()
-            .expect("Failed to create HTTP client");
+            .build()?;
 
-        FMClient {
+        Ok(FMClient {
             base_url: self.base_url,
             http_client,
             default_model: self.default_model,
-        }
+        })
     }
 }
 
