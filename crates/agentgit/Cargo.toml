@@ -65,6 +65,8 @@ workspace = true
 tempfile.workspace = true
 testing = { path = "../testing" }
 criterion = { version = "0.5", features = ["html_reports"] }
+scraper = "0.25.0"
+html-escape = "0.2.13"
 
 [[bench]]
 name = "stacks_bench"

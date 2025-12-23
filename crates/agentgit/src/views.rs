@@ -3081,6 +3081,13 @@ pub fn git_status_page(identifier: &str, changes: &[crate::git::FileChange]) -> 
 
                     div.actions {
                         a.button href={"/repo/" (identifier)} { "← Back to Repository" }
+                        " "
+                        @if !changes.is_empty() {
+                            form method="post" action={"/repo/" (identifier) "/git/push"} style="display: inline-block; margin-left: 1rem;" {
+                                input type="hidden" name="remote" value="origin";
+                                button.button type="submit" { "Push to origin" }
+                            }
+                        }
                     }
                 }
 
