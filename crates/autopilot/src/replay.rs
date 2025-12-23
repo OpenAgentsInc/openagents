@@ -449,7 +449,8 @@ pub fn compare_trajectories(path1: &Path, path2: &Path) -> Result<()> {
         let count2 = tools2.get(tool).unwrap_or(&0);
 
         let diff = if count1 != count2 {
-            format!(" ({})", (*count1 as i32 - *count2 as i32)).yellow()
+            let diff_value = (*count1 as i64).saturating_sub(*count2 as i64);
+            format!(" ({:+})", diff_value).yellow()
         } else {
             "".normal()
         };
