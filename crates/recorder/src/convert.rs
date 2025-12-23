@@ -270,10 +270,11 @@ pub fn convert_content(
                     let content_str = match &msg.content {
                         MessageContent::Text(t) => t.clone(),
                         MessageContent::Blocks(blocks) => {
-                            // Extract text from tool_result blocks
+                            // Extract text from all block types
                             blocks
                                 .iter()
                                 .filter_map(|b| match b {
+                                    ContentBlock::Text { text } => Some(text.clone()),
                                     ContentBlock::ToolResult { content, .. } => {
                                         Some(extract_tool_result_text(content))
                                     }
