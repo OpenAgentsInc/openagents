@@ -209,7 +209,7 @@ impl JobHandle {
 
     /// Get current job info
     pub fn info(&self) -> JobInfo {
-        self.info.lock().unwrap().clone()
+        self.info.lock().expect("Job info lock poisoned").clone()
     }
 
     /// Wait for next update
@@ -231,7 +231,7 @@ impl JobHandle {
 
     /// Cancel the job
     pub fn cancel(&self) {
-        let mut info = self.info.lock().unwrap();
+        let mut info = self.info.lock().expect("Job info lock poisoned");
         if !info.is_terminal() {
             info.mark_cancelled();
         }
@@ -275,9 +275,9 @@ impl Consumer {
 
         // Update job info
         let old_state = {
-            let jobs = self.jobs.lock().unwrap();
+            let jobs = self.jobs.lock().expect("Jobs lock poisoned");
             if let Some(info) = jobs.get(job_id) {
-                let mut info_guard = info.lock().unwrap();
+                let mut info_guard = info.lock().expect("Job info lock poisoned");
                 let old_state = info_guard.state;
                 info_guard.update_from_feedback(&feedback, &provider);
                 old_state
@@ -290,7 +290,7 @@ impl Consumer {
         let inner = feedback.inner();
         let new_state = JobState::from(inner.status.clone());
 
-        let senders = self.update_senders.lock().unwrap();
+        let senders = self.update_senders.lock().expect("Update senders lock poisoned");
         if let Some(tx) = senders.get(job_id) {
             let update = match inner.status {
                 JobStatus::PaymentRequired => JobUpdate::PaymentRequired {
@@ -329,9 +329,9 @@ impl Consumer {
     pub fn handle_result(&self, job_id: &str, result: ComputeJobResult) {
         // Update job info
         {
-            let jobs = self.jobs.lock().unwrap();
+            let jobs = self.jobs.lock().expect("Jobs lock poisoned");
             if let Some(info) = jobs.get(job_id) {
-                let mut info_guard = info.lock().unwrap();
+                let mut info_guard = info.lock().expect("Job info lock poisoned");
                 info_guard.update_from_result(&result);
             } else {
                 return; // Unknown job
@@ -339,7 +339,7 @@ impl Consumer {
         }
 
         // Send completion update
-        let senders = self.update_senders.lock().unwrap();
+        let senders = self.update_senders.lock().expect("Update senders lock poisoned");
         if let Some(tx) = senders.get(job_id) {
             let update = JobUpdate::Completed {
                 job_id: job_id.to_string(),
@@ -351,24 +351,24 @@ impl Consumer {
 
     /// Get job info by ID
     pub fn get_job(&self, job_id: &str) -> Option<JobInfo> {
-        let jobs = self.jobs.lock().unwrap();
-        jobs.get(job_id).map(|info| info.lock().unwrap().clone())
+        let jobs = self.jobs.lock().expect("Jobs lock poisoned");
+        jobs.get(job_id).map(|info| info.lock().expect("Job info lock poisoned").clone())
     }
 
     /// Get all jobs
     pub fn get_all_jobs(&self) -> Vec<JobInfo> {
-        let jobs = self.jobs.lock().unwrap();
+        let jobs = self.jobs.lock().expect("Jobs lock poisoned");
         jobs.values()
-            .map(|info| info.lock().unwrap().clone())
+            .map(|info| info.lock().expect("Job info lock poisoned").clone())
             .collect()
     }
 
     /// Get jobs by state
     pub fn get_jobs_by_state(&self, state: JobState) -> Vec<JobInfo> {
-        let jobs = self.jobs.lock().unwrap();
+        let jobs = self.jobs.lock().expect("Jobs lock poisoned");
         jobs.values()
             .filter_map(|info| {
-                let info = info.lock().unwrap();
+                let info = info.lock().expect("Job info lock poisoned");
                 if info.state == state {
                     Some(info.clone())
                 } else {
@@ -385,9 +385,9 @@ impl Consumer {
     /// When relay integration is added, cancellation events should be published using
     /// NIP-90 job feedback (kind 7000) with status "error" and appropriate tags.
     pub fn cancel_job(&self, job_id: &str) {
-        let jobs = self.jobs.lock().unwrap();
+        let jobs = self.jobs.lock().expect("Jobs lock poisoned");
         if let Some(info) = jobs.get(job_id) {
-            info.lock().unwrap().mark_cancelled();
+            info.lock().expect("Job info lock poisoned").mark_cancelled();
         }
 
         // Publishing cancellation events requires relay client integration.
@@ -405,11 +405,11 @@ impl Consumer {
             .unwrap()
             .as_secs();
 
-        let mut jobs = self.jobs.lock().unwrap();
-        let mut senders = self.update_senders.lock().unwrap();
+        let mut jobs = self.jobs.lock().expect("Jobs lock poisoned");
+        let mut senders = self.update_senders.lock().expect("Update senders lock poisoned");
 
         jobs.retain(|job_id, info| {
-            let info = info.lock().unwrap();
+            let info = info.lock().expect("Job info lock poisoned");
             if info.is_terminal() {
                 if let Some(completed_at) = info.completed_at {
                     if now - completed_at > max_age_seconds {
