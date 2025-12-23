@@ -154,6 +154,11 @@ impl NostrClient {
                     error!("Failed to cache event: {}", e);
                 }
 
+                // Create notifications for relevant events
+                if let Err(e) = Self::handle_notification_triggers(&cache, &event).await {
+                    error!("Failed to create notification: {}", e);
+                }
+
                 // Convert event to JSON and broadcast to WebSocket clients
                 match serde_json::to_string(&event) {
                     Ok(json) => {
@@ -239,6 +244,26 @@ impl NostrClient {
     /// Get a repository by its identifier (d tag)
     pub async fn get_repository_by_identifier(&self, identifier: &str) -> Result<Option<Event>> {
         self.cache.lock().await.get_repository_by_identifier(identifier)
+    }
+
+    /// Get notifications for a user
+    pub async fn get_notifications(&self, user_pubkey: &str, limit: usize) -> Result<Vec<crate::nostr::cache::Notification>> {
+        self.cache.lock().await.get_notifications(user_pubkey, limit)
+    }
+
+    /// Get unread notification count for a user
+    pub async fn get_unread_count(&self, user_pubkey: &str) -> Result<usize> {
+        self.cache.lock().await.get_unread_count(user_pubkey)
+    }
+
+    /// Mark a notification as read
+    pub async fn mark_notification_read(&self, notification_id: &str) -> Result<()> {
+        self.cache.lock().await.mark_notification_read(notification_id)
+    }
+
+    /// Mark all notifications as read for a user
+    pub async fn mark_all_notifications_read(&self, user_pubkey: &str) -> Result<usize> {
+        self.cache.lock().await.mark_all_notifications_read(user_pubkey)
     }
 
     /// Get issues for a specific repository by its address tag
@@ -504,5 +529,109 @@ impl NostrClient {
         };
 
         Ok(result)
+    }
+
+    /// Handle notification triggers for incoming events
+    async fn handle_notification_triggers(
+        cache: &Arc<Mutex<EventCache>>,
+        event: &Event,
+    ) -> Result<()> {
+        let cache_lock = cache.lock().await;
+
+        match event.kind {
+            // Review comment on PR (kind:1 with 'e' tag referencing PR)
+            1 => {
+                // Find PR being commented on via 'e' tag
+                for tag in &event.tags {
+                    if tag.len() >= 2 && tag[0] == "e" {
+                        let pr_event_id = &tag[1];
+
+                        // Get the PR event to find its author
+                        if let Ok(Some(pr_event)) = cache_lock.get_event(pr_event_id) {
+                            if pr_event.kind == kinds::PULL_REQUEST {
+                                // Don't notify if user is commenting on their own PR
+                                if pr_event.pubkey != event.pubkey {
+                                    let title = format!("New review on your PR");
+                                    let preview = if event.content.len() > 100 {
+                                        Some(format!("{}...", &event.content[..100]))
+                                    } else {
+                                        Some(event.content.clone())
+                                    };
+
+                                    cache_lock.create_notification(
+                                        &pr_event.pubkey,
+                                        &event.id,
+                                        event.kind,
+                                        "pr_review",
+                                        &title,
+                                        preview.as_deref(),
+                                    )?;
+                                }
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+            // Status change events (approve, merge, close, draft)
+            kinds::STATUS_OPEN | kinds::STATUS_APPLIED | kinds::STATUS_CLOSED | kinds::STATUS_DRAFT => {
+                for tag in &event.tags {
+                    if tag.len() >= 2 && tag[0] == "e" {
+                        let pr_event_id = &tag[1];
+
+                        if let Ok(Some(pr_event)) = cache_lock.get_event(pr_event_id) {
+                            if pr_event.kind == kinds::PULL_REQUEST && pr_event.pubkey != event.pubkey {
+                                let status_name = match event.kind {
+                                    kinds::STATUS_OPEN => "opened",
+                                    kinds::STATUS_APPLIED => "merged",
+                                    kinds::STATUS_CLOSED => "closed",
+                                    kinds::STATUS_DRAFT => "marked as draft",
+                                    _ => "updated",
+                                };
+
+                                let title = format!("Your PR was {}", status_name);
+
+                                cache_lock.create_notification(
+                                    &pr_event.pubkey,
+                                    &event.id,
+                                    event.kind,
+                                    "pr_status",
+                                    &title,
+                                    None,
+                                )?;
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+            // Issue claim (kind:1634)
+            kinds::ISSUE_CLAIM => {
+                for tag in &event.tags {
+                    if tag.len() >= 2 && tag[0] == "e" {
+                        let issue_event_id = &tag[1];
+
+                        if let Ok(Some(issue_event)) = cache_lock.get_event(issue_event_id) {
+                            if issue_event.kind == kinds::ISSUE && issue_event.pubkey != event.pubkey {
+                                let title = format!("Someone claimed your issue");
+
+                                cache_lock.create_notification(
+                                    &issue_event.pubkey,
+                                    &event.id,
+                                    event.kind,
+                                    "issue_claim",
+                                    &title,
+                                    None,
+                                )?;
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+            _ => {}
+        }
+
+        Ok(())
     }
 }

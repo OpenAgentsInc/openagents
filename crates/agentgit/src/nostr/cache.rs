@@ -85,6 +85,23 @@ impl EventCache {
                 repo_address TEXT NOT NULL,
                 watched_at INTEGER NOT NULL
             );
+
+            CREATE TABLE IF NOT EXISTS notifications (
+                id TEXT PRIMARY KEY,
+                user_pubkey TEXT NOT NULL,
+                event_id TEXT NOT NULL,
+                event_kind INTEGER NOT NULL,
+                notification_type TEXT NOT NULL,
+                title TEXT NOT NULL,
+                preview TEXT,
+                read INTEGER DEFAULT 0,
+                created_at INTEGER NOT NULL,
+                FOREIGN KEY (event_id) REFERENCES events(id)
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_pubkey);
+            CREATE INDEX IF NOT EXISTS idx_notifications_read ON notifications(read);
+            CREATE INDEX IF NOT EXISTS idx_notifications_created ON notifications(created_at);
             "#,
         )
         .context("Failed to initialize database schema")?;
@@ -1229,6 +1246,123 @@ impl EventCache {
         Ok(identifiers)
     }
 
+    /// Create a notification
+    pub fn create_notification(
+        &self,
+        user_pubkey: &str,
+        event_id: &str,
+        event_kind: u16,
+        notification_type: &str,
+        title: &str,
+        preview: Option<&str>,
+    ) -> Result<String> {
+        let id = format!("notif-{}-{}", user_pubkey, event_id);
+        let created_at = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as i64;
+
+        self.conn.execute(
+            "INSERT OR REPLACE INTO notifications (id, user_pubkey, event_id, event_kind, notification_type, title, preview, created_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            params![id, user_pubkey, event_id, event_kind, notification_type, title, preview, created_at],
+        )?;
+
+        debug!("Created notification: {} for user {}", id, user_pubkey);
+        Ok(id)
+    }
+
+    /// Get unread notifications for a user
+    pub fn get_unread_notifications(&self, user_pubkey: &str, limit: usize) -> Result<Vec<Notification>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, user_pubkey, event_id, event_kind, notification_type, title, preview, read, created_at
+             FROM notifications
+             WHERE user_pubkey = ? AND read = 0
+             ORDER BY created_at DESC
+             LIMIT ?",
+        )?;
+
+        let notifications = stmt
+            .query_map(params![user_pubkey, limit as i64], |row| {
+                Ok(Notification {
+                    id: row.get(0)?,
+                    user_pubkey: row.get(1)?,
+                    event_id: row.get(2)?,
+                    event_kind: row.get(3)?,
+                    notification_type: row.get(4)?,
+                    title: row.get(5)?,
+                    preview: row.get(6)?,
+                    read: row.get::<_, i64>(7)? != 0,
+                    created_at: row.get(8)?,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+
+        Ok(notifications)
+    }
+
+    /// Get all notifications for a user
+    pub fn get_notifications(&self, user_pubkey: &str, limit: usize) -> Result<Vec<Notification>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, user_pubkey, event_id, event_kind, notification_type, title, preview, read, created_at
+             FROM notifications
+             WHERE user_pubkey = ?
+             ORDER BY created_at DESC
+             LIMIT ?",
+        )?;
+
+        let notifications = stmt
+            .query_map(params![user_pubkey, limit as i64], |row| {
+                Ok(Notification {
+                    id: row.get(0)?,
+                    user_pubkey: row.get(1)?,
+                    event_id: row.get(2)?,
+                    event_kind: row.get(3)?,
+                    notification_type: row.get(4)?,
+                    title: row.get(5)?,
+                    preview: row.get(6)?,
+                    read: row.get::<_, i64>(7)? != 0,
+                    created_at: row.get(8)?,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+
+        Ok(notifications)
+    }
+
+    /// Mark a notification as read
+    pub fn mark_notification_read(&self, notification_id: &str) -> Result<()> {
+        self.conn.execute(
+            "UPDATE notifications SET read = 1 WHERE id = ?",
+            params![notification_id],
+        )?;
+
+        debug!("Marked notification as read: {}", notification_id);
+        Ok(())
+    }
+
+    /// Mark all notifications as read for a user
+    pub fn mark_all_notifications_read(&self, user_pubkey: &str) -> Result<usize> {
+        let updated = self.conn.execute(
+            "UPDATE notifications SET read = 1 WHERE user_pubkey = ? AND read = 0",
+            params![user_pubkey],
+        )?;
+
+        debug!("Marked {} notifications as read for user {}", updated, user_pubkey);
+        Ok(updated)
+    }
+
+    /// Get unread notification count for a user
+    pub fn get_unread_count(&self, user_pubkey: &str) -> Result<usize> {
+        let count: i64 = self.conn.query_row(
+            "SELECT COUNT(*) FROM notifications WHERE user_pubkey = ? AND read = 0",
+            params![user_pubkey],
+            |row| row.get(0),
+        )?;
+
+        Ok(count as usize)
+    }
+
     /// Clear all cached events
     #[allow(dead_code)]
     pub fn clear(&self) -> Result<()> {
@@ -1337,4 +1471,18 @@ pub struct CacheStats {
     pub issues: usize,
     pub patches: usize,
     pub pull_requests: usize,
+}
+
+/// Notification stored in cache
+#[derive(Debug, Clone)]
+pub struct Notification {
+    pub id: String,
+    pub user_pubkey: String,
+    pub event_id: String,
+    pub event_kind: u16,
+    pub notification_type: String,
+    pub title: String,
+    pub preview: Option<String>,
+    pub read: bool,
+    pub created_at: i64,
 }
