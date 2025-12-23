@@ -23,6 +23,10 @@ impl EventCache {
         let conn = Connection::open(&db_path)
             .context("Failed to open cache database")?;
 
+        // Enable foreign key constraints
+        conn.execute("PRAGMA foreign_keys = ON", [])
+            .context("Failed to enable foreign keys")?;
+
         let cache = Self { conn };
         cache.init_schema()?;
 
@@ -34,6 +38,10 @@ impl EventCache {
     pub fn new_in_memory() -> Result<Self> {
         let conn = Connection::open_in_memory()
             .context("Failed to open in-memory cache database")?;
+
+        // Enable foreign key constraints
+        conn.execute("PRAGMA foreign_keys = ON", [])
+            .context("Failed to enable foreign keys")?;
 
         let cache = Self { conn };
         cache.init_schema()?;
@@ -66,7 +74,7 @@ impl EventCache {
                 name TEXT,
                 description TEXT,
                 identifier TEXT,
-                FOREIGN KEY (event_id) REFERENCES events(id)
+                FOREIGN KEY (event_id) REFERENCES events(id) ON DELETE CASCADE
             );
 
             CREATE TABLE IF NOT EXISTS issues (
@@ -74,14 +82,14 @@ impl EventCache {
                 repo_address TEXT,
                 title TEXT,
                 status TEXT,
-                FOREIGN KEY (event_id) REFERENCES events(id)
+                FOREIGN KEY (event_id) REFERENCES events(id) ON DELETE CASCADE
             );
 
             CREATE TABLE IF NOT EXISTS patches (
                 event_id TEXT PRIMARY KEY,
                 repo_address TEXT,
                 title TEXT,
-                FOREIGN KEY (event_id) REFERENCES events(id)
+                FOREIGN KEY (event_id) REFERENCES events(id) ON DELETE CASCADE
             );
 
             CREATE TABLE IF NOT EXISTS pull_requests (
@@ -89,7 +97,7 @@ impl EventCache {
                 repo_address TEXT,
                 title TEXT,
                 status TEXT,
-                FOREIGN KEY (event_id) REFERENCES events(id)
+                FOREIGN KEY (event_id) REFERENCES events(id) ON DELETE CASCADE
             );
 
             CREATE TABLE IF NOT EXISTS watched_repos (
@@ -108,7 +116,7 @@ impl EventCache {
                 preview TEXT,
                 read INTEGER DEFAULT 0,
                 created_at INTEGER NOT NULL,
-                FOREIGN KEY (event_id) REFERENCES events(id)
+                FOREIGN KEY (event_id) REFERENCES events(id) ON DELETE CASCADE
             );
 
             CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_pubkey);
@@ -142,7 +150,7 @@ impl EventCache {
                 event_id TEXT NOT NULL,
                 tag_name TEXT NOT NULL,
                 tag_value TEXT NOT NULL,
-                FOREIGN KEY (event_id) REFERENCES events(id),
+                FOREIGN KEY (event_id) REFERENCES events(id) ON DELETE CASCADE,
                 PRIMARY KEY (event_id, tag_name, tag_value)
             ) WITHOUT ROWID;
 
