@@ -173,14 +173,21 @@ fn migrate_v1(conn: &Connection) -> Result<()> {
 fn migrate_v2(conn: &Connection) -> Result<()> {
     info!("Running migration v2");
     // Clean up any NULL ids (from manual inserts) and delete those rows
-    conn.execute("DELETE FROM issues WHERE id IS NULL OR id = ''", []).map_err(|e| {
+    let deleted_issues = conn.execute("DELETE FROM issues WHERE id IS NULL OR id = ''", []).map_err(|e| {
         error!("Failed to clean up NULL issue ids: {}", e);
         e
     })?;
-    conn.execute("DELETE FROM issue_events WHERE id IS NULL OR id = ''", []).map_err(|e| {
+    if deleted_issues > 0 {
+        info!("Deleted {} issue(s) with NULL or empty IDs during migration v2", deleted_issues);
+    }
+
+    let deleted_events = conn.execute("DELETE FROM issue_events WHERE id IS NULL OR id = ''", []).map_err(|e| {
         error!("Failed to clean up NULL event ids: {}", e);
         e
     })?;
+    if deleted_events > 0 {
+        info!("Deleted {} issue_event(s) with NULL or empty IDs during migration v2", deleted_events);
+    }
 
     // Recreate issues table with explicit NOT NULL constraint on id
     conn.execute_batch(
