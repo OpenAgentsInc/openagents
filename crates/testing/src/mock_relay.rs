@@ -28,14 +28,13 @@ use tokio::sync::RwLock;
 use warp::Filter as WarpFilter;
 
 /// Mock Nostr relay for testing
-///
-/// Note: The server runs in the background and cannot be gracefully shut down
-/// with warp 0.4. Tests should use unique ports to avoid conflicts.
 pub struct MockRelay {
     /// URL of the mock relay (ws://127.0.0.1:PORT)
     url: String,
     /// Shared state between WebSocket handlers
     state: Arc<RelayState>,
+    /// Server task handle
+    server_handle: Option<tokio::task::JoinHandle<()>>,
 }
 
 #[derive(Default)]
@@ -76,13 +75,16 @@ impl MockRelay {
             port
         };
 
-        // Bind to port and spawn server
+        // Bind to port
         let addr: std::net::SocketAddr = ([127, 0, 0, 1], actual_port).into();
-        let server_fut = warp::serve(ws_route).bind(addr);
-        let url = format!("ws://127.0.0.1:{}", actual_port);
+        let server = warp::serve(ws_route);
 
-        // Spawn server task (fire and forget - warp handles its own lifetime)
-        tokio::spawn(server_fut);
+        // Try to bind to the address
+        let server_handle = tokio::spawn(async move {
+            server.run(addr).await;
+        });
+
+        let url = format!("ws://127.0.0.1:{}", actual_port);
 
         // Give server a moment to start
         tokio::time::sleep(std::time::Duration::from_millis(100)).await;
@@ -90,6 +92,7 @@ impl MockRelay {
         Self {
             url,
             state: state.clone(),
+            server_handle: Some(server_handle),
         }
     }
 
@@ -150,14 +153,17 @@ impl MockRelay {
         self.state.events.write().await.insert(event.id.clone(), event);
     }
 
-    /// Shutdown the relay
+    /// Shutdown the relay gracefully
     ///
-    /// Note: With warp 0.4, graceful shutdown is not easily supported.
-    /// The server will continue running in the background. Tests should
-    /// use unique ports to avoid conflicts.
-    pub async fn shutdown(self) {
-        // No-op - warp server continues running
-        // This method exists for API compatibility
+    /// Aborts the server task and waits for cleanup.
+    pub async fn shutdown(mut self) {
+        if let Some(handle) = self.server_handle.take() {
+            // Abort the server task
+            handle.abort();
+
+            // Wait for the task to finish (will return immediately with abort error)
+            let _ = handle.await;
+        }
     }
 }
 
