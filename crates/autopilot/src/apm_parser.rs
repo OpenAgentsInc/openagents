@@ -1,8 +1,8 @@
 //! JSONL parser for APM extraction
 //!
 //! Parses both:
-//! - Claude Code session logs from ~/.claude/projects/<project>/*.jsonl
-//! - Autopilot session logs from docs/logs/**/*.jsonl
+//! - Claude Code session logs from `~/.claude/projects/<project>/*.jsonl`
+//! - Autopilot session logs from `docs/logs/**/*.jsonl`
 //!
 //! Extracts APM metrics (messages + tool_calls / duration_minutes).
 
