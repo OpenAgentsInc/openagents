@@ -125,10 +125,19 @@ pub fn clone_repository(
     // Validate URL scheme
     validate_clone_url(url)?;
 
-    // Ensure parent directory exists
+    // Ensure parent directory exists with restrictive permissions
     if let Some(parent) = dest_path.parent() {
         std::fs::create_dir_all(parent)
             .context("Failed to create workspace directory")?;
+
+        // Set restrictive permissions (0700 = owner only) on Unix systems
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let permissions = std::fs::Permissions::from_mode(0o700);
+            std::fs::set_permissions(parent, permissions)
+                .context("Failed to set directory permissions")?;
+        }
     }
 
     // Set up callbacks for progress tracking and authentication
@@ -215,11 +224,33 @@ fn validate_clone_url(url: &str) -> Result<()> {
 }
 
 /// Get the default workspace path for cloned repositories
+///
+/// Creates the workspace directory with restrictive permissions (0700) if it doesn't exist.
 pub fn get_workspace_path() -> PathBuf {
-    dirs::data_local_dir()
+    let path = dirs::data_local_dir()
         .unwrap_or_else(|| PathBuf::from("."))
         .join("gitafter")
-        .join("repos")
+        .join("repos");
+
+    // Create workspace with restrictive permissions if it doesn't exist
+    if !path.exists() {
+        if let Err(e) = std::fs::create_dir_all(&path) {
+            eprintln!("Warning: Failed to create workspace directory: {}", e);
+            return path;
+        }
+
+        // Set restrictive permissions (0700 = owner only) on Unix systems
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let permissions = std::fs::Permissions::from_mode(0o700);
+            if let Err(e) = std::fs::set_permissions(&path, permissions) {
+                eprintln!("Warning: Failed to set workspace permissions: {}", e);
+            }
+        }
+    }
+
+    path
 }
 
 /// Check if a repository is already cloned
