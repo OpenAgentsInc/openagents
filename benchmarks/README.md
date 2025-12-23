@@ -51,10 +51,28 @@ The GitHub Actions workflow (`.github/workflows/benchmarks.yml`) automatically:
    - Runs benchmark suite on main branch
    - Compares results
    - ⚠️ Fails CI if any benchmark regresses >10%
+   - 📬 Sends Slack notification if regression detected (requires `SLACK_WEBHOOK_URL` secret)
 
 2. **On Main Branch Push**:
    - Runs benchmark suite
    - Stores results as new baseline in `baselines/main-{sha}.db`
+
+### Setting Up Regression Alerts
+
+To receive Slack notifications when benchmarks regress:
+
+1. Create a Slack incoming webhook: https://api.slack.com/messaging/webhooks
+2. Add the webhook URL as a GitHub secret:
+   - Go to repository Settings → Secrets and variables → Actions
+   - Create new secret: `SLACK_WEBHOOK_URL`
+   - Paste your webhook URL
+3. Notifications will automatically be sent when regressions are detected
+
+The notification includes:
+- PR number
+- Link to workflow run
+- Commit SHA
+- Details of which benchmarks regressed
 
 ## Benchmark Suite
 

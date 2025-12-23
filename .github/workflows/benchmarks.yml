@@ -48,6 +48,8 @@ jobs:
 
       - name: Compare with baseline (PR only)
         if: github.event_name == 'pull_request'
+        id: compare
+        continue-on-error: true
         run: |
           # Checkout main branch to get baseline
           git fetch origin main:main
@@ -71,7 +73,26 @@ jobs:
             --compare-db1 benchmarks/main-results.db \
             --compare-db2 benchmarks/ci-results.db \
             --threshold 0.10 \
-            >> $GITHUB_STEP_SUMMARY || exit 1
+            >> $GITHUB_STEP_SUMMARY
+
+      - name: Send regression notification
+        if: github.event_name == 'pull_request' && steps.compare.outcome == 'failure'
+        run: |
+          # Send notification about regression
+          if [ -n "${{ secrets.SLACK_WEBHOOK_URL }}" ]; then
+            cargo run --release -p autopilot -- notify \
+              --title "Benchmark Regression Detected" \
+              --message "PR #${{ github.event.pull_request.number }} caused benchmark regression. See workflow run for details: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
+              --severity critical \
+              --webhook "${{ secrets.SLACK_WEBHOOK_URL }}" \
+              --metadata "pr_number=${{ github.event.pull_request.number }}" \
+              --metadata "workflow_run=${{ github.run_id }}" \
+              --metadata "commit_sha=${{ github.sha }}"
+          fi
+
+      - name: Fail if regression detected
+        if: github.event_name == 'pull_request' && steps.compare.outcome == 'failure'
+        run: exit 1
 
       - name: Update baseline (main branch only)
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
