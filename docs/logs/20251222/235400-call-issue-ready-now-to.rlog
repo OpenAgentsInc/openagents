@@ -155,3 +155,15 @@ t!:Bash id=xEnu23o2 cmd="cargo test --lib -p autopilot apm_storage::test..." →
 o: id=xEnu23o2 → [ok]    Compiling autopilot v0.1.0 (/home/christopherdavid/code/openagents/crates/autopilot)
 a: Excellent! All 7 tests pass. Now let me commit this work: tokens_in=0 tokens_out=5 tokens_cached=73993
 t!:Bash id=wiChdyGs cmd="git add -A && git diff --cached --stat" → [running] tokens_in=0 tokens_out=99 tokens_cached=73993
+o: id=wiChdyGs → [ok]  Cargo.lock                                         |   2 +
+t!:Bash id=paQc9MFe cmd="git commit -m "$(cat <<'EOF'" → [running] tokens_in=0 tokens_out=347 tokens_cached=74739
+o: id=paQc9MFe → [ok] [main dbf4a3479] Add APM data model and storage to autopilot crate
+t!:Bash id=DetR1Cma cmd="git push origin main" → [running] tokens_in=0 tokens_out=25 tokens_cached=75039
+o: id=DetR1Cma → [error] Exit code 1
+a: I need to fix the warning. The constant is used but inside a function. Let me add #[allow(dead_code)] or better, actually mark it as used: tokens_in=1 tokens_out=1 tokens_cached=75713
+t!:Edit id=94FHtH7a file_path=/home/christopherdavid/code/openagents/crates/autopilot/src/apm_storage.rs → [running] tokens_in=1 tokens_out=212 tokens_cached=75713
+o: id=94FHtH7a → [ok] The file /home/christopherdavid/code/openagents/crates/autopilot/src/apm_storage.rs has been upda...
+t!:Bash id=NnRijTk3 cmd="cargo build --lib -p autopilot 2>&1 | grep -i w..." → [running] tokens_in=0 tokens_out=89 tokens_cached=76183
+o: id=NnRijTk3 → [ok] 
+a: Good! Now let me commit and push: tokens_in=1 tokens_out=1 tokens_cached=76707
+t!:Bash id=Lveu6MgL cmd="git add -A && git commit -m "Fix dead_code warn..." → [running] tokens_in=1 tokens_out=181 tokens_cached=76707
