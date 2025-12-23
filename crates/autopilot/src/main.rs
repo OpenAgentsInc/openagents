@@ -1102,6 +1102,20 @@ enum ApmCommands {
         #[arg(long)]
         db: Option<PathBuf>,
     },
+    /// Watch APM stats in real-time
+    Watch {
+        /// Refresh interval in seconds
+        #[arg(short, long, default_value_t = 2)]
+        interval: u64,
+
+        /// Source to monitor (autopilot, claude_code)
+        #[arg(short, long)]
+        source: Option<String>,
+
+        /// Path to database (default: autopilot.db in workspace root)
+        #[arg(long)]
+        db: Option<PathBuf>,
+    },
 }
 
 #[derive(Subcommand)]
@@ -5740,6 +5754,92 @@ async fn handle_apm_command(command: ApmCommands) -> Result<()> {
             println!("{} Exported {} sessions to {}", "✓".green(), sessions.len(), output.display());
 
             Ok(())
+        }
+        ApmCommands::Watch { interval, source, db } => {
+            let db_path = db.unwrap_or(default_db);
+
+            let src = source.as_deref().map(|s| match s {
+                "autopilot" => APMSource::Autopilot,
+                "claude_code" | "claude" => APMSource::ClaudeCode,
+                _ => {
+                    eprintln!("Invalid source: {}. Valid values: autopilot, claude_code", s);
+                    std::process::exit(1);
+                }
+            }).unwrap_or(APMSource::Autopilot);
+
+            println!("{}", "Press Ctrl+C to stop...".dimmed());
+            println!();
+
+            loop {
+                // Clear screen (ANSI escape code)
+                print!("\x1B[2J\x1B[1;1H");
+
+                let conn = Connection::open(&db_path)?;
+                init_apm_tables(&conn)?;
+
+                // Get latest session
+                let sessions = get_sessions_by_source(&conn, src)?;
+
+                if let Some((session_id, start_time, end_time)) = sessions.first() {
+                    let (messages, tool_calls) = get_session_stats(&conn, session_id)?;
+                    let total_actions = messages + tool_calls;
+
+                    // Calculate duration
+                    let now = chrono::Utc::now();
+                    let duration_secs = if let Some(end) = end_time {
+                        (end.timestamp() - start_time.timestamp()) as f64
+                    } else {
+                        (now.timestamp() - start_time.timestamp()) as f64
+                    };
+                    let duration_mins = duration_secs / 60.0;
+
+                    // Calculate current APM
+                    let apm = if duration_mins > 0.0 {
+                        total_actions as f64 / duration_mins
+                    } else {
+                        0.0
+                    };
+
+                    let tier = APMTier::from_apm(apm);
+                    let status = if end_time.is_some() { "Complete" } else { "Running" };
+
+                    println!("{}", "═".repeat(70).cyan());
+                    println!("{:^70}", format!("APM Dashboard - {:?}", src).bold());
+                    println!("{}", "═".repeat(70).cyan());
+                    println!();
+
+                    println!("{:<20} {}", "Session:", &session_id[..session_id.len().min(40)]);
+                    println!("{:<20} {}", "Status:", if end_time.is_some() { status.green() } else { status.yellow() });
+                    println!("{:<20} {:.1} minutes", "Duration:", duration_mins);
+                    println!();
+
+                    println!("{:<20} {}", "Messages:", messages.to_string().cyan());
+                    println!("{:<20} {}", "Tool Calls:", tool_calls.to_string().cyan());
+                    println!("{:<20} {}", "Total Actions:", total_actions.to_string().cyan().bold());
+                    println!();
+
+                    println!("{:<20} {:.1} APM", "Current APM:", apm);
+                    println!("{:<20} {}", "Tier:", tier.name().yellow().bold());
+                    println!();
+
+                    // Show tier thresholds
+                    println!("{}", "Tier Thresholds:".dimmed());
+                    println!("  {} 0-5   {} 5-10   {} 10-15   {} 15-20   {} 20+",
+                        "Baseline".dimmed(),
+                        "Active".green(),
+                        "Productive".cyan(),
+                        "Elite".yellow(),
+                        "Superhuman".magenta().bold()
+                    );
+                } else {
+                    println!("{}", "No active sessions found".dimmed());
+                }
+
+                println!();
+                println!("{}", format!("Updated: {} | Refresh: {}s", chrono::Local::now().format("%H:%M:%S"), interval).dimmed());
+
+                tokio::time::sleep(tokio::time::Duration::from_secs(interval)).await;
+            }
         }
     }
 }
