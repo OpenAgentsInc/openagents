@@ -677,12 +677,18 @@ impl MetricsDb {
 
         let anomalies = stmt
             .query_map(params![session_id], |row| {
+                let severity_str = row.get::<_, String>(4)?;
+                let severity = AnomalySeverity::from_str(&severity_str)
+                    .unwrap_or_else(|e| {
+                        eprintln!("Invalid anomaly severity '{}': {}. Using 'warning' as fallback.", severity_str, e);
+                        AnomalySeverity::Warning
+                    });
                 Ok(Anomaly {
                     session_id: row.get(0)?,
                     dimension: row.get(1)?,
                     expected_value: row.get(2)?,
                     actual_value: row.get(3)?,
-                    severity: AnomalySeverity::from_str(&row.get::<_, String>(4)?).unwrap(),
+                    severity,
                     investigated: row.get::<_, i32>(5)? != 0,
                     issue_number: row.get(6)?,
                 })
@@ -728,9 +734,23 @@ impl MetricsDb {
         )?;
 
         let result = stmt.query_row(params![session_id], |row| {
+            let timestamp_str = row.get::<_, String>(1)?;
+            let timestamp = timestamp_str.parse()
+                .unwrap_or_else(|e| {
+                    eprintln!("Invalid timestamp '{}': {}. Using current time.", timestamp_str, e);
+                    Utc::now()
+                });
+
+            let status_str = row.get::<_, String>(13)?;
+            let final_status = SessionStatus::from_str(&status_str)
+                .unwrap_or_else(|e| {
+                    eprintln!("Invalid session status '{}': {}. Using 'crashed' as fallback.", status_str, e);
+                    SessionStatus::Crashed
+                });
+
             Ok(SessionMetrics {
                 id: row.get(0)?,
-                timestamp: row.get::<_, String>(1)?.parse().unwrap(),
+                timestamp,
                 model: row.get(2)?,
                 prompt: row.get(3)?,
                 duration_seconds: row.get(4)?,
@@ -742,7 +762,7 @@ impl MetricsDb {
                 issues_completed: row.get(10)?,
                 tool_calls: row.get(11)?,
                 tool_errors: row.get(12)?,
-                final_status: SessionStatus::from_str(&row.get::<_, String>(13)?).unwrap(),
+                final_status,
                 messages: row.get(14).unwrap_or(0),
                 apm: row.get(15).ok(),
                 source: row.get(16).unwrap_or_else(|_| "autopilot".to_string()),
