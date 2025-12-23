@@ -542,6 +542,32 @@ enum Commands {
         #[command(subcommand)]
         command: LogsCommands,
     },
+    /// Send notification alerts
+    Notify {
+        /// Notification title
+        #[arg(short, long)]
+        title: String,
+
+        /// Notification message
+        #[arg(short, long)]
+        message: String,
+
+        /// Severity level (info, warning, error, critical)
+        #[arg(short, long, default_value = "info")]
+        severity: String,
+
+        /// Webhook URL (can be specified multiple times)
+        #[arg(short, long)]
+        webhook: Vec<String>,
+
+        /// Path to notification config file (default: ~/.openagents/notifications.toml)
+        #[arg(long)]
+        config: Option<PathBuf>,
+
+        /// Additional metadata as key=value pairs
+        #[arg(long)]
+        metadata: Vec<String>,
+    },
 }
 
 #[derive(Subcommand)]
@@ -1279,6 +1305,16 @@ async fn main() -> Result<()> {
             .await
         }
         Commands::Logs { command } => handle_logs_command(command).await,
+        Commands::Notify {
+            title,
+            message,
+            severity,
+            webhook,
+            config,
+            metadata,
+        } => {
+            handle_notify_command(title, message, severity, webhook, config, metadata).await
+        }
     }
 }
 
@@ -5138,6 +5174,7 @@ async fn handle_benchmark_comparison(
     println!("|-----------|--------|----------|---------|--------|--------|");
 
     let mut has_regression = false;
+    let mut regressed_benchmarks = Vec::new();
 
     for (id, r2) in &by_id2 {
         if let Some(r1) = by_id1.get(id) {
@@ -5202,6 +5239,23 @@ async fn handle_benchmark_comparison(
 
             if duration_regressed || tokens_in_regressed || tokens_out_regressed || cost_regressed || errors_increased {
                 has_regression = true;
+                let mut regression_details = Vec::new();
+                if duration_regressed {
+                    regression_details.push(format!("duration +{:.1}%", duration_change));
+                }
+                if tokens_in_regressed {
+                    regression_details.push(format!("tokens_in +{:.1}%", tokens_in_change));
+                }
+                if tokens_out_regressed {
+                    regression_details.push(format!("tokens_out +{:.1}%", tokens_out_change));
+                }
+                if cost_regressed {
+                    regression_details.push(format!("cost +{:.1}%", cost_change));
+                }
+                if errors_increased {
+                    regression_details.push(format!("errors +{}", r2.metrics.tool_errors - r1.metrics.tool_errors));
+                }
+                regressed_benchmarks.push(format!("{}: {}", id, regression_details.join(", ")));
             }
         }
     }
@@ -5211,7 +5265,11 @@ async fn handle_benchmark_comparison(
     if has_regression {
         println!("❌ **Benchmark regression detected!** One or more metrics regressed by more than {:.0}%", threshold * 100.0);
         println!();
-        println!("Detailed comparison coming soon - tracking in issue #754");
+        println!("**Regressed benchmarks:**");
+        for regression in &regressed_benchmarks {
+            println!("- {}", regression);
+        }
+        println!();
         std::process::exit(1);
     } else {
         println!("✅ **All benchmarks passed!** No regressions detected.");
@@ -5623,4 +5681,65 @@ async fn handle_logs_command(command: LogsCommands) -> Result<()> {
             Ok(())
         }
     }
+}
+
+/// Handle notify command
+async fn handle_notify_command(
+    title: String,
+    message: String,
+    severity: String,
+    webhook: Vec<String>,
+    config: Option<PathBuf>,
+    metadata: Vec<String>,
+) -> Result<()> {
+    use autopilot::notifications::{Notification, NotificationConfig, NotificationManager};
+    use std::collections::HashMap;
+
+    // Parse metadata from key=value pairs
+    let mut metadata_map = HashMap::new();
+    for meta in metadata {
+        if let Some((key, value)) = meta.split_once('=') {
+            metadata_map.insert(key.to_string(), value.to_string());
+        } else {
+            eprintln!("Warning: Invalid metadata format '{}', expected key=value", meta);
+        }
+    }
+
+    // Create notification
+    let notification = Notification {
+        title,
+        message,
+        severity,
+        timestamp: chrono::Utc::now().to_rfc3339(),
+        metadata: metadata_map,
+    };
+
+    // Load config if specified, otherwise use webhooks from CLI
+    if let Some(config_path) = config {
+        let config_content = std::fs::read_to_string(&config_path)?;
+        let config: NotificationConfig = toml::from_str(&config_content)?;
+        let manager = NotificationManager::new(config);
+        manager.send(&notification).await?;
+    } else if !webhook.is_empty() {
+        // Use CLI-provided webhooks directly
+        for url in webhook {
+            notification.send_webhook(&url).await?;
+        }
+    } else {
+        // Try default config location
+        let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
+        let default_config = PathBuf::from(home).join(".openagents").join("notifications.toml");
+
+        if default_config.exists() {
+            let config_content = std::fs::read_to_string(&default_config)?;
+            let config: NotificationConfig = toml::from_str(&config_content)?;
+            let manager = NotificationManager::new(config);
+            manager.send(&notification).await?;
+        } else {
+            anyhow::bail!("No webhook URLs provided and no config file found. Use --webhook or create ~/.openagents/notifications.toml");
+        }
+    }
+
+    println!("{} Notification sent successfully", "✓".green());
+    Ok(())
 }
