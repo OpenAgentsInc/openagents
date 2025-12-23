@@ -45,7 +45,9 @@ impl Default for ConvertOptions {
             include_signature: true,
             include_snapshots: true,
             include_queue_ops: true,
-            include_raw_events: true,
+            // Changed from true to false to prevent PII/secret leakage
+            // Raw events may contain sensitive data that should not be shared
+            include_raw_events: false,
         }
     }
 }
