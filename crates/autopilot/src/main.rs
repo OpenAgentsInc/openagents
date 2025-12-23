@@ -3341,6 +3341,8 @@ async fn handle_project_command(command: ProjectCommands) -> Result<()> {
             }
         }
         ProjectCommands::List { db } => {
+            use issues::{issue, Status};
+
             let db_path = db.unwrap_or(default_db);
             let conn = db::init_db(&db_path)?;
 
@@ -3351,20 +3353,40 @@ async fn handle_project_command(command: ProjectCommands) -> Result<()> {
                 println!("\nCreate a project with:");
                 println!("  cargo autopilot project add <name> --path <directory>");
             } else {
-                println!("{:<20} {:<40} {:<10}", "Name", "Path", "Sessions");
+                println!("{:<20} {:<40} {:<12}", "Name", "Path", "Sessions");
                 println!("{}", "-".repeat(75));
+
+                let mut total_sessions = 0;
+                let mut total_open = 0;
+                let mut total_completed = 0;
+
                 for p in projects {
                     // Count sessions for this project
                     let sessions = session::list_sessions(&conn, Some(&p.id))?;
                     let session_count = sessions.len();
+                    total_sessions += session_count;
 
                     println!(
-                        "{:<20} {:<40} {}",
+                        "{:<20} {:<40} {:<12}",
                         p.name,
                         p.path,
                         session_count
                     );
                 }
+
+                // Count total issues (not per-project since issues don't have project_id)
+                let all_issues = issue::list_issues(&conn, None)?;
+                total_open = all_issues.iter().filter(|i| i.status == Status::Open).count();
+                total_completed = all_issues.iter().filter(|i| i.status == Status::Done).count();
+
+                // Print totals
+                println!("{}", "-".repeat(75));
+                println!(
+                    "{:<20} {:<40} {:<12}",
+                    "TOTAL",
+                    format!("({} open, {} completed issues)", total_open, total_completed),
+                    total_sessions
+                );
             }
         }
         ProjectCommands::Remove { name, db } => {
