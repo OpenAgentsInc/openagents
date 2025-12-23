@@ -68,8 +68,12 @@ impl ChatPane {
                 class={"bg-background border border-border font-mono " (visibility_class)}
                 style="position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 80vw; max-width: 1000px; height: 70vh; max-height: 700px; display: flex; flex-direction: column; z-index: 100;"
             {
-                // Header bar
-                div class="flex items-center justify-between px-4 py-2 border-b border-border bg-card flex-shrink-0" {
+                // Header bar (draggable)
+                div
+                    id="chat-pane-header"
+                    class="flex items-center justify-between px-4 py-2 border-b border-border bg-card flex-shrink-0"
+                    style="cursor: grab;"
+                {
                     // Left: Title
                     span class="text-xs text-muted-foreground uppercase tracking-wider" {
                         "Autopilot"
@@ -253,6 +257,48 @@ function copyCurrentView() {
         }, 1500);
     });
 }
+
+// Drag functionality for chat pane
+(function() {
+    const pane = document.getElementById('chat-pane');
+    const header = document.getElementById('chat-pane-header');
+    let isDragging = false;
+    let offsetX = 0;
+    let offsetY = 0;
+
+    header.addEventListener('mousedown', function(e) {
+        // Don't drag if clicking on buttons
+        if (e.target.tagName === 'BUTTON' || e.target.closest('button')) return;
+
+        isDragging = true;
+        header.style.cursor = 'grabbing';
+
+        const rect = pane.getBoundingClientRect();
+        offsetX = e.clientX - rect.left;
+        offsetY = e.clientY - rect.top;
+
+        // Remove transform so we can use top/left
+        pane.style.transform = 'none';
+        pane.style.left = rect.left + 'px';
+        pane.style.top = rect.top + 'px';
+
+        e.preventDefault();
+    });
+
+    document.addEventListener('mousemove', function(e) {
+        if (!isDragging) return;
+
+        pane.style.left = (e.clientX - offsetX) + 'px';
+        pane.style.top = (e.clientY - offsetY) + 'px';
+    });
+
+    document.addEventListener('mouseup', function() {
+        if (isDragging) {
+            isDragging = false;
+            header.style.cursor = 'grab';
+        }
+    });
+})();
 
 // Auto-scroll observer for all content areas
 (function() {
