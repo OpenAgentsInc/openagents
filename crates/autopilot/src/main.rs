@@ -3204,11 +3204,18 @@ async fn handle_metrics_command(command: MetricsCommands) -> Result<()> {
                 }
             }
         }
-        MetricsCommands::List { status, limit, db } => {
+        MetricsCommands::List { status, issue, directive, limit, db } => {
             let db_path = db.unwrap_or_else(default_db_path);
             let metrics_db = MetricsDb::open(&db_path)?;
 
-            let sessions = metrics_db.get_all_sessions()?;
+            // Get sessions based on filters
+            let sessions = if let Some(issue_num) = issue {
+                metrics_db.get_sessions_for_issue(issue_num)?
+            } else if let Some(dir_id) = &directive {
+                metrics_db.get_sessions_for_directive(dir_id)?
+            } else {
+                metrics_db.get_all_sessions()?
+            };
 
             let filtered: Vec<_> = if let Some(status_filter) = status {
                 sessions
@@ -3265,7 +3272,7 @@ async fn handle_metrics_command(command: MetricsCommands) -> Result<()> {
 
             println!("{}", "=".repeat(100));
         }
-        MetricsCommands::Analyze { period, compare, db, errors, anomalies } => {
+        MetricsCommands::Analyze { period, compare, issue, directive, db, errors, anomalies } => {
             use autopilot::analyze::{
                 calculate_aggregate_stats_from_sessions, detect_regressions,
                 get_sessions_in_period, get_slowest_tools, get_top_error_tools,
@@ -3282,8 +3289,22 @@ async fn handle_metrics_command(command: MetricsCommands) -> Result<()> {
             // Parse period
             let time_period = parse_time_period(&period)?;
 
-            // Get sessions
-            let mut sessions = get_sessions_in_period(&metrics_db, time_period)?;
+            // Get sessions - filter by issue/directive if specified
+            let mut sessions = if let Some(issue_num) = issue {
+                let all_issue_sessions = metrics_db.get_sessions_for_issue(issue_num)?;
+                // Filter by time period
+                all_issue_sessions.into_iter()
+                    .filter(|s| time_period.contains(&s.timestamp))
+                    .collect()
+            } else if let Some(dir_id) = &directive {
+                let all_directive_sessions = metrics_db.get_sessions_for_directive(dir_id)?;
+                // Filter by time period
+                all_directive_sessions.into_iter()
+                    .filter(|s| time_period.contains(&s.timestamp))
+                    .collect()
+            } else {
+                get_sessions_in_period(&metrics_db, time_period)?
+            };
 
             if sessions.is_empty() {
                 println!("{} No sessions found in {}", "⚠".yellow(), time_period.name());
