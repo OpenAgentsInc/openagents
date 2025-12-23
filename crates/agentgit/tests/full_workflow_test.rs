@@ -6,7 +6,6 @@
 mod helpers;
 
 use helpers::TestApp;
-use nostr::EventTemplate;
 
 #[tokio::test]
 async fn test_full_agentgit_workflow() {
@@ -146,11 +145,36 @@ async fn test_full_agentgit_workflow() {
         .expect("bounty claim should have trajectory tag");
     assert_eq!(bc_trajectory_tag[1], trajectory_session_id);
 
-    // Step 9: Verify all events published to relay
-    let all_events = app.get_all_events().await;
-    assert_eq!(all_events.len(), 8); // repo, issue, bounty, claim, PR, review, merge, bounty_claim
+    // Step 9: Release payment via NIP-57 zap (kind:9735)
+    let bounty_amount_msats = 50000 * 1000; // Convert sats to millisats
+    let agent_pubkey = app.pubkey();
+    let payment = app.pay_bounty(&bounty_claim.id, &agent_pubkey, bounty_amount_msats).await.unwrap();
 
-    // Step 10: Verify event relationships via tags
+    assert_eq!(payment.kind, 9735); // ZAP_RECEIPT
+
+    // Verify payment links to bounty claim
+    let payment_claim_tag = payment.tags.iter()
+        .find(|t| t[0] == "e")
+        .expect("payment should link to bounty claim");
+    assert_eq!(payment_claim_tag[1], bounty_claim.id);
+
+    // Verify payment amount
+    let payment_amount_tag = payment.tags.iter()
+        .find(|t| t[0] == "amount")
+        .expect("payment should have amount tag");
+    assert_eq!(payment_amount_tag[1], bounty_amount_msats.to_string());
+
+    // Verify payment recipient
+    let payment_recipient_tag = payment.tags.iter()
+        .find(|t| t[0] == "p")
+        .expect("payment should have recipient tag");
+    assert_eq!(payment_recipient_tag[1], agent_pubkey);
+
+    // Step 10: Verify all events published to relay
+    let all_events = app.get_all_events().await;
+    assert_eq!(all_events.len(), 9); // repo, issue, bounty, claim, PR, review, merge, bounty_claim, payment
+
+    // Step 11: Verify event relationships via tags
     let repos = app.get_events_by_kind(30617).await;
     assert_eq!(repos.len(), 1);
 
@@ -174,6 +198,9 @@ async fn test_full_agentgit_workflow() {
 
     let bounty_claims = app.get_events_by_kind(1637).await;
     assert_eq!(bounty_claims.len(), 1);
+
+    let payments = app.get_events_by_kind(9735).await;
+    assert_eq!(payments.len(), 1);
 
     app.shutdown().await;
 }
