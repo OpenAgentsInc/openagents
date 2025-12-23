@@ -2058,6 +2058,66 @@ async fn pr_create(
 
     let event_template = builder.build();
 
+    // Validate stacked PR dependencies before signing
+    if form.depends_on.is_some() || form.stack_id.is_some() {
+        // Fetch all PRs for this repository to build dependency graph
+        let prs = match state.nostr_client.get_pull_requests_by_repo(&repo_address, 1000).await {
+            Ok(prs) => prs,
+            Err(e) => {
+                tracing::error!("Failed to fetch PRs for validation: {}", e);
+                return HttpResponse::InternalServerError()
+                    .content_type("text/html; charset=utf-8")
+                    .body(format!(
+                        r#"<div style="padding: 1rem; background: #fee2e2; border-left: 4px solid #dc2626;">
+                            <h3>Failed to Validate PR Dependencies</h3>
+                            <p>Error: {}</p>
+                            <p><a href="/repo/{}/pulls/new">← Try Again</a></p>
+                        </div>"#,
+                        e,
+                        identifier
+                    ));
+            }
+        };
+
+        // Build dependency graph from existing PRs
+        if !prs.is_empty() {
+            use agentgit::stacks::StackGraph;
+
+            match StackGraph::from_pr_events(&prs) {
+                Ok(graph) => {
+                    // Create temporary signed event for validation
+                    match state.sign_event(event_template.clone()) {
+                        Ok(new_pr_event) => {
+                            // Validate that the new PR won't create circular dependencies
+                            if let Err(e) = graph.validate_new_pr(&new_pr_event) {
+                                tracing::warn!("PR dependency validation failed: {}", e);
+                                return HttpResponse::BadRequest()
+                                    .content_type("text/html; charset=utf-8")
+                                    .body(format!(
+                                        r#"<div style="padding: 1rem; background: #fee2e2; border-left: 4px solid #dc2626;">
+                                            <h3>Invalid PR Dependencies</h3>
+                                            <p>Error: {}</p>
+                                            <p><a href="/repo/{}/pulls/new">← Try Again</a></p>
+                                        </div>"#,
+                                        e,
+                                        identifier
+                                    ));
+                            }
+                        }
+                        Err(e) => {
+                            tracing::error!("Failed to sign event for validation: {}", e);
+                            // Continue without validation rather than blocking the PR
+                        }
+                    }
+                }
+                Err(e) => {
+                    tracing::error!("Failed to build dependency graph: {}", e);
+                    // Continue without validation rather than blocking the PR
+                }
+            }
+        }
+    }
+
     // Sign and publish event
     match state.sign_event(event_template) {
         Ok(signed_event) => {
