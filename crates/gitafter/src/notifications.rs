@@ -137,7 +137,7 @@ impl NotificationManager {
         self.show_windows(&notification)?;
 
         // Mark as shown
-        self.shown_notifications.insert(notification.event_id.clone());
+        self.shown_notifications.insert(notification.event_id);
 
         Ok(())
     }
@@ -265,7 +265,7 @@ pub fn pr_status_change_notification(pr_title: &str, old_status: &str, new_statu
     };
 
     Notification {
-        title: format!("PR Status Changed {}", status_emoji).to_string(),
+        title: format!("PR Status Changed {}", status_emoji),
         body: format!("\"{}\" changed from {} to {}", pr_title, old_status, new_status),
         notification_type: NotificationType::PrStatusChange,
         event_id: event_id.to_string(),
@@ -290,6 +290,71 @@ pub fn matching_issue_notification(issue_title: &str, repo_name: &str, event_id:
         notification_type: NotificationType::MatchingIssue,
         event_id: event_id.to_string(),
     }
+}
+
+/// Send PR status change email notification
+///
+/// Sends an email to the PR author when their PR status changes.
+///
+/// # Arguments
+/// * `pr_title` - Title of the pull request
+/// * `old_status` - Previous status
+/// * `new_status` - New status
+/// * `to_email` - Recipient email address
+/// * `smtp_config` - SMTP configuration
+///
+/// # Example
+/// ```no_run
+/// use gitafter::notifications::send_pr_status_email;
+/// use autopilot::notifications::SmtpConfig;
+///
+/// # tokio_test::block_on(async {
+/// let smtp = SmtpConfig {
+///     host: "smtp.gmail.com".to_string(),
+///     port: 587,
+///     username: "bot@example.com".to_string(),
+///     password: "password".to_string(),
+///     from: "GitAfter <bot@example.com>".to_string(),
+/// };
+///
+/// send_pr_status_email(
+///     "Fix authentication bug",
+///     "Open",
+///     "Merged",
+///     "author@example.com",
+///     &smtp
+/// ).await.ok();
+/// # });
+/// ```
+pub async fn send_pr_status_email(
+    pr_title: &str,
+    old_status: &str,
+    new_status: &str,
+    to_email: &str,
+    smtp_config: &autopilot::notifications::SmtpConfig,
+) -> Result<()> {
+    let status_emoji = match new_status {
+        "Open" => "🟢",
+        "Applied/Merged" => "✅",
+        "Closed" => "🔴",
+        "Draft" => "📝",
+        _ => "🔄",
+    };
+
+    let notification = autopilot::notifications::Notification::new(
+        format!("{} PR Status Changed: {}", status_emoji, pr_title),
+        format!(
+            "Your pull request \"{}\" has been updated.\n\n\
+             Previous status: {}\n\
+             New status: {}\n\n\
+             View the PR in GitAfter to see more details.",
+            pr_title, old_status, new_status
+        ),
+        "info",
+    );
+
+    notification.send_email(&[to_email.to_string()], smtp_config).await?;
+    Ok(())
 }
 
 #[cfg(test)]
