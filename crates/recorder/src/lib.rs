@@ -408,6 +408,11 @@ lazy_static! {
 // PARSER
 // ============================================================================
 
+/// Parse a recorder file from disk
+///
+/// **Memory usage**: Loads the entire file into memory. For very large files (>100MB),
+/// consider splitting the file or processing in chunks. The recorder format requires
+/// parsing YAML headers and maintaining line context, making true streaming difficult.
 pub fn parse_file(path: &Path) -> Result<ParsedSession, ParseError> {
     let content = std::fs::read_to_string(path)?;
     parse_content(&content)
