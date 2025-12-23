@@ -30,6 +30,7 @@ pub struct InlineComment {
     pub line_number: usize,
     pub position: LinePosition,
     pub author_pubkey: String,
+    pub layer_info: Option<(String, String)>, // (current_layer, total_layers)
 }
 
 /// Position of comment relative to line
@@ -102,6 +103,11 @@ pub fn extract_inline_comments(comment_events: &[Event]) -> Vec<InlineComment> {
     let mut comments = Vec::new();
 
     for event in comment_events {
+        // Extract layer info from event tags if present
+        let layer_info = event.tags.iter()
+            .find(|tag| tag.len() >= 3 && tag[0] == "layer")
+            .map(|tag| (tag[1].clone(), tag[2].clone()));
+
         // Look for ["line", "file_path", "line_number", "position"] tag
         for tag in &event.tags {
             if tag.len() >= 4 && tag[0] == "line" {
@@ -119,6 +125,7 @@ pub fn extract_inline_comments(comment_events: &[Event]) -> Vec<InlineComment> {
                         line_number,
                         position,
                         author_pubkey: event.pubkey.clone(),
+                        layer_info: layer_info.clone(),
                     });
                 }
             }
@@ -184,6 +191,11 @@ pub fn render_diff_with_comments(
                                     div.inline-comment {
                                         div.comment-header {
                                             span.comment-author { (format_pubkey(&comment.author_pubkey)) }
+                                            @if let Some((current, total)) = &comment.layer_info {
+                                                span.comment-layer style="margin-left: 0.5rem; padding: 2px 6px; background: #6366f1; color: white; font-size: 0.75rem;" {
+                                                    "Layer " (current) "/" (total)
+                                                }
+                                            }
                                             span.comment-position {
                                                 @if comment.position == LinePosition::Before { "↑" } @else { "↓" }
                                             }
