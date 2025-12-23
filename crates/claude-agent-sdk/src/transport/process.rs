@@ -33,7 +33,16 @@ pub struct ProcessTransport {
 impl ProcessTransport {
     /// Get the PATH from login shell (includes shell profile additions).
     fn get_shell_path() -> Option<String> {
-        std::process::Command::new("zsh")
+        // Use $SHELL environment variable, fallback to platform defaults
+        let shell = std::env::var("SHELL").ok().unwrap_or_else(|| {
+            if cfg!(target_os = "windows") {
+                "powershell".to_string()
+            } else {
+                "/bin/sh".to_string()
+            }
+        });
+
+        std::process::Command::new(&shell)
             .args(["-lc", "echo $PATH"])
             .output()
             .ok()
