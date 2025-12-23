@@ -20,6 +20,7 @@ pub mod learning;
 pub mod logs;
 pub mod metrics;
 pub mod nip_sa_trajectory;
+pub mod notifications;
 pub mod nostr_agent;
 pub mod planmode;
 pub mod profiling;

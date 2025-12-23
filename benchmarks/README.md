@@ -114,8 +114,63 @@ Baselines are stored as SQLite databases with schema:
 - PR baselines are ephemeral (artifacts only)
 - Historical baselines enable tracking performance over time
 
+## Notifications
+
+Autopilot can send notifications when benchmarks regress or other critical events occur.
+
+### Configuration
+
+Copy the example config:
+```bash
+cp benchmarks/notifications.toml.example ~/.openagents/notifications.toml
+```
+
+Edit `~/.openagents/notifications.toml` to add:
+- Slack webhook URLs
+- Discord webhook URLs
+- Email addresses (with SMTP config)
+- Custom webhook endpoints
+
+### Supported Services
+
+**Slack:**
+1. Create incoming webhook at https://api.slack.com/messaging/webhooks
+2. Add URL to `webhook` array in config
+
+**Discord:**
+1. Server Settings → Integrations → Webhooks
+2. Copy webhook URL
+3. Add to `webhook` array in config
+
+**Email:**
+1. Configure SMTP settings in `[smtp]` section
+2. Add recipient addresses to `email` array
+3. Use app-specific password for Gmail/Google Workspace
+
+**Custom:**
+- Receives POST with JSON payload
+- See `notifications.toml.example` for schema
+
+### Notification Events
+
+Notifications are sent for:
+- Benchmark regression detected (>10% by default)
+- Metric anomaly (>2 std dev from baseline)
+- Autopilot daemon crash
+- CI test failures
+
+### Rate Limiting
+
+Default: 10 notifications per hour to prevent spam.
+
+Adjust in config:
+```toml
+rate_limit_per_hour = 20
+```
+
 ## Refs
 
 - Directive: d-004 (Continual Constant Improvement of Autopilot)
 - Issue: #753 (Implement benchmark suite CI integration)
-- Phase: d-004 Phase 7 (Benchmark Suite)
+- Issue: #755 (Alert notification delivery)
+- Phase: d-004 Phase 6 (Dashboard & Visibility) and Phase 7 (Benchmark Suite)
