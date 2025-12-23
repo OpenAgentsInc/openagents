@@ -40,6 +40,9 @@ impl From<Network> for SdkNetwork {
     fn from(network: Network) -> Self {
         match network {
             Network::Mainnet => SdkNetwork::Mainnet,
+            // The Breez SDK only supports Mainnet and Regtest.
+            // All test networks (Testnet, Signet, Regtest) map to SdkNetwork::Regtest.
+            // This is intentional - Regtest is used for all non-mainnet testing.
             Network::Testnet | Network::Signet | Network::Regtest => SdkNetwork::Regtest,
         }
     }
@@ -278,11 +281,17 @@ impl SparkWallet {
 
     /// Get the wallet's Spark address for receiving payments
     ///
-    /// **NOTE**: Currently returns the public key hex as a placeholder.
-    /// Proper Spark address generation requires Breez SDK integration (d-001).
-    /// Spark addresses have a specific format for the protocol.
-    pub fn get_spark_address(&self) -> String {
-        self.signer.public_key_hex()
+    /// This calls the Breez SDK's receive_payment API with SparkAddress method
+    /// to get a properly formatted Spark address string.
+    pub async fn get_spark_address(&self) -> Result<String, SparkError> {
+        let request = breez_sdk_spark::ReceivePaymentRequest {
+            payment_method: breez_sdk_spark::ReceivePaymentMethod::SparkAddress,
+        };
+
+        let response = self.sdk.receive_payment(request).await
+            .map_err(|e| SparkError::GetAddressFailed(e.to_string()))?;
+
+        Ok(response.payment_request)
     }
 
     /// Get the underlying signer

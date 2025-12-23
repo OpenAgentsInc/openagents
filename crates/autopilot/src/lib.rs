@@ -16,7 +16,6 @@ pub mod compaction;
 pub mod daemon;
 pub mod dashboard;
 pub mod goals;
-pub mod guardrails;
 pub mod learning;
 pub mod logs;
 pub mod metrics;
