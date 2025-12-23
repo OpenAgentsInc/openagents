@@ -6068,6 +6068,7 @@ dependencies = [
  "gitafter",
  "governor 0.10.4",
  "marketplace",
+ "once_cell",
  "predicates",
  "reqwest",
  "rusqlite",
