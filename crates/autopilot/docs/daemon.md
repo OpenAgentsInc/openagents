@@ -205,6 +205,69 @@ Response:
 }
 ```
 
+## GUI Integration
+
+The OpenAgents desktop GUI provides a daemon status panel at the bottom-left corner.
+
+### Status Flow
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                     GUI SERVER (Actix-web)                          │
+│  ┌─────────────────┐      ┌─────────────────────────────────────┐  │
+│  │poll_daemon_status│      │         WebSocket Broadcaster       │  │
+│  │(every 3 seconds) │─────▶│  (broadcasts to all connected      │  │
+│  └─────────────────┘      │   clients via OOB swaps)            │  │
+│          │                └─────────────────────────────────────┘  │
+│          │                                                          │
+│          ▼                                                          │
+│  ~/.autopilot/autopilotd.sock                                       │
+│  {"type": "Status"}                                                 │
+└─────────────────────────────────────────────────────────────────────┘
+                               │
+                               ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│                           AUTOPILOTD                                │
+│  Returns: worker_status, worker_pid, uptime, restarts, memory      │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+### How It Works
+
+1. **Background Poller** (`src/gui/server.rs`):
+   - Runs every 3 seconds in a tokio task
+   - Connects to Unix socket at `~/.autopilot/autopilotd.sock`
+   - Sends `{"type": "Status"}` JSON command
+   - Parses response into `DaemonStatus` UI component
+   - Broadcasts HTML via WebSocket with OOB swap:
+     ```html
+     <div id="daemon-status-content" hx-swap-oob="innerHTML">...</div>
+     ```
+
+2. **WebSocket Connection** (`src/gui/views/layout.rs`):
+   - Main layout includes `hx-ext="ws"` and `ws-connect="/ws"`
+   - HTMX WebSocket extension handles OOB swaps automatically
+   - Updates arrive in real-time without page refresh
+
+3. **Control Buttons** (`src/gui/routes/daemon.rs`):
+   - `POST /api/daemon/start` - Spawns `~/.autopilot/bin/autopilotd`
+   - `POST /api/daemon/stop` - Sends `Shutdown` command via socket
+   - `POST /api/daemon/restart-worker` - Sends `RestartWorker` command
+
+### Starting Daemon from GUI
+
+The "Start Daemon" button:
+1. Checks if daemon already connected
+2. Looks for daemon binary at `~/.autopilot/bin/autopilotd`
+3. Falls back to `cargo run -p autopilot --bin autopilotd` if not found
+4. Passes `--workdir` and `--project` from current directory
+
+### Known Limitations
+
+- WebSocket must be connected for live updates (check browser devtools)
+- If daemon was started before GUI, status updates after first poll (3 seconds)
+- Browser must support WebSocket for OOB updates
+
 ## Troubleshooting
 
 ### Daemon won't start
@@ -243,3 +306,34 @@ Then restart worker:
 ```bash
 autopilotd restart-worker
 ```
+
+### GUI not updating daemon status
+
+If the daemon status panel shows "Not connected" even when daemon is running:
+
+1. **Check WebSocket connection**: Open browser devtools, check Network > WS tab for `/ws` connection
+2. **Check daemon socket exists**: `ls -la ~/.autopilot/autopilotd.sock`
+3. **Test socket manually**: `echo '{"type":"Status"}' | nc -U ~/.autopilot/autopilotd.sock`
+4. **Check GUI server logs**: Look for connection errors in terminal running GUI
+
+## Future Improvements
+
+### High Priority
+
+1. **WebSocket connection status indicator**: Show in UI when WebSocket is disconnected
+2. **Fallback polling**: If WebSocket fails, fall back to HTTP polling
+3. **Error display in panel**: Show last error message when connection fails
+4. **Daemon auto-start option**: Preference to start daemon with GUI
+
+### Medium Priority
+
+1. **Log viewer tab**: Show recent worker logs in GUI
+2. **Restart history**: Display recent restart events with timestamps
+3. **Configuration editor**: Edit daemon.toml from GUI
+4. **Multiple project support**: Switch between projects without restart
+
+### Low Priority
+
+1. **APM metrics integration**: Export to external monitoring
+2. **Notification support**: Desktop notifications for worker crashes
+3. **Remote daemon support**: Connect to daemon on another machine
