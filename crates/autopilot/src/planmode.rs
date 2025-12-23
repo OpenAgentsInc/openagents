@@ -8,9 +8,60 @@
 //! - SQLite write commands are blocked (always, not just in plan mode)
 //! - Reads, analysis, and subagents are allowed
 
-use std::path::{Path, PathBuf};
+use std::path::{Path, PathBuf, Component};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::RwLock;
+
+/// Sanitize a slug to prevent path traversal attacks
+///
+/// This function validates that the slug:
+/// 1. Does not contain path traversal sequences (../, ..\)
+/// 2. Does not contain path separators (/, \)
+/// 3. Only contains safe filename characters
+///
+/// Returns the sanitized slug or an error if validation fails.
+fn sanitize_slug(slug: &str) -> Result<String, String> {
+    // Reject empty slugs
+    if slug.is_empty() {
+        return Err("Slug cannot be empty".to_string());
+    }
+
+    // Create a path from the slug to validate components
+    let path = PathBuf::from(slug);
+
+    // Validate each component
+    for component in path.components() {
+        match component {
+            Component::Normal(name) => {
+                // Only allow the slug itself as a normal component
+                // Reject if it contains path separators
+                let name_str = name.to_string_lossy();
+                if name_str != slug {
+                    return Err("Slug cannot contain path separators".to_string());
+                }
+            }
+            Component::ParentDir => {
+                return Err("Slug cannot contain '..' path components".to_string());
+            }
+            Component::RootDir | Component::Prefix(_) => {
+                return Err("Slug cannot be an absolute path".to_string());
+            }
+            Component::CurDir => {
+                return Err("Slug cannot contain '.' path components".to_string());
+            }
+        }
+    }
+
+    // Additional validation: reject common dangerous characters
+    let dangerous_chars = ['/', '\\', '\0'];
+    for ch in dangerous_chars {
+        if slug.contains(ch) {
+            return Err(format!("Slug cannot contain '{}' character", ch));
+        }
+    }
+
+    Ok(slug.to_string())
+}
 
 /// Plan phases for structured exploration and design
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -70,24 +121,32 @@ pub struct PlanModeConfig {
 
 impl PlanModeConfig {
     /// Create a new plan mode configuration
-    pub fn new(slug: &str, goal: impl Into<String>) -> Self {
-        let plan_file = Self::generate_plan_path(slug);
-        Self {
+    ///
+    /// Returns an error if the slug is invalid or contains path traversal attempts.
+    pub fn new(slug: &str, goal: impl Into<String>) -> Result<Self, String> {
+        let plan_file = Self::generate_plan_path(slug)?;
+        Ok(Self {
             plan_file,
             goal: goal.into(),
-        }
+        })
     }
 
     /// Generate the plan file path
     /// Format: ~/.claude/plans/{slug}.md
-    pub fn generate_plan_path(slug: &str) -> PathBuf {
-        let home = dirs::home_dir().expect("Failed to get home directory");
+    ///
+    /// Returns an error if the slug contains unsafe characters or path traversal attempts.
+    pub fn generate_plan_path(slug: &str) -> Result<PathBuf, String> {
+        // Sanitize slug to prevent path traversal
+        let sanitized_slug = sanitize_slug(slug)?;
+
+        let home = dirs::home_dir().ok_or("Failed to get home directory")?;
         let plans_dir = home.join(".claude").join("plans");
 
         // Ensure directory exists
-        std::fs::create_dir_all(&plans_dir).ok();
+        std::fs::create_dir_all(&plans_dir)
+            .map_err(|e| format!("Failed to create plans directory: {}", e))?;
 
-        plans_dir.join(format!("{}.md", slug))
+        Ok(plans_dir.join(format!("{}.md", sanitized_slug)))
     }
 }
 
@@ -614,7 +673,7 @@ mod tests {
 
     #[test]
     fn test_plan_path_generation() {
-        let path = PlanModeConfig::generate_plan_path("test-feature");
+        let path = PlanModeConfig::generate_plan_path("test-feature").unwrap();
         assert!(path.to_str().unwrap().contains(".claude/plans"));
         assert!(path.to_str().unwrap().ends_with("test-feature.md"));
     }
@@ -635,7 +694,7 @@ mod tests {
         assert!(is_tool_allowed_in_plan_mode("Write", &serde_json::json!({"file_path": "/tmp/test.txt"})).is_ok());
 
         // Enter plan mode
-        let config = PlanModeConfig::new("test", "Test goal");
+        let config = PlanModeConfig::new("test", "Test goal").unwrap();
         enter_plan_mode(config.clone()).unwrap();
 
         // Read operations allowed
@@ -746,7 +805,7 @@ mod tests {
         let _guard = TEST_MUTEX.lock().unwrap();
 
         // Start in Explore phase
-        let config = PlanModeConfig::new("test-phases", "Test phase advancement");
+        let config = PlanModeConfig::new("test-phases", "Test phase advancement").unwrap();
         enter_plan_mode(config).unwrap();
 
         // Should start in Explore
@@ -786,7 +845,7 @@ mod tests {
         let _guard = TEST_MUTEX.lock().unwrap();
 
         // Enter plan mode should include the initial Explore phase prompt
-        let config = PlanModeConfig::new("test-prompt", "Test initial prompt");
+        let config = PlanModeConfig::new("test-prompt", "Test initial prompt").unwrap();
         let result = enter_plan_mode(config).unwrap();
 
         // Should contain the Explore phase guidance
@@ -795,6 +854,21 @@ mod tests {
 
         // Exit plan mode
         exit_plan_mode().unwrap();
+    }
+
+    #[test]
+    fn test_slug_sanitization() {
+        // Test path traversal rejection
+        assert!(PlanModeConfig::new("../../../etc/passwd", "goal").is_err());
+        assert!(PlanModeConfig::new("../../secret", "goal").is_err());
+        assert!(PlanModeConfig::new("/etc/passwd", "goal").is_err());
+        assert!(PlanModeConfig::new("test/path", "goal").is_err());
+        assert!(PlanModeConfig::new("test\\path", "goal").is_err());
+
+        // Test valid slugs
+        assert!(PlanModeConfig::new("my-feature", "goal").is_ok());
+        assert!(PlanModeConfig::new("test123", "goal").is_ok());
+        assert!(PlanModeConfig::new("feature_xyz", "goal").is_ok());
     }
 
     #[test]
