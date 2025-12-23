@@ -932,6 +932,10 @@ enum MetricsCommands {
         /// Path to metrics database (default: autopilot-metrics.db)
         #[arg(long)]
         db: Option<PathBuf>,
+
+        /// Show only high error rate sessions (>10% tool errors)
+        #[arg(long)]
+        errors: bool,
     },
     /// Show trends by comparing periods
     Trends {
@@ -1013,6 +1017,17 @@ enum MetricsCommands {
 
     /// Backfill APM data for existing sessions
     BackfillApm {
+        /// Path to metrics database (default: autopilot-metrics.db)
+        #[arg(long)]
+        db: Option<PathBuf>,
+    },
+
+    /// Backfill metrics from existing trajectory logs in docs/logs/
+    BackfillFromLogs {
+        /// Directory containing trajectory logs (default: docs/logs/)
+        #[arg(long, default_value = "docs/logs")]
+        logs_dir: PathBuf,
+
         /// Path to metrics database (default: autopilot-metrics.db)
         #[arg(long)]
         db: Option<PathBuf>,
@@ -4657,7 +4672,7 @@ async fn handle_metrics_command(command: MetricsCommands) -> Result<()> {
 
             println!("{}", "=".repeat(100));
         }
-        MetricsCommands::Analyze { period, compare, db } => {
+        MetricsCommands::Analyze { period, compare, db, errors } => {
             use autopilot::analyze::{
                 calculate_aggregate_stats_from_sessions, detect_regressions,
                 get_sessions_in_period, get_slowest_tools, get_top_error_tools,
@@ -4675,11 +4690,29 @@ async fn handle_metrics_command(command: MetricsCommands) -> Result<()> {
             let time_period = parse_time_period(&period)?;
 
             // Get sessions
-            let sessions = get_sessions_in_period(&metrics_db, time_period)?;
+            let mut sessions = get_sessions_in_period(&metrics_db, time_period)?;
 
             if sessions.is_empty() {
                 println!("{} No sessions found in {}", "⚠".yellow(), time_period.name());
                 return Ok(());
+            }
+
+            // Filter for high error rate sessions if --errors flag is set
+            if errors {
+                sessions.retain(|s| {
+                    if s.tool_calls > 0 {
+                        let error_rate = s.tool_errors as f64 / s.tool_calls as f64;
+                        error_rate > 0.10 // >10% error rate
+                    } else {
+                        false
+                    }
+                });
+
+                if sessions.is_empty() {
+                    println!("{} No high error rate sessions found in {}", "✓".green(), time_period.name());
+                    println!("  All sessions have tool error rate ≤10%");
+                    return Ok(());
+                }
             }
 
             // Calculate aggregate stats
@@ -4696,10 +4729,15 @@ async fn handle_metrics_command(command: MetricsCommands) -> Result<()> {
 
             // Print report
             println!("{}", "=".repeat(80));
+            let title = if errors {
+                format!("High Error Sessions (>10%): {}", time_period.name())
+            } else {
+                format!("Metrics Analysis: {}", time_period.name())
+            };
             println!(
-                "{} Metrics Analysis: {}",
+                "{} {}",
                 "📊".cyan().bold(),
-                time_period.name()
+                title
             );
             println!("{}", "=".repeat(80));
             println!();
@@ -4773,6 +4811,62 @@ async fn handle_metrics_command(command: MetricsCommands) -> Result<()> {
                 for (tool, avg_ms, count) in &slowest_tools {
                     println!("  {:30} {:.0}ms avg (n={})", tool, avg_ms, count);
                 }
+                println!();
+            }
+
+            // If --errors flag, display detailed session info and store anomalies
+            if errors {
+                use autopilot::metrics::{Anomaly, AnomalySeverity};
+
+                println!("{} High Error Rate Sessions (flagged for review):", "🚨".red().bold());
+                println!();
+
+                for session in &sessions {
+                    let error_rate = if session.tool_calls > 0 {
+                        session.tool_errors as f64 / session.tool_calls as f64
+                    } else {
+                        0.0
+                    };
+
+                    let severity = if error_rate > 0.25 {
+                        AnomalySeverity::Critical
+                    } else if error_rate > 0.15 {
+                        AnomalySeverity::Error
+                    } else {
+                        AnomalySeverity::Warning
+                    };
+
+                    let severity_text = match severity {
+                        AnomalySeverity::Critical => "CRITICAL".red().bold(),
+                        AnomalySeverity::Error => "ERROR".red(),
+                        AnomalySeverity::Warning => "WARNING".yellow(),
+                    };
+
+                    println!("  {} Session: {} ({})", severity_text, &session.id[..12.min(session.id.len())], session.timestamp.format("%Y-%m-%d %H:%M"));
+                    println!("    Error Rate:   {:.1}% ({}/{})", error_rate * 100.0, session.tool_errors, session.tool_calls);
+                    println!("    Prompt:       {}", truncate_string(&session.prompt, 60));
+                    println!("    Model:        {}", session.model);
+                    println!("    Issues:       {}/{} completed", session.issues_completed, session.issues_claimed);
+                    println!();
+
+                    // Store in anomalies table
+                    let anomaly = Anomaly {
+                        session_id: session.id.clone(),
+                        dimension: "tool_error_rate".to_string(),
+                        expected_value: 0.05, // Expected <5% error rate
+                        actual_value: error_rate,
+                        severity,
+                        investigated: false,
+                        issue_number: None,
+                    };
+
+                    if let Err(e) = metrics_db.store_anomaly(&anomaly) {
+                        eprintln!("Warning: Failed to store anomaly for session {}: {}", session.id, e);
+                    }
+                }
+
+                println!("{} {} high error sessions flagged and stored in anomalies table", "✓".green(), sessions.len());
+                println!("  Run `cargo autopilot metrics create-issues` to create improvement tasks");
                 println!();
             }
 
@@ -5032,6 +5126,33 @@ async fn handle_metrics_command(command: MetricsCommands) -> Result<()> {
                 }
                 Err(e) => {
                     eprintln!("{} Failed to backfill APM: {}", "❌".red(), e);
+                    std::process::exit(1);
+                }
+            }
+        }
+
+        MetricsCommands::BackfillFromLogs { logs_dir, db } => {
+            use autopilot::metrics::backfill_metrics_from_logs;
+            use colored::Colorize;
+
+            let db_path = db.unwrap_or_else(default_db_path);
+
+            println!("{} Backfilling metrics from trajectory logs...", "📊".cyan());
+            println!("{} Logs directory: {:?}", "📂".dimmed(), logs_dir);
+            println!("{} Database: {:?}", "💾".dimmed(), db_path);
+            println!();
+
+            match backfill_metrics_from_logs(&logs_dir, &db_path) {
+                Ok((files_processed, records_created, errors)) => {
+                    println!("{} Backfill complete!", "✅".green());
+                    println!("  {} Files processed: {}", "📄".dimmed(), files_processed);
+                    println!("  {} Records created: {}", "📝".dimmed(), records_created);
+                    if errors > 0 {
+                        println!("  {} Errors encountered: {}", "⚠".yellow(), errors);
+                    }
+                }
+                Err(e) => {
+                    eprintln!("{} Failed to backfill metrics: {}", "❌".red(), e);
                     std::process::exit(1);
                 }
             }
@@ -5594,6 +5715,14 @@ fn format_metric_value(metric_name: &str, value: f64) -> String {
         "session_duration" => format!("{:.1}s", value),
         "tokens_per_issue" => format!("{:.0}", value),
         _ => format!("{:.2}", value),
+    }
+}
+
+fn truncate_string(s: &str, max_len: usize) -> String {
+    if s.len() <= max_len {
+        s.to_string()
+    } else {
+        format!("{}...", &s[..max_len.saturating_sub(3)])
     }
 }
 

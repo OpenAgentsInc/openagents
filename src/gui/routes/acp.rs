@@ -465,6 +465,7 @@ async fn respond_to_permission(
 }
 
 /// Broadcast a permission request to all connected UI clients
+#[allow(dead_code)]
 pub async fn broadcast_permission_request(
     state: &web::Data<AppState>,
     request: &acp_adapter::UiPermissionRequest,

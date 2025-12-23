@@ -71,7 +71,7 @@ pub async fn start_server() -> anyhow::Result<u16> {
 async fn poll_daemon_status(state: web::Data<AppState>) {
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tokio::net::UnixStream;
-    use tracing::info;
+    use tracing::{debug, info};
     use ui::DaemonStatus;
 
     let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
@@ -112,7 +112,7 @@ async fn poll_daemon_status(state: web::Data<AppState>) {
                     .and_then(|d| d.get("worker_status"))
                     .and_then(|v| v.as_str())
                     .unwrap_or("unknown");
-                info!("Daemon poller: connected, worker_status={}", worker_status);
+                debug!("Daemon poller: connected, worker_status={}", worker_status);
 
                 if let Some(data) = response.get("data") {
                     let mut ds = DaemonStatus::connected();
@@ -139,7 +139,7 @@ async fn poll_daemon_status(state: web::Data<AppState>) {
                 }
             }
             Err(e) => {
-                info!("Daemon poller: not connected ({})", e);
+                debug!("Daemon poller: not connected ({})", e);
                 DaemonStatus::disconnected().error("Daemon not running")
             }
         };
