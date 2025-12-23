@@ -256,3 +256,56 @@ a: Good! All production code already uses `.map_err()`. The `.unwrap()` was only
 t!:Bash id=8Lat3dh5 cmd="cargo test -p autopilot --lib planmode::tests::..." → [running] tokens_in=0 tokens_out=1 tokens_cached=92916
 o: id=8Lat3dh5 → [ok] running 1 test
 t!:Bash id=Ae1mobhc cmd="git add -A && git commit -m "$(cat <<'EOF'" → [running] tokens_in=0 tokens_out=25 tokens_cached=93166
+o: id=Ae1mobhc → [ok] [main 0dd169837] Fix planmode RwLock test code panic
+t!:Bash id=g45YbEnP cmd="git push origin main" → [running] tokens_in=0 tokens_out=74 tokens_cached=93790
+o: id=g45YbEnP → [ok] [0;36m🔍 Running cargo build to check for errors and warnings...[0m
+t!:Bash id=eZHJ2Jcw cmd="cargo autopilot issue complete 853" → [running] tokens_in=0 tokens_out=79 tokens_cached=94199
+o: id=eZHJ2Jcw → [ok] ✓ Completed issue #853: PANIC-7: Fix planmode RwLock poisoning panic
+t!:Bash id=My51qMDM cmd="cargo autopilot issue ready" → [running] tokens_in=0 tokens_out=77 tokens_cached=94358
+o: id=My51qMDM → [ok] → Next ready issue:
+t!:Bash id=7ykmJnrs cmd="cargo autopilot issue claim 854" → [running] tokens_in=0 tokens_out=24 tokens_cached=94815
+o: id=7ykmJnrs → [ok] ✓ Claimed issue #854: PANIC-8: Fix outbox cache lock poisoning panics
+t!:Grep id=YS9Rak99 pattern="\.unwrap\(\)" → [running] tokens_in=0 tokens_out=26 tokens_cached=95089
+o: id=YS9Rak99 → [ok] 93-            cached_at: SystemTime::now(),
+a: I can see the production code has `.unwrap()` calls on the cache locks at lines 96, 108, 130, 185, 198, 204, 210. The test code also has unwraps, but those are acceptable. Let me fix the production... tokens_in=0 tokens_out=1 tokens_cached=95245
+t!:Read id=dnvv2ro7 file_path=/home/christopherdavid/code/openagents/crates/nostr/client/src/outbox.rs → [running] tokens_in=0 tokens_out=177 tokens_cached=95245
+o: id=dnvv2ro7 → [ok]      1→//! Outbox model for intelligent relay selection
+a: Let me read the update_relay_list function: tokens_in=0 tokens_out=3 tokens_cached=96987
+t!:Read id=UwPD6otZ file_path=/home/christopherdavid/code/openagents/crates/nostr/client/src/outbox.rs → [running] tokens_in=0 tokens_out=127 tokens_cached=96987
+o: id=UwPD6otZ → [ok]     78→            return Ok(());
+a: Now let me fix all the production code unwraps. I'll start with the write lock at line 96: tokens_in=0 tokens_out=1 tokens_cached=97843
+t!:Edit id=VZYX7u3Q file_path=/home/christopherdavid/code/openagents/crates/nostr/client/src/outbox.rs → [running] tokens_in=0 tokens_out=293 tokens_cached=97843
+o: id=VZYX7u3Q → [ok] The file /home/christopherdavid/code/openagents/crates/nostr/client/src/outbox.rs has been update...
+a: Now let me fix the read lock at line 108: tokens_in=0 tokens_out=1 tokens_cached=98584
+t!:Edit id=NyfQXQwj file_path=/home/christopherdavid/code/openagents/crates/nostr/client/src/outbox.rs → [running] tokens_in=0 tokens_out=329 tokens_cached=98584
+o: id=NyfQXQwj → [ok] The file /home/christopherdavid/code/openagents/crates/nostr/client/src/outbox.rs has been update...
+a: Now let me fix line 130 (get_read_relays): tokens_in=0 tokens_out=5 tokens_cached=99187
+t!:Read id=bdERXVqP file_path=/home/christopherdavid/code/openagents/crates/nostr/client/src/outbox.rs → [running] tokens_in=0 tokens_out=5 tokens_cached=99187
+o: id=bdERXVqP → [ok]    125→        self.config.fallback_relays.clone()
+t!:Edit id=guiw1BFi file_path=/home/christopherdavid/code/openagents/crates/nostr/client/src/outbox.rs → [running] tokens_in=0 tokens_out=25 tokens_cached=99913
+o: id=guiw1BFi → [ok] The file /home/christopherdavid/code/openagents/crates/nostr/client/src/outbox.rs has been update...
+a: Now let me fix lines 185, 198, 204, 210: tokens_in=0 tokens_out=1 tokens_cached=100438
+t!:Read id=o82haMeS file_path=/home/christopherdavid/code/openagents/crates/nostr/client/src/outbox.rs → [running] tokens_in=0 tokens_out=133 tokens_cached=100438
+o: id=o82haMeS → [ok]    183→        if relays.is_empty() {
+t!:Edit id=N4NCQzx8 file_path=/home/christopherdavid/code/openagents/crates/nostr/client/src/outbox.rs → [running] tokens_in=0 tokens_out=232 tokens_cached=101174
+o: id=N4NCQzx8 → [ok] The file /home/christopherdavid/code/openagents/crates/nostr/client/src/outbox.rs has been update...
+t!:Edit id=E6BtetDq file_path=/home/christopherdavid/code/openagents/crates/nostr/client/src/outbox.rs → [running] tokens_in=0 tokens_out=206 tokens_cached=101795
+o: id=E6BtetDq → [ok] The file /home/christopherdavid/code/openagents/crates/nostr/client/src/outbox.rs has been update...
+t!:Edit id=sT1a3cAp file_path=/home/christopherdavid/code/openagents/crates/nostr/client/src/outbox.rs → [running] tokens_in=0 tokens_out=236 tokens_cached=102353
+o: id=sT1a3cAp → [ok] The file /home/christopherdavid/code/openagents/crates/nostr/client/src/outbox.rs has been update...
+t!:Edit id=jRZi5fSj file_path=/home/christopherdavid/code/openagents/crates/nostr/client/src/outbox.rs → [running] tokens_in=0 tokens_out=218 tokens_cached=102770
+o: id=jRZi5fSj → [ok] The file /home/christopherdavid/code/openagents/crates/nostr/client/src/outbox.rs has been update...
+a: Now let's test the changes: tokens_in=0 tokens_out=1 tokens_cached=103230
+t!:Bash id=ptfKfA2H cmd="cargo build -p nostr-client 2>&1 | head -50" → [running] tokens_in=0 tokens_out=97 tokens_cached=103230
+o: id=ptfKfA2H → [ok]    Compiling nostr-client v0.1.0 (/home/christopherdavid/code/openagents/crates/nostr/client)
+a: Let me check what error variants are available: tokens_in=0 tokens_out=1 tokens_cached=103760
+t!:Read id=m677JzFe file_path=/home/christopherdavid/code/openagents/crates/nostr/client/src/error.rs → [running] tokens_in=0 tokens_out=90 tokens_cached=103760
+o: id=m677JzFe → [ok]      1→//! Client error types
+a: I should use `Internal` instead of `Generic`: tokens_in=0 tokens_out=1 tokens_cached=104103
+t!:Edit id=UqDSjCkF file_path=/home/christopherdavid/code/openagents/crates/nostr/client/src/outbox.rs → [running] tokens_in=0 tokens_out=201 tokens_cached=104103
+o: id=UqDSjCkF → [ok] The file /home/christopherdavid/code/openagents/crates/nostr/client/src/outbox.rs has been update...
+t!:Bash id=iH6Biwuy cmd="cargo build -p nostr-client 2>&1 | head -20" → [running] tokens_in=0 tokens_out=90 tokens_cached=105140
+o: id=iH6Biwuy → [ok]    Compiling nostr-client v0.1.0 (/home/christopherdavid/code/openagents/crates/nostr/client)
+t!:Bash id=9YPyo5vR cmd="cargo test -p nostr-client --lib outbox --no-fa..." → [running] tokens_in=0 tokens_out=25 tokens_cached=105518
+o: id=9YPyo5vR → [ok]    Compiling nostr-client v0.1.0 (/home/christopherdavid/code/openagents/crates/nostr/client)
+t!:Bash id=pir5KRnn cmd="git add -A && git commit -m "$(cat <<'EOF'" → [running] tokens_in=0 tokens_out=342 tokens_cached=105786
