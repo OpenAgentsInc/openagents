@@ -207,7 +207,7 @@ Response:
 
 ## GUI Integration
 
-The OpenAgents desktop GUI provides a daemon status panel at the bottom-left corner.
+The OpenAgents desktop GUI provides a daemon status panel positioned above the Claude status panel in the bottom-right corner.
 
 ### Status Flow
 
@@ -320,7 +320,7 @@ If the daemon status panel shows "Not connected" even when daemon is running:
 
 ### High Priority
 
-1. **WebSocket connection status indicator**: Show in UI when WebSocket is disconnected
+1. ~~**WebSocket connection status indicator**: Show in UI when WebSocket is disconnected~~ ✓ Implemented (top-left corner dot indicator)
 2. **Fallback polling**: If WebSocket fails, fall back to HTTP polling
 3. **Error display in panel**: Show last error message when connection fails
 4. **Daemon auto-start option**: Preference to start daemon with GUI

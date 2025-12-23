@@ -81,11 +81,12 @@ impl DaemonStatus {
 
     /// Render the component for positioning (call this for the full positioned version).
     /// Updates are pushed via WebSocket OOB swaps to #daemon-status-content.
+    /// Positioned above the Claude status panel on the right side.
     pub fn build_positioned(self) -> Markup {
         html! {
             div
                 id="daemon-status"
-                style="position: fixed; bottom: 1rem; left: 1rem;"
+                style="position: fixed; bottom: 22rem; right: 1rem;"
             {
                 div id="daemon-status-content" {
                     (self.build())
