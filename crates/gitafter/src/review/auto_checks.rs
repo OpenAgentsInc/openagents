@@ -199,6 +199,8 @@ pub struct AutoCheckRunner {
     trajectory_session_id: Option<String>,
     /// Stack dependencies (PR IDs this PR depends on)
     depends_on: Vec<String>,
+    /// Nostr client for querying PR status (optional)
+    nostr_client: Option<std::sync::Arc<crate::nostr::NostrClient>>,
 }
 
 impl AutoCheckRunner {
@@ -221,6 +223,7 @@ impl AutoCheckRunner {
             repo_path: repo_path.as_ref().to_path_buf(),
             trajectory_session_id: None,
             depends_on: Vec::new(),
+            nostr_client: None,
         }
     }
 
@@ -263,6 +266,26 @@ impl AutoCheckRunner {
     /// ```
     pub fn with_dependencies(mut self, depends_on: Vec<String>) -> Self {
         self.depends_on = depends_on;
+        self
+    }
+
+    /// Set Nostr client for PR status queries
+    ///
+    /// Enables querying dependency PR status from Nostr relays.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// use gitafter::review::AutoCheckRunner;
+    /// use gitafter::nostr::NostrClient;
+    /// use std::sync::Arc;
+    ///
+    /// let client = Arc::new(NostrClient::new(vec![], broadcaster)?);
+    /// let runner = AutoCheckRunner::new("/tmp/repo", "pr-123")
+    ///     .with_nostr_client(client);
+    /// ```
+    pub fn with_nostr_client(mut self, client: std::sync::Arc<crate::nostr::NostrClient>) -> Self {
+        self.nostr_client = Some(client);
         self
     }
 
@@ -435,8 +458,6 @@ impl AutoCheckRunner {
 
     /// Check dependency order for stacked PRs
     async fn check_dependency_order(&self) -> CheckResult {
-        // This would query the nostr relay to check if dependencies are merged
-        // For now, simulate the check
         if self.depends_on.is_empty() {
             return CheckResult::new(
                 "dependency-order",
@@ -446,18 +467,68 @@ impl AutoCheckRunner {
             .with_message("No dependencies to check");
         }
 
-        // TODO: Query nostr relay for dependency PR status
-        // For now, assume we need to check
-        CheckResult::new(
-            "dependency-order",
-            "Required dependency PRs are merged",
-            CheckStatus::Pending,
-        )
-        .with_message(format!(
-            "Depends on {} PR(s): {}",
-            self.depends_on.len(),
-            self.depends_on.join(", ")
-        ))
+        // If no Nostr client available, return pending
+        let Some(client) = &self.nostr_client else {
+            return CheckResult::new(
+                "dependency-order",
+                "Required dependency PRs are merged",
+                CheckStatus::Pending,
+            )
+            .with_message("Nostr client not configured for dependency checks");
+        };
+
+        // Query each dependency PR's status
+        let mut all_merged = true;
+        let mut unmerged_prs = Vec::new();
+
+        for pr_id in &self.depends_on {
+            match client.get_pr_status(pr_id).await {
+                Ok(kind) => {
+                    // Convert kind to status string
+                    let status = match kind {
+                        1630 => "open",
+                        1631 => "merged",
+                        1632 => "closed",
+                        1633 => "draft",
+                        _ => "unknown",
+                    };
+
+                    if kind == 1631 {
+                        // PR is merged (STATUS_APPLIED), continue
+                    } else {
+                        all_merged = false;
+                        unmerged_prs.push(format!("{} ({})", pr_id, status));
+                    }
+                }
+                Err(e) => {
+                    return CheckResult::new(
+                        "dependency-order",
+                        "Required dependency PRs are merged",
+                        CheckStatus::Fail,
+                    )
+                    .with_message(format!("Failed to query PR {}: {}", pr_id, e));
+                }
+            }
+        }
+
+        if all_merged {
+            CheckResult::new(
+                "dependency-order",
+                "Required dependency PRs are merged",
+                CheckStatus::Pass,
+            )
+            .with_message(format!("All {} dependencies are merged", self.depends_on.len()))
+        } else {
+            CheckResult::new(
+                "dependency-order",
+                "Required dependency PRs are merged",
+                CheckStatus::Fail,
+            )
+            .with_message(format!(
+                "Unmerged dependencies: {}",
+                unmerged_prs.join(", ")
+            ))
+        }
     }
 
     /// Check review approval status
