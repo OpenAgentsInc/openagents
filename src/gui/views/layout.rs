@@ -6,6 +6,11 @@ use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
 use base64::Engine;
 use ui::{TAILWIND_CDN, TAILWIND_THEME};
 
+/// Vendored HTMX (no CDN)
+const HTMX_JS: &str = include_str!("../assets/htmx.min.js");
+/// Vendored HTMX WebSocket extension
+const HTMX_WS_JS: &str = include_str!("../assets/htmx-ws.js");
+
 fn vera_mono_font_css() -> &'static str {
     static CSS: OnceLock<String> = OnceLock::new();
     CSS.get_or_init(|| {
@@ -71,8 +76,8 @@ pub fn base_layout_with_token(content: &str, auth_token: Option<&str>) -> String
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>OpenAgents</title>
-    <script src="https://unpkg.com/htmx.org@2.0.4"></script>
-    <script src="https://unpkg.com/htmx-ext-ws@2.0.1/ws.js"></script>
+    <script>{htmx_js}</script>
+    <script>{htmx_ws_js}</script>
     <script>{tailwind_cdn}</script>
     <style type="text/tailwindcss">
         {tailwind_theme}
@@ -104,6 +109,8 @@ pub fn base_layout_with_token(content: &str, auth_token: Option<&str>) -> String
     {content}
 </body>
 </html>"#,
+        htmx_js = HTMX_JS,
+        htmx_ws_js = HTMX_WS_JS,
         tailwind_cdn = TAILWIND_CDN,
         tailwind_theme = TAILWIND_THEME,
         font_css = vera_mono_font_css(),
