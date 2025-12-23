@@ -63,6 +63,10 @@ fn render_parallel_page(
         script src="https://unpkg.com/htmx.org@1.9.10" {}
 
         div class="parallel-container" style="padding: 2rem; max-width: 1200px; margin: 0 auto;" {
+            // Back button
+            a href="/" style="display: inline-block; background: #111; border: 1px solid #333; padding: 0.5rem 0.75rem; color: #888; text-decoration: none; font-size: 0.75rem; font-family: monospace; margin-bottom: 1rem;" {
+                "< Back to Home"
+            }
             h1 style="color: #4a9eff; margin-bottom: 1.5rem;" { "Parallel Agents" }
 
             // Platform info
