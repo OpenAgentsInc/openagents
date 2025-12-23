@@ -220,7 +220,10 @@ async fn repository_detail(
     // Check if repository is cloned locally
     let is_cloned = is_repository_cloned(&identifier);
     let local_path = if is_cloned {
-        Some(get_repository_path(&identifier).to_string_lossy().to_string())
+        match get_repository_path(&identifier) {
+            Ok(path) => Some(path.to_string_lossy().to_string()),
+            Err(_) => None,
+        }
     } else {
         None
     };
@@ -1739,8 +1742,16 @@ async fn pull_request_detail(
 
         if let (Some(commit_id), Some(_clone_url)) = (commit_id, clone_url) {
             // Try to find cloned repo in workspace
-            use crate::git::clone::get_workspace_path;
-            let repo_path = get_workspace_path().join(&identifier);
+            use crate::git::clone::get_repository_path;
+            let repo_path = match get_repository_path(&identifier) {
+                Ok(path) => path,
+                Err(e) => {
+                    tracing::warn!("Invalid repository identifier {}: {}", identifier, e);
+                    return HttpResponse::BadRequest().json(serde_json::json!({
+                        "error": "Invalid repository identifier"
+                    }));
+                }
+            };
 
             if repo_path.exists() {
                 // Try to generate diff for this commit (compare with parent)
@@ -2055,7 +2066,15 @@ async fn clone_repo(
 
     // Check if already cloned
     if is_repository_cloned(&identifier) {
-        let path = get_repository_path(&identifier);
+        let path = match get_repository_path(&identifier) {
+            Ok(p) => p,
+            Err(e) => {
+                tracing::warn!("Invalid repository identifier {}: {}", identifier, e);
+                return HttpResponse::BadRequest()
+                    .content_type("text/html; charset=utf-8")
+                    .body(r#"<div class="error-message"><p>❌ Invalid repository identifier</p></div>"#);
+            }
+        };
         return HttpResponse::Ok()
             .content_type("text/html; charset=utf-8")
             .body(format!(
@@ -2068,7 +2087,15 @@ async fn clone_repo(
     }
 
     // Clone the repository
-    let dest_path = get_repository_path(&identifier);
+    let dest_path = match get_repository_path(&identifier) {
+        Ok(p) => p,
+        Err(e) => {
+            tracing::warn!("Invalid repository identifier {}: {}", identifier, e);
+            return HttpResponse::BadRequest()
+                .content_type("text/html; charset=utf-8")
+                .body(r#"<div class="error-message"><p>❌ Invalid repository identifier</p></div>"#);
+        }
+    };
     match clone_repository(&clone_url, &dest_path, None) {
         Ok(_) => {
             tracing::info!("Successfully cloned repository {} to {:?}", identifier, dest_path);
@@ -2804,7 +2831,7 @@ async fn git_status(
             .body("<h1>Repository not cloned locally</h1><p>Clone the repository first.</p>");
     }
 
-    let repo_path = get_repository_path(&identifier);
+    let repo_path = match get_repository_path(&identifier) { Ok(p) => p, Err(e) => { tracing::warn!("Invalid repository identifier {}: {}", identifier, e); return HttpResponse::BadRequest().json(serde_json::json!({"error": "Invalid repository identifier"})); } };
 
     // Get file status
     match get_status(&repo_path) {
@@ -2862,7 +2889,7 @@ async fn git_branch_create(
             .body("<h1>Repository not cloned locally</h1><p>Clone the repository first.</p>");
     }
 
-    let repo_path = get_repository_path(&identifier);
+    let repo_path = match get_repository_path(&identifier) { Ok(p) => p, Err(e) => { tracing::warn!("Invalid repository identifier {}: {}", identifier, e); return HttpResponse::BadRequest().json(serde_json::json!({"error": "Invalid repository identifier"})); } };
 
     match create_branch(&repo_path, branch_name) {
         Ok(_) => {
@@ -2924,7 +2951,7 @@ async fn git_patch_generate(
             .body("<h1>Repository not cloned locally</h1><p>Clone the repository first.</p>");
     }
 
-    let repo_path = get_repository_path(&identifier);
+    let repo_path = match get_repository_path(&identifier) { Ok(p) => p, Err(e) => { tracing::warn!("Invalid repository identifier {}: {}", identifier, e); return HttpResponse::BadRequest().json(serde_json::json!({"error": "Invalid repository identifier"})); } };
 
     match generate_patch(&repo_path, base_commit, head_commit) {
         Ok(patch) => {
@@ -2963,7 +2990,7 @@ async fn git_patch_apply(
             .body("<h1>Repository not cloned locally</h1><p>Clone the repository first.</p>");
     }
 
-    let repo_path = get_repository_path(&identifier);
+    let repo_path = match get_repository_path(&identifier) { Ok(p) => p, Err(e) => { tracing::warn!("Invalid repository identifier {}: {}", identifier, e); return HttpResponse::BadRequest().json(serde_json::json!({"error": "Invalid repository identifier"})); } };
 
     match apply_patch(&repo_path, patch_content) {
         Ok(_) => {
@@ -3009,7 +3036,7 @@ async fn git_push(
             .body("<h1>Repository not cloned locally</h1><p>Clone the repository first.</p>");
     }
 
-    let repo_path = get_repository_path(&identifier);
+    let repo_path = match get_repository_path(&identifier) { Ok(p) => p, Err(e) => { tracing::warn!("Invalid repository identifier {}: {}", identifier, e); return HttpResponse::BadRequest().json(serde_json::json!({"error": "Invalid repository identifier"})); } };
 
     // Get current branch name
     let branch_name = match current_branch(&repo_path) {
@@ -3089,7 +3116,7 @@ async fn patch_diff_view(
             .body("<h1>Repository not cloned</h1><p>Clone the repository to view diffs.</p>");
     }
 
-    let repo_path = get_repository_path(&identifier);
+    let repo_path = match get_repository_path(&identifier) { Ok(p) => p, Err(e) => { tracing::warn!("Invalid repository identifier {}: {}", identifier, e); return HttpResponse::BadRequest().json(serde_json::json!({"error": "Invalid repository identifier"})); } };
 
     // Generate diff
     let diff_output = match (parent_commit.as_ref(), commit_id.as_ref()) {
@@ -3154,7 +3181,7 @@ async fn pr_diff_view(
             .body("<h1>Repository not cloned</h1><p>Clone the repository to view diffs.</p>");
     }
 
-    let repo_path = get_repository_path(&identifier);
+    let repo_path = match get_repository_path(&identifier) { Ok(p) => p, Err(e) => { tracing::warn!("Invalid repository identifier {}: {}", identifier, e); return HttpResponse::BadRequest().json(serde_json::json!({"error": "Invalid repository identifier"})); } };
 
     // Generate diff
     let diff_output = match (parent_commit.as_ref(), commit_id.as_ref()) {
@@ -3844,7 +3871,15 @@ async fn pr_auto_checks(
 
     // Check if repo is cloned locally
     let repo_path = if is_repository_cloned(&identifier) {
-        get_repository_path(&identifier)
+        match get_repository_path(&identifier) {
+            Ok(p) => p,
+            Err(e) => {
+                tracing::warn!("Invalid repository identifier {}: {}", identifier, e);
+                return HttpResponse::BadRequest()
+                    .content_type("application/json")
+                    .body(r#"{"error": "Invalid repository identifier"}"#);
+            }
+        }
     } else {
         // Can't run local checks without cloned repo
         return HttpResponse::Ok()
