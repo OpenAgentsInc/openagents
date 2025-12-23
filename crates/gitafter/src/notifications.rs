@@ -6,6 +6,33 @@ use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 
+/// Escape a string for safe use in shell commands
+///
+/// This function escapes special characters that could be used for shell injection:
+/// - Double quotes (")
+/// - Single quotes (')
+/// - Backticks (`)
+/// - Dollar signs ($)
+/// - Backslashes (\)
+/// - Newlines and other control characters
+#[allow(dead_code)] // Used in platform-specific code
+fn escape_shell_string(s: &str) -> String {
+    s.chars()
+        .flat_map(|c| match c {
+            '"' => vec!['\\', '"'],
+            '\'' => vec!['\\', '\''],
+            '`' => vec!['\\', '`'],
+            '$' => vec!['\\', '$'],
+            '\\' => vec!['\\', '\\'],
+            '\n' => vec!['\\', 'n'],
+            '\r' => vec!['\\', 'r'],
+            '\t' => vec!['\\', 't'],
+            c if c.is_control() => vec![], // Remove other control characters
+            c => vec![c],
+        })
+        .collect()
+}
+
 /// Notification preferences
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NotificationPreferences {
@@ -164,8 +191,8 @@ impl NotificationManager {
 
         let script = format!(
             r#"display notification "{}" with title "{}" subtitle "GitAfter""#,
-            notification.body.replace('"', "\\\""),
-            notification.title.replace('"', "\\\"")
+            escape_shell_string(&notification.body),
+            escape_shell_string(&notification.title)
         );
 
         Command::new("osascript")
@@ -194,8 +221,8 @@ $Toast.Tag = "GitAfter"
 $Toast.Group = "GitAfter"
 $Notifier = [Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier("GitAfter")
 $Notifier.Show($Toast);"#,
-            notification.title.replace('"', "'"),
-            notification.body.replace('"', "'")
+            escape_shell_string(&notification.title),
+            escape_shell_string(&notification.body)
         );
 
         Command::new("powershell")
@@ -360,6 +387,30 @@ pub async fn send_pr_status_email(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_shell_escaping() {
+        // Test backtick escaping (shell command injection)
+        assert_eq!(escape_shell_string("test`whoami`"), "test\\`whoami\\`");
+
+        // Test command substitution escaping
+        assert_eq!(escape_shell_string("test$(whoami)"), "test\\$(whoami)");
+
+        // Test double quote escaping
+        assert_eq!(escape_shell_string("test\"quote\""), "test\\\"quote\\\"");
+
+        // Test single quote escaping
+        assert_eq!(escape_shell_string("test'quote'"), "test\\'quote\\'");
+
+        // Test backslash escaping
+        assert_eq!(escape_shell_string("test\\backslash"), "test\\\\backslash");
+
+        // Test newline/control character removal
+        assert_eq!(escape_shell_string("test\nline\r\nbreak"), "test\\nline\\r\\nbreak");
+
+        // Test safe strings remain unchanged (except control chars)
+        assert_eq!(escape_shell_string("safe-string_123"), "safe-string_123");
+    }
 
     #[test]
     fn test_default_preferences() {
