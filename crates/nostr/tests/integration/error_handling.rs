@@ -100,7 +100,7 @@ async fn test_connection_to_invalid_url() {
 
 #[tokio::test]
 async fn test_publish_while_disconnected() {
-    let url = "ws://127.0.0.1:17303";
+    let url = "ws://127.0.0.1:17311";
 
     let relay = RelayConnection::new(url).unwrap();
     // Don't connect
@@ -125,7 +125,7 @@ async fn test_publish_while_disconnected() {
 
 #[tokio::test]
 async fn test_subscribe_while_disconnected() {
-    let url = "ws://127.0.0.1:17304";
+    let url = "ws://127.0.0.1:17312";
 
     let relay = RelayConnection::new(url).unwrap();
     // Don't connect
