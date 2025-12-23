@@ -22,6 +22,7 @@
 pub mod client;
 pub mod error;
 pub mod types;
+pub mod backend;
 
 // Re-export main types
 pub use client::{FMClient, FMClientBuilder};
