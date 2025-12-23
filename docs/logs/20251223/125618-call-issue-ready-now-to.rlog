@@ -20,3 +20,6 @@ t!:Bash id=p5sCubTS cmd="cargo run --bin openagents -- autopilot issue r..." →
 o: id=p5sCubTS → [error] Exit code 2
 a: Let me check the correct command structure: tokens_in=6 tokens_out=1 tokens_cached=27152
 t!:Bash id=4Qcj6uP3 cmd="cargo run --bin openagents -- autopilot issue -..." → [running] tokens_in=6 tokens_out=96 tokens_cached=27152
+o: id=4Qcj6uP3 → [ok] Issue management
+a: I need to check if there's an MCP tool for issue_ready. Let me look for ready issues using the list command: tokens_in=5 tokens_out=1 tokens_cached=28531
+t!:Bash id=TCGYwV7C cmd="cargo run --bin openagents -- autopilot issue l..." → [running] tokens_in=5 tokens_out=1 tokens_cached=28531
