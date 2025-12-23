@@ -91,6 +91,10 @@ pub async fn start_server(
             .route("/repo/{identifier}/git/push", web::post().to(git_push))
             .route("/bounty/{bounty_claim_id}/pay", web::post().to(bounty_payment))
             .route("/bounties", web::get().to(bounties_discovery))
+            .route("/notifications", web::get().to(notifications_page))
+            .route("/notifications/unread", web::get().to(unread_notifications_api))
+            .route("/notifications/{notification_id}/read", web::post().to(mark_notification_read))
+            .route("/notifications/mark-all-read", web::post().to(mark_all_notifications_read))
             .route("/ws", web::get().to(ws_route))
     })
     .bind("127.0.0.1:0")?;
@@ -3315,4 +3319,98 @@ async fn bounties_discovery(state: web::Data<AppState>) -> HttpResponse {
     HttpResponse::Ok()
         .content_type("text/html; charset=utf-8")
         .body(bounties_discovery_page(&all_bounties).into_string())
+}
+
+/// Handler for notifications page
+async fn notifications_page(state: web::Data<AppState>) -> HttpResponse {
+    // Get current user's pubkey from identity
+    let user_pubkey = match &state.identity {
+        Some(identity) => identity.nostr_public_key().to_string(),
+        None => {
+            return HttpResponse::Ok()
+                .content_type("text/html; charset=utf-8")
+                .body("<html><body><h1>No identity configured</h1><p>Set AGENTGIT_MNEMONIC to view notifications</p></body></html>");
+        }
+    };
+
+    // Fetch all notifications for this user
+    let notifications = match state.nostr_client.get_notifications(&user_pubkey, 50).await {
+        Ok(notifs) => notifs,
+        Err(e) => {
+            tracing::error!("Failed to fetch notifications: {}", e);
+            vec![]
+        }
+    };
+
+    HttpResponse::Ok()
+        .content_type("text/html; charset=utf-8")
+        .body(crate::views::notifications_page(&notifications).into_string())
+}
+
+/// API endpoint for unread notifications count
+async fn unread_notifications_api(state: web::Data<AppState>) -> HttpResponse {
+    let user_pubkey = match &state.identity {
+        Some(identity) => identity.nostr_public_key().to_string(),
+        None => {
+            return HttpResponse::Ok()
+                .content_type("application/json")
+                .body(r#"{"count": 0}"#);
+        }
+    };
+
+    let count = match state.nostr_client.get_unread_count(&user_pubkey).await {
+        Ok(c) => c,
+        Err(e) => {
+            tracing::error!("Failed to get unread count: {}", e);
+            0
+        }
+    };
+
+    HttpResponse::Ok()
+        .content_type("application/json")
+        .body(format!(r#"{{"count": {}}}"#, count))
+}
+
+/// Handler for marking a notification as read
+async fn mark_notification_read(
+    state: web::Data<AppState>,
+    path: web::Path<String>,
+) -> HttpResponse {
+    let notification_id = path.into_inner();
+
+    match state.nostr_client.mark_notification_read(&notification_id).await {
+        Ok(_) => HttpResponse::Ok()
+            .content_type("application/json")
+            .body(r#"{"success": true}"#),
+        Err(e) => {
+            tracing::error!("Failed to mark notification as read: {}", e);
+            HttpResponse::InternalServerError()
+                .content_type("application/json")
+                .body(r#"{"success": false}"#)
+        }
+    }
+}
+
+/// Handler for marking all notifications as read
+async fn mark_all_notifications_read(state: web::Data<AppState>) -> HttpResponse {
+    let user_pubkey = match &state.identity {
+        Some(identity) => identity.nostr_public_key().to_string(),
+        None => {
+            return HttpResponse::BadRequest()
+                .content_type("application/json")
+                .body(r#"{"success": false, "error": "No identity configured"}"#);
+        }
+    };
+
+    match state.nostr_client.mark_all_notifications_read(&user_pubkey).await {
+        Ok(count) => HttpResponse::Ok()
+            .content_type("application/json")
+            .body(format!(r#"{{"success": true, "count": {}}}"#, count)),
+        Err(e) => {
+            tracing::error!("Failed to mark all notifications as read: {}", e);
+            HttpResponse::InternalServerError()
+                .content_type("application/json")
+                .body(r#"{"success": false}"#)
+        }
+    }
 }
