@@ -204,7 +204,12 @@ pub fn merge_with_defaults(partial_json: &str, project_id: &str) -> ConfigResult
 
     let merged = merge_json_values(defaults_value, partial);
 
-    serde_json::from_value(merged).map_err(|e| ConfigError::ParseError(e.to_string()))
+    let config: ProjectConfig = serde_json::from_value(merged).map_err(|e| ConfigError::ParseError(e.to_string()))?;
+
+    // Validate the merged config
+    validate_config(&config)?;
+
+    Ok(config)
 }
 
 /// Deep merge two JSON values (partial overrides defaults)
@@ -335,5 +340,50 @@ mod tests {
     fn test_config_path() {
         let path = config_path("/project");
         assert_eq!(path.to_str().unwrap(), "/project/.openagents/project.json");
+    }
+
+    #[test]
+    fn test_merge_with_defaults_validates_invalid_max_tasks() {
+        // Attempt to override with invalid max_tasks_per_run = 0
+        let partial = r#"{"maxTasksPerRun": 0}"#;
+        let result = merge_with_defaults(partial, "test");
+
+        assert!(result.is_err());
+        match result {
+            Err(ConfigError::ValidationError(msg)) => {
+                assert!(msg.contains("Max tasks per run must be positive"));
+            }
+            _ => panic!("Expected ValidationError for max_tasks_per_run = 0"),
+        }
+    }
+
+    #[test]
+    fn test_merge_with_defaults_validates_empty_project_id() {
+        // Attempt to override with empty project_id
+        let partial = r#"{"projectId": ""}"#;
+        let result = merge_with_defaults(partial, "test");
+
+        assert!(result.is_err());
+        match result {
+            Err(ConfigError::ValidationError(msg)) => {
+                assert!(msg.contains("Project ID cannot be empty"));
+            }
+            _ => panic!("Expected ValidationError for empty project_id"),
+        }
+    }
+
+    #[test]
+    fn test_merge_with_defaults_validates_empty_branch() {
+        // Attempt to override with empty default branch
+        let partial = r#"{"defaultBranch": ""}"#;
+        let result = merge_with_defaults(partial, "test");
+
+        assert!(result.is_err());
+        match result {
+            Err(ConfigError::ValidationError(msg)) => {
+                assert!(msg.contains("Default branch cannot be empty"));
+            }
+            _ => panic!("Expected ValidationError for empty default_branch"),
+        }
     }
 }
