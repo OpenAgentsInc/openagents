@@ -48,6 +48,10 @@ pub trait LocalModelBackend: Send + Sync {
 }
 
 /// Extension trait for common backend operations.
+///
+/// Provides convenience methods built on top of `LocalModelBackend`.
+/// This trait is automatically implemented for all `LocalModelBackend` implementors.
+#[allow(dead_code)] // Will be used once backends are integrated
 #[async_trait]
 pub trait LocalModelBackendExt: LocalModelBackend {
     /// Execute a simple completion with default parameters.
