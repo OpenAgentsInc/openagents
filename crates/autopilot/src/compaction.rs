@@ -57,14 +57,28 @@ Keep it brief but capture the essential context needed for handoff."#.to_string(
 
         CompactionStrategy::Autonomous => {
             r#"Create a handoff-ready summary for autonomous continuation:
+
+## Core Requirements
 1. Tasks completed (mark clearly as DONE)
 2. Current task in progress (if any, with specific next steps)
 3. Pending tasks from the backlog
-4. Key context needed to continue:
-   - Active files and their purpose
-   - Established patterns to follow
-   - Constraints or requirements
-5. Any blockers or decisions needed
+4. Any blockers or decisions needed
+
+## Critical Context (MUST PRESERVE)
+The following context is frequently lost and severely impacts task completion:
+
+- **File paths**: ALWAYS include specific file paths with line numbers (e.g., `src/main.rs:142`)
+- **Error messages**: ALWAYS include full error messages if any errors occurred
+- **Issue/Directive IDs**: ALWAYS mention active issue numbers (#1234) and directive IDs (d-004)
+- **Test results**: ALWAYS state which tests passed/failed and why
+- **Function/type names**: ALWAYS preserve exact names of functions, structs, types being worked on
+- **Architectural decisions**: ALWAYS explain why certain approaches were chosen over alternatives
+
+## Key Context Details
+- Active files and their purpose (with full paths)
+- Established patterns to follow
+- Constraints or requirements
+- Recent error messages (if any)
 
 Format as a clear action plan that another agent can immediately pick up and continue."#.to_string()
         }

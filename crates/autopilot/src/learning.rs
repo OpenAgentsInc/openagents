@@ -143,6 +143,10 @@ impl<'a> InstructionAnalyzer<'a> {
             }
         }
 
+        // Pattern 4: Context loss after compaction
+        let context_loss_improvements = self.analyze_context_loss(session_ids)?;
+        improvements.extend(context_loss_improvements);
+
         Ok(improvements)
     }
 
@@ -204,6 +208,115 @@ impl<'a> InstructionAnalyzer<'a> {
         }
 
         Ok(tool_failures)
+    }
+
+    /// Analyze context loss patterns across sessions
+    /// Detects when important context is lost after compaction
+    fn analyze_context_loss(&self, session_ids: &[String]) -> Result<Vec<Improvement>> {
+        use crate::context_analysis::{ContextLossAnalyzer, ContextLossInstance, ContextType};
+
+        let mut all_instances = Vec::new();
+
+        // For each session, check if there was context loss
+        for session_id in session_ids {
+            // Look for evidence of repeated questions or errors after compaction
+            if let Ok(tool_calls) = self.db.get_tool_calls(session_id) {
+                // Pattern 1: High frequency of Read tool calls suggests re-reading files
+                let read_count = tool_calls.iter().filter(|c| c.tool_name == "Read").count();
+                let total_calls = tool_calls.len();
+
+                if total_calls > 10 && read_count as f64 / total_calls as f64 > 0.4 {
+                    all_instances.push(ContextLossInstance {
+                        context_type: ContextType::FilePaths,
+                        session_id: session_id.clone(),
+                        evidence: format!(
+                            "{} Read calls out of {} total ({:.1}%) - likely forgetting file context",
+                            read_count, total_calls, (read_count as f64 / total_calls as f64) * 100.0
+                        ),
+                        impact_severity: 7,
+                        caused_failure: false,
+                    });
+                }
+
+                // Pattern 2: Error followed by multiple tool calls suggests forgot error context
+                let mut error_indices = Vec::new();
+                for (i, call) in tool_calls.iter().enumerate() {
+                    if !call.success && call.error_type.is_some() {
+                        error_indices.push(i);
+                    }
+                }
+
+                for error_idx in error_indices {
+                    // Check if there are multiple Read/Glob calls after the error
+                    let subsequent_searches = tool_calls
+                        .iter()
+                        .skip(error_idx + 1)
+                        .take(5)
+                        .filter(|c| c.tool_name == "Read" || c.tool_name == "Glob" || c.tool_name == "Grep")
+                        .count();
+
+                    if subsequent_searches >= 3 {
+                        all_instances.push(ContextLossInstance {
+                            context_type: ContextType::ErrorDetails,
+                            session_id: session_id.clone(),
+                            evidence: format!(
+                                "Error at call {}, then {} search operations - likely forgot error details",
+                                error_idx, subsequent_searches
+                            ),
+                            impact_severity: 8,
+                            caused_failure: true,
+                        });
+                    }
+                }
+
+                // Pattern 3: Repeated Grep calls suggest forgot what was found
+                let grep_count = tool_calls.iter().filter(|c| c.tool_name == "Grep").count();
+                if grep_count > 5 {
+                    all_instances.push(ContextLossInstance {
+                        context_type: ContextType::SymbolNames,
+                        session_id: session_id.clone(),
+                        evidence: format!("{} Grep calls - likely forgot search results", grep_count),
+                        impact_severity: 6,
+                        caused_failure: false,
+                    });
+                }
+            }
+        }
+
+        let report = ContextLossAnalyzer::generate_report(all_instances);
+
+        let mut improvements = Vec::new();
+
+        // If we detected significant context loss, create improvement
+        if report.instances.len() >= 3 {
+            let most_lost = report
+                .frequency_by_type
+                .iter()
+                .max_by_key(|(_, count)| *count)
+                .map(|(ctx_type, _)| ctx_type);
+
+            if let Some(ctx_type) = most_lost {
+                improvements.push(Improvement {
+                    improvement_type: ImprovementType::ContextLoss,
+                    description: format!(
+                        "Detected {} instances of context loss, most frequently: {}",
+                        report.instances.len(),
+                        ctx_type.description()
+                    ),
+                    evidence: report
+                        .instances
+                        .iter()
+                        .take(5)
+                        .map(|i| format!("{}: {}", i.session_id, i.evidence))
+                        .collect(),
+                    proposed_fix: crate::context_analysis::generate_improved_compaction_instructions(&report),
+                    severity: 8,
+                    create_issue: false, // Don't auto-create issue, just update instructions
+                });
+            }
+        }
+
+        Ok(improvements)
     }
 }
 

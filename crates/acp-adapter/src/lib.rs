@@ -36,6 +36,10 @@ pub mod transport;
 
 // Re-export main types
 pub use agent_client_protocol_schema as acp;
+pub use client::{
+    AllowAllPermissions, DenyAllPermissions, OpenAgentsClient, PermissionHandler,
+    UiPermissionHandler,
+};
 pub use connection::AcpAgentConnection;
 pub use error::{AcpError, Result};
 pub use permissions::{
