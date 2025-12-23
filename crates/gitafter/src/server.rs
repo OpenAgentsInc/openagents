@@ -1716,6 +1716,15 @@ async fn pull_request_detail(
         }
     };
 
+    // Fetch PRs that depend on this one (later layers)
+    let dependent_prs = match state.nostr_client.get_dependent_prs(&pr_id).await {
+        Ok(deps) => deps,
+        Err(e) => {
+            tracing::warn!("Failed to fetch dependent PRs for {}: {}", pr_id, e);
+            Vec::new()
+        }
+    };
+
     let is_mergeable = match state.nostr_client.is_pr_mergeable(&pull_request).await {
         Ok(mergeable) => mergeable,
         Err(e) => {
@@ -1859,7 +1868,7 @@ async fn pull_request_detail(
 
     HttpResponse::Ok()
         .content_type("text/html; charset=utf-8")
-        .body(pull_request_detail_page(&repository, &pull_request, &reviews, &reviewer_reputations, &status_events, &identifier, trajectory_session.as_ref(), &trajectory_events, &stack_prs, dependency_pr.as_ref(), is_mergeable, &pr_updates, diff_text.as_deref(), &inline_comments, &bounties).into_string())
+        .body(pull_request_detail_page(&repository, &pull_request, &reviews, &reviewer_reputations, &status_events, &identifier, trajectory_session.as_ref(), &trajectory_events, &stack_prs, dependency_pr.as_ref(), &dependent_prs, is_mergeable, &pr_updates, diff_text.as_deref(), &inline_comments, &bounties).into_string())
 }
 
 /// Trajectory detail page

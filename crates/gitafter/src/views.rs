@@ -1381,7 +1381,7 @@ pub fn patch_detail_page(repository: &Event, patch: &Event, _reviews: &[Event], 
 }
 
 /// Pull request detail page
-pub fn pull_request_detail_page(repository: &Event, pull_request: &Event, reviews: &[Event], reviewer_reputations: &std::collections::HashMap<String, i32>, status_events: &[Event], identifier: &str, trajectory_session: Option<&Event>, trajectory_events: &[Event], stack_prs: &[Event], dependency_pr: Option<&Event>, is_mergeable: bool, pr_updates: &[Event], diff_text: Option<&str>, inline_comments: &[crate::views::diff::InlineComment], bounties: &[Event]) -> Markup {
+pub fn pull_request_detail_page(repository: &Event, pull_request: &Event, reviews: &[Event], reviewer_reputations: &std::collections::HashMap<String, i32>, status_events: &[Event], identifier: &str, trajectory_session: Option<&Event>, trajectory_events: &[Event], stack_prs: &[Event], dependency_pr: Option<&Event>, dependent_prs: &[Event], is_mergeable: bool, pr_updates: &[Event], diff_text: Option<&str>, inline_comments: &[crate::views::diff::InlineComment], bounties: &[Event]) -> Markup {
     let repo_name = get_tag_value(repository, "name").unwrap_or_else(|| "Repository".to_string());
     let pr_title = get_tag_value(pull_request, "subject").unwrap_or_else(|| "Untitled Pull Request".to_string());
     let pr_status = get_tag_value(pull_request, "status").unwrap_or_else(|| "open".to_string());
@@ -1510,6 +1510,57 @@ pub fn pull_request_detail_page(repository: &Event, pull_request: &Event, review
                                                             ul {
                                                                 @for condition in conditions {
                                                                     li { (condition) }
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    // Preview Later Layers section
+                                    @if !dependent_prs.is_empty() {
+                                        div style="margin-top: 16px;" {
+                                            details {
+                                                summary style="cursor: pointer; padding: 12px; background: #f0f9ff; border: 1px solid #bae6fd; font-weight: 600; user-select: none;" {
+                                                    "🔍 Preview Later Layers (" (dependent_prs.len()) ")"
+                                                }
+                                                div style="margin-top: 8px; padding: 12px; background: #f9fafb; border: 1px solid #e5e7eb;" {
+                                                    p style="margin: 0 0 12px 0; color: #6b7280; font-size: 0.875rem;" {
+                                                        "These PRs build on top of this layer. Preview them to understand how your changes fit into the overall stack."
+                                                    }
+                                                    @for dep_pr in dependent_prs {
+                                                        @let dep_title = get_tag_value(dep_pr, "subject").unwrap_or_else(|| "Untitled PR".to_string());
+                                                        @let dep_status = get_tag_value(dep_pr, "status").unwrap_or_else(|| "open".to_string());
+                                                        @let dep_layer = get_all_tag_values(dep_pr, "layer");
+                                                        @let dep_status_emoji = match dep_status.as_str() {
+                                                            "open" => "🟢",
+                                                            "merged" | "applied" => "✅",
+                                                            "closed" => "🔴",
+                                                            "draft" => "📝",
+                                                            _ => "❓"
+                                                        };
+
+                                                        div style="padding: 12px; margin-bottom: 8px; background: white; border: 1px solid #e5e7eb;" {
+                                                            div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 8px;" {
+                                                                div {
+                                                                    @if !dep_layer.is_empty() && dep_layer.len() == 2 {
+                                                                        span style="display: inline-block; padding: 2px 8px; background: #818cf8; color: white; font-size: 0.75rem; margin-right: 8px; font-weight: 600;" {
+                                                                            "Layer " (dep_layer[0]) "/" (dep_layer[1])
+                                                                        }
+                                                                    }
+                                                                    a href={"/repo/" (identifier) "/pulls/" (dep_pr.id)} style="font-weight: 600; color: #0ea5e9;" {
+                                                                        (dep_title)
+                                                                    }
+                                                                }
+                                                                span class={"issue-status " (dep_status)} style="font-size: 0.875rem;" {
+                                                                    (dep_status_emoji) " " (dep_status)
+                                                                }
+                                                            }
+                                                            @if !dep_pr.content.is_empty() {
+                                                                p style="margin: 0; font-size: 0.875rem; color: #6b7280;" {
+                                                                    (dep_pr.content)
                                                                 }
                                                             }
                                                         }

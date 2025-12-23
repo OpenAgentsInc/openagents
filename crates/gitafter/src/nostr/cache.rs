@@ -1828,6 +1828,50 @@ impl EventCache {
         }
     }
 
+    /// Get PRs that depend on the given PR (later layers in a stack)
+    /// Returns PRs that have a depends_on tag referencing this PR's ID
+    pub fn get_dependent_prs(&self, pr_id: &str) -> Result<Vec<Event>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, kind, pubkey, created_at, content, tags, sig
+             FROM events
+             WHERE kind = 1618
+             ORDER BY created_at DESC",
+        )?;
+
+        let events = stmt
+            .query_map([], |row| {
+                let tags_json: String = row.get(5)?;
+                let tags: Vec<Vec<String>> = serde_json::from_str(&tags_json)
+                    .map_err(|e| rusqlite::Error::FromSqlConversionFailure(
+                        5,
+                        rusqlite::types::Type::Text,
+                        Box::new(e),
+                    ))?;
+
+                Ok(Event {
+                    id: row.get(0)?,
+                    kind: row.get(1)?,
+                    pubkey: row.get(2)?,
+                    created_at: row.get(3)?,
+                    content: row.get(4)?,
+                    tags,
+                    sig: row.get(6)?,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+
+        // Filter PRs that have depends_on tag referencing this PR
+        let dependent_prs: Vec<Event> = events.into_iter()
+            .filter(|event| {
+                event.tags.iter().any(|tag| {
+                    tag.len() >= 2 && tag[0] == "depends_on" && tag[1] == pr_id
+                })
+            })
+            .collect();
+
+        Ok(dependent_prs)
+    }
+
     /// Full-text search using FTS5
     pub fn search_content(&self, query: &str, limit: usize) -> Result<Vec<Event>> {
         let mut stmt = self.conn.prepare(
