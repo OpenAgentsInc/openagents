@@ -36,48 +36,53 @@ pub struct AgentInfo {
 /// 1. Create git worktrees for each agent
 /// 2. Start the docker containers
 pub async fn start_agents(count: usize) -> Result<Vec<AgentInfo>> {
-    let project_root = find_project_root()?;
-    let compose_file = project_root.join("docker/autopilot/docker-compose.yml");
+    // Run blocking operations in a separate thread to not block the async runtime
+    tokio::task::spawn_blocking(move || -> Result<()> {
+        let project_root = find_project_root()?;
+        let compose_file = project_root.join("docker/autopilot/docker-compose.yml");
 
-    if !compose_file.exists() {
-        anyhow::bail!("docker-compose.yml not found at {:?}", compose_file);
-    }
+        if !compose_file.exists() {
+            anyhow::bail!("docker-compose.yml not found at {:?}", compose_file);
+        }
 
-    // Create worktrees first
-    super::worktree::create_worktrees(&project_root, count)?;
+        // Create worktrees first
+        super::worktree::create_worktrees(&project_root, count)?;
 
-    // Build services list
-    let services: Vec<String> = (1..=count)
-        .map(|i| format!("agent-{:03}", i))
-        .collect();
+        // Build services list
+        let services: Vec<String> = (1..=count)
+            .map(|i| format!("agent-{:03}", i))
+            .collect();
 
-    // Determine profiles
-    let mut args = vec![
-        "-f".to_string(),
-        compose_file.to_string_lossy().to_string(),
-    ];
+        // Determine profiles
+        let mut args = vec![
+            "-f".to_string(),
+            compose_file.to_string_lossy().to_string(),
+        ];
 
-    if count > 3 {
-        args.extend(["--profile".to_string(), "extended".to_string()]);
-    }
-    if count > 5 {
-        args.extend(["--profile".to_string(), "linux-full".to_string()]);
-    }
+        if count > 3 {
+            args.extend(["--profile".to_string(), "extended".to_string()]);
+        }
+        if count > 5 {
+            args.extend(["--profile".to_string(), "linux-full".to_string()]);
+        }
 
-    args.extend(["up".to_string(), "-d".to_string()]);
-    args.extend(services);
+        args.extend(["up".to_string(), "-d".to_string()]);
+        args.extend(services);
 
-    // Run docker-compose
-    let output = Command::new("docker-compose")
-        .args(&args)
-        .current_dir(&project_root)
-        .output()
-        .context("Failed to run docker-compose")?;
+        // Run docker-compose
+        let output = Command::new("docker-compose")
+            .args(&args)
+            .current_dir(&project_root)
+            .output()
+            .context("Failed to run docker-compose")?;
 
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        anyhow::bail!("docker-compose failed: {}", stderr);
-    }
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            anyhow::bail!("docker-compose failed: {}", stderr);
+        }
+
+        Ok(())
+    }).await.context("spawn_blocking failed")??;
 
     // Return agent info
     list_agents().await
@@ -85,71 +90,77 @@ pub async fn start_agents(count: usize) -> Result<Vec<AgentInfo>> {
 
 /// Stop all agents
 pub async fn stop_agents() -> Result<()> {
-    let project_root = find_project_root()?;
-    let compose_file = project_root.join("docker/autopilot/docker-compose.yml");
+    tokio::task::spawn_blocking(move || -> Result<()> {
+        let project_root = find_project_root()?;
+        let compose_file = project_root.join("docker/autopilot/docker-compose.yml");
 
-    let output = Command::new("docker-compose")
-        .args([
-            "-f", &compose_file.to_string_lossy(),
-            "--profile", "extended",
-            "--profile", "linux-full",
-            "down",
-        ])
-        .current_dir(&project_root)
-        .output()
-        .context("Failed to run docker-compose down")?;
+        let output = Command::new("docker-compose")
+            .args([
+                "-f", &compose_file.to_string_lossy(),
+                "--profile", "extended",
+                "--profile", "linux-full",
+                "down",
+            ])
+            .current_dir(&project_root)
+            .output()
+            .context("Failed to run docker-compose down")?;
 
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        anyhow::bail!("docker-compose down failed: {}", stderr);
-    }
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            anyhow::bail!("docker-compose down failed: {}", stderr);
+        }
+
+        Ok(())
+    }).await.context("spawn_blocking failed")??;
 
     Ok(())
 }
 
 /// List all agents and their status
 pub async fn list_agents() -> Result<Vec<AgentInfo>> {
-    let output = Command::new("docker")
-        .args(["ps", "--format", "{{.Names}}\t{{.Status}}", "-a"])
-        .output()
-        .context("Failed to run docker ps")?;
+    tokio::task::spawn_blocking(move || -> Result<Vec<AgentInfo>> {
+        let output = Command::new("docker")
+            .args(["ps", "--format", "{{.Names}}\t{{.Status}}", "-a"])
+            .output()
+            .context("Failed to run docker ps")?;
 
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let mut agents = Vec::new();
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let mut agents = Vec::new();
 
-    for line in stdout.lines() {
-        let parts: Vec<&str> = line.split('\t').collect();
-        if parts.len() >= 2 {
-            let name = parts[0];
-            let status_str = parts[1];
+        for line in stdout.lines() {
+            let parts: Vec<&str> = line.split('\t').collect();
+            if parts.len() >= 2 {
+                let name = parts[0];
+                let status_str = parts[1];
 
-            // Only include autopilot containers
-            if name.starts_with("autopilot-") {
-                let id = name.strip_prefix("autopilot-").unwrap_or(name);
-                let status = if status_str.contains("Up") {
-                    AgentStatus::Running
-                } else if status_str.contains("Exited") {
-                    AgentStatus::Stopped
-                } else if status_str.contains("Starting") {
-                    AgentStatus::Starting
-                } else {
-                    AgentStatus::Error
-                };
+                // Only include autopilot containers
+                if name.starts_with("autopilot-") {
+                    let id = name.strip_prefix("autopilot-").unwrap_or(name);
+                    let status = if status_str.contains("Up") {
+                        AgentStatus::Running
+                    } else if status_str.contains("Exited") {
+                        AgentStatus::Stopped
+                    } else if status_str.contains("Starting") {
+                        AgentStatus::Starting
+                    } else {
+                        AgentStatus::Error
+                    };
 
-                agents.push(AgentInfo {
-                    id: id.to_string(),
-                    container_name: name.to_string(),
-                    status,
-                    current_issue: None, // TODO: Query from database
-                    uptime_seconds: None, // TODO: Parse from status
-                });
+                    agents.push(AgentInfo {
+                        id: id.to_string(),
+                        container_name: name.to_string(),
+                        status,
+                        current_issue: None, // TODO: Query from database
+                        uptime_seconds: None, // TODO: Parse from status
+                    });
+                }
             }
         }
-    }
 
-    // Sort by ID
-    agents.sort_by(|a, b| a.id.cmp(&b.id));
-    Ok(agents)
+        // Sort by ID
+        agents.sort_by(|a, b| a.id.cmp(&b.id));
+        Ok(agents)
+    }).await.context("spawn_blocking failed")?
 }
 
 /// Get logs for a specific agent
@@ -160,23 +171,26 @@ pub async fn get_logs(agent_id: &str, lines: Option<usize>) -> Result<String> {
         format!("autopilot-{}", agent_id)
     };
 
-    let mut args = vec!["logs".to_string()];
-    if let Some(n) = lines {
-        args.push("--tail".to_string());
-        args.push(n.to_string());
-    }
-    args.push(container_name);
+    let lines = lines;
+    tokio::task::spawn_blocking(move || -> Result<String> {
+        let mut args = vec!["logs".to_string()];
+        if let Some(n) = lines {
+            args.push("--tail".to_string());
+            args.push(n.to_string());
+        }
+        args.push(container_name);
 
-    let output = Command::new("docker")
-        .args(&args)
-        .output()
-        .context("Failed to get docker logs")?;
+        let output = Command::new("docker")
+            .args(&args)
+            .output()
+            .context("Failed to get docker logs")?;
 
-    let logs = String::from_utf8_lossy(&output.stdout);
-    let stderr = String::from_utf8_lossy(&output.stderr);
+        let logs = String::from_utf8_lossy(&output.stdout);
+        let stderr = String::from_utf8_lossy(&output.stderr);
 
-    // Docker logs go to stderr for container stderr
-    Ok(format!("{}{}", logs, stderr))
+        // Docker logs go to stderr for container stderr
+        Ok(format!("{}{}", logs, stderr))
+    }).await.context("spawn_blocking failed")?
 }
 
 /// Find project root by looking for Cargo.toml with [workspace]
