@@ -9,13 +9,13 @@
 ///
 /// #[tokio::main]
 /// async fn main() -> Result<(), Box<dyn std::error::Error>> {
-///     let client = FMClient::new();
+///     let client = FMClient::new()?;
 ///
 ///     let response = client
 ///         .complete("What is the capital of France?", None)
 ///         .await?;
 ///
-///     println!("Response: {}", response.choices[0].text);
+///     println!("Response: {}", response.choices[0].message.content);
 ///     Ok(())
 /// }
 /// ```
