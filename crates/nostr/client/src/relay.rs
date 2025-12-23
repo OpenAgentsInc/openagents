@@ -765,6 +765,9 @@ impl RelayConnection {
         let state = Arc::clone(&self.state);
         let queue = Arc::clone(self.queue.as_ref().unwrap());
         let poll_interval = self.config.queue_poll_interval;
+        let ws = Arc::clone(&self.ws);
+        let health_metrics = Arc::clone(&self.health_metrics);
+        let circuit_breaker = self.circuit_breaker.clone();
 
         // Spawn background task
         let task = tokio::spawn(async move {
@@ -804,9 +807,65 @@ impl RelayConnection {
                         break;
                     }
 
-                    // Note: We can't call send_event here as we don't have a reference to self
-                    // The queue will be retried on next poll or connection
-                    debug!("Queued event {} needs manual retry", event.id);
+                    // Send the event
+                    let msg = json!(["EVENT", event]);
+                    let msg_text = match serde_json::to_string(&msg) {
+                        Ok(text) => text,
+                        Err(e) => {
+                            warn!("Failed to serialize event: {}", e);
+                            if let Err(e) = queue.mark_failed(
+                                queued_msg.id,
+                                &format!("Serialization error: {}", e),
+                            ) {
+                                warn!("Failed to mark queued message as failed: {}", e);
+                            }
+                            continue;
+                        }
+                    };
+
+                    debug!("Sending queued event to {}: {}", url, msg_text);
+
+                    // Send through WebSocket
+                    let mut ws_lock = ws.lock().await;
+                    if let Some(stream) = ws_lock.as_mut() {
+                        match stream.send(Message::Text(msg_text)).await {
+                            Ok(()) => {
+                                info!("Successfully sent queued event: {}", event.id);
+
+                                // Record successful send
+                                let mut metrics = health_metrics.write().await;
+                                metrics.successful_messages += 1;
+                                drop(metrics);
+
+                                circuit_breaker.record_success().await;
+
+                                // Mark as sent in queue
+                                if let Err(e) = queue.mark_sent(queued_msg.id) {
+                                    warn!("Failed to mark message as sent: {}", e);
+                                }
+                            }
+                            Err(e) => {
+                                warn!("Failed to send queued event {}: {}", event.id, e);
+
+                                // Record failure
+                                let mut metrics = health_metrics.write().await;
+                                metrics.failed_messages += 1;
+                                metrics.last_error = Some(e.to_string());
+                                drop(metrics);
+
+                                circuit_breaker.record_failure().await;
+
+                                // Mark as failed in queue (will retry if under limit)
+                                if let Err(e) = queue.mark_failed(queued_msg.id, &e.to_string()) {
+                                    warn!("Failed to mark message as failed: {}", e);
+                                }
+                            }
+                        }
+                    } else {
+                        debug!("WebSocket not available, will retry later");
+                        break;
+                    }
+                    drop(ws_lock);
                 }
 
                 // Sleep before next poll
