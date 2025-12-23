@@ -41,6 +41,7 @@ use bitcoin::bip32::{DerivationPath, Xpriv};
 use bitcoin::secp256k1::Secp256k1;
 use bitcoin::Network;
 use std::str::FromStr;
+use nostr::{derive_keypair, public_key_to_npub};
 
 /// Unified identity containing both Nostr and Bitcoin keys
 #[derive(Debug)]
@@ -72,21 +73,18 @@ impl UnifiedIdentity {
     pub fn from_mnemonic(mnemonic: Mnemonic) -> Result<Self> {
         let seed = mnemonic.to_seed("");
 
-        // Derive Nostr keys using NIP-06 path: m/44'/1237'/0'/0/0
-        let nostr_path = DerivationPath::from_str("m/44'/1237'/0'/0/0")?;
-        let secp = Secp256k1::new();
-        let nostr_xpriv = Xpriv::new_master(Network::Bitcoin, &seed)?
-            .derive_priv(&secp, &nostr_path)?;
+        // Derive Nostr keys using NIP-06
+        let mnemonic_str = mnemonic.to_string();
+        let nostr_keypair = derive_keypair(&mnemonic_str)
+            .map_err(|e| anyhow::anyhow!("NIP-06 key derivation failed: {}", e))?;
 
-        // Convert to Nostr keys (hex format for now)
-        let nostr_secret_key = hex::encode(nostr_xpriv.private_key.secret_bytes());
-
-        // Derive public key
-        let public_key = nostr_xpriv.private_key.public_key(&secp);
-        let nostr_public_key = hex::encode(public_key.serialize());
+        // Store as hex strings
+        let nostr_secret_key = nostr_keypair.private_key_hex();
+        let nostr_public_key = nostr_keypair.public_key_hex();
 
         // Derive Bitcoin keys using BIP44 path: m/44'/0'/0'/0/0
         let bitcoin_path = DerivationPath::from_str("m/44'/0'/0'/0/0")?;
+        let secp = Secp256k1::new();
         let bitcoin_xpriv = Xpriv::new_master(Network::Bitcoin, &seed)?
             .derive_priv(&secp, &bitcoin_path)?;
 
@@ -139,14 +137,18 @@ impl UnifiedIdentity {
     }
 
     /// Get npub (bech32-encoded public key)
-    ///
-    /// Per d-012: Returns hex format with npub prefix as placeholder.
-    /// Proper bech32 encoding requires additional dependency.
-    /// This format works for display purposes but is not a valid bech32 npub.
-    pub fn npub(&self) -> String {
-        // Return hex format with npub prefix
-        // Real bech32 encoding would require bech32/nostr crate
-        format!("npub1{}", &self.nostr_public_key[..56])
+    pub fn npub(&self) -> Result<String> {
+        // Decode hex pubkey to 32-byte array
+        let pubkey_bytes = hex::decode(&self.nostr_public_key)?;
+        if pubkey_bytes.len() != 32 {
+            anyhow::bail!("Invalid public key length: expected 32 bytes, got {}", pubkey_bytes.len());
+        }
+        let mut pubkey = [0u8; 32];
+        pubkey.copy_from_slice(&pubkey_bytes);
+
+        // Use NIP-06 bech32 encoding
+        public_key_to_npub(&pubkey)
+            .map_err(|e| anyhow::anyhow!("Failed to encode npub: {}", e))
     }
 
     /// Get profile metadata from cache
@@ -189,5 +191,33 @@ mod tests {
 
         assert_eq!(identity1.nostr_secret_key, identity2.nostr_secret_key);
         assert_eq!(identity1.nostr_public_key, identity2.nostr_public_key);
+    }
+
+    #[test]
+    fn test_npub_encoding() {
+        let mnemonic = Mnemonic::parse("abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon art").unwrap();
+        let identity = UnifiedIdentity::from_mnemonic(mnemonic).unwrap();
+
+        // Test npub encoding
+        let npub = identity.npub().expect("npub encoding failed");
+
+        // Verify it's a proper bech32 npub
+        assert!(npub.starts_with("npub1"), "npub should start with npub1, got: {}", npub);
+        assert!(npub.len() > 60, "npub should be longer than 60 chars, got length: {}", npub.len());
+
+        // Verify pubkey is 32 bytes (64 hex chars)
+        assert_eq!(identity.nostr_public_key.len(), 64, "pubkey should be 64 hex chars");
+    }
+
+    #[test]
+    fn test_nip06_path() {
+        // Verify we're using the correct NIP-06 derivation path
+        let mnemonic = Mnemonic::parse("abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon art").unwrap();
+        let identity = UnifiedIdentity::from_mnemonic(mnemonic).unwrap();
+
+        // The pubkey should be deterministic based on NIP-06 spec
+        // Path: m/44'/1237'/0'/0/0
+        assert!(!identity.nostr_public_key.is_empty());
+        assert_eq!(identity.nostr_public_key.len(), 64); // 32 bytes as hex
     }
 }

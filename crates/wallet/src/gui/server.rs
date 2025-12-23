@@ -43,7 +43,10 @@ async fn index(state: web::Data<AppState>) -> ActixResult<HttpResponse> {
     match &state.identity {
         Some(identity) => {
             // Get npub
-            let npub = identity.npub();
+            let npub = identity.npub().unwrap_or_else(|e| {
+                tracing::warn!("Failed to encode npub: {}", e);
+                "npub_error".to_string()
+            });
 
             // Get balance (placeholder - will integrate with Spark)
             let balance_sats = 0u64;
