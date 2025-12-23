@@ -13,7 +13,7 @@ use crate::trajectory::MatchStatus;
 pub use publish_status::{publish_status_notification, publish_status_styles};
 
 /// Helper function to extract tag value from event
-fn get_tag_value(event: &Event, tag_name: &str) -> Option<String> {
+pub fn get_tag_value(event: &Event, tag_name: &str) -> Option<String> {
     event.tags.iter()
         .find(|tag| tag.first().map(|t| t == tag_name).unwrap_or(false))
         .and_then(|tag| tag.get(1).cloned())
@@ -1766,6 +1766,9 @@ pub fn pull_request_detail_page(repository: &Event, pull_request: &Event, review
                                     button.submit-button type="submit" { "Submit Review" }
                                 }
                             }
+
+                            // Automated review checklist
+                            (review_checklist_component(identifier, &pull_request.id))
 
                             @if !all_tags.is_empty() {
                                 section.issue-section {
@@ -3877,6 +3880,31 @@ pub fn notifications_page(notifications: &[crate::nostr::cache::Notification]) -
                 }
                 footer {
                     p { "Powered by NIP-34 (Git Stuff) • NIP-SA (Sovereign Agents)" }
+                }
+            }
+        }
+    }
+}
+
+/// Render automated review checklist component
+pub fn review_checklist_component(identifier: &str, pr_id: &str) -> Markup {
+    html! {
+        section.review-checklist id="review-checklist" {
+            h2 { "📋 Automated Review Checklist" }
+
+            div.checklist-container
+                hx-get={"/repo/" (identifier) "/pulls/" (pr_id) "/auto-checks"}
+                hx-trigger="load"
+                hx-swap="innerHTML" {
+                div.loading-state style="padding: 2rem; text-align: center; color: #6b7280;" {
+                    "⋯ Running automated checks..."
+                }
+            }
+
+            div.checklist-help style="margin-top: 1rem; padding: 1rem; background: #1e293b; border-left: 3px solid #3b82f6;" {
+                p style="margin: 0; font-size: 0.875rem; color: #cbd5e1;" {
+                    "ℹ️ These checks run automatically when the repository is cloned locally. "
+                    "Results are refreshed on page load."
                 }
             }
         }

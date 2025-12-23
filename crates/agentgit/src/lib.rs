@@ -4,6 +4,7 @@ pub mod git;
 pub mod nostr;
 pub mod notifications;
 pub mod reputation;
+pub mod review;
 pub mod stacks;
 pub mod trajectory;
 pub mod views;

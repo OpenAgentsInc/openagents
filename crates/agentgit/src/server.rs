@@ -73,6 +73,7 @@ pub async fn start_server(
             .route("/repo/{identifier}/pulls/{pr_id}/diff", web::get().to(pr_diff_view))
             .route("/repo/{identifier}/pulls/{pr_id}/review", web::post().to(pr_review_submit))
             .route("/repo/{identifier}/pulls/{pr_id}/status", web::post().to(pr_status_change))
+            .route("/repo/{identifier}/pulls/{pr_id}/auto-checks", web::get().to(pr_auto_checks))
             .route("/trajectory/{session_id}", web::get().to(trajectory_detail))
             .route("/agent/{pubkey}", web::get().to(agent_profile))
             .route("/agents", web::get().to(agents_list))
@@ -3413,4 +3414,133 @@ async fn mark_all_notifications_read(state: web::Data<AppState>) -> HttpResponse
                 .body(r#"{"success": false}"#)
         }
     }
+}
+
+/// Run automated checks for a PR
+async fn pr_auto_checks(
+    state: web::Data<AppState>,
+    path: web::Path<(String, String)>,
+) -> HttpResponse {
+    use agentgit::review::AutoCheckRunner;
+
+    let (identifier, pr_id) = path.into_inner();
+
+    // Fetch the PR to get trajectory and dependency info
+    let pull_request = match state.nostr_client.get_cached_event(&pr_id).await {
+        Ok(Some(pr)) => pr,
+        Ok(None) => {
+            return HttpResponse::NotFound()
+                .content_type("application/json")
+                .body(r#"{"error": "Pull request not found"}"#);
+        }
+        Err(e) => {
+            tracing::error!("Failed to fetch PR: {}", e);
+            return HttpResponse::InternalServerError()
+                .content_type("application/json")
+                .body(r#"{"error": "Failed to fetch pull request"}"#);
+        }
+    };
+
+    // Check if repo is cloned locally
+    let repo_path = if is_repository_cloned(&identifier) {
+        get_repository_path(&identifier)
+    } else {
+        // Can't run local checks without cloned repo
+        return HttpResponse::Ok()
+            .content_type("application/json")
+            .body(r#"{"checks": [], "message": "Repository not cloned locally - clone to enable automated checks"}"#);
+    };
+
+    // Extract trajectory session ID
+    let trajectory_session_id = crate::views::get_tag_value(&pull_request, "trajectory");
+
+    // Extract dependencies
+    let depends_on = pull_request.tags.iter()
+        .filter(|tag| tag.first().map(|t| t == "depends_on").unwrap_or(false))
+        .filter_map(|tag| tag.get(1).cloned())
+        .collect::<Vec<_>>();
+
+    // Build and run auto-check runner
+    let mut runner = AutoCheckRunner::new(&repo_path, &pr_id);
+
+    if let Some(trajectory_id) = trajectory_session_id {
+        runner = runner.with_trajectory(trajectory_id);
+    }
+
+    if !depends_on.is_empty() {
+        runner = runner.with_dependencies(depends_on);
+    }
+
+    let results = runner.run_all().await;
+
+    // Render results as HTML component
+    use maud::{html, Markup};
+    use agentgit::review::CheckStatus;
+
+    let html_body: Markup = html! {
+        div.check-results {
+            @if results.is_empty() {
+                div.info-message style="padding: 1rem; background: #fef3c7; border-left: 4px solid #f59e0b;" {
+                    "⚠️ Repository not cloned locally. Clone to enable automated checks."
+                }
+            } @else {
+                @for check in &results {
+                    div.check-item style=(format!(
+                        "padding: 0.75rem 1rem; margin-bottom: 0.5rem; background: #1e293b; border-left: 3px solid {};",
+                        match check.status {
+                            CheckStatus::Pass => "#10b981",
+                            CheckStatus::Fail => "#ef4444",
+                            CheckStatus::Skip => "#6b7280",
+                            CheckStatus::Running => "#3b82f6",
+                            CheckStatus::Pending => "#94a3b8",
+                        }
+                    )) {
+                        div style="display: flex; justify-content: space-between; align-items: center;" {
+                            div {
+                                span.check-status style="font-weight: 600; margin-right: 0.75rem;" {
+                                    (check.status.to_string())
+                                }
+                                span.check-name style="color: #e2e8f0;" {
+                                    (check.name)
+                                }
+                            }
+                            @if let Some(duration) = check.duration_ms {
+                                span.check-duration style="font-size: 0.875rem; color: #94a3b8;" {
+                                    (format!("{}ms", duration))
+                                }
+                            }
+                        }
+                        @if let Some(message) = &check.message {
+                            div.check-message style="margin-top: 0.5rem; font-size: 0.875rem; color: #cbd5e1; padding-left: 2.5rem;" {
+                                (message)
+                            }
+                        }
+                    }
+                }
+
+                div.check-summary style="margin-top: 1.5rem; padding: 1rem; background: #0f172a; display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 1rem;" {
+                    @let pass_count = results.iter().filter(|c| matches!(c.status, CheckStatus::Pass)).count();
+                    @let fail_count = results.iter().filter(|c| matches!(c.status, CheckStatus::Fail)).count();
+                    @let skip_count = results.iter().filter(|c| matches!(c.status, CheckStatus::Skip)).count();
+
+                    div.summary-item {
+                        p style="margin: 0; font-size: 0.75rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em;" { "Passed" }
+                        p style="margin: 0.25rem 0 0 0; font-size: 1.5rem; font-weight: 700; color: #10b981;" { (pass_count) }
+                    }
+                    div.summary-item {
+                        p style="margin: 0; font-size: 0.75rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em;" { "Failed" }
+                        p style="margin: 0.25rem 0 0 0; font-size: 1.5rem; font-weight: 700; color: #ef4444;" { (fail_count) }
+                    }
+                    div.summary-item {
+                        p style="margin: 0; font-size: 0.75rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em;" { "Skipped" }
+                        p style="margin: 0.25rem 0 0 0; font-size: 1.5rem; font-weight: 700; color: #6b7280;" { (skip_count) }
+                    }
+                }
+            }
+        }
+    };
+
+    HttpResponse::Ok()
+        .content_type("text/html; charset=utf-8")
+        .body(html_body.into_string())
 }
