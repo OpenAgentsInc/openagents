@@ -566,6 +566,7 @@ pub(crate) fn sessions_table(sessions: &[SessionMetrics]) -> Markup {
                             th { "Tokens" }
                             th { "Cost" }
                             th { "Issues" }
+                            th { "Velocity" }
                             th { "Status" }
                         }
                     }
@@ -592,6 +593,14 @@ fn session_row(session: &SessionMetrics) -> Markup {
 
     let total_tokens = session.tokens_in + session.tokens_out;
 
+    // Calculate velocity: issues completed per hour
+    let velocity_score = if session.duration_seconds > 0.0 {
+        let hours = session.duration_seconds / 3600.0;
+        session.issues_completed as f64 / hours
+    } else {
+        0.0
+    };
+
     html! {
         tr class=(status_class) {
             td {
@@ -605,6 +614,13 @@ fn session_row(session: &SessionMetrics) -> Markup {
             td { (format!("{}", total_tokens)) }
             td { "$" (format!("{:.3}", session.cost_usd)) }
             td { (session.issues_completed) "/" (session.issues_claimed) }
+            td title="Issues completed per hour" {
+                @if velocity_score > 0.0 {
+                    (format!("{:.2}", velocity_score))
+                } @else {
+                    span style="color: #666;" { "—" }
+                }
+            }
             td { (format!("{:?}", session.final_status)) }
         }
     }
