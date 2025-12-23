@@ -10,3 +10,5 @@ mod nip19_properties;
 mod nip90_integration;
 #[cfg(test)]
 mod event_validation;
+#[cfg(test)]
+mod event_properties;
