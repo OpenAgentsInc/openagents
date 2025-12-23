@@ -837,11 +837,12 @@ impl McpServer {
         };
 
         // Build output with progress
-        let output: Vec<Value> = filtered
+        let output: Result<Vec<Value>, String> = filtered
             .iter()
             .map(|d| {
-                let progress = issues::directive::calculate_progress(conn, &d.id);
-                json!({
+                let progress = issues::directive::calculate_progress(conn, &d.id)
+                    .map_err(|e| e.to_string())?;
+                Ok(json!({
                     "id": d.id,
                     "title": d.title,
                     "status": d.status.as_str(),
@@ -850,9 +851,10 @@ impl McpServer {
                     "needs_work": progress.needs_work(),
                     "is_complete": progress.is_complete(),
                     "created": d.created.to_string()
-                })
+                }))
             })
             .collect();
+        let output = output?;
 
         serde_json::to_string_pretty(&output).map_err(|e| e.to_string())
     }
@@ -868,7 +870,8 @@ impl McpServer {
             .map_err(|e| e.to_string())?
             .ok_or(format!("Directive '{}' not found", id))?;
 
-        let progress = issues::directive::calculate_progress(conn, &directive.id);
+        let progress = issues::directive::calculate_progress(conn, &directive.id)
+            .map_err(|e| e.to_string())?;
         let linked_issues = issues::directive::list_issues_by_directive(conn, &directive.id)
             .map_err(|e| e.to_string())?;
 
