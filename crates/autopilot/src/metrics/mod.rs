@@ -1320,6 +1320,169 @@ impl MetricsDb {
     pub fn connection(&self) -> &Connection {
         &self.conn
     }
+
+    /// Get aggregate metrics for a specific issue
+    pub fn get_issue_metrics(&self, issue_number: i32) -> Result<Option<IssueAggregateMetrics>> {
+        let mut stmt = self.conn.prepare(
+            r#"
+            SELECT
+                COUNT(*) as sessions_count,
+                SUM(duration_seconds) as total_duration,
+                AVG(duration_seconds) as avg_duration,
+                SUM(tokens_in + tokens_out) as total_tokens,
+                AVG(tokens_in + tokens_out) as avg_tokens,
+                SUM(cost_usd) as total_cost,
+                AVG(cost_usd) as avg_cost,
+                SUM(tool_calls) as tool_calls,
+                SUM(tool_errors) as tool_errors
+            FROM sessions
+            WHERE issue_numbers LIKE '%' || ?1 || '%'
+            "#,
+        )?;
+
+        let result = stmt.query_row([issue_number], |row| {
+            let sessions_count: i32 = row.get(0)?;
+            if sessions_count == 0 {
+                return Ok(None);
+            }
+
+            let tool_calls: i32 = row.get(7)?;
+            let tool_errors: i32 = row.get(8)?;
+            let error_rate = if tool_calls > 0 {
+                (tool_errors as f64 / tool_calls as f64) * 100.0
+            } else {
+                0.0
+            };
+
+            Ok(Some(IssueAggregateMetrics {
+                issue_number,
+                sessions_count,
+                total_duration_seconds: row.get(1)?,
+                avg_duration_seconds: row.get(2)?,
+                total_tokens: row.get(3)?,
+                avg_tokens: row.get(4)?,
+                total_cost_usd: row.get(5)?,
+                avg_cost_usd: row.get(6)?,
+                tool_calls,
+                tool_errors,
+                error_rate,
+            }))
+        })?;
+
+        Ok(result)
+    }
+
+    /// Get aggregate metrics for a specific directive
+    pub fn get_directive_metrics(&self, directive_id: &str) -> Result<Option<DirectiveAggregateMetrics>> {
+        let mut stmt = self.conn.prepare(
+            r#"
+            SELECT
+                COUNT(*) as sessions_count,
+                SUM(issues_completed) as issues_completed,
+                SUM(duration_seconds) as total_duration,
+                AVG(duration_seconds) as avg_duration,
+                SUM(tokens_in + tokens_out) as total_tokens,
+                AVG(tokens_in + tokens_out) as avg_tokens,
+                SUM(cost_usd) as total_cost,
+                AVG(cost_usd) as avg_cost,
+                SUM(tool_calls) as tool_calls,
+                SUM(tool_errors) as tool_errors
+            FROM sessions
+            WHERE directive_id = ?1
+            "#,
+        )?;
+
+        let result = stmt.query_row([directive_id], |row| {
+            let sessions_count: i32 = row.get(0)?;
+            if sessions_count == 0 {
+                return Ok(None);
+            }
+
+            let tool_calls: i32 = row.get(8)?;
+            let tool_errors: i32 = row.get(9)?;
+            let error_rate = if tool_calls > 0 {
+                (tool_errors as f64 / tool_calls as f64) * 100.0
+            } else {
+                0.0
+            };
+
+            Ok(Some(DirectiveAggregateMetrics {
+                directive_id: directive_id.to_string(),
+                sessions_count,
+                issues_completed: row.get(1)?,
+                total_duration_seconds: row.get(2)?,
+                avg_duration_seconds: row.get(3)?,
+                total_tokens: row.get(4)?,
+                avg_tokens: row.get(5)?,
+                total_cost_usd: row.get(6)?,
+                avg_cost_usd: row.get(7)?,
+                tool_calls,
+                tool_errors,
+                error_rate,
+            }))
+        })?;
+
+        Ok(result)
+    }
+
+    /// Get all issue metrics
+    pub fn get_all_issue_metrics(&self) -> Result<Vec<IssueAggregateMetrics>> {
+        // This is a simplified implementation - it gets unique issue numbers
+        // and then calls get_issue_metrics for each
+        let mut stmt = self.conn.prepare(
+            r#"
+            SELECT DISTINCT issue_numbers
+            FROM sessions
+            WHERE issue_numbers IS NOT NULL
+            "#,
+        )?;
+
+        let issue_numbers_raw: Vec<String> = stmt
+            .query_map([], |row| row.get(0))?
+            .collect::<Result<Vec<_>, _>>()?;
+
+        let mut metrics = Vec::new();
+        for issue_str in issue_numbers_raw {
+            // Parse comma-separated issue numbers
+            for num_str in issue_str.split(',') {
+                if let Ok(num) = num_str.trim().parse::<i32>() {
+                    if let Some(metric) = self.get_issue_metrics(num)? {
+                        metrics.push(metric);
+                    }
+                }
+            }
+        }
+
+        // Deduplicate by issue_number
+        metrics.sort_by_key(|m| m.issue_number);
+        metrics.dedup_by_key(|m| m.issue_number);
+
+        Ok(metrics)
+    }
+
+    /// Get all directive metrics
+    pub fn get_all_directive_metrics(&self) -> Result<Vec<DirectiveAggregateMetrics>> {
+        let mut stmt = self.conn.prepare(
+            r#"
+            SELECT DISTINCT directive_id
+            FROM sessions
+            WHERE directive_id IS NOT NULL
+            "#,
+        )?;
+
+        let directive_ids: Vec<String> = stmt
+            .query_map([], |row| row.get(0))?
+            .collect::<Result<Vec<_>, _>>()?;
+
+        let mut metrics = Vec::new();
+        for id in directive_ids {
+            if let Some(metric) = self.get_directive_metrics(&id)? {
+                metrics.push(metric);
+            }
+        }
+
+        Ok(metrics)
+    }
 }
 
 /// Get default metrics database path
