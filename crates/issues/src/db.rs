@@ -6,7 +6,7 @@ use tracing::{debug, error, info};
 
 /// Current schema version
 #[allow(dead_code)]
-const SCHEMA_VERSION: i32 = 9;
+const SCHEMA_VERSION: i32 = 10;
 
 /// Initialize the database with migrations
 pub fn init_db(path: &Path) -> Result<Connection> {
@@ -55,6 +55,9 @@ pub fn init_db(path: &Path) -> Result<Connection> {
     if version < 9 {
         migrate_v9(&conn)?;
     }
+    if version < 10 {
+        migrate_v10(&conn)?;
+    }
 
     Ok(conn)
 }
@@ -92,6 +95,9 @@ pub fn init_memory_db() -> Result<Connection> {
     }
     if version < 9 {
         migrate_v9(&conn)?;
+    }
+    if version < 10 {
+        migrate_v10(&conn)?;
     }
 
     Ok(conn)
@@ -409,6 +415,20 @@ fn migrate_v9(conn: &Connection) -> Result<()> {
 
     set_schema_version(conn, 9)?;
     info!("Migration v9 completed successfully");
+    Ok(())
+}
+
+fn migrate_v10(conn: &Connection) -> Result<()> {
+    info!("Running migration v10");
+    // Add index on claimed_by column for efficient claim expiry queries
+    conn.execute_batch(
+        r#"
+        CREATE INDEX IF NOT EXISTS idx_issues_claimed_by ON issues(claimed_by);
+        "#,
+    )?;
+
+    set_schema_version(conn, 10)?;
+    info!("Migration v10 completed successfully");
     info!("Database initialized successfully at schema version {}", SCHEMA_VERSION);
     Ok(())
 }
