@@ -71,12 +71,15 @@ pub async fn start_server() -> anyhow::Result<u16> {
 async fn poll_daemon_status(state: web::Data<AppState>) {
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tokio::net::UnixStream;
+    use tracing::info;
     use ui::DaemonStatus;
 
     let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
     let socket_path = std::path::PathBuf::from(&home)
         .join(".autopilot")
         .join("autopilotd.sock");
+
+    info!("Daemon poller started, watching socket: {:?}", socket_path);
 
     loop {
         // Try to connect and get status
@@ -98,6 +101,13 @@ async fn poll_daemon_status(state: web::Data<AppState>) {
         // Build daemon status HTML for WebSocket broadcast
         let daemon_status = match &result {
             Ok(response) => {
+                let worker_status = response
+                    .get("data")
+                    .and_then(|d| d.get("worker_status"))
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("unknown");
+                info!("Daemon poller: connected, worker_status={}", worker_status);
+
                 if let Some(data) = response.get("data") {
                     let mut ds = DaemonStatus::connected();
                     if let Some(status) = data.get("worker_status").and_then(|v| v.as_str()) {
@@ -122,7 +132,8 @@ async fn poll_daemon_status(state: web::Data<AppState>) {
                     DaemonStatus::disconnected().error("Invalid response")
                 }
             }
-            Err(_) => {
+            Err(e) => {
+                info!("Daemon poller: not connected ({})", e);
                 DaemonStatus::disconnected().error("Daemon not running")
             }
         };
@@ -132,7 +143,8 @@ async fn poll_daemon_status(state: web::Data<AppState>) {
             r#"<div id="daemon-status-content" hx-swap-oob="innerHTML">{}</div>"#,
             daemon_status.build().into_string()
         );
-        state.broadcaster.broadcast(&html);
+        let client_count = state.broadcaster.broadcast(&html);
+        info!("Daemon poller: broadcast to {} clients", client_count);
 
         // Also update state for initial page load
         match result {

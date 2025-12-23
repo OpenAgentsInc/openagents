@@ -17,8 +17,11 @@ impl WsBroadcaster {
     }
 
     /// Broadcast HTML fragment to all connected clients
-    pub fn broadcast(&self, html: &str) {
+    /// Returns the number of connected clients
+    pub fn broadcast(&self, html: &str) -> usize {
+        let count = self.sender.receiver_count();
         let _ = self.sender.send(html.to_string());
+        count
     }
 
     pub fn subscribe(&self) -> broadcast::Receiver<String> {
