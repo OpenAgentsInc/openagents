@@ -103,9 +103,10 @@ pub fn generate_weekly_report(db: &MetricsDb) -> Result<WeeklyReport> {
     // Get week boundaries
     let (week_start, week_end) = current_week_period.bounds();
 
-    // Get personal bests achieved this week
-    let all_bests = db.get_all_personal_bests()?;
-    let personal_bests_achieved: Vec<crate::metrics::PersonalBest> = all_bests
+    // Get personal bests achieved this week (handle case where table doesn't exist yet)
+    let personal_bests_achieved: Vec<crate::metrics::PersonalBest> = db
+        .get_all_personal_bests()
+        .unwrap_or_else(|_| vec![])
         .into_iter()
         .filter(|best| best.timestamp >= week_start && best.timestamp <= week_end)
         .collect();
