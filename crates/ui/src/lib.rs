@@ -9,7 +9,7 @@
 //!
 //! 1. **Tailwind-first**: All styling via Tailwind classes, no inline styles
 //! 2. **Semantic colors**: Use `bg-background`, `text-foreground`, etc. - never `bg-zinc-900`
-//! 3. **Sharp corners**: No border-radius (enforced by pre-push hook)
+//! 3. **Sharp corners**: No rounded corners (enforced by pre-push hook)
 //! 4. **Monospace**: Vera Mono / system monospace fonts
 //!
 //! # Quick Start
