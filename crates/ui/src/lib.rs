@@ -26,6 +26,7 @@
 //! });
 //! ```
 
+mod agent_selector;
 mod button;
 mod chat_pane;
 mod claude_status;
@@ -38,6 +39,7 @@ mod log_pane;
 mod permission_modal;
 pub mod recorder;
 
+pub use agent_selector::{AgentInfo, AgentSelector, AgentType};
 pub use button::{Button, ButtonSize, ButtonVariant};
 pub use chat_pane::{ChatPane, ChatViewMode};
 pub use claude_status::ClaudeStatus;
