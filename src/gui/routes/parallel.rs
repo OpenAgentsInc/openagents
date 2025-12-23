@@ -2,7 +2,7 @@
 
 use actix_web::{web, HttpResponse};
 use maud::{html, Markup};
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use tracing::info;
 
 pub fn configure(cfg: &mut web::ServiceConfig) {
@@ -20,12 +20,6 @@ pub fn configure_api(cfg: &mut web::ServiceConfig) {
 #[derive(Debug, Deserialize)]
 struct StartAgentsForm {
     count: Option<usize>,
-}
-
-#[derive(Debug, Serialize)]
-struct AgentResponse {
-    success: bool,
-    message: Option<String>,
 }
 
 /// Parallel agents management page
@@ -229,16 +223,15 @@ async fn start_agents(form: web::Form<StartAgentsForm>) -> HttpResponse {
 
     match autopilot::parallel::start_agents(count).await {
         Ok(_agents) => {
-            HttpResponse::Ok().json(AgentResponse {
-                success: true,
-                message: Some(format!("Started {} agents", count)),
-            })
+            HttpResponse::Ok()
+                .content_type("text/html")
+                .body(format!(r#"<p style="color: #7dff7d; margin: 0;">Started {} agents</p>"#, count))
         }
         Err(e) => {
-            HttpResponse::InternalServerError().json(AgentResponse {
-                success: false,
-                message: Some(format!("Failed to start agents: {}", e)),
-            })
+            tracing::error!("Failed to start agents: {}", e);
+            HttpResponse::Ok()
+                .content_type("text/html")
+                .body(format!(r#"<p style="color: #ff7d7d; margin: 0;">Error: {}</p>"#, html_escape(&e.to_string())))
         }
     }
 }
@@ -248,14 +241,17 @@ async fn stop_agents() -> HttpResponse {
     info!("Stopping all parallel agents");
 
     match autopilot::parallel::stop_agents().await {
-        Ok(_) => HttpResponse::Ok().json(AgentResponse {
-            success: true,
-            message: Some("All agents stopped".to_string()),
-        }),
-        Err(e) => HttpResponse::InternalServerError().json(AgentResponse {
-            success: false,
-            message: Some(format!("Failed to stop agents: {}", e)),
-        }),
+        Ok(_) => {
+            HttpResponse::Ok()
+                .content_type("text/html")
+                .body(r#"<p style="color: #7dff7d; margin: 0;">All agents stopped</p>"#)
+        }
+        Err(e) => {
+            tracing::error!("Failed to stop agents: {}", e);
+            HttpResponse::Ok()
+                .content_type("text/html")
+                .body(format!(r#"<p style="color: #ff7d7d; margin: 0;">Error: {}</p>"#, html_escape(&e.to_string())))
+        }
     }
 }
 
