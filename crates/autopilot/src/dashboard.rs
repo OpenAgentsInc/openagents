@@ -1275,7 +1275,6 @@ function showToast(message, type = 'info') {
         color: white;
         z-index: 10000;
         font-weight: 600;
-        border-radius: 4px;
         box-shadow: 0 4px 12px rgba(0,0,0,0.5);
         animation: slideIn 0.3s ease-out;
     `;
