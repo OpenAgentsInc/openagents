@@ -441,6 +441,12 @@ impl NostrClient {
         self.cache.lock().await.is_pr_mergeable(pr_event)
     }
 
+    /// Get PRs that depend on the given PR (later layers in a stack)
+    #[allow(dead_code)]
+    pub async fn get_dependent_prs(&self, pr_id: &str) -> Result<Vec<Event>> {
+        self.cache.lock().await.get_dependent_prs(pr_id)
+    }
+
     /// Publish a signed event to all connected relays with retry and error handling
     #[allow(dead_code)]
     pub async fn publish_event(&self, event: Event) -> Result<PublishResult> {

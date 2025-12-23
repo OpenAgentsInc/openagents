@@ -653,3 +653,85 @@ o: id=qEoTdJN9 → [ok] The file /home/christopherdavid/code/openagents/crates/g
 t!:Bash id=PBDRbsQ3 cmd="cargo build -p gitafter --lib 2>&1 | tail -5" → [running] tokens_in=0 tokens_out=24 tokens_cached=107566
 o: id=PBDRbsQ3 → [ok]    Compiling breez-sdk-common v0.1.0 (/home/christopherdavid/code/spark-sdk/crates/breez-sdk/common)
 t!:Bash id=jh9benMm cmd="git add -u && git commit --amend --no-edit" → [running] tokens_in=0 tokens_out=24 tokens_cached=108326
+o: id=jh9benMm → [ok] [main f36823e1a] Add layer attribution to stacked PR review comments in GitAfter (#939)
+t!:Bash id=mQMpFywF cmd="git push origin main" → [running] tokens_in=0 tokens_out=75 tokens_cached=108631
+o: id=mQMpFywF → [ok] [0;36m🔍 Running cargo build to check for errors and warnings...[0m
+t!:mcp__issues__issue_complete id=PKW4oCwo  → [running] tokens_in=0 tokens_out=32 tokens_cached=108995
+o: id=PKW4oCwo → [ok] Completed issue #939
+t!:mcp__issues__issue_ready id=LqnCDEsy  → [running] tokens_in=0 tokens_out=27 tokens_cached=109160
+o: id=LqnCDEsy → [ok] No ready issues available
+t!:mcp__issues__directive_list id=n7iNP7S8  → [running] tokens_in=0 tokens_out=1 tokens_cached=109235
+o: id=n7iNP7S8 → [ok] [
+a: Let me create a new issue for d-005 (GitAfter) for another incomplete item - multi-agent collaboration: tokens_in=3 tokens_out=1 tokens_cached=109400
+t!:mcp__issues__issue_create id=SkWWJ8Xg  → [running] tokens_in=3 tokens_out=573 tokens_cached=109400
+o: id=SkWWJ8Xg → [ok] Created issue #940: Add preview of later stack layers during review in GitAfter (agent: claude) [...
+t!:mcp__issues__issue_ready id=HLy97kRi  → [running] tokens_in=0 tokens_out=1 tokens_cached=110988
+o: id=HLy97kRi → [ok] {
+t!:mcp__issues__issue_claim id=PD3RCCb7  → [running] tokens_in=2 tokens_out=32 tokens_cached=111713
+o: id=PD3RCCb7 → [ok] Claimed issue #940
+a: Now let me work on issue #940. First, I'll examine the current PR detail page structure to understand where to add the preview section: tokens_in=2 tokens_out=1 tokens_cached=112273
+t!:Read id=uAVrp4qv file_path=/home/christopherdavid/code/openagents/crates/gitafter/src/views.rs → [running] tokens_in=2 tokens_out=1 tokens_cached=112273
+o: id=uAVrp4qv → [ok]   1700→                                            }
+a: I can see the stack is already displayed (lines 1740-1799). Now I need to add a "Later Layers Preview" section that shows PRs that depend on the current PR. Let me first check how to identify later... tokens_in=1 tokens_out=1 tokens_cached=112372
+t!:Bash id=ET4kpAeE cmd="rg "depends_on" crates/gitafter/src/nostr/cache..." → [running] tokens_in=1 tokens_out=160 tokens_cached=112372
+o: id=ET4kpAeE → [ok]     }
+a: Now let me add a method to get PRs that depend on the current PR (i.e., later layers in the stack): tokens_in=0 tokens_out=1 tokens_cached=114760
+t!:Read id=gQU58VXY file_path=/home/christopherdavid/code/openagents/crates/gitafter/src/nostr/cache.rs → [running] tokens_in=0 tokens_out=1 tokens_cached=114760
+o: id=gQU58VXY → [ok]   1185→            Ok(Event {
+a: Let me find where the dependency-related methods are in the cache: tokens_in=0 tokens_out=1 tokens_cached=115256
+t!:Bash id=WboNQjub cmd="rg "pub fn get_dependency_pr" crates/gitafter/s..." → [running] tokens_in=0 tokens_out=1 tokens_cached=115256
+o: id=WboNQjub → [ok]     pub fn get_dependency_pr(&self, pr_event: &Event) -> Result<Option<Event>> {
+a: Now I'll add a method to get PRs that depend on the current PR (the "later layers"): tokens_in=0 tokens_out=1 tokens_cached=116286
+t!:Bash id=1hp32nQT cmd="rg -n "pub fn is_pr_mergeable" crates/gitafter/..." → [running] tokens_in=0 tokens_out=1 tokens_cached=116286
+o: id=1hp32nQT → [ok] 1814:    pub fn is_pr_mergeable(&self, pr_event: &Event) -> Result<bool> {
+t!:Read id=uWZQQed2 file_path=/home/christopherdavid/code/openagents/crates/gitafter/src/nostr/cache.rs → [running] tokens_in=0 tokens_out=25 tokens_cached=116679
+o: id=uWZQQed2 → [ok]   1814→    pub fn is_pr_mergeable(&self, pr_event: &Event) -> Result<bool> {
+a: Now I'll add a new method right after `is_pr_mergeable` to get dependent PRs (PRs that depend on the current one): tokens_in=0 tokens_out=1 tokens_cached=116950
+t!:Edit id=HrPB5vuM file_path=/home/christopherdavid/code/openagents/crates/gitafter/src/nostr/cache.rs → [running] tokens_in=0 tokens_out=690 tokens_cached=116950
+o: id=HrPB5vuM → [ok] The file /home/christopherdavid/code/openagents/crates/gitafter/src/nostr/cache.rs has been updat...
+a: Good! Now I need to expose this method through the NostrClient. Let me check the client module: tokens_in=0 tokens_out=1 tokens_cached=117848
+t!:Bash id=LUmTJGyb cmd="rg "pub async fn get_dependency_pr" crates/gita..." → [running] tokens_in=0 tokens_out=1 tokens_cached=117848
+o: id=LUmTJGyb → [ok]     pub async fn get_dependency_pr(&self, pr_event: &Event) -> Result<Option<Event>> {
+t!:Bash id=Adkes5zS cmd="rg -n "pub async fn get_dependency_pr" crates/g..." → [running] tokens_in=0 tokens_out=106 tokens_cached=119499
+o: id=Adkes5zS → [ok] 434:    pub async fn get_dependency_pr(&self, pr_event: &Event) -> Result<Option<Event>> {
+t!:Read id=Ath1cLS5 file_path=/home/christopherdavid/code/openagents/crates/gitafter/src/nostr/client.rs → [running] tokens_in=0 tokens_out=25 tokens_cached=119715
+o: id=Ath1cLS5 → [ok]    434→    pub async fn get_dependency_pr(&self, pr_event: &Event) -> Result<Option<Event>> {
+a: Now I'll add the client wrapper for `get_dependent_prs`: tokens_in=0 tokens_out=1 tokens_cached=119965
+t!:Edit id=qaLemamc file_path=/home/christopherdavid/code/openagents/crates/gitafter/src/nostr/client.rs → [running] tokens_in=0 tokens_out=366 tokens_cached=119965
+o: id=qaLemamc → [ok] The file /home/christopherdavid/code/openagents/crates/gitafter/src/nostr/client.rs has been upda...
+a: Now I need to fetch dependent PRs in the server handler and pass them to the view. Let me update the PR detail handler: tokens_in=0 tokens_out=1 tokens_cached=120501
+t!:Read id=c6kBRagj file_path=/home/christopherdavid/code/openagents/crates/gitafter/src/server.rs → [running] tokens_in=0 tokens_out=1 tokens_cached=120501
+o: id=c6kBRagj → [ok]   1710→
+a: Let me add the fetch for dependent PRs right after fetching the dependency PR: tokens_in=0 tokens_out=3 tokens_cached=121356
+t!:Edit id=b6acRdiv file_path=/home/christopherdavid/code/openagents/crates/gitafter/src/server.rs → [running] tokens_in=0 tokens_out=432 tokens_cached=121356
+o: id=b6acRdiv → [ok] The file /home/christopherdavid/code/openagents/crates/gitafter/src/server.rs has been updated. H...
+a: Now I need to pass `dependent_prs` to the view function. Let me find where the view is called: tokens_in=0 tokens_out=1 tokens_cached=122000
+t!:Read id=MkrpKYrs file_path=/home/christopherdavid/code/openagents/crates/gitafter/src/server.rs → [running] tokens_in=0 tokens_out=1 tokens_cached=122000
+o: id=MkrpKYrs → [ok]   1860→        match state.nostr_client.get_bounties_for_pr(&pr_id).await {
+t!:Read id=dn4JQES2 file_path=/home/christopherdavid/code/openagents/crates/gitafter/src/server.rs → [running] tokens_in=0 tokens_out=25 tokens_cached=122964
+o: id=dn4JQES2 → [ok]   1869→    HttpResponse::Ok()
+a: Now I'll update the function call to include `&dependent_prs`: tokens_in=0 tokens_out=1 tokens_cached=123325
+t!:Edit id=Zcky7eyV file_path=/home/christopherdavid/code/openagents/crates/gitafter/src/server.rs → [running] tokens_in=0 tokens_out=377 tokens_cached=123325
+o: id=Zcky7eyV → [ok] The file /home/christopherdavid/code/openagents/crates/gitafter/src/server.rs has been updated. H...
+a: Now I need to update the view function signature and add the preview section. Let me update the function signature first: tokens_in=0 tokens_out=1 tokens_cached=123774
+t!:Read id=WBTxh9xE file_path=/home/christopherdavid/code/openagents/crates/gitafter/src/views.rs → [running] tokens_in=0 tokens_out=1 tokens_cached=123774
+o: id=WBTxh9xE → [ok]   1384→pub fn pull_request_detail_page(repository: &Event, pull_request: &Event, reviews: &[Event...
+t!:Edit id=Fp7uf6yn file_path=/home/christopherdavid/code/openagents/crates/gitafter/src/views.rs → [running] tokens_in=0 tokens_out=415 tokens_cached=124411
+o: id=Fp7uf6yn → [ok] The file /home/christopherdavid/code/openagents/crates/gitafter/src/views.rs has been updated. He...
+a: Now let me add the "Preview Later Layers" section right after the stack display. Let me find where to insert it: tokens_in=0 tokens_out=1 tokens_cached=125016
+t!:Read id=9CaS2GCr file_path=/home/christopherdavid/code/openagents/crates/gitafter/src/views.rs → [running] tokens_in=0 tokens_out=140 tokens_cached=125016
+o: id=9CaS2GCr → [ok]   1800→                                            }
+a: I see there's already a review context section that identifies dependent PRs from the stack (lines 1811-1846). However, this only shows PRs that are in the same stack_prs array. The new `dependent_... tokens_in=0 tokens_out=1 tokens_cached=125807
+t!:Edit id=kY6Bujrc file_path=/home/christopherdavid/code/openagents/crates/gitafter/src/views.rs → [running] tokens_in=0 tokens_out=1178 tokens_cached=125807
+o: id=kY6Bujrc → [error] <tool_use_error>Found 6 matches of the string to replace, but replace_all is false. To replace al...
+a: Let me be more specific by including more context: tokens_in=1 tokens_out=1 tokens_cached=127080
+t!:Edit id=u9s5CAKy file_path=/home/christopherdavid/code/openagents/crates/gitafter/src/views.rs → [running] tokens_in=1 tokens_out=1141 tokens_cached=127080
+o: id=u9s5CAKy → [ok] The file /home/christopherdavid/code/openagents/crates/gitafter/src/views.rs has been updated. He...
+a: Perfect! Now let's build and test: tokens_in=0 tokens_out=1 tokens_cached=128367
+t!:Bash id=YcgstVEA cmd="cargo build -p gitafter --lib 2>&1 | tail -20" → [running] tokens_in=0 tokens_out=119 tokens_cached=128367
+o: id=YcgstVEA → [ok]    Compiling breez-sdk-common v0.1.0 (/home/christopherdavid/code/spark-sdk/crates/breez-sdk/common)
+a: Excellent! Now let's run the tests: tokens_in=0 tokens_out=9 tokens_cached=130987
+t!:Bash id=FvRrphTq cmd="cargo test -p gitafter --test e2e_issue_flow 2>..." → [running] tokens_in=0 tokens_out=9 tokens_cached=130987
+o: id=FvRrphTq → [ok]     |            ---------------- field in this struct
+a: Perfect! All tests pass. Now let's commit this work: tokens_in=0 tokens_out=1 tokens_cached=131304
+t!:Bash id=AB5TX7sw cmd="git add -A && git commit -m "$(cat <<'EOF'" → [running] tokens_in=0 tokens_out=408 tokens_cached=131304
