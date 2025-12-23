@@ -95,6 +95,7 @@ walkdir.workspace = true
 flate2 = "1.1.5"
 bip39 = "2.2.2"
 openagents-spark = { version = "0.1.0", path = "../spark" }
+lettre = { version = "0.11.19", features = ["smtp-transport", "builder"] }
 
 # Unix process groups
 [target.'cfg(unix)'.dependencies]

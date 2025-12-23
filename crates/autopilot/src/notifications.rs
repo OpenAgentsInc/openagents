@@ -179,14 +179,39 @@ impl Notification {
         })
     }
 
-    /// Send notification via email (stub - requires email library)
-    pub async fn send_email(&self, _to: &[String], _smtp: &SmtpConfig) -> Result<()> {
-        // TODO: Implement email sending with lettre or similar
-        // For now, log that we would send email
-        eprintln!("EMAIL NOTIFICATION (not implemented):");
-        eprintln!("  To: {:?}", _to);
-        eprintln!("  Subject: {}", self.title);
-        eprintln!("  Body: {}", self.message);
+    /// Send notification via email
+    pub async fn send_email(&self, to: &[String], smtp: &SmtpConfig) -> Result<()> {
+        use lettre::{
+            message::header::ContentType,
+            transport::smtp::authentication::Credentials,
+            Message, SmtpTransport, Transport,
+        };
+
+        // Create email message
+        let mut email_builder = Message::builder()
+            .from(smtp.from.parse()?)
+            .subject(&self.title);
+
+        // Add recipients
+        for recipient in to {
+            email_builder = email_builder.to(recipient.parse()?);
+        }
+
+        let email = email_builder
+            .header(ContentType::TEXT_PLAIN)
+            .body(self.message.clone())?;
+
+        // Create SMTP transport
+        let creds = Credentials::new(smtp.username.clone(), smtp.password.clone());
+        let mailer = SmtpTransport::relay(&smtp.host)?
+            .port(smtp.port)
+            .credentials(creds)
+            .build();
+
+        // Send email
+        mailer.send(&email)?;
+
+        eprintln!("Email sent successfully to {:?}", to);
         Ok(())
     }
 }
