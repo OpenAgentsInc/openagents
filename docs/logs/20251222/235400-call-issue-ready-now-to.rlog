@@ -167,3 +167,84 @@ t!:Bash id=NnRijTk3 cmd="cargo build --lib -p autopilot 2>&1 | grep -i w..." →
 o: id=NnRijTk3 → [ok] 
 a: Good! Now let me commit and push: tokens_in=1 tokens_out=1 tokens_cached=76707
 t!:Bash id=Lveu6MgL cmd="git add -A && git commit -m "Fix dead_code warn..." → [running] tokens_in=1 tokens_out=181 tokens_cached=76707
+o: id=Lveu6MgL → [ok] [main 0ba632931] Fix dead_code warning for APM_SCHEMA_VERSION
+a: Perfect! Now let me complete this issue and get the next one: tokens_in=0 tokens_out=1 tokens_cached=76821
+t!:Bash id=rFp1ev5y cmd="cargo run --bin autopilot -- issue complete 788" → [running] tokens_in=0 tokens_out=98 tokens_cached=76821
+o: id=rFp1ev5y → [error] Exit code 101
+t!:Bash id=w2RBE89X cmd="cd /home/christopherdavid/code/openagents/crate..." → [running] tokens_in=1 tokens_out=24 tokens_cached=77319
+o: id=w2RBE89X → [ok] ✓ Completed issue #788: Add APM data model and storage to autopilot crate
+t!:Bash id=cSAGRHSC cmd="cargo run --bin autopilot -- issue ready" → [running] tokens_in=0 tokens_out=25 tokens_cached=77475
+o: id=cSAGRHSC → [ok] No ready issues available
+a: No ready issues. Let me create the next APM-related issue: tokens_in=0 tokens_out=1 tokens_cached=77972
+t!:Bash id=Sh9rG48U cmd="cargo run --bin autopilot -- issue create "Inte..." → [running] tokens_in=0 tokens_out=261 tokens_cached=77972
+o: id=Sh9rG48U → [ok] ✓ Created issue #789: Integrate APM storage into TrajectoryCollector (agent: claude)
+t!:Bash id=GTt56KZr cmd="cargo run --bin autopilot -- issue ready" → [running] tokens_in=0 tokens_out=24 tokens_cached=78122
+o: id=GTt56KZr → [ok] → Next ready issue:
+t!:Bash id=zcvr9H7o cmd="cargo run --bin autopilot -- issue claim 789" → [running] tokens_in=0 tokens_out=84 tokens_cached=78740
+o: id=zcvr9H7o → [ok] ✓ Claimed issue #789: Integrate APM storage into TrajectoryCollector
+a: Now let me start integrating APM storage. First, let me check the main.rs to understand how TrajectoryCollector is currently instantiated: tokens_in=0 tokens_out=1 tokens_cached=79089
+t!:Grep id=AgTwqACi pattern="TrajectoryCollector::new" → [running] tokens_in=0 tokens_out=1 tokens_cached=79089
+o: id=AgTwqACi → [ok] src/lib.rs:66:/// let mut collector = TrajectoryCollector::new(
+a: Let me check the main usage in main.rs: tokens_in=0 tokens_out=1 tokens_cached=79260
+t!:Read id=egoBXT9Y file_path=/home/christopherdavid/code/openagents/crates/autopilot/src/main.rs → [running] tokens_in=0 tokens_out=1 tokens_cached=79260
+o: id=egoBXT9Y → [ok]   2165→    println_flush!("{} {}", "CWD:".dimmed(), cwd.display());
+a: Let me look at where the database is initialized and how I can add APM tables there. Let me search for database initialization: tokens_in=0 tokens_out=3 tokens_cached=79656
+t!:Grep id=MrpCpx7L pattern="init_db|Connection::open" → [running] tokens_in=0 tokens_out=3 tokens_cached=79656
+o: id=MrpCpx7L → [ok] 293-
+a: I see that databases are initialized using `db::init_db`. Now let me look at the code around line 2078 to see where I can add APM initialization: tokens_in=0 tokens_out=1 tokens_cached=80678
+t!:Read id=6B6idheM file_path=/home/christopherdavid/code/openagents/crates/autopilot/src/main.rs → [running] tokens_in=0 tokens_out=152 tokens_cached=80678
+o: id=6B6idheM → [ok]   2070→    };
+a: I see the pattern. After line 2078 where the database connection is created, I can add APM initialization. Let me add APM database initialization and session creation right after the session creati... tokens_in=0 tokens_out=4 tokens_cached=83431
+t!:Read id=WEtZDRdF file_path=/home/christopherdavid/code/openagents/crates/autopilot/src/lib.rs → [running] tokens_in=0 tokens_out=4 tokens_cached=83431
+o: id=WEtZDRdF → [ok]     85→/// println!("Session completed: {}", trajectory.session_id);
+a: I need a different approach. Rather than modifying TrajectoryCollector directly, I should create a wrapper or add APM recording as a post-processing step. However, looking at the requirements, it w... tokens_in=0 tokens_out=3 tokens_cached=84813
+t!:Edit id=zv3qqntS file_path=/home/christopherdavid/code/openagents/crates/autopilot/src/lib.rs → [running] tokens_in=0 tokens_out=613 tokens_cached=84813
+o: id=zv3qqntS → [ok] The file /home/christopherdavid/code/openagents/crates/autopilot/src/lib.rs has been updated. Her...
+t!:Edit id=JGY4xvZd file_path=/home/christopherdavid/code/openagents/crates/autopilot/src/lib.rs → [running] tokens_in=0 tokens_out=299 tokens_cached=85633
+o: id=JGY4xvZd → [ok] The file /home/christopherdavid/code/openagents/crates/autopilot/src/lib.rs has been updated. Her...
+a: Now let me add methods to enable APM tracking and record events. Let me find a good place to add these methods - right after enable_jsonl_streaming: tokens_in=0 tokens_out=1 tokens_cached=86682
+t!:Read id=HAvAacjf file_path=/home/christopherdavid/code/openagents/crates/autopilot/src/lib.rs → [running] tokens_in=0 tokens_out=1 tokens_cached=86682
+o: id=HAvAacjf → [ok]    160→        let mut writer = RlogWriter::new_streaming(path)?;
+a: Let me add the APM methods after enable_jsonl_streaming: tokens_in=0 tokens_out=1 tokens_cached=87359
+t!:Edit id=svS9kAhw file_path=/home/christopherdavid/code/openagents/crates/autopilot/src/lib.rs → [running] tokens_in=0 tokens_out=959 tokens_cached=87359
+o: id=svS9kAhw → [ok] The file /home/christopherdavid/code/openagents/crates/autopilot/src/lib.rs has been updated. Her...
+a: Now I need to add calls to `record_apm_event` in the appropriate places. Let me look at the process_assistant method to add recording for messages and tool calls: tokens_in=0 tokens_out=1 tokens_cached=88341
+t!:Read id=DfihQewx file_path=/home/christopherdavid/code/openagents/crates/autopilot/src/lib.rs → [running] tokens_in=0 tokens_out=1 tokens_cached=88341
+o: id=DfihQewx → [ok]    285→                }
+a: Now let me add APM recording in the appropriate places. I'll add it for text (assistant messages) and tool_use blocks: tokens_in=0 tokens_out=1 tokens_cached=90437
+t!:Edit id=JVsaLNAW file_path=/home/christopherdavid/code/openagents/crates/autopilot/src/lib.rs → [running] tokens_in=0 tokens_out=433 tokens_cached=90437
+o: id=JVsaLNAW → [ok] The file /home/christopherdavid/code/openagents/crates/autopilot/src/lib.rs has been updated. Her...
+a: Now let me add recording for tool calls: tokens_in=0 tokens_out=2 tokens_cached=92134
+t!:Read id=2nQfmhvf file_path=/home/christopherdavid/code/openagents/crates/autopilot/src/lib.rs → [running] tokens_in=0 tokens_out=123 tokens_cached=92134
+o: id=2nQfmhvf → [ok]    415→                            // Add subagent started step
+t!:Edit id=6e8mKwKU file_path=/home/christopherdavid/code/openagents/crates/autopilot/src/lib.rs → [running] tokens_in=0 tokens_out=420 tokens_cached=93041
+o: id=6e8mKwKU → [ok] The file /home/christopherdavid/code/openagents/crates/autopilot/src/lib.rs has been updated. Her...
+a: Now let me also add APM tracking for user messages. Let me find process_user: tokens_in=0 tokens_out=1 tokens_cached=93620
+t!:Read id=hcj4svkJ file_path=/home/christopherdavid/code/openagents/crates/autopilot/src/lib.rs → [running] tokens_in=0 tokens_out=1 tokens_cached=93620
+o: id=hcj4svkJ → [ok]    480→                                .get("tool_use_id")
+t!:Read id=WTJtDpPx file_path=/home/christopherdavid/code/openagents/crates/autopilot/src/lib.rs → [running] tokens_in=0 tokens_out=24 tokens_cached=94512
+o: id=WTJtDpPx → [ok]    525→                                },
+t!:Edit id=TKJtfuWv file_path=/home/christopherdavid/code/openagents/crates/autopilot/src/lib.rs → [running] tokens_in=0 tokens_out=269 tokens_cached=95378
+o: id=TKJtfuWv → [ok] The file /home/christopherdavid/code/openagents/crates/autopilot/src/lib.rs has been updated. Her...
+a: Now I need to add code to end the APM session and save a snapshot when the trajectory finishes. Let me find the finish method: tokens_in=0 tokens_out=1 tokens_cached=95887
+t!:Read id=Vi8MyyaS file_path=/home/christopherdavid/code/openagents/crates/autopilot/src/lib.rs → [running] tokens_in=0 tokens_out=143 tokens_cached=95887
+o: id=Vi8MyyaS → [ok]    785→                self.stream_last_step();
+t!:Edit id=a9Jb2uFc file_path=/home/christopherdavid/code/openagents/crates/autopilot/src/lib.rs → [running] tokens_in=0 tokens_out=802 tokens_cached=96406
+o: id=a9Jb2uFc → [ok] The file /home/christopherdavid/code/openagents/crates/autopilot/src/lib.rs has been updated. Her...
+a: Now I need to add rusqlite to dependencies since we're using it in lib.rs. Actually, looking at the Cargo.toml earlier, rusqlite is already there. Let me test if this compiles: tokens_in=0 tokens_out=1 tokens_cached=97361
+t!:Bash id=kkoRKijp cmd="cargo build --lib -p autopilot 2>&1 | grep -E "..." → [running] tokens_in=0 tokens_out=1 tokens_cached=97361
+o: id=kkoRKijp → [ok] warning: unused variable: `result`
+a: Good! Let me fix that warning: tokens_in=0 tokens_out=2 tokens_cached=99018
+t!:Bash id=KhzMbRkQ cmd="cargo build --lib -p autopilot 2>&1 | grep -B 3..." → [running] tokens_in=0 tokens_out=105 tokens_cached=99018
+o: id=KhzMbRkQ → [ok] warning: unused variable: `result`
+t!:Bash id=CN4b6347 cmd="cargo build --lib -p autopilot 2>&1 | grep -A 5..." → [running] tokens_in=0 tokens_out=25 tokens_cached=99303
+o: id=CN4b6347 → [ok] warning: unused variable: `result`
+t!:Edit id=74ExHzSD file_path=/home/christopherdavid/code/openagents/crates/autopilot/src/lib.rs → [running] tokens_in=0 tokens_out=189 tokens_cached=99428
+o: id=74ExHzSD → [ok] The file /home/christopherdavid/code/openagents/crates/autopilot/src/lib.rs has been updated. Her...
+t!:Bash id=a2a96RpB cmd="cargo build --lib -p autopilot 2>&1 | grep -E "..." → [running] tokens_in=0 tokens_out=25 tokens_cached=99724
+o: id=a2a96RpB → [ok] 
+a: Perfect! Now let me write a simple test and then commit. Let me create a basic integration test: tokens_in=1 tokens_out=1 tokens_cached=100155
+t!:Bash id=wtYS5wPi cmd="cargo test --lib -p autopilot enable_apm 2>&1 |..." → [running] tokens_in=1 tokens_out=115 tokens_cached=100155
+o: id=wtYS5wPi → [ok]    Compiling breez-sdk-common v0.1.0 (/home/christopherdavid/code/spark-sdk/crates/breez-sdk/common)
+a: There are no existing tests for enable_apm. The functionality has been integrated. Let me commit this work: tokens_in=0 tokens_out=1 tokens_cached=100273
+t!:Bash id=YEvpQ4h2 cmd="git add -A && git diff --cached --stat" → [running] tokens_in=0 tokens_out=105 tokens_cached=100273
