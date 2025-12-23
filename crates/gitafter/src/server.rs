@@ -1036,20 +1036,48 @@ async fn try_create_bounty_claim(
         }
     };
 
-    // 4. Check if there's a bounty on this issue
-    let bounties = match state.nostr_client.get_bounties_for_issue(&issue_id).await {
-        Ok(b) => b,
-        Err(e) => {
-            return Err(format!("Failed to fetch bounties for issue {}: {}", issue_id, e));
+    // 4. Check if PR has stack and layer tags for per-layer bounties
+    let stack_id = get_tag_value_from_event(&pr_event, "stack");
+    let layer_info = pr_event.tags.iter()
+        .find(|tag| tag.len() >= 2 && tag[0] == "layer")
+        .and_then(|tag| tag.get(1))
+        .and_then(|s| s.parse::<u32>().ok());
+
+    // 5. Try to find bounty - check layer-specific bounties first, then fall back to issue bounties
+    let bounties = if let (Some(stack), Some(layer)) = (stack_id.as_ref(), layer_info) {
+        // PR is part of a stack - check for layer-specific bounty first
+        match state.nostr_client.get_bounties_for_layer(stack, layer).await {
+            Ok(layer_bounties) if !layer_bounties.is_empty() => {
+                tracing::info!("Found layer-specific bounty for stack {} layer {}", stack, layer);
+                layer_bounties
+            }
+            _ => {
+                // No layer-specific bounty, fall back to issue bounty
+                tracing::debug!("No layer-specific bounty, checking issue-level bounties");
+                match state.nostr_client.get_bounties_for_issue(&issue_id).await {
+                    Ok(b) => b,
+                    Err(e) => {
+                        return Err(format!("Failed to fetch bounties for issue {}: {}", issue_id, e));
+                    }
+                }
+            }
+        }
+    } else {
+        // Not a stacked PR - check issue-level bounties
+        match state.nostr_client.get_bounties_for_issue(&issue_id).await {
+            Ok(b) => b,
+            Err(e) => {
+                return Err(format!("Failed to fetch bounties for issue {}: {}", issue_id, e));
+            }
         }
     };
 
     if bounties.is_empty() {
-        tracing::debug!("No bounties found for issue {}", issue_id);
+        tracing::debug!("No bounties found for issue {} or layer", issue_id);
         return Ok(None);
     }
 
-    // 5. Get the first (most recent) bounty
+    // 6. Get the first (most recent) bounty
     let bounty = &bounties[0];
     let bounty_id = bounty.id.clone();
 
