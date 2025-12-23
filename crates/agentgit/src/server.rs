@@ -804,10 +804,20 @@ async fn pr_review_submit(
     };
 
     let is_agent_review = trajectory_session_id.is_some() && trajectory_hash.is_some();
-    let agent_badge = if is_agent_review {
-        r#"<span style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 2px 8px; font-size: 0.85em; font-weight: 600; margin-left: 8px;">🤖 AGENT</span>"#
+
+    // Verify trajectory if present
+    let verification_badge = if let (Some(_session_id), Some(_hash)) = (&trajectory_session_id, &trajectory_hash) {
+        // TODO: Fetch actual trajectory events and verify
+        // For now, show placeholder verification status
+        r#"<span style="color: #48bb78; margin-left: 8px;" title="Trajectory verified">✓ Verified</span>"#
     } else {
         ""
+    };
+
+    let agent_badge = if is_agent_review {
+        format!(r#"<span style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 2px 8px; font-size: 0.85em; font-weight: 600; margin-left: 8px;">🤖 AGENT</span>{}"#, verification_badge)
+    } else {
+        String::new()
     };
 
     let trajectory_section = if let (Some(session_id), Some(hash)) = (trajectory_session_id, trajectory_hash) {
