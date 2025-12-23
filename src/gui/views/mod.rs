@@ -3,6 +3,7 @@
 mod layout;
 
 use actix_web::{web, HttpResponse};
+use tracing::info;
 use ui::{ChatPane, ClaudeStatus, DaemonStatus, FullAutoSwitch};
 
 use crate::gui::state::AppState;
@@ -14,6 +15,7 @@ pub async fn home(
     state: web::Data<AppState>,
     auth_token: web::Data<auth::AuthToken>,
 ) -> HttpResponse {
+    info!("GET / home page requested");
     let full_auto = *state.full_auto.read().await;
     let switch = FullAutoSwitch::new(full_auto).build();
 

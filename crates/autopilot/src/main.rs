@@ -866,6 +866,16 @@ enum MetricsCommands {
         #[arg(long)]
         db: Option<PathBuf>,
     },
+    /// Backfill metrics from all existing trajectory logs in docs/logs/
+    Backfill {
+        /// Root logs directory (default: docs/logs/)
+        #[arg(long, default_value = "docs/logs")]
+        logs_root: PathBuf,
+
+        /// Path to metrics database (default: autopilot-metrics.db)
+        #[arg(long)]
+        db: Option<PathBuf>,
+    },
     /// Show detailed metrics for a session
     Show {
         /// Session ID
@@ -4018,6 +4028,138 @@ async fn handle_metrics_command(command: MetricsCommands) -> Result<()> {
             println!("  Imported: {}", imported.to_string().green());
             println!("  Skipped:  {}", skipped.to_string().yellow());
             println!("  Errors:   {}", errors.to_string().red());
+            println!("{}", "=".repeat(60));
+        }
+        MetricsCommands::Backfill { logs_root, db } => {
+            let db_path = db.unwrap_or_else(default_db_path);
+            let metrics_db = MetricsDb::open(&db_path)?;
+
+            println!("{} Opening metrics database: {:?}", "📊".cyan(), db_path);
+            println!("{} Scanning logs directory: {:?}", "🔍".cyan(), logs_root);
+            println!();
+
+            // Find all date directories (YYYYMMDD format)
+            let date_dirs: Vec<_> = std::fs::read_dir(&logs_root)?
+                .filter_map(|entry| entry.ok())
+                .filter(|entry| {
+                    let path = entry.path();
+                    if !path.is_dir() {
+                        return false;
+                    }
+                    // Check if directory name matches YYYYMMDD pattern
+                    let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+                    name.len() == 8 && name.chars().all(|c| c.is_ascii_digit())
+                })
+                .map(|entry| entry.path())
+                .collect();
+
+            if date_dirs.is_empty() {
+                println!("{} No date directories found in {:?}", "⚠".yellow(), logs_root);
+                return Ok(());
+            }
+
+            println!("{} Found {} date directories", "🔍".cyan(), date_dirs.len());
+            println!();
+
+            let mut total_imported = 0;
+            let mut total_skipped = 0;
+            let mut total_errors = 0;
+
+            for (dir_idx, date_dir) in date_dirs.iter().enumerate() {
+                let dir_name = date_dir.file_name().unwrap().to_string_lossy();
+                println!("[{}/{}] Processing directory: {}", dir_idx + 1, date_dirs.len(), dir_name);
+
+                // Find all .json files in this directory
+                let json_files: Vec<_> = match std::fs::read_dir(date_dir) {
+                    Ok(entries) => entries
+                        .filter_map(|entry| entry.ok())
+                        .filter(|entry| {
+                            entry.path().extension().and_then(|s| s.to_str()) == Some("json")
+                        })
+                        .map(|entry| entry.path())
+                        .collect(),
+                    Err(e) => {
+                        println!("  {} Error reading directory: {}", "✗".red(), e);
+                        total_errors += 1;
+                        continue;
+                    }
+                };
+
+                if json_files.is_empty() {
+                    println!("  {} No JSON files found", "⚠".yellow());
+                    continue;
+                }
+
+                println!("  {} Found {} trajectory files", "🔍".cyan(), json_files.len());
+
+                let mut dir_imported = 0;
+                let mut dir_skipped = 0;
+                let mut dir_errors = 0;
+
+                for (i, json_file) in json_files.iter().enumerate() {
+                    let filename = json_file.file_name().unwrap().to_string_lossy();
+                    print!("  [{}/{}] {}... ", i + 1, json_files.len(), filename);
+
+                    match extract_metrics_from_json_file(&json_file) {
+                        Ok((session_metrics, tool_call_metrics)) => {
+                            // Check if session already exists
+                            if metrics_db.get_session(&session_metrics.id)?.is_some() {
+                                println!("{}", "SKIPPED".yellow());
+                                dir_skipped += 1;
+                                continue;
+                            }
+
+                            // Store session metrics
+                            if let Err(e) = metrics_db.store_session(&session_metrics) {
+                                println!("{} {}", "✗".red(), e);
+                                dir_errors += 1;
+                                continue;
+                            }
+
+                            // Store tool call metrics
+                            for tool_call in &tool_call_metrics {
+                                if let Err(e) = metrics_db.store_tool_call(tool_call) {
+                                    println!("{} Error storing tool call: {}", "✗".red(), e);
+                                    dir_errors += 1;
+                                    continue;
+                                }
+                            }
+
+                            println!(
+                                "{} ({} tools, {} errors)",
+                                "✓".green(),
+                                tool_call_metrics.len(),
+                                session_metrics.tool_errors
+                            );
+                            dir_imported += 1;
+                        }
+                        Err(e) => {
+                            println!("{} {}", "✗".red(), e);
+                            dir_errors += 1;
+                        }
+                    }
+                }
+
+                println!(
+                    "  {} Imported: {}, Skipped: {}, Errors: {}",
+                    "📊".cyan(),
+                    dir_imported.to_string().green(),
+                    dir_skipped.to_string().yellow(),
+                    dir_errors.to_string().red()
+                );
+                println!();
+
+                total_imported += dir_imported;
+                total_skipped += dir_skipped;
+                total_errors += dir_errors;
+            }
+
+            println!("{}", "=".repeat(60));
+            println!("{} Backfill complete:", "📊".cyan().bold());
+            println!("  Directories processed: {}", date_dirs.len().to_string().cyan());
+            println!("  Total imported:        {}", total_imported.to_string().green());
+            println!("  Total skipped:         {}", total_skipped.to_string().yellow());
+            println!("  Total errors:          {}", total_errors.to_string().red());
             println!("{}", "=".repeat(60));
         }
         MetricsCommands::Show { session_id, db } => {

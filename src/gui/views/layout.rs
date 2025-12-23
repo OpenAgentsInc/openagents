@@ -107,6 +107,18 @@ pub fn base_layout_with_token(content: &str, auth_token: Option<&str>) -> String
 </head>
 <body hx-ext="ws" ws-connect="{ws_url}">
     {content}
+    <script>
+        console.log('OpenAgents loaded, HTMX version:', htmx.version);
+        document.body.addEventListener('htmx:beforeRequest', function(evt) {{
+            console.log('HTMX request starting:', evt.detail.requestConfig.path);
+        }});
+        document.body.addEventListener('htmx:afterRequest', function(evt) {{
+            console.log('HTMX request complete:', evt.detail.requestConfig.path, evt.detail.xhr.status);
+        }});
+        document.body.addEventListener('htmx:responseError', function(evt) {{
+            console.error('HTMX error:', evt.detail.requestConfig.path, evt.detail.xhr.status, evt.detail.xhr.responseText);
+        }});
+    </script>
 </body>
 </html>"#,
         htmx_js = HTMX_JS,

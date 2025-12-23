@@ -3,6 +3,7 @@
 //! API routes for daemon/worker status and control.
 
 use actix_web::{web, HttpResponse};
+use tracing::{info, warn, error};
 use ui::DaemonStatus;
 
 use crate::gui::state::AppState;
@@ -29,6 +30,7 @@ async fn status_page() -> HttpResponse {
 
 /// Get current daemon status (returns HTML for HTMX polling)
 async fn get_status(state: web::Data<AppState>) -> HttpResponse {
+    info!("GET /api/daemon/status called");
     let info = state.daemon_info.read().await;
 
     let status = if info.connected {
@@ -61,6 +63,8 @@ async fn get_status(state: web::Data<AppState>) -> HttpResponse {
 async fn start_daemon(state: web::Data<AppState>) -> HttpResponse {
     use std::process::Stdio;
     use tokio::process::Command;
+
+    info!("POST /api/daemon/start called");
 
     // Check if already connected
     {
@@ -123,6 +127,7 @@ async fn start_daemon(state: web::Data<AppState>) -> HttpResponse {
 
 /// Stop the daemon
 async fn stop_daemon(state: web::Data<AppState>) -> HttpResponse {
+    info!("POST /api/daemon/stop called");
     let socket_path = get_socket_path();
 
     match send_control_command(&socket_path, "Shutdown").await {
@@ -147,6 +152,7 @@ async fn stop_daemon(state: web::Data<AppState>) -> HttpResponse {
 
 /// Restart the worker
 async fn restart_worker(_state: web::Data<AppState>) -> HttpResponse {
+    info!("POST /api/daemon/restart-worker called");
     let socket_path = get_socket_path();
 
     match send_control_command(&socket_path, "RestartWorker").await {

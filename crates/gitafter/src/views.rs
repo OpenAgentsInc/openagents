@@ -4552,18 +4552,19 @@ pub fn review_checklist_component(identifier: &str, pr_id: &str) -> Markup {
             h2 { "📋 Automated Review Checklist" }
 
             div.checklist-container
-                hx-get={"/repo/" (identifier) "/pulls/" (pr_id) "/auto-checks"}
+                hx-get={"/repo/" (identifier) "/pulls/" (pr_id) "/checklist"}
                 hx-trigger="load"
                 hx-swap="innerHTML" {
                 div.loading-state style="padding: 2rem; text-align: center; color: #6b7280;" {
-                    "⋯ Running automated checks..."
+                    "⋯ Generating checklist and running automated checks..."
                 }
             }
 
             div.checklist-help style="margin-top: 1rem; padding: 1rem; background: #1e293b; border-left: 3px solid #3b82f6;" {
                 p style="margin: 0; font-size: 0.875rem; color: #cbd5e1;" {
-                    "ℹ️ These checks run automatically when the repository is cloned locally. "
-                    "Results are refreshed on page load."
+                    "ℹ️ This checklist is generated based on changed files and PR type. "
+                    "Auto-checks run when the repository is cloned locally. "
+                    "Check items to track review progress."
                 }
             }
         }
