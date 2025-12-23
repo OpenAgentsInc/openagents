@@ -8,6 +8,7 @@ mod autopilot;
 mod claude;
 mod daemon;
 mod gitafter;
+mod local_inference;
 mod marketplace;
 mod parallel;
 mod wallet;
@@ -24,6 +25,7 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
         .service(web::scope("/api/claude").configure(claude::configure_api))
         .service(web::scope("/api/daemon").configure(daemon::configure_api))
         .service(web::scope("/api/parallel").configure(parallel::configure_api))
+        .service(web::scope("/api/local-inference").configure(local_inference::configure_api))
         // Wallet routes
         .service(web::scope("/wallet").configure(wallet::configure))
         // Marketplace routes
@@ -36,6 +38,8 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
         .service(web::scope("/daemon").configure(daemon::configure))
         // Parallel agents routes
         .service(web::scope("/parallel").configure(parallel::configure))
+        // Local inference settings
+        .service(web::scope("/local-inference").configure(local_inference::configure))
         // WebSocket
         .route("/ws", web::get().to(super::ws::ws_handler));
 }
