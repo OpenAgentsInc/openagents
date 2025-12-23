@@ -557,3 +557,21 @@ t!:Bash id=5Qv1N4wM cmd="cargo build --bin autopilot 2>&1 | grep -E "err..." →
 o: id=5Qv1N4wM → [ok] warning: value assigned to `total_open` is never read
 a: The values are being used in the print statement. Let me check if there's an issue with initialization. Actually the warnings are fine - the variables are initialized to 0 and then immediately over... tokens_in=0 tokens_out=1 tokens_cached=140380
 t!:Bash id=yq5ZTH5A cmd="git add -A && git commit -m "$(cat <<'EOF'" → [running] tokens_in=0 tokens_out=378 tokens_cached=140380
+o: id=yq5ZTH5A → [ok] [main 6e00fc3b8] Add issue count to project list output
+t!:Bash id=wJ3FX72Y cmd="cargo run --bin autopilot -- issue complete 798" → [running] tokens_in=0 tokens_out=24 tokens_cached=140530
+o: id=wJ3FX72Y → [ok] ✓ Completed issue #798: Add issue count to project list output
+t!:Bash id=2d7RfnUF cmd="cargo run --bin autopilot -- issue ready" → [running] tokens_in=0 tokens_out=24 tokens_cached=141233
+o: id=2d7RfnUF → [ok] No ready issues available
+a: The warnings are because I'm initializing them to 0 and then immediately overwriting them. I should just not initialize them. But we're running low on tokens and I've already pushed. I'll continue ... tokens_in=0 tokens_out=1 tokens_cached=141802
+t!:Bash id=pPcHPa1f cmd="cargo run --bin autopilot -- issue create "Fix ..." → [running] tokens_in=0 tokens_out=1 tokens_cached=141802
+o: id=pPcHPa1f → [ok] ✓ Created issue #799: Fix unused assignment warnings in project list (agent: claude)
+t!:Bash id=CfJ4VA8L cmd="cargo run --bin autopilot -- issue ready" → [running] tokens_in=0 tokens_out=25 tokens_cached=142157
+o: id=CfJ4VA8L → [ok] → Next ready issue:
+t!:Bash id=4LjgtG9c cmd="cargo run --bin autopilot -- issue claim 799" → [running] tokens_in=0 tokens_out=24 tokens_cached=142877
+o: id=4LjgtG9c → [ok] ✓ Claimed issue #799: Fix unused assignment warnings in project list
+t!:Edit id=DdC97Tvq file_path=/home/christopherdavid/code/openagents/crates/autopilot/src/main.rs → [running] tokens_in=0 tokens_out=561 tokens_cached=143363
+o: id=DdC97Tvq → [ok] The file /home/christopherdavid/code/openagents/crates/autopilot/src/main.rs has been updated. He...
+t!:Bash id=T6nddp4f cmd="cargo build --bin autopilot 2>&1 | grep -E "err..." → [running] tokens_in=0 tokens_out=26 tokens_cached=143735
+o: id=T6nddp4f → [ok] 
+a: Perfect! Now let me commit and push: tokens_in=1 tokens_out=1 tokens_cached=144858
+t!:Bash id=6xztrqxf cmd="git add -A && git commit -m "$(cat <<'EOF'" → [running] tokens_in=1 tokens_out=1 tokens_cached=144858

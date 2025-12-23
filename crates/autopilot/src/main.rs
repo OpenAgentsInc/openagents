@@ -3357,8 +3357,6 @@ async fn handle_project_command(command: ProjectCommands) -> Result<()> {
                 println!("{}", "-".repeat(75));
 
                 let mut total_sessions = 0;
-                let mut total_open = 0;
-                let mut total_completed = 0;
 
                 for p in projects {
                     // Count sessions for this project
@@ -3376,8 +3374,8 @@ async fn handle_project_command(command: ProjectCommands) -> Result<()> {
 
                 // Count total issues (not per-project since issues don't have project_id)
                 let all_issues = issue::list_issues(&conn, None)?;
-                total_open = all_issues.iter().filter(|i| i.status == Status::Open).count();
-                total_completed = all_issues.iter().filter(|i| i.status == Status::Done).count();
+                let total_open = all_issues.iter().filter(|i| i.status == Status::Open).count();
+                let total_completed = all_issues.iter().filter(|i| i.status == Status::Done).count();
 
                 // Print totals
                 println!("{}", "-".repeat(75));
