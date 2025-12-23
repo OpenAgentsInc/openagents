@@ -359,6 +359,32 @@ impl MetricsDb {
 
     /// Initialize database schema
     fn init_schema(&self) -> Result<()> {
+        // Enable foreign keys
+        self.conn.execute_batch("PRAGMA foreign_keys = ON;")?;
+
+        // Create schema_version table if it doesn't exist
+        self.conn.execute(
+            "CREATE TABLE IF NOT EXISTS schema_version (version INTEGER NOT NULL)",
+            [],
+        )?;
+
+        // Get current schema version
+        let version: i32 = self.conn
+            .query_row("SELECT version FROM schema_version", [], |row| row.get(0))
+            .unwrap_or(0);
+
+        // Run migrations if needed
+        if version < 1 {
+            self.migrate_v1()?;
+        }
+        if version < 2 {
+            self.migrate_v2()?;
+        }
+
+        Ok(())
+    }
+
+    fn migrate_v1(&self) -> Result<()> {
         self.conn.execute_batch(
             r#"
             CREATE TABLE IF NOT EXISTS sessions (
@@ -391,7 +417,7 @@ impl MetricsDb {
                 error_type TEXT,
                 tokens_in INTEGER NOT NULL,
                 tokens_out INTEGER NOT NULL,
-                FOREIGN KEY (session_id) REFERENCES sessions(id)
+                FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
             );
 
             CREATE TABLE IF NOT EXISTS anomalies (
@@ -403,7 +429,7 @@ impl MetricsDb {
                 severity TEXT NOT NULL,
                 investigated INTEGER NOT NULL DEFAULT 0,
                 issue_number INTEGER,
-                FOREIGN KEY (session_id) REFERENCES sessions(id)
+                FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
             );
 
             CREATE TABLE IF NOT EXISTS baselines (
@@ -487,6 +513,64 @@ impl MetricsDb {
             "#
         )?;
 
+        // Set schema version
+        self.set_schema_version(1)?;
+
+        Ok(())
+    }
+
+    fn migrate_v2(&self) -> Result<()> {
+        // Recreate tool_calls table with ON DELETE CASCADE
+        self.conn.execute_batch(
+            r#"
+            -- Recreate tool_calls with CASCADE
+            CREATE TABLE tool_calls_new (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                session_id TEXT NOT NULL,
+                timestamp TEXT NOT NULL,
+                tool_name TEXT NOT NULL,
+                duration_ms INTEGER NOT NULL,
+                success INTEGER NOT NULL,
+                error_type TEXT,
+                tokens_in INTEGER NOT NULL,
+                tokens_out INTEGER NOT NULL,
+                FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
+            );
+
+            INSERT INTO tool_calls_new SELECT * FROM tool_calls;
+            DROP TABLE tool_calls;
+            ALTER TABLE tool_calls_new RENAME TO tool_calls;
+            CREATE INDEX idx_tool_calls_session_id ON tool_calls(session_id);
+            CREATE INDEX idx_tool_calls_tool_name ON tool_calls(tool_name);
+
+            -- Recreate anomalies with CASCADE
+            CREATE TABLE anomalies_new (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                session_id TEXT NOT NULL,
+                dimension TEXT NOT NULL,
+                expected_value REAL NOT NULL,
+                actual_value REAL NOT NULL,
+                severity TEXT NOT NULL,
+                investigated INTEGER NOT NULL DEFAULT 0,
+                issue_number INTEGER,
+                FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
+            );
+
+            INSERT INTO anomalies_new SELECT * FROM anomalies;
+            DROP TABLE anomalies;
+            ALTER TABLE anomalies_new RENAME TO anomalies;
+            CREATE INDEX idx_anomalies_session_id ON anomalies(session_id);
+            CREATE INDEX idx_anomalies_severity ON anomalies(severity);
+            "#
+        )?;
+
+        self.set_schema_version(2)?;
+        Ok(())
+    }
+
+    fn set_schema_version(&self, version: i32) -> Result<()> {
+        self.conn.execute("DELETE FROM schema_version", [])?;
+        self.conn.execute("INSERT INTO schema_version (version) VALUES (?)", [version])?;
         Ok(())
     }
 
@@ -2360,3 +2444,88 @@ mod tests {
     }
 }
 
+#[cfg(test)]
+mod metrics_cascade_tests {
+    use crate::metrics::MetricsDb;
+    use tempfile::tempdir;
+
+    #[test]
+    fn test_cascade_delete_tool_calls() {
+        let dir = tempdir().unwrap();
+        let db_path = dir.path().join("test_metrics.db");
+        let db = MetricsDb::open(&db_path).unwrap();
+
+        // Insert a session
+        db.conn.execute(
+            "INSERT INTO sessions (id, timestamp, model, prompt, duration_seconds, tokens_in, tokens_out, tokens_cached, cost_usd, issues_claimed, issues_completed, tool_calls, tool_errors, final_status, messages) 
+             VALUES ('test-session', '2024-01-01T00:00:00Z', 'claude-3', 'test', 1.0, 100, 50, 0, 0.01, 1, 0, 2, 0, 'success', 10)",
+            [],
+        ).unwrap();
+
+        // Insert tool calls
+        db.conn.execute(
+            "INSERT INTO tool_calls (session_id, timestamp, tool_name, duration_ms, success, tokens_in, tokens_out)
+             VALUES ('test-session', '2024-01-01T00:00:00Z', 'test_tool', 100, 1, 10, 5)",
+            [],
+        ).unwrap();
+
+        // Verify tool_call exists
+        let count: i64 = db.conn.query_row(
+            "SELECT COUNT(*) FROM tool_calls WHERE session_id = 'test-session'",
+            [],
+            |row| row.get(0),
+        ).unwrap();
+        assert_eq!(count, 1);
+
+        // Delete session
+        db.conn.execute("DELETE FROM sessions WHERE id = 'test-session'", []).unwrap();
+
+        // Verify tool_call was CASCADE deleted
+        let count: i64 = db.conn.query_row(
+            "SELECT COUNT(*) FROM tool_calls WHERE session_id = 'test-session'",
+            [],
+            |row| row.get(0),
+        ).unwrap();
+        assert_eq!(count, 0);
+    }
+
+    #[test]
+    fn test_cascade_delete_anomalies() {
+        let dir = tempdir().unwrap();
+        let db_path = dir.path().join("test_metrics.db");
+        let db = MetricsDb::open(&db_path).unwrap();
+
+        // Insert a session
+        db.conn.execute(
+            "INSERT INTO sessions (id, timestamp, model, prompt, duration_seconds, tokens_in, tokens_out, tokens_cached, cost_usd, issues_claimed, issues_completed, tool_calls, tool_errors, final_status, messages) 
+             VALUES ('test-session', '2024-01-01T00:00:00Z', 'claude-3', 'test', 1.0, 100, 50, 0, 0.01, 1, 0, 2, 0, 'success', 10)",
+            [],
+        ).unwrap();
+
+        // Insert anomaly
+        db.conn.execute(
+            "INSERT INTO anomalies (session_id, dimension, expected_value, actual_value, severity)
+             VALUES ('test-session', 'duration', 5.0, 15.0, 'medium')",
+            [],
+        ).unwrap();
+
+        // Verify anomaly exists
+        let count: i64 = db.conn.query_row(
+            "SELECT COUNT(*) FROM anomalies WHERE session_id = 'test-session'",
+            [],
+            |row| row.get(0),
+        ).unwrap();
+        assert_eq!(count, 1);
+
+        // Delete session
+        db.conn.execute("DELETE FROM sessions WHERE id = 'test-session'", []).unwrap();
+
+        // Verify anomaly was CASCADE deleted
+        let count: i64 = db.conn.query_row(
+            "SELECT COUNT(*) FROM anomalies WHERE session_id = 'test-session'",
+            [],
+            |row| row.get(0),
+        ).unwrap();
+        assert_eq!(count, 0);
+    }
+}
