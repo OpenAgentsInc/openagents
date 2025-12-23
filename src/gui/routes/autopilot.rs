@@ -5,7 +5,7 @@ use std::sync::Arc;
 use actix_web::{web, HttpResponse};
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
-use tracing::{info, error};
+use tracing::info;
 use ui::{FullAutoSwitch, render_line_oob};
 
 use crate::gui::state::{AppState, AutopilotProcess};

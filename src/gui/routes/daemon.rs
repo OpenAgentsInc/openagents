@@ -3,7 +3,7 @@
 //! API routes for daemon/worker status and control.
 
 use actix_web::{web, HttpResponse};
-use tracing::{info, warn, error};
+use tracing::info;
 use ui::DaemonStatus;
 
 use crate::gui::state::AppState;
