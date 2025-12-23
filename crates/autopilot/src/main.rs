@@ -2289,6 +2289,11 @@ async fn run_task(
         }
     }
 
+    // Enable JSON stdout for GUI consumption in full-auto mode
+    if full_auto {
+        collector.enable_json_stdout();
+    }
+
     // Enable APM tracking (unless disabled)
     if !no_apm && !dry_run {
         let default_db = autopilot::default_db_path();
