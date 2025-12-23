@@ -988,6 +988,17 @@ enum MetricsCommands {
         db: Option<PathBuf>,
     },
 
+    /// Update baseline metrics from session data for regression detection
+    UpdateBaselines {
+        /// Path to metrics database (default: autopilot-metrics.db)
+        #[arg(long)]
+        db: Option<PathBuf>,
+
+        /// Minimum number of samples required to calculate baseline (default: 10)
+        #[arg(long, default_value_t = 10)]
+        min_samples: usize,
+    },
+
     /// Alert management commands
     #[command(subcommand)]
     Alerts(AlertCommands),
@@ -4650,6 +4661,49 @@ async fn handle_metrics_command(command: MetricsCommands) -> Result<()> {
                 }
                 Err(e) => {
                     eprintln!("{} Failed to backfill APM: {}", "❌".red(), e);
+                    std::process::exit(1);
+                }
+            }
+        }
+
+        MetricsCommands::UpdateBaselines { db, min_samples } => {
+            use colored::Colorize;
+
+            let db_path = db.unwrap_or_else(default_db_path);
+            let metrics_db = MetricsDb::open(&db_path)?;
+
+            println!("{} Updating baseline metrics...", "📊".cyan());
+            println!("{} Database: {:?}", "📂".dimmed(), db_path);
+            println!("{} Minimum samples: {}", "🔢".dimmed(), min_samples);
+            println!();
+
+            match metrics_db.update_baselines(min_samples) {
+                Ok(updated) => {
+                    if updated.is_empty() {
+                        println!("{} No baselines updated - not enough samples (min: {})", "⚠".yellow(), min_samples);
+                    } else {
+                        println!("{} Updated {} baseline metrics:", "✅".green(), updated.len());
+                        for dimension in &updated {
+                            if let Ok(Some(baseline)) = metrics_db.get_baseline(dimension) {
+                                println!("  {} {:20} mean={:.4}, σ={:.4}, n={}",
+                                    "•".dimmed(),
+                                    dimension,
+                                    baseline.mean,
+                                    baseline.stddev,
+                                    baseline.sample_count
+                                );
+                            }
+                        }
+                        println!();
+                        println!("{} Baselines are now available for regression detection", "ℹ".cyan());
+                        println!("{} Run {} to analyze metrics against baselines",
+                            "→".dimmed(),
+                            "cargo autopilot metrics analyze".bold()
+                        );
+                    }
+                }
+                Err(e) => {
+                    eprintln!("{} Failed to update baselines: {}", "❌".red(), e);
                     std::process::exit(1);
                 }
             }

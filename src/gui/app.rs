@@ -14,14 +14,15 @@ use super::server::start_server;
 pub fn run() -> Result<()> {
     tracing::info!("Starting OpenAgents Desktop...");
 
-    // Workaround for webkit2gtk Wayland compositing issue
-    // This disables GPU compositing which causes protocol errors on Wayland
-    // See: https://github.com/nicholaskariniemi/tauri-wayland-issue
+    // Workaround for webkit2gtk Wayland DMABUF issue
+    // The DMABUF renderer causes "Error 71 (Protocol error) dispatching to Wayland display"
+    // Disabling it falls back to WPE renderer which still has GPU acceleration
+    // See: https://bugs.webkit.org/show_bug.cgi?id=262607
     if std::env::var("WAYLAND_DISPLAY").is_ok() {
         // SAFETY: This is set early in startup before any other threads are spawned,
-        // and WEBKIT_DISABLE_COMPOSITING_MODE is only read by webkit2gtk during init.
+        // and these vars are only read by webkit2gtk during init.
         unsafe {
-            std::env::set_var("WEBKIT_DISABLE_COMPOSITING_MODE", "1");
+            std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
         }
     }
 
