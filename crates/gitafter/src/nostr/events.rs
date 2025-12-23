@@ -624,23 +624,26 @@ impl PullRequestBuilder {
     }
 
     /// Build the event template
+    ///
+    /// # Panics
+    /// Panics if required fields are missing:
+    /// - `commit_id` must be set via `.commit()`
+    /// - `clone_url` must be set via `.clone_url()`
     pub fn build(self) -> EventTemplate {
+        // Validate required fields for NIP-34 compliance
+        let commit = self.commit_id.expect("commit_id is required for NIP-34 pull requests - use .commit()");
+        let url = self.clone_url.expect("clone_url is required for NIP-34 pull requests - use .clone_url()");
+
         let mut tags = vec![
             // Repository reference
             vec!["a".to_string(), self.repo_address],
             // Subject/title
             vec!["subject".to_string(), self.subject],
+            // Commit ID (required)
+            vec!["c".to_string(), commit],
+            // Clone URL (required)
+            vec!["clone".to_string(), url],
         ];
-
-        // Add optional commit ID
-        if let Some(commit) = self.commit_id {
-            tags.push(vec!["c".to_string(), commit]);
-        }
-
-        // Add optional clone URL
-        if let Some(url) = self.clone_url {
-            tags.push(vec!["clone".to_string(), url]);
-        }
 
         // Add optional trajectory
         if let Some(session_id) = self.trajectory_session_id {
