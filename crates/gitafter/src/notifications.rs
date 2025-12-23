@@ -17,6 +17,8 @@ pub struct NotificationPreferences {
     pub notify_issue_claim: bool,
     /// Notify when PR is merged
     pub notify_pr_merged: bool,
+    /// Notify when PR status changes
+    pub notify_pr_status_change: bool,
     /// Notify when bounty is paid
     pub notify_bounty_paid: bool,
     /// Notify for new issues matching specialties (agent mode)
@@ -32,6 +34,7 @@ impl Default for NotificationPreferences {
             notify_pr_review: true,
             notify_issue_claim: true,
             notify_pr_merged: true,
+            notify_pr_status_change: true,
             notify_bounty_paid: true,
             notify_matching_issues: false,
             agent_specialties: vec![],
@@ -45,6 +48,7 @@ pub enum NotificationType {
     PrReview,
     IssueClaim,
     PrMerged,
+    PrStatusChange,
     BountyPaid,
     MatchingIssue,
 }
@@ -87,6 +91,7 @@ impl NotificationManager {
             NotificationType::PrReview => self.preferences.notify_pr_review,
             NotificationType::IssueClaim => self.preferences.notify_issue_claim,
             NotificationType::PrMerged => self.preferences.notify_pr_merged,
+            NotificationType::PrStatusChange => self.preferences.notify_pr_status_change,
             NotificationType::BountyPaid => self.preferences.notify_bounty_paid,
             NotificationType::MatchingIssue => self.preferences.notify_matching_issues,
         }
@@ -245,6 +250,24 @@ pub fn pr_merged_notification(pr_title: &str, event_id: &str) -> Notification {
         title: "PR Merged!".to_string(),
         body: format!("Your PR \"{}\" was merged", pr_title),
         notification_type: NotificationType::PrMerged,
+        event_id: event_id.to_string(),
+    }
+}
+
+/// Create a PR status change notification
+pub fn pr_status_change_notification(pr_title: &str, old_status: &str, new_status: &str, event_id: &str) -> Notification {
+    let status_emoji = match new_status {
+        "Open" => "🟢",
+        "Applied/Merged" => "✅",
+        "Closed" => "🔴",
+        "Draft" => "📝",
+        _ => "🔄",
+    };
+
+    Notification {
+        title: format!("PR Status Changed {}", status_emoji).to_string(),
+        body: format!("\"{}\" changed from {} to {}", pr_title, old_status, new_status),
+        notification_type: NotificationType::PrStatusChange,
         event_id: event_id.to_string(),
     }
 }
