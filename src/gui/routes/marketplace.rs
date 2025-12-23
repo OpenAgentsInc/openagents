@@ -12,31 +12,31 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
 }
 
 async fn dashboard() -> HttpResponse {
-    HttpResponse::Ok()
-        .content_type("text/html")
-        .body("<h1>Marketplace</h1><p>Coming soon...</p>")
+    HttpResponse::NotImplemented()
+        .content_type("text/plain")
+        .body("Marketplace dashboard UI not yet implemented")
 }
 
 async fn compute_page() -> HttpResponse {
-    HttpResponse::Ok()
-        .content_type("text/html")
-        .body("<h1>Compute Marketplace</h1><p>Coming soon...</p>")
+    HttpResponse::NotImplemented()
+        .content_type("text/plain")
+        .body("Compute marketplace UI not yet implemented")
 }
 
 async fn skills_page() -> HttpResponse {
-    HttpResponse::Ok()
-        .content_type("text/html")
-        .body("<h1>Skills Marketplace</h1><p>Coming soon...</p>")
+    HttpResponse::NotImplemented()
+        .content_type("text/plain")
+        .body("Skills marketplace UI not yet implemented")
 }
 
 async fn data_page() -> HttpResponse {
-    HttpResponse::Ok()
-        .content_type("text/html")
-        .body("<h1>Data Marketplace</h1><p>Coming soon...</p>")
+    HttpResponse::NotImplemented()
+        .content_type("text/plain")
+        .body("Data marketplace UI not yet implemented")
 }
 
 async fn trajectories_page() -> HttpResponse {
-    HttpResponse::Ok()
-        .content_type("text/html")
-        .body("<h1>Trajectories</h1><p>Coming soon...</p>")
+    HttpResponse::NotImplemented()
+        .content_type("text/plain")
+        .body("Trajectories UI not yet implemented")
 }

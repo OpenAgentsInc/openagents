@@ -11,25 +11,25 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
 }
 
 async fn dashboard() -> HttpResponse {
-    HttpResponse::Ok()
-        .content_type("text/html")
-        .body("<h1>Wallet Dashboard</h1><p>Coming soon...</p>")
+    HttpResponse::NotImplemented()
+        .content_type("text/plain")
+        .body("Wallet dashboard UI not yet implemented")
 }
 
 async fn send_page() -> HttpResponse {
-    HttpResponse::Ok()
-        .content_type("text/html")
-        .body("<h1>Send Payment</h1><p>Coming soon...</p>")
+    HttpResponse::NotImplemented()
+        .content_type("text/plain")
+        .body("Send payment UI not yet implemented")
 }
 
 async fn receive_page() -> HttpResponse {
-    HttpResponse::Ok()
-        .content_type("text/html")
-        .body("<h1>Receive Payment</h1><p>Coming soon...</p>")
+    HttpResponse::NotImplemented()
+        .content_type("text/plain")
+        .body("Receive payment UI not yet implemented")
 }
 
 async fn history_page() -> HttpResponse {
-    HttpResponse::Ok()
-        .content_type("text/html")
-        .body("<h1>Transaction History</h1><p>Coming soon...</p>")
+    HttpResponse::NotImplemented()
+        .content_type("text/plain")
+        .body("Transaction history UI not yet implemented")
 }
