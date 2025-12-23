@@ -1,5 +1,7 @@
 # What OpenAgents Offers
 
+> Previously called "Coder" — now **Autopilot**, because copilots assist while autopilots execute.
+
 ## For Developers
 
 ### Autopilot — Autonomous Software Generation
@@ -7,6 +9,8 @@
 **The problem:** You spend more time operating AI tools than building.
 
 **The solution:** Give instructions, walk away, come back to PRs.
+
+**The name:** We call it Autopilot because that's what it is. A copilot helps you fly. An autopilot flies for you. 4.5 actions/minute with a human at the keyboard. 19 actions/minute with Autopilot. That's 4x productivity — while you're AFK.
 
 | Feature | Description |
 |---------|-------------|

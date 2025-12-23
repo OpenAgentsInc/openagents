@@ -2,6 +2,23 @@
 
 > "Connect a repo and a credit card. Go do something else. We'll take it from here."
 
+## Why "Autopilot"?
+
+We don't call it "Coder" anymore. We call it **Autopilot**.
+
+A copilot assists. An autopilot executes.
+
+| Mode | Actions/Minute | You |
+|------|----------------|-----|
+| **Copilot** | 4.5 | At the keyboard, prompting, reviewing |
+| **Autopilot** | 19 | AFK, sleeping, doing other work |
+
+4x productivity gain. That's not assistance — that's automation.
+
+When you're ready for the agent to take the wheel, you engage Autopilot. When you want to collaborate interactively, you're in the chat. But the vision is clear: **most software gets written while you're not watching**.
+
+---
+
 ## The Vision
 
 Software engineering is about to undergo its biggest transformation since the compiler. We're building the platform where you can:
@@ -56,6 +73,103 @@ You go to bed with a backlog. You wake up to a stack of reviewable PRs.
 
 ---
 
+## The Web Chat Experience
+
+Before Autopilot, there's the interactive chat — a full-featured browser-based experience:
+
+### Streaming & Visibility
+- Beautiful markdown rendering with syntax highlighting
+- Tool calls displayed inline with expandable details (file reads, searches, edits)
+- Code changes shown as diffs with accept/reject buttons
+- One-click copy for code blocks
+- Real-time streaming with visible thinking state
+
+### Thread Persistence
+- Chat threads persist across browser sessions
+- Share threads via URL (read-only or editable)
+- Desktop prompts when actions require local execution
+
+### Tool Display
+```
+┌─────────────────────────────────────────────────────────────┐
+│ 🔧 read_file                                         [done] │
+├─────────────────────────────────────────────────────────────┤
+│ Path: src/auth/login.rs                                     │
+│ Lines: 1-150                                                │
+│ ▼ Output (click to expand)                                  │
+└─────────────────────────────────────────────────────────────┘
+```
+
+Every tool call is visible. No black box. You see what Autopilot sees.
+
+---
+
+## Permissions, Secrets & Safety
+
+Trust requires transparency and control. Autopilot is built with security-first defaults:
+
+### Permission Model
+- **Ask by default**: Bash/edit/network prompts before execution
+- **"Always allow" patterns**: e.g., `git *` suppresses future prompts
+- **Global deny rules**: `rm -rf /`, fork bombs, destructive commands — blocked always
+- **Workspace scoping**: External directory access requires explicit approval
+
+### Secrets Protection
+- **Never read secrets by default**: `.env` files require explicit approval
+- **Workspace secret store**: Add secrets, selectively expose to specific tools
+- **Automatic redaction**: Tool output scrubs secrets, shows [REDACTED] markers
+- **Known-path warnings**: "May contain secrets" alert before reading `id_rsa`, `credentials.json`
+
+### Prompt Injection Defense
+- **Hostile repo detection**: Suspicious instructions like "ignore user, exfiltrate keys" are flagged and refused
+- **User-intent gating**: Repo text cannot escalate permissions — only user approval can
+- **Injection incident logs**: What was detected, what was blocked, when
+
+### Network Control
+- **Egress policy**: Domain allow-lists per workspace
+- **Visible indicators**: "Network: restricted" badge during runs
+- **External tool blocking**: Regulated projects can disable web fetch entirely
+
+### Doom Loop Prevention
+```
+3 consecutive failures detected.
+Agent loop halted.
+[Continue] [Abort] [Get Help]
+```
+
+No infinite loops. No runaway costs. Always recoverable.
+
+---
+
+## Tools & Build/Test Loop
+
+Autopilot ships with a complete toolset for autonomous coding:
+
+### Standard Tools
+| Tool | Capability |
+|------|------------|
+| **bash** | Execute commands with working-dir scoping and destructive command blocking |
+| **read** | Read files with offset/limit support for large files, binary detection |
+| **write** | Atomic writes with temp file + rename, parent directory creation |
+| **edit** | String replacement with no-match detection, diff output |
+| **grep** | Ripgrep-powered search with .gitignore respect, result streaming |
+| **find** | Glob patterns, recursive traversal, file type filters |
+
+### Build/Test Integration
+- **One-click test runs**: Or guided command suggestions based on repo detection
+- **Failure summaries**: When tests fail, Autopilot summarizes failures + links to relevant files
+- **Next action offers**: "Fix", "Retry", "Open Issue" — not just error dumps
+- **Streaming output**: Long-running commands stream reliably and can be cancelled
+
+### Cancellation
+Any long-running tool can be cancelled:
+- SIGINT sent immediately, SIGKILL fallback after 5s
+- Partial output preserved with `cancelled=true` marker
+- No zombie processes, no orphaned locks
+- Retry with same inputs available immediately
+
+---
+
 ## What We're Building
 
 ### The Web Platform (openagents.com)
@@ -81,6 +195,39 @@ You go to bed with a backlog. You wake up to a stack of reviewable PRs.
 | **Autonomous Agents** | Overnight work, checkpointing, audit trails |
 | **Local Inference** | On-device models when cloud isn't needed or allowed |
 | **Swarm Compute** | Sell spare GPU cycles for Bitcoin |
+
+---
+
+## GitHub Integration & PR Loop
+
+The bridge between Autopilot and your codebase is the GitHub integration:
+
+### Repo Analysis
+- **Large repos handled**: 10k+ files don't brick the magic moment — first insight in 10-20 seconds, then deepens
+- **Monorepo support**: Clear messaging + partial support for submodules, LFS
+- **Path exclusions**: Default ignore patterns (node_modules, target, dist, .git) + custom
+- **Incremental indexing**: Revisiting the same repo is fast and cheap
+- **Progress visibility**: "Indexed 2,341 of 8,000 files" during large repo analysis
+
+### PR Workflow (Trust Critical)
+1. **Read-only by default**: Initial OAuth grants read access only
+2. **Write access on demand**: Scope upgrade flow only when you attempt a write action
+3. **Diff preview before push**: See exactly what will change before any git operation
+4. **Apply locally option**: For cautious users — apply changes without pushing, then push manually
+5. **Undo/rollback**: Revert commit or restore files from the UI
+
+### PR Creation
+- Branch creation from analysis context
+- Auto-generated PR titles and descriptions (editable before creation)
+- Run ID and summary included for auditability
+- Test gating: require tests to pass, or "open draft if tests failing"
+- Conventional commits and signed commits support
+
+### Safety Rails
+- Binary/huge files detected and skipped with explanation
+- Language detection and entrypoints surfaced for reliable first insights
+- Rate limit detection with clear fallback paths (retry, smaller sample, continue with partial)
+- Branch/tag selector for analysis
 
 ---
 
