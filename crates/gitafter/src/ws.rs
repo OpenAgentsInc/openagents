@@ -6,6 +6,7 @@ use futures_util::StreamExt;
 use std::sync::Arc;
 use tokio::sync::{broadcast, Mutex};
 use tokio::task::JoinHandle;
+use tracing::warn;
 
 /// Broadcasts messages to all connected WebSocket clients
 pub struct WsBroadcaster {
@@ -24,9 +25,18 @@ impl WsBroadcaster {
     }
 
     /// Broadcast a message to all connected clients
+    /// Returns the number of receivers that received the message
     #[allow(dead_code)]
-    pub fn broadcast(&self, msg: &str) {
-        let _ = self.tx.send(msg.to_string());
+    pub fn broadcast(&self, msg: &str) -> usize {
+        match self.tx.send(msg.to_string()) {
+            Ok(receiver_count) => receiver_count,
+            Err(e) => {
+                // This happens when there are no active receivers
+                // Not an error condition - just means no clients connected
+                warn!("Broadcast send failed (no receivers): {}", e);
+                0
+            }
+        }
     }
 
     /// Subscribe to broadcasts
