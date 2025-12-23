@@ -6117,6 +6117,7 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "ui",
+ "uuid",
  "wallet",
  "wry 0.50.5",
 ]

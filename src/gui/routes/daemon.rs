@@ -65,6 +65,45 @@ async fn start_daemon(state: web::Data<AppState>) -> HttpResponse {
 
     info!("POST /api/daemon/start called");
 
+    let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
+    let autopilot_dir = std::path::PathBuf::from(&home).join(".autopilot");
+    let pid_file = autopilot_dir.join("autopilotd.pid");
+    let socket_path = autopilot_dir.join("autopilotd.sock");
+
+    // Check for stale PID file
+    if pid_file.exists() {
+        if let Ok(pid_str) = std::fs::read_to_string(&pid_file) {
+            if let Ok(pid) = pid_str.trim().parse::<i32>() {
+                // Check if process is actually running
+                let process_running = std::path::Path::new(&format!("/proc/{}", pid)).exists();
+                info!("Found PID file with PID {}, process running: {}", pid, process_running);
+
+                if !process_running {
+                    // Stale PID file - clean up
+                    info!("Cleaning up stale PID file and socket");
+                    let _ = std::fs::remove_file(&pid_file);
+                    let _ = std::fs::remove_file(&socket_path);
+                } else {
+                    // Process is running but socket doesn't exist - might be starting up
+                    // Or it's a zombie. Give it a moment then check socket.
+                    if !socket_path.exists() {
+                        info!("Daemon PID {} exists but no socket - waiting briefly", pid);
+                        tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+                        if !socket_path.exists() {
+                            // Still no socket - kill the zombie and clean up
+                            info!("Socket still missing, killing stale daemon PID {}", pid);
+                            let _ = std::process::Command::new("kill")
+                                .args(["-9", &pid.to_string()])
+                                .output();
+                            let _ = std::fs::remove_file(&pid_file);
+                            let _ = std::fs::remove_file(&socket_path);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     // Check if already connected
     {
         let info = state.daemon_info.read().await;
@@ -86,9 +125,7 @@ async fn start_daemon(state: web::Data<AppState>) -> HttpResponse {
     info!("Working directory: {:?}, project: {}", cwd, project);
 
     // Find the daemon binary (autopilotd)
-    let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
-    let autopilot_dir = std::path::PathBuf::from(&home).join(".autopilot").join("bin");
-    let daemon_binary = autopilot_dir.join("autopilotd");
+    let daemon_binary = autopilot_dir.join("bin").join("autopilotd");
     info!("Looking for daemon binary at: {:?}", daemon_binary);
     info!("Binary exists: {}", daemon_binary.exists());
 
@@ -127,7 +164,6 @@ async fn start_daemon(state: web::Data<AppState>) -> HttpResponse {
             tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
 
             // Check if socket exists now
-            let socket_path = std::path::PathBuf::from(&home).join(".autopilot").join("autopilotd.sock");
             info!("Checking for socket at: {:?}, exists: {}", socket_path, socket_path.exists());
 
             // Check if process is still running and capture any output

@@ -3013,6 +3013,11 @@ fn store_trajectory_metrics(trajectory: &Trajectory) {
                             eprintln!("Warning: Failed to detect anomalies: {}", e);
                         }
                     }
+
+                    // Evaluate configured alerts (PostRun hook - Phase 6)
+                    if let Err(e) = evaluate_and_notify_alerts(&db, &session_metrics) {
+                        eprintln!("Warning: Failed to evaluate alerts: {}", e);
+                    }
                 }
                 Err(e) => {
                     eprintln!("Warning: Failed to open metrics database: {}", e);
@@ -3063,6 +3068,85 @@ fn auto_create_issues_from_patterns(metrics_db: &autopilot::metrics::MetricsDb, 
             println!("  #{}: {} [{}]", number, issue.title, issue.priority);
         }
         println!();
+    }
+
+    Ok(())
+}
+
+/// Evaluate alert rules and send notifications for metric thresholds (PostRun hook - Phase 6)
+fn evaluate_and_notify_alerts(
+    _metrics_db: &autopilot::metrics::MetricsDb,
+    session_metrics: &autopilot::metrics::SessionMetrics,
+) -> Result<()> {
+    use autopilot::alerts::{
+        init_alerts_schema, add_default_alerts, evaluate_alerts,
+        log_alert_to_stdout, log_alert_to_file,
+    };
+    use rusqlite::Connection;
+
+    // Open metrics database connection for alerts
+    let conn = Connection::open(autopilot::metrics::default_db_path())?;
+
+    // Initialize alert schema and add defaults if needed
+    init_alerts_schema(&conn)?;
+    add_default_alerts(&conn)?;
+
+    let session_id = &session_metrics.id;
+    let mut all_alerts = Vec::new();
+
+    // Calculate derived metrics
+    let tool_error_rate = if session_metrics.tool_calls > 0 {
+        session_metrics.tool_errors as f64 / session_metrics.tool_calls as f64
+    } else {
+        0.0
+    };
+
+    let task_completion_rate = if session_metrics.issues_claimed > 0 {
+        session_metrics.issues_completed as f64 / session_metrics.issues_claimed as f64
+    } else {
+        1.0 // Default to 100% if no issues claimed (not applicable)
+    };
+
+    let tokens_per_task = if session_metrics.issues_completed > 0 {
+        (session_metrics.tokens_in + session_metrics.tokens_out) as f64 / session_metrics.issues_completed as f64
+    } else {
+        0.0
+    };
+
+    // Evaluate key metrics that have alert rules
+    let metrics_to_check = vec![
+        ("tool_error_rate", tool_error_rate),
+        ("task_completion_rate", task_completion_rate),
+        ("tokens_per_task", tokens_per_task),
+    ];
+
+    for (metric_name, value) in metrics_to_check {
+        match evaluate_alerts(&conn, session_id, metric_name, value) {
+            Ok(mut alerts) => all_alerts.append(&mut alerts),
+            Err(e) => {
+                eprintln!("Warning: Failed to evaluate alerts for {}: {}", metric_name, e);
+            }
+        }
+    }
+
+    // Send notifications if alerts fired
+    if !all_alerts.is_empty() {
+        println!("\n{}", "🚨 Alerts Triggered:".red().bold());
+
+        for alert in &all_alerts {
+            // Log to stdout (always)
+            log_alert_to_stdout(alert);
+
+            // Log to file
+            let log_path = std::env::current_dir()
+                .unwrap_or_else(|_| PathBuf::from("."))
+                .join("alerts.log");
+            if let Err(e) = log_alert_to_file(alert, &log_path) {
+                eprintln!("Warning: Failed to write alert to file: {}", e);
+            }
+        }
+
+        println!(); // Add spacing after alerts
     }
 
     Ok(())
