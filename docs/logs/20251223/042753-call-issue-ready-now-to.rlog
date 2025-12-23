@@ -44,3 +44,53 @@ o: id=gKM3FTCC → [ok] running 1 test
 t!:Bash id=V2CgmaVb cmd="cargo test -p autopilot --lib baseline::tests -..." → [running] tokens_in=1 tokens_out=89 tokens_cached=39930
 o: id=V2CgmaVb → [ok] running 5 tests
 t!:Bash id=EZerX479 cmd="git add -A && git commit -m "$(cat <<'EOF'" → [running] tokens_in=0 tokens_out=268 tokens_cached=40194
+o: id=EZerX479 → [ok] [main 71673fadb] Fix baseline NaN panic in partial_cmp().unwrap()
+t!:Bash id=Zod8M9fn cmd="git push origin main" → [running] tokens_in=0 tokens_out=24 tokens_cached=40474
+o: id=Zod8M9fn → [ok] [0;36m🔍 Running cargo build to check for errors and warnings...[0m
+t!:Bash id=5K6y6dXs cmd="cargo autopilot issue complete 848" → [running] tokens_in=0 tokens_out=24 tokens_cached=41053
+o: id=5K6y6dXs → [ok] ✓ Completed issue #848: PANIC-2: Fix baseline NaN panic
+t!:Bash id=785pphML cmd="cargo autopilot issue ready" → [running] tokens_in=0 tokens_out=77 tokens_cached=41213
+o: id=785pphML → [ok] → Next ready issue:
+t!:Bash id=jXbA4NkU cmd="cargo autopilot issue claim 849" → [running] tokens_in=0 tokens_out=80 tokens_cached=41562
+o: id=jXbA4NkU → [ok] ✓ Claimed issue #849: PANIC-3: Fix dashboard API NaN panic and worker blocking
+t!:Read id=Hg7mJHqE file_path=/home/christopherdavid/code/openagents/crates/autopilot/src/dashboard.rs → [running] tokens_in=0 tokens_out=25 tokens_cached=41932
+o: id=Hg7mJHqE → [ok]   1150→        if (window.tokensChart) {
+t!:Grep id=bDesMg55 pattern="partial_cmp\(\)\.unwrap\(\)" → [running] tokens_in=0 tokens_out=26 tokens_cached=42088
+o: id=bDesMg55 → [ok] No matches found
+t!:Grep id=eNrEQsS4 pattern="\.sort_by" → [running] tokens_in=0 tokens_out=153 tokens_cached=42690
+o: id=eNrEQsS4 → [ok] 1280-        });
+a: I found the NaN panic issues at lines 1285-1287. Let me also check if there's a broader context about loading all sessions into memory: tokens_in=0 tokens_out=1 tokens_cached=42969
+t!:Read id=8TWdf7qz file_path=/home/christopherdavid/code/openagents/crates/autopilot/src/dashboard.rs → [running] tokens_in=0 tokens_out=1 tokens_cached=42969
+o: id=8TWdf7qz → [ok]   1260→/// API endpoint: GET /api/sessions
+a: Now I need to fix the NaN panic issues and also address the "worker blocking" issue by making this async operation non-blocking. Let me first fix the NaN panics: tokens_in=0 tokens_out=1 tokens_cached=44069
+t!:Edit id=ZrqnfJBL file_path=/home/christopherdavid/code/openagents/crates/autopilot/src/dashboard.rs → [running] tokens_in=0 tokens_out=743 tokens_cached=44069
+o: id=ZrqnfJBL → [ok] The file /home/christopherdavid/code/openagents/crates/autopilot/src/dashboard.rs has been update...
+a: Now let's address the worker blocking issue by moving the database operations to a blocking task. Let me check how this is structured: tokens_in=0 tokens_out=3 tokens_cached=45170
+t!:Read id=qLw6rFMz file_path=/home/christopherdavid/code/openagents/crates/autopilot/src/dashboard.rs → [running] tokens_in=0 tokens_out=3 tokens_cached=45170
+o: id=qLw6rFMz → [ok]   1260→/// API endpoint: GET /api/sessions
+a: Now I'll refactor this to use `web::block` to run the blocking database operations in a separate thread pool: tokens_in=0 tokens_out=1 tokens_cached=46565
+t!:Edit id=MAwVTHLT file_path=/home/christopherdavid/code/openagents/crates/autopilot/src/dashboard.rs → [running] tokens_in=0 tokens_out=1715 tokens_cached=46565
+o: id=MAwVTHLT → [ok] The file /home/christopherdavid/code/openagents/crates/autopilot/src/dashboard.rs has been update...
+a: Let me check if there are any compilation errors and also verify the SessionsQuery structure is Clone or has necessary derives: tokens_in=0 tokens_out=3 tokens_cached=47876
+t!:Grep id=DsAjmxbP pattern="struct SessionsQuery" → [running] tokens_in=0 tokens_out=3 tokens_cached=47876
+o: id=DsAjmxbP → [ok] 1229-}
+t!:Read id=cPJnXitn file_path=/home/christopherdavid/code/openagents/crates/autopilot/src/dashboard.rs → [running] tokens_in=0 tokens_out=25 tokens_cached=50893
+o: id=cPJnXitn → [ok]   1237→/// Query parameters for sessions list API
+a: I need to add Clone derive to SessionsQuery since we're moving it into the web::block closure: tokens_in=0 tokens_out=1 tokens_cached=51394
+t!:Edit id=ADKttEGR file_path=/home/christopherdavid/code/openagents/crates/autopilot/src/dashboard.rs → [running] tokens_in=0 tokens_out=188 tokens_cached=51394
+o: id=ADKttEGR → [ok] The file /home/christopherdavid/code/openagents/crates/autopilot/src/dashboard.rs has been update...
+a: Now let's test the compilation: tokens_in=0 tokens_out=1 tokens_cached=51951
+t!:Bash id=1zvszusU cmd="cargo build -p autopilot --lib 2>&1 | head -50" → [running] tokens_in=0 tokens_out=1 tokens_cached=51951
+o: id=1zvszusU → [ok]    Compiling autopilot v0.1.0 (/home/christopherdavid/code/openagents/crates/autopilot)
+a: I need to fix the response building part - it's trying to access `limit` which is now inside the closure: tokens_in=0 tokens_out=1 tokens_cached=52450
+t!:Read id=7kFWiZds file_path=/home/christopherdavid/code/openagents/crates/autopilot/src/dashboard.rs → [running] tokens_in=0 tokens_out=139 tokens_cached=52450
+o: id=7kFWiZds → [ok]   1328→    .map_err(|e| actix_web::error::ErrorInternalServerError(e))?;
+t!:Edit id=qYjGuCh2 file_path=/home/christopherdavid/code/openagents/crates/autopilot/src/dashboard.rs → [running] tokens_in=0 tokens_out=310 tokens_cached=52764
+o: id=qYjGuCh2 → [ok] The file /home/christopherdavid/code/openagents/crates/autopilot/src/dashboard.rs has been update...
+t!:Edit id=6e1EWyey file_path=/home/christopherdavid/code/openagents/crates/autopilot/src/dashboard.rs → [running] tokens_in=0 tokens_out=25 tokens_cached=53277
+o: id=6e1EWyey → [ok] The file /home/christopherdavid/code/openagents/crates/autopilot/src/dashboard.rs has been update...
+t!:Bash id=9EJimhEz cmd="cargo build -p autopilot --lib 2>&1 | head -50" → [running] tokens_in=0 tokens_out=24 tokens_cached=53941
+o: id=9EJimhEz → [ok]    Compiling autopilot v0.1.0 (/home/christopherdavid/code/openagents/crates/autopilot)
+t!:Bash id=zSMrqwxL cmd="cargo test -p autopilot --lib dashboard --no-fa..." → [running] tokens_in=0 tokens_out=95 tokens_cached=54409
+o: id=zSMrqwxL → [ok]    Compiling breez-sdk-common v0.1.0 (/home/christopherdavid/code/spark-sdk/crates/breez-sdk/common)
+t!:Bash id=EuTyTg7g cmd="git add -A && git commit -m "$(cat <<'EOF'" → [running] tokens_in=0 tokens_out=263 tokens_cached=54673
