@@ -1,0 +1,215 @@
+# Docker Compose for parallel autopilot agents
+#
+# Usage:
+#   # Start 3 agents (default)
+#   docker-compose up -d
+#
+#   # Start with custom count (requires running start script first)
+#   AGENT_COUNT=5 docker-compose up -d
+#
+#   # View logs
+#   docker-compose logs -f
+#
+#   # Stop all
+#   docker-compose down
+
+# Common configuration for all agents
+x-agent-common: &agent-common
+  build:
+    context: ../..
+    dockerfile: docker/autopilot/Dockerfile
+    args:
+      HOST_UID: ${HOST_UID:-1000}
+  environment:
+    - ISSUES_DB=/shared/autopilot.db
+    - AUTOPILOT_MODEL=${AUTOPILOT_MODEL:-sonnet}
+    - AUTOPILOT_FULL_AUTO=true
+    - RUST_LOG=${RUST_LOG:-info}
+  restart: unless-stopped
+  deploy:
+    resources:
+      limits:
+        memory: ${AGENT_MEMORY:-12G}
+        cpus: "${AGENT_CPUS:-4}"
+  networks:
+    - autopilot-net
+
+services:
+  # Agent 001
+  agent-001:
+    <<: *agent-common
+    container_name: autopilot-001
+    hostname: agent-001
+    volumes:
+      # Workspace (git worktree)
+      - ../../.worktrees/agent-001:/workspace:rw
+      # Shared issue database
+      - ../../autopilot.db:/shared/autopilot.db:rw
+      # Shared log output
+      - ../../docs/logs:/workspace/docs/logs:rw
+      # Claude credentials (read-only)
+      - ~/.claude:/home/agent/.claude:ro
+      # Git credentials (read-only)
+      - ~/.gitconfig:/home/agent/.gitconfig:ro
+      - ~/.ssh:/home/agent/.ssh:ro
+    environment:
+      - AGENT_ID=001
+      - ISSUES_DB=/shared/autopilot.db
+
+  # Agent 002
+  agent-002:
+    <<: *agent-common
+    container_name: autopilot-002
+    hostname: agent-002
+    volumes:
+      - ../../.worktrees/agent-002:/workspace:rw
+      - ../../autopilot.db:/shared/autopilot.db:rw
+      - ../../docs/logs:/workspace/docs/logs:rw
+      - ~/.claude:/home/agent/.claude:ro
+      - ~/.gitconfig:/home/agent/.gitconfig:ro
+      - ~/.ssh:/home/agent/.ssh:ro
+    environment:
+      - AGENT_ID=002
+      - ISSUES_DB=/shared/autopilot.db
+
+  # Agent 003
+  agent-003:
+    <<: *agent-common
+    container_name: autopilot-003
+    hostname: agent-003
+    volumes:
+      - ../../.worktrees/agent-003:/workspace:rw
+      - ../../autopilot.db:/shared/autopilot.db:rw
+      - ../../docs/logs:/workspace/docs/logs:rw
+      - ~/.claude:/home/agent/.claude:ro
+      - ~/.gitconfig:/home/agent/.gitconfig:ro
+      - ~/.ssh:/home/agent/.ssh:ro
+    environment:
+      - AGENT_ID=003
+      - ISSUES_DB=/shared/autopilot.db
+
+  # Agent 004
+  agent-004:
+    <<: *agent-common
+    container_name: autopilot-004
+    hostname: agent-004
+    profiles:
+      - extended
+    volumes:
+      - ../../.worktrees/agent-004:/workspace:rw
+      - ../../autopilot.db:/shared/autopilot.db:rw
+      - ../../docs/logs:/workspace/docs/logs:rw
+      - ~/.claude:/home/agent/.claude:ro
+      - ~/.gitconfig:/home/agent/.gitconfig:ro
+      - ~/.ssh:/home/agent/.ssh:ro
+    environment:
+      - AGENT_ID=004
+      - ISSUES_DB=/shared/autopilot.db
+
+  # Agent 005
+  agent-005:
+    <<: *agent-common
+    container_name: autopilot-005
+    hostname: agent-005
+    profiles:
+      - extended
+    volumes:
+      - ../../.worktrees/agent-005:/workspace:rw
+      - ../../autopilot.db:/shared/autopilot.db:rw
+      - ../../docs/logs:/workspace/docs/logs:rw
+      - ~/.claude:/home/agent/.claude:ro
+      - ~/.gitconfig:/home/agent/.gitconfig:ro
+      - ~/.ssh:/home/agent/.ssh:ro
+    environment:
+      - AGENT_ID=005
+      - ISSUES_DB=/shared/autopilot.db
+
+  # Agents 006-010 (Linux only - high memory)
+  agent-006:
+    <<: *agent-common
+    container_name: autopilot-006
+    hostname: agent-006
+    profiles:
+      - linux-full
+    volumes:
+      - ../../.worktrees/agent-006:/workspace:rw
+      - ../../autopilot.db:/shared/autopilot.db:rw
+      - ../../docs/logs:/workspace/docs/logs:rw
+      - ~/.claude:/home/agent/.claude:ro
+      - ~/.gitconfig:/home/agent/.gitconfig:ro
+      - ~/.ssh:/home/agent/.ssh:ro
+    environment:
+      - AGENT_ID=006
+      - ISSUES_DB=/shared/autopilot.db
+
+  agent-007:
+    <<: *agent-common
+    container_name: autopilot-007
+    hostname: agent-007
+    profiles:
+      - linux-full
+    volumes:
+      - ../../.worktrees/agent-007:/workspace:rw
+      - ../../autopilot.db:/shared/autopilot.db:rw
+      - ../../docs/logs:/workspace/docs/logs:rw
+      - ~/.claude:/home/agent/.claude:ro
+      - ~/.gitconfig:/home/agent/.gitconfig:ro
+      - ~/.ssh:/home/agent/.ssh:ro
+    environment:
+      - AGENT_ID=007
+      - ISSUES_DB=/shared/autopilot.db
+
+  agent-008:
+    <<: *agent-common
+    container_name: autopilot-008
+    hostname: agent-008
+    profiles:
+      - linux-full
+    volumes:
+      - ../../.worktrees/agent-008:/workspace:rw
+      - ../../autopilot.db:/shared/autopilot.db:rw
+      - ../../docs/logs:/workspace/docs/logs:rw
+      - ~/.claude:/home/agent/.claude:ro
+      - ~/.gitconfig:/home/agent/.gitconfig:ro
+      - ~/.ssh:/home/agent/.ssh:ro
+    environment:
+      - AGENT_ID=008
+      - ISSUES_DB=/shared/autopilot.db
+
+  agent-009:
+    <<: *agent-common
+    container_name: autopilot-009
+    hostname: agent-009
+    profiles:
+      - linux-full
+    volumes:
+      - ../../.worktrees/agent-009:/workspace:rw
+      - ../../autopilot.db:/shared/autopilot.db:rw
+      - ../../docs/logs:/workspace/docs/logs:rw
+      - ~/.claude:/home/agent/.claude:ro
+      - ~/.gitconfig:/home/agent/.gitconfig:ro
+      - ~/.ssh:/home/agent/.ssh:ro
+    environment:
+      - AGENT_ID=009
+      - ISSUES_DB=/shared/autopilot.db
+
+  agent-010:
+    <<: *agent-common
+    container_name: autopilot-010
+    hostname: agent-010
+    profiles:
+      - linux-full
+    volumes:
+      - ../../.worktrees/agent-010:/workspace:rw
+      - ../../autopilot.db:/shared/autopilot.db:rw
+      - ../../docs/logs:/workspace/docs/logs:rw
+      - ~/.claude:/home/agent/.claude:ro
+      - ~/.gitconfig:/home/agent/.gitconfig:ro
+      - ~/.ssh:/home/agent/.ssh:ro
+    environment:
+      - AGENT_ID=010
+      - ISSUES_DB=/shared/autopilot.db
+
+networks:
+  autopilot-net:
+    driver: bridge

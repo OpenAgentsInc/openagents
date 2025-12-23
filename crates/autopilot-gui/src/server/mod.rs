@@ -1,5 +1,6 @@
 //! Local web server for autopilot GUI
 
+mod parallel;
 mod routes;
 mod state;
 pub mod ws;

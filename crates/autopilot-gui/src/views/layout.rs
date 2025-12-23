@@ -234,6 +234,7 @@ pub fn page_with_current(title: &str, content: Markup, current_page: Option<&str
                             a href="/" class={ @if current_page == Some("dashboard") { "active" } } { "Dashboard" }
                             a href="/chat" class={ @if current_page == Some("chat") { "active" } } { "Chat" }
                             a href="/context" class={ @if current_page == Some("context") { "active" } } { "Context" }
+                            a href="/parallel" class={ @if current_page == Some("parallel") { "active" } } { "Parallel Agents" }
                             a href="/permissions" class={ @if current_page == Some("permissions") { "active" } } { "Permissions" }
                         }
                     }

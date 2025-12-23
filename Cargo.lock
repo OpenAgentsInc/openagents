@@ -865,6 +865,7 @@ dependencies = [
  "actix-ws",
  "anyhow",
  "async-trait",
+ "autopilot",
  "chrono",
  "futures",
  "maud",
