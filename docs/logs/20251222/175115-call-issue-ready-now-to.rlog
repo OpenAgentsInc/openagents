@@ -556,3 +556,41 @@ o: id=wFgDFNvM → [ok] The file /home/christopherdavid/code/openagents/crates/a
 t!:Edit id=Qq66t3Pq file_path=/home/christopherdavid/code/openagents/crates/agentgit/src/stacks/restack.rs → [running] tokens_in=0 tokens_out=614 tokens_cached=109349
 o: id=Qq66t3Pq → [ok] The file /home/christopherdavid/code/openagents/crates/agentgit/src/stacks/restack.rs has been up...
 t!:Bash id=9fTg4TS9 cmd="git add -A && git commit -m "$(cat <<'EOF'" → [running] tokens_in=0 tokens_out=281 tokens_cached=110613
+o: id=9fTg4TS9 → [ok] [main 04e1a824d] Add comprehensive rustdoc examples to AgentGit stacks module
+t!:Bash id=939vFHgr cmd="git push origin main" → [running] tokens_in=0 tokens_out=76 tokens_cached=111816
+o: id=939vFHgr → [ok] [0;36m🔍 Running cargo build to check for errors and warnings...[0m
+t!:mcp__issues__issue_complete id=oYK2cGp9  → [running] tokens_in=0 tokens_out=58 tokens_cached=112238
+o: id=oYK2cGp9 → [ok] Completed issue #721
+t!:mcp__issues__issue_ready id=T2sZTDKh  → [running] tokens_in=0 tokens_out=41 tokens_cached=112401
+o: id=T2sZTDKh → [ok] No ready issues available
+t!:mcp__issues__directive_list id=Q89ujxUc  → [running] tokens_in=3 tokens_out=41 tokens_cached=112584
+o: id=Q89ujxUc → [ok] [
+t!:mcp__issues__issue_create id=3krAYppX  → [running] tokens_in=3 tokens_out=336 tokens_cached=112639
+o: id=3krAYppX → [ok] Created issue #722: Add integration test for AgentGit repository announcement and viewing (agent:...
+t!:mcp__issues__issue_claim id=53Cj7vki  → [running] tokens_in=0 tokens_out=84 tokens_cached=114230
+o: id=53Cj7vki → [ok] Claimed issue #722
+t!:Glob id=A8mvZLWx pattern="crates/agentgit/tests/**/*.rs" → [running] tokens_in=3 tokens_out=63 tokens_cached=114718
+o: id=A8mvZLWx → [ok] /home/christopherdavid/code/openagents/crates/agentgit/tests/publish_error_handling.rs
+t!:Read id=tfuTxqj9 file_path=/home/christopherdavid/code/openagents/crates/agentgit/tests/helpers/test_app.rs → [running] tokens_in=3 tokens_out=101 tokens_cached=114817
+o: id=tfuTxqj9 → [ok]      1→//! Test helper for AgentGit integration tests
+t!:Write id=WTXtdzFK file_path=/home/christopherdavid/code/openagents/crates/agentgit/tests/repository_integration.rs → [running] tokens_in=2 tokens_out=1772 tokens_cached=115088
+o: id=WTXtdzFK → [ok] File created successfully at: /home/christopherdavid/code/openagents/crates/agentgit/tests/reposi...
+t!:Bash id=fCCwJ85p cmd="cargo test -p agentgit --test repository_integr..." → [running] tokens_in=2 tokens_out=26 tokens_cached=116350
+o: id=fCCwJ85p → [ok]    |
+t!:Bash id=NXzb1fha cmd="cargo test -p agentgit --test repository_integr..." → [running] tokens_in=1 tokens_out=98 tokens_cached=118169
+o: id=NXzb1fha → [ok] 
+t!:Bash id=vQD3LD13 cmd="cargo test -p agentgit repository_integration 2..." → [running] tokens_in=0 tokens_out=25 tokens_cached=118769
+o: id=vQD3LD13 → [ok] warning: `agentgit` (test "repository_integration") generated 1 warning
+t!:Bash id=mmA7eran cmd="cargo test -p agentgit --test repository_integr..." → [running] tokens_in=0 tokens_out=25 tokens_cached=118981
+o: id=mmA7eran → [ok] error[E0599]: no method named `get_event_by_id` found for struct `MockRelay` in the current scope
+t!:Read id=Nz9EDb4V file_path=/home/christopherdavid/code/openagents/crates/testing/src/mock_relay.rs → [running] tokens_in=0 tokens_out=18 tokens_cached=119248
+o: id=Nz9EDb4V → [ok]      1→//! Mock Nostr Relay for Integration Testing
+t!:Read id=JLhqkipm file_path=/home/christopherdavid/code/openagents/crates/testing/src/mock_relay.rs → [running] tokens_in=0 tokens_out=113 tokens_cached=119500
+o: id=JLhqkipm → [ok]    100→
+t!:Edit id=Bhj8XubP file_path=/home/christopherdavid/code/openagents/crates/agentgit/tests/repository_integration.rs → [running] tokens_in=0 tokens_out=208 tokens_cached=121044
+o: id=Bhj8XubP → [ok] The file /home/christopherdavid/code/openagents/crates/agentgit/tests/repository_integration.rs h...
+t!:Bash id=8QuRi2fY cmd="cargo test -p agentgit --test repository_integr..." → [running] tokens_in=0 tokens_out=106 tokens_cached=121942
+o: id=8QuRi2fY → [ok] warning: `agentgit` (test "repository_integration") generated 3 warnings (run `cargo fix --test "...
+t!:Bash id=qJuP7hTM cmd="cargo build --bin openagents 2>&1 | head -20" → [running] tokens_in=0 tokens_out=24 tokens_cached=122363
+o: id=qJuP7hTM → [ok]    Compiling breez-sdk-common v0.1.0 (/home/christopherdavid/code/spark-sdk/crates/breez-sdk/common)
+t!:Bash id=LDmMVRZu cmd="git add -A && git commit -m "$(cat <<'EOF'" → [running] tokens_in=0 tokens_out=273 tokens_cached=122823
