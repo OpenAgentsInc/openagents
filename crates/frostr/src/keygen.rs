@@ -244,6 +244,18 @@ pub fn reconstruct_secret(shares: &[Share]) -> Result<[u8; 32]> {
         return Err(Error::InvalidThreshold(0, 0));
     }
 
+    // Validate no duplicate indices (would cause division by zero)
+    for i in 0..shares.len() {
+        for j in (i + 1)..shares.len() {
+            if shares[i].index == shares[j].index {
+                return Err(Error::FrostError(format!(
+                    "Duplicate share index: {} appears multiple times",
+                    shares[i].index
+                )));
+            }
+        }
+    }
+
     let mut secret = [0u8; 32];
 
     // For each byte position, perform Lagrange interpolation in GF(256)
@@ -597,5 +609,36 @@ mod tests {
         // Test boundary conditions
         let result = generate_key_shares(u16::MAX as u32 + 1, u16::MAX as u32 + 1);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_duplicate_indices_error() {
+        let secret = [42u8; 32];
+        let shares = split_secret(&secret, 2, 3).unwrap();
+
+        // Create a vector with duplicate indices (same share twice)
+        let duplicate_shares = vec![shares[0].clone(), shares[0].clone()];
+
+        // Should return error for duplicate indices
+        let result = reconstruct_secret(&duplicate_shares);
+        assert!(result.is_err());
+        assert!(format!("{:?}", result).contains("Duplicate share index"));
+    }
+
+    #[test]
+    fn test_multiple_duplicate_indices() {
+        let secret = [42u8; 32];
+        let shares = split_secret(&secret, 3, 5).unwrap();
+
+        // Create a vector with multiple duplicates
+        let duplicate_shares = vec![
+            shares[0].clone(),
+            shares[1].clone(),
+            shares[1].clone(), // Duplicate of index 2
+        ];
+
+        let result = reconstruct_secret(&duplicate_shares);
+        assert!(result.is_err());
+        assert!(format!("{:?}", result).contains("Duplicate share index"));
     }
 }

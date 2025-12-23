@@ -94,3 +94,44 @@ o: id=9EJimhEz → [ok]    Compiling autopilot v0.1.0 (/home/christopherdavid/co
 t!:Bash id=zSMrqwxL cmd="cargo test -p autopilot --lib dashboard --no-fa..." → [running] tokens_in=0 tokens_out=95 tokens_cached=54409
 o: id=zSMrqwxL → [ok]    Compiling breez-sdk-common v0.1.0 (/home/christopherdavid/code/spark-sdk/crates/breez-sdk/common)
 t!:Bash id=EuTyTg7g cmd="git add -A && git commit -m "$(cat <<'EOF'" → [running] tokens_in=0 tokens_out=263 tokens_cached=54673
+o: id=EuTyTg7g → [ok] [main 4c2ec0ce0] Fix dashboard API NaN panic and worker blocking
+t!:Bash id=czqbGMyY cmd="git push origin main" → [running] tokens_in=0 tokens_out=74 tokens_cached=55464
+o: id=czqbGMyY → [ok] [0;36m🔍 Running cargo build to check for errors and warnings...[0m
+t!:Bash id=d2L72PvM cmd="cargo autopilot issue complete 849" → [running] tokens_in=0 tokens_out=79 tokens_cached=55871
+o: id=d2L72PvM → [ok] ✓ Completed issue #849: PANIC-3: Fix dashboard API NaN panic and worker blocking
+t!:Bash id=bzY4hury cmd="cargo autopilot issue ready" → [running] tokens_in=0 tokens_out=24 tokens_cached=56136
+o: id=bzY4hury → [ok] → Next ready issue:
+t!:Bash id=aha2G5GJ cmd="cargo autopilot issue claim 850" → [running] tokens_in=0 tokens_out=80 tokens_cached=56489
+o: id=aha2G5GJ → [ok] ✓ Claimed issue #850: PANIC-4: Fix FROSTR Shamir panic on duplicate indices
+t!:Read id=hjVYSN9A file_path=/home/christopherdavid/code/openagents/crates/frostr/src/keygen.rs → [running] tokens_in=0 tokens_out=25 tokens_cached=56750
+o: id=hjVYSN9A → [ok]     90→/// // Generate 2-of-3 threshold FROST shares
+t!:Read id=LkwQUuUc file_path=/home/christopherdavid/code/openagents/crates/frostr/src/keygen.rs → [running] tokens_in=0 tokens_out=113 tokens_cached=57011
+o: id=LkwQUuUc → [ok]    230→
+a: I can see the issue. At line 270, when duplicate indices are provided (xi == xj for i != j), the denominator becomes (xi ^ xj) = 0, which then causes a division by zero panic at line 272 when calli... tokens_in=0 tokens_out=1 tokens_cached=59272
+t!:Edit id=rsyMH3ay file_path=/home/christopherdavid/code/openagents/crates/frostr/src/keygen.rs → [running] tokens_in=0 tokens_out=631 tokens_cached=59272
+o: id=rsyMH3ay → [ok] The file /home/christopherdavid/code/openagents/crates/frostr/src/keygen.rs has been updated. Her...
+a: Now let me add a test to verify this fix works: tokens_in=0 tokens_out=1 tokens_cached=60536
+t!:Grep id=FwfzQMgu pattern="#\[cfg\(test\)\]" → [running] tokens_in=0 tokens_out=1 tokens_cached=60536
+o: id=FwfzQMgu → [ok] 366-    Ok(frost_shares)
+t!:Read id=E3YTNQZ4 file_path=/home/christopherdavid/code/openagents/crates/frostr/src/keygen.rs → [running] tokens_in=0 tokens_out=25 tokens_cached=61782
+o: id=E3YTNQZ4 → [ok]    369→#[cfg(test)]
+t!:Grep id=p3J3CSBk pattern="test_.*frost" → [running] tokens_in=0 tokens_out=24 tokens_cached=61990
+o: id=p3J3CSBk → [ok] 560:    fn test_frost_generate_key_shares_2_of_3() {
+t!:Read id=oGzy6JTV file_path=/home/christopherdavid/code/openagents/crates/frostr/src/keygen.rs → [running] tokens_in=0 tokens_out=25 tokens_cached=63918
+o: id=oGzy6JTV → [ok]    608→    fn test_frost_max_participants() {
+t!:Edit id=bvbArAAR file_path=/home/christopherdavid/code/openagents/crates/frostr/src/keygen.rs → [running] tokens_in=0 tokens_out=551 tokens_cached=64172
+o: id=bvbArAAR → [ok] The file /home/christopherdavid/code/openagents/crates/frostr/src/keygen.rs has been updated. Her...
+a: Now let's test the fix: tokens_in=0 tokens_out=1 tokens_cached=64466
+t!:Bash id=a1qnyQfL cmd="cargo test -p frostr --lib keygen::tests --no-f..." → [running] tokens_in=0 tokens_out=99 tokens_cached=64466
+o: id=a1qnyQfL → [error] Exit code 101
+a: I need to check what error variants are available in the Error enum: tokens_in=1 tokens_out=1 tokens_cached=65716
+t!:Read id=p5qqqerk file_path=/home/christopherdavid/code/openagents/crates/frostr/src/lib.rs → [running] tokens_in=1 tokens_out=93 tokens_cached=65716
+o: id=p5qqqerk → [ok]      1→//! FROSTR - Native Rust implementation of FROST threshold signatures for Nostr
+a: I should use `FrostError` instead of `Frost`: tokens_in=0 tokens_out=1 tokens_cached=66168
+t!:Edit id=XN1BYWcH file_path=/home/christopherdavid/code/openagents/crates/frostr/src/keygen.rs → [running] tokens_in=0 tokens_out=345 tokens_cached=66168
+o: id=XN1BYWcH → [ok] The file /home/christopherdavid/code/openagents/crates/frostr/src/keygen.rs has been updated. Her...
+t!:Bash id=CYFAEeDP cmd="cargo test -p frostr --lib keygen::tests::test_..." → [running] tokens_in=0 tokens_out=25 tokens_cached=67567
+o: id=CYFAEeDP → [ok] running 1 test
+t!:Bash id=UFqRN73x cmd="cargo test -p frostr --lib keygen::tests --no-f..." → [running] tokens_in=0 tokens_out=90 tokens_cached=68208
+o: id=UFqRN73x → [ok] running 22 tests
+t!:Bash id=Vp4QfWW9 cmd="git add -A && git commit -m "$(cat <<'EOF'" → [running] tokens_in=0 tokens_out=24 tokens_cached=68567
