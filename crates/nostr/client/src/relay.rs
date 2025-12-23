@@ -6,13 +6,14 @@
 
 use crate::error::{ClientError, Result};
 use crate::queue::MessageQueue;
+use crate::recovery::{CircuitBreaker, ExponentialBackoff, HealthMetrics};
 use crate::subscription::Subscription;
 use futures::{SinkExt, StreamExt};
 use nostr::Event;
 use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use tokio::net::TcpStream;
 use tokio::sync::{mpsc, oneshot, Mutex, RwLock};
 use tokio::time::timeout;
@@ -118,6 +119,14 @@ pub struct RelayConnection {
     queue: Option<Arc<MessageQueue>>,
     /// Queue processing task handle
     queue_task: Arc<Mutex<Option<tokio::task::JoinHandle<()>>>>,
+    /// Circuit breaker for fault tolerance
+    circuit_breaker: Arc<CircuitBreaker>,
+    /// Exponential backoff for reconnection
+    backoff: Arc<Mutex<ExponentialBackoff>>,
+    /// Health metrics
+    health_metrics: Arc<RwLock<HealthMetrics>>,
+    /// Connection start time (for uptime tracking)
+    connected_at: Arc<RwLock<Option<Instant>>>,
 }
 
 impl RelayConnection {
@@ -150,6 +159,23 @@ impl RelayConnection {
             None
         };
 
+        // Create circuit breaker with relay-appropriate thresholds
+        let circuit_breaker = Arc::new(CircuitBreaker::new(
+            5,                              // 5 failures before opening
+            2,                              // 2 successes to close when half-open
+            Duration::from_secs(30),        // 30s timeout before half-open
+        ));
+
+        // Create exponential backoff matching relay config
+        let backoff = Arc::new(Mutex::new(ExponentialBackoff::new(
+            config.reconnect_delay,
+            config.max_reconnect_delay,
+            config.max_reconnect_attempts,
+        )));
+
+        // Create health metrics
+        let health_metrics = Arc::new(RwLock::new(HealthMetrics::new(url.as_str())));
+
         Ok(Self {
             url,
             config,
@@ -161,11 +187,23 @@ impl RelayConnection {
             subscriptions: Arc::new(Mutex::new(HashMap::new())),
             queue,
             queue_task: Arc::new(Mutex::new(None)),
+            circuit_breaker,
+            backoff,
+            health_metrics,
+            connected_at: Arc::new(RwLock::new(None)),
         })
     }
 
     /// Connect to the relay
     pub async fn connect(&self) -> Result<()> {
+        // Check circuit breaker
+        if !self.circuit_breaker.is_allowed().await {
+            let error_msg = "Circuit breaker is open - too many failures".to_string();
+            let mut metrics = self.health_metrics.write().await;
+            metrics.last_error = Some(error_msg.clone());
+            return Err(ClientError::CircuitOpen(error_msg));
+        }
+
         let mut state = self.state.write().await;
         if *state != ConnectionState::Disconnected {
             return Err(ClientError::AlreadyConnected);
@@ -175,6 +213,7 @@ impl RelayConnection {
 
         info!("Connecting to relay: {}", self.url);
 
+        let connect_start = Instant::now();
         let ws_stream = match timeout(
             self.config.connect_timeout,
             connect_async(self.url.as_str()),
@@ -184,10 +223,28 @@ impl RelayConnection {
             Ok(Ok((stream, _))) => stream,
             Ok(Err(e)) => {
                 *self.state.write().await = ConnectionState::Disconnected;
+
+                // Record failure in circuit breaker and metrics
+                self.circuit_breaker.record_failure().await;
+                let mut metrics = self.health_metrics.write().await;
+                metrics.failed_messages += 1;
+                metrics.last_error = Some(e.to_string());
+                metrics.circuit_state = self.circuit_breaker.state().await;
+                metrics.backoff_attempt = self.backoff.lock().await.attempt();
+
                 return Err(ClientError::WebSocket(e.to_string()));
             }
             Err(_) => {
                 *self.state.write().await = ConnectionState::Disconnected;
+
+                // Record timeout failure
+                self.circuit_breaker.record_failure().await;
+                let mut metrics = self.health_metrics.write().await;
+                metrics.failed_messages += 1;
+                metrics.last_error = Some("Connection timeout".to_string());
+                metrics.circuit_state = self.circuit_breaker.state().await;
+                metrics.backoff_attempt = self.backoff.lock().await.attempt();
+
                 return Err(ClientError::Timeout(format!(
                     "Connection timeout after {:?}",
                     self.config.connect_timeout
@@ -197,8 +254,19 @@ impl RelayConnection {
 
         *self.ws.lock().await = Some(ws_stream);
         *self.state.write().await = ConnectionState::Connected;
+        *self.connected_at.write().await = Some(Instant::now());
 
-        info!("Connected to relay: {}", self.url);
+        // Record successful connection
+        self.circuit_breaker.record_success().await;
+        self.backoff.lock().await.reset();
+
+        let mut metrics = self.health_metrics.write().await;
+        metrics.successful_messages += 1;
+        metrics.circuit_state = self.circuit_breaker.state().await;
+        metrics.backoff_attempt = 0;
+        metrics.last_error = None;
+
+        info!("Connected to relay: {} (took {:?})", self.url, connect_start.elapsed());
 
         // Process any queued messages
         if let Err(e) = self.process_queue().await {
@@ -413,11 +481,27 @@ impl RelayConnection {
 
         let mut ws = self.ws.lock().await;
         if let Some(stream) = ws.as_mut() {
-            stream
-                .send(Message::Text(msg_text))
-                .await
-                .map_err(|e| ClientError::WebSocket(e.to_string()))?;
-            Ok(())
+            match stream.send(Message::Text(msg_text)).await {
+                Ok(()) => {
+                    // Record successful send
+                    let mut metrics = self.health_metrics.write().await;
+                    metrics.successful_messages += 1;
+                    drop(metrics);
+
+                    self.circuit_breaker.record_success().await;
+                    Ok(())
+                }
+                Err(e) => {
+                    // Record failure
+                    let mut metrics = self.health_metrics.write().await;
+                    metrics.failed_messages += 1;
+                    metrics.last_error = Some(e.to_string());
+                    drop(metrics);
+
+                    self.circuit_breaker.record_failure().await;
+                    Err(ClientError::WebSocket(e.to_string()))
+                }
+            }
         } else {
             Err(ClientError::NotConnected)
         }
@@ -561,6 +645,73 @@ impl RelayConnection {
     /// Get relay URL
     pub fn url(&self) -> &Url {
         &self.url
+    }
+
+    /// Get health metrics for this connection
+    pub async fn health(&self) -> HealthMetrics {
+        let mut metrics = self.health_metrics.read().await.clone();
+
+        // Update uptime if connected
+        if let Some(connected_at) = *self.connected_at.read().await {
+            metrics.uptime = Some(connected_at.elapsed());
+        }
+
+        metrics
+    }
+
+    /// Check if relay connection is healthy
+    pub async fn is_healthy(&self) -> bool {
+        self.health_metrics.read().await.is_healthy()
+    }
+
+    /// Get circuit breaker state
+    pub async fn circuit_state(&self) -> crate::recovery::CircuitState {
+        self.circuit_breaker.state().await
+    }
+
+    /// Reset circuit breaker (use with caution)
+    pub async fn reset_circuit(&self) {
+        self.circuit_breaker.reset().await;
+        let mut metrics = self.health_metrics.write().await;
+        metrics.circuit_state = crate::recovery::CircuitState::Closed;
+        metrics.last_error = None;
+    }
+
+    /// Attempt reconnection with exponential backoff
+    ///
+    /// Returns the delay that was waited before attempting reconnection,
+    /// or None if max attempts exhausted.
+    pub async fn reconnect_with_backoff(&self) -> Result<Option<Duration>> {
+        // Check if already connected
+        if self.is_connected().await {
+            return Ok(Some(Duration::ZERO));
+        }
+
+        // Get next backoff delay
+        let delay = {
+            let mut backoff = self.backoff.lock().await;
+            backoff.next_delay()
+        };
+
+        let Some(wait_duration) = delay else {
+            warn!("Max reconnection attempts exhausted for {}", self.url);
+            return Ok(None);
+        };
+
+        info!("Waiting {:?} before reconnecting to {}", wait_duration, self.url);
+        tokio::time::sleep(wait_duration).await;
+
+        // Attempt connection
+        match self.connect().await {
+            Ok(()) => {
+                info!("Successfully reconnected to {}", self.url);
+                Ok(Some(wait_duration))
+            }
+            Err(e) => {
+                warn!("Reconnection attempt failed for {}: {}", self.url, e);
+                Err(e)
+            }
+        }
     }
 
     /// Process queued messages and retry sending
@@ -930,5 +1081,57 @@ mod tests {
             }
             _ => panic!("Expected EOSE message"),
         }
+    }
+
+    #[tokio::test]
+    async fn test_health_metrics_initialization() {
+        let relay = RelayConnection::new("wss://relay.example.com").unwrap();
+
+        let health = relay.health().await;
+        assert!(health.url.starts_with("wss://relay.example.com"));
+        assert_eq!(health.successful_messages, 0);
+        assert_eq!(health.failed_messages, 0);
+        assert_eq!(health.success_rate(), 1.0);
+        assert!(health.is_healthy());
+    }
+
+    #[tokio::test]
+    async fn test_circuit_breaker_integration() {
+        use crate::recovery::CircuitState;
+
+        let relay = RelayConnection::new("wss://relay.example.com").unwrap();
+
+        // Circuit should start closed
+        assert_eq!(relay.circuit_state().await, CircuitState::Closed);
+
+        // Simulate failures by directly accessing circuit breaker
+        for _ in 0..5 {
+            relay.circuit_breaker.record_failure().await;
+        }
+
+        // Circuit should now be open
+        assert_eq!(relay.circuit_state().await, CircuitState::Open);
+
+        // Reset circuit
+        relay.reset_circuit().await;
+        assert_eq!(relay.circuit_state().await, CircuitState::Closed);
+    }
+
+    #[tokio::test]
+    async fn test_is_healthy_after_failures() {
+        let relay = RelayConnection::new("wss://relay.example.com").unwrap();
+
+        // Initially healthy
+        assert!(relay.is_healthy().await);
+
+        // Simulate failures
+        {
+            let mut metrics = relay.health_metrics.write().await;
+            metrics.failed_messages = 5;
+            metrics.successful_messages = 5;
+        }
+
+        // Success rate now 50%, should not be healthy (threshold is 80%)
+        assert!(!relay.is_healthy().await);
     }
 }
