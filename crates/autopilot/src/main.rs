@@ -3265,7 +3265,7 @@ async fn handle_metrics_command(command: MetricsCommands) -> Result<()> {
 
             println!("{}", "=".repeat(100));
         }
-        MetricsCommands::Analyze { period, compare, db, errors } => {
+        MetricsCommands::Analyze { period, compare, db, errors, anomalies } => {
             use autopilot::analyze::{
                 calculate_aggregate_stats_from_sessions, detect_regressions,
                 get_sessions_in_period, get_slowest_tools, get_top_error_tools,
@@ -3475,6 +3475,86 @@ async fn handle_metrics_command(command: MetricsCommands) -> Result<()> {
                 println!("{} {} high error sessions flagged and stored in anomalies table", "✓".green(), sessions.len());
                 println!("  Run `cargo autopilot metrics create-issues` to create improvement tasks");
                 println!();
+            }
+
+            // If --anomalies flag, display all detected anomalies from the database
+            if anomalies {
+                use autopilot::metrics::AnomalySeverity;
+
+                // Get all anomalies for sessions in this period
+                let mut all_anomalies = Vec::new();
+                for session in &sessions {
+                    if let Ok(session_anomalies) = metrics_db.get_anomalies(&session.id) {
+                        all_anomalies.extend(session_anomalies);
+                    }
+                }
+
+                if !all_anomalies.is_empty() {
+                    println!("{} Detected Anomalies (>2σ from baseline):", "⚠".yellow().bold());
+                    println!();
+
+                    // Group by severity
+                    let mut critical = Vec::new();
+                    let mut errors = Vec::new();
+                    let mut warnings = Vec::new();
+
+                    for anomaly in &all_anomalies {
+                        match anomaly.severity {
+                            AnomalySeverity::Critical => critical.push(anomaly),
+                            AnomalySeverity::Error => errors.push(anomaly),
+                            AnomalySeverity::Warning => warnings.push(anomaly),
+                        }
+                    }
+
+                    if !critical.is_empty() {
+                        println!("{} {} Critical Anomalies:", "🔴".red().bold(), critical.len());
+                        for anomaly in critical {
+                            println!("  Session: {} ({})", &anomaly.session_id[..12.min(anomaly.session_id.len())], anomaly.dimension);
+                            println!("    Expected: {:.4}", anomaly.expected_value);
+                            println!("    Actual:   {:.4}", anomaly.actual_value);
+                            if let Some(issue) = anomaly.issue_number {
+                                println!("    Issue:    #{}", issue);
+                            }
+                            println!();
+                        }
+                    }
+
+                    if !errors.is_empty() {
+                        println!("{} {} Error Anomalies:", "🟠".yellow(), errors.len());
+                        for anomaly in errors {
+                            println!("  Session: {} ({})", &anomaly.session_id[..12.min(anomaly.session_id.len())], anomaly.dimension);
+                            println!("    Expected: {:.4}, Actual: {:.4}", anomaly.expected_value, anomaly.actual_value);
+                            if let Some(issue) = anomaly.issue_number {
+                                println!("    Issue: #{}", issue);
+                            }
+                        }
+                        println!();
+                    }
+
+                    if !warnings.is_empty() {
+                        println!("{} {} Warning Anomalies (showing first 5):", "🟡".yellow(), warnings.len());
+                        for anomaly in warnings.iter().take(5) {
+                            println!("  {} ({}): {:.4} vs {:.4} expected",
+                                &anomaly.session_id[..12.min(anomaly.session_id.len())],
+                                anomaly.dimension,
+                                anomaly.actual_value,
+                                anomaly.expected_value
+                            );
+                        }
+                        if warnings.len() > 5 {
+                            println!("  ... and {} more warnings", warnings.len() - 5);
+                        }
+                        println!();
+                    }
+
+                    println!("{} Total anomalies detected: {}", "📊".cyan(), all_anomalies.len());
+                    println!("  Run `cargo autopilot metrics create-issues` to auto-create improvement tasks");
+                    println!();
+                } else {
+                    println!("{} No anomalies detected in period", "✓".green().bold());
+                    println!("  All metrics within 2 standard deviations of baseline");
+                    println!();
+                }
             }
 
             println!("{}", "=".repeat(80));
