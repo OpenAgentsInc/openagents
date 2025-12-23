@@ -383,6 +383,30 @@ pub fn unblock_issue(conn: &Connection, issue_id: &str) -> Result<bool> {
     Ok(updated > 0)
 }
 
+/// Release all stale in_progress issues back to open
+///
+/// An issue is considered stale if it's been claimed for more than the specified
+/// duration (in minutes). This is useful for cleaning up issues that were claimed
+/// but abandoned.
+///
+/// Returns the number of issues released.
+pub fn release_stale_issues(conn: &Connection, stale_minutes: i32) -> Result<usize> {
+    let now = Utc::now().to_rfc3339();
+    let updated = conn.execute(
+        r#"
+        UPDATE issues SET
+          status = 'open',
+          claimed_by = NULL,
+          claimed_at = NULL,
+          updated_at = ?
+        WHERE status = 'in_progress'
+          AND claimed_at < datetime('now', '-' || ? || ' minutes')
+        "#,
+        params![now, stale_minutes],
+    )?;
+    Ok(updated)
+}
+
 /// Update issue fields
 pub fn update_issue(
     conn: &Connection,

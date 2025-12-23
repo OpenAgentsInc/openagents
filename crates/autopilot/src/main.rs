@@ -678,6 +678,16 @@ enum IssueCommands {
         #[arg(long)]
         db: Option<PathBuf>,
     },
+    /// Release stale in_progress issues back to open
+    Release {
+        /// Minutes after which an issue is considered stale (default: 60)
+        #[arg(short, long, default_value = "60")]
+        stale_minutes: i32,
+
+        /// Path to issues database (default: autopilot.db in workspace root)
+        #[arg(long)]
+        db: Option<PathBuf>,
+    },
     /// Get the next ready issue
     Ready {
         /// Filter by agent (claude or codex)
@@ -3593,6 +3603,18 @@ async fn handle_issue_command(command: IssueCommands) -> Result<()> {
                 }
             } else {
                 println!("{} Issue #{} not found", "✗".red(), number);
+            }
+        }
+        IssueCommands::Release { stale_minutes, db } => {
+            let db_path = db.unwrap_or(default_db);
+            let conn = db::init_db(&db_path)?;
+
+            let released = issue::release_stale_issues(&conn, stale_minutes)?;
+            if released > 0 {
+                println!("{} Released {} stale in_progress issue(s) claimed more than {} minutes ago",
+                    "✓".green(), released, stale_minutes);
+            } else {
+                println!("No stale in_progress issues found");
             }
         }
         IssueCommands::Ready { agent, db } => {
