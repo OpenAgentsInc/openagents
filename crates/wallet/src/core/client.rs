@@ -70,15 +70,44 @@ impl NostrClient {
 
     /// Fetch events from relays with custom filters
     pub async fn fetch_events(&self, filters: Vec<serde_json::Value>) -> Result<Vec<Event>> {
-        use nostr_client::RelayMessage;
+        use std::collections::HashSet;
 
         if self.relay_urls.is_empty() {
             return Ok(Vec::new());
         }
 
-        // For simplicity, just use the first relay
-        // In a real implementation, we'd merge events from multiple relays
-        let url = &self.relay_urls[0];
+        // Fetch from all relays in parallel
+        let mut tasks = Vec::new();
+        for url in &self.relay_urls {
+            let url = url.clone();
+            let filters = filters.clone();
+            tasks.push(tokio::spawn(async move {
+                Self::fetch_from_relay(&url, &filters).await
+            }));
+        }
+
+        // Collect results from all relays
+        let mut all_events = Vec::new();
+        for task in tasks {
+            if let Ok(Ok(events)) = task.await {
+                all_events.extend(events);
+            }
+            // Ignore errors from individual relays
+        }
+
+        // Deduplicate events by ID
+        let mut seen = HashSet::new();
+        all_events.retain(|event| seen.insert(event.id.clone()));
+
+        // Sort by timestamp (newest first)
+        all_events.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+
+        Ok(all_events)
+    }
+
+    /// Fetch events from a single relay
+    async fn fetch_from_relay(url: &str, filters: &[serde_json::Value]) -> Result<Vec<Event>> {
+        use nostr_client::RelayMessage;
 
         let relay = RelayConnection::new(url)
             .with_context(|| format!("Failed to create relay connection to {}", url))?;
@@ -88,7 +117,7 @@ impl NostrClient {
             .await
             .with_context(|| format!("Failed to connect to {}", url))?;
 
-        relay.subscribe("fetch", &filters).await?;
+        relay.subscribe("fetch", filters).await?;
 
         // Collect events
         let mut events = Vec::new();
@@ -114,9 +143,6 @@ impl NostrClient {
         }
 
         relay.disconnect().await.ok();
-
-        // Sort by timestamp (newest first)
-        events.sort_by(|a, b| b.created_at.cmp(&a.created_at));
 
         Ok(events)
     }
