@@ -184,3 +184,36 @@ o: id=NBQaf2VU → [ok]    Compiling fm-bridge v0.1.0 (/home/christopherdavid/co
 t!:Bash id=rbgy5dr8 cmd="cargo test -p fm-bridge --lib --no-fail-fast 2>..." → [running] tokens_in=0 tokens_out=96 tokens_cached=79952
 o: id=rbgy5dr8 → [ok]    Compiling tokio v1.48.0
 t!:Bash id=XZiANEuL cmd="git add -A && git commit -m "$(cat <<'EOF'" → [running] tokens_in=0 tokens_out=24 tokens_cached=80114
+o: id=XZiANEuL → [ok] [main fb35833a2] Fix FM bridge client expect panic
+t!:Bash id=RCsBdiiP cmd="git push origin main" → [running] tokens_in=0 tokens_out=24 tokens_cached=80635
+o: id=RCsBdiiP → [ok] [0;36m🔍 Running cargo build to check for errors and warnings...[0m
+t!:Bash id=SmGtKfcs cmd="cargo autopilot issue complete 851" → [running] tokens_in=0 tokens_out=79 tokens_cached=81053
+o: id=SmGtKfcs → [ok] ✓ Completed issue #851: PANIC-5: Fix FM bridge client expect panic
+t!:Bash id=B2cf8gv7 cmd="cargo autopilot issue ready" → [running] tokens_in=0 tokens_out=77 tokens_cached=81215
+o: id=B2cf8gv7 → [ok] → Next ready issue:
+t!:Bash id=XezCxBC9 cmd="cargo autopilot issue claim 852" → [running] tokens_in=0 tokens_out=80 tokens_cached=81668
+o: id=XezCxBC9 → [ok] ✓ Claimed issue #852: PANIC-6: Fix Storybook WebSocket handshake panic
+t!:Read id=YQEeENdA file_path=/home/christopherdavid/code/openagents/crates/storybook/src/main.rs → [running] tokens_in=0 tokens_out=25 tokens_cached=81932
+o: id=YQEeENdA → [ok]    135→                style type="text/tailwindcss" { (PreEscaped(TAILWIND_THEME)) }
+a: I can see the issue at line 146. The `actix_ws::handle()` returns a Result but is using `.unwrap()` which will panic on error. Let me fix this: tokens_in=0 tokens_out=1 tokens_cached=82090
+t!:Edit id=cydXNTqC file_path=/home/christopherdavid/code/openagents/crates/storybook/src/main.rs → [running] tokens_in=0 tokens_out=291 tokens_cached=82090
+o: id=cydXNTqC → [ok] The file /home/christopherdavid/code/openagents/crates/storybook/src/main.rs has been updated. He...
+a: Now I need to make sure the function returns `Ok(res)`: tokens_in=0 tokens_out=1 tokens_cached=82785
+t!:Read id=RJ5CjUT3 file_path=/home/christopherdavid/code/openagents/crates/storybook/src/main.rs → [running] tokens_in=0 tokens_out=1 tokens_cached=82785
+o: id=RJ5CjUT3 → [ok]    145→async fn ws_reload(req: actix_web::HttpRequest, stream: web::Payload) -> actix_web::Result...
+t!:Edit id=8penvPrE file_path=/home/christopherdavid/code/openagents/crates/storybook/src/main.rs → [running] tokens_in=0 tokens_out=25 tokens_cached=83288
+o: id=8penvPrE → [ok] The file /home/christopherdavid/code/openagents/crates/storybook/src/main.rs has been updated. He...
+t!:Bash id=h6Z3LvtP cmd="cargo build -p storybook 2>&1 | head -50" → [running] tokens_in=0 tokens_out=25 tokens_cached=84041
+o: id=h6Z3LvtP → [ok]    Compiling h2 v0.3.27
+a: There are compilation errors in another file. Let me check if they're related to my changes: tokens_in=0 tokens_out=1 tokens_cached=84343
+t!:Read id=XMhB6xmr file_path=/home/christopherdavid/code/openagents/crates/storybook/src/stories/atoms/claude_status.rs → [running] tokens_in=0 tokens_out=139 tokens_cached=84343
+o: id=XMhB6xmr → [ok]     60→        (section(html! {
+a: These are pre-existing compilation errors unrelated to my WebSocket fix. Let me check what parameters add_model_usage expects: tokens_in=0 tokens_out=1 tokens_cached=85220
+t!:Read id=W41YiwWx file_path=/home/christopherdavid/code/openagents/crates/ui/src/claude_status.rs → [running] tokens_in=0 tokens_out=141 tokens_cached=85220
+o: id=W41YiwWx → [ok]    155→        self
+a: I see - the function now takes 8 parameters but the storybook is only passing 5. Let me fix the storybook calls: tokens_in=0 tokens_out=1 tokens_cached=85853
+t!:Edit id=RcdRE6Cf file_path=/home/christopherdavid/code/openagents/crates/storybook/src/stories/atoms/claude_status.rs → [running] tokens_in=0 tokens_out=333 tokens_cached=85853
+o: id=RcdRE6Cf → [ok] The file /home/christopherdavid/code/openagents/crates/storybook/src/stories/atoms/claude_status....
+t!:Bash id=AbEfqSF1 cmd="cargo build -p storybook 2>&1 | head -50" → [running] tokens_in=0 tokens_out=24 tokens_cached=86298
+o: id=AbEfqSF1 → [ok]    Compiling storybook v0.1.0 (/home/christopherdavid/code/openagents/crates/storybook)
+t!:Bash id=EZ9XNH88 cmd="git add -A && git commit -m "$(cat <<'EOF'" → [running] tokens_in=0 tokens_out=268 tokens_cached=86995

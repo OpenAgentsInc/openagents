@@ -142,8 +142,8 @@ fn base_layout(title: &str, active_story: &str, content: Markup) -> Markup {
 }
 
 /// WebSocket hot reload endpoint
-async fn ws_reload(req: actix_web::HttpRequest, stream: web::Payload) -> impl Responder {
-    let (res, mut session, mut msg_stream) = actix_ws::handle(&req, stream).unwrap();
+async fn ws_reload(req: actix_web::HttpRequest, stream: web::Payload) -> actix_web::Result<HttpResponse> {
+    let (res, mut session, mut msg_stream) = actix_ws::handle(&req, stream)?;
 
     rt::spawn(async move {
         let mut interval = tokio::time::interval(Duration::from_secs(10));
@@ -167,7 +167,7 @@ async fn ws_reload(req: actix_web::HttpRequest, stream: web::Payload) -> impl Re
         }
     });
 
-    res
+    Ok(res)
 }
 
 /// Home page - shows button story by default
