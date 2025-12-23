@@ -673,3 +673,21 @@ o: id=GfM8EEtN → [ok] warning: `agentgit` (test "pr_creation_test") generated 
 t!:Bash id=swHrQkyM cmd="cargo build --bin openagents 2>&1 | tail -5" → [running] tokens_in=5 tokens_out=25 tokens_cached=141293
 o: id=swHrQkyM → [ok]    Compiling wallet v0.1.0 (/home/christopherdavid/code/openagents/crates/wallet)
 t!:Bash id=jpdo9XY3 cmd="git add -A && git commit -m "$(cat <<'EOF'" → [running] tokens_in=5 tokens_out=25 tokens_cached=141663
+o: id=jpdo9XY3 → [ok] [main 3042cb69c] Add end-to-end test for AgentGit PR creation with trajectory linking
+t!:Bash id=hsFV44QU cmd="git push origin main" → [running] tokens_in=4 tokens_out=75 tokens_cached=141930
+o: id=hsFV44QU → [ok] [0;36m🔍 Running cargo build to check for errors and warnings...[0m
+t!:mcp__issues__issue_complete id=tMqmuGBg  → [running] tokens_in=4 tokens_out=32 tokens_cached=142513
+o: id=tMqmuGBg → [ok] Completed issue #724
+t!:mcp__issues__issue_ready id=NP4QTtu3  → [running] tokens_in=4 tokens_out=27 tokens_cached=142674
+o: id=NP4QTtu3 → [ok] No ready issues available
+t!:mcp__issues__issue_create id=u5jUMYeu  → [running] tokens_in=1 tokens_out=396 tokens_cached=142749
+o: id=u5jUMYeu → [ok] Created issue #725: Add integration test for AgentGit bounty attachment and claim workflow (agent...
+t!:mcp__issues__issue_claim id=Y3zEbt1A  → [running] tokens_in=4 tokens_out=32 tokens_cached=142917
+o: id=Y3zEbt1A → [ok] Claimed issue #725
+t!:Write id=1XApdEKa file_path=/home/christopherdavid/code/openagents/crates/agentgit/tests/bounty_workflow_test.rs → [running] tokens_in=4 tokens_out=4922 tokens_cached=143354
+o: id=1XApdEKa → [ok] File created successfully at: /home/christopherdavid/code/openagents/crates/agentgit/tests/bounty...
+t!:Bash id=LjhXG7bw cmd="cargo test -p agentgit --test bounty_workflow_t..." → [running] tokens_in=3 tokens_out=110 tokens_cached=143455
+o: id=LjhXG7bw → [ok] warning: `agentgit` (test "bounty_workflow_test") generated 5 warnings (run `cargo fix --test "bo...
+t!:Bash id=LW74TTsg cmd="cargo build --bin openagents 2>&1 | tail -5" → [running] tokens_in=3 tokens_out=88 tokens_cached=148531
+o: id=LW74TTsg → [ok]    Compiling wallet v0.1.0 (/home/christopherdavid/code/openagents/crates/wallet)
+t!:Bash id=tRRjeCLs cmd="git add -A && git commit -m "$(cat <<'EOF'" → [running] tokens_in=3 tokens_out=290 tokens_cached=148914
