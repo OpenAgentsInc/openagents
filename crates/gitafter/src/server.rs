@@ -1,6 +1,7 @@
 //! Actix-web server for GitAfter
 
 use actix_web::{web, App, HttpResponse, HttpServer};
+use openagents_spark::SparkWallet;
 use std::sync::Arc;
 use tokio::task::JoinHandle;
 use wallet::core::identity::UnifiedIdentity;
@@ -19,6 +20,7 @@ pub struct AppState {
     pub broadcaster: Arc<WsBroadcaster>,
     pub nostr_client: Arc<NostrClient>,
     pub identity: Option<Arc<UnifiedIdentity>>,
+    pub wallet: Option<Arc<SparkWallet>>,
 }
 
 impl AppState {
@@ -42,11 +44,13 @@ pub async fn start_server(
     broadcaster: Arc<WsBroadcaster>,
     nostr_client: Arc<NostrClient>,
     identity: Option<Arc<UnifiedIdentity>>,
+    wallet: Option<Arc<SparkWallet>>,
 ) -> anyhow::Result<(u16, JoinHandle<Result<(), std::io::Error>>)> {
     let state = web::Data::new(AppState {
         broadcaster,
         nostr_client,
         identity,
+        wallet,
     });
 
     let server = HttpServer::new(move || {
@@ -3623,13 +3627,37 @@ async fn bounty_payment(
                 }
             };
 
-            // TODO: Complete LNURL payment flow
-            // This would involve:
-            // - Fetching LNURL callback URL from lud16
-            // - Making HTTP POST to callback with zap request
-            // - Receiving bolt11 invoice
-            // - Paying invoice via wallet
-            // - Waiting for zap receipt
+            // 9. Check if wallet is available for payment
+            let payment_result = if let Some(wallet) = &state.wallet {
+                // Try to pay via bolt11 if invoice is provided in the bounty claim
+                if let Some(invoice) = get_tag_value_from_event(&claim_event, "invoice") {
+                    // Invoice provided - pay it directly
+                    match wallet.send_payment_simple(&invoice, None).await {
+                        Ok(response) => {
+                            tracing::info!(
+                                "✓ Payment successful for bounty claim {}: {} sats",
+                                &bounty_claim_id[..8],
+                                amount_sats
+                            );
+                            Some(Ok(response))
+                        }
+                        Err(e) => {
+                            tracing::error!("✗ Payment failed: {}", e);
+                            Some(Err(e))
+                        }
+                    }
+                } else {
+                    // No invoice - need LNURL flow (not yet implemented)
+                    tracing::warn!(
+                        "Cannot pay bounty claim {} - LNURL flow not implemented. Need 'invoice' tag with bolt11.",
+                        &bounty_claim_id[..8]
+                    );
+                    None
+                }
+            } else {
+                tracing::warn!("Wallet not configured - bounty payment skipped");
+                None
+            };
 
             tracing::info!(
                 "Created zap request for bounty claim {}: {} sats to {}",
@@ -3639,6 +3667,36 @@ async fn bounty_payment(
             );
 
             // Return payment confirmation UI
+            let payment_status_html = match payment_result {
+                Some(Ok(_response)) => {
+                    r#"<div style="padding: 1rem; background: #d1fae5; border-left: 4px solid #10b981; margin-top: 1rem;">
+                        <p><strong>✓ Payment Successful</strong></p>
+                        <p>Bounty payment has been sent via Lightning Network.</p>
+                    </div>"#.to_string()
+                }
+                Some(Err(e)) => {
+                    format!(
+                        r#"<div style="padding: 1rem; background: #fee2e2; border-left: 4px solid #ef4444; margin-top: 1rem;">
+                            <p><strong>✗ Payment Failed</strong></p>
+                            <p>Error: {}</p>
+                            <p>The bounty claim zap request was created but payment could not be completed.</p>
+                        </div>"#,
+                        e
+                    )
+                }
+                None => {
+                    r#"<div style="padding: 1rem; background: #fef3c7; border-left: 4px solid #f59e0b; margin-top: 1rem;">
+                        <p><strong>⚠️ Payment Not Completed</strong></p>
+                        <p>Payment requires one of:</p>
+                        <ul>
+                            <li>An 'invoice' tag with bolt11 invoice in the bounty claim event, OR</li>
+                            <li>A configured Spark wallet + LNURL implementation (coming soon)</li>
+                        </ul>
+                        <p>The zap request (NIP-57) has been created and can be used for manual payment.</p>
+                    </div>"#.to_string()
+                }
+            };
+
             HttpResponse::Ok()
                 .content_type("text/html; charset=utf-8")
                 .body(format!(
@@ -3646,12 +3704,12 @@ async fn bounty_payment(
                     <html>
                     <head>
                         <meta charset="utf-8">
-                        <title>Payment Initiated</title>
+                        <title>Bounty Payment</title>
                         <style>{}</style>
                     </head>
                     <body>
                         <main>
-                            <h2>⚡ Payment Initiated</h2>
+                            <h2>⚡ Bounty Payment</h2>
                             <div style="padding: 1rem; background: #f0fdf4; border-left: 4px solid #22c55e;">
                                 <p><strong>Bounty Claim:</strong> {}</p>
                                 <p><strong>Amount:</strong> {} sats</p>
@@ -3659,23 +3717,15 @@ async fn bounty_payment(
                                 {}
                             </div>
 
-                            <h3>Zap Request (NIP-57)</h3>
-                            <pre style="background: #1e1e1e; color: #d4d4d4; padding: 1rem; overflow-x: auto;">{}</pre>
+                            {}
 
-                            <div style="padding: 1rem; background: #fef3c7; border-left: 4px solid #f59e0b; margin-top: 1rem;">
-                                <p><strong>⚠️ Payment Not Completed</strong></p>
-                                <p>Full LNURL payment flow not yet implemented. Required steps:</p>
-                                <ol>
-                                    <li>Fetch recipient's LNURL callback URL</li>
-                                    <li>Send zap request to callback</li>
-                                    <li>Receive Lightning invoice (bolt11)</li>
-                                    <li>Pay invoice via wallet integration</li>
-                                    <li>Wait for zap receipt (kind:9735)</li>
-                                </ol>
-                            </div>
+                            <details style="margin-top: 1rem;">
+                                <summary style="cursor: pointer; font-weight: bold;">Show Zap Request (NIP-57)</summary>
+                                <pre style="background: #1e1e1e; color: #d4d4d4; padding: 1rem; overflow-x: auto; margin-top: 0.5rem;">{}</pre>
+                            </details>
 
                             <div style="margin-top: 1rem;">
-                                <a href="/repo/TODO/pulls">← Back to Pull Requests</a>
+                                <a href="javascript:history.back()">← Back</a>
                             </div>
                         </main>
                     </body>
@@ -3688,8 +3738,9 @@ async fn bounty_payment(
                     if let Some(lud16) = lud16 {
                         format!("<p><strong>Lightning Address:</strong> {}</p>", lud16)
                     } else {
-                        "<p><strong>Lightning Address:</strong> Not found (required for payment)</p>".to_string()
+                        "".to_string()
                     },
+                    payment_status_html,
                     zap_request_json
                 ))
         }
