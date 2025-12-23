@@ -2106,11 +2106,12 @@ pub fn pull_request_detail_page(repository: &Event, pull_request: &Event, review
                                         }
                                     }
 
-                                    (crate::views::diff::render_diff_with_comments(
+                                    (crate::views::diff::render_diff_optimized(
                                         diff,
                                         inline_comments,
                                         &pull_request.id,
                                         identifier,
+                                        crate::views::diff::DiffRenderConfig::default(),
                                     ))
                                 }
                             } @else {
