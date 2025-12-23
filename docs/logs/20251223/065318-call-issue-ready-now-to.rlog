@@ -427,3 +427,30 @@ o: id=nmJW5xY1 → [ok] The file /home/christopherdavid/code/openagents/crates/c
 t!:Bash id=opeb8nZ7 cmd="cargo build -p codex-agent-sdk 2>&1 | tail -20" → [running] tokens_in=0 tokens_out=93 tokens_cached=112726
 o: id=opeb8nZ7 → [ok]    Compiling codex-agent-sdk v0.1.0 (/home/christopherdavid/code/openagents/crates/codex-agent-sdk)
 t!:Bash id=b4RpeGrP cmd="git add -A && git commit -m "$(cat <<'EOF'" → [running] tokens_in=0 tokens_out=327 tokens_cached=113602
+o: id=b4RpeGrP → [ok] [main 2db8ac8ef] Fix ProcessTransport stdout task cleanup (RES-9)
+t!:Bash id=n4ruLbkj cmd="git push origin main" → [running] tokens_in=0 tokens_out=25 tokens_cached=113775
+o: id=n4ruLbkj → [ok] [0;36m🔍 Running cargo build to check for errors and warnings...[0m
+t!:mcp__issues__issue_complete id=zFtWxoBw  → [running] tokens_in=0 tokens_out=32 tokens_cached=114352
+o: id=zFtWxoBw → [ok] Completed issue #935
+t!:mcp__issues__issue_ready id=FFvKpuDX  → [running] tokens_in=0 tokens_out=27 tokens_cached=114521
+o: id=FFvKpuDX → [ok] {
+t!:mcp__issues__issue_claim id=SLmdoqmy  → [running] tokens_in=0 tokens_out=8 tokens_cached=114596
+o: id=SLmdoqmy → [ok] Claimed issue #936
+t!:Read id=gpMRqvgC file_path=/home/christopherdavid/code/openagents/crates/autopilot/src/bin/autopilotd.rs → [running] tokens_in=3 tokens_out=118 tokens_cached=114893
+o: id=gpMRqvgC → [ok]    115→            let proc_path = format!("/proc/{}", pid);
+a: I can see the issue. The PID file is written at line 125, but if anything fails after that point (e.g., signal handler setup, control server creation, supervisor initialization), the PID file will ... tokens_in=3 tokens_out=1 tokens_cached=114987
+t!:Edit id=CWR9iwXZ file_path=/home/christopherdavid/code/openagents/crates/autopilot/src/bin/autopilotd.rs → [running] tokens_in=3 tokens_out=629 tokens_cached=114987
+o: id=CWR9iwXZ → [ok] The file /home/christopherdavid/code/openagents/crates/autopilot/src/bin/autopilotd.rs has been u...
+a: Now I need to add the CleanupGuard struct and modify the cleanup section to forget the guard on successful shutdown: tokens_in=2 tokens_out=1 tokens_cached=116226
+t!:Read id=c8xbPE2s file_path=/home/christopherdavid/code/openagents/crates/autopilot/src/bin/autopilotd.rs → [running] tokens_in=2 tokens_out=144 tokens_cached=116226
+o: id=c8xbPE2s → [ok]      1→//! Autopilot Daemon - Supervisor for autopilot worker processes
+t!:Edit id=vU6q8Ybc file_path=/home/christopherdavid/code/openagents/crates/autopilot/src/bin/autopilotd.rs → [running] tokens_in=2 tokens_out=420 tokens_cached=117428
+o: id=vU6q8Ybc → [ok] The file /home/christopherdavid/code/openagents/crates/autopilot/src/bin/autopilotd.rs has been u...
+a: Now I need to update the cleanup section to forget the guard on normal exit: tokens_in=1 tokens_out=1 tokens_cached=118024
+t!:Read id=2PpBeSUf file_path=/home/christopherdavid/code/openagents/crates/autopilot/src/bin/autopilotd.rs → [running] tokens_in=1 tokens_out=1 tokens_cached=118024
+o: id=2PpBeSUf → [ok]    193→        let mut guard = supervisor.lock().await;
+t!:Edit id=RySEeUbC file_path=/home/christopherdavid/code/openagents/crates/autopilot/src/bin/autopilotd.rs → [running] tokens_in=1 tokens_out=390 tokens_cached=118986
+o: id=RySEeUbC → [ok] The file /home/christopherdavid/code/openagents/crates/autopilot/src/bin/autopilotd.rs has been u...
+t!:Bash id=gpqENqg1 cmd="cargo build -p autopilot --bin autopilotd 2>&1 ..." → [running] tokens_in=0 tokens_out=26 tokens_cached=119386
+o: id=gpqENqg1 → [ok]    Compiling breez-sdk-common v0.1.0 (/home/christopherdavid/code/spark-sdk/crates/breez-sdk/common)
+t!:Bash id=MKmue4uz cmd="git add -A && git commit -m "$(cat <<'EOF'" → [running] tokens_in=0 tokens_out=334 tokens_cached=120264

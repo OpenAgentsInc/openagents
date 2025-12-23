@@ -14,6 +14,19 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::{mpsc, Mutex};
 
+/// Guard to ensure PID file and socket are cleaned up on error/panic
+struct CleanupGuard {
+    pid_file: PathBuf,
+    socket_path: PathBuf,
+}
+
+impl Drop for CleanupGuard {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(&self.pid_file);
+        let _ = std::fs::remove_file(&self.socket_path);
+    }
+}
+
 #[derive(Parser)]
 #[command(name = "autopilotd")]
 #[command(about = "Autopilot supervisor daemon")]
@@ -124,6 +137,12 @@ async fn run_daemon(config: DaemonConfig) -> Result<()> {
     // Write PID file
     std::fs::write(&config.pid_file, std::process::id().to_string())?;
 
+    // Cleanup guard to remove PID file on error/panic
+    let pid_file_guard = CleanupGuard {
+        pid_file: config.pid_file.clone(),
+        socket_path: config.socket_path.clone(),
+    };
+
     eprintln!("Starting autopilotd...");
     eprintln!("  Working dir: {:?}", config.working_dir);
     eprintln!("  Project: {:?}", config.project);
@@ -184,9 +203,13 @@ async fn run_daemon(config: DaemonConfig) -> Result<()> {
     control_handle.abort();
     let _ = control_handle.await;
 
-    // Cleanup
+    // Cleanup - the guard will also clean up on drop, but we do it explicitly
+    // to ensure it happens even if we forget the guard
     let _ = std::fs::remove_file(&config.pid_file);
     let _ = std::fs::remove_file(&config.socket_path);
+
+    // Prevent double cleanup by forgetting the guard
+    std::mem::forget(pid_file_guard);
 
     eprintln!("Daemon stopped");
     Ok(())
