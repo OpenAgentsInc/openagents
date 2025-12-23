@@ -63,6 +63,11 @@ async fn list_agents(state: web::Data<AppState>) -> HttpResponse {
                 name: "Codex".to_string(),
                 available: *availability.get("codex").unwrap_or(&false),
             },
+            AgentResponse {
+                id: "gpt-oss".to_string(),
+                name: "GPT-OSS".to_string(),
+                available: *availability.get("gpt-oss").unwrap_or(&false),
+            },
         ],
     };
 
@@ -77,7 +82,7 @@ async fn select_agent(
     let agent_id = body.agent.to_lowercase();
 
     // Validate agent
-    if agent_id != "claude" && agent_id != "codex" {
+    if agent_id != "claude" && agent_id != "codex" && agent_id != "gpt-oss" {
         return HttpResponse::BadRequest().body(format!("Unknown agent: {}", body.agent));
     }
 
@@ -108,6 +113,7 @@ async fn select_agent(
     let agents = vec![
         AgentInfo::new(AgentType::Claude, *availability.get("claude").unwrap_or(&false)),
         AgentInfo::new(AgentType::Codex, *availability.get("codex").unwrap_or(&false)),
+        AgentInfo::new(AgentType::GptOss, *availability.get("gpt-oss").unwrap_or(&false)),
     ];
 
     let selector = AgentSelector::new(agent_type).agents(agents);
@@ -126,6 +132,7 @@ async fn get_current(state: web::Data<AppState>) -> HttpResponse {
     let agents = vec![
         AgentInfo::new(AgentType::Claude, *availability.get("claude").unwrap_or(&false)),
         AgentInfo::new(AgentType::Codex, *availability.get("codex").unwrap_or(&false)),
+        AgentInfo::new(AgentType::GptOss, *availability.get("gpt-oss").unwrap_or(&false)),
     ];
 
     let selector = AgentSelector::new(agent_type).agents(agents);
@@ -140,6 +147,7 @@ async fn check_agent_available(agent: &str) -> bool {
     match agent {
         "claude" => find_claude_executable().is_some(),
         "codex" => find_codex_executable().is_some(),
+        "gpt-oss" => check_gpt_oss_available().await,
         _ => false,
     }
 }
@@ -149,7 +157,32 @@ async fn check_all_agents() -> std::collections::HashMap<String, bool> {
     let mut result = std::collections::HashMap::new();
     result.insert("claude".to_string(), find_claude_executable().is_some());
     result.insert("codex".to_string(), find_codex_executable().is_some());
+    result.insert("gpt-oss".to_string(), check_gpt_oss_available().await);
     result
+}
+
+/// Check if GPT-OSS (llama-server) is available
+///
+/// Checks for llama-server health endpoint at the configured URL
+async fn check_gpt_oss_available() -> bool {
+    let base_url = std::env::var("GPT_OSS_URL")
+        .or_else(|_| std::env::var("LLAMACPP_URL"))
+        .unwrap_or_else(|_| "http://localhost:8080".to_string());
+
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(2))
+        .build();
+
+    let client = match client {
+        Ok(c) => c,
+        Err(_) => return false,
+    };
+
+    // Try the health endpoint
+    match client.get(format!("{}/health", base_url)).send().await {
+        Ok(resp) => resp.status().is_success(),
+        Err(_) => false,
+    }
 }
 
 /// Find Claude Code executable

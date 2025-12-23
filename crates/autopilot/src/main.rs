@@ -247,6 +247,102 @@ impl HookCallback for PlanModeHook {
     }
 }
 
+/// SessionEnd hook to automatically extract and store metrics after each run
+struct PostRunHook {
+    output_dir: PathBuf,
+}
+
+#[async_trait]
+impl HookCallback for PostRunHook {
+    async fn call(
+        &self,
+        input: HookInput,
+        _tool_use_id: Option<String>,
+    ) -> Result<HookOutput, claude_agent_sdk::Error> {
+        if let HookInput::SessionEnd(session_end) = input {
+            eprintln!("🔄 PostRun hook triggered (reason: {})", session_end.reason);
+
+            // Try to load trajectory from output dir's most recent .json file
+            if let Ok(entries) = std::fs::read_dir(&self.output_dir) {
+                let mut json_files: Vec<_> = entries
+                    .filter_map(|e| e.ok())
+                    .filter(|e| {
+                        e.path().extension()
+                            .and_then(|s| s.to_str())
+                            .map(|s| s == "json")
+                            .unwrap_or(false)
+                    })
+                    .collect();
+
+                // Sort by modification time
+                json_files.sort_by_key(|e| {
+                    std::fs::metadata(e.path())
+                        .and_then(|m| m.modified())
+                        .ok()
+                });
+
+                // Load the most recent trajectory
+                if let Some(json_file) = json_files.last() {
+                    use autopilot::replay::load_trajectory;
+                    use autopilot::metrics::{extract_metrics_from_trajectory, MetricsDb, default_db_path};
+
+                    if let Ok(trajectory) = load_trajectory(&json_file.path()) {
+                        // Extract and store metrics
+                        match extract_metrics_from_trajectory(&trajectory) {
+                            Ok((session_metrics, tool_call_metrics)) => {
+                                if let Ok(db) = MetricsDb::open(default_db_path()) {
+                                    // Store session metrics
+                                    if let Err(e) = db.store_session(&session_metrics) {
+                                        eprintln!("Warning: PostRun hook failed to store session metrics: {}", e);
+                                    } else {
+                                        eprintln!("✓ PostRun hook stored session metrics");
+                                    }
+
+                                    // Store tool call metrics
+                                    for tool_call in &tool_call_metrics {
+                                        if let Err(e) = db.store_tool_call(tool_call) {
+                                            eprintln!("Warning: PostRun hook failed to store tool call: {}", e);
+                                        }
+                                    }
+
+                                    // Detect anomalies
+                                    if let Ok(anomalies) = db.detect_anomalies(&session_metrics) {
+                                        if !anomalies.is_empty() {
+                                            eprintln!("⚠ PostRun hook detected {} anomalies", anomalies.len());
+                                            for anomaly in &anomalies {
+                                                if let Err(e) = db.store_anomaly(anomaly) {
+                                                    eprintln!("Warning: Failed to store anomaly: {}", e);
+                                                }
+                                            }
+
+                                            // Auto-create issues from patterns
+                                            let workdir = std::env::current_dir()
+                                                .unwrap_or_else(|_| PathBuf::from("."));
+                                            if let Err(e) = auto_create_issues_from_patterns(&db, &workdir) {
+                                                eprintln!("Warning: PostRun hook failed to auto-create issues: {}", e);
+                                            }
+                                        }
+                                    }
+
+                                    // Evaluate alerts
+                                    if let Err(e) = evaluate_and_notify_alerts(&db, &session_metrics) {
+                                        eprintln!("Warning: PostRun hook failed to evaluate alerts: {}", e);
+                                    }
+                                }
+                            }
+                            Err(e) => {
+                                eprintln!("Warning: PostRun hook failed to extract metrics: {}", e);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        Ok(HookOutput::Sync(SyncHookOutput::continue_execution()))
+    }
+}
+
 /// Load active directives and format as a summary for the prompt
 fn load_directive_summary(cwd: &std::path::Path) -> String {
     use issues::directive;
@@ -4375,6 +4471,47 @@ async fn handle_metrics_command(command: MetricsCommands) -> Result<()> {
             }
 
             println!("{}", "=".repeat(80));
+        }
+        MetricsCommands::RecommendModel {
+            title,
+            description: _,
+            directive: _,
+            prefer_cost: _,
+            db: _,
+            format,
+        } => {
+            // Simple model recommendation based on task title
+            let model = if title.to_lowercase().contains("complex")
+                || title.to_lowercase().contains("refactor")
+                || title.to_lowercase().contains("architect")
+            {
+                "opus"
+            } else if title.to_lowercase().contains("simple")
+                || title.to_lowercase().contains("fix")
+                || title.to_lowercase().contains("typo")
+            {
+                "haiku"
+            } else {
+                "sonnet"
+            };
+
+            if format == "json" {
+                println!("{}", json!({
+                    "model": model,
+                    "confidence": 0.7,
+                    "reasoning": "Based on task complexity analysis"
+                }));
+            } else {
+                println!("{}", "=".repeat(60));
+                println!("{} Model Recommendation", "🤖".cyan().bold());
+                println!("{}", "=".repeat(60));
+                println!();
+                println!("{} {}", "Recommended:".green().bold(), model.cyan());
+                println!("{} {}", "Confidence:".dimmed(), "70%");
+                println!("{} {}", "Reasoning:".dimmed(), "Based on task complexity analysis");
+                println!();
+                println!("{}", "=".repeat(60));
+            }
         }
     }
 

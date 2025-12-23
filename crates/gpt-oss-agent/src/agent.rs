@@ -10,6 +10,7 @@ use tokio::sync::RwLock;
 use gpt_oss::{GptOssClient, GptOssRequest};
 
 use crate::error::Result;
+use crate::session::GptOssSession;
 use crate::tools::{
     apply_patch::ApplyPatchTool, browser::BrowserTool, python::PythonTool, Tool, ToolRequest,
     ToolResult,
@@ -114,6 +115,24 @@ impl GptOssAgent {
     /// Check if the agent is ready
     pub async fn is_ready(&self) -> bool {
         self.client.health().await.unwrap_or(false)
+    }
+
+    /// Create a new session for multi-turn conversation
+    ///
+    /// Sessions maintain conversation history and optionally record
+    /// trajectory data for reproducibility.
+    pub async fn create_session(&self) -> GptOssSession {
+        let tools = self.tools.read().await;
+        GptOssSession::new(
+            self.client.clone(),
+            self.config.clone(),
+            tools.clone(),
+        )
+    }
+
+    /// Get the configuration
+    pub fn config(&self) -> &GptOssAgentConfig {
+        &self.config
     }
 }
 

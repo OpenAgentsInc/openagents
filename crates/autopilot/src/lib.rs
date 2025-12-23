@@ -14,6 +14,7 @@ pub mod auto_issues;
 pub mod benchmark;
 pub mod cli;
 pub mod compaction;
+pub mod context_analysis;
 pub mod daemon;
 pub mod dashboard;
 pub mod goals;
@@ -22,6 +23,7 @@ pub mod lockfile;
 pub mod logs;
 pub mod memory;
 pub mod metrics;
+pub mod model_selection;
 pub mod nip_sa_trajectory;
 pub mod notifications;
 pub mod nostr_agent;
@@ -960,6 +962,14 @@ impl TrajectoryCollector {
     /// Consume the collector and return the trajectory (for testing)
     pub fn into_trajectory(self) -> Trajectory {
         self.trajectory
+    }
+
+    /// Add a step directly to the trajectory
+    ///
+    /// This is useful for agents that don't use the Claude SDK message format.
+    pub fn add_step(&mut self, step_type: StepType) {
+        self.trajectory.add_step(step_type);
+        self.stream_last_step();
     }
 }
 
