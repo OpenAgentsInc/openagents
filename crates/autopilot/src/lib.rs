@@ -12,6 +12,7 @@ pub mod apm_parser;
 pub mod apm_storage;
 pub mod auto_issues;
 pub mod benchmark;
+pub mod cli;
 pub mod compaction;
 pub mod daemon;
 pub mod dashboard;

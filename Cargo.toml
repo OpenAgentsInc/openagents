@@ -8,6 +8,7 @@ members = [
     "crates/frostr",
     "crates/issues",
     "crates/issues-mcp",
+    "crates/local-inference",
     "crates/marketplace",
     "crates/recorder",
     "crates/testing",
