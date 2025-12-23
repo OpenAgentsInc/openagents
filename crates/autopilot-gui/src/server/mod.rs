@@ -24,7 +24,7 @@ impl Server {
 
     /// Start the server
     pub async fn start(self) -> anyhow::Result<()> {
-        let state = Arc::new(RwLock::new(AppState::new()));
+        let state = Arc::new(RwLock::new(AppState::default()));
 
         info!("Starting autopilot GUI server on http://localhost:{}", self.port);
 

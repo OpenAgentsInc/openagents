@@ -1,13 +1,12 @@
 //! HTTP routes for autopilot GUI
 
-use actix_web::{delete, get, web, HttpResponse, Responder};
+use actix_web::{delete, get, post, put, web, HttpResponse, Responder};
 use crate::server::state::AppState;
 use crate::server::ws;
-use crate::storage::PermissionStorage;
 use crate::views::{chat, context, layout, permissions_view};
+use serde::Deserialize;
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::sync::Arc;
 
 /// Configure routes
 pub fn configure(cfg: &mut web::ServiceConfig) {
@@ -16,6 +15,8 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
         .service(context_inspector)
         .service(permissions_manager)
         .service(delete_permission_rule)
+        .service(add_permission_rule)
+        .service(update_permission_rule)
         .service(trigger_apm_update)
         .route("/ws", web::get().to(ws::websocket));
 }
@@ -244,18 +245,8 @@ fn build_directory_tree(workdir: &Path) -> anyhow::Result<context::FileEntry> {
 
 /// Permission rules manager route
 #[get("/permissions")]
-async fn permissions_manager() -> impl Responder {
-    // TODO: Get storage from app state
-    // For now, create temporary storage
-    let storage = match PermissionStorage::new("autopilot-permissions.db") {
-        Ok(s) => Arc::new(s),
-        Err(e) => {
-            return HttpResponse::InternalServerError()
-                .body(format!("Failed to open permissions database: {}", e));
-        }
-    };
-
-    let rules = match storage.get_all_rules().await {
+async fn permissions_manager(state: web::Data<AppState>) -> impl Responder {
+    let rules = match state.permissions.get_all_rules().await {
         Ok(r) => r,
         Err(e) => {
             return HttpResponse::InternalServerError()
@@ -274,26 +265,76 @@ async fn permissions_manager() -> impl Responder {
 #[delete("/api/permissions/{id}")]
 async fn delete_permission_rule(
     path: web::Path<i64>,
-    _state: web::Data<AppState>,
+    state: web::Data<AppState>,
 ) -> impl Responder {
     let rule_id = path.into_inner();
 
-    // TODO: Get storage from app state
-    let storage = match PermissionStorage::new("autopilot-permissions.db") {
-        Ok(s) => Arc::new(s),
-        Err(e) => {
-            return HttpResponse::InternalServerError().json(serde_json::json!({
-                "error": format!("Failed to open permissions database: {}", e)
-            }));
-        }
-    };
-
-    match storage.delete_rule(rule_id).await {
+    match state.permissions.delete_rule(rule_id).await {
         Ok(_) => HttpResponse::Ok().json(serde_json::json!({
             "success": true
         })),
         Err(e) => HttpResponse::InternalServerError().json(serde_json::json!({
             "error": format!("Failed to delete rule: {}", e)
+        })),
+    }
+}
+
+/// Request body for adding a permission rule
+#[derive(Deserialize)]
+struct AddRuleRequest {
+    pattern: String,
+    allowed: bool,
+    persistent: bool,
+}
+
+/// Add a new permission rule
+#[post("/api/permissions")]
+async fn add_permission_rule(
+    body: web::Json<AddRuleRequest>,
+    state: web::Data<AppState>,
+) -> impl Responder {
+    match state
+        .permissions
+        .save_rule(&body.pattern, body.allowed, body.persistent)
+        .await
+    {
+        Ok(id) => HttpResponse::Ok().json(serde_json::json!({
+            "success": true,
+            "id": id
+        })),
+        Err(e) => HttpResponse::InternalServerError().json(serde_json::json!({
+            "error": format!("Failed to add rule: {}", e)
+        })),
+    }
+}
+
+/// Request body for updating a permission rule
+#[derive(Deserialize)]
+struct UpdateRuleRequest {
+    pattern: String,
+    allowed: bool,
+    persistent: bool,
+}
+
+/// Update an existing permission rule
+#[put("/api/permissions/{id}")]
+async fn update_permission_rule(
+    path: web::Path<i64>,
+    body: web::Json<UpdateRuleRequest>,
+    state: web::Data<AppState>,
+) -> impl Responder {
+    let rule_id = path.into_inner();
+
+    match state
+        .permissions
+        .update_rule(rule_id, &body.pattern, body.allowed, body.persistent)
+        .await
+    {
+        Ok(_) => HttpResponse::Ok().json(serde_json::json!({
+            "success": true
+        })),
+        Err(e) => HttpResponse::InternalServerError().json(serde_json::json!({
+            "error": format!("Failed to update rule: {}", e)
         })),
     }
 }

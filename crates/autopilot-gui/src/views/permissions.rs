@@ -216,15 +216,58 @@ pub fn permissions_view(rules: Vec<PermissionRule>) -> Markup {
                     }
 
                     function editRule(id) {
-                        // TODO: Implement edit dialog
-                        alert('Edit functionality coming soon!');
+                        const rules = window.RULES || [];
+                        const rule = rules.find(r => r.id === id);
+                        if (!rule) {
+                            alert('Rule not found');
+                            return;
+                        }
+
+                        const pattern = prompt('Edit pattern:', rule.pattern);
+                        if (!pattern || pattern === rule.pattern) return;
+
+                        const allowed = confirm('Allow this pattern? (OK=Allow, Cancel=Deny)');
+                        const persistent = confirm('Make this rule persistent? (OK=Persistent, Cancel=Session only)');
+
+                        fetch(`/api/permissions/${id}`, {
+                            method: 'PUT',
+                            headers: {'Content-Type': 'application/json'},
+                            body: JSON.stringify({pattern, allowed, persistent})
+                        })
+                        .then(res => res.json())
+                        .then(() => {
+                            window.location.reload();
+                        })
+                        .catch(err => {
+                            alert('Failed to update rule: ' + err);
+                        });
                     }
 
                     function addNewRule() {
-                        // TODO: Implement add rule dialog
-                        alert('Add rule functionality coming soon!');
+                        const pattern = prompt('Enter pattern (e.g., "Bash:npm" or "Edit:*.rs"):');
+                        if (!pattern) return;
+
+                        const allowed = confirm('Allow this pattern? (OK=Allow, Cancel=Deny)');
+                        const persistent = confirm('Make this rule persistent? (OK=Persistent, Cancel=Session only)');
+
+                        fetch('/api/permissions', {
+                            method: 'POST',
+                            headers: {'Content-Type': 'application/json'},
+                            body: JSON.stringify({pattern, allowed, persistent})
+                        })
+                        .then(res => res.json())
+                        .then(() => {
+                            window.location.reload();
+                        })
+                        .catch(err => {
+                            alert('Failed to add rule: ' + err);
+                        });
                     }
-                    "#
+
+                    "#;
+
+                    // Store rules data for edit function
+                    (format!("window.RULES = {};", serde_json::to_string(&rules).unwrap_or_default()))
                 }
             }
         }

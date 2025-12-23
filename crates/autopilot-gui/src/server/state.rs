@@ -1,6 +1,8 @@
 //! Shared application state
 
+use crate::storage::permissions::PermissionStorage;
 use serde::Serialize;
+use std::sync::Arc;
 use tokio::sync::broadcast;
 
 /// Application state shared across handlers
@@ -8,6 +10,8 @@ use tokio::sync::broadcast;
 pub struct AppState {
     /// Broadcast channel for WebSocket messages
     pub ws_tx: broadcast::Sender<WSBroadcast>,
+    /// Permission storage
+    pub permissions: Arc<PermissionStorage>,
 }
 
 /// WebSocket broadcast message
@@ -31,9 +35,9 @@ pub enum WSBroadcast {
 
 impl AppState {
     /// Create new application state
-    pub fn new() -> Self {
+    pub fn new(permissions: Arc<PermissionStorage>) -> Self {
         let (ws_tx, _) = broadcast::channel(100);
-        Self { ws_tx }
+        Self { ws_tx, permissions }
     }
 
     /// Send APM update to all connected clients
@@ -47,6 +51,9 @@ impl AppState {
 
 impl Default for AppState {
     fn default() -> Self {
-        Self::new()
+        // Use default permissions database
+        let permissions = PermissionStorage::new("autopilot-permissions.db")
+            .expect("Failed to create permissions database");
+        Self::new(Arc::new(permissions))
     }
 }
