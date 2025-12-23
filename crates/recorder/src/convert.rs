@@ -210,6 +210,10 @@ struct SessionMeta {
 }
 
 /// Convert a Claude Code JSONL file to Recorder format
+///
+/// **Memory usage**: Loads the entire file into memory. For very large JSONL files (>100MB),
+/// consider processing in batches. The conversion accumulates output lines before writing the
+/// final result.
 pub fn convert_file(
     path: &Path,
     repo_sha: &str,
