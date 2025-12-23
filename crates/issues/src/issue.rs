@@ -114,6 +114,8 @@ pub struct Issue {
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     pub completed_at: Option<DateTime<Utc>>,
+    /// Whether this issue was automatically created by anomaly detection
+    pub auto_created: bool,
 }
 
 impl Issue {
@@ -154,6 +156,7 @@ impl Issue {
                 .get::<_, Option<String>>("completed_at")?
                 .and_then(|s| DateTime::parse_from_rfc3339(&s).ok())
                 .map(|dt| dt.with_timezone(&Utc)),
+            auto_created: row.get::<_, Option<i32>>("auto_created")?.unwrap_or(0) != 0,
         })
     }
 }
@@ -169,6 +172,21 @@ pub fn create_issue(
     directive_id: Option<&str>,
     project_id: Option<&str>,
 ) -> Result<Issue> {
+    create_issue_with_auto(conn, title, description, priority, issue_type, agent, directive_id, project_id, false)
+}
+
+/// Create a new issue with auto_created flag
+pub fn create_issue_with_auto(
+    conn: &Connection,
+    title: &str,
+    description: Option<&str>,
+    priority: Priority,
+    issue_type: IssueType,
+    agent: Option<&str>,
+    directive_id: Option<&str>,
+    project_id: Option<&str>,
+    auto_created: bool,
+) -> Result<Issue> {
     let id = Uuid::new_v4().to_string();
     let number = next_issue_number(conn)?;
     let now = Utc::now().to_rfc3339();
@@ -176,8 +194,8 @@ pub fn create_issue(
 
     conn.execute(
         r#"
-        INSERT INTO issues (id, number, title, description, priority, issue_type, agent, directive_id, project_id, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO issues (id, number, title, description, priority, issue_type, agent, directive_id, project_id, auto_created, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         "#,
         params![
             id,
@@ -189,6 +207,7 @@ pub fn create_issue(
             agent,
             directive_id,
             project_id,
+            if auto_created { 1 } else { 0 },
             now,
             now,
         ],
@@ -227,6 +246,30 @@ pub fn list_issues(conn: &Connection, status: Option<Status>) -> Result<Vec<Issu
         }
         None => {
             let mut stmt = conn.prepare("SELECT * FROM issues ORDER BY number")?;
+            let rows = stmt.query_map([], Issue::from_row)?;
+            for row in rows {
+                issues.push(row?);
+            }
+        }
+    }
+
+    Ok(issues)
+}
+
+/// List auto-created issues (created by automated anomaly detection)
+pub fn list_auto_created_issues(conn: &Connection, status: Option<Status>) -> Result<Vec<Issue>> {
+    let mut issues = Vec::new();
+
+    match status {
+        Some(s) => {
+            let mut stmt = conn.prepare("SELECT * FROM issues WHERE auto_created = 1 AND status = ? ORDER BY number DESC")?;
+            let rows = stmt.query_map([s.as_str()], Issue::from_row)?;
+            for row in rows {
+                issues.push(row?);
+            }
+        }
+        None => {
+            let mut stmt = conn.prepare("SELECT * FROM issues WHERE auto_created = 1 ORDER BY number DESC")?;
             let rows = stmt.query_map([], Issue::from_row)?;
             for row in rows {
                 issues.push(row?);

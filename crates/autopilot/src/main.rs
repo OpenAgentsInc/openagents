@@ -610,6 +610,16 @@ enum IssueCommands {
         #[arg(long)]
         db: Option<PathBuf>,
     },
+    /// List auto-created issues (from anomaly detection)
+    ListAuto {
+        /// Filter by status (open, in_progress, done)
+        #[arg(short, long)]
+        status: Option<String>,
+
+        /// Path to issues database (default: autopilot.db in workspace root)
+        #[arg(long)]
+        db: Option<PathBuf>,
+    },
     /// Create a new issue
     Create {
         /// Issue title
@@ -3552,6 +3562,41 @@ async fn handle_issue_command(command: IssueCommands) -> Result<()> {
             if issues.is_empty() {
                 println!("No issues found");
             } else {
+                println!("{:<6} {:<10} {:<8} {:<8} {:<50}", "Number", "Status", "Priority", "Agent", "Title");
+                println!("{}", "-".repeat(90));
+                for i in issues {
+                    let status_str = i.status.as_str();
+                    let blocked = if i.is_blocked { " [BLOCKED]" } else { "" };
+                    println!(
+                        "{:<6} {:<10} {:<8} {:<8} {}{}",
+                        i.number,
+                        status_str,
+                        i.priority.as_str(),
+                        i.agent,
+                        i.title,
+                        blocked
+                    );
+                }
+            }
+        }
+        IssueCommands::ListAuto { status, db } => {
+            let db_path = db.unwrap_or(default_db);
+            let conn = db::init_db(&db_path)?;
+
+            let status_filter = status.as_deref().map(|s| match s {
+                "open" => Status::Open,
+                "in_progress" => Status::InProgress,
+                "done" => Status::Done,
+                _ => Status::Open,
+            });
+
+            let issues = issue::list_auto_created_issues(&conn, status_filter)?;
+
+            if issues.is_empty() {
+                println!("No auto-created issues found");
+            } else {
+                println!("Auto-created issues (from anomaly detection):");
+                println!();
                 println!("{:<6} {:<10} {:<8} {:<8} {:<50}", "Number", "Status", "Priority", "Agent", "Title");
                 println!("{}", "-".repeat(90));
                 for i in issues {
