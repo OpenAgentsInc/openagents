@@ -6,7 +6,7 @@ use tracing::{debug, error, info};
 
 /// Current schema version
 #[allow(dead_code)]
-const SCHEMA_VERSION: i32 = 7;
+const SCHEMA_VERSION: i32 = 8;
 
 /// Initialize the database with migrations
 pub fn init_db(path: &Path) -> Result<Connection> {
@@ -49,6 +49,9 @@ pub fn init_db(path: &Path) -> Result<Connection> {
     if version < 7 {
         migrate_v7(&conn)?;
     }
+    if version < 8 {
+        migrate_v8(&conn)?;
+    }
 
     Ok(conn)
 }
@@ -80,6 +83,9 @@ pub fn init_memory_db() -> Result<Connection> {
     }
     if version < 7 {
         migrate_v7(&conn)?;
+    }
+    if version < 8 {
+        migrate_v8(&conn)?;
     }
 
     Ok(conn)
@@ -136,7 +142,7 @@ fn migrate_v1(conn: &Connection) -> Result<()> {
         -- Issue events table (audit log)
         CREATE TABLE IF NOT EXISTS issue_events (
             id TEXT PRIMARY KEY,
-            issue_id TEXT NOT NULL REFERENCES issues(id),
+            issue_id TEXT NOT NULL REFERENCES issues(id) ON DELETE CASCADE,
             actor TEXT,
             event_type TEXT NOT NULL,
             old_value TEXT,
@@ -341,6 +347,41 @@ fn migrate_v7(conn: &Connection) -> Result<()> {
 
     set_schema_version(conn, 7)?;
     info!("Migration v7 completed successfully");
+    Ok(())
+}
+
+fn migrate_v8(conn: &Connection) -> Result<()> {
+    info!("Running migration v8");
+    // Add ON DELETE CASCADE to issue_events foreign key
+    conn.execute_batch(
+        r#"
+        -- Create new table with CASCADE delete
+        CREATE TABLE issue_events_new (
+            id TEXT PRIMARY KEY,
+            issue_id TEXT NOT NULL REFERENCES issues(id) ON DELETE CASCADE,
+            actor TEXT,
+            event_type TEXT NOT NULL,
+            old_value TEXT,
+            new_value TEXT,
+            created_at TEXT NOT NULL
+        );
+
+        -- Copy data from old table
+        INSERT INTO issue_events_new SELECT * FROM issue_events;
+
+        -- Drop old table
+        DROP TABLE issue_events;
+
+        -- Rename new table
+        ALTER TABLE issue_events_new RENAME TO issue_events;
+
+        -- Recreate index
+        CREATE INDEX idx_issue_events_issue ON issue_events(issue_id);
+        "#,
+    )?;
+
+    set_schema_version(conn, 8)?;
+    info!("Migration v8 completed successfully");
     info!("Database initialized successfully at schema version {}", SCHEMA_VERSION);
     Ok(())
 }
