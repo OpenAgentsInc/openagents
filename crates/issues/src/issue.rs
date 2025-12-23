@@ -138,10 +138,18 @@ impl Issue {
                 .map(|dt| dt.with_timezone(&Utc)),
             created_at: DateTime::parse_from_rfc3339(&row.get::<_, String>("created_at")?)
                 .map(|dt| dt.with_timezone(&Utc))
-                .unwrap_or_else(|_| Utc::now()),
+                .map_err(|e| rusqlite::Error::FromSqlConversionFailure(
+                    0,
+                    rusqlite::types::Type::Text,
+                    Box::new(e),
+                ))?,
             updated_at: DateTime::parse_from_rfc3339(&row.get::<_, String>("updated_at")?)
                 .map(|dt| dt.with_timezone(&Utc))
-                .unwrap_or_else(|_| Utc::now()),
+                .map_err(|e| rusqlite::Error::FromSqlConversionFailure(
+                    0,
+                    rusqlite::types::Type::Text,
+                    Box::new(e),
+                ))?,
             completed_at: row
                 .get::<_, Option<String>>("completed_at")?
                 .and_then(|s| DateTime::parse_from_rfc3339(&s).ok())
