@@ -2010,7 +2010,24 @@ impl EventCache {
             sig,
         })
     }
+
+    /// Explicitly close the database connection
+    /// This ensures all pending writes are flushed and allows checking for errors
+    /// The connection will be closed automatically when dropped, but calling this
+    /// method explicitly allows you to handle potential close errors.
+    #[allow(dead_code)]
+    pub fn close(self) -> Result<()> {
+        self.conn.close()
+            .map_err(|(_, e)| e)
+            .context("Failed to close cache database")
+    }
 }
+
+// Note: EventCache does not implement Drop explicitly because:
+// - rusqlite's Connection already has a Drop impl that handles cleanup
+// - The Connection automatically rolls back uncommitted transactions
+// - The Connection automatically closes the database connection
+// - We provide an explicit close() method for error handling if needed
 
 /// Cache statistics
 #[allow(dead_code)]

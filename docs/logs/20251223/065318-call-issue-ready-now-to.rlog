@@ -301,3 +301,39 @@ o: id=F456zj3T → [ok] test daemon::metrics::tests::test_metrics_collector_crea
 t!:Bash id=noEAsKZW cmd="cargo build -p autopilot 2>&1 | tail -10" → [running] tokens_in=0 tokens_out=90 tokens_cached=87668
 o: id=noEAsKZW → [ok]    Compiling breez-sdk-common v0.1.0 (/home/christopherdavid/code/spark-sdk/crates/breez-sdk/common)
 t!:Bash id=f1iq12Zo cmd="git add -A && git commit -m "$(cat <<'EOF'" → [running] tokens_in=0 tokens_out=328 tokens_cached=88357
+o: id=f1iq12Zo → [ok] [main 9c6883913] Add Drop impl to MetricsDb (RES-5)
+t!:Bash id=JTvK1wWn cmd="git push origin main" → [running] tokens_in=0 tokens_out=25 tokens_cached=88681
+o: id=JTvK1wWn → [ok] [0;36m🔍 Running cargo build to check for errors and warnings...[0m
+t!:mcp__issues__issue_complete id=Wrb6SMbS  → [running] tokens_in=0 tokens_out=32 tokens_cached=89149
+o: id=Wrb6SMbS → [ok] Completed issue #931
+t!:mcp__issues__issue_ready id=HrdDVKCo  → [running] tokens_in=0 tokens_out=27 tokens_cached=89419
+o: id=HrdDVKCo → [ok] {
+t!:mcp__issues__issue_claim id=1HgXdv51  → [running] tokens_in=0 tokens_out=32 tokens_cached=89494
+o: id=1HgXdv51 → [ok] Claimed issue #932
+t!:Read id=EFckRZCX file_path=/home/christopherdavid/code/openagents/crates/gitafter/src/nostr/cache.rs → [running] tokens_in=0 tokens_out=5 tokens_cached=89674
+o: id=EFckRZCX → [ok]      1→//! Local SQLite cache for storing Nostr events offline
+a: I can see the `EventCache` struct uses a `Connection` field. Let me check if there's already a close method or Drop impl: tokens_in=3 tokens_out=1 tokens_cached=89878
+t!:Grep id=u25NaC2g pattern="pub fn close" → [running] tokens_in=3 tokens_out=149 tokens_cached=89878
+o: id=u25NaC2g → [ok] No matches found
+t!:Grep id=c1tgLBtM pattern="impl Drop for EventCache" → [running] tokens_in=2 tokens_out=24 tokens_cached=90668
+o: id=c1tgLBtM → [ok] No matches found
+a: Let me find where the impl block ends: tokens_in=2 tokens_out=3 tokens_cached=90936
+t!:Bash id=G3AdvJAL cmd="wc -l /home/christopherdavid/code/openagents/cr..." → [running] tokens_in=2 tokens_out=116 tokens_cached=90936
+o: id=G3AdvJAL → [ok] 2038 /home/christopherdavid/code/openagents/crates/gitafter/src/nostr/cache.rs
+t!:Grep id=Lnng89px pattern="^impl EventCache" → [running] tokens_in=1 tokens_out=119 tokens_cached=91071
+o: id=Lnng89px → [ok] 14:impl EventCache {
+t!:Bash id=3XQsqmSU cmd="grep -n "^}" /home/christopherdavid/code/openag..." → [running] tokens_in=1 tokens_out=113 tokens_cached=91335
+o: id=3XQsqmSU → [ok] 12:}
+t!:Read id=K5GdXsJ1 file_path=/home/christopherdavid/code/openagents/crates/gitafter/src/nostr/cache.rs → [running] tokens_in=0 tokens_out=25 tokens_cached=91472
+o: id=K5GdXsJ1 → [ok]   2010→            sig,
+a: The impl block ends at line 2013. Now I'll add both a `close()` method and a `Drop` implementation: tokens_in=0 tokens_out=1 tokens_cached=91615
+t!:Edit id=tbW9XF3W file_path=/home/christopherdavid/code/openagents/crates/gitafter/src/nostr/cache.rs → [running] tokens_in=0 tokens_out=335 tokens_cached=91615
+o: id=tbW9XF3W → [ok] The file /home/christopherdavid/code/openagents/crates/gitafter/src/nostr/cache.rs has been updat...
+t!:Bash id=qzevPnbp cmd="cargo build -p gitafter 2>&1 | tail -20" → [running] tokens_in=0 tokens_out=88 tokens_cached=92235
+o: id=qzevPnbp → [ok]    Compiling breez-sdk-common v0.1.0 (/home/christopherdavid/code/spark-sdk/crates/breez-sdk/common)
+a: I see the issue. When we have a Drop implementation, we can't move fields out of `self`. I need to use `Option` or reconsider the approach. Let me remove the Drop impl and just keep the close method: tokens_in=0 tokens_out=1 tokens_cached=93007
+t!:Edit id=FigYmXwv file_path=/home/christopherdavid/code/openagents/crates/gitafter/src/nostr/cache.rs → [running] tokens_in=0 tokens_out=506 tokens_cached=93007
+o: id=FigYmXwv → [ok] The file /home/christopherdavid/code/openagents/crates/gitafter/src/nostr/cache.rs has been updat...
+t!:Bash id=6RNRqiu1 cmd="cargo build -p gitafter 2>&1 | tail -20" → [running] tokens_in=0 tokens_out=88 tokens_cached=93571
+o: id=6RNRqiu1 → [ok] warning: field `initial_chunk_size` is never read
+t!:Bash id=ushu1Qpg cmd="git add -A && git commit -m "$(cat <<'EOF'" → [running] tokens_in=0 tokens_out=331 tokens_cached=94459
