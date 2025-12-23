@@ -100,21 +100,26 @@ pub async fn home(
     // Chat pane with Raw/Formatted toggle - visible when full_auto is ON
     let chat_pane = ChatPane::new(full_auto).build();
 
-    // Stack daemon and Claude panels in a flex container with 12px gap
-    let status_panels = format!(
-        r#"<div style="position: fixed; bottom: 1rem; right: 1rem; display: flex; flex-direction: column; gap: 12px;">
+    // Unified control stack: Full Auto, WS indicator, Daemon, Claude (top to bottom)
+    let control_stack = format!(
+        r#"<div style="position: fixed; bottom: 1rem; right: 1rem; display: flex; flex-direction: column; gap: 12px; align-items: flex-end;">
+            <div style="background: #111; border: 1px solid #333; padding: 0.5rem 0.75rem;">{}</div>
+            <div id="ws-indicator" style="background: #111; border: 1px solid #333; padding: 0.5rem 0.75rem; display: flex; align-items: center; gap: 0.35rem; font-size: 0.6rem; color: #666;">
+                <span id="ws-dot" style="width: 6px; height: 6px; background: #555; display: inline-block;"></span>
+                <span style="color: #888; text-transform: uppercase; letter-spacing: 0.05em;">WS</span>
+            </div>
             <div id="daemon-status"><div id="daemon-status-content">{}</div></div>
             <div id="claude-status" hx-get="/api/claude/status" hx-trigger="load, every 5s" hx-swap="innerHTML">{}</div>
         </div>"#,
+        switch.into_string(),
         daemon_status.build().into_string(),
         status.build().into_string()
     );
 
     let content = format!(
-        r#"<div style="position: fixed; top: 1rem; right: 1rem; z-index: 50; display: flex; gap: 1rem; align-items: center;">{}{}</div>{}{}"#,
+        r#"<div style="position: fixed; top: 1rem; right: 1rem; z-index: 50;">{}</div>{}{}"#,
         agent_selector.into_string(),
-        switch.into_string(),
-        status_panels,
+        control_stack,
         chat_pane.into_string()
     );
 

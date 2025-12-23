@@ -106,11 +106,6 @@ pub fn base_layout_with_token(content: &str, auth_token: Option<&str>) -> String
     </style>
 </head>
 <body hx-ext="ws" ws-connect="{ws_url}">
-    <!-- WebSocket connection indicator -->
-    <div id="ws-indicator" style="position: fixed; top: 0.5rem; left: 0.5rem; display: flex; align-items: center; gap: 0.35rem; font-size: 0.55rem; color: #555; font-family: 'Vera Mono', monospace;">
-        <span id="ws-dot" style="width: 6px; height: 6px; background: #555; display: inline-block;"></span>
-        <span id="ws-label">WS</span>
-    </div>
     {content}
     <script>
         console.log('OpenAgents loaded, HTMX version:', htmx.version);

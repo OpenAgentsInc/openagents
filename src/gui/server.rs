@@ -150,7 +150,7 @@ async fn poll_daemon_status(state: web::Data<AppState>) {
             daemon_status.build().into_string()
         );
         let client_count = state.broadcaster.broadcast(&html);
-        info!("Daemon poller: broadcast to {} clients", client_count);
+        debug!("Daemon poller: broadcast to {} clients", client_count);
 
         // Also update state for initial page load
         match result {
