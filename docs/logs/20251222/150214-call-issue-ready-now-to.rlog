@@ -67,9 +67,9 @@ a: The tests exist in `nip01_protocol_compliance.rs` with comprehensive event va
 t!:Grep id=GJif1y2o pattern="quickcheck|proptest|Arbitrary" → [running] tokens_in=2 tokens_out=1 tokens_cached=81211
 o: id=GJif1y2o → [ok] No files found
 a: The tests exist but don't use property-based testing yet. However, issue #635 shows as "done" which means comprehensive validation tests were added. Issue #589's blocked reason mentions needing "su... tokens_in=1 tokens_out=3 tokens_cached=82661
-t!:Glob id=f1NdbJpd pattern="crates/agentgit/tests/*.rs" → [running] tokens_in=1 tokens_out=155 tokens_cached=82661
-o: id=f1NdbJpd → [ok] /home/christopherdavid/code/openagents/crates/agentgit/tests/publish_error_handling.rs
-t!:Read id=ArYpc1MU file_path=/home/christopherdavid/code/openagents/crates/agentgit/tests/publish_error_handling.rs → [running] tokens_in=1 tokens_out=84 tokens_cached=82934
+t!:Glob id=f1NdbJpd pattern="crates/gitafter/tests/*.rs" → [running] tokens_in=1 tokens_out=155 tokens_cached=82661
+o: id=f1NdbJpd → [ok] /home/christopherdavid/code/openagents/crates/gitafter/tests/publish_error_handling.rs
+t!:Read id=ArYpc1MU file_path=/home/christopherdavid/code/openagents/crates/gitafter/tests/publish_error_handling.rs → [running] tokens_in=1 tokens_out=84 tokens_cached=82934
 o: id=ArYpc1MU → [ok]      1→//! Integration tests for event publishing error handling
 a: These are unit tests for error handling, not E2E tests. The blocked reason for #629 is valid - it needs mock relay infrastructure. Both blocked issues have legitimate technical reasons. Let me clos... tokens_in=0 tokens_out=1 tokens_cached=83132
 t!:Bash id=QBgbSUpc cmd="sqlite3 .openagents/autopilot.db "UPDATE issues..." → [running] tokens_in=0 tokens_out=181 tokens_cached=83132
@@ -85,7 +85,7 @@ o: id=XrieGTbx → [ok] Deleted issue #589
 t!:mcp__issues__issue_create id=NhPt7p1E  → [running] tokens_in=0 tokens_out=5 tokens_cached=87096
 o: id=NhPt7p1E → [ok] Created issue #669: Create mock Nostr relay test utility for integration testing (agent: claude) ...
 t!:mcp__issues__issue_create id=E7CQg6bf  → [running] tokens_in=3 tokens_out=32 tokens_cached=87279
-o: id=E7CQg6bf → [ok] Created issue #670: Create AgentGit TestApp helper for integration tests (agent: claude) [directi...
+o: id=E7CQg6bf → [ok] Created issue #670: Create GitAfter TestApp helper for integration tests (agent: claude) [directi...
 t!:mcp__issues__issue_complete id=wexY84ti  → [running] tokens_in=3 tokens_out=32 tokens_cached=87585
 o: id=wexY84ti → [ok] Completed issue #668
 t!:Bash id=FLv7pB51 cmd="git add -A && git diff --cached --stat" → [running] tokens_in=0 tokens_out=8 tokens_cached=87903

@@ -123,7 +123,7 @@ t!:mcp__issues__issue_ready id=Y9KCfcTB  → [running] tokens_in=0 tokens_out=41
 o: id=Y9KCfcTB → [ok] No ready issues available
 t!:mcp__issues__directive_get id=iASPDgsg  → [running] tokens_in=3 tokens_out=60 tokens_cached=73412
 o: id=iASPDgsg → [ok] {
-a: I see d-002 has 2 in_progress issues. Let me check d-005 (AgentGit): tokens_in=2 tokens_out=1 tokens_cached=73467
+a: I see d-002 has 2 in_progress issues. Let me check d-005 (GitAfter): tokens_in=2 tokens_out=1 tokens_cached=73467
 t!:mcp__issues__directive_get id=QPaKnKyq  → [running] tokens_in=2 tokens_out=1 tokens_cached=73467
 o: id=QPaKnKyq → [ok] {
 t!:mcp__issues__issue_create id=B1y8DZ9v  → [running] tokens_in=0 tokens_out=5 tokens_cached=81559

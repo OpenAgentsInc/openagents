@@ -6,12 +6,12 @@ This document explains the testing infrastructure available in OpenAgents, inclu
 
 The `TestApp` pattern provides isolated test environments with mock services. Each crate has its own TestApp implementation tailored to its needs.
 
-### AgentGit TestApp
+### GitAfter TestApp
 
-Location: `crates/agentgit/tests/helpers/test_app.rs`
+Location: `crates/gitafter/tests/helpers/test_app.rs`
 
 ```rust
-use agentgit::TestApp;
+use gitafter::TestApp;
 
 #[tokio::test]
 async fn test_repository_creation() {
@@ -202,7 +202,7 @@ cargo insta reject
 Snapshots are stored in `snapshots/` directories next to test files:
 
 ```
-crates/agentgit/tests/
+crates/gitafter/tests/
 ├── full_workflow_test.rs
 └── snapshots/
     └── full_workflow_test__test_dashboard_rendering.snap

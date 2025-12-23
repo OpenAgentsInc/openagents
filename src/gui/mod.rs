@@ -4,7 +4,7 @@
 //! - Wallet (identity, payments)
 //! - Marketplace (compute, skills, data)
 //! - Autopilot (agent sessions)
-//! - AgentGit (Nostr-native git)
+//! - GitAfter (Nostr-native git)
 //! - Daemon status
 
 mod app;

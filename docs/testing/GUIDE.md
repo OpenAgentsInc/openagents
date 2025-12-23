@@ -177,7 +177,7 @@ mod tests {
 
 **Purpose:** Test UI components and rendering logic.
 
-**Location:** `crates/ui/tests/` and `crates/agentgit/tests/components/`
+**Location:** `crates/ui/tests/` and `crates/gitafter/tests/components/`
 
 **Characteristics:**
 - Test HTML structure
@@ -186,9 +186,9 @@ mod tests {
 - No browser automation
 
 ```rust
-// In crates/agentgit/tests/components/repos_test.rs
+// In crates/gitafter/tests/components/repos_test.rs
 
-use agentgit::views::repository_card;
+use gitafter::views::repository_card;
 use insta::assert_snapshot;
 
 #[test]
@@ -223,7 +223,7 @@ fn test_repository_card_snapshot() {
 - Test API routes and WebSocket connections
 
 ```rust
-// In crates/agentgit/tests/pr_creation_test.rs
+// In crates/gitafter/tests/pr_creation_test.rs
 
 use anyhow::Result;
 use helpers::test_app::TestApp;

@@ -25,7 +25,7 @@ pub enum Tab {
     Wallet,
     Marketplace,
     Autopilot,
-    AgentGit,
+    GitAfter,
     Daemon,
     Settings,
 }
@@ -37,7 +37,7 @@ impl Tab {
             Tab::Wallet => "wallet",
             Tab::Marketplace => "marketplace",
             Tab::Autopilot => "autopilot",
-            Tab::AgentGit => "agentgit",
+            Tab::GitAfter => "gitafter",
             Tab::Daemon => "daemon",
             Tab::Settings => "settings",
         }

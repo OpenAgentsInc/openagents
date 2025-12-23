@@ -2,7 +2,7 @@
 //!
 //! Each module wraps the CLI functionality from its respective crate.
 
-pub mod agentgit;
+pub mod gitafter;
 pub mod autopilot;
 pub mod daemon;
 pub mod marketplace;

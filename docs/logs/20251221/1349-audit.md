@@ -126,9 +126,9 @@ Gaps / Risks:
 - Modular refactor plan exists but monolithic dashboard still in use (`crates/autopilot/src/dashboard/README.md`).
 - Automated improvement loop exists in code, but integration into CI or daemon workflows is not verified.
 
-### d-005: AgentGit
+### d-005: GitAfter
 Observed:
-- Full desktop app scaffold exists (wry/tao + Actix), Nostr client and NIP-34 event builders, stacked PR metadata support, and UI views (`crates/agentgit/src/main.rs`, `crates/agentgit/src/nostr/events.rs`, `crates/agentgit/src/views.rs`).
+- Full desktop app scaffold exists (wry/tao + Actix), Nostr client and NIP-34 event builders, stacked PR metadata support, and UI views (`crates/gitafter/src/main.rs`, `crates/gitafter/src/nostr/events.rs`, `crates/gitafter/src/views.rs`).
 Gaps / Risks:
 - Payment/bounty settlement (NIP-57) and wallet integration are not evidenced in code paths reviewed.
 - Trajectory verification and enforcement appears partial; UI references exist but full verification flow is not validated in this audit.

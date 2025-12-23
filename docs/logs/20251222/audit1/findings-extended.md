@@ -3,7 +3,7 @@
 ## High
 - E-H-1 Compute identity bootstrapping can generate a brand-new identity even when an encrypted identity exists but no password is provided, which risks orphaning funds and confusing users. Evidence: `crates/compute/src/app.rs:112`, `crates/compute/src/app.rs:137`, `crates/compute/src/app.rs:143`.
 - E-H-2 Compute stores plaintext mnemonics on disk (`.seed`) without permission hardening or automatic deletion, creating a high-risk secret exposure path if the directory is backed up or world-readable. Evidence: `crates/compute/src/storage/secure_store.rs:92`, `crates/compute/src/storage/secure_store.rs:102`, `crates/compute/src/storage/secure_store.rs:121`.
-- E-H-3 AgentGit uses repository identifiers from the HTTP path directly in filesystem joins, enabling path traversal (e.g., `../`) to read/write outside the workspace, including clone targets. Evidence: `crates/agentgit/src/server.rs:1725`, `crates/agentgit/src/git/clone.rs:109`.
+- E-H-3 GitAfter uses repository identifiers from the HTTP path directly in filesystem joins, enabling path traversal (e.g., `../`) to read/write outside the workspace, including clone targets. Evidence: `crates/gitafter/src/server.rs:1725`, `crates/gitafter/src/git/clone.rs:109`.
 
 ## Medium
 - E-M-1 DVM startup relies on relay subscriptions that are permanently unimplemented; `RelayService::subscribe_job_requests` always errors, so `DvmService::start` cannot succeed in real use. Evidence: `crates/compute/src/services/dvm_service.rs:120`, `crates/compute/src/services/relay_service.rs:81`.

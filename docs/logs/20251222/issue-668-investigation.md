@@ -8,7 +8,7 @@
 
 Investigated two blocked issues preventing d-013 completion:
 - Issue #589: "Add comprehensive tests for nostr event validation"
-- Issue #629: "Add end-to-end test for AgentGit issue claim and comment flow"
+- Issue #629: "Add end-to-end test for GitAfter issue claim and comment flow"
 
 ## Findings
 
@@ -34,7 +34,7 @@ Investigated two blocked issues preventing d-013 completion:
 
 **Recommendation**: Close #589 as duplicate of #635
 
-### Issue #629: AgentGit E2E Tests
+### Issue #629: GitAfter E2E Tests
 
 **Status**: LEGITIMATELY BLOCKED - Technical infrastructure missing
 
@@ -42,20 +42,20 @@ Investigated two blocked issues preventing d-013 completion:
 "E2E test requires mock Nostr relay infrastructure and UnifiedIdentity API refactoring. Multiple API incompatibilities make this a larger effort than initially estimated."
 
 **Evidence**:
-1. Only one test file exists: `crates/agentgit/tests/publish_error_handling.rs`
+1. Only one test file exists: `crates/gitafter/tests/publish_error_handling.rs`
 2. Tests are unit-level (error handling, result formatting)
 3. No E2E test infrastructure exists
 4. No mock Nostr relay exists for integration testing
 
 **Required Infrastructure** (not yet built):
 - Mock Nostr relay for testing
-- TestApp pattern for AgentGit (similar to other crates)
+- TestApp pattern for GitAfter (similar to other crates)
 - Relay connection management in test environment
 - Event verification across publish/subscribe
 
 **Recommendation**: Keep blocked, create prerequisite issues for:
 1. Mock Nostr relay test utility
-2. AgentGit TestApp helper
+2. GitAfter TestApp helper
 3. Then unblock and implement #629
 
 ## Impact on d-013 Completion
@@ -69,14 +69,14 @@ Investigated two blocked issues preventing d-013 completion:
 
 **Path to 100%**:
 1. Create mock relay infrastructure issue
-2. Create AgentGit TestApp issue
+2. Create GitAfter TestApp issue
 3. Unblock and complete #629
 4. Mark d-013 complete
 
 ## Files Referenced
 
 - `crates/nostr/core/tests/nip01_protocol_compliance.rs` - Comprehensive event validation tests
-- `crates/agentgit/tests/publish_error_handling.rs` - Existing AgentGit tests (unit level)
+- `crates/gitafter/tests/publish_error_handling.rs` - Existing GitAfter tests (unit level)
 
 ## Next Actions
 

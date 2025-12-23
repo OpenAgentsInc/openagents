@@ -20,7 +20,7 @@ fn test_help() {
         .stdout(predicate::str::contains("wallet"))
         .stdout(predicate::str::contains("marketplace"))
         .stdout(predicate::str::contains("autopilot"))
-        .stdout(predicate::str::contains("agentgit"))
+        .stdout(predicate::str::contains("gitafter"))
         .stdout(predicate::str::contains("daemon"));
 }
 
@@ -118,24 +118,24 @@ fn test_autopilot_metrics_help() {
     cmd.assert().success();
 }
 
-// AgentGit commands
+// GitAfter commands
 
 #[test]
-fn test_agentgit_help() {
+fn test_gitafter_help() {
     let mut cmd = Command::cargo_bin("openagents").unwrap();
-    cmd.arg("agentgit").arg("--help");
+    cmd.arg("gitafter").arg("--help");
     cmd.assert()
         .success()
-        .stdout(predicate::str::contains("AgentGit commands"));
+        .stdout(predicate::str::contains("GitAfter commands"));
 }
 
 #[test]
-fn test_agentgit_gui() {
+fn test_gitafter_gui() {
     let mut cmd = Command::cargo_bin("openagents").unwrap();
-    cmd.arg("agentgit").arg("gui");
+    cmd.arg("gitafter").arg("gui");
     // GUI commands would normally block, so we just test help
     let mut help_cmd = Command::cargo_bin("openagents").unwrap();
-    help_cmd.arg("agentgit").arg("gui").arg("--help");
+    help_cmd.arg("gitafter").arg("gui").arg("--help");
     help_cmd.assert().success();
 }
 

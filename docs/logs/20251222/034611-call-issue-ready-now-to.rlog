@@ -207,7 +207,7 @@ t!:Bash id=SwkR6V1s cmd="cargo clippy --workspace --all-targets 2>&1 | g..." →
 o: id=SwkR6V1s → [ok]      24 warning: field assignment outside of initializer for an instance created with Default::de...
 a: Many "field assignment outside of initializer" warnings. Let me commit what we have so far, as we've fixed the compilation issues and made progress: tokens_in=0 tokens_out=1 tokens_cached=106163
 t!:Bash id=jfmzGf8W cmd="git add -A && git diff --cached --stat" → [running] tokens_in=0 tokens_out=1 tokens_cached=106163
-o: id=jfmzGf8W → [ok]  crates/agentgit/src/nostr/publish_result.rs        |   4 +-
+o: id=jfmzGf8W → [ok]  crates/gitafter/src/nostr/publish_result.rs        |   4 +-
 t!:Bash id=Sgs9hSF1 cmd="git commit -m "$(cat <<'EOF'" → [running] tokens_in=0 tokens_out=271 tokens_cached=106517
 o: id=Sgs9hSF1 → [ok] [main 72c1aee8f] Fix compilation errors and apply clippy auto-fixes
 t!:Bash id=eGS1HmAu cmd="git push origin main" → [running] tokens_in=0 tokens_out=77 tokens_cached=107743
@@ -304,14 +304,14 @@ t!:Bash id=NMRtqmZD cmd="cargo doc -p issues-mcp --no-deps 2>&1 | grep -..." →
 o: id=NMRtqmZD → [ok]     Checking issues v0.1.0 (/home/christopherdavid/code/openagents/crates/issues)
 t!:Edit id=BCmHsTUB file_path=/home/christopherdavid/code/openagents/crates/issues-mcp/src/main.rs → [running] tokens_in=0 tokens_out=150 tokens_cached=119350
 o: id=BCmHsTUB → [ok] The file /home/christopherdavid/code/openagents/crates/issues-mcp/src/main.rs has been updated. H...
-a: Now let me fix the unclosed HTML tags in agentgit: tokens_in=0 tokens_out=1 tokens_cached=119769
-t!:Bash id=G6HSShrB cmd="cargo doc -p agentgit --no-deps 2>&1 | grep -B ..." → [running] tokens_in=0 tokens_out=140 tokens_cached=119769
+a: Now let me fix the unclosed HTML tags in gitafter: tokens_in=0 tokens_out=1 tokens_cached=119769
+t!:Bash id=G6HSShrB cmd="cargo doc -p gitafter --no-deps 2>&1 | grep -B ..." → [running] tokens_in=0 tokens_out=140 tokens_cached=119769
 o: id=G6HSShrB → [ok]     Checking ui v0.1.0 (/home/christopherdavid/code/openagents/crates/ui)
 a: The issue is that `<pubkey>` and `<repo-id>` are being interpreted as HTML tags. They need to be escaped. Let me find and fix them: tokens_in=0 tokens_out=1 tokens_cached=120097
-t!:Bash id=SJ7qMG7c cmd="grep -n "<pubkey>:<repo-id>" crates/agentgit/sr..." → [running] tokens_in=0 tokens_out=1 tokens_cached=120097
+t!:Bash id=SJ7qMG7c cmd="grep -n "<pubkey>:<repo-id>" crates/gitafter/sr..." → [running] tokens_in=0 tokens_out=1 tokens_cached=120097
 o: id=SJ7qMG7c → [ok] 
 t!:Bash id=VK23eHRr cmd="grep -rn "30617:<pubkey>:<repo-id>" crates/agen..." → [running] tokens_in=1 tokens_out=101 tokens_cached=120608
-o: id=VK23eHRr → [ok] crates/agentgit/src/nostr/events.rs:143:    /// * `repo_address` - The repository address tag (e....
+o: id=VK23eHRr → [ok] crates/gitafter/src/nostr/events.rs:143:    /// * `repo_address` - The repository address tag (e....
 t!:Bash id=TaTJ5Crx cmd="sed -i 's/30617:<pubkey>:<repo-id>/30617:\\<pub..." → [running] tokens_in=0 tokens_out=125 tokens_cached=120768
 o: id=TaTJ5Crx → [ok] 
 a: Now let me commit these documentation fixes: tokens_in=1 tokens_out=1 tokens_cached=121290
@@ -670,7 +670,7 @@ o: id=bPoGztq5 → [ok] The file /home/christopherdavid/code/openagents/tests/cl
 t!:Edit id=VBaoP5XW file_path=/home/christopherdavid/code/openagents/tests/cli_integration.rs → [running] tokens_in=0 tokens_out=375 tokens_cached=91811
 o: id=VBaoP5XW → [ok] The file /home/christopherdavid/code/openagents/tests/cli_integration.rs has been updated. Here's...
 t!:Bash id=R6dSDsVu cmd="cargo test --package openagents --test cli_inte..." → [running] tokens_in=0 tokens_out=26 tokens_cached=92489
-o: id=R6dSDsVu → [ok] test test_agentgit_gui ... ok
+o: id=R6dSDsVu → [ok] test test_gitafter_gui ... ok
 t!:Bash id=nsr6SFzr cmd="git add -A && git commit -m "$(cat <<'EOF'" → [running] tokens_in=0 tokens_out=329 tokens_cached=93147
 o: id=nsr6SFzr → [ok] [main 9da203759] Add comprehensive CLI integration tests for unified openagents binary
 t!:Bash id=TSmHkD3x cmd="git push" → [running] tokens_in=0 tokens_out=24 tokens_cached=93689

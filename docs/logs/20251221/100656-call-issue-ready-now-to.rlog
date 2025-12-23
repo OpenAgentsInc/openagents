@@ -43,7 +43,7 @@ t!:mcp__issues__directive_get id=1GgVTp18  → [running] tokens_in=4 tokens_out=
 t!:mcp__issues__directive_get id=UEekYc1o  → [running] tokens_in=4 tokens_out=1 tokens_cached=42979
 o: id=1GgVTp18 → [ok] {
 o: id=UEekYc1o → [ok] {
-a: d-001, d-002, d-003, and d-006 are all at 100% completion. Let me check d-005 (AgentGit). tokens_in=1 tokens_out=1 tokens_cached=43123
+a: d-001, d-002, d-003, and d-006 are all at 100% completion. Let me check d-005 (GitAfter). tokens_in=1 tokens_out=1 tokens_cached=43123
 t!:mcp__issues__directive_get id=RBwSQDDF  → [running] tokens_in=1 tokens_out=1 tokens_cached=43123
 o: id=RBwSQDDF → [ok] {
 a: All directives are at very high completion rates (d-001: 100%, d-002: 100%, d-003: 100%, d-004: 91%, d-005: 100%, d-006: 100%, d-007: 95%). Let me create new issues based on the incomplete work. I'... tokens_in=3 tokens_out=1 tokens_cached=55394

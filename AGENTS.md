@@ -193,8 +193,8 @@ openagents autopilot run "task"
 openagents autopilot dashboard
 openagents autopilot replay <file>
 
-# AgentGit commands
-openagents agentgit gui
+# GitAfter commands
+openagents gitafter gui
 
 # Daemon commands
 openagents daemon start --workdir /path --project myproject
@@ -202,7 +202,7 @@ openagents daemon status
 openagents daemon stop
 ```
 
-**Note:** The legacy separate binaries (`wallet`, `marketplace`, `autopilot`, `autopilotd`, `agentgit`) have been deprecated. Use the unified `openagents` binary instead.
+**Note:** The legacy separate binaries (`wallet`, `marketplace`, `autopilot`, `autopilotd`, `gitafter`) have been deprecated. Use the unified `openagents` binary instead.
 
 ---
 
