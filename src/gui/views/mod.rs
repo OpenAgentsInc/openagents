@@ -100,38 +100,128 @@ pub async fn home(
     // Chat pane with Raw/Formatted toggle - visible when full_auto is ON
     let chat_pane = ChatPane::new(full_auto).build();
 
-    // Parallel agents pane (top-left) - with live log streaming
-    let parallel_pane = r###"<div id="parallel-pane" style="position: fixed; top: 1rem; left: 1rem; background: #111; border: 1px solid #333; font-family: monospace; font-size: 0.75rem; width: 600px; max-height: 80vh; display: flex; flex-direction: column;">
+    // Parallel agents pane (top-left) - with live log streaming and view toggle
+    let parallel_pane = r###"<div id="parallel-pane" style="position: fixed; top: 1rem; left: 1rem; background: #111; border: 1px solid #333; font-family: monospace; font-size: 0.75rem; width: 700px; max-height: 80vh; display: flex; flex-direction: column;">
         <div style="padding: 0.5rem 0.75rem; border-bottom: 1px solid #333; display: flex; justify-content: space-between; align-items: center;">
             <span style="color: #4a9eff;">Parallel Agents</span>
-            <div style="display: flex; gap: 0.5rem; align-items: center;">
-                <div id="parallel-status" hx-get="/api/parallel/status" hx-trigger="load, every 2s" hx-swap="innerHTML" style="color: #666;">
-                    Loading...
-                </div>
+            <div id="parallel-status" hx-get="/api/parallel/status" hx-trigger="load, every 2s" hx-swap="innerHTML" style="color: #666;">
+                Loading...
             </div>
         </div>
-        <div style="padding: 0.5rem 0.75rem; border-bottom: 1px solid #333; display: flex; gap: 0.5rem; align-items: center;">
-            <form hx-post="/api/parallel/start" hx-target="#parallel-feedback" hx-swap="innerHTML" style="display: flex; gap: 0.25rem; align-items: center;">
-                <select name="count" style="background: #000; color: #888; border: 1px solid #333; padding: 0.25rem; font-size: 0.7rem;">
-                    <option value="1">1</option>
-                    <option value="2">2</option>
-                    <option value="3" selected>3</option>
-                </select>
-                <button type="submit" style="background: #1a3a1a; color: #7dff7d; border: 1px solid #2d5016; padding: 0.25rem 0.5rem; cursor: pointer; font-size: 0.7rem;">Start</button>
-            </form>
-            <form hx-post="/api/parallel/stop" hx-target="#parallel-feedback" hx-swap="innerHTML">
-                <button type="submit" style="background: #3a1a1a; color: #ff7d7d; border: 1px solid #501616; padding: 0.25rem 0.5rem; cursor: pointer; font-size: 0.7rem;">Stop</button>
-            </form>
-            <span id="parallel-feedback" style="color: #888;"></span>
+        <div style="padding: 0.5rem 0.75rem; border-bottom: 1px solid #333; display: flex; gap: 0.5rem; align-items: center; justify-content: space-between;">
+            <div style="display: flex; gap: 0.5rem; align-items: center;">
+                <form hx-post="/api/parallel/start" hx-target="#parallel-feedback" hx-swap="innerHTML" style="display: flex; gap: 0.25rem; align-items: center;">
+                    <select name="count" style="background: #000; color: #888; border: 1px solid #333; padding: 0.25rem; font-size: 0.7rem;">
+                        <option value="1">1</option>
+                        <option value="2">2</option>
+                        <option value="3" selected>3</option>
+                    </select>
+                    <button type="submit" style="background: #1a3a1a; color: #7dff7d; border: 1px solid #2d5016; padding: 0.25rem 0.5rem; cursor: pointer; font-size: 0.7rem;">Start</button>
+                </form>
+                <form hx-post="/api/parallel/stop" hx-target="#parallel-feedback" hx-swap="innerHTML">
+                    <button type="submit" style="background: #3a1a1a; color: #ff7d7d; border: 1px solid #501616; padding: 0.25rem 0.5rem; cursor: pointer; font-size: 0.7rem;">Stop</button>
+                </form>
+                <span id="parallel-feedback" style="color: #888;"></span>
+            </div>
+            <div style="display: flex; gap: 0.25rem; align-items: center;">
+                <div style="display: flex; border: 1px solid #333;">
+                    <button id="parallel-view-rlog" onclick="switchParallelView('rlog')" style="background: #222; color: #4a9eff; border: none; padding: 0.25rem 0.5rem; cursor: pointer; font-size: 0.65rem;">RLOG</button>
+                    <button id="parallel-view-jsonl" onclick="switchParallelView('jsonl')" style="background: transparent; color: #666; border: none; padding: 0.25rem 0.5rem; cursor: pointer; font-size: 0.65rem;">JSONL</button>
+                    <button id="parallel-view-formatted" onclick="switchParallelView('formatted')" style="background: transparent; color: #666; border: none; padding: 0.25rem 0.5rem; cursor: pointer; font-size: 0.65rem;">Formatted</button>
+                </div>
+                <button id="parallel-copy-btn" onclick="copyParallelLogs()" style="background: transparent; color: #666; border: 1px solid #333; padding: 0.25rem 0.5rem; cursor: pointer; font-size: 0.65rem; display: flex; align-items: center; gap: 0.25rem;">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                    Copy
+                </button>
+            </div>
         </div>
-        <div id="parallel-logs"
-             hx-get="/api/parallel/logs/001"
+        <div id="parallel-logs-rlog"
+             hx-get="/api/parallel/logs/001?format=rlog"
              hx-trigger="load, every 1s"
              hx-swap="innerHTML"
-             style="flex: 1; overflow-y: auto; padding: 0.5rem; background: #0a0a0a; color: #888; font-size: 0.65rem; line-height: 1.4; white-space: pre-wrap; word-break: break-all; max-height: 400px;">
-            <p style="color: #555;">Waiting for logs...</p>
+             style="flex: 1; overflow-y: auto; padding: 0.5rem; background: #0a0a0a; color: #888; font-size: 0.65rem; line-height: 1.4; white-space: pre-wrap; word-break: break-all; max-height: 500px;">
+            <span style="color: #555;">Waiting for logs...</span>
+        </div>
+        <div id="parallel-logs-jsonl"
+             hx-get="/api/parallel/logs/001?format=jsonl"
+             hx-trigger="load, every 1s"
+             hx-swap="innerHTML"
+             style="flex: 1; overflow-y: auto; padding: 0.5rem; background: #0a0a0a; color: #888; font-size: 0.65rem; line-height: 1.4; white-space: pre-wrap; word-break: break-all; max-height: 500px; display: none;">
+            <span style="color: #555;">Waiting for logs...</span>
+        </div>
+        <div id="parallel-logs-formatted"
+             hx-get="/api/parallel/logs/001?format=formatted"
+             hx-trigger="load, every 1s"
+             hx-swap="innerHTML"
+             style="flex: 1; overflow-y: auto; padding: 0.5rem; background: #0a0a0a; color: #888; font-size: 0.65rem; line-height: 1.4; max-height: 500px; display: none;">
+            <span style="color: #555;">Waiting for logs...</span>
         </div>
     </div>
+    <script>
+    function switchParallelView(mode) {
+        const rlog = document.getElementById('parallel-logs-rlog');
+        const jsonl = document.getElementById('parallel-logs-jsonl');
+        const formatted = document.getElementById('parallel-logs-formatted');
+        const rlogBtn = document.getElementById('parallel-view-rlog');
+        const jsonlBtn = document.getElementById('parallel-view-jsonl');
+        const formattedBtn = document.getElementById('parallel-view-formatted');
+
+        rlog.style.display = 'none';
+        jsonl.style.display = 'none';
+        formatted.style.display = 'none';
+        rlogBtn.style.background = 'transparent';
+        rlogBtn.style.color = '#666';
+        jsonlBtn.style.background = 'transparent';
+        jsonlBtn.style.color = '#666';
+        formattedBtn.style.background = 'transparent';
+        formattedBtn.style.color = '#666';
+
+        if (mode === 'rlog') {
+            rlog.style.display = 'block';
+            rlogBtn.style.background = '#222';
+            rlogBtn.style.color = '#4a9eff';
+        } else if (mode === 'jsonl') {
+            jsonl.style.display = 'block';
+            jsonlBtn.style.background = '#222';
+            jsonlBtn.style.color = '#4a9eff';
+        } else if (mode === 'formatted') {
+            formatted.style.display = 'block';
+            formattedBtn.style.background = '#222';
+            formattedBtn.style.color = '#4a9eff';
+        }
+        localStorage.setItem('parallelViewMode', mode);
+    }
+    function copyParallelLogs() {
+        const rlog = document.getElementById('parallel-logs-rlog');
+        const jsonl = document.getElementById('parallel-logs-jsonl');
+        const formatted = document.getElementById('parallel-logs-formatted');
+        const btn = document.getElementById('parallel-copy-btn');
+        let content = rlog;
+        if (jsonl.style.display !== 'none') content = jsonl;
+        if (formatted.style.display !== 'none') content = formatted;
+        const text = content.innerText || content.textContent;
+        navigator.clipboard.writeText(text).then(() => {
+            btn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"></polyline></svg>Copied!';
+            btn.style.color = '#7dff7d';
+            setTimeout(() => {
+                btn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>Copy';
+                btn.style.color = '#666';
+            }, 1500);
+        });
+    }
+    // Auto-scroll logs and restore view preference
+    (function() {
+        ['parallel-logs-rlog', 'parallel-logs-jsonl', 'parallel-logs-formatted'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) {
+                const observer = new MutationObserver(() => { el.scrollTop = el.scrollHeight; });
+                observer.observe(el, { childList: true, subtree: true });
+            }
+        });
+        const saved = localStorage.getItem('parallelViewMode');
+        if (saved) switchParallelView(saved);
+    })();
+    </script>
     <style>
         .hidden { display: none !important; }
     </style>"###;
