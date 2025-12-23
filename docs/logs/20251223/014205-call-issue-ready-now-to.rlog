@@ -294,3 +294,32 @@ o: id=v7eCCWbm → [ok] The file crates/spark/src/wallet.rs has been updated. He
 t!:Bash id=zA7EVd4L cmd="cargo build -p openagents-spark 2>&1 | tail -5" → [running] tokens_in=0 tokens_out=24 tokens_cached=108612
 o: id=zA7EVd4L → [ok]    Compiling breez-sdk-common v0.1.0 (/home/christopherdavid/code/spark-sdk/crates/breez-sdk/common)
 t!:Bash id=JwJvhme2 cmd="git add -A && git commit -m "$(cat <<'EOF'" → [running] tokens_in=0 tokens_out=25 tokens_cached=109092
+o: id=JwJvhme2 → [ok] [main 10b77fbe7] Remove Lightning/on-chain balance TODOs from Spark wallet
+t!:Bash id=Xn9AnMTg cmd="cargo autopilot issue complete 818" → [running] tokens_in=0 tokens_out=25 tokens_cached=109362
+o: id=Xn9AnMTg → [ok] ✓ Completed issue #818: Remove Lightning/on-chain balance TODOs from Spark wallet - not applicabl...
+t!:Bash id=u9epyU8o cmd="cargo autopilot issue ready" → [running] tokens_in=0 tokens_out=25 tokens_cached=109965
+o: id=u9epyU8o → [ok] No ready issues available
+a: No ready issues. Let me check for any other code quality improvements. Let me see if there are any unwrap() calls that should have better error handling: tokens_in=0 tokens_out=1 tokens_cached=110325
+t!:Bash id=s5cp3eqz cmd="grep -rn "\.unwrap()" --include="*.rs" crates/a..." → [running] tokens_in=0 tokens_out=1 tokens_cached=110325
+o: id=s5cp3eqz → [ok] 322
+a: There are 322 unwrap() calls in autopilot. While some of these may be justified, that's a lot. Let me check the documentation coverage instead: tokens_in=0 tokens_out=1 tokens_cached=110457
+t!:Bash id=G6hAHxCT cmd="cargo doc --no-deps -p autopilot 2>&1 | grep -E..." → [running] tokens_in=0 tokens_out=155 tokens_cached=110457
+o: id=G6hAHxCT → [ok] warning: unclosed HTML tag `project`
+a: There's an unclosed HTML tag. Let me find it: tokens_in=0 tokens_out=1 tokens_cached=110726
+t!:Bash id=X8AAeyyt cmd="cargo doc --no-deps -p autopilot 2>&1 | grep -B..." → [running] tokens_in=0 tokens_out=1 tokens_cached=110726
+o: id=X8AAeyyt → [ok] warning: unclosed HTML tag `project`
+t!:Bash id=oeBEcULM cmd="grep -rn "<project" --include="*.rs" crates/aut..." → [running] tokens_in=0 tokens_out=24 tokens_cached=110919
+o: id=oeBEcULM → [ok] crates/autopilot/src/apm_parser.rs:4://! - Claude Code session logs from ~/.claude/projects/<proj...
+t!:Read id=DZ1ir6H4 file_path=crates/autopilot/src/apm_parser.rs → [running] tokens_in=0 tokens_out=18 tokens_cached=111177
+o: id=DZ1ir6H4 → [ok]      1→//! JSONL parser for APM extraction
+a: The issue is that `<project>` is interpreted as an HTML tag. It should be escaped with backticks. Let me fix it: tokens_in=0 tokens_out=1 tokens_cached=111323
+t!:Bash id=4bwHPoet cmd="cargo autopilot issue create "Fix unclosed HTML..." → [running] tokens_in=0 tokens_out=1 tokens_cached=111323
+o: id=4bwHPoet → [ok] ✓ Created issue #819: Fix unclosed HTML tag warning in apm_parser.rs documentation (agent: claude)
+t!:Bash id=KTVYCBQT cmd="cargo autopilot issue claim 819" → [running] tokens_in=0 tokens_out=24 tokens_cached=111713
+o: id=KTVYCBQT → [ok] ✓ Claimed issue #819: Fix unclosed HTML tag warning in apm_parser.rs documentation
+t!:Edit id=PwbQujFw file_path=crates/autopilot/src/apm_parser.rs → [running] tokens_in=0 tokens_out=270 tokens_cached=112054
+o: id=PwbQujFw → [ok] The file crates/autopilot/src/apm_parser.rs has been updated. Here's the result of running `cat -...
+t!:Bash id=NDxtoyyN cmd="cargo doc --no-deps -p autopilot 2>&1 | grep -E..." → [running] tokens_in=0 tokens_out=24 tokens_cached=112210
+o: id=NDxtoyyN → [ok]     Finished `dev` profile [optimized + debuginfo] target(s) in 3.82s
+a: Perfect! The warning is gone. Let me commit this fix: tokens_in=0 tokens_out=1 tokens_cached=112692
+t!:Bash id=4zC9becd cmd="git add -A && git commit -m "$(cat <<'EOF'" → [running] tokens_in=0 tokens_out=239 tokens_cached=112692
