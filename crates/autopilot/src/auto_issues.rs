@@ -557,4 +557,95 @@ mod tests {
         assert!(issues[0].description.contains("Proposed Fix"));
         assert_eq!(issues[0].priority, "high");
     }
+
+    #[test]
+    fn test_create_issues_end_to_end() {
+        use issues::db::{init_memory_db};
+
+        // Setup metrics database with anomalies
+        let metrics_db = MetricsDb::in_memory().unwrap();
+
+        // Create sessions with high error rates to trigger anomalies
+        for i in 0..3 {
+            let session = SessionMetrics {
+                id: format!("test-session-{}", i),
+                timestamp: Utc::now(),
+                model: "sonnet".to_string(),
+                prompt: "Test task".to_string(),
+                duration_seconds: 100.0,
+                tokens_in: 1000,
+                tokens_out: 500,
+                tokens_cached: 0,
+                cost_usd: 0.05,
+                issues_claimed: 1,
+                issues_completed: 1,
+                tool_calls: 100,
+                tool_errors: 30, // 30% error rate - anomalous
+                final_status: SessionStatus::Completed,
+                messages: 10,
+                apm: None,
+                source: "autopilot".to_string(),
+                issue_numbers: None,
+                directive_id: None,
+            };
+            metrics_db.store_session(&session).unwrap();
+
+            // Detect and store anomalies
+            let anomalies = metrics_db.detect_anomalies(&session).unwrap();
+            for anomaly in anomalies {
+                metrics_db.store_anomaly(&anomaly).unwrap();
+            }
+        }
+
+        // Setup issues database
+        let _issues_conn = init_memory_db().unwrap();
+
+        // Detect patterns
+        let patterns = detect_all_patterns(&metrics_db).unwrap();
+        assert!(!patterns.is_empty(), "Should detect at least one pattern");
+
+        // Generate issues
+        let improvement_issues = generate_issues(patterns);
+        assert!(!improvement_issues.is_empty(), "Should generate at least one issue");
+
+        // Create a temporary file path for the issues database
+        let temp_dir = std::env::temp_dir();
+        let issues_db_path = temp_dir.join("test_auto_issues.db");
+
+        // Create issues database file
+        {
+            use issues::db::init_db;
+            let _conn = init_db(&issues_db_path).unwrap();
+        }
+
+        // Create issues using the create_issues function
+        let issue_numbers = create_issues(&issues_db_path, &improvement_issues, &metrics_db).unwrap();
+
+        assert!(!issue_numbers.is_empty(), "Should create at least one issue");
+
+        // Verify issues were created with auto_created flag
+        let conn = Connection::open(&issues_db_path).unwrap();
+        for issue_number in &issue_numbers {
+            let auto_created: bool = conn
+                .query_row(
+                    "SELECT auto_created FROM issues WHERE number = ?",
+                    [issue_number],
+                    |row| row.get(0),
+                )
+                .unwrap();
+            assert!(auto_created, "Issue should be marked as auto_created");
+
+            let directive_id: Option<String> = conn
+                .query_row(
+                    "SELECT directive_id FROM issues WHERE number = ?",
+                    [issue_number],
+                    |row| row.get(0),
+                )
+                .unwrap();
+            assert_eq!(directive_id, Some("d-004".to_string()), "Issue should be linked to d-004");
+        }
+
+        // Cleanup
+        std::fs::remove_file(&issues_db_path).ok();
+    }
 }

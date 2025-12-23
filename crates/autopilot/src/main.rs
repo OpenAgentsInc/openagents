@@ -3001,6 +3001,12 @@ fn store_trajectory_metrics(trajectory: &Trajectory) {
                                         eprintln!("Warning: Failed to store anomaly: {}", e);
                                     }
                                 }
+
+                                // Auto-create issues from patterns (if threshold met)
+                                let workdir = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+                                if let Err(e) = auto_create_issues_from_patterns(&db, &workdir) {
+                                    eprintln!("Warning: Failed to auto-create issues from patterns: {}", e);
+                                }
                             }
                         }
                         Err(e) => {
@@ -3017,6 +3023,49 @@ fn store_trajectory_metrics(trajectory: &Trajectory) {
             eprintln!("Warning: Failed to extract metrics from trajectory: {}", e);
         }
     }
+}
+
+/// Auto-create issues from detected patterns (PostRun hook)
+fn auto_create_issues_from_patterns(metrics_db: &autopilot::metrics::MetricsDb, workdir: &PathBuf) -> Result<()> {
+    use autopilot::auto_issues::{create_issues, detect_all_patterns, generate_issues};
+
+    // Detect all patterns (both anomaly and tool error patterns)
+    let patterns = detect_all_patterns(metrics_db)?;
+
+    if patterns.is_empty() {
+        return Ok(());
+    }
+
+    // Generate issues from patterns
+    let improvement_issues = generate_issues(patterns);
+
+    if improvement_issues.is_empty() {
+        return Ok(());
+    }
+
+    // Find issues database
+    let issues_db_path = workdir.join("autopilot.db");
+    if !issues_db_path.exists() {
+        // No issues database yet, skip auto-creation
+        return Ok(());
+    }
+
+    // Create issues
+    let issue_numbers = create_issues(&issues_db_path, &improvement_issues, metrics_db)?;
+
+    if !issue_numbers.is_empty() {
+        println!(
+            "\n{} Auto-created {} improvement issues from detected patterns:",
+            "🤖".cyan().bold(),
+            issue_numbers.len()
+        );
+        for (issue, number) in improvement_issues.iter().zip(issue_numbers.iter()) {
+            println!("  #{}: {} [{}]", number, issue.title, issue.priority);
+        }
+        println!();
+    }
+
+    Ok(())
 }
 
 fn truncate(s: &str, max: usize) -> String {

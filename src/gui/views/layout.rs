@@ -93,7 +93,7 @@ pub fn base_layout_with_token(content: &str, auth_token: Option<&str>) -> String
         html, body {{
             height: 100%;
             width: 100%;
-            background: #000;
+            background: #000 !important;
             color: #fafafa;
             font-family: 'Vera Mono', ui-monospace, monospace;
         }}

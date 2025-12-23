@@ -542,6 +542,7 @@ mod tests {
                 current_week_cost: 1.5,
                 previous_week_cost: 1.2,
             },
+            personal_bests_achieved: vec![],
         };
 
         let markdown = format_report_markdown(&report);
