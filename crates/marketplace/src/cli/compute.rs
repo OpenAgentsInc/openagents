@@ -12,6 +12,7 @@ struct SubmitParams<'a> {
     budget: Option<u64>,
     stream: bool,
     json: bool,
+    target_language: Option<&'a str>,
 }
 
 #[derive(Debug, Subcommand)]
@@ -72,6 +73,10 @@ pub enum ComputeCommands {
         /// Output as JSON
         #[arg(long)]
         json: bool,
+
+        /// Target language for translation jobs (e.g., "en", "es", "fr")
+        #[arg(long)]
+        target_language: Option<String>,
     },
 
     /// Check job status
@@ -152,6 +157,7 @@ impl ComputeCommands {
                 budget,
                 stream,
                 json,
+                target_language,
             } => self.submit(SubmitParams {
                 job_type,
                 prompt: prompt.as_deref(),
@@ -160,6 +166,7 @@ impl ComputeCommands {
                 budget: *budget,
                 stream: *stream,
                 json: *json,
+                target_language: target_language.as_deref(),
             }),
 
             ComputeCommands::Status { job_id, json } => self.status(job_id, *json),
@@ -305,7 +312,7 @@ impl ComputeCommands {
     }
 
     fn submit(&self, params: SubmitParams) -> anyhow::Result<()> {
-        let SubmitParams { job_type, prompt, file, model, budget, stream, json } = params;
+        let SubmitParams { job_type, prompt, file, model, budget, stream, json, target_language } = params;
         // Validate input
         if prompt.is_none() && file.is_none() {
             anyhow::bail!("Either --prompt or --file must be provided");
@@ -323,8 +330,8 @@ impl ComputeCommands {
             "text-generation" => ComputeJobRequest::text_generation(&input)?,
             "summarization" => ComputeJobRequest::summarization(&input)?,
             "translation" => {
-                // TODO: Allow target language to be specified
-                ComputeJobRequest::translation(&input, "en")?
+                let target_lang = target_language.unwrap_or("en");
+                ComputeJobRequest::translation(&input, target_lang)?
             }
             "text-extraction" | "ocr" => ComputeJobRequest::text_extraction(&input)?,
             "image-generation" => ComputeJobRequest::image_generation(&input)?,
@@ -605,6 +612,7 @@ mod tests {
             budget: None,
             stream: false,
             json: false,
+            target_language: None,
         };
 
         let _status = ComputeCommands::Status {
@@ -632,6 +640,7 @@ mod tests {
             budget: None,
             stream: false,
             json: false,
+            target_language: None,
         };
 
         let result = cmd.execute();
@@ -701,6 +710,7 @@ mod tests {
             budget: Some(100),
             stream: false,
             json: false,
+            target_language: None,
         };
 
         let result = cmd.execute();
@@ -718,6 +728,7 @@ mod tests {
             budget: None,
             stream: false,
             json: true,
+            target_language: None,
         };
 
         let result = cmd.execute();
@@ -735,6 +746,7 @@ mod tests {
             budget: None,
             stream: false,
             json: false,
+            target_language: None,
         };
 
         let result = cmd.execute();
