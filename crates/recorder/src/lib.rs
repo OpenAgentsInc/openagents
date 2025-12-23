@@ -842,6 +842,16 @@ fn validate_header(header: &Header, result: &mut ValidationResult) {
                 header.repo_sha
             ),
         });
+    } else if !header.repo_sha.chars().all(|c| c.is_ascii_hexdigit()) {
+        result.issues.push(ValidationIssue {
+            line: None,
+            severity: Severity::Warning,
+            code: "W009",
+            message: format!(
+                "repo_sha '{}' contains non-hex characters (expected 6-40 hex chars)",
+                header.repo_sha
+            ),
+        });
     }
 
     // Recommend sandbox_id for autonomous sessions
@@ -1046,5 +1056,68 @@ td: [in_progress] Fix bug [pending] Add tests
         assert_eq!(result.stats.todos_updates, 1);
         assert_eq!(result.stats.total_tokens_in, 100);
         assert_eq!(result.stats.total_tokens_out, 50);
+    }
+
+    #[test]
+    fn test_validate_repo_sha_non_hex() {
+        let content = r#"---
+format: rlog/1
+id: test
+repo_sha: unknown
+---
+
+u: Test message
+a: Response
+"#;
+        let session = parse_content(content).unwrap();
+        let result = validate(&session);
+
+        // Should have warning about non-hex characters
+        let has_non_hex_warning = result.issues.iter().any(|issue| {
+            issue.code == "W009" && issue.message.contains("non-hex characters")
+        });
+        assert!(has_non_hex_warning, "Expected warning about non-hex repo_sha");
+    }
+
+    #[test]
+    fn test_validate_repo_sha_valid_hex() {
+        let content = r#"---
+format: rlog/1
+id: test
+repo_sha: abc123def456
+---
+
+u: Test message
+a: Response
+"#;
+        let session = parse_content(content).unwrap();
+        let result = validate(&session);
+
+        // Should not have warning about non-hex characters
+        let has_non_hex_warning = result.issues.iter().any(|issue| {
+            issue.code == "W009" && issue.message.contains("non-hex characters")
+        });
+        assert!(!has_non_hex_warning, "Should not warn about valid hex repo_sha");
+    }
+
+    #[test]
+    fn test_validate_repo_sha_invalid_length() {
+        let content = r#"---
+format: rlog/1
+id: test
+repo_sha: abc
+---
+
+u: Test message
+a: Response
+"#;
+        let session = parse_content(content).unwrap();
+        let result = validate(&session);
+
+        // Should have warning about length
+        let has_length_warning = result.issues.iter().any(|issue| {
+            issue.code == "W009" && issue.message.contains("unusual length")
+        });
+        assert!(has_length_warning, "Expected warning about repo_sha length");
     }
 }
