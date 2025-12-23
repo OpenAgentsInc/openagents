@@ -398,6 +398,7 @@ pub fn list_issues_by_directive(
                     .get::<_, Option<String>>("completed_at")?
                     .and_then(|s| chrono::DateTime::parse_from_rfc3339(&s).ok())
                     .map(|dt| dt.with_timezone(&chrono::Utc)),
+                auto_created: row.get::<_, Option<i32>>("auto_created")?.unwrap_or(0) != 0,
             })
         })?
         .collect::<rusqlite::Result<Vec<_>>>()?;
