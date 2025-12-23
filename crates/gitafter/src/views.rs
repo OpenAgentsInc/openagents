@@ -2856,6 +2856,7 @@ pub fn pr_create_form_page(repository: &Event, identifier: &str) -> Markup {
                                             hx-get={"/repo/" (identifier) "/pulls/available-deps"}
                                             hx-trigger="load"
                                             hx-swap="innerHTML"
+                                            onchange={"htmx.ajax('GET', '/repo/" (identifier) "/pulls/' + this.value + '/stack-info', {target: '#stack-info-target', swap: 'innerHTML'})"}
                                         {
                                             option value="" { "-- Loading available PRs... --" }
                                         }
@@ -2864,6 +2865,7 @@ pub fn pr_create_form_page(repository: &Event, identifier: &str) -> Markup {
                                             br;
                                             strong { "⚠️ Creating circular dependencies will fail validation." }
                                         }
+                                        div id="stack-info-target" {}
                                     }
 
                                     div.form-group {
