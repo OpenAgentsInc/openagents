@@ -153,3 +153,6 @@ t!:Bash id=CSxHxymg cmd="cargo test -p gitafter --test per_layer_bountie..." →
 o: id=CSxHxymg → [ok] test test_bounty_builder_with_stack_and_layer ... ok
 a: Perfect! All tests pass. Now let me commit these changes: tokens_in=0 tokens_out=4 tokens_cached=75876
 t!:Bash id=KvCJW7eX cmd="git add -A && git status" → [running] tokens_in=0 tokens_out=4 tokens_cached=75876
+o: id=KvCJW7eX → [ok] On branch main
+t!:Bash id=Qf4d3uBv cmd="git diff --cached crates/gitafter/src/nostr/eve..." → [running] tokens_in=0 tokens_out=25 tokens_cached=76148
+o: id=Qf4d3uBv → [ok] diff --git a/crates/gitafter/src/nostr/events.rs b/crates/gitafter/src/nostr/events.rs

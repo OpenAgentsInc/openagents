@@ -770,7 +770,9 @@ dependencies = [
  "tokio",
  "tokio-tungstenite 0.24.0",
  "toml",
+ "tracing",
  "ui",
+ "uuid",
  "walkdir",
  "wallet",
 ]
