@@ -744,3 +744,73 @@ t!:Bash id=31ExdRQn cmd="cargo test --all-features 2>&1 | tail -100" → [runnin
 o: id=31ExdRQn → [ok]    Compiling parking_lot_core v0.9.12
 a: All tests pass! Now let me commit the authentication implementation: tokens_in=0 tokens_out=3 tokens_cached=85807
 t!:Bash id=wqowAyYx cmd="git add -A && git commit -m "$(cat <<'EOF'" → [running] tokens_in=0 tokens_out=3 tokens_cached=85807
+o: id=wqowAyYx → [ok] [main af2e9eba8] Add [REDACTED] authentication for API routes (SEC-6)
+t!:Bash id=8HKtNhY8 cmd="git push origin main" → [running] tokens_in=0 tokens_out=74 tokens_cached=86590
+o: id=8HKtNhY8 → [ok] [0;36m🔍 Running cargo build to check for errors and warnings...[0m
+t!:Bash id=e8Ea9nyo cmd="cargo autopilot issue complete 827" → [running] tokens_in=0 tokens_out=24 tokens_cached=87128
+o: id=e8Ea9nyo → [ok] ✓ Completed issue #827: SEC-6: Add authentication to API routes
+t!:Bash id=9iWs1RCK cmd="cargo autopilot issue ready" → [running] tokens_in=0 tokens_out=77 tokens_cached=87393
+o: id=9iWs1RCK → [ok] → Next ready issue:
+t!:Bash id=EHrzKWkv cmd="cargo autopilot issue claim 828" → [running] tokens_in=0 tokens_out=80 tokens_cached=87757
+o: id=EHrzKWkv → [ok] ✓ Claimed issue #828: SEC-7: Add WebSocket authentication
+t!:Read id=e16WFcip file_path=/home/christopherdavid/code/openagents/src/gui/ws.rs → [running] tokens_in=0 tokens_out=25 tokens_cached=88012
+o: id=e16WFcip → [ok]      1→//! WebSocket broadcaster for real-time updates
+a: The WebSocket handler currently has no authentication. Since the WebSocket is used for real-time updates from the server to the client, I need to add token-based authentication. The standard approa... tokens_in=0 tokens_out=1 tokens_cached=88279
+t!:Edit id=3jfztrWv file_path=/home/christopherdavid/code/openagents/src/gui/ws.rs → [running] tokens_in=0 tokens_out=678 tokens_cached=88279
+o: id=3jfztrWv → [ok] The file /home/christopherdavid/code/openagents/src/gui/ws.rs has been updated. Here's the result...
+a: Now I need to update the WebSocket connection in the client-side code to include the token. Let me first check where the WebSocket is initiated from the frontend: tokens_in=0 tokens_out=1 tokens_cached=89248
+t!:Bash id=gN7yoHC5 cmd="grep -r "new WebSocket" src/ crates/ui/ --inclu..." → [running] tokens_in=0 tokens_out=138 tokens_cached=89248
+o: id=gN7yoHC5 → [ok] 
+t!:Grep id=DGFcgYbK pattern="ws://" → [running] tokens_in=1 tokens_out=26 tokens_cached=90714
+o: id=DGFcgYbK → [ok] No files found
+t!:Grep id=1MW8iBKS pattern="WebSocket" → [running] tokens_in=0 tokens_out=26 tokens_cached=90877
+o: id=1MW8iBKS → [ok] No files found
+a: The WebSocket client code is likely in HTML/JS. Let me look at the UI components: tokens_in=0 tokens_out=1 tokens_cached=91072
+t!:Bash id=eg5K8sc6 cmd="find crates/ui -name "*.rs" -exec grep -l "scri..." → [running] tokens_in=0 tokens_out=1 tokens_cached=91072
+o: id=eg5K8sc6 → [ok] find: ‘crates/ui’: No such file or directory
+t!:Bash id=LrAVxk4f cmd="find . -name "*.rs" -path "*/ui/*" | head -10" → [running] tokens_in=0 tokens_out=89 tokens_cached=91163
+o: id=LrAVxk4f → [ok] 
+a: Let me look at the view files in the GUI: tokens_in=1 tokens_out=4 tokens_cached=91411
+t!:Glob id=S5D5FYsU pattern="src/gui/views/*.rs" → [running] tokens_in=1 tokens_out=70 tokens_cached=91411
+o: id=S5D5FYsU → [ok] No files found
+t!:Bash id=Pe3sWHdn cmd="ls -la src/gui/" → [running] tokens_in=0 tokens_out=77 tokens_cached=91525
+o: id=Pe3sWHdn → [error] Exit code 2
+t!:Bash id=WwGD7ohF cmd="find src -name "*.rs" | head -20" → [running] tokens_in=1 tokens_out=25 tokens_cached=91714
+o: id=WwGD7ohF → [ok] src/lib.rs
+t!:Bash id=AGFFnuNc cmd="ls -la src/" → [running] tokens_in=0 tokens_out=25 tokens_cached=91831
+o: id=AGFFnuNc → [ok] Permissions Size User             Date Modified Name
+t!:Read id=kD5koNyx file_path=/home/christopherdavid/code/openagents/src/lib.rs → [running] tokens_in=0 tokens_out=72 tokens_cached=91931
+o: id=kD5koNyx → [error] <tool_use_error>File does not exist. Current working directory: /home/christopherdavid/code/opena...
+t!:Bash id=3tac4m5E cmd="cd /home/christopherdavid/code/openagents && fi..." → [running] tokens_in=1 tokens_out=25 tokens_cached=92156
+o: id=3tac4m5E → [ok] ./crates/marketplace/src/gui/ws.rs
+a: Now let me build to see if the WebSocket handler change compiles: tokens_in=0 tokens_out=1 tokens_cached=92287
+t!:Bash id=BYhLPDUt cmd="cargo build 2>&1 | head -50" → [running] tokens_in=0 tokens_out=1 tokens_cached=92287
+o: id=BYhLPDUt → [ok]    Compiling breez-sdk-common v0.1.0 (/home/christopherdavid/code/spark-sdk/crates/breez-sdk/common)
+a: Great! The build succeeds. Now I need to find where the WebSocket connection is initiated from the client side to add the token. Since this is a server-rendered application (Maud/HTMX), the WebSock... tokens_in=0 tokens_out=1 tokens_cached=92456
+t!:Bash id=zBKqMj8P cmd="find /home/christopherdavid/code/openagents -na..." → [running] tokens_in=0 tokens_out=1 tokens_cached=92456
+o: id=zBKqMj8P → [ok] 
+t!:Grep id=6xgfEzGj pattern="script.*WebSocket" → [running] tokens_in=1 tokens_out=78 tokens_cached=92958
+o: id=6xgfEzGj → [ok] Found 28 files
+t!:Read id=64uRfwrU file_path=/home/christopherdavid/code/openagents/crates/autopilot/src/tests/snapshots/autopilot__tests__dashboard_snapshots__dashboard_empty_state.snap → [running] tokens_in=0 tokens_out=25 tokens_cached=93176
+o: id=64uRfwrU → [ok]      1→---
+t!:Bash id=WT3kvPQu cmd="grep -n "new WebSocket" /home/christopherdavid/..." → [running] tokens_in=0 tokens_out=126 tokens_cached=94076
+o: id=WT3kvPQu → [ok] 464:    const ws = new WebSocket(`${protocol}//${window.location.host}/ws/metrics`);
+a: Let me find the source file that generates this HTML: tokens_in=0 tokens_out=1 tokens_cached=95373
+t!:Bash id=N2dSDqpr cmd="find /home/christopherdavid/code/openagents/cra..." → [running] tokens_in=0 tokens_out=1 tokens_cached=95373
+o: id=N2dSDqpr → [ok] /home/christopherdavid/code/openagents/crates/autopilot/src/dashboard.rs
+t!:Grep id=7N7W9Mpb pattern="new WebSocket" → [running] tokens_in=0 tokens_out=26 tokens_cached=95535
+o: id=7N7W9Mpb → [ok] 1173-
+a: Now I need to update this WebSocket connection to include the auth token. However, for this to work, the client needs to know the token. Since the token is printed on server startup but not availab... tokens_in=0 tokens_out=1 tokens_cached=95800
+t!:Read id=c9tMXNgR file_path=/home/christopherdavid/code/openagents/crates/autopilot/src/dashboard.rs → [running] tokens_in=0 tokens_out=1 tokens_cached=95800
+o: id=c9tMXNgR → [ok]      1→//! Web dashboard for autopilot metrics visualization and real-time monitoring.
+a: Since the unified openagents server will be the one handling WebSocket connections and it already has the auth token, I need to make the token available to the browser. The simplest and most secure... tokens_in=0 tokens_out=1 tokens_cached=96074
+t!:Grep id=hrgrkx8W pattern="\/ws[^/]" → [running] tokens_in=0 tokens_out=283 tokens_cached=96074
+o: id=hrgrkx8W → [ok] Found 73 files
+t!:Read id=2tkRRGhE file_path=/home/christopherdavid/code/openagents/src/gui/views/layout.rs → [running] tokens_in=0 tokens_out=76 tokens_cached=97163
+o: id=2tkRRGhE → [ok]      1→//! Base layout - pure black screen with Tailwind
+a: Perfect! I found the WebSocket connection at line 94: `ws-connect="/ws"`. This is using HTMX's WebSocket extension. I need to update this to include the auth token in the connection URL. The issue ... tokens_in=0 tokens_out=1 tokens_cached=98914
+t!:Edit id=vKqvW5Nz file_path=/home/christopherdavid/code/openagents/src/gui/views/layout.rs → [running] tokens_in=0 tokens_out=1155 tokens_cached=98914
+o: id=vKqvW5Nz → [ok] The file /home/christopherdavid/code/openagents/src/gui/views/layout.rs has been updated. Here's ...
+a: Now I need to find where the views are rendered and pass the auth token. Let me check the home view: tokens_in=0 tokens_out=1 tokens_cached=100485
+t!:Read id=9DqrzQHw file_path=/home/christopherdavid/code/openagents/src/gui/views/mod.rs → [running] tokens_in=0 tokens_out=100 tokens_cached=100485
+o: id=9DqrzQHw → [ok]      1→//! View templates for the unified GUI

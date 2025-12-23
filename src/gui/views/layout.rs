@@ -53,8 +53,17 @@ fn vera_mono_font_css() -> &'static str {
     })
 }
 
-/// Base HTML layout - pure black with WebSocket support and Tailwind
-pub fn base_layout(content: &str) -> String {
+/// Base HTML layout with optional auth token for WebSocket connection
+///
+/// SECURITY: The auth token is included in the WebSocket connection URL
+/// to authenticate WebSocket upgrades.
+pub fn base_layout_with_token(content: &str, auth_token: Option<&str>) -> String {
+    let ws_url = if let Some(token) = auth_token {
+        format!("/ws?token={}", token)
+    } else {
+        "/ws".to_string()
+    };
+
     format!(
         r#"<!DOCTYPE html>
 <html lang="en">
@@ -91,13 +100,14 @@ pub fn base_layout(content: &str) -> String {
         }}
     </style>
 </head>
-<body hx-ext="ws" ws-connect="/ws">
+<body hx-ext="ws" ws-connect="{ws_url}">
     {content}
 </body>
 </html>"#,
         tailwind_cdn = TAILWIND_CDN,
         tailwind_theme = TAILWIND_THEME,
         font_css = vera_mono_font_css(),
+        ws_url = ws_url,
         content = content
     )
 }
