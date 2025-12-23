@@ -114,8 +114,9 @@ impl RelayServer {
                     let rate_limiter = Arc::clone(&self.rate_limiter);
                     let metrics = Arc::clone(&self.metrics);
 
+                    let max_message_size = self.config.max_message_size;
                     tokio::spawn(async move {
-                        let result = handle_connection(stream, addr, db, broadcast_tx, rate_limiter.clone(), metrics.clone()).await;
+                        let result = handle_connection(stream, addr, db, broadcast_tx, rate_limiter.clone(), metrics.clone(), max_message_size).await;
 
                         // Unregister connection
                         rate_limiter.unregister_connection(ip).await;
@@ -181,6 +182,7 @@ async fn handle_connection(
     broadcast_tx: broadcast::Sender<BroadcastEvent>,
     rate_limiter: Arc<RateLimiter>,
     metrics: Arc<RelayMetrics>,
+    max_message_size: usize,
 ) -> Result<()> {
     let ws_stream = accept_async(stream)
         .await
@@ -230,6 +232,16 @@ async fn handle_connection(
                     Some(Ok(Message::Text(text))) => {
                         debug!("Received message from {}: {}", addr, text);
                         metrics.bytes_in(text.len() as u64);
+
+                        // Check message size limit
+                        if text.len() > max_message_size {
+                            warn!("Message from {} exceeds size limit: {} > {}", addr, text.len(), max_message_size);
+                            let notice = json!(["NOTICE", format!("Message too large: {} bytes (max: {})", text.len(), max_message_size)]);
+                            let notice_text = notice.to_string();
+                            metrics.bytes_out(notice_text.len() as u64);
+                            let _ = write.send(Message::Text(notice_text)).await;
+                            continue;
+                        }
 
                         // Parse the Nostr message
                         match serde_json::from_str::<Value>(&text) {
