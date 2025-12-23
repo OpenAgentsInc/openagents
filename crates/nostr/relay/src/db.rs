@@ -313,13 +313,26 @@ impl Database {
         let mut sql = String::from("SELECT raw_event FROM events WHERE 1=1");
         let mut params_vec: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
 
-        // Filter by IDs (using prefix matching)
+        // Filter by IDs (exact match for full IDs, prefix matching for partial)
         if let Some(ref ids) = filter.ids
             && !ids.is_empty() {
-                let placeholders = ids.iter().map(|_| "id LIKE ?").collect::<Vec<_>>().join(" OR ");
+                let placeholders = ids.iter().map(|id| {
+                    // Use exact match for full 64-char hex IDs, prefix match for partial
+                    if id.len() == 64 && id.chars().all(|c| c.is_ascii_hexdigit()) {
+                        "id = ?"
+                    } else {
+                        "id LIKE ?"
+                    }
+                }).collect::<Vec<_>>().join(" OR ");
                 sql.push_str(&format!(" AND ({})", placeholders));
                 for id in ids {
-                    params_vec.push(Box::new(format!("{}%", id)));
+                    if id.len() == 64 && id.chars().all(|c| c.is_ascii_hexdigit()) {
+                        // Exact match
+                        params_vec.push(Box::new(id.to_string()));
+                    } else {
+                        // Prefix match
+                        params_vec.push(Box::new(format!("{}%", id)));
+                    }
                 }
             }
 
