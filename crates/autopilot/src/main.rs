@@ -3747,7 +3747,7 @@ async fn handle_directive_command(command: DirectiveCommands) -> Result<()> {
                 println!("{:<12} {:<8} {:<10} {:<40} {}", "ID", "Status", "Progress", "Title", "Priority");
                 println!("{}", "-".repeat(85));
                 for d in directives {
-                    let progress = directive::calculate_progress(&conn, &d.id);
+                    let progress = directive::calculate_progress(&conn, &d.id)?;
                     let progress_str = if progress.total_issues > 0 {
                         format!("{}/{} ({}%)", progress.completed_issues, progress.total_issues, progress.percentage())
                     } else {
@@ -3777,7 +3777,7 @@ async fn handle_directive_command(command: DirectiveCommands) -> Result<()> {
                 .map_err(|e| anyhow::anyhow!("{}", e))?
             {
                 Some(d) => {
-                    let progress = directive::calculate_progress(&conn, &d.id);
+                    let progress = directive::calculate_progress(&conn, &d.id)?;
                     let linked_issues = directive::list_issues_by_directive(&conn, &d.id)?;
 
                     println!("{} Directive {}", "→".cyan(), d.id);

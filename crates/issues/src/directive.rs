@@ -25,6 +25,9 @@ pub enum DirectiveError {
 
     #[error("Directive not found: {0}")]
     NotFound(String),
+
+    #[error("Database error: {0}")]
+    Database(#[from] rusqlite::Error),
 }
 
 /// Result type for directive operations
@@ -307,46 +310,38 @@ impl DirectiveProgress {
 }
 
 /// Calculate progress for a directive from linked issues
-pub fn calculate_progress(conn: &Connection, directive_id: &str) -> DirectiveProgress {
-    let total: i32 = conn
-        .query_row(
-            "SELECT COUNT(*) FROM issues WHERE directive_id = ?",
-            [directive_id],
-            |row| row.get(0),
-        )
-        .unwrap_or(0);
+pub fn calculate_progress(conn: &Connection, directive_id: &str) -> Result<DirectiveProgress> {
+    let total: i32 = conn.query_row(
+        "SELECT COUNT(*) FROM issues WHERE directive_id = ?",
+        [directive_id],
+        |row| row.get(0),
+    )?;
 
-    let completed: i32 = conn
-        .query_row(
-            "SELECT COUNT(*) FROM issues WHERE directive_id = ? AND status = 'done'",
-            [directive_id],
-            |row| row.get(0),
-        )
-        .unwrap_or(0);
+    let completed: i32 = conn.query_row(
+        "SELECT COUNT(*) FROM issues WHERE directive_id = ? AND status = 'done'",
+        [directive_id],
+        |row| row.get(0),
+    )?;
 
-    let in_progress: i32 = conn
-        .query_row(
-            "SELECT COUNT(*) FROM issues WHERE directive_id = ? AND status = 'in_progress'",
-            [directive_id],
-            |row| row.get(0),
-        )
-        .unwrap_or(0);
+    let in_progress: i32 = conn.query_row(
+        "SELECT COUNT(*) FROM issues WHERE directive_id = ? AND status = 'in_progress'",
+        [directive_id],
+        |row| row.get(0),
+    )?;
 
-    let blocked: i32 = conn
-        .query_row(
-            "SELECT COUNT(*) FROM issues WHERE directive_id = ? AND is_blocked = 1",
-            [directive_id],
-            |row| row.get(0),
-        )
-        .unwrap_or(0);
+    let blocked: i32 = conn.query_row(
+        "SELECT COUNT(*) FROM issues WHERE directive_id = ? AND is_blocked = 1",
+        [directive_id],
+        |row| row.get(0),
+    )?;
 
-    DirectiveProgress {
+    Ok(DirectiveProgress {
         directive_id: directive_id.to_string(),
         total_issues: total,
         completed_issues: completed,
         in_progress_issues: in_progress,
         blocked_issues: blocked,
-    }
+    })
 }
 
 /// List issues linked to a directive
