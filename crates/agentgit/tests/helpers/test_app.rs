@@ -232,6 +232,31 @@ impl TestApp {
         self.publish_event(template).await
     }
 
+    /// Release bounty payment via NIP-57 zap (kind 9735)
+    pub async fn pay_bounty(
+        &self,
+        bounty_claim_id: &str,
+        recipient_pubkey: &str,
+        amount_msats: u64,
+    ) -> Result<nostr::Event> {
+        let template = EventTemplate {
+            kind: 9735, // ZAP_RECEIPT
+            tags: vec![
+                vec!["e".to_string(), bounty_claim_id.to_string()],
+                vec!["p".to_string(), recipient_pubkey.to_string()],
+                vec!["amount".to_string(), amount_msats.to_string()],
+                vec!["description".to_string(), "Bounty payment".to_string()],
+            ],
+            content: String::new(),
+            created_at: std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_secs(),
+        };
+
+        self.publish_event(template).await
+    }
+
     /// Get all events from the relay
     pub async fn get_all_events(&self) -> Vec<nostr::Event> {
         self.relay.get_events().await
