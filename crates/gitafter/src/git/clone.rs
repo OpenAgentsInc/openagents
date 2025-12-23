@@ -1,10 +1,56 @@
 //! Git clone operations using libgit2
 
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, bail};
 use git2::{FetchOptions, Progress, RemoteCallbacks, Repository};
-use std::path::{Path, PathBuf};
+use std::path::{Path, PathBuf, Component};
 use std::sync::{Arc, Mutex};
 use tracing::{debug, info};
+
+/// Sanitize a repository identifier to prevent path traversal attacks
+///
+/// This function validates that the identifier:
+/// 1. Does not contain path traversal sequences (../, ..\)
+/// 2. Does not start with / or contain absolute path components
+/// 3. Only contains safe characters and path separators
+///
+/// Returns the sanitized identifier or an error if validation fails.
+fn sanitize_repository_identifier(identifier: &str) -> Result<PathBuf> {
+    // Reject empty identifiers
+    if identifier.is_empty() {
+        bail!("Repository identifier cannot be empty");
+    }
+
+    // Create a path from the identifier
+    let path = PathBuf::from(identifier);
+
+    // Validate each component
+    for component in path.components() {
+        match component {
+            Component::Normal(_) => {
+                // Normal components are OK
+            }
+            Component::ParentDir => {
+                // Reject parent directory references (..)
+                bail!("Repository identifier cannot contain '..' path components");
+            }
+            Component::RootDir | Component::Prefix(_) => {
+                // Reject absolute paths
+                bail!("Repository identifier cannot be an absolute path");
+            }
+            Component::CurDir => {
+                // Current directory (.) is technically safe but unnecessary
+                bail!("Repository identifier cannot contain '.' path components");
+            }
+        }
+    }
+
+    // Additional validation: ensure the path is still relative
+    if path.is_absolute() {
+        bail!("Repository identifier must be a relative path");
+    }
+
+    Ok(path)
+}
 
 /// Progress callback for clone operations
 pub struct CloneProgress {
@@ -178,13 +224,23 @@ pub fn get_workspace_path() -> PathBuf {
 
 /// Check if a repository is already cloned
 pub fn is_repository_cloned(repo_identifier: &str) -> bool {
-    let path = get_workspace_path().join(repo_identifier);
-    path.exists() && Repository::open(&path).is_ok()
+    match sanitize_repository_identifier(repo_identifier) {
+        Ok(sanitized) => {
+            let path = get_workspace_path().join(sanitized);
+            path.exists() && Repository::open(&path).is_ok()
+        }
+        Err(_) => false, // Invalid identifier = not cloned
+    }
 }
 
 /// Get the local path for a cloned repository
-pub fn get_repository_path(repo_identifier: &str) -> PathBuf {
-    get_workspace_path().join(repo_identifier)
+///
+/// This function sanitizes the repository identifier to prevent path traversal attacks.
+/// Returns an error if the identifier contains unsafe path components.
+pub fn get_repository_path(repo_identifier: &str) -> Result<PathBuf> {
+    let sanitized = sanitize_repository_identifier(repo_identifier)
+        .context("Invalid repository identifier")?;
+    Ok(get_workspace_path().join(sanitized))
 }
 
 #[cfg(test)]
@@ -200,8 +256,21 @@ mod tests {
 
     #[test]
     fn test_repository_path() {
-        let path = get_repository_path("test-repo");
+        let path = get_repository_path("test-repo").unwrap();
         assert!(path.to_string_lossy().contains("test-repo"));
+    }
+
+    #[test]
+    fn test_repository_path_traversal() {
+        // Test that path traversal is rejected
+        assert!(get_repository_path("../etc/passwd").is_err());
+        assert!(get_repository_path("../../secret").is_err());
+        assert!(get_repository_path("/etc/passwd").is_err());
+        assert!(get_repository_path("test/../admin").is_err());
+
+        // Test that safe paths work
+        assert!(get_repository_path("myrepo").is_ok());
+        assert!(get_repository_path("org/repo").is_ok());
     }
 
     #[test]
