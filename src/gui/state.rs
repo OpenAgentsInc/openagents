@@ -347,7 +347,10 @@ pub async fn fetch_usage_limits() -> Option<UsageLimits> {
 
     tracing::debug!("Fetching usage data from /api/oauth/usage...");
 
-    let client = reqwest::Client::new();
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(10))
+        .build()
+        .expect("Failed to build reqwest client");
     let response = match client
         .get("https://api.anthropic.com/api/oauth/usage")
         .header("Authorization", format!("Bearer {}", token))
