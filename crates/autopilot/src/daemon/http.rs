@@ -236,11 +236,29 @@ fn categorize_reason(reason: &str) -> &'static str {
     }
 }
 
-/// Get current memory usage in MB (placeholder - needs proper implementation)
+/// Get current memory usage in MB
 fn get_current_memory_mb() -> f64 {
-    // TODO: Implement actual memory reading from /proc or sysinfo
-    // For now, return 0.0 as placeholder
-    0.0
+    use sysinfo::System;
+
+    let mut sys = System::new_all();
+    sys.refresh_memory();
+
+    let used_memory = sys.used_memory();
+    // Convert from bytes to MB
+    (used_memory as f64) / (1024.0 * 1024.0)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_get_current_memory_mb() {
+        let memory_mb = get_current_memory_mb();
+        // Memory usage should be positive and reasonable (< 100GB)
+        assert!(memory_mb > 0.0, "Memory usage should be positive");
+        assert!(memory_mb < 100_000.0, "Memory usage should be < 100GB");
+    }
 }
 
 /// Start HTTP metrics server
