@@ -71,3 +71,7 @@ html-escape = "0.2.13"
 [[bench]]
 name = "stacks_bench"
 harness = false
+
+[[bench]]
+name = "notifications_bench"
+harness = false
