@@ -248,6 +248,12 @@ pub struct ConnectionPoolManager {
     config: ConnectionPoolConfig,
 }
 
+impl Default for ConnectionPoolManager {
+    fn default() -> Self {
+        Self::new(ConnectionPoolConfig::default())
+    }
+}
+
 impl ConnectionPoolManager {
     /// Create a new connection pool manager
     pub fn new(config: ConnectionPoolConfig) -> Self {
@@ -260,11 +266,6 @@ impl ConnectionPoolManager {
         manager.start_cleanup_task();
 
         manager
-    }
-
-    /// Create with default configuration
-    pub fn default() -> Self {
-        Self::new(ConnectionPoolConfig::default())
     }
 
     /// Checkout a connection for a relay
