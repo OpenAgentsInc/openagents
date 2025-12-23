@@ -977,6 +977,21 @@ enum MetricsCommands {
         #[arg(short, long, default_value = "text")]
         format: String,
     },
+
+    /// Show improvement velocity over time
+    Velocity {
+        /// Time period to analyze (7d, 30d, this-week, last-week)
+        #[arg(short, long, default_value = "this-week")]
+        period: String,
+
+        /// Path to metrics database (default: autopilot-metrics.db)
+        #[arg(long)]
+        db: Option<PathBuf>,
+
+        /// Number of historical snapshots to show
+        #[arg(short, long, default_value_t = 10)]
+        limit: usize,
+    },
 }
 
 #[derive(Subcommand)]
@@ -4835,6 +4850,83 @@ async fn handle_metrics_command(command: MetricsCommands) -> Result<()> {
                     );
                 }
             }
+        }
+
+        MetricsCommands::Velocity { period, db, limit } => {
+            use autopilot::analyze::calculate_velocity;
+            use autopilot::metrics::MetricsDb;
+
+            let db_path = db.unwrap_or_else(default_db_path);
+            let metrics_db = MetricsDb::open(&db_path)?;
+
+            // Parse period
+            let time_period = parse_time_period(&period)?;
+
+            // Calculate current velocity
+            let velocity = calculate_velocity(&metrics_db, time_period)?;
+
+            // Store the snapshot
+            metrics_db.store_velocity_snapshot(&velocity)?;
+
+            // Get historical snapshots
+            let snapshots = metrics_db.get_velocity_snapshots(limit)?;
+
+            // Print report
+            println!("{}", "=".repeat(80));
+            println!("{} Improvement Velocity", "🚀".cyan().bold());
+            println!("{}", "=".repeat(80));
+            println!();
+
+            // Current velocity
+            println!("{} Current Period: {}", "📊".cyan(), velocity.period);
+            println!("  Velocity Score:    {:.2} (-1.0 to 1.0)", velocity.velocity_score);
+            println!("  Improving Metrics: {}", velocity.improving_metrics.to_string().green());
+            println!("  Stable Metrics:    {}", velocity.stable_metrics);
+            println!("  Degrading Metrics: {}", velocity.degrading_metrics.to_string().red());
+            println!();
+
+            // Key metrics
+            if !velocity.key_metrics.is_empty() {
+                println!("{} Key Metrics:", "🔑".cyan().bold());
+                for metric in &velocity.key_metrics {
+                    let direction_icon = match metric.direction.as_str() {
+                        "improving" => "📈".green(),
+                        "degrading" => "📉".red(),
+                        _ => "➡️".yellow(),
+                    };
+                    println!(
+                        "  {:<25} {} {:>7.1}%",
+                        metric.dimension,
+                        direction_icon,
+                        metric.percent_change
+                    );
+                }
+                println!();
+            }
+
+            // Historical trend
+            if snapshots.len() > 1 {
+                println!("{} Historical Velocity:", "📈".cyan().bold());
+                for snapshot in &snapshots {
+                    let score_color = if snapshot.velocity_score > 0.3 {
+                        snapshot.velocity_score.to_string().green()
+                    } else if snapshot.velocity_score < -0.3 {
+                        snapshot.velocity_score.to_string().red()
+                    } else {
+                        snapshot.velocity_score.to_string().yellow()
+                    };
+
+                    println!(
+                        "  {} | {:>8} | Score: {}",
+                        snapshot.timestamp.format("%Y-%m-%d %H:%M"),
+                        snapshot.period,
+                        score_color
+                    );
+                }
+                println!();
+            }
+
+            println!("{}", "=".repeat(80));
         }
     }
 

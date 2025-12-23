@@ -227,6 +227,36 @@ pub struct DirectiveAggregateMetrics {
     pub error_rate: f64,
 }
 
+/// Velocity snapshot tracking improvement rate over time
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VelocitySnapshot {
+    /// Snapshot timestamp
+    pub timestamp: DateTime<Utc>,
+    /// Time period analyzed (e.g., "week", "month")
+    pub period: String,
+    /// Overall velocity score (-1.0 to 1.0, higher is better)
+    pub velocity_score: f64,
+    /// Number of improving metrics
+    pub improving_metrics: i32,
+    /// Number of degrading metrics
+    pub degrading_metrics: i32,
+    /// Number of stable metrics
+    pub stable_metrics: i32,
+    /// Key metrics with their trends (JSON)
+    pub key_metrics: Vec<MetricVelocity>,
+}
+
+/// Individual metric velocity tracking
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MetricVelocity {
+    /// Metric name
+    pub dimension: String,
+    /// Percent change from previous period
+    pub percent_change: f64,
+    /// Trend direction
+    pub direction: String,
+}
+
 /// Detected anomaly in metrics
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Anomaly {
@@ -397,6 +427,17 @@ impl MetricsDb {
                 tool_calls INTEGER NOT NULL
             );
 
+            CREATE TABLE IF NOT EXISTS velocity_snapshots (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp TEXT NOT NULL,
+                period TEXT NOT NULL,
+                velocity_score REAL NOT NULL,
+                improving_metrics INTEGER NOT NULL,
+                degrading_metrics INTEGER NOT NULL,
+                stable_metrics INTEGER NOT NULL,
+                key_metrics_json TEXT NOT NULL
+            );
+
             CREATE INDEX IF NOT EXISTS idx_sessions_timestamp ON sessions(timestamp);
             CREATE INDEX IF NOT EXISTS idx_tool_calls_session_id ON tool_calls(session_id);
             CREATE INDEX IF NOT EXISTS idx_tool_calls_tool_name ON tool_calls(tool_name);
@@ -404,6 +445,8 @@ impl MetricsDb {
             CREATE INDEX IF NOT EXISTS idx_anomalies_severity ON anomalies(severity);
             CREATE INDEX IF NOT EXISTS idx_apm_snapshots_source_window ON apm_snapshots(source, window);
             CREATE INDEX IF NOT EXISTS idx_apm_snapshots_timestamp ON apm_snapshots(timestamp);
+            CREATE INDEX IF NOT EXISTS idx_velocity_snapshots_timestamp ON velocity_snapshots(timestamp);
+            CREATE INDEX IF NOT EXISTS idx_velocity_snapshots_period ON velocity_snapshots(period);
             "#,
         )
         .context("Failed to initialize database schema")?;
@@ -1482,6 +1525,64 @@ impl MetricsDb {
         }
 
         Ok(metrics)
+    }
+
+    /// Store velocity snapshot
+    pub fn store_velocity_snapshot(&self, snapshot: &VelocitySnapshot) -> Result<()> {
+        let key_metrics_json = serde_json::to_string(&snapshot.key_metrics)?;
+
+        self.conn.execute(
+            r#"
+            INSERT INTO velocity_snapshots
+            (timestamp, period, velocity_score, improving_metrics, degrading_metrics,
+             stable_metrics, key_metrics_json)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+            "#,
+            params![
+                snapshot.timestamp.to_rfc3339(),
+                snapshot.period,
+                snapshot.velocity_score,
+                snapshot.improving_metrics,
+                snapshot.degrading_metrics,
+                snapshot.stable_metrics,
+                key_metrics_json
+            ],
+        )?;
+
+        Ok(())
+    }
+
+    /// Get recent velocity snapshots
+    pub fn get_velocity_snapshots(&self, limit: usize) -> Result<Vec<VelocitySnapshot>> {
+        let mut stmt = self.conn.prepare(
+            r#"
+            SELECT timestamp, period, velocity_score, improving_metrics,
+                   degrading_metrics, stable_metrics, key_metrics_json
+            FROM velocity_snapshots
+            ORDER BY timestamp DESC
+            LIMIT ?1
+            "#,
+        )?;
+
+        let snapshots = stmt
+            .query_map([limit], |row| {
+                let key_metrics_json: String = row.get(6)?;
+                let key_metrics: Vec<MetricVelocity> =
+                    serde_json::from_str(&key_metrics_json).unwrap_or_default();
+
+                Ok(VelocitySnapshot {
+                    timestamp: row.get::<_, String>(0)?.parse().unwrap(),
+                    period: row.get(1)?,
+                    velocity_score: row.get(2)?,
+                    improving_metrics: row.get(3)?,
+                    degrading_metrics: row.get(4)?,
+                    stable_metrics: row.get(5)?,
+                    key_metrics,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+
+        Ok(snapshots)
     }
 }
 

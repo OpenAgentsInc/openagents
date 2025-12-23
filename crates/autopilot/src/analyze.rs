@@ -1095,3 +1095,86 @@ pub fn get_slowest_tools(db: &MetricsDb, period: TimePeriod, limit: usize) -> an
 
     Ok(slowest)
 }
+
+/// Calculate improvement velocity from trends
+pub fn calculate_velocity(
+    db: &MetricsDb,
+    period: TimePeriod,
+) -> anyhow::Result<crate::metrics::VelocitySnapshot> {
+    use crate::metrics::{MetricVelocity, VelocitySnapshot};
+    use chrono::Utc;
+
+    // Get trends comparing this period vs previous period
+    let baseline_period = match period {
+        TimePeriod::Last7Days | TimePeriod::ThisWeek => Some(TimePeriod::LastWeek),
+        TimePeriod::Last30Days => Some(TimePeriod::Last30Days), // Compare vs same period
+        _ => None,
+    };
+
+    let trends = detect_trends(db, period, baseline_period)?;
+
+    let mut improving_count = 0;
+    let mut degrading_count = 0;
+    let mut stable_count = 0;
+    let mut key_metrics = Vec::new();
+
+    // Key metrics to track for velocity
+    let key_metric_names = vec![
+        "tool_error_rate",
+        "completion_rate",
+        "cost_per_issue",
+        "duration_per_issue",
+    ];
+
+    for trend in trends {
+        // Only include key metrics in the snapshot
+        if key_metric_names.contains(&trend.dimension.as_str()) {
+            let direction_str = match trend.direction {
+                TrendDirection::Improving => {
+                    improving_count += 1;
+                    "improving"
+                }
+                TrendDirection::Degrading => {
+                    degrading_count += 1;
+                    "degrading"
+                }
+                TrendDirection::Stable => {
+                    stable_count += 1;
+                    "stable"
+                }
+            };
+
+            key_metrics.push(MetricVelocity {
+                dimension: trend.dimension.clone(),
+                percent_change: trend.percent_change,
+                direction: direction_str.to_string(),
+            });
+        } else {
+            // Still count for the totals
+            match trend.direction {
+                TrendDirection::Improving => improving_count += 1,
+                TrendDirection::Degrading => degrading_count += 1,
+                TrendDirection::Stable => stable_count += 1,
+            }
+        }
+    }
+
+    // Calculate velocity score (-1.0 to 1.0)
+    // Weighted: improving metrics add positive, degrading subtract
+    let total_metrics = (improving_count + degrading_count + stable_count) as f64;
+    let velocity_score = if total_metrics > 0.0 {
+        (improving_count as f64 - degrading_count as f64) / total_metrics
+    } else {
+        0.0
+    };
+
+    Ok(VelocitySnapshot {
+        timestamp: Utc::now(),
+        period: period.name().to_string(),
+        velocity_score,
+        improving_metrics: improving_count,
+        degrading_metrics: degrading_count,
+        stable_metrics: stable_count,
+        key_metrics,
+    })
+}
