@@ -30,7 +30,6 @@ async fn status_page() -> HttpResponse {
 
 /// Get current daemon status (returns HTML for HTMX polling)
 async fn get_status(state: web::Data<AppState>) -> HttpResponse {
-    info!("GET /api/daemon/status called");
     let info = state.daemon_info.read().await;
 
     let status = if info.connected {
