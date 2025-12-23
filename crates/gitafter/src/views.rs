@@ -2575,6 +2575,74 @@ pub fn agent_profile_page(
                                 }
                             }
 
+                            section.issue-section {
+                                h2 { "Reputation Overview" }
+                                @let reputation_score = (pull_requests.len() * 5 + merged_count * 15 + reputation_labels.len() * 10) as i32;
+                                @let tier = crate::reputation::ReputationTier::from_score(reputation_score);
+                                @let tier_name = tier.name();
+                                @let tier_color = tier.color();
+                                @let tier_emoji = tier.emoji();
+
+                                div.reputation-display {
+                                    div.reputation-tier style={"background: " (tier_color) "22; border: 2px solid " (tier_color) "; padding: 1.5rem; margin-bottom: 1rem; text-align: center;"} {
+                                        div style="font-size: 3rem; margin-bottom: 0.5rem;" { (tier_emoji) }
+                                        div style={"font-size: 1.5rem; font-weight: 600; color: " (tier_color) ";"} { (tier_name) " Tier" }
+                                        div style="font-size: 1rem; color: var(--text-secondary); margin-top: 0.5rem;" {
+                                            "Reputation Score: " (reputation_score)
+                                        }
+                                    }
+
+                                    div.reputation-breakdown style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem;" {
+                                        div.breakdown-item style="background: var(--card-bg, #1a1a1a); border: 1px solid var(--border-color, #333); padding: 1rem;" {
+                                            div style="font-size: 0.9rem; color: var(--text-secondary); margin-bottom: 0.5rem;" { "Total PRs" }
+                                            div style="font-size: 1.5rem; font-weight: 600; color: var(--accent-color, #0ea5e9);" { (pull_requests.len()) }
+                                            div style="font-size: 0.85rem; color: var(--text-secondary); margin-top: 0.25rem;" {
+                                                "+" (pull_requests.len() * 5) " points"
+                                            }
+                                        }
+                                        div.breakdown-item style="background: var(--card-bg, #1a1a1a); border: 1px solid var(--border-color, #333); padding: 1rem;" {
+                                            div style="font-size: 0.9rem; color: var(--text-secondary); margin-bottom: 0.5rem;" { "Merged PRs" }
+                                            div style="font-size: 1.5rem; font-weight: 600; color: #00ff88;" { (merged_count) }
+                                            div style="font-size: 0.85rem; color: var(--text-secondary); margin-top: 0.25rem;" {
+                                                "+" (merged_count * 15) " points"
+                                            }
+                                        }
+                                        div.breakdown-item style="background: var(--card-bg, #1a1a1a); border: 1px solid var(--border-color, #333); padding: 1rem;" {
+                                            div style="font-size: 0.9rem; color: var(--text-secondary); margin-bottom: 0.5rem;" { "Reputation Labels" }
+                                            div style="font-size: 1.5rem; font-weight: 600; color: #ffd700;" { (reputation_labels.len()) }
+                                            div style="font-size: 0.85rem; color: var(--text-secondary); margin-top: 0.25rem;" {
+                                                "+" (reputation_labels.len() * 10) " points"
+                                            }
+                                        }
+                                    }
+
+                                    div.tier-progress style="margin-top: 1.5rem; padding: 1rem; background: var(--card-bg, #1a1a1a); border: 1px solid var(--border-color, #333);" {
+                                        div style="font-size: 0.9rem; color: var(--text-secondary); margin-bottom: 0.5rem;" { "Next Tier Progress" }
+                                        @let next_tier_threshold = match tier {
+                                            crate::reputation::ReputationTier::New => 10,
+                                            crate::reputation::ReputationTier::Established => 50,
+                                            crate::reputation::ReputationTier::Trusted => 100,
+                                            crate::reputation::ReputationTier::Expert => reputation_score,
+                                        };
+                                        @let progress_pct = if matches!(tier, crate::reputation::ReputationTier::Expert) {
+                                            100
+                                        } else {
+                                            ((reputation_score as f64 / next_tier_threshold as f64) * 100.0).min(100.0) as i32
+                                        };
+                                        div style="width: 100%; height: 20px; background: #333; margin-bottom: 0.5rem;" {
+                                            div style={"width: " (progress_pct) "%; height: 100%; background: " (tier_color) "; transition: width 0.3s;"} {}
+                                        }
+                                        div style="font-size: 0.85rem; color: var(--text-secondary);" {
+                                            @if matches!(tier, crate::reputation::ReputationTier::Expert) {
+                                                "Maximum tier reached!"
+                                            } @else {
+                                                (reputation_score) " / " (next_tier_threshold) " points (" (progress_pct) "%)"
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
                             @if !reputation_labels.is_empty() {
                                 section.issue-section {
                                     h2 { "Reputation Labels" }
