@@ -208,38 +208,112 @@ openagents daemon stop
 
 ## Autopilot Daemon
 
-The `openagents daemon` (formerly `autopilotd`) supervises autopilot worker processes, handling crashes and memory pressure.
+The `autopilotd` binary supervises autopilot worker processes, handling crashes, memory pressure, and ensuring continuous operation.
 
-**Starting the daemon:**
+**Full documentation:** [docs/autopilot/DAEMON.md](docs/autopilot/DAEMON.md)
+
+### Known-Good Binary System (CRITICAL)
+
+The daemon uses a **pre-built binary** at `~/.autopilot/bin/autopilot` instead of `cargo run`. This prevents a critical failure mode where broken code blocks worker restarts.
+
+**First-time setup:**
 ```bash
-# Development
-openagents daemon start --workdir /path/to/project --project myproject
-
-# Production (systemd)
-systemctl --user start openagents-daemon
+# Build and install the known-good binary
+cargo build -p autopilot
+mkdir -p ~/.autopilot/bin
+cp target/debug/autopilot ~/.autopilot/bin/autopilot
+chmod +x ~/.autopilot/bin/autopilot
 ```
 
-**Commands:**
+**After successful builds, update the binary:**
 ```bash
-openagents daemon status         # Check daemon and worker status
-openagents daemon restart-worker # Restart worker without restarting daemon
-openagents daemon stop           # Stop daemon
+cargo build -p autopilot && cp target/debug/autopilot ~/.autopilot/bin/
 ```
 
-**Viewing logs:**
+**Why this matters:** If a worker breaks the code and crashes, the daemon can still restart workers from the known-good binary. Without this, compile errors would block all restart attempts indefinitely.
+
+### Starting the Daemon
+
 ```bash
-# Worker logs are in the standard rlog location
+# Development (from workspace root)
+./target/debug/autopilotd --workdir /home/user/code/openagents --project openagents
+
+# Or via cargo (note: this compiles first)
+cargo run -p autopilot --bin autopilotd -- --workdir . --project openagents
+
+# Background mode
+nohup ./target/debug/autopilotd --workdir . --project openagents &
+```
+
+### Daemon Commands
+
+```bash
+autopilotd status          # Check daemon and worker status
+autopilotd restart-worker  # Restart worker without restarting daemon
+autopilotd stop-worker     # Stop worker only
+autopilotd stop            # Stop daemon entirely
+```
+
+### Configuration
+
+**Environment variables:**
+```bash
+AUTOPILOT_WORKER_BINARY=/path/to/binary    # Custom binary path
+AUTOPILOT_STALL_TIMEOUT_MS=300000          # Stall detection (5 min)
+AUTOPILOT_RECOVERY_COOLDOWN_MS=600000      # Cooldown after failures (10 min)
+```
+
+**Config file:** `~/.autopilot/daemon.toml`
+```toml
+[worker_command]
+type = "Binary"
+path = "/home/user/.autopilot/bin/autopilot"
+
+working_dir = "/home/user/code/openagents"
+project = "openagents"
+model = "sonnet"
+```
+
+### Viewing Logs
+
+```bash
+# Worker session logs
 tail -f docs/logs/$(date +%Y%m%d)/*.rlog
 
-# Daemon logs (when running with systemd)
-journalctl --user -u autopilotd -f
+# Find most recent log
+ls -t docs/logs/**/*.rlog | head -1
 ```
 
-**Memory management:**
-- Daemon monitors system memory every 5 seconds
-- Kills node processes >500MB when memory is low (<2GB)
-- Force-restarts worker when memory is critical (<1GB)
-- Automatic exponential backoff on crashes (1s → 5min max)
+### Crash Recovery
+
+- Exponential backoff: 1s → 2s → 4s → ... → 5min max
+- After 10 consecutive failures: 10-minute cooldown
+- Success (running >60s) resets backoff
+- Stalled workers (no log activity >5min) are killed and restarted
+
+### Memory Management
+
+| Available Memory | Action |
+|-----------------|--------|
+| > 2 GB | Normal operation |
+| 1-2 GB | Kill node processes > 500MB |
+| < 1 GB | Force restart worker |
+
+### Troubleshooting
+
+**Build failures blocking restarts:**
+```bash
+# Fix compile errors, then update known-good binary
+cargo build -p autopilot
+cp target/debug/autopilot ~/.autopilot/bin/
+autopilotd restart-worker
+```
+
+**Worker detected as stalled:**
+```bash
+# Increase timeout if workers do long builds
+AUTOPILOT_STALL_TIMEOUT_MS=600000 autopilotd start
+```
 
 ---
 
