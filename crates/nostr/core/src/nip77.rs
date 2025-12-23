@@ -1015,7 +1015,7 @@ impl ReconciliationState {
         let fp_upper = self.calculate_range_fingerprint(&mid_bound, upper);
 
         Ok(vec![
-            Range::fingerprint(mid_bound.clone(), fp_lower),
+            Range::fingerprint(mid_bound, fp_lower),
             Range::fingerprint(upper.clone(), fp_upper),
         ])
     }
