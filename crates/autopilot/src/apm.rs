@@ -12,6 +12,7 @@ use serde::{Deserialize, Serialize};
 
 /// APM statistics for various time windows
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Default)]
 pub struct APMStats {
     /// APM for current session only
     pub session: Option<f64>,
@@ -29,19 +30,6 @@ pub struct APMStats {
     pub lifetime: Option<f64>,
 }
 
-impl Default for APMStats {
-    fn default() -> Self {
-        Self {
-            session: None,
-            last_1h: None,
-            last_6h: None,
-            last_1d: None,
-            last_1w: None,
-            last_1m: None,
-            lifetime: None,
-        }
-    }
-}
 
 /// APM snapshot for a specific time period
 #[derive(Debug, Clone, Serialize, Deserialize)]

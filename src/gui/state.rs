@@ -346,12 +346,11 @@ pub async fn fetch_usage_limits() -> Option<UsageLimits> {
     // Check cache first
     {
         let cache = USAGE_CACHE.read().await;
-        if let Some((limits, cached_at)) = cache.as_ref() {
-            if cached_at.elapsed() < std::time::Duration::from_secs(30) {
+        if let Some((limits, cached_at)) = cache.as_ref()
+            && cached_at.elapsed() < std::time::Duration::from_secs(30) {
                 tracing::debug!("Returning cached usage limits (age: {:?})", cached_at.elapsed());
                 return Some(limits.clone());
             }
-        }
     }
     let token = match get_oauth_token().await {
         Some(t) => t,
@@ -420,8 +419,8 @@ pub async fn fetch_usage_limits() -> Option<UsageLimits> {
     }
 
     // Parse extra usage (this is the actual credits data!)
-    if let Some(extra) = json.get("extra_usage") {
-        if extra.get("is_enabled").and_then(|v| v.as_bool()).unwrap_or(false) {
+    if let Some(extra) = json.get("extra_usage")
+        && extra.get("is_enabled").and_then(|v| v.as_bool()).unwrap_or(false) {
             // monthly_limit and used_credits are in CENTS
             if let Some(limit_cents) = extra.get("monthly_limit").and_then(|v| v.as_f64()) {
                 limits.extra_limit = Some(limit_cents / 100.0); // Convert cents to dollars
@@ -431,7 +430,6 @@ pub async fn fetch_usage_limits() -> Option<UsageLimits> {
             }
             // Note: extra_usage doesn't have a resets_at field in the API response
         }
-    }
 
     // Return if we got any data
     if limits.session_percent.is_some() || limits.weekly_all_percent.is_some() || limits.extra_spent.is_some() {

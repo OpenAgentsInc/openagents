@@ -3601,7 +3601,7 @@ async fn bounty_payment(
     let lud16 = recipient_lud16;
 
     // 7. Build zap request
-    let mut zap_builder = ZapRequestBuilder::new(&recipient_pubkey)
+    let zap_builder = ZapRequestBuilder::new(&recipient_pubkey)
         .amount_sats(amount_sats)
         .relay("wss://relay.damus.io")
         .relay("wss://relay.snort.social")

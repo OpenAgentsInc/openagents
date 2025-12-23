@@ -192,11 +192,10 @@ impl RelayConnectionPool {
 
         // Remove in reverse order to maintain indices
         for idx in to_remove.into_iter().rev() {
-            if let Some(pooled) = self.connections.get(idx) {
-                if let Err(e) = pooled.connection.disconnect().await {
+            if let Some(pooled) = self.connections.get(idx)
+                && let Err(e) = pooled.connection.disconnect().await {
                     warn!("Error disconnecting idle connection: {}", e);
                 }
-            }
             self.connections.remove(idx);
             debug!("Removed idle connection {} from {}", idx, self.url);
         }
