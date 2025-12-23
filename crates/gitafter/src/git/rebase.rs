@@ -149,12 +149,13 @@ mod tests {
         std::fs::write(repo.workdir().unwrap().join(filename), content).unwrap();
 
         let tree_id = {
-            let mut index = repo.index().unwrap();
-            index.add_path(std::path::Path::new(filename)).unwrap();
-            index.write().unwrap();
-            index.write_tree().unwrap()
+            let mut index = repo.index().expect("Failed to get index");
+            index.add_path(std::path::Path::new(filename))
+                .expect("Failed to add path to index");
+            index.write().expect("Failed to write index");
+            index.write_tree().expect("Failed to write tree")
         };
-        let tree = repo.find_tree(tree_id).unwrap();
+        let tree = repo.find_tree(tree_id).expect("Failed to find tree");
 
         let parents = if let Some(p) = parent {
             vec![p]

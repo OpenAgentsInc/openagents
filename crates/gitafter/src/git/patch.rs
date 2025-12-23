@@ -52,14 +52,15 @@ mod tests {
     }
 
     fn create_commit(repo: &Repository, _dir: &Path, message: &str) -> git2::Oid {
-        let sig = repo.signature().unwrap();
+        let sig = repo.signature().expect("Failed to get signature");
         let tree_id = {
-            let mut index = repo.index().unwrap();
-            index.add_all(["."].iter(), git2::IndexAddOption::DEFAULT, None).unwrap();
-            index.write().unwrap();
-            index.write_tree().unwrap()
+            let mut index = repo.index().expect("Failed to get index");
+            index.add_all(["."].iter(), git2::IndexAddOption::DEFAULT, None)
+                .expect("Failed to add files to index");
+            index.write().expect("Failed to write index");
+            index.write_tree().expect("Failed to write tree")
         };
-        let tree = repo.find_tree(tree_id).unwrap();
+        let tree = repo.find_tree(tree_id).expect("Failed to find tree");
 
         let parent_commit = if let Ok(head) = repo.head() {
             Some(head.peel_to_commit().unwrap())
