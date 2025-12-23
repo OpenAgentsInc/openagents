@@ -70,7 +70,7 @@ pub mod baseline;
 
 use anyhow::{Context, Result};
 use chrono::{DateTime, Utc};
-use rusqlite::{params, Connection};
+use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
@@ -328,6 +328,23 @@ pub struct Baseline {
     pub updated_at: DateTime<Utc>,
 }
 
+/// Personal best record for a metric
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PersonalBest {
+    /// Metric name (e.g., "apm", "velocity_score")
+    pub metric: String,
+    /// Best value achieved
+    pub value: f64,
+    /// Session ID where this was achieved
+    pub session_id: Option<String>,
+    /// Project name (None for global)
+    pub project: Option<String>,
+    /// When this personal best was achieved
+    pub timestamp: DateTime<Utc>,
+    /// Optional context (e.g., "3 issues completed")
+    pub context: Option<String>,
+}
+
 /// Metrics database for persistent storage
 pub struct MetricsDb {
     conn: Connection,
@@ -477,6 +494,17 @@ impl MetricsDb {
                 stable_metrics INTEGER NOT NULL,
                 issues_completed INTEGER NOT NULL DEFAULT 0,
                 key_metrics_json TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS personal_bests (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                metric TEXT NOT NULL,
+                value REAL NOT NULL,
+                session_id TEXT,
+                project TEXT,
+                timestamp TEXT NOT NULL,
+                context TEXT,
+                UNIQUE(metric, project)
             );
 
             CREATE INDEX IF NOT EXISTS idx_sessions_timestamp ON sessions(timestamp);
@@ -1710,6 +1738,84 @@ impl MetricsDb {
             .collect::<Result<Vec<_>, _>>()?;
 
         Ok(snapshots)
+    }
+
+    /// Update personal best for a metric
+    pub fn update_personal_best(
+        &self,
+        metric: &str,
+        value: f64,
+        session_id: Option<&str>,
+        project: Option<&str>,
+        context: Option<&str>,
+    ) -> Result<bool> {
+        let timestamp = Utc::now().to_rfc3339();
+
+        // Check if this beats the current personal best
+        let current_best: Option<f64> = self.conn.query_row(
+            "SELECT value FROM personal_bests WHERE metric = ? AND project IS ?",
+            params![metric, project],
+            |row| row.get(0),
+        ).optional()?;
+
+        let is_new_best = current_best.map_or(true, |best| value > best);
+
+        if is_new_best {
+            self.conn.execute(
+                r#"
+                INSERT OR REPLACE INTO personal_bests
+                (metric, value, session_id, project, timestamp, context)
+                VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+                "#,
+                params![metric, value, session_id, project, timestamp, context],
+            )?;
+        }
+
+        Ok(is_new_best)
+    }
+
+    /// Get personal best for a metric
+    pub fn get_personal_best(
+        &self,
+        metric: &str,
+        project: Option<&str>,
+    ) -> Result<Option<PersonalBest>> {
+        self.conn.query_row(
+            "SELECT metric, value, session_id, project, timestamp, context FROM personal_bests WHERE metric = ? AND project IS ?",
+            params![metric, project],
+            |row| {
+                Ok(PersonalBest {
+                    metric: row.get(0)?,
+                    value: row.get(1)?,
+                    session_id: row.get(2)?,
+                    project: row.get(3)?,
+                    timestamp: row.get::<_, String>(4)?.parse().unwrap(),
+                    context: row.get(5)?,
+                })
+            },
+        ).optional()
+        .map_err(|e| anyhow::Error::new(e))
+    }
+
+    /// Get all personal bests
+    pub fn get_all_personal_bests(&self) -> Result<Vec<PersonalBest>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT metric, value, session_id, project, timestamp, context FROM personal_bests ORDER BY timestamp DESC"
+        )?;
+
+        let bests = stmt.query_map([], |row| {
+            Ok(PersonalBest {
+                metric: row.get(0)?,
+                value: row.get(1)?,
+                session_id: row.get(2)?,
+                project: row.get(3)?,
+                timestamp: row.get::<_, String>(4)?.parse().unwrap(),
+                context: row.get(5)?,
+            })
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
+
+        Ok(bests)
     }
 }
 

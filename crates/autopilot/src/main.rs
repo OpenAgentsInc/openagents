@@ -1193,6 +1193,20 @@ enum ApmCommands {
         #[arg(long)]
         db: Option<PathBuf>,
     },
+    /// Show personal best records
+    Best {
+        /// Metric to show (apm, velocity_score, or all)
+        #[arg(short, long)]
+        metric: Option<String>,
+
+        /// Project filter
+        #[arg(short, long)]
+        project: Option<String>,
+
+        /// Path to database (default: autopilot.db in workspace root)
+        #[arg(long)]
+        db: Option<PathBuf>,
+    },
 }
 
 #[derive(Subcommand)]
@@ -6276,6 +6290,63 @@ async fn handle_apm_command(command: ApmCommands) -> Result<()> {
 
             Ok(())
         }
+        ApmCommands::Best { metric, project, db } => {
+            use autopilot::metrics::MetricsDb;
+            use std::iter;
+
+            let db_path = db.unwrap_or(default_db);
+            let metrics_db = MetricsDb::open(&db_path)?;
+
+            println!("{}", "Personal Best Records".cyan().bold());
+            println!("{}", iter::repeat("─").take(60).collect::<String>());
+            println!();
+
+            if let Some(metric_name) = metric {
+                // Show specific metric
+                if let Some(best) = metrics_db.get_personal_best(&metric_name, project.as_deref())? {
+                    display_personal_best(&best);
+                } else {
+                    println!("{}", format!("No personal best found for {}", metric_name).yellow());
+                }
+            } else {
+                // Show all personal bests
+                let bests = metrics_db.get_all_personal_bests()?;
+
+                if bests.is_empty() {
+                    println!("{}", "No personal bests recorded yet.".yellow());
+                    println!("{}", "Run autopilot sessions to start tracking your bests!".dimmed());
+                } else {
+                    for best in bests {
+                        display_personal_best(&best);
+                        println!();
+                    }
+                }
+            }
+
+            println!();
+            Ok(())
+        }
+    }
+}
+
+fn display_personal_best(best: &autopilot::metrics::PersonalBest) {
+    use colored::Colorize;
+
+    println!("{:<20} {}", "Metric:".bold(), best.metric);
+    println!("{:<20} {:.2}", "Best Value:".bold(), best.value);
+
+    if let Some(ref session_id) = best.session_id {
+        println!("{:<20} {}", "Session:".bold(), session_id.dimmed());
+    }
+
+    if let Some(ref project) = best.project {
+        println!("{:<20} {}", "Project:".bold(), project);
+    }
+
+    println!("{:<20} {}", "Achieved:".bold(), best.timestamp.format("%Y-%m-%d %H:%M:%S").to_string().dimmed());
+
+    if let Some(ref context) = best.context {
+        println!("{:<20} {}", "Context:".bold(), context.dimmed());
     }
 }
 
