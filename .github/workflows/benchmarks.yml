@@ -4,13 +4,20 @@ on:
   pull_request:
     branches: [main]
     paths:
-      - 'crates/autopilot/**'
+      - 'crates/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
       - '.github/workflows/benchmarks.yml'
   push:
     branches: [main]
     paths:
-      - 'crates/autopilot/**'
+      - 'crates/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
   workflow_dispatch:
+  schedule:
+    # Run nightly at 2 AM UTC to track performance drift
+    - cron: '0 2 * * *'
 
 env:
   RUST_BACKTRACE: 1
