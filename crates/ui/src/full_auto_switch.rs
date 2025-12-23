@@ -27,7 +27,7 @@ impl FullAutoSwitch {
                     hx-post="/api/autopilot/toggle"
                     hx-target="#full-auto-switch"
                     hx-swap="outerHTML"
-                    style="display: inline-flex; align-items: center; gap: 0.5rem; cursor: pointer; font-family: 'Berkeley Mono', ui-monospace, monospace; font-size: 0.75rem; background: none; border: none; padding: 0; color: inherit;"
+                    style="display: inline-flex; align-items: center; gap: 0.5rem; cursor: pointer; font-family: 'Vera Mono', ui-monospace, monospace; font-size: 0.75rem; background: none; border: none; padding: 0; color: inherit;"
                 {
                     // Toggle boxes - two fixed-size squares, no gap
                     span style="display: inline-flex;" {

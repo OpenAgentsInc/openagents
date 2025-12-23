@@ -17,7 +17,7 @@ Design philosophy:
 - **Tailwind-first**: All styling via utility classes
 - **Sharp corners**: Zero border-radius anywhere (enforced by git hooks)
 - **Semantic colors**: Use `bg-background`, never `bg-zinc-900`
-- **Monospace fonts**: Berkeley Mono / system monospace stack
+- **Monospace fonts**: Vera Mono / system monospace stack
 
 ## Quick Start
 
@@ -456,7 +456,7 @@ Zero border-radius throughout the UI. Enforced by `.githooks/pre-push`:
 
 ### Typography
 
-Monospace font stack: `'Berkeley Mono', ui-monospace, monospace`
+Monospace font stack: `'Vera Mono', ui-monospace, monospace`
 
 ```html
 <body class="font-mono">

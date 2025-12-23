@@ -532,7 +532,7 @@ Storybook uses the same Tailwind theme as the main UI:
 
 - **Semantic tokens** - `bg-background`, `text-foreground`, etc.
 - **Sharp corners** - No border-radius
-- **Monospace fonts** - Berkeley Mono stack
+- **Monospace fonts** - Vera Mono stack
 - **Dark mode** - Default color scheme
 
 ### Story Card Styling
