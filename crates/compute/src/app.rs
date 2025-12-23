@@ -111,6 +111,8 @@ impl ComputeApp {
 
         // Try to load from encrypted storage (backed up)
         if self.storage.exists().await {
+            log::info!("Encrypted identity storage found");
+
             // Check for password from environment variable (for non-interactive mode)
             if let Ok(password) = std::env::var("OPENAGENTS_PASSWORD") {
                 match self.storage.load(&password).await {
@@ -124,43 +126,45 @@ impl ComputeApp {
                                 return Ok(());
                             }
                             Err(e) => {
-                                log::warn!("Failed to restore identity from encrypted mnemonic: {}", e);
+                                log::error!("Failed to restore identity from encrypted mnemonic: {}", e);
+                                return Err(format!("Failed to restore identity from mnemonic: {}", e));
                             }
                         }
                     }
                     Err(e) => {
-                        log::warn!("Failed to load encrypted identity (wrong password?): {}", e);
-                        // Continue to generate new identity
+                        log::error!("Failed to load encrypted identity (wrong password?): {}", e);
+                        return Err(format!("Invalid password. Encrypted identity exists but cannot be decrypted. Set OPENAGENTS_PASSWORD to the correct password or delete the encrypted storage to start fresh: {}", e));
                     }
                 }
-            } else {
-                log::info!("Encrypted identity exists but no OPENAGENTS_PASSWORD env var set");
+            }
 
-                // Prompt user for password in interactive mode
-                println!("Encrypted identity found. Enter password to unlock:");
-                match rpassword::prompt_password("Password: ") {
-                    Ok(password) if !password.is_empty() => {
-                        // Try to decrypt with provided password
-                        match self.storage.load_encrypted(&password).await {
-                            Ok(identity) => {
-                                log::info!("Successfully decrypted identity");
-                                self.state.set_identity(identity);
-                                return Ok(());
-                            }
-                            Err(e) => {
-                                log::error!("Failed to decrypt identity with provided password: {}", e);
-                                return Err(format!("Invalid password: {}", e));
-                            }
+            // No env var set - prompt user for password in interactive mode
+            log::info!("Encrypted identity exists but no OPENAGENTS_PASSWORD env var set");
+            println!("Encrypted identity found. Enter password to unlock:");
+
+            match rpassword::prompt_password("Password: ") {
+                Ok(password) if !password.is_empty() => {
+                    // Try to decrypt with provided password
+                    match self.storage.load_encrypted(&password).await {
+                        Ok(identity) => {
+                            log::info!("Successfully decrypted identity");
+                            self.state.set_identity(identity);
+                            self.state.is_backed_up.set(true);
+                            return Ok(());
+                        }
+                        Err(e) => {
+                            log::error!("Failed to decrypt identity with provided password: {}", e);
+                            return Err(format!("Invalid password: {}", e));
                         }
                     }
-                    Ok(_) => {
-                        log::warn!("Empty password provided");
-                        return Err("Empty password provided".to_string());
-                    }
-                    Err(e) => {
-                        log::error!("Failed to read password: {}", e);
-                        return Err(format!("Failed to read password: {}", e));
-                    }
+                }
+                Ok(_) => {
+                    log::error!("Empty password provided for encrypted identity");
+                    return Err("Empty password provided. Encrypted identity exists and must be unlocked.".to_string());
+                }
+                Err(e) => {
+                    log::error!("Failed to read password: {}", e);
+                    return Err(format!("Failed to read password for encrypted identity: {}", e));
                 }
             }
         }
