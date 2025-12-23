@@ -100,12 +100,36 @@ pub async fn home(
     // Chat pane with Raw/Formatted toggle - visible when full_auto is ON
     let chat_pane = ChatPane::new(full_auto).build();
 
-    // Navigation menu (top-left)
-    let nav_menu = r#"<div style="position: fixed; top: 1rem; left: 1rem; display: flex; gap: 8px;">
-        <a href="/parallel" style="background: #111; border: 1px solid #333; padding: 0.5rem 0.75rem; color: #4a9eff; text-decoration: none; font-size: 0.75rem; font-family: monospace;">
-            Parallel Agents
-        </a>
-    </div>"#;
+    // Parallel agents pane (top-left) - collapsible
+    let parallel_pane = r#"<div id="parallel-pane" style="position: fixed; top: 1rem; left: 1rem; background: #111; border: 1px solid #333; font-family: monospace; font-size: 0.75rem; max-width: 320px;">
+        <div style="padding: 0.5rem 0.75rem; border-bottom: 1px solid #333; display: flex; justify-content: space-between; align-items: center; cursor: pointer;" onclick="document.getElementById('parallel-content').classList.toggle('hidden')">
+            <span style="color: #4a9eff;">Parallel Agents</span>
+            <span style="color: #666;">▼</span>
+        </div>
+        <div id="parallel-content" class="hidden" style="padding: 0.75rem;">
+            <div id="parallel-status" hx-get="/api/parallel/status" hx-trigger="load, every 5s" hx-swap="innerHTML">
+                <p style="color: #666;">Loading...</p>
+            </div>
+            <div style="margin-top: 0.75rem; display: flex; gap: 0.5rem;">
+                <form hx-post="/api/parallel/start" hx-swap="none" style="display: flex; gap: 0.25rem; align-items: center;">
+                    <select name="count" style="background: #000; color: #888; border: 1px solid #333; padding: 0.25rem; font-size: 0.7rem;">
+                        <option value="1">1</option>
+                        <option value="2">2</option>
+                        <option value="3" selected>3</option>
+                        <option value="5">5</option>
+                        <option value="10">10</option>
+                    </select>
+                    <button type="submit" style="background: #1a3a1a; color: #7dff7d; border: 1px solid #2d5016; padding: 0.25rem 0.5rem; cursor: pointer; font-size: 0.7rem;">Start</button>
+                </form>
+                <form hx-post="/api/parallel/stop" hx-swap="none">
+                    <button type="submit" style="background: #3a1a1a; color: #ff7d7d; border: 1px solid #501616; padding: 0.25rem 0.5rem; cursor: pointer; font-size: 0.7rem;">Stop All</button>
+                </form>
+            </div>
+        </div>
+    </div>
+    <style>
+        .hidden { display: none !important; }
+    </style>"#;
 
     // Unified control stack: WS indicator, Agent selector, Full Auto, Daemon, Claude (top to bottom)
     let control_stack = format!(
@@ -127,7 +151,7 @@ pub async fn home(
 
     let content = format!(
         r#"{}{}{}"#,
-        nav_menu,
+        parallel_pane,
         control_stack,
         chat_pane.into_string()
     );

@@ -266,66 +266,30 @@ async fn agent_status() -> HttpResponse {
             if agents.is_empty() {
                 return HttpResponse::Ok()
                     .content_type("text/html")
-                    .body(r#"<p style="color: #666; text-align: center; padding: 2rem;">No agents running. Click 'Start Agents' to begin.</p>"#);
+                    .body(r#"<p style="color: #666; margin: 0;">No agents running</p>"#);
             }
 
-            let html = render_agents_table(&agents);
+            // Simple compact status for pane
+            let running = agents.iter().filter(|a| matches!(a.status, autopilot::parallel::AgentStatus::Running)).count();
+            let html = format!(
+                r#"<div style="color: #7dff7d;">{} agent{} running</div>
+                <div style="color: #666; font-size: 0.65rem; margin-top: 0.25rem;">
+                    {}
+                </div>"#,
+                running,
+                if running == 1 { "" } else { "s" },
+                agents.iter()
+                    .map(|a| format!("{}: {}", a.id, if a.current_issue.is_some() { format!("#{}", a.current_issue.unwrap()) } else { "idle".to_string() }))
+                    .collect::<Vec<_>>()
+                    .join(" | ")
+            );
             HttpResponse::Ok()
                 .content_type("text/html")
-                .body(html.into_string())
+                .body(html)
         }
         Err(e) => HttpResponse::InternalServerError()
             .content_type("text/html")
             .body(format!(r#"<p style="color: #ff7d7d;">Error: {}</p>"#, e)),
-    }
-}
-
-fn render_agents_table(agents: &[autopilot::parallel::AgentInfo]) -> Markup {
-    html! {
-        table style="width: 100%; border-collapse: collapse;" {
-            thead {
-                tr style="border-bottom: 1px solid #3a3a3a;" {
-                    th style="text-align: left; padding: 0.5rem; color: #a0a0a0; font-size: 0.75rem;" { "ID" }
-                    th style="text-align: left; padding: 0.5rem; color: #a0a0a0; font-size: 0.75rem;" { "Status" }
-                    th style="text-align: left; padding: 0.5rem; color: #a0a0a0; font-size: 0.75rem;" { "Issue" }
-                    th style="text-align: left; padding: 0.5rem; color: #a0a0a0; font-size: 0.75rem;" { "Uptime" }
-                    th style="text-align: right; padding: 0.5rem; color: #a0a0a0; font-size: 0.75rem;" { "Actions" }
-                }
-            }
-            tbody {
-                @for agent in agents {
-                    tr style="border-bottom: 1px solid #2a2a2a;" {
-                        td style="padding: 0.5rem; color: #e0e0e0; font-family: monospace; font-size: 0.85rem;" {
-                            (agent.id.clone())
-                        }
-                        td style="padding: 0.5rem;" {
-                            (render_status(&agent.status))
-                        }
-                        td style="padding: 0.5rem; color: #e0e0e0; font-size: 0.85rem;" {
-                            @if let Some(issue) = agent.current_issue {
-                                "#" (issue)
-                            } @else {
-                                span style="color: #666;" { "-" }
-                            }
-                        }
-                        td style="padding: 0.5rem; color: #a0a0a0; font-size: 0.85rem;" {
-                            @if let Some(secs) = agent.uptime_seconds {
-                                (format_uptime(secs))
-                            } @else {
-                                "-"
-                            }
-                        }
-                        td style="padding: 0.5rem; text-align: right;" {
-                            button
-                                hx-get={"/api/parallel/logs/" (agent.id.clone())}
-                                hx-target="#log-modal"
-                                style="background: #1a3a5a; color: #4a9eff; border: none; padding: 0.25rem 0.5rem; cursor: pointer; font-size: 0.75rem;"
-                            { "Logs" }
-                        }
-                    }
-                }
-            }
-        }
     }
 }
 
