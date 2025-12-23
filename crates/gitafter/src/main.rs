@@ -44,13 +44,20 @@ fn main() -> Result<()> {
             .expect("tokio runtime");
 
         rt.block_on(async move {
-            // Load identity from environment variable
+            // Load identity from secure storage or environment variable
+            // SECURITY: Environment variables are deprecated due to visibility to other processes.
+            // Prefer using secure storage instead.
             let identity = if let Ok(mnemonic_str) = std::env::var("GITAFTER_MNEMONIC") {
+                tracing::warn!(
+                    "Loading mnemonic from GITAFTER_MNEMONIC environment variable. \
+                     WARNING: Environment variables are visible to all processes running as the same user. \
+                     Consider using secure storage instead."
+                );
                 match Mnemonic::parse(&mnemonic_str) {
                     Ok(mnemonic) => {
                         match UnifiedIdentity::from_mnemonic(mnemonic) {
                             Ok(id) => {
-                                tracing::info!("Loaded identity from GITAFTER_MNEMONIC");
+                                tracing::info!("Loaded identity from GITAFTER_MNEMONIC (insecure)");
                                 Some(Arc::new(id))
                             }
                             Err(e) => {
@@ -65,8 +72,9 @@ fn main() -> Result<()> {
                     }
                 }
             } else {
+                // TODO: Implement loading from secure storage (keychain/keyring)
                 tracing::warn!("No GITAFTER_MNEMONIC environment variable set - running in read-only mode");
-                tracing::info!("To enable event signing and publishing, set GITAFTER_MNEMONIC");
+                tracing::info!("To enable event signing and publishing, use secure storage (not yet implemented) or set GITAFTER_MNEMONIC (insecure)");
                 None
             };
 
