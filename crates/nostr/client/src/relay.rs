@@ -594,45 +594,65 @@ impl RelayConnection {
         match msg_type {
             "EVENT" => {
                 if arr.len() >= 3 {
-                    let sub_id = arr[1].as_str().unwrap_or("").to_string();
+                    let sub_id = arr[1]
+                        .as_str()
+                        .ok_or_else(|| ClientError::Protocol("EVENT subscription_id must be a string".into()))?
+                        .to_string();
                     let event: Event = serde_json::from_value(arr[2].clone())?;
                     Ok(Some(RelayMessage::Event(sub_id, event)))
                 } else {
-                    Ok(None)
+                    Err(ClientError::Protocol("EVENT message requires at least 3 elements".into()))
                 }
             }
             "OK" => {
                 if arr.len() >= 4 {
-                    let event_id = arr[1].as_str().unwrap_or("").to_string();
-                    let success = arr[2].as_bool().unwrap_or(false);
-                    let message = arr[3].as_str().unwrap_or("").to_string();
+                    let event_id = arr[1]
+                        .as_str()
+                        .ok_or_else(|| ClientError::Protocol("OK event_id must be a string".into()))?
+                        .to_string();
+                    let success = arr[2]
+                        .as_bool()
+                        .ok_or_else(|| ClientError::Protocol("OK accepted field must be a boolean".into()))?;
+                    let message = arr[3]
+                        .as_str()
+                        .ok_or_else(|| ClientError::Protocol("OK message must be a string".into()))?
+                        .to_string();
                     Ok(Some(RelayMessage::Ok(event_id, success, message)))
                 } else {
-                    Ok(None)
+                    Err(ClientError::Protocol("OK message requires at least 4 elements".into()))
                 }
             }
             "EOSE" => {
                 if arr.len() >= 2 {
-                    let sub_id = arr[1].as_str().unwrap_or("").to_string();
+                    let sub_id = arr[1]
+                        .as_str()
+                        .ok_or_else(|| ClientError::Protocol("EOSE subscription_id must be a string".into()))?
+                        .to_string();
                     Ok(Some(RelayMessage::Eose(sub_id)))
                 } else {
-                    Ok(None)
+                    Err(ClientError::Protocol("EOSE message requires at least 2 elements".into()))
                 }
             }
             "NOTICE" => {
                 if arr.len() >= 2 {
-                    let message = arr[1].as_str().unwrap_or("").to_string();
+                    let message = arr[1]
+                        .as_str()
+                        .ok_or_else(|| ClientError::Protocol("NOTICE message must be a string".into()))?
+                        .to_string();
                     Ok(Some(RelayMessage::Notice(message)))
                 } else {
-                    Ok(None)
+                    Err(ClientError::Protocol("NOTICE message requires at least 2 elements".into()))
                 }
             }
             "AUTH" => {
                 if arr.len() >= 2 {
-                    let challenge = arr[1].as_str().unwrap_or("").to_string();
+                    let challenge = arr[1]
+                        .as_str()
+                        .ok_or_else(|| ClientError::Protocol("AUTH challenge must be a string".into()))?
+                        .to_string();
                     Ok(Some(RelayMessage::Auth(challenge)))
                 } else {
-                    Ok(None)
+                    Err(ClientError::Protocol("AUTH message requires at least 2 elements".into()))
                 }
             }
             _ => {
