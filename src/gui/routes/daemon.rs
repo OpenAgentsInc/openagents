@@ -79,26 +79,26 @@ async fn start_daemon(state: web::Data<AppState>) -> HttpResponse {
         .and_then(|n| n.to_str())
         .unwrap_or("openagents");
 
-    // Find the daemon binary
+    // Find the daemon binary (autopilotd)
     let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
-    let daemon_binary = std::path::PathBuf::from(&home)
-        .join(".autopilot")
-        .join("bin")
-        .join("autopilot");
+    let autopilot_dir = std::path::PathBuf::from(&home).join(".autopilot").join("bin");
+    let daemon_binary = autopilot_dir.join("autopilotd");
 
-    // Fall back to cargo run if binary doesn't exist
+    // Try multiple locations for the daemon binary
     let result = if daemon_binary.exists() {
+        // Use known-good autopilotd binary
         Command::new(&daemon_binary)
-            .args(["daemon", "--workdir", cwd.to_str().unwrap_or("."), "--project", project])
+            .args(["--workdir", cwd.to_str().unwrap_or("."), "--project", project])
             .stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(Stdio::null())
             .spawn()
     } else {
-        // Try cargo run as fallback
+        // Fall back to cargo run
         Command::new("cargo")
             .args(["run", "-p", "autopilot", "--bin", "autopilotd", "--",
                    "--workdir", cwd.to_str().unwrap_or("."), "--project", project])
+            .current_dir(&cwd)
             .stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(Stdio::null())
