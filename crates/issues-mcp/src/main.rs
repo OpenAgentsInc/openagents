@@ -523,7 +523,7 @@ impl McpServer {
         let directive_id = args.get("directive_id").and_then(|v| v.as_str());
 
         let created =
-            issue::create_issue(conn, title, description, priority, issue_type, agent, directive_id)
+            issue::create_issue(conn, title, description, priority, issue_type, agent, directive_id, None)
                 .map_err(|e| e.to_string())?;
 
         let directive_info = if let Some(did) = &created.directive_id {
