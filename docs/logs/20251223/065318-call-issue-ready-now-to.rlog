@@ -149,3 +149,35 @@ t!:Bash id=M9oHQSN2 cmd="cargo check -p gitafter 2>&1 | tail -5" → [running] t
 o: id=M9oHQSN2 → [ok] 582 | pub fn render_diff_with_comments(
 a: Perfect! The code compiles successfully. The test failure is pre-existing and unrelated to my changes. Let me commit this fix: tokens_in=0 tokens_out=3 tokens_cached=57386
 t!:Bash id=wJGhEnkW cmd="git add -A && git commit -m "$(cat <<'EOF'" → [running] tokens_in=0 tokens_out=386 tokens_cached=57386
+o: id=wJGhEnkW → [ok] [main b7cee52f9] Track WebSocket task handles in GitAfter (RES-1)
+t!:Bash id=A43Tkwus cmd="git push origin main" → [running] tokens_in=0 tokens_out=25 tokens_cached=57568
+o: id=A43Tkwus → [ok] [0;36m🔍 Running cargo build to check for errors and warnings...[0m
+t!:mcp__issues__issue_complete id=sqipsBbG  → [running] tokens_in=0 tokens_out=32 tokens_cached=58206
+o: id=sqipsBbG → [ok] Completed issue #927
+t!:mcp__issues__issue_ready id=zqcC83Ee  → [running] tokens_in=0 tokens_out=27 tokens_cached=58378
+o: id=zqcC83Ee → [ok] {
+t!:mcp__issues__issue_claim id=PtCNgrHy  → [running] tokens_in=0 tokens_out=8 tokens_cached=58453
+o: id=PtCNgrHy → [ok] Claimed issue #928
+t!:Read id=qSNwacZk file_path=/home/christopherdavid/code/openagents/crates/gitafter/src/server.rs → [running] tokens_in=3 tokens_out=112 tokens_cached=58739
+o: id=qSNwacZk → [ok]     90→            .route("/repo/{identifier}/unwatch", web::post().to(unwatch_repository))
+a: I found the issue at line 110. The code spawns the HTTP server task but doesn't store the handle. Let me check the function signature to see what it returns: tokens_in=3 tokens_out=1 tokens_cached=58833
+t!:Read id=HjPsRt6T file_path=/home/christopherdavid/code/openagents/crates/gitafter/src/server.rs → [running] tokens_in=3 tokens_out=1 tokens_cached=58833
+o: id=HjPsRt6T → [ok]      1→//! Actix-web server for GitAfter
+a: The function currently returns `anyhow::Result<u16>` (just the port). I need to return both the port and the server handle. Let me check where this function is called: tokens_in=2 tokens_out=1 tokens_cached=59523
+t!:Grep id=N2LEoGAT pattern="start_server" → [running] tokens_in=2 tokens_out=1 tokens_cached=59523
+o: id=N2LEoGAT → [ok] crates/gitafter/src/main.rs:26:use server::start_server;
+t!:Read id=6ahVo8iB file_path=/home/christopherdavid/code/openagents/crates/gitafter/src/main.rs → [running] tokens_in=2 tokens_out=112 tokens_cached=60739
+o: id=6ahVo8iB → [ok]    100→                    tracing::error!("Failed to initialize Nostr client: {}", e);
+a: Now I'll update the `start_server` function to return both the port and the server handle: tokens_in=1 tokens_out=1 tokens_cached=60981
+t!:Edit id=TzwsyVs5 file_path=/home/christopherdavid/code/openagents/crates/gitafter/src/server.rs → [running] tokens_in=1 tokens_out=1 tokens_cached=60981
+o: id=TzwsyVs5 → [ok] The file /home/christopherdavid/code/openagents/crates/gitafter/src/server.rs has been updated. H...
+t!:Edit id=vRQGKxpU file_path=/home/christopherdavid/code/openagents/crates/gitafter/src/server.rs → [running] tokens_in=0 tokens_out=295 tokens_cached=61696
+o: id=vRQGKxpU → [ok] The file /home/christopherdavid/code/openagents/crates/gitafter/src/server.rs has been updated. H...
+t!:Edit id=Zz6aqC6M file_path=/home/christopherdavid/code/openagents/crates/gitafter/src/server.rs → [running] tokens_in=0 tokens_out=232 tokens_cached=62179
+o: id=Zz6aqC6M → [ok] The file /home/christopherdavid/code/openagents/crates/gitafter/src/server.rs has been updated. H...
+a: Now I need to update the caller in main.rs: tokens_in=0 tokens_out=1 tokens_cached=62821
+t!:Edit id=X1tQ4tQk file_path=/home/christopherdavid/code/openagents/crates/gitafter/src/main.rs → [running] tokens_in=0 tokens_out=1 tokens_cached=62821
+o: id=X1tQ4tQk → [ok] The file /home/christopherdavid/code/openagents/crates/gitafter/src/main.rs has been updated. Her...
+t!:Bash id=w84wYLZe cmd="cargo build -p gitafter 2>&1 | tail -20" → [running] tokens_in=0 tokens_out=88 tokens_cached=63340
+o: id=w84wYLZe → [ok] warning: field `initial_chunk_size` is never read
+t!:Bash id=PcyisKRy cmd="git add -A && git commit -m "$(cat <<'EOF'" → [running] tokens_in=0 tokens_out=340 tokens_cached=63934

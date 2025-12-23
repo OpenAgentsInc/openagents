@@ -2,6 +2,7 @@
 
 use actix_web::{web, App, HttpResponse, HttpServer};
 use std::sync::Arc;
+use tokio::task::JoinHandle;
 use wallet::core::identity::UnifiedIdentity;
 
 use crate::git::{clone_repository, get_repository_path, is_repository_cloned, create_branch, get_status, generate_patch, apply_patch, push_branch, current_branch, diff_commits};
@@ -36,12 +37,12 @@ impl AppState {
     }
 }
 
-/// Starts server on 127.0.0.1:0, returns the assigned port
+/// Starts server on 127.0.0.1:0, returns the assigned port and server handle
 pub async fn start_server(
     broadcaster: Arc<WsBroadcaster>,
     nostr_client: Arc<NostrClient>,
     identity: Option<Arc<UnifiedIdentity>>,
-) -> anyhow::Result<u16> {
+) -> anyhow::Result<(u16, JoinHandle<Result<(), std::io::Error>>)> {
     let state = web::Data::new(AppState {
         broadcaster,
         nostr_client,
@@ -107,9 +108,10 @@ pub async fn start_server(
 
     let port = server.addrs().first().unwrap().port();
 
-    tokio::spawn(server.run());
+    // Store the server handle for graceful shutdown
+    let handle = tokio::spawn(server.run());
 
-    Ok(port)
+    Ok((port, handle))
 }
 
 /// Query parameters for repository filtering
