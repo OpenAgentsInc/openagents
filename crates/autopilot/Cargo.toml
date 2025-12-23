@@ -108,6 +108,7 @@ rand = "0.9"
 tokio-tungstenite = "0.24"
 futures-util = "0.3"
 insta.workspace = true
+testing = { path = "../testing" }
 
 [[bench]]
 name = "nip_sa_state"
