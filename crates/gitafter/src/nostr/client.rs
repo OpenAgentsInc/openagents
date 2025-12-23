@@ -182,7 +182,7 @@ impl NostrClient {
     pub async fn subscribe_to_repository(
         &self,
         repo_address: &str,
-    ) -> Result<mpsc::UnboundedReceiver<Event>> {
+    ) -> Result<mpsc::Receiver<Event>> {
         let filters = vec![json!({
             "kinds": [
                 kinds::REPOSITORY_STATE,

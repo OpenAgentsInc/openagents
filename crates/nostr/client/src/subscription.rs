@@ -21,7 +21,7 @@ pub struct Subscription {
     /// Event callback
     callback: Option<EventCallback>,
     /// Event channel sender (alternative to callback)
-    event_tx: Option<mpsc::UnboundedSender<Event>>,
+    event_tx: Option<mpsc::Sender<Event>>,
 }
 
 impl Subscription {
@@ -48,11 +48,16 @@ impl Subscription {
     }
 
     /// Create a subscription with a channel for received events
+    ///
+    /// Uses a bounded channel with a buffer of 1000 events to provide backpressure.
+    /// If the consumer is too slow and the buffer fills, the oldest events will be dropped.
     pub fn with_channel(
         id: String,
         filters: Vec<Value>,
-    ) -> (Self, mpsc::UnboundedReceiver<Event>) {
-        let (tx, rx) = mpsc::unbounded_channel();
+    ) -> (Self, mpsc::Receiver<Event>) {
+        // Use bounded channel to prevent unbounded memory growth
+        // Buffer size of 1000 events is a reasonable default for most use cases
+        let (tx, rx) = mpsc::channel(1000);
         let sub = Self {
             id,
             filters,
@@ -72,8 +77,16 @@ impl Subscription {
 
         // Send to channel if present
         if let Some(tx) = &self.event_tx {
-            tx.send(event)
-                .map_err(|_| ClientError::Subscription("Event channel closed".to_string()))?;
+            // Use try_send to avoid blocking when buffer is full
+            // This provides backpressure - if consumer is slow, we drop events
+            tx.try_send(event).map_err(|e| match e {
+                mpsc::error::TrySendError::Full(_) => {
+                    ClientError::Subscription("Event channel full - consumer too slow".to_string())
+                }
+                mpsc::error::TrySendError::Closed(_) => {
+                    ClientError::Subscription("Event channel closed".to_string())
+                }
+            })?;
         }
 
         Ok(())

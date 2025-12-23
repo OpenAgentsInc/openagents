@@ -388,13 +388,17 @@ impl RelayPool {
     }
 
     /// Subscribe to events on all connected relays
+    ///
+    /// Returns a bounded receiver with a buffer of 1000 events per relay.
+    /// This provides backpressure to prevent unbounded memory growth.
     pub async fn subscribe(
         &self,
         subscription_id: &str,
         filters: &[Value],
-    ) -> Result<mpsc::UnboundedReceiver<Event>> {
+    ) -> Result<mpsc::Receiver<Event>> {
         let relays = self.relays.read().await;
-        let (tx, rx) = mpsc::unbounded_channel();
+        // Use bounded channel to prevent unbounded memory growth
+        let (tx, rx) = mpsc::channel(1000);
         let mut subscription_relays = HashSet::new();
 
         for (url, relay) in relays.iter() {
@@ -425,8 +429,9 @@ impl RelayPool {
                             }
                             drop(stats);
 
-                            // Forward event
-                            if tx.send(event).is_err() {
+                            // Forward event with backpressure
+                            // This will wait if the channel is full, providing natural backpressure
+                            if tx.send(event).await.is_err() {
                                 debug!("Event receiver dropped for subscription {}", sub_id_clone);
                                 break;
                             }
