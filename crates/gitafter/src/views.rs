@@ -171,7 +171,7 @@ pub fn home_page_with_repos(repositories: &[Event], selected_language: &Option<S
                         @if repositories.is_empty() {
                             p.placeholder { "No repositories found. Listening for NIP-34 events..." }
                         } @else {
-                            div.repo-list {
+                            div #repo-list .repo-list {
                                 @for repo in repositories {
                                     (repository_card_with_bounty_count(repo, bounty_counts))
                                 }
@@ -181,6 +181,38 @@ pub fn home_page_with_repos(repositories: &[Event], selected_language: &Option<S
                 }
                 footer {
                     p { "Powered by NIP-34 (Git Stuff) • NIP-SA (Sovereign Agents) • NIP-57 (Zaps)" }
+                }
+                script {
+                    (PreEscaped(r#"
+                    // WebSocket real-time updates
+                    document.body.addEventListener('htmx:wsAfterMessage', function(evt) {
+                        const message = evt.detail.message;
+                        if (!message) return;
+
+                        // Extract event from message
+                        const parser = new DOMParser();
+                        const doc = parser.parseFromString(message, 'text/html');
+                        const eventDiv = doc.querySelector('.event');
+                        if (!eventDiv) return;
+
+                        const kind = parseInt(eventDiv.dataset.kind);
+                        const jsonStr = eventDiv.textContent;
+                        let event;
+                        try {
+                            event = JSON.parse(jsonStr);
+                        } catch (e) {
+                            console.error('Failed to parse event JSON:', e);
+                            return;
+                        }
+
+                        // Handle repository events (kind:30617)
+                        if (kind === 30617) {
+                            console.log('New repository announced:', event.id);
+                            // Reload page to show new repository
+                            window.location.reload();
+                        }
+                    });
+                    "#))
                 }
             }
         }
@@ -529,7 +561,7 @@ pub fn issues_list_page(repository: &Event, issues: &[Event], is_watched: bool, 
                                     span { (issues.len()) " issue" @if issues.len() != 1 { "s" } " found" }
                                 }
 
-                                div.issues-list {
+                                div #issues-list .issues-list {
                                     @for issue in issues {
                                         @let issue_title = get_tag_value(issue, "subject")
                                             .unwrap_or_else(|| "Untitled Issue".to_string());
@@ -574,6 +606,51 @@ pub fn issues_list_page(repository: &Event, issues: &[Event], is_watched: bool, 
                 }
                 footer {
                     p { "Powered by NIP-34 (Git Stuff) • NIP-SA (Sovereign Agents) • NIP-57 (Zaps)" }
+                }
+                script {
+                    (PreEscaped(r#"
+                    // WebSocket real-time updates for issues
+                    document.body.addEventListener('htmx:wsAfterMessage', function(evt) {
+                        const message = evt.detail.message;
+                        if (!message) return;
+
+                        const parser = new DOMParser();
+                        const doc = parser.parseFromString(message, 'text/html');
+                        const eventDiv = doc.querySelector('.event');
+                        if (!eventDiv) return;
+
+                        const kind = parseInt(eventDiv.dataset.kind);
+                        const jsonStr = eventDiv.textContent;
+                        let event;
+                        try {
+                            event = JSON.parse(jsonStr);
+                        } catch (e) {
+                            console.error('Failed to parse event JSON:', e);
+                            return;
+                        }
+
+                        // Handle issue events (kind:1621)
+                        if (kind === 1621) {
+                            console.log('New issue created:', event.id);
+                            // Reload page to show new issue
+                            window.location.reload();
+                        }
+
+                        // Handle bounty offer events (kind:1636)
+                        if (kind === 1636) {
+                            console.log('New bounty offer:', event.id);
+                            // Reload if on bounty filter
+                            window.location.reload();
+                        }
+
+                        // Handle issue claim events (kind:1634)
+                        if (kind === 1634) {
+                            console.log('Issue claimed:', event.id);
+                            // Reload if on claimed filter
+                            window.location.reload();
+                        }
+                    });
+                    "#))
                 }
             }
         }
@@ -1144,7 +1221,7 @@ pub fn pull_requests_list_page(repository: &Event, pull_requests: &[Event], iden
                                     span { (pull_requests.len()) " pull request" @if pull_requests.len() != 1 { "s" } " found" }
                                 }
 
-                                div.issues-list {
+                                div #pr-list .issues-list {
                                     @for pr in pull_requests {
                                         @let pr_title = get_tag_value(pr, "subject")
                                             .unwrap_or_else(|| "Untitled Pull Request".to_string());
@@ -1201,6 +1278,48 @@ pub fn pull_requests_list_page(repository: &Event, pull_requests: &[Event], iden
                 }
                 footer {
                     p { "Powered by NIP-34 (Git Stuff) • NIP-SA (Sovereign Agents) • NIP-57 (Zaps)" }
+                }
+                script {
+                    (PreEscaped(r#"
+                    // WebSocket real-time updates for pull requests
+                    document.body.addEventListener('htmx:wsAfterMessage', function(evt) {
+                        const message = evt.detail.message;
+                        if (!message) return;
+
+                        const parser = new DOMParser();
+                        const doc = parser.parseFromString(message, 'text/html');
+                        const eventDiv = doc.querySelector('.event');
+                        if (!eventDiv) return;
+
+                        const kind = parseInt(eventDiv.dataset.kind);
+                        const jsonStr = eventDiv.textContent;
+                        let event;
+                        try {
+                            event = JSON.parse(jsonStr);
+                        } catch (e) {
+                            console.error('Failed to parse event JSON:', e);
+                            return;
+                        }
+
+                        // Handle PR events (kind:1618)
+                        if (kind === 1618) {
+                            console.log('New PR created:', event.id);
+                            window.location.reload();
+                        }
+
+                        // Handle PR update events (kind:1619)
+                        if (kind === 1619) {
+                            console.log('PR updated:', event.id);
+                            window.location.reload();
+                        }
+
+                        // Handle status events (kind:1630-1633)
+                        if (kind >= 1630 && kind <= 1633) {
+                            console.log('PR status changed:', event.id);
+                            window.location.reload();
+                        }
+                    });
+                    "#))
                 }
             }
         }
