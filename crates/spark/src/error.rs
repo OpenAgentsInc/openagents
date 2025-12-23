@@ -31,4 +31,7 @@ pub enum SparkError {
 
     #[error("balance query failed: {0}")]
     BalanceQueryFailed(String),
+
+    #[error("failed to get address: {0}")]
+    GetAddressFailed(String),
 }
