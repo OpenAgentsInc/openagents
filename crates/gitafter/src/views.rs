@@ -461,7 +461,7 @@ pub fn repository_detail_page(repository: &Event, is_cloned: bool, local_path: O
 }
 
 /// Issues list page for a repository
-pub fn issues_list_page(repository: &Event, issues: &[Event], is_watched: bool, identifier: &str, filter_open: bool, filter_closed: bool, filter_has_bounty: bool, filter_claimed: bool) -> Markup {
+pub fn issues_list_page(repository: &Event, issues: &[Event], is_watched: bool, identifier: &str, filter_open: bool, filter_closed: bool, filter_has_bounty: bool, filter_claimed: bool, issue_first_claims: &std::collections::HashMap<String, Event>) -> Markup {
     let repo_name = get_tag_value(repository, "name").unwrap_or_else(|| "Repository".to_string());
 
     html! {
@@ -602,6 +602,26 @@ pub fn issues_list_page(repository: &Event, issues: &[Event], is_watched: bool, 
                                                     span.issue-author { "by " (issue_author) }
                                                     span.issue-separator { "•" }
                                                     span.issue-time { (format_relative_time(issue.created_at)) }
+
+                                                    @if let Some(claim) = issue_first_claims.get(&issue.id) {
+                                                        @let claimer = if claim.pubkey.len() > 16 {
+                                                            format!("{}...{}", &claim.pubkey[..8], &claim.pubkey[claim.pubkey.len()-8..])
+                                                        } else {
+                                                            claim.pubkey.clone()
+                                                        };
+
+                                                        @let estimate = claim.tags.iter()
+                                                            .find(|tag| tag.first().map(|t| t == "estimate").unwrap_or(false))
+                                                            .and_then(|tag| tag.get(1));
+
+                                                        span.issue-separator { "•" }
+                                                        span.claim-badge style="color: #fbbf24; font-weight: 600;" {
+                                                            "🏆 Claimed by " (claimer)
+                                                            @if let Some(est) = estimate {
+                                                                " - " (est) "h"
+                                                            }
+                                                        }
+                                                    }
                                                 }
                                             }
                                             @if !issue.content.is_empty() {
@@ -908,18 +928,28 @@ pub fn issue_detail_page(repository: &Event, issue: &Event, claims: &[Event], bo
                                     }
                                 }
 
+                                @let has_claims = !claims.is_empty();
+
                                 form.claim-form
                                     hx-post={"/repo/" (identifier) "/issues/" (issue.id) "/claim"}
                                     hx-target="this"
                                     hx-swap="outerHTML" {
                                     h3 { "Claim this Issue" }
+
+                                    @if has_claims {
+                                        div style="padding: 1rem; background: #fef3c7; border-left: 4px solid #f59e0b; color: #92400e; margin-bottom: 1rem;" {
+                                            p { "⚠️ This issue has already been claimed. First claim takes precedence." }
+                                        }
+                                    }
+
                                     div.form-group {
                                         label for="claim_message" { "Message (optional)" }
                                         textarea
                                             name="content"
                                             id="claim_message"
                                             placeholder="I'll work on this issue..."
-                                            rows="3" {}
+                                            rows="3"
+                                            disabled[has_claims] {}
                                     }
                                     div.form-group {
                                         label for="estimate" { "Estimated completion time (seconds)" }
@@ -927,9 +957,16 @@ pub fn issue_detail_page(repository: &Event, issue: &Event, claims: &[Event], bo
                                             type="number"
                                             name="estimate"
                                             id="estimate"
-                                            placeholder="7200" {}
+                                            placeholder="7200"
+                                            disabled[has_claims] {}
                                     }
-                                    button.submit-button type="submit" { "Claim Issue" }
+                                    button.submit-button type="submit" disabled[has_claims] style={
+                                        @if has_claims {
+                                            "opacity: 0.5; cursor: not-allowed;"
+                                        } @else {
+                                            ""
+                                        }
+                                    } { "Claim Issue" }
                                 }
                             }
 
