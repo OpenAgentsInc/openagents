@@ -774,3 +774,68 @@ a.issue-card {
   border-color: var(--accent);
   color: var(--accent);
 }
+
+/* PR Filters */
+.pr-filters {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 1.5rem;
+  padding: 0.5rem;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+}
+
+.filter-btn {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  padding: 0.5rem 1rem;
+  cursor: pointer;
+  transition: all 0.2s;
+  font-size: 0.9rem;
+}
+
+.filter-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.filter-btn.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--bg-primary);
+}
+
+/* Status Badges */
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.25rem 0.75rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  border: 1px solid;
+}
+
+.status-open {
+  background: #1a4d1a;
+  border-color: #2d7a2d;
+  color: #00ff88;
+}
+
+.status-merged {
+  background: #2d1a4d;
+  border-color: #4d2d7a;
+  color: #aa88ff;
+}
+
+.status-closed {
+  background: #4d1a1a;
+  border-color: #7a2d2d;
+  color: #ff4444;
+}
+
+.status-draft {
+  background: #4d4d1a;
+  border-color: #7a7a2d;
+  color: #ffaa00;
+}

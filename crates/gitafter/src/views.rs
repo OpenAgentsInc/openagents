@@ -3,7 +3,7 @@
 pub mod diff;
 pub mod publish_status;
 
-use maud::{html, Markup, DOCTYPE};
+use maud::{html, Markup, PreEscaped, DOCTYPE};
 use nostr::Event;
 use chrono::{DateTime, Utc};
 use crate::reputation::{calculate_review_weight, ReputationTier};
@@ -1132,6 +1132,14 @@ pub fn pull_requests_list_page(repository: &Event, pull_requests: &[Event], iden
                                     p.info-text { "Pull requests will appear here as they are created on the Nostr network." }
                                 }
                             } @else {
+                                div.pr-filters {
+                                    button.filter-btn.active data-filter="all" { "All" }
+                                    button.filter-btn data-filter="open" { "Open" }
+                                    button.filter-btn data-filter="merged" { "Merged" }
+                                    button.filter-btn data-filter="closed" { "Closed" }
+                                    button.filter-btn data-filter="draft" { "Draft" }
+                                }
+
                                 div.issues-count {
                                     span { (pull_requests.len()) " pull request" @if pull_requests.len() != 1 { "s" } " found" }
                                 }
@@ -1148,12 +1156,24 @@ pub fn pull_requests_list_page(repository: &Event, pull_requests: &[Event], iden
                                             pr.pubkey.clone()
                                         };
 
-                                        a.issue-card href={"/repo/" (identifier) "/pulls/" (pr.id)} {
+                                        a.issue-card href={"/repo/" (identifier) "/pulls/" (pr.id)} data-status=(pr_status) {
                                             div.issue-header {
                                                 div.issue-title-row {
                                                     h3.issue-title { (pr_title) }
-                                                    span class={"issue-status " (pr_status)} {
-                                                        (pr_status)
+                                                    @let badge_class = match pr_status.as_str() {
+                                                        "merged" => "status-badge status-merged",
+                                                        "closed" => "status-badge status-closed",
+                                                        "draft" => "status-badge status-draft",
+                                                        _ => "status-badge status-open",
+                                                    };
+                                                    @let badge_icon = match pr_status.as_str() {
+                                                        "merged" => "✓",
+                                                        "closed" => "✗",
+                                                        "draft" => "📝",
+                                                        _ => "●",
+                                                    };
+                                                    span class=(badge_class) {
+                                                        (badge_icon) " " (pr_status)
                                                     }
                                                 }
                                                 div.issue-meta {
@@ -1335,6 +1355,28 @@ pub fn patch_detail_page(repository: &Event, patch: &Event, _reviews: &[Event], 
                 }
             }
         }
+                script {
+                    (PreEscaped(r#"
+                    // PR filter functionality
+                    document.querySelectorAll('.filter-btn').forEach(btn => {
+                        btn.addEventListener('click', function() {
+                            document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+                            this.classList.add('active');
+
+                            const filter = this.dataset.filter;
+                            const cards = document.querySelectorAll('.issue-card');
+
+                            cards.forEach(card => {
+                                if (filter === 'all' || card.dataset.status === filter) {
+                                    card.style.display = '';
+                                } else {
+                                    card.style.display = 'none';
+                                }
+                            });
+                        });
+                    });
+                    "#))
+                }
     }
 }
 
