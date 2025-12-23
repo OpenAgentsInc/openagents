@@ -4,16 +4,18 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 use anyhow::Result;
-use tao::event::{Event, WindowEvent};
-use tao::event_loop::{ControlFlow, EventLoop};
-use tao::window::WindowBuilder;
-use wry::WebViewBuilder;
+use gtk::glib;
+use gtk::prelude::*;
+use wry::WebViewBuilderExtUnix;
 
 use super::server::start_server;
 
 /// Run the unified OpenAgents GUI
 pub fn run() -> Result<()> {
     tracing::info!("Starting OpenAgents Desktop...");
+
+    // Initialize GTK (required for Wayland support)
+    gtk::init().map_err(|e| anyhow::anyhow!("Failed to initialize GTK: {}", e))?;
 
     // Shared shutdown signal
     let shutdown = Arc::new(AtomicBool::new(false));
@@ -55,35 +57,37 @@ pub fn run() -> Result<()> {
     println!("OPENAGENTS_PORT={}", port);
     tracing::info!("Server running on http://127.0.0.1:{}", port);
 
-    // Create event loop and window (must be on main thread for macOS)
-    let event_loop = EventLoop::new();
-    let window = WindowBuilder::new()
-        .with_title("OpenAgents")
-        .with_inner_size(tao::dpi::LogicalSize::new(1200.0, 800.0))
-        .build(&event_loop)?;
+    // Create GTK window (works on both X11 and Wayland)
+    let window = gtk::Window::new(gtk::WindowType::Toplevel);
+    window.set_title("OpenAgents");
+    window.set_default_size(1200, 800);
 
-    // Create webview
+    // Use a Box container for the webview (handles sizing better on Wayland)
+    let vbox = gtk::Box::new(gtk::Orientation::Vertical, 0);
+    vbox.set_hexpand(true);
+    vbox.set_vexpand(true);
+    window.add(&vbox);
+
+    // Show the window first so GTK can realize it
+    window.show_all();
+
+    // Create webview using the Box container (Wayland-compatible)
     let url = format!("http://127.0.0.1:{}", port);
-    let _webview = WebViewBuilder::new()
+    let _webview = wry::WebViewBuilder::new()
         .with_url(&url)
-        .build(&window)?;
+        .build_gtk(&vbox)
+        .map_err(|e| anyhow::anyhow!("Failed to create webview: {}", e))?;
 
-    // Run event loop with shutdown check
-    event_loop.run(move |event, _, control_flow| {
-        // Check if shutdown was requested
-        if shutdown.load(Ordering::SeqCst) {
-            *control_flow = ControlFlow::Exit;
-            return;
-        }
-
-        *control_flow = ControlFlow::Wait;
-
-        if let Event::WindowEvent {
-                event: WindowEvent::CloseRequested,
-                ..
-            } = event {
-            shutdown.store(true, Ordering::SeqCst);
-            *control_flow = ControlFlow::Exit;
-        }
+    // Handle window close
+    let shutdown_for_close = shutdown.clone();
+    window.connect_delete_event(move |_, _| {
+        shutdown_for_close.store(true, Ordering::SeqCst);
+        gtk::main_quit();
+        glib::Propagation::Stop
     });
+
+    // Run GTK main loop
+    gtk::main();
+
+    Ok(())
 }
