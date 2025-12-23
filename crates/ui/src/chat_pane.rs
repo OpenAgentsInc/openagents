@@ -65,8 +65,8 @@ impl ChatPane {
         html! {
             div
                 id="chat-pane"
-                class={"bg-background border-t border-border font-mono " (visibility_class)}
-                style="position: fixed; bottom: 0; left: 0; right: 0; height: 50vh; max-height: 600px; display: flex; flex-direction: column; z-index: 100;"
+                class={"bg-background border border-border font-mono " (visibility_class)}
+                style="position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 80vw; max-width: 1000px; height: 70vh; max-height: 700px; display: flex; flex-direction: column; z-index: 100;"
             {
                 // Header bar
                 div class="flex items-center justify-between px-4 py-2 border-b border-border bg-card flex-shrink-0" {

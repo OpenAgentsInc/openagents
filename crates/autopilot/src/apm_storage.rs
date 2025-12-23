@@ -10,7 +10,7 @@ use tracing::{debug, error, info};
 
 /// Current schema version for APM tables
 #[allow(dead_code)]
-const APM_SCHEMA_VERSION: i32 = 1;
+const APM_SCHEMA_VERSION: i32 = 2;
 
 /// APM event types
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -71,6 +71,9 @@ pub fn init_apm_tables(conn: &Connection) -> Result<()> {
 
     if version < 1 {
         migrate_apm_v1(conn)?;
+    }
+    if version < 2 {
+        migrate_apm_v2(conn)?;
     }
 
     Ok(())
@@ -166,6 +169,37 @@ fn migrate_apm_v1(conn: &Connection) -> Result<()> {
         e
     })?;
     info!("APM migration v1 completed successfully");
+    Ok(())
+}
+
+fn migrate_apm_v2(conn: &Connection) -> Result<()> {
+    info!("Running APM migration v2 - adding baselines table");
+    conn.execute_batch(
+        r#"
+        -- APM baselines table
+        CREATE TABLE IF NOT EXISTS apm_baselines (
+            id TEXT NOT NULL PRIMARY KEY,
+            name TEXT NOT NULL,
+            source TEXT NOT NULL,
+            median_apm REAL NOT NULL,
+            min_apm REAL NOT NULL,
+            max_apm REAL NOT NULL,
+            sample_size INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            CHECK(id != ''),
+            CHECK(source IN ('autopilot', 'claude_code', 'combined'))
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_apm_baselines_source ON apm_baselines(source);
+        "#,
+    )?;
+
+    set_apm_schema_version(conn, 2).map_err(|e| {
+        error!("Failed to set APM schema version to 2: {}", e);
+        e
+    })?;
+    info!("APM migration v2 completed successfully");
     Ok(())
 }
 
@@ -571,6 +605,154 @@ pub fn regenerate_all_snapshots(conn: &Connection) -> Result<usize> {
 
     info!("Regenerated {} total snapshots", total_count);
     Ok(total_count)
+}
+
+/// Save or update an APM baseline
+pub fn save_baseline(conn: &Connection, baseline: &crate::apm::APMBaseline) -> Result<()> {
+    // Check if baseline exists
+    let exists: bool = conn
+        .query_row(
+            "SELECT COUNT(*) > 0 FROM apm_baselines WHERE id = ?",
+            params![&baseline.id],
+            |row| row.get(0),
+        )
+        .unwrap_or(false);
+
+    if exists {
+        // Update existing baseline
+        conn.execute(
+            r#"
+            UPDATE apm_baselines
+            SET name = ?, source = ?, median_apm = ?, min_apm = ?, max_apm = ?,
+                sample_size = ?, updated_at = ?
+            WHERE id = ?
+            "#,
+            params![
+                &baseline.name,
+                baseline.source.as_str(),
+                baseline.median_apm,
+                baseline.min_apm,
+                baseline.max_apm,
+                baseline.sample_size,
+                baseline.updated_at.to_rfc3339(),
+                &baseline.id,
+            ],
+        )?;
+        debug!("Updated baseline {}", baseline.id);
+    } else {
+        // Insert new baseline
+        conn.execute(
+            r#"
+            INSERT INTO apm_baselines
+            (id, name, source, median_apm, min_apm, max_apm, sample_size, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            "#,
+            params![
+                &baseline.id,
+                &baseline.name,
+                baseline.source.as_str(),
+                baseline.median_apm,
+                baseline.min_apm,
+                baseline.max_apm,
+                baseline.sample_size,
+                baseline.created_at.to_rfc3339(),
+                baseline.updated_at.to_rfc3339(),
+            ],
+        )?;
+        debug!("Created baseline {}", baseline.id);
+    }
+
+    Ok(())
+}
+
+/// Get an APM baseline by ID
+pub fn get_baseline(conn: &Connection, id: &str) -> Result<Option<crate::apm::APMBaseline>> {
+    use crate::apm::{APMBaseline, APMSource};
+
+    let result = conn.query_row(
+        r#"
+        SELECT id, name, source, median_apm, min_apm, max_apm, sample_size, created_at, updated_at
+        FROM apm_baselines
+        WHERE id = ?
+        "#,
+        params![id],
+        |row| {
+            let source_str: String = row.get(2)?;
+            let source = match source_str.as_str() {
+                "autopilot" => APMSource::Autopilot,
+                "claude_code" => APMSource::ClaudeCode,
+                "combined" => APMSource::Combined,
+                _ => return Err(rusqlite::Error::InvalidQuery),
+            };
+
+            let created_at: String = row.get(7)?;
+            let updated_at: String = row.get(8)?;
+
+            Ok(APMBaseline {
+                id: row.get(0)?,
+                name: row.get(1)?,
+                source,
+                median_apm: row.get(3)?,
+                min_apm: row.get(4)?,
+                max_apm: row.get(5)?,
+                sample_size: row.get(6)?,
+                created_at: DateTime::parse_from_rfc3339(&created_at)
+                    .unwrap()
+                    .with_timezone(&Utc),
+                updated_at: DateTime::parse_from_rfc3339(&updated_at)
+                    .unwrap()
+                    .with_timezone(&Utc),
+            })
+        },
+    );
+
+    match result {
+        Ok(baseline) => Ok(Some(baseline)),
+        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+        Err(e) => Err(e),
+    }
+}
+
+/// Get all baselines for a source
+pub fn get_baselines_by_source(
+    conn: &Connection,
+    source: crate::apm::APMSource,
+) -> Result<Vec<crate::apm::APMBaseline>> {
+    use crate::apm::APMBaseline;
+
+    let mut stmt = conn.prepare(
+        r#"
+        SELECT id, name, source, median_apm, min_apm, max_apm, sample_size, created_at, updated_at
+        FROM apm_baselines
+        WHERE source = ?
+        ORDER BY median_apm DESC
+        "#,
+    )?;
+
+    let baselines = stmt
+        .query_map(params![source.as_str()], |row| {
+            let created_at: String = row.get(7)?;
+            let updated_at: String = row.get(8)?;
+
+            Ok(APMBaseline {
+                id: row.get(0)?,
+                name: row.get(1)?,
+                source,
+                median_apm: row.get(3)?,
+                min_apm: row.get(4)?,
+                max_apm: row.get(5)?,
+                sample_size: row.get(6)?,
+                created_at: DateTime::parse_from_rfc3339(&created_at)
+                    .unwrap()
+                    .with_timezone(&Utc),
+                updated_at: DateTime::parse_from_rfc3339(&updated_at)
+                    .unwrap()
+                    .with_timezone(&Utc),
+            })
+        })?
+        .collect::<Result<Vec<_>>>()?;
+
+    Ok(baselines)
 }
 
 #[cfg(test)]
