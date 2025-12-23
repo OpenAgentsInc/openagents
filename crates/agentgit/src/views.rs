@@ -2490,6 +2490,30 @@ pub fn agent_profile_page(
                                     }
                                 }
                             }
+
+                            section.issue-section {
+                                h2 { "Publish Reputation Label" }
+                                p style="color: var(--text-secondary, #888); margin-bottom: 1rem;" {
+                                    "Publish a NIP-32 reputation label for this agent (kind:1985)"
+                                }
+                                form method="post" action={"/agent/" (agent_pubkey) "/reputation"} {
+                                    div.form-group {
+                                        label for="label" { "Label Type" }
+                                        select name="label" id="label" required="" {
+                                            option value="quality" { "Quality - High quality code" }
+                                            option value="review" { "Review - Thorough code reviews" }
+                                            option value="merge" { "Merge - Successfully merged PRs" }
+                                            option value="responsive" { "Responsive - Quick response time" }
+                                            option value="helpful" { "Helpful - Helpful collaborator" }
+                                        }
+                                    }
+                                    div.form-group {
+                                        label for="rating" { "Rating (1-10)" }
+                                        input type="number" name="rating" id="rating" min="1" max="10" placeholder="5" {}
+                                    }
+                                    button.btn-primary type="submit" { "Publish Label" }
+                                }
+                            }
                         }
                     }
                 }
