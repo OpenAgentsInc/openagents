@@ -100,8 +100,8 @@ async fn start_daemon(state: web::Data<AppState>) -> HttpResponse {
         let r = Command::new(&daemon_binary)
             .args(args)
             .stdin(Stdio::null())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
             .spawn();
         (format!("{:?} {:?}", daemon_binary, args), r)
     } else {
@@ -114,14 +114,14 @@ async fn start_daemon(state: web::Data<AppState>) -> HttpResponse {
             .args(args)
             .current_dir(&cwd)
             .stdin(Stdio::null())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
             .spawn();
         (format!("cargo {:?}", args), r)
     };
 
     match result {
-        Ok(child) => {
+        Ok(mut child) => {
             info!("Daemon process spawned successfully, pid: {:?}", child.id());
             // Give daemon a moment to start
             tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
@@ -130,9 +130,45 @@ async fn start_daemon(state: web::Data<AppState>) -> HttpResponse {
             let socket_path = std::path::PathBuf::from(&home).join(".autopilot").join("autopilotd.sock");
             info!("Checking for socket at: {:?}, exists: {}", socket_path, socket_path.exists());
 
-            HttpResponse::Ok()
-                .content_type("text/html")
-                .body("<div class='toast'>Daemon starting...</div>")
+            // Check if process is still running and capture any output
+            match child.try_wait() {
+                Ok(Some(status)) => {
+                    // Process exited - capture output
+                    info!("Daemon process exited immediately with status: {}", status);
+                    if let Some(mut stderr) = child.stderr.take() {
+                        use tokio::io::AsyncReadExt;
+                        let mut stderr_buf = String::new();
+                        let _ = stderr.read_to_string(&mut stderr_buf).await;
+                        if !stderr_buf.is_empty() {
+                            info!("Daemon stderr: {}", stderr_buf);
+                        }
+                    }
+                    if let Some(mut stdout) = child.stdout.take() {
+                        use tokio::io::AsyncReadExt;
+                        let mut stdout_buf = String::new();
+                        let _ = stdout.read_to_string(&mut stdout_buf).await;
+                        if !stdout_buf.is_empty() {
+                            info!("Daemon stdout: {}", stdout_buf);
+                        }
+                    }
+                    HttpResponse::InternalServerError()
+                        .content_type("text/html")
+                        .body(format!("<div class='toast error'>Daemon exited: {}</div>", status))
+                }
+                Ok(None) => {
+                    // Process still running
+                    info!("Daemon process still running");
+                    HttpResponse::Ok()
+                        .content_type("text/html")
+                        .body("<div class='toast'>Daemon starting...</div>")
+                }
+                Err(e) => {
+                    info!("Failed to check daemon status: {}", e);
+                    HttpResponse::Ok()
+                        .content_type("text/html")
+                        .body("<div class='toast'>Daemon starting...</div>")
+                }
+            }
         }
         Err(e) => {
             info!("Failed to spawn daemon: {} (command: {})", e, cmd_desc);
