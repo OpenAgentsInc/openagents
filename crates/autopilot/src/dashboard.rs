@@ -1235,7 +1235,7 @@ function showConnectionStatus(status) {
 // ============================================================================
 
 /// Query parameters for sessions list API
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 struct SessionsQuery {
     /// Number of sessions to return (default: 50, max: 1000)
     #[serde(default = "default_limit")]
@@ -1263,52 +1263,76 @@ async fn api_sessions(
     state: web::Data<DashboardState>,
     query: web::Query<SessionsQuery>,
 ) -> ActixResult<HttpResponse> {
-    let store = MetricsDb::open(&state.db_path)
-        .map_err(|e| actix_web::error::ErrorInternalServerError(e))?;
+    let db_path = state.db_path.clone();
+    let query_clone = query.clone();
+    let query_params = query.into_inner();
 
-    // Cap limit at 1000
-    let limit = query.limit.min(1000);
+    // Run blocking database operations in a separate thread pool
+    let (sessions, total) = web::block(move || -> Result<(Vec<crate::metrics::SessionMetrics>, usize), anyhow::Error> {
+        let store = MetricsDb::open(&db_path)?;
 
-    // Get all sessions (we'll filter and sort in memory for simplicity)
-    let mut sessions = store.get_all_sessions()
-        .map_err(|e| actix_web::error::ErrorInternalServerError(e))?;
+        // Cap limit at 1000
+        let limit = query_params.limit.min(1000);
 
-    // Filter by status if provided
-    if let Some(ref status) = query.status {
-        sessions.retain(|s| {
-            format!("{:?}", s.final_status).to_lowercase() == status.to_lowercase()
-        });
-    }
+        // Get all sessions (we'll filter and sort in memory for simplicity)
+        let mut sessions = store.get_all_sessions()?;
 
-    // Sort
-    match query.sort.as_str() {
-        "duration" => sessions.sort_by(|a, b| a.duration_seconds.partial_cmp(&b.duration_seconds).unwrap()),
-        "cost" => sessions.sort_by(|a, b| a.cost_usd.partial_cmp(&b.cost_usd).unwrap()),
-        "tokens" => sessions.sort_by(|a, b| {
-            let a_total = a.tokens_in + a.tokens_out;
-            let b_total = b.tokens_in + b.tokens_out;
-            a_total.cmp(&b_total)
-        }),
-        _ => sessions.sort_by(|a, b| a.timestamp.cmp(&b.timestamp)),
-    }
+        // Filter by status if provided
+        if let Some(ref status) = query_params.status {
+            sessions.retain(|s| {
+                format!("{:?}", s.final_status).to_lowercase() == status.to_lowercase()
+            });
+        }
 
-    // Reverse if descending
-    if query.order == "desc" {
-        sessions.reverse();
-    }
+        // Sort (handle NaN values by treating them as less than all other values)
+        match query_params.sort.as_str() {
+            "duration" => sessions.sort_by(|a, b| {
+                match (a.duration_seconds.is_nan(), b.duration_seconds.is_nan()) {
+                    (true, true) => std::cmp::Ordering::Equal,
+                    (true, false) => std::cmp::Ordering::Less,
+                    (false, true) => std::cmp::Ordering::Greater,
+                    (false, false) => a.duration_seconds.partial_cmp(&b.duration_seconds).unwrap(),
+                }
+            }),
+            "cost" => sessions.sort_by(|a, b| {
+                match (a.cost_usd.is_nan(), b.cost_usd.is_nan()) {
+                    (true, true) => std::cmp::Ordering::Equal,
+                    (true, false) => std::cmp::Ordering::Less,
+                    (false, true) => std::cmp::Ordering::Greater,
+                    (false, false) => a.cost_usd.partial_cmp(&b.cost_usd).unwrap(),
+                }
+            }),
+            "tokens" => sessions.sort_by(|a, b| {
+                let a_total = a.tokens_in + a.tokens_out;
+                let b_total = b.tokens_in + b.tokens_out;
+                a_total.cmp(&b_total)
+            }),
+            _ => sessions.sort_by(|a, b| a.timestamp.cmp(&b.timestamp)),
+        }
 
-    // Apply pagination
-    let total = sessions.len();
-    let sessions: Vec<_> = sessions.into_iter()
-        .skip(query.offset)
-        .take(limit)
-        .collect();
+        // Reverse if descending
+        if query_params.order == "desc" {
+            sessions.reverse();
+        }
+
+        // Apply pagination
+        let total = sessions.len();
+        let sessions: Vec<_> = sessions.into_iter()
+            .skip(query_params.offset)
+            .take(limit)
+            .collect();
+
+        Ok((sessions, total))
+    })
+    .await
+    .map_err(|e| actix_web::error::ErrorInternalServerError(e))?
+    .map_err(|e| actix_web::error::ErrorInternalServerError(e))?;
 
     let response = serde_json::json!({
         "sessions": sessions,
         "total": total,
-        "limit": limit,
-        "offset": query.offset,
+        "limit": query_clone.limit.min(1000),
+        "offset": query_clone.offset,
     });
 
     Ok(HttpResponse::Ok().json(response))
