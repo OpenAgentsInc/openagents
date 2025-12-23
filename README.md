@@ -1037,6 +1037,10 @@ For questions, issues, or contributions:
 - Check existing documentation in `docs/`
 - Review crate-specific READMEs
 
+## The Company
+
+OpenAgents, Inc. is building the fundamental research lab for the agent economy — a Bell Labs for the age of autonomous AI. Headquartered in Austin, remote-first, pushing the frontier and commercializing it. [Read more →](docs/company/BELL_LABS_2.md)
+
 ---
 
 Built with Rust 🦀
