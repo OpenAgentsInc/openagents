@@ -388,3 +388,42 @@ o: id=zex61Yj3 → [ok] The file /home/christopherdavid/code/openagents/crates/a
 t!:Bash id=R5JfhGN5 cmd="cargo build -p autopilot --bin autopilotd 2>&1 ..." → [running] tokens_in=0 tokens_out=26 tokens_cached=106193
 o: id=R5JfhGN5 → [ok]    Compiling breez-sdk-common v0.1.0 (/home/christopherdavid/code/spark-sdk/crates/breez-sdk/common)
 t!:Bash id=aJrTWvYb cmd="git add -A && git commit -m "$(cat <<'EOF'" → [running] tokens_in=0 tokens_out=25 tokens_cached=106634
+o: id=aJrTWvYb → [ok] [main 9ddc960d5] Add graceful shutdown to control socket server (RES-8)
+t!:Bash id=oGGuf9p1 cmd="git push origin main" → [running] tokens_in=0 tokens_out=24 tokens_cached=106963
+o: id=oGGuf9p1 → [ok] [0;36m🔍 Running cargo build to check for errors and warnings...[0m
+t!:mcp__issues__issue_complete id=TGto2ucW  → [running] tokens_in=0 tokens_out=32 tokens_cached=107423
+o: id=TGto2ucW → [ok] Completed issue #934
+t!:mcp__issues__issue_ready id=SUiJ1NBe  → [running] tokens_in=0 tokens_out=41 tokens_cached=107694
+o: id=SUiJ1NBe → [ok] {
+t!:mcp__issues__issue_claim id=WBzWwdSF  → [running] tokens_in=0 tokens_out=27 tokens_cached=107769
+o: id=WBzWwdSF → [ok] Claimed issue #935
+t!:Read id=WSs6PYCZ file_path=/home/christopherdavid/code/openagents/crates/codex-agent-sdk/src/transport/process.rs → [running] tokens_in=0 tokens_out=118 tokens_cached=107952
+o: id=WSs6PYCZ → [ok]     75→                cmd.env(k, v);
+a: I can see the issue. The `stdout_task` is stored in the struct (line 108), but let me check if there's a Drop implementation that properly awaits it: tokens_in=3 tokens_out=1 tokens_cached=108156
+t!:Grep id=h8Naxdnx pattern="pub struct ProcessTransport" → [running] tokens_in=3 tokens_out=1 tokens_cached=108156
+o: id=h8Naxdnx → [ok] 47:pub struct ProcessTransport {
+t!:Grep id=QzByrH7g pattern="impl Drop for ProcessTransport" → [running] tokens_in=2 tokens_out=24 tokens_cached=108799
+o: id=QzByrH7g → [ok] No matches found
+a: There's no Drop implementation. The `_stdout_task` will be dropped when the struct is dropped, which aborts the task but doesn't await it. Let me check if there's a shutdown or close method: tokens_in=2 tokens_out=1 tokens_cached=109216
+t!:Grep id=Mb1yo4md pattern="pub async fn.*shutdown|pub ..." → [running] tokens_in=2 tokens_out=1 tokens_cached=109216
+o: id=Mb1yo4md → [ok] No matches found
+a: Let me find where the impl block ends to add a shutdown method: tokens_in=1 tokens_out=3 tokens_cached=109355
+t!:Bash id=C36WejQQ cmd="wc -l /home/christopherdavid/code/openagents/cr..." → [running] tokens_in=1 tokens_out=3 tokens_cached=109355
+o: id=C36WejQQ → [ok] 128 /home/christopherdavid/code/openagents/crates/codex-agent-sdk/src/transport/process.rs
+t!:Read id=X9LgdJY2 file_path=/home/christopherdavid/code/openagents/crates/codex-agent-sdk/src/transport/process.rs → [running] tokens_in=1 tokens_out=25 tokens_cached=109649
+o: id=X9LgdJY2 → [ok]    110→    }
+a: The impl block ends at line 128. I'll add a shutdown method and a Drop implementation to ensure proper cleanup: tokens_in=0 tokens_out=1 tokens_cached=109819
+t!:Edit id=aFgoCjv8 file_path=/home/christopherdavid/code/openagents/crates/codex-agent-sdk/src/transport/process.rs → [running] tokens_in=0 tokens_out=430 tokens_cached=109819
+o: id=aFgoCjv8 → [ok] The file /home/christopherdavid/code/openagents/crates/codex-agent-sdk/src/transport/process.rs h...
+t!:Bash id=JQiL98aw cmd="cargo build -p codex-agent-sdk 2>&1 | tail -20" → [running] tokens_in=0 tokens_out=93 tokens_cached=110351
+o: id=JQiL98aw → [ok]    Compiling futures-util v0.3.31
+a: I can't move out of a field when Drop is implemented. I need to use `Option` to allow taking the handle. Let me fix this: tokens_in=0 tokens_out=1 tokens_cached=111191
+t!:Edit id=oHFrf2R9 file_path=/home/christopherdavid/code/openagents/crates/codex-agent-sdk/src/transport/process.rs → [running] tokens_in=0 tokens_out=291 tokens_cached=111191
+o: id=oHFrf2R9 → [ok] The file /home/christopherdavid/code/openagents/crates/codex-agent-sdk/src/transport/process.rs h...
+t!:Edit id=GExdEWVb file_path=/home/christopherdavid/code/openagents/crates/codex-agent-sdk/src/transport/process.rs → [running] tokens_in=0 tokens_out=192 tokens_cached=111706
+o: id=GExdEWVb → [ok] The file /home/christopherdavid/code/openagents/crates/codex-agent-sdk/src/transport/process.rs h...
+t!:Edit id=nmJW5xY1 file_path=/home/christopherdavid/code/openagents/crates/codex-agent-sdk/src/transport/process.rs → [running] tokens_in=0 tokens_out=484 tokens_cached=112234
+o: id=nmJW5xY1 → [ok] The file /home/christopherdavid/code/openagents/crates/codex-agent-sdk/src/transport/process.rs h...
+t!:Bash id=opeb8nZ7 cmd="cargo build -p codex-agent-sdk 2>&1 | tail -20" → [running] tokens_in=0 tokens_out=93 tokens_cached=112726
+o: id=opeb8nZ7 → [ok]    Compiling codex-agent-sdk v0.1.0 (/home/christopherdavid/code/openagents/crates/codex-agent-sdk)
+t!:Bash id=b4RpeGrP cmd="git add -A && git commit -m "$(cat <<'EOF'" → [running] tokens_in=0 tokens_out=327 tokens_cached=113602

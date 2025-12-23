@@ -49,7 +49,7 @@ pub struct ProcessTransport {
     #[allow(dead_code)]
     stdin: ChildStdin,
     stdout_rx: mpsc::Receiver<Result<ThreadEvent>>,
-    _stdout_task: tokio::task::JoinHandle<()>,
+    _stdout_task: Option<tokio::task::JoinHandle<()>>,
 }
 
 impl ProcessTransport {
@@ -105,7 +105,7 @@ impl ProcessTransport {
             child,
             stdin,
             stdout_rx: rx,
-            _stdout_task: stdout_task,
+            _stdout_task: Some(stdout_task),
         })
     }
 
@@ -124,5 +124,30 @@ impl ProcessTransport {
     pub async fn wait(&mut self) -> Result<Option<i32>> {
         let status = self.child.wait().await?;
         Ok(status.code())
+    }
+
+    /// Gracefully shutdown the process and await background tasks
+    pub async fn shutdown(mut self) -> Result<()> {
+        // Kill the process first
+        self.child.kill().await?;
+
+        // Wait for stdout task to complete if present
+        // The task will exit once stdout is closed (when process dies)
+        if let Some(task) = self._stdout_task.take() {
+            let _ = task.await;
+        }
+
+        Ok(())
+    }
+}
+
+impl Drop for ProcessTransport {
+    fn drop(&mut self) {
+        // Abort the stdout task on drop if present
+        // Note: The task cannot be awaited in Drop (not async)
+        // Use shutdown() method for graceful cleanup
+        if let Some(task) = self._stdout_task.take() {
+            task.abort();
+        }
     }
 }
