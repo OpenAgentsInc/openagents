@@ -61,6 +61,7 @@ sha2 = "0.10"
 hex = "0.4"
 urlencoding = "2.1.3"
 autopilot = { version = "0.1.0", path = "../autopilot" }
+governor = "0.10.4"
 
 [lints]
 workspace = true

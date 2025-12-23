@@ -5,6 +5,7 @@ use std::sync::Arc;
 use wallet::core::identity::UnifiedIdentity;
 
 use crate::git::{clone_repository, get_repository_path, is_repository_cloned, create_branch, get_status, generate_patch, apply_patch, push_branch, current_branch, diff_commits};
+use crate::middleware::RateLimiter;
 use crate::nostr::NostrClient;
 use crate::nostr::events::{BountyClaimBuilder, BountyOfferBuilder, IssueClaimBuilder, PatchBuilder, PullRequestBuilder, RepositoryAnnouncementBuilder, StatusEventBuilder, ZapRequestBuilder};
 use crate::views::{agent_marketplace_page, agent_profile_page, agents_list_page, bounties_discovery_page, diff_viewer_page, git_branch_create_form_page, git_status_page, home_page_with_repos, issue_create_form_page, issue_detail_page, issues_list_page, patch_create_form_page, patch_detail_page, patches_list_page, pr_create_form_page, pull_request_detail_page, pull_requests_list_page, repository_create_form_page, repository_detail_page, search_results_page, trajectory_viewer_page};
@@ -50,6 +51,8 @@ pub async fn start_server(
     let server = HttpServer::new(move || {
         App::new()
             .app_data(state.clone())
+            // Add rate limiting to all POST endpoints to prevent DoS
+            .wrap(RateLimiter::new(20)) // 20 requests/second global limit
             .route("/", web::get().to(index))
             .route("/repo/new", web::get().to(repository_create_form))
             .route("/repo", web::post().to(repository_create))
