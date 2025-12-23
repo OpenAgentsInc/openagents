@@ -14,3 +14,4 @@ mod stacks_test;
 mod review_test;
 mod trajectory_test;
 mod agents_test;
+mod notifications_test;
