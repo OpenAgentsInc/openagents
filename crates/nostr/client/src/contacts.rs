@@ -57,8 +57,9 @@ impl ContactManager {
             .map_err(|e| ClientError::Protocol(format!("Failed to parse contact list: {}", e)))?;
 
         let pubkey = contact_list.event.pubkey.clone();
-        let mut lists = self.lists.write().map_err(|_| {
-            ClientError::Internal("Failed to acquire write lock on contact lists".to_string())
+        let mut lists = self.lists.write().map_err(|e| {
+            tracing::error!("Contact lists write lock poisoned: {}", e);
+            ClientError::Internal("Failed to acquire write lock on contact lists (poisoned)".to_string())
         })?;
 
         // Check if we need to merge or replace
@@ -138,8 +139,9 @@ impl ContactManager {
 
     /// Get contact list for a specific pubkey
     pub fn get_contact_list(&self, pubkey: &str) -> Result<Option<ContactList>> {
-        let lists = self.lists.read().map_err(|_| {
-            ClientError::Internal("Failed to acquire read lock on contact lists".to_string())
+        let lists = self.lists.read().map_err(|e| {
+            tracing::error!("Contact lists read lock poisoned: {}", e);
+            ClientError::Internal("Failed to acquire read lock on contact lists (poisoned)".to_string())
         })?;
 
         Ok(lists.get(pubkey).cloned())
@@ -147,8 +149,9 @@ impl ContactManager {
 
     /// Get all cached contact lists
     pub fn get_all_contact_lists(&self) -> Result<Vec<ContactList>> {
-        let lists = self.lists.read().map_err(|_| {
-            ClientError::Internal("Failed to acquire read lock on contact lists".to_string())
+        let lists = self.lists.read().map_err(|e| {
+            tracing::error!("Contact lists read lock poisoned: {}", e);
+            ClientError::Internal("Failed to acquire read lock on contact lists (poisoned)".to_string())
         })?;
 
         Ok(lists.values().cloned().collect())
@@ -156,8 +159,9 @@ impl ContactManager {
 
     /// Get contacts for a specific pubkey
     pub fn get_contacts(&self, pubkey: &str) -> Result<Vec<Contact>> {
-        let lists = self.lists.read().map_err(|_| {
-            ClientError::Internal("Failed to acquire read lock on contact lists".to_string())
+        let lists = self.lists.read().map_err(|e| {
+            tracing::error!("Contact lists read lock poisoned: {}", e);
+            ClientError::Internal("Failed to acquire read lock on contact lists (poisoned)".to_string())
         })?;
 
         Ok(lists
@@ -168,8 +172,9 @@ impl ContactManager {
 
     /// Check if a pubkey follows another pubkey
     pub fn is_following(&self, follower: &str, followee: &str) -> Result<bool> {
-        let lists = self.lists.read().map_err(|_| {
-            ClientError::Internal("Failed to acquire read lock on contact lists".to_string())
+        let lists = self.lists.read().map_err(|e| {
+            tracing::error!("Contact lists read lock poisoned: {}", e);
+            ClientError::Internal("Failed to acquire read lock on contact lists (poisoned)".to_string())
         })?;
 
         Ok(lists
@@ -180,8 +185,9 @@ impl ContactManager {
 
     /// Get all followers of a specific pubkey (from cached lists)
     pub fn get_followers(&self, pubkey: &str) -> Result<Vec<String>> {
-        let lists = self.lists.read().map_err(|_| {
-            ClientError::Internal("Failed to acquire read lock on contact lists".to_string())
+        let lists = self.lists.read().map_err(|e| {
+            tracing::error!("Contact lists read lock poisoned: {}", e);
+            ClientError::Internal("Failed to acquire read lock on contact lists (poisoned)".to_string())
         })?;
 
         let mut followers = Vec::new();
@@ -196,8 +202,9 @@ impl ContactManager {
 
     /// Get petname for a contact
     pub fn get_petname(&self, owner: &str, contact_pubkey: &str) -> Result<Option<String>> {
-        let lists = self.lists.read().map_err(|_| {
-            ClientError::Internal("Failed to acquire read lock on contact lists".to_string())
+        let lists = self.lists.read().map_err(|e| {
+            tracing::error!("Contact lists read lock poisoned: {}", e);
+            ClientError::Internal("Failed to acquire read lock on contact lists (poisoned)".to_string())
         })?;
 
         Ok(lists
@@ -207,8 +214,9 @@ impl ContactManager {
 
     /// Clear all cached contact lists
     pub fn clear(&self) -> Result<()> {
-        let mut lists = self.lists.write().map_err(|_| {
-            ClientError::Internal("Failed to acquire write lock on contact lists".to_string())
+        let mut lists = self.lists.write().map_err(|e| {
+            tracing::error!("Contact lists write lock poisoned: {}", e);
+            ClientError::Internal("Failed to acquire write lock on contact lists (poisoned)".to_string())
         })?;
 
         lists.clear();
@@ -217,8 +225,9 @@ impl ContactManager {
 
     /// Get number of cached contact lists
     pub fn len(&self) -> Result<usize> {
-        let lists = self.lists.read().map_err(|_| {
-            ClientError::Internal("Failed to acquire read lock on contact lists".to_string())
+        let lists = self.lists.read().map_err(|e| {
+            tracing::error!("Contact lists read lock poisoned: {}", e);
+            ClientError::Internal("Failed to acquire read lock on contact lists (poisoned)".to_string())
         })?;
 
         Ok(lists.len())
@@ -226,8 +235,9 @@ impl ContactManager {
 
     /// Check if no contact lists are cached
     pub fn is_empty(&self) -> Result<bool> {
-        let lists = self.lists.read().map_err(|_| {
-            ClientError::Internal("Failed to acquire read lock on contact lists".to_string())
+        let lists = self.lists.read().map_err(|e| {
+            tracing::error!("Contact lists read lock poisoned: {}", e);
+            ClientError::Internal("Failed to acquire read lock on contact lists (poisoned)".to_string())
         })?;
 
         Ok(lists.is_empty())
