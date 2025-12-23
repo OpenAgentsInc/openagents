@@ -192,6 +192,94 @@ impl EventCache {
         Ok(())
     }
 
+    /// Insert multiple events in a single transaction (batch operation)
+    pub fn insert_events_batch(&self, events: &[Event]) -> Result<usize> {
+        if events.is_empty() {
+            return Ok(0);
+        }
+
+        let tx = self.conn.unchecked_transaction()?;
+
+        let cached_at = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as i64;
+
+        // Prepare statement once
+        let mut event_stmt = tx.prepare_cached(
+            r#"
+            INSERT OR REPLACE INTO events
+            (id, kind, pubkey, created_at, content, tags, sig, cached_at)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+            "#,
+        )?;
+
+        let mut tag_delete_stmt = tx.prepare_cached(
+            "DELETE FROM event_tags WHERE event_id = ?1",
+        )?;
+
+        let mut tag_insert_stmt = tx.prepare_cached(
+            r#"
+            INSERT OR IGNORE INTO event_tags (event_id, tag_name, tag_value)
+            VALUES (?1, ?2, ?3)
+            "#,
+        )?;
+
+        let mut inserted = 0;
+
+        for event in events {
+            let tags_json = serde_json::to_string(&event.tags)
+                .context("Failed to serialize tags")?;
+
+            // Insert event
+            event_stmt.execute(params![
+                event.id,
+                event.kind,
+                event.pubkey,
+                event.created_at,
+                event.content,
+                tags_json,
+                event.sig,
+                cached_at,
+            ])?;
+
+            // Delete existing tag indexes
+            tag_delete_stmt.execute(params![event.id])?;
+
+            // Index important tags
+            for tag in &event.tags {
+                if tag.len() >= 2 {
+                    let tag_name = &tag[0];
+                    if matches!(tag_name.as_str(), "a" | "e" | "p" | "d" | "t") {
+                        let tag_value = &tag[1];
+                        tag_insert_stmt.execute(params![event.id, tag_name, tag_value])?;
+                    }
+                }
+            }
+
+            // Insert into specialized tables
+            match event.kind {
+                30617 => self.insert_repository_in_tx(&tx, event)?,
+                1621 => self.insert_issue_in_tx(&tx, event)?,
+                1617 => self.insert_patch_in_tx(&tx, event)?,
+                1618 => self.insert_pull_request_in_tx(&tx, event)?,
+                _ => {}
+            }
+
+            inserted += 1;
+        }
+
+        // Drop prepared statements before committing
+        drop(event_stmt);
+        drop(tag_delete_stmt);
+        drop(tag_insert_stmt);
+
+        tx.commit()?;
+
+        debug!("Batch cached {} events", inserted);
+        Ok(inserted)
+    }
+
     /// Index event tags for fast filtering
     fn index_event_tags(&self, event: &Event) -> Result<()> {
         // Delete existing tag indexes for this event
@@ -342,6 +430,117 @@ impl EventCache {
             .map(|s| s.as_str());
 
         self.conn.execute(
+            r#"
+            INSERT OR REPLACE INTO pull_requests
+            (event_id, repo_address, title, status)
+            VALUES (?1, ?2, ?3, ?4)
+            "#,
+            params![event.id, repo_address, title, status],
+        )?;
+
+        Ok(())
+    }
+
+    /// Transaction-aware repository insert
+    fn insert_repository_in_tx(&self, tx: &rusqlite::Transaction, event: &Event) -> Result<()> {
+        let name = event.tags.iter()
+            .find(|t| t.len() >= 2 && t[0] == "name")
+            .and_then(|t| t.get(1))
+            .map(|s| s.as_str());
+
+        let description = event.tags.iter()
+            .find(|t| t.len() >= 2 && t[0] == "description")
+            .and_then(|t| t.get(1))
+            .map(|s| s.as_str());
+
+        let identifier = event.tags.iter()
+            .find(|t| t.len() >= 2 && t[0] == "d")
+            .and_then(|t| t.get(1))
+            .map(|s| s.as_str());
+
+        tx.execute(
+            r#"
+            INSERT OR REPLACE INTO repositories
+            (event_id, name, description, identifier)
+            VALUES (?1, ?2, ?3, ?4)
+            "#,
+            params![event.id, name, description, identifier],
+        )?;
+
+        Ok(())
+    }
+
+    /// Transaction-aware issue insert
+    fn insert_issue_in_tx(&self, tx: &rusqlite::Transaction, event: &Event) -> Result<()> {
+        let repo_address = event.tags.iter()
+            .find(|t| t.len() >= 2 && t[0] == "a")
+            .and_then(|t| t.get(1))
+            .map(|s| s.as_str());
+
+        let title = event.tags.iter()
+            .find(|t| t.len() >= 2 && t[0] == "subject")
+            .and_then(|t| t.get(1))
+            .map(|s| s.as_str());
+
+        let status = event.tags.iter()
+            .find(|t| t.len() >= 2 && t[0] == "status")
+            .and_then(|t| t.get(1))
+            .map(|s| s.as_str());
+
+        tx.execute(
+            r#"
+            INSERT OR REPLACE INTO issues
+            (event_id, repo_address, title, status)
+            VALUES (?1, ?2, ?3, ?4)
+            "#,
+            params![event.id, repo_address, title, status],
+        )?;
+
+        Ok(())
+    }
+
+    /// Transaction-aware patch insert
+    fn insert_patch_in_tx(&self, tx: &rusqlite::Transaction, event: &Event) -> Result<()> {
+        let repo_address = event.tags.iter()
+            .find(|t| t.len() >= 2 && t[0] == "a")
+            .and_then(|t| t.get(1))
+            .map(|s| s.as_str());
+
+        let title = event.tags.iter()
+            .find(|t| t.len() >= 2 && t[0] == "subject")
+            .and_then(|t| t.get(1))
+            .map(|s| s.as_str());
+
+        tx.execute(
+            r#"
+            INSERT OR REPLACE INTO patches
+            (event_id, repo_address, title)
+            VALUES (?1, ?2, ?3)
+            "#,
+            params![event.id, repo_address, title],
+        )?;
+
+        Ok(())
+    }
+
+    /// Transaction-aware pull request insert
+    fn insert_pull_request_in_tx(&self, tx: &rusqlite::Transaction, event: &Event) -> Result<()> {
+        let repo_address = event.tags.iter()
+            .find(|t| t.len() >= 2 && t[0] == "a")
+            .and_then(|t| t.get(1))
+            .map(|s| s.as_str());
+
+        let title = event.tags.iter()
+            .find(|t| t.len() >= 2 && t[0] == "subject")
+            .and_then(|t| t.get(1))
+            .map(|s| s.as_str());
+
+        let status = event.tags.iter()
+            .find(|t| t.len() >= 2 && t[0] == "status")
+            .and_then(|t| t.get(1))
+            .map(|s| s.as_str());
+
+        tx.execute(
             r#"
             INSERT OR REPLACE INTO pull_requests
             (event_id, repo_address, title, status)
