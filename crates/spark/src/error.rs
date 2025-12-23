@@ -28,4 +28,7 @@ pub enum SparkError {
 
     #[error("payment failed: {0}")]
     PaymentFailed(String),
+
+    #[error("balance query failed: {0}")]
+    BalanceQueryFailed(String),
 }

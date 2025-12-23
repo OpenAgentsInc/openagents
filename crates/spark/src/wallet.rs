@@ -302,6 +302,36 @@ impl SparkWallet {
         &self.sdk
     }
 
+    /// Get the current wallet balance
+    ///
+    /// Returns the total balance across all layers (Spark Layer 2, Lightning, on-chain).
+    /// Note: Currently only returns Spark Layer 2 balance from the SDK. Lightning and
+    /// on-chain balances require additional SDK integration.
+    ///
+    /// # Example
+    /// ```rust,ignore
+    /// let balance = wallet.get_balance().await?;
+    /// println!("Total: {} sats", balance.total_sats());
+    /// ```
+    pub async fn get_balance(&self) -> Result<Balance, SparkError> {
+        use breez_sdk_spark::GetInfoRequest;
+
+        // Get wallet info from SDK
+        let info = self
+            .sdk
+            .get_info(GetInfoRequest {
+                ensure_synced: Some(true), // Ensure we have latest balance
+            })
+            .await
+            .map_err(|e| SparkError::BalanceQueryFailed(format!("Failed to get wallet info: {}", e)))?;
+
+        Ok(Balance {
+            spark_sats: info.balance_sats,
+            lightning_sats: 0, // TODO: Implement Lightning balance query
+            onchain_sats: 0,   // TODO: Implement on-chain balance query
+        })
+    }
+
     /// Prepare a payment by validating the payment request and calculating fees
     ///
     /// This method validates the payment request (Lightning invoice, Spark address, etc.)
