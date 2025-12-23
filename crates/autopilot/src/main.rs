@@ -248,8 +248,8 @@ impl HookCallback for PlanModeHook {
 }
 
 /// SessionEnd hook to automatically extract and store metrics after each run
-struct PostRunHook {
-    output_dir: PathBuf,
+pub(crate) struct PostRunHook {
+    pub(crate) output_dir: PathBuf,
 }
 
 #[async_trait]
@@ -1123,9 +1123,15 @@ async fn run_task(
     let compaction_hook = std::sync::Arc::new(CompactionHook);
     let compact_hook_matcher = HookCallbackMatcher::new().hook(compaction_hook);
 
+    let post_run_hook = std::sync::Arc::new(PostRunHook {
+        output_dir: output_dir.clone(),
+    });
+    let post_run_hook_matcher = HookCallbackMatcher::new().hook(post_run_hook);
+
     let mut hooks = std::collections::HashMap::new();
     hooks.insert(HookEvent::PreToolUse, vec![plan_hook_matcher]);
     hooks.insert(HookEvent::PreCompact, vec![compact_hook_matcher]);
+    hooks.insert(HookEvent::SessionEnd, vec![post_run_hook_matcher]);
 
     let mut options = QueryOptions::new()
         .model(&model)
