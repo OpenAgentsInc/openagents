@@ -674,3 +674,45 @@ a: Perfect! Now let me run tests and commit: tokens_in=0 tokens_out=1 tokens_cac
 t!:Bash id=U8Koj19i cmd="cargo test -p agentgit --lib 2>&1 | tail -5" → [running] tokens_in=0 tokens_out=1 tokens_cached=125996
 o: id=U8Koj19i → [ok] test nostr::retry::tests::test_retry_fails_after_max_attempts ... ok
 t!:Bash id=Q83E4Dta cmd="git add -A && git commit -m "$(cat <<'EOF'" → [running] tokens_in=0 tokens_out=429 tokens_cached=126216
+o: id=Q83E4Dta → [ok] [main 0f1e87c56] Add dependency dropdown with HTMX to AgentGit PR creation form
+t!:Bash id=pBYWaYmR cmd="git push origin main" → [running] tokens_in=0 tokens_out=75 tokens_cached=126535
+o: id=pBYWaYmR → [ok] [0;36m🔍 Running cargo build to check for errors and warnings...[0m
+t!:mcp__issues__issue_complete id=mCZnnAgo  → [running] tokens_in=0 tokens_out=32 tokens_cached=127115
+t!:mcp__issues__issue_ready id=Gi29iW88  → [running] tokens_in=0 tokens_out=32 tokens_cached=127115
+o: id=mCZnnAgo → [ok] Completed issue #769
+o: id=Gi29iW88 → [ok] No ready issues available
+t!:mcp__issues__directive_list id=y7cU2GpF  → [running] tokens_in=0 tokens_out=41 tokens_cached=127279
+o: id=y7cU2GpF → [ok] [
+t!:mcp__issues__directive_get id=eZTAWgV4  → [running] tokens_in=3 tokens_out=60 tokens_cached=127551
+o: id=eZTAWgV4 → [ok] {
+a: Excellent progress! d-005 is at 94% completion (97/103 issues). The remaining blocked issues mostly involve multi-agent collaboration (NIP-EE), Lightning payment integration, and per-layer bounties... tokens_in=2 tokens_out=3 tokens_cached=129140
+t!:mcp__issues__issue_create id=wZmoWm5H  → [running] tokens_in=2 tokens_out=725 tokens_cached=129140
+o: id=wZmoWm5H → [ok] Created issue #771: Add syntax-highlighted diff viewer to AgentGit PR/patch detail pages (agent: ...
+t!:mcp__issues__issue_ready id=UBhGnaWX  → [running] tokens_in=0 tokens_out=5 tokens_cached=140938
+o: id=UBhGnaWX → [ok] {
+t!:mcp__issues__issue_claim id=AKVsA8Rp  → [running] tokens_in=2 tokens_out=83 tokens_cached=141818
+o: id=AKVsA8Rp → [ok] Claimed issue #771
+t!:Grep id=p1NYyiUy pattern="fn pull_request_detail|asyn..." → [running] tokens_in=2 tokens_out=149 tokens_cached=142499
+o: id=p1NYyiUy → [ok] 1513:async fn pull_request_detail(
+t!:Grep id=dhDCaay7 pattern="fn pull_request_detail_page" → [running] tokens_in=1 tokens_out=24 tokens_cached=142599
+o: id=dhDCaay7 → [ok] 1342:pub fn pull_request_detail_page(repository: &Event, pull_request: &Event, reviews: &[Event],...
+a: Let me check if there's already a link to the diff viewer in the PR detail page: tokens_in=1 tokens_out=3 tokens_cached=143322
+t!:Grep id=Kxnweeiq pattern="View Diff|/diff|diff viewer" → [running] tokens_in=1 tokens_out=3 tokens_cached=143322
+o: id=Kxnweeiq → [ok] 3257:/// Diff viewer page with syntax highlighting
+a: Let me check if the PR detail page has a link or button to view the diff: tokens_in=0 tokens_out=5 tokens_cached=145067
+t!:Read id=fLG8erPw file_path=/home/christopherdavid/code/openagents/crates/agentgit/src/views.rs → [running] tokens_in=0 tokens_out=5 tokens_cached=145067
+o: id=fLG8erPw → [ok]   1480→                                                    1633 => "📝 Draft",
+a: Let me search more specifically for where a "View Diff" link or button might be: tokens_in=0 tokens_out=1 tokens_cached=145358
+t!:Bash id=evgUCMju cmd="grep -n "View.*iff\|diff.*button\|/pulls.*diff"..." → [running] tokens_in=0 tokens_out=129 tokens_cached=145358
+o: id=evgUCMju → [ok] 
+a: It seems there's no "View Diff" button on the PR detail page. The diff viewer exists as a separate route but isn't linked from the detail page. Let me check the function signature to see if `diff_t... tokens_in=0 tokens_out=1 tokens_cached=146511
+t!:Grep id=3FFBJfgd pattern="diff_text|@if.*diff" → [running] tokens_in=0 tokens_out=178 tokens_cached=146511
+o: id=3FFBJfgd → [ok] 1342:pub fn pull_request_detail_page(repository: &Event, pull_request: &Event, reviews: &[Event],...
+a: Great! There's already a section that displays the diff if `diff_text` is provided. Let me check what that section looks like: tokens_in=0 tokens_out=1 tokens_cached=146753
+t!:Read id=w2koR1sP file_path=/home/christopherdavid/code/openagents/crates/agentgit/src/views.rs → [running] tokens_in=0 tokens_out=145 tokens_cached=146753
+o: id=w2koR1sP → [ok]   2017→                            @if let Some(diff) = diff_text {
+a: Perfect! The diff is already displayed inline on the PR detail page at line 2032 using `render_diff_with_comments`. The feature is already fully implemented. Let me verify this by checking the rend... tokens_in=0 tokens_out=1 tokens_cached=147242
+t!:Grep id=1QJXBELp pattern="pub fn render_diff_with_com..." → [running] tokens_in=0 tokens_out=1 tokens_cached=147242
+o: id=1QJXBELp → [ok] 132:pub fn render_diff_with_comments(
+a: Excellent! The syntax-highlighted diff viewer with inline comments is already fully implemented and integrated into the PR detail page. Let me mark this issue as complete since the feature exists: tokens_in=0 tokens_out=5 tokens_cached=149046
+t!:Bash id=D7FNdKY9 cmd="git add -A && git commit --allow-empty -m "$(ca..." → [running] tokens_in=0 tokens_out=5 tokens_cached=149046
