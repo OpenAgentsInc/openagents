@@ -2,11 +2,19 @@
 //!
 //! Measures the time and memory overhead of recording trajectory data
 //! during autopilot operations.
+//!
+//! Benchmarks cover:
+//! 1. Trajectory event recording overhead (per tool call)
+//! 2. Memory usage during collection
+//! 3. Export to JSONL format performance (.rlog files)
+//! 4. Export to JSON format performance
+//! 5. Metrics extraction from large trajectory logs
 
-use autopilot::trajectory::{StepType, Trajectory};
+use autopilot::trajectory::{JsonlWriter, StepType, Trajectory};
 use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
 use serde_json::json;
 use std::time::Duration;
+use tempfile::TempDir;
 
 /// Simulate a tool call step
 fn create_tool_call_step(tool: &str) -> StepType {
@@ -208,6 +216,94 @@ fn bench_memory_overhead(c: &mut Criterion) {
     group.finish();
 }
 
+/// Bench JSONL export performance (.rlog format)
+fn bench_jsonl_export(c: &mut Criterion) {
+    let mut group = c.benchmark_group("jsonl_export");
+
+    for num_steps in [10, 100, 1000].iter() {
+        let mut trajectory = Trajectory::new(
+            "Test prompt".to_string(),
+            "sonnet-4".to_string(),
+            "/test/cwd".to_string(),
+            "abc123".to_string(),
+            Some("main".to_string()),
+        );
+
+        for _i in 0..*num_steps {
+            trajectory.add_step(create_tool_call_step("Read"));
+            trajectory.add_step(create_tool_result_step(true));
+        }
+
+        group.bench_with_input(
+            BenchmarkId::from_parameter(num_steps),
+            num_steps,
+            |b, _count| {
+                b.iter(|| {
+                    let temp_dir = TempDir::new().unwrap();
+                    let path = temp_dir.path().join("test.jsonl");
+                    let mut writer = JsonlWriter::new();
+                    writer.init(&path, "test-session").unwrap();
+
+                    // Write trajectory steps as JSONL
+                    for step in &trajectory.steps {
+                        writer.write_message(black_box(step)).unwrap();
+                    }
+
+                    writer.flush().unwrap();
+                    black_box(writer)
+                })
+            },
+        );
+    }
+
+    group.finish();
+}
+
+/// Bench metrics extraction from large trajectory
+fn bench_metrics_extraction(c: &mut Criterion) {
+    let mut group = c.benchmark_group("metrics_extraction");
+
+    for num_steps in [100, 500, 1000].iter() {
+        let mut trajectory = Trajectory::new(
+            "Test prompt".to_string(),
+            "sonnet-4".to_string(),
+            "/test/cwd".to_string(),
+            "abc123".to_string(),
+            Some("main".to_string()),
+        );
+
+        for _i in 0..*num_steps {
+            trajectory.add_step(create_tool_call_step("Read"));
+            trajectory.add_step(create_tool_result_step(true));
+        }
+
+        group.bench_with_input(
+            BenchmarkId::from_parameter(num_steps),
+            num_steps,
+            |b, _count| {
+                b.iter(|| {
+                    // Simulate metrics extraction
+                    let step_count = trajectory.steps.len();
+                    let tool_calls = trajectory
+                        .steps
+                        .iter()
+                        .filter(|s| matches!(s.step_type, StepType::ToolCall { .. }))
+                        .count();
+                    let tool_results = trajectory
+                        .steps
+                        .iter()
+                        .filter(|s| matches!(s.step_type, StepType::ToolResult { .. }))
+                        .count();
+
+                    black_box((step_count, tool_calls, tool_results))
+                })
+            },
+        );
+    }
+
+    group.finish();
+}
+
 criterion_group!(
     benches,
     bench_trajectory_creation,
@@ -215,6 +311,8 @@ criterion_group!(
     bench_trajectory_serialization,
     bench_trajectory_deserialization,
     bench_tool_call_overhead,
-    bench_memory_overhead
+    bench_memory_overhead,
+    bench_jsonl_export,
+    bench_metrics_extraction
 );
 criterion_main!(benches);
