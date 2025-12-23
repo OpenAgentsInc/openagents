@@ -2878,8 +2878,10 @@ name = "fm-bridge"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "async-trait",
  "clap",
  "eventsource-stream",
+ "local-inference",
  "reqwest",
  "serde",
  "serde_json",

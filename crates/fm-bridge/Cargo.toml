@@ -34,6 +34,8 @@ clap = { version = "4", features = ["derive"] }
 
 # Tracing
 tracing = "0.1"
+local-inference = { version = "0.1.0", path = "../local-inference" }
+async-trait.workspace = true
 
 [dev-dependencies]
 tokio-test = "0.4"
