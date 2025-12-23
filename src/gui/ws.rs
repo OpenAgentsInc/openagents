@@ -27,11 +27,50 @@ impl WsBroadcaster {
 }
 
 /// WebSocket upgrade handler
+///
+/// SECURITY: Requires authentication via query parameter or Authorization header.
+/// Token can be provided in two ways:
+/// - Query parameter: ws://localhost:port/ws?token=<token>
+/// - Authorization header: Authorization: Bearer <token>
 pub async fn ws_handler(
     req: HttpRequest,
     stream: web::Payload,
     state: web::Data<super::state::AppState>,
+    auth_token: web::Data<auth::AuthToken>,
 ) -> Result<HttpResponse, Error> {
+    // Check for token in query parameters
+    let query_token = req.query_string()
+        .split('&')
+        .find_map(|param| {
+            let mut parts = param.splitn(2, '=');
+            if parts.next() == Some("token") {
+                parts.next()
+            } else {
+                None
+            }
+        });
+
+    // Check for token in Authorization header
+    let header_token = req
+        .headers()
+        .get("Authorization")
+        .and_then(|h| h.to_str().ok())
+        .and_then(|s| s.strip_prefix("Bearer "));
+
+    // Validate token from either source
+    let provided_token = query_token.or(header_token);
+    match provided_token {
+        Some(token) if auth_token.validate(token) => {
+            // Authentication successful, proceed with WebSocket upgrade
+        }
+        _ => {
+            // Authentication failed
+            return Err(actix_web::error::ErrorUnauthorized(
+                "Invalid or missing authentication token"
+            ));
+        }
+    }
+
     let (res, mut session, stream) = actix_ws::handle(&req, stream)?;
 
     let mut rx = state.broadcaster.subscribe();

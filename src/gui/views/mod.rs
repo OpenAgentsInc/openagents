@@ -7,10 +7,13 @@ use ui::{ChatPane, ClaudeStatus, FullAutoSwitch};
 
 use crate::gui::state::AppState;
 
-pub use layout::base_layout;
+pub use layout::base_layout_with_token;
 
 /// Home page - black screen with FullAutoSwitch centered, ClaudeStatus bottom right, ChatPane at bottom
-pub async fn home(state: web::Data<AppState>) -> HttpResponse {
+pub async fn home(
+    state: web::Data<AppState>,
+    auth_token: web::Data<auth::AuthToken>,
+) -> HttpResponse {
     let full_auto = *state.full_auto.read().await;
     let switch = FullAutoSwitch::new(full_auto).build();
 
@@ -67,5 +70,5 @@ pub async fn home(state: web::Data<AppState>) -> HttpResponse {
 
     HttpResponse::Ok()
         .content_type("text/html")
-        .body(base_layout(&content))
+        .body(base_layout_with_token(&content, Some(auth_token.token())))
 }
