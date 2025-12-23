@@ -306,19 +306,28 @@ async fn repository_issues(
     let filter_has_bounty = query.filter_has_bounty.as_deref() == Some("true");
     let filter_claimed = query.filter_claimed.as_deref() == Some("true");
 
-    // Pre-fetch bounties and claims for all issues if needed
+    // Pre-fetch bounties and claims for all issues
     let mut issue_bounties = std::collections::HashMap::new();
     let mut issue_claims = std::collections::HashMap::new();
+    let mut issue_first_claims = std::collections::HashMap::new();
 
-    if filter_has_bounty || filter_claimed {
-        for issue in &issues {
-            if filter_has_bounty {
-                let bounties = state.nostr_client.get_bounties_for_issue(&issue.id).await.unwrap_or_default();
-                issue_bounties.insert(issue.id.clone(), !bounties.is_empty());
-            }
-            if filter_claimed {
-                let claims = state.nostr_client.get_claims_for_issue(&issue.id).await.unwrap_or_default();
-                issue_claims.insert(issue.id.clone(), !claims.is_empty());
+    for issue in &issues {
+        if filter_has_bounty {
+            let bounties = state.nostr_client.get_bounties_for_issue(&issue.id).await.unwrap_or_default();
+            issue_bounties.insert(issue.id.clone(), !bounties.is_empty());
+        }
+
+        // Always fetch claims to display claim badges
+        let claims = state.nostr_client.get_claims_for_issue(&issue.id).await.unwrap_or_default();
+        let has_claims = !claims.is_empty();
+        issue_claims.insert(issue.id.clone(), has_claims);
+
+        // Store first claim info for badge display
+        if has_claims {
+            let mut sorted_claims = claims;
+            sorted_claims.sort_by_key(|c| c.created_at);
+            if let Some(first_claim) = sorted_claims.first() {
+                issue_first_claims.insert(issue.id.clone(), first_claim.clone());
             }
         }
     }
@@ -356,7 +365,7 @@ async fn repository_issues(
 
     HttpResponse::Ok()
         .content_type("text/html; charset=utf-8")
-        .body(issues_list_page(&repository, &issues, is_watched, &identifier, filter_open, filter_closed, filter_has_bounty, filter_claimed).into_string())
+        .body(issues_list_page(&repository, &issues, is_watched, &identifier, filter_open, filter_closed, filter_has_bounty, filter_claimed, &issue_first_claims).into_string())
 }
 
 /// Issue detail page
@@ -441,6 +450,41 @@ async fn issue_claim(
     let (identifier, issue_id) = path.into_inner();
     let content = form.get("content").cloned().unwrap_or_default();
     let estimate = form.get("estimate").and_then(|s| s.parse::<u64>().ok());
+
+    // Check for existing claims first
+    match state.nostr_client.get_claims_for_issue(&issue_id).await {
+        Ok(claims) if !claims.is_empty() => {
+            // Sort by created_at to find first claim
+            let mut sorted_claims = claims;
+            sorted_claims.sort_by_key(|c| c.created_at);
+
+            if let Some(first_claim) = sorted_claims.first() {
+                let claimer_pubkey = if first_claim.pubkey.len() > 16 {
+                    format!("{}...{}", &first_claim.pubkey[..8], &first_claim.pubkey[first_claim.pubkey.len()-8..])
+                } else {
+                    first_claim.pubkey.clone()
+                };
+
+                return HttpResponse::Conflict()
+                    .content_type("text/html; charset=utf-8")
+                    .body(format!(
+                        r#"<div style="padding: 1rem; background: #fef3c7; border-left: 4px solid #f59e0b; color: #92400e;">
+                            <h3>⚠️ Issue Already Claimed</h3>
+                            <p>This issue was claimed by <strong>{}</strong></p>
+                            <p>First claim wins - this claim takes precedence.</p>
+                        </div>"#,
+                        claimer_pubkey
+                    ));
+            }
+        }
+        Ok(_) => {
+            // No existing claims, proceed
+        }
+        Err(e) => {
+            tracing::error!("Failed to check existing claims: {}", e);
+            // Continue anyway - better to allow claim than block on error
+        }
+    }
 
     // Fetch repository to get pubkey
     let repository = match state.nostr_client.get_repository_by_identifier(&identifier).await {
