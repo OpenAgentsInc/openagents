@@ -325,10 +325,11 @@ impl SparkWallet {
             .await
             .map_err(|e| SparkError::BalanceQueryFailed(format!("Failed to get wallet info: {}", e)))?;
 
+        // Spark layer abstracts away Lightning vs on-chain - there's only one unified balance
         Ok(Balance {
             spark_sats: info.balance_sats,
-            lightning_sats: 0, // TODO: Implement Lightning balance query
-            onchain_sats: 0,   // TODO: Implement on-chain balance query
+            lightning_sats: 0, // Not separately tracked in Spark design
+            onchain_sats: 0,   // Not separately tracked in Spark design
         })
     }
 

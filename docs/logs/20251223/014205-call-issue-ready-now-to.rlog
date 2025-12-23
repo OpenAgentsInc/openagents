@@ -263,3 +263,34 @@ t!:Bash id=JHFDgRxs cmd="cargo build --all-targets 2>&1 | grep -c "use o..." →
 o: id=JHFDgRxs → [ok] 0
 a: Excellent! No more deprecation warnings. Let me commit this fix: tokens_in=0 tokens_out=4 tokens_cached=102345
 t!:Bash id=SFgCW2Rm cmd="git add -A && git diff --cached --stat" → [running] tokens_in=0 tokens_out=97 tokens_cached=102345
+o: id=SFgCW2Rm → [ok]  .../20251223/014205-call-issue-ready-now-to.jsonl  | 89 ++++++++++++++++++++++
+t!:Bash id=1GAbQy2k cmd="git commit -m "$(cat <<'EOF'" → [running] tokens_in=0 tokens_out=276 tokens_cached=102596
+o: id=1GAbQy2k → [ok] [main 7688a39b5] Replace deprecated Command::cargo_bin with cargo_bin! macro
+t!:Bash id=RMvS2A8Q cmd="git push origin main" → [running] tokens_in=0 tokens_out=75 tokens_cached=102815
+o: id=RMvS2A8Q → [ok] [0;36m🔍 Running cargo build to check for errors and warnings...[0m
+t!:Bash id=Y8QF5dCW cmd="cargo autopilot issue complete 817" → [running] tokens_in=0 tokens_out=24 tokens_cached=103341
+o: id=Y8QF5dCW → [ok] ✓ Completed issue #817: Replace deprecated Command::cargo_bin with cargo_bin_cmd macro
+t!:Bash id=izUE5bib cmd="cargo autopilot issue ready" → [running] tokens_in=0 tokens_out=24 tokens_cached=103504
+o: id=izUE5bib → [ok] No ready issues available
+a: No ready issues. Let me check for other potential code quality improvements. Let me check if there are any TODOs in the codebase that should be addressed: tokens_in=0 tokens_out=1 tokens_cached=103857
+t!:Bash id=7HRATUsz cmd="grep -rn "TODO" --include="*.rs" crates/ | grep..." → [running] tokens_in=0 tokens_out=1 tokens_cached=103857
+o: id=7HRATUsz → [ok] crates/claude-agent-sdk/src/query.rs:361:                // TODO: Could use regex for more advanc...
+a: There are some TODOs in the code. Let me check the ones in spark/src/wallet.rs since those are related to d-001: tokens_in=0 tokens_out=1 tokens_cached=104092
+t!:Read id=dLByG8Dg file_path=crates/spark/src/wallet.rs → [running] tokens_in=0 tokens_out=129 tokens_cached=104092
+o: id=dLByG8Dg → [ok]    325→            .await
+a: These TODOs are about implementing Lightning and on-chain balance queries, which require the Breez SDK to provide those methods. Let me check if the SDK has these methods available: tokens_in=0 tokens_out=1 tokens_cached=104967
+t!:Grep id=FkFWaG3B pattern="lightning.*balance|onchain...." → [running] tokens_in=0 tokens_out=173 tokens_cached=104967
+o: id=FkFWaG3B → [ok] No files found
+a: Let me check what the Balance struct looks like in the Spark SDK: tokens_in=0 tokens_out=1 tokens_cached=105496
+t!:Grep id=F9AVYxsH pattern="struct.*Balance|balance_sats" → [running] tokens_in=0 tokens_out=1 tokens_cached=105496
+o: id=F9AVYxsH → [ok] /home/christopherdavid/code/spark-sdk/crates/breez-sdk/core/src/sdk.rs:1095:            balance_s...
+a: It looks like the SDK only provides `balance_sats` as a single value - there's no separate Lightning and on-chain balances in the Spark SDK. The Spark layer is designed to abstract away the distinc... tokens_in=0 tokens_out=1 tokens_cached=105684
+t!:Bash id=X6aQCjG3 cmd="cargo autopilot issue create "Remove Lightning/..." → [running] tokens_in=0 tokens_out=192 tokens_cached=105684
+o: id=X6aQCjG3 → [ok] ✓ Created issue #818: Remove Lightning/on-chain balance TODOs from Spark wallet - not applicable ...
+t!:Bash id=TsLoKRZU cmd="cargo autopilot issue claim 818" → [running] tokens_in=0 tokens_out=80 tokens_cached=108036
+o: id=TsLoKRZU → [ok] ✓ Claimed issue #818: Remove Lightning/on-chain balance TODOs from Spark wallet - not applicable ...
+t!:Edit id=v7eCCWbm file_path=crates/spark/src/wallet.rs → [running] tokens_in=0 tokens_out=241 tokens_cached=108346
+o: id=v7eCCWbm → [ok] The file crates/spark/src/wallet.rs has been updated. Here's the result of running `cat -n` on a ...
+t!:Bash id=zA7EVd4L cmd="cargo build -p openagents-spark 2>&1 | tail -5" → [running] tokens_in=0 tokens_out=24 tokens_cached=108612
+o: id=zA7EVd4L → [ok]    Compiling breez-sdk-common v0.1.0 (/home/christopherdavid/code/spark-sdk/crates/breez-sdk/common)
+t!:Bash id=JwJvhme2 cmd="git add -A && git commit -m "$(cat <<'EOF'" → [running] tokens_in=0 tokens_out=25 tokens_cached=109092
