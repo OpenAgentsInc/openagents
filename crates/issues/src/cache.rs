@@ -6,7 +6,6 @@
 use crate::{Issue, Status};
 use anyhow::{Context, Result};
 use std::collections::HashMap;
-use std::path::Path;
 use std::process::Command;
 use std::sync::{Arc, RwLock};
 use std::time::{Duration, Instant};
@@ -16,6 +15,7 @@ use std::time::{Duration, Instant};
 struct CachedIssue {
     issue: Issue,
     cached_at: Instant,
+    #[allow(dead_code)]
     git_head: Option<String>,
 }
 
