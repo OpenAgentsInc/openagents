@@ -181,3 +181,37 @@ o: id=X1tQ4tQk → [ok] The file /home/christopherdavid/code/openagents/crates/g
 t!:Bash id=w84wYLZe cmd="cargo build -p gitafter 2>&1 | tail -20" → [running] tokens_in=0 tokens_out=88 tokens_cached=63340
 o: id=w84wYLZe → [ok] warning: field `initial_chunk_size` is never read
 t!:Bash id=PcyisKRy cmd="git add -A && git commit -m "$(cat <<'EOF'" → [running] tokens_in=0 tokens_out=340 tokens_cached=63934
+o: id=PcyisKRy → [ok] [main 368e46d0a] Track HTTP server handle for graceful shutdown (RES-2)
+t!:Bash id=m21cEr8A cmd="git push origin main" → [running] tokens_in=0 tokens_out=25 tokens_cached=64281
+o: id=m21cEr8A → [ok] [0;36m🔍 Running cargo build to check for errors and warnings...[0m
+t!:mcp__issues__issue_complete id=KUD69VJs  → [running] tokens_in=0 tokens_out=58 tokens_cached=64769
+o: id=KUD69VJs → [ok] Completed issue #928
+t!:mcp__issues__issue_ready id=F9KzrcHL  → [running] tokens_in=0 tokens_out=27 tokens_cached=65042
+o: id=F9KzrcHL → [ok] {
+t!:mcp__issues__issue_claim id=vCsXuRw6  → [running] tokens_in=0 tokens_out=79 tokens_cached=65117
+o: id=vCsXuRw6 → [ok] Claimed issue #929
+t!:Read id=8JxUSPEB file_path=/home/christopherdavid/code/openagents/crates/autopilot/src/rlog.rs → [running] tokens_in=0 tokens_out=8 tokens_cached=65302
+o: id=8JxUSPEB → [ok]      1→//! rlog format writer for trajectory output
+a: I can see the issue. The `RlogWriter` uses a `BufWriter<File>` which buffers data in memory before writing to disk. If the program crashes before the buffer is flushed, data can be lost. I need to ... tokens_in=3 tokens_out=1 tokens_cached=65506
+t!:Grep id=4i9eJyPj pattern="impl Drop for RlogWriter" → [running] tokens_in=3 tokens_out=205 tokens_cached=65506
+o: id=4i9eJyPj → [ok] No matches found
+a: Let me check the end of the file to see the full structure: tokens_in=2 tokens_out=3 tokens_cached=66495
+t!:Bash id=E7EYFyGD cmd="wc -l /home/christopherdavid/code/openagents/cr..." → [running] tokens_in=2 tokens_out=121 tokens_cached=66495
+o: id=E7EYFyGD → [ok] 600 /home/christopherdavid/code/openagents/crates/autopilot/src/rlog.rs
+t!:Read id=VSZCCdDW file_path=/home/christopherdavid/code/openagents/crates/autopilot/src/rlog.rs → [running] tokens_in=2 tokens_out=25 tokens_cached=66819
+o: id=VSZCCdDW → [ok]    590→        });
+a: Now let me find where the RlogWriter impl block ends to add the Drop implementation: tokens_in=1 tokens_out=1 tokens_cached=66982
+t!:Grep id=jBd5cA6V pattern="^impl RlogWriter" → [running] tokens_in=1 tokens_out=138 tokens_cached=66982
+o: id=jBd5cA6V → [ok] 17:impl RlogWriter {
+t!:Grep id=ehQ7tKYe pattern="^}" → [running] tokens_in=1 tokens_out=133 tokens_cached=67404
+o: id=ehQ7tKYe → [ok] 13-    /// Optional file writer for streaming mode
+t!:Read id=U7dhaXzH file_path=/home/christopherdavid/code/openagents/crates/autopilot/src/rlog.rs → [running] tokens_in=0 tokens_out=18 tokens_cached=67561
+o: id=U7dhaXzH → [ok]    340→            if t > 0 {
+a: Perfect! The `impl RlogWriter` block ends at line 347. I'll add the `Drop` implementation right after the `Default` impl: tokens_in=0 tokens_out=1 tokens_cached=67937
+t!:Edit id=oC9P9zXW file_path=/home/christopherdavid/code/openagents/crates/autopilot/src/rlog.rs → [running] tokens_in=0 tokens_out=317 tokens_cached=67937
+o: id=oC9P9zXW → [ok] The file /home/christopherdavid/code/openagents/crates/autopilot/src/rlog.rs has been updated. He...
+t!:Bash id=boY7KScT cmd="cargo test -p autopilot --lib rlog 2>&1 | tail -30" → [running] tokens_in=0 tokens_out=26 tokens_cached=68390
+o: id=boY7KScT → [ok]    Compiling breez-sdk-common v0.1.0 (/home/christopherdavid/code/spark-sdk/crates/breez-sdk/common)
+t!:Bash id=3kNFpG29 cmd="cargo build -p autopilot 2>&1 | tail -10" → [running] tokens_in=0 tokens_out=25 tokens_cached=69133
+o: id=3kNFpG29 → [ok]    Compiling breez-sdk-common v0.1.0 (/home/christopherdavid/code/spark-sdk/crates/breez-sdk/common)
+t!:Bash id=WWTWh9j4 cmd="git add -A && git commit -m "$(cat <<'EOF'" → [running] tokens_in=0 tokens_out=330 tokens_cached=69626
