@@ -1,0 +1,228 @@
+//! Docker Compose wrapper for parallel agents
+
+use anyhow::{Context, Result};
+use serde::{Deserialize, Serialize};
+use std::path::PathBuf;
+use std::process::Command;
+
+/// Agent status
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum AgentStatus {
+    Running,
+    Stopped,
+    Starting,
+    Error,
+}
+
+/// Information about a running agent
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AgentInfo {
+    /// Agent ID (e.g., "001")
+    pub id: String,
+    /// Container name
+    pub container_name: String,
+    /// Current status
+    pub status: AgentStatus,
+    /// Issue currently being worked on (if any)
+    pub current_issue: Option<i32>,
+    /// Uptime in seconds
+    pub uptime_seconds: Option<u64>,
+}
+
+/// Start N agents using docker-compose
+///
+/// This will:
+/// 1. Create git worktrees for each agent
+/// 2. Start the docker containers
+pub async fn start_agents(count: usize) -> Result<Vec<AgentInfo>> {
+    let project_root = find_project_root()?;
+    let compose_file = project_root.join("docker/autopilot/docker-compose.yml");
+
+    if !compose_file.exists() {
+        anyhow::bail!("docker-compose.yml not found at {:?}", compose_file);
+    }
+
+    // Create worktrees first
+    super::worktree::create_worktrees(&project_root, count)?;
+
+    // Build services list
+    let services: Vec<String> = (1..=count)
+        .map(|i| format!("agent-{:03}", i))
+        .collect();
+
+    // Determine profiles
+    let mut args = vec![
+        "-f".to_string(),
+        compose_file.to_string_lossy().to_string(),
+    ];
+
+    if count > 3 {
+        args.extend(["--profile".to_string(), "extended".to_string()]);
+    }
+    if count > 5 {
+        args.extend(["--profile".to_string(), "linux-full".to_string()]);
+    }
+
+    args.extend(["up".to_string(), "-d".to_string()]);
+    args.extend(services);
+
+    // Run docker-compose
+    let output = Command::new("docker-compose")
+        .args(&args)
+        .current_dir(&project_root)
+        .output()
+        .context("Failed to run docker-compose")?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        anyhow::bail!("docker-compose failed: {}", stderr);
+    }
+
+    // Return agent info
+    list_agents().await
+}
+
+/// Stop all agents
+pub async fn stop_agents() -> Result<()> {
+    let project_root = find_project_root()?;
+    let compose_file = project_root.join("docker/autopilot/docker-compose.yml");
+
+    let output = Command::new("docker-compose")
+        .args([
+            "-f", &compose_file.to_string_lossy(),
+            "--profile", "extended",
+            "--profile", "linux-full",
+            "down",
+        ])
+        .current_dir(&project_root)
+        .output()
+        .context("Failed to run docker-compose down")?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        anyhow::bail!("docker-compose down failed: {}", stderr);
+    }
+
+    Ok(())
+}
+
+/// List all agents and their status
+pub async fn list_agents() -> Result<Vec<AgentInfo>> {
+    let output = Command::new("docker")
+        .args(["ps", "--format", "{{.Names}}\t{{.Status}}", "-a"])
+        .output()
+        .context("Failed to run docker ps")?;
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let mut agents = Vec::new();
+
+    for line in stdout.lines() {
+        let parts: Vec<&str> = line.split('\t').collect();
+        if parts.len() >= 2 {
+            let name = parts[0];
+            let status_str = parts[1];
+
+            // Only include autopilot containers
+            if name.starts_with("autopilot-") {
+                let id = name.strip_prefix("autopilot-").unwrap_or(name);
+                let status = if status_str.contains("Up") {
+                    AgentStatus::Running
+                } else if status_str.contains("Exited") {
+                    AgentStatus::Stopped
+                } else if status_str.contains("Starting") {
+                    AgentStatus::Starting
+                } else {
+                    AgentStatus::Error
+                };
+
+                agents.push(AgentInfo {
+                    id: id.to_string(),
+                    container_name: name.to_string(),
+                    status,
+                    current_issue: None, // TODO: Query from database
+                    uptime_seconds: None, // TODO: Parse from status
+                });
+            }
+        }
+    }
+
+    // Sort by ID
+    agents.sort_by(|a, b| a.id.cmp(&b.id));
+    Ok(agents)
+}
+
+/// Get logs for a specific agent
+pub async fn get_logs(agent_id: &str, lines: Option<usize>) -> Result<String> {
+    let container_name = if agent_id.starts_with("autopilot-") {
+        agent_id.to_string()
+    } else {
+        format!("autopilot-{}", agent_id)
+    };
+
+    let mut args = vec!["logs".to_string()];
+    if let Some(n) = lines {
+        args.push("--tail".to_string());
+        args.push(n.to_string());
+    }
+    args.push(container_name);
+
+    let output = Command::new("docker")
+        .args(&args)
+        .output()
+        .context("Failed to get docker logs")?;
+
+    let logs = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+
+    // Docker logs go to stderr for container stderr
+    Ok(format!("{}{}", logs, stderr))
+}
+
+/// Find project root by looking for Cargo.toml with [workspace]
+fn find_project_root() -> Result<PathBuf> {
+    let mut current = std::env::current_dir()?;
+
+    loop {
+        let cargo_toml = current.join("Cargo.toml");
+        if cargo_toml.exists() {
+            let content = std::fs::read_to_string(&cargo_toml)?;
+            if content.contains("[workspace]") {
+                return Ok(current);
+            }
+        }
+
+        if !current.pop() {
+            break;
+        }
+    }
+
+    // Fall back to current directory
+    std::env::current_dir().context("Failed to get current directory")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_agent_status_serialize() {
+        let status = AgentStatus::Running;
+        let json = serde_json::to_string(&status).unwrap();
+        assert_eq!(json, "\"running\"");
+    }
+
+    #[test]
+    fn test_agent_info_serialize() {
+        let info = AgentInfo {
+            id: "001".to_string(),
+            container_name: "autopilot-001".to_string(),
+            status: AgentStatus::Running,
+            current_issue: Some(42),
+            uptime_seconds: Some(300),
+        };
+        let json = serde_json::to_string(&info).unwrap();
+        assert!(json.contains("\"id\":\"001\""));
+        assert!(json.contains("\"current_issue\":42"));
+    }
+}

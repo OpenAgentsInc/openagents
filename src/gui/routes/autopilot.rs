@@ -5,7 +5,7 @@ use std::sync::Arc;
 use actix_web::{web, HttpResponse};
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
-use tracing::info;
+use tracing::{debug, info};
 use ui::{FullAutoSwitch, render_line_oob};
 
 use crate::gui::state::{AppState, AutopilotProcess};
@@ -179,12 +179,59 @@ async fn read_output_loop(
             line = stdout_reader.next_line() => {
                 match line {
                     Ok(Some(text)) => {
-                        // Check if this is a JSON event (prefixed with "j:")
-                        if let Some(json_content) = text.strip_prefix("j:") {
-                            // Broadcast to JSON view only (untruncated)
-                            let escaped = html_escape(json_content);
-                            let json_html = format!(r#"<div id="chat-content-json" hx-swap-oob="beforeend"><div class="json-line">{}</div></div>"#, escaped);
-                            broadcaster.broadcast(&json_html);
+                        // Check if this is a JSON event (stream-json format starts with {)
+                        if text.starts_with('{') {
+                            // Parse JSON and extract useful info for formatted view
+                            if let Ok(json) = serde_json::from_str::<serde_json::Value>(&text) {
+                                // Log the event type for debugging
+                                let event_type = json.get("type").and_then(|v| v.as_str()).unwrap_or("unknown");
+                                debug!("Claude event: type={}", event_type);
+
+                                // Broadcast to JSON view (full JSON)
+                                let escaped = html_escape(&text);
+                                let json_html = format!(r#"<div id="chat-content-json" hx-swap-oob="beforeend"><div class="json-line">{}</div></div>"#, escaped);
+                                broadcaster.broadcast(&json_html);
+
+                                // Format for human-readable view
+                                let formatted = format_claude_event(&json);
+                                match formatted {
+                                    StreamingOutput::Block(html) => {
+                                        let formatted_html = format!(r#"<div id="chat-content-formatted" hx-swap-oob="beforeend">{}</div>"#, html);
+                                        broadcaster.broadcast(&formatted_html);
+                                    }
+                                    StreamingOutput::StartBlock { index } => {
+                                        let html = format!(
+                                            r#"<div id="chat-content-formatted" hx-swap-oob="beforeend"><div id="stream-block-{}" class="px-3 py-2 text-sm text-foreground whitespace-pre-wrap"></div></div>"#,
+                                            index
+                                        );
+                                        broadcaster.broadcast(&html);
+                                    }
+                                    StreamingOutput::Delta { index, text } => {
+                                        let escaped = html_escape(&text);
+                                        let html = format!(
+                                            r#"<div id="stream-block-{}" hx-swap-oob="beforeend">{}</div>"#,
+                                            index, escaped
+                                        );
+                                        broadcaster.broadcast(&html);
+                                    }
+                                    StreamingOutput::EndBlock => {
+                                        // No action needed when block ends
+                                    }
+                                    StreamingOutput::None => {}
+                                }
+
+                                // Also show key events in raw view
+                                let raw_summary = summarize_claude_event(&json);
+                                if !raw_summary.is_empty() {
+                                    let raw_html = format!(r#"<div id="chat-content-raw" hx-swap-oob="beforeend"><div class="log-line">{}</div></div>"#, html_escape(&raw_summary));
+                                    broadcaster.broadcast(&raw_html);
+                                }
+                            } else {
+                                // Invalid JSON, show as-is
+                                let escaped = html_escape(&text);
+                                let json_html = format!(r#"<div id="chat-content-json" hx-swap-oob="beforeend"><div class="json-line">{}</div></div>"#, escaped);
+                                broadcaster.broadcast(&json_html);
+                            }
                         } else {
                             // Regular rlog output - broadcast to raw RLOG view
                             let escaped = html_escape(&text);
@@ -291,6 +338,127 @@ fn html_escape(s: &str) -> String {
         .replace('>', "&gt;")
         .replace('"', "&quot;")
         .replace('\'', "&#39;")
+}
+
+/// Represents what kind of streaming output to send
+enum StreamingOutput {
+    /// Start a new streaming text block (creates container)
+    StartBlock { index: u64 },
+    /// Delta text to append to current block
+    Delta { index: u64, text: String },
+    /// End the current streaming block
+    EndBlock,
+    /// A complete HTML block (tool use, result, etc.)
+    Block(String),
+    /// Nothing to output
+    None,
+}
+
+/// Format a Claude Code stream-json event for the human-readable view
+fn format_claude_event(json: &serde_json::Value) -> StreamingOutput {
+    let event_type = json.get("type").and_then(|v| v.as_str()).unwrap_or("");
+
+    match event_type {
+        "assistant" => {
+            // Complete assistant message (fallback when not streaming)
+            if let Some(message) = json.get("message") {
+                if let Some(content) = message.get("content").and_then(|c| c.as_array()) {
+                    let mut text_parts: Vec<String> = Vec::new();
+                    for item in content {
+                        if let Some(text) = item.get("text").and_then(|t| t.as_str()) {
+                            text_parts.push(text.to_string());
+                        }
+                    }
+                    if !text_parts.is_empty() {
+                        let text = text_parts.join("");
+                        return StreamingOutput::Block(format!(
+                            r#"<div class="px-3 py-2 text-sm text-foreground whitespace-pre-wrap">{}</div>"#,
+                            html_escape(&text)
+                        ));
+                    }
+                }
+            }
+            StreamingOutput::None
+        }
+        "content_block_start" => {
+            // Start of a new content block - create streaming container
+            let index = json.get("index").and_then(|i| i.as_u64()).unwrap_or(0);
+            StreamingOutput::StartBlock { index }
+        }
+        "content_block_delta" => {
+            // Streaming text delta - append to container
+            let index = json.get("index").and_then(|i| i.as_u64()).unwrap_or(0);
+            if let Some(delta) = json.get("delta") {
+                // Handle both "text" and nested structure
+                let text = delta.get("text").and_then(|t| t.as_str())
+                    .or_else(|| delta.get("partial_json").and_then(|t| t.as_str()));
+                if let Some(text) = text {
+                    if !text.is_empty() {
+                        return StreamingOutput::Delta { index, text: text.to_string() };
+                    }
+                }
+            }
+            StreamingOutput::None
+        }
+        "content_block_stop" => {
+            StreamingOutput::EndBlock
+        }
+        "result" => {
+            // Tool use result
+            if let Some(subtype) = json.get("subtype").and_then(|v| v.as_str()) {
+                if subtype == "success" {
+                    return StreamingOutput::Block(
+                        r#"<div class="px-3 py-1 text-xs text-green">✓ Tool executed successfully</div>"#.to_string()
+                    );
+                } else if subtype == "error" {
+                    let error = json.get("error").and_then(|e| e.as_str()).unwrap_or("Unknown error");
+                    return StreamingOutput::Block(format!(
+                        r#"<div class="px-3 py-1 text-xs text-red">✗ Error: {}</div>"#,
+                        html_escape(error)
+                    ));
+                }
+            }
+            StreamingOutput::None
+        }
+        "tool_use" => {
+            // Tool invocation
+            if let Some(name) = json.get("name").and_then(|n| n.as_str()) {
+                return StreamingOutput::Block(format!(
+                    r#"<div class="px-3 py-1 text-xs text-yellow">🔧 Tool: {}</div>"#,
+                    html_escape(name)
+                ));
+            }
+            StreamingOutput::None
+        }
+        _ => StreamingOutput::None,
+    }
+}
+
+/// Summarize a Claude Code stream-json event for the raw view
+fn summarize_claude_event(json: &serde_json::Value) -> String {
+    let event_type = json.get("type").and_then(|v| v.as_str()).unwrap_or("");
+
+    match event_type {
+        "assistant" => "[assistant message]".to_string(),
+        "content_block_start" => "[content block start]".to_string(),
+        "content_block_delta" => String::new(), // Skip deltas in raw view
+        "content_block_stop" => "[content block stop]".to_string(),
+        "message_start" => "[message start]".to_string(),
+        "message_delta" => "[message delta]".to_string(),
+        "message_stop" => "[message stop]".to_string(),
+        "result" => {
+            let subtype = json.get("subtype").and_then(|v| v.as_str()).unwrap_or("unknown");
+            format!("[result: {}]", subtype)
+        }
+        "tool_use" => {
+            let name = json.get("name").and_then(|n| n.as_str()).unwrap_or("unknown");
+            format!("[tool: {}]", name)
+        }
+        "system" => "[system]".to_string(),
+        "user" => "[user]".to_string(),
+        other if !other.is_empty() => format!("[{}]", other),
+        _ => String::new(),
+    }
 }
 
 async fn dashboard() -> HttpResponse {
