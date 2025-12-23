@@ -12,7 +12,7 @@ use predicates::prelude::*;
 /// Test that the binary exists and shows help
 #[test]
 fn test_help() {
-    let mut cmd = Command::cargo_bin("openagents").unwrap();
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("openagents"));
     cmd.arg("--help");
     cmd.assert()
         .success()
@@ -27,7 +27,7 @@ fn test_help() {
 /// Test version flag
 #[test]
 fn test_version() {
-    let mut cmd = Command::cargo_bin("openagents").unwrap();
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("openagents"));
     cmd.arg("--version");
     cmd.assert()
         .success()
@@ -38,7 +38,7 @@ fn test_version() {
 
 #[test]
 fn test_wallet_help() {
-    let mut cmd = Command::cargo_bin("openagents").unwrap();
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("openagents"));
     cmd.arg("wallet").arg("--help");
     cmd.assert()
         .success()
@@ -47,7 +47,7 @@ fn test_wallet_help() {
 
 #[test]
 fn test_wallet_whoami_no_wallet() {
-    let mut cmd = Command::cargo_bin("openagents").unwrap();
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("openagents"));
     cmd.arg("wallet").arg("whoami");
     // Should fail gracefully if no wallet exists
     cmd.assert().failure();
@@ -55,7 +55,7 @@ fn test_wallet_whoami_no_wallet() {
 
 #[test]
 fn test_wallet_balance_no_wallet() {
-    let mut cmd = Command::cargo_bin("openagents").unwrap();
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("openagents"));
     cmd.arg("wallet").arg("balance");
     // Should fail gracefully if no wallet exists
     cmd.assert().failure();
@@ -65,7 +65,7 @@ fn test_wallet_balance_no_wallet() {
 
 #[test]
 fn test_marketplace_help() {
-    let mut cmd = Command::cargo_bin("openagents").unwrap();
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("openagents"));
     cmd.arg("marketplace").arg("--help");
     cmd.assert()
         .success()
@@ -74,21 +74,21 @@ fn test_marketplace_help() {
 
 #[test]
 fn test_marketplace_compute_help() {
-    let mut cmd = Command::cargo_bin("openagents").unwrap();
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("openagents"));
     cmd.arg("marketplace").arg("compute").arg("--help");
     cmd.assert().success();
 }
 
 #[test]
 fn test_marketplace_skills_help() {
-    let mut cmd = Command::cargo_bin("openagents").unwrap();
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("openagents"));
     cmd.arg("marketplace").arg("skills").arg("--help");
     cmd.assert().success();
 }
 
 #[test]
 fn test_marketplace_data_help() {
-    let mut cmd = Command::cargo_bin("openagents").unwrap();
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("openagents"));
     cmd.arg("marketplace").arg("data").arg("--help");
     cmd.assert().success();
 }
@@ -97,7 +97,7 @@ fn test_marketplace_data_help() {
 
 #[test]
 fn test_autopilot_help() {
-    let mut cmd = Command::cargo_bin("openagents").unwrap();
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("openagents"));
     cmd.arg("autopilot").arg("--help");
     cmd.assert()
         .success()
@@ -106,14 +106,14 @@ fn test_autopilot_help() {
 
 #[test]
 fn test_autopilot_run_help() {
-    let mut cmd = Command::cargo_bin("openagents").unwrap();
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("openagents"));
     cmd.arg("autopilot").arg("run").arg("--help");
     cmd.assert().success();
 }
 
 #[test]
 fn test_autopilot_metrics_help() {
-    let mut cmd = Command::cargo_bin("openagents").unwrap();
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("openagents"));
     cmd.arg("autopilot").arg("metrics").arg("--help");
     cmd.assert().success();
 }
@@ -122,7 +122,7 @@ fn test_autopilot_metrics_help() {
 
 #[test]
 fn test_gitafter_help() {
-    let mut cmd = Command::cargo_bin("openagents").unwrap();
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("openagents"));
     cmd.arg("gitafter").arg("--help");
     cmd.assert()
         .success()
@@ -131,10 +131,10 @@ fn test_gitafter_help() {
 
 #[test]
 fn test_gitafter_gui() {
-    let mut cmd = Command::cargo_bin("openagents").unwrap();
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("openagents"));
     cmd.arg("gitafter").arg("gui");
     // GUI commands would normally block, so we just test help
-    let mut help_cmd = Command::cargo_bin("openagents").unwrap();
+    let mut help_cmd = Command::new(assert_cmd::cargo::cargo_bin!("openagents"));
     help_cmd.arg("gitafter").arg("gui").arg("--help");
     help_cmd.assert().success();
 }
@@ -143,7 +143,7 @@ fn test_gitafter_gui() {
 
 #[test]
 fn test_daemon_help() {
-    let mut cmd = Command::cargo_bin("openagents").unwrap();
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("openagents"));
     cmd.arg("daemon").arg("--help");
     cmd.assert()
         .success()
@@ -152,14 +152,14 @@ fn test_daemon_help() {
 
 #[test]
 fn test_daemon_status_help() {
-    let mut cmd = Command::cargo_bin("openagents").unwrap();
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("openagents"));
     cmd.arg("daemon").arg("status").arg("--help");
     cmd.assert().success();
 }
 
 #[test]
 fn test_daemon_start_help() {
-    let mut cmd = Command::cargo_bin("openagents").unwrap();
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("openagents"));
     cmd.arg("daemon").arg("start").arg("--help");
     cmd.assert().success();
 }
@@ -168,7 +168,7 @@ fn test_daemon_start_help() {
 
 #[test]
 fn test_verbose_flag() {
-    let mut cmd = Command::cargo_bin("openagents").unwrap();
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("openagents"));
     cmd.arg("--verbose").arg("--help");
     cmd.assert().success();
 }
@@ -177,7 +177,7 @@ fn test_verbose_flag() {
 
 #[test]
 fn test_invalid_command() {
-    let mut cmd = Command::cargo_bin("openagents").unwrap();
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("openagents"));
     cmd.arg("nonexistent");
     cmd.assert()
         .failure()
@@ -186,7 +186,7 @@ fn test_invalid_command() {
 
 #[test]
 fn test_invalid_subcommand_wallet() {
-    let mut cmd = Command::cargo_bin("openagents").unwrap();
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("openagents"));
     cmd.arg("wallet").arg("nonexistent");
     cmd.assert()
         .failure()
@@ -197,7 +197,7 @@ fn test_invalid_subcommand_wallet() {
 
 #[test]
 fn test_wallet_subcommands_listed() {
-    let mut cmd = Command::cargo_bin("openagents").unwrap();
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("openagents"));
     cmd.arg("wallet").arg("--help");
     cmd.assert()
         .success()
@@ -208,7 +208,7 @@ fn test_wallet_subcommands_listed() {
 
 #[test]
 fn test_marketplace_subcommands_listed() {
-    let mut cmd = Command::cargo_bin("openagents").unwrap();
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("openagents"));
     cmd.arg("marketplace").arg("--help");
     cmd.assert()
         .success()
@@ -219,7 +219,7 @@ fn test_marketplace_subcommands_listed() {
 
 #[test]
 fn test_autopilot_subcommands_listed() {
-    let mut cmd = Command::cargo_bin("openagents").unwrap();
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("openagents"));
     cmd.arg("autopilot").arg("--help");
     cmd.assert()
         .success()
@@ -230,7 +230,7 @@ fn test_autopilot_subcommands_listed() {
 
 #[test]
 fn test_daemon_subcommands_listed() {
-    let mut cmd = Command::cargo_bin("openagents").unwrap();
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("openagents"));
     cmd.arg("daemon").arg("--help");
     cmd.assert()
         .success()
