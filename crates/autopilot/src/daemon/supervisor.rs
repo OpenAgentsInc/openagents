@@ -394,11 +394,21 @@ impl WorkerSupervisor {
     }
 
     /// Run the main monitoring loop
-    pub async fn run(&mut self, mut shutdown_rx: mpsc::Receiver<()>) -> Result<()> {
+    ///
+    /// If `shared_metrics` is provided, it will be updated on each poll iteration
+    /// so that control socket can read metrics without blocking this loop.
+    pub async fn run(&mut self, mut shutdown_rx: mpsc::Receiver<()>, shared_metrics: Option<SharedMetrics>) -> Result<()> {
         let poll_interval = Duration::from_millis(self.config.memory.poll_interval_ms);
 
         // Spawn worker on start
         self.spawn_worker()?;
+
+        // Update shared metrics initially
+        if let Some(ref metrics) = shared_metrics {
+            if let Ok(mut guard) = metrics.write() {
+                *guard = self.get_metrics();
+            }
+        }
 
         loop {
             tokio::select! {
@@ -457,6 +467,13 @@ impl WorkerSupervisor {
                             eprintln!("Worker in failed state: {} (retry in {:?})", reason, remaining);
                         }
                     }
+
+                    // Update shared metrics for control socket
+                    if let Some(ref metrics) = shared_metrics {
+                        if let Ok(mut guard) = metrics.write() {
+                            *guard = self.get_metrics();
+                        }
+                    }
                 }
                 _ = shutdown_rx.recv() => {
                     eprintln!("Shutdown signal received");
@@ -471,7 +488,7 @@ impl WorkerSupervisor {
 }
 
 /// Metrics for daemon status
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
 pub struct DaemonMetrics {
     pub worker_status: String,
     pub worker_pid: Option<u32>,
@@ -481,6 +498,9 @@ pub struct DaemonMetrics {
     pub memory_available_bytes: u64,
     pub memory_total_bytes: u64,
 }
+
+/// Shared metrics that can be read without locking the supervisor
+pub type SharedMetrics = std::sync::Arc<std::sync::RwLock<DaemonMetrics>>;
 
 /// Format bytes as human-readable string
 fn format_bytes(bytes: u64) -> String {

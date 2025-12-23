@@ -1,6 +1,6 @@
 //! Control socket server for daemon management
 
-use crate::daemon::supervisor::{DaemonMetrics, WorkerSupervisor};
+use crate::daemon::supervisor::{DaemonMetrics, SharedMetrics, WorkerSupervisor};
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
@@ -76,9 +76,13 @@ impl ControlServer {
     }
 
     /// Start the control server
+    ///
+    /// The `shared_metrics` is read directly for Status requests without needing
+    /// to lock the supervisor. Other commands that modify state still lock the supervisor.
     pub async fn run(
         &self,
         supervisor: Arc<Mutex<WorkerSupervisor>>,
+        shared_metrics: SharedMetrics,
         shutdown_tx: tokio::sync::mpsc::Sender<()>,
     ) -> Result<()> {
         // Remove stale socket
@@ -100,10 +104,11 @@ impl ControlServer {
                     match result {
                         Ok((stream, _)) => {
                             let supervisor = supervisor.clone();
+                            let shared_metrics = shared_metrics.clone();
                             let shutdown_tx = shutdown_tx.clone();
 
                             tokio::spawn(async move {
-                                if let Err(e) = handle_connection(stream, supervisor, shutdown_tx).await {
+                                if let Err(e) = handle_connection(stream, supervisor, shared_metrics, shutdown_tx).await {
                                     eprintln!("Control connection error: {}", e);
                                 }
                             });
@@ -122,6 +127,7 @@ impl ControlServer {
 async fn handle_connection(
     mut stream: UnixStream,
     supervisor: Arc<Mutex<WorkerSupervisor>>,
+    shared_metrics: SharedMetrics,
     shutdown_tx: tokio::sync::mpsc::Sender<()>,
 ) -> Result<()> {
     let mut buf = vec![0u8; 4096];
@@ -132,7 +138,7 @@ async fn handle_connection(
     }
 
     let request: ControlRequest = serde_json::from_slice(&buf[..n])?;
-    let response = process_request(request, supervisor, shutdown_tx).await;
+    let response = process_request(request, supervisor, shared_metrics, shutdown_tx).await;
 
     let response_bytes = serde_json::to_vec(&response)?;
     stream.write_all(&response_bytes).await?;
@@ -144,20 +150,25 @@ async fn handle_connection(
 async fn process_request(
     request: ControlRequest,
     supervisor: Arc<Mutex<WorkerSupervisor>>,
+    shared_metrics: SharedMetrics,
     shutdown_tx: tokio::sync::mpsc::Sender<()>,
 ) -> ControlResponse {
     match request {
         ControlRequest::Status => {
-            let mut guard = supervisor.lock().await;
-            let metrics = guard.get_metrics();
+            // Read from shared metrics without blocking the supervisor
+            let metrics = shared_metrics.read()
+                .map(|guard| guard.clone())
+                .unwrap_or_default();
             ControlResponse::ok_with_data(
                 format!("Worker is {}", metrics.worker_status),
                 serde_json::to_value(&metrics).unwrap_or_default(),
             )
         }
         ControlRequest::GetMetrics => {
-            let mut guard = supervisor.lock().await;
-            let metrics = guard.get_metrics();
+            // Read from shared metrics without blocking the supervisor
+            let metrics = shared_metrics.read()
+                .map(|guard| guard.clone())
+                .unwrap_or_default();
             ControlResponse::ok_with_data("Metrics retrieved", serde_json::to_value(&metrics).unwrap_or_default())
         }
         ControlRequest::RestartWorker => {
