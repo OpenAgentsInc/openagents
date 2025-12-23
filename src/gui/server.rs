@@ -67,10 +67,11 @@ pub async fn start_server() -> anyhow::Result<u16> {
     Ok(port)
 }
 
-/// Poll the daemon socket for status updates
+/// Poll the daemon socket for status updates and broadcast via WebSocket
 async fn poll_daemon_status(state: web::Data<AppState>) {
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tokio::net::UnixStream;
+    use ui::DaemonStatus;
 
     let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
     let socket_path = std::path::PathBuf::from(&home)
@@ -94,9 +95,48 @@ async fn poll_daemon_status(state: web::Data<AppState>) {
         }
         .await;
 
+        // Build daemon status HTML for WebSocket broadcast
+        let daemon_status = match &result {
+            Ok(response) => {
+                if let Some(data) = response.get("data") {
+                    let mut ds = DaemonStatus::connected();
+                    if let Some(status) = data.get("worker_status").and_then(|v| v.as_str()) {
+                        ds = ds.worker_status(status);
+                    }
+                    if let Some(pid) = data.get("worker_pid").and_then(|v| v.as_u64()) {
+                        ds = ds.worker_pid(pid as u32);
+                    }
+                    if let Some(uptime) = data.get("uptime_seconds").and_then(|v| v.as_u64()) {
+                        ds = ds.uptime(uptime);
+                    }
+                    if let Some(restarts) = data.get("total_restarts").and_then(|v| v.as_u64()) {
+                        let failures = data.get("consecutive_failures").and_then(|v| v.as_u64()).unwrap_or(0) as u32;
+                        ds = ds.restarts(restarts, failures);
+                    }
+                    if let Some(mem_avail) = data.get("memory_available_bytes").and_then(|v| v.as_u64()) {
+                        let mem_total = data.get("memory_total_bytes").and_then(|v| v.as_u64()).unwrap_or(0);
+                        ds = ds.memory(mem_avail, mem_total);
+                    }
+                    ds
+                } else {
+                    DaemonStatus::disconnected().error("Invalid response")
+                }
+            }
+            Err(_) => {
+                DaemonStatus::disconnected().error("Daemon not running")
+            }
+        };
+
+        // Broadcast via WebSocket with OOB swap
+        let html = format!(
+            r#"<div id="daemon-status-content" hx-swap-oob="innerHTML">{}</div>"#,
+            daemon_status.build().into_string()
+        );
+        state.broadcaster.broadcast(&html);
+
+        // Also update state for initial page load
         match result {
             Ok(response) => {
-                // Parse daemon metrics from response
                 if let Some(data) = response.get("data") {
                     let mut info = state.daemon_info.write().await;
                     info.connected = true;
@@ -129,7 +169,6 @@ async fn poll_daemon_status(state: web::Data<AppState>) {
                 }
             }
             Err(_) => {
-                // Connection failed - daemon not running or socket unavailable
                 let mut info = state.daemon_info.write().await;
                 *info = DaemonInfo {
                     connected: false,
