@@ -1695,6 +1695,19 @@ impl MetricsDb {
     }
 }
 
+impl Drop for MetricsDb {
+    fn drop(&mut self) {
+        // Ensure any pending transactions are handled
+        // Connection::close() is called automatically by rusqlite's Drop impl,
+        // but we can add explicit cleanup here if needed in the future
+
+        // Note: rusqlite's Connection already has a Drop impl that:
+        // - Rolls back any uncommitted transaction
+        // - Closes the database connection
+        // This explicit Drop serves as documentation and allows future cleanup
+    }
+}
+
 /// Get default metrics database path
 pub fn default_db_path() -> PathBuf {
     PathBuf::from("autopilot-metrics.db")
