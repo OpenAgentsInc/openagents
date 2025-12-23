@@ -11,6 +11,7 @@ use agent_client_protocol_schema as acp;
 use tokio::sync::RwLock;
 
 use crate::error::{AcpError, Result};
+use crate::permissions::PermissionRequestManager;
 use crate::session::AcpAgentSession;
 
 /// Permission handler trait for tool authorization
@@ -80,6 +81,118 @@ impl PermissionHandler for DenyAllPermissions {
     }
 }
 
+/// UI-based permission handler that surfaces requests to the UI layer
+///
+/// This handler integrates with the PermissionRequestManager to present
+/// permission requests to the user via the GUI and wait for their response.
+///
+/// Note: This handler needs access to the session ID, which is not available
+/// in the PermissionHandler trait signature. A more complete implementation
+/// would extend the trait or use a different pattern to pass session context.
+pub struct UiPermissionHandler {
+    manager: Arc<PermissionRequestManager>,
+    session_id: String,
+}
+
+impl UiPermissionHandler {
+    /// Create a new UI permission handler for a specific session
+    pub fn new(manager: Arc<PermissionRequestManager>, session_id: String) -> Self {
+        Self {
+            manager,
+            session_id,
+        }
+    }
+}
+
+#[async_trait::async_trait]
+impl PermissionHandler for UiPermissionHandler {
+    async fn can_use_tool(
+        &self,
+        tool_call: &acp::ToolCallUpdate,
+        options: &[acp::PermissionOption],
+    ) -> Result<acp::RequestPermissionOutcome> {
+        // Generate unique request ID
+        let request_id = uuid::Uuid::new_v4().to_string();
+
+        // Extract tool information directly from the tool_call
+        let tool_name = if let Some(title) = &tool_call.fields.title {
+            title.clone()
+        } else if let Some(kind) = &tool_call.fields.kind {
+            format!("{:?}", kind)
+        } else {
+            "Tool".to_string()
+        };
+
+        let description = if let Some(title) = &tool_call.fields.title {
+            format!("Execute: {}", title)
+        } else {
+            "Execute tool".to_string()
+        };
+
+        let input = tool_call
+            .fields
+            .raw_input
+            .clone()
+            .unwrap_or(serde_json::json!({}));
+
+        // Convert options to UI format
+        let ui_options: Vec<_> = options
+            .iter()
+            .map(|opt| crate::permissions::UiPermissionOption {
+                option_id: opt.option_id.to_string(),
+                kind: (&opt.kind).into(),
+                label: opt.name.clone(),
+                is_persistent: matches!(
+                    opt.kind,
+                    acp::PermissionOptionKind::AllowAlways
+                        | acp::PermissionOptionKind::RejectAlways
+                ),
+            })
+            .collect();
+
+        let ui_request = crate::permissions::UiPermissionRequest {
+            request_id: request_id.clone(),
+            session_id: self.session_id.clone(),
+            tool_name,
+            description,
+            input,
+            options: ui_options,
+            timestamp: chrono::Utc::now(),
+        };
+
+        tracing::info!(
+            request_id = %request_id,
+            tool_name = %ui_request.tool_name,
+            session_id = %self.session_id,
+            "Permission request created, waiting for user response"
+        );
+
+        // Request permission and wait for user response
+        match self.manager.request_permission(ui_request.clone()).await {
+            Ok(response) => {
+                tracing::info!(
+                    request_id = %request_id,
+                    selected_option = %response.selected_option_id,
+                    "Permission response received"
+                );
+
+                // Convert UI response to ACP outcome
+                Ok(ui_request.to_acp_outcome(&response))
+            }
+            Err(e) => {
+                tracing::warn!(
+                    request_id = %request_id,
+                    error = %e,
+                    "Permission request failed or timed out"
+                );
+
+                // Return cancelled outcome on error
+                Ok(acp::RequestPermissionOutcome::Cancelled)
+            }
+        }
+    }
+}
+
 /// OpenAgents ACP client delegate
 ///
 /// Handles requests from the agent including:
@@ -118,6 +231,20 @@ impl OpenAgentsClient {
         root_dir: PathBuf,
     ) -> Self {
         Self::new(sessions, Arc::new(AllowAllPermissions), root_dir)
+    }
+
+    /// Create a new client with UI permission handling
+    pub fn with_ui_permissions(
+        sessions: Arc<RwLock<HashMap<String, AcpAgentSession>>>,
+        permission_manager: Arc<PermissionRequestManager>,
+        session_id: String,
+        root_dir: PathBuf,
+    ) -> Self {
+        Self::new(
+            sessions,
+            Arc::new(UiPermissionHandler::new(permission_manager, session_id)),
+            root_dir,
+        )
     }
 
     /// Handle a permission request from the agent

@@ -822,6 +822,7 @@ dependencies = [
  "flate2",
  "futures",
  "futures-util",
+ "gpt-oss-agent",
  "hex",
  "insta",
  "issues",
@@ -3624,6 +3625,7 @@ version = "0.1.0"
 dependencies = [
  "acp-adapter",
  "async-trait",
+ "chrono",
  "gpt-oss",
  "local-inference",
  "recorder",
@@ -3634,6 +3636,7 @@ dependencies = [
  "thiserror 2.0.17",
  "tokio",
  "tracing",
+ "uuid",
 ]
 
 [[package]]
