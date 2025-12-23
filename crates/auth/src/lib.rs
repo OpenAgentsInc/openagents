@@ -145,13 +145,16 @@ pub async fn validator(
     }
 }
 
+/// Type alias for the authentication validator future
+type AuthValidatorFuture = std::pin::Pin<Box<dyn std::future::Future<Output = Result<ServiceRequest, (Error, ServiceRequest)>>>>;
+
 /// Create authentication middleware
 ///
 /// Returns HttpAuthentication middleware that requires Bearer token authentication.
 /// Use with `.wrap()` on Actix services or scopes.
-pub fn auth_middleware() -> HttpAuthentication<BearerAuth, impl Fn(ServiceRequest, BearerAuth) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<ServiceRequest, (Error, ServiceRequest)>>>>>
+pub fn auth_middleware() -> HttpAuthentication<BearerAuth, impl Fn(ServiceRequest, BearerAuth) -> AuthValidatorFuture>
 {
-    HttpAuthentication::bearer(|req, creds| -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<ServiceRequest, (Error, ServiceRequest)>>>> {
+    HttpAuthentication::bearer(|req, creds| -> AuthValidatorFuture {
         Box::pin(async move {
             // Get token from app data - need to check before moving req
             let is_valid = match req.app_data::<actix_web::web::Data<AuthToken>>() {
