@@ -578,3 +578,56 @@ t!:Bash id=ok3foT8c cmd="cargo test -p agentgit --lib 2>&1 | tail -30" → [runn
 o: id=ok3foT8c → [ok] test trajectory::verifier::tests::test_compare_to_diff_too_few_events ... ok
 a: Perfect! All 82 tests pass. Now let me commit and push the changes: tokens_in=0 tokens_out=1 tokens_cached=84284
 t!:Bash id=acibFzss cmd="git add -A && git commit -m "$(cat <<'EOF'" → [running] tokens_in=0 tokens_out=415 tokens_cached=84284
+o: id=acibFzss → [ok] [main 63094beb2] Implement stacked PR dependency graph validation in AgentGit
+t!:Bash id=d1M1mStU cmd="git push origin main" → [running] tokens_in=0 tokens_out=75 tokens_cached=85052
+o: id=d1M1mStU → [ok] [0;36m🔍 Running cargo build to check for errors and warnings...[0m
+t!:mcp__issues__issue_complete id=YfhNZWjK  → [running] tokens_in=0 tokens_out=32 tokens_cached=85859
+t!:mcp__issues__issue_ready id=zyg9WMJz  → [running] tokens_in=0 tokens_out=32 tokens_cached=85859
+o: id=YfhNZWjK → [ok] Completed issue #768
+o: id=zyg9WMJz → [ok] No ready issues available
+t!:mcp__issues__directive_get id=N9qbaaSy  → [running] tokens_in=1 tokens_out=32 tokens_cached=86125
+o: id=N9qbaaSy → [ok] {
+t!:mcp__issues__issue_create id=n1GvPd9h  → [running] tokens_in=0 tokens_out=5 tokens_cached=86288
+o: id=n1GvPd9h → [ok] Created issue #769: Add UI error display for stacked PR dependency validation failures (agent: cl...
+t!:mcp__issues__issue_create id=NgeYSbMN  → [running] tokens_in=3 tokens_out=25 tokens_cached=98095
+o: id=NgeYSbMN → [ok] Created issue #770: Implement stacked PR merge order enforcement in AgentGit UI (agent: claude) [...
+t!:mcp__issues__issue_ready id=xBwYhoga  → [running] tokens_in=3 tokens_out=27 tokens_cached=98766
+o: id=xBwYhoga → [ok] {
+t!:mcp__issues__issue_claim id=1wFygY9k  → [running] tokens_in=0 tokens_out=5 tokens_cached=99748
+o: id=1wFygY9k → [ok] Claimed issue #770
+t!:Read id=6hdZUQkv file_path=/home/christopherdavid/code/openagents/crates/agentgit/src/server.rs → [running] tokens_in=3 tokens_out=115 tokens_cached=100843
+o: id=6hdZUQkv → [ok]   2400→    tracing::info!(
+t!:Grep id=saPUDCQC pattern="async fn pr_status_change" → [running] tokens_in=3 tokens_out=142 tokens_cached=100941
+o: id=saPUDCQC → [ok] 1000:async fn pr_status_change(
+t!:Edit id=2aFpW3gh file_path=/home/christopherdavid/code/openagents/crates/agentgit/src/server.rs → [running] tokens_in=2 tokens_out=990 tokens_cached=102572
+o: id=2aFpW3gh → [error] <tool_use_error>Found 4 matches of the string to replace, but replace_all is false. To replace al...
+t!:Edit id=hKetZaGZ file_path=/home/christopherdavid/code/openagents/crates/agentgit/src/server.rs → [running] tokens_in=3 tokens_out=1280 tokens_cached=104239
+o: id=hKetZaGZ → [ok] The file /home/christopherdavid/code/openagents/crates/agentgit/src/server.rs has been updated. H...
+a: Now I need to check if the `get_pr_status` method exists on NostrClient: tokens_in=2 tokens_out=1 tokens_cached=105343
+t!:Grep id=CetgsBs7 pattern="pub async fn get_pr_status" → [running] tokens_in=2 tokens_out=1 tokens_cached=105343
+o: id=CetgsBs7 → [ok] No matches found
+a: I need to add the `get_pr_status` method. Let me check the cache methods first: tokens_in=1 tokens_out=1 tokens_cached=108136
+t!:Grep id=zAKGyx3w pattern="pub fn.*status|get.*status" → [running] tokens_in=1 tokens_out=151 tokens_cached=108136
+o: id=zAKGyx3w → [ok] 923:    pub fn get_status_events_for_pr(&self, pr_event_id: &str) -> Result<Vec<Event>> {
+t!:Grep id=S6E1fV6h pattern="pub fn get_status_events_fo..." → [running] tokens_in=0 tokens_out=24 tokens_cached=108387
+o: id=S6E1fV6h → [ok] 923:    pub fn get_status_events_for_pr(&self, pr_event_id: &str) -> Result<Vec<Event>> {
+a: Now I'll add a helper method to the NostrClient to get the latest status for a PR: tokens_in=0 tokens_out=5 tokens_cached=108611
+t!:Read id=iGhZj4Nq file_path=/home/christopherdavid/code/openagents/crates/agentgit/src/nostr/client.rs → [running] tokens_in=0 tokens_out=139 tokens_cached=108611
+o: id=iGhZj4Nq → [ok]    280→    pub async fn get_pull_requests_by_repo(&self, repo_address: &str, limit: usize) -> Res...
+t!:Edit id=3KtjsTNs file_path=/home/christopherdavid/code/openagents/crates/agentgit/src/nostr/client.rs → [running] tokens_in=0 tokens_out=419 tokens_cached=109170
+o: id=3KtjsTNs → [ok] The file /home/christopherdavid/code/openagents/crates/agentgit/src/nostr/client.rs has been upda...
+a: Now let me build to check for compilation errors: tokens_in=0 tokens_out=1 tokens_cached=109908
+t!:Bash id=paEeoYmC cmd="cargo build -p agentgit 2>&1 | grep -E "error|w..." → [running] tokens_in=0 tokens_out=1 tokens_cached=109908
+o: id=paEeoYmC → [ok] error[E0308]: mismatched types
+t!:Bash id=d6JPe6Lc cmd="cargo build -p agentgit 2>&1 | grep -A 10 "erro..." → [running] tokens_in=0 tokens_out=25 tokens_cached=110909
+o: id=d6JPe6Lc → [ok] error[E0308]: mismatched types
+a: The `kind` field is `u16`, not `u64`. Let me fix that: tokens_in=0 tokens_out=1 tokens_cached=111104
+t!:Edit id=aadGnCHg file_path=/home/christopherdavid/code/openagents/crates/agentgit/src/nostr/client.rs → [running] tokens_in=0 tokens_out=450 tokens_cached=111104
+o: id=aadGnCHg → [ok] The file /home/christopherdavid/code/openagents/crates/agentgit/src/nostr/client.rs has been upda...
+t!:Bash id=bbG6kQrw cmd="cargo build -p agentgit 2>&1 | tail -5" → [running] tokens_in=0 tokens_out=26 tokens_cached=111492
+o: id=bbG6kQrw → [ok] 101 | pub fn extract_inline_comments(comment_events: &[Event]) -> Vec<InlineComment> {
+a: Great! Now let me run the tests to ensure everything still works: tokens_in=0 tokens_out=1 tokens_cached=112336
+t!:Bash id=1N1a1qKy cmd="cargo test -p agentgit --lib 2>&1 | tail -10" → [running] tokens_in=0 tokens_out=1 tokens_cached=112336
+o: id=1N1a1qKy → [ok] test git::remote::tests::test_list_remotes ... ok
+a: Perfect! Now let me commit these changes: tokens_in=0 tokens_out=1 tokens_cached=112661
+t!:Bash id=976qNoCj cmd="git add -A && git commit -m "$(cat <<'EOF'" → [running] tokens_in=0 tokens_out=393 tokens_cached=112661
