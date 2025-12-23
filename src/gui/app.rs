@@ -14,6 +14,17 @@ use super::server::start_server;
 pub fn run() -> Result<()> {
     tracing::info!("Starting OpenAgents Desktop...");
 
+    // Workaround for webkit2gtk Wayland compositing issue
+    // This disables GPU compositing which causes protocol errors on Wayland
+    // See: https://github.com/nicholaskariniemi/tauri-wayland-issue
+    if std::env::var("WAYLAND_DISPLAY").is_ok() {
+        // SAFETY: This is set early in startup before any other threads are spawned,
+        // and WEBKIT_DISABLE_COMPOSITING_MODE is only read by webkit2gtk during init.
+        unsafe {
+            std::env::set_var("WEBKIT_DISABLE_COMPOSITING_MODE", "1");
+        }
+    }
+
     // Initialize GTK (required for Wayland support)
     gtk::init().map_err(|e| anyhow::anyhow!("Failed to initialize GTK: {}", e))?;
 
