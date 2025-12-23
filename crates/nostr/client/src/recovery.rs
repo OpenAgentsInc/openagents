@@ -40,6 +40,12 @@ pub struct CircuitBreaker {
     last_change: Arc<RwLock<Instant>>,
 }
 
+impl Default for CircuitBreaker {
+    fn default() -> Self {
+        Self::new(5, 2, Duration::from_secs(30))
+    }
+}
+
 impl CircuitBreaker {
     /// Create a new circuit breaker
     ///
@@ -57,11 +63,6 @@ impl CircuitBreaker {
             timeout,
             last_change: Arc::new(RwLock::new(Instant::now())),
         }
-    }
-
-    /// Create with default thresholds
-    pub fn default() -> Self {
-        Self::new(5, 2, Duration::from_secs(30))
     }
 
     /// Get current circuit state
@@ -178,6 +179,16 @@ pub struct ExponentialBackoff {
     max_attempts: u32,
 }
 
+impl Default for ExponentialBackoff {
+    fn default() -> Self {
+        Self::new(
+            Duration::from_secs(1),
+            Duration::from_secs(60),
+            0, // Infinite
+        )
+    }
+}
+
 impl ExponentialBackoff {
     /// Create a new exponential backoff calculator
     pub fn new(base_delay: Duration, max_delay: Duration, max_attempts: u32) -> Self {
@@ -187,15 +198,6 @@ impl ExponentialBackoff {
             attempt: 0,
             max_attempts,
         }
-    }
-
-    /// Create with default values (1s base, 60s max, infinite attempts)
-    pub fn default() -> Self {
-        Self::new(
-            Duration::from_secs(1),
-            Duration::from_secs(60),
-            0, // Infinite
-        )
     }
 
     /// Get next delay with exponential backoff and jitter
