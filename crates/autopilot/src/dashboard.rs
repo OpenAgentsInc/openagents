@@ -150,6 +150,7 @@ pub async fn start_dashboard(db_path: &str, port: u16) -> anyhow::Result<()> {
             .route("/api/metrics", web::get().to(api_metrics))
             .route("/api/anomalies", web::get().to(api_anomalies))
             .route("/api/trends", web::get().to(api_trends))
+            .route("/api/velocity", web::get().to(api_velocity))
             .route("/ws/metrics", web::get().to(websocket_metrics))
     })
     .bind(("127.0.0.1", port))?
@@ -1465,6 +1466,32 @@ async fn api_trends(
         "hours": hours,
         "granularity": query.granularity,
         "data": data_points,
+    });
+
+    Ok(HttpResponse::Ok().json(response))
+}
+
+/// API endpoint: GET /api/velocity
+/// Returns current velocity snapshot and recent historical snapshots
+async fn api_velocity(
+    state: web::Data<DashboardState>,
+) -> ActixResult<HttpResponse> {
+    use crate::analyze::{calculate_velocity, TimePeriod};
+
+    let store = MetricsDb::open(&state.db_path)
+        .map_err(|e| actix_web::error::ErrorInternalServerError(e))?;
+
+    // Calculate current velocity for this week
+    let current_velocity = calculate_velocity(&store, TimePeriod::ThisWeek)
+        .map_err(|e| actix_web::error::ErrorInternalServerError(e))?;
+
+    // Get recent snapshots (last 10)
+    let snapshots = store.get_velocity_snapshots(10)
+        .map_err(|e| actix_web::error::ErrorInternalServerError(e))?;
+
+    let response = serde_json::json!({
+        "current": current_velocity,
+        "history": snapshots,
     });
 
     Ok(HttpResponse::Ok().json(response))
