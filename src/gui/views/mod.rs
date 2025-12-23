@@ -4,7 +4,7 @@ mod layout;
 
 use actix_web::{web, HttpResponse};
 use tracing::info;
-use ui::{ChatPane, ClaudeStatus, DaemonStatus, FullAutoSwitch};
+use ui::{AgentInfo, AgentSelector, AgentType, ChatPane, ClaudeStatus, DaemonStatus, FullAutoSwitch};
 
 use crate::gui::state::AppState;
 
@@ -18,6 +18,23 @@ pub async fn home(
     info!("GET / home page requested");
     let full_auto = *state.full_auto.read().await;
     let switch = FullAutoSwitch::new(full_auto).build();
+
+    // Get selected agent and availability
+    let selected_agent = state.selected_agent.read().await.clone();
+    let agent_availability = state.agent_availability.read().await.clone();
+
+    let agent_type = AgentType::from_str(&selected_agent).unwrap_or(AgentType::Claude);
+    let agents = vec![
+        AgentInfo::new(
+            AgentType::Claude,
+            *agent_availability.get("claude").unwrap_or(&true), // Default to true for Claude
+        ),
+        AgentInfo::new(
+            AgentType::Codex,
+            *agent_availability.get("codex").unwrap_or(&false),
+        ),
+    ];
+    let agent_selector = AgentSelector::new(agent_type).agents(agents).build();
 
     // Get Claude info from state
     let info = state.claude_info.read().await;
@@ -94,7 +111,8 @@ pub async fn home(
     );
 
     let content = format!(
-        r#"<div style="position: fixed; top: 1rem; right: 1rem; z-index: 50;">{}</div>{}{}"#,
+        r#"<div style="position: fixed; top: 1rem; right: 1rem; z-index: 50; display: flex; gap: 1rem; align-items: center;">{}{}</div>{}{}"#,
+        agent_selector.into_string(),
         switch.into_string(),
         status_panels,
         chat_pane.into_string()

@@ -83,14 +83,40 @@ async fn spawn_autopilot_process(state: &web::Data<AppState>) -> anyhow::Result<
         }
     }
 
-    // Build command - same as .cargo/config.toml fullauto alias
-    // Use --quiet to suppress cargo compilation output
-    let mut cmd = Command::new("cargo");
-    cmd.args([
-        "run", "--quiet", "-p", "autopilot", "--bin", "autopilot", "--",
-        "run", "--with-issues", "--full-auto", "--max-turns", "99999",
-        "Begin autonomous work. Call issue_ready to get the first issue, or if none exist, review the active directives and create issues to advance them."
-    ]);
+    // Get selected agent
+    let selected_agent = state.selected_agent.read().await.clone();
+
+    // Build command based on selected agent
+    let mut cmd = match selected_agent.as_str() {
+        "codex" => {
+            // Use Codex CLI
+            let codex_path = find_agent_executable("codex")
+                .ok_or_else(|| anyhow::anyhow!("Codex not installed. Run: npm install -g @openai/codex"))?;
+
+            let mut c = Command::new(codex_path);
+            c.args([
+                "exec",
+                "--experimental-json",
+                "--sandbox", "workspace-write",
+            ]);
+            c
+        }
+        _ => {
+            // Default to Claude Code
+            let claude_path = find_agent_executable("claude")
+                .ok_or_else(|| anyhow::anyhow!("Claude Code not installed. Run: npm install -g @anthropic-ai/claude-code"))?;
+
+            let mut c = Command::new(claude_path);
+            c.args([
+                "--output-format", "stream-json",
+                "--permission-mode", "bypassPermissions",
+                "-p",
+                "Begin autonomous work. Call issue_ready to get the first issue, or if none exist, review the active directives and create issues to advance them."
+            ]);
+            c
+        }
+    };
+
     cmd.stdout(Stdio::piped());
     cmd.stderr(Stdio::piped());
     cmd.kill_on_drop(true);
@@ -103,10 +129,14 @@ async fn spawn_autopilot_process(state: &web::Data<AppState>) -> anyhow::Result<
     let (shutdown_tx, mut shutdown_rx) = tokio::sync::mpsc::channel::<()>(1);
     let broadcaster = state.broadcaster.clone();
 
-    // Broadcast startup message to all views
-    broadcaster.broadcast(r#"<div id="chat-content-raw" hx-swap-oob="beforeend"><div class="log-line log-success">Autopilot starting...</div></div>"#);
-    broadcaster.broadcast(r#"<div id="chat-content-json" hx-swap-oob="beforeend"><div class="json-line" style="color: var(--color-green);">Autopilot starting...</div></div>"#);
-    broadcaster.broadcast(r#"<div id="chat-content-formatted" hx-swap-oob="beforeend"><div class="px-3 py-2 text-green text-sm">Autopilot starting...</div></div>"#);
+    // Broadcast startup message to all views with agent name
+    let agent_name = match selected_agent.as_str() {
+        "codex" => "Codex",
+        _ => "Claude Code",
+    };
+    broadcaster.broadcast(&format!(r#"<div id="chat-content-raw" hx-swap-oob="beforeend"><div class="log-line log-success">{} starting...</div></div>"#, agent_name));
+    broadcaster.broadcast(&format!(r#"<div id="chat-content-json" hx-swap-oob="beforeend"><div class="json-line" style="color: var(--color-green);">{} starting...</div></div>"#, agent_name));
+    broadcaster.broadcast(&format!(r#"<div id="chat-content-formatted" hx-swap-oob="beforeend"><div class="px-3 py-2 text-green text-sm">{} starting...</div></div>"#, agent_name));
 
     // Spawn output reader task
     let output_task = tokio::spawn(async move {
@@ -278,4 +308,40 @@ async fn metrics_page() -> HttpResponse {
     HttpResponse::Ok()
         .content_type("text/html")
         .body("<h1>Metrics</h1><p>Coming soon...</p>")
+}
+
+/// Find an agent executable by name
+fn find_agent_executable(name: &str) -> Option<std::path::PathBuf> {
+    // Try which first
+    if let Ok(path) = which::which(name) {
+        return Some(path);
+    }
+
+    // Try common locations
+    let home = std::env::var("HOME").ok()?;
+    let paths = match name {
+        "claude" => vec![
+            format!("{}/.claude/local/claude", home),
+            format!("{}/.npm-global/bin/claude", home),
+            format!("{}/.local/bin/claude", home),
+            "/usr/local/bin/claude".to_string(),
+            "/opt/homebrew/bin/claude".to_string(),
+        ],
+        "codex" => vec![
+            format!("{}/.npm-global/bin/codex", home),
+            format!("{}/.local/bin/codex", home),
+            "/usr/local/bin/codex".to_string(),
+            "/opt/homebrew/bin/codex".to_string(),
+        ],
+        _ => return None,
+    };
+
+    for path in &paths {
+        let path = std::path::PathBuf::from(path);
+        if path.exists() {
+            return Some(path);
+        }
+    }
+
+    None
 }

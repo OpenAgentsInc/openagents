@@ -3,6 +3,7 @@
 use actix_web::web;
 
 pub mod acp;
+mod agents;
 mod autopilot;
 mod claude;
 mod daemon;
@@ -17,6 +18,7 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
         .route("/", web::get().to(super::views::home))
         // API routes
         .service(web::scope("/api/acp").configure(acp::configure_api))
+        .service(web::scope("/api/agents").configure(agents::configure_api))
         .service(web::scope("/api/autopilot").configure(autopilot::configure_api))
         .service(web::scope("/api/claude").configure(claude::configure_api))
         .service(web::scope("/api/daemon").configure(daemon::configure_api))

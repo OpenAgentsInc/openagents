@@ -132,6 +132,12 @@ pub struct AppState {
 
     /// ACP permission request manager
     pub permission_manager: Arc<PermissionRequestManager>,
+
+    /// Currently selected agent ("claude" or "codex")
+    pub selected_agent: RwLock<String>,
+
+    /// Agent availability cache (agent_id -> available)
+    pub agent_availability: RwLock<HashMap<String, bool>>,
 }
 
 impl AppState {
@@ -148,6 +154,8 @@ impl AppState {
             autopilot_process: RwLock::new(None),
             acp_sessions: RwLock::new(HashMap::new()),
             permission_manager: Arc::new(PermissionRequestManager::new()),
+            selected_agent: RwLock::new("claude".to_string()),
+            agent_availability: RwLock::new(HashMap::new()),
         }
     }
 }
