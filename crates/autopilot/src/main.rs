@@ -487,19 +487,10 @@ enum Commands {
         #[command(subcommand)]
         command: MetricsCommands,
     },
-    /// Show APM (Actions Per Minute) statistics
+    /// APM (Actions Per Minute) tracking and statistics
     Apm {
-        /// Time window to display (session, 1h, 6h, 1d, 1w, 1m, lifetime)
-        #[arg(short, long)]
-        window: Option<String>,
-
-        /// Source to display (autopilot, claude_code, combined)
-        #[arg(short, long)]
-        source: Option<String>,
-
-        /// Path to metrics database (default: autopilot-metrics.db)
-        #[arg(long)]
-        metrics_db: Option<PathBuf>,
+        #[command(subcommand)]
+        command: ApmCommands,
     },
     /// Run performance benchmarks
     Benchmark {
@@ -1058,6 +1049,58 @@ enum MetricsCommands {
 }
 
 #[derive(Subcommand)]
+enum ApmCommands {
+    /// Show APM statistics for different time windows
+    Stats {
+        /// Source to display (autopilot, claude_code, combined)
+        #[arg(short, long)]
+        source: Option<String>,
+
+        /// Path to database (default: autopilot.db in workspace root)
+        #[arg(long)]
+        db: Option<PathBuf>,
+    },
+    /// List APM sessions
+    Sessions {
+        /// Source filter (autopilot, claude_code)
+        #[arg(short, long)]
+        source: Option<String>,
+
+        /// Limit number of results
+        #[arg(short, long, default_value_t = 20)]
+        limit: usize,
+
+        /// Path to database (default: autopilot.db in workspace root)
+        #[arg(long)]
+        db: Option<PathBuf>,
+    },
+    /// Show detailed APM breakdown for a session
+    Show {
+        /// Session ID
+        #[arg(required = true)]
+        session_id: String,
+
+        /// Path to database (default: autopilot.db in workspace root)
+        #[arg(long)]
+        db: Option<PathBuf>,
+    },
+    /// Export APM data to JSON
+    Export {
+        /// Output file path
+        #[arg(required = true)]
+        output: PathBuf,
+
+        /// Source filter (autopilot, claude_code)
+        #[arg(short, long)]
+        source: Option<String>,
+
+        /// Path to database (default: autopilot.db in workspace root)
+        #[arg(long)]
+        db: Option<PathBuf>,
+    },
+}
+
+#[derive(Subcommand)]
 enum AlertCommands {
     /// List all configured alert rules
     List {
@@ -1282,8 +1325,8 @@ async fn main() -> Result<()> {
         Commands::Metrics { command } => {
             handle_metrics_command(command).await
         }
-        Commands::Apm { window, source, metrics_db } => {
-            handle_apm_command(window, source, metrics_db).await
+        Commands::Apm { command } => {
+            handle_apm_command(command).await
         }
         Commands::Benchmark {
             benchmark_id,
@@ -5543,95 +5586,142 @@ async fn handle_benchmark_command(
     Ok(())
 }
 
-/// Handle APM command
-async fn handle_apm_command(
-    window: Option<String>,
-    source: Option<String>,
-    _metrics_db: Option<PathBuf>,
-) -> Result<()> {
-    use autopilot::apm::{APMSource, APMWindow};
+/// Handle APM commands
+async fn handle_apm_command(command: ApmCommands) -> Result<()> {
+    use autopilot::apm::{APMSource, APMTier};
+    use autopilot::apm_storage::{get_latest_snapshot, get_sessions_by_source, get_session_stats, init_apm_tables};
+    use autopilot::default_db_path;
     use colored::Colorize;
+    use rusqlite::Connection;
 
-    // Parse window if provided
-    let _window_filter = window.as_deref().map(|w| match w {
-        "session" => APMWindow::Session,
-        "1h" => APMWindow::Hour1,
-        "6h" => APMWindow::Hour6,
-        "1d" => APMWindow::Day1,
-        "1w" => APMWindow::Week1,
-        "1m" => APMWindow::Month1,
-        "lifetime" => APMWindow::Lifetime,
-        _ => {
-            eprintln!("Invalid window: {}. Valid values: session, 1h, 6h, 1d, 1w, 1m, lifetime", w);
-            std::process::exit(1);
+    let default_db = default_db_path();
+
+    match command {
+        ApmCommands::Stats { source, db } => {
+            let db_path = db.unwrap_or(default_db);
+            let conn = Connection::open(&db_path)?;
+            init_apm_tables(&conn)?;
+
+            let source_filter = source.as_deref().map(|s| match s {
+                "autopilot" => APMSource::Autopilot,
+                "claude_code" | "claude" => APMSource::ClaudeCode,
+                _ => {
+                    eprintln!("Invalid source: {}. Valid values: autopilot, claude_code", s);
+                    std::process::exit(1);
+                }
+            });
+
+            println!("{}", "APM Statistics".cyan().bold());
+            println!("{}", "─".repeat(70).dimmed());
+            println!();
+
+            let sources = if let Some(s) = source_filter {
+                vec![s]
+            } else {
+                vec![APMSource::Autopilot, APMSource::ClaudeCode]
+            };
+
+            for src in sources {
+                let latest = get_latest_snapshot(&conn, src, autopilot::apm::APMWindow::Lifetime)?;
+
+                if let Some(snap) = latest {
+                    let tier = APMTier::from_apm(snap.apm);
+                    println!(
+                        "{:<15} {:>8.1} APM  ({}) - {} messages, {} tool calls",
+                        format!("{:?}", src).green().bold(),
+                        snap.apm,
+                        tier.name().yellow(),
+                        snap.messages,
+                        snap.tool_calls
+                    );
+                } else {
+                    println!("{:<15} {}", format!("{:?}", src).dimmed(), "No data".dimmed());
+                }
+            }
+
+            println!();
+            Ok(())
         }
-    });
+        ApmCommands::Sessions { source, limit, db } => {
+            let db_path = db.unwrap_or(default_db);
+            let conn = Connection::open(&db_path)?;
+            init_apm_tables(&conn)?;
 
-    // Parse source if provided
-    let source_filter = source.as_deref().map(|s| match s {
-        "autopilot" => APMSource::Autopilot,
-        "claude_code" | "claude" => APMSource::ClaudeCode,
-        "combined" => APMSource::Combined,
-        _ => {
-            eprintln!("Invalid source: {}. Valid values: autopilot, claude_code, combined", s);
-            std::process::exit(1);
+            let src = source.as_deref().map(|s| match s {
+                "autopilot" => APMSource::Autopilot,
+                "claude_code" | "claude" => APMSource::ClaudeCode,
+                _ => {
+                    eprintln!("Invalid source: {}. Valid values: autopilot, claude_code", s);
+                    std::process::exit(1);
+                }
+            }).unwrap_or(APMSource::Autopilot);
+
+            let sessions = get_sessions_by_source(&conn, src)?;
+
+            println!("{}", "APM Sessions".cyan().bold());
+            println!("{}", "─".repeat(70).dimmed());
+            println!();
+
+            for (id, start_time, end_time) in sessions.iter().take(limit) {
+                let status = if end_time.is_some() { "✓" } else { "•" };
+                println!("{} {:<20} {}", status.green(), &id[..id.len().min(20)], start_time.format("%Y-%m-%d %H:%M:%S"));
+            }
+
+            println!();
+            println!("Showing {} of {} sessions", sessions.len().min(limit), sessions.len());
+            Ok(())
         }
-    });
+        ApmCommands::Show { session_id, db } => {
+            let db_path = db.unwrap_or(default_db);
+            let conn = Connection::open(&db_path)?;
+            init_apm_tables(&conn)?;
 
-    println!("{}", "APM Statistics".cyan().bold());
-    println!("{}", "─".repeat(70).dimmed());
-    println!();
+            let (messages, tool_calls) = get_session_stats(&conn, &session_id)?;
 
-    // TODO: Query actual data from metrics database
-    // For now, show placeholder data
-    println!("{:<12} {:>8} {:>8} {:>8} {:>8} {:>8}",
-        "Source".bold(),
-        "Session".bold(),
-        "1h".bold(),
-        "6h".bold(),
-        "1d".bold(),
-        "1w".bold()
-    );
-    println!("{}", "─".repeat(70).dimmed());
+            println!("{}", format!("APM Session: {}", session_id).cyan().bold());
+            println!("{}", "─".repeat(70).dimmed());
+            println!();
+            println!("{:<20} {}", "Messages:", messages);
+            println!("{:<20} {}", "Tool Calls:", tool_calls);
+            println!("{:<20} {}", "Total Actions:", messages + tool_calls);
+            println!();
 
-    if source_filter.is_none() || source_filter == Some(APMSource::Autopilot) {
-        println!("{:<12} {:>8} {:>8} {:>8} {:>8} {:>8}",
-            "Autopilot".green(),
-            "-",
-            "19.2",
-            "18.5",
-            "17.8",
-            "18.1"
-        );
+            Ok(())
+        }
+        ApmCommands::Export { output, source, db } => {
+            let db_path = db.unwrap_or(default_db);
+            let conn = Connection::open(&db_path)?;
+            init_apm_tables(&conn)?;
+
+            let src = source.as_deref().map(|s| match s {
+                "autopilot" => APMSource::Autopilot,
+                "claude_code" | "claude" => APMSource::ClaudeCode,
+                _ => {
+                    eprintln!("Invalid source: {}. Valid values: autopilot, claude_code", s);
+                    std::process::exit(1);
+                }
+            }).unwrap_or(APMSource::Autopilot);
+
+            let sessions = get_sessions_by_source(&conn, src)?;
+
+            let export_data = serde_json::json!({
+                "source": src.as_str(),
+                "exported_at": chrono::Utc::now().to_rfc3339(),
+                "sessions": sessions.iter().map(|(id, start, end)| {
+                    serde_json::json!({
+                        "id": id,
+                        "start_time": start.to_rfc3339(),
+                        "end_time": end.as_ref().map(|t| t.to_rfc3339()),
+                    })
+                }).collect::<Vec<_>>()
+            });
+
+            std::fs::write(&output, serde_json::to_string_pretty(&export_data)?)?;
+            println!("{} Exported {} sessions to {}", "✓".green(), sessions.len(), output.display());
+
+            Ok(())
+        }
     }
-
-    if source_filter.is_none() || source_filter == Some(APMSource::ClaudeCode) {
-        println!("{:<12} {:>8} {:>8} {:>8} {:>8} {:>8}",
-            "Claude Code".blue(),
-            "-",
-            "4.2",
-            "4.5",
-            "4.3",
-            "4.4"
-        );
-    }
-
-    if source_filter.is_none() || source_filter == Some(APMSource::Combined) {
-        println!("{:<12} {:>8} {:>8} {:>8} {:>8} {:>8}",
-            "Combined".cyan(),
-            "-",
-            "12.1",
-            "11.8",
-            "11.5",
-            "11.9"
-        );
-    }
-
-    println!();
-    println!("{}", "Note: APM data collection in progress. Showing placeholder values.".yellow().dimmed());
-    println!("{}", "Database integration and historical backfill coming in issues #649-651.".yellow().dimmed());
-
-    Ok(())
 }
 
 /// Handle logs commands
