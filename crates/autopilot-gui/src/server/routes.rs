@@ -3,6 +3,7 @@
 use actix_web::{delete, get, post, put, web, HttpResponse, Responder};
 use crate::server::state::AppState;
 use crate::server::ws;
+use crate::server::parallel;
 use crate::views::{chat, context, layout, permissions_view};
 use serde::Deserialize;
 use std::path::{Path, PathBuf};
@@ -18,6 +19,12 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
         .service(add_permission_rule)
         .service(update_permission_rule)
         .service(trigger_apm_update)
+        // Parallel agents routes
+        .service(parallel::parallel_view)
+        .service(parallel::start_agents)
+        .service(parallel::stop_agents)
+        .service(parallel::agent_status)
+        .service(parallel::agent_logs)
         .route("/ws", web::get().to(ws::websocket));
 }
 
