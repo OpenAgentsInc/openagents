@@ -6,7 +6,7 @@ use tracing::{debug, error, info};
 
 /// Current schema version
 #[allow(dead_code)]
-const SCHEMA_VERSION: i32 = 6;
+const SCHEMA_VERSION: i32 = 7;
 
 /// Initialize the database with migrations
 pub fn init_db(path: &Path) -> Result<Connection> {
@@ -46,6 +46,9 @@ pub fn init_db(path: &Path) -> Result<Connection> {
     if version < 6 {
         migrate_v6(&conn)?;
     }
+    if version < 7 {
+        migrate_v7(&conn)?;
+    }
 
     Ok(conn)
 }
@@ -74,6 +77,9 @@ pub fn init_memory_db() -> Result<Connection> {
     }
     if version < 6 {
         migrate_v6(&conn)?;
+    }
+    if version < 7 {
+        migrate_v7(&conn)?;
     }
 
     Ok(conn)
@@ -317,6 +323,24 @@ fn migrate_v6(conn: &Connection) -> Result<()> {
 
     set_schema_version(conn, 6)?;
     info!("Migration v6 completed successfully");
+    Ok(())
+}
+
+fn migrate_v7(conn: &Connection) -> Result<()> {
+    info!("Running migration v7");
+    // Add project_id column to issues table for project-scoped issues
+    conn.execute_batch(
+        r#"
+        -- Add project_id column for linking issues to projects
+        ALTER TABLE issues ADD COLUMN project_id TEXT;
+
+        -- Index for efficient project lookups
+        CREATE INDEX IF NOT EXISTS idx_issues_project ON issues(project_id);
+        "#,
+    )?;
+
+    set_schema_version(conn, 7)?;
+    info!("Migration v7 completed successfully");
     info!("Database initialized successfully at schema version {}", SCHEMA_VERSION);
     Ok(())
 }
