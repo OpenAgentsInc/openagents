@@ -13,6 +13,20 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 /// Status of an automated check
+///
+/// Represents the current state of a check in the review process.
+///
+/// # Examples
+///
+/// ```
+/// use agentgit::review::CheckStatus;
+///
+/// let status = CheckStatus::Pass;
+/// assert_eq!(status.to_string(), "✓ PASS");
+///
+/// let failed = CheckStatus::Fail;
+/// assert_eq!(failed.to_string(), "✗ FAIL");
+/// ```
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum CheckStatus {
     /// Check passed
@@ -40,6 +54,31 @@ impl std::fmt::Display for CheckStatus {
 }
 
 /// Result of an automated check
+///
+/// Captures the outcome of running an automated check, including
+/// status, optional message, and execution time.
+///
+/// # Examples
+///
+/// ```
+/// use agentgit::review::{CheckResult, CheckStatus};
+///
+/// // Successful check with timing info
+/// let result = CheckResult::new("compilation", "Code compiles", CheckStatus::Pass)
+///     .with_message("All targets compiled successfully")
+///     .with_duration(1234);
+///
+/// assert_eq!(result.id, "compilation");
+/// assert_eq!(result.status, CheckStatus::Pass);
+/// assert_eq!(result.message, Some("All targets compiled successfully".to_string()));
+/// assert_eq!(result.duration_ms, Some(1234));
+///
+/// // Failed check with error details
+/// let failed = CheckResult::new("tests", "Tests pass", CheckStatus::Fail)
+///     .with_message("3 tests failed");
+///
+/// assert_eq!(failed.status, CheckStatus::Fail);
+/// ```
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CheckResult {
     /// Check identifier
@@ -56,6 +95,23 @@ pub struct CheckResult {
 
 impl CheckResult {
     /// Create a new check result
+    ///
+    /// # Arguments
+    ///
+    /// * `id` - Unique identifier for this check (e.g., "compilation", "tests")
+    /// * `name` - Human-readable name for display
+    /// * `status` - The check status (Pass, Fail, Skip, Running, Pending)
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use agentgit::review::{CheckResult, CheckStatus};
+    ///
+    /// let result = CheckResult::new("clippy", "Clippy lints", CheckStatus::Pass);
+    /// assert_eq!(result.id, "clippy");
+    /// assert_eq!(result.name, "Clippy lints");
+    /// assert_eq!(result.status, CheckStatus::Pass);
+    /// ```
     pub fn new(id: impl Into<String>, name: impl Into<String>, status: CheckStatus) -> Self {
         Self {
             id: id.into(),
@@ -67,12 +123,38 @@ impl CheckResult {
     }
 
     /// Set message
+    ///
+    /// Adds details or an error message to the check result.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use agentgit::review::{CheckResult, CheckStatus};
+    ///
+    /// let result = CheckResult::new("tests", "Tests", CheckStatus::Fail)
+    ///     .with_message("2 tests failed: test_auth, test_parser");
+    ///
+    /// assert_eq!(result.message.unwrap(), "2 tests failed: test_auth, test_parser");
+    /// ```
     pub fn with_message(mut self, message: impl Into<String>) -> Self {
         self.message = Some(message.into());
         self
     }
 
     /// Set duration
+    ///
+    /// Records how long the check took to run, in milliseconds.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use agentgit::review::{CheckResult, CheckStatus};
+    ///
+    /// let result = CheckResult::new("build", "Build", CheckStatus::Pass)
+    ///     .with_duration(5432);
+    ///
+    /// assert_eq!(result.duration_ms, Some(5432));
+    /// ```
     pub fn with_duration(mut self, duration_ms: u64) -> Self {
         self.duration_ms = Some(duration_ms);
         self
@@ -80,6 +162,36 @@ impl CheckResult {
 }
 
 /// Automated check runner for PR reviews
+///
+/// Runs a comprehensive suite of automated checks on a pull request,
+/// including compilation, tests, trajectory verification, and dependency
+/// validation for stacked PRs.
+///
+/// # Examples
+///
+/// ```no_run
+/// use agentgit::review::AutoCheckRunner;
+///
+/// # async fn example() {
+/// // Basic checks for a PR
+/// let runner = AutoCheckRunner::new("/path/to/repo", "pr-123");
+/// let results = runner.run_all().await;
+///
+/// for result in results {
+///     println!("{}: {}", result.name, result.status);
+/// }
+///
+/// // With trajectory verification
+/// let runner_with_trajectory = AutoCheckRunner::new("/path/to/repo", "pr-456")
+///     .with_trajectory("session-abc123");
+/// let results = runner_with_trajectory.run_all().await;
+///
+/// // For stacked PR with dependencies
+/// let stacked_runner = AutoCheckRunner::new("/path/to/repo", "pr-789")
+///     .with_dependencies(vec!["pr-123".to_string(), "pr-456".to_string()]);
+/// let results = stacked_runner.run_all().await;
+/// # }
+/// ```
 pub struct AutoCheckRunner {
     /// Path to the repository
     repo_path: PathBuf,
@@ -91,6 +203,19 @@ pub struct AutoCheckRunner {
 
 impl AutoCheckRunner {
     /// Create a new auto-check runner
+    ///
+    /// # Arguments
+    ///
+    /// * `repo_path` - Path to the cloned repository
+    /// * `pr_id` - Pull request identifier (for logging/tracking)
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use agentgit::review::AutoCheckRunner;
+    ///
+    /// let runner = AutoCheckRunner::new("/tmp/my-repo", "pr-123");
+    /// ```
     pub fn new(repo_path: impl AsRef<Path>, _pr_id: impl Into<String>) -> Self {
         Self {
             repo_path: repo_path.as_ref().to_path_buf(),
@@ -100,18 +225,85 @@ impl AutoCheckRunner {
     }
 
     /// Set trajectory session ID
+    ///
+    /// Enables trajectory hash verification and diff-to-trajectory comparison
+    /// checks when a trajectory session is provided.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use agentgit::review::AutoCheckRunner;
+    ///
+    /// let runner = AutoCheckRunner::new("/tmp/repo", "pr-123")
+    ///     .with_trajectory("session-abc123");
+    /// ```
     pub fn with_trajectory(mut self, session_id: impl Into<String>) -> Self {
         self.trajectory_session_id = Some(session_id.into());
         self
     }
 
     /// Set stack dependencies
+    ///
+    /// For stacked PRs, specify which PR IDs this PR depends on.
+    /// The dependency order check will ensure all dependencies are
+    /// merged before this PR can be merged.
+    ///
+    /// # Arguments
+    ///
+    /// * `depends_on` - Vector of PR IDs that must be merged first
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use agentgit::review::AutoCheckRunner;
+    ///
+    /// // This PR depends on pr-100 and pr-101 being merged first
+    /// let runner = AutoCheckRunner::new("/tmp/repo", "pr-102")
+    ///     .with_dependencies(vec!["pr-100".to_string(), "pr-101".to_string()]);
+    /// ```
     pub fn with_dependencies(mut self, depends_on: Vec<String>) -> Self {
         self.depends_on = depends_on;
         self
     }
 
     /// Run all automated checks
+    ///
+    /// Executes the full suite of automated checks:
+    /// - Code compilation (`cargo check`)
+    /// - Tests passing (`cargo test`)
+    /// - Trajectory hash verification (if trajectory provided)
+    /// - Diff-to-trajectory comparison (if trajectory provided)
+    /// - Stack dependency order (if dependencies provided)
+    /// - Review approval status
+    ///
+    /// # Returns
+    ///
+    /// A vector of check results, one for each check that was run.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use agentgit::review::{AutoCheckRunner, CheckStatus};
+    ///
+    /// # async fn example() {
+    /// let runner = AutoCheckRunner::new("/tmp/my-repo", "pr-123");
+    /// let results = runner.run_all().await;
+    ///
+    /// // Check if all passed
+    /// let all_passed = results.iter().all(|r| r.status == CheckStatus::Pass);
+    ///
+    /// // Find failed checks
+    /// let failures: Vec<_> = results.iter()
+    ///     .filter(|r| r.status == CheckStatus::Fail)
+    ///     .collect();
+    ///
+    /// if !failures.is_empty() {
+    ///     for failure in failures {
+    ///         eprintln!("FAILED: {} - {:?}", failure.name, failure.message);
+    ///     }
+    /// }
+    /// # }
+    /// ```
     pub async fn run_all(&self) -> Vec<CheckResult> {
         let mut results = Vec::new();
 
