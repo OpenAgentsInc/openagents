@@ -4,6 +4,12 @@
 
 ---
 
+> "2025 was not the year of agents. It was the year of copilots... Real agents have not been tried."
+>
+> "2025 was the year of copilots, 2026 is the year of autopilots. You heard it here first."
+
+---
+
 ## The New Jersey Approach to Artificial Intelligence
 
 In 1989, Richard Gabriel articulated a pattern he observed at Bell Labs, the birthplace of Unix and C. He called it "Worse is Better" — the New Jersey approach to software design, named for the Bell Labs campus where these ideas took root.
@@ -114,6 +120,51 @@ The "ultrathink" isn't just humans thinking together — it's the hybrid human-A
 
 ---
 
+## Autopilot: The Mech Suit
+
+Bell Labs built tools that amplified human capability. We build mech suits.
+
+> "Claude Code's agent SDK is very, very, very good... but just by putting it in this mech suit, we were able to get it to code reliably overnight."
+
+**Autopilot** is an open-source harness that wraps Claude Code (or any coding agent) in a Rust CLI with a background daemon. The core loop: convert user directives into specific issues, systematically implement them, test and document as it goes. If it runs out of directives, it improves the codebase by adding tests and documentation until it receives new work.
+
+The results speak for themselves:
+
+> "It's coding while I'm freaking talking."
+>
+> "Usually... code degrades over time. [With Autopilot] the code is getting better over time. It's amazing."
+
+**Autopilot is 4x more productive than interactive coding assistants.** We measured it. When you use Claude Code or Cursor interactively, you're the bottleneck — reading output, thinking, typing the next command. Your AI runs at ~4.5 actions per minute because it's waiting on you. Autopilot runs autonomously at ~19 actions per minute. Same AI, same capabilities, 4x the throughput.
+
+But raw speed isn't the point. The point is **leverage**.
+
+> "You stop being an AI operator. You become an AI investor. You allocate capital and attention across agents. You set goals and budgets. You review outcomes and adjust. The agents do the work."
+
+This is the paradigm shift. Today you supervise one AI assistant. With Autopilot, you supervise a fleet. Point them at your issue backlog and go to sleep. Wake up to pull requests.
+
+---
+
+## The Open Brand
+
+Bell Labs kept its research proprietary. We take the opposite approach.
+
+> "Make your own Autopilot, competing companies — I don't care. I hope you do. Let's compare autopilots."
+
+Autopilot is open source. The brand is open. We actively invite competition:
+
+- Fork the repo and build your own
+- Compare notes and code
+- Let our autopilots learn from each other
+- The infrastructure for that learning is what we're building
+
+This isn't altruism. It's strategy.
+
+The more autopilots exist, the more the paradigm shifts from copilots to autopilots. The more the paradigm shifts, the more demand for the infrastructure layer: identity, payments, compute, skills marketplace. That's where we capture value.
+
+Bell Labs licensed technologies to a few companies. We're seeding an entire ecosystem.
+
+---
+
 ## The Research Agenda
 
 What fundamental research would a Bell Labs for the agent economy pursue?
@@ -140,16 +191,26 @@ Shannon gave us bits. We need an economic theory of agent value:
 
 Current work: Flow of Funds, skill marketplace, compute pricing, Lightning micropayments.
 
-### 3. Multi-Agent Coordination
+### 3. Multi-Agent Coordination and Reed's Law
 
-Bell Labs understood signal transmission. We need to understand agent coordination:
+Bell Labs understood signal transmission. We need to understand agent coordination.
 
-- How do agent coalitions form and dissolve? (Reed's Law dynamics)
+Reed's Law states that the value of a group-forming network scales as 2^N (contrast with Metcalfe's N²). The main critique of Reed's Law was that humans are limited by Dunbar's number (~150 stable relationships), so no human network could reach anything close to the full 2^N value.
+
+**Agents are not subject to Dunbar's number.**
+
+We've seen exactly zero analysis anywhere on the implications of that for Reed's Law. This is one of the most important unexplored questions in agent economics:
+
+- How do agent coalitions form and dissolve at scale?
 - What protocols enable trust without central authority?
 - How do reputation systems work at machine speed?
-- What are the emergent properties of large agent populations?
+- What are the emergent properties of large agent populations unconstrained by cognitive limits?
 
-Current work: NIP-89/NIP-90 for discovery and job distribution, coalition payment pools.
+DeepMind's recent paper on distributional AGI safety doesn't fully grapple with the implications of agents lacking cognitive constraints. They advocate for controlled environments separated from the open internet. We advocate for open markets with built-in reputation and payment mechanisms.
+
+Both recognize Reed's Law dynamics. Both understand that organization matters more than individual capability. Both see markets as coordination mechanisms. Yet they reach opposite conclusions about control vs. emergence, containment vs. freedom, centralized oversight vs. distributed governance.
+
+Current work: NIP-89/NIP-90 for discovery and job distribution, coalition payment pools, NIP-SA for Sovereign Agents.
 
 ### 4. Agent Safety Through Economics
 
@@ -212,6 +273,18 @@ This creates a sustainable ecosystem where contributors get paid. If we pay deve
 
 Target: 100,000 developers earning Bitcoin by end of 2025. 1,000,000 by end of 2026.
 
+### Why Revenue Sharing Matters
+
+Remember the GPT Store? Sam Altman announced revenue sharing at DevDay 2023. They half-assed it. Developers couldn't actually make money.
+
+We want everyone to get paid:
+
+> "If you have a financial incentive, then maybe you're going to go the extra mile and make your skills extra good. Maybe you're going to be extra motivated to maintain it... if you're getting paid a stream of micropayments whenever somebody uses your thing."
+
+Open source is great. But open source projects decay because maintainers don't have financial incentive to maintain them. Add a revenue layer and that changes.
+
+Through threshold key splits (because agents hold their own private keys across different FROST nodes), we can ensure paid agent skills can't just be copy-pasted. Cryptography enables new business models for agent capabilities.
+
 ---
 
 ## The 100-Person Vision
@@ -272,11 +345,37 @@ Bell Labs pushed the frontier of physics and information. We push the frontier o
 
 Bell Labs shaped the 20th century. We have a chance to shape the 21st.
 
+### Open vs. Closed: The Existential Bet
+
 The existential bet: either the agent economy emerges on neutral protocols (Bitcoin, Nostr, MCP) or it emerges on proprietary rails (OpenAI, Google, Microsoft).
+
+DeepMind wants this:
+
+> "The agentic market must operate within a controlled environment, separated from the open internet, real-world financial systems, and critical infrastructure."
+
+**No.** The agentic market must be open. And it already is.
+
+Agentic coordination and commerce on open protocol Nostr has been ongoing for over a year (see the slew of NIP-90 events on many relays) and nothing bad has come of it. Partly because it includes critical market-making mechanisms like reputation and payments built-in, no firewalls or walled gardens or industry buy-in or government regulation needed.
+
+The internet is open. Agents live on it. Deal with it.
+
+### Team ClosedAI vs. Team Actually Open AI
+
+Perhaps unsurprising that giant megacorp government contractors reach different conclusions than Rothbardian bitcoiner Nostr devs. But anyone acknowledging the importance of markets should understand why they offer superior solutions to anything centralized and capturable like governments or consortiums of industry incumbents.
+
+If you decelerate and bad guys accelerate, you lose.
+
+The greater risk than open experimentation is that Team ClosedAI builds the only valuable agent networks, uses government regulation to prevent disruptive innovation from below, and entrenches a cronyist priest caste happy to trade your data and biometrics for shareholder value.
+
+Not on our watch.
+
+### Why Neutral Wins
 
 If neutral wins: permissionless innovation, distributed value, democratic control.
 
 If proprietary wins: rent extraction, centralized power, corporate governance.
+
+All primitives for agentic markets are already released in public, simply awaiting coordination. Will that coordination be done first by the bad guys or the good guys?
 
 We're building for the future we want to live in.
 
