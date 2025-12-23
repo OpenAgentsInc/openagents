@@ -65,8 +65,8 @@ pub fn claude_status_story() -> Markup {
                     .total_sessions(128)
                     .total_messages(512)
                     .today_tokens(250000)
-                    .add_model_usage("sonnet-4-5".to_string(), 15000000, 3500000, 5000000, 1000000)
-                    .add_model_usage("opus-4-5".to_string(), 8000000, 2000000, 3000000, 500000)
+                    .add_model_usage("sonnet-4-5".to_string(), 15000000, 3500000, 5000000, 1000000, 0, 1.25, 200000)
+                    .add_model_usage("opus-4-5".to_string(), 8000000, 2000000, 3000000, 500000, 0, 0.75, 200000)
                     .build())
             }
         }))
