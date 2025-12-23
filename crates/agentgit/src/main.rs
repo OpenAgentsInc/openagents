@@ -7,6 +7,7 @@ mod git;
 mod nostr;
 mod reputation;
 mod server;
+mod trajectory;
 mod views;
 mod ws;
 

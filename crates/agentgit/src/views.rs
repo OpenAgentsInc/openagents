@@ -7,6 +7,7 @@ use maud::{html, Markup, DOCTYPE};
 use nostr::Event;
 use chrono::{DateTime, Utc};
 use crate::reputation::{calculate_review_weight, ReputationTier};
+use crate::trajectory::MatchStatus;
 
 #[allow(unused_imports)]
 pub use publish_status::{publish_status_notification, publish_status_styles};
@@ -1804,6 +1805,23 @@ pub fn pull_request_detail_page(repository: &Event, pull_request: &Event, review
                                         .and_then(|m| m.get("participants"))
                                         .and_then(|p| p.as_array());
 
+                                    // Perform trajectory-to-diff comparison if we have both trajectory events and diff
+                                    @let comparison_result = if !trajectory_events.is_empty() && diff_text.is_some() {
+                                        use crate::trajectory::{parse_trajectory_events, compare_trajectory_to_diff};
+
+                                        // Extract trajectory events JSON
+                                        let events_json: Vec<String> = trajectory_events.iter()
+                                            .map(|e| e.content.clone())
+                                            .collect();
+
+                                        // Parse trajectory and compare to diff
+                                        parse_trajectory_events(&events_json)
+                                            .and_then(|mods| compare_trajectory_to_diff(&mods, diff_text.unwrap()))
+                                            .ok()
+                                    } else {
+                                        None
+                                    };
+
                                     div.trajectory-summary style="background: #1e293b; padding: 1.5rem; margin-bottom: 1.5rem; border-left: 4px solid #0ea5e9;" {
                                         div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 1rem;" {
                                             div {
@@ -1860,6 +1878,38 @@ pub fn pull_request_detail_page(repository: &Event, pull_request: &Event, review
                                         } @else if trajectory_hash.is_none() {
                                             div style="margin-top: 1rem; padding: 12px; background: #fef3c7; border-left: 4px solid #f59e0b;" {
                                                 "⚠️ Warning: No trajectory hash in session - integrity cannot be verified"
+                                            }
+                                        }
+
+                                        // Display trajectory-to-diff comparison result
+                                        @if let Some(result) = &comparison_result {
+                                            @if result.status == MatchStatus::FullMatch {
+                                                div style="margin-top: 1rem; padding: 12px; background: #d1fae5; border-left: 4px solid #10b981; color: #065f46;" {
+                                                    "✅ Diff Verification: All " (result.matched_files.len()) " modified file(s) match trajectory tool calls"
+                                                }
+                                            } @else if result.status == MatchStatus::MinorDiscrepancy {
+                                                div style="margin-top: 1rem; padding: 12px; background: #fef3c7; border-left: 4px solid #f59e0b; color: #92400e;" {
+                                                    "⚠️ Diff Verification: Minor discrepancies detected"
+                                                    @if !result.extra_in_diff.is_empty() {
+                                                        p style="margin-top: 0.5rem; font-size: 0.875rem;" {
+                                                            "Files in diff but not in trajectory: " (result.extra_in_diff.join(", "))
+                                                        }
+                                                    }
+                                                }
+                                            } @else {
+                                                div style="margin-top: 1rem; padding: 12px; background: #fee2e2; border-left: 4px solid #ef4444; color: #991b1b;" {
+                                                    "❌ Diff Verification: Major discrepancies detected"
+                                                    @if !result.missing_in_diff.is_empty() {
+                                                        p style="margin-top: 0.5rem; font-size: 0.875rem;" {
+                                                            "Files in trajectory but not in diff: " (result.missing_in_diff.join(", "))
+                                                        }
+                                                    }
+                                                    @if !result.extra_in_diff.is_empty() {
+                                                        p style="margin-top: 0.5rem; font-size: 0.875rem;" {
+                                                            "Files in diff but not in trajectory: " (result.extra_in_diff.join(", "))
+                                                        }
+                                                    }
+                                                }
                                             }
                                         }
                                     }
