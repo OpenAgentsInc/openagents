@@ -709,3 +709,99 @@ o: id=CnLHoskw → [ok] The file /home/christopherdavid/code/openagents/crates/i
 t!:Bash id=u4JCXgeP cmd="cargo test -p issues --lib 2>&1 | tail -30" → [running] tokens_in=0 tokens_out=91 tokens_cached=52339
 o: id=u4JCXgeP → [ok] test validation::tests::test_valid_title ... ok
 t!:Bash id=PTMpxzTq cmd="git add -A && git status" → [running] tokens_in=0 tokens_out=25 tokens_cached=53250
+o: id=PTMpxzTq → [ok] On branch main
+t!:Bash id=5U5vHtMv cmd="git commit -m "$(cat <<'EOF'" → [running] tokens_in=0 tokens_out=277 tokens_cached=53825
+o: id=5U5vHtMv → [ok] [main 50726ade5] Add project_id field to issues table
+t!:Bash id=oE7icyD9 cmd="git push origin main" → [running] tokens_in=0 tokens_out=25 tokens_cached=54090
+o: id=oE7icyD9 → [ok] [0;36m🔍 Running cargo build to check for errors and warnings...[0m
+t!:Bash id=wc7Ve3sX cmd="cargo autopilot issue complete 800" → [running] tokens_in=0 tokens_out=24 tokens_cached=54611
+o: id=wc7Ve3sX → [ok] ✓ Completed issue #800: Add project_id field to issues table
+t!:Bash id=NG6UMwdy cmd="cargo autopilot issue ready" → [running] tokens_in=0 tokens_out=77 tokens_cached=54776
+o: id=NG6UMwdy → [ok] No ready issues available
+t!:Read id=kqfVfnu6 file_path=/home/christopherdavid/code/openagents/docs/directives/d-001.md → [running] tokens_in=0 tokens_out=77 tokens_cached=55160
+o: id=kqfVfnu6 → [error] <tool_use_error>File does not exist.</tool_use_error>
+t!:Glob id=M4juFBZs pattern="**/d-*.md" → [running] tokens_in=1 tokens_out=57 tokens_cached=55395
+o: id=M4juFBZs → [ok] /home/christopherdavid/code/openagents/.openagents/directives/d-003.md
+t!:Read id=mWmDKSZ6 file_path=/home/christopherdavid/code/openagents/.openagents/directives/d-008.md → [running] tokens_in=0 tokens_out=79 tokens_cached=55507
+o: id=mWmDKSZ6 → [ok]      1→---
+t!:Bash id=WCZrT1jp cmd="cargo autopilot issue create --title "Implement..." → [running] tokens_in=0 tokens_out=153 tokens_cached=56023
+o: id=WCZrT1jp → [error] Exit code 2
+t!:Bash id=n4dsCBUA cmd="cargo autopilot issue create "Implement NIP-90 ..." → [running] tokens_in=1 tokens_out=151 tokens_cached=68214
+o: id=n4dsCBUA → [error] Exit code 2
+t!:Bash id=mWbTnNHW cmd="cargo autopilot issue create "Implement NIP-90 ..." → [running] tokens_in=1 tokens_out=24 tokens_cached=68553
+o: id=mWbTnNHW → [ok] ✓ Created issue #801: Implement NIP-90 provider capability advertisement (agent: claude)
+t!:Bash id=NmxifPKH cmd="cargo autopilot issue claim 801" → [running] tokens_in=0 tokens_out=24 tokens_cached=68898
+o: id=NmxifPKH → [ok] ✓ Claimed issue #801: Implement NIP-90 provider capability advertisement
+t!:Glob id=tzSZGYBr pattern="**/marketplace/**/*.rs" → [running] tokens_in=0 tokens_out=57 tokens_cached=69291
+o: id=tzSZGYBr → [ok] /home/christopherdavid/code/openagents/crates/marketplace/src/agent_commerce.rs
+t!:Read id=ZfsJ627S file_path=/home/christopherdavid/code/openagents/crates/marketplace/src/compute/provider.rs → [running] tokens_in=0 tokens_out=96 tokens_cached=69443
+o: id=ZfsJ627S → [ok]      1→//! Provider module - Advertise compute capabilities
+t!:Read id=E4eLm2s4 file_path=/home/christopherdavid/code/openagents/crates/marketplace/src/compute/provider.rs → [running] tokens_in=0 tokens_out=18 tokens_cached=71851
+o: id=E4eLm2s4 → [ok]    100→    }
+t!:Read id=coXY9Cw9 file_path=/home/christopherdavid/code/openagents/crates/marketplace/src/compute/provider.rs → [running] tokens_in=0 tokens_out=18 tokens_cached=73334
+o: id=coXY9Cw9 → [ok]    200→
+t!:Grep id=dETp1mgL pattern="pub fn advertise" → [running] tokens_in=0 tokens_out=26 tokens_cached=74636
+o: id=dETp1mgL → [ok] No matches found
+t!:Read id=kW5sedsZ file_path=/home/christopherdavid/code/openagents/crates/marketplace/src/compute/provider.rs → [running] tokens_in=0 tokens_out=18 tokens_cached=75485
+o: id=kW5sedsZ → [ok]    250→                } else {
+t!:Read id=DSrEcVDp file_path=/home/christopherdavid/code/openagents/crates/nostr/core/src/handler_info.rs → [running] tokens_in=0 tokens_out=18 tokens_cached=75738
+o: id=DSrEcVDp → [error] <tool_use_error>File does not exist.</tool_use_error>
+t!:Glob id=4t3D7iTJ pattern="**/nostr/**/handler*.rs" → [running] tokens_in=1 tokens_out=26 tokens_cached=78048
+o: id=4t3D7iTJ → [ok] No files found
+t!:Grep id=Np9FpPHy pattern="pub struct HandlerInfo" → [running] tokens_in=0 tokens_out=115 tokens_cached=78182
+o: id=Np9FpPHy → [ok] Found 1 file
+t!:Read id=VYRNDPjE file_path=/home/christopherdavid/code/openagents/crates/nostr/core/src/nip89.rs → [running] tokens_in=0 tokens_out=24 tokens_cached=78361
+o: id=VYRNDPjE → [ok]      1→//! NIP-89: Application Handlers
+a: Now I understand the structure. The `HandlerInfo` struct already exists and has a `to_tags()` method. The provider configuration can be converted to `HandlerInfo`, but we need to implement the actu... tokens_in=0 tokens_out=2 tokens_cached=78509
+t!:Read id=34ccgqe8 file_path=/home/christopherdavid/code/openagents/crates/marketplace/src/relay.rs → [running] tokens_in=0 tokens_out=2 tokens_cached=78509
+o: id=34ccgqe8 → [ok]      1→//! Relay integration for marketplace discovery
+t!:Read id=jV4iLWmY file_path=/home/christopherdavid/code/openagents/crates/marketplace/src/relay.rs → [running] tokens_in=0 tokens_out=18 tokens_cached=80989
+o: id=jV4iLWmY → [ok]    100→    /// Subscribe to handler info events (NIP-89 kind 31990)
+t!:Grep id=hzvg9xmL pattern="pub async fn publish" → [running] tokens_in=0 tokens_out=26 tokens_cached=82501
+o: id=hzvg9xmL → [ok] 210:    pub async fn publish(&self, event: &Event) -> Result<(), RelayError> {
+t!:Read id=QoZPFuk7 file_path=/home/christopherdavid/code/openagents/crates/marketplace/src/relay.rs → [running] tokens_in=0 tokens_out=25 tokens_cached=83960
+o: id=QoZPFuk7 → [ok]    210→    pub async fn publish(&self, event: &Event) -> Result<(), RelayError> {
+a: Now I can see the relay infrastructure is in place. I need to add a method to `Provider` that publishes the advertisement to relays. Let me add this functionality: tokens_in=0 tokens_out=1 tokens_cached=84129
+t!:Edit id=RZQkxMCb file_path=/home/christopherdavid/code/openagents/crates/marketplace/src/compute/provider.rs → [running] tokens_in=0 tokens_out=369 tokens_cached=84129
+o: id=RZQkxMCb → [ok] The file /home/christopherdavid/code/openagents/crates/marketplace/src/compute/provider.rs has be...
+t!:Edit id=VoeuRtFr file_path=/home/christopherdavid/code/openagents/crates/marketplace/src/compute/provider.rs → [running] tokens_in=0 tokens_out=1143 tokens_cached=84986
+o: id=VoeuRtFr → [ok] The file /home/christopherdavid/code/openagents/crates/marketplace/src/compute/provider.rs has be...
+t!:Bash id=2NJe5d4e cmd="cargo build -p marketplace 2>&1 | grep -A5 "error"" → [running] tokens_in=0 tokens_out=26 tokens_cached=85613
+o: id=2NJe5d4e → [ok] error[E0432]: unresolved import `nostr::EventBuilder`
+t!:Grep id=TLM4gWYn pattern="pub struct Event" → [running] tokens_in=0 tokens_out=113 tokens_cached=88113
+o: id=TLM4gWYn → [ok] Found 7 files
+t!:Read id=b7wBB7nQ file_path=/home/christopherdavid/code/openagents/crates/nostr/core/src/lib.rs → [running] tokens_in=0 tokens_out=25 tokens_cached=88492
+o: id=b7wBB7nQ → [ok]      1→//! Nostr protocol implementation for OpenAgents.
+t!:Grep id=AVxtCmTx pattern="pub use" → [running] tokens_in=0 tokens_out=153 tokens_cached=88726
+o: id=AVxtCmTx → [ok] 306:pub use nip01::{
+t!:Read id=7xW5VBYo file_path=/home/christopherdavid/code/openagents/crates/nostr/core/src/lib.rs → [running] tokens_in=0 tokens_out=25 tokens_cached=90519
+o: id=7xW5VBYo → [ok]    306→pub use nip01::{
+a: I see - the nostr crate uses `finalize_event` instead of an `EventBuilder`. Let me update the code: tokens_in=0 tokens_out=1 tokens_cached=91290
+t!:Edit id=Rssnt75z file_path=/home/christopherdavid/code/openagents/crates/marketplace/src/compute/provider.rs → [running] tokens_in=0 tokens_out=308 tokens_cached=91290
+o: id=Rssnt75z → [ok] The file /home/christopherdavid/code/openagents/crates/marketplace/src/compute/provider.rs has be...
+t!:Edit id=muBQvtde file_path=/home/christopherdavid/code/openagents/crates/marketplace/src/compute/provider.rs → [running] tokens_in=0 tokens_out=996 tokens_cached=91752
+o: id=muBQvtde → [ok] The file /home/christopherdavid/code/openagents/crates/marketplace/src/compute/provider.rs has be...
+t!:Bash id=2fg9ryUf cmd="cargo build -p marketplace 2>&1 | tail -50" → [running] tokens_in=0 tokens_out=89 tokens_cached=92413
+o: id=2fg9ryUf → [ok]    Compiling marketplace v0.1.0 (/home/christopherdavid/code/openagents/crates/marketplace)
+a: I need to convert the hex secret key to bytes. Let me check how to parse hex strings in the nostr crate: tokens_in=0 tokens_out=1 tokens_cached=94087
+t!:Grep id=3rcXBCbr pattern="from_hex" → [running] tokens_in=0 tokens_out=144 tokens_cached=94087
+o: id=3rcXBCbr → [ok] No files found
+t!:Grep id=GDWQDbHK pattern="hex::decode" → [running] tokens_in=0 tokens_out=26 tokens_cached=94662
+o: id=GDWQDbHK → [ok] Found 8 files
+t!:Grep id=98sRVfL1 pattern="hex::decode" → [running] tokens_in=0 tokens_out=25 tokens_cached=94924
+o: id=98sRVfL1 → [ok] 291:        hex::decode(&id).map_err(|e| Nip01Error::Signing(format!("invalid id hex: {}", e)))?;
+t!:Edit id=yEhyUodC file_path=/home/christopherdavid/code/openagents/crates/marketplace/src/compute/provider.rs → [running] tokens_in=0 tokens_out=1190 tokens_cached=95186
+o: id=yEhyUodC → [ok] The file /home/christopherdavid/code/openagents/crates/marketplace/src/compute/provider.rs has be...
+t!:Bash id=fi1RTZCr cmd="cargo build -p marketplace 2>&1 | tail -30" → [running] tokens_in=0 tokens_out=89 tokens_cached=95484
+o: id=fi1RTZCr → [ok]    Compiling marketplace v0.1.0 (/home/christopherdavid/code/openagents/crates/marketplace)
+t!:Bash id=rzMLdFiN cmd="cd /home/christopherdavid/code/openagents/crate..." → [running] tokens_in=0 tokens_out=25 tokens_cached=97744
+o: id=rzMLdFiN → [ok]     Updating crates.io index
+t!:Bash id=bqbavGfQ cmd="cargo build -p marketplace 2>&1 | tail -10" → [running] tokens_in=0 tokens_out=25 tokens_cached=98040
+o: id=bqbavGfQ → [ok]    Compiling marketplace v0.1.0 (/home/christopherdavid/code/openagents/crates/marketplace)
+t!:Bash id=tuVBuoGA cmd="cargo test -p marketplace provider 2>&1 | tail -20" → [running] tokens_in=0 tokens_out=25 tokens_cached=98191
+o: id=tuVBuoGA → [ok]      Running tests/compute_e2e.rs (/home/christopherdavid/code/openagents/target/debug/deps/compu...
+t!:Bash id=tALD5YvT cmd="cargo build --bin openagents 2>&1 | tail -10" → [running] tokens_in=0 tokens_out=91 tokens_cached=98451
+o: id=tALD5YvT → [ok] error: no bin target named `openagents` in default-run packages
+t!:Bash id=c8x6zYQw cmd="cargo build 2>&1 | tail -10" → [running] tokens_in=0 tokens_out=81 tokens_cached=98840
+o: id=c8x6zYQw → [ok]     Finished `dev` profile [optimized + debuginfo] target(s) in 0.14s
+t!:Bash id=zw2sWg5v cmd="git add -A && git diff --cached --stat" → [running] tokens_in=0 tokens_out=24 tokens_cached=98977
