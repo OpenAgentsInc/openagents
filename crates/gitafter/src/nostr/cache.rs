@@ -1043,14 +1043,15 @@ impl EventCache {
     /// Returns all bounties (kind:1636) that have a stack tag matching the stack_id.
     pub fn get_bounties_for_stack(&self, stack_id: &str) -> Result<Vec<Event>> {
         let mut stmt = self.conn.prepare(
-            "SELECT id, kind, pubkey, created_at, content, tags, sig
-             FROM events
-             WHERE kind = 1636
-             ORDER BY created_at DESC",
+            "SELECT DISTINCT e.id, e.kind, e.pubkey, e.created_at, e.content, e.tags, e.sig
+             FROM events e
+             JOIN event_tags et ON et.event_id = e.id
+             WHERE e.kind = 1636 AND et.tag_name = 'stack' AND et.tag_value = ?1
+             ORDER BY e.created_at DESC",
         )?;
 
         let events = stmt
-            .query_map([], |row| {
+            .query_map(params![stack_id], |row| {
                 let tags_json: String = row.get(5)?;
                 let tags: Vec<Vec<String>> = serde_json::from_str(&tags_json)
                     .map_err(|e| rusqlite::Error::FromSqlConversionFailure(
@@ -1071,30 +1072,22 @@ impl EventCache {
             })?
             .collect::<Result<Vec<_>, _>>()?;
 
-        // Filter for stack_id
-        let filtered: Vec<Event> = events.into_iter()
-            .filter(|event| {
-                event.tags.iter().any(|tag| {
-                    tag.len() >= 2 && tag[0] == "stack" && tag[1] == stack_id
-                })
-            })
-            .collect();
-
-        Ok(filtered)
+        Ok(events)
     }
 
     /// Get PR updates for a pull request
     /// PR updates are kind:1619 events that reference the PR via an "e" tag
     pub fn get_pr_updates(&self, pr_event_id: &str) -> Result<Vec<Event>> {
         let mut stmt = self.conn.prepare(
-            "SELECT id, kind, pubkey, created_at, content, tags, sig
-             FROM events
-             WHERE kind = 1619
-             ORDER BY created_at ASC",
+            "SELECT DISTINCT e.id, e.kind, e.pubkey, e.created_at, e.content, e.tags, e.sig
+             FROM events e
+             JOIN event_tags et ON et.event_id = e.id
+             WHERE e.kind = 1619 AND et.tag_name = 'e' AND et.tag_value = ?1
+             ORDER BY e.created_at ASC",
         )?;
 
         let events = stmt
-            .query_map([], |row| {
+            .query_map(params![pr_event_id], |row| {
                 let tags_json: String = row.get(5)?;
                 let tags: Vec<Vec<String>> = serde_json::from_str(&tags_json)
                     .map_err(|e| rusqlite::Error::FromSqlConversionFailure(
@@ -1115,16 +1108,7 @@ impl EventCache {
             })?
             .collect::<Result<Vec<_>, _>>()?;
 
-        // Filter events that reference this PR
-        let filtered: Vec<Event> = events.into_iter()
-            .filter(|event| {
-                event.tags.iter().any(|tag| {
-                    tag.len() >= 2 && tag[0] == "e" && tag[1] == pr_event_id
-                })
-            })
-            .collect();
-
-        Ok(filtered)
+        Ok(events)
     }
 
     /// Get comments for a specific issue
