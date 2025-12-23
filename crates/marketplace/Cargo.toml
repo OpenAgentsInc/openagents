@@ -1,5 +1,6 @@
 [package]
 name = "marketplace"
+description = "Unified marketplace for compute, skills, and data - agent economy infrastructure"
 version.workspace = true
 edition.workspace = true
 rust-version = "1.85"

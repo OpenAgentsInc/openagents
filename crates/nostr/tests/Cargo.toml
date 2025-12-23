@@ -1,5 +1,6 @@
 [package]
 name = "nostr-integration-tests"
+description = "Integration tests for Nostr protocol implementation"
 version.workspace = true
 edition.workspace = true
 publish = false
