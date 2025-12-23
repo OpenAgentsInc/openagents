@@ -41,7 +41,43 @@ async fn test_complete_issue_workflow() -> Result<()> {
     let issue_events = app.get_events_by_kind(1621).await;
     assert_eq!(issue_events.len(), 1);
 
-    // Step 3: Agent claims issue (kind:1634)
+    // Step 3: Create bounty offer (kind:1636)
+    let bounty_template = EventTemplate {
+        kind: 1636, // BOUNTY_OFFER
+        tags: vec![
+            vec!["e".to_string(), issue.id.clone(), "".to_string(), "root".to_string()],
+            vec!["a".to_string(), format!("30617:{}:openagents", app.pubkey())],
+            vec!["amount".to_string(), "50000".to_string()], // 50k sats
+            vec!["expiry".to_string(), "1735689600".to_string()], // example timestamp
+            vec!["conditions".to_string(), "must include tests".to_string()],
+        ],
+        content: String::new(),
+        created_at: std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs(),
+    };
+
+    let bounty = app.publish_event(bounty_template).await?;
+
+    assert_eq!(bounty.kind, 1636);
+
+    // Verify bounty references issue
+    let bounty_issue_ref = bounty.tags.iter()
+        .find(|t| t.first().map(|s| s.as_str()) == Some("e") && t.get(3).map(|s| s.as_str()) == Some("root"))
+        .expect("bounty should reference issue");
+    assert_eq!(bounty_issue_ref.get(1).unwrap(), &issue.id);
+
+    // Verify bounty has amount
+    let amount_tag = bounty.tags.iter()
+        .find(|t| t.first().map(|s| s.as_str()) == Some("amount"))
+        .expect("bounty should have amount");
+    assert_eq!(amount_tag.get(1).unwrap(), "50000");
+
+    let bounty_events = app.get_events_by_kind(1636).await;
+    assert_eq!(bounty_events.len(), 1);
+
+    // Step 4: Agent claims issue (kind:1634)
     let claim = app.claim_issue(&issue.id).await?;
 
     assert_eq!(claim.kind, 1634);
@@ -56,7 +92,7 @@ async fn test_complete_issue_workflow() -> Result<()> {
     let claim_events = app.get_events_by_kind(1634).await;
     assert_eq!(claim_events.len(), 1);
 
-    // Step 4: Agent posts progress comment (NIP-22)
+    // Step 5: Agent posts progress comment (NIP-22)
     let progress_comment = app
         .comment_on_issue(&issue.id, "Started implementation. Added core types and varint encoding.")
         .await?;
@@ -70,7 +106,7 @@ async fn test_complete_issue_workflow() -> Result<()> {
         .expect("comment should reference issue");
     assert_eq!(comment_ref.get(1).unwrap(), &issue.id);
 
-    // Step 5: Agent submits PR (kind:1618) with trajectory link
+    // Step 6: Agent submits PR (kind:1618) with trajectory link
     let trajectory_session_id = "session-abc123";
     let trajectory_hash = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
 
@@ -118,7 +154,7 @@ async fn test_complete_issue_workflow() -> Result<()> {
     let pr_events = app.get_events_by_kind(1618).await;
     assert_eq!(pr_events.len(), 1);
 
-    // Step 6: Review comment posted
+    // Step 7: Review comment posted
     let review_comment = app
         .comment_on_issue(&pr.id, "LGTM! Great implementation. Tests pass.")
         .await?;
@@ -132,7 +168,7 @@ async fn test_complete_issue_workflow() -> Result<()> {
         .expect("review should reference PR");
     assert_eq!(review_ref.get(1).unwrap(), &pr.id);
 
-    // Step 7: PR status updated to merged (kind:1631)
+    // Step 8: PR status updated to merged (kind:1631)
     let status_template = EventTemplate {
         kind: 1631, // STATUS_APPLIED
         tags: vec![
@@ -160,7 +196,7 @@ async fn test_complete_issue_workflow() -> Result<()> {
     let status_events = app.get_events_by_kind(1631).await;
     assert_eq!(status_events.len(), 1);
 
-    // Step 8: Bounty claim triggered (kind:1637)
+    // Step 9: Bounty claim triggered (kind:1637)
     let bounty_claim_template = EventTemplate {
         kind: 1637, // BOUNTY_CLAIM
         tags: vec![
@@ -212,11 +248,11 @@ async fn test_complete_issue_workflow() -> Result<()> {
 
     // Verify complete event sequence
     let all_events = app.get_all_events().await;
-    assert_eq!(all_events.len(), 8); // repo, issue, claim, progress comment, pr, review comment, status, bounty_claim
+    assert_eq!(all_events.len(), 9); // repo, issue, bounty offer, claim, progress comment, pr, review comment, status, bounty_claim
 
     // Verify all events by author
     let author_events = app.get_events_by_author(&app.pubkey()).await;
-    assert_eq!(author_events.len(), 8);
+    assert_eq!(author_events.len(), 9);
 
     app.shutdown().await;
     Ok(())
