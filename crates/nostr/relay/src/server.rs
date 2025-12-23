@@ -256,7 +256,16 @@ async fn handle_connection(
                         // Parse the Nostr message
                         match serde_json::from_str::<Value>(&text) {
                             Ok(value) => {
-                                let responses = handle_nostr_message(&value, &db, &mut subscriptions, &mut negentropy_sessions, &connection_id, &broadcast_tx, &rate_limiter, &metrics).await;
+                                let mut ctx = MessageContext {
+                                    db: &db,
+                                    subscriptions: &mut subscriptions,
+                                    negentropy_sessions: &mut negentropy_sessions,
+                                    connection_id: &connection_id,
+                                    broadcast_tx: &broadcast_tx,
+                                    rate_limiter: &rate_limiter,
+                                    metrics: &metrics,
+                                };
+                                let responses = handle_nostr_message(&value, &mut ctx).await;
 
                                 // Update the shared subscriptions
                                 *subscriptions_clone.lock().await = subscriptions.clone();
@@ -313,17 +322,19 @@ async fn handle_connection(
     Ok(())
 }
 
+/// Context for handling Nostr protocol messages
+struct MessageContext<'a> {
+    db: &'a Database,
+    subscriptions: &'a mut SubscriptionManager,
+    negentropy_sessions: &'a mut NegentropySessionManager,
+    connection_id: &'a str,
+    broadcast_tx: &'a broadcast::Sender<BroadcastEvent>,
+    rate_limiter: &'a RateLimiter,
+    metrics: &'a RelayMetrics,
+}
+
 /// Handle a Nostr protocol message, returns multiple responses
-async fn handle_nostr_message(
-    msg: &Value,
-    db: &Database,
-    subscriptions: &mut SubscriptionManager,
-    negentropy_sessions: &mut NegentropySessionManager,
-    connection_id: &str,
-    broadcast_tx: &broadcast::Sender<BroadcastEvent>,
-    rate_limiter: &RateLimiter,
-    metrics: &RelayMetrics,
-) -> Vec<Value> {
+async fn handle_nostr_message(msg: &Value, ctx: &mut MessageContext<'_>) -> Vec<Value> {
     let mut responses = Vec::new();
 
     let msg_array = match msg.as_array() {
@@ -355,11 +366,11 @@ async fn handle_nostr_message(
                 return responses;
             }
 
-            metrics.event_received();
+            ctx.metrics.event_received();
 
             // Check event rate limit
-            if !rate_limiter.check_event_allowed() {
-                metrics.event_rejected_rate_limit();
+            if !ctx.rate_limiter.check_event_allowed() {
+                ctx.metrics.event_rejected_rate_limit();
                 responses.push(json!(["NOTICE", "rate-limited: slow down there chief"]));
                 return responses;
             }
@@ -369,7 +380,7 @@ async fn handle_nostr_message(
                 Ok(e) => e,
                 Err(e) => {
                     warn!("Failed to parse event: {}", e);
-                    metrics.event_rejected_validation();
+                    ctx.metrics.event_rejected_validation();
                     responses.push(json!(["NOTICE", format!("invalid: failed to parse event: {}", e)]));
                     return responses;
                 }
@@ -377,31 +388,31 @@ async fn handle_nostr_message(
 
             // Validate event structure and cryptography
             if let Err(e) = validation::validate_event(&event) {
-                metrics.event_rejected_signature();
+                ctx.metrics.event_rejected_signature();
                 responses.push(json!(["OK", event.id.clone(), false, e.to_string()]));
                 return responses;
             }
 
             // Store the event
-            metrics.db_query();
-            match db.store_event(&event) {
+            ctx.metrics.db_query();
+            match ctx.db.store_event(&event) {
                 Ok(_) => {
                     debug!("Stored event: {}", event.id);
-                    metrics.event_stored();
+                    ctx.metrics.event_stored();
                     responses.push(json!(["OK", event.id, true, ""]));
 
                     // Broadcast the event to all subscribers
                     let broadcast_event = BroadcastEvent {
                         event: event.clone(),
                     };
-                    if let Err(e) = broadcast_tx.send(broadcast_event) {
+                    if let Err(e) = ctx.broadcast_tx.send(broadcast_event) {
                         warn!("Failed to broadcast event: {}", e);
                     }
                 }
                 Err(e) => {
                     error!("Failed to store event {}: {}", event.id, e);
-                    metrics.db_error();
-                    metrics.event_rejected_validation();
+                    ctx.metrics.db_error();
+                    ctx.metrics.event_rejected_validation();
                     responses.push(json!(["OK", event.id, false, format!("error: {}", e)]));
                 }
             }
@@ -449,23 +460,23 @@ async fn handle_nostr_message(
             debug!("Subscription requested: {} with {} filters", sub_id, filters.len());
 
             // Check subscription limit
-            if !rate_limiter.check_subscription_allowed(subscriptions.len()) {
+            if !ctx.rate_limiter.check_subscription_allowed(ctx.subscriptions.len()) {
                 responses.push(json!(["NOTICE", format!(
-                    "rate limit: max {} subscriptions per connection",
-                    rate_limiter.max_subscriptions()
+                    "rate limit: max {} ctx.subscriptions per connection",
+                    ctx.rate_limiter.max_subscriptions()
                 )]));
                 return responses;
             }
 
             // Store subscription
             let subscription = crate::subscription::Subscription::new(sub_id.to_string(), filters.clone());
-            subscriptions.add(subscription);
-            metrics.subscription_opened();
+            ctx.subscriptions.add(subscription);
+            ctx.metrics.subscription_opened();
 
             // Query and send matching events for each filter
             for filter in &filters {
-                metrics.db_query();
-                match db.query_events(filter) {
+                ctx.metrics.db_query();
+                match ctx.db.query_events(filter) {
                     Ok(events) => {
                         debug!("Found {} matching events for subscription {}", events.len(), sub_id);
                         for event in events {
@@ -475,7 +486,7 @@ async fn handle_nostr_message(
                     }
                     Err(e) => {
                         error!("Failed to query events for subscription {}: {}", sub_id, e);
-                        metrics.db_error();
+                        ctx.metrics.db_error();
                         responses.push(json!(["NOTICE", format!("Error querying events: {}", e)]));
                     }
                 }
@@ -505,9 +516,9 @@ async fn handle_nostr_message(
                 return responses;
             }
 
-            if subscriptions.remove(sub_id) {
+            if ctx.subscriptions.remove(sub_id) {
                 debug!("Subscription closed: {}", sub_id);
-                metrics.subscription_closed();
+                ctx.metrics.subscription_closed();
             } else {
                 debug!("Attempted to close non-existent subscription: {}", sub_id);
             }
@@ -566,12 +577,12 @@ async fn handle_nostr_message(
             };
 
             // Query events matching filter
-            metrics.db_query();
-            let events = match db.query_events(&filter) {
+            ctx.metrics.db_query();
+            let events = match ctx.db.query_events(&filter) {
                 Ok(events) => events,
                 Err(e) => {
                     responses.push(json!(["NEG-ERR", sub_id, format!("error: failed to query events: {}", e)]));
-                    metrics.db_error();
+                    ctx.metrics.db_error();
                     return responses;
                 }
             };
@@ -590,11 +601,11 @@ async fn handle_nostr_message(
             debug!("NEG-OPEN: {} events for subscription {}", records.len(), sub_id);
 
             // Create session
-            let session_id = SessionId::new(connection_id.to_string(), sub_id.to_string());
-            negentropy_sessions.create_session(session_id.clone(), records);
+            let session_id = SessionId::new(ctx.connection_id.to_string(), sub_id.to_string());
+            ctx.negentropy_sessions.create_session(session_id.clone(), records);
 
             // Process initial message
-            if let Some(session) = negentropy_sessions.get_session_mut(&session_id) {
+            if let Some(session) = ctx.negentropy_sessions.get_session_mut(&session_id) {
                 match session.state.process_message(&client_message) {
                     Ok(response_message) => {
                         match response_message.encode_hex() {
@@ -603,13 +614,13 @@ async fn handle_nostr_message(
                             }
                             Err(e) => {
                                 responses.push(json!(["NEG-ERR", sub_id, format!("error: failed to encode response: {}", e)]));
-                                negentropy_sessions.remove_session(&session_id);
+                                ctx.negentropy_sessions.remove_session(&session_id);
                             }
                         }
                     }
                     Err(e) => {
                         responses.push(json!(["NEG-ERR", sub_id, format!("error: {}", e)]));
-                        negentropy_sessions.remove_session(&session_id);
+                        ctx.negentropy_sessions.remove_session(&session_id);
                     }
                 }
             }
@@ -647,8 +658,8 @@ async fn handle_nostr_message(
             };
 
             // Get session
-            let session_id = SessionId::new(connection_id.to_string(), sub_id.to_string());
-            if let Some(session) = negentropy_sessions.get_session_mut(&session_id) {
+            let session_id = SessionId::new(ctx.connection_id.to_string(), sub_id.to_string());
+            if let Some(session) = ctx.negentropy_sessions.get_session_mut(&session_id) {
                 // Check if reconciliation is complete
                 let is_complete = session.state.is_complete(&client_message);
 
@@ -658,7 +669,7 @@ async fn handle_nostr_message(
                         if is_complete {
                             // Reconciliation complete - clean up session
                             debug!("NEG-MSG: Reconciliation complete for {}", sub_id);
-                            negentropy_sessions.remove_session(&session_id);
+                            ctx.negentropy_sessions.remove_session(&session_id);
                             // Send empty message to signal completion
                             responses.push(json!(["NEG-MSG", sub_id, ""]));
                         } else {
@@ -669,14 +680,14 @@ async fn handle_nostr_message(
                                 }
                                 Err(e) => {
                                     responses.push(json!(["NEG-ERR", sub_id, format!("error: failed to encode response: {}", e)]));
-                                    negentropy_sessions.remove_session(&session_id);
+                                    ctx.negentropy_sessions.remove_session(&session_id);
                                 }
                             }
                         }
                     }
                     Err(e) => {
                         responses.push(json!(["NEG-ERR", sub_id, format!("error: {}", e)]));
-                        negentropy_sessions.remove_session(&session_id);
+                        ctx.negentropy_sessions.remove_session(&session_id);
                     }
                 }
             } else {
@@ -699,8 +710,8 @@ async fn handle_nostr_message(
             };
 
             // Remove session
-            let session_id = SessionId::new(connection_id.to_string(), sub_id.to_string());
-            if negentropy_sessions.remove_session(&session_id).is_some() {
+            let session_id = SessionId::new(ctx.connection_id.to_string(), sub_id.to_string());
+            if ctx.negentropy_sessions.remove_session(&session_id).is_some() {
                 debug!("NEG-CLOSE: Session closed for {}", sub_id);
             } else {
                 debug!("NEG-CLOSE: No active session for {}", sub_id);
