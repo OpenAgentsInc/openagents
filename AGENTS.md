@@ -560,3 +560,7 @@ export CARGO_INCREMENTAL=1
 cargo install sccache
 export RUSTC_WRAPPER=sccache
 ```
+
+**Also note**
+
+Never add GitHub workflows.
