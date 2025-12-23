@@ -58,7 +58,7 @@ impl ToolErrorPattern {
 
 /// Detect tool error patterns from metrics database
 pub fn detect_tool_patterns(db: &MetricsDb, min_calls: usize) -> Result<Vec<ToolErrorPattern>> {
-    let conn = get_connection(db)?;
+    let conn = db.connection();
 
     // Get all tool calls with their error status
     let mut stmt = conn.prepare(
