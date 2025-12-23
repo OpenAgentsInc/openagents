@@ -183,8 +183,9 @@ impl TrajectorySessionContent {
             ));
         }
 
-        // Concatenate all event JSONs
-        let concatenated = event_jsons.join("");
+        // Concatenate all event JSONs with newline delimiter
+        // This prevents ambiguity (e.g., ["ab","cd"] vs ["abc","d"])
+        let concatenated = event_jsons.join("\n");
 
         // Calculate SHA-256
         let mut hasher = Sha256::new();
