@@ -139,6 +139,7 @@ impl AcpAgentSession {
     }
 
     /// Mark the session as inactive
+    #[allow(dead_code)]
     pub(crate) async fn deactivate(&self) {
         self.state.write().await.is_active = false;
     }

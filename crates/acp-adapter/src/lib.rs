@@ -28,6 +28,7 @@ pub mod client;
 pub mod connection;
 pub mod converters;
 pub mod error;
+pub mod permissions;
 pub mod replay;
 pub mod session;
 pub mod streaming;
@@ -37,6 +38,10 @@ pub mod transport;
 pub use agent_client_protocol_schema as acp;
 pub use connection::AcpAgentConnection;
 pub use error::{AcpError, Result};
+pub use permissions::{
+    PermissionOptionKind, PermissionRequestManager, UiPermissionOption, UiPermissionRequest,
+    UiPermissionResponse,
+};
 pub use replay::{ReplayConfig, ReplayStats, RlogReplay};
 pub use session::AcpAgentSession;
 pub use streaming::{RlogBuffer, RlogHeaderInfo, RlogStreamer, StreamConfig};

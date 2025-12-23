@@ -34,6 +34,7 @@ pub struct AcpAgentConnection {
     agent_capabilities: acp::AgentCapabilities,
 
     /// Working directory for the agent
+    #[allow(dead_code)]
     root_dir: PathBuf,
 
     /// Child process handle

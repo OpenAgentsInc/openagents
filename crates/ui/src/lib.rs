@@ -35,6 +35,7 @@ mod full_auto_switch;
 mod layout;
 mod line_renderer;
 mod log_pane;
+mod permission_modal;
 pub mod recorder;
 
 pub use button::{Button, ButtonSize, ButtonVariant};
@@ -46,6 +47,7 @@ pub use full_auto_switch::FullAutoSwitch;
 pub use layout::base_document;
 pub use line_renderer::{render_line, render_line_oob};
 pub use log_pane::LogPane;
+pub use permission_modal::{PermissionModal, PermissionOption, PermissionOptionKind};
 
 /// Tailwind CDN script (Play CDN for development).
 pub const TAILWIND_CDN: &str = include_str!("static/tailwind.js");

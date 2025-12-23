@@ -6091,6 +6091,7 @@ dependencies = [
 name = "openagents"
 version = "0.1.0"
 dependencies = [
+ "acp-adapter",
  "actix-web",
  "actix-ws",
  "anyhow",
@@ -9716,6 +9717,7 @@ dependencies = [
  "lazy_static",
  "maud",
  "regex",
+ "serde_json",
 ]
 
 [[package]]
