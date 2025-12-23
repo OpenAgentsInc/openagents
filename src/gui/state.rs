@@ -260,14 +260,9 @@ fn calculate_model_cost(
 }
 
 /// Get context window size for a model.
-fn get_model_context_window(model: &str) -> u64 {
-    if model.contains("opus-4-5") || model.contains("sonnet-4-5") {
-        200_000
-    } else if model.contains("haiku") {
-        200_000
-    } else {
-        200_000 // default
-    }
+fn get_model_context_window(_model: &str) -> u64 {
+    // All current Claude models support 200K context window
+    200_000
 }
 
 /// Usage limit data from Claude Code CLI
