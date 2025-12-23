@@ -34,14 +34,24 @@ use autopilot::TrajectoryCollector;
 use autopilot::trajectory_publisher::{TrajectoryPublishConfig, TrajectorySessionPublisher};
 use autopilot::nip_sa_trajectory::TrajectoryPublisher as NipSaTrajectoryPublisher;
 
-/// Minimum available memory in bytes before we abort (500 MB)
+/// Get minimum available memory threshold from environment or use default (500 MB)
 /// Note: macOS reports "available" memory conservatively - it doesn't count
 /// reclaimable cached/inactive memory. 500MB is enough to start Claude.
-const MIN_AVAILABLE_MEMORY_BYTES: u64 = 500 * 1024 * 1024;
+fn min_available_memory_bytes() -> u64 {
+    std::env::var("AUTOPILOT_MIN_MEMORY_BYTES")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(500 * 1024 * 1024)
+}
 
-/// Threshold to trigger memory cleanup (1.5 GB)
+/// Get memory cleanup threshold from environment or use default (1.5 GB)
 /// We try to free memory when we drop below this
-const MEMORY_CLEANUP_THRESHOLD_BYTES: u64 = 1536 * 1024 * 1024;
+fn memory_cleanup_threshold_bytes() -> u64 {
+    std::env::var("AUTOPILOT_CLEANUP_THRESHOLD_BYTES")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(1536 * 1024 * 1024)
+}
 
 /// Check if system has enough available memory
 /// Returns (available_bytes, needs_cleanup, is_critical)
@@ -53,8 +63,8 @@ fn check_memory() -> (u64, bool, bool) {
     if available == 0 {
         return (0, false, false);
     }
-    let needs_cleanup = available < MEMORY_CLEANUP_THRESHOLD_BYTES;
-    let is_critical = available < MIN_AVAILABLE_MEMORY_BYTES;
+    let needs_cleanup = available < memory_cleanup_threshold_bytes();
+    let is_critical = available < min_available_memory_bytes();
     (available, needs_cleanup, is_critical)
 }
 
@@ -1663,7 +1673,7 @@ async fn run_full_auto_loop(
 
             // If still critical after cleanup, wait and retry a few times
             // macOS can take a moment to reclaim memory
-            if new_avail < MIN_AVAILABLE_MEMORY_BYTES {
+            if new_avail < min_available_memory_bytes() {
                 for retry in 1..=3 {
                     println!("{} Waiting for memory to be reclaimed (attempt {}/3)...",
                         "MEM:".yellow().bold(), retry);
@@ -1681,13 +1691,13 @@ async fn run_full_auto_loop(
             }
 
             // Final check after all retries
-            if new_avail < MIN_AVAILABLE_MEMORY_BYTES {
+            if new_avail < min_available_memory_bytes() {
                 println!("\n{} Still insufficient memory ({}) after cleanup - aborting",
                     "MEMORY:".red().bold(),
                     format_bytes(new_avail));
                 anyhow::bail!("Insufficient memory: {} available, {} required",
                     format_bytes(new_avail),
-                    format_bytes(MIN_AVAILABLE_MEMORY_BYTES));
+                    format_bytes(min_available_memory_bytes()));
             } else {
                 println!("{} Memory recovered to {} - continuing", "MEMORY:".green().bold(), format_bytes(new_avail));
             }
@@ -1726,7 +1736,7 @@ async fn run_full_auto_loop(
                     let mut new_avail = check_and_kill_memory_hogs();
 
                     // Retry a couple times for memory to be reclaimed
-                    if new_avail < MIN_AVAILABLE_MEMORY_BYTES {
+                    if new_avail < min_available_memory_bytes() {
                         for _ in 1..=2 {
                             std::thread::sleep(std::time::Duration::from_secs(2));
                             let (check, _, still_critical) = check_memory();
@@ -1735,7 +1745,7 @@ async fn run_full_auto_loop(
                         }
                     }
 
-                    if new_avail < MIN_AVAILABLE_MEMORY_BYTES {
+                    if new_avail < min_available_memory_bytes() {
                         anyhow::bail!("Memory critical after cleanup: {} available", format_bytes(new_avail));
                     }
                 } else if needs_cleanup && message_count % 50 == 0 {
