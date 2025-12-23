@@ -1,10 +1,12 @@
 //! Unified application state
 
+use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::process::Child;
 use tokio::sync::RwLock;
 use tokio::task::JoinHandle;
 
+use super::routes::acp::AcpSessionInfo;
 use super::ws::WsBroadcaster;
 
 /// Running autopilot process state
@@ -123,6 +125,9 @@ pub struct AppState {
 
     /// Running autopilot process (if Full Auto is ON)
     pub autopilot_process: RwLock<Option<AutopilotProcess>>,
+
+    /// ACP (Agent Client Protocol) sessions
+    pub acp_sessions: RwLock<HashMap<String, AcpSessionInfo>>,
 }
 
 impl AppState {
@@ -137,6 +142,7 @@ impl AppState {
             }),
             daemon_info: RwLock::new(DaemonInfo::default()),
             autopilot_process: RwLock::new(None),
+            acp_sessions: RwLock::new(HashMap::new()),
         }
     }
 }
