@@ -359,3 +359,32 @@ o: id=hFHAgrZX → [ok] error: no bin target named `autopilotd` in default-run p
 t!:Bash id=MQcTyrtc cmd="cargo build -p autopilot --bin autopilotd 2>&1 ..." → [running] tokens_in=0 tokens_out=25 tokens_cached=99446
 o: id=MQcTyrtc → [ok]    Compiling breez-sdk-common v0.1.0 (/home/christopherdavid/code/spark-sdk/crates/breez-sdk/common)
 t!:Bash id=P4NZ6mpm cmd="git add -A && git commit -m "$(cat <<'EOF'" → [running] tokens_in=0 tokens_out=312 tokens_cached=99584
+o: id=P4NZ6mpm → [ok] [main 2a07193de] Store and await daemon signal handler task (RES-7)
+t!:Bash id=dDpn74Jy cmd="git push origin main" → [running] tokens_in=0 tokens_out=24 tokens_cached=99917
+o: id=dDpn74Jy → [ok] [0;36m🔍 Running cargo build to check for errors and warnings...[0m
+t!:mcp__issues__issue_complete id=SbsyqNe9  → [running] tokens_in=0 tokens_out=32 tokens_cached=100478
+o: id=SbsyqNe9 → [ok] Completed issue #933
+t!:mcp__issues__issue_ready id=USzLAWCg  → [running] tokens_in=0 tokens_out=27 tokens_cached=100644
+o: id=USzLAWCg → [ok] {
+t!:mcp__issues__issue_claim id=pBvJaq17  → [running] tokens_in=0 tokens_out=79 tokens_cached=100719
+o: id=pBvJaq17 → [ok] Claimed issue #934
+t!:Read id=cvVZu4UM file_path=/home/christopherdavid/code/openagents/crates/autopilot/src/daemon/control.rs → [running] tokens_in=3 tokens_out=25 tokens_cached=101010
+o: id=cvVZu4UM → [ok]     85→        let _ = std::fs::remove_file(&self.socket_path);
+a: I can see the issue. The loop at line 95 has no way to exit gracefully. Let me check the function signature to understand the shutdown channel better: tokens_in=3 tokens_out=1 tokens_cached=101104
+t!:Read id=oRfyL7LX file_path=/home/christopherdavid/code/openagents/crates/autopilot/src/daemon/control.rs → [running] tokens_in=3 tokens_out=150 tokens_cached=101104
+o: id=oRfyL7LX → [ok]     70→impl ControlServer {
+a: The function receives a `shutdown_tx` but it's not receiving the shutdown signal. I need to add a shutdown receiver to break the loop. Let me check how it's called: tokens_in=2 tokens_out=1 tokens_cached=101793
+t!:Grep id=k7i7PE6X pattern="control_server.run" → [running] tokens_in=2 tokens_out=191 tokens_cached=101793
+o: id=k7i7PE6X → [ok] /home/christopherdavid/code/openagents/crates/autopilot/src/bin/autopilotd.rs-164-    let control...
+a: I see - it receives `shutdown_tx` to forward shutdown commands to the supervisor, but it doesn't have its own shutdown receiver. I need to add a cancellation token or shutdown receiver. Let me use ... tokens_in=2 tokens_out=1 tokens_cached=102450
+t!:Edit id=YSPPRj1B file_path=/home/christopherdavid/code/openagents/crates/autopilot/src/daemon/control.rs → [running] tokens_in=2 tokens_out=1024 tokens_cached=102450
+o: id=YSPPRj1B → [ok] The file /home/christopherdavid/code/openagents/crates/autopilot/src/daemon/control.rs has been u...
+a: Wait, I'm overcomplicating this. The simpler approach is to use `tokio::select!` to listen for the shutdown signal while accepting connections. But we need a way to detect when the task is aborted.... tokens_in=1 tokens_out=1 tokens_cached=102941
+t!:Edit id=rVZpVGFh file_path=/home/christopherdavid/code/openagents/crates/autopilot/src/daemon/control.rs → [running] tokens_in=1 tokens_out=1 tokens_cached=102941
+o: id=rVZpVGFh → [ok] The file /home/christopherdavid/code/openagents/crates/autopilot/src/daemon/control.rs has been u...
+a: I see there's a duplicate closing brace. Let me fix that: tokens_in=1 tokens_out=1 tokens_cached=104924
+t!:Edit id=zex61Yj3 file_path=/home/christopherdavid/code/openagents/crates/autopilot/src/daemon/control.rs → [running] tokens_in=1 tokens_out=1 tokens_cached=104924
+o: id=zex61Yj3 → [ok] The file /home/christopherdavid/code/openagents/crates/autopilot/src/daemon/control.rs has been u...
+t!:Bash id=R5JfhGN5 cmd="cargo build -p autopilot --bin autopilotd 2>&1 ..." → [running] tokens_in=0 tokens_out=26 tokens_cached=106193
+o: id=R5JfhGN5 → [ok]    Compiling breez-sdk-common v0.1.0 (/home/christopherdavid/code/spark-sdk/crates/breez-sdk/common)
+t!:Bash id=aJrTWvYb cmd="git add -A && git commit -m "$(cat <<'EOF'" → [running] tokens_in=0 tokens_out=25 tokens_cached=106634
