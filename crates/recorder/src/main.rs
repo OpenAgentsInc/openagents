@@ -134,8 +134,8 @@ enum Commands {
         #[arg(long, default_value = "true")]
         include_queue_ops: bool,
 
-        /// Include raw Claude Code JSONL events as comments
-        #[arg(long, default_value = "true")]
+        /// Include raw Claude Code JSONL events as comments (may contain sensitive data)
+        #[arg(long, default_value = "false")]
         include_raw_events: bool,
 
         /// Validate the converted output
