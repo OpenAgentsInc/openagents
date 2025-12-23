@@ -135,3 +135,52 @@ o: id=CYFAEeDP → [ok] running 1 test
 t!:Bash id=UFqRN73x cmd="cargo test -p frostr --lib keygen::tests --no-f..." → [running] tokens_in=0 tokens_out=90 tokens_cached=68208
 o: id=UFqRN73x → [ok] running 22 tests
 t!:Bash id=Vp4QfWW9 cmd="git add -A && git commit -m "$(cat <<'EOF'" → [running] tokens_in=0 tokens_out=24 tokens_cached=68567
+o: id=Vp4QfWW9 → [ok] [main afbff1c54] Fix FROSTR Shamir panic on duplicate indices
+t!:Bash id=F6sjCcFQ cmd="git push origin main" → [running] tokens_in=0 tokens_out=25 tokens_cached=69201
+o: id=F6sjCcFQ → [ok] [0;36m🔍 Running cargo build to check for errors and warnings...[0m
+t!:Bash id=BtVof1sx cmd="cargo autopilot issue complete 850" → [running] tokens_in=0 tokens_out=79 tokens_cached=69598
+o: id=BtVof1sx → [ok] ✓ Completed issue #850: PANIC-4: Fix FROSTR Shamir panic on duplicate indices
+t!:Bash id=p5pY1jLb cmd="cargo autopilot issue ready" → [running] tokens_in=0 tokens_out=77 tokens_cached=69865
+o: id=p5pY1jLb → [ok] → Next ready issue:
+t!:Bash id=rPMyy26u cmd="cargo autopilot issue claim 851" → [running] tokens_in=0 tokens_out=24 tokens_cached=70256
+o: id=rPMyy26u → [ok] ✓ Claimed issue #851: PANIC-5: Fix FM bridge client expect panic
+t!:Read id=ThvmTyCF file_path=/home/christopherdavid/code/openagents/crates/fm-bridge/src/client.rs → [running] tokens_in=0 tokens_out=25 tokens_cached=70507
+o: id=ThvmTyCF → [ok]     20→impl FMClient {
+a: I can see the issue at line 31. The `Client::builder().build()` can fail but is using `.expect()` which will panic. Let me check what error type it returns and update the function to return a Result: tokens_in=0 tokens_out=1 tokens_cached=70763
+t!:Read id=R5n2qhai file_path=/home/christopherdavid/code/openagents/crates/fm-bridge/src/client.rs → [running] tokens_in=0 tokens_out=1 tokens_cached=70763
+o: id=R5n2qhai → [ok]      1→/// HTTP client for Foundation Model API
+t!:Edit id=133cqevU file_path=/home/christopherdavid/code/openagents/crates/fm-bridge/src/client.rs → [running] tokens_in=0 tokens_out=476 tokens_cached=71305
+o: id=133cqevU → [ok] The file /home/christopherdavid/code/openagents/crates/fm-bridge/src/client.rs has been updated. ...
+a: Now I need to check if there's a builder that also has this issue and needs updating: tokens_in=0 tokens_out=1 tokens_cached=71892
+t!:Grep id=KTp6He3b pattern="struct FMClientBuilder" → [running] tokens_in=0 tokens_out=1 tokens_cached=71892
+o: id=KTp6He3b → [ok] 164-        let url = format!("{}/health", self.base_url);
+t!:Read id=yE5eW2HA file_path=/home/christopherdavid/code/openagents/crates/fm-bridge/src/client.rs → [running] tokens_in=0 tokens_out=113 tokens_cached=72762
+o: id=yE5eW2HA → [ok]    200→        self.base_url = url.into();
+a: Yes, the builder also has the same issue. Let me fix both, and also update the Default impl: tokens_in=0 tokens_out=1 tokens_cached=73426
+t!:Edit id=kC3c5exn file_path=/home/christopherdavid/code/openagents/crates/fm-bridge/src/client.rs → [running] tokens_in=0 tokens_out=198 tokens_cached=73426
+o: id=kC3c5exn → [ok] The file /home/christopherdavid/code/openagents/crates/fm-bridge/src/client.rs has been updated. ...
+t!:Edit id=PCqmZTZg file_path=/home/christopherdavid/code/openagents/crates/fm-bridge/src/client.rs → [running] tokens_in=0 tokens_out=321 tokens_cached=73922
+o: id=PCqmZTZg → [ok] The file /home/christopherdavid/code/openagents/crates/fm-bridge/src/client.rs has been updated. ...
+a: Now let me check if there are any callers that need to be updated: tokens_in=0 tokens_out=1 tokens_cached=74412
+t!:Bash id=fuV2qr3J cmd="cargo build -p fm-bridge 2>&1 | head -100" → [running] tokens_in=0 tokens_out=108 tokens_cached=74412
+o: id=fuV2qr3J → [ok]    Compiling h2 v0.4.12
+a: Let me check what the error types are in the FMError enum: tokens_in=0 tokens_out=4 tokens_cached=75010
+t!:Read id=8gBug8vj file_path=/home/christopherdavid/code/openagents/crates/fm-bridge/src/error.rs → [running] tokens_in=0 tokens_out=4 tokens_cached=75010
+o: id=8gBug8vj → [ok]      1→/// Error types for the FM Bridge client
+a: I see! The `HttpError` variant has `#[from] reqwest::Error`, which means it expects a `reqwest::Error` directly, not a String. I should just use the error directly: tokens_in=0 tokens_out=1 tokens_cached=75735
+t!:Edit id=ujukW34L file_path=/home/christopherdavid/code/openagents/crates/fm-bridge/src/client.rs → [running] tokens_in=0 tokens_out=427 tokens_cached=75735
+o: id=ujukW34L → [ok] The file /home/christopherdavid/code/openagents/crates/fm-bridge/src/client.rs has been updated. ...
+t!:Edit id=uzHYVzCv file_path=/home/christopherdavid/code/openagents/crates/fm-bridge/src/client.rs → [running] tokens_in=0 tokens_out=317 tokens_cached=76262
+o: id=uzHYVzCv → [ok] The file /home/christopherdavid/code/openagents/crates/fm-bridge/src/client.rs has been updated. ...
+t!:Bash id=skTMpNDZ cmd="cargo build -p fm-bridge 2>&1 | head -100" → [running] tokens_in=0 tokens_out=88 tokens_cached=77100
+o: id=skTMpNDZ → [ok]    Compiling fm-bridge v0.1.0 (/home/christopherdavid/code/openagents/crates/fm-bridge)
+a: I need to fix the callers. Let me check the CLI code: tokens_in=0 tokens_out=1 tokens_cached=77661
+t!:Read id=xCfSwM12 file_path=/home/christopherdavid/code/openagents/crates/fm-bridge/src/bin/cli.rs → [running] tokens_in=0 tokens_out=131 tokens_cached=77661
+o: id=xCfSwM12 → [ok]     50→
+t!:Edit id=Jep7d7Qw file_path=/home/christopherdavid/code/openagents/crates/fm-bridge/src/bin/cli.rs → [running] tokens_in=0 tokens_out=192 tokens_cached=78943
+o: id=Jep7d7Qw → [ok] The file /home/christopherdavid/code/openagents/crates/fm-bridge/src/bin/cli.rs has been updated....
+t!:Bash id=NBQaf2VU cmd="cargo build -p fm-bridge 2>&1 | head -50" → [running] tokens_in=0 tokens_out=25 tokens_cached=79561
+o: id=NBQaf2VU → [ok]    Compiling fm-bridge v0.1.0 (/home/christopherdavid/code/openagents/crates/fm-bridge)
+t!:Bash id=rbgy5dr8 cmd="cargo test -p fm-bridge --lib --no-fail-fast 2>..." → [running] tokens_in=0 tokens_out=96 tokens_cached=79952
+o: id=rbgy5dr8 → [ok]    Compiling tokio v1.48.0
+t!:Bash id=XZiANEuL cmd="git add -A && git commit -m "$(cat <<'EOF'" → [running] tokens_in=0 tokens_out=24 tokens_cached=80114

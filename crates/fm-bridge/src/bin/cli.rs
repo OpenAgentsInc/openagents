@@ -55,7 +55,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let client = FMClient::builder()
         .base_url(cli.url)
         .default_model(cli.model)
-        .build();
+        .build()?;
 
     match cli.command {
         Commands::Complete {
