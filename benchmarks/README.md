@@ -47,6 +47,7 @@ cargo autopilot benchmark --compare-commits abc123..def456
 The GitHub Actions workflow (`.github/workflows/benchmarks.yml`) automatically:
 
 1. **On Pull Requests**:
+   - Triggers on changes to: `crates/**`, `Cargo.toml`, `Cargo.lock`, workflow file
    - Runs full benchmark suite on PR code
    - Runs benchmark suite on main branch
    - Compares results
@@ -54,8 +55,25 @@ The GitHub Actions workflow (`.github/workflows/benchmarks.yml`) automatically:
    - 📬 Sends Slack notification if regression detected (requires `SLACK_WEBHOOK_URL` secret)
 
 2. **On Main Branch Push**:
+   - Triggers on changes to: `crates/**`, `Cargo.toml`, `Cargo.lock`
    - Runs benchmark suite
    - Stores results as new baseline in `baselines/main-{sha}.db`
+
+3. **Nightly Scheduled Runs**:
+   - Runs daily at 2 AM UTC
+   - Tracks performance drift over time
+   - Establishes trend baselines
+   - Detects regressions from dependency updates or environmental changes
+
+### Workflow Trigger Scope
+
+The workflow runs on changes to ANY crate, not just `crates/autopilot/`. This is intentional because:
+- Changes to `crates/nostr/**` affect event handling performance
+- Changes to `crates/wallet/**` affect payment integration speed
+- Changes to `crates/issues/**` affect database query performance
+- Dependency updates in `Cargo.toml` can impact overall performance
+
+This broad trigger scope ensures performance regressions are caught regardless of where they originate.
 
 ### Setting Up Regression Alerts
 
