@@ -300,7 +300,13 @@ impl WorkerSupervisor {
                     "Memory low: {} available, attempting cleanup",
                     format_bytes(available)
                 );
-                self.memory_monitor.kill_memory_hogs();
+                // Get worker PID to protect from kill
+                let exclude_pids = if let Some(ref child) = self.child {
+                    vec![child.id()]
+                } else {
+                    vec![]
+                };
+                self.memory_monitor.kill_memory_hogs(&exclude_pids);
                 false
             }
             MemoryStatus::Critical(available) => {
@@ -308,8 +314,13 @@ impl WorkerSupervisor {
                     "Memory critical: {} available, force restarting worker",
                     format_bytes(available)
                 );
-                // Kill memory hogs first
-                self.memory_monitor.kill_memory_hogs();
+                // Kill memory hogs first (exclude worker PID)
+                let exclude_pids = if let Some(ref child) = self.child {
+                    vec![child.id()]
+                } else {
+                    vec![]
+                };
+                self.memory_monitor.kill_memory_hogs(&exclude_pids);
 
                 // Check again
                 let new_available = self.memory_monitor.available_memory();

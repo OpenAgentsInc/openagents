@@ -59,6 +59,12 @@ fn check_memory() -> (u64, bool, bool) {
 }
 
 /// List top memory-consuming processes and optionally kill Claude-related ones
+///
+/// WARNING: This function kills ANY process with "node" in the name that uses >500MB.
+/// This is a fallback for non-daemon mode. The daemon supervisor has more precise
+/// tracking of worker PIDs and only kills untracked processes.
+///
+/// TODO: Make this opt-in via environment variable or command flag
 fn check_and_kill_memory_hogs() -> u64 {
     use sysinfo::{System, Signal};
 
@@ -102,6 +108,12 @@ fn check_and_kill_memory_hogs() -> u64 {
         );
     }
 
+    // Check if memory cleanup is disabled
+    if std::env::var("AUTOPILOT_NO_MEMORY_CLEANUP").is_ok() {
+        println!("{} Memory cleanup disabled via AUTOPILOT_NO_MEMORY_CLEANUP", "SKIP:".yellow().bold());
+        return available;
+    }
+
     // Find and kill stale claude/node processes (but not ourselves)
     let current_pid = std::process::id();
     let mut killed = 0;
@@ -118,6 +130,8 @@ fn check_and_kill_memory_hogs() -> u64 {
             if let Some(proc) = sys.process(*pid) {
                 println!("{} Killing {} (PID {}, using {})",
                     "KILL:".red().bold(), name, pid, format_bytes(*mem));
+                println!("    {} This may kill unrelated Node.js processes. Set AUTOPILOT_NO_MEMORY_CLEANUP=1 to disable.",
+                    "WARN:".yellow());
                 if proc.kill_with(Signal::Term).unwrap_or(false) {
                     killed += 1;
                 }

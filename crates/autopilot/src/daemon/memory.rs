@@ -56,7 +56,10 @@ impl MemoryMonitor {
 
     /// Kill memory-hogging node processes
     /// Returns the number of processes killed
-    pub fn kill_memory_hogs(&mut self) -> u32 {
+    ///
+    /// # Arguments
+    /// * `exclude_pids` - PIDs to exclude from killing (e.g., worker and its children)
+    pub fn kill_memory_hogs(&mut self, exclude_pids: &[u32]) -> u32 {
         self.sys.refresh_all();
 
         let current_pid = std::process::id();
@@ -81,7 +84,14 @@ impl MemoryMonitor {
         eprintln!("Top memory consumers:");
         for (i, (pid, name, mem)) in processes.iter().take(10).enumerate() {
             let is_node = name.to_lowercase().contains("node");
-            let marker = if is_node { " <- NODE" } else { "" };
+            let is_excluded = exclude_pids.contains(&pid.as_u32());
+            let marker = if is_excluded {
+                " <- PROTECTED (worker)"
+            } else if is_node {
+                " <- NODE"
+            } else {
+                ""
+            };
             eprintln!(
                 "  {:2}. {:>10}  PID {:6}  {}{}",
                 i + 1,
@@ -100,6 +110,17 @@ impl MemoryMonitor {
             if name_lower.contains("node") && *mem > self.config.node_kill_threshold_bytes {
                 // Skip our own process
                 if pid.as_u32() == current_pid {
+                    continue;
+                }
+
+                // Skip excluded PIDs (worker and its children)
+                if exclude_pids.contains(&pid.as_u32()) {
+                    eprintln!(
+                        "Skipping protected process {} (PID {}, using {})",
+                        name,
+                        pid,
+                        format_bytes(*mem)
+                    );
                     continue;
                 }
 
