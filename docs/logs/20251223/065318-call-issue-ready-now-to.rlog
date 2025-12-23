@@ -42,3 +42,38 @@ t!:Bash id=qF5Mfx8M cmd="cargo test -p nostr-client 2>&1 | tail -30" → [runnin
 o: id=qF5Mfx8M → [ok] test queue::tests::test_clear_sent ... ok
 a: Perfect! All 95 tests pass. Now let me commit and push: tokens_in=1 tokens_out=4 tokens_cached=36158
 t!:Bash id=JZdpCTpZ cmd="git add -A && git commit -m "$(cat <<'EOF'" → [running] tokens_in=1 tokens_out=347 tokens_cached=36158
+o: id=JZdpCTpZ → [ok] [main 45718960d] Fix relay message parsing with silent defaults (ERR-8)
+t!:Bash id=6wG8TQdJ cmd="git push origin main" → [running] tokens_in=1 tokens_out=80 tokens_cached=36760
+o: id=6wG8TQdJ → [ok] [0;36m🔍 Running cargo build to check for errors and warnings...[0m
+t!:mcp__issues__issue_complete id=py6cQSPw  → [running] tokens_in=0 tokens_out=58 tokens_cached=37377
+o: id=py6cQSPw → [ok] Completed issue #923
+t!:mcp__issues__issue_ready id=M3sGGL6F  → [running] tokens_in=0 tokens_out=27 tokens_cached=37647
+o: id=M3sGGL6F → [ok] {
+t!:mcp__issues__issue_claim id=v2G4Y1Y3  → [running] tokens_in=0 tokens_out=27 tokens_cached=37722
+o: id=v2G4Y1Y3 → [ok] Claimed issue #924
+t!:Read id=bHvhpJtk file_path=/home/christopherdavid/code/openagents/crates/nostr/client/src/queue.rs → [running] tokens_in=0 tokens_out=8 tokens_cached=37907
+o: id=bHvhpJtk → [ok]    135→            config,
+a: I can see the issue at lines 145-148. The code converts `u128` (from `as_millis()`) to `i64` with an unchecked cast. This can overflow for timestamps far in the future. Let me check for other occur... tokens_in=3 tokens_out=1 tokens_cached=38111
+t!:Grep id=tzMMcSEQ pattern="as_millis\(\) as i64" → [running] tokens_in=3 tokens_out=1 tokens_cached=38111
+o: id=tzMMcSEQ → [ok] 148:            .as_millis() as i64;
+t!:Read id=3EV28sdS file_path=/home/christopherdavid/code/openagents/crates/nostr/client/src/queue.rs → [running] tokens_in=2 tokens_out=114 tokens_cached=38659
+o: id=3EV28sdS → [ok]    240→
+a: I found two instances. Let me check if there are any other uses of `as_millis()`: tokens_in=2 tokens_out=1 tokens_cached=38986
+t!:Grep id=xJFaorAv pattern="as_millis\(\)" → [running] tokens_in=2 tokens_out=1 tokens_cached=38986
+o: id=xJFaorAv → [ok] 148:            .as_millis() as i64;
+a: I need to fix the unchecked casts. The proper approach is to use `as_secs()` which returns `u64` for seconds, then convert to milliseconds safely, or use `try_into()` for checked conversion. Let me... tokens_in=1 tokens_out=1 tokens_cached=39447
+t!:Grep id=QtZbkx3R pattern="CREATE TABLE.*message_queue" → [running] tokens_in=1 tokens_out=1 tokens_cached=39447
+o: id=QtZbkx3R → [ok] 112:            "CREATE TABLE IF NOT EXISTS message_queue (
+a: The database uses INTEGER (which maps to i64 in SQLite). The best fix is to use `as_secs()` and convert to milliseconds safely, or use `try_into()` with proper error handling. Let me fix both occur... tokens_in=1 tokens_out=1 tokens_cached=39774
+t!:Edit id=Gtw51bfb file_path=/home/christopherdavid/code/openagents/crates/nostr/client/src/queue.rs → [running] tokens_in=1 tokens_out=294 tokens_cached=39774
+o: id=Gtw51bfb → [error] <tool_use_error>Found 2 matches of the string to replace, but replace_all is false. To replace al...
+t!:Edit id=dEWfe8f3 file_path=/home/christopherdavid/code/openagents/crates/nostr/client/src/queue.rs → [running] tokens_in=2 tokens_out=377 tokens_cached=40106
+o: id=dEWfe8f3 → [ok] The file /home/christopherdavid/code/openagents/crates/nostr/client/src/queue.rs has been updated...
+t!:Edit id=wGgF4m3Q file_path=/home/christopherdavid/code/openagents/crates/nostr/client/src/queue.rs → [running] tokens_in=1 tokens_out=311 tokens_cached=40624
+o: id=wGgF4m3Q → [ok] The file /home/christopherdavid/code/openagents/crates/nostr/client/src/queue.rs has been updated...
+a: Now let me run the tests: tokens_in=1 tokens_out=1 tokens_cached=41362
+t!:Bash id=zs2pkQjW cmd="cargo test -p nostr-client --lib queue::tests 2..." → [running] tokens_in=1 tokens_out=105 tokens_cached=41362
+o: id=zs2pkQjW → [ok]    Compiling nostr-client v0.1.0 (/home/christopherdavid/code/openagents/crates/nostr/client)
+t!:Bash id=PfyY2axm cmd="cargo test -p nostr-client 2>&1 | tail -20" → [running] tokens_in=0 tokens_out=91 tokens_cached=41978
+o: id=PfyY2axm → [ok] test test_connect_to_damus ... ignored
+t!:Bash id=qhuAVz1N cmd="git add -A && git commit -m "$(cat <<'EOF'" → [running] tokens_in=0 tokens_out=287 tokens_cached=42509
