@@ -830,6 +830,20 @@ pub fn get_sessions_in_period(
         .collect())
 }
 
+/// Get sessions between two specific dates
+pub fn get_sessions_between_dates(
+    db: &MetricsDb,
+    start: DateTime<Utc>,
+    end: DateTime<Utc>,
+) -> anyhow::Result<Vec<SessionMetrics>> {
+    let all_sessions = db.get_all_sessions()?;
+
+    Ok(all_sessions
+        .into_iter()
+        .filter(|s| s.timestamp >= start && s.timestamp <= end)
+        .collect())
+}
+
 /// Calculate aggregate statistics for all metrics from sessions
 pub fn calculate_aggregate_stats_from_sessions(sessions: &[SessionMetrics]) -> HashMap<String, MetricAggregateStats> {
     let mut stats_map = HashMap::new();

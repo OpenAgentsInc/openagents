@@ -825,6 +825,10 @@ enum MetricsCommands {
         #[arg(short, long, default_value = "7d")]
         period: String,
 
+        /// Compare two date ranges (format: YYYY-MM-DD..YYYY-MM-DD)
+        #[arg(long)]
+        compare: Option<String>,
+
         /// Path to metrics database (default: autopilot-metrics.db)
         #[arg(long)]
         db: Option<PathBuf>,
@@ -4013,7 +4017,7 @@ async fn handle_metrics_command(command: MetricsCommands) -> Result<()> {
 
             println!("{}", "=".repeat(100));
         }
-        MetricsCommands::Analyze { period, db } => {
+        MetricsCommands::Analyze { period, compare, db } => {
             use autopilot::analyze::{
                 calculate_aggregate_stats_from_sessions, detect_regressions,
                 get_sessions_in_period, get_slowest_tools, get_top_error_tools,
@@ -4021,6 +4025,11 @@ async fn handle_metrics_command(command: MetricsCommands) -> Result<()> {
 
             let db_path = db.unwrap_or_else(default_db_path);
             let metrics_db = MetricsDb::open(&db_path)?;
+
+            // Handle compare mode if specified
+            if let Some(compare_str) = compare {
+                return handle_compare_analysis(&metrics_db, &compare_str);
+            }
 
             // Parse period
             let time_period = parse_time_period(&period)?;
@@ -4870,6 +4879,79 @@ fn format_metric_value(metric_name: &str, value: f64) -> String {
         "tokens_per_issue" => format!("{:.0}", value),
         _ => format!("{:.2}", value),
     }
+}
+
+/// Handle compare analysis between two date ranges
+fn handle_compare_analysis(metrics_db: &autopilot::metrics::MetricsDb, compare_str: &str) -> Result<()> {
+    use anyhow::Context;
+    use autopilot::analyze::{calculate_aggregate_stats_from_sessions, get_sessions_between_dates};
+    use chrono::NaiveDate;
+
+    // Parse date range (format: YYYY-MM-DD..YYYY-MM-DD)
+    let parts: Vec<&str> = compare_str.split("..").collect();
+    if parts.len() != 2 {
+        anyhow::bail!("Invalid compare format. Expected: YYYY-MM-DD..YYYY-MM-DD");
+    }
+
+    let start_date = NaiveDate::parse_from_str(parts[0], "%Y-%m-%d")
+        .with_context(|| format!("Failed to parse start date: {}", parts[0]))?;
+    let end_date = NaiveDate::parse_from_str(parts[1], "%Y-%m-%d")
+        .with_context(|| format!("Failed to parse end date: {}", parts[1]))?;
+
+    // Convert to DateTime<Utc>
+    let start = start_date.and_hms_opt(0, 0, 0).unwrap().and_utc();
+    let end = end_date.and_hms_opt(23, 59, 59).unwrap().and_utc();
+
+    // Get sessions in the date range
+    let sessions = get_sessions_between_dates(metrics_db, start, end)?;
+
+    if sessions.is_empty() {
+        println!("{} No sessions found between {} and {}",
+            "⚠".yellow(), parts[0], parts[1]);
+        return Ok(());
+    }
+
+    // Calculate aggregate stats
+    let stats = calculate_aggregate_stats_from_sessions(&sessions);
+
+    // Print report
+    println!("{}", "=".repeat(80));
+    println!("{} Metrics Comparison: {} to {}",
+        "📊".cyan().bold(), parts[0], parts[1]);
+    println!("{}", "=".repeat(80));
+    println!();
+    println!("{} Overview:", "📈".cyan().bold());
+    println!("  Sessions:       {}", sessions.len());
+    println!("  Date Range:     {} to {}", parts[0], parts[1]);
+    println!();
+
+    // Print aggregate statistics
+    println!("{} Aggregate Statistics:", "📊".cyan().bold());
+    let metrics_order = vec![
+        "tool_error_rate",
+        "completion_rate",
+        "tokens_per_issue",
+        "cost_per_issue",
+        "duration_per_issue",
+        "session_duration",
+    ];
+
+    for metric_name in metrics_order {
+        if let Some(stat) = stats.get(metric_name) {
+            let formatted = format_metric_value(metric_name, stat.mean);
+            println!(
+                "  {:20} mean={} p50={} p90={}",
+                metric_name,
+                formatted,
+                format_metric_value(metric_name, stat.median),
+                format_metric_value(metric_name, stat.p90)
+            );
+        }
+    }
+    println!();
+    println!("{}", "=".repeat(80));
+
+    Ok(())
 }
 
 /// Handle benchmark command
