@@ -42,8 +42,9 @@ auth = { path = "../auth" }
 nostr = { path = "../nostr/core" }
 nostr-client = { path = "../nostr/client" }
 
-# Wallet for identity
+# Wallet for identity and payments
 wallet = { path = "../wallet" }
+openagents-spark = { path = "../spark" }
 bip39 = "2"
 
 # Utilities

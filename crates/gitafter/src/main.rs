@@ -15,6 +15,7 @@ mod ws;
 
 use anyhow::Result;
 use bip39::Mnemonic;
+use openagents_spark::{Network, SparkSigner, SparkWallet, WalletConfig};
 use std::sync::Arc;
 use tao::event::{Event, WindowEvent};
 use tao::event_loop::{ControlFlow, EventLoop};
@@ -45,10 +46,10 @@ fn main() -> Result<()> {
             .expect("tokio runtime");
 
         rt.block_on(async move {
-            // Load identity from secure storage or environment variable
+            // Load identity and wallet from secure storage or environment variable
             // SECURITY: Environment variables are deprecated due to visibility to other processes.
             // Prefer using secure storage instead.
-            let identity = if let Ok(mnemonic_str) = std::env::var("GITAFTER_MNEMONIC") {
+            let (identity, wallet) = if let Ok(mnemonic_str) = std::env::var("GITAFTER_MNEMONIC") {
                 tracing::warn!(
                     "Loading mnemonic from GITAFTER_MNEMONIC environment variable. \
                      WARNING: Environment variables are visible to all processes running as the same user. \
@@ -56,27 +57,49 @@ fn main() -> Result<()> {
                 );
                 match Mnemonic::parse(&mnemonic_str) {
                     Ok(mnemonic) => {
-                        match UnifiedIdentity::from_mnemonic(mnemonic) {
-                            Ok(id) => {
-                                tracing::info!("Loaded identity from GITAFTER_MNEMONIC (insecure)");
-                                Some(Arc::new(id))
+                        let identity_result = UnifiedIdentity::from_mnemonic(mnemonic.clone());
+
+                        // Create Spark wallet from mnemonic
+                        let wallet_result = async {
+                            let signer = SparkSigner::from_mnemonic(&mnemonic.to_string(), "")?;
+                            let config = WalletConfig {
+                                network: Network::Testnet,
+                                api_key: None,
+                                storage_dir: dirs::data_local_dir()
+                                    .unwrap_or_else(|| std::path::PathBuf::from("."))
+                                    .join("openagents")
+                                    .join("gitafter")
+                                    .join("spark"),
+                            };
+                            SparkWallet::new(signer, config).await
+                        }.await;
+
+                        match (identity_result, wallet_result) {
+                            (Ok(id), Ok(w)) => {
+                                tracing::info!("Loaded identity and wallet from GITAFTER_MNEMONIC");
+                                (Some(Arc::new(id)), Some(Arc::new(w)))
                             }
-                            Err(e) => {
+                            (Ok(id), Err(e)) => {
+                                tracing::error!("Failed to create wallet: {}", e);
+                                tracing::info!("Running without wallet - bounty payments disabled");
+                                (Some(Arc::new(id)), None)
+                            }
+                            (Err(e), _) => {
                                 tracing::error!("Failed to create identity from mnemonic: {}", e);
-                                None
+                                (None, None)
                             }
                         }
                     }
                     Err(e) => {
                         tracing::error!("Failed to parse mnemonic: {}", e);
-                        None
+                        (None, None)
                     }
                 }
             } else {
                 // TODO: Implement loading from secure storage (keychain/keyring)
                 tracing::warn!("No GITAFTER_MNEMONIC environment variable set - running in read-only mode");
                 tracing::info!("To enable event signing and publishing, use secure storage (not yet implemented) or set GITAFTER_MNEMONIC (insecure)");
-                None
+                (None, None)
             };
 
             // Initialize Nostr client
@@ -103,8 +126,8 @@ fn main() -> Result<()> {
                 }
             };
 
-            // Start server with broadcaster, nostr_client, and identity
-            let (port, _server_handle) = start_server(broadcaster_clone.clone(), nostr_client, identity)
+            // Start server with broadcaster, nostr_client, identity, and wallet
+            let (port, _server_handle) = start_server(broadcaster_clone.clone(), nostr_client, identity, wallet)
                 .await
                 .expect("start server");
             port_tx.send(port).expect("send port");

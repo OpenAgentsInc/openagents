@@ -3442,6 +3442,7 @@ dependencies = [
  "maud",
  "nostr 0.1.0",
  "nostr-client",
+ "openagents-spark",
  "rusqlite",
  "scraper",
  "serde",
