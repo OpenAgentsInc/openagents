@@ -369,6 +369,22 @@ impl BountyOfferBuilder {
 /// Builder for creating work assignment events (kind:1635)
 ///
 /// A work assignment event allows maintainers to assign issues to specific agents.
+///
+/// # Examples
+///
+/// ```
+/// use gitafter::nostr::events::WorkAssignmentBuilder;
+///
+/// let assignment = WorkAssignmentBuilder::new(
+///     "issue-event-id-123",
+///     "30617:npub1...:openagents",
+///     "npub1agent...",
+/// )
+/// .content("Assigned to @agent_alice - this aligns with your expertise")
+/// .build();
+///
+/// assert_eq!(assignment.kind, 1635);
+/// ```
 #[allow(dead_code)]
 pub struct WorkAssignmentBuilder {
     issue_event_id: String,
@@ -436,6 +452,25 @@ impl WorkAssignmentBuilder {
 ///
 /// A bounty claim event is created when work is completed and the agent
 /// is claiming payment for a bounty.
+///
+/// # Examples
+///
+/// ```
+/// use gitafter::nostr::events::BountyClaimBuilder;
+///
+/// let claim = BountyClaimBuilder::new(
+///     "bounty-offer-event-id",
+///     "merged-pr-event-id",
+///     "30617:npub1...:openagents",
+///     "trajectory-session-abc123",
+///     "sha256-hash-of-trajectory-events",
+/// )
+/// .lightning_address("agent@getalby.com")
+/// .relay("wss://relay.nostr.bg")
+/// .build();
+///
+/// assert_eq!(claim.kind, 1637);
+/// ```
 #[allow(dead_code)]
 pub struct BountyClaimBuilder {
     bounty_event_id: String,
@@ -529,6 +564,61 @@ impl BountyClaimBuilder {
 ///
 /// Pull request events represent code contributions with optional trajectory
 /// tracking and stacked diffs support.
+///
+/// # Examples
+///
+/// ## Basic Pull Request
+///
+/// ```
+/// use gitafter::nostr::events::PullRequestBuilder;
+///
+/// let pr = PullRequestBuilder::new(
+///     "30617:npub1...:openagents",
+///     "Fix authentication bug",
+///     "This PR fixes the auth timeout issue by...",
+/// )
+/// .commit("abc123def456789")
+/// .clone_url("https://github.com/user/repo.git")
+/// .build();
+///
+/// assert_eq!(pr.kind, 1618);
+/// ```
+///
+/// ## With Trajectory Tracking
+///
+/// ```
+/// use gitafter::nostr::events::PullRequestBuilder;
+///
+/// let pr = PullRequestBuilder::new(
+///     "30617:npub1...:openagents",
+///     "Add payment integration",
+///     "Integrates Breez SDK for Lightning payments",
+/// )
+/// .commit("def456")
+/// .clone_url("https://github.com/user/repo.git")
+/// .trajectory("session-uuid-123")
+/// .trajectory_hash("sha256-hash-abc")
+/// .build();
+/// ```
+///
+/// ## Stacked Diffs
+///
+/// ```
+/// use gitafter::nostr::events::PullRequestBuilder;
+///
+/// // Layer 2 depends on Layer 1
+/// let layer2 = PullRequestBuilder::new(
+///     "30617:npub1...:openagents",
+///     "Layer 2: Wire service into handlers",
+///     "Connects FooService to HTTP handlers",
+/// )
+/// .commit("ghi789")
+/// .clone_url("https://github.com/user/repo.git")
+/// .depends_on("layer1-event-id")
+/// .stack("stack-uuid-456")
+/// .layer(2, 4)
+/// .build();
+/// ```
 #[allow(dead_code)]
 pub struct PullRequestBuilder {
     repo_address: String,
@@ -683,6 +773,32 @@ impl PullRequestBuilder {
 /// Builder for creating patch events (kind:1617)
 ///
 /// A patch event contains a git diff/patch for a repository.
+///
+/// # Examples
+///
+/// ```
+/// use gitafter::nostr::events::PatchBuilder;
+///
+/// let patch_content = r#"diff --git a/src/main.rs b/src/main.rs
+/// index abc123..def456 100644
+/// --- a/src/main.rs
+/// +++ b/src/main.rs
+/// @@ -1,3 +1,4 @@
+/// +// Fixed typo
+///  fn main() {
+///      println!("Hello");
+///  }"#;
+///
+/// let patch = PatchBuilder::new(
+///     "30617:npub1...:openagents",
+///     "Fix typo in main.rs",
+///     patch_content,
+/// )
+/// .description("Corrects spelling mistake in comment")
+/// .build();
+///
+/// assert_eq!(patch.kind, 1617);
+/// ```
 #[allow(dead_code)]
 pub struct PatchBuilder {
     repo_address: String,
@@ -754,6 +870,52 @@ impl PatchBuilder {
 /// - 1631: Applied/Merged
 /// - 1632: Closed
 /// - 1633: Draft
+///
+/// # Examples
+///
+/// ## Mark PR as Merged
+///
+/// ```
+/// use gitafter::nostr::events::StatusEventBuilder;
+///
+/// let status = StatusEventBuilder::applied(
+///     "pr-event-id-123",
+///     "30617:npub1...:openagents",
+/// )
+/// .reason("All checks passed, trajectory verified")
+/// .build();
+///
+/// assert_eq!(status.kind, 1631);
+/// ```
+///
+/// ## Mark PR as Closed
+///
+/// ```
+/// use gitafter::nostr::events::StatusEventBuilder;
+///
+/// let status = StatusEventBuilder::closed(
+///     "pr-event-id-456",
+///     "30617:npub1...:openagents",
+/// )
+/// .reason("Superseded by #789")
+/// .build();
+///
+/// assert_eq!(status.kind, 1632);
+/// ```
+///
+/// ## Mark as Draft
+///
+/// ```
+/// use gitafter::nostr::events::StatusEventBuilder;
+///
+/// let status = StatusEventBuilder::draft(
+///     "pr-event-id-789",
+///     "30617:npub1...:openagents",
+/// )
+/// .build();
+///
+/// assert_eq!(status.kind, 1633);
+/// ```
 #[allow(dead_code)]
 pub struct StatusEventBuilder {
     target_event_id: String,
@@ -1215,22 +1377,49 @@ mod repository_announcement_tests {
     }
 }
 
-/// Builder for NIP-57 zap requests (kind:9734)
+/// Builder for NIP-57 zap request events (kind:9734)
 ///
-/// Creates a zap request that will be sent to a recipient's LNURL callback
-/// to request a Lightning invoice for payment.
+/// Zap requests are sent to LNURL callbacks to request Lightning payment receipts.
+/// The request must be signed before sending to the callback endpoint.
 ///
-/// # Example
+/// # Examples
 ///
-/// ```rust
+/// ## Basic Zap
+///
+/// ```
 /// use gitafter::nostr::events::ZapRequestBuilder;
 ///
-/// let template = ZapRequestBuilder::new("recipient_pubkey_hex")
-///     .amount_msats(21000)
+/// let zap = ZapRequestBuilder::new("recipient-pubkey-hex")
+///     .amount_sats(21)
 ///     .relay("wss://relay.damus.io")
-///     .relay("wss://relay.snort.social")
-///     .event("event_id_being_zapped")  // Optional: zap a specific event
-///     .content("Great work on this PR!")  // Optional message
+///     .build();
+///
+/// assert_eq!(zap.kind, 9734);
+/// ```
+///
+/// ## Zap with Message
+///
+/// ```
+/// use gitafter::nostr::events::ZapRequestBuilder;
+///
+/// let zap = ZapRequestBuilder::new("recipient-pubkey-hex")
+///     .amount_sats(1000)
+///     .content("Great work on this PR!")
+///     .relay("wss://relay.nostr.bg")
+///     .relay("wss://nos.lol")
+///     .build();
+/// ```
+///
+/// ## Zap a Specific Event
+///
+/// ```
+/// use gitafter::nostr::events::ZapRequestBuilder;
+///
+/// let zap = ZapRequestBuilder::new("recipient-pubkey-hex")
+///     .amount_sats(5000)
+///     .event("pr-event-id-to-zap")
+///     .content("Excellent implementation!")
+///     .relay("wss://relay.damus.io")
 ///     .build();
 /// ```
 pub struct ZapRequestBuilder {

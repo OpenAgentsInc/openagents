@@ -787,3 +787,87 @@ o: id=satzr1mn → [ok] The file /home/christopherdavid/code/openagents/crates/a
 t!:Bash id=J5XXjt8F cmd="cargo build -p autopilot 2>&1 | tail -50" → [running] tokens_in=0 tokens_out=26 tokens_cached=151080
 o: id=J5XXjt8F → [ok]    Compiling autopilot v0.1.0 (/home/christopherdavid/code/openagents/crates/autopilot)
 t!:Bash id=DEhS8mmM cmd="git add -A && git status" → [running] tokens_in=0 tokens_out=25 tokens_cached=151649
+o: id=DEhS8mmM → [ok] On branch main
+t!:Bash id=2Ly4jbYJ cmd="git commit -m "$(cat <<'EOF'" → [running] tokens_in=0 tokens_out=25 tokens_cached=151931
+o: id=2Ly4jbYJ → [ok] [main 79762cf5b] Add real-time WebSocket metrics streaming to autopilot dashboard
+t!:Bash id=NBQakDea cmd="git push origin main" → [running] tokens_in=0 tokens_out=77 tokens_cached=152152
+o: id=NBQakDea → [error] Exit code 1
+t!:Edit id=tFXRr7am file_path=/home/christopherdavid/code/openagents/crates/autopilot/src/dashboard.rs → [running] tokens_in=1 tokens_out=695 tokens_cached=152907
+o: id=tFXRr7am → [ok] The file /home/christopherdavid/code/openagents/crates/autopilot/src/dashboard.rs has been update...
+t!:Bash id=FxDaKaLd cmd="cargo build -p autopilot 2>&1 | tail -10" → [running] tokens_in=0 tokens_out=26 tokens_cached=153750
+o: id=FxDaKaLd → [ok]    Compiling breez-sdk-common v0.1.0 (/home/christopherdavid/code/spark-sdk/crates/breez-sdk/common)
+# status: Compacting
+a: I'll continue the autonomous loop by calling issue_ready to get the next issue. tokens_in=3 tokens_out=1 tokens_cached=20313
+t!:mcp__issues__issue_ready id=yRfao7Xf  → [running] tokens_in=3 tokens_out=1 tokens_cached=20313
+o: id=yRfao7Xf → [ok] No ready issues available
+t!:mcp__issues__directive_list id=6RQv5eQq  → [running] tokens_in=6 tokens_out=27 tokens_cached=30835
+o: id=6RQv5eQq → [ok] [
+t!:mcp__issues__directive_get id=Yu2ABB4M  → [running] tokens_in=6 tokens_out=32 tokens_cached=30907
+o: id=Yu2ABB4M → [ok] {
+t!:mcp__issues__issue_create id=M4echrps  → [running] tokens_in=5 tokens_out=270 tokens_cached=32422
+o: id=M4echrps → [ok] Created issue #960: Add rustdoc examples to GitAfter PR creation and review types (agent: claude)...
+t!:mcp__issues__issue_claim id=ZZPwsJRD  → [running] tokens_in=5 tokens_out=81 tokens_cached=45350
+o: id=ZZPwsJRD → [ok] Claimed issue #960
+t!:Read id=4hNMy4dR file_path=/home/christopherdavid/code/openagents/crates/gitafter/src/handlers/patches.rs → [running] tokens_in=5 tokens_out=18 tokens_cached=45663
+t!:Read id=Si1eYPHx file_path=/home/christopherdavid/code/openagents/crates/gitafter/src/views/review.rs → [running] tokens_in=5 tokens_out=143 tokens_cached=45663
+o: id=4hNMy4dR → [error] <tool_use_error>File does not exist.</tool_use_error>
+o: id=Si1eYPHx → [error] <tool_use_error>File does not exist.</tool_use_error>
+t!:Glob id=RJm4BabE pattern="**/patches.rs" → [running] tokens_in=6 tokens_out=26 tokens_cached=45761
+t!:Glob id=rSpAtNut pattern="**/review.rs" → [running] tokens_in=6 tokens_out=26 tokens_cached=45761
+o: id=rSpAtNut → [ok] No files found
+o: id=RJm4BabE → [ok] No files found
+t!:Bash id=o7K2xf5R cmd="find crates/gitafter -type f -name "*.rs" | hea..." → [running] tokens_in=33 tokens_out=91 tokens_cached=46098
+o: id=o7K2xf5R → [ok] crates/gitafter/benches/notifications_bench.rs
+t!:Bash id=jHFcoDDP cmd="find crates/gitafter/src -name "*.rs" | grep -E..." → [running] tokens_in=4 tokens_out=99 tokens_cached=46233
+o: id=jHFcoDDP → [ok] crates/gitafter/src/views/publish_status.rs
+t!:Read id=P7BZBLSf file_path=/home/christopherdavid/code/openagents/crates/gitafter/src/review/mod.rs → [running] tokens_in=4 tokens_out=80 tokens_cached=46763
+o: id=P7BZBLSf → [ok]      1→//! PR review automation for GitAfter
+t!:Grep id=b6xWHGsT pattern="struct (Patch|PR|Review)Req..." → [running] tokens_in=4 tokens_out=107 tokens_cached=46915
+o: id=b6xWHGsT → [ok] No files found
+t!:Grep id=vA88gfqf pattern="pub struct.*Review" → [running] tokens_in=3 tokens_out=26 tokens_cached=47152
+o: id=vA88gfqf → [ok] No files found
+t!:Read id=xuwZdrwU file_path=/home/christopherdavid/code/openagents/crates/gitafter/src/review/auto_checks.rs → [running] tokens_in=3 tokens_out=25 tokens_cached=47378
+t!:Read id=ntbaL9ko file_path=/home/christopherdavid/code/openagents/crates/gitafter/src/review/checklist.rs → [running] tokens_in=3 tokens_out=146 tokens_cached=47378
+o: id=xuwZdrwU → [ok]      1→//! Automated PR review checks for GitAfter
+o: id=ntbaL9ko → [ok]      1→//! Smart checklist generation for PR reviews
+a: The types in the review module are already well-documented with comprehensive rustdoc examples. The issue #762 references handlers/patches.rs and views/review.rs which don't exist - these were like... tokens_in=4 tokens_out=1 tokens_cached=47494
+t!:Grep id=7FRWaJYC pattern="struct.*Request.*\{" → [running] tokens_in=4 tokens_out=1 tokens_cached=47494
+o: id=7FRWaJYC → [ok] Found 1 file
+t!:Read id=cJUkA6Dk file_path=/home/christopherdavid/code/openagents/crates/gitafter/src/nostr/events.rs → [running] tokens_in=3 tokens_out=25 tokens_cached=63134
+o: id=cJUkA6Dk → [ok]      1→//! NIP-34 event builders for GitAfter
+a: Perfect! I found the file. The types in `crates/gitafter/src/nostr/events.rs` already have comprehensive module-level rustdoc with examples. Let me check if all the public builder types have indivi... tokens_in=2 tokens_out=1 tokens_cached=63345
+t!:Read id=rpu3ybg5 file_path=/home/christopherdavid/code/openagents/crates/gitafter/src/nostr/events.rs → [running] tokens_in=2 tokens_out=1 tokens_cached=63345
+o: id=rpu3ybg5 → [ok]    200→            // Repository reference
+a: Let me continue reading to check the rest of the builders: tokens_in=2 tokens_out=4 tokens_cached=66296
+t!:Grep id=MvRaTK2e pattern="^pub struct.*Builder" → [running] tokens_in=2 tokens_out=4 tokens_cached=66296
+o: id=MvRaTK2e → [ok] 128:pub struct IssueClaimBuilder {
+a: Now let me check if WorkAssignmentBuilder, BountyClaimBuilder, PullRequestBuilder, PatchBuilder, StatusEventBuilder, RepositoryAnnouncementBuilder, and ZapRequestBuilder all have rustdoc examples: tokens_in=1 tokens_out=1 tokens_cached=70340
+t!:Read id=y1P3VYgx file_path=/home/christopherdavid/code/openagents/crates/gitafter/src/nostr/events.rs → [running] tokens_in=1 tokens_out=1 tokens_cached=70340
+o: id=y1P3VYgx → [ok]    369→/// Builder for creating work assignment events (kind:1635)
+a: I can see that WorkAssignmentBuilder and BountyClaimBuilder are missing rustdoc examples on their struct definitions. Let me check the other builders as well: tokens_in=1 tokens_out=1 tokens_cached=70692
+t!:Read id=SbL7t7tx file_path=/home/christopherdavid/code/openagents/crates/gitafter/src/nostr/events.rs → [running] tokens_in=1 tokens_out=1 tokens_cached=70692
+o: id=SbL7t7tx → [ok]    528→/// Builder for creating pull request events (kind:1618)
+a: Let me continue reading to check all builder types: tokens_in=0 tokens_out=4 tokens_cached=73209
+t!:Read id=trcZX76u file_path=/home/christopherdavid/code/openagents/crates/gitafter/src/nostr/events.rs → [running] tokens_in=0 tokens_out=126 tokens_cached=73209
+o: id=trcZX76u → [ok]    750→/// Builder for creating status events (kinds 1630-1633)
+a: Now let me check ZapRequestBuilder: tokens_in=0 tokens_out=4 tokens_cached=76324
+t!:Read id=Px9HnYAT file_path=/home/christopherdavid/code/openagents/crates/gitafter/src/nostr/events.rs → [running] tokens_in=0 tokens_out=4 tokens_cached=76324
+o: id=Px9HnYAT → [ok]   1236→pub struct ZapRequestBuilder {
+a: Now I need to add rustdoc examples to the following builders that are missing them: tokens_in=0 tokens_out=1 tokens_cached=80998
+t!:Edit id=pwB9DKMi file_path=/home/christopherdavid/code/openagents/crates/gitafter/src/nostr/events.rs → [running] tokens_in=0 tokens_out=473 tokens_cached=80998
+o: id=pwB9DKMi → [ok] The file /home/christopherdavid/code/openagents/crates/gitafter/src/nostr/events.rs has been upda...
+t!:Edit id=zbcmfcin file_path=/home/christopherdavid/code/openagents/crates/gitafter/src/nostr/events.rs → [running] tokens_in=0 tokens_out=408 tokens_cached=83382
+o: id=zbcmfcin → [ok] The file /home/christopherdavid/code/openagents/crates/gitafter/src/nostr/events.rs has been upda...
+t!:Edit id=1nr2ukek file_path=/home/christopherdavid/code/openagents/crates/gitafter/src/nostr/events.rs → [running] tokens_in=0 tokens_out=690 tokens_cached=84232
+o: id=1nr2ukek → [ok] The file /home/christopherdavid/code/openagents/crates/gitafter/src/nostr/events.rs has been upda...
+t!:Edit id=KvF9sh6F file_path=/home/christopherdavid/code/openagents/crates/gitafter/src/nostr/events.rs → [running] tokens_in=0 tokens_out=427 tokens_cached=85189
+o: id=KvF9sh6F → [ok] The file /home/christopherdavid/code/openagents/crates/gitafter/src/nostr/events.rs has been upda...
+t!:Edit id=ztcG6JTC file_path=/home/christopherdavid/code/openagents/crates/gitafter/src/nostr/events.rs → [running] tokens_in=0 tokens_out=605 tokens_cached=86712
+o: id=ztcG6JTC → [ok] The file /home/christopherdavid/code/openagents/crates/gitafter/src/nostr/events.rs has been upda...
+a: Now let me add rustdoc to ZapRequestBuilder: tokens_in=0 tokens_out=2 tokens_cached=87627
+t!:Edit id=MkzfEU2T file_path=/home/christopherdavid/code/openagents/crates/gitafter/src/nostr/events.rs → [running] tokens_in=0 tokens_out=644 tokens_cached=87627
+o: id=MkzfEU2T → [ok] The file /home/christopherdavid/code/openagents/crates/gitafter/src/nostr/events.rs has been upda...
+a: I see there's duplicate documentation. Let me check what happened and fix it: tokens_in=0 tokens_out=1 tokens_cached=89040
+t!:Read id=QLjjxcFx file_path=/home/christopherdavid/code/openagents/crates/gitafter/src/nostr/events.rs → [running] tokens_in=0 tokens_out=133 tokens_cached=89040
+o: id=QLjjxcFx → [ok]   1360→
+a: I see - there was already some documentation at line 1380-1397. Let me replace it properly: tokens_in=0 tokens_out=1 tokens_cached=90521
