@@ -9,6 +9,7 @@ mod claude;
 mod daemon;
 mod gitafter;
 mod marketplace;
+mod parallel;
 mod wallet;
 
 /// Configure all routes
@@ -22,6 +23,7 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
         .service(web::scope("/api/autopilot").configure(autopilot::configure_api))
         .service(web::scope("/api/claude").configure(claude::configure_api))
         .service(web::scope("/api/daemon").configure(daemon::configure_api))
+        .service(web::scope("/api/parallel").configure(parallel::configure_api))
         // Wallet routes
         .service(web::scope("/wallet").configure(wallet::configure))
         // Marketplace routes
@@ -32,6 +34,8 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
         .service(web::scope("/git").configure(gitafter::configure))
         // Daemon routes
         .service(web::scope("/daemon").configure(daemon::configure))
+        // Parallel agents routes
+        .service(web::scope("/parallel").configure(parallel::configure))
         // WebSocket
         .route("/ws", web::get().to(super::ws::ws_handler));
 }
