@@ -991,6 +991,18 @@ enum MetricsCommands {
         /// Number of historical snapshots to show
         #[arg(short, long, default_value_t = 10)]
         limit: usize,
+
+        /// Threshold for celebration (velocity score >)
+        #[arg(long, default_value_t = 0.5)]
+        celebrate_threshold: f64,
+
+        /// Threshold for progress message (velocity score >)
+        #[arg(long, default_value_t = 0.2)]
+        progress_threshold: f64,
+
+        /// Threshold for warning message (velocity score <)
+        #[arg(long, default_value_t = -0.3)]
+        warning_threshold: f64,
     },
 }
 
@@ -4852,7 +4864,14 @@ async fn handle_metrics_command(command: MetricsCommands) -> Result<()> {
             }
         }
 
-        MetricsCommands::Velocity { period, db, limit } => {
+        MetricsCommands::Velocity {
+            period,
+            db,
+            limit,
+            celebrate_threshold,
+            progress_threshold,
+            warning_threshold,
+        } => {
             use autopilot::analyze::calculate_velocity;
             use autopilot::metrics::MetricsDb;
 
@@ -4887,15 +4906,15 @@ async fn handle_metrics_command(command: MetricsCommands) -> Result<()> {
             println!();
 
             // Celebrate improvements!
-            if velocity.velocity_score > 0.5 {
+            if velocity.velocity_score > celebrate_threshold {
                 println!("{} {} Great work! Autopilot is significantly improving!", "🎉".cyan().bold(), "CELEBRATION:".green().bold());
                 println!("  {} metrics are improving, showing strong upward momentum!", velocity.improving_metrics);
                 println!();
-            } else if velocity.velocity_score > 0.2 {
+            } else if velocity.velocity_score > progress_threshold {
                 println!("{} {} Autopilot is getting better!", "✨".cyan(), "Progress:".green().bold());
                 println!("  Positive improvements detected across key metrics.");
                 println!();
-            } else if velocity.velocity_score < -0.3 {
+            } else if velocity.velocity_score < warning_threshold {
                 println!("{} {} Attention needed - metrics are degrading.", "⚠️".yellow().bold(), "Warning:".yellow().bold());
                 println!("  Consider investigating recent changes and running diagnostics.");
                 println!();
