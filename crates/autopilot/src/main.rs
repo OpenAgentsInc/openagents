@@ -513,6 +513,10 @@ enum Commands {
         #[arg(long)]
         list_baselines: bool,
 
+        /// Compare two git commits (format: commit1..commit2)
+        #[arg(long)]
+        compare_commits: Option<String>,
+
         /// Path to benchmarks database (default: autopilot-benchmarks.db)
         #[arg(long)]
         db: Option<PathBuf>,
@@ -1240,6 +1244,7 @@ async fn main() -> Result<()> {
             baseline,
             save_baseline,
             list_baselines,
+            compare_commits,
             db,
             workspace,
         } => {
@@ -1249,6 +1254,7 @@ async fn main() -> Result<()> {
                 baseline,
                 save_baseline,
                 list_baselines,
+                compare_commits,
                 db,
                 workspace,
             )
@@ -5088,6 +5094,7 @@ async fn handle_benchmark_command(
     baseline: Option<String>,
     save_baseline: Option<String>,
     list_baselines: bool,
+    compare_commits: Option<String>,
     db: Option<PathBuf>,
     workspace: Option<PathBuf>,
 ) -> Result<()> {
@@ -5156,6 +5163,92 @@ async fn handle_benchmark_command(
                     version.cyan().bold(), count, updated);
             }
         }
+        println!();
+        return Ok(());
+    }
+
+    // Handle git commit comparison
+    if let Some(commits) = compare_commits {
+        let parts: Vec<&str> = commits.split("..").collect();
+        if parts.len() != 2 {
+            anyhow::bail!("Invalid compare format. Expected: commit1..commit2");
+        }
+
+        println!("{}", "=".repeat(80));
+        println!("{} Comparing Git Commits", "🔍".cyan().bold());
+        println!("{}", "=".repeat(80));
+        println!();
+        println!("  Commit 1: {}", parts[0]);
+        println!("  Commit 2: {}", parts[1]);
+        println!();
+
+        // Get current branch
+        let current_branch = std::process::Command::new("git")
+            .args(&["rev-parse", "--abbrev-ref", "HEAD"])
+            .output()?;
+        let current_branch = String::from_utf8_lossy(&current_branch.stdout).trim().to_string();
+
+        // Get results for commit 1
+        let commit1_results = {
+            std::process::Command::new("git")
+                .args(&["checkout", parts[0]])
+                .output()?;
+            let db = BenchmarkDatabase::open(&db_path)?;
+            let results = db.get_baseline(parts[0])?;
+            results
+        };
+
+        // Get results for commit 2
+        let commit2_results = {
+            std::process::Command::new("git")
+                .args(&["checkout", parts[1]])
+                .output()?;
+            let db = BenchmarkDatabase::open(&db_path)?;
+            let results = db.get_baseline(parts[1])?;
+            results
+        };
+
+        // Restore original branch
+        std::process::Command::new("git")
+            .args(&["checkout", &current_branch])
+            .output()?;
+
+        if commit1_results.is_empty() || commit2_results.is_empty() {
+            println!("⚠ No benchmark data found for one or both commits.");
+            println!("  Run benchmarks first with --save-baseline");
+            return Ok(());
+        }
+
+        // Compare results
+        println!("{} Comparison Results:", "📊".cyan());
+        println!("{:<20} {:>15} {:>15} {:>12}", "Benchmark", parts[0], parts[1], "Change");
+        println!("{}", "-".repeat(80));
+
+        let by_id1: std::collections::HashMap<_, _> = commit1_results.iter()
+            .map(|r| (r.benchmark_id.clone(), r))
+            .collect();
+        let by_id2: std::collections::HashMap<_, _> = commit2_results.iter()
+            .map(|r| (r.benchmark_id.clone(), r))
+            .collect();
+
+        for (id, r2) in &by_id2 {
+            if let Some(r1) = by_id1.get(id) {
+                let duration_change = ((r2.metrics.duration_ms as f64 - r1.metrics.duration_ms as f64)
+                    / r1.metrics.duration_ms as f64) * 100.0;
+                let change_str = if duration_change > 0.0 {
+                    format!("+{:.1}%", duration_change).red()
+                } else {
+                    format!("{:.1}%", duration_change).green()
+                };
+                println!("{:<20} {:>12}ms {:>12}ms {:>12}",
+                    id,
+                    r1.metrics.duration_ms,
+                    r2.metrics.duration_ms,
+                    change_str
+                );
+            }
+        }
+
         println!();
         return Ok(());
     }
