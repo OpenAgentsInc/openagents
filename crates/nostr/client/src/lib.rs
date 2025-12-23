@@ -42,6 +42,7 @@
 //! ```
 
 mod cache;
+mod connection_pool;
 mod contacts;
 mod error;
 mod negentropy;
@@ -53,6 +54,7 @@ mod relay;
 mod subscription;
 
 pub use cache::{CacheConfig, EventCache};
+pub use connection_pool::{ConnectionPoolConfig, ConnectionPoolManager, PoolStats as ConnectionPoolStats};
 pub use contacts::{ContactManager, MergeStrategy};
 pub use error::{ClientError, Result};
 pub use negentropy::{SyncSession, SyncSessionId, SyncSessionManager, build_initial_message};
