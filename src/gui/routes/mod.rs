@@ -2,10 +2,11 @@
 
 use actix_web::web;
 
-mod gitafter;
+pub mod acp;
 mod autopilot;
 mod claude;
 mod daemon;
+mod gitafter;
 mod marketplace;
 mod wallet;
 
@@ -15,6 +16,7 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
         // Root - dashboard with tab navigation
         .route("/", web::get().to(super::views::home))
         // API routes
+        .service(web::scope("/api/acp").configure(acp::configure_api))
         .service(web::scope("/api/autopilot").configure(autopilot::configure_api))
         .service(web::scope("/api/claude").configure(claude::configure_api))
         .service(web::scope("/api/daemon").configure(daemon::configure_api))
