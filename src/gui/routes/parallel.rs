@@ -289,31 +289,35 @@ async fn agent_status() -> HttpResponse {
     }
 }
 
-/// Get logs for a specific agent
+/// Get logs for a specific agent (returns last 50 lines for live streaming)
 async fn agent_logs(path: web::Path<String>) -> HttpResponse {
     let agent_id = path.into_inner();
 
-    match autopilot::parallel::get_logs(&agent_id, Some(100)).await {
+    match autopilot::parallel::get_logs(&agent_id, Some(50)).await {
         Ok(logs) => {
-            let html = format!(
-                r#"<div style="position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: #1a1a1a; border: 1px solid #3a3a3a; padding: 1rem; max-width: 800px; max-height: 600px; overflow: auto; z-index: 1000;">
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; border-bottom: 1px solid #3a3a3a; padding-bottom: 0.5rem;">
-                        <h3 style="color: #4a9eff; margin: 0;">Logs: agent-{}</h3>
-                        <button onclick="this.closest('div').parentElement.innerHTML=''" style="background: #501616; color: #ff7d7d; border: none; padding: 0.25rem 0.5rem; cursor: pointer;">Close</button>
-                    </div>
-                    <pre style="font-family: monospace; font-size: 0.75rem; color: #a0a0a0; white-space: pre-wrap; word-wrap: break-word;">{}</pre>
-                </div>"#,
-                agent_id,
-                html_escape(&logs)
-            );
-
+            if logs.trim().is_empty() {
+                return HttpResponse::Ok()
+                    .content_type("text/html")
+                    .body(r#"<span style="color: #555;">No logs yet...</span>"#);
+            }
+            // Return just the escaped log content for inline display
             HttpResponse::Ok()
                 .content_type("text/html")
-                .body(html)
+                .body(html_escape(&logs))
         }
-        Err(e) => HttpResponse::InternalServerError()
-            .content_type("text/html")
-            .body(format!(r#"<p style="color: #ff7d7d;">Error: {}</p>"#, e)),
+        Err(e) => {
+            // Check if container exists
+            let err_str = e.to_string();
+            if err_str.contains("No such container") {
+                HttpResponse::Ok()
+                    .content_type("text/html")
+                    .body(r#"<span style="color: #555;">No agent running</span>"#)
+            } else {
+                HttpResponse::Ok()
+                    .content_type("text/html")
+                    .body(format!(r#"<span style="color: #ff7d7d;">Error: {}</span>"#, html_escape(&err_str)))
+            }
+        }
     }
 }
 
