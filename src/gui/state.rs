@@ -320,42 +320,65 @@ pub struct UsageLimits {
     pub extra_resets_at: Option<String>,
 }
 
-/// Get OAuth token from macOS Keychain.
-/// Returns None if not on macOS or token not found.
+/// Get OAuth token from credentials store.
+/// Supports Linux (file-based) and macOS (Keychain).
 async fn get_oauth_token() -> Option<String> {
-    use tokio::process::Command;
-
-    // Get OAuth token from macOS Keychain
-    let output = Command::new("security")
-        .args([
-            "find-generic-password",
-            "-s",
-            "Claude Code-credentials",
-            "-w",
-        ])
-        .output()
-        .await
-        .ok()?;
-
-    if !output.status.success() {
-        tracing::warn!("Failed to get OAuth token from keychain: {:?}", output.status);
-        return None;
+    // Try Linux credentials file first (~/.claude/.credentials.json)
+    let creds_path = shellexpand::tilde("~/.claude/.credentials.json").to_string();
+    if let Ok(content) = tokio::fs::read_to_string(&creds_path).await {
+        if let Ok(creds) = serde_json::from_str::<serde_json::Value>(&content) {
+            if let Some(token) = creds
+                .get("claudeAiOauth")
+                .and_then(|v| v.get("accessToken"))
+                .and_then(|v| v.as_str())
+            {
+                return Some(token.to_string());
+            }
+        }
     }
 
-    let creds = String::from_utf8_lossy(&output.stdout);
-    let creds: serde_json::Value = match serde_json::from_str(creds.trim()) {
-        Ok(v) => v,
-        Err(e) => {
-            tracing::warn!("Failed to parse OAuth credentials JSON: {}", e);
+    // Fall back to macOS Keychain
+    #[cfg(target_os = "macos")]
+    {
+        use tokio::process::Command;
+
+        let output = Command::new("security")
+            .args([
+                "find-generic-password",
+                "-s",
+                "Claude Code-credentials",
+                "-w",
+            ])
+            .output()
+            .await
+            .ok()?;
+
+        if !output.status.success() {
+            tracing::warn!("Failed to get OAuth token from keychain: {:?}", output.status);
             return None;
         }
-    };
-    // Token is nested under claudeAiOauth.accessToken
-    creds
-        .get("claudeAiOauth")
-        .and_then(|v| v.get("accessToken"))
-        .and_then(|v| v.as_str())
-        .map(|s| s.to_string())
+
+        let creds = String::from_utf8_lossy(&output.stdout);
+        let creds: serde_json::Value = match serde_json::from_str(creds.trim()) {
+            Ok(v) => v,
+            Err(e) => {
+                tracing::warn!("Failed to parse OAuth credentials JSON: {}", e);
+                return None;
+            }
+        };
+        // Token is nested under claudeAiOauth.accessToken
+        return creds
+            .get("claudeAiOauth")
+            .and_then(|v| v.get("accessToken"))
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        tracing::warn!("No OAuth credentials found");
+        None
+    }
 }
 
 /// Type alias for cached usage limits with timestamp
