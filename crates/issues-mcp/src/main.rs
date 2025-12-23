@@ -707,8 +707,8 @@ impl McpServer {
             .and_then(|v| v.as_str())
             .ok_or("Missing goal")?;
 
-        // Call autopilot's plan mode module
-        let config = autopilot::planmode::PlanModeConfig::new(slug, goal);
+        // Call autopilot's plan mode module - sanitize slug to prevent path traversal
+        let config = autopilot::planmode::PlanModeConfig::new(slug, goal)?;
         autopilot::planmode::enter_plan_mode(config)
     }
 
