@@ -1,0 +1,19 @@
+[package]
+name = "gpt-oss-agent"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+gpt-oss = { path = "../gpt-oss" }
+local-inference = { path = "../local-inference" }
+acp-adapter = { path = "../acp-adapter" }
+recorder = { path = "../recorder" }
+
+tokio = { version = "1", features = ["full"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = { workspace = true }
+thiserror = "2.0"
+tracing = "0.1"
+async-trait = "0.1"
+reqwest = { version = "0.12", features = ["json"] }
+tempfile = "3.0"
