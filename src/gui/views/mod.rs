@@ -3,13 +3,13 @@
 mod layout;
 
 use actix_web::{web, HttpResponse};
-use ui::{ChatPane, ClaudeStatus, FullAutoSwitch};
+use ui::{ChatPane, ClaudeStatus, DaemonStatus, FullAutoSwitch};
 
 use crate::gui::state::AppState;
 
 pub use layout::base_layout_with_token;
 
-/// Home page - black screen with FullAutoSwitch centered, ClaudeStatus bottom right, ChatPane at bottom
+/// Home page - black screen with FullAutoSwitch centered, ClaudeStatus bottom right, DaemonStatus bottom left, ChatPane at bottom
 pub async fn home(
     state: web::Data<AppState>,
     auth_token: web::Data<auth::AuthToken>,
@@ -58,13 +58,34 @@ pub async fn home(
         );
     }
 
+    // Get daemon info from state
+    let daemon_info = state.daemon_info.read().await;
+    let daemon_status = if daemon_info.connected {
+        let mut ds = DaemonStatus::connected()
+            .worker_status(&daemon_info.worker_status)
+            .uptime(daemon_info.uptime_seconds)
+            .restarts(daemon_info.total_restarts, daemon_info.consecutive_failures)
+            .memory(daemon_info.memory_available_bytes, daemon_info.memory_total_bytes);
+        if let Some(pid) = daemon_info.worker_pid {
+            ds = ds.worker_pid(pid);
+        }
+        ds
+    } else {
+        let mut ds = DaemonStatus::disconnected();
+        if let Some(ref err) = daemon_info.error {
+            ds = ds.error(err.clone());
+        }
+        ds
+    };
+
     // Chat pane with Raw/Formatted toggle - visible when full_auto is ON
     let chat_pane = ChatPane::new(full_auto).build();
 
     let content = format!(
-        r#"<div style="position: fixed; top: 1rem; right: 1rem; z-index: 50;">{}</div>{}{}"#,
+        r#"<div style="position: fixed; top: 1rem; right: 1rem; z-index: 50;">{}</div>{}{}{}"#,
         switch.into_string(),
         status.build_positioned().into_string(),
+        daemon_status.build_positioned().into_string(),
         chat_pane.into_string()
     );
 

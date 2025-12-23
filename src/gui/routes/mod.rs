@@ -17,6 +17,7 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
         // API routes
         .service(web::scope("/api/autopilot").configure(autopilot::configure_api))
         .service(web::scope("/api/claude").configure(claude::configure_api))
+        .service(web::scope("/api/daemon").configure(daemon::configure_api))
         // Wallet routes
         .service(web::scope("/wallet").configure(wallet::configure))
         // Marketplace routes

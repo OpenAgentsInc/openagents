@@ -78,6 +78,31 @@ pub struct ClaudeInfo {
     pub model_usage: Vec<ModelUsage>,
 }
 
+/// Daemon/worker status info
+#[derive(Clone, Default)]
+pub struct DaemonInfo {
+    /// Whether we're connected to the daemon socket
+    pub connected: bool,
+    /// Worker status (running, stopped, restarting, failed)
+    pub worker_status: String,
+    /// Worker process ID
+    pub worker_pid: Option<u32>,
+    /// Worker uptime in seconds
+    pub uptime_seconds: u64,
+    /// Total restart count
+    pub total_restarts: u64,
+    /// Consecutive failures
+    pub consecutive_failures: u32,
+    /// Available memory in bytes
+    pub memory_available_bytes: u64,
+    /// Total memory in bytes
+    pub memory_total_bytes: u64,
+    /// Last update timestamp
+    pub last_updated: Option<chrono::DateTime<chrono::Utc>>,
+    /// Error message if connection failed
+    pub error: Option<String>,
+}
+
 /// Unified application state shared across all routes
 pub struct AppState {
     /// WebSocket broadcaster for real-time updates
@@ -93,6 +118,9 @@ pub struct AppState {
     /// Claude status info
     pub claude_info: RwLock<ClaudeInfo>,
 
+    /// Daemon status info
+    pub daemon_info: RwLock<DaemonInfo>,
+
     /// Running autopilot process (if Full Auto is ON)
     pub autopilot_process: RwLock<Option<AutopilotProcess>>,
 }
@@ -107,6 +135,7 @@ impl AppState {
                 loading: true,
                 ..Default::default()
             }),
+            daemon_info: RwLock::new(DaemonInfo::default()),
             autopilot_process: RwLock::new(None),
         }
     }
