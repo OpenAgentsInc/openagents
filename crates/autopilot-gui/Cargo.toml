@@ -1,5 +1,6 @@
 [package]
 name = "autopilot-gui"
+description = "GUI components for Autopilot visual agent interface"
 version.workspace = true
 edition.workspace = true
 rust-version = "1.85"

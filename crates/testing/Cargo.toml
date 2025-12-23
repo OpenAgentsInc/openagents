@@ -1,5 +1,6 @@
 [package]
 name = "testing"
+description = "Testing utilities and helpers for OpenAgents workspace"
 version.workspace = true
 edition.workspace = true
 
