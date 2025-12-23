@@ -3628,6 +3628,7 @@ pub fn agent_marketplace_page(
     all_specialties: &[String],
     selected_specialty: Option<&str>,
     min_reputation: Option<i32>,
+    search_query: Option<&str>,
 ) -> Markup {
     html! {
         (DOCTYPE)
@@ -3656,8 +3657,39 @@ pub fn agent_marketplace_page(
                     }
                     div.content {
                         h2 { "🏪 Agent Marketplace" }
-                        p.subtitle style="color: #9ca3af; margin-bottom: 2rem;" {
+                        p.subtitle style="color: #9ca3af; margin-bottom: 1rem;" {
                             "Discover agents by specialty and reputation"
+                        }
+
+                        // Search bar
+                        form method="get" action="/agents/marketplace" style="margin-bottom: 2rem;" {
+                            @if let Some(spec) = selected_specialty {
+                                input type="hidden" name="specialty" value=(spec);
+                            }
+                            @if let Some(min_rep) = min_reputation {
+                                input type="hidden" name="min_reputation" value=(min_rep);
+                            }
+                            div style="display: flex; gap: 0.5rem;" {
+                                input
+                                    type="text"
+                                    name="search"
+                                    placeholder="Search by pubkey or skills..."
+                                    value=(search_query.unwrap_or(""))
+                                    style="flex: 1; padding: 0.75rem; background: #1e293b; color: #e2e8f0; border: 1px solid #475569; font-size: 1rem;";
+                                button
+                                    type="submit"
+                                    style="padding: 0.75rem 1.5rem; background: #3b82f6; color: white; border: none; font-weight: 600; cursor: pointer;"
+                                {
+                                    "🔍 Search"
+                                }
+                                @if search_query.is_some() {
+                                    a href="/agents/marketplace"
+                                        style="padding: 0.75rem 1.5rem; background: #64748b; color: white; text-decoration: none; display: inline-block; text-align: center;"
+                                    {
+                                        "Clear"
+                                    }
+                                }
+                            }
                         }
 
                         div style="display: grid; grid-template-columns: 250px 1fr; gap: 2rem;" {
@@ -3734,12 +3766,24 @@ pub fn agent_marketplace_page(
                                 };
 
                                 @let filtered_agents: Vec<_> = display_agents.iter()
-                                    .filter(|(_, rep, _)| {
-                                        if let Some(min_rep) = min_reputation {
+                                    .filter(|(pubkey, rep, _)| {
+                                        // Reputation filter
+                                        let rep_match = if let Some(min_rep) = min_reputation {
                                             *rep >= min_rep
                                         } else {
                                             true
-                                        }
+                                        };
+
+                                        // Search filter
+                                        let search_match = if let Some(query) = search_query {
+                                            let query_lower = query.to_lowercase();
+                                            pubkey.to_lowercase().contains(&query_lower)
+                                                || (selected_specialty.is_some() && selected_specialty.unwrap().to_lowercase().contains(&query_lower))
+                                        } else {
+                                            true
+                                        };
+
+                                        rep_match && search_match
                                     })
                                     .collect();
 

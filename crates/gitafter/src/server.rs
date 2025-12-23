@@ -3097,6 +3097,7 @@ struct AgentFilterQuery {
 struct AgentMarketplaceQuery {
     specialty: Option<String>,
     min_reputation: Option<i32>,
+    search: Option<String>,
 }
 
 /// Agents list page with filtering
@@ -3286,6 +3287,7 @@ async fn agent_marketplace(
             &sorted_specialties,
             query.specialty.as_deref(),
             query.min_reputation,
+            query.search.as_deref(),
         ).into_string())
 }
 
