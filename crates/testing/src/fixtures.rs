@@ -5,16 +5,23 @@
 use fake::Fake;
 
 /// Generate a test keypair (deterministic for testing)
-pub fn test_keypair() -> ([u8; 32], [u8; 33]) {
+///
+/// Returns (secret_key, public_key) where both are valid secp256k1 keys.
+/// The secret key is deterministic for test reproducibility.
+pub fn test_keypair() -> ([u8; 32], [u8; 32]) {
     let secret_key = [42u8; 32]; // Fixed for reproducibility
-    let public_key = [0u8; 33]; // Placeholder
+    let public_key = nostr::get_public_key(&secret_key)
+        .expect("Failed to derive public key from test secret key");
     (secret_key, public_key)
 }
 
 /// Generate a test npub (bech32 encoded public key)
+///
+/// Returns a valid NIP-19 npub using the test keypair's public key.
 pub fn test_npub() -> String {
-    // Placeholder - would use actual bech32 encoding
-    "npub1test123456789abcdefghijk".to_string()
+    let (_, public_key) = test_keypair();
+    nostr::public_key_to_npub(&public_key)
+        .expect("Failed to encode test public key as npub")
 }
 
 /// Generate a test event ID
@@ -29,12 +36,29 @@ pub fn random_text(min_len: usize, max_len: usize) -> String {
 }
 
 /// Generate a test Bitcoin address
+///
+/// Returns a valid testnet P2WPKH (native segwit) address derived from the test keypair.
 pub fn test_bitcoin_address() -> String {
-    // Placeholder - would generate valid testnet address
-    "tb1qtest123456789abcdefghijk".to_string()
+    use bitcoin::{Address, CompressedPublicKey, Network};
+
+    let (secret_key, _) = test_keypair();
+
+    // Create a CompressedPublicKey from the secret key
+    let secp = bitcoin::secp256k1::Secp256k1::new();
+    let secret = bitcoin::secp256k1::SecretKey::from_slice(&secret_key)
+        .expect("32 bytes, within curve order");
+    let public_key = bitcoin::secp256k1::PublicKey::from_secret_key(&secp, &secret);
+    let compressed_pk = CompressedPublicKey(public_key);
+
+    // Generate P2WPKH address for testnet
+    Address::p2wpkh(&compressed_pk, Network::Testnet)
+        .to_string()
 }
 
 /// Generate a test Lightning invoice
+///
+/// Note: This is a simplified test format, not a fully valid BOLT-11 invoice.
+/// For tests requiring valid invoices, use the actual Lightning SDK.
 pub fn test_lightning_invoice(amount_sats: u64) -> String {
     format!("lnbc{}1test", amount_sats)
 }
@@ -108,6 +132,49 @@ mod tests {
         let (sk2, pk2) = test_keypair();
         assert_eq!(sk1, sk2);
         assert_eq!(pk1, pk2);
+    }
+
+    #[test]
+    fn test_keypair_produces_valid_public_key() {
+        let (secret_key, public_key) = test_keypair();
+
+        // Verify the public key is correctly derived from the secret key
+        let derived_pk = nostr::get_public_key(&secret_key).unwrap();
+        assert_eq!(public_key, derived_pk);
+
+        // Public key should not be all zeros (would indicate placeholder)
+        assert_ne!(public_key, [0u8; 32]);
+    }
+
+    #[test]
+    fn test_npub_is_valid() {
+        let npub = test_npub();
+
+        // Should start with "npub1"
+        assert!(npub.starts_with("npub1"));
+
+        // Should be decodable back to a public key
+        let decoded = nostr::npub_to_public_key(&npub).unwrap();
+        let (_, expected_pk) = test_keypair();
+        assert_eq!(decoded, expected_pk);
+    }
+
+    #[test]
+    fn test_bitcoin_address_is_valid_testnet() {
+        let addr = test_bitcoin_address();
+
+        // Testnet P2WPKH addresses start with "tb1q"
+        assert!(addr.starts_with("tb1q"));
+
+        // Should be a valid length for bech32
+        assert!(addr.len() >= 42 && addr.len() <= 62);
+    }
+
+    #[test]
+    fn test_bitcoin_address_is_deterministic() {
+        let addr1 = test_bitcoin_address();
+        let addr2 = test_bitcoin_address();
+        assert_eq!(addr1, addr2);
     }
 
     #[test]
