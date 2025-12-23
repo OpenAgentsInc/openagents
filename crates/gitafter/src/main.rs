@@ -104,7 +104,7 @@ fn main() -> Result<()> {
             };
 
             // Start server with broadcaster, nostr_client, and identity
-            let port = start_server(broadcaster_clone.clone(), nostr_client, identity)
+            let (port, _server_handle) = start_server(broadcaster_clone.clone(), nostr_client, identity)
                 .await
                 .expect("start server");
             port_tx.send(port).expect("send port");
