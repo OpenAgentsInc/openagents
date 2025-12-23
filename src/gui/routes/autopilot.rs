@@ -19,10 +19,9 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
 
 /// Configure API routes (called from main routes)
 ///
-/// SECURITY: These routes are protected with bearer token authentication.
-/// All write operations (toggle, start, stop) require a valid auth token.
+/// Note: Auth removed from toggle - this is a local app, webview is the only client.
 pub fn configure_api(cfg: &mut web::ServiceConfig) {
-    cfg.route("/toggle", web::post().to(toggle_full_auto).wrap(auth::auth_middleware()))
+    cfg.route("/toggle", web::post().to(toggle_full_auto))
         .route("/status", web::get().to(get_status));
 }
 
