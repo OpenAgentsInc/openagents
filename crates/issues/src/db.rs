@@ -6,7 +6,7 @@ use tracing::{debug, error, info};
 
 /// Current schema version
 #[allow(dead_code)]
-const SCHEMA_VERSION: i32 = 10;
+const SCHEMA_VERSION: i32 = 11;
 
 /// Initialize the database with migrations
 pub fn init_db(path: &Path) -> Result<Connection> {
@@ -58,6 +58,9 @@ pub fn init_db(path: &Path) -> Result<Connection> {
     if version < 10 {
         migrate_v10(&conn)?;
     }
+    if version < 11 {
+        migrate_v11(&conn)?;
+    }
 
     Ok(conn)
 }
@@ -98,6 +101,9 @@ pub fn init_memory_db() -> Result<Connection> {
     }
     if version < 10 {
         migrate_v10(&conn)?;
+    }
+    if version < 11 {
+        migrate_v11(&conn)?;
     }
 
     Ok(conn)
@@ -429,6 +435,20 @@ fn migrate_v10(conn: &Connection) -> Result<()> {
 
     set_schema_version(conn, 10)?;
     info!("Migration v10 completed successfully");
+    Ok(())
+}
+
+fn migrate_v11(conn: &Connection) -> Result<()> {
+    info!("Running migration v11");
+    // Add auto_created field to track issues created by automated detection
+    conn.execute_batch(
+        r#"
+        ALTER TABLE issues ADD COLUMN auto_created INTEGER DEFAULT 0;
+        "#,
+    )?;
+
+    set_schema_version(conn, 11)?;
+    info!("Migration v11 completed successfully");
     info!("Database initialized successfully at schema version {}", SCHEMA_VERSION);
     Ok(())
 }

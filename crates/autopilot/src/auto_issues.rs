@@ -432,13 +432,14 @@ pub fn create_issues(
     let mut created_issue_numbers = Vec::new();
 
     for issue in improvement_issues {
-        // Use the proper issues API to create issues
+        // Use the proper issues API to create issues with auto_created flag
         // This ensures:
         // 1. Proper UUID generation for id column
         // 2. Correct use of next_issue_number() which uses the trigger
         // 3. All required columns are populated
         // 4. No double-incrementing of the counter
-        let created_issue = issues::issue::create_issue(
+        // 5. auto_created flag is set to track automated detection
+        let created_issue = issues::issue::create_issue_with_auto(
             &conn,
             &issue.title,
             Some(&issue.description),
@@ -447,6 +448,7 @@ pub fn create_issues(
             Some("claude"),
             Some("d-004"),
             None, // No project_id for autopilot-generated issues
+            true, // Mark as auto-created by anomaly detection
         )?;
 
         created_issue_numbers.push(created_issue.number);
