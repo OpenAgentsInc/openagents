@@ -1141,6 +1141,12 @@ enum ApmCommands {
         #[command(subcommand)]
         command: BaselineCommands,
     },
+    /// Regenerate all APM snapshots from recorded events
+    RegenerateSnapshots {
+        /// Path to database (default: autopilot.db in workspace root)
+        #[arg(long)]
+        db: Option<PathBuf>,
+    },
 }
 
 #[derive(Subcommand)]
@@ -5976,6 +5982,26 @@ async fn handle_apm_command(command: ApmCommands) -> Result<()> {
                     }
                 }
             }
+            Ok(())
+        }
+        ApmCommands::RegenerateSnapshots { db } => {
+            use autopilot::apm_storage::{init_apm_tables, regenerate_all_snapshots};
+            use rusqlite::Connection;
+
+            let db_path = db.unwrap_or(default_db);
+            let conn = Connection::open(&db_path)?;
+            init_apm_tables(&conn)?;
+
+            println!("{}", "Regenerating APM snapshots...".cyan().bold());
+            println!();
+
+            let count = regenerate_all_snapshots(&conn)?;
+
+            println!("{}", "✓ Snapshot regeneration complete".green().bold());
+            println!();
+            println!("{:<20} {}", "Snapshots created:", count);
+            println!();
+
             Ok(())
         }
     }
