@@ -64,6 +64,8 @@ pub struct BenchmarkMetrics {
     pub tool_calls: u64,
     /// Number of tool errors encountered
     pub tool_errors: u64,
+    /// Actions per minute (tool calls + messages)
+    pub apm: f64,
     /// Custom metrics from validation
     pub custom_metrics: HashMap<String, f64>,
 }
@@ -129,7 +131,8 @@ impl BenchmarkDatabase {
                 tokens_cached INTEGER NOT NULL,
                 cost_usd REAL NOT NULL,
                 tool_calls INTEGER NOT NULL,
-                tool_errors INTEGER NOT NULL
+                tool_errors INTEGER NOT NULL,
+                apm REAL NOT NULL DEFAULT 0.0
             )",
             [],
         )?;
@@ -182,8 +185,8 @@ impl BenchmarkDatabase {
             "INSERT INTO benchmark_runs (
                 benchmark_id, version, timestamp, success,
                 duration_ms, tokens_in, tokens_out, tokens_cached,
-                cost_usd, tool_calls, tool_errors
-            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+                cost_usd, tool_calls, tool_errors, apm
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
             params![
                 result.benchmark_id,
                 result.version,
@@ -196,6 +199,7 @@ impl BenchmarkDatabase {
                 result.metrics.cost_usd,
                 result.metrics.tool_calls,
                 result.metrics.tool_errors,
+                result.metrics.apm,
             ],
         )?;
 
@@ -226,7 +230,7 @@ impl BenchmarkDatabase {
         let mut stmt = self.conn.prepare(
             "SELECT id, benchmark_id, version, timestamp, success,
                     duration_ms, tokens_in, tokens_out, tokens_cached,
-                    cost_usd, tool_calls, tool_errors
+                    cost_usd, tool_calls, tool_errors, apm
              FROM benchmark_runs
              WHERE benchmark_id = ?1
              ORDER BY timestamp DESC",
@@ -256,6 +260,7 @@ impl BenchmarkDatabase {
                             cost_usd: row.get(9)?,
                             tool_calls: row.get(10)?,
                             tool_errors: row.get(11)?,
+                            apm: row.get(12)?,
                             custom_metrics: HashMap::new(), // Loaded separately
                         },
                     },
@@ -295,7 +300,7 @@ impl BenchmarkDatabase {
         let mut stmt = self.conn.prepare(
             "SELECT id, benchmark_id, version, timestamp, success,
                     duration_ms, tokens_in, tokens_out, tokens_cached,
-                    cost_usd, tool_calls, tool_errors
+                    cost_usd, tool_calls, tool_errors, apm
              FROM benchmark_runs
              WHERE version = ?1
              ORDER BY benchmark_id, timestamp DESC",
@@ -325,6 +330,7 @@ impl BenchmarkDatabase {
                             cost_usd: row.get(9)?,
                             tool_calls: row.get(10)?,
                             tool_errors: row.get(11)?,
+                            apm: row.get(12)?,
                             custom_metrics: HashMap::new(),
                         },
                     },
@@ -645,6 +651,14 @@ impl BenchmarkRunner {
                 + (tokens_out as f64 * 15.0 / 1_000_000.0)
         };
 
+        // Calculate APM (Actions Per Minute)
+        let duration_minutes = duration_ms as f64 / 60000.0;
+        let apm = if duration_minutes > 0.0 {
+            tool_calls as f64 / duration_minutes
+        } else {
+            0.0
+        };
+
         Ok(BenchmarkMetrics {
             duration_ms,
             tokens_in,
@@ -653,6 +667,7 @@ impl BenchmarkRunner {
             cost_usd,
             tool_calls,
             tool_errors,
+            apm,
             custom_metrics: HashMap::new(),
         })
     }
