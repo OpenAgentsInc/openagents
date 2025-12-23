@@ -363,3 +363,34 @@ o: id=SSND9oqv → [ok]    Compiling openssl v0.10.75
 t!:Bash id=5AheCXzW cmd="cargo test -p marketplace --lib compute::consum..." → [running] tokens_in=0 tokens_out=25 tokens_cached=122802
 o: id=5AheCXzW → [ok]    Compiling openssl v0.10.75
 t!:Bash id=ATDa6oNX cmd="git add -A && git commit -m "$(cat <<'EOF'" → [running] tokens_in=0 tokens_out=272 tokens_cached=123208
+o: id=ATDa6oNX → [ok] [main ff7b21620] Fix marketplace compute consumer lock panics
+t!:Bash id=C5meRF1F cmd="git push origin main" → [running] tokens_in=0 tokens_out=25 tokens_cached=124059
+o: id=C5meRF1F → [ok] [0;36m🔍 Running cargo build to check for errors and warnings...[0m
+t!:Bash id=wZNabkaQ cmd="cargo autopilot issue complete 855" → [running] tokens_in=0 tokens_out=25 tokens_cached=124470
+o: id=wZNabkaQ → [ok] ✓ Completed issue #855: PANIC-9: Fix marketplace compute consumer lock panics
+t!:Bash id=XeaH4dNH cmd="cargo autopilot issue ready" → [running] tokens_in=0 tokens_out=25 tokens_cached=124632
+o: id=XeaH4dNH → [ok] → Next ready issue:
+t!:Bash id=RdZLKx55 cmd="cargo autopilot issue claim 856" → [running] tokens_in=0 tokens_out=80 tokens_cached=125086
+o: id=RdZLKx55 → [ok] ✓ Claimed issue #856: PANIC-10: Fix SystemTime unwrap panics
+t!:Grep id=tU5Mdsof pattern="duration_since.*unwrap|UNIX..." → [running] tokens_in=0 tokens_out=26 tokens_cached=125347
+o: id=tU5Mdsof → [ok] No matches found
+a: Let me search more carefully: tokens_in=0 tokens_out=1 tokens_cached=125501
+t!:Grep id=Mjd8EiRn pattern="\.unwrap\(\)" → [running] tokens_in=0 tokens_out=1 tokens_cached=125501
+o: id=Mjd8EiRn → [ok] 72-        let now = SystemTime::now()
+a: Found them! Lines 74, 114, 126, 138, and 405. Let me read those sections: tokens_in=0 tokens_out=1 tokens_cached=125783
+t!:Read id=h4FCpFoW file_path=/home/christopherdavid/code/openagents/crates/marketplace/src/compute/consumer.rs → [running] tokens_in=0 tokens_out=1 tokens_cached=125783
+o: id=h4FCpFoW → [ok]     70→    #[allow(dead_code)]
+a: Now let me fix all of these. The issue is that `duration_since(UNIX_EPOCH)` can fail if the system clock is set to before 1970 (very rare but possible). I should use `.expect()` with a message or h... tokens_in=0 tokens_out=2 tokens_cached=126609
+t!:Edit id=YAXAFBQ7 file_path=/home/christopherdavid/code/openagents/crates/marketplace/src/compute/consumer.rs → [running] tokens_in=0 tokens_out=327 tokens_cached=126609
+o: id=YAXAFBQ7 → [ok] The file /home/christopherdavid/code/openagents/crates/marketplace/src/compute/consumer.rs has be...
+t!:Edit id=3jqAg2ju file_path=/home/christopherdavid/code/openagents/crates/marketplace/src/compute/consumer.rs → [running] tokens_in=0 tokens_out=256 tokens_cached=127877
+o: id=3jqAg2ju → [ok] The file /home/christopherdavid/code/openagents/crates/marketplace/src/compute/consumer.rs has be...
+t!:Edit id=6ch3VEDo file_path=/home/christopherdavid/code/openagents/crates/marketplace/src/compute/consumer.rs → [running] tokens_in=0 tokens_out=248 tokens_cached=128434
+o: id=6ch3VEDo → [ok] The file /home/christopherdavid/code/openagents/crates/marketplace/src/compute/consumer.rs has be...
+t!:Edit id=yK84Qw5k file_path=/home/christopherdavid/code/openagents/crates/marketplace/src/compute/consumer.rs → [running] tokens_in=0 tokens_out=234 tokens_cached=129037
+o: id=yK84Qw5k → [ok] The file /home/christopherdavid/code/openagents/crates/marketplace/src/compute/consumer.rs has be...
+t!:Edit id=gvsZHsMS file_path=/home/christopherdavid/code/openagents/crates/marketplace/src/compute/consumer.rs → [running] tokens_in=0 tokens_out=270 tokens_cached=129531
+o: id=gvsZHsMS → [ok] The file /home/christopherdavid/code/openagents/crates/marketplace/src/compute/consumer.rs has be...
+t!:Bash id=uhMkD34n cmd="cargo test -p marketplace --lib compute::consum..." → [running] tokens_in=0 tokens_out=95 tokens_cached=129992
+o: id=uhMkD34n → [ok]    Compiling marketplace v0.1.0 (/home/christopherdavid/code/openagents/crates/marketplace)
+t!:Bash id=ydeDicwg cmd="git add -A && git commit -m "$(cat <<'EOF'" → [running] tokens_in=0 tokens_out=261 tokens_cached=130628

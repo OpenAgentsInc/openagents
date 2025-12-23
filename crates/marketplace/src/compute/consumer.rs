@@ -71,7 +71,7 @@ impl JobInfo {
     pub fn new(job_id: impl Into<String>, request: impl Into<String>) -> Self {
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
-            .unwrap()
+            .expect("System time is before UNIX_EPOCH")
             .as_secs();
 
         Self {
@@ -111,7 +111,7 @@ impl JobInfo {
     pub fn update_from_result(&mut self, result: &ComputeJobResult) {
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
-            .unwrap()
+            .expect("System time is before UNIX_EPOCH")
             .as_secs();
 
         self.state = JobState::Completed;
@@ -123,7 +123,7 @@ impl JobInfo {
     pub fn mark_failed(&mut self, error: impl Into<String>) {
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
-            .unwrap()
+            .expect("System time is before UNIX_EPOCH")
             .as_secs();
 
         self.state = JobState::Failed;
@@ -135,7 +135,7 @@ impl JobInfo {
     pub fn mark_cancelled(&mut self) {
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
-            .unwrap()
+            .expect("System time is before UNIX_EPOCH")
             .as_secs();
 
         self.state = JobState::Cancelled;
@@ -402,7 +402,7 @@ impl Consumer {
     pub fn cleanup_old_jobs(&self, max_age_seconds: u64) {
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
-            .unwrap()
+            .expect("System time is before UNIX_EPOCH")
             .as_secs();
 
         let mut jobs = self.jobs.lock().expect("Jobs lock poisoned");
