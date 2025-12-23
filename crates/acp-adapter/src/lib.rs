@@ -28,14 +28,18 @@ pub mod client;
 pub mod connection;
 pub mod converters;
 pub mod error;
+pub mod replay;
 pub mod session;
+pub mod streaming;
 pub mod transport;
 
 // Re-export main types
 pub use agent_client_protocol_schema as acp;
 pub use connection::AcpAgentConnection;
 pub use error::{AcpError, Result};
+pub use replay::{ReplayConfig, ReplayStats, RlogReplay};
 pub use session::AcpAgentSession;
+pub use streaming::{RlogBuffer, RlogHeaderInfo, RlogStreamer, StreamConfig};
 
 /// Command configuration for spawning an agent subprocess
 #[derive(Debug, Clone)]
