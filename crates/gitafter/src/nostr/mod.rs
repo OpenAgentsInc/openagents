@@ -83,8 +83,10 @@ pub mod client;
 pub mod events;
 pub mod publish_result;
 pub mod retry;
+pub mod sync;
 
 pub use client::NostrClient;
 pub use publish_result::{ErrorCategory, PublishResult, RelayFailure};
 #[allow(unused_imports)]
 pub use retry::RetryConfig;
+pub use sync::{SyncConfig, SyncWorker};
