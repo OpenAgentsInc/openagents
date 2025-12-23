@@ -30,6 +30,134 @@ pub struct APMStats {
     pub lifetime: Option<f64>,
 }
 
+/// APM baseline for a project or category
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct APMBaseline {
+    /// Baseline identifier (e.g., "openagents", "small-project", "autopilot-default")
+    pub id: String,
+    /// Human-readable name
+    pub name: String,
+    /// Source type this baseline applies to
+    pub source: APMSource,
+    /// Expected median APM
+    pub median_apm: f64,
+    /// Minimum acceptable APM (below this triggers alert)
+    pub min_apm: f64,
+    /// Maximum expected APM (above this is excellent)
+    pub max_apm: f64,
+    /// When this baseline was established
+    pub created_at: DateTime<Utc>,
+    /// When this baseline was last updated
+    pub updated_at: DateTime<Utc>,
+    /// Sample size used to establish baseline
+    pub sample_size: u32,
+}
+
+impl APMBaseline {
+    /// Create a new baseline
+    pub fn new(
+        id: impl Into<String>,
+        name: impl Into<String>,
+        source: APMSource,
+        median_apm: f64,
+    ) -> Self {
+        let now = Utc::now();
+        // Min is 20% below median, max is 50% above median by default
+        let min_apm = median_apm * 0.8;
+        let max_apm = median_apm * 1.5;
+
+        Self {
+            id: id.into(),
+            name: name.into(),
+            source,
+            median_apm,
+            min_apm,
+            max_apm,
+            created_at: now,
+            updated_at: now,
+            sample_size: 0,
+        }
+    }
+
+    /// Create baseline with custom min/max thresholds
+    pub fn with_thresholds(
+        id: impl Into<String>,
+        name: impl Into<String>,
+        source: APMSource,
+        median_apm: f64,
+        min_apm: f64,
+        max_apm: f64,
+    ) -> Self {
+        let now = Utc::now();
+        Self {
+            id: id.into(),
+            name: name.into(),
+            source,
+            median_apm,
+            min_apm,
+            max_apm,
+            created_at: now,
+            updated_at: now,
+            sample_size: 0,
+        }
+    }
+
+    /// Check if APM is below baseline threshold
+    pub fn is_below_baseline(&self, apm: f64) -> bool {
+        apm < self.min_apm
+    }
+
+    /// Check if APM is above excellent threshold
+    pub fn is_above_baseline(&self, apm: f64) -> bool {
+        apm > self.max_apm
+    }
+
+    /// Get percentage deviation from median
+    pub fn deviation_pct(&self, apm: f64) -> f64 {
+        ((apm - self.median_apm) / self.median_apm) * 100.0
+    }
+
+    /// Get status relative to baseline
+    pub fn status(&self, apm: f64) -> BaselineStatus {
+        if self.is_below_baseline(apm) {
+            BaselineStatus::BelowBaseline
+        } else if self.is_above_baseline(apm) {
+            BaselineStatus::AboveBaseline
+        } else {
+            BaselineStatus::Normal
+        }
+    }
+}
+
+/// Status of current APM relative to baseline
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum BaselineStatus {
+    /// APM is below minimum threshold (performance regression)
+    BelowBaseline,
+    /// APM is within expected range
+    Normal,
+    /// APM is above maximum threshold (excellent performance)
+    AboveBaseline,
+}
+
+impl BaselineStatus {
+    pub fn emoji(&self) -> &str {
+        match self {
+            Self::BelowBaseline => "⚠️",
+            Self::Normal => "✓",
+            Self::AboveBaseline => "⭐",
+        }
+    }
+
+    pub fn color(&self) -> &str {
+        match self {
+            Self::BelowBaseline => "red",
+            Self::Normal => "green",
+            Self::AboveBaseline => "gold",
+        }
+    }
+}
+
 
 /// APM snapshot for a specific time period
 #[derive(Debug, Clone, Serialize, Deserialize)]

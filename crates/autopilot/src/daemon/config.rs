@@ -21,7 +21,24 @@ pub enum WorkerCommand {
 
 impl Default for WorkerCommand {
     fn default() -> Self {
-        WorkerCommand::Cargo { manifest_path: None }
+        // Check for AUTOPILOT_WORKER_BINARY env var first
+        if let Ok(path) = std::env::var("AUTOPILOT_WORKER_BINARY") {
+            return WorkerCommand::Binary {
+                path: PathBuf::from(path),
+            };
+        }
+
+        // Default to known-good binary location
+        let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
+        let binary_path = PathBuf::from(&home).join(".autopilot").join("bin").join("autopilot");
+
+        // If the known-good binary exists, use it
+        if binary_path.exists() {
+            WorkerCommand::Binary { path: binary_path }
+        } else {
+            // Fall back to cargo run (for first-time setup)
+            WorkerCommand::Cargo { manifest_path: None }
+        }
     }
 }
 

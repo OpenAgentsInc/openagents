@@ -981,10 +981,6 @@ enum MetricsCommands {
         output: Option<PathBuf>,
     },
 
-    /// Baseline management commands
-    #[command(subcommand)]
-    Baseline(BaselineCommands),
-
     /// Backfill APM data for existing sessions
     BackfillApm {
         /// Path to metrics database (default: autopilot-metrics.db)
@@ -1140,6 +1136,85 @@ enum ApmCommands {
         #[arg(long)]
         db: Option<PathBuf>,
     },
+    /// Manage APM baselines
+    Baseline {
+        #[command(subcommand)]
+        command: BaselineCommands,
+    },
+}
+
+#[derive(Subcommand)]
+enum BaselineCommands {
+    /// List all APM baselines
+    List {
+        /// Path to database (default: autopilot.db in workspace root)
+        #[arg(long)]
+        db: Option<PathBuf>,
+    },
+    /// Set a new APM baseline
+    Set {
+        /// Baseline ID (e.g., "openagents", "autopilot-default")
+        #[arg(required = true)]
+        id: String,
+
+        /// Human-readable name
+        #[arg(required = true)]
+        name: String,
+
+        /// Source type (autopilot, claude_code, combined)
+        #[arg(short, long, required = true)]
+        source: String,
+
+        /// Median APM value
+        #[arg(short, long, required = true)]
+        median: f64,
+
+        /// Minimum acceptable APM (optional, defaults to 80% of median)
+        #[arg(long)]
+        min: Option<f64>,
+
+        /// Maximum APM threshold (optional, defaults to 150% of median)
+        #[arg(long)]
+        max: Option<f64>,
+
+        /// Path to database (default: autopilot.db in workspace root)
+        #[arg(long)]
+        db: Option<PathBuf>,
+    },
+    /// Show baseline details
+    Show {
+        /// Baseline ID
+        #[arg(required = true)]
+        id: String,
+
+        /// Path to database (default: autopilot.db in workspace root)
+        #[arg(long)]
+        db: Option<PathBuf>,
+    },
+    /// Delete a baseline
+    Delete {
+        /// Baseline ID
+        #[arg(required = true)]
+        id: String,
+
+        /// Path to database (default: autopilot.db in workspace root)
+        #[arg(long)]
+        db: Option<PathBuf>,
+    },
+    /// Check current APM against baseline
+    Check {
+        /// Baseline ID to check against
+        #[arg(required = true)]
+        baseline_id: String,
+
+        /// Current APM value (or use latest session if not provided)
+        #[arg(short, long)]
+        apm: Option<f64>,
+
+        /// Path to database (default: autopilot.db in workspace root)
+        #[arg(long)]
+        db: Option<PathBuf>,
+    },
 }
 
 #[derive(Subcommand)]
@@ -1205,53 +1280,6 @@ enum AlertCommands {
         /// Path to metrics database (default: autopilot-metrics.db)
         #[arg(long)]
         db: Option<PathBuf>,
-    },
-}
-
-#[derive(Subcommand)]
-enum BaselineCommands {
-    /// Update baselines from recent sessions
-    Update {
-        /// Path to metrics database (default: autopilot-metrics.db)
-        #[arg(long)]
-        metrics_db: Option<PathBuf>,
-
-        /// Number of recent sessions to use for baseline calculation
-        #[arg(long, default_value_t = 100)]
-        sessions: usize,
-    },
-
-    /// Show current baselines
-    Show {
-        /// Path to metrics database (default: autopilot-metrics.db)
-        #[arg(long)]
-        metrics_db: Option<PathBuf>,
-
-        /// Output format (json or text)
-        #[arg(short, long, default_value = "text")]
-        format: String,
-    },
-
-    /// Check for regressions against baselines
-    Check {
-        /// Path to metrics database (default: autopilot-metrics.db)
-        #[arg(long)]
-        metrics_db: Option<PathBuf>,
-
-        /// Number of recent sessions to check
-        #[arg(long, default_value_t = 20)]
-        sessions: usize,
-    },
-
-    /// Generate baseline report
-    Report {
-        /// Path to metrics database (default: autopilot-metrics.db)
-        #[arg(long)]
-        metrics_db: Option<PathBuf>,
-
-        /// Output file (default: docs/autopilot/BASELINES.md)
-        #[arg(short, long)]
-        output: Option<PathBuf>,
     },
 }
 
@@ -4621,113 +4649,6 @@ async fn handle_metrics_command(command: MetricsCommands) -> Result<()> {
             }
         }
 
-        MetricsCommands::Baseline(cmd) => {
-            use autopilot::metrics::baseline::{BaselineCalculator, BaselineComparator, BaselineReportGenerator};
-
-            let db_path = match cmd {
-                BaselineCommands::Update { ref metrics_db, .. } |
-                BaselineCommands::Show { ref metrics_db, .. } |
-                BaselineCommands::Check { ref metrics_db, .. } |
-                BaselineCommands::Report { ref metrics_db, .. } => {
-                    metrics_db.clone().unwrap_or_else(default_db_path)
-                }
-            };
-            let db = MetricsDb::open(&db_path)?;
-
-            match cmd {
-                BaselineCommands::Update { .. } => {
-                    println!("{}", "=".repeat(80));
-                    println!("{} Updating Baselines", "📊".cyan().bold());
-                    println!("{}", "=".repeat(80));
-                    println!();
-
-                    let calculator = BaselineCalculator::new(&db);
-                    let count = calculator.update_all_baselines()?;
-
-                    println!("{} Updated {} baseline metrics", "✅".green(), count);
-                }
-                BaselineCommands::Show { format, .. } => {
-                    use autopilot::metrics::baseline::MetricDimension;
-
-                    println!("{}", "=".repeat(80));
-                    println!("{} Current Baselines", "📊".cyan().bold());
-                    println!("{}", "=".repeat(80));
-                    println!();
-
-                    match format.as_str() {
-                        "json" => {
-                            let mut baselines = std::collections::HashMap::new();
-                            for dimension in MetricDimension::all() {
-                                if let Ok(Some(baseline)) = db.get_baseline(dimension.as_str()) {
-                                    baselines.insert(dimension.as_str(), baseline);
-                                }
-                            }
-                            println!("{}", serde_json::to_string_pretty(&baselines)?);
-                        }
-                        _ => {
-                            for dimension in MetricDimension::all() {
-                                if let Ok(Some(baseline)) = db.get_baseline(dimension.as_str()) {
-                                    println!("{}", dimension.as_str());
-                                    println!("  Mean:    {:.4}", baseline.mean);
-                                    println!("  StdDev:  {:.4}", baseline.stddev);
-                                    println!("  p50:     {:.4}", baseline.p50);
-                                    println!("  p90:     {:.4}", baseline.p90);
-                                    println!("  p99:     {:.4}", baseline.p99);
-                                    println!("  Samples: {}", baseline.sample_count);
-                                    println!();
-                                }
-                            }
-                        }
-                    }
-                }
-                BaselineCommands::Check { sessions, .. } => {
-                    println!("{}", "=".repeat(80));
-                    println!("{} Checking for Regressions", "🔍".cyan().bold());
-                    println!("{}", "=".repeat(80));
-                    println!();
-
-                    let recent_sessions = db.get_recent_sessions(sessions)?;
-                    let comparator = BaselineComparator::new(&db);
-                    let regressions = comparator.detect_regressions(&recent_sessions)?;
-
-                    if regressions.is_empty() {
-                        println!("{} No regressions detected", "✅".green());
-                    } else {
-                        println!("{} {} regressions detected:", "⚠️".yellow(), regressions.len());
-                        println!();
-
-                        for regression in &regressions {
-                            println!("{} {:?} ({:?})", "🔴".red(), regression.dimension, regression.severity);
-                            println!("  Baseline: {:.4}", regression.baseline_value);
-                            println!("  Current:  {:.4}", regression.current_value);
-                            println!("  Change:   {:+.2}%", regression.percent_change);
-                            println!();
-                        }
-                    }
-                }
-                BaselineCommands::Report { output, .. } => {
-                    let generator = BaselineReportGenerator::new(&db);
-                    let report = generator.generate_report()?;
-
-                    let output_path = output.unwrap_or_else(|| {
-                        PathBuf::from("docs/autopilot/BASELINES.md")
-                    });
-
-                    // Ensure parent directory exists
-                    if let Some(parent) = output_path.parent() {
-                        std::fs::create_dir_all(parent)?;
-                    }
-
-                    std::fs::write(&output_path, report)?;
-
-                    println!("{}", "=".repeat(80));
-                    println!("{} Baseline Report Generated", "📝".cyan().bold());
-                    println!("{}", "=".repeat(80));
-                    println!();
-                    println!("  Output: {}", output_path.display());
-                }
-            }
-        }
         MetricsCommands::CreateIssues {
             metrics_db,
             issues_db,
@@ -5892,6 +5813,170 @@ async fn handle_apm_command(command: ApmCommands) -> Result<()> {
 
                 tokio::time::sleep(tokio::time::Duration::from_secs(interval)).await;
             }
+        }
+        ApmCommands::Baseline { command } => {
+            use autopilot::apm::APMBaseline;
+            use autopilot::metrics::{delete_apm_baseline, get_apm_baseline, list_apm_baselines, store_apm_baseline};
+
+            let default_db = default_db_path();
+
+            match command {
+                BaselineCommands::List { db } => {
+                    let db_path = db.unwrap_or(default_db);
+                    let baselines = list_apm_baselines(&db_path)?;
+
+                    if baselines.is_empty() {
+                        println!("No APM baselines found.");
+                        println!();
+                        println!("Create a baseline with:");
+                        println!("  cargo autopilot apm baseline set <id> <name> --source autopilot --median 19.0");
+                        return Ok(());
+                    }
+
+                    println!("{}", "═".repeat(80).cyan());
+                    println!("{:^80}", "APM Baselines".bold());
+                    println!("{}", "═".repeat(80).cyan());
+                    println!();
+
+                    for baseline in baselines {
+                        println!("{} {}", "ID:".bold(), baseline.id);
+                        println!("  Name:        {}", baseline.name);
+                        println!("  Source:      {:?}", baseline.source);
+                        println!("  Median APM:  {:.1}", baseline.median_apm);
+                        println!("  Range:       {:.1} - {:.1}", baseline.min_apm, baseline.max_apm);
+                        println!("  Samples:     {}", baseline.sample_size);
+                        println!();
+                    }
+                }
+                BaselineCommands::Set { id, name, source, median, min, max, db } => {
+                    let db_path = db.unwrap_or(default_db);
+
+                    let source_enum = match source.as_str() {
+                        "autopilot" => APMSource::Autopilot,
+                        "claude_code" | "claude" => APMSource::ClaudeCode,
+                        "combined" => APMSource::Combined,
+                        _ => {
+                            eprintln!("Invalid source: {}. Valid values: autopilot, claude_code, combined", source);
+                            std::process::exit(1);
+                        }
+                    };
+
+                    let baseline = if let (Some(min_val), Some(max_val)) = (min, max) {
+                        APMBaseline::with_thresholds(id.clone(), name.clone(), source_enum, median, min_val, max_val)
+                    } else {
+                        APMBaseline::new(id.clone(), name.clone(), source_enum, median)
+                    };
+
+                    store_apm_baseline(&db_path, &baseline)?;
+
+                    println!("{}", "✓ Baseline saved".green().bold());
+                    println!();
+                    println!("{} {}", "ID:".bold(), baseline.id);
+                    println!("  Name:        {}", baseline.name);
+                    println!("  Source:      {:?}", baseline.source);
+                    println!("  Median APM:  {:.1}", baseline.median_apm);
+                    println!("  Min APM:     {:.1} ({})", baseline.min_apm, "warning threshold".yellow());
+                    println!("  Max APM:     {:.1} ({})", baseline.max_apm, "excellent threshold".green());
+                }
+                BaselineCommands::Show { id, db } => {
+                    let db_path = db.unwrap_or(default_db);
+                    let baseline = get_apm_baseline(&db_path, &id)?;
+
+                    match baseline {
+                        Some(b) => {
+                            println!("{}", "═".repeat(60).cyan());
+                            println!("{:^60}", format!("Baseline: {}", b.name).bold());
+                            println!("{}", "═".repeat(60).cyan());
+                            println!();
+                            println!("{:<20} {}", "ID:", b.id);
+                            println!("{:<20} {:?}", "Source:", b.source);
+                            println!("{:<20} {:.1} APM", "Median:", b.median_apm);
+                            println!("{:<20} {:.1} APM ({})", "Minimum:", b.min_apm, "warning".yellow());
+                            println!("{:<20} {:.1} APM ({})", "Maximum:", b.max_apm, "excellent".green());
+                            println!("{:<20} {}", "Samples:", b.sample_size);
+                            println!("{:<20} {}", "Created:", b.created_at.format("%Y-%m-%d %H:%M:%S"));
+                            println!("{:<20} {}", "Updated:", b.updated_at.format("%Y-%m-%d %H:%M:%S"));
+                            println!();
+                        }
+                        None => {
+                            println!("{}", format!("Baseline '{}' not found", id).red());
+                        }
+                    }
+                }
+                BaselineCommands::Delete { id, db } => {
+                    let db_path = db.unwrap_or(default_db);
+                    delete_apm_baseline(&db_path, &id)?;
+                    println!("{}", format!("✓ Baseline '{}' deleted", id).green().bold());
+                }
+                BaselineCommands::Check { baseline_id, apm, db } => {
+                    use autopilot::apm_storage::get_sessions_by_source;
+                    use rusqlite::Connection;
+
+                    let db_path = db.unwrap_or(default_db);
+                    let baseline = get_apm_baseline(&db_path, &baseline_id)?;
+
+                    match baseline {
+                        Some(b) => {
+                            let current_apm = if let Some(apm_val) = apm {
+                                apm_val
+                            } else {
+                                // Get latest session APM
+                                let conn = Connection::open(&db_path)?;
+                                let sessions = get_sessions_by_source(&conn, b.source)?;
+                                if let Some((session_id, start, end)) = sessions.first() {
+                                    use autopilot::apm_storage::get_session_stats;
+                                    let (messages, tool_calls) = get_session_stats(&conn, session_id)?;
+                                    let duration_secs = if let Some(end_time) = end {
+                                        (end_time.timestamp() - start.timestamp()) as f64
+                                    } else {
+                                        (chrono::Utc::now().timestamp() - start.timestamp()) as f64
+                                    };
+                                    let duration_mins = duration_secs / 60.0;
+                                    if duration_mins > 0.0 {
+                                        (messages + tool_calls) as f64 / duration_mins
+                                    } else {
+                                        0.0
+                                    }
+                                } else {
+                                    println!("{}", "No sessions found to check".yellow());
+                                    return Ok(());
+                                }
+                            };
+
+                            let status = b.status(current_apm);
+                            let deviation = b.deviation_pct(current_apm);
+
+                            println!("{}", "═".repeat(60).cyan());
+                            println!("{:^60}", format!("Baseline Check: {}", b.name).bold());
+                            println!("{}", "═".repeat(60).cyan());
+                            println!();
+                            println!("{:<20} {:.1} APM", "Current APM:", current_apm);
+                            println!("{:<20} {:.1} APM", "Baseline Median:", b.median_apm);
+                            println!("{:<20} {:.1}%", "Deviation:", deviation.abs());
+                            println!();
+                            println!("{:<20} {} {}", "Status:", status.emoji(), match status {
+                                autopilot::apm::BaselineStatus::BelowBaseline => "Below Baseline (Performance Regression)".red().bold(),
+                                autopilot::apm::BaselineStatus::Normal => "Within Expected Range".green(),
+                                autopilot::apm::BaselineStatus::AboveBaseline => "Above Baseline (Excellent Performance)".yellow().bold(),
+                            });
+                            println!();
+
+                            if deviation < -20.0 {
+                                println!("{}", "⚠️  WARNING: APM is more than 20% below baseline!".red().bold());
+                                println!("   This may indicate a performance regression.");
+                                println!();
+                            } else if deviation > 50.0 {
+                                println!("{}", "⭐ EXCELLENT: APM is significantly above baseline!".yellow().bold());
+                                println!();
+                            }
+                        }
+                        None => {
+                            println!("{}", format!("Baseline '{}' not found", baseline_id).red());
+                        }
+                    }
+                }
+            }
+            Ok(())
         }
     }
 }

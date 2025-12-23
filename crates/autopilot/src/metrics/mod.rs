@@ -455,6 +455,18 @@ impl MetricsDb {
                 tool_calls INTEGER NOT NULL
             );
 
+            CREATE TABLE IF NOT EXISTS apm_baselines (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                source TEXT NOT NULL,
+                median_apm REAL NOT NULL,
+                min_apm REAL NOT NULL,
+                max_apm REAL NOT NULL,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                sample_size INTEGER NOT NULL DEFAULT 0
+            );
+
             CREATE TABLE IF NOT EXISTS velocity_snapshots (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 timestamp TEXT NOT NULL,
@@ -1962,6 +1974,142 @@ pub fn store_apm_snapshot(
             snapshot.messages,
             snapshot.tool_calls,
         ],
+    )?;
+
+    Ok(())
+}
+
+/// Store or update an APM baseline
+pub fn store_apm_baseline(
+    db_path: &Path,
+    baseline: &crate::apm::APMBaseline,
+) -> Result<()> {
+    let db = MetricsDb::open(db_path)?;
+
+    db.conn.execute(
+        r#"
+        INSERT OR REPLACE INTO apm_baselines
+        (id, name, source, median_apm, min_apm, max_apm, created_at, updated_at, sample_size)
+        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+        "#,
+        rusqlite::params![
+            baseline.id,
+            baseline.name,
+            baseline.source.as_str(),
+            baseline.median_apm,
+            baseline.min_apm,
+            baseline.max_apm,
+            baseline.created_at.to_rfc3339(),
+            baseline.updated_at.to_rfc3339(),
+            baseline.sample_size,
+        ],
+    )?;
+
+    Ok(())
+}
+
+/// Get an APM baseline by ID
+pub fn get_apm_baseline(
+    db_path: &Path,
+    baseline_id: &str,
+) -> Result<Option<crate::apm::APMBaseline>> {
+    let db = MetricsDb::open(db_path)?;
+
+    let mut stmt = db.conn.prepare(
+        r#"
+        SELECT id, name, source, median_apm, min_apm, max_apm, created_at, updated_at, sample_size
+        FROM apm_baselines
+        WHERE id = ?1
+        "#,
+    )?;
+
+    let baseline = stmt.query_row(params![baseline_id], |row| {
+        let source_str: String = row.get(2)?;
+        let source = match source_str.as_str() {
+            "autopilot" => crate::apm::APMSource::Autopilot,
+            "claude_code" => crate::apm::APMSource::ClaudeCode,
+            _ => crate::apm::APMSource::Combined,
+        };
+
+        let created_at: String = row.get(6)?;
+        let updated_at: String = row.get(7)?;
+
+        Ok(crate::apm::APMBaseline {
+            id: row.get(0)?,
+            name: row.get(1)?,
+            source,
+            median_apm: row.get(3)?,
+            min_apm: row.get(4)?,
+            max_apm: row.get(5)?,
+            created_at: DateTime::parse_from_rfc3339(&created_at)
+                .unwrap()
+                .with_timezone(&Utc),
+            updated_at: DateTime::parse_from_rfc3339(&updated_at)
+                .unwrap()
+                .with_timezone(&Utc),
+            sample_size: row.get(8)?,
+        })
+    });
+
+    match baseline {
+        Ok(b) => Ok(Some(b)),
+        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+        Err(e) => Err(e.into()),
+    }
+}
+
+/// List all APM baselines
+pub fn list_apm_baselines(db_path: &Path) -> Result<Vec<crate::apm::APMBaseline>> {
+    let db = MetricsDb::open(db_path)?;
+
+    let mut stmt = db.conn.prepare(
+        r#"
+        SELECT id, name, source, median_apm, min_apm, max_apm, created_at, updated_at, sample_size
+        FROM apm_baselines
+        ORDER BY source, median_apm DESC
+        "#,
+    )?;
+
+    let baselines = stmt
+        .query_map([], |row| {
+            let source_str: String = row.get(2)?;
+            let source = match source_str.as_str() {
+                "autopilot" => crate::apm::APMSource::Autopilot,
+                "claude_code" => crate::apm::APMSource::ClaudeCode,
+                _ => crate::apm::APMSource::Combined,
+            };
+
+            let created_at: String = row.get(6)?;
+            let updated_at: String = row.get(7)?;
+
+            Ok(crate::apm::APMBaseline {
+                id: row.get(0)?,
+                name: row.get(1)?,
+                source,
+                median_apm: row.get(3)?,
+                min_apm: row.get(4)?,
+                max_apm: row.get(5)?,
+                created_at: DateTime::parse_from_rfc3339(&created_at)
+                    .unwrap()
+                    .with_timezone(&Utc),
+                updated_at: DateTime::parse_from_rfc3339(&updated_at)
+                    .unwrap()
+                    .with_timezone(&Utc),
+                sample_size: row.get(8)?,
+            })
+        })?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+
+    Ok(baselines)
+}
+
+/// Delete an APM baseline
+pub fn delete_apm_baseline(db_path: &Path, baseline_id: &str) -> Result<()> {
+    let db = MetricsDb::open(db_path)?;
+
+    db.conn.execute(
+        "DELETE FROM apm_baselines WHERE id = ?1",
+        params![baseline_id],
     )?;
 
     Ok(())
