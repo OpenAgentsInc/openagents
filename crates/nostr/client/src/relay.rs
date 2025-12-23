@@ -421,7 +421,7 @@ impl RelayConnection {
         &self,
         subscription_id: &str,
         filters: &[Value],
-    ) -> Result<mpsc::UnboundedReceiver<Event>> {
+    ) -> Result<mpsc::Receiver<Event>> {
         // Create subscription with channel
         let (subscription, rx) = Subscription::with_channel(
             subscription_id.to_string(),

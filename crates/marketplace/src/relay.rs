@@ -104,7 +104,7 @@ impl MarketplaceRelay {
         &self,
         subscription_id: &str,
         handler_type: Option<&str>,
-    ) -> Result<tokio::sync::mpsc::UnboundedReceiver<Event>, RelayError> {
+    ) -> Result<tokio::sync::mpsc::Receiver<Event>, RelayError> {
         if !self.is_connected().await {
             return Err(RelayError::NoRelays);
         }
@@ -130,7 +130,7 @@ impl MarketplaceRelay {
     pub async fn subscribe_skills(
         &self,
         subscription_id: &str,
-    ) -> Result<tokio::sync::mpsc::UnboundedReceiver<Event>, RelayError> {
+    ) -> Result<tokio::sync::mpsc::Receiver<Event>, RelayError> {
         self.subscribe_handlers(subscription_id, Some("skill")).await
     }
 
@@ -138,7 +138,7 @@ impl MarketplaceRelay {
     pub async fn subscribe_compute_providers(
         &self,
         subscription_id: &str,
-    ) -> Result<tokio::sync::mpsc::UnboundedReceiver<Event>, RelayError> {
+    ) -> Result<tokio::sync::mpsc::Receiver<Event>, RelayError> {
         self.subscribe_handlers(subscription_id, Some("compute_provider")).await
     }
 
@@ -146,7 +146,7 @@ impl MarketplaceRelay {
     pub async fn subscribe_file_metadata(
         &self,
         subscription_id: &str,
-    ) -> Result<tokio::sync::mpsc::UnboundedReceiver<Event>, RelayError> {
+    ) -> Result<tokio::sync::mpsc::Receiver<Event>, RelayError> {
         if !self.is_connected().await {
             return Err(RelayError::NoRelays);
         }
@@ -165,7 +165,7 @@ impl MarketplaceRelay {
         &self,
         subscription_id: &str,
         event_ids: &[String],
-    ) -> Result<tokio::sync::mpsc::UnboundedReceiver<Event>, RelayError> {
+    ) -> Result<tokio::sync::mpsc::Receiver<Event>, RelayError> {
         if !self.is_connected().await {
             return Err(RelayError::NoRelays);
         }
@@ -185,7 +185,7 @@ impl MarketplaceRelay {
         subscription_id: &str,
         pubkey: &str,
         kinds: &[u16],
-    ) -> Result<tokio::sync::mpsc::UnboundedReceiver<Event>, RelayError> {
+    ) -> Result<tokio::sync::mpsc::Receiver<Event>, RelayError> {
         if !self.is_connected().await {
             return Err(RelayError::NoRelays);
         }
