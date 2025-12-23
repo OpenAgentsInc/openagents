@@ -26,14 +26,13 @@ impl AuthToken {
         let token_file = Self::get_token_path()?;
 
         // Try to load existing token
-        if token_file.exists() {
-            if let Ok(token) = tokio::fs::read_to_string(&token_file).await {
+        if token_file.exists()
+            && let Ok(token) = tokio::fs::read_to_string(&token_file).await {
                 let token = token.trim().to_string();
                 if Self::is_valid_token(&token) {
                     return Ok(Self { token, token_file });
                 }
             }
-        }
 
         // Generate new token
         let token = Self::generate_token();

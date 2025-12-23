@@ -1119,12 +1119,10 @@ pub fn calculate_velocity(
     let mut key_metrics = Vec::new();
 
     // Key metrics to track for velocity
-    let key_metric_names = vec![
-        "tool_error_rate",
+    let key_metric_names = ["tool_error_rate",
         "completion_rate",
         "cost_per_issue",
-        "duration_per_issue",
-    ];
+        "duration_per_issue"];
 
     for trend in trends {
         // Only include key metrics in the snapshot

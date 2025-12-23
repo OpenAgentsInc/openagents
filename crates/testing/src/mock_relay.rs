@@ -175,13 +175,11 @@ async fn handle_connection(ws: warp::ws::WebSocket, state: Arc<RelayState>) {
     while let Some(result) = rx.next().await {
         match result {
             Ok(msg) => {
-                if let Ok(text) = msg.to_str() {
-                    if let Ok(response) = handle_message(text, &state).await {
-                        if let Some(resp_msg) = response {
+                if let Ok(text) = msg.to_str()
+                    && let Ok(response) = handle_message(text, &state).await
+                        && let Some(resp_msg) = response {
                             let _ = tx.send(warp::ws::Message::text(resp_msg)).await;
                         }
-                    }
-                }
             }
             Err(_) => break,
         }

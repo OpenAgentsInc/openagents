@@ -735,3 +735,11 @@ t!:Bash id=FvRrphTq cmd="cargo test -p gitafter --test e2e_issue_flow 2>..." →
 o: id=FvRrphTq → [ok]     |            ---------------- field in this struct
 a: Perfect! All tests pass. Now let's commit this work: tokens_in=0 tokens_out=1 tokens_cached=131304
 t!:Bash id=AB5TX7sw cmd="git add -A && git commit -m "$(cat <<'EOF'" → [running] tokens_in=0 tokens_out=408 tokens_cached=131304
+o: id=AB5TX7sw → [ok] [main d3edf38a9] Add preview of later stack layers during review in GitAfter (#940)
+t!:Bash id=Lccs2xfv cmd="git push origin main" → [running] tokens_in=0 tokens_out=25 tokens_cached=131971
+o: id=Lccs2xfv → [ok] [0;36m🔍 Running cargo build to check for errors and warnings...[0m
+t!:mcp__issues__issue_complete id=piTLpKP5  → [running] tokens_in=0 tokens_out=58 tokens_cached=132528
+o: id=piTLpKP5 → [ok] Completed issue #940
+t!:mcp__issues__issue_ready id=QokasRbm  → [running] tokens_in=0 tokens_out=27 tokens_cached=132797
+o: id=QokasRbm → [ok] No ready issues available
+a: Excellent! I've successfully completed two issues for d-005 (GitAfter): tokens_in=0 tokens_out=215 tokens_cached=132872

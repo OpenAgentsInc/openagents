@@ -5,5 +5,4 @@
 pub mod verifier;
 pub mod diff_compare;
 
-pub use verifier::*;
 pub use diff_compare::*;

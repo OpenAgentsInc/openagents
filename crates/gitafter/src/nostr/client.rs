@@ -597,7 +597,7 @@ impl NostrClient {
                             if pr_event.kind == kinds::PULL_REQUEST {
                                 // Don't notify if user is commenting on their own PR
                                 if pr_event.pubkey != event.pubkey {
-                                    let title = format!("New review on your PR");
+                                    let title = "New review on your PR".to_string();
                                     let preview = if event.content.len() > 100 {
                                         Some(format!("{}...", &event.content[..100]))
                                     } else {
@@ -659,7 +659,7 @@ impl NostrClient {
 
                         if let Ok(Some(issue_event)) = cache_lock.get_event(issue_event_id) {
                             if issue_event.kind == kinds::ISSUE && issue_event.pubkey != event.pubkey {
-                                let title = format!("Someone claimed your issue");
+                                let title = "Someone claimed your issue".to_string();
 
                                 cache_lock.create_notification(
                                     &issue_event.pubkey,

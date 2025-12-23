@@ -82,7 +82,7 @@ impl Argon2Params {
     }
 
     /// Create Argon2 instance with these parameters
-    fn to_argon2(&self) -> Result<Argon2, SecureStoreError> {
+    fn to_argon2(&self) -> Result<Argon2<'_>, SecureStoreError> {
         use argon2::ParamsBuilder;
 
         let params = ParamsBuilder::new()

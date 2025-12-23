@@ -4365,7 +4365,8 @@ async fn handle_metrics_command(command: MetricsCommands) -> Result<()> {
 
             // Parse periods
             let recent_period = parse_time_period(&recent)?;
-            let baseline_period = Some(parse_time_period(&baseline)?);
+            let baseline_parsed = parse_time_period(&baseline)?;
+            let baseline_period = Some(baseline_parsed);
 
             // Detect trends
             let trends = detect_trends(&metrics_db, recent_period, baseline_period)?;
@@ -4381,7 +4382,7 @@ async fn handle_metrics_command(command: MetricsCommands) -> Result<()> {
                 "{} Trend Analysis: {} vs {}",
                 "📈".cyan().bold(),
                 recent_period.name(),
-                baseline_period.unwrap().name()
+                baseline_parsed.name()
             );
             println!("{}", "=".repeat(80));
             println!();
@@ -4843,7 +4844,7 @@ async fn handle_metrics_command(command: MetricsCommands) -> Result<()> {
                 AlertCommands::List { db, .. } |
                 AlertCommands::Add { db, .. } |
                 AlertCommands::Remove { db, .. } |
-                AlertCommands::History { db, .. } => db.as_ref().map(|p| p.clone()).unwrap_or_else(default_db_path),
+                AlertCommands::History { db, .. } => db.clone().unwrap_or_else(default_db_path),
             };
 
             let metrics_db = MetricsDb::open(&db_path)?;
