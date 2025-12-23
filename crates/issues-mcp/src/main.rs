@@ -54,6 +54,12 @@ struct McpServer {
     conn: Mutex<Connection>,
 }
 
+// Input validation constants
+const MAX_TITLE_LENGTH: usize = 500;
+const MAX_DESCRIPTION_LENGTH: usize = 50_000;
+const MAX_DIRECTIVE_ID_LENGTH: usize = 100;
+const MAX_BLOCK_REASON_LENGTH: usize = 1000;
+
 impl McpServer {
     fn new(db_path: PathBuf) -> Result<Self> {
         let conn = db::init_db(&db_path)?;
@@ -505,7 +511,30 @@ impl McpServer {
             .and_then(|v| v.as_str())
             .ok_or("Missing title")?;
 
+        // Validate title length
+        if title.is_empty() {
+            return Err("Title cannot be empty".to_string());
+        }
+        if title.len() > MAX_TITLE_LENGTH {
+            return Err(format!(
+                "Title too long ({} chars). Maximum {} characters allowed.",
+                title.len(),
+                MAX_TITLE_LENGTH
+            ));
+        }
+
         let description = args.get("description").and_then(|v| v.as_str());
+
+        // Validate description length
+        if let Some(desc) = description {
+            if desc.len() > MAX_DESCRIPTION_LENGTH {
+                return Err(format!(
+                    "Description too long ({} chars). Maximum {} characters allowed.",
+                    desc.len(),
+                    MAX_DESCRIPTION_LENGTH
+                ));
+            }
+        }
 
         let priority = args
             .get("priority")
@@ -521,6 +550,17 @@ impl McpServer {
 
         let agent = args.get("agent").and_then(|v| v.as_str());
         let directive_id = args.get("directive_id").and_then(|v| v.as_str());
+
+        // Validate directive_id length
+        if let Some(did) = directive_id {
+            if did.len() > MAX_DIRECTIVE_ID_LENGTH {
+                return Err(format!(
+                    "Directive ID too long ({} chars). Maximum {} characters allowed.",
+                    did.len(),
+                    MAX_DIRECTIVE_ID_LENGTH
+                ));
+            }
+        }
 
         let created =
             issue::create_issue(conn, title, description, priority, issue_type, agent, directive_id, None)
@@ -619,6 +659,18 @@ impl McpServer {
             .and_then(|v| v.as_str())
             .ok_or("Missing reason")?;
 
+        // Validate reason length
+        if reason.is_empty() {
+            return Err("Block reason cannot be empty".to_string());
+        }
+        if reason.len() > MAX_BLOCK_REASON_LENGTH {
+            return Err(format!(
+                "Block reason too long ({} chars). Maximum {} characters allowed.",
+                reason.len(),
+                MAX_BLOCK_REASON_LENGTH
+            ));
+        }
+
         let i = issue::get_issue_by_number(conn, number)
             .map_err(|e| e.to_string())?
             .ok_or(format!("Issue #{} not found", number))?;
@@ -657,6 +709,29 @@ impl McpServer {
 
         let title = args.get("title").and_then(|v| v.as_str());
         let description = args.get("description").and_then(|v| v.as_str());
+
+        // Validate title length if provided
+        if let Some(t) = title {
+            if t.len() > MAX_TITLE_LENGTH {
+                return Err(format!(
+                    "Title too long ({} chars). Maximum {} characters allowed.",
+                    t.len(),
+                    MAX_TITLE_LENGTH
+                ));
+            }
+        }
+
+        // Validate description length if provided
+        if let Some(d) = description {
+            if d.len() > MAX_DESCRIPTION_LENGTH {
+                return Err(format!(
+                    "Description too long ({} chars). Maximum {} characters allowed.",
+                    d.len(),
+                    MAX_DESCRIPTION_LENGTH
+                ));
+            }
+        }
+
         let priority = args
             .get("priority")
             .and_then(|v| v.as_str())
