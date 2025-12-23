@@ -109,6 +109,7 @@ async fn spawn_autopilot_process(state: &web::Data<AppState>) -> anyhow::Result<
             let mut c = Command::new(claude_path);
             c.args([
                 "--output-format", "stream-json",
+                "--verbose",
                 "--permission-mode", "bypassPermissions",
                 "-p",
                 "Begin autonomous work. Call issue_ready to get the first issue, or if none exist, review the active directives and create issues to advance them."
