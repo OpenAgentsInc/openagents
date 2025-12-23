@@ -21,6 +21,7 @@
 //!     issue::IssueType::Bug,
 //!     None, // agent (defaults to "claude")
 //!     None, // directive_id
+//!     None, // project_id
 //! ).unwrap();
 //!
 //! // Claim the issue

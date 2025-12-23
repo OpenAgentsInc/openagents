@@ -26,6 +26,7 @@ fn test_full_issue_lifecycle() {
         IssueType::Feature,
         None,
         None,
+        None,
     )
     .unwrap();
 
@@ -62,6 +63,7 @@ fn test_claim_already_claimed_issue() {
         IssueType::Task,
         None,
         None,
+        None,
     )
     .unwrap();
 
@@ -80,7 +82,7 @@ fn test_claim_already_claimed_issue() {
 fn test_unclaim_and_reclaim() {
     let conn = init_memory_db().unwrap();
 
-    let issue = create_issue(&conn, "Task", None, Priority::Medium, IssueType::Task, None, None)
+    let issue = create_issue(&conn, "Task", None, Priority::Medium, IssueType::Task, None, None, None)
         .unwrap();
 
     // Claim
@@ -103,7 +105,7 @@ fn test_unclaim_and_reclaim() {
 fn test_block_and_unblock_workflow() {
     let conn = init_memory_db().unwrap();
 
-    let issue = create_issue(&conn, "Blocked task", None, Priority::High, IssueType::Task, None, None)
+    let issue = create_issue(&conn, "Blocked task", None, Priority::High, IssueType::Task, None, None, None)
         .unwrap();
 
     // Block the issue
@@ -134,13 +136,13 @@ fn test_priority_based_ready_queue() {
     let conn = init_memory_db().unwrap();
 
     // Create issues in various priority levels
-    let low = create_issue(&conn, "Low priority", None, Priority::Low, IssueType::Task, None, None)
+    let low = create_issue(&conn, "Low priority", None, Priority::Low, IssueType::Task, None, None, None)
         .unwrap();
-    let medium = create_issue(&conn, "Medium priority", None, Priority::Medium, IssueType::Task, None, None)
+    let medium = create_issue(&conn, "Medium priority", None, Priority::Medium, IssueType::Task, None, None, None)
         .unwrap();
-    let high = create_issue(&conn, "High priority", None, Priority::High, IssueType::Task, None, None)
+    let high = create_issue(&conn, "High priority", None, Priority::High, IssueType::Task, None, None, None)
         .unwrap();
-    let urgent = create_issue(&conn, "Urgent priority", None, Priority::Urgent, IssueType::Task, None, None)
+    let urgent = create_issue(&conn, "Urgent priority", None, Priority::Urgent, IssueType::Task, None, None, None)
         .unwrap();
 
     // Ready queue should return urgent first
@@ -176,6 +178,7 @@ fn test_agent_filtering_in_ready_queue() {
         IssueType::Task,
         Some("claude"),
         None,
+        None,
     )
     .unwrap();
 
@@ -187,6 +190,7 @@ fn test_agent_filtering_in_ready_queue() {
         IssueType::Task,
         Some("codex"),
         None,
+        None,
     )
     .unwrap();
 
@@ -197,6 +201,7 @@ fn test_agent_filtering_in_ready_queue() {
         Priority::Medium,
         IssueType::Task,
         Some("claude"),
+        None,
         None,
     )
     .unwrap();
@@ -227,14 +232,14 @@ fn test_list_issues_by_status() {
     let conn = init_memory_db().unwrap();
 
     // Create issues with different statuses
-    let open1 = create_issue(&conn, "Open 1", None, Priority::High, IssueType::Task, None, None).unwrap();
-    let open2 = create_issue(&conn, "Open 2", None, Priority::Medium, IssueType::Task, None, None).unwrap();
+    let open1 = create_issue(&conn, "Open 1", None, Priority::High, IssueType::Task, None, None, None).unwrap();
+    let open2 = create_issue(&conn, "Open 2", None, Priority::Medium, IssueType::Task, None, None, None).unwrap();
 
     // Claim one to make it in_progress
     claim_issue(&conn, &open2.id, "run-1").unwrap();
 
     // Create and complete another
-    let done_issue = create_issue(&conn, "Done", None, Priority::Low, IssueType::Task, None, None).unwrap();
+    let done_issue = create_issue(&conn, "Done", None, Priority::Low, IssueType::Task, None, None, None).unwrap();
     claim_issue(&conn, &done_issue.id, "run-2").unwrap();
     complete_issue(&conn, &done_issue.id).unwrap();
 
@@ -270,6 +275,7 @@ fn test_update_issue_fields() {
         IssueType::Task,
         None,
         None,
+        None,
     )
     .unwrap();
 
@@ -303,6 +309,7 @@ fn test_update_issue_partial_fields() {
         IssueType::Feature,
         None,
         None,
+        None,
     )
     .unwrap();
 
@@ -320,7 +327,7 @@ fn test_update_issue_partial_fields() {
 fn test_update_issue_no_changes() {
     let conn = init_memory_db().unwrap();
 
-    let issue = create_issue(&conn, "Title", None, Priority::Medium, IssueType::Task, None, None)
+    let issue = create_issue(&conn, "Title", None, Priority::Medium, IssueType::Task, None, None, None)
         .unwrap();
 
     // Update with no fields - should return false
@@ -331,7 +338,7 @@ fn test_update_issue_no_changes() {
 fn test_delete_issue() {
     let conn = init_memory_db().unwrap();
 
-    let issue = create_issue(&conn, "To be deleted", None, Priority::Low, IssueType::Task, None, None)
+    let issue = create_issue(&conn, "To be deleted", None, Priority::Low, IssueType::Task, None, None, None)
         .unwrap();
 
     // Verify exists
@@ -357,11 +364,11 @@ fn test_delete_nonexistent_issue() {
 fn test_sequential_issue_numbering() {
     let conn = init_memory_db().unwrap();
 
-    let issue1 = create_issue(&conn, "First", None, Priority::Medium, IssueType::Task, None, None)
+    let issue1 = create_issue(&conn, "First", None, Priority::Medium, IssueType::Task, None, None, None)
         .unwrap();
-    let issue2 = create_issue(&conn, "Second", None, Priority::Medium, IssueType::Task, None, None)
+    let issue2 = create_issue(&conn, "Second", None, Priority::Medium, IssueType::Task, None, None, None)
         .unwrap();
-    let issue3 = create_issue(&conn, "Third", None, Priority::Medium, IssueType::Task, None, None)
+    let issue3 = create_issue(&conn, "Third", None, Priority::Medium, IssueType::Task, None, None, None)
         .unwrap();
 
     assert_eq!(issue1.number, 1);
@@ -372,7 +379,7 @@ fn test_sequential_issue_numbering() {
     delete_issue(&conn, &issue2.id).unwrap();
 
     // Next issue should still be #4 (numbers are never reused)
-    let issue4 = create_issue(&conn, "Fourth", None, Priority::Medium, IssueType::Task, None, None)
+    let issue4 = create_issue(&conn, "Fourth", None, Priority::Medium, IssueType::Task, None, None, None)
         .unwrap();
     assert_eq!(issue4.number, 4);
 }
@@ -391,7 +398,7 @@ fn test_issue_counter_atomicity() {
     assert_eq!(num3, 3);
 
     // Create an issue to verify counter continues correctly
-    let issue = create_issue(&conn, "Test", None, Priority::Medium, IssueType::Task, None, None)
+    let issue = create_issue(&conn, "Test", None, Priority::Medium, IssueType::Task, None, None, None)
         .unwrap();
     assert_eq!(issue.number, 4);
 }
@@ -400,7 +407,7 @@ fn test_issue_counter_atomicity() {
 fn test_block_clears_claim() {
     let conn = init_memory_db().unwrap();
 
-    let issue = create_issue(&conn, "Task", None, Priority::High, IssueType::Task, None, None).unwrap();
+    let issue = create_issue(&conn, "Task", None, Priority::High, IssueType::Task, None, None, None).unwrap();
 
     // Claim the issue
     claim_issue(&conn, &issue.id, "run-123").unwrap();
@@ -422,7 +429,7 @@ fn test_block_clears_claim() {
 fn test_complete_clears_claim() {
     let conn = init_memory_db().unwrap();
 
-    let issue = create_issue(&conn, "Task", None, Priority::Medium, IssueType::Task, None, None)
+    let issue = create_issue(&conn, "Task", None, Priority::Medium, IssueType::Task, None, None, None)
         .unwrap();
 
     // Claim and complete
@@ -440,7 +447,7 @@ fn test_complete_clears_claim() {
 fn test_cannot_claim_blocked_issue() {
     let conn = init_memory_db().unwrap();
 
-    let issue = create_issue(&conn, "Task", None, Priority::High, IssueType::Task, None, None).unwrap();
+    let issue = create_issue(&conn, "Task", None, Priority::High, IssueType::Task, None, None, None).unwrap();
 
     // Block the issue first
     block_issue(&conn, &issue.id, "Blocked").unwrap();
@@ -457,9 +464,9 @@ fn test_cannot_claim_blocked_issue() {
 fn test_get_issue_by_number() {
     let conn = init_memory_db().unwrap();
 
-    let issue1 = create_issue(&conn, "First", None, Priority::Medium, IssueType::Task, None, None)
+    let issue1 = create_issue(&conn, "First", None, Priority::Medium, IssueType::Task, None, None, None)
         .unwrap();
-    let issue2 = create_issue(&conn, "Second", None, Priority::High, IssueType::Bug, None, None)
+    let issue2 = create_issue(&conn, "Second", None, Priority::High, IssueType::Bug, None, None, None)
         .unwrap();
 
     // Fetch by number
@@ -479,9 +486,9 @@ fn test_get_issue_by_number() {
 fn test_create_issue_with_different_types() {
     let conn = init_memory_db().unwrap();
 
-    let task = create_issue(&conn, "Task", None, Priority::Medium, IssueType::Task, None, None).unwrap();
-    let bug = create_issue(&conn, "Bug", None, Priority::High, IssueType::Bug, None, None).unwrap();
-    let feature = create_issue(&conn, "Feature", None, Priority::Low, IssueType::Feature, None, None).unwrap();
+    let task = create_issue(&conn, "Task", None, Priority::Medium, IssueType::Task, None, None, None).unwrap();
+    let bug = create_issue(&conn, "Bug", None, Priority::High, IssueType::Bug, None, None, None).unwrap();
+    let feature = create_issue(&conn, "Feature", None, Priority::Low, IssueType::Feature, None, None, None).unwrap();
 
     assert_eq!(task.issue_type, IssueType::Task);
     assert_eq!(bug.issue_type, IssueType::Bug);
@@ -492,7 +499,7 @@ fn test_create_issue_with_different_types() {
 fn test_timestamp_fields_populated() {
     let conn = init_memory_db().unwrap();
 
-    let issue = create_issue(&conn, "Test", None, Priority::Medium, IssueType::Task, None, None)
+    let issue = create_issue(&conn, "Test", None, Priority::Medium, IssueType::Task, None, None, None)
         .unwrap();
 
     // created_at and updated_at should be set
@@ -511,4 +518,47 @@ fn test_timestamp_fields_populated() {
     complete_issue(&conn, &issue.id).unwrap();
     let completed = get_issue_by_id(&conn, &issue.id).unwrap().unwrap();
     assert!(completed.completed_at.is_some());
+}
+#[test]
+fn test_cascade_delete_issue_events() {
+    use issues::{db, issue};
+
+    let conn = db::init_memory_db().unwrap();
+
+    // Create an issue
+    let issue = issue::create_issue(
+        &conn,
+        "Test issue",
+        None,
+        issue::Priority::Medium,
+        issue::IssueType::Task,
+        None,
+        None,
+        None,
+    ).unwrap();
+
+    // Manually add an event (events aren't auto-created by claim_issue)
+    conn.execute(
+        "INSERT INTO issue_events (id, issue_id, event_type, actor, created_at) VALUES (?, ?, ?, ?, datetime('now'))",
+        ["test-event-1", &issue.id, "claimed", "test-run"],
+    ).unwrap();
+
+    // Verify event exists
+    let event_count: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM issue_events WHERE issue_id = ?",
+        [&issue.id],
+        |row| row.get(0),
+    ).unwrap();
+    assert_eq!(event_count, 1);
+
+    // Delete the issue
+    issue::delete_issue(&conn, &issue.id).unwrap();
+
+    // Verify event was cascade deleted (not orphaned)
+    let event_count: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM issue_events WHERE issue_id = ?",
+        [&issue.id],
+        |row| row.get(0),
+    ).unwrap();
+    assert_eq!(event_count, 0);
 }
