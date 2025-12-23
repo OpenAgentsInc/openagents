@@ -30,6 +30,18 @@ impl EventCache {
         Ok(cache)
     }
 
+    /// Create a new in-memory event cache (for testing)
+    pub fn new_in_memory() -> Result<Self> {
+        let conn = Connection::open_in_memory()
+            .context("Failed to open in-memory cache database")?;
+
+        let cache = Self { conn };
+        cache.init_schema()?;
+
+        debug!("In-memory event cache initialized");
+        Ok(cache)
+    }
+
     /// Initialize the database schema
     fn init_schema(&self) -> Result<()> {
         self.conn.execute_batch(
@@ -969,6 +981,101 @@ impl EventCache {
             .filter(|event| {
                 event.tags.iter().any(|tag| {
                     tag.len() >= 2 && tag[0] == "e" && tag[1] == issue_event_id
+                })
+            })
+            .collect();
+
+        Ok(filtered)
+    }
+
+    /// Get bounties for a specific stack layer
+    ///
+    /// Returns bounties (kind:1636) that have both a stack tag and layer tag matching
+    /// the specified stack_id and layer.
+    pub fn get_bounties_for_layer(&self, stack_id: &str, layer: u32) -> Result<Vec<Event>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, kind, pubkey, created_at, content, tags, sig
+             FROM events
+             WHERE kind = 1636
+             ORDER BY created_at DESC",
+        )?;
+
+        let events = stmt
+            .query_map([], |row| {
+                let tags_json: String = row.get(5)?;
+                let tags: Vec<Vec<String>> = serde_json::from_str(&tags_json)
+                    .map_err(|e| rusqlite::Error::FromSqlConversionFailure(
+                        5,
+                        rusqlite::types::Type::Text,
+                        Box::new(e),
+                    ))?;
+
+                Ok(Event {
+                    id: row.get(0)?,
+                    kind: row.get(1)?,
+                    pubkey: row.get(2)?,
+                    created_at: row.get(3)?,
+                    content: row.get(4)?,
+                    tags,
+                    sig: row.get(6)?,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+
+        // Filter for stack_id and layer
+        let filtered: Vec<Event> = events.into_iter()
+            .filter(|event| {
+                let has_stack = event.tags.iter().any(|tag| {
+                    tag.len() >= 2 && tag[0] == "stack" && tag[1] == stack_id
+                });
+                let has_layer = event.tags.iter().any(|tag| {
+                    tag.len() >= 2 && tag[0] == "layer" && tag[1] == layer.to_string()
+                });
+                has_stack && has_layer
+            })
+            .collect();
+
+        Ok(filtered)
+    }
+
+    /// Get all bounties for a stack (all layers)
+    ///
+    /// Returns all bounties (kind:1636) that have a stack tag matching the stack_id.
+    pub fn get_bounties_for_stack(&self, stack_id: &str) -> Result<Vec<Event>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, kind, pubkey, created_at, content, tags, sig
+             FROM events
+             WHERE kind = 1636
+             ORDER BY created_at DESC",
+        )?;
+
+        let events = stmt
+            .query_map([], |row| {
+                let tags_json: String = row.get(5)?;
+                let tags: Vec<Vec<String>> = serde_json::from_str(&tags_json)
+                    .map_err(|e| rusqlite::Error::FromSqlConversionFailure(
+                        5,
+                        rusqlite::types::Type::Text,
+                        Box::new(e),
+                    ))?;
+
+                Ok(Event {
+                    id: row.get(0)?,
+                    kind: row.get(1)?,
+                    pubkey: row.get(2)?,
+                    created_at: row.get(3)?,
+                    content: row.get(4)?,
+                    tags,
+                    sig: row.get(6)?,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+
+        // Filter for stack_id
+        let filtered: Vec<Event> = events.into_iter()
+            .filter(|event| {
+                event.tags.iter().any(|tag| {
+                    tag.len() >= 2 && tag[0] == "stack" && tag[1] == stack_id
                 })
             })
             .collect();

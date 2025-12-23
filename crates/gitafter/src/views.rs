@@ -1339,7 +1339,7 @@ pub fn patch_detail_page(repository: &Event, patch: &Event, _reviews: &[Event], 
 }
 
 /// Pull request detail page
-pub fn pull_request_detail_page(repository: &Event, pull_request: &Event, reviews: &[Event], reviewer_reputations: &std::collections::HashMap<String, i32>, status_events: &[Event], identifier: &str, trajectory_session: Option<&Event>, trajectory_events: &[Event], stack_prs: &[Event], dependency_pr: Option<&Event>, is_mergeable: bool, pr_updates: &[Event], diff_text: Option<&str>, inline_comments: &[crate::views::diff::InlineComment]) -> Markup {
+pub fn pull_request_detail_page(repository: &Event, pull_request: &Event, reviews: &[Event], reviewer_reputations: &std::collections::HashMap<String, i32>, status_events: &[Event], identifier: &str, trajectory_session: Option<&Event>, trajectory_events: &[Event], stack_prs: &[Event], dependency_pr: Option<&Event>, is_mergeable: bool, pr_updates: &[Event], diff_text: Option<&str>, inline_comments: &[crate::views::diff::InlineComment], bounties: &[Event]) -> Markup {
     let repo_name = get_tag_value(repository, "name").unwrap_or_else(|| "Repository".to_string());
     let pr_title = get_tag_value(pull_request, "subject").unwrap_or_else(|| "Untitled Pull Request".to_string());
     let pr_status = get_tag_value(pull_request, "status").unwrap_or_else(|| "open".to_string());
@@ -1420,6 +1420,61 @@ pub fn pull_request_detail_page(repository: &Event, pull_request: &Event, review
                                     h2 { "Description" }
                                     div.issue-content {
                                         p { (pull_request.content) }
+                                    }
+                                }
+                            }
+
+                            @if !bounties.is_empty() || stack.is_some() {
+                                section.issue-section {
+                                    h2 { "💰 Bounties" }
+
+                                    @if bounties.is_empty() {
+                                        p.empty-state { "No bounties for this layer yet." }
+                                    } @else {
+                                        div.bounties-list {
+                                            @for bounty in bounties {
+                                                @let bounty_creator = if bounty.pubkey.len() > 16 {
+                                                    format!("{}...{}", &bounty.pubkey[..8], &bounty.pubkey[bounty.pubkey.len()-8..])
+                                                } else {
+                                                    bounty.pubkey.clone()
+                                                };
+                                                @let amount = get_tag_value(bounty, "amount");
+                                                @let expiry = get_tag_value(bounty, "expiry");
+                                                @let conditions = get_all_tag_values(bounty, "conditions");
+                                                @let bounty_stack = get_tag_value(bounty, "stack");
+                                                @let bounty_layer = get_all_tag_values(bounty, "layer");
+
+                                                div.bounty-card {
+                                                    div.bounty-header {
+                                                        @if let Some(amt) = amount {
+                                                            span.bounty-amount { "⚡ " (amt) " sats" }
+                                                        }
+                                                        span.bounty-creator { "offered by " (bounty_creator) }
+                                                    }
+                                                    @if bounty_stack.is_some() && !bounty_layer.is_empty() && bounty_layer.len() >= 2 {
+                                                        div.bounty-layer-info style="margin-top: 0.5rem; font-size: 0.9em; color: #888;" {
+                                                            span { "📚 Layer " (bounty_layer[0]) " of " (bounty_layer[1]) }
+                                                        }
+                                                    }
+                                                    @if let Some(exp) = expiry {
+                                                        div.bounty-expiry {
+                                                            span.label { "Expires: " }
+                                                            span { (exp) }
+                                                        }
+                                                    }
+                                                    @if !conditions.is_empty() {
+                                                        div.bounty-conditions {
+                                                            h4 { "Conditions:" }
+                                                            ul {
+                                                                @for condition in conditions {
+                                                                    li { (condition) }
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
                                     }
                                 }
                             }
