@@ -669,7 +669,7 @@ async fn issue_comment(
     path: web::Path<(String, String)>,
     form: web::Form<std::collections::HashMap<String, String>>,
 ) -> HttpResponse {
-    let (identifier, issue_id) = path.into_inner();
+    let (_identifier, issue_id) = path.into_inner();
     let content = form.get("content").cloned().unwrap_or_default();
 
     if content.trim().is_empty() {
@@ -840,7 +840,7 @@ async fn pr_review_submit(
     form: web::Form<std::collections::HashMap<String, String>>,
     state: web::Data<AppState>,
 ) -> HttpResponse {
-    let (identifier, _pr_id) = path.into_inner();
+    let (_identifier, _pr_id) = path.into_inner();
 
     // Extract form data
     let review_type = form.get("review_type").cloned().unwrap_or_else(|| "comment".to_string());
@@ -2285,7 +2285,7 @@ async fn pr_stack_info(
     state: web::Data<AppState>,
     path: web::Path<(String, String)>,
 ) -> HttpResponse {
-    let (identifier, pr_id) = path.into_inner();
+    let (_identifier, pr_id) = path.into_inner();
 
     // Fetch the PR event
     let pr_event = match state.nostr_client.get_cached_event(&pr_id).await {
