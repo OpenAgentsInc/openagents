@@ -10,19 +10,19 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
 }
 
 async fn dashboard() -> HttpResponse {
-    HttpResponse::Ok()
-        .content_type("text/html")
-        .body("<h1>GitAfter</h1><p>Coming soon...</p>")
+    HttpResponse::NotImplemented()
+        .content_type("text/plain")
+        .body("GitAfter dashboard UI not yet implemented")
 }
 
 async fn repos_page() -> HttpResponse {
-    HttpResponse::Ok()
-        .content_type("text/html")
-        .body("<h1>Repositories</h1><p>Coming soon...</p>")
+    HttpResponse::NotImplemented()
+        .content_type("text/plain")
+        .body("Repositories UI not yet implemented")
 }
 
 async fn issues_page() -> HttpResponse {
-    HttpResponse::Ok()
-        .content_type("text/html")
-        .body("<h1>Issues</h1><p>Coming soon...</p>")
+    HttpResponse::NotImplemented()
+        .content_type("text/plain")
+        .body("Issues UI not yet implemented")
 }

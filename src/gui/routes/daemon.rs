@@ -7,7 +7,7 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
 }
 
 async fn status() -> HttpResponse {
-    HttpResponse::Ok()
-        .content_type("text/html")
-        .body("<h1>Daemon Status</h1><p>Coming soon...</p>")
+    HttpResponse::NotImplemented()
+        .content_type("text/plain")
+        .body("Daemon status UI not yet implemented")
 }

@@ -698,3 +698,39 @@ t!:Bash id=5hfMdBv2 cmd="cargo build --bin openagents 2>&1 | tail -20" → [runn
 o: id=5hfMdBv2 → [ok]    Compiling openagents v0.1.0 (/home/christopherdavid/code/openagents)
 a: Good! Now commit and complete the issue: tokens_in=0 tokens_out=2 tokens_cached=54581
 t!:Bash id=fKKsT22M cmd="git add -A && git commit -m "$(cat <<'EOF'" → [running] tokens_in=0 tokens_out=288 tokens_cached=54581
+o: id=fKKsT22M → [ok] [main f9231dde2] Fix unified CLI stubbed commands (STUB-8)
+t!:Bash id=pVEnvqt4 cmd="git push origin main" → [running] tokens_in=0 tokens_out=24 tokens_cached=54857
+o: id=pVEnvqt4 → [ok] [0;36m🔍 Running cargo build to check for errors and warnings...[0m
+t!:Bash id=sDspThyA cmd="cargo autopilot issue complete 877" → [running] tokens_in=0 tokens_out=79 tokens_cached=55290
+o: id=sDspThyA → [ok] ✓ Completed issue #877: STUB-8: Fix unified CLI stubbed commands
+t!:Bash id=bkbVPeij cmd="cargo autopilot issue ready" → [running] tokens_in=0 tokens_out=24 tokens_cached=55560
+o: id=bkbVPeij → [ok] → Next ready issue:
+t!:Bash id=SNKPNAWt cmd="cargo autopilot issue claim 878" → [running] tokens_in=0 tokens_out=80 tokens_cached=55910
+o: id=SNKPNAWt → [ok] ✓ Claimed issue #878: STUB-9: Wire GUI routes for wallet/marketplace/gitafter/daemon
+t!:Read id=9Kj6vqER file_path=/home/christopherdavid/code/openagents/src/gui/routes/wallet.rs → [running] tokens_in=0 tokens_out=18 tokens_cached=56199
+t!:Read id=iTD87wAH file_path=/home/christopherdavid/code/openagents/src/gui/routes/marketplace.rs → [running] tokens_in=0 tokens_out=18 tokens_cached=56199
+t!:Read id=bfp8Uhxr file_path=/home/christopherdavid/code/openagents/src/gui/routes/gitafter.rs → [running] tokens_in=0 tokens_out=18 tokens_cached=56199
+t!:Read id=UhEJH1UX file_path=/home/christopherdavid/code/openagents/src/gui/routes/daemon.rs → [running] tokens_in=0 tokens_out=254 tokens_cached=56199
+o: id=9Kj6vqER → [ok]      1→//! Wallet routes
+o: id=iTD87wAH → [ok]      1→//! Marketplace routes
+o: id=bfp8Uhxr → [ok]      1→//! GitAfter routes
+o: id=UhEJH1UX → [ok]      1→//! Daemon routes
+a: These are GUI route handlers returning HTML. Per d-012, I should NOT create placeholder pages. Instead, I should return proper error responses. Let me check if there are UI components available for... tokens_in=1 tokens_out=1 tokens_cached=56461
+t!:Bash id=k4xiTh2p cmd="find crates/ui/src -type f -name "*.rs" | head -20" → [running] tokens_in=1 tokens_out=1 tokens_cached=56461
+o: id=k4xiTh2p → [ok] crates/ui/src/colors.rs
+t!:Bash id=fHN8X9cG cmd="ls -la crates/ui/src/" → [running] tokens_in=0 tokens_out=25 tokens_cached=58683
+o: id=fHN8X9cG → [ok] Permissions Size User             Date Modified Name
+a: These are UI components for the recorder. The issue is asking me to "wire" the GUI routes - meaning connect them to actual functionality instead of placeholders. But there are no actual wallet/mark... tokens_in=0 tokens_out=1 tokens_cached=59162
+t!:Edit id=5a3FS6zf file_path=/home/christopherdavid/code/openagents/src/gui/routes/wallet.rs → [running] tokens_in=0 tokens_out=585 tokens_cached=59162
+o: id=5a3FS6zf → [ok] The file /home/christopherdavid/code/openagents/src/gui/routes/wallet.rs has been updated. Here's...
+t!:Edit id=SyqHWBgu file_path=/home/christopherdavid/code/openagents/src/gui/routes/marketplace.rs → [running] tokens_in=0 tokens_out=604 tokens_cached=59709
+o: id=SyqHWBgu → [ok] The file /home/christopherdavid/code/openagents/src/gui/routes/marketplace.rs has been updated. H...
+t!:Edit id=i9B4GpXx file_path=/home/christopherdavid/code/openagents/src/gui/routes/gitafter.rs → [running] tokens_in=0 tokens_out=400 tokens_cached=60660
+o: id=i9B4GpXx → [ok] The file /home/christopherdavid/code/openagents/src/gui/routes/gitafter.rs has been updated. Here...
+t!:Edit id=CLJH9yGi file_path=/home/christopherdavid/code/openagents/src/gui/routes/daemon.rs → [running] tokens_in=0 tokens_out=204 tokens_cached=61801
+o: id=CLJH9yGi → [ok] The file /home/christopherdavid/code/openagents/src/gui/routes/daemon.rs has been updated. Here's...
+a: Now build and test: tokens_in=0 tokens_out=1 tokens_cached=62503
+t!:Bash id=ra8tHy18 cmd="cargo build --bin openagents 2>&1 | tail -20" → [running] tokens_in=0 tokens_out=92 tokens_cached=62503
+o: id=ra8tHy18 → [ok]    Compiling breez-sdk-common v0.1.0 (/home/christopherdavid/code/spark-sdk/crates/breez-sdk/common)
+a: Good! Commit and complete: tokens_in=0 tokens_out=1 tokens_cached=62876
+t!:Bash id=DwWzNwe7 cmd="git add -A && git commit -m "$(cat <<'EOF'" → [running] tokens_in=0 tokens_out=290 tokens_cached=62876
