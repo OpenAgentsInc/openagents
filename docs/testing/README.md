@@ -18,11 +18,11 @@ cargo test --workspace --test '*' -- --test-threads=1
 
 # Run tests for a specific crate
 cargo test -p autopilot
-cargo test -p agentgit
+cargo test -p gitafter
 cargo test -p nostr-core
 
 # Run a specific test
-cargo test -p agentgit --test full_workflow_test
+cargo test -p gitafter --test full_workflow_test
 
 # Run with coverage
 cargo install cargo-llvm-cov
@@ -50,7 +50,7 @@ mod tests {
 **Integration Test** (in `crates/<crate>/tests/my_test.rs`):
 
 ```rust
-use agentgit::TestApp;
+use gitafter::TestApp;
 
 #[tokio::test]
 async fn test_full_workflow() {

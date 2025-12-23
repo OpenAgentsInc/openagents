@@ -396,9 +396,9 @@ t!:Grep id=pG2wVYQH pattern="tokio_tungstenite|WebSocket..." → [running] token
 o: id=pG2wVYQH → [ok] Found 31 files
 t!:Grep id=u8CinnLE pattern="#\[tokio::test\]" → [running] tokens_in=0 tokens_out=25 tokens_cached=56331
 o: id=u8CinnLE → [ok] Found 1 file
-a: Let me check if there are WebSocket tests for autopilot-gui or agentgit. tokens_in=0 tokens_out=3 tokens_cached=57045
-t!:Bash id=kQ5sDSAk cmd="find crates/autopilot-gui/tests crates/agentgit..." → [running] tokens_in=0 tokens_out=3 tokens_cached=57045
-o: id=kQ5sDSAk → [ok] crates/agentgit/tests/publish_error_handling.rs
+a: Let me check if there are WebSocket tests for autopilot-gui or gitafter. tokens_in=0 tokens_out=3 tokens_cached=57045
+t!:Bash id=kQ5sDSAk cmd="find crates/autopilot-gui/tests crates/gitafter..." → [running] tokens_in=0 tokens_out=3 tokens_cached=57045
+o: id=kQ5sDSAk → [ok] crates/gitafter/tests/publish_error_handling.rs
 a: No WebSocket tests exist for autopilot-gui. The directive specifically mentions WebSocket testing as a requirement. Let me create an issue for this. tokens_in=0 tokens_out=1 tokens_cached=57187
 t!:Bash id=eR8iqnXJ cmd="cargo autopilot issue create "Add WebSocket int..." → [running] tokens_in=0 tokens_out=1 tokens_cached=57187
 o: id=eR8iqnXJ → [ok] ✓ Created issue #559: Add WebSocket integration tests for autopilot-gui (agent: claude)

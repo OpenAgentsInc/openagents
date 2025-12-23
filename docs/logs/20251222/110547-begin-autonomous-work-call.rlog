@@ -153,24 +153,24 @@ o: id=kwayLfbE → [ok] On branch main
 a: Perfect! Now let's commit and push: tokens_in=0 tokens_out=1 tokens_cached=81464
 t!:Bash id=nN7dmZBm cmd="git commit -m "$(cat <<'EOF'" → [running] tokens_in=0 tokens_out=370 tokens_cached=81464
 o: id=nN7dmZBm → [error] Exit code 1
-a: There's a compilation error in agentgit that's blocking the commit. This is from another agent's work. I need to fix it to proceed: tokens_in=1 tokens_out=1 tokens_cached=82307
-t!:Read id=iFMdrAnP file_path=/Users/christopherdavid/code/openagents/crates/agentgit/src/git/branch.rs → [running] tokens_in=1 tokens_out=1 tokens_cached=82307
+a: There's a compilation error in gitafter that's blocking the commit. This is from another agent's work. I need to fix it to proceed: tokens_in=1 tokens_out=1 tokens_cached=82307
+t!:Read id=iFMdrAnP file_path=/Users/christopherdavid/code/openagents/crates/gitafter/src/git/branch.rs → [running] tokens_in=1 tokens_out=1 tokens_cached=82307
 o: id=iFMdrAnP → [ok]     95→    fn create_test_repo() -> (TempDir, Repository) {
-t!:Edit id=CTT1Hgn4 file_path=/Users/christopherdavid/code/openagents/crates/agentgit/src/git/branch.rs → [running] tokens_in=0 tokens_out=364 tokens_cached=83706
-o: id=CTT1Hgn4 → [ok] The file /Users/christopherdavid/code/openagents/crates/agentgit/src/git/branch.rs has been updat...
+t!:Edit id=CTT1Hgn4 file_path=/Users/christopherdavid/code/openagents/crates/gitafter/src/git/branch.rs → [running] tokens_in=0 tokens_out=364 tokens_cached=83706
+o: id=CTT1Hgn4 → [ok] The file /Users/christopherdavid/code/openagents/crates/gitafter/src/git/branch.rs has been updat...
 a: Now try committing again: tokens_in=0 tokens_out=1 tokens_cached=84473
 t!:Bash id=6NKDm6kd cmd="git commit -m "$(cat <<'EOF'" → [running] tokens_in=0 tokens_out=367 tokens_cached=84473
 o: id=6NKDm6kd → [error] Exit code 1
-a: There are test failures in agentgit. Let me check if these are pre-existing failures or if I introduced them: tokens_in=1 tokens_out=1 tokens_cached=85189
-t!:Bash id=FRoRMr7B cmd="git diff crates/agentgit/src/git/branch.rs | he..." → [running] tokens_in=1 tokens_out=123 tokens_cached=85189
-o: id=FRoRMr7B → [ok] fatal: ambiguous argument 'crates/agentgit/src/git/branch.rs': unknown revision or path not in th...
-t!:Bash id=WkVJLoGg cmd="git status ../agentgit/src/git/branch.rs" → [running] tokens_in=0 tokens_out=24 tokens_cached=87446
+a: There are test failures in gitafter. Let me check if these are pre-existing failures or if I introduced them: tokens_in=1 tokens_out=1 tokens_cached=85189
+t!:Bash id=FRoRMr7B cmd="git diff crates/gitafter/src/git/branch.rs | he..." → [running] tokens_in=1 tokens_out=123 tokens_cached=85189
+o: id=FRoRMr7B → [ok] fatal: ambiguous argument 'crates/gitafter/src/git/branch.rs': unknown revision or path not in th...
+t!:Bash id=WkVJLoGg cmd="git status ../gitafter/src/git/branch.rs" → [running] tokens_in=0 tokens_out=24 tokens_cached=87446
 o: id=WkVJLoGg → [ok] On branch main
-a: Let me restore the agentgit file and commit only my changes: tokens_in=0 tokens_out=3 tokens_cached=87648
-t!:Bash id=X2JY66SU cmd="git restore ../agentgit/src/git/branch.rs" → [running] tokens_in=0 tokens_out=108 tokens_cached=87648
+a: Let me restore the gitafter file and commit only my changes: tokens_in=0 tokens_out=3 tokens_cached=87648
+t!:Bash id=X2JY66SU cmd="git restore ../gitafter/src/git/branch.rs" → [running] tokens_in=0 tokens_out=108 tokens_cached=87648
 o: id=X2JY66SU → [ok] 
-a: The system is warning me that this was an intentional change. The agentgit tests are failing but these were likely pre-existing failures from another agent's work. Let me check if the tests were pa... tokens_in=0 tokens_out=1 tokens_cached=88044
+a: The system is warning me that this was an intentional change. The gitafter tests are failing but these were likely pre-existing failures from another agent's work. Let me check if the tests were pa... tokens_in=0 tokens_out=1 tokens_cached=88044
 t!:Bash id=45PTmLgJ cmd="git stash" → [running] tokens_in=0 tokens_out=124 tokens_cached=88044
 o: id=45PTmLgJ → [ok] Saved working directory and index state WIP on main: 8e9a4dec5 Fix clippy warnings in wallet, nos...
-t!:Bash id=ZLLyWXNC cmd="cargo test -p agentgit --lib git::branch::tests..." → [running] tokens_in=0 tokens_out=25 tokens_cached=88560
+t!:Bash id=ZLLyWXNC cmd="cargo test -p gitafter --lib git::branch::tests..." → [running] tokens_in=0 tokens_out=25 tokens_cached=88560
 o: id=ZLLyWXNC → [ok] warning: unused variable: `dir`

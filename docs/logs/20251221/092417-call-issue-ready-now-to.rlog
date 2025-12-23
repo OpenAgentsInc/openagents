@@ -33,7 +33,7 @@ o: id=858DH3X4 → [ok] {
 a: All of d-002 is complete. Let me check d-003 (OpenAgents Wallet). tokens_in=2 tokens_out=1 tokens_cached=36592
 t!:mcp__issues__directive_get id=AfxrFuft  → [running] tokens_in=2 tokens_out=1 tokens_cached=36592
 o: id=AfxrFuft → [ok] {
-a: d-003 is complete. Let me check d-005 (AgentGit) and d-007 (FROSTR). tokens_in=0 tokens_out=1 tokens_cached=44900
+a: d-003 is complete. Let me check d-005 (GitAfter) and d-007 (FROSTR). tokens_in=0 tokens_out=1 tokens_cached=44900
 t!:mcp__issues__directive_get id=ZhpkM82o  → [running] tokens_in=0 tokens_out=1 tokens_cached=44900
 t!:mcp__issues__directive_get id=GHkkbBYU  → [running] tokens_in=0 tokens_out=1 tokens_cached=44900
 o: id=ZhpkM82o → [ok] {

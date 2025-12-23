@@ -47,17 +47,17 @@ o: id=9dC6YWed → [ok] {
 o: id=bEpYw93u → [ok] {
 a: I see multiple in-progress issues. Let me check if any are ready for work or if I should create new issues. Let me check the current codebase state for these issues: tokens_in=2 tokens_out=1 tokens_cached=58736
 t!:Bash id=UpHnMfcV cmd="cd crates/wallet && find . -name "*.rs" -type f..." → [running] tokens_in=2 tokens_out=1 tokens_cached=58736
-t!:Bash id=UR4ctFUc cmd="cd crates/agentgit && find src -name "*.rs" -ty..." → [running] tokens_in=2 tokens_out=1 tokens_cached=58736
+t!:Bash id=UR4ctFUc cmd="cd crates/gitafter && find src -name "*.rs" -ty..." → [running] tokens_in=2 tokens_out=1 tokens_cached=58736
 o: id=UR4ctFUc → [ok] src/git/clone.rs
 o: id=UpHnMfcV → [ok] 
-a: Let me check the actual state of the agentgit event builders to see what's remaining: tokens_in=105 tokens_out=5 tokens_cached=60448
-t!:Read id=yAXBYZn4 file_path=/home/christopherdavid/code/openagents/crates/agentgit/src/nostr/events.rs → [running] tokens_in=105 tokens_out=104 tokens_cached=60448
-o: id=yAXBYZn4 → [ok]      1→//! NIP-34 event builders for AgentGit
+a: Let me check the actual state of the gitafter event builders to see what's remaining: tokens_in=105 tokens_out=5 tokens_cached=60448
+t!:Read id=yAXBYZn4 file_path=/home/christopherdavid/code/openagents/crates/gitafter/src/nostr/events.rs → [running] tokens_in=105 tokens_out=104 tokens_cached=60448
+o: id=yAXBYZn4 → [ok]      1→//! NIP-34 event builders for GitAfter
 a: The event builders are complete! Issue #271 appears to be done. Let me check issue #288 about PR/patch detail views: tokens_in=5 tokens_out=1 tokens_cached=60806
-t!:Read id=9yc87q14 file_path=/home/christopherdavid/code/openagents/crates/agentgit/src/views.rs → [running] tokens_in=5 tokens_out=1 tokens_cached=60806
-o: id=9yc87q14 → [ok]      1→//! Maud view templates for AgentGit
+t!:Read id=9yc87q14 file_path=/home/christopherdavid/code/openagents/crates/gitafter/src/views.rs → [running] tokens_in=5 tokens_out=1 tokens_cached=60806
+o: id=9yc87q14 → [ok]      1→//! Maud view templates for GitAfter
 a: Let me search for patch and PR detail views: tokens_in=4 tokens_out=1 tokens_cached=76013
-t!:Bash id=LKRoGXzn cmd="cd crates/agentgit && grep -n "patch_detail\|pu..." → [running] tokens_in=4 tokens_out=1 tokens_cached=76013
+t!:Bash id=LKRoGXzn cmd="cd crates/gitafter && grep -n "patch_detail\|pu..." → [running] tokens_in=4 tokens_out=1 tokens_cached=76013
 o: id=LKRoGXzn → [ok] Error: Directory not found
 t!:Grep id=UE8D9xiA pattern="patch_detail|pull_request_d..." → [running] tokens_in=4 tokens_out=123 tokens_cached=77770
 o: id=UE8D9xiA → [ok] Found 2 files
@@ -117,8 +117,8 @@ t!:KillShell id=Ed7EW3AM  → [running] tokens_in=1 tokens_out=60 tokens_cached=
 o: id=Ed7EW3AM → [ok] {"message":"Successfully killed shell: b66cba6 (cargo test --workspace --all-features 2>&1 | head...
 a: Let me look for quick wins - checking if there are TODO comments or unimplemented features in the codebase: tokens_in=1 tokens_out=3 tokens_cached=89449
 t!:Bash id=VeMx6sjh cmd="grep -r "TODO\|FIXME\|XXX\|HACK" crates/*/src -..." → [running] tokens_in=1 tokens_out=134 tokens_cached=89449
-o: id=VeMx6sjh → [ok] crates/agentgit/src/server.rs:    // TODO: Implement event creation and publishing
-a: Perfect! I found concrete TODOs. The main ones are in AgentGit (event signing/publishing) which is issue #342 (blocked). Let me create issues for the other actionable TODOs: tokens_in=0 tokens_out=1 tokens_cached=89564
+o: id=VeMx6sjh → [ok] crates/gitafter/src/server.rs:    // TODO: Implement event creation and publishing
+a: Perfect! I found concrete TODOs. The main ones are in GitAfter (event signing/publishing) which is issue #342 (blocked). Let me create issues for the other actionable TODOs: tokens_in=0 tokens_out=1 tokens_cached=89564
 t!:mcp__issues__issue_create id=zGidVk7K  → [running] tokens_in=0 tokens_out=1 tokens_cached=89564
 o: id=zGidVk7K → [ok] Created issue #356: Implement actual Nostr event publishing in autopilot trajectory publisher (ag...
 t!:mcp__issues__issue_create id=Vx1N64QM  → [running] tokens_in=0 tokens_out=32 tokens_cached=90612

@@ -9,8 +9,8 @@ Issues are organized by priority then by subsystem.
 
 ### Security - Path Traversal
 
-- [ ] **SEC-1**: Fix AgentGit path traversal vulnerability - repository identifiers from HTTP paths used directly in filesystem joins allow `../` to escape workspace
-  - Files: `crates/agentgit/src/server.rs:1725`, `crates/agentgit/src/git/clone.rs:109`
+- [ ] **SEC-1**: Fix GitAfter path traversal vulnerability - repository identifiers from HTTP paths used directly in filesystem joins allow `../` to escape workspace
+  - Files: `crates/gitafter/src/server.rs:1725`, `crates/gitafter/src/git/clone.rs:109`
   - Ref: E-H-3
 
 - [ ] **SEC-2**: Fix plan mode path traversal vulnerability - MCP slug parameter used in join without sanitization allows arbitrary file write
@@ -18,19 +18,19 @@ Issues are organized by priority then by subsystem.
   - Ref: D-H-1
 
 - [ ] **SEC-2b**: Fix get_repository_path path traversal - repo_identifier joined directly without validation
-  - Files: `crates/agentgit/src/git/clone.rs:103-110`
+  - Files: `crates/gitafter/src/git/clone.rs:103-110`
   - Ref: Deep audit pass 2
 
 ### Security - Injection
 
 - [ ] **SEC-5**: Fix shell injection in notifications - only double quotes escaped, backticks and $() can be exploited
-  - Files: `crates/agentgit/src/notifications.rs:157-202`
+  - Files: `crates/gitafter/src/notifications.rs:157-202`
   - Ref: Deep audit pass 2
 
 ### Security - Authentication
 
 - [ ] **SEC-6**: Add authentication to API routes - all routes unprotected, anyone on localhost can start/stop autopilot, clone repos, claim bounties
-  - Files: `src/gui/routes/autopilot.rs:83-119`, `src/gui/routes/mod.rs`, `crates/agentgit/src/server.rs`, `crates/issues-mcp/src/main.rs`
+  - Files: `src/gui/routes/autopilot.rs:83-119`, `src/gui/routes/mod.rs`, `crates/gitafter/src/server.rs`, `crates/issues-mcp/src/main.rs`
   - Ref: Deep audit pass 2
 
 - [ ] **SEC-7**: Add WebSocket authentication - no auth check before accepting connections
@@ -47,18 +47,18 @@ Issues are organized by priority then by subsystem.
   - Files: `crates/recorder/src/convert.rs:26,244`, `crates/recorder/src/main.rs:121`
   - Ref: D6-M-2
 
-- [ ] **SEC-8**: Remove mnemonic from environment variables - AGENTGIT_MNEMONIC readable by all processes as same user
-  - Files: `crates/agentgit/src/main.rs:46-69`
+- [ ] **SEC-8**: Remove mnemonic from environment variables - GITAFTER_MNEMONIC readable by all processes as same user
+  - Files: `crates/gitafter/src/main.rs:46-69`
   - Ref: Deep audit pass 2
 
 - [ ] **SEC-9**: Harden workspace directory permissions - created with default perms, readable by other users on multi-user systems
-  - Files: `crates/agentgit/src/git/clone.rs` (create_dir_all calls)
+  - Files: `crates/gitafter/src/git/clone.rs` (create_dir_all calls)
   - Ref: Deep audit pass 2
 
 ### Security - Rate Limiting
 
 - [ ] **SEC-10**: Add rate limiting to API endpoints - no protection against DoS via issue spam, clone spam, etc.
-  - Files: `src/gui/routes/`, `crates/agentgit/src/server.rs`
+  - Files: `src/gui/routes/`, `crates/gitafter/src/server.rs`
   - Ref: Deep audit pass 2
 
 ### Security - Input Validation
@@ -181,8 +181,8 @@ Issues are organized by priority then by subsystem.
   - Files: `crates/nostr/relay/src/admin.rs:284`
   - Ref: Deep audit pass 2
 
-- [ ] **PANIC-14**: Fix AgentGit index write unwraps - multiple locations
-  - Files: `crates/agentgit/src/git/patch.rs:59`, `crates/agentgit/src/git/rebase.rs:154`, `crates/agentgit/src/git/diff.rs:204`
+- [ ] **PANIC-14**: Fix GitAfter index write unwraps - multiple locations
+  - Files: `crates/gitafter/src/git/patch.rs:59`, `crates/gitafter/src/git/rebase.rs:154`, `crates/gitafter/src/git/diff.rs:204`
   - Ref: Deep audit pass 2
 
 - [ ] **PANIC-15**: Fix string slicing without bounds check - panics if pubkey < 16 chars
@@ -199,8 +199,8 @@ Issues are organized by priority then by subsystem.
   - Files: `crates/nostr/relay/src/server.rs:363,446`, `crates/nostr/relay/src/db.rs:168`
   - Ref: D2-M-2
 
-- [ ] **ASYNC-3**: Fix AgentGit cache sync calls in async tasks - Mutex<EventCache> blocks runtime
-  - Files: `crates/agentgit/src/nostr/client.rs:41,153`, `crates/agentgit/src/nostr/cache.rs:10,95`
+- [ ] **ASYNC-3**: Fix GitAfter cache sync calls in async tasks - Mutex<EventCache> blocks runtime
+  - Files: `crates/gitafter/src/nostr/client.rs:41,153`, `crates/gitafter/src/nostr/cache.rs:10,95`
   - Ref: D4-M-1
 
 - [ ] **ASYNC-4**: Fix Claude status route holding lock across await - blocks writers during network call
@@ -256,11 +256,11 @@ Issues are organized by priority then by subsystem.
   - Ref: D4-L-3
 
 - [ ] **STUB-8**: Fix unified CLI stubbed commands - print "coming soon" or suggest invalid cargo commands
-  - Files: `src/cli/autopilot.rs:129,152`, `src/cli/daemon.rs:74`, `src/cli/marketplace.rs:44`, `src/cli/agentgit.rs:24`
+  - Files: `src/cli/autopilot.rs:129,152`, `src/cli/daemon.rs:74`, `src/cli/marketplace.rs:44`, `src/cli/gitafter.rs:24`
   - Ref: D3-M-1
 
-- [ ] **STUB-9**: Wire GUI routes for wallet/marketplace/agentgit/daemon - currently static placeholders
-  - Files: `src/gui/routes/wallet.rs:13`, `src/gui/routes/marketplace.rs:14`, `src/gui/routes/agentgit.rs:12`, `src/gui/routes/daemon.rs:9`
+- [ ] **STUB-9**: Wire GUI routes for wallet/marketplace/gitafter/daemon - currently static placeholders
+  - Files: `src/gui/routes/wallet.rs:13`, `src/gui/routes/marketplace.rs:14`, `src/gui/routes/gitafter.rs:12`, `src/gui/routes/daemon.rs:9`
   - Ref: D3-L-1
 
 ### Identity/Nostr Issues
@@ -311,12 +311,12 @@ Issues are organized by priority then by subsystem.
 
 ### Query/Cache Issues
 
-- [ ] **QUERY-1**: Fix AgentGit search LIMIT before filter - returns empty when matches exist beyond first N rows
-  - Files: `crates/agentgit/src/nostr/cache.rs:1062-1122`
+- [ ] **QUERY-1**: Fix GitAfter search LIMIT before filter - returns empty when matches exist beyond first N rows
+  - Files: `crates/gitafter/src/nostr/cache.rs:1062-1122`
   - Ref: D4-M-2
 
-- [ ] **QUERY-2**: Enable AgentGit cache foreign keys and fix cleanup - orphan rows left in metadata tables
-  - Files: `crates/agentgit/src/nostr/cache.rs:52,546`
+- [ ] **QUERY-2**: Enable GitAfter cache foreign keys and fix cleanup - orphan rows left in metadata tables
+  - Files: `crates/gitafter/src/nostr/cache.rs:52,546`
   - Ref: D4-L-1
 
 ### Network/Protocol
@@ -362,7 +362,7 @@ Issues are organized by priority then by subsystem.
   - Ref: D5-M-2
 
 - [ ] **VALID-2**: Fix PullRequestBuilder not validating required fields - allows invalid NIP-34 events
-  - Files: `crates/agentgit/src/nostr/events.rs:503,581`
+  - Files: `crates/gitafter/src/nostr/events.rs:503,581`
   - Ref: D4-L-2
 
 - [ ] **VALID-3**: Fix recorder repo_sha validation - only checks length, allows non-hex like "unknown"
@@ -487,12 +487,12 @@ Issues are organized by priority then by subsystem.
 
 ### Resource Management
 
-- [ ] **RES-1**: Track WebSocket task handles in AgentGit - spawned tasks not stored, can't cancel or await
-  - Files: `crates/agentgit/src/ws.rs:43-63`
+- [ ] **RES-1**: Track WebSocket task handles in GitAfter - spawned tasks not stored, can't cancel or await
+  - Files: `crates/gitafter/src/ws.rs:43-63`
   - Ref: Deep audit pass 4
 
 - [ ] **RES-2**: Track HTTP server handle for graceful shutdown - tokio::spawn without storing handle
-  - Files: `crates/agentgit/src/server.rs:100`
+  - Files: `crates/gitafter/src/server.rs:100`
   - Ref: Deep audit pass 4
 
 - [ ] **RES-3**: Add Drop impl to RlogWriter for guaranteed flush - BufWriter may lose data on crash
@@ -500,7 +500,7 @@ Issues are organized by priority then by subsystem.
   - Ref: Deep audit pass 4
 
 - [ ] **RES-4**: Track Nostr event handler task - spawned without handle, panics are silent
-  - Files: `crates/agentgit/src/nostr/client.rs:148-161`
+  - Files: `crates/gitafter/src/nostr/client.rs:148-161`
   - Ref: Deep audit pass 4
 
 - [ ] **RES-5**: Add Drop impl to MetricsDb - no explicit cleanup for transactions on panic
@@ -508,7 +508,7 @@ Issues are organized by priority then by subsystem.
   - Ref: Deep audit pass 4
 
 - [ ] **RES-6**: Add close() method to EventCache - database handles may linger
-  - Files: `crates/agentgit/src/nostr/cache.rs:10-31`
+  - Files: `crates/gitafter/src/nostr/cache.rs:10-31`
   - Ref: Deep audit pass 4
 
 - [ ] **RES-7**: Store and await daemon signal handler task - not awaited on shutdown
@@ -528,7 +528,7 @@ Issues are organized by priority then by subsystem.
   - Ref: Deep audit pass 4
 
 - [ ] **RES-11**: Handle broadcast channel capacity limits - can drop messages silently
-  - Files: `crates/agentgit/src/ws.rs:10-18`
+  - Files: `crates/gitafter/src/ws.rs:10-18`
   - Ref: Deep audit pass 4
 
 ---

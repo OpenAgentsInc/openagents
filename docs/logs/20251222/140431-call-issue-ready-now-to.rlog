@@ -74,11 +74,11 @@ o: id=yy8FUqmd → [ok] docs/logs/20251219/1609-say-hello-and-tell.json
 a: The current implementation requires file paths. Given all issues are blocked and this is the only one in an urgent directive, let me look at other high-priority work. Let me check high-priority dir... tokens_in=0 tokens_out=1 tokens_cached=58813
 t!:Bash id=PrCUs2TR cmd="cargo autopilot directive list | grep -A2 "high"" → [running] tokens_in=0 tokens_out=1 tokens_cached=58813
 o: id=PrCUs2TR → [ok] d-002        active   109/109 (100%) Implement 100% of Nostr Protocol         high
-a: d-005 (AgentGit) is 96% complete and d-013 (Testing) is 93% complete. Let me check those. tokens_in=0 tokens_out=3 tokens_cached=58978
+a: d-005 (GitAfter) is 96% complete and d-013 (Testing) is 93% complete. Let me check those. tokens_in=0 tokens_out=3 tokens_cached=58978
 t!:Bash id=832371MJ cmd="cargo autopilot directive show d-005 | grep -A3..." → [running] tokens_in=0 tokens_out=134 tokens_cached=58978
 o: id=832371MJ → [ok] → Linked Issues:
 t!:Bash id=v5CoXvyE cmd="sqlite3 autopilot.db "SELECT number, title, sta..." → [running] tokens_in=0 tokens_out=25 tokens_cached=59575
-o: id=v5CoXvyE → [ok] 608|Integrate Lightning payments for bounty release in AgentGit|open
+o: id=v5CoXvyE → [ok] 608|Integrate Lightning payments for bounty release in GitAfter|open
 t!:Bash id=nPdgzEMQ cmd="sqlite3 autopilot.db "SELECT number, title, sta..." → [running] tokens_in=0 tokens_out=112 tokens_cached=59852
 o: id=nPdgzEMQ → [ok] 589|Add comprehensive tests for nostr event validation|open|Property-based testing with quickchec...
 a: All open issues are blocked. Since there are no ready issues and all open issues are blocked, I need to create new issues. Let me look for areas that need work by examining the codebase for potenti... tokens_in=0 tokens_out=1 tokens_cached=60132

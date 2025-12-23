@@ -225,8 +225,8 @@ t!:TodoWrite id=8PVasyJ9  → [running] tokens_in=0 tokens_out=284 tokens_cached
 o: id=8PVasyJ9 → [ok] Todos have been modified successfully. Ensure that you continue to use the todo list to track you...
 t!:Bash id=AJkXazut cmd="git add crates/autopilot/src/main.rs && git com..." → [running] tokens_in=0 tokens_out=386 tokens_cached=96710
 o: id=AJkXazut → [error] Exit code 1
-a: There's a test compilation issue with agentgit. Let me add the missing tempfile dependency: tokens_in=1 tokens_out=1 tokens_cached=97036
-t!:Read id=QGBceHJV file_path=/Users/christopherdavid/code/openagents/crates/agentgit/Cargo.toml → [running] tokens_in=1 tokens_out=102 tokens_cached=97036
+a: There's a test compilation issue with gitafter. Let me add the missing tempfile dependency: tokens_in=1 tokens_out=1 tokens_cached=97036
+t!:Read id=QGBceHJV file_path=/Users/christopherdavid/code/openagents/crates/gitafter/Cargo.toml → [running] tokens_in=1 tokens_out=102 tokens_cached=97036
 o: id=QGBceHJV → [ok]      1→[package]
-t!:Edit id=FSVfBzMT file_path=/Users/christopherdavid/code/openagents/crates/agentgit/Cargo.toml → [running] tokens_in=0 tokens_out=207 tokens_cached=100153
-o: id=FSVfBzMT → [ok] The file /Users/christopherdavid/code/openagents/crates/agentgit/Cargo.toml has been updated. Her...
+t!:Edit id=FSVfBzMT file_path=/Users/christopherdavid/code/openagents/crates/gitafter/Cargo.toml → [running] tokens_in=0 tokens_out=207 tokens_cached=100153
+o: id=FSVfBzMT → [ok] The file /Users/christopherdavid/code/openagents/crates/gitafter/Cargo.toml has been updated. Her...

@@ -1,7 +1,7 @@
 [workspace]
 resolver = "2"
 members = [
-    "crates/agentgit",
+    "crates/gitafter",
     "crates/autopilot",
     "crates/autopilot-gui",
     "crates/frostr",
@@ -44,7 +44,7 @@ path = "src/main.rs"
 wallet = { path = "crates/wallet" }
 marketplace = { path = "crates/marketplace" }
 autopilot = { path = "crates/autopilot" }
-agentgit = { path = "crates/agentgit" }
+gitafter = { path = "crates/gitafter" }
 ui = { path = "crates/ui" }
 claude-agent-sdk = { path = "crates/claude-agent-sdk" }
 

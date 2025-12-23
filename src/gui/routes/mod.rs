@@ -2,7 +2,7 @@
 
 use actix_web::web;
 
-mod agentgit;
+mod gitafter;
 mod autopilot;
 mod claude;
 mod daemon;
@@ -23,8 +23,8 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
         .service(web::scope("/marketplace").configure(marketplace::configure))
         // Autopilot routes
         .service(web::scope("/autopilot").configure(autopilot::configure))
-        // AgentGit routes
-        .service(web::scope("/git").configure(agentgit::configure))
+        // GitAfter routes
+        .service(web::scope("/git").configure(gitafter::configure))
         // Daemon routes
         .service(web::scope("/daemon").configure(daemon::configure))
         // WebSocket

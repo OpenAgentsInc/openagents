@@ -265,41 +265,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "agentgit"
-version = "0.1.0"
-dependencies = [
- "actix-web",
- "actix-ws",
- "anyhow",
- "bip39",
- "chrono",
- "criterion 0.5.1",
- "dirs 6.0.0",
- "futures-util",
- "git2",
- "hex",
- "html-escape",
- "maud",
- "nostr 0.1.0",
- "nostr-client",
- "rusqlite",
- "scraper",
- "serde",
- "serde_json",
- "sha2",
- "tao 0.33.0",
- "tempfile",
- "testing",
- "tokio",
- "tracing",
- "tracing-subscriber",
- "ui",
- "urlencoding",
- "wallet",
- "wry 0.50.5",
-]
-
-[[package]]
 name = "ahash"
 version = "0.8.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3365,6 +3330,41 @@ dependencies = [
 ]
 
 [[package]]
+name = "gitafter"
+version = "0.1.0"
+dependencies = [
+ "actix-web",
+ "actix-ws",
+ "anyhow",
+ "bip39",
+ "chrono",
+ "criterion 0.5.1",
+ "dirs 6.0.0",
+ "futures-util",
+ "git2",
+ "hex",
+ "html-escape",
+ "maud",
+ "nostr 0.1.0",
+ "nostr-client",
+ "rusqlite",
+ "scraper",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tao 0.33.0",
+ "tempfile",
+ "testing",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+ "ui",
+ "urlencoding",
+ "wallet",
+ "wry 0.50.5",
+]
+
+[[package]]
 name = "glib"
 version = "0.18.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5865,7 +5865,6 @@ version = "0.1.0"
 dependencies = [
  "actix-web",
  "actix-ws",
- "agentgit",
  "anyhow",
  "assert_cmd",
  "autopilot",
@@ -5873,6 +5872,7 @@ dependencies = [
  "clap",
  "claude-agent-sdk",
  "futures-util",
+ "gitafter",
  "marketplace",
  "predicates",
  "reqwest",

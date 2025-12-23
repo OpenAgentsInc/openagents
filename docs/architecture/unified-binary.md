@@ -27,7 +27,7 @@ openagents autopilot ...
 │   ├── app.rs         │   ├── wallet.rs                  │
 │   ├── server.rs      │   ├── marketplace.rs             │
 │   ├── routes/        │   ├── autopilot.rs               │
-│   ├── views/         │   ├── agentgit.rs                │
+│   ├── views/         │   ├── gitafter.rs                │
 │   ├── state.rs       │   └── daemon.rs                  │
 │   └── ws.rs          │                                  │
 └──────────────────────┴──────────────────────────────────┘
@@ -39,7 +39,7 @@ openagents autopilot ...
         │  - wallet/                     │
         │  - marketplace/                │
         │  - autopilot/                  │
-        │  - agentgit/                   │
+        │  - gitafter/                   │
         │  - nostr/                      │
         │  - ui/                         │
         │  - compute/                    │
@@ -59,7 +59,7 @@ openagents/
 │   │   ├── wallet.rs
 │   │   ├── marketplace.rs
 │   │   ├── autopilot.rs
-│   │   ├── agentgit.rs
+│   │   ├── gitafter.rs
 │   │   └── daemon.rs
 │   │
 │   └── gui/                    # GUI shell
@@ -73,7 +73,7 @@ openagents/
 │       │   ├── wallet.rs
 │       │   ├── marketplace.rs
 │       │   ├── autopilot.rs
-│       │   ├── agentgit.rs
+│       │   ├── gitafter.rs
 │       │   └── daemon.rs
 │       └── views/
 │           ├── mod.rs
@@ -83,7 +83,7 @@ openagents/
 │   ├── wallet/
 │   ├── marketplace/
 │   ├── autopilot/
-│   ├── agentgit/
+│   ├── gitafter/
 │   ├── ui/                     # Shared components
 │   ├── nostr/
 │   └── ...
@@ -509,7 +509,7 @@ The following binaries were consolidated:
 | `marketplace` | `openagents marketplace` |
 | `autopilot` | `openagents autopilot` |
 | `autopilotd` | `openagents daemon` |
-| `agentgit` | `openagents agentgit` |
+| `gitafter` | `openagents gitafter` |
 | Desktop app | `openagents` (default) |
 
 The `crates/desktop/` directory was deleted and merged into `src/gui/`.

@@ -47,7 +47,7 @@ a: Good! I can see directive d-004 has 2 open issues (#636 and #678). Let me che
 t!:Bash id=sNe8kpT4 cmd="cargo autopilot issue show 636" → [running] tokens_in=2 tokens_out=1 tokens_cached=35737
 o: id=sNe8kpT4 → [error] Exit code 2
 t!:Bash id=dYumujUP cmd="cargo autopilot issue list | grep "636"" → [running] tokens_in=3 tokens_out=25 tokens_cached=41142
-o: id=dYumujUP → [ok] 290    done       high     claude   Implement bounty offer event (kind:1636) builder in agentgit
+o: id=dYumujUP → [ok] 290    done       high     claude   Implement bounty offer event (kind:1636) builder in gitafter
 a: Issue 636 is blocked. Let me check issue 678: tokens_in=2 tokens_out=1 tokens_cached=41455
 t!:Bash id=wg4DWJvF cmd="cargo autopilot issue list | grep "678"" → [running] tokens_in=2 tokens_out=1 tokens_cached=41455
 o: id=wg4DWJvF → [ok] 678    open       medium   claude   Implement alert notification delivery (email/webhook) for cri...
@@ -57,21 +57,21 @@ o: id=7XuKFApH → [ok] → Directive d-006
 a: That's fine, head truncated it. I can see d-006 is 100% complete. Let me check d-008 (Marketplace): tokens_in=0 tokens_out=1 tokens_cached=41924
 t!:Bash id=GjBPSNZr cmd="cargo autopilot directive list" → [running] tokens_in=0 tokens_out=111 tokens_cached=41924
 o: id=GjBPSNZr → [ok] ID           Status   Progress   Title                                    Priority
-a: I can see d-005 (AgentGit) has 89/94 issues (94%). Let me check what's remaining: tokens_in=0 tokens_out=1 tokens_cached=44934
+a: I can see d-005 (GitAfter) has 89/94 issues (94%). Let me check what's remaining: tokens_in=0 tokens_out=1 tokens_cached=44934
 t!:Bash id=7Tih6dk9 cmd="cargo autopilot directive show d-005 2>&1 | gre..." → [running] tokens_in=0 tokens_out=1 tokens_cached=44934
 o: id=7Tih6dk9 → [ok] → Linked Issues:
 a: I can see d-005 has several issues: tokens_in=0 tokens_out=1 tokens_cached=45632
 t!:Bash id=61x1LpPs cmd="cargo autopilot issue list | grep "710"" → [running] tokens_in=0 tokens_out=1 tokens_cached=45632
-o: id=61x1LpPs → [ok] 710    in_progress medium   claude   Add AgentGit PR review checklist automation
+o: id=61x1LpPs → [ok] 710    in_progress medium   claude   Add GitAfter PR review checklist automation
 a: Issue #710 is in_progress, so someone else is working on it. Let me check #608: tokens_in=0 tokens_out=1 tokens_cached=48219
 t!:Bash id=gxZNxSWn cmd="cargo autopilot issue list | grep "608\|615\|618"" → [running] tokens_in=0 tokens_out=112 tokens_cached=48219
-o: id=gxZNxSWn → [ok] 608    open       medium   claude   Integrate Lightning payments for bounty release in AgentGit [...
+o: id=gxZNxSWn → [ok] 608    open       medium   claude   Integrate Lightning payments for bounty release in GitAfter [...
 a: All the open issues are blocked. Let me check d-013 (Testing Framework) which has 48/49 (97%): tokens_in=0 tokens_out=1 tokens_cached=48525
 t!:Bash id=7nW687ai cmd="cargo autopilot directive show d-013 2>&1 | gre..." → [running] tokens_in=0 tokens_out=1 tokens_cached=48525
-o: id=7nW687ai → [ok]   ○ #629 - Add end-to-end test for AgentGit issue claim and comment flow [open]
+o: id=7nW687ai → [ok]   ○ #629 - Add end-to-end test for GitAfter issue claim and comment flow [open]
 a: Let me check issue #629: tokens_in=0 tokens_out=4 tokens_cached=48769
 t!:Bash id=f2vq4Dty cmd="cargo autopilot issue list | grep "629"" → [running] tokens_in=0 tokens_out=92 tokens_cached=48769
-o: id=f2vq4Dty → [ok] 629    open       medium   claude   Add end-to-end test for AgentGit issue claim and comment flow...
+o: id=f2vq4Dty → [ok] 629    open       medium   claude   Add end-to-end test for GitAfter issue claim and comment flow...
 a: Issue #629 is blocked. Since all open issues across directives are blocked, I should create new issues based on the directives. Let me look at what still needs to be done. Looking at the directives... tokens_in=0 tokens_out=1 tokens_cached=49045
 t!:Bash id=8F23QSNm cmd="cargo autopilot directive show d-004 2>&1 | gre..." → [running] tokens_in=0 tokens_out=174 tokens_cached=49045
 o: id=8F23QSNm → [ok]   ## Success Criteria
@@ -803,9 +803,9 @@ o: id=cBQmdy1i → [ok] 0
 t!:mcp__issues__directive_get id=iRnjxjC2  → [running] tokens_in=2 tokens_out=60 tokens_cached=63080
 o: id=iRnjxjC2 → [ok] {
 t!:mcp__issues__issue_create id=hF4ACky8  → [running] tokens_in=0 tokens_out=301 tokens_cached=63188
-o: id=hF4ACky8 → [ok] Created issue #748: Complete AgentGit PR review checklist automation (agent: claude) [directive: ...
+o: id=hF4ACky8 → [ok] Created issue #748: Complete GitAfter PR review checklist automation (agent: claude) [directive: ...
 t!:mcp__issues__issue_create id=VmasF9LV  → [running] tokens_in=3 tokens_out=373 tokens_cached=74645
-o: id=VmasF9LV → [ok] Created issue #749: Complete AgentGit E2E test for full issue-to-merge workflow (agent: claude) [...
+o: id=VmasF9LV → [ok] Created issue #749: Complete GitAfter E2E test for full issue-to-merge workflow (agent: claude) [...
 t!:mcp__issues__directive_get id=69JfcgwR  → [running] tokens_in=3 tokens_out=60 tokens_cached=74983
 o: id=69JfcgwR → [ok] {
 t!:mcp__issues__issue_get id=sBWYiM8Z  → [running] tokens_in=0 tokens_out=58 tokens_cached=75402
@@ -820,16 +820,16 @@ t!:TodoWrite id=sLvyWhKJ  → [running] tokens_in=3 tokens_out=226 tokens_cached
 o: id=sLvyWhKJ → [ok] Todos have been modified successfully. Ensure that you continue to use the todo list to track you...
 t!:mcp__issues__issue_get id=twsykfti  → [running] tokens_in=3 tokens_out=58 tokens_cached=84125
 o: id=twsykfti → [ok] {
-t!:Glob id=FB2JXR69 pattern="crates/agentgit/tests/**/*.rs" → [running] tokens_in=2 tokens_out=26 tokens_cached=84393
-o: id=FB2JXR69 → [ok] /home/christopherdavid/code/openagents/crates/agentgit/tests/publish_error_handling.rs
-t!:Read id=DozCfird file_path=/home/christopherdavid/code/openagents/crates/agentgit/tests/full_workflow_test.rs → [running] tokens_in=2 tokens_out=84 tokens_cached=84935
-o: id=DozCfird → [ok]      1→//! Comprehensive integration test for full AgentGit workflow
+t!:Glob id=FB2JXR69 pattern="crates/gitafter/tests/**/*.rs" → [running] tokens_in=2 tokens_out=26 tokens_cached=84393
+o: id=FB2JXR69 → [ok] /home/christopherdavid/code/openagents/crates/gitafter/tests/publish_error_handling.rs
+t!:Read id=DozCfird file_path=/home/christopherdavid/code/openagents/crates/gitafter/tests/full_workflow_test.rs → [running] tokens_in=2 tokens_out=84 tokens_cached=84935
+o: id=DozCfird → [ok]      1→//! Comprehensive integration test for full GitAfter workflow
 a: The test already exists and looks comprehensive! Let me check if it actually tests all the required steps: tokens_in=2 tokens_out=1 tokens_cached=85794
 t!:TodoWrite id=in72zSYe  → [running] tokens_in=2 tokens_out=239 tokens_cached=85794
 o: id=in72zSYe → [ok] Todos have been modified successfully. Ensure that you continue to use the todo list to track you...
 a: The existing test covers: tokens_in=2 tokens_out=1 tokens_cached=89259
-t!:Read id=VT3Q7DiX file_path=/home/christopherdavid/code/openagents/crates/agentgit/tests/helpers/test_app.rs → [running] tokens_in=2 tokens_out=1 tokens_cached=89259
-o: id=VT3Q7DiX → [ok]      1→//! Test helper for AgentGit integration tests
+t!:Read id=VT3Q7DiX file_path=/home/christopherdavid/code/openagents/crates/gitafter/tests/helpers/test_app.rs → [running] tokens_in=2 tokens_out=1 tokens_cached=89259
+o: id=VT3Q7DiX → [ok]      1→//! Test helper for GitAfter integration tests
 t!:Grep id=RB1qyk5x pattern="NIP-57|zap|payment" → [running] tokens_in=2 tokens_out=123 tokens_cached=89540
 o: id=RB1qyk5x → [ok] No files found
 a: The test is missing NIP-57 payment verification. Let me add that step to complete the full workflow test. First, let me check what payment infrastructure exists: tokens_in=2 tokens_out=1 tokens_cached=91108
@@ -838,7 +838,7 @@ o: id=zEWu5Cbm → [ok] Found 4 files
 t!:Read id=av1MyWUN file_path=/home/christopherdavid/code/openagents/crates/nostr/core/src/nip57.rs → [running] tokens_in=2 tokens_out=18 tokens_cached=91246
 o: id=av1MyWUN → [ok]      1→//! NIP-57: Lightning Zaps
 a: Now let me add the zap payment verification to the test. I'll need to add a method to TestApp first, then update the test: tokens_in=1 tokens_out=1 tokens_cached=91477
-t!:Read id=mjmzWYWm file_path=/home/christopherdavid/code/openagents/crates/agentgit/tests/helpers/test_app.rs → [running] tokens_in=1 tokens_out=149 tokens_cached=91477
+t!:Read id=mjmzWYWm file_path=/home/christopherdavid/code/openagents/crates/gitafter/tests/helpers/test_app.rs → [running] tokens_in=1 tokens_out=149 tokens_cached=91477
 o: id=mjmzWYWm → [ok]    200→            ],
 a: Let me add a zap payment method to the TestApp and update the test to include payment verification: tokens_in=1 tokens_out=3 tokens_cached=93204
-t!:Edit id=TX7f5b6C file_path=/home/christopherdavid/code/openagents/crates/agentgit/tests/helpers/test_app.rs → [running] tokens_in=1 tokens_out=936 tokens_cached=93204
+t!:Edit id=TX7f5b6C file_path=/home/christopherdavid/code/openagents/crates/gitafter/tests/helpers/test_app.rs → [running] tokens_in=1 tokens_out=936 tokens_cached=93204

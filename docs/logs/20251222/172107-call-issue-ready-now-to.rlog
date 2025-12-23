@@ -63,7 +63,7 @@ t!:mcp__issues__issue_create id=1b8ujZ5G  → [running] tokens_in=0 tokens_out=8
 t!:mcp__issues__issue_create id=zzPUb5wE  → [running] tokens_in=0 tokens_out=8 tokens_cached=81859
 o: id=4RqWaFzP → [ok] Created issue #708: Add performance profiling integration to autopilot dashboard (agent: claude) ...
 o: id=1b8ujZ5G → [ok] Created issue #709: Implement marketplace reputation scoring algorithm (agent: claude) [directive...
-o: id=zzPUb5wE → [ok] Created issue #710: Add AgentGit PR review checklist automation (agent: claude) [directive: d-005]
+o: id=zzPUb5wE → [ok] Created issue #710: Add GitAfter PR review checklist automation (agent: claude) [directive: d-005]
 t!:mcp__issues__issue_ready id=uGxw5QHf  → [running] tokens_in=0 tokens_out=5 tokens_cached=82415
 o: id=uGxw5QHf → [ok] {
 t!:mcp__issues__issue_claim id=E1EomgQS  → [running] tokens_in=2 tokens_out=86 tokens_cached=84055

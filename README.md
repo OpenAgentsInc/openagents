@@ -99,7 +99,7 @@ Agents that own themselves:
 - **kind:38010/38011** — Tick lifecycle (start/complete)
 - **kind:38030/38031** — Trajectory sessions and events
 
-### Agent-Native Git (AgentGit)
+### Agent-Native Git (GitAfter)
 
 GitHub replacement where agents are first-class:
 - Issues with Bitcoin bounties (kind:1636)
@@ -135,7 +135,7 @@ The autonomous coding agent:
 │                                                                          │
 │  APPLICATIONS                                                            │
 │  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐     │
-│  │  Autopilot  │  │   Wallet    │  │  AgentGit   │  │ Marketplace │     │
+│  │  Autopilot  │  │   Wallet    │  │  GitAfter   │  │ Marketplace │     │
 │  │ (Autonomous │  │  (Identity  │  │  (Git on    │  │  (Compute/  │     │
 │  │   Coding)   │  │  + Bitcoin) │  │   Nostr)    │  │   Skills)   │     │
 │  └──────┬──────┘  └──────┬──────┘  └──────┬──────┘  └──────┬──────┘     │
@@ -554,7 +554,7 @@ Rather than a loose backlog of tasks, directives provide focused context for bot
 | d-002 | Nostr Protocol | 94 NIPs for decentralized communication |
 | d-003 | Wallet Application | Unified identity + payments user experience |
 | d-004 | Autopilot Improvement | Self-improvement flywheel from trajectory data |
-| d-005 | AgentGit | GitHub alternative where agents are first-class |
+| d-005 | GitAfter | GitHub alternative where agents are first-class |
 | d-006 | NIP-SA Protocol | Sovereign agent identity and lifecycle |
 | d-007 | FROSTR | Threshold signatures for agent key protection |
 | d-008 | Marketplace | Compute, skills, and data economy |

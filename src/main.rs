@@ -6,7 +6,7 @@
 //!   - `openagents wallet ...`
 //!   - `openagents marketplace ...`
 //!   - `openagents autopilot ...`
-//!   - `openagents agentgit ...`
+//!   - `openagents gitafter ...`
 //!   - `openagents daemon ...`
 
 use clap::{Parser, Subcommand};
@@ -41,9 +41,9 @@ enum Commands {
     #[command(subcommand)]
     Autopilot(cli::autopilot::AutopilotCommands),
 
-    /// AgentGit commands (Nostr-native git)
+    /// GitAfter commands (Nostr-native git)
     #[command(subcommand)]
-    Agentgit(cli::agentgit::AgentgitCommands),
+    Gitafter(cli::gitafter::GitafterCommands),
 
     /// Daemon commands (background supervisor)
     #[command(subcommand)]
@@ -68,7 +68,7 @@ fn main() {
         Some(Commands::Wallet(cmd)) => cli::wallet::run(cmd),
         Some(Commands::Marketplace(cmd)) => cli::marketplace::run(cmd),
         Some(Commands::Autopilot(cmd)) => cli::autopilot::run(cmd),
-        Some(Commands::Agentgit(cmd)) => cli::agentgit::run(cmd),
+        Some(Commands::Gitafter(cmd)) => cli::gitafter::run(cmd),
         Some(Commands::Daemon(cmd)) => cli::daemon::run(cmd),
     };
 

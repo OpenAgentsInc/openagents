@@ -216,7 +216,7 @@ t!:mcp__issues__issue_complete id=JhyXGBWf  → [running] tokens_in=0 tokens_out
 o: id=JhyXGBWf → [ok] Completed issue #332
 t!:mcp__issues__issue_ready id=d2kUv3tG  → [running] tokens_in=0 tokens_out=27 tokens_cached=114142
 o: id=d2kUv3tG → [ok] No ready issues available
-a: No ready issues. Let me create more issues from the active directives. Let me check d-005 (AgentGit): tokens_in=0 tokens_out=1 tokens_cached=114217
+a: No ready issues. Let me create more issues from the active directives. Let me check d-005 (GitAfter): tokens_in=0 tokens_out=1 tokens_cached=114217
 t!:mcp__issues__directive_get id=xemDzyTp  → [running] tokens_in=0 tokens_out=1 tokens_cached=114217
 o: id=xemDzyTp → [ok] {
 a: Let me check d-007 which has 2 incomplete issues: tokens_in=0 tokens_out=1 tokens_cached=114274
@@ -492,7 +492,7 @@ o: id=x1jSi4dD → [ok] {
 t!:mcp__issues__issue_create id=5XVH4hyS  → [running] tokens_in=0 tokens_out=414 tokens_cached=120899
 o: id=5XVH4hyS → [ok] Created issue #337: Implement encrypted direct messages (NIP-04) in wallet CLI (agent: claude) [d...
 t!:mcp__issues__issue_create id=vVhgs66w  → [running] tokens_in=3 tokens_out=32 tokens_cached=125230
-o: id=vVhgs66w → [ok] Created issue #338: Implement AgentGit PR trajectory display integration (agent: claude) [directi...
+o: id=vVhgs66w → [ok] Created issue #338: Implement GitAfter PR trajectory display integration (agent: claude) [directi...
 t!:mcp__issues__issue_ready id=Cgnqw2LY  → [running] tokens_in=3 tokens_out=27 tokens_cached=125685
 o: id=Cgnqw2LY → [ok] {
 t!:mcp__issues__issue_claim id=NxqMGyJr  → [running] tokens_in=0 tokens_out=5 tokens_cached=126131
@@ -560,13 +560,13 @@ t!:mcp__issues__issue_ready id=9EqCY2BW  → [running] tokens_in=0 tokens_out=27
 o: id=9EqCY2BW → [ok] {
 t!:mcp__issues__issue_claim id=N8ojLBJQ  → [running] tokens_in=0 tokens_out=8 tokens_cached=154084
 o: id=N8ojLBJQ → [ok] Claimed issue #338
-t!:Glob id=xBMMsxTa pattern="crates/agentgit/**/*.rs" → [running] tokens_in=3 tokens_out=26 tokens_cached=154575
-o: id=xBMMsxTa → [ok] /home/christopherdavid/code/openagents/crates/agentgit/src/ws.rs
-t!:Read id=EM5tJEYR file_path=/home/christopherdavid/code/openagents/crates/agentgit/src/views.rs → [running] tokens_in=5 tokens_out=97 tokens_cached=154675
-o: id=EM5tJEYR → [ok]      1→//! Maud view templates for AgentGit
+t!:Glob id=xBMMsxTa pattern="crates/gitafter/**/*.rs" → [running] tokens_in=3 tokens_out=26 tokens_cached=154575
+o: id=xBMMsxTa → [ok] /home/christopherdavid/code/openagents/crates/gitafter/src/ws.rs
+t!:Read id=EM5tJEYR file_path=/home/christopherdavid/code/openagents/crates/gitafter/src/views.rs → [running] tokens_in=5 tokens_out=97 tokens_cached=154675
+o: id=EM5tJEYR → [ok]      1→//! Maud view templates for GitAfter
 # status: Compacting
-a: I'll continue working on issue #338 "Implement AgentGit PR trajectory display integration". Let me read more of the views.rs file to understand the current structure and how PRs are displayed. tokens_in=3 tokens_out=1 tokens_cached=20280
-t!:Read id=jHyphua6 file_path=/home/christopherdavid/code/openagents/crates/agentgit/src/views.rs → [running] tokens_in=3 tokens_out=1 tokens_cached=20280
+a: I'll continue working on issue #338 "Implement GitAfter PR trajectory display integration". Let me read more of the views.rs file to understand the current structure and how PRs are displayed. tokens_in=3 tokens_out=1 tokens_cached=20280
+t!:Read id=jHyphua6 file_path=/home/christopherdavid/code/openagents/crates/gitafter/src/views.rs → [running] tokens_in=3 tokens_out=1 tokens_cached=20280
 t!:Grep id=3vxnKH5j pattern="pull.*request|PullRequest|pr_" → [running] tokens_in=3 tokens_out=1 tokens_cached=20280
 o: id=jHyphua6 → [ok]    100→            }
 o: id=3vxnKH5j → [ok] Found 5 files
@@ -575,29 +575,29 @@ t!:Grep id=VToUfirc pattern="fn.*pull|pull.*page" → [running] tokens_in=7 toke
 o: id=9u8yrD26 → [ok] 838:/// Pull requests list page for a repository
 o: id=VToUfirc → [ok] 8:use crate::views::{agent_profile_page, home_page_with_repos, issue_create_form_page, issue_deta...
 a: Perfect! I can see there's already a `pull_request_detail_page` function. Let me read that section to understand its current structure: tokens_in=7 tokens_out=1 tokens_cached=33908
-t!:Read id=Bx7NpxEn file_path=/home/christopherdavid/code/openagents/crates/agentgit/src/views.rs → [running] tokens_in=7 tokens_out=1 tokens_cached=33908
+t!:Read id=Bx7NpxEn file_path=/home/christopherdavid/code/openagents/crates/gitafter/src/views.rs → [running] tokens_in=7 tokens_out=1 tokens_cached=33908
 o: id=Bx7NpxEn → [ok]   1090→/// Pull request detail page
-t!:Read id=89jiM25S file_path=/home/christopherdavid/code/openagents/crates/agentgit/src/views.rs → [running] tokens_in=5 tokens_out=18 tokens_cached=34529
+t!:Read id=89jiM25S file_path=/home/christopherdavid/code/openagents/crates/gitafter/src/views.rs → [running] tokens_in=5 tokens_out=18 tokens_cached=34529
 o: id=89jiM25S → [ok]   1240→                                                        span.claim-author { (status_name) ...
-t!:Read id=BUEseCf1 file_path=/home/christopherdavid/code/openagents/crates/agentgit/src/views.rs → [running] tokens_in=5 tokens_out=18 tokens_cached=37305
+t!:Read id=BUEseCf1 file_path=/home/christopherdavid/code/openagents/crates/gitafter/src/views.rs → [running] tokens_in=5 tokens_out=18 tokens_cached=37305
 o: id=BUEseCf1 → [ok]   1340→                                        }
 a: Good! Now I understand the structure. I need to add a trajectory section to the PR detail page. Let me check what the NIP-SA trajectory event structure looks like and then check the NostrClient to ... tokens_in=5 tokens_out=1 tokens_cached=38959
 t!:Read id=feQXdZEQ file_path=/home/christopherdavid/code/openagents/crates/nostr/core/src/nip_sa/trajectory.rs → [running] tokens_in=5 tokens_out=1 tokens_cached=38959
-t!:Glob id=tBwjp8ta pattern="**/agentgit/src/nostr/client.rs" → [running] tokens_in=5 tokens_out=208 tokens_cached=38959
+t!:Glob id=tBwjp8ta pattern="**/gitafter/src/nostr/client.rs" → [running] tokens_in=5 tokens_out=208 tokens_cached=38959
 o: id=feQXdZEQ → [ok]      1→//! Trajectory Events (kinds:38030, 38031)
-o: id=tBwjp8ta → [ok] /home/christopherdavid/code/openagents/crates/agentgit/src/nostr/client.rs
-t!:Read id=TnJbpB5C file_path=/home/christopherdavid/code/openagents/crates/agentgit/src/nostr/client.rs → [running] tokens_in=6 tokens_out=100 tokens_cached=40034
+o: id=tBwjp8ta → [ok] /home/christopherdavid/code/openagents/crates/gitafter/src/nostr/client.rs
+t!:Read id=TnJbpB5C file_path=/home/christopherdavid/code/openagents/crates/gitafter/src/nostr/client.rs → [running] tokens_in=6 tokens_out=100 tokens_cached=40034
 o: id=TnJbpB5C → [ok]      1→//! Nostr client for connecting to relays and subscribing to git events
 a: Good! I can see the client already subscribes to trajectory events (38030, 38031) and caches them. Now let me check the cache module to understand how to query for trajectory events: tokens_in=5 tokens_out=1 tokens_cached=41738
-t!:Read id=U8nZithj file_path=/home/christopherdavid/code/openagents/crates/agentgit/src/nostr/cache.rs → [running] tokens_in=5 tokens_out=1 tokens_cached=41738
+t!:Read id=U8nZithj file_path=/home/christopherdavid/code/openagents/crates/gitafter/src/nostr/cache.rs → [running] tokens_in=5 tokens_out=1 tokens_cached=41738
 o: id=U8nZithj → [ok]      1→//! Local SQLite cache for storing Nostr events offline
 t!:Grep id=iiEghZFY pattern="pub fn.*event|query|get.*by" → [running] tokens_in=4 tokens_out=26 tokens_cached=43845
 o: id=iiEghZFY → [ok] 95:    pub fn insert_event(&self, event: &Event) -> Result<()> {
 a: Perfect! I can see there are already methods `get_trajectory_session` and `get_trajectory_events` in the cache. Let me read those methods: tokens_in=4 tokens_out=1 tokens_cached=45885
-t!:Read id=DsreD1Fh file_path=/home/christopherdavid/code/openagents/crates/agentgit/src/nostr/cache.rs → [running] tokens_in=4 tokens_out=1 tokens_cached=45885
+t!:Read id=DsreD1Fh file_path=/home/christopherdavid/code/openagents/crates/gitafter/src/nostr/cache.rs → [running] tokens_in=4 tokens_out=1 tokens_cached=45885
 o: id=DsreD1Fh → [ok]    650→    /// Get trajectory session by ID
 a: Excellent! The cache infrastructure is already there. Now let me check the server.rs to see how the PR detail page is currently fetching data, so I can add trajectory fetching: tokens_in=3 tokens_out=5 tokens_cached=47295
-t!:Read id=o1MDcvZU file_path=/home/christopherdavid/code/openagents/crates/agentgit/src/server.rs → [running] tokens_in=3 tokens_out=154 tokens_cached=47295
+t!:Read id=o1MDcvZU file_path=/home/christopherdavid/code/openagents/crates/gitafter/src/server.rs → [running] tokens_in=3 tokens_out=154 tokens_cached=47295
 o: id=o1MDcvZU → [ok]    645→/// Pull request detail page
 a: Perfect! Now I need to understand how NostrClient wraps the cache. Let me check that: tokens_in=3 tokens_out=1 tokens_cached=48601
 t!:Grep id=js1AYrYy pattern="get_reviews_for_pr|get_stat..." → [running] tokens_in=3 tokens_out=180 tokens_cached=48601
@@ -605,61 +605,61 @@ o: id=js1AYrYy → [ok] 204-
 a: Excellent! Everything is already in place. Now I need to: tokens_in=2 tokens_out=4 tokens_cached=49830
 t!:TodoWrite id=deope1hf  → [running] tokens_in=2 tokens_out=390 tokens_cached=49830
 o: id=deope1hf → [ok] Todos have been modified successfully. Ensure that you continue to use the todo list to track you...
-t!:Edit id=yNkMcuGF file_path=/home/christopherdavid/code/openagents/crates/agentgit/src/server.rs → [running] tokens_in=2 tokens_out=791 tokens_cached=50544
-o: id=yNkMcuGF → [ok] The file /home/christopherdavid/code/openagents/crates/agentgit/src/server.rs has been updated. H...
+t!:Edit id=yNkMcuGF file_path=/home/christopherdavid/code/openagents/crates/gitafter/src/server.rs → [running] tokens_in=2 tokens_out=791 tokens_cached=50544
+o: id=yNkMcuGF → [ok] The file /home/christopherdavid/code/openagents/crates/gitafter/src/server.rs has been updated. H...
 t!:TodoWrite id=pSrMJk2V  → [running] tokens_in=2 tokens_out=229 tokens_cached=50919
 o: id=pSrMJk2V → [ok] Todos have been modified successfully. Ensure that you continue to use the todo list to track you...
 a: Now let me update the view function signature and add the trajectory display section: tokens_in=2 tokens_out=1 tokens_cached=52487
-t!:Edit id=kA9qWuEP file_path=/home/christopherdavid/code/openagents/crates/agentgit/src/views.rs → [running] tokens_in=2 tokens_out=251 tokens_cached=52487
-o: id=kA9qWuEP → [ok] The file /home/christopherdavid/code/openagents/crates/agentgit/src/views.rs has been updated. He...
+t!:Edit id=kA9qWuEP file_path=/home/christopherdavid/code/openagents/crates/gitafter/src/views.rs → [running] tokens_in=2 tokens_out=251 tokens_cached=52487
+o: id=kA9qWuEP → [ok] The file /home/christopherdavid/code/openagents/crates/gitafter/src/views.rs has been updated. He...
 a: Now I need to find where to insert the trajectory section. Let me read the end of the pull_request_detail_page function to add it before the closing tags: tokens_in=2 tokens_out=1 tokens_cached=52758
-t!:Read id=QA6LEB2e file_path=/home/christopherdavid/code/openagents/crates/agentgit/src/views.rs → [running] tokens_in=2 tokens_out=1 tokens_cached=52758
+t!:Read id=QA6LEB2e file_path=/home/christopherdavid/code/openagents/crates/gitafter/src/views.rs → [running] tokens_in=2 tokens_out=1 tokens_cached=52758
 o: id=QA6LEB2e → [ok]   1390→                            section.issue-section {
 a: Perfect! I can see there's already a `trajectory_viewer_page` function. Let me read more of it to understand how it displays trajectories, then I'll create a similar component to embed in the PR page: tokens_in=2 tokens_out=1 tokens_cached=53301
-t!:Read id=ELyY8BgU file_path=/home/christopherdavid/code/openagents/crates/agentgit/src/views.rs → [running] tokens_in=2 tokens_out=1 tokens_cached=53301
-o: id=ELyY8BgU → [ok]   1440→                title { "Trajectory: " (session_title) " - AgentGit" }
-t!:Read id=FGeVs7uP file_path=/home/christopherdavid/code/openagents/crates/agentgit/src/views.rs → [running] tokens_in=1 tokens_out=18 tokens_cached=54250
+t!:Read id=ELyY8BgU file_path=/home/christopherdavid/code/openagents/crates/gitafter/src/views.rs → [running] tokens_in=2 tokens_out=1 tokens_cached=53301
+o: id=ELyY8BgU → [ok]   1440→                title { "Trajectory: " (session_title) " - GitAfter" }
+t!:Read id=FGeVs7uP file_path=/home/christopherdavid/code/openagents/crates/gitafter/src/views.rs → [running] tokens_in=1 tokens_out=18 tokens_cached=54250
 o: id=FGeVs7uP → [ok]   1540→                                p.empty-state { "No trajectory events found for this sessi...
 a: Perfect! Now I understand the trajectory display structure. I'll create a helper function to render the trajectory timeline component and insert it into the PR detail page. Let me add the trajector... tokens_in=1 tokens_out=1 tokens_cached=56096
-t!:Edit id=PWhSVFS3 file_path=/home/christopherdavid/code/openagents/crates/agentgit/src/views.rs → [running] tokens_in=1 tokens_out=2070 tokens_cached=56096
+t!:Edit id=PWhSVFS3 file_path=/home/christopherdavid/code/openagents/crates/gitafter/src/views.rs → [running] tokens_in=1 tokens_out=2070 tokens_cached=56096
 o: id=PWhSVFS3 → [error] <tool_use_error>Found 3 matches of the string to replace, but replace_all is false. To replace al...
 a: I need more context to uniquely identify the location. Let me be more specific: tokens_in=2 tokens_out=1 tokens_cached=57746
-t!:Edit id=oerGYwXr file_path=/home/christopherdavid/code/openagents/crates/agentgit/src/views.rs → [running] tokens_in=2 tokens_out=2037 tokens_cached=57746
+t!:Edit id=oerGYwXr file_path=/home/christopherdavid/code/openagents/crates/gitafter/src/views.rs → [running] tokens_in=2 tokens_out=2037 tokens_cached=57746
 o: id=oerGYwXr → [error] <tool_use_error>String to replace not found in file.
 a: Let me read the exact formatting around that section: tokens_in=2 tokens_out=1 tokens_cached=60282
-t!:Read id=cYHaHVkR file_path=/home/christopherdavid/code/openagents/crates/agentgit/src/views.rs → [running] tokens_in=2 tokens_out=1 tokens_cached=60282
+t!:Read id=cYHaHVkR file_path=/home/christopherdavid/code/openagents/crates/gitafter/src/views.rs → [running] tokens_in=2 tokens_out=1 tokens_cached=60282
 o: id=cYHaHVkR → [ok]   1365→                                    }
-t!:Edit id=hn6hp7k7 file_path=/home/christopherdavid/code/openagents/crates/agentgit/src/views.rs → [running] tokens_in=0 tokens_out=1634 tokens_cached=62598
+t!:Edit id=hn6hp7k7 file_path=/home/christopherdavid/code/openagents/crates/gitafter/src/views.rs → [running] tokens_in=0 tokens_out=1634 tokens_cached=62598
 o: id=hn6hp7k7 → [error] <tool_use_error>Found 3 matches of the string to replace, but replace_all is false. To replace al...
 a: Let me add more unique context: tokens_in=1 tokens_out=1 tokens_cached=63421
-t!:Edit id=kdQKMNgy file_path=/home/christopherdavid/code/openagents/crates/agentgit/src/views.rs → [running] tokens_in=1 tokens_out=1728 tokens_cached=63421
-o: id=kdQKMNgy → [ok] The file /home/christopherdavid/code/openagents/crates/agentgit/src/views.rs has been updated. He...
+t!:Edit id=kdQKMNgy file_path=/home/christopherdavid/code/openagents/crates/gitafter/src/views.rs → [running] tokens_in=1 tokens_out=1728 tokens_cached=63421
+o: id=kdQKMNgy → [ok] The file /home/christopherdavid/code/openagents/crates/gitafter/src/views.rs has been updated. He...
 a: Excellent! Now let me test the build: tokens_in=0 tokens_out=4 tokens_cached=65171
 t!:TodoWrite id=aGDxJ9M1  → [running] tokens_in=0 tokens_out=240 tokens_cached=65171
 o: id=aGDxJ9M1 → [ok] Todos have been modified successfully. Ensure that you continue to use the todo list to track you...
-t!:Bash id=Mk9YsJiL cmd="cargo build --package agentgit 2>&1 | head -100" → [running] tokens_in=0 tokens_out=25 tokens_cached=69190
+t!:Bash id=Mk9YsJiL cmd="cargo build --package gitafter 2>&1 | head -100" → [running] tokens_in=0 tokens_out=25 tokens_cached=69190
 o: id=Mk9YsJiL → [ok]    Compiling openssl v0.10.75
 a: I need to await the future! Let me fix that: tokens_in=0 tokens_out=1 tokens_cached=69472
-t!:Read id=j4WepwBy file_path=/home/christopherdavid/code/openagents/crates/agentgit/src/server.rs → [running] tokens_in=0 tokens_out=1 tokens_cached=69472
+t!:Read id=j4WepwBy file_path=/home/christopherdavid/code/openagents/crates/gitafter/src/server.rs → [running] tokens_in=0 tokens_out=1 tokens_cached=69472
 o: id=j4WepwBy → [ok]    704→    // Fetch trajectory session linked to this PR via "trajectory" tag
 a: I see the issue - I can't use `.and_then()` with an async closure. I need to restructure this logic to use async/await properly: tokens_in=0 tokens_out=1 tokens_cached=70337
-t!:Edit id=rCRSazdT file_path=/home/christopherdavid/code/openagents/crates/agentgit/src/server.rs → [running] tokens_in=0 tokens_out=841 tokens_cached=70337
-o: id=rCRSazdT → [ok] The file /home/christopherdavid/code/openagents/crates/agentgit/src/server.rs has been updated. H...
+t!:Edit id=rCRSazdT file_path=/home/christopherdavid/code/openagents/crates/gitafter/src/server.rs → [running] tokens_in=0 tokens_out=841 tokens_cached=70337
+o: id=rCRSazdT → [ok] The file /home/christopherdavid/code/openagents/crates/gitafter/src/server.rs has been updated. H...
 a: Now let's rebuild: tokens_in=0 tokens_out=2 tokens_cached=71022
-t!:Bash id=s8HvYXo5 cmd="cargo build --package agentgit 2>&1 | grep -A 5..." → [running] tokens_in=0 tokens_out=110 tokens_cached=71022
+t!:Bash id=s8HvYXo5 cmd="cargo build --package gitafter 2>&1 | grep -A 5..." → [running] tokens_in=0 tokens_out=110 tokens_cached=71022
 o: id=s8HvYXo5 → [ok] 
 a: Great! No errors. Let me check the full build output: tokens_in=0 tokens_out=1 tokens_cached=72510
-t!:Bash id=GZGmNUTf cmd="cargo build --package agentgit 2>&1 | tail -10" → [running] tokens_in=0 tokens_out=102 tokens_cached=72510
+t!:Bash id=GZGmNUTf cmd="cargo build --package gitafter 2>&1 | tail -10" → [running] tokens_in=0 tokens_out=102 tokens_cached=72510
 o: id=GZGmNUTf → [ok]     Finished `dev` profile [optimized + debuginfo] target(s) in 0.13s
 a: Perfect! The build succeeded. Now let me commit the changes: tokens_in=0 tokens_out=1 tokens_cached=72819
 t!:Bash id=Co4TG7nw cmd="git status" → [running] tokens_in=0 tokens_out=1 tokens_cached=72819
-t!:Bash id=tgExymhx cmd="git diff crates/agentgit/src/server.rs | head -80" → [running] tokens_in=0 tokens_out=1 tokens_cached=72819
-t!:Bash id=SA1Nu7Z5 cmd="git diff crates/agentgit/src/views.rs | head -120" → [running] tokens_in=0 tokens_out=1 tokens_cached=72819
-o: id=tgExymhx → [ok] diff --git a/crates/agentgit/src/server.rs b/crates/agentgit/src/server.rs
+t!:Bash id=tgExymhx cmd="git diff crates/gitafter/src/server.rs | head -80" → [running] tokens_in=0 tokens_out=1 tokens_cached=72819
+t!:Bash id=SA1Nu7Z5 cmd="git diff crates/gitafter/src/views.rs | head -120" → [running] tokens_in=0 tokens_out=1 tokens_cached=72819
+o: id=tgExymhx → [ok] diff --git a/crates/gitafter/src/server.rs b/crates/gitafter/src/server.rs
 o: id=Co4TG7nw → [ok] On branch main
-o: id=SA1Nu7Z5 → [ok] diff --git a/crates/agentgit/src/views.rs b/crates/agentgit/src/views.rs
-t!:Bash id=wy4ZuqRq cmd="git add crates/agentgit/src/server.rs crates/ag..." → [running] tokens_in=1 tokens_out=387 tokens_cached=72957
-o: id=wy4ZuqRq → [ok] [main b08a18a32] Add NIP-SA trajectory timeline display to AgentGit PR review UI
+o: id=SA1Nu7Z5 → [ok] diff --git a/crates/gitafter/src/views.rs b/crates/gitafter/src/views.rs
+t!:Bash id=wy4ZuqRq cmd="git add crates/gitafter/src/server.rs crates/ag..." → [running] tokens_in=1 tokens_out=387 tokens_cached=72957
+o: id=wy4ZuqRq → [ok] [main b08a18a32] Add NIP-SA trajectory timeline display to GitAfter PR review UI
 t!:Bash id=XQWQueZF cmd="git push" → [running] tokens_in=0 tokens_out=73 tokens_cached=76237
 o: id=XQWQueZF → [ok] [0;36m🔍 Running cargo build to check for errors and warnings...[0m
 t!:TodoWrite id=VqaUy8Zf  → [running] tokens_in=0 tokens_out=227 tokens_cached=76682
@@ -672,7 +672,7 @@ o: id=hWvE4A5f → [ok] No ready issues available
 a: No ready issues. Let me check the directives to create new issues: tokens_in=0 tokens_out=57 tokens_cached=77187
 t!:mcp__issues__directive_list id=DiT3gUgu  → [running] tokens_in=0 tokens_out=57 tokens_cached=77187
 o: id=DiT3gUgu → [ok] [
-a: Let me check directive d-006 (NIP-SA) and d-005 (AgentGit) since they have the most incomplete issues: tokens_in=0 tokens_out=1 tokens_cached=77263
+a: Let me check directive d-006 (NIP-SA) and d-005 (GitAfter) since they have the most incomplete issues: tokens_in=0 tokens_out=1 tokens_cached=77263
 t!:mcp__issues__directive_get id=R3t3Ec1Z  → [running] tokens_in=0 tokens_out=94 tokens_cached=77263
 o: id=R3t3Ec1Z → [ok] {
 a: I can see issue #331 is in_progress. Let me check the other directives for incomplete issues: tokens_in=0 tokens_out=1 tokens_cached=77885
@@ -687,9 +687,9 @@ o: id=BALyNKvt → [ok] {
 a: I can see issues #214 (NIP-34 Git Stuff) and #253 (encrypted direct messages in wallet) are in_progress, but #253 was already completed (I did that work earlier as #337). Let me create a new useful... tokens_in=2 tokens_out=1 tokens_cached=92374
 t!:mcp__issues__directive_get id=4Kf4wzXR  → [running] tokens_in=2 tokens_out=135 tokens_cached=92374
 o: id=4Kf4wzXR → [ok] {
-a: I see issues #317 and #320 are blocked. Let me create a new issue. Looking at the directives, I'll create an issue for one of the missing AgentGit features. Let me create an issue for implementing ... tokens_in=0 tokens_out=1 tokens_cached=100640
+a: I see issues #317 and #320 are blocked. Let me create a new issue. Looking at the directives, I'll create an issue for one of the missing GitAfter features. Let me create an issue for implementing ... tokens_in=0 tokens_out=1 tokens_cached=100640
 t!:mcp__issues__issue_create id=nfYFDy9j  → [running] tokens_in=0 tokens_out=1 tokens_cached=100640
-o: id=nfYFDy9j → [ok] Created issue #339: Add stacked diffs support to AgentGit PR events (agent: claude) [directive: d...
+o: id=nfYFDy9j → [ok] Created issue #339: Add stacked diffs support to GitAfter PR events (agent: claude) [directive: d...
 t!:mcp__issues__issue_ready id=h1X9TYpC  → [running] tokens_in=3 tokens_out=27 tokens_cached=105045
 o: id=h1X9TYpC → [ok] {
 a: Perfect! I got issue #339. Let me claim it and start working on it: tokens_in=0 tokens_out=1 tokens_cached=105782
@@ -700,60 +700,60 @@ o: id=MZYNzBRr → [ok] Todos have been modified successfully. Ensure that you c
 a: Let me start by examining the current PR event structure: tokens_in=3 tokens_out=1 tokens_cached=106651
 t!:Grep id=VXH9YnEp pattern="kind.*1618|PullRequest|pull..." → [running] tokens_in=3 tokens_out=1 tokens_cached=106651
 o: id=VXH9YnEp → [ok] No matches found
-t!:Glob id=DWRnjwx9 pattern="**/agentgit/src/nostr/*.rs" → [running] tokens_in=3 tokens_out=64 tokens_cached=106980
-o: id=DWRnjwx9 → [ok] /home/christopherdavid/code/openagents/crates/agentgit/src/nostr/mod.rs
-t!:Read id=HeKG4vcT file_path=/home/christopherdavid/code/openagents/crates/agentgit/src/nostr/events.rs → [running] tokens_in=3 tokens_out=83 tokens_cached=107154
-o: id=HeKG4vcT → [ok]      1→//! NIP-34 event builders for AgentGit
+t!:Glob id=DWRnjwx9 pattern="**/gitafter/src/nostr/*.rs" → [running] tokens_in=3 tokens_out=64 tokens_cached=106980
+o: id=DWRnjwx9 → [ok] /home/christopherdavid/code/openagents/crates/gitafter/src/nostr/mod.rs
+t!:Read id=HeKG4vcT file_path=/home/christopherdavid/code/openagents/crates/gitafter/src/nostr/events.rs → [running] tokens_in=3 tokens_out=83 tokens_cached=107154
+o: id=HeKG4vcT → [ok]      1→//! NIP-34 event builders for GitAfter
 a: I see that events.rs currently has builders for issue claims, bounties, work assignments, and status events, but no PR/patch builders. I need to add a PullRequestBuilder with support for stacked di... tokens_in=3 tokens_out=1 tokens_cached=107356
-t!:Edit id=UZsbvspB file_path=/home/christopherdavid/code/openagents/crates/agentgit/src/nostr/events.rs → [running] tokens_in=3 tokens_out=1693 tokens_cached=107356
-o: id=UZsbvspB → [ok] The file /home/christopherdavid/code/openagents/crates/agentgit/src/nostr/events.rs has been upda...
+t!:Edit id=UZsbvspB file_path=/home/christopherdavid/code/openagents/crates/gitafter/src/nostr/events.rs → [running] tokens_in=3 tokens_out=1693 tokens_cached=107356
+o: id=UZsbvspB → [ok] The file /home/christopherdavid/code/openagents/crates/gitafter/src/nostr/events.rs has been upda...
 a: Now let me add tests for the PR builder and update the todos: tokens_in=2 tokens_out=1 tokens_cached=113892
-t!:Edit id=magVhS7g file_path=/home/christopherdavid/code/openagents/crates/agentgit/src/nostr/events.rs → [running] tokens_in=2 tokens_out=1173 tokens_cached=113892
-o: id=magVhS7g → [ok] The file /home/christopherdavid/code/openagents/crates/agentgit/src/nostr/events.rs has been upda...
+t!:Edit id=magVhS7g file_path=/home/christopherdavid/code/openagents/crates/gitafter/src/nostr/events.rs → [running] tokens_in=2 tokens_out=1173 tokens_cached=113892
+o: id=magVhS7g → [ok] The file /home/christopherdavid/code/openagents/crates/gitafter/src/nostr/events.rs has been upda...
 t!:TodoWrite id=NLSwhkCe  → [running] tokens_in=2 tokens_out=287 tokens_cached=117874
 o: id=NLSwhkCe → [ok] Todos have been modified successfully. Ensure that you continue to use the todo list to track you...
 a: Now let me add cache queries for fetching stacks. First, let me check the current cache methods: tokens_in=2 tokens_out=1 tokens_cached=120220
 t!:Grep id=5Tz9y8G5 pattern="pub fn get.*stack|get.*depends" → [running] tokens_in=2 tokens_out=1 tokens_cached=120220
 o: id=5Tz9y8G5 → [ok] No matches found
 a: Let me add methods to fetch PRs by stack ID at the end of the cache.rs file: tokens_in=2 tokens_out=1 tokens_cached=120549
-t!:Read id=5K7ib9kE file_path=/home/christopherdavid/code/openagents/crates/agentgit/src/nostr/cache.rs → [running] tokens_in=2 tokens_out=1 tokens_cached=120549
+t!:Read id=5K7ib9kE file_path=/home/christopherdavid/code/openagents/crates/gitafter/src/nostr/cache.rs → [running] tokens_in=2 tokens_out=1 tokens_cached=120549
 o: id=5K7ib9kE → [ok]   1070→
-t!:Edit id=Kw6xPGRC file_path=/home/christopherdavid/code/openagents/crates/agentgit/src/nostr/cache.rs → [running] tokens_in=2 tokens_out=1226 tokens_cached=120713
-o: id=Kw6xPGRC → [ok] The file /home/christopherdavid/code/openagents/crates/agentgit/src/nostr/cache.rs has been updat...
+t!:Edit id=Kw6xPGRC file_path=/home/christopherdavid/code/openagents/crates/gitafter/src/nostr/cache.rs → [running] tokens_in=2 tokens_out=1226 tokens_cached=120713
+o: id=Kw6xPGRC → [ok] The file /home/christopherdavid/code/openagents/crates/gitafter/src/nostr/cache.rs has been updat...
 a: Now let me add wrapper methods to NostrClient: tokens_in=2 tokens_out=1 tokens_cached=121536
-t!:Read id=JoES2a2H file_path=/home/christopherdavid/code/openagents/crates/agentgit/src/nostr/client.rs → [running] tokens_in=2 tokens_out=129 tokens_cached=121536
+t!:Read id=JoES2a2H file_path=/home/christopherdavid/code/openagents/crates/gitafter/src/nostr/client.rs → [running] tokens_in=2 tokens_out=129 tokens_cached=121536
 o: id=JoES2a2H → [ok]    270→        self.cache.lock().await.get_status_events_for_pr(pr_event_id)
-t!:Edit id=zmQjHGzT file_path=/home/christopherdavid/code/openagents/crates/agentgit/src/nostr/client.rs → [running] tokens_in=1 tokens_out=413 tokens_cached=124334
-o: id=zmQjHGzT → [ok] The file /home/christopherdavid/code/openagents/crates/agentgit/src/nostr/client.rs has been upda...
+t!:Edit id=zmQjHGzT file_path=/home/christopherdavid/code/openagents/crates/gitafter/src/nostr/client.rs → [running] tokens_in=1 tokens_out=413 tokens_cached=124334
+o: id=zmQjHGzT → [ok] The file /home/christopherdavid/code/openagents/crates/gitafter/src/nostr/client.rs has been upda...
 a: Perfect! Now let me build and test the code: tokens_in=1 tokens_out=1 tokens_cached=125551
-t!:Bash id=PgdR87wb cmd="cargo test --package agentgit 2>&1 | tail -50" → [running] tokens_in=1 tokens_out=102 tokens_cached=125551
-o: id=PgdR87wb → [ok]    Compiling agentgit v0.1.0 (/home/christopherdavid/code/openagents/crates/agentgit)
+t!:Bash id=PgdR87wb cmd="cargo test --package gitafter 2>&1 | tail -50" → [running] tokens_in=1 tokens_out=102 tokens_cached=125551
+o: id=PgdR87wb → [ok]    Compiling gitafter v0.1.0 (/home/christopherdavid/code/openagents/crates/gitafter)
 a: Excellent! All tests pass. The warnings are expected since we haven't created the UI yet. Let me commit what we have so far, then continue with the UI: tokens_in=0 tokens_out=5 tokens_cached=126410
 t!:TodoWrite id=VvJqdtYe  → [running] tokens_in=0 tokens_out=331 tokens_cached=126410
 o: id=VvJqdtYe → [ok] Todos have been modified successfully. Ensure that you continue to use the todo list to track you...
-t!:Bash id=8CT5wB6F cmd="git add crates/agentgit/src/nostr/events.rs cra..." → [running] tokens_in=0 tokens_out=435 tokens_cached=127489
-o: id=8CT5wB6F → [ok] [main 487cd5af2] Add stacked diffs support to AgentGit PR events
+t!:Bash id=8CT5wB6F cmd="git add crates/gitafter/src/nostr/events.rs cra..." → [running] tokens_in=0 tokens_out=435 tokens_cached=127489
+o: id=8CT5wB6F → [ok] [main 487cd5af2] Add stacked diffs support to GitAfter PR events
 t!:Bash id=AnGGFqLA cmd="git push" → [running] tokens_in=0 tokens_out=25 tokens_cached=127862
 o: id=AnGGFqLA → [error] Exit code 1
 a: I need to fix the warnings by adding `#[allow(dead_code)]` annotations. Let me do that: tokens_in=1 tokens_out=1 tokens_cached=128344
-t!:Edit id=zdciYJFk file_path=/home/christopherdavid/code/openagents/crates/agentgit/src/nostr/cache.rs → [running] tokens_in=1 tokens_out=295 tokens_cached=128344
-o: id=zdciYJFk → [ok] The file /home/christopherdavid/code/openagents/crates/agentgit/src/nostr/cache.rs has been updat...
-t!:Edit id=jS2BW6qt file_path=/home/christopherdavid/code/openagents/crates/agentgit/src/nostr/cache.rs → [running] tokens_in=0 tokens_out=217 tokens_cached=128882
-o: id=jS2BW6qt → [ok] The file /home/christopherdavid/code/openagents/crates/agentgit/src/nostr/cache.rs has been updat...
-t!:Edit id=r6G5Anuq file_path=/home/christopherdavid/code/openagents/crates/agentgit/src/nostr/cache.rs → [running] tokens_in=0 tokens_out=217 tokens_cached=129444
-o: id=r6G5Anuq → [ok] The file /home/christopherdavid/code/openagents/crates/agentgit/src/nostr/cache.rs has been updat...
-t!:Edit id=GpAZT3s9 file_path=/home/christopherdavid/code/openagents/crates/agentgit/src/nostr/client.rs → [running] tokens_in=0 tokens_out=217 tokens_cached=129908
-o: id=GpAZT3s9 → [ok] The file /home/christopherdavid/code/openagents/crates/agentgit/src/nostr/client.rs has been upda...
-t!:Edit id=ZVxS9gWz file_path=/home/christopherdavid/code/openagents/crates/agentgit/src/nostr/client.rs → [running] tokens_in=0 tokens_out=205 tokens_cached=130594
-o: id=ZVxS9gWz → [ok] The file /home/christopherdavid/code/openagents/crates/agentgit/src/nostr/client.rs has been upda...
-t!:Edit id=X6JZVbFH file_path=/home/christopherdavid/code/openagents/crates/agentgit/src/nostr/client.rs → [running] tokens_in=0 tokens_out=211 tokens_cached=131047
-o: id=X6JZVbFH → [ok] The file /home/christopherdavid/code/openagents/crates/agentgit/src/nostr/client.rs has been upda...
+t!:Edit id=zdciYJFk file_path=/home/christopherdavid/code/openagents/crates/gitafter/src/nostr/cache.rs → [running] tokens_in=1 tokens_out=295 tokens_cached=128344
+o: id=zdciYJFk → [ok] The file /home/christopherdavid/code/openagents/crates/gitafter/src/nostr/cache.rs has been updat...
+t!:Edit id=jS2BW6qt file_path=/home/christopherdavid/code/openagents/crates/gitafter/src/nostr/cache.rs → [running] tokens_in=0 tokens_out=217 tokens_cached=128882
+o: id=jS2BW6qt → [ok] The file /home/christopherdavid/code/openagents/crates/gitafter/src/nostr/cache.rs has been updat...
+t!:Edit id=r6G5Anuq file_path=/home/christopherdavid/code/openagents/crates/gitafter/src/nostr/cache.rs → [running] tokens_in=0 tokens_out=217 tokens_cached=129444
+o: id=r6G5Anuq → [ok] The file /home/christopherdavid/code/openagents/crates/gitafter/src/nostr/cache.rs has been updat...
+t!:Edit id=GpAZT3s9 file_path=/home/christopherdavid/code/openagents/crates/gitafter/src/nostr/client.rs → [running] tokens_in=0 tokens_out=217 tokens_cached=129908
+o: id=GpAZT3s9 → [ok] The file /home/christopherdavid/code/openagents/crates/gitafter/src/nostr/client.rs has been upda...
+t!:Edit id=ZVxS9gWz file_path=/home/christopherdavid/code/openagents/crates/gitafter/src/nostr/client.rs → [running] tokens_in=0 tokens_out=205 tokens_cached=130594
+o: id=ZVxS9gWz → [ok] The file /home/christopherdavid/code/openagents/crates/gitafter/src/nostr/client.rs has been upda...
+t!:Edit id=X6JZVbFH file_path=/home/christopherdavid/code/openagents/crates/gitafter/src/nostr/client.rs → [running] tokens_in=0 tokens_out=211 tokens_cached=131047
+o: id=X6JZVbFH → [ok] The file /home/christopherdavid/code/openagents/crates/gitafter/src/nostr/client.rs has been upda...
 a: Now let me build and push again: tokens_in=0 tokens_out=1 tokens_cached=131500
-t!:Bash id=qdYXpvzW cmd="cargo build --package agentgit 2>&1 | grep -E "..." → [running] tokens_in=0 tokens_out=105 tokens_cached=131500
+t!:Bash id=qdYXpvzW cmd="cargo build --package gitafter 2>&1 | grep -E "..." → [running] tokens_in=0 tokens_out=105 tokens_cached=131500
 o: id=qdYXpvzW → [ok] 
 a: Perfect! No warnings. Let me amend the commit and push: tokens_in=1 tokens_out=1 tokens_cached=132160
-t!:Bash id=uvoMvV6d cmd="git add crates/agentgit/src/nostr/cache.rs crat..." → [running] tokens_in=1 tokens_out=133 tokens_cached=132160
-o: id=uvoMvV6d → [ok] [main dbbcf1c47] Add stacked diffs support to AgentGit PR events
+t!:Bash id=uvoMvV6d cmd="git add crates/gitafter/src/nostr/cache.rs crat..." → [running] tokens_in=1 tokens_out=133 tokens_cached=132160
+o: id=uvoMvV6d → [ok] [main dbbcf1c47] Add stacked diffs support to GitAfter PR events
 t!:Bash id=bfFFrGHr cmd="git push --force-with-lease" → [running] tokens_in=0 tokens_out=79 tokens_cached=132290
 o: id=bfFFrGHr → [ok] [0;36m🔍 Running cargo build to check for errors and warnings...[0m
 a: Excellent! Now let me mark the issue as complete and check for the next ready issue. We've successfully implemented the core infrastructure for stacked diffs. The UI visualization would be a signif... tokens_in=0 tokens_out=4 tokens_cached=132711
@@ -763,9 +763,9 @@ t!:mcp__issues__issue_complete id=XHyC97ga  → [running] tokens_in=0 tokens_out
 o: id=XHyC97ga → [ok] Completed issue #339
 t!:mcp__issues__issue_ready id=x1h2hfts  → [running] tokens_in=0 tokens_out=27 tokens_cached=133264
 o: id=x1h2hfts → [ok] No ready issues available
-a: No ready issues. Let me create another useful issue. Looking at the directives, I can create an issue for implementing NIP-34 patch/PR creation functionality in AgentGit: tokens_in=0 tokens_out=1 tokens_cached=133339
+a: No ready issues. Let me create another useful issue. Looking at the directives, I can create an issue for implementing NIP-34 patch/PR creation functionality in GitAfter: tokens_in=0 tokens_out=1 tokens_cached=133339
 t!:mcp__issues__issue_create id=kgLsXDjv  → [running] tokens_in=0 tokens_out=1 tokens_cached=133339
-o: id=kgLsXDjv → [ok] Created issue #340: Add PR and patch creation UI to AgentGit (agent: claude) [directive: d-005]
+o: id=kgLsXDjv → [ok] Created issue #340: Add PR and patch creation UI to GitAfter (agent: claude) [directive: d-005]
 t!:mcp__issues__issue_ready id=xZy2Mkt7  → [running] tokens_in=0 tokens_out=32 tokens_cached=133396
 o: id=xZy2Mkt7 → [ok] {
-a: Perfect! I have issue #340. This is a great continuation of the AgentGit work. However, given the context length and the fact that I've completed 2 significant issues (#338 and #339) in this sessio... tokens_in=0 tokens_out=270 tokens_cached=134102
+a: Perfect! I have issue #340. This is a great continuation of the GitAfter work. However, given the context length and the fact that I've completed 2 significant issues (#338 and #339) in this sessio... tokens_in=0 tokens_out=270 tokens_cached=134102

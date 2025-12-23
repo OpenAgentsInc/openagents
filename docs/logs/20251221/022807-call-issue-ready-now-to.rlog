@@ -485,7 +485,7 @@ o: id=xDGGPuKr → [ok] Could not claim issue #303 (already claimed or blocked)
 a: Let me check for directives with incomplete issues that need work: tokens_in=2 tokens_out=1 tokens_cached=94375
 t!:mcp__issues__directive_get id=aKAmkGok  → [running] tokens_in=2 tokens_out=74 tokens_cached=94375
 o: id=aKAmkGok → [ok] {
-a: Issues #214 (NIP-34 Git Stuff) and #253 (encrypted DMs in wallet) are in progress. Let me check d-005 (AgentGit) for available work: tokens_in=0 tokens_out=1 tokens_cached=94508
+a: Issues #214 (NIP-34 Git Stuff) and #253 (encrypted DMs in wallet) are in progress. Let me check d-005 (GitAfter) for available work: tokens_in=0 tokens_out=1 tokens_cached=94508
 t!:mcp__issues__directive_get id=hTbNm6Hx  → [running] tokens_in=0 tokens_out=107 tokens_cached=94508
 o: id=hTbNm6Hx → [ok] {
 a: All current issues are either done or in progress by other sessions. Since there are no ready issues available, the autonomous loop should create new issues from the highest priority directives. Le... tokens_in=2 tokens_out=1 tokens_cached=102723

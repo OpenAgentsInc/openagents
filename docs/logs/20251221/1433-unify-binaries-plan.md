@@ -2,7 +2,7 @@
 
 ## Decisions Made
 - **Daemon**: Becomes `openagents daemon` subcommand (not separate binary)
-- **AgentGit**: Unified into single binary
+- **GitAfter**: Unified into single binary
 - **Binary name**: `openagents`
 
 ## Current State (7 Binaries to Eliminate)
@@ -15,12 +15,12 @@
 | `crates/autopilot/` | `autopilotd` | Autopilot daemon/supervisor |
 | `crates/autopilot-gui/` | `autopilot-gui` | Visual autopilot interface |
 | `crates/desktop/` | `openagents-desktop` | Desktop shell (currently minimal) |
-| `crates/agentgit/` | `agentgit` | Git collaboration (NIP-34) |
+| `crates/gitafter/` | `gitafter` | Git collaboration (NIP-34) |
 
 ## Goal
 
 Create ONE unified `openagents` binary that:
-1. Launches GUI by default (tabbed view: Wallet, Marketplace, Autopilot, AgentGit)
+1. Launches GUI by default (tabbed view: Wallet, Marketplace, Autopilot, GitAfter)
 2. Provides CLI subcommands for all functionality
 3. Uses single wry/tao window with Actix server
 
@@ -38,7 +38,7 @@ openagents/                      # Workspace root
 │   │   ├── wallet.rs            # openagents wallet ...
 │   │   ├── marketplace.rs       # openagents marketplace ...
 │   │   ├── autopilot.rs         # openagents autopilot ...
-│   │   ├── agentgit.rs          # openagents agentgit ...
+│   │   ├── gitafter.rs          # openagents gitafter ...
 │   │   └── daemon.rs            # openagents daemon ...
 │   │
 │   └── gui/                     # Unified GUI
@@ -52,7 +52,7 @@ openagents/                      # Workspace root
 │       │   ├── wallet.rs
 │       │   ├── marketplace.rs
 │       │   ├── autopilot.rs
-│       │   ├── agentgit.rs
+│       │   ├── gitafter.rs
 │       │   └── daemon.rs
 │       └── views/               # Maud templates
 │           ├── mod.rs
@@ -64,7 +64,7 @@ openagents/                      # Workspace root
 │   ├── autopilot/               # Remove both [[bin]], keep [lib]
 │   ├── autopilot-gui/           # Remove [[bin]], export views
 │   ├── desktop/                 # DEPRECATED (functionality merged)
-│   └── agentgit/                # Remove [[bin]], keep [lib]
+│   └── gitafter/                # Remove [[bin]], keep [lib]
 ```
 
 ## Unified State
@@ -88,7 +88,7 @@ openagents gui                          # Launch GUI (explicit)
 openagents wallet init|import|whoami|balance|send|receive|...
 openagents marketplace compute|skills|data|trajectories ...
 openagents autopilot run|metrics|analyze|issue|benchmark ...
-openagents agentgit repo|issues|patches|...
+openagents gitafter repo|issues|patches|...
 openagents daemon start|stop|status|restart-worker
 ```
 
@@ -104,7 +104,7 @@ openagents daemon start|stop|status|restart-worker
 - [ ] Create `src/` directory at workspace root
 - [ ] Create `src/main.rs` with clap CLI structure
 - [ ] Create `src/gui/` module with app.rs, server.rs, state.rs, ws.rs
-- [ ] Create `src/cli/` module with wallet.rs, marketplace.rs, autopilot.rs, agentgit.rs, daemon.rs
+- [ ] Create `src/cli/` module with wallet.rs, marketplace.rs, autopilot.rs, gitafter.rs, daemon.rs
 - [ ] Add to workspace Cargo.toml: `[[bin]] name = "openagents"`
 - [ ] Wire route mounting: `/wallet/*`, `/marketplace/*`, `/autopilot/*`, `/git/*`, `/daemon/*`
 - [ ] Create tabbed layout in `src/gui/views/layout.rs`
@@ -122,7 +122,7 @@ openagents daemon start|stop|status|restart-worker
 - [ ] Remove both `[[bin]]` from `crates/autopilot/Cargo.toml`
 - [ ] Remove `[[bin]]` from `crates/autopilot-gui/Cargo.toml`
 - [ ] Remove `[[bin]]` from `crates/desktop/Cargo.toml`
-- [ ] Remove `[[bin]]` from `crates/agentgit/Cargo.toml`
+- [ ] Remove `[[bin]]` from `crates/gitafter/Cargo.toml`
 - [ ] Update `default-members` in workspace Cargo.toml
 
 ### Phase 5: Cleanup
@@ -145,7 +145,7 @@ openagents daemon start|stop|status|restart-worker
 | `src/gui/routes/wallet.rs` | `/wallet/*` routes |
 | `src/gui/routes/marketplace.rs` | `/marketplace/*` routes |
 | `src/gui/routes/autopilot.rs` | `/autopilot/*` routes |
-| `src/gui/routes/agentgit.rs` | `/git/*` routes |
+| `src/gui/routes/gitafter.rs` | `/git/*` routes |
 | `src/gui/routes/daemon.rs` | `/daemon/*` routes |
 | `src/gui/views/mod.rs` | View exports |
 | `src/gui/views/layout.rs` | Tabbed layout with navigation |
@@ -153,7 +153,7 @@ openagents daemon start|stop|status|restart-worker
 | `src/cli/wallet.rs` | Wallet CLI commands (wrap wallet::cli) |
 | `src/cli/marketplace.rs` | Marketplace CLI commands |
 | `src/cli/autopilot.rs` | Autopilot CLI commands |
-| `src/cli/agentgit.rs` | AgentGit CLI commands |
+| `src/cli/gitafter.rs` | GitAfter CLI commands |
 | `src/cli/daemon.rs` | Daemon CLI commands |
 
 ## Files to MODIFY
@@ -168,7 +168,7 @@ openagents daemon start|stop|status|restart-worker
 | `crates/autopilot/src/lib.rs` | Expose daemon, run, metrics, etc. publicly |
 | `crates/autopilot-gui/Cargo.toml` | Remove `[[bin]]` section |
 | `crates/desktop/Cargo.toml` | Remove `[[bin]]` section |
-| `crates/agentgit/Cargo.toml` | Remove `[[bin]]` section |
+| `crates/gitafter/Cargo.toml` | Remove `[[bin]]` section |
 | `CLAUDE.md` | Update with `openagents` command patterns |
 
 ## Critical Reference Files
@@ -176,7 +176,7 @@ openagents daemon start|stop|status|restart-worker
 | File | Use For |
 |------|---------|
 | `crates/wallet/src/gui/app.rs` | Window creation pattern (wry/tao) |
-| `crates/agentgit/src/server.rs` | Most complete AppState with NostrClient |
+| `crates/gitafter/src/server.rs` | Most complete AppState with NostrClient |
 | `crates/desktop/src/ws.rs` | WsBroadcaster implementation |
 | `crates/autopilot/src/main.rs` | Largest CLI structure to integrate |
 | `crates/autopilot/src/daemon/supervisor.rs` | Daemon logic |
@@ -185,7 +185,7 @@ openagents daemon start|stop|status|restart-worker
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
-│  [Wallet]  [Marketplace]  [Autopilot]  [AgentGit]  [Daemon]  [⚙]   │
+│  [Wallet]  [Marketplace]  [Autopilot]  [GitAfter]  [Daemon]  [⚙]   │
 ├─────────────────────────────────────────────────────────────────────┤
 │                                                                     │
 │                        Active Tab Content                           │

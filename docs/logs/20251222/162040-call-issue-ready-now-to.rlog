@@ -103,10 +103,10 @@ o: id=URPufk8o → [ok]      1→//! Spark wallet wrapper for the Breez SDK
 a: Good, the SparkWallet::new already has a rustdoc example. Let me add examples to the Balance type and other key methods. Let me add an example to the Balance type: tokens_in=0 tokens_out=1 tokens_cached=128087
 t!:Edit id=2enAg4kk file_path=/home/christopherdavid/code/openagents/crates/spark/src/wallet.rs → [running] tokens_in=0 tokens_out=497 tokens_cached=128087
 o: id=2enAg4kk → [ok] The file /home/christopherdavid/code/openagents/crates/spark/src/wallet.rs has been updated. Here...
-a: Now let me check the AgentGit event builders: tokens_in=0 tokens_out=1 tokens_cached=130309
-t!:Read id=fJU1gxti file_path=/home/christopherdavid/code/openagents/crates/agentgit/src/nostr/events.rs → [running] tokens_in=0 tokens_out=1 tokens_cached=130309
-o: id=fJU1gxti → [ok]      1→//! NIP-34 event builders for AgentGit
-a: Great! The AgentGit events module already has comprehensive rustdoc including examples. Let me check the FROSTR crate for threshold operations: tokens_in=0 tokens_out=1 tokens_cached=131257
+a: Now let me check the GitAfter event builders: tokens_in=0 tokens_out=1 tokens_cached=130309
+t!:Read id=fJU1gxti file_path=/home/christopherdavid/code/openagents/crates/gitafter/src/nostr/events.rs → [running] tokens_in=0 tokens_out=1 tokens_cached=130309
+o: id=fJU1gxti → [ok]      1→//! NIP-34 event builders for GitAfter
+a: Great! The GitAfter events module already has comprehensive rustdoc including examples. Let me check the FROSTR crate for threshold operations: tokens_in=0 tokens_out=1 tokens_cached=131257
 t!:Read id=U2DgpFzB file_path=/home/christopherdavid/code/openagents/crates/frostr/src/lib.rs → [running] tokens_in=0 tokens_out=1 tokens_cached=131257
 o: id=U2DgpFzB → [ok]      1→//! FROSTR - Native Rust implementation of FROST threshold signatures for Nostr
 a: Good, the FROSTR lib.rs also has examples. Let me compile the code to make sure the rustdoc examples we added are valid: tokens_in=0 tokens_out=1 tokens_cached=133594
@@ -343,34 +343,34 @@ o: id=67D9Q7DC → [ok] Completed issue #691
 t!:mcp__issues__issue_ready id=HXYBaHgy  → [running] tokens_in=1 tokens_out=41 tokens_cached=105054
 o: id=HXYBaHgy → [ok] No ready issues available
 t!:mcp__issues__issue_create id=AKLBmjqS  → [running] tokens_in=0 tokens_out=1 tokens_cached=105129
-o: id=AKLBmjqS → [ok] Created issue #692: Add rustdoc examples to agentgit core types (agent: claude)
+o: id=AKLBmjqS → [ok] Created issue #692: Add rustdoc examples to gitafter core types (agent: claude)
 t!:mcp__issues__issue_claim id=ZeMLDMqj  → [running] tokens_in=2 tokens_out=83 tokens_cached=105295
 o: id=ZeMLDMqj → [ok] Claimed issue #692
-t!:Glob id=7wQdyQRY pattern="crates/agentgit/src/*.rs" → [running] tokens_in=2 tokens_out=26 tokens_cached=105536
-o: id=7wQdyQRY → [ok] /home/christopherdavid/code/openagents/crates/agentgit/src/ws.rs
+t!:Glob id=7wQdyQRY pattern="crates/gitafter/src/*.rs" → [running] tokens_in=2 tokens_out=26 tokens_cached=105536
+o: id=7wQdyQRY → [ok] /home/christopherdavid/code/openagents/crates/gitafter/src/ws.rs
 t!:Bash id=F52Yie79 cmd="find /home/christopherdavid/code/openagents/cra..." → [running] tokens_in=1 tokens_out=26 tokens_cached=105636
-o: id=F52Yie79 → [ok] /home/christopherdavid/code/openagents/crates/agentgit/src/ws.rs
-t!:Read id=zDuXedZj file_path=/home/christopherdavid/code/openagents/crates/agentgit/src/lib.rs → [running] tokens_in=1 tokens_out=18 tokens_cached=105957
-o: id=zDuXedZj → [ok]      1→//! AgentGit - Nostr-native GitHub alternative for agent-first collaboration
-t!:Read id=QUXbS5gT file_path=/home/christopherdavid/code/openagents/crates/agentgit/src/nostr/mod.rs → [running] tokens_in=1 tokens_out=25 tokens_cached=106711
-o: id=QUXbS5gT → [ok]      1→//! Nostr integration for AgentGit
-t!:Read id=QS3ug5xN file_path=/home/christopherdavid/code/openagents/crates/agentgit/src/nostr/publish_result.rs → [running] tokens_in=0 tokens_out=18 tokens_cached=107036
+o: id=F52Yie79 → [ok] /home/christopherdavid/code/openagents/crates/gitafter/src/ws.rs
+t!:Read id=zDuXedZj file_path=/home/christopherdavid/code/openagents/crates/gitafter/src/lib.rs → [running] tokens_in=1 tokens_out=18 tokens_cached=105957
+o: id=zDuXedZj → [ok]      1→//! GitAfter - Nostr-native GitHub alternative for agent-first collaboration
+t!:Read id=QUXbS5gT file_path=/home/christopherdavid/code/openagents/crates/gitafter/src/nostr/mod.rs → [running] tokens_in=1 tokens_out=25 tokens_cached=106711
+o: id=QUXbS5gT → [ok]      1→//! Nostr integration for GitAfter
+t!:Read id=QS3ug5xN file_path=/home/christopherdavid/code/openagents/crates/gitafter/src/nostr/publish_result.rs → [running] tokens_in=0 tokens_out=18 tokens_cached=107036
 o: id=QS3ug5xN → [ok]      1→//! Result types for event publishing with detailed error information
-t!:Edit id=rPoSEpqg file_path=/home/christopherdavid/code/openagents/crates/agentgit/src/nostr/publish_result.rs → [running] tokens_in=0 tokens_out=25 tokens_cached=108558
-t!:Edit id=tpUS1MPE file_path=/home/christopherdavid/code/openagents/crates/agentgit/src/nostr/publish_result.rs → [running] tokens_in=0 tokens_out=25 tokens_cached=108558
-t!:Read id=J3c7Cqj9 file_path=/home/christopherdavid/code/openagents/crates/agentgit/src/git/mod.rs → [running] tokens_in=0 tokens_out=830 tokens_cached=108558
-o: id=rPoSEpqg → [ok] The file /home/christopherdavid/code/openagents/crates/agentgit/src/nostr/publish_result.rs has b...
-o: id=tpUS1MPE → [ok] The file /home/christopherdavid/code/openagents/crates/agentgit/src/nostr/publish_result.rs has b...
+t!:Edit id=rPoSEpqg file_path=/home/christopherdavid/code/openagents/crates/gitafter/src/nostr/publish_result.rs → [running] tokens_in=0 tokens_out=25 tokens_cached=108558
+t!:Edit id=tpUS1MPE file_path=/home/christopherdavid/code/openagents/crates/gitafter/src/nostr/publish_result.rs → [running] tokens_in=0 tokens_out=25 tokens_cached=108558
+t!:Read id=J3c7Cqj9 file_path=/home/christopherdavid/code/openagents/crates/gitafter/src/git/mod.rs → [running] tokens_in=0 tokens_out=830 tokens_cached=108558
+o: id=rPoSEpqg → [ok] The file /home/christopherdavid/code/openagents/crates/gitafter/src/nostr/publish_result.rs has b...
+o: id=tpUS1MPE → [ok] The file /home/christopherdavid/code/openagents/crates/gitafter/src/nostr/publish_result.rs has b...
 o: id=J3c7Cqj9 → [ok]      1→//! Git operations module
-t!:Read id=6QQ9rrez file_path=/home/christopherdavid/code/openagents/crates/agentgit/src/git/diff.rs → [running] tokens_in=1 tokens_out=99 tokens_cached=110347
+t!:Read id=6QQ9rrez file_path=/home/christopherdavid/code/openagents/crates/gitafter/src/git/diff.rs → [running] tokens_in=1 tokens_out=99 tokens_cached=110347
 o: id=6QQ9rrez → [ok]      1→//! Git diff and status operations
-t!:Edit id=hGURyKgD file_path=/home/christopherdavid/code/openagents/crates/agentgit/src/git/diff.rs → [running] tokens_in=0 tokens_out=360 tokens_cached=112543
-o: id=hGURyKgD → [ok] The file /home/christopherdavid/code/openagents/crates/agentgit/src/git/diff.rs has been updated....
-t!:Bash id=wikdrCtc cmd="cargo test --doc -p agentgit 2>&1 | grep -E "(t..." → [running] tokens_in=0 tokens_out=117 tokens_cached=114219
-o: id=wikdrCtc → [ok]    Doc-tests agentgit
-a: Perfect! All agentgit examples compile. Let me commit and push: tokens_in=0 tokens_out=1 tokens_cached=115015
+t!:Edit id=hGURyKgD file_path=/home/christopherdavid/code/openagents/crates/gitafter/src/git/diff.rs → [running] tokens_in=0 tokens_out=360 tokens_cached=112543
+o: id=hGURyKgD → [ok] The file /home/christopherdavid/code/openagents/crates/gitafter/src/git/diff.rs has been updated....
+t!:Bash id=wikdrCtc cmd="cargo test --doc -p gitafter 2>&1 | grep -E "(t..." → [running] tokens_in=0 tokens_out=117 tokens_cached=114219
+o: id=wikdrCtc → [ok]    Doc-tests gitafter
+a: Perfect! All gitafter examples compile. Let me commit and push: tokens_in=0 tokens_out=1 tokens_cached=115015
 t!:Bash id=gSy75qrw cmd="git add -A && git commit -m "$(cat <<'EOF'" → [running] tokens_in=0 tokens_out=262 tokens_cached=115015
-o: id=gSy75qrw → [ok] [main b29dca6af] Add rustdoc examples to agentgit core types
+o: id=gSy75qrw → [ok] [main b29dca6af] Add rustdoc examples to gitafter core types
 t!:Bash id=p8y3ohMe cmd="git push origin main" → [running] tokens_in=0 tokens_out=24 tokens_cached=115773
 o: id=p8y3ohMe → [ok] [0;36m🔍 Running cargo build to check for errors and warnings...[0m
 t!:mcp__issues__issue_complete id=jQtCL8Db  → [running] tokens_in=0 tokens_out=58 tokens_cached=116173
