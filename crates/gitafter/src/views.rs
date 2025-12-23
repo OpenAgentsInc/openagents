@@ -1737,7 +1737,7 @@ pub fn pull_request_detail_page(repository: &Event, pull_request: &Event, review
                                             }
                                         }
 
-                                        @if let Some(s) = stack {
+                                        @if let Some(ref s) = stack {
                                             @if !stack_prs.is_empty() {
                                                 div.event-detail-item style="margin-top: 16px;" {
                                                     span.label { "📚 Stack Group (" (stack_prs.len()) " PRs)" }
@@ -1928,7 +1928,7 @@ pub fn pull_request_detail_page(repository: &Event, pull_request: &Event, review
                                             @let tier_color = tier.color();
                                             @let tier_emoji = tier.emoji();
                                             @let tier_name = tier.name();
-                                            @let card_style = format!("background: linear-gradient(135deg, #1c1f26 0%, #2a2f3a 100%); border-left: 3px solid {}", tier_color);
+                                            @let card_style = format!("background: linear-gradient(135deg, #1c1f26 0%, #2a2f3a 100{}); border-left: 3px solid {}", "%", tier_color);
 
                                             div.claim-card style=(card_style) {
                                                 div.claim-header {
@@ -1939,6 +1939,11 @@ pub fn pull_request_detail_page(repository: &Event, pull_request: &Event, review
                                                         }
                                                         span style="color: #6b7280; margin-left: 0.5rem; font-size: 0.875rem;" {
                                                             "• Weight: " (format!("{:.0}x", weight))
+                                                        }
+                                                        @if !layer.is_empty() && layer.len() >= 2 && stack.is_some() {
+                                                            span.layer-badge style="background: #3b82f6; color: white; padding: 0.125rem 0.5rem; margin-left: 0.5rem; font-size: 0.75rem; font-weight: 600;" {
+                                                                "📚 Layer " (layer[0]) "/" (layer[1])
+                                                            }
                                                         }
                                                     }
                                                     span.claim-time title={(review.created_at)} { (format_relative_time(review.created_at)) }
