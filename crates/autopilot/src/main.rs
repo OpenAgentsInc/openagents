@@ -4885,6 +4885,21 @@ async fn handle_metrics_command(command: MetricsCommands) -> Result<()> {
             println!("  Degrading Metrics: {}", velocity.degrading_metrics.to_string().red());
             println!();
 
+            // Celebrate improvements!
+            if velocity.velocity_score > 0.5 {
+                println!("{} {} Great work! Autopilot is significantly improving!", "🎉".cyan().bold(), "CELEBRATION:".green().bold());
+                println!("  {} metrics are improving, showing strong upward momentum!", velocity.improving_metrics);
+                println!();
+            } else if velocity.velocity_score > 0.2 {
+                println!("{} {} Autopilot is getting better!", "✨".cyan(), "Progress:".green().bold());
+                println!("  Positive improvements detected across key metrics.");
+                println!();
+            } else if velocity.velocity_score < -0.3 {
+                println!("{} {} Attention needed - metrics are degrading.", "⚠️".yellow().bold(), "Warning:".yellow().bold());
+                println!("  Consider investigating recent changes and running diagnostics.");
+                println!();
+            }
+
             // Key metrics
             if !velocity.key_metrics.is_empty() {
                 println!("{} Key Metrics:", "🔑".cyan().bold());
