@@ -257,20 +257,7 @@ pub fn run(cmd: AutopilotCommands) -> anyhow::Result<()> {
         _ => {
             // For commands that need the full autopilot infrastructure,
             // we need to refactor autopilot's main.rs to expose the logic.
-            // For now, provide helpful message.
-            println!("This command requires the full autopilot runtime.");
-            println!("Use: cargo autopilot {} ...",
-                match cmd {
-                    AutopilotCommands::Run { .. } => "run",
-                    AutopilotCommands::Resume { .. } => "resume",
-                    AutopilotCommands::Issue(_) => "issue",
-                    AutopilotCommands::Metrics(_) => "metrics",
-                    AutopilotCommands::Benchmark { .. } => "benchmark",
-                    _ => "help",
-                }
-            );
-            println!("\nNote: Autopilot CLI integration is in progress.");
-            Ok(())
+            anyhow::bail!("This command requires the full autopilot runtime. Use: cargo autopilot <command>");
         }
     }
 }

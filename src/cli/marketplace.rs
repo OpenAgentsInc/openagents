@@ -42,12 +42,10 @@ pub fn run(cmd: MarketplaceCommands) -> anyhow::Result<()> {
             MarketplaceCommands::Data { command } => command.execute(),
             MarketplaceCommands::Trajectories(command) => command.execute().await,
             MarketplaceCommands::Provider => {
-                println!("Provider management - coming soon");
-                Ok(())
+                anyhow::bail!("Provider management not yet implemented")
             }
             MarketplaceCommands::Earnings => {
-                println!("Earnings dashboard - coming soon");
-                Ok(())
+                anyhow::bail!("Earnings dashboard not yet implemented")
             }
         }
     })
