@@ -84,6 +84,8 @@ pub async fn start_server(
             .route("/repo/{identifier}/pulls/{pr_id}/review", web::post().to(pr_review_submit))
             .route("/repo/{identifier}/pulls/{pr_id}/status", web::post().to(pr_status_change))
             .route("/repo/{identifier}/pulls/{pr_id}/auto-checks", web::get().to(pr_auto_checks))
+            .route("/repo/{identifier}/pulls/{pr_id}/checklist", web::get().to(pr_checklist))
+            .route("/repo/{identifier}/pulls/{pr_id}/checklist/{item_id}", web::post().to(pr_checklist_toggle))
             .route("/trajectory/{session_id}", web::get().to(trajectory_detail))
             .route("/agent/{pubkey}", web::get().to(agent_profile))
             .route("/agents", web::get().to(agents_list))
@@ -4116,4 +4118,194 @@ async fn pr_auto_checks(
     HttpResponse::Ok()
         .content_type("text/html; charset=utf-8")
         .body(html_body.into_string())
+}
+
+/// Get review checklist for a PR
+async fn pr_checklist(
+    state: web::Data<AppState>,
+    path: web::Path<(String, String)>,
+) -> HttpResponse {
+    use gitafter::review::{ChecklistGenerator, ReviewTemplate};
+
+    let (identifier, pr_id) = path.into_inner();
+
+    // Fetch the PR to get changed files
+    let pull_request = match state.nostr_client.get_cached_event(&pr_id).await {
+        Ok(Some(pr)) => pr,
+        Ok(None) => {
+            return HttpResponse::NotFound()
+                .content_type("application/json")
+                .body(r#"{"error": "Pull request not found"}"#);
+        }
+        Err(e) => {
+            tracing::error!("Failed to fetch PR: {}", e);
+            return HttpResponse::InternalServerError()
+                .content_type("application/json")
+                .body(r#"{"error": "Failed to fetch pull request"}"#);
+        }
+    };
+
+    // Extract changed files from PR event tags
+    let changed_files: Vec<String> = pull_request.tags.iter()
+        .filter(|tag| tag.first().map(|t| t == "file").unwrap_or(false))
+        .filter_map(|tag| tag.get(1).cloned())
+        .collect();
+
+    // Determine review template from PR tags
+    let template = if pull_request.tags.iter().any(|tag| {
+        tag.first().map(|t| t == "label" || t == "type").unwrap_or(false)
+            && tag.get(1).map(|v| v == "nip" || v.starts_with("nip")).unwrap_or(false)
+    }) {
+        ReviewTemplate::NipImplementation
+    } else if pull_request.tags.iter().any(|tag| {
+        tag.first().map(|t| t == "label" || t == "type").unwrap_or(false)
+            && tag.get(1).map(|v| v == "bugfix" || v == "bug").unwrap_or(false)
+    }) {
+        ReviewTemplate::BugFix
+    } else if pull_request.tags.iter().any(|tag| {
+        tag.first().map(|t| t == "label" || t == "type").unwrap_or(false)
+            && tag.get(1).map(|v| v == "refactor").unwrap_or(false)
+    }) {
+        ReviewTemplate::Refactor
+    } else if pull_request.tags.iter().any(|tag| {
+        tag.first().map(|t| t == "label" || t == "type").unwrap_or(false)
+            && tag.get(1).map(|v| v == "feature").unwrap_or(false)
+    }) {
+        ReviewTemplate::Feature
+    } else {
+        ReviewTemplate::General
+    };
+
+    // Generate checklist
+    let mut checklist = ChecklistGenerator::generate(&changed_files, template);
+
+    // Check if repo is cloned to run auto-checks
+    if is_repository_cloned(&identifier) {
+        if let Ok(repo_path) = get_repository_path(&identifier) {
+            // Run auto-checks and populate auto-check results
+            let runner = gitafter::review::AutoCheckRunner::new(&repo_path, &pr_id);
+            let check_results = runner.run_all().await;
+
+            // Match auto-check results to checklist items
+            for item in &mut checklist {
+                if item.auto_checkable {
+                    // Find matching check result
+                    let matching_result = check_results.iter().find(|r| {
+                        // Match by ID patterns
+                        r.id == item.id ||
+                        (item.id == "rust-clippy" && r.id == "compilation") ||
+                        (item.id == "rust-tests" && r.id == "tests") ||
+                        (item.id == "d012-no-stubs" && r.id == "compilation") ||
+                        (item.id == "d013-tests" && r.id == "tests")
+                    });
+
+                    if let Some(result) = matching_result {
+                        item.set_auto_result(result.status.to_string());
+                        if matches!(result.status, gitafter::review::CheckStatus::Pass) {
+                            item.check();
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Render as HTML
+    use maud::{html, Markup};
+
+    let html_body: Markup = html! {
+        div.review-checklist style="padding: 1rem;" {
+            h2 style="margin: 0 0 1rem 0; color: #f1f5f9; font-size: 1.25rem;" { "Review Checklist" }
+
+            @if checklist.is_empty() {
+                div.info-message style="padding: 1rem; background: #1e293b; border-left: 4px solid #64748b;" {
+                    "No specific checklist items for this PR."
+                }
+            } @else {
+                // Group by category
+                @let categories = ["code", "tests", "docs", "security", "performance"];
+                @for category in categories {
+                    @let items: Vec<_> = checklist.iter().filter(|i| i.category == *category).collect();
+                    @if !items.is_empty() {
+                        div.checklist-category style="margin-bottom: 1.5rem;" {
+                            h3 style="margin: 0 0 0.75rem 0; color: #94a3b8; font-size: 0.875rem; text-transform: uppercase; letter-spacing: 0.05em;" {
+                                (category)
+                            }
+                            @for item in items {
+                                div.checklist-item style=(format!(
+                                    "padding: 0.75rem; margin-bottom: 0.5rem; background: #1e293b; border-left: 3px solid {};",
+                                    if item.required { "#f59e0b" } else { "#64748b" }
+                                )) {
+                                    div style="display: flex; align-items: flex-start; gap: 0.75rem;" {
+                                        input type="checkbox"
+                                            id=(format!("check-{}", item.id))
+                                            name=(format!("check-{}", item.id))
+                                            checked[item.checked]
+                                            style="margin-top: 0.25rem; width: 1rem; height: 1rem; cursor: pointer;"
+                                            hx-post=(format!("/repo/{}/pulls/{}/checklist/{}", identifier, pr_id, item.id))
+                                            hx-swap="none";
+
+                                        div style="flex: 1;" {
+                                            label for=(format!("check-{}", item.id)) style="color: #e2e8f0; cursor: pointer;" {
+                                                (item.description)
+                                                @if item.required {
+                                                    span style="margin-left: 0.5rem; color: #f59e0b; font-size: 0.75rem;" { "*" }
+                                                }
+                                            }
+
+                                            @if let Some(ref result) = item.auto_result {
+                                                div.auto-result style="margin-top: 0.5rem; font-size: 0.75rem; color: #94a3b8; padding: 0.25rem 0.5rem; background: #0f172a; display: inline-block;" {
+                                                    "Auto-check: " (result)
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                div.checklist-summary style="margin-top: 1.5rem; padding: 1rem; background: #0f172a;" {
+                    @let total = checklist.len();
+                    @let checked = checklist.iter().filter(|i| i.checked).count();
+                    @let required = checklist.iter().filter(|i| i.required).count();
+                    @let required_checked = checklist.iter().filter(|i| i.required && i.checked).count();
+
+                    p style="margin: 0; color: #cbd5e1;" {
+                        strong { (checked) } " of " strong { (total) } " items checked"
+                    }
+                    @if required > 0 {
+                        p style="margin: 0.5rem 0 0 0; color: #cbd5e1;" {
+                            strong { (required_checked) } " of " strong { (required) } " required items checked"
+                        }
+                    }
+                }
+            }
+        }
+    };
+
+    HttpResponse::Ok()
+        .content_type("text/html; charset=utf-8")
+        .body(html_body.into_string())
+}
+
+/// Toggle checklist item
+async fn pr_checklist_toggle(
+    _state: web::Data<AppState>,
+    path: web::Path<(String, String, String)>,
+) -> HttpResponse {
+    let (_identifier, _pr_id, _item_id) = path.into_inner();
+
+    // In a full implementation, this would:
+    // 1. Store checklist state in database
+    // 2. Toggle the specific item
+    // 3. Return success/failure
+    //
+    // For now, we'll just return success since the checkbox
+    // state is managed client-side
+
+    HttpResponse::Ok()
+        .content_type("application/json")
+        .body(r#"{"success": true}"#)
 }

@@ -5,6 +5,7 @@ use std::sync::Arc;
 use actix_web::{web, HttpResponse};
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
+use tracing::{info, error};
 use ui::{FullAutoSwitch, render_line_oob};
 
 use crate::gui::state::{AppState, AutopilotProcess};
@@ -27,9 +28,11 @@ pub fn configure_api(cfg: &mut web::ServiceConfig) {
 
 /// Toggle full auto mode and return new switch HTML
 async fn toggle_full_auto(state: web::Data<AppState>) -> HttpResponse {
+    info!("POST /api/autopilot/toggle called");
     let mut full_auto = state.full_auto.write().await;
     *full_auto = !*full_auto;
     let new_state = *full_auto;
+    info!("Full auto toggled to: {}", new_state);
     drop(full_auto);
 
     if new_state {
