@@ -921,6 +921,58 @@ enum MetricsCommands {
     /// Alert management commands
     #[command(subcommand)]
     Alerts(AlertCommands),
+
+    /// Show aggregate metrics for a specific issue
+    IssueMetrics {
+        /// Issue number
+        #[arg(required = true)]
+        issue_number: i32,
+
+        /// Path to metrics database (default: autopilot-metrics.db)
+        #[arg(long)]
+        db: Option<PathBuf>,
+
+        /// Output format (json or text)
+        #[arg(short, long, default_value = "text")]
+        format: String,
+    },
+
+    /// Show aggregate metrics for a specific directive
+    DirectiveMetrics {
+        /// Directive ID (e.g., d-004)
+        #[arg(required = true)]
+        directive_id: String,
+
+        /// Path to metrics database (default: autopilot-metrics.db)
+        #[arg(long)]
+        db: Option<PathBuf>,
+
+        /// Output format (json or text)
+        #[arg(short, long, default_value = "text")]
+        format: String,
+    },
+
+    /// List all issues with their aggregate metrics
+    ByIssue {
+        /// Path to metrics database (default: autopilot-metrics.db)
+        #[arg(long)]
+        db: Option<PathBuf>,
+
+        /// Output format (json or text)
+        #[arg(short, long, default_value = "text")]
+        format: String,
+    },
+
+    /// List all directives with their aggregate metrics
+    ByDirective {
+        /// Path to metrics database (default: autopilot-metrics.db)
+        #[arg(long)]
+        db: Option<PathBuf>,
+
+        /// Output format (json or text)
+        #[arg(short, long, default_value = "text")]
+        format: String,
+    },
 }
 
 #[derive(Subcommand)]
@@ -4644,6 +4696,132 @@ async fn handle_metrics_command(command: MetricsCommands) -> Result<()> {
                         println!("  Session: {}", alert.session_id);
                         println!();
                     }
+                }
+            }
+        }
+
+        MetricsCommands::IssueMetrics { issue_number, db, format } => {
+            use autopilot::metrics::MetricsDb;
+
+            let db_path = db.unwrap_or_else(default_db_path);
+            let metrics_db = MetricsDb::open(&db_path)?;
+
+            match metrics_db.get_issue_metrics(issue_number)? {
+                Some(metrics) => {
+                    if format == "json" {
+                        println!("{}", serde_json::to_string_pretty(&metrics)?);
+                    } else {
+                        println!("{} Issue #{} Metrics", "📊".cyan().bold(), issue_number);
+                        println!();
+                        println!("Sessions:        {}", metrics.sessions_count);
+                        println!("Duration:        {:.1}s total, {:.1}s avg", metrics.total_duration_seconds, metrics.avg_duration_seconds);
+                        println!("Tokens:          {} total, {:.0} avg", format_number(metrics.total_tokens), metrics.avg_tokens);
+                        println!("Cost:            ${:.4} total, ${:.4} avg", metrics.total_cost_usd, metrics.avg_cost_usd);
+                        println!("Tool Calls:      {}", metrics.tool_calls);
+                        println!("Tool Errors:     {} ({:.1}% error rate)", metrics.tool_errors, metrics.error_rate);
+                    }
+                }
+                None => {
+                    println!("{} No metrics found for issue #{}", "ℹ".yellow(), issue_number);
+                }
+            }
+        }
+
+        MetricsCommands::DirectiveMetrics { directive_id, db, format } => {
+            use autopilot::metrics::MetricsDb;
+
+            let db_path = db.unwrap_or_else(default_db_path);
+            let metrics_db = MetricsDb::open(&db_path)?;
+
+            match metrics_db.get_directive_metrics(&directive_id)? {
+                Some(metrics) => {
+                    if format == "json" {
+                        println!("{}", serde_json::to_string_pretty(&metrics)?);
+                    } else {
+                        println!("{} Directive {} Metrics", "📊".cyan().bold(), directive_id);
+                        println!();
+                        println!("Sessions:          {}", metrics.sessions_count);
+                        println!("Issues Completed:  {}", metrics.issues_completed);
+                        println!("Duration:          {:.1}s total, {:.1}s avg", metrics.total_duration_seconds, metrics.avg_duration_seconds);
+                        println!("Tokens:            {} total, {:.0} avg", format_number(metrics.total_tokens), metrics.avg_tokens);
+                        println!("Cost:              ${:.4} total, ${:.4} avg", metrics.total_cost_usd, metrics.avg_cost_usd);
+                        println!("Tool Calls:        {}", metrics.tool_calls);
+                        println!("Tool Errors:       {} ({:.1}% error rate)", metrics.tool_errors, metrics.error_rate);
+                    }
+                }
+                None => {
+                    println!("{} No metrics found for directive {}", "ℹ".yellow(), directive_id);
+                }
+            }
+        }
+
+        MetricsCommands::ByIssue { db, format } => {
+            use autopilot::metrics::MetricsDb;
+
+            let db_path = db.unwrap_or_else(default_db_path);
+            let metrics_db = MetricsDb::open(&db_path)?;
+
+            let all_metrics = metrics_db.get_all_issue_metrics()?;
+
+            if format == "json" {
+                println!("{}", serde_json::to_string_pretty(&all_metrics)?);
+            } else {
+                if all_metrics.is_empty() {
+                    println!("{} No issue metrics available", "ℹ".yellow());
+                    return Ok(());
+                }
+
+                println!("{} Metrics by Issue", "📊".cyan().bold());
+                println!();
+                println!("{:<8} {:>10} {:>12} {:>12} {:>10} {:>10}",
+                    "Issue", "Sessions", "Duration", "Tokens", "Cost", "Error %");
+                println!("{}", "─".repeat(80));
+
+                for metric in all_metrics {
+                    println!("{:<8} {:>10} {:>12.1}s {:>12} ${:>9.4} {:>9.1}%",
+                        format!("#{}", metric.issue_number),
+                        metric.sessions_count,
+                        metric.avg_duration_seconds,
+                        format_number(metric.avg_tokens as i64),
+                        metric.avg_cost_usd,
+                        metric.error_rate
+                    );
+                }
+            }
+        }
+
+        MetricsCommands::ByDirective { db, format } => {
+            use autopilot::metrics::MetricsDb;
+
+            let db_path = db.unwrap_or_else(default_db_path);
+            let metrics_db = MetricsDb::open(&db_path)?;
+
+            let all_metrics = metrics_db.get_all_directive_metrics()?;
+
+            if format == "json" {
+                println!("{}", serde_json::to_string_pretty(&all_metrics)?);
+            } else {
+                if all_metrics.is_empty() {
+                    println!("{} No directive metrics available", "ℹ".yellow());
+                    return Ok(());
+                }
+
+                println!("{} Metrics by Directive", "📊".cyan().bold());
+                println!();
+                println!("{:<12} {:>10} {:>12} {:>12} {:>12} {:>10} {:>10}",
+                    "Directive", "Sessions", "Issues", "Duration", "Tokens", "Cost", "Error %");
+                println!("{}", "─".repeat(95));
+
+                for metric in all_metrics {
+                    println!("{:<12} {:>10} {:>12} {:>12.1}s {:>12} ${:>9.4} {:>9.1}%",
+                        metric.directive_id,
+                        metric.sessions_count,
+                        metric.issues_completed,
+                        metric.avg_duration_seconds,
+                        format_number(metric.avg_tokens as i64),
+                        metric.avg_cost_usd,
+                        metric.error_rate
+                    );
                 }
             }
         }
