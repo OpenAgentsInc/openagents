@@ -41,6 +41,7 @@ pub struct WeeklyReport {
     pub total_issues_completed: i32,
     pub total_cost_usd: f64,
     pub sessions_comparison: SessionComparison,
+    pub personal_bests_achieved: Vec<crate::metrics::PersonalBest>,
 }
 
 /// Week-over-week session comparison
@@ -102,6 +103,13 @@ pub fn generate_weekly_report(db: &MetricsDb) -> Result<WeeklyReport> {
     // Get week boundaries
     let (week_start, week_end) = current_week_period.bounds();
 
+    // Get personal bests achieved this week
+    let all_bests = db.get_all_personal_bests()?;
+    let personal_bests_achieved: Vec<crate::metrics::PersonalBest> = all_bests
+        .into_iter()
+        .filter(|best| best.timestamp >= week_start && best.timestamp <= week_end)
+        .collect();
+
     Ok(WeeklyReport {
         week_start,
         week_end,
@@ -113,6 +121,7 @@ pub fn generate_weekly_report(db: &MetricsDb) -> Result<WeeklyReport> {
         total_issues_completed,
         total_cost_usd,
         sessions_comparison,
+        personal_bests_achieved,
     })
 }
 
@@ -150,6 +159,19 @@ pub fn format_report_markdown(report: &WeeklyReport) -> String {
     }
 
     output.push_str("\n");
+
+    // Personal Bests Achieved
+    if !report.personal_bests_achieved.is_empty() {
+        output.push_str("## 🏆 Personal Bests Achieved This Week\n\n");
+        for best in &report.personal_bests_achieved {
+            output.push_str(&format!("- **{}:** {:.2}", best.metric, best.value));
+            if let Some(ref context) = best.context {
+                output.push_str(&format!(" ({})", context));
+            }
+            output.push_str("\n");
+        }
+        output.push_str("\n");
+    }
 
     // Week-over-Week Comparison
     output.push_str("## Week-over-Week Comparison\n\n");
@@ -374,6 +396,19 @@ pub fn print_report_console(report: &WeeklyReport) {
         println!("  Regressions:       {}", "None".green());
     }
     println!();
+
+    // Personal Bests
+    if !report.personal_bests_achieved.is_empty() {
+        println!("{}", "🏆 PERSONAL BESTS ACHIEVED THIS WEEK".yellow().bold());
+        for best in &report.personal_bests_achieved {
+            print!("  {}: {:.2}", best.metric.cyan().bold(), best.value.to_string().green().bold());
+            if let Some(ref context) = best.context {
+                print!(" ({})", context.dimmed());
+            }
+            println!();
+        }
+        println!();
+    }
 
     // Week-over-Week
     println!("{}", "WEEK-OVER-WEEK COMPARISON".yellow().bold());
