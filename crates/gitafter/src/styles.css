@@ -839,3 +839,114 @@ a.issue-card {
   border-color: #7a7a2d;
   color: #ffaa00;
 }
+
+/* NEW Badge Styles */
+.new-badge {
+  display: inline-block;
+  padding: 0.25rem 0.5rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  background: linear-gradient(135deg, #00ff88 0%, #00cc70 100%);
+  color: #0a0a0a;
+  margin-left: 0.5rem;
+  animation: fadeInBounce 0.5s ease-out;
+  letter-spacing: 0.05em;
+}
+
+/* NEW badge variants */
+.new-badge.bounty {
+  background: linear-gradient(135deg, #ffaa00 0%, #cc8800 100%);
+}
+
+.new-badge.comment {
+  background: linear-gradient(135deg, #00bfff 0%, #0099cc 100%);
+}
+
+/* Highlight background for new items */
+.item-new {
+  animation: highlightFade 2s ease-out;
+  position: relative;
+}
+
+.item-new::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -4px;
+  width: 4px;
+  height: 100%;
+  background: var(--success);
+  animation: pulse 2s ease-in-out infinite;
+}
+
+/* Animations */
+@keyframes fadeInBounce {
+  0% {
+    opacity: 0;
+    transform: scale(0.8) translateY(-10px);
+  }
+  50% {
+    transform: scale(1.05);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+@keyframes highlightFade {
+  0% {
+    background-color: rgba(0, 255, 136, 0.15);
+  }
+  100% {
+    background-color: transparent;
+  }
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+/* Fade out animation for badges being removed */
+@keyframes fadeOut {
+  0% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(0.8);
+  }
+}
+
+.new-badge.fading {
+  animation: fadeOut 0.3s ease-out forwards;
+}
+
+/* Smooth item insertion */
+.repo-list > *,
+.issues-list > *,
+.pr-list > * {
+  transition: all 0.3s ease-out;
+}
+
+/* New item slide-in */
+@keyframes slideIn {
+  0% {
+    opacity: 0;
+    transform: translateY(-20px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.item-inserted {
+  animation: slideIn 0.4s ease-out;
+}

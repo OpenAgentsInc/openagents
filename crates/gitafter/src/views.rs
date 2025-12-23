@@ -184,6 +184,23 @@ pub fn home_page_with_repos(repositories: &[Event], selected_language: &Option<S
                 }
                 script {
                     (PreEscaped(r#"
+                    // Toast notification system
+                    function showToast(message, type = 'info') {
+                        const toast = document.createElement('div');
+                        toast.className = 'toast toast-' + type + ' item-inserted';
+                        toast.textContent = message;
+                        toast.style.cssText = 'position: fixed; top: 20px; right: 20px; padding: 1rem 1.5rem; background: var(--bg-tertiary); border: 2px solid var(--accent); color: var(--text-primary); z-index: 10000; font-weight: 600; box-shadow: 0 4px 12px rgba(0,0,0,0.5);';
+                        if (type === 'success') {
+                            toast.style.borderColor = '#00ff88';
+                            toast.innerHTML = '<span style="color: #00ff88;">✓</span> ' + message;
+                        }
+                        document.body.appendChild(toast);
+                        setTimeout(() => {
+                            toast.classList.add('fading');
+                            setTimeout(() => toast.remove(), 300);
+                        }, 2000);
+                    }
+
                     // WebSocket real-time updates
                     document.body.addEventListener('htmx:wsAfterMessage', function(evt) {
                         const message = evt.detail.message;
@@ -208,8 +225,8 @@ pub fn home_page_with_repos(repositories: &[Event], selected_language: &Option<S
                         // Handle repository events (kind:30617)
                         if (kind === 30617) {
                             console.log('New repository announced:', event.id);
-                            // Reload page to show new repository
-                            window.location.reload();
+                            showToast('New repository added!', 'success');
+                            setTimeout(() => window.location.reload(), 1000);
                         }
                     });
                     "#))
@@ -609,6 +626,26 @@ pub fn issues_list_page(repository: &Event, issues: &[Event], is_watched: bool, 
                 }
                 script {
                     (PreEscaped(r#"
+                    // Toast notification system
+                    function showToast(message, type = 'info') {
+                        const toast = document.createElement('div');
+                        toast.className = 'toast toast-' + type + ' item-inserted';
+                        toast.textContent = message;
+                        toast.style.cssText = 'position: fixed; top: 20px; right: 20px; padding: 1rem 1.5rem; background: var(--bg-tertiary); border: 2px solid var(--accent); color: var(--text-primary); z-index: 10000; font-weight: 600; box-shadow: 0 4px 12px rgba(0,0,0,0.5);';
+                        if (type === 'success') {
+                            toast.style.borderColor = '#00ff88';
+                            toast.innerHTML = '<span style="color: #00ff88;">✓</span> ' + message;
+                        } else if (type === 'bounty') {
+                            toast.style.borderColor = '#ffaa00';
+                            toast.innerHTML = '<span style="color: #ffaa00;">⚡</span> ' + message;
+                        }
+                        document.body.appendChild(toast);
+                        setTimeout(() => {
+                            toast.classList.add('fading');
+                            setTimeout(() => toast.remove(), 300);
+                        }, 2000);
+                    }
+
                     // WebSocket real-time updates for issues
                     document.body.addEventListener('htmx:wsAfterMessage', function(evt) {
                         const message = evt.detail.message;
@@ -632,22 +669,22 @@ pub fn issues_list_page(repository: &Event, issues: &[Event], is_watched: bool, 
                         // Handle issue events (kind:1621)
                         if (kind === 1621) {
                             console.log('New issue created:', event.id);
-                            // Reload page to show new issue
-                            window.location.reload();
+                            showToast('New issue created!', 'success');
+                            setTimeout(() => window.location.reload(), 1000);
                         }
 
                         // Handle bounty offer events (kind:1636)
                         if (kind === 1636) {
                             console.log('New bounty offer:', event.id);
-                            // Reload if on bounty filter
-                            window.location.reload();
+                            showToast('New bounty offered!', 'bounty');
+                            setTimeout(() => window.location.reload(), 1000);
                         }
 
                         // Handle issue claim events (kind:1634)
                         if (kind === 1634) {
                             console.log('Issue claimed:', event.id);
-                            // Reload if on claimed filter
-                            window.location.reload();
+                            showToast('Issue claimed!', 'success');
+                            setTimeout(() => window.location.reload(), 1000);
                         }
                     });
                     "#))
@@ -1281,6 +1318,26 @@ pub fn pull_requests_list_page(repository: &Event, pull_requests: &[Event], iden
                 }
                 script {
                     (PreEscaped(r#"
+                    // Toast notification system
+                    function showToast(message, type = 'info') {
+                        const toast = document.createElement('div');
+                        toast.className = 'toast toast-' + type + ' item-inserted';
+                        toast.textContent = message;
+                        toast.style.cssText = 'position: fixed; top: 20px; right: 20px; padding: 1rem 1.5rem; background: var(--bg-tertiary); border: 2px solid var(--accent); color: var(--text-primary); z-index: 10000; font-weight: 600; box-shadow: 0 4px 12px rgba(0,0,0,0.5);';
+                        if (type === 'success') {
+                            toast.style.borderColor = '#00ff88';
+                            toast.innerHTML = '<span style="color: #00ff88;">✓</span> ' + message;
+                        } else if (type === 'info') {
+                            toast.style.borderColor = '#00bfff';
+                            toast.innerHTML = '<span style="color: #00bfff;">ℹ</span> ' + message;
+                        }
+                        document.body.appendChild(toast);
+                        setTimeout(() => {
+                            toast.classList.add('fading');
+                            setTimeout(() => toast.remove(), 300);
+                        }, 2000);
+                    }
+
                     // WebSocket real-time updates for pull requests
                     document.body.addEventListener('htmx:wsAfterMessage', function(evt) {
                         const message = evt.detail.message;
@@ -1304,19 +1361,23 @@ pub fn pull_requests_list_page(repository: &Event, pull_requests: &[Event], iden
                         // Handle PR events (kind:1618)
                         if (kind === 1618) {
                             console.log('New PR created:', event.id);
-                            window.location.reload();
+                            showToast('New pull request!', 'success');
+                            setTimeout(() => window.location.reload(), 1000);
                         }
 
                         // Handle PR update events (kind:1619)
                         if (kind === 1619) {
                             console.log('PR updated:', event.id);
-                            window.location.reload();
+                            showToast('PR updated!', 'info');
+                            setTimeout(() => window.location.reload(), 1000);
                         }
 
                         // Handle status events (kind:1630-1633)
                         if (kind >= 1630 && kind <= 1633) {
                             console.log('PR status changed:', event.id);
-                            window.location.reload();
+                            const statusMap = {1630: 'opened', 1631: 'merged', 1632: 'closed', 1633: 'marked as draft'};
+                            showToast('PR ' + (statusMap[kind] || 'updated') + '!', kind === 1631 ? 'success' : 'info');
+                            setTimeout(() => window.location.reload(), 1000);
                         }
                     });
                     "#))
