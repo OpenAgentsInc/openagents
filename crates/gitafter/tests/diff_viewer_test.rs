@@ -246,6 +246,7 @@ async fn test_diff_rendering_with_inline_comments() -> Result<()> {
         line_number: 2,
         position: LinePosition::After,
         author_pubkey: app.pubkey(),
+        layer_info: None,
     };
 
     // Render with comment
