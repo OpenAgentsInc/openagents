@@ -1642,6 +1642,43 @@ pub fn pull_request_detail_page(repository: &Event, pull_request: &Event, review
                                             "This PR is part of a stack of smaller, reviewable changes. Each layer must be merged in order to maintain the dependency chain."
                                         }
                                     }
+
+                                    // Stack Review Context: Show what PRs depend on this one
+                                    @if !stack_prs.is_empty() {
+                                        @let dependents: Vec<&Event> = stack_prs.iter()
+                                            .filter(|pr| {
+                                                pr.tags.iter().any(|tag| {
+                                                    tag.len() >= 2 && tag[0] == "depends_on" && tag[1] == pull_request.id
+                                                })
+                                            })
+                                            .collect();
+
+                                        @if !dependents.is_empty() {
+                                            div style="margin-top: 16px; padding: 12px; background: #fef3c7; border-left: 4px solid #f59e0b;" {
+                                                p style="margin: 0 0 8px 0; font-weight: 600;" { "⚠️ Review Context:" }
+                                                p style="margin: 0; font-size: 0.875rem;" {
+                                                    (dependents.len()) " PR(s) depend on this layer. Changes here may affect:"
+                                                }
+                                                ul style="margin: 8px 0 0 1.5rem; padding: 0; font-size: 0.875rem;" {
+                                                    @for dep in dependents.iter().take(3) {
+                                                        @let dep_title = get_tag_value(dep, "subject").unwrap_or_else(|| "Untitled PR".to_string());
+                                                        @let dep_layer = get_all_tag_values(dep, "layer");
+                                                        li {
+                                                            a href={"/repo/" (identifier) "/pulls/" (dep.id)} style="color: #0ea5e9;" {
+                                                                @if !dep_layer.is_empty() && dep_layer.len() == 2 {
+                                                                    "Layer " (dep_layer[0]) ": "
+                                                                }
+                                                                (dep_title)
+                                                            }
+                                                        }
+                                                    }
+                                                    @if dependents.len() > 3 {
+                                                        li { "... and " (dependents.len() - 3) " more" }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
                                 }
                             }
 
@@ -2018,14 +2055,54 @@ pub fn pull_request_detail_page(repository: &Event, pull_request: &Event, review
                                 section.issue-section {
                                     h2 { "📄 Pull Request Diff" }
 
-                                    div style="margin-bottom: 1rem; display: flex; justify-content: space-between; align-items: center;" {
+                                    div style="margin-bottom: 1rem; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem;" {
                                         p style="margin: 0; color: #9ca3af;" {
                                             "Showing changes from this pull request"
                                         }
-                                        a href={"data:text/plain;charset=utf-8," (urlencoding::encode(diff))}
-                                           download={(pr_title.clone()) ".patch"}
-                                           style="padding: 8px 16px; background: #3b82f6; color: white; text-decoration: none; font-weight: 600;" {
-                                            "⬇️ Download Patch"
+                                        div style="display: flex; gap: 0.5rem;" {
+                                            // Preview later layers button
+                                            @if !stack_prs.is_empty() && !layer.is_empty() && layer.len() == 2 {
+                                                @if let Ok(current_layer) = layer[0].parse::<u32>() {
+                                                    @let later_layers: Vec<&Event> = stack_prs.iter()
+                                                        .filter(|pr| {
+                                                            if let Some(pr_layer) = get_all_tag_values(pr, "layer").get(0) {
+                                                                if let Ok(pr_layer_num) = pr_layer.parse::<u32>() {
+                                                                    return pr_layer_num > current_layer;
+                                                                }
+                                                            }
+                                                            false
+                                                        })
+                                                        .collect();
+
+                                                    @if !later_layers.is_empty() {
+                                                        details style="padding: 8px 16px; background: #f3f4f6; border: 1px solid #d1d5db;" {
+                                                            summary style="cursor: pointer; font-weight: 600; color: #374151;" {
+                                                                "👁️ Preview Later Layers (" (later_layers.len()) ")"
+                                                            }
+                                                            div style="margin-top: 8px; padding: 8px; background: white;" {
+                                                                @for later_pr in later_layers.iter().take(5) {
+                                                                    @let later_title = get_tag_value(later_pr, "subject").unwrap_or_else(|| "Untitled".to_string());
+                                                                    @let later_layer = get_all_tag_values(later_pr, "layer");
+                                                                    div style="margin-bottom: 4px;" {
+                                                                        a href={"/repo/" (identifier) "/pulls/" (later_pr.id)} style="color: #0ea5e9; font-size: 0.875rem;" {
+                                                                            @if !later_layer.is_empty() && later_layer.len() == 2 {
+                                                                                "L" (later_layer[0]) ": "
+                                                                            }
+                                                                            (later_title)
+                                                                        }
+                                                                    }
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+
+                                            a href={"data:text/plain;charset=utf-8," (urlencoding::encode(diff))}
+                                               download={(pr_title.clone()) ".patch"}
+                                               style="padding: 8px 16px; background: #3b82f6; color: white; text-decoration: none; font-weight: 600;" {
+                                                "⬇️ Download Patch"
+                                            }
                                         }
                                     }
 
