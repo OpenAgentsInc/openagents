@@ -64,3 +64,8 @@ workspace = true
 [dev-dependencies]
 tempfile.workspace = true
 testing = { path = "../testing" }
+criterion = { version = "0.5", features = ["html_reports"] }
+
+[[bench]]
+name = "stacks_bench"
+harness = false
