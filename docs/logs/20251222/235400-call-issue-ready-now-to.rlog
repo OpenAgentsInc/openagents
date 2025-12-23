@@ -311,3 +311,59 @@ t!:Bash id=4D1GkC3c cmd="cargo build --bin autopilot 2>&1 | grep -E "err..." →
 o: id=4D1GkC3c → [ok] 
 a: Good! Let me now commit and push: tokens_in=0 tokens_out=1 tokens_cached=120260
 t!:Bash id=vEyQ9Y5u cmd="git add -A && git diff --cached --stat" → [running] tokens_in=0 tokens_out=1 tokens_cached=120260
+o: id=vEyQ9Y5u → [ok]  crates/autopilot/src/main.rs                       | 274 ++++++++++++++-------
+t!:Bash id=YaQJGfnn cmd="git commit -m "$(cat <<'EOF'" → [running] tokens_in=0 tokens_out=25 tokens_cached=120479
+o: id=YaQJGfnn → [ok] [main d56259c9b] Add APM CLI commands for querying metrics
+t!:Bash id=KUE1BdfN cmd="cargo run --bin autopilot -- issue complete 790" → [running] tokens_in=0 tokens_out=83 tokens_cached=120687
+o: id=KUE1BdfN → [ok] ✓ Completed issue #790: Add APM CLI commands for querying metrics
+t!:Bash id=EPh8ye2p cmd="cargo run --bin autopilot -- issue ready" → [running] tokens_in=0 tokens_out=81 tokens_cached=121401
+o: id=EPh8ye2p → [ok] No ready issues available
+a: No ready issues. Let me create one more issue to continue working - this time to actually use the APM tracking in main.rs: tokens_in=0 tokens_out=1 tokens_cached=121767
+t!:Bash id=69UqTNMQ cmd="cargo run --bin autopilot -- issue create "Enab..." → [running] tokens_in=0 tokens_out=1 tokens_cached=121767
+o: id=69UqTNMQ → [ok] ✓ Created issue #791: Enable APM tracking in autopilot run command (agent: claude)
+t!:Bash id=tdr5knPP cmd="cargo run --bin autopilot -- issue ready" → [running] tokens_in=0 tokens_out=24 tokens_cached=121917
+o: id=tdr5knPP → [ok] → Next ready issue:
+t!:Bash id=uzN7Z9Nx cmd="cargo run --bin autopilot -- issue claim 791" → [running] tokens_in=0 tokens_out=84 tokens_cached=122536
+o: id=uzN7Z9Nx → [ok] ✓ Claimed issue #791: Enable APM tracking in autopilot run command
+a: Now let me add the --no-apm flag to the Run command and enable APM tracking. First, let me find the Run command struct: tokens_in=0 tokens_out=1 tokens_cached=122877
+t!:Read id=1uA7RFFP file_path=/home/christopherdavid/code/openagents/crates/autopilot/src/main.rs → [running] tokens_in=0 tokens_out=1 tokens_cached=122877
+o: id=1uA7RFFP → [ok]    425→        path: PathBuf,
+a: Let me find the Run command arguments: tokens_in=0 tokens_out=1 tokens_cached=123047
+t!:Read id=r84xub5Z file_path=/home/christopherdavid/code/openagents/crates/autopilot/src/main.rs → [running] tokens_in=0 tokens_out=122 tokens_cached=123047
+o: id=r84xub5Z → [ok]    388→
+a: Now let me add the --no-apm flag just before publish_trajectory: tokens_in=0 tokens_out=4 tokens_cached=123822
+t!:Edit id=1AWhCBy1 file_path=/home/christopherdavid/code/openagents/crates/autopilot/src/main.rs → [running] tokens_in=0 tokens_out=320 tokens_cached=123822
+o: id=1AWhCBy1 → [ok] The file /home/christopherdavid/code/openagents/crates/autopilot/src/main.rs has been updated. He...
+a: Now I need to find where the Run command is handled in main and add the no_apm parameter. Let me find the match for Run: tokens_in=0 tokens_out=5 tokens_cached=124436
+t!:Bash id=ihfXvBdv cmd="grep -n "Commands::Run {" /home/christopherdavi..." → [running] tokens_in=0 tokens_out=5 tokens_cached=124436
+o: id=ihfXvBdv → [ok] 1270:        Commands::Run {
+t!:Read id=XiPuwtmb file_path=/home/christopherdavid/code/openagents/crates/autopilot/src/main.rs → [running] tokens_in=0 tokens_out=25 tokens_cached=125173
+o: id=XiPuwtmb → [ok]   1268→
+t!:Edit id=pviSVDrB file_path=/home/christopherdavid/code/openagents/crates/autopilot/src/main.rs → [running] tokens_in=0 tokens_out=447 tokens_cached=125335
+o: id=pviSVDrB → [ok] The file /home/christopherdavid/code/openagents/crates/autopilot/src/main.rs has been updated. He...
+a: Now I need to update the run_task function signature and add APM tracking. Let me find it: tokens_in=0 tokens_out=1 tokens_cached=125972
+t!:Bash id=D44JfAjm cmd="grep -n "async fn run_task" /home/christopherda..." → [running] tokens_in=0 tokens_out=1 tokens_cached=125972
+o: id=D44JfAjm → [ok] 2073:async fn run_task(
+t!:Read id=Bho3XkRM file_path=/home/christopherdavid/code/openagents/crates/autopilot/src/main.rs → [running] tokens_in=0 tokens_out=18 tokens_cached=126849
+o: id=Bho3XkRM → [ok]   2071→}
+t!:Edit id=arhXQT9k file_path=/home/christopherdavid/code/openagents/crates/autopilot/src/main.rs → [running] tokens_in=0 tokens_out=414 tokens_cached=127105
+o: id=arhXQT9k → [ok] The file /home/christopherdavid/code/openagents/crates/autopilot/src/main.rs has been updated. He...
+a: Now I need to find where the TrajectoryCollector is created and add APM tracking. Let me search for where collector is instantiated: tokens_in=0 tokens_out=1 tokens_cached=127621
+t!:Read id=vNPTHJyy file_path=/home/christopherdavid/code/openagents/crates/autopilot/src/main.rs → [running] tokens_in=0 tokens_out=1 tokens_cached=127621
+o: id=vNPTHJyy → [ok]   2230→    let rlog_path = if !dry_run {
+a: Let me add APM tracking right after the JSONL streaming is enabled: tokens_in=0 tokens_out=3 tokens_cached=128416
+t!:Edit id=L661SCGy file_path=/home/christopherdavid/code/openagents/crates/autopilot/src/main.rs → [running] tokens_in=0 tokens_out=3 tokens_cached=128416
+o: id=L661SCGy → [ok] The file /home/christopherdavid/code/openagents/crates/autopilot/src/main.rs has been updated. He...
+a: Perfect! Now let me test if this compiles: tokens_in=0 tokens_out=1 tokens_cached=129576
+t!:Bash id=AQtMLgNS cmd="cargo build --bin autopilot 2>&1 | grep -E "err..." → [running] tokens_in=0 tokens_out=1 tokens_cached=129576
+o: id=AQtMLgNS → [ok] error[E0716]: temporary value dropped while borrowed
+a: Let me get more details on the error: tokens_in=0 tokens_out=3 tokens_cached=130799
+t!:Bash id=VmFSSoJC cmd="cargo build --bin autopilot 2>&1 | grep -A 10 "..." → [running] tokens_in=0 tokens_out=3 tokens_cached=130799
+o: id=VmFSSoJC → [ok] error[E0716]: temporary value dropped while borrowed
+a: I need to create a binding for the default path. Let me fix this: tokens_in=0 tokens_out=1 tokens_cached=131076
+t!:Edit id=Z2nNs9AF file_path=/home/christopherdavid/code/openagents/crates/autopilot/src/main.rs → [running] tokens_in=0 tokens_out=521 tokens_cached=131076
+o: id=Z2nNs9AF → [ok] The file /home/christopherdavid/code/openagents/crates/autopilot/src/main.rs has been updated. He...
+t!:Bash id=jiK3NMUX cmd="cargo build --bin autopilot 2>&1 | grep -E "err..." → [running] tokens_in=0 tokens_out=91 tokens_cached=131382
+o: id=jiK3NMUX → [ok] 
+a: Perfect! Now let me commit and push: tokens_in=1 tokens_out=1 tokens_cached=132454
+t!:Bash id=DEmt3SJm cmd="git add -A && git diff --cached --stat" → [running] tokens_in=1 tokens_out=1 tokens_cached=132454

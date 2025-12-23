@@ -394,6 +394,10 @@ enum Commands {
         #[arg(long, default_value_t = default_ui())]
         ui: bool,
 
+        /// Disable APM (Actions Per Minute) tracking
+        #[arg(long)]
+        no_apm: bool,
+
         /// Publish trajectory to Nostr relays (NIP-SA kind:38030/38031)
         #[arg(long)]
         publish_trajectory: bool,
@@ -1279,11 +1283,12 @@ async fn main() -> Result<()> {
             issues_db,
             full_auto,
             ui,
+            no_apm,
             publish_trajectory,
         } => {
             run_task(
                 prompt, project, cwd, agent, model, max_turns, max_budget, output_dir, slug, dry_run, verbose,
-                with_issues, issues_db, full_auto, ui, publish_trajectory,
+                with_issues, issues_db, full_auto, ui, no_apm, publish_trajectory,
             )
             .await
         }
@@ -2081,6 +2086,7 @@ async fn run_task(
     issues_db: Option<PathBuf>,
     full_auto: bool,
     ui: bool,
+    no_apm: bool,
     publish_trajectory: bool,
 ) -> Result<()> {
     // Load project if specified
@@ -2242,6 +2248,20 @@ async fn run_task(
             eprintln!("Warning: Failed to enable JSONL streaming: {}", e);
         } else {
             println!("{} {} {}", "Full data:".dimmed(), jsonl_path.display(), "(APM source)".dimmed());
+        }
+    }
+
+    // Enable APM tracking (unless disabled)
+    if !no_apm && !dry_run {
+        let default_db = autopilot::default_db_path();
+        let db_path = issues_db.as_ref().unwrap_or(&default_db);
+        match collector.enable_apm_tracking(db_path, autopilot::apm::APMSource::Autopilot) {
+            Ok(apm_session_id) => {
+                println!("{} {} {}", "APM:".dimmed(), &apm_session_id[..apm_session_id.len().min(20)], "(tracking enabled)".dimmed());
+            }
+            Err(e) => {
+                eprintln!("Warning: Failed to enable APM tracking: {}", e);
+            }
         }
     }
 
