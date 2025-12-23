@@ -91,14 +91,25 @@ pub struct RestartConfig {
 
 impl Default for RestartConfig {
     fn default() -> Self {
+        // Allow environment variable overrides for key timeout values
+        let stall_timeout_ms = std::env::var("AUTOPILOT_STALL_TIMEOUT_MS")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(300_000); // 5 minutes
+
+        let recovery_cooldown_ms = std::env::var("AUTOPILOT_RECOVERY_COOLDOWN_MS")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(600_000); // 10 minutes
+
         Self {
             initial_backoff_ms: 1000,
             max_backoff_ms: 300_000,
             backoff_multiplier: 2.0,
             success_threshold_ms: 60_000,
             max_consecutive_restarts: 10,
-            stall_timeout_ms: 300_000, // 5 minutes
-            recovery_cooldown_ms: 600_000, // 10 minutes
+            stall_timeout_ms,
+            recovery_cooldown_ms,
         }
     }
 }
@@ -191,5 +202,57 @@ impl DaemonConfig {
             std::fs::create_dir_all(parent)?;
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_stall_timeout_env_var() {
+        unsafe {
+            std::env::set_var("AUTOPILOT_STALL_TIMEOUT_MS", "120000");
+        }
+        let config = RestartConfig::default();
+        assert_eq!(config.stall_timeout_ms, 120000);
+        unsafe {
+            std::env::remove_var("AUTOPILOT_STALL_TIMEOUT_MS");
+        }
+    }
+
+    #[test]
+    fn test_recovery_cooldown_env_var() {
+        unsafe {
+            std::env::set_var("AUTOPILOT_RECOVERY_COOLDOWN_MS", "900000");
+        }
+        let config = RestartConfig::default();
+        assert_eq!(config.recovery_cooldown_ms, 900000);
+        unsafe {
+            std::env::remove_var("AUTOPILOT_RECOVERY_COOLDOWN_MS");
+        }
+    }
+
+    #[test]
+    fn test_default_timeouts_without_env() {
+        unsafe {
+            std::env::remove_var("AUTOPILOT_STALL_TIMEOUT_MS");
+            std::env::remove_var("AUTOPILOT_RECOVERY_COOLDOWN_MS");
+        }
+        let config = RestartConfig::default();
+        assert_eq!(config.stall_timeout_ms, 300_000);
+        assert_eq!(config.recovery_cooldown_ms, 600_000);
+    }
+
+    #[test]
+    fn test_invalid_env_var_uses_default() {
+        unsafe {
+            std::env::set_var("AUTOPILOT_STALL_TIMEOUT_MS", "not_a_number");
+        }
+        let config = RestartConfig::default();
+        assert_eq!(config.stall_timeout_ms, 300_000);
+        unsafe {
+            std::env::remove_var("AUTOPILOT_STALL_TIMEOUT_MS");
+        }
     }
 }
