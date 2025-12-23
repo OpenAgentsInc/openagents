@@ -772,12 +772,15 @@ async fn issue_comment(
 async fn pr_review_submit(
     path: web::Path<(String, String)>,
     form: web::Form<std::collections::HashMap<String, String>>,
+    state: web::Data<AppState>,
 ) -> HttpResponse {
     let (_identifier, _pr_id) = path.into_inner();
 
     // Extract form data
     let review_type = form.get("review_type").cloned().unwrap_or_else(|| "comment".to_string());
     let content = form.get("content").cloned().unwrap_or_default();
+    let trajectory_session_id = form.get("trajectory_session_id").cloned();
+    let trajectory_hash = form.get("trajectory_hash").cloned();
 
     if content.is_empty() {
         return HttpResponse::BadRequest()
@@ -789,9 +792,10 @@ async fn pr_review_submit(
     // In a real implementation, this would:
     // 1. Build a kind:1 (text note) event with e tag referencing the PR
     // 2. Add review type tags (approve, request_changes, comment)
-    // 3. Sign it with the user's key
-    // 4. Publish it to relays
-    // 5. Cache it locally
+    // 3. If agent-authored, add trajectory proof tags
+    // 4. Sign it with the user's key
+    // 5. Publish it to relays
+    // 6. Cache it locally
 
     let review_emoji = match review_type.as_str() {
         "approve" => "✅",
@@ -799,15 +803,43 @@ async fn pr_review_submit(
         _ => "💬",
     };
 
+    let is_agent_review = trajectory_session_id.is_some() && trajectory_hash.is_some();
+    let agent_badge = if is_agent_review {
+        r#"<span style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 2px 8px; font-size: 0.85em; font-weight: 600; margin-left: 8px;">🤖 AGENT</span>"#
+    } else {
+        ""
+    };
+
+    let trajectory_section = if let (Some(session_id), Some(hash)) = (trajectory_session_id, trajectory_hash) {
+        format!(
+            r#"<div style="margin-top: 12px; padding: 10px; background: #f8f9fa; border-left: 3px solid #667eea;">
+                <details>
+                    <summary style="cursor: pointer; font-weight: 600; color: #667eea;">🔍 View Agent Reasoning</summary>
+                    <div style="margin-top: 8px; font-size: 0.9em;">
+                        <p><strong>Session ID:</strong> <code>{}</code></p>
+                        <p><strong>Trajectory Hash:</strong> <code>{}</code></p>
+                        <p><a href="/trajectory/{}" style="color: #667eea; text-decoration: underline;">View Full Trajectory Timeline</a></p>
+                    </div>
+                </details>
+            </div>"#,
+            session_id, hash, session_id
+        )
+    } else {
+        String::new()
+    };
+
     let response_html = format!(
         r#"<div class="success-message">
-            <p>{} Review submitted!</p>
+            <p>{} Review submitted!{}</p>
             <p>Type: {}</p>
             <p>Comment: {}</p>
+            {}
         </div>"#,
         review_emoji,
+        agent_badge,
         review_type,
-        content
+        content,
+        trajectory_section
     );
 
     HttpResponse::Ok()
