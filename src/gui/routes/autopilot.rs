@@ -101,8 +101,9 @@ async fn spawn_autopilot_process(state: &web::Data<AppState>) -> anyhow::Result<
     let (shutdown_tx, mut shutdown_rx) = tokio::sync::mpsc::channel::<()>(1);
     let broadcaster = state.broadcaster.clone();
 
-    // Broadcast startup message to both views
+    // Broadcast startup message to all views
     broadcaster.broadcast(r#"<div id="chat-content-raw" hx-swap-oob="beforeend"><div class="log-line log-success">Autopilot starting...</div></div>"#);
+    broadcaster.broadcast(r#"<div id="chat-content-json" hx-swap-oob="beforeend"><div class="json-line" style="color: var(--color-green);">Autopilot starting...</div></div>"#);
     broadcaster.broadcast(r#"<div id="chat-content-formatted" hx-swap-oob="beforeend"><div class="px-3 py-2 text-green text-sm">Autopilot starting...</div></div>"#);
 
     // Spawn output reader task
@@ -137,6 +138,7 @@ async fn read_output_loop(
 
             _ = shutdown_rx.recv() => {
                 broadcaster.broadcast(r#"<div id="chat-content-raw" hx-swap-oob="beforeend"><div class="log-line" style="color: #888;">Autopilot stopped.</div></div>"#);
+                broadcaster.broadcast(r#"<div id="chat-content-json" hx-swap-oob="beforeend"><div class="json-line" style="color: #888;">Autopilot stopped.</div></div>"#);
                 broadcaster.broadcast(r#"<div id="chat-content-formatted" hx-swap-oob="beforeend"><div class="px-3 py-2 text-muted-foreground text-sm">Autopilot stopped.</div></div>"#);
                 break;
             }
@@ -144,24 +146,37 @@ async fn read_output_loop(
             line = stdout_reader.next_line() => {
                 match line {
                     Ok(Some(text)) => {
-                        // Broadcast to raw view (escaped HTML)
-                        let escaped = html_escape(&text);
-                        let raw_html = format!(r#"<div id="chat-content-raw" hx-swap-oob="beforeend"><div class="log-line">{}</div></div>"#, escaped);
-                        broadcaster.broadcast(&raw_html);
+                        // Check if this is a JSON event (prefixed with "j:")
+                        if let Some(json_content) = text.strip_prefix("j:") {
+                            // Broadcast to JSON view only (untruncated)
+                            let escaped = html_escape(json_content);
+                            let json_html = format!(r#"<div id="chat-content-json" hx-swap-oob="beforeend"><div class="json-line">{}</div></div>"#, escaped);
+                            broadcaster.broadcast(&json_html);
+                        } else {
+                            // Regular rlog output - broadcast to raw RLOG view
+                            let escaped = html_escape(&text);
+                            let raw_html = format!(r#"<div id="chat-content-raw" hx-swap-oob="beforeend"><div class="log-line">{}</div></div>"#, escaped);
+                            broadcaster.broadcast(&raw_html);
 
-                        // Broadcast to formatted view (rendered components)
-                        let formatted_html = render_line_oob(&text);
-                        broadcaster.broadcast(&formatted_html);
+                            // Broadcast to formatted view (rendered components)
+                            let formatted_html = render_line_oob(&text);
+                            broadcaster.broadcast(&formatted_html);
+                        }
                     }
                     Ok(None) => {
                         // EOF - process exited
                         broadcaster.broadcast(r#"<div id="chat-content-raw" hx-swap-oob="beforeend"><div class="log-error">Autopilot process exited.</div></div>"#);
+                        broadcaster.broadcast(r#"<div id="chat-content-json" hx-swap-oob="beforeend"><div class="json-line" style="color: var(--color-red);">Autopilot process exited.</div></div>"#);
                         broadcaster.broadcast(r#"<div id="chat-content-formatted" hx-swap-oob="beforeend"><div class="px-3 py-2 text-red text-sm">Autopilot process exited.</div></div>"#);
                         break;
                     }
                     Err(e) => {
                         broadcaster.broadcast(&format!(
                             r#"<div id="chat-content-raw" hx-swap-oob="beforeend"><div class="log-error">Read error: {}</div></div>"#,
+                            e
+                        ));
+                        broadcaster.broadcast(&format!(
+                            r#"<div id="chat-content-json" hx-swap-oob="beforeend"><div class="json-line" style="color: var(--color-red);">Read error: {}</div></div>"#,
                             e
                         ));
                         broadcaster.broadcast(&format!(
@@ -179,6 +194,13 @@ async fn read_output_loop(
                         let escaped = html_escape(&text);
                         let raw_html = format!(r#"<div id="chat-content-raw" hx-swap-oob="beforeend"><div class="log-error">{}</div></div>"#, escaped);
                         broadcaster.broadcast(&raw_html);
+
+                        // Also show in JSON view as error
+                        let json_html = format!(
+                            r#"<div id="chat-content-json" hx-swap-oob="beforeend"><div class="json-line" style="color: var(--color-red);">{}</div></div>"#,
+                            escaped
+                        );
+                        broadcaster.broadcast(&json_html);
 
                         // Also show in formatted view as error
                         let formatted_html = format!(

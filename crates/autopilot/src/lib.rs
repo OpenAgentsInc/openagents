@@ -99,6 +99,8 @@ pub struct TrajectoryCollector {
     apm_session_id: Option<String>,
     /// Path to APM database (if APM tracking is enabled)
     apm_db_path: Option<PathBuf>,
+    /// Whether to stream full JSON to stdout (for GUI)
+    json_stdout: bool,
 }
 
 impl TrajectoryCollector {
@@ -119,6 +121,7 @@ impl TrajectoryCollector {
             active_subagents: std::collections::HashMap::new(),
             apm_session_id: None,
             apm_db_path: None,
+            json_stdout: false,
         }
     }
 
@@ -169,6 +172,15 @@ impl TrajectoryCollector {
         writer.init(path, &self.trajectory.session_id)?;
         self.jsonl_writer = Some(writer);
         Ok(())
+    }
+
+    /// Enable JSON stdout streaming for GUI consumption
+    ///
+    /// When enabled, raw JSON events are printed to stdout with a `j:` prefix
+    /// for the desktop GUI to consume. This provides complete, untruncated
+    /// JSON data for debugging and inspection.
+    pub fn enable_json_stdout(&mut self) {
+        self.json_stdout = true;
     }
 
     /// Enable APM tracking with database storage
@@ -293,10 +305,80 @@ impl TrajectoryCollector {
         }
     }
 
+    /// Stream raw SDK message JSON to stdout (if json_stdout is enabled)
+    fn stream_message_to_stdout(&self, msg: &SdkMessage) {
+        if !self.json_stdout {
+            return;
+        }
+
+        // Convert SdkMessage to JSON (same format as JSONL)
+        let json_value = match msg {
+            SdkMessage::System(sys) => {
+                serde_json::json!({
+                    "type": "system",
+                    "message": sys,
+                    "timestamp": chrono::Utc::now().to_rfc3339()
+                })
+            }
+            SdkMessage::Assistant(asst) => {
+                serde_json::json!({
+                    "type": "assistant",
+                    "message": asst.message,
+                    "timestamp": chrono::Utc::now().to_rfc3339()
+                })
+            }
+            SdkMessage::User(user) => {
+                serde_json::json!({
+                    "type": "user",
+                    "message": user.message,
+                    "timestamp": chrono::Utc::now().to_rfc3339()
+                })
+            }
+            SdkMessage::Result(result) => {
+                serde_json::json!({
+                    "type": "result",
+                    "message": result,
+                    "timestamp": chrono::Utc::now().to_rfc3339()
+                })
+            }
+            SdkMessage::ToolProgress(progress) => {
+                serde_json::json!({
+                    "type": "tool_progress",
+                    "message": progress,
+                    "timestamp": chrono::Utc::now().to_rfc3339()
+                })
+            }
+            SdkMessage::StreamEvent(event) => {
+                serde_json::json!({
+                    "type": "stream_event",
+                    "message": event,
+                    "timestamp": chrono::Utc::now().to_rfc3339()
+                })
+            }
+            SdkMessage::AuthStatus(auth) => {
+                serde_json::json!({
+                    "type": "auth_status",
+                    "message": auth,
+                    "timestamp": chrono::Utc::now().to_rfc3339()
+                })
+            }
+        };
+
+        // Print to stdout with j: prefix for GUI to parse
+        if let Ok(json_str) = serde_json::to_string(&json_value) {
+            println!("j:{}", json_str);
+            // Flush to ensure immediate delivery
+            let _ = std::io::Write::flush(&mut std::io::stdout());
+        }
+    }
+
     /// Process an SdkMessage and add to trajectory
     pub fn process_message(&mut self, msg: &SdkMessage) {
-        // Stream raw message to JSONL first (full data capture)
+        // Stream raw message to JSONL file (full data capture)
         self.stream_message_to_jsonl(msg);
+
+        // Stream raw message to stdout for GUI (if enabled)
+        self.stream_message_to_stdout(msg);
 
         // Then process into trajectory steps (for rlog and analysis)
         match msg {

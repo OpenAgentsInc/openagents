@@ -1,18 +1,20 @@
 //! ChatPane component.
 //!
 //! Collapsible pane for streaming autopilot output with toggle between
-//! raw text view and formatted component view.
+//! formatted view, raw JSON view, and raw RLOG view.
 
 use maud::{Markup, PreEscaped, html};
 
 /// View mode for the chat pane.
 #[derive(Clone, Copy, PartialEq, Eq, Default)]
 pub enum ChatViewMode {
-    /// Raw text output (like a terminal)
-    Raw,
-    /// Formatted component view
+    /// Formatted component view (default)
     #[default]
     Formatted,
+    /// Raw JSON output (full untruncated Claude events)
+    Json,
+    /// Raw RLOG text output (truncated human-readable)
+    Raw,
 }
 
 /// Autopilot output chat pane with view toggle.
@@ -56,8 +58,9 @@ impl ChatPane {
         let btn_active = "bg-secondary text-foreground border border-border";
         let btn_inactive = "bg-transparent text-muted-foreground border border-transparent hover:bg-accent hover:text-foreground";
 
-        let raw_class = if self.mode == ChatViewMode::Raw { btn_active } else { btn_inactive };
         let formatted_class = if self.mode == ChatViewMode::Formatted { btn_active } else { btn_inactive };
+        let json_class = if self.mode == ChatViewMode::Json { btn_active } else { btn_inactive };
+        let raw_class = if self.mode == ChatViewMode::Raw { btn_active } else { btn_inactive };
 
         html! {
             div
@@ -74,21 +77,28 @@ impl ChatPane {
 
                     // Center: View toggle + Copy button
                     div class="flex items-center gap-2" {
-                        // Toggle group
+                        // Toggle group: Formatted | Raw JSON | Raw RLOG
                         div class="flex items-center border border-border" {
-                            button
-                                id="chat-view-raw"
-                                onclick="switchChatView('raw')"
-                                class={(btn_base) " " (raw_class)}
-                            {
-                                "Raw"
-                            }
                             button
                                 id="chat-view-formatted"
                                 onclick="switchChatView('formatted')"
                                 class={(btn_base) " " (formatted_class)}
                             {
                                 "Formatted"
+                            }
+                            button
+                                id="chat-view-json"
+                                onclick="switchChatView('json')"
+                                class={(btn_base) " " (json_class)}
+                            {
+                                "Raw JSON"
+                            }
+                            button
+                                id="chat-view-raw"
+                                onclick="switchChatView('raw')"
+                                class={(btn_base) " " (raw_class)}
+                            {
+                                "Raw RLOG"
                             }
                         }
 
@@ -118,18 +128,8 @@ impl ChatPane {
                     }
                 }
 
-                // Content area - two divs, one shown at a time
+                // Content area - three divs, one shown at a time
                 div class="flex-1 overflow-hidden relative" {
-                    // Raw view
-                    div
-                        id="chat-content-raw"
-                        class={"absolute inset-0 overflow-y-auto p-4 text-xs leading-relaxed " (if self.mode == ChatViewMode::Raw { "" } else { "hidden" })}
-                    {
-                        div class="text-muted-foreground" {
-                            "Waiting for autopilot output..."
-                        }
-                    }
-
                     // Formatted view
                     div
                         id="chat-content-formatted"
@@ -139,35 +139,73 @@ impl ChatPane {
                             "Waiting for autopilot output..."
                         }
                     }
+
+                    // Raw JSON view (full untruncated Claude events)
+                    div
+                        id="chat-content-json"
+                        class={"absolute inset-0 overflow-y-auto p-4 text-xs leading-relaxed " (if self.mode == ChatViewMode::Json { "" } else { "hidden" })}
+                    {
+                        div class="text-muted-foreground" {
+                            "Waiting for JSON events..."
+                        }
+                    }
+
+                    // Raw RLOG view (truncated human-readable)
+                    div
+                        id="chat-content-raw"
+                        class={"absolute inset-0 overflow-y-auto p-4 text-xs leading-relaxed " (if self.mode == ChatViewMode::Raw { "" } else { "hidden" })}
+                    {
+                        div class="text-muted-foreground" {
+                            "Waiting for autopilot output..."
+                        }
+                    }
                 }
             }
 
             // Scripts
             (PreEscaped(r#"<script>
-// View switching
+// View switching for 3 modes: formatted, json, raw
 function switchChatView(mode) {
-    const rawContent = document.getElementById('chat-content-raw');
     const formattedContent = document.getElementById('chat-content-formatted');
-    const rawBtn = document.getElementById('chat-view-raw');
+    const jsonContent = document.getElementById('chat-content-json');
+    const rawContent = document.getElementById('chat-content-raw');
     const formattedBtn = document.getElementById('chat-view-formatted');
+    const jsonBtn = document.getElementById('chat-view-json');
+    const rawBtn = document.getElementById('chat-view-raw');
 
     const activeClasses = ['bg-secondary', 'text-foreground', 'border', 'border-border'];
     const inactiveClasses = ['bg-transparent', 'text-muted-foreground', 'border', 'border-transparent', 'hover:bg-accent', 'hover:text-foreground'];
 
-    if (mode === 'raw') {
-        rawContent.classList.remove('hidden');
-        formattedContent.classList.add('hidden');
-        activeClasses.forEach(c => rawBtn.classList.add(c));
-        inactiveClasses.forEach(c => rawBtn.classList.remove(c));
-        inactiveClasses.forEach(c => formattedBtn.classList.add(c));
-        activeClasses.forEach(c => formattedBtn.classList.remove(c));
-    } else {
-        rawContent.classList.add('hidden');
+    // Helper to set button state
+    function setActive(btn) {
+        activeClasses.forEach(c => btn.classList.add(c));
+        inactiveClasses.forEach(c => btn.classList.remove(c));
+    }
+    function setInactive(btn) {
+        inactiveClasses.forEach(c => btn.classList.add(c));
+        activeClasses.forEach(c => btn.classList.remove(c));
+    }
+
+    // Hide all content areas first
+    formattedContent.classList.add('hidden');
+    jsonContent.classList.add('hidden');
+    rawContent.classList.add('hidden');
+
+    // Set all buttons inactive first
+    setInactive(formattedBtn);
+    setInactive(jsonBtn);
+    setInactive(rawBtn);
+
+    // Show selected view and activate button
+    if (mode === 'formatted') {
         formattedContent.classList.remove('hidden');
-        activeClasses.forEach(c => formattedBtn.classList.add(c));
-        inactiveClasses.forEach(c => formattedBtn.classList.remove(c));
-        inactiveClasses.forEach(c => rawBtn.classList.add(c));
-        activeClasses.forEach(c => rawBtn.classList.remove(c));
+        setActive(formattedBtn);
+    } else if (mode === 'json') {
+        jsonContent.classList.remove('hidden');
+        setActive(jsonBtn);
+    } else if (mode === 'raw') {
+        rawContent.classList.remove('hidden');
+        setActive(rawBtn);
     }
 
     localStorage.setItem('chatViewMode', mode);
@@ -175,13 +213,20 @@ function switchChatView(mode) {
 
 // Copy current view to clipboard
 function copyCurrentView() {
-    const rawContent = document.getElementById('chat-content-raw');
     const formattedContent = document.getElementById('chat-content-formatted');
+    const jsonContent = document.getElementById('chat-content-json');
+    const rawContent = document.getElementById('chat-content-raw');
     const btn = document.getElementById('chat-copy-btn');
 
     // Get currently visible content
-    const isRaw = !rawContent.classList.contains('hidden');
-    const content = isRaw ? rawContent : formattedContent;
+    let content;
+    if (!formattedContent.classList.contains('hidden')) {
+        content = formattedContent;
+    } else if (!jsonContent.classList.contains('hidden')) {
+        content = jsonContent;
+    } else {
+        content = rawContent;
+    }
 
     // Get text content
     const text = content.innerText || content.textContent;
@@ -209,9 +254,9 @@ function copyCurrentView() {
     });
 }
 
-// Auto-scroll observer for both content areas
+// Auto-scroll observer for all content areas
 (function() {
-    ['chat-content-raw', 'chat-content-formatted'].forEach(id => {
+    ['chat-content-formatted', 'chat-content-json', 'chat-content-raw'].forEach(id => {
         const el = document.getElementById(id);
         if (el) {
             const observer = new MutationObserver(() => {
@@ -223,7 +268,7 @@ function copyCurrentView() {
 
     // Restore preference
     const saved = localStorage.getItem('chatViewMode');
-    if (saved === 'raw' || saved === 'formatted') {
+    if (saved === 'formatted' || saved === 'json' || saved === 'raw') {
         switchChatView(saved);
     }
 })();
@@ -232,10 +277,11 @@ function copyCurrentView() {
             // Hidden class style
             (PreEscaped(r#"<style>
 #chat-pane.hidden { display: none !important; }
-#chat-content-raw.hidden, #chat-content-formatted.hidden { display: none !important; }
+#chat-content-formatted.hidden, #chat-content-json.hidden, #chat-content-raw.hidden { display: none !important; }
 #chat-content-raw .log-line { color: var(--color-muted-foreground); }
 #chat-content-raw .log-error { color: var(--color-red); }
 #chat-content-raw .log-success { color: var(--color-green); }
+#chat-content-json .json-line { color: var(--color-muted-foreground); word-break: break-all; }
 </style>"#))
         }
     }
