@@ -1096,6 +1096,506 @@ pub fn get_slowest_tools(db: &MetricsDb, period: TimePeriod, limit: usize) -> an
     Ok(slowest)
 }
 
+#[cfg(test)]
+mod tests_edge_cases {
+    use super::*;
+    use crate::trajectory::{Step, StepType, TokenUsage, TrajectoryResult};
+    use chrono::Utc;
+
+    /// Helper to create a minimal trajectory for testing
+    fn create_test_trajectory() -> Trajectory {
+        Trajectory {
+            session_id: "test-session-id".to_string(),
+            prompt: "Test prompt".to_string(),
+            model: "claude-sonnet-4-5".to_string(),
+            cwd: "/test".to_string(),
+            repo_sha: "abc123".to_string(),
+            branch: Some("main".to_string()),
+            started_at: Utc::now(),
+            ended_at: Some(Utc::now()),
+            steps: vec![],
+            result: Some(TrajectoryResult {
+                success: true,
+                num_turns: 1,
+                duration_ms: 1000,
+                result_text: None,
+                errors: vec![],
+                issues_completed: 0,
+                apm: None,
+            }),
+            usage: TokenUsage {
+                input_tokens: 100,
+                output_tokens: 50,
+                cache_read_tokens: 20,
+                cache_creation_tokens: 0,
+                cost_usd: 0.001,
+            },
+        }
+    }
+
+    #[test]
+    fn test_empty_trajectory() {
+        let mut trajectory = create_test_trajectory();
+        trajectory.steps = vec![];
+        trajectory.result = None;
+
+        let analysis = analyze_trajectory(&trajectory);
+
+        // Should not panic, should return zero/default values
+        assert_eq!(analysis.performance.total_tool_calls, 0);
+        assert_eq!(analysis.performance.parallel_tool_batches, 0);
+        assert_eq!(analysis.errors.total_tool_calls, 0);
+        assert_eq!(analysis.errors.failed_tool_calls, 0);
+        assert_eq!(analysis.quality.thinking_blocks, 0);
+        assert_eq!(analysis.tool_usage.total_calls, 0);
+    }
+
+    #[test]
+    fn test_malformed_step_data_missing_tokens() {
+        let mut trajectory = create_test_trajectory();
+        trajectory.steps = vec![Step {
+            step_id: 1,
+            timestamp: Utc::now(),
+            step_type: StepType::Thinking {
+                content: "test".to_string(),
+                signature: None,
+            },
+            tokens_in: None,  // Missing token data
+            tokens_out: None,
+            tokens_cached: None,
+        }];
+
+        let analysis = analyze_trajectory(&trajectory);
+
+        // Should handle missing token data gracefully
+        assert_eq!(analysis.quality.thinking_blocks, 1);
+    }
+
+    #[test]
+    fn test_zero_tokens_no_division_by_zero() {
+        let mut trajectory = create_test_trajectory();
+        trajectory.usage = TokenUsage {
+            input_tokens: 0,
+            output_tokens: 0,
+            cache_read_tokens: 0,
+            cache_creation_tokens: 0,
+            cost_usd: 0.0,
+        };
+
+        let analysis = analyze_trajectory(&trajectory);
+
+        // Cache hit rate should be 0, not NaN or panic
+        assert_eq!(analysis.cost.cache_hit_rate, 0.0);
+    }
+
+    #[test]
+    fn test_zero_tool_calls_no_division_by_zero() {
+        let trajectory = create_test_trajectory();
+
+        let analysis = analyze_trajectory(&trajectory);
+
+        // Error rate should be 0 when no tool calls
+        assert_eq!(analysis.errors.tool_error_rate, 0.0);
+        assert_eq!(analysis.quality.tool_diversity, 0.0);
+    }
+
+    #[test]
+    fn test_orphaned_tool_result_no_matching_call() {
+        let mut trajectory = create_test_trajectory();
+        let now = Utc::now();
+
+        // Tool result without matching tool call
+        trajectory.steps = vec![Step {
+            step_id: 1,
+            timestamp: now,
+            step_type: StepType::ToolResult {
+                tool_id: "nonexistent".to_string(),
+                success: false,
+                output: None,
+            },
+            tokens_in: None,
+            tokens_out: None,
+            tokens_cached: None,
+        }];
+
+        let analysis = analyze_trajectory(&trajectory);
+
+        // Should not panic, orphaned result should not affect counts
+        assert_eq!(analysis.errors.total_tool_calls, 0);
+    }
+
+    #[test]
+    fn test_unicode_in_content() {
+        let mut trajectory = create_test_trajectory();
+        trajectory.prompt = "测试 🚀 مرحبا Тест".to_string();
+
+        trajectory.steps = vec![Step {
+            step_id: 1,
+            timestamp: Utc::now(),
+            step_type: StepType::Thinking {
+                content: "Emoji test 🔥💯✨ and unicode 你好世界".to_string(),
+                signature: None,
+            },
+            tokens_in: None,
+            tokens_out: None,
+            tokens_cached: None,
+        }];
+
+        let analysis = analyze_trajectory(&trajectory);
+
+        // Should handle unicode characters properly
+        assert_eq!(analysis.quality.thinking_blocks, 1);
+        assert!(analysis.prompt_preview.contains("测试"));
+    }
+
+    #[test]
+    fn test_very_long_trajectory() {
+        let mut trajectory = create_test_trajectory();
+        let now = Utc::now();
+
+        // Create 10,000 steps
+        for i in 0..10_000 {
+            trajectory.steps.push(Step {
+                step_id: i,
+                timestamp: now,
+                step_type: StepType::Thinking {
+                    content: format!("Step {}", i),
+                    signature: None,
+                },
+                tokens_in: Some(10),
+                tokens_out: Some(5),
+                tokens_cached: None,
+            });
+        }
+
+        let analysis = analyze_trajectory(&trajectory);
+
+        // Should complete without timeout or memory issues
+        assert_eq!(analysis.quality.thinking_blocks, 10_000);
+    }
+
+    #[test]
+    fn test_latency_stats_single_value() {
+        let latencies = vec![100];
+        let stats = compute_latency_stats(&latencies);
+
+        // Single value should work correctly
+        assert_eq!(stats.min_ms, 100);
+        assert_eq!(stats.max_ms, 100);
+        assert_eq!(stats.mean_ms, 100.0);
+        assert_eq!(stats.p50_ms, 100);
+        assert_eq!(stats.p95_ms, 100);
+        assert_eq!(stats.count, 1);
+    }
+
+    #[test]
+    fn test_latency_stats_empty() {
+        let latencies = vec![];
+        let stats = compute_latency_stats(&latencies);
+
+        // Empty latencies should return default
+        assert_eq!(stats.count, 0);
+        assert_eq!(stats.min_ms, 0);
+        assert_eq!(stats.max_ms, 0);
+    }
+
+    #[test]
+    fn test_detect_parallel_batches_empty() {
+        let intervals = vec![];
+        let batches = detect_parallel_batches(&intervals);
+
+        assert_eq!(batches, 0);
+    }
+
+    #[test]
+    fn test_detect_parallel_batches_no_overlap() {
+        let now = Utc::now();
+        let intervals = vec![
+            (now, now + chrono::Duration::milliseconds(100)),
+            (now + chrono::Duration::milliseconds(200), now + chrono::Duration::milliseconds(300)),
+        ];
+
+        let batches = detect_parallel_batches(&intervals);
+
+        // No overlap = 2 separate batches
+        assert_eq!(batches, 2);
+    }
+
+    #[test]
+    fn test_detect_parallel_batches_complete_overlap() {
+        let now = Utc::now();
+        let intervals = vec![
+            (now, now + chrono::Duration::milliseconds(500)),
+            (now + chrono::Duration::milliseconds(100), now + chrono::Duration::milliseconds(200)),
+            (now + chrono::Duration::milliseconds(300), now + chrono::Duration::milliseconds(400)),
+        ];
+
+        let batches = detect_parallel_batches(&intervals);
+
+        // All overlap within first interval = 1 batch
+        assert_eq!(batches, 1);
+    }
+
+    #[test]
+    fn test_aggregate_analyses_empty() {
+        let analyses = vec![];
+        let aggregate = aggregate_analyses(&analyses);
+
+        assert_eq!(aggregate.trajectory_count, 0);
+        assert_eq!(aggregate.total_cost_usd, 0.0);
+        assert!(aggregate.by_model.is_empty());
+    }
+
+    #[test]
+    fn test_aggregate_analyses_single() {
+        let trajectory = create_test_trajectory();
+        let analysis = analyze_trajectory(&trajectory);
+
+        let aggregate = aggregate_analyses(&[analysis]);
+
+        assert_eq!(aggregate.trajectory_count, 1);
+        assert!(aggregate.total_cost_usd > 0.0);
+    }
+
+    #[test]
+    fn test_tool_error_tracking_all_successful() {
+        let mut trajectory = create_test_trajectory();
+        let now = Utc::now();
+
+        trajectory.steps = vec![
+            Step {
+                step_id: 1,
+                timestamp: now,
+                step_type: StepType::ToolCall {
+                    tool: "Read".to_string(),
+                    tool_id: "t1".to_string(),
+                    input: serde_json::json!({}),
+                },
+                tokens_in: None,
+                tokens_out: None,
+                tokens_cached: None,
+            },
+            Step {
+                step_id: 2,
+                timestamp: now + chrono::Duration::milliseconds(100),
+                step_type: StepType::ToolResult {
+                    tool_id: "t1".to_string(),
+                    success: true,
+                    output: Some("ok".to_string()),
+                },
+                tokens_in: None,
+                tokens_out: None,
+                tokens_cached: None,
+            },
+        ];
+
+        let analysis = analyze_trajectory(&trajectory);
+
+        assert_eq!(analysis.errors.total_tool_calls, 1);
+        assert_eq!(analysis.errors.failed_tool_calls, 0);
+        assert_eq!(analysis.errors.tool_error_rate, 0.0);
+        assert!(analysis.errors.errors_by_tool.is_empty());
+    }
+
+    #[test]
+    fn test_tool_error_tracking_all_failed() {
+        let mut trajectory = create_test_trajectory();
+        let now = Utc::now();
+
+        trajectory.steps = vec![
+            Step {
+                step_id: 1,
+                timestamp: now,
+                step_type: StepType::ToolCall {
+                    tool: "Read".to_string(),
+                    tool_id: "t1".to_string(),
+                    input: serde_json::json!({}),
+                },
+                tokens_in: None,
+                tokens_out: None,
+                tokens_cached: None,
+            },
+            Step {
+                step_id: 2,
+                timestamp: now + chrono::Duration::milliseconds(100),
+                step_type: StepType::ToolResult {
+                    tool_id: "t1".to_string(),
+                    success: false,
+                    output: Some("error".to_string()),
+                },
+                tokens_in: None,
+                tokens_out: None,
+                tokens_cached: None,
+            },
+        ];
+
+        let analysis = analyze_trajectory(&trajectory);
+
+        assert_eq!(analysis.errors.total_tool_calls, 1);
+        assert_eq!(analysis.errors.failed_tool_calls, 1);
+        assert_eq!(analysis.errors.tool_error_rate, 1.0);
+        assert_eq!(analysis.errors.errors_by_tool.get("Read"), Some(&1));
+    }
+
+    #[test]
+    fn test_tool_diversity_single_tool_many_calls() {
+        let mut trajectory = create_test_trajectory();
+        let now = Utc::now();
+
+        // 5 calls to same tool
+        for i in 0..5 {
+            trajectory.steps.push(Step {
+                step_id: i,
+                timestamp: now,
+                step_type: StepType::ToolCall {
+                    tool: "Read".to_string(),
+                    tool_id: format!("t{}", i),
+                    input: serde_json::json!({}),
+                },
+                tokens_in: None,
+                tokens_out: None,
+                tokens_cached: None,
+            });
+        }
+
+        let analysis = analyze_trajectory(&trajectory);
+
+        // 1 unique tool / 5 calls = 0.2 diversity
+        assert_eq!(analysis.quality.unique_tools, 1);
+        assert!((analysis.quality.tool_diversity - 0.2).abs() < 0.01);
+    }
+
+    #[test]
+    fn test_tool_diversity_many_tools_one_call_each() {
+        let mut trajectory = create_test_trajectory();
+        let now = Utc::now();
+
+        // 5 different tools, 1 call each
+        for i in 0..5 {
+            trajectory.steps.push(Step {
+                step_id: i,
+                timestamp: now,
+                step_type: StepType::ToolCall {
+                    tool: format!("Tool{}", i),
+                    tool_id: format!("t{}", i),
+                    input: serde_json::json!({}),
+                },
+                tokens_in: None,
+                tokens_out: None,
+                tokens_cached: None,
+            });
+        }
+
+        let analysis = analyze_trajectory(&trajectory);
+
+        // 5 unique tools / 5 calls = 1.0 diversity
+        assert_eq!(analysis.quality.unique_tools, 5);
+        assert_eq!(analysis.quality.tool_diversity, 1.0);
+    }
+
+    #[test]
+    fn test_truncate_very_long_prompt() {
+        let long_prompt = "a".repeat(500);
+        let truncated = truncate(&long_prompt, 80);
+
+        assert_eq!(truncated.len(), 80);
+        assert!(truncated.ends_with("..."));
+    }
+
+    #[test]
+    fn test_truncate_short_prompt() {
+        let short_prompt = "Short prompt";
+        let truncated = truncate(short_prompt, 80);
+
+        assert_eq!(truncated, "Short prompt");
+    }
+
+    #[test]
+    fn test_tokens_by_step_type_all_types() {
+        let mut trajectory = create_test_trajectory();
+        let now = Utc::now();
+
+        trajectory.steps = vec![
+            Step {
+                step_id: 1,
+                timestamp: now,
+                step_type: StepType::Thinking {
+                    content: "think".to_string(),
+                    signature: None,
+                },
+                tokens_in: None,
+                tokens_out: Some(100),
+                tokens_cached: None,
+            },
+            Step {
+                step_id: 2,
+                timestamp: now,
+                step_type: StepType::Assistant {
+                    content: "response".to_string(),
+                },
+                tokens_in: None,
+                tokens_out: Some(50),
+                tokens_cached: None,
+            },
+            Step {
+                step_id: 3,
+                timestamp: now,
+                step_type: StepType::User {
+                    content: "question".to_string(),
+                },
+                tokens_in: None,
+                tokens_out: Some(25),
+                tokens_cached: None,
+            },
+        ];
+
+        let analysis = analyze_trajectory(&trajectory);
+
+        assert_eq!(analysis.cost.tokens_by_step_type.get("thinking"), Some(&100));
+        assert_eq!(analysis.cost.tokens_by_step_type.get("assistant"), Some(&50));
+        assert_eq!(analysis.cost.tokens_by_step_type.get("user"), Some(&25));
+    }
+
+    #[test]
+    fn test_negative_timestamp_delta_latency() {
+        let mut trajectory = create_test_trajectory();
+        let now = Utc::now();
+
+        // Tool result BEFORE tool call (time anomaly)
+        trajectory.steps = vec![
+            Step {
+                step_id: 1,
+                timestamp: now + chrono::Duration::milliseconds(200),
+                step_type: StepType::ToolCall {
+                    tool: "Read".to_string(),
+                    tool_id: "t1".to_string(),
+                    input: serde_json::json!({}),
+                },
+                tokens_in: None,
+                tokens_out: None,
+                tokens_cached: None,
+            },
+            Step {
+                step_id: 2,
+                timestamp: now, // Earlier timestamp
+                step_type: StepType::ToolResult {
+                    tool_id: "t1".to_string(),
+                    success: true,
+                    output: None,
+                },
+                tokens_in: None,
+                tokens_out: None,
+                tokens_cached: None,
+            },
+        ];
+
+        let analysis = analyze_trajectory(&trajectory);
+
+        // Should handle gracefully with .max(0)
+        assert_eq!(analysis.performance.tool_latency_stats.min_ms, 0);
+    }
+}
+
 /// Calculate improvement velocity from trends
 pub fn calculate_velocity(
     db: &MetricsDb,
