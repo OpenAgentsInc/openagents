@@ -8988,6 +8988,7 @@ dependencies = [
  "actix-rt",
  "actix-web",
  "anyhow",
+ "bitcoin",
  "fake",
  "futures-util",
  "nostr 0.1.0",
