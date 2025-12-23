@@ -397,6 +397,9 @@ impl MetricsDb {
         if version < 2 {
             self.migrate_v2()?;
         }
+        if version < 3 {
+            self.migrate_v3()?;
+        }
 
         Ok(())
     }
@@ -605,6 +608,39 @@ impl MetricsDb {
         )?;
 
         self.set_schema_version(2)?;
+        Ok(())
+    }
+
+    fn migrate_v3(&self) -> Result<()> {
+        // Add proposed_improvements table for storing automated refinement proposals
+        self.conn.execute_batch(
+            r#"
+            CREATE TABLE IF NOT EXISTS proposed_improvements (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                improvement_type TEXT NOT NULL,
+                description TEXT NOT NULL,
+                evidence_json TEXT NOT NULL,
+                proposed_fix TEXT NOT NULL,
+                severity INTEGER NOT NULL,
+                status TEXT NOT NULL DEFAULT 'pending',
+                file_path TEXT,
+                section TEXT,
+                current_text TEXT,
+                new_text TEXT,
+                rationale TEXT,
+                created_at TEXT NOT NULL,
+                reviewed_at TEXT,
+                applied_at TEXT,
+                reviewer_notes TEXT
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_proposed_improvements_status ON proposed_improvements(status);
+            CREATE INDEX IF NOT EXISTS idx_proposed_improvements_created ON proposed_improvements(created_at);
+            CREATE INDEX IF NOT EXISTS idx_proposed_improvements_severity ON proposed_improvements(severity);
+            "#
+        )?;
+
+        self.set_schema_version(3)?;
         Ok(())
     }
 

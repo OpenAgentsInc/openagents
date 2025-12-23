@@ -82,8 +82,8 @@ async fn poll_daemon_status(state: web::Data<AppState>) {
     info!("Daemon poller started, watching socket: {:?}", socket_path);
 
     loop {
-        // Try to connect and get status
-        let result = async {
+        // Try to connect and get status with timeout
+        let result = tokio::time::timeout(Duration::from_secs(2), async {
             let mut stream = UnixStream::connect(&socket_path).await?;
 
             let request = serde_json::json!({ "type": "Status" });
@@ -95,8 +95,14 @@ async fn poll_daemon_status(state: web::Data<AppState>) {
 
             let response: serde_json::Value = serde_json::from_slice(&buf[..n])?;
             Ok::<_, anyhow::Error>(response)
-        }
+        })
         .await;
+
+        // Flatten timeout result
+        let result = match result {
+            Ok(inner) => inner,
+            Err(_) => Err(anyhow::anyhow!("timeout")),
+        };
 
         // Build daemon status HTML for WebSocket broadcast
         let daemon_status = match &result {
