@@ -19,8 +19,13 @@ pub struct FMClient {
 
 impl FMClient {
     /// Create a new client with default settings
+    ///
+    /// The base URL can be configured via FM_BRIDGE_URL environment variable.
+    /// Defaults to http://localhost:3030 if not set.
     pub fn new() -> Result<Self> {
-        Self::with_base_url(DEFAULT_BASE_URL)
+        let base_url = std::env::var("FM_BRIDGE_URL")
+            .unwrap_or_else(|_| DEFAULT_BASE_URL.to_string());
+        Self::with_base_url(base_url)
     }
 
     /// Create a new client with custom base URL
