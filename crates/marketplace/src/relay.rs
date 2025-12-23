@@ -10,12 +10,35 @@ use tokio::sync::RwLock;
 use std::sync::Arc;
 
 /// Default relays for marketplace discovery
-pub const DEFAULT_MARKETPLACE_RELAYS: &[&str] = &[
+const DEFAULT_MARKETPLACE_RELAYS: &[&str] = &[
     "wss://relay.damus.io",
     "wss://relay.primal.net",
     "wss://relay.nostr.band",
     "wss://nos.lol",
 ];
+
+/// Get marketplace relays from environment or use defaults
+///
+/// Set MARKETPLACE_RELAYS environment variable as comma-separated URLs:
+/// MARKETPLACE_RELAYS="wss://relay1.com,wss://relay2.com"
+pub fn get_marketplace_relays() -> Vec<String> {
+    std::env::var("MARKETPLACE_RELAYS")
+        .ok()
+        .map(|relays| {
+            relays
+                .split(',')
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .collect()
+        })
+        .filter(|v: &Vec<String>| !v.is_empty())
+        .unwrap_or_else(|| {
+            DEFAULT_MARKETPLACE_RELAYS
+                .iter()
+                .map(|s| s.to_string())
+                .collect()
+        })
+}
 
 /// Errors that can occur during relay operations
 #[derive(Debug, Error)]
@@ -68,7 +91,9 @@ impl MarketplaceRelay {
 
     /// Connect to default marketplace relays
     pub async fn connect(&self) -> Result<(), RelayError> {
-        self.connect_to_relays(DEFAULT_MARKETPLACE_RELAYS).await
+        let relays = get_marketplace_relays();
+        let relay_refs: Vec<&str> = relays.iter().map(|s| s.as_str()).collect();
+        self.connect_to_relays(&relay_refs).await
     }
 
     /// Connect to specific relays
@@ -243,6 +268,56 @@ mod tests {
     fn test_default_marketplace_relays() {
         assert!(!DEFAULT_MARKETPLACE_RELAYS.is_empty());
         assert!(DEFAULT_MARKETPLACE_RELAYS.len() >= 3);
+    }
+
+    #[test]
+    fn test_get_marketplace_relays_default() {
+        unsafe {
+            std::env::remove_var("MARKETPLACE_RELAYS");
+        }
+        let relays = get_marketplace_relays();
+        assert_eq!(relays.len(), DEFAULT_MARKETPLACE_RELAYS.len());
+        assert_eq!(relays[0], "wss://relay.damus.io");
+    }
+
+    #[test]
+    fn test_get_marketplace_relays_from_env() {
+        unsafe {
+            std::env::set_var("MARKETPLACE_RELAYS", "wss://custom1.com,wss://custom2.com");
+        }
+        let relays = get_marketplace_relays();
+        assert_eq!(relays.len(), 2);
+        assert_eq!(relays[0], "wss://custom1.com");
+        assert_eq!(relays[1], "wss://custom2.com");
+        unsafe {
+            std::env::remove_var("MARKETPLACE_RELAYS");
+        }
+    }
+
+    #[test]
+    fn test_get_marketplace_relays_env_with_spaces() {
+        unsafe {
+            std::env::set_var("MARKETPLACE_RELAYS", " wss://relay1.com , wss://relay2.com ");
+        }
+        let relays = get_marketplace_relays();
+        assert_eq!(relays.len(), 2);
+        assert_eq!(relays[0], "wss://relay1.com");
+        assert_eq!(relays[1], "wss://relay2.com");
+        unsafe {
+            std::env::remove_var("MARKETPLACE_RELAYS");
+        }
+    }
+
+    #[test]
+    fn test_get_marketplace_relays_empty_env_uses_default() {
+        unsafe {
+            std::env::set_var("MARKETPLACE_RELAYS", "");
+        }
+        let relays = get_marketplace_relays();
+        assert_eq!(relays.len(), DEFAULT_MARKETPLACE_RELAYS.len());
+        unsafe {
+            std::env::remove_var("MARKETPLACE_RELAYS");
+        }
     }
 
     #[tokio::test]
