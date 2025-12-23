@@ -1633,6 +1633,74 @@ pub fn pull_request_detail_page(repository: &Event, pull_request: &Event, review
                                         }
                                     }
 
+                                    // Visual dependency graph
+                                    @if !stack_prs.is_empty() {
+                                        div.dependency-graph style="margin-bottom: 24px; padding: 20px; background: #f9fafb; border: 1px solid #e5e7eb;" {
+                                            h3 style="margin-bottom: 16px; font-size: 1rem; color: #374151;" { "Dependency Graph" }
+                                            div.graph-container style="display: flex; flex-direction: column; gap: 8px;" {
+                                                @let sorted_prs = {
+                                                    let mut prs: Vec<_> = stack_prs.iter().collect();
+                                                    prs.sort_by_key(|pr| {
+                                                        let pr_layer = get_all_tag_values(pr, "layer");
+                                                        if pr_layer.len() >= 2 {
+                                                            pr_layer[0].parse::<i32>().unwrap_or(0)
+                                                        } else {
+                                                            0
+                                                        }
+                                                    });
+                                                    prs
+                                                };
+                                                @for (idx, stack_pr) in sorted_prs.iter().enumerate() {
+                                                    @let is_current = stack_pr.id == pull_request.id;
+                                                    @let stack_pr_title = get_tag_value(stack_pr, "subject").unwrap_or_else(|| "Untitled PR".to_string());
+                                                    @let stack_pr_status = get_tag_value(stack_pr, "status").unwrap_or_else(|| "unknown".to_string());
+                                                    @let stack_pr_layer = get_all_tag_values(stack_pr, "layer");
+                                                    @let layer_num = if stack_pr_layer.len() >= 2 { stack_pr_layer[0].clone() } else { "?".to_string() };
+                                                    @let status_color = match stack_pr_status.as_str() {
+                                                        "merged" | "applied" => "#10b981",
+                                                        "closed" => "#ef4444",
+                                                        "draft" => "#f59e0b",
+                                                        _ => "#3b82f6"
+                                                    };
+
+                                                    div.graph-node style={"position: relative; display: flex; align-items: center; gap: 12px;"} {
+                                                        // Connector line
+                                                        @if idx > 0 {
+                                                            div style="position: absolute; left: 15px; bottom: 100%; width: 2px; height: 8px; background: #d1d5db;" {}
+                                                        }
+                                                        // Node box (sharp corners per codebase convention)
+                                                        div style={"width: 30px; height: 30px; background: " (status_color) "; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; font-size: 0.75rem; flex-shrink: 0; z-index: 1;"} {
+                                                            (layer_num)
+                                                        }
+                                                        // PR card
+                                                        div style={
+                                                            "flex: 1; padding: 12px; background: white; border: 2px solid "
+                                                            (if is_current { "#3b82f6" } else { "#e5e7eb" })
+                                                            "; " (if is_current { "box-shadow: 0 0 0 3px #dbeafe;" } else { "" })
+                                                        } {
+                                                            a href={"/repo/" (identifier) "/pulls/" (stack_pr.id)} style={"font-weight: " (if is_current { "700" } else { "500" }) "; color: #111827; text-decoration: none;"} {
+                                                                (stack_pr_title)
+                                                            }
+                                                            div style="margin-top: 4px; font-size: 0.875rem; color: #6b7280; display: flex; gap: 8px; align-items: center;" {
+                                                                span style={"padding: 2px 8px; background: " (status_color) "22; color: " (status_color) "; font-size: 0.75rem; font-weight: 600;"} {
+                                                                    (stack_pr_status)
+                                                                }
+                                                                @if is_current {
+                                                                    span style="padding: 2px 8px; background: #3b82f6; color: white; font-size: 0.75rem; font-weight: 600;" {
+                                                                        "YOU ARE HERE"
+                                                                    }
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                            div style="margin-top: 16px; padding: 12px; background: white; border-left: 4px solid #3b82f6; font-size: 0.875rem; color: #6b7280;" {
+                                                "💡 Each PR in this stack builds on top of the previous one. PRs must be merged in order from bottom to top."
+                                            }
+                                        }
+                                    }
+
                                     @if !is_mergeable && dependency_pr.is_some() {
                                         div.merge-warning style="padding: 12px; background: #fef3c7; border-left: 4px solid #f59e0b; margin-bottom: 16px;" {
                                             "⚠️ This PR cannot be merged until its dependencies are merged first."
