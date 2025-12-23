@@ -7,7 +7,7 @@ use anyhow::Result;
 use autopilot::daemon::{
     config::DaemonConfig,
     control::{ControlClient, ControlServer},
-    supervisor::WorkerSupervisor,
+    supervisor::{DaemonMetrics, SharedMetrics, WorkerSupervisor},
 };
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
@@ -158,6 +158,9 @@ async fn run_daemon(config: DaemonConfig) -> Result<()> {
     // Create supervisor
     let supervisor = Arc::new(Mutex::new(WorkerSupervisor::new(config.clone())));
 
+    // Create shared metrics for control socket to read without blocking supervisor
+    let shared_metrics: SharedMetrics = Arc::new(std::sync::RwLock::new(DaemonMetrics::default()));
+
     // Setup signal handlers and store the task handle
     let shutdown_tx_signal = shutdown_tx.clone();
     let signal_handle = tokio::spawn(async move {
@@ -181,9 +184,10 @@ async fn run_daemon(config: DaemonConfig) -> Result<()> {
     // Start control socket server and store the task handle
     let control_server = ControlServer::new(&config.socket_path);
     let control_supervisor = supervisor.clone();
+    let control_metrics = shared_metrics.clone();
     let control_shutdown_tx = shutdown_tx.clone();
     let control_handle = tokio::spawn(async move {
-        if let Err(e) = control_server.run(control_supervisor, control_shutdown_tx).await {
+        if let Err(e) = control_server.run(control_supervisor, control_metrics, control_shutdown_tx).await {
             eprintln!("Control server error: {}", e);
         }
     });
@@ -191,7 +195,7 @@ async fn run_daemon(config: DaemonConfig) -> Result<()> {
     // Run supervisor
     {
         let mut guard = supervisor.lock().await;
-        if let Err(e) = guard.run(shutdown_rx).await {
+        if let Err(e) = guard.run(shutdown_rx, Some(shared_metrics)).await {
             eprintln!("Supervisor error: {}", e);
         }
     }
