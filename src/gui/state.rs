@@ -334,9 +334,12 @@ async fn get_oauth_token() -> Option<String> {
         .map(|s| s.to_string())
 }
 
+/// Type alias for cached usage limits with timestamp
+type UsageCache = Arc<RwLock<Option<(UsageLimits, std::time::Instant)>>>;
+
 /// Cache for usage limits to prevent excessive API calls.
 /// Cached value expires after 30 seconds.
-static USAGE_CACHE: once_cell::sync::Lazy<Arc<RwLock<Option<(UsageLimits, std::time::Instant)>>>> =
+static USAGE_CACHE: once_cell::sync::Lazy<UsageCache> =
     once_cell::sync::Lazy::new(|| Arc::new(RwLock::new(None)));
 
 /// Fetch usage/quota limits from Anthropic's OAuth usage API.
