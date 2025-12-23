@@ -828,7 +828,7 @@ dependencies = [
  "lazy_static",
  "lettre",
  "libc",
- "maud",
+ "maud 0.26.0",
  "nostr 0.1.0",
  "nostr-client",
  "once_cell",
@@ -868,7 +868,7 @@ dependencies = [
  "autopilot",
  "chrono",
  "futures",
- "maud",
+ "maud 0.26.0",
  "rusqlite",
  "serde",
  "serde_json",
@@ -3476,7 +3476,7 @@ dependencies = [
  "governor 0.10.4",
  "hex",
  "html-escape",
- "maud",
+ "maud 0.26.0",
  "nostr 0.1.0",
  "nostr-client",
  "openagents-spark",
@@ -5060,7 +5060,7 @@ dependencies = [
  "colored 3.0.0",
  "frostr",
  "hex",
- "maud",
+ "maud 0.26.0",
  "nostr 0.1.0",
  "nostr-client",
  "nostr-relay",
@@ -5146,7 +5146,17 @@ dependencies = [
  "actix-web",
  "futures-util",
  "itoa 1.0.16",
- "maud_macros",
+ "maud_macros 0.26.0",
+]
+
+[[package]]
+name = "maud"
+version = "0.27.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8156733e27020ea5c684db5beac5d1d611e1272ab17901a49466294b84fc217e"
+dependencies = [
+ "itoa 1.0.16",
+ "maud_macros 0.27.0",
 ]
 
 [[package]]
@@ -5157,6 +5167,18 @@ checksum = "fa453238ec218da0af6b11fc5978d3b5c3a45ed97b722391a2a11f3306274e18"
 dependencies = [
  "proc-macro-error",
  "proc-macro2",
+ "quote",
+ "syn 2.0.111",
+]
+
+[[package]]
+name = "maud_macros"
+version = "0.27.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7261b00f3952f617899bc012e3dbd56e4f0110a038175929fa5d18e5a19913ca"
+dependencies = [
+ "proc-macro2",
+ "proc-macro2-diagnostics",
  "quote",
  "syn 2.0.111",
 ]
@@ -6109,6 +6131,7 @@ dependencies = [
  "governor 0.10.4",
  "gtk",
  "marketplace",
+ "maud 0.27.0",
  "once_cell",
  "predicates",
  "reqwest",
@@ -8665,7 +8688,7 @@ dependencies = [
  "actix-ws",
  "futures-util",
  "listenfd",
- "maud",
+ "maud 0.26.0",
  "open",
  "tokio",
  "ui",
@@ -9717,7 +9740,7 @@ version = "0.1.0"
 dependencies = [
  "base64 0.22.1",
  "lazy_static",
- "maud",
+ "maud 0.26.0",
  "regex",
  "serde_json",
 ]
@@ -9947,7 +9970,7 @@ dependencies = [
  "frostr",
  "hex",
  "keyring",
- "maud",
+ "maud 0.26.0",
  "nostr 0.1.0",
  "nostr-client",
  "openagents-spark",
