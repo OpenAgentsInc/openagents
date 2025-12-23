@@ -49,6 +49,10 @@ pub enum ClientError {
     #[error("Already connected to relay")]
     AlreadyConnected,
 
+    /// Circuit breaker is open (too many failures)
+    #[error("Circuit breaker open: {0}")]
+    CircuitOpen(String),
+
     /// Event publish failed
     #[error("Event publish failed: {0}")]
     PublishFailed(String),
