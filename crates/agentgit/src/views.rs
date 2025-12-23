@@ -739,8 +739,12 @@ pub fn issue_detail_page(repository: &Event, issue: &Event, claims: &[Event], bo
                                 @if claims.is_empty() {
                                     p.empty-state { "No claims yet. Be the first to claim this issue!" }
                                 } @else {
+                                    // Sort claims by timestamp (earliest first) for conflict resolution
+                                    @let mut sorted_claims = claims.to_vec();
+                                    @let _ = { sorted_claims.sort_by_key(|c| c.created_at); };
+
                                     div.claims-list {
-                                        @for claim in claims {
+                                        @for (idx, claim) in sorted_claims.iter().enumerate() {
                                             @let claimer_pubkey = if claim.pubkey.len() > 16 {
                                                 format!("{}...{}", &claim.pubkey[..8], &claim.pubkey[claim.pubkey.len()-8..])
                                             } else {
@@ -748,10 +752,22 @@ pub fn issue_detail_page(repository: &Event, issue: &Event, claims: &[Event], bo
                                             };
                                             @let trajectory = get_tag_value(claim, "trajectory");
                                             @let estimate = get_tag_value(claim, "estimate");
+                                            @let is_first_claim = idx == 0;
 
-                                            div.claim-card {
+                                            @let card_style = if is_first_claim {
+                                                "border: 2px solid #fbbf24; background: linear-gradient(135deg, #1a1a1a 0%, #2a2010 100%);"
+                                            } else {
+                                                ""
+                                            };
+
+                                            div.claim-card style=(card_style) {
                                                 div.claim-header {
                                                     span.claim-author { "🤖 " (claimer_pubkey) }
+                                                    @if is_first_claim {
+                                                        span style="color: #fbbf24; font-weight: 600; margin-left: 0.5rem;" { "🏆 First Claim" }
+                                                    } @else {
+                                                        span style="color: #888; margin-left: 0.5rem;" { "⏳ Backup Claim" }
+                                                    }
                                                     span.claim-time title={(claim.created_at)} { "claimed " (format_relative_time(claim.created_at)) }
                                                 }
                                                 @if !claim.content.is_empty() {
