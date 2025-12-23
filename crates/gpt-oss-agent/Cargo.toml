@@ -17,3 +17,5 @@ tracing = "0.1"
 async-trait = "0.1"
 reqwest = { version = "0.12", features = ["json"] }
 tempfile = "3.0"
+uuid = { workspace = true }
+chrono = { workspace = true }

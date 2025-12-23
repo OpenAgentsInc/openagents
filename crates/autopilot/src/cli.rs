@@ -28,7 +28,7 @@ pub enum Commands {
         #[arg(short, long)]
         cwd: Option<PathBuf>,
 
-        /// Agent to use (claude or codex)
+        /// Agent to use (claude, codex, or gpt-oss)
         #[arg(long, default_value = "claude")]
         agent: String,
 
@@ -709,6 +709,33 @@ pub enum MetricsCommands {
         /// Path to metrics database (default: autopilot-metrics.db)
         #[arg(long)]
         db: Option<PathBuf>,
+    },
+
+    /// Recommend which model to use for a task
+    RecommendModel {
+        /// Issue title
+        #[arg(required = true)]
+        title: String,
+
+        /// Issue description or full task description
+        #[arg(short, long, default_value = "")]
+        description: String,
+
+        /// Directive ID (e.g., d-004) for context
+        #[arg(long)]
+        directive: Option<String>,
+
+        /// Prefer cost-optimized recommendations
+        #[arg(long)]
+        prefer_cost: bool,
+
+        /// Path to metrics database (default: autopilot-metrics.db)
+        #[arg(long)]
+        db: Option<PathBuf>,
+
+        /// Output format (text or json)
+        #[arg(short, long, default_value = "text")]
+        format: String,
     },
 
     /// Backfill metrics from existing trajectory logs in docs/logs/

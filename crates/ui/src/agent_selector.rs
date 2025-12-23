@@ -11,6 +11,7 @@ pub enum AgentType {
     #[default]
     Claude,
     Codex,
+    GptOss,
 }
 
 impl AgentType {
@@ -19,6 +20,7 @@ impl AgentType {
         match self {
             AgentType::Claude => "Claude",
             AgentType::Codex => "Codex",
+            AgentType::GptOss => "GPT-OSS",
         }
     }
 
@@ -27,6 +29,7 @@ impl AgentType {
         match self {
             AgentType::Claude => "claude",
             AgentType::Codex => "codex",
+            AgentType::GptOss => "gpt-oss",
         }
     }
 
@@ -35,6 +38,7 @@ impl AgentType {
         match s.to_lowercase().as_str() {
             "claude" => Some(AgentType::Claude),
             "codex" => Some(AgentType::Codex),
+            "gpt-oss" | "gptoss" => Some(AgentType::GptOss),
             _ => None,
         }
     }
@@ -70,6 +74,7 @@ impl AgentSelector {
             agents: vec![
                 AgentInfo::new(AgentType::Claude, true),
                 AgentInfo::new(AgentType::Codex, false),
+                AgentInfo::new(AgentType::GptOss, false),
             ],
         }
     }
@@ -215,12 +220,14 @@ mod tests {
     fn test_agent_type_display() {
         assert_eq!(AgentType::Claude.display_name(), "Claude");
         assert_eq!(AgentType::Codex.display_name(), "Codex");
+        assert_eq!(AgentType::GptOss.display_name(), "GPT-OSS");
     }
 
     #[test]
     fn test_agent_type_id() {
         assert_eq!(AgentType::Claude.id(), "claude");
         assert_eq!(AgentType::Codex.id(), "codex");
+        assert_eq!(AgentType::GptOss.id(), "gpt-oss");
     }
 
     #[test]
@@ -228,6 +235,8 @@ mod tests {
         assert_eq!(AgentType::from_str("claude"), Some(AgentType::Claude));
         assert_eq!(AgentType::from_str("CLAUDE"), Some(AgentType::Claude));
         assert_eq!(AgentType::from_str("codex"), Some(AgentType::Codex));
+        assert_eq!(AgentType::from_str("gpt-oss"), Some(AgentType::GptOss));
+        assert_eq!(AgentType::from_str("gptoss"), Some(AgentType::GptOss));
         assert_eq!(AgentType::from_str("unknown"), None);
     }
 
