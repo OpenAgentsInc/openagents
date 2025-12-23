@@ -417,3 +417,43 @@ t!:Bash id=We99v7sf cmd="git diff HEAD crates/autopilot/src/guardrails.r..." →
 o: id=We99v7sf → [ok] diff --git a/crates/autopilot/src/guardrails.rs b/crates/autopilot/src/guardrails.rs
 a: My changes are minimal and correct. The test failures are pre-existing, not caused by my changes. Let me commit: tokens_in=0 tokens_out=1 tokens_cached=135658
 t!:Bash id=D7QYDvS2 cmd="git add -A && git commit -m "$(cat <<'EOF'" → [running] tokens_in=0 tokens_out=1 tokens_cached=135658
+o: id=D7QYDvS2 → [ok] [main 5fd414673] Fix guardrails File::create unwrap in tests
+t!:Bash id=DK261pBc cmd="git push origin main" → [running] tokens_in=0 tokens_out=24 tokens_cached=136212
+o: id=DK261pBc → [ok] [0;36m🔍 Running cargo build to check for errors and warnings...[0m
+t!:Bash id=CkpyGwSD cmd="cargo autopilot issue complete 857" → [running] tokens_in=0 tokens_out=24 tokens_cached=136671
+o: id=CkpyGwSD → [ok] ✓ Completed issue #857: PANIC-11: Fix guardrails File::create unwrap
+t!:Bash id=adg1NNcb cmd="cargo autopilot issue ready" → [running] tokens_in=0 tokens_out=77 tokens_cached=136936
+o: id=adg1NNcb → [ok] → Next ready issue:
+t!:Bash id=XRjAQc5A cmd="cargo autopilot issue claim 858" → [running] tokens_in=0 tokens_out=80 tokens_cached=137289
+o: id=XRjAQc5A → [ok] ✓ Claimed issue #858: PANIC-12: Fix home_dir expect panic
+t!:Read id=kZxDc3eC file_path=/home/christopherdavid/code/openagents/crates/autopilot/src/planmode.rs → [running] tokens_in=0 tokens_out=18 tokens_cached=137538
+o: id=kZxDc3eC → [ok]     78→    Exit,
+a: Let me search for the home_dir: tokens_in=0 tokens_out=1 tokens_cached=137794
+t!:Grep id=XdMcZpaW pattern="home_dir.*expect" → [running] tokens_in=0 tokens_out=1 tokens_cached=137794
+o: id=XdMcZpaW → [ok] No matches found
+t!:Grep id=hAXFC9XJ pattern="home_dir" → [running] tokens_in=0 tokens_out=24 tokens_cached=138238
+o: id=hAXFC9XJ → [ok] 139-        // Sanitize slug to prevent path traversal
+a: Good! Line 142 already has proper error handling with `ok_or()`. This is not using `.expect()` or `.unwrap()`. Let me check if this is the only instance and if there's any other panic source: tokens_in=0 tokens_out=1 tokens_cached=138503
+t!:Read id=PABR4suU file_path=/home/christopherdavid/code/openagents/crates/autopilot/src/planmode.rs → [running] tokens_in=0 tokens_out=1 tokens_cached=138503
+o: id=PABR4suU → [ok]    136→    ///
+a: The code is already correct - it uses `.ok_or()` which returns a Result instead of panicking. The issue description mentioned line 84, but that's clearly wrong based on the current code. Let me dou... tokens_in=0 tokens_out=1 tokens_cached=138758
+t!:Grep id=BZy8tEqj pattern="\.expect\(|\.unwrap\(" → [running] tokens_in=0 tokens_out=1 tokens_cached=138758
+o: id=BZy8tEqj → [ok] 676:        let path = PlanModeConfig::generate_plan_path("test-feature").unwrap();
+a: All the `.unwrap()` calls are in test code, which is acceptable. The production code at line 142 already uses proper error handling. The issue might be outdated or already fixed. Let me verify by l... tokens_in=0 tokens_out=1 tokens_cached=139404
+t!:Bash id=Exkj3S1j cmd="git log --oneline --all --grep="home_dir" -- cr..." → [running] tokens_in=0 tokens_out=1 tokens_cached=139404
+o: id=Exkj3S1j → [ok] 
+a: The production code is already using proper error handling. This issue appears to be already resolved or incorrectly reported. Let me complete it and move on: tokens_in=0 tokens_out=1 tokens_cached=139955
+t!:Bash id=dqPk7nwt cmd="cargo autopilot issue complete 858" → [running] tokens_in=0 tokens_out=1 tokens_cached=139955
+o: id=dqPk7nwt → [ok] ✓ Completed issue #858: PANIC-12: Fix home_dir expect panic
+t!:Bash id=TQoP3YxY cmd="cargo autopilot issue ready" → [running] tokens_in=0 tokens_out=77 tokens_cached=140227
+o: id=TQoP3YxY → [ok] → Next ready issue:
+t!:Bash id=uk5ycyTz cmd="cargo autopilot issue claim 859" → [running] tokens_in=0 tokens_out=25 tokens_cached=140411
+o: id=uk5ycyTz → [ok] ✓ Claimed issue #859: PANIC-13: Fix admin UTF-8 unwrap
+t!:Read id=rYuHg5Dp file_path=/home/christopherdavid/code/openagents/crates/nostr/relay/src/admin.rs → [running] tokens_in=0 tokens_out=18 tokens_cached=140768
+o: id=rYuHg5Dp → [ok]    278→            .method("GET")
+a: This is test code. Let me fix it to use .expect(): tokens_in=0 tokens_out=1 tokens_cached=140923
+t!:Edit id=YaRw8UFi file_path=/home/christopherdavid/code/openagents/crates/nostr/relay/src/admin.rs → [running] tokens_in=0 tokens_out=211 tokens_cached=140923
+o: id=YaRw8UFi → [ok] The file /home/christopherdavid/code/openagents/crates/nostr/relay/src/admin.rs has been updated....
+t!:Bash id=Gzo3sTPr cmd="cargo test -p nostr-relay --lib admin::tests::t..." → [running] tokens_in=0 tokens_out=104 tokens_cached=141382
+o: id=Gzo3sTPr → [ok]    Compiling nostr-relay v0.1.0 (/home/christopherdavid/code/openagents/crates/nostr/relay)
+t!:Bash id=GopTA4RC cmd="git add -A && git commit -m "$(cat <<'EOF'" → [running] tokens_in=0 tokens_out=24 tokens_cached=141919
