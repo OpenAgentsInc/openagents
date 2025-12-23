@@ -337,8 +337,14 @@ pub fn evaluate_alerts(
                 }
             }
             AlertType::RateOfChange => {
-                // TODO: Implement trend detection (requires historical data)
-                false
+                // Calculate rate of change from baseline
+                // threshold represents the minimum change rate (e.g., 0.1 = 10% change)
+                if let Some(baseline) = get_baseline(conn, metric_name)? {
+                    let rate_of_change = (current_value - baseline) / baseline.abs();
+                    rate_of_change.abs() >= threshold
+                } else {
+                    false // No baseline, can't evaluate trend
+                }
             }
         };
 
