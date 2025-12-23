@@ -444,3 +444,23 @@ t!:Write id=PWmnzZFk file_path=/home/christopherdavid/code/openagents/docs/apm.m
 o: id=PWmnzZFk → [ok] File created successfully at: /home/christopherdavid/code/openagents/docs/apm.md
 a: Perfect! Now let me commit and push this documentation: tokens_in=0 tokens_out=1 tokens_cached=119315
 t!:Bash id=uYp8SVf9 cmd="git add -A && git commit -m "$(cat <<'EOF'" → [running] tokens_in=0 tokens_out=1 tokens_cached=119315
+o: id=uYp8SVf9 → [ok] [main 7982744a2] Document APM tracking system usage
+t!:Bash id=gAnU8ZUz cmd="cargo run --bin autopilot -- issue complete 795" → [running] tokens_in=0 tokens_out=25 tokens_cached=122287
+o: id=gAnU8ZUz → [ok] ✓ Completed issue #795: Document APM tracking system usage
+t!:Bash id=CmMpWBJk cmd="cargo run --bin autopilot -- issue ready" → [running] tokens_in=0 tokens_out=25 tokens_cached=122820
+o: id=CmMpWBJk → [ok] No ready issues available
+a: No ready issues available. I've successfully completed a full APM tracking implementation for directive d-016! Let me create one more issue from a different directive to continue: tokens_in=0 tokens_out=1 tokens_cached=123286
+t!:Bash id=sJ2JL2Gw cmd="cargo run --bin autopilot -- issue create "Fix ..." → [running] tokens_in=0 tokens_out=207 tokens_cached=123286
+o: id=sJ2JL2Gw → [ok] ✓ Created issue #796: Fix dashboard_api test warning about mutable variable (agent: claude)
+t!:Bash id=kCD5YYJY cmd="cargo run --bin autopilot -- issue ready" → [running] tokens_in=0 tokens_out=25 tokens_cached=123436
+o: id=kCD5YYJY → [ok] → Next ready issue:
+t!:Bash id=LvQWeXji cmd="cargo run --bin autopilot -- issue claim 796" → [running] tokens_in=0 tokens_out=25 tokens_cached=123928
+o: id=LvQWeXji → [ok] ✓ Claimed issue #796: Fix dashboard_api test warning about mutable variable
+t!:Read id=EK88eVik file_path=/home/christopherdavid/code/openagents/crates/autopilot/src/tests/dashboard_api.rs → [running] tokens_in=0 tokens_out=117 tokens_cached=124202
+o: id=EK88eVik → [ok]    110→    let db_path = temp_dir.path().join("test_detail.db");
+t!:Edit id=8jzS8py8 file_path=/home/christopherdavid/code/openagents/crates/autopilot/src/tests/dashboard_api.rs → [running] tokens_in=0 tokens_out=25 tokens_cached=124372
+o: id=8jzS8py8 → [ok] The file /home/christopherdavid/code/openagents/crates/autopilot/src/tests/dashboard_api.rs has b...
+t!:Bash id=JeAfW8Jt cmd="cargo test --lib -p autopilot dashboard_api 2>&..." → [running] tokens_in=0 tokens_out=26 tokens_cached=124823
+o: id=JeAfW8Jt → [ok] running 6 tests
+a: Perfect! Let me commit and push: tokens_in=0 tokens_out=1 tokens_cached=125154
+t!:Bash id=DN8eEPTy cmd="git add -A && git commit -m "$(cat <<'EOF'" → [running] tokens_in=0 tokens_out=244 tokens_cached=125154
