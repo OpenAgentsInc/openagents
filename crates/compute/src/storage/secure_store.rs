@@ -55,6 +55,49 @@ struct EncryptedData {
     salt: String,
     /// Version for future format changes
     version: u8,
+    /// Argon2 parameters (stored to ensure future compatibility)
+    #[serde(default)]
+    argon2_params: Option<Argon2Params>,
+}
+
+/// Argon2 parameters for key derivation
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct Argon2Params {
+    /// Memory cost in KiB
+    m_cost: u32,
+    /// Time cost (iterations)
+    t_cost: u32,
+    /// Parallelism factor
+    p_cost: u32,
+}
+
+impl Argon2Params {
+    /// Extract parameters from an Argon2 instance
+    fn from_argon2(argon2: &Argon2) -> Self {
+        Self {
+            m_cost: argon2.params().m_cost(),
+            t_cost: argon2.params().t_cost(),
+            p_cost: argon2.params().p_cost(),
+        }
+    }
+
+    /// Create Argon2 instance with these parameters
+    fn to_argon2(&self) -> Result<Argon2, SecureStoreError> {
+        use argon2::ParamsBuilder;
+
+        let params = ParamsBuilder::new()
+            .m_cost(self.m_cost)
+            .t_cost(self.t_cost)
+            .p_cost(self.p_cost)
+            .build()
+            .map_err(|e| SecureStoreError::KeyDerivation(e.to_string()))?;
+
+        Ok(Argon2::new(
+            argon2::Algorithm::Argon2id,
+            argon2::Version::V0x13,
+            params,
+        ))
+    }
 }
 
 /// Secure storage for sensitive data like seed phrases
@@ -159,8 +202,10 @@ impl SecureStore {
         // Generate salt for key derivation
         let salt = SaltString::generate(&mut OsRng);
 
-        // Derive encryption key using Argon2
-        let key = derive_key(password, salt.as_str())?;
+        // Get Argon2 parameters and derive encryption key
+        let argon2 = Argon2::default();
+        let params = Argon2Params::from_argon2(&argon2);
+        let key = derive_key_with_params(password, salt.as_str(), &argon2)?;
 
         // Generate random nonce
         let mut nonce_bytes = [0u8; NONCE_SIZE];
@@ -175,12 +220,13 @@ impl SecureStore {
             .encrypt(nonce, mnemonic.as_bytes())
             .map_err(|e| SecureStoreError::Encryption(e.to_string()))?;
 
-        // Create encrypted data container
+        // Create encrypted data container with stored Argon2 parameters
         let data = EncryptedData {
             ciphertext: base64_encode(&ciphertext),
             nonce: base64_encode(&nonce_bytes),
             salt: salt.to_string(),
             version: 1,
+            argon2_params: Some(params),
         };
 
         // Ensure directory exists
@@ -205,8 +251,14 @@ impl SecureStore {
         let json = fs::read_to_string(&self.path).await?;
         let data: EncryptedData = serde_json::from_str(&json)?;
 
-        // Derive key using stored salt
-        let key = derive_key(password, &data.salt)?;
+        // Derive key using stored parameters (or defaults for old files)
+        let key = if let Some(params) = &data.argon2_params {
+            let argon2 = params.to_argon2()?;
+            derive_key_with_params(password, &data.salt, &argon2)?
+        } else {
+            // Legacy: use defaults for files created before parameters were stored
+            derive_key(password, &data.salt)?
+        };
 
         // Decode ciphertext and nonce
         let ciphertext = base64_decode(&data.ciphertext)?;
@@ -246,9 +298,12 @@ impl SecureStore {
     }
 }
 
-/// Derive a 32-byte key from password using Argon2
-fn derive_key(password: &str, salt: &str) -> Result<[u8; 32], SecureStoreError> {
-    let argon2 = Argon2::default();
+/// Derive a 32-byte key from password using Argon2 with specific parameters
+fn derive_key_with_params(
+    password: &str,
+    salt: &str,
+    argon2: &Argon2,
+) -> Result<[u8; 32], SecureStoreError> {
     let salt = SaltString::from_b64(salt).map_err(|e| SecureStoreError::KeyDerivation(e.to_string()))?;
 
     let hash = argon2
@@ -270,6 +325,12 @@ fn derive_key(password: &str, salt: &str) -> Result<[u8; 32], SecureStoreError> 
     let mut key = [0u8; 32];
     key.copy_from_slice(&bytes[..32]);
     Ok(key)
+}
+
+/// Derive a 32-byte key from password using Argon2 (default parameters for legacy support)
+fn derive_key(password: &str, salt: &str) -> Result<[u8; 32], SecureStoreError> {
+    let argon2 = Argon2::default();
+    derive_key_with_params(password, salt, &argon2)
 }
 
 /// Base64 encode bytes
