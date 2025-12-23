@@ -93,7 +93,8 @@ impl OutboxModel {
             cached_at: SystemTime::now(),
         };
 
-        let mut cache = self.cache.write().unwrap();
+        let mut cache = self.cache.write()
+            .map_err(|_| ClientError::Internal("Cache lock poisoned".to_string()))?;
         cache.insert(pubkey.to_string(), entry);
 
         Ok(())
@@ -105,7 +106,10 @@ impl OutboxModel {
             return self.config.fallback_relays.clone();
         }
 
-        let cache = self.cache.read().unwrap();
+        let cache = match self.cache.read() {
+            Ok(c) => c,
+            Err(_) => return self.config.fallback_relays.clone(),
+        };
 
         if let Some(entry) = cache.get(pubkey)
             && let Ok(elapsed) = entry.cached_at.elapsed()
@@ -127,7 +131,10 @@ impl OutboxModel {
             return self.config.fallback_relays.clone();
         }
 
-        let cache = self.cache.read().unwrap();
+        let cache = match self.cache.read() {
+            Ok(c) => c,
+            Err(_) => return self.config.fallback_relays.clone(),
+        };
 
         if let Some(entry) = cache.get(pubkey)
             && let Ok(elapsed) = entry.cached_at.elapsed()
@@ -182,7 +189,10 @@ impl OutboxModel {
 
     /// Check if we have cached relay list for a user
     pub fn has_relay_list(&self, pubkey: &str) -> bool {
-        let cache = self.cache.read().unwrap();
+        let cache = match self.cache.read() {
+            Ok(c) => c,
+            Err(_) => return false,
+        };
 
         if let Some(entry) = cache.get(pubkey)
             && let Ok(elapsed) = entry.cached_at.elapsed()
@@ -195,19 +205,24 @@ impl OutboxModel {
 
     /// Clear the relay list cache
     pub fn clear_cache(&self) {
-        let mut cache = self.cache.write().unwrap();
-        cache.clear();
+        if let Ok(mut cache) = self.cache.write() {
+            cache.clear();
+        }
     }
 
     /// Remove a specific user's relay list from cache
     pub fn remove_from_cache(&self, pubkey: &str) {
-        let mut cache = self.cache.write().unwrap();
-        cache.remove(pubkey);
+        if let Ok(mut cache) = self.cache.write() {
+            cache.remove(pubkey);
+        }
     }
 
     /// Get cache statistics
     pub fn cache_stats(&self) -> (usize, usize) {
-        let cache = self.cache.read().unwrap();
+        let cache = match self.cache.read() {
+            Ok(c) => c,
+            Err(_) => return (0, 0),
+        };
         let total = cache.len();
 
         let valid = cache
