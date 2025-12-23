@@ -352,6 +352,16 @@ impl Default for RlogWriter {
     }
 }
 
+impl Drop for RlogWriter {
+    fn drop(&mut self) {
+        // Flush buffered data on drop to prevent data loss on crash
+        if let Some(ref mut writer) = self.file_writer {
+            // Ignore errors during drop - already shutting down
+            let _ = writer.flush();
+        }
+    }
+}
+
 fn truncate(s: &str, max: usize) -> String {
     let first_line = s.lines().next().unwrap_or("");
     if first_line.chars().count() <= max {
