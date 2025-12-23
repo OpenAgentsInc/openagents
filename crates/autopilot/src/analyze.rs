@@ -784,6 +784,12 @@ impl TimePeriod {
             TimePeriod::Custom { .. } => "Custom Period",
         }
     }
+
+    /// Check if a timestamp falls within this period
+    pub fn contains(&self, timestamp: &DateTime<Utc>) -> bool {
+        let (start, end) = self.bounds();
+        timestamp >= &start && timestamp <= &end
+    }
 }
 
 /// Calculate aggregate statistics from a list of values

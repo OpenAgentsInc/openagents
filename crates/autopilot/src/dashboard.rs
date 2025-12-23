@@ -1321,6 +1321,10 @@ struct SessionsQuery {
     offset: usize,
     /// Filter by status (optional)
     status: Option<String>,
+    /// Filter by issue number (optional)
+    issue: Option<i32>,
+    /// Filter by directive ID (optional)
+    directive: Option<String>,
     /// Sort by field (default: timestamp)
     #[serde(default = "default_sort")]
     sort: String,
@@ -1350,8 +1354,14 @@ async fn api_sessions(
         // Cap limit at 1000
         let limit = query_params.limit.min(1000);
 
-        // Get all sessions (we'll filter and sort in memory for simplicity)
-        let mut sessions = store.get_all_sessions()?;
+        // Get sessions based on filters
+        let mut sessions = if let Some(issue_num) = query_params.issue {
+            store.get_sessions_for_issue(issue_num)?
+        } else if let Some(ref dir_id) = query_params.directive {
+            store.get_sessions_for_directive(dir_id)?
+        } else {
+            store.get_all_sessions()?
+        };
 
         // Filter by status if provided
         if let Some(ref status) = query_params.status {

@@ -569,6 +569,14 @@ pub enum MetricsCommands {
         #[arg(short, long)]
         status: Option<String>,
 
+        /// Filter by issue number
+        #[arg(long)]
+        issue: Option<i32>,
+
+        /// Filter by directive ID (e.g., d-004)
+        #[arg(long)]
+        directive: Option<String>,
+
         /// Limit number of results
         #[arg(short, long, default_value_t = 20)]
         limit: usize,
@@ -586,6 +594,14 @@ pub enum MetricsCommands {
         /// Compare two date ranges (format: YYYY-MM-DD..YYYY-MM-DD)
         #[arg(long)]
         compare: Option<String>,
+
+        /// Filter by issue number
+        #[arg(long)]
+        issue: Option<i32>,
+
+        /// Filter by directive ID (e.g., d-004)
+        #[arg(long)]
+        directive: Option<String>,
 
         /// Path to metrics database (default: autopilot-metrics.db)
         #[arg(long)]
