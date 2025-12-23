@@ -9,6 +9,11 @@
 //! ```bash
 //! cargo storybook
 //! ```
+//!
+//! Configure port with STORYBOOK_PORT environment variable:
+//! ```bash
+//! STORYBOOK_PORT=8080 cargo storybook
+//! ```
 
 mod stories;
 
@@ -41,8 +46,6 @@ use stories::atoms::base_document::base_document_story;
 use stories::atoms::button::button_story;
 use stories::atoms::claude_status::claude_status_story;
 use ui::{TAILWIND_CDN, TAILWIND_THEME};
-
-const PORT: u16 = 3030;
 
 fn sidebar_nav(active_story: &str) -> Markup {
     let link_class = |name: &str| {
@@ -358,6 +361,12 @@ async fn recorder_demo_page() -> impl Responder {
 
 #[tokio::main]
 async fn main() -> std::io::Result<()> {
+    // Read port from environment variable or use default
+    let port: u16 = std::env::var("STORYBOOK_PORT")
+        .ok()
+        .and_then(|p| p.parse().ok())
+        .unwrap_or(3030);
+
     let mut listenfd = ListenFd::from_env();
 
     let server = HttpServer::new(|| {
@@ -392,13 +401,13 @@ async fn main() -> std::io::Result<()> {
     let server = if let Some(listener) = listenfd.take_tcp_listener(0)? {
         println!(
             "Storybook running (hot-reload) at http://localhost:{}",
-            PORT
+            port
         );
         server.listen(listener)?
     } else {
-        println!("Storybook running at http://localhost:{}", PORT);
-        let _ = open::that(format!("http://localhost:{}", PORT));
-        server.bind(("127.0.0.1", PORT))?
+        println!("Storybook running at http://localhost:{}", port);
+        let _ = open::that(format!("http://localhost:{}", port));
+        server.bind(("127.0.0.1", port))?
     };
 
     server.run().await
