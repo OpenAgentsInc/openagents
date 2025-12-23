@@ -133,24 +133,16 @@ pub fn update_session_metrics(
 
 /// List sessions for a project
 pub fn list_sessions(conn: &Connection, project_id: Option<&str>) -> Result<Vec<Session>> {
-    let query = if let Some(pid) = project_id {
-        format!(
+    // Use parameterized query to prevent SQL injection
+    let sessions = if let Some(pid) = project_id {
+        let mut stmt = conn.prepare(
             "SELECT id, project_id, status, prompt, model, pid, trajectory_path, started_at, ended_at, budget_spent, issues_completed
              FROM sessions
-             WHERE project_id = '{}'
-             ORDER BY started_at DESC",
-            pid
-        )
-    } else {
-        "SELECT id, project_id, status, prompt, model, pid, trajectory_path, started_at, ended_at, budget_spent, issues_completed
-         FROM sessions
-         ORDER BY started_at DESC".to_string()
-    };
+             WHERE project_id = ?
+             ORDER BY started_at DESC"
+        )?;
 
-    let mut stmt = conn.prepare(&query)?;
-
-    let sessions = stmt
-        .query_map([], |row| {
+        stmt.query_map([pid], |row| {
             Ok(Session {
                 id: row.get(0)?,
                 project_id: row.get(1)?,
@@ -165,7 +157,31 @@ pub fn list_sessions(conn: &Connection, project_id: Option<&str>) -> Result<Vec<
                 issues_completed: row.get(10)?,
             })
         })?
-        .collect::<Result<Vec<_>>>()?;
+        .collect::<Result<Vec<_>>>()?
+    } else {
+        let mut stmt = conn.prepare(
+            "SELECT id, project_id, status, prompt, model, pid, trajectory_path, started_at, ended_at, budget_spent, issues_completed
+             FROM sessions
+             ORDER BY started_at DESC"
+        )?;
+
+        stmt.query_map([], |row| {
+            Ok(Session {
+                id: row.get(0)?,
+                project_id: row.get(1)?,
+                status: SessionStatus::from_str(&row.get::<_, String>(2)?),
+                prompt: row.get(3)?,
+                model: row.get(4)?,
+                pid: row.get(5)?,
+                trajectory_path: row.get(6)?,
+                started_at: row.get(7)?,
+                ended_at: row.get(8)?,
+                budget_spent: row.get(9)?,
+                issues_completed: row.get(10)?,
+            })
+        })?
+        .collect::<Result<Vec<_>>>()?
+    };
 
     Ok(sessions)
 }
