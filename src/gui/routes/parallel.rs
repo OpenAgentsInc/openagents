@@ -3,6 +3,7 @@
 use actix_web::{web, HttpResponse};
 use maud::{html, Markup};
 use serde::Deserialize;
+use std::path::PathBuf;
 use tracing::info;
 
 pub fn configure(cfg: &mut web::ServiceConfig) {
@@ -20,6 +21,11 @@ pub fn configure_api(cfg: &mut web::ServiceConfig) {
 #[derive(Debug, Deserialize)]
 struct StartAgentsForm {
     count: Option<usize>,
+}
+
+#[derive(Debug, Deserialize)]
+struct LogsQuery {
+    format: Option<String>,
 }
 
 /// Parallel agents management page
@@ -289,35 +295,154 @@ async fn agent_status() -> HttpResponse {
     }
 }
 
-/// Get logs for a specific agent (returns last 50 lines for live streaming)
-async fn agent_logs(path: web::Path<String>) -> HttpResponse {
-    let agent_id = path.into_inner();
+/// Get logs for a specific agent (returns last 100 lines for live streaming)
+/// Supports ?format=rlog|jsonl|formatted query parameter
+async fn agent_logs(path: web::Path<String>, query: web::Query<LogsQuery>) -> HttpResponse {
+    let _agent_id = path.into_inner();
+    let format = query.format.as_deref().unwrap_or("rlog");
 
-    match autopilot::parallel::get_logs(&agent_id, Some(50)).await {
-        Ok(logs) => {
-            if logs.trim().is_empty() {
-                return HttpResponse::Ok()
-                    .content_type("text/html")
-                    .body(r#"<span style="color: #555;">No logs yet...</span>"#);
-            }
-            // Return just the escaped log content for inline display
+    // Find the latest log file from docs/logs directory
+    let logs_dir = PathBuf::from("docs/logs");
+    let extension = match format {
+        "jsonl" => "jsonl",
+        _ => "rlog", // rlog and formatted both use .rlog files
+    };
+
+    // Find today's log directory first, then fall back to most recent
+    let today = chrono::Local::now().format("%Y%m%d").to_string();
+    let log_dir = logs_dir.join(&today);
+
+    let log_file = if log_dir.exists() {
+        find_latest_log_file(&log_dir, extension)
+    } else {
+        // Find most recent date directory
+        find_latest_log_in_any_dir(&logs_dir, extension)
+    };
+
+    let Some(log_path) = log_file else {
+        return HttpResponse::Ok()
+            .content_type("text/html")
+            .body(r#"<span style="color: #555;">No logs yet...</span>"#);
+    };
+
+    // Read the log file
+    let content = match tokio::fs::read_to_string(&log_path).await {
+        Ok(c) => c,
+        Err(e) => {
+            return HttpResponse::Ok()
+                .content_type("text/html")
+                .body(format!(r#"<span style="color: #ff7d7d;">Error reading log: {}</span>"#, html_escape(&e.to_string())));
+        }
+    };
+
+    // Get last 100 lines
+    let lines: Vec<&str> = content.lines().collect();
+    let start = lines.len().saturating_sub(100);
+    let recent_lines = &lines[start..];
+
+    match format {
+        "formatted" => {
+            // Parse and format the RLOG content
+            let formatted = format_rlog_content(recent_lines);
             HttpResponse::Ok()
                 .content_type("text/html")
-                .body(html_escape(&logs))
+                .body(formatted)
         }
-        Err(e) => {
-            // Check if container exists
-            let err_str = e.to_string();
-            if err_str.contains("No such container") {
-                HttpResponse::Ok()
-                    .content_type("text/html")
-                    .body(r#"<span style="color: #555;">No agent running</span>"#)
-            } else {
-                HttpResponse::Ok()
-                    .content_type("text/html")
-                    .body(format!(r#"<span style="color: #ff7d7d;">Error: {}</span>"#, html_escape(&err_str)))
-            }
+        _ => {
+            // Raw RLOG or JSONL
+            let escaped = html_escape(&recent_lines.join("\n"));
+            HttpResponse::Ok()
+                .content_type("text/html")
+                .body(escaped)
         }
+    }
+}
+
+/// Find the latest log file with given extension in a directory
+fn find_latest_log_file(dir: &PathBuf, extension: &str) -> Option<PathBuf> {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return None;
+    };
+
+    entries
+        .filter_map(|e| e.ok())
+        .filter(|e| {
+            e.path()
+                .extension()
+                .map(|ext| ext == extension)
+                .unwrap_or(false)
+        })
+        .max_by_key(|e| e.metadata().ok().and_then(|m| m.modified().ok()))
+        .map(|e| e.path())
+}
+
+/// Find the latest log file across all date directories
+fn find_latest_log_in_any_dir(logs_dir: &PathBuf, extension: &str) -> Option<PathBuf> {
+    let Ok(entries) = std::fs::read_dir(logs_dir) else {
+        return None;
+    };
+
+    // Get all date directories sorted descending
+    let mut date_dirs: Vec<_> = entries
+        .filter_map(|e| e.ok())
+        .filter(|e| e.path().is_dir())
+        .collect();
+
+    date_dirs.sort_by(|a, b| b.file_name().cmp(&a.file_name()));
+
+    // Find first directory with a log file
+    for dir in date_dirs {
+        if let Some(log) = find_latest_log_file(&dir.path(), extension) {
+            return Some(log);
+        }
+    }
+    None
+}
+
+/// Format RLOG content for display
+fn format_rlog_content(lines: &[&str]) -> String {
+    let mut result = String::new();
+
+    for line in lines {
+        if line.starts_with("### ") {
+            // Section header
+            result.push_str(&format!(
+                r#"<div style="color: #4a9eff; font-weight: bold; margin-top: 0.5rem;">{}</div>"#,
+                html_escape(line)
+            ));
+        } else if line.starts_with("## ") {
+            // Major header
+            result.push_str(&format!(
+                r#"<div style="color: #7dff7d; font-weight: bold; margin-top: 0.75rem; font-size: 0.8rem;">{}</div>"#,
+                html_escape(line)
+            ));
+        } else if line.starts_with("Tool: ") || line.starts_with("Result: ") {
+            // Tool calls
+            result.push_str(&format!(
+                r#"<div style="color: #ffd97d;">{}</div>"#,
+                html_escape(line)
+            ));
+        } else if line.starts_with("Error") || line.contains("error") || line.contains("Error") {
+            // Errors
+            result.push_str(&format!(
+                r#"<div style="color: #ff7d7d;">{}</div>"#,
+                html_escape(line)
+            ));
+        } else if line.trim().is_empty() {
+            result.push_str("<br/>");
+        } else {
+            // Regular text
+            result.push_str(&format!(
+                r#"<div style="color: #888;">{}</div>"#,
+                html_escape(line)
+            ));
+        }
+    }
+
+    if result.is_empty() {
+        r#"<span style="color: #555;">No logs yet...</span>"#.to_string()
+    } else {
+        result
     }
 }
 
