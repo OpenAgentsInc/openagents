@@ -199,14 +199,14 @@ pub fn generate_weekly_report(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::metrics::init_db;
+    use crate::metrics::MetricsDb;
     use tempfile::TempDir;
 
     #[test]
     fn test_generate_weekly_report_empty_db() {
         let temp_dir = TempDir::new().unwrap();
         let db_path = temp_dir.path().join("test.db");
-        let db = init_db(&db_path).unwrap();
+        let db = MetricsDb::open(&db_path).unwrap();
 
         let output_dir = temp_dir.path().join("reports");
         let report_path = generate_weekly_report(&db, Some(&output_dir)).unwrap();
@@ -221,7 +221,7 @@ mod tests {
     fn test_report_path_format() {
         let temp_dir = TempDir::new().unwrap();
         let db_path = temp_dir.path().join("test.db");
-        let db = init_db(&db_path).unwrap();
+        let db = MetricsDb::open(&db_path).unwrap();
 
         let output_dir = temp_dir.path().join("reports");
         let report_path = generate_weekly_report(&db, Some(&output_dir)).unwrap();

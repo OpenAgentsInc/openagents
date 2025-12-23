@@ -1045,6 +1045,52 @@ pub fn detect_regressions(db: &MetricsDb, period: TimePeriod) -> anyhow::Result<
     Ok(regressions)
 }
 
+/// Store detected regressions as anomalies in the database
+///
+/// Converts each regression into an Anomaly and stores it for tracking.
+/// This enables issue creation from regressions and historical analysis.
+///
+/// # Arguments
+/// * `db` - Metrics database
+/// * `regressions` - List of detected regressions to store
+/// * `session_id` - Session ID to associate anomalies with (use "aggregate" for period-based detection)
+///
+/// # Returns
+/// Number of anomalies successfully stored
+pub fn store_regressions_as_anomalies(
+    db: &MetricsDb,
+    regressions: &[Regression],
+    session_id: &str,
+) -> anyhow::Result<usize> {
+    use crate::metrics::{Anomaly, AnomalySeverity};
+
+    let mut stored_count = 0;
+
+    for regression in regressions {
+        // Convert RegressionSeverity to AnomalySeverity
+        let severity = match regression.severity {
+            RegressionSeverity::Critical => AnomalySeverity::Critical,
+            RegressionSeverity::Error => AnomalySeverity::Error,
+            RegressionSeverity::Warning => AnomalySeverity::Warning,
+        };
+
+        let anomaly = Anomaly {
+            session_id: session_id.to_string(),
+            dimension: regression.dimension.clone(),
+            expected_value: regression.baseline_value,
+            actual_value: regression.current_value,
+            severity,
+            investigated: false,
+            issue_number: None,
+        };
+
+        db.store_anomaly(&anomaly)?;
+        stored_count += 1;
+    }
+
+    Ok(stored_count)
+}
+
 /// Get top error tools from sessions
 pub fn get_top_error_tools(db: &MetricsDb, period: TimePeriod, limit: usize) -> anyhow::Result<Vec<(String, u32)>> {
     let sessions = get_sessions_in_period(db, period)?;

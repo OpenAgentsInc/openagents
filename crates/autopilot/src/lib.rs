@@ -37,6 +37,7 @@ pub mod tool_patterns;
 pub mod trajectory;
 pub mod trajectory_publisher;
 pub mod ui_renderer;
+pub mod weekly_report;
 
 #[cfg(test)]
 mod tests;
