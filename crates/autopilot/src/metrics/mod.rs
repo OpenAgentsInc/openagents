@@ -636,6 +636,9 @@ impl MetricsDb {
         )
         .context("Failed to store tool call metrics")?;
 
+        // Broadcast tool call update for real-time monitoring
+        crate::dashboard::broadcast_metrics_update("tool_call", Some(metrics.session_id.clone()));
+
         Ok(())
     }
 
@@ -659,6 +662,9 @@ impl MetricsDb {
             ],
         )
         .context("Failed to store anomaly")?;
+
+        // Broadcast anomaly detection for real-time alerts
+        crate::dashboard::broadcast_metrics_update("anomaly_detected", Some(anomaly.session_id.clone()));
 
         Ok(())
     }
