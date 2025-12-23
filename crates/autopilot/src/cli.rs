@@ -594,6 +594,10 @@ pub enum MetricsCommands {
         /// Show only high error rate sessions (>10% tool errors)
         #[arg(long)]
         errors: bool,
+
+        /// Show detected anomalies (>2 std dev from baseline)
+        #[arg(long)]
+        anomalies: bool,
     },
     /// Show trends by comparing periods
     Trends {
