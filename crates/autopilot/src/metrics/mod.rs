@@ -2094,6 +2094,236 @@ pub fn backfill_apm_for_sessions(db_path: &Path) -> Result<usize> {
     Ok(updated)
 }
 
+/// Backfill metrics from existing trajectory logs in docs/logs/
+///
+/// Scans the logs directory for .jsonl files (preferred) and .rlog files (fallback),
+/// extracts metrics from each trajectory, and imports them into the metrics database.
+/// This provides historical baseline data for trend analysis and regression detection.
+///
+/// Returns a tuple of (files_processed, records_created, errors_encountered)
+pub fn backfill_metrics_from_logs(logs_dir: &Path, db_path: &Path) -> Result<(usize, usize, usize)> {
+    use walkdir::WalkDir;
+
+    let db = MetricsDb::open(db_path)?;
+    let mut files_processed = 0;
+    let mut records_created = 0;
+    let mut errors = 0;
+
+    // Walk through all date directories (YYYYMMDD)
+    for entry in WalkDir::new(logs_dir)
+        .min_depth(1)
+        .max_depth(2)
+        .into_iter()
+        .filter_map(|e| e.ok())
+    {
+        let path = entry.path();
+
+        // Skip if not a .jsonl file
+        if !path.is_file() || path.extension().and_then(|s| s.to_str()) != Some("jsonl") {
+            continue;
+        }
+
+        // Check if this session already exists in the database
+        if let Some(filename) = path.file_name().and_then(|s| s.to_str()) {
+            // Extract session_id from filename (before first dash)
+            // Example: 133825-call-issue-ready-now-to.jsonl -> 133825
+            let session_id_prefix = filename.split('-').next().unwrap_or("");
+
+            // Check if we already have a session with this timestamp
+            let exists = db.conn.query_row(
+                "SELECT COUNT(*) FROM sessions WHERE id LIKE ?1",
+                params![format!("%{}%", session_id_prefix)],
+                |row| row.get::<_, i64>(0)
+            ).unwrap_or(0) > 0;
+
+            if exists {
+                // Skip this file - already imported
+                continue;
+            }
+        }
+
+        // Try to extract metrics from the .jsonl file
+        match extract_metrics_from_jsonl_file(path) {
+            Ok((session_metrics, tool_call_metrics)) => {
+                // Store session metrics
+                if let Err(e) = db.store_session(&session_metrics) {
+                    eprintln!("Error storing session metrics from {:?}: {}", path, e);
+                    errors += 1;
+                    continue;
+                }
+
+                // Store tool call metrics
+                for tcm in tool_call_metrics {
+                    if let Err(e) = db.store_tool_call(&tcm) {
+                        eprintln!("Error storing tool call metric: {}", e);
+                        errors += 1;
+                    }
+                }
+
+                files_processed += 1;
+                records_created += 1;
+            }
+            Err(e) => {
+                eprintln!("Error extracting metrics from {:?}: {}", path, e);
+                errors += 1;
+            }
+        }
+    }
+
+    Ok((files_processed, records_created, errors))
+}
+
+/// Extract metrics from a .jsonl file (Claude Code trajectory format)
+///
+/// Parses the JSONL file and constructs a Trajectory object from the SDK messages.
+fn extract_metrics_from_jsonl_file<P: AsRef<Path>>(
+    path: P,
+) -> Result<(SessionMetrics, Vec<ToolCallMetrics>)> {
+    use std::io::{BufRead, BufReader};
+    use std::fs::File;
+
+    let file = File::open(path.as_ref())
+        .with_context(|| format!("Failed to open file: {:?}", path.as_ref()))?;
+    let reader = BufReader::new(file);
+
+    let mut session_id = String::new();
+    let mut model = String::from("unknown");
+    let mut prompt = String::new();
+    let mut started_at = chrono::Utc::now();
+    let mut ended_at: Option<DateTime<Utc>> = None;
+    let mut total_input_tokens = 0u64;
+    let mut total_output_tokens = 0u64;
+    let mut cache_read_tokens = 0u64;
+    let mut messages = 0;
+    let mut tool_calls = 0;
+
+    // Parse the JSONL file line by line
+    for (line_num, line_result) in reader.lines().enumerate() {
+        let line = line_result.with_context(|| format!("Failed to read line {}", line_num))?;
+
+        let msg: serde_json::Value = serde_json::from_str(&line)
+            .with_context(|| format!("Failed to parse JSON on line {}", line_num))?;
+
+        // Extract session_id from system init message
+        if msg["type"] == "system" && msg["message"]["subtype"] == "init" {
+            if let Some(sid) = msg["message"]["session_id"].as_str() {
+                session_id = sid.to_string();
+            }
+            if let Some(m) = msg["message"]["model"].as_str() {
+                model = m.to_string();
+            }
+            if let Some(ts) = msg["timestamp"].as_str() {
+                if let Ok(dt) = DateTime::parse_from_rfc3339(ts) {
+                    started_at = dt.with_timezone(&chrono::Utc);
+                }
+            }
+        }
+
+        // Extract prompt from first user message
+        if prompt.is_empty() && msg["type"] == "user" {
+            if let Some(content_arr) = msg["message"]["content"].as_array() {
+                for item in content_arr {
+                    if item["type"] == "text" {
+                        if let Some(text) = item["text"].as_str() {
+                            prompt = text.to_string();
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+
+        // Count messages and extract token usage
+        if msg["type"] == "assistant" {
+            messages += 1;
+
+            if let Some(usage) = msg["message"]["usage"].as_object() {
+                total_input_tokens += usage.get("input_tokens").and_then(|v| v.as_u64()).unwrap_or(0);
+                total_output_tokens += usage.get("output_tokens").and_then(|v| v.as_u64()).unwrap_or(0);
+                cache_read_tokens += usage.get("cache_read_input_tokens").and_then(|v| v.as_u64()).unwrap_or(0);
+            }
+
+            // Count tool calls
+            if let Some(content_arr) = msg["message"]["content"].as_array() {
+                for item in content_arr {
+                    if item["type"] == "tool_use" {
+                        tool_calls += 1;
+                    }
+                }
+            }
+
+            // Update timestamp
+            if let Some(ts) = msg["timestamp"].as_str() {
+                if let Ok(dt) = DateTime::parse_from_rfc3339(ts) {
+                    ended_at = Some(dt.with_timezone(&chrono::Utc));
+                }
+            }
+        }
+    }
+
+    // Calculate duration
+    let duration_seconds = if let Some(end) = ended_at {
+        (end - started_at).num_milliseconds() as f64 / 1000.0
+    } else {
+        0.0
+    };
+
+    // Create session metrics
+    let mut session_metrics = SessionMetrics {
+        id: if session_id.is_empty() {
+            // Fallback: use filename as session ID
+            path.as_ref()
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or("unknown")
+                .to_string()
+        } else {
+            session_id
+        },
+        timestamp: started_at,
+        model,
+        prompt: if prompt.len() > 500 {
+            format!("{}...", &prompt[..500])
+        } else {
+            prompt
+        },
+        duration_seconds,
+        tokens_in: total_input_tokens as i64,
+        tokens_out: total_output_tokens as i64,
+        tokens_cached: cache_read_tokens as i64,
+        cost_usd: calculate_cost(total_input_tokens, total_output_tokens, cache_read_tokens),
+        issues_claimed: 0, // Not available from JSONL
+        issues_completed: 0, // Not available from JSONL
+        tool_calls: tool_calls as i32,
+        tool_errors: 0, // Would need to parse tool results
+        final_status: SessionStatus::Completed,
+        messages: messages as i32,
+        apm: None,
+        source: "backfill".to_string(),
+        issue_numbers: None,
+        directive_id: None,
+    };
+
+    session_metrics.calculate_apm();
+
+    // For now, return empty tool call metrics (could be enhanced later)
+    Ok((session_metrics, vec![]))
+}
+
+/// Calculate approximate cost based on token usage
+/// Using rough estimates for Sonnet 4.5 pricing
+fn calculate_cost(input_tokens: u64, output_tokens: u64, cache_tokens: u64) -> f64 {
+    const INPUT_PRICE_PER_M: f64 = 3.0;
+    const OUTPUT_PRICE_PER_M: f64 = 15.0;
+    const CACHE_PRICE_PER_M: f64 = 0.3;
+
+    let input_cost = (input_tokens as f64 / 1_000_000.0) * INPUT_PRICE_PER_M;
+    let output_cost = (output_tokens as f64 / 1_000_000.0) * OUTPUT_PRICE_PER_M;
+    let cache_cost = (cache_tokens as f64 / 1_000_000.0) * CACHE_PRICE_PER_M;
+
+    input_cost + output_cost + cache_cost
+}
+
 /// Store an APM snapshot
 pub fn store_apm_snapshot(
     db_path: &Path,
