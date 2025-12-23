@@ -66,10 +66,6 @@ impl MockRelay {
                 ws.on_upgrade(move |socket| handle_connection(socket, state))
             });
 
-        // Bind to port and spawn server
-        let addr: std::net::SocketAddr = ([127, 0, 0, 1], port).into();
-        let server_fut = warp::serve(ws_route).bind(addr);
-
         // For port 0, we need a unique test port
         let actual_port = if port == 0 {
             // Use a random high port for testing
@@ -79,6 +75,10 @@ impl MockRelay {
         } else {
             port
         };
+
+        // Bind to port and spawn server
+        let addr: std::net::SocketAddr = ([127, 0, 0, 1], actual_port).into();
+        let server_fut = warp::serve(ws_route).bind(addr);
         let url = format!("ws://127.0.0.1:{}", actual_port);
 
         // Spawn server task (fire and forget - warp handles its own lifetime)
