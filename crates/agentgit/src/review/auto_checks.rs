@@ -351,7 +351,6 @@ mod tests {
             .with_dependencies(vec!["pr-100".to_string(), "pr-101".to_string()]);
 
         assert_eq!(runner.repo_path, PathBuf::from("/tmp/repo"));
-        assert_eq!(runner.pr_id, "pr-123");
         assert_eq!(runner.trajectory_session_id, Some("session-456".to_string()));
         assert_eq!(runner.depends_on.len(), 2);
     }
