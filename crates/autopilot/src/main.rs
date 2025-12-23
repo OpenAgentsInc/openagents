@@ -3461,7 +3461,7 @@ async fn handle_issue_command(command: IssueCommands) -> Result<()> {
             let priority = Priority::from_str(&priority);
             let issue_type = IssueType::from_str(&issue_type);
 
-            let created = issue::create_issue(&conn, &title, description.as_deref(), priority, issue_type, Some(&agent), directive.as_deref())?;
+            let created = issue::create_issue(&conn, &title, description.as_deref(), priority, issue_type, Some(&agent), directive.as_deref(), None)?;
 
             println!(
                 "{} Created issue #{}: {} (agent: {})",
@@ -3632,9 +3632,9 @@ async fn handle_issue_command(command: IssueCommands) -> Result<()> {
                         INSERT INTO issues (
                             id, number, title, description, status, priority, issue_type, agent,
                             is_blocked, blocked_reason, claimed_by, claimed_at,
-                            created_at, updated_at, completed_at
+                            created_at, updated_at, completed_at, directive_id, project_id
                         )
-                        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)
+                        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17)
                     "#;
 
                     // Build params vec to work with execute() method on Connection
@@ -3656,6 +3656,8 @@ async fn handle_issue_command(command: IssueCommands) -> Result<()> {
                             &imported_issue.created_at.to_rfc3339() as &str,
                             &now as &str,
                             &imported_issue.completed_at.map(|dt| dt.to_rfc3339()).unwrap_or_default() as &str,
+                            &imported_issue.directive_id.as_deref().unwrap_or("") as &str,
+                            &imported_issue.project_id.as_deref().unwrap_or("") as &str,
                         ],
                     ).map_err(|e| anyhow::anyhow!("Failed to insert issue: {}", e))?;
                     imported += 1;

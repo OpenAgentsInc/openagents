@@ -381,6 +381,7 @@ pub fn list_issues_by_directive(
                     .get::<_, Option<String>>("agent")?
                     .unwrap_or_else(|| "claude".to_string()),
                 directive_id: row.get("directive_id")?,
+                project_id: row.get("project_id")?,
                 is_blocked: row.get::<_, i32>("is_blocked")? != 0,
                 blocked_reason: row.get("blocked_reason")?,
                 claimed_by: row.get("claimed_by")?,

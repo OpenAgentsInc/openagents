@@ -219,6 +219,7 @@ mod tests {
             completed_at: None,
             agent: "claude".to_string(),
             directive_id: None,
+            project_id: None,
         }
     }
 

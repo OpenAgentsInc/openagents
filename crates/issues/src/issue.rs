@@ -106,6 +106,7 @@ pub struct Issue {
     pub issue_type: IssueType,
     pub agent: String,
     pub directive_id: Option<String>,
+    pub project_id: Option<String>,
     pub is_blocked: bool,
     pub blocked_reason: Option<String>,
     pub claimed_by: Option<String>,
@@ -127,6 +128,7 @@ impl Issue {
             issue_type: IssueType::from_str(&row.get::<_, String>("issue_type")?),
             agent: row.get::<_, Option<String>>("agent")?.unwrap_or_else(|| "claude".to_string()),
             directive_id: row.get("directive_id")?,
+            project_id: row.get("project_id")?,
             is_blocked: row.get::<_, i32>("is_blocked")? != 0,
             blocked_reason: row.get("blocked_reason")?,
             claimed_by: row.get("claimed_by")?,
@@ -157,6 +159,7 @@ pub fn create_issue(
     issue_type: IssueType,
     agent: Option<&str>,
     directive_id: Option<&str>,
+    project_id: Option<&str>,
 ) -> Result<Issue> {
     let id = Uuid::new_v4().to_string();
     let number = next_issue_number(conn)?;
@@ -165,8 +168,8 @@ pub fn create_issue(
 
     conn.execute(
         r#"
-        INSERT INTO issues (id, number, title, description, priority, issue_type, agent, directive_id, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO issues (id, number, title, description, priority, issue_type, agent, directive_id, project_id, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         "#,
         params![
             id,
@@ -177,6 +180,7 @@ pub fn create_issue(
             issue_type.as_str(),
             agent,
             directive_id,
+            project_id,
             now,
             now,
         ],
@@ -451,7 +455,7 @@ mod tests {
     #[test]
     fn test_create_and_get_issue() {
         let conn = init_memory_db().unwrap();
-        let issue = create_issue(&conn, "Test issue", Some("Description"), Priority::High, IssueType::Bug, None, None).unwrap();
+        let issue = create_issue(&conn, "Test issue", Some("Description"), Priority::High, IssueType::Bug, None, None, None).unwrap();
 
         assert_eq!(issue.number, 1);
         assert_eq!(issue.title, "Test issue");
@@ -468,7 +472,7 @@ mod tests {
     #[test]
     fn test_create_issue_with_agent() {
         let conn = init_memory_db().unwrap();
-        let issue = create_issue(&conn, "Codex task", None, Priority::Medium, IssueType::Task, Some("codex"), None).unwrap();
+        let issue = create_issue(&conn, "Codex task", None, Priority::Medium, IssueType::Task, Some("codex"), None, None).unwrap();
 
         assert_eq!(issue.agent, "codex");
     }
@@ -476,7 +480,7 @@ mod tests {
     #[test]
     fn test_claim_and_complete() {
         let conn = init_memory_db().unwrap();
-        let issue = create_issue(&conn, "Task", None, Priority::Medium, IssueType::Task, None, None).unwrap();
+        let issue = create_issue(&conn, "Task", None, Priority::Medium, IssueType::Task, None, None, None).unwrap();
 
         // Claim it
         assert!(claim_issue(&conn, &issue.id, "run-123").unwrap());
@@ -497,7 +501,7 @@ mod tests {
     #[test]
     fn test_block_unblock() {
         let conn = init_memory_db().unwrap();
-        let issue = create_issue(&conn, "Blocked task", None, Priority::Medium, IssueType::Task, None, None).unwrap();
+        let issue = create_issue(&conn, "Blocked task", None, Priority::Medium, IssueType::Task, None, None, None).unwrap();
 
         // Block it
         assert!(block_issue(&conn, &issue.id, "Waiting on dependency").unwrap());
@@ -526,8 +530,8 @@ mod tests {
         let conn = init_memory_db().unwrap();
 
         // Create claude and codex issues
-        create_issue(&conn, "Claude task", None, Priority::High, IssueType::Task, Some("claude"), None).unwrap();
-        create_issue(&conn, "Codex task", None, Priority::Urgent, IssueType::Task, Some("codex"), None).unwrap();
+        create_issue(&conn, "Claude task", None, Priority::High, IssueType::Task, Some("claude"), None, None).unwrap();
+        create_issue(&conn, "Codex task", None, Priority::Urgent, IssueType::Task, Some("codex"), None, None).unwrap();
 
         // Without filter, should return highest priority (codex)
         let next = get_next_ready_issue(&conn, None).unwrap().unwrap();
@@ -547,10 +551,10 @@ mod tests {
         let conn = init_memory_db().unwrap();
 
         // Create issues in reverse priority order
-        create_issue(&conn, "Low", None, Priority::Low, IssueType::Task, None, None).unwrap();
-        create_issue(&conn, "High", None, Priority::High, IssueType::Task, None, None).unwrap();
-        create_issue(&conn, "Urgent", None, Priority::Urgent, IssueType::Task, None, None).unwrap();
-        create_issue(&conn, "Medium", None, Priority::Medium, IssueType::Task, None, None).unwrap();
+        create_issue(&conn, "Low", None, Priority::Low, IssueType::Task, None, None, None).unwrap();
+        create_issue(&conn, "High", None, Priority::High, IssueType::Task, None, None, None).unwrap();
+        create_issue(&conn, "Urgent", None, Priority::Urgent, IssueType::Task, None, None, None).unwrap();
+        create_issue(&conn, "Medium", None, Priority::Medium, IssueType::Task, None, None, None).unwrap();
 
         // Next ready should be urgent
         let next = get_next_ready_issue(&conn, None).unwrap().unwrap();
@@ -562,7 +566,7 @@ mod tests {
         let conn = init_memory_db().unwrap();
 
         // Create an issue
-        let issue = create_issue(&conn, "Test delete", None, Priority::Medium, IssueType::Task, None, None).unwrap();
+        let issue = create_issue(&conn, "Test delete", None, Priority::Medium, IssueType::Task, None, None, None).unwrap();
 
         // Verify it exists
         assert!(get_issue_by_id(&conn, &issue.id).unwrap().is_some());
@@ -589,7 +593,7 @@ mod tests {
         let conn = init_memory_db().unwrap();
 
         // Create an issue
-        let issue = create_issue(&conn, "Issue with events", None, Priority::High, IssueType::Bug, None, None).unwrap();
+        let issue = create_issue(&conn, "Issue with events", None, Priority::High, IssueType::Bug, None, None, None).unwrap();
 
         // Add an event manually (simulating the event log)
         conn.execute(
