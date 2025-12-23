@@ -211,7 +211,9 @@ impl TrajectoryCollector {
 
         if let (Some(session_id), Some(db_path)) = (&self.apm_session_id, &self.apm_db_path) {
             if let Ok(conn) = Connection::open(db_path) {
-                let _ = record_event(&conn, session_id, event_type, metadata);
+                if let Err(e) = record_event(&conn, session_id, event_type, metadata) {
+                    eprintln!("ERROR: Failed to record APM event: {}", e);
+                }
             }
         }
     }
@@ -224,7 +226,9 @@ impl TrajectoryCollector {
     /// Stream the last added step to rlog file (if streaming is enabled)
     fn stream_last_step(&mut self) {
         if let (Some(writer), Some(last_step)) = (&mut self.rlog_writer, self.trajectory.steps.last()) {
-            let _ = writer.append_step(last_step);
+            if let Err(e) = writer.append_step(last_step) {
+                eprintln!("ERROR: Failed to append step to rlog: {}", e);
+            }
         }
     }
 
@@ -283,7 +287,9 @@ impl TrajectoryCollector {
                     })
                 }
             };
-            let _ = writer.write_value(&json_value);
+            if let Err(e) = writer.write_value(&json_value) {
+                eprintln!("ERROR: Failed to write value to JSONL: {}", e);
+            }
         }
     }
 
@@ -314,7 +320,9 @@ impl TrajectoryCollector {
 
                 // Update the header now that we have the session_id
                 if let (Some(writer), Some(path)) = (&mut self.rlog_writer, &self.rlog_path) {
-                    let _ = writer.update_header(path, &self.trajectory);
+                    if let Err(e) = writer.update_header(path, &self.trajectory) {
+                        eprintln!("ERROR: Failed to update rlog header: {}", e);
+                    }
                 }
 
                 // Invoke session_id callback if set
@@ -640,7 +648,9 @@ impl TrajectoryCollector {
 
                 // Update the header now that we have the thread_id
                 if let (Some(writer), Some(path)) = (&mut self.rlog_writer, &self.rlog_path) {
-                    let _ = writer.update_header(path, &self.trajectory);
+                    if let Err(e) = writer.update_header(path, &self.trajectory) {
+                        eprintln!("ERROR: Failed to update rlog header: {}", e);
+                    }
                 }
             }
             ThreadEvent::ItemCompleted(item_event) => {
@@ -797,7 +807,9 @@ impl TrajectoryCollector {
             use rusqlite::Connection;
 
             if let Ok(conn) = Connection::open(db_path) {
-                let _ = end_session(&conn, session_id);
+                if let Err(e) = end_session(&conn, session_id) {
+                    eprintln!("ERROR: Failed to end APM session: {}", e);
+                }
 
                 // Calculate and save APM snapshot
                 if let (Some(apm), Ok((messages, tool_calls))) = (
@@ -825,20 +837,28 @@ impl TrajectoryCollector {
                         tool_calls,
                     };
 
-                    let _ = save_snapshot(&conn, &snapshot);
+                    if let Err(e) = save_snapshot(&conn, &snapshot) {
+                        eprintln!("ERROR: Failed to save APM snapshot: {}", e);
+                    }
                 }
             }
         }
 
         // Write footer to rlog if streaming is enabled
         if let Some(writer) = &mut self.rlog_writer {
-            let _ = writer.write_footer(&self.trajectory);
-            let _ = writer.close();
+            if let Err(e) = writer.write_footer(&self.trajectory) {
+                eprintln!("ERROR: Failed to write rlog footer: {}", e);
+            }
+            if let Err(e) = writer.close() {
+                eprintln!("ERROR: Failed to close rlog writer: {}", e);
+            }
         }
 
         // Flush JSONL writer if streaming is enabled
         if let Some(writer) = &mut self.jsonl_writer {
-            let _ = writer.flush();
+            if let Err(e) = writer.flush() {
+                eprintln!("ERROR: Failed to flush JSONL writer: {}", e);
+            }
         }
 
         self.trajectory
