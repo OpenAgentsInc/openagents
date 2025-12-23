@@ -10,10 +10,12 @@
 //! - Updates anomaly records with issue numbers for tracking
 
 use anyhow::{Context, Result};
-use chrono::Utc;
 use rusqlite::Connection;
 use std::collections::HashMap;
 use std::path::Path;
+
+#[cfg(test)]
+use chrono::Utc;
 
 use crate::metrics::{Anomaly, AnomalySeverity, MetricsDb};
 use crate::tool_patterns::{
@@ -408,6 +410,16 @@ fn generate_investigation_steps(pattern: &AnomalyPattern) -> String {
     steps
 }
 
+/// Parse priority string to Priority enum
+fn parse_priority(priority_str: &str) -> issues::issue::Priority {
+    match priority_str.to_lowercase().as_str() {
+        "urgent" => issues::issue::Priority::Urgent,
+        "high" => issues::issue::Priority::High,
+        "low" => issues::issue::Priority::Low,
+        _ => issues::issue::Priority::Medium,
+    }
+}
+
 /// Create issues in the database
 pub fn create_issues(
     issues_db_path: &Path,
@@ -420,44 +432,29 @@ pub fn create_issues(
     let mut created_issue_numbers = Vec::new();
 
     for issue in improvement_issues {
-        // Get next issue number
-        let next_number: i32 = conn.query_row(
-            "SELECT next_number FROM issue_counter WHERE id = 1",
-            [],
-            |row| row.get(0),
+        // Use the proper issues API to create issues
+        // This ensures:
+        // 1. Proper UUID generation for id column
+        // 2. Correct use of next_issue_number() which uses the trigger
+        // 3. All required columns are populated
+        // 4. No double-incrementing of the counter
+        let created_issue = issues::issue::create_issue(
+            &conn,
+            &issue.title,
+            Some(&issue.description),
+            parse_priority(&issue.priority),
+            issues::issue::IssueType::Task,
+            Some("claude"),
+            Some("d-004"),
+            None, // No project_id for autopilot-generated issues
         )?;
 
-        // Create issue
-        let now = Utc::now().to_rfc3339();
-        conn.execute(
-            r#"
-            INSERT INTO issues
-            (number, title, description, status, priority, issue_type, agent,
-             is_blocked, blocked_reason, claimed_by, claimed_at, created_at,
-             updated_at, completed_at, directive_id)
-            VALUES (?1, ?2, ?3, 'open', ?4, 'task', 'claude', 0, '', NULL, NULL, ?5, ?5, NULL, 'd-004')
-            "#,
-            rusqlite::params![
-                next_number,
-                issue.title,
-                issue.description,
-                issue.priority,
-                now,
-            ],
-        )?;
-
-        // Increment counter
-        conn.execute(
-            "UPDATE issue_counter SET next_number = next_number + 1 WHERE id = 1",
-            [],
-        )?;
-
-        created_issue_numbers.push(next_number);
+        created_issue_numbers.push(created_issue.number);
 
         // Mark anomalies as investigated and link to issue (only for anomaly patterns)
         match &issue.pattern {
             Pattern::Anomaly(p) => {
-                mark_anomalies_with_issue(metrics_db, &p.anomalies, next_number)?;
+                mark_anomalies_with_issue(metrics_db, &p.anomalies, created_issue.number)?;
             }
             Pattern::ToolError(_) => {
                 // Tool error patterns don't have anomalies to mark
@@ -466,7 +463,7 @@ pub fn create_issues(
 
         println!(
             "  ✓ Created issue #{}: {} [{}]",
-            next_number, issue.title, issue.priority
+            created_issue.number, issue.title, issue.priority
         );
     }
 
