@@ -23,6 +23,7 @@ members = [
     "crates/storybook",
     "crates/spark",
     "crates/wallet",
+    "crates/auth",
 ]
 
 # Unified OpenAgents binary
@@ -47,6 +48,7 @@ autopilot = { path = "crates/autopilot" }
 gitafter = { path = "crates/gitafter" }
 ui = { path = "crates/ui" }
 claude-agent-sdk = { path = "crates/claude-agent-sdk" }
+auth = { path = "crates/auth" }
 
 # GUI
 wry = "0.50"

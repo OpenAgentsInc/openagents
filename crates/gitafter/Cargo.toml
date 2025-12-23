@@ -35,6 +35,9 @@ maud = { version = "0.26", features = ["actix-web"] }
 # UI components
 ui = { path = "../ui" }
 
+# Authentication
+auth = { path = "../auth" }
+
 # Nostr
 nostr = { path = "../nostr/core" }
 nostr-client = { path = "../nostr/client" }
