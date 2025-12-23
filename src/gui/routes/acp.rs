@@ -11,6 +11,7 @@ use actix_web::{web, HttpResponse};
 use serde::{Deserialize, Serialize};
 
 use crate::gui::state::AppState;
+use ui::{PermissionModal, PermissionOption, PermissionOptionKind};
 
 /// Configure ACP API routes
 pub fn configure_api(cfg: &mut web::ServiceConfig) {
@@ -19,7 +20,16 @@ pub fn configure_api(cfg: &mut web::ServiceConfig) {
         .route("/sessions/{id}/prompt", web::post().to(send_prompt))
         .route("/sessions/{id}/cancel", web::post().to(cancel_session))
         .route("/sessions/{id}", web::delete().to(delete_session))
-        .route("/sessions/{id}", web::get().to(get_session));
+        .route("/sessions/{id}", web::get().to(get_session))
+        .route("/permissions", web::get().to(list_permission_requests))
+        .route(
+            "/permissions/sessions/{session_id}",
+            web::get().to(get_session_permissions),
+        )
+        .route(
+            "/permissions/{request_id}/respond",
+            web::post().to(respond_to_permission),
+        );
 }
 
 /// Request to create a new session
@@ -395,4 +405,100 @@ fn html_escape(s: &str) -> String {
         .replace('>', "&gt;")
         .replace('"', "&quot;")
         .replace('\'', "&#39;")
+}
+
+/// GET /api/acp/permissions - List all pending permission requests
+async fn list_permission_requests(state: web::Data<AppState>) -> HttpResponse {
+    let requests = state.permission_manager.get_all_pending().await;
+    HttpResponse::Ok().json(requests)
+}
+
+/// GET /api/acp/permissions/sessions/{session_id} - Get pending permissions for a session
+async fn get_session_permissions(
+    state: web::Data<AppState>,
+    path: web::Path<String>,
+) -> HttpResponse {
+    let session_id = path.into_inner();
+    let requests = state
+        .permission_manager
+        .get_pending_for_session(&session_id)
+        .await;
+    HttpResponse::Ok().json(requests)
+}
+
+/// POST /api/acp/permissions/{request_id}/respond - Respond to a permission request
+async fn respond_to_permission(
+    state: web::Data<AppState>,
+    path: web::Path<String>,
+    body: web::Json<acp_adapter::UiPermissionResponse>,
+) -> HttpResponse {
+    let request_id = path.into_inner();
+
+    // Validate that request_id matches the one in the body
+    if request_id != body.request_id {
+        return HttpResponse::BadRequest().json(serde_json::json!({
+            "error": "Request ID mismatch",
+            "path_id": request_id,
+            "body_id": body.request_id
+        }));
+    }
+
+    let success = state.permission_manager.submit_response(body.into_inner()).await;
+
+    if success {
+        tracing::info!(request_id = %request_id, "Permission response submitted");
+
+        // Broadcast confirmation via WebSocket
+        let confirmation = PermissionModal::render_response_confirmation(&request_id, true);
+        state.broadcaster.broadcast(&confirmation.into_string());
+
+        HttpResponse::Ok().json(serde_json::json!({
+            "status": "submitted",
+            "request_id": request_id
+        }))
+    } else {
+        HttpResponse::NotFound().json(serde_json::json!({
+            "error": "Permission request not found or already processed",
+            "request_id": request_id
+        }))
+    }
+}
+
+/// Broadcast a permission request to all connected UI clients
+pub async fn broadcast_permission_request(
+    state: &web::Data<AppState>,
+    request: &acp_adapter::UiPermissionRequest,
+) {
+    let options: Vec<PermissionOption> = request
+        .options
+        .iter()
+        .map(|opt| {
+            let kind = match opt.kind {
+                acp_adapter::PermissionOptionKind::AllowOnce => PermissionOptionKind::AllowOnce,
+                acp_adapter::PermissionOptionKind::AllowAlways => PermissionOptionKind::AllowAlways,
+                acp_adapter::PermissionOptionKind::RejectOnce => PermissionOptionKind::RejectOnce,
+                acp_adapter::PermissionOptionKind::RejectAlways => {
+                    PermissionOptionKind::RejectAlways
+                }
+            };
+            PermissionOption::new(
+                opt.option_id.clone(),
+                opt.label.clone(),
+                kind,
+                opt.is_persistent,
+            )
+        })
+        .collect();
+
+    let modal = PermissionModal::new(
+        request.request_id.clone(),
+        request.session_id.clone(),
+        request.tool_name.clone(),
+        request.description.clone(),
+        request.input.clone(),
+        options,
+    );
+
+    // Broadcast the modal to all connected clients
+    state.broadcaster.broadcast(&modal.render().into_string());
 }

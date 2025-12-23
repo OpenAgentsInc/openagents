@@ -142,9 +142,8 @@ pub fn rlog_line_to_notification(
         return parse_tool_start(session_id, content);
     }
 
-    if line.starts_with("t:") {
+    if let Some(content) = line.strip_prefix("t:") {
         // Completed tool: t:ToolName id=xxx args → [ok|error]
-        let content = &line[2..];
         return parse_tool_complete(session_id, content);
     }
 

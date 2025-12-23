@@ -6332,9 +6332,9 @@ async fn handle_apm_command(command: ApmCommands) -> Result<()> {
                     };
 
                     let baseline = if let (Some(min_val), Some(max_val)) = (min, max) {
-                        APMBaseline::with_thresholds(id.clone(), name.clone(), source_enum, median, min_val, max_val)
+                        APMBaseline::with_thresholds(id, name, source_enum, median, min_val, max_val)
                     } else {
-                        APMBaseline::new(id.clone(), name.clone(), source_enum, median)
+                        APMBaseline::new(id, name, source_enum, median)
                     };
 
                     store_apm_baseline(&db_path, &baseline)?;

@@ -50,6 +50,7 @@ gitafter = { path = "crates/gitafter" }
 ui = { path = "crates/ui" }
 claude-agent-sdk = { path = "crates/claude-agent-sdk" }
 auth = { path = "crates/auth" }
+acp-adapter = { path = "crates/acp-adapter" }
 
 # GUI
 wry = "0.50"

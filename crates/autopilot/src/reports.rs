@@ -130,9 +130,7 @@ pub fn format_report_markdown(report: &WeeklyReport) -> String {
     let mut output = String::new();
 
     // Header
-    output.push_str(&format!(
-        "# Weekly Autopilot Metrics Report\n\n"
-    ));
+    output.push_str("# Weekly Autopilot Metrics Report\n\n");
     output.push_str(&format!(
         "**Week:** {} to {}\n\n",
         report.week_start.format("%Y-%m-%d"),
