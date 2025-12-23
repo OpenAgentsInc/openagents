@@ -142,10 +142,13 @@ impl MessageQueue {
         let event_json = serde_json::to_string(event)
             .map_err(ClientError::Serialization)?;
 
-        let now = SystemTime::now()
+        let now_millis = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap()
-            .as_millis() as i64;
+            .as_millis();
+
+        let now = i64::try_from(now_millis)
+            .map_err(|_| ClientError::Internal("Timestamp overflow".to_string()))?;
 
         let db = self.db.lock().map_err(|e| {
             tracing::error!("Database lock poisoned: {}", e);
@@ -243,10 +246,13 @@ impl MessageQueue {
 
     /// Mark a message as failed and optionally retry
     pub fn mark_failed(&self, id: i64, error: &str) -> Result<()> {
-        let now = SystemTime::now()
+        let now_millis = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap()
-            .as_millis() as i64;
+            .as_millis();
+
+        let now = i64::try_from(now_millis)
+            .map_err(|_| ClientError::Internal("Timestamp overflow".to_string()))?;
 
         let db = self.db.lock().map_err(|e| {
             tracing::error!("Database lock poisoned: {}", e);
