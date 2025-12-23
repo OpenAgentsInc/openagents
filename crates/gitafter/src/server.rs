@@ -775,6 +775,57 @@ async fn issue_comment(
     }
 }
 
+/// Verify trajectory from Nostr cache by fetching events and comparing hash
+async fn verify_trajectory_from_cache(
+    nostr_client: &Arc<NostrClient>,
+    session_id: &str,
+    expected_hash: &str,
+) -> anyhow::Result<bool> {
+    use crate::trajectory::verifier::calculate_trajectory_hash;
+
+    // Fetch trajectory session (kind:38030)
+    let session_event = nostr_client.get_trajectory_session(session_id).await?;
+    if session_event.is_none() {
+        tracing::warn!("Trajectory session {} not found in cache", session_id);
+        return Ok(false);
+    }
+
+    // Fetch trajectory events (kind:38031) for this session
+    let events = nostr_client.get_trajectory_events(session_id).await?;
+    if events.is_empty() {
+        tracing::warn!("No trajectory events found for session {}", session_id);
+        return Ok(false);
+    }
+
+    // Convert events to JSON strings for hash calculation
+    let event_jsons: Vec<String> = events
+        .iter()
+        .map(|e| serde_json::to_string(&e.content).unwrap_or_default())
+        .collect();
+
+    // Calculate hash and compare with expected
+    let calculated_hash = calculate_trajectory_hash(&event_jsons)?;
+    let matches = calculated_hash == expected_hash;
+
+    if matches {
+        tracing::info!(
+            "Trajectory {} verified successfully ({} events, hash: {}...)",
+            session_id,
+            events.len(),
+            &calculated_hash[..16]
+        );
+    } else {
+        tracing::warn!(
+            "Trajectory {} hash mismatch: expected {}..., got {}...",
+            session_id,
+            &expected_hash[..16],
+            &calculated_hash[..16]
+        );
+    }
+
+    Ok(matches)
+}
+
 /// Submit a review for a PR
 async fn pr_review_submit(
     path: web::Path<(String, String)>,
@@ -813,10 +864,16 @@ async fn pr_review_submit(
     let is_agent_review = trajectory_session_id.is_some() && trajectory_hash.is_some();
 
     // Verify trajectory if present
-    let verification_badge = if let (Some(_session_id), Some(_hash)) = (&trajectory_session_id, &trajectory_hash) {
-        // TODO: Fetch actual trajectory events and verify
-        // For now, show placeholder verification status
-        r#"<span style="color: #48bb78; margin-left: 8px;" title="Trajectory verified">✓ Verified</span>"#
+    let verification_badge = if let (Some(session_id), Some(hash)) = (&trajectory_session_id, &trajectory_hash) {
+        // Fetch and verify trajectory events from Nostr cache
+        match verify_trajectory_from_cache(&state.nostr_client, session_id, hash).await {
+            Ok(true) => r#"<span style="color: #48bb78; margin-left: 8px;" title="Trajectory verified">✓ Verified</span>"#,
+            Ok(false) => r#"<span style="color: #f59e0b; margin-left: 8px;" title="Trajectory hash mismatch">⚠ Hash Mismatch</span>"#,
+            Err(e) => {
+                tracing::warn!("Failed to verify trajectory {}: {}", session_id, e);
+                r#"<span style="color: #ef4444; margin-left: 8px;" title="Verification failed">✗ Verification Failed</span>"#
+            }
+        }
     } else {
         ""
     };
