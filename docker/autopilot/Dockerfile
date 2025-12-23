@@ -11,7 +11,8 @@
 # Run:
 #   docker-compose -f docker/autopilot/docker-compose.yml up -d
 
-FROM debian:bookworm-slim
+# Using trixie (testing) for glibc 2.39+ compatibility with Arch-built binaries
+FROM debian:trixie-slim
 
 # Install runtime dependencies
 RUN apt-get update && apt-get install -y \

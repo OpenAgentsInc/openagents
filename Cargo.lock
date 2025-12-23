@@ -3599,6 +3599,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "gpt-oss"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "eventsource-stream",
+ "local-inference",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.17",
+ "tokio",
+ "tokio-stream",
+ "tokio-test",
+ "tracing",
+]
+
+[[package]]
 name = "graphql-introspection-query"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
