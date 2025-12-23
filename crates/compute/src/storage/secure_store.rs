@@ -100,12 +100,40 @@ impl SecureStore {
     }
 
     /// Store mnemonic in plaintext (for auto-generated wallets before backup)
+    ///
+    /// Security measures:
+    /// - Sets file permissions to 0600 (owner read/write only) on Unix
+    /// - Warns if permissions cannot be set
     pub async fn store_plaintext(&self, mnemonic: &str) -> Result<(), SecureStoreError> {
         // Ensure directory exists
         if let Some(parent) = self.path.parent() {
             fs::create_dir_all(parent).await?;
         }
-        fs::write(self.plaintext_path(), mnemonic).await?;
+
+        let path = self.plaintext_path();
+
+        // Write the mnemonic
+        fs::write(&path, mnemonic).await?;
+
+        // Harden file permissions on Unix systems (0600 = owner read/write only)
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let metadata = std::fs::metadata(&path)?;
+            let mut permissions = metadata.permissions();
+            permissions.set_mode(0o600); // owner read/write, no access for group/others
+            std::fs::set_permissions(&path, permissions)?;
+        }
+
+        // On Windows, ACLs would be needed for similar protection
+        #[cfg(windows)]
+        {
+            tracing::warn!(
+                "Plaintext seed stored without permission hardening on Windows. \
+                 Consider implementing ACL restrictions."
+            );
+        }
+
         Ok(())
     }
 
