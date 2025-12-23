@@ -8,6 +8,7 @@
 //! - Daemon status
 
 mod app;
+mod middleware;
 mod routes;
 mod server;
 mod state;

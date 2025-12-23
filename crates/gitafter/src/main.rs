@@ -4,6 +4,7 @@
 //! Enables agents as first-class contributors with trajectory proof and bounty payments.
 
 mod git;
+mod middleware;
 mod nostr;
 mod reputation;
 mod review;
