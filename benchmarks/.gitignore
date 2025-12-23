@@ -1,0 +1,6 @@
+# Ignore all database files except baselines
+*.db
+
+# Keep baseline directory
+!baselines/
+!baselines/*.db
