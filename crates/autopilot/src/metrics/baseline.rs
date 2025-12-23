@@ -154,16 +154,23 @@ impl<'a> BaselineCalculator<'a> {
             anyhow::bail!("No values to compute baseline");
         }
 
-        let mut sorted = values.to_vec();
+        // Filter out NaN values before computing statistics
+        let valid_values: Vec<f64> = values.iter().copied().filter(|v| !v.is_nan()).collect();
+
+        if valid_values.is_empty() {
+            anyhow::bail!("No valid values (all NaN) to compute baseline for dimension: {}", dimension);
+        }
+
+        let mut sorted = valid_values.clone();
         sorted.sort_by(|a, b| a.partial_cmp(b).unwrap());
 
-        let mean = values.iter().sum::<f64>() / values.len() as f64;
+        let mean = valid_values.iter().sum::<f64>() / valid_values.len() as f64;
 
-        let variance = values
+        let variance = valid_values
             .iter()
             .map(|v| (v - mean).powi(2))
             .sum::<f64>()
-            / values.len() as f64;
+            / valid_values.len() as f64;
         let stddev = variance.sqrt();
 
         let p50 = percentile(&sorted, 0.50);
@@ -177,7 +184,7 @@ impl<'a> BaselineCalculator<'a> {
             p50,
             p90,
             p99,
-            sample_count: values.len() as i32,
+            sample_count: valid_values.len() as i32,
             updated_at: Utc::now(),
         })
     }
@@ -484,5 +491,59 @@ mod tests {
         assert!(report.contains("# Autopilot Baseline Metrics"));
         assert!(report.contains("tool_error_rate"));
         assert!(report.contains("0.0500"));
+    }
+
+    #[test]
+    fn test_nan_handling() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let db_path = temp_dir.path().join("test_nan.db");
+        let db = MetricsDb::open(&db_path).unwrap();
+
+        // Create test sessions with some that produce NaN values
+        let mut sessions = Vec::new();
+        for i in 0..10 {
+            let session = SessionMetrics {
+                id: format!("session-{}", i),
+                timestamp: Utc::now(),
+                model: "sonnet".to_string(),
+                prompt: "Test".to_string(),
+                duration_seconds: if i < 5 { 100.0 } else { f64::NAN }, // Some NaN values
+                tokens_in: 1000,
+                tokens_out: 500,
+                tokens_cached: 200,
+                cost_usd: 0.05,
+                issues_claimed: if i < 7 { 2 } else { 0 }, // Some zero claimed (would cause division by zero)
+                issues_completed: 2,
+                tool_calls: if i < 8 { 20 } else { 0 }, // Some zero tool calls
+                tool_errors: 1,
+                final_status: SessionStatus::Completed,
+                messages: 10,
+                apm: None,
+                source: "autopilot".to_string(),
+                issue_numbers: None,
+                directive_id: None,
+            };
+            sessions.push(session);
+        }
+
+        let calculator = BaselineCalculator::new(&db);
+        let baselines = calculator.calculate_baselines(&sessions).unwrap();
+
+        // Should have baselines computed, with NaN values filtered out
+        assert!(baselines.contains_key("avg_duration"));
+        let duration_baseline = baselines.get("avg_duration").unwrap();
+        assert!(!duration_baseline.mean.is_nan());
+        assert!(!duration_baseline.stddev.is_nan());
+        assert_eq!(duration_baseline.sample_count, 5); // Only 5 valid duration values
+
+        // Completion rate should only count sessions with claimed > 0
+        if let Some(completion_baseline) = baselines.get("completion_rate") {
+            assert!(!completion_baseline.mean.is_nan());
+        }
+
+        // Tool error rate should only count sessions with tool_calls > 0
+        if let Some(error_baseline) = baselines.get("tool_error_rate") {
+            assert!(!error_baseline.mean.is_nan());
+        }
     }
 }
