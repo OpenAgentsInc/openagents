@@ -135,8 +135,33 @@ impl ComputeApp {
                 }
             } else {
                 log::info!("Encrypted identity exists but no OPENAGENTS_PASSWORD env var set");
-                // TODO: Implement GUI password prompt for interactive mode
-                // For now, fall through to generate new identity
+
+                // Prompt user for password in interactive mode
+                println!("Encrypted identity found. Enter password to unlock:");
+                match rpassword::prompt_password("Password: ") {
+                    Ok(password) if !password.is_empty() => {
+                        // Try to decrypt with provided password
+                        match self.storage.load_encrypted(&password).await {
+                            Ok(identity) => {
+                                log::info!("Successfully decrypted identity");
+                                self.state.set_identity(identity);
+                                return Ok(());
+                            }
+                            Err(e) => {
+                                log::error!("Failed to decrypt identity with provided password: {}", e);
+                                return Err(format!("Invalid password: {}", e));
+                            }
+                        }
+                    }
+                    Ok(_) => {
+                        log::warn!("Empty password provided");
+                        return Err("Empty password provided".to_string());
+                    }
+                    Err(e) => {
+                        log::error!("Failed to read password: {}", e);
+                        return Err(format!("Failed to read password: {}", e));
+                    }
+                }
             }
         }
 
