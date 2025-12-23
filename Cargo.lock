@@ -809,6 +809,7 @@ dependencies = [
  "statrs",
  "sysinfo",
  "tempfile",
+ "testing",
  "tokio",
  "tokio-tungstenite 0.24.0",
  "toml",

@@ -410,8 +410,9 @@ mod tests {
     }
 
     #[tokio::test]
-    #[ignore] // Requires real relay infrastructure and identity
-    async fn test_publish_state_to_relays() {
+    async fn test_publish_state_requires_identity() {
+        // This test verifies that publish_state_to_relays returns an error
+        // when StateManager is created without an identity
         let (secret_key, public_key) = create_test_keys();
         let manager = StateManager::new(secret_key, public_key);
 
@@ -419,18 +420,20 @@ mod tests {
         content.add_goal(Goal::new("goal-1", "Test goal", 1));
         content.update_balance(1000);
 
-        // Mock relay URLs
+        // Mock relay URLs (won't actually connect since we expect early error)
         let relays = vec!["wss://relay.example.com".to_string()];
         let agent_pubkey = "npub1test";
 
-        // Publish state (requires identity and real relay connection)
+        // Attempt to publish without identity - should fail
         let result = manager
             .publish_state_to_relays(&content, &relays, agent_pubkey)
             .await;
 
-        // Without identity, should return error
+        // Verify error mentions identity requirement
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("No identity configured"));
+        let error_msg = result.unwrap_err().to_string();
+        assert!(error_msg.contains("No identity configured"));
+        assert!(error_msg.contains("StateManager::with_identity"));
     }
 
     #[tokio::test]
@@ -454,27 +457,24 @@ mod tests {
     }
 
     #[tokio::test]
-    #[ignore] // Requires real relay infrastructure
-    async fn test_update_state_on_relays() {
+    async fn test_encrypt_with_identity() {
+        // This test demonstrates the happy path: using StateManager::with_identity
+        // for encryption/decryption (publish tests would require real relay integration)
         let (secret_key, public_key) = create_test_keys();
-        let manager = StateManager::new(secret_key, public_key);
+        let identity = Arc::new(wallet::core::UnifiedIdentity::generate().unwrap());
+        let manager = StateManager::with_identity(secret_key, public_key, identity);
 
-        // Mock relay URLs
-        let relays = vec!["wss://relay.example.com".to_string()];
-        let agent_pubkey = "npub1test";
+        let mut content = AgentStateContent::new();
+        content.add_goal(Goal::new("goal-1", "Test goal", 1));
+        content.update_balance(5000);
 
-        // Update state (will start with empty state since no relay data)
-        let result = manager
-            .update_state_on_relays(&relays, agent_pubkey, |state| {
-                state.add_goal(Goal::new("goal-1", "Test goal", 1));
-                state.update_balance(5000);
-            })
-            .await;
+        // Encrypt and decrypt should work with identity present
+        let encrypted = manager.encrypt_state(&content).unwrap();
+        assert!(!encrypted.is_empty());
 
-        // Should succeed with mock implementation
-        assert!(result.is_ok());
-        let event_id = result.unwrap();
-        assert!(event_id.starts_with("mock_event_id_"));
+        let decrypted = manager.decrypt_state(&encrypted, 1).unwrap();
+        assert_eq!(decrypted.goals.len(), 1);
+        assert_eq!(decrypted.wallet_balance_sats, 5000);
     }
 }
 
