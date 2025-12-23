@@ -309,8 +309,16 @@ pub(crate) fn dashboard_page(sessions: &[SessionMetrics], stats: &SummaryStats) 
             }
             body {
                 header {
-                    h1 { "⚡ Autopilot Metrics Dashboard" }
-                    p.subtitle { "Continual Constant Improvement (d-004)" }
+                    div style="display: flex; justify-content: space-between; align-items: center;" {
+                        div {
+                            h1 { "⚡ Autopilot Metrics Dashboard" }
+                            p.subtitle { "Continual Constant Improvement (d-004)" }
+                        }
+                        div style="text-align: right;" {
+                            span #ws-status style="font-size: 1.5em;" title="WebSocket status" { "⚪" }
+                            p style="font-size: 0.8em; margin: 0; color: #888;" { "Live Updates" }
+                        }
+                    }
                     nav.header-nav {
                         a href="/" class="active" { "Dashboard" }
                         a href="/sessions" { "All Sessions" }
@@ -1190,18 +1198,38 @@ function setupWebSocket() {
             return;
         }
 
-        // Reload charts and session list on any metrics update
-        if (data.update_type === 'session_updated' ||
-            data.update_type === 'session_created' ||
-            data.update_type === 'metrics_update') {
-            loadAllCharts();
+        // Handle different update types
+        switch (data.update_type) {
+            case 'session_updated':
+            case 'session_created':
+            case 'metrics_update':
+                // Reload charts for session-level updates
+                loadAllCharts();
 
-            // If we're on the main page, reload the session list too
-            if (window.location.pathname === '/') {
-                setTimeout(() => {
-                    window.location.reload();
-                }, 500);
-            }
+                // If we're on the main page, reload the session list
+                if (window.location.pathname === '/') {
+                    setTimeout(() => {
+                        window.location.reload();
+                    }, 500);
+                }
+                break;
+
+            case 'tool_call':
+                // Show real-time tool call notification
+                showToast(`Tool call executed in session ${data.session_id?.substring(0, 8)}...`, 'info');
+                // Update live counters if on session detail page
+                updateLiveCounters();
+                break;
+
+            case 'anomaly_detected':
+                // Show alert for anomaly detection
+                showToast(`⚠️ Anomaly detected in session ${data.session_id?.substring(0, 8)}...`, 'warning');
+                // Reload to show new anomaly
+                setTimeout(() => window.location.reload(), 1000);
+                break;
+
+            default:
+                console.log('Unknown update type:', data.update_type);
         }
     };
 
@@ -1218,14 +1246,63 @@ function setupWebSocket() {
 }
 
 function showConnectionStatus(status) {
-    // You could add a UI indicator here
-    // For now just log to console
     const statusEmoji = {
         'connected': '🟢',
         'disconnected': '🔴',
         'error': '🟠'
     };
     console.log(`${statusEmoji[status] || '⚪'} Connection status: ${status}`);
+
+    // Update visual indicator if it exists
+    const indicator = document.getElementById('ws-status');
+    if (indicator) {
+        indicator.textContent = statusEmoji[status] || '⚪';
+        indicator.title = `WebSocket: ${status}`;
+    }
+}
+
+function showToast(message, type = 'info') {
+    const toast = document.createElement('div');
+    toast.className = 'toast toast-' + type;
+    toast.textContent = message;
+    toast.style.cssText = `
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        padding: 1rem 1.5rem;
+        background: var(--bg-tertiary, #1a1a1a);
+        border: 2px solid ${type === 'warning' ? '#fbbf24' : type === 'info' ? '#3b82f6' : '#10b981'};
+        color: white;
+        z-index: 10000;
+        font-weight: 600;
+        border-radius: 4px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+        animation: slideIn 0.3s ease-out;
+    `;
+
+    document.body.appendChild(toast);
+
+    setTimeout(() => {
+        toast.style.animation = 'slideOut 0.3s ease-out';
+        setTimeout(() => toast.remove(), 300);
+    }, 3000);
+}
+
+function updateLiveCounters() {
+    // If we're on a session detail page, refresh tool call counts
+    const sessionPath = window.location.pathname.match(/\/session\/([^/]+)/);
+    if (sessionPath) {
+        // Fetch updated session data and update counters
+        fetch('/api/sessions/' + sessionPath[1])
+            .then(r => r.json())
+            .then(data => {
+                const toolCallsElem = document.getElementById('live-tool-calls');
+                const errorsElem = document.getElementById('live-errors');
+                if (toolCallsElem) toolCallsElem.textContent = data.tool_calls || 0;
+                if (errorsElem) toolCallsElem.textContent = data.tool_errors || 0;
+            })
+            .catch(err => console.error('Failed to update live counters:', err));
+    }
 }
 "#
 }
