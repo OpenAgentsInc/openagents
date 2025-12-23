@@ -9,6 +9,7 @@ pub mod alerts;
 pub mod analyze;
 pub mod apm;
 pub mod apm_parser;
+pub mod apm_storage;
 pub mod auto_issues;
 pub mod benchmark;
 pub mod compaction;
