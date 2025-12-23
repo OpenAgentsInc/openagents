@@ -6,7 +6,6 @@ use colored::*;
 use flate2::write::GzEncoder;
 use flate2::Compression;
 use std::fs::{self, File};
-use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 
 /// Configuration for log management
@@ -129,19 +128,20 @@ pub fn archive_logs(config: &LogsConfig, dry_run: bool) -> Result<Vec<PathBuf>> 
     Ok(archived)
 }
 
-/// Archive a single file with gzip compression
+/// Archive a single file with gzip compression using streaming I/O
 fn archive_file(path: &Path) -> Result<PathBuf> {
-    let mut input = File::open(path)?;
-    let mut buffer = Vec::new();
-    input.read_to_end(&mut buffer)?;
-
+    let input = File::open(path)?;
     let archived_path = path.with_extension(format!("{}.gz",
         path.extension().and_then(|s| s.to_str()).unwrap_or("")
     ));
 
     let output = File::create(&archived_path)?;
     let mut encoder = GzEncoder::new(output, Compression::default());
-    encoder.write_all(&buffer)?;
+
+    // Stream the file in chunks instead of loading entirely into memory
+    let mut reader = std::io::BufReader::new(input);
+    std::io::copy(&mut reader, &mut encoder)?;
+
     encoder.finish()?;
 
     // Remove original file after successful archiving
@@ -297,6 +297,7 @@ fn format_bytes(bytes: u64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io::Write;
     use std::path::PathBuf;
 
     #[test]
@@ -326,5 +327,41 @@ mod tests {
         assert_eq!(format_bytes(1024 * 1024), "1.00 MB");
         assert_eq!(format_bytes(1536 * 1024), "1.50 MB");
         assert_eq!(format_bytes(1024 * 1024 * 1024), "1.00 GB");
+    }
+
+    #[test]
+    fn test_archive_file_streaming() {
+        use std::io::Read;
+        use flate2::read::GzDecoder;
+        use tempfile::NamedTempFile;
+
+        // Create a temporary file with test content
+        let mut temp_file = NamedTempFile::new().unwrap();
+        let test_content = "This is test content for streaming compression.\n".repeat(1000);
+        std::io::Write::write_all(&mut temp_file, test_content.as_bytes()).unwrap();
+        temp_file.flush().unwrap();
+
+        let temp_path = temp_file.path().to_path_buf();
+
+        // Archive the file (this will delete the original)
+        let archived_path = archive_file(&temp_path).unwrap();
+
+        // Verify original file was removed
+        assert!(!temp_path.exists());
+
+        // Verify archived file exists and has .gz extension
+        assert!(archived_path.exists());
+        assert!(archived_path.to_string_lossy().ends_with(".gz"));
+
+        // Decompress and verify content matches
+        let archived_file = File::open(&archived_path).unwrap();
+        let mut decoder = GzDecoder::new(archived_file);
+        let mut decompressed = String::new();
+        decoder.read_to_string(&mut decompressed).unwrap();
+
+        assert_eq!(decompressed, test_content);
+
+        // Cleanup
+        std::fs::remove_file(archived_path).ok();
     }
 }
