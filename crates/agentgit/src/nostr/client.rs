@@ -308,6 +308,14 @@ impl NostrClient {
         self.cache.lock().await.get_bounties_for_issue(issue_event_id)
     }
 
+    /// Get the latest status for a PR (returns kind number: 1630=Open, 1631=Merged, 1632=Closed, 1633=Draft)
+    pub async fn get_pr_status(&self, pr_event_id: &str) -> Result<u16> {
+        let status_events = self.cache.lock().await.get_status_events_for_pr(pr_event_id)?;
+
+        // Return the most recent status event's kind, or 1630 (Open) if no status found
+        Ok(status_events.first().map(|e| e.kind).unwrap_or(1630))
+    }
+
     /// Get PR updates for a pull request
     pub async fn get_pr_updates(&self, pr_event_id: &str) -> Result<Vec<Event>> {
         self.cache.lock().await.get_pr_updates(pr_event_id)

@@ -1053,6 +1053,73 @@ async fn pr_status_change(
 
     let event_template = builder.build();
 
+    // Validate merge order for stacked PRs
+    if status_kind == 1631 {
+        // Fetch all PRs for this repository to check dependencies
+        match state.nostr_client.get_pull_requests_by_repo(&repo_address, 1000).await {
+            Ok(prs) => {
+                // Find the PR being merged
+                if let Some(pr) = prs.iter().find(|p| p.id == pr_id) {
+                    // Check if PR has dependencies
+                    let depends_on = pr.tags.iter()
+                        .find(|tag| tag.len() >= 2 && tag[0] == "depends_on")
+                        .and_then(|tag| tag.get(1))
+                        .map(|s| s.to_string());
+
+                    if let Some(dep_id) = depends_on {
+                        // Find dependency PR
+                        if let Some(_dep_pr) = prs.iter().find(|p| p.id == dep_id) {
+                            // Check if dependency is merged by looking for status events
+                            match state.nostr_client.get_pr_status(&dep_id).await {
+                                Ok(dep_status) => {
+                                    if dep_status != 1631 {
+                                        tracing::warn!(
+                                            "Attempted to merge PR {} out of order - dependency {} not merged (status: {})",
+                                            pr_id,
+                                            dep_id,
+                                            dep_status
+                                        );
+                                        return HttpResponse::BadRequest()
+                                            .content_type("text/html; charset=utf-8")
+                                            .body(format!(
+                                                r#"<div class="error-message">
+                                                    <p>❌ Cannot merge: dependency PR not merged yet</p>
+                                                    <p>This PR depends on: <a href="/repo/{}/pulls/{}">{}</a></p>
+                                                    <p>The dependency must be merged before this PR can be merged.</p>
+                                                </div>"#,
+                                                identifier,
+                                                dep_id,
+                                                dep_id
+                                            ));
+                                    }
+                                }
+                                Err(e) => {
+                                    tracing::error!("Failed to get dependency PR status: {}", e);
+                                    // Continue with merge - better to allow than block on error
+                                }
+                            }
+                        } else {
+                            tracing::warn!("Dependency PR {} not found for PR {}", dep_id, pr_id);
+                            return HttpResponse::BadRequest()
+                                .content_type("text/html; charset=utf-8")
+                                .body(format!(
+                                    r#"<div class="error-message">
+                                        <p>❌ Cannot merge: dependency PR not found</p>
+                                        <p>This PR depends on PR {} which no longer exists.</p>
+                                    </div>"#,
+                                    dep_id
+                                ));
+                        }
+                    }
+                }
+            }
+            Err(e) => {
+                tracing::error!("Failed to fetch PRs for merge validation: {}", e);
+                // Continue with merge - better to allow than block on error
+            }
+        }
+    }
+
     // Sign and publish event
     match state.sign_event(event_template) {
         Ok(signed_event) => {
