@@ -152,7 +152,7 @@ mod tests {
     fn test_validate_read_existing_file() {
         let dir = setup();
         let file_path = dir.path().join("test.txt");
-        File::create(&file_path).unwrap();
+        File::create(&file_path).expect("Failed to create test file");
 
         assert!(validate_read(file_path.to_str().unwrap()).is_ok());
     }
@@ -182,7 +182,7 @@ mod tests {
     fn test_validate_edit_requires_read() {
         let dir = setup();
         let file_path = dir.path().join("test.txt");
-        File::create(&file_path).unwrap();
+        File::create(&file_path).expect("Failed to create test file");
 
         // Edit without read should fail
         let result = validate_edit(file_path.to_str().unwrap());
