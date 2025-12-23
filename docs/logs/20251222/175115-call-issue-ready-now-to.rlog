@@ -460,3 +460,49 @@ o: id=K1mW87r3 → [error] Exit code 1
 t!:Edit id=CsB3myf8 file_path=/home/christopherdavid/code/openagents/crates/agentgit/src/server.rs → [running] tokens_in=7 tokens_out=390 tokens_cached=40796
 o: id=CsB3myf8 → [ok] The file /home/christopherdavid/code/openagents/crates/agentgit/src/server.rs has been updated. H...
 t!:Bash id=No8W6cNn cmd="git add -A && git commit --amend --no-edit" → [running] tokens_in=5 tokens_out=25 tokens_cached=41613
+o: id=No8W6cNn → [ok] [main 9061a724d] Add agent-authored code reviews with trajectory proof to AgentGit
+t!:Bash id=Xr41bx4A cmd="git push origin main" → [running] tokens_in=5 tokens_out=24 tokens_cached=42457
+o: id=Xr41bx4A → [ok] [0;36m🔍 Running cargo build to check for errors and warnings...[0m
+t!:mcp__issues__issue_complete id=pPh5N9Ne  → [running] tokens_in=5 tokens_out=32 tokens_cached=42715
+o: id=pPh5N9Ne → [ok] Completed issue #719
+t!:mcp__issues__issue_ready id=zaijhnMa  → [running] tokens_in=2 tokens_out=5 tokens_cached=42878
+o: id=zaijhnMa → [ok] No ready issues available
+t!:mcp__issues__directive_list id=hfJEV6Cs  → [running] tokens_in=5 tokens_out=41 tokens_cached=43064
+o: id=hfJEV6Cs → [ok] [
+t!:mcp__issues__directive_get id=fUSoQSoh  → [running] tokens_in=5 tokens_out=60 tokens_cached=43119
+o: id=fUSoQSoh → [ok] {
+t!:mcp__issues__issue_get id=7oXwSMVq  → [running] tokens_in=2 tokens_out=58 tokens_cached=44710
+o: id=7oXwSMVq → [ok] {
+t!:mcp__issues__issue_get id=DXGnYYVQ  → [running] tokens_in=4 tokens_out=32 tokens_cached=51810
+o: id=DXGnYYVQ → [ok] {
+t!:mcp__issues__directive_get id=95ACmhYf  → [running] tokens_in=3 tokens_out=60 tokens_cached=52167
+o: id=95ACmhYf → [ok] {
+t!:mcp__issues__issue_create id=FMgYwEMp  → [running] tokens_in=0 tokens_out=5 tokens_cached=52768
+o: id=FMgYwEMp → [ok] Created issue #720: Implement trajectory verification flagging for suspicious agent reviews (agen...
+t!:mcp__issues__issue_claim id=Jxpae1tS  → [running] tokens_in=3 tokens_out=84 tokens_cached=63878
+o: id=Jxpae1tS → [ok] Claimed issue #720
+t!:Read id=xvGy3zSo file_path=/home/christopherdavid/code/openagents/crates/agentgit/src/trajectory/verifier.rs → [running] tokens_in=3 tokens_out=83 tokens_cached=64426
+o: id=xvGy3zSo → [ok]      1→//! Trajectory hash verification
+t!:Edit id=7ioMN8H6 file_path=/home/christopherdavid/code/openagents/crates/agentgit/src/trajectory/verifier.rs → [running] tokens_in=2 tokens_out=1574 tokens_cached=64527
+o: id=7ioMN8H6 → [ok] The file /home/christopherdavid/code/openagents/crates/agentgit/src/trajectory/verifier.rs has be...
+t!:Read id=RhPDyQjB file_path=/home/christopherdavid/code/openagents/crates/agentgit/src/views/review.rs → [running] tokens_in=1 tokens_out=18 tokens_cached=65423
+o: id=RhPDyQjB → [error] <tool_use_error>File does not exist.</tool_use_error>
+t!:Glob id=7PeTap6h pattern="crates/agentgit/src/**/*.rs" → [running] tokens_in=2 tokens_out=26 tokens_cached=68740
+o: id=7PeTap6h → [ok] /home/christopherdavid/code/openagents/crates/agentgit/src/ws.rs
+t!:Grep id=qRaryxv6 pattern="pr_review_submit|review submit" → [running] tokens_in=0 tokens_out=26 tokens_cached=68874
+o: id=qRaryxv6 → [ok] 71-            .route("/repo/{identifier}/pulls", web::post().to(pr_create))
+t!:Read id=J2UwB6s6 file_path=/home/christopherdavid/code/openagents/crates/agentgit/src/server.rs → [running] tokens_in=0 tokens_out=114 tokens_cached=69989
+o: id=J2UwB6s6 → [ok]    772→async fn pr_review_submit(
+t!:Edit id=ZDqVA5qt file_path=/home/christopherdavid/code/openagents/crates/agentgit/src/server.rs → [running] tokens_in=0 tokens_out=1062 tokens_cached=70413
+o: id=ZDqVA5qt → [ok] The file /home/christopherdavid/code/openagents/crates/agentgit/src/server.rs has been updated. H...
+t!:Edit id=MjcxBeuo file_path=/home/christopherdavid/code/openagents/crates/agentgit/src/trajectory/verifier.rs → [running] tokens_in=0 tokens_out=1495 tokens_cached=71864
+o: id=MjcxBeuo → [ok] The file /home/christopherdavid/code/openagents/crates/agentgit/src/trajectory/verifier.rs has be...
+t!:Bash id=zpEdCzG8 cmd="cargo test -p agentgit trajectory::verifier 2>&..." → [running] tokens_in=0 tokens_out=93 tokens_cached=73815
+o: id=zpEdCzG8 → [ok]    Compiling breez-sdk-common v0.1.0 (/home/christopherdavid/code/spark-sdk/crates/breez-sdk/common)
+t!:Bash id=APZnW8NE cmd="cargo test -p agentgit trajectory::verifier 2>&..." → [running] tokens_in=0 tokens_out=25 tokens_cached=76860
+o: id=APZnW8NE → [ok]      Running unittests src/main.rs (target/debug/deps/agentgit-c119680d9804d8db)
+t!:Bash id=PzEgNDFZ cmd="cargo test -p agentgit --lib trajectory 2>&1 | ..." → [running] tokens_in=0 tokens_out=93 tokens_cached=77722
+o: id=PzEgNDFZ → [ok]     Finished `test` profile [optimized + debuginfo] target(s) in 0.18s
+t!:Bash id=xKJmdgEs cmd="cargo build --bin openagents 2>&1 | head -50" → [running] tokens_in=0 tokens_out=88 tokens_cached=78329
+o: id=xKJmdgEs → [ok]    Compiling breez-sdk-common v0.1.0 (/home/christopherdavid/code/spark-sdk/crates/breez-sdk/common)
+t!:Bash id=kVvxhmt3 cmd="git add -A && git commit -m "$(cat <<'EOF'" → [running] tokens_in=0 tokens_out=24 tokens_cached=78795
