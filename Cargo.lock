@@ -868,6 +868,7 @@ dependencies = [
  "async-trait",
  "autopilot",
  "chrono",
+ "dirs 6.0.0",
  "futures",
  "maud 0.26.0",
  "rusqlite",
@@ -881,6 +882,7 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "uuid",
+ "which 7.0.3",
  "wry 0.47.2",
 ]
 

@@ -19,6 +19,8 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
         .service(add_permission_rule)
         .service(update_permission_rule)
         .service(trigger_apm_update)
+        .service(select_agent)
+        .service(get_agent_preferences)
         // Parallel agents routes
         .service(parallel::parallel_view)
         .service(parallel::start_agents)
@@ -364,4 +366,50 @@ async fn trigger_apm_update(state: web::Data<AppState>) -> impl Responder {
             "error": format!("Failed to load APM data: {}", e)
         })),
     }
+}
+
+/// Request body for selecting an agent
+#[derive(Deserialize)]
+struct SelectAgentRequest {
+    agent: String,
+    #[serde(default)]
+    model: Option<String>,
+}
+
+/// Select AI agent endpoint
+#[post("/api/agent/select")]
+async fn select_agent(body: web::Json<SelectAgentRequest>) -> impl Responder {
+    use crate::views::components::{Agent, AgentPreferences};
+
+    // Parse agent
+    let agent = match body.agent.parse::<Agent>() {
+        Ok(a) => a,
+        Err(e) => {
+            return HttpResponse::BadRequest().json(serde_json::json!({
+                "error": format!("Invalid agent: {}", e)
+            }));
+        }
+    };
+
+    // Create and save preferences
+    let preferences = AgentPreferences::new(agent, body.model.clone());
+    match preferences.save() {
+        Ok(_) => HttpResponse::Ok().json(serde_json::json!({
+            "success": true,
+            "agent": agent.to_string(),
+            "model": body.model
+        })),
+        Err(e) => HttpResponse::InternalServerError().json(serde_json::json!({
+            "error": format!("Failed to save preferences: {}", e)
+        })),
+    }
+}
+
+/// Get current agent preferences
+#[get("/api/agent/preferences")]
+async fn get_agent_preferences() -> impl Responder {
+    use crate::views::components::AgentPreferences;
+
+    let preferences = AgentPreferences::load();
+    HttpResponse::Ok().json(preferences)
 }

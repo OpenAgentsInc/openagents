@@ -49,6 +49,8 @@ rusqlite = { version = "0.32", features = ["bundled"] }
 uuid = { version = "1", features = ["v4", "serde"] }
 async-trait = "0.1"
 autopilot = { version = "0.1.0", path = "../autopilot" }
+which = "7"
+dirs = "6"
 
 [dev-dependencies]
 tempfile.workspace = true

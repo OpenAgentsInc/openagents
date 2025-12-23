@@ -252,8 +252,14 @@ pub fn dashboard_with_data(
     recent_sessions: Vec<crate::sessions::SessionInfo>,
     stats: crate::sessions::DashboardStats,
 ) -> Markup {
+    use crate::views::components::{agent_selector, AgentPreferences};
+    let preferences = AgentPreferences::load();
+
     html! {
         div class="container" {
+            // Agent Selector
+            (agent_selector(preferences.agent))
+
             // Quick Stats
             div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 2rem;" {
                 div class="card" style="text-align: center;" {
