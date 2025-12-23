@@ -7,6 +7,7 @@ use serde_json::json;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::{mpsc, Mutex};
+use tokio::task::JoinHandle;
 use tracing::{debug, error, info};
 
 use crate::nostr::cache::EventCache;
@@ -40,6 +41,8 @@ pub struct NostrClient {
     broadcaster: Arc<WsBroadcaster>,
     cache: Arc<Mutex<EventCache>>,
     retry_config: RetryConfig,
+    /// Event handler task handle for graceful shutdown
+    event_handler: Mutex<Option<JoinHandle<()>>>,
 }
 
 impl NostrClient {
@@ -60,6 +63,7 @@ impl NostrClient {
             broadcaster,
             cache,
             retry_config: RetryConfig::default(),
+            event_handler: Mutex::new(None),
         })
     }
 
@@ -84,6 +88,7 @@ impl NostrClient {
             broadcaster,
             cache,
             retry_config,
+            event_handler: Mutex::new(None),
         })
     }
 
@@ -142,10 +147,10 @@ impl NostrClient {
 
         info!("Successfully subscribed to git events");
 
-        // Spawn task to handle incoming events
+        // Spawn task to handle incoming events and store the handle
         let broadcaster = Arc::clone(&self.broadcaster);
         let cache = Arc::clone(&self.cache);
-        tokio::spawn(async move {
+        let handle = tokio::spawn(async move {
             while let Some(event) = event_rx.recv().await {
                 debug!("Received event: kind={} id={}", event.kind, event.id);
 
@@ -173,6 +178,9 @@ impl NostrClient {
                 }
             }
         });
+
+        // Store the task handle
+        *self.event_handler.lock().await = Some(handle);
 
         Ok(())
     }
@@ -209,6 +217,15 @@ impl NostrClient {
         info!("Disconnecting from relays...");
         self.pool.disconnect_all().await?;
         Ok(())
+    }
+
+    /// Shutdown the event handler task gracefully
+    #[allow(dead_code)]
+    pub async fn shutdown(&self) {
+        if let Some(handle) = self.event_handler.lock().await.take() {
+            handle.abort();
+            let _ = handle.await;
+        }
     }
 
     /// Get cached repositories (useful for offline viewing)
