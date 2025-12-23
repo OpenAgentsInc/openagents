@@ -139,9 +139,9 @@ async fn run_daemon(config: DaemonConfig) -> Result<()> {
     // Create supervisor
     let supervisor = Arc::new(Mutex::new(WorkerSupervisor::new(config.clone())));
 
-    // Setup signal handlers
+    // Setup signal handlers and store the task handle
     let shutdown_tx_signal = shutdown_tx.clone();
-    tokio::spawn(async move {
+    let signal_handle = tokio::spawn(async move {
         let mut sigterm = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
             .expect("Failed to create SIGTERM handler");
         let mut sigint = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::interrupt())
@@ -159,11 +159,11 @@ async fn run_daemon(config: DaemonConfig) -> Result<()> {
         let _ = shutdown_tx_signal.send(()).await;
     });
 
-    // Start control socket server
+    // Start control socket server and store the task handle
     let control_server = ControlServer::new(&config.socket_path);
     let control_supervisor = supervisor.clone();
     let control_shutdown_tx = shutdown_tx.clone();
-    tokio::spawn(async move {
+    let control_handle = tokio::spawn(async move {
         if let Err(e) = control_server.run(control_supervisor, control_shutdown_tx).await {
             eprintln!("Control server error: {}", e);
         }
@@ -176,6 +176,13 @@ async fn run_daemon(config: DaemonConfig) -> Result<()> {
             eprintln!("Supervisor error: {}", e);
         }
     }
+
+    // Await background tasks to ensure clean shutdown
+    signal_handle.abort();
+    let _ = signal_handle.await;
+
+    control_handle.abort();
+    let _ = control_handle.await;
 
     // Cleanup
     let _ = std::fs::remove_file(&config.pid_file);
