@@ -13,6 +13,7 @@ use tempfile::TempDir;
 /// - Temporary database
 /// - HTTP client for testing routes
 /// - Clean state per test
+#[allow(clippy::arc_with_non_send_sync)]
 pub struct TestApp {
     /// Temporary directory (cleaned up on drop)
     _temp_dir: TempDir,
@@ -37,6 +38,7 @@ impl TestApp {
         // Initialize schema would go here
         // init_schema(&db).expect("Failed to init schema");
 
+        #[allow(clippy::arc_with_non_send_sync)]
         Self {
             _temp_dir: temp_dir,
             db: Arc::new(db),
