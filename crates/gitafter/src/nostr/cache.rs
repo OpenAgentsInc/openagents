@@ -102,6 +102,44 @@ impl EventCache {
             CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_pubkey);
             CREATE INDEX IF NOT EXISTS idx_notifications_read ON notifications(read);
             CREATE INDEX IF NOT EXISTS idx_notifications_created ON notifications(created_at);
+
+            -- FTS5 full-text search index for event content
+            CREATE VIRTUAL TABLE IF NOT EXISTS events_fts USING fts5(
+                id UNINDEXED,
+                content,
+                content='events',
+                content_rowid='rowid'
+            );
+
+            -- Triggers to keep FTS5 index in sync
+            CREATE TRIGGER IF NOT EXISTS events_fts_insert AFTER INSERT ON events BEGIN
+                INSERT INTO events_fts(rowid, id, content)
+                VALUES (new.rowid, new.id, new.content);
+            END;
+
+            CREATE TRIGGER IF NOT EXISTS events_fts_delete AFTER DELETE ON events BEGIN
+                DELETE FROM events_fts WHERE rowid = old.rowid;
+            END;
+
+            CREATE TRIGGER IF NOT EXISTS events_fts_update AFTER UPDATE ON events BEGIN
+                UPDATE events_fts SET content = new.content WHERE rowid = new.rowid;
+            END;
+
+            -- Tag value indexes for fast filtering
+            CREATE TABLE IF NOT EXISTS event_tags (
+                event_id TEXT NOT NULL,
+                tag_name TEXT NOT NULL,
+                tag_value TEXT NOT NULL,
+                FOREIGN KEY (event_id) REFERENCES events(id),
+                PRIMARY KEY (event_id, tag_name, tag_value)
+            ) WITHOUT ROWID;
+
+            CREATE INDEX IF NOT EXISTS idx_event_tags_name_value ON event_tags(tag_name, tag_value);
+            CREATE INDEX IF NOT EXISTS idx_event_tags_value ON event_tags(tag_value);
+
+            -- Common query indexes
+            CREATE INDEX IF NOT EXISTS idx_events_kind_created ON events(kind, created_at DESC);
+            CREATE INDEX IF NOT EXISTS idx_events_kind_pubkey ON events(kind, pubkey);
             "#,
         )
         .context("Failed to initialize database schema")?;
@@ -138,6 +176,9 @@ impl EventCache {
         )
         .context("Failed to insert event")?;
 
+        // Index important tags for fast filtering
+        self.index_event_tags(event)?;
+
         // Insert into specialized tables based on event kind
         match event.kind {
             30617 => self.insert_repository(event)?,
@@ -148,6 +189,34 @@ impl EventCache {
         }
 
         debug!("Cached event: id={} kind={}", event.id, event.kind);
+        Ok(())
+    }
+
+    /// Index event tags for fast filtering
+    fn index_event_tags(&self, event: &Event) -> Result<()> {
+        // Delete existing tag indexes for this event
+        self.conn.execute(
+            "DELETE FROM event_tags WHERE event_id = ?1",
+            params![event.id],
+        )?;
+
+        // Index important tag types (a, e, p, d)
+        for tag in &event.tags {
+            if tag.len() >= 2 {
+                let tag_name = &tag[0];
+                if matches!(tag_name.as_str(), "a" | "e" | "p" | "d" | "t") {
+                    let tag_value = &tag[1];
+                    self.conn.execute(
+                        r#"
+                        INSERT OR IGNORE INTO event_tags (event_id, tag_name, tag_value)
+                        VALUES (?1, ?2, ?3)
+                        "#,
+                        params![event.id, tag_name, tag_value],
+                    )?;
+                }
+            }
+        }
+
         Ok(())
     }
 
@@ -1459,6 +1528,189 @@ impl EventCache {
             // No dependency, mergeable
             Ok(true)
         }
+    }
+
+    /// Full-text search using FTS5
+    pub fn search_content(&self, query: &str, limit: usize) -> Result<Vec<Event>> {
+        let mut stmt = self.conn.prepare(
+            r#"
+            SELECT e.id, e.kind, e.pubkey, e.created_at, e.content, e.tags, e.sig
+            FROM events e
+            JOIN events_fts ON events_fts.id = e.id
+            WHERE events_fts MATCH ?1
+            ORDER BY e.created_at DESC
+            LIMIT ?2
+            "#,
+        )?;
+
+        let events = stmt.query_map(params![query, limit as i64], |row| {
+            let id: String = row.get(0)?;
+            let kind: u16 = row.get(1)?;
+            let pubkey: String = row.get(2)?;
+            let created_at: i64 = row.get(3)?;
+            let content: String = row.get(4)?;
+            let tags_json: String = row.get(5)?;
+            let sig: String = row.get(6)?;
+
+            let tags: Vec<Vec<String>> = serde_json::from_str(&tags_json).unwrap_or_default();
+
+            Ok(Event {
+                id,
+                kind,
+                pubkey,
+                created_at: created_at as u64,
+                content,
+                tags,
+                sig,
+            })
+        })?.collect::<Result<Vec<_>, _>>()?;
+
+        Ok(events)
+    }
+
+    /// Search by kind and tag value (fast indexed lookup)
+    pub fn search_by_kind_and_tag(
+        &self,
+        kind: u16,
+        tag_name: &str,
+        tag_value: &str,
+        limit: usize,
+    ) -> Result<Vec<Event>> {
+        let mut stmt = self.conn.prepare(
+            r#"
+            SELECT DISTINCT e.id, e.kind, e.pubkey, e.created_at, e.content, e.tags, e.sig
+            FROM events e
+            JOIN event_tags et ON et.event_id = e.id
+            WHERE e.kind = ?1 AND et.tag_name = ?2 AND et.tag_value = ?3
+            ORDER BY e.created_at DESC
+            LIMIT ?4
+            "#,
+        )?;
+
+        let events = stmt.query_map(params![kind, tag_name, tag_value, limit as i64], |row| {
+            let id: String = row.get(0)?;
+            let kind: u16 = row.get(1)?;
+            let pubkey: String = row.get(2)?;
+            let created_at: i64 = row.get(3)?;
+            let content: String = row.get(4)?;
+            let tags_json: String = row.get(5)?;
+            let sig: String = row.get(6)?;
+
+            let tags: Vec<Vec<String>> = serde_json::from_str(&tags_json).unwrap_or_default();
+
+            Ok(Event {
+                id,
+                kind,
+                pubkey,
+                created_at: created_at as u64,
+                content,
+                tags,
+                sig,
+            })
+        })?.collect::<Result<Vec<_>, _>>()?;
+
+        Ok(events)
+    }
+
+    /// Complex query: repo + kind + optional author filter
+    pub fn search_repo_events(
+        &self,
+        repo_address: &str,
+        kind: Option<u16>,
+        author_pubkey: Option<&str>,
+        limit: usize,
+    ) -> Result<Vec<Event>> {
+        // Build query based on provided filters
+        match (kind, author_pubkey) {
+            (Some(k), Some(author)) => {
+                let mut stmt = self.conn.prepare(
+                    r#"
+                    SELECT DISTINCT e.id, e.kind, e.pubkey, e.created_at, e.content, e.tags, e.sig
+                    FROM events e
+                    JOIN event_tags et ON et.event_id = e.id
+                    WHERE et.tag_name = 'a' AND et.tag_value = ?1
+                      AND e.kind = ?2 AND e.pubkey = ?3
+                    ORDER BY e.created_at DESC LIMIT ?4
+                    "#,
+                )?;
+
+                let events = stmt.query_map(params![repo_address, k, author, limit as i64], |row| {
+                    self.parse_event_row(row)
+                })?.collect::<Result<Vec<_>, _>>()?;
+                Ok(events)
+            }
+            (Some(k), None) => {
+                let mut stmt = self.conn.prepare(
+                    r#"
+                    SELECT DISTINCT e.id, e.kind, e.pubkey, e.created_at, e.content, e.tags, e.sig
+                    FROM events e
+                    JOIN event_tags et ON et.event_id = e.id
+                    WHERE et.tag_name = 'a' AND et.tag_value = ?1 AND e.kind = ?2
+                    ORDER BY e.created_at DESC LIMIT ?3
+                    "#,
+                )?;
+
+                let events = stmt.query_map(params![repo_address, k, limit as i64], |row| {
+                    self.parse_event_row(row)
+                })?.collect::<Result<Vec<_>, _>>()?;
+                Ok(events)
+            }
+            (None, Some(author)) => {
+                let mut stmt = self.conn.prepare(
+                    r#"
+                    SELECT DISTINCT e.id, e.kind, e.pubkey, e.created_at, e.content, e.tags, e.sig
+                    FROM events e
+                    JOIN event_tags et ON et.event_id = e.id
+                    WHERE et.tag_name = 'a' AND et.tag_value = ?1 AND e.pubkey = ?2
+                    ORDER BY e.created_at DESC LIMIT ?3
+                    "#,
+                )?;
+
+                let events = stmt.query_map(params![repo_address, author, limit as i64], |row| {
+                    self.parse_event_row(row)
+                })?.collect::<Result<Vec<_>, _>>()?;
+                Ok(events)
+            }
+            (None, None) => {
+                let mut stmt = self.conn.prepare(
+                    r#"
+                    SELECT DISTINCT e.id, e.kind, e.pubkey, e.created_at, e.content, e.tags, e.sig
+                    FROM events e
+                    JOIN event_tags et ON et.event_id = e.id
+                    WHERE et.tag_name = 'a' AND et.tag_value = ?1
+                    ORDER BY e.created_at DESC LIMIT ?2
+                    "#,
+                )?;
+
+                let events = stmt.query_map(params![repo_address, limit as i64], |row| {
+                    self.parse_event_row(row)
+                })?.collect::<Result<Vec<_>, _>>()?;
+                Ok(events)
+            }
+        }
+    }
+
+    /// Helper to parse event from row
+    fn parse_event_row(&self, row: &rusqlite::Row) -> rusqlite::Result<Event> {
+        let id: String = row.get(0)?;
+        let kind: u16 = row.get(1)?;
+        let pubkey: String = row.get(2)?;
+        let created_at: i64 = row.get(3)?;
+        let content: String = row.get(4)?;
+        let tags_json: String = row.get(5)?;
+        let sig: String = row.get(6)?;
+
+        let tags: Vec<Vec<String>> = serde_json::from_str(&tags_json).unwrap_or_default();
+
+        Ok(Event {
+            id,
+            kind,
+            pubkey,
+            created_at: created_at as u64,
+            content,
+            tags,
+            sig,
+        })
     }
 }
 
