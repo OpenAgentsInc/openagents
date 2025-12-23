@@ -80,17 +80,16 @@ impl DaemonStatus {
     }
 
     /// Render the component for positioning (call this for the full positioned version).
-    /// Includes HTMX polling to refresh status.
+    /// Updates are pushed via WebSocket OOB swaps to #daemon-status-content.
     pub fn build_positioned(self) -> Markup {
         html! {
             div
                 id="daemon-status"
                 style="position: fixed; bottom: 1rem; left: 1rem;"
-                hx-get="/api/daemon/status"
-                hx-trigger="load, every 3s"
-                hx-swap="innerHTML"
             {
-                (self.build())
+                div id="daemon-status-content" {
+                    (self.build())
+                }
             }
         }
     }
