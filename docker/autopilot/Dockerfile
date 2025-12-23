@@ -58,4 +58,5 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=10s \
     CMD pgrep -x autopilot || exit 1
 
 # Run autopilot in full-auto mode with issues
-ENTRYPOINT ["autopilot", "run", "--full-auto", "--with-issues"]
+# The prompt is required but in full-auto mode it just processes issues
+ENTRYPOINT ["autopilot", "run", "--full-auto", "--with-issues", "Process issues from database"]

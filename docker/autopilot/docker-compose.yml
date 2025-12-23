@@ -47,8 +47,8 @@ services:
       - ../../autopilot.db:/shared/autopilot.db:rw
       # Shared log output
       - ../../docs/logs:/workspace/docs/logs:rw
-      # Claude credentials (read-only)
-      - ~/.claude:/home/agent/.claude:ro
+      # Claude credentials (read-write for debug files)
+      - ~/.claude:/home/agent/.claude:rw
       # Git credentials (read-only)
       - ~/.gitconfig:/home/agent/.gitconfig:ro
       - ~/.ssh:/home/agent/.ssh:ro
@@ -65,7 +65,7 @@ services:
       - ../../.worktrees/agent-002:/workspace:rw
       - ../../autopilot.db:/shared/autopilot.db:rw
       - ../../docs/logs:/workspace/docs/logs:rw
-      - ~/.claude:/home/agent/.claude:ro
+      - ~/.claude:/home/agent/.claude:rw
       - ~/.gitconfig:/home/agent/.gitconfig:ro
       - ~/.ssh:/home/agent/.ssh:ro
     environment:
@@ -81,7 +81,7 @@ services:
       - ../../.worktrees/agent-003:/workspace:rw
       - ../../autopilot.db:/shared/autopilot.db:rw
       - ../../docs/logs:/workspace/docs/logs:rw
-      - ~/.claude:/home/agent/.claude:ro
+      - ~/.claude:/home/agent/.claude:rw
       - ~/.gitconfig:/home/agent/.gitconfig:ro
       - ~/.ssh:/home/agent/.ssh:ro
     environment:
@@ -99,7 +99,7 @@ services:
       - ../../.worktrees/agent-004:/workspace:rw
       - ../../autopilot.db:/shared/autopilot.db:rw
       - ../../docs/logs:/workspace/docs/logs:rw
-      - ~/.claude:/home/agent/.claude:ro
+      - ~/.claude:/home/agent/.claude:rw
       - ~/.gitconfig:/home/agent/.gitconfig:ro
       - ~/.ssh:/home/agent/.ssh:ro
     environment:
@@ -117,7 +117,7 @@ services:
       - ../../.worktrees/agent-005:/workspace:rw
       - ../../autopilot.db:/shared/autopilot.db:rw
       - ../../docs/logs:/workspace/docs/logs:rw
-      - ~/.claude:/home/agent/.claude:ro
+      - ~/.claude:/home/agent/.claude:rw
       - ~/.gitconfig:/home/agent/.gitconfig:ro
       - ~/.ssh:/home/agent/.ssh:ro
     environment:
@@ -135,7 +135,7 @@ services:
       - ../../.worktrees/agent-006:/workspace:rw
       - ../../autopilot.db:/shared/autopilot.db:rw
       - ../../docs/logs:/workspace/docs/logs:rw
-      - ~/.claude:/home/agent/.claude:ro
+      - ~/.claude:/home/agent/.claude:rw
       - ~/.gitconfig:/home/agent/.gitconfig:ro
       - ~/.ssh:/home/agent/.ssh:ro
     environment:
@@ -152,7 +152,7 @@ services:
       - ../../.worktrees/agent-007:/workspace:rw
       - ../../autopilot.db:/shared/autopilot.db:rw
       - ../../docs/logs:/workspace/docs/logs:rw
-      - ~/.claude:/home/agent/.claude:ro
+      - ~/.claude:/home/agent/.claude:rw
       - ~/.gitconfig:/home/agent/.gitconfig:ro
       - ~/.ssh:/home/agent/.ssh:ro
     environment:
@@ -169,7 +169,7 @@ services:
       - ../../.worktrees/agent-008:/workspace:rw
       - ../../autopilot.db:/shared/autopilot.db:rw
       - ../../docs/logs:/workspace/docs/logs:rw
-      - ~/.claude:/home/agent/.claude:ro
+      - ~/.claude:/home/agent/.claude:rw
       - ~/.gitconfig:/home/agent/.gitconfig:ro
       - ~/.ssh:/home/agent/.ssh:ro
     environment:
@@ -186,7 +186,7 @@ services:
       - ../../.worktrees/agent-009:/workspace:rw
       - ../../autopilot.db:/shared/autopilot.db:rw
       - ../../docs/logs:/workspace/docs/logs:rw
-      - ~/.claude:/home/agent/.claude:ro
+      - ~/.claude:/home/agent/.claude:rw
       - ~/.gitconfig:/home/agent/.gitconfig:ro
       - ~/.ssh:/home/agent/.ssh:ro
     environment:
@@ -203,7 +203,7 @@ services:
       - ../../.worktrees/agent-010:/workspace:rw
       - ../../autopilot.db:/shared/autopilot.db:rw
       - ../../docs/logs:/workspace/docs/logs:rw
-      - ~/.claude:/home/agent/.claude:ro
+      - ~/.claude:/home/agent/.claude:rw
       - ~/.gitconfig:/home/agent/.gitconfig:ro
       - ~/.ssh:/home/agent/.ssh:ro
     environment:
