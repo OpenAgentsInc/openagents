@@ -159,9 +159,9 @@ pub fn cleanup_logs(config: &LogsConfig, dry_run: bool) -> Result<Vec<PathBuf>> 
         return Ok(deleted);
     }
 
-    // Get sessions linked to open issues if db available
-    let protected_sessions = if let Some(db_path) = &config.db_path {
-        get_protected_sessions(db_path)?
+    // Get date directories with open issues if db available
+    let protected_dates = if let Some(db_path) = &config.db_path {
+        get_protected_dates(db_path)?
     } else {
         Vec::new()
     };
@@ -182,8 +182,8 @@ pub fn cleanup_logs(config: &LogsConfig, dry_run: bool) -> Result<Vec<PathBuf>> 
                 continue;
             }
 
-            // Check if file belongs to a protected session
-            if is_protected_session(path, &protected_sessions) {
+            // Check if file belongs to a protected date directory
+            if is_protected_date(path, &protected_dates) {
                 continue;
             }
 
@@ -207,8 +207,8 @@ pub fn cleanup_logs(config: &LogsConfig, dry_run: bool) -> Result<Vec<PathBuf>> 
     Ok(deleted)
 }
 
-/// Get list of session IDs that are linked to open issues
-fn get_protected_sessions(db_path: &Path) -> Result<Vec<String>> {
+/// Get list of date directories that have open issues
+fn get_protected_dates(db_path: &Path) -> Result<Vec<String>> {
     if !db_path.exists() {
         return Ok(Vec::new());
     }
@@ -216,35 +216,35 @@ fn get_protected_sessions(db_path: &Path) -> Result<Vec<String>> {
     let conn = rusqlite::Connection::open(db_path)
         .context("Failed to open database")?;
 
-    // Get session_ids from sessions table where there's a linked open issue
+    // Get unique dates (YYYYMMDD) from created_at timestamps of open issues
     let mut stmt = conn.prepare(
-        "SELECT DISTINCT s.id FROM sessions s
-         JOIN issues i ON i.number IN (
-             SELECT CAST(value AS INTEGER) FROM json_each(s.issues_completed)
-         )
-         WHERE i.status != 'done'"
+        "SELECT DISTINCT substr(created_at, 1, 10) as date
+         FROM issues
+         WHERE status IN ('open', 'in_progress', 'blocked')"
     )?;
 
-    let sessions: Result<Vec<String>, _> = stmt
-        .query_map([], |row| row.get(0))?
+    let dates: Result<Vec<String>, _> = stmt
+        .query_map([], |row| {
+            let date_str: String = row.get(0)?;
+            // Convert YYYY-MM-DD to YYYYMMDD
+            Ok(date_str.replace("-", ""))
+        })?
         .collect();
 
-    Ok(sessions?)
+    Ok(dates?)
 }
 
-/// Check if a log file belongs to a protected session
-fn is_protected_session(path: &Path, protected: &[String]) -> bool {
-    if protected.is_empty() {
+/// Check if a log file belongs to a protected date directory
+fn is_protected_date(path: &Path, protected_dates: &[String]) -> bool {
+    if protected_dates.is_empty() {
         return false;
     }
 
-    // Extract potential session ID from filename
-    // Filenames typically: HHMMSS-slug.rlog.gz or HHMMSS-slug.json.gz
-    if let Some(filename) = path.file_name().and_then(|f| f.to_str()) {
-        for session_id in protected {
-            if filename.contains(session_id) {
-                return true;
-            }
+    // Check if the parent directory name matches any protected date
+    // Path structure: docs/logs/YYYYMMDD/HHMMSS-slug.ext
+    if let Some(parent) = path.parent() {
+        if let Some(date_dir) = parent.file_name().and_then(|d| d.to_str()) {
+            return protected_dates.iter().any(|d| date_dir == d);
         }
     }
 
@@ -291,5 +291,40 @@ fn format_bytes(bytes: u64) -> String {
         format!("{} {}", bytes, UNITS[0])
     } else {
         format!("{:.2} {}", size, UNITS[unit_idx])
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    #[test]
+    fn test_is_protected_date() {
+        let protected = vec!["20251223".to_string(), "20251222".to_string()];
+
+        // Should protect files in protected date directories
+        let path = PathBuf::from("docs/logs/20251223/033937-call-issue-ready-now-to.rlog.gz");
+        assert!(is_protected_date(&path, &protected));
+
+        let path = PathBuf::from("docs/logs/20251222/120000-some-other-log.jsonl.gz");
+        assert!(is_protected_date(&path, &protected));
+
+        // Should not protect files in unprotected date directories
+        let path = PathBuf::from("docs/logs/20251220/120000-old-log.rlog.gz");
+        assert!(!is_protected_date(&path, &protected));
+
+        // Empty protected list should not protect anything
+        let path = PathBuf::from("docs/logs/20251223/033937-call-issue-ready-now-to.rlog.gz");
+        assert!(!is_protected_date(&path, &[]));
+    }
+
+    #[test]
+    fn test_format_bytes() {
+        assert_eq!(format_bytes(512), "512 B");
+        assert_eq!(format_bytes(1024), "1.00 KB");
+        assert_eq!(format_bytes(1024 * 1024), "1.00 MB");
+        assert_eq!(format_bytes(1536 * 1024), "1.50 MB");
+        assert_eq!(format_bytes(1024 * 1024 * 1024), "1.00 GB");
     }
 }
