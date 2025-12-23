@@ -26,6 +26,7 @@ pub mod planmode;
 pub mod profiling;
 pub mod redact;
 pub mod replay;
+pub mod reports;
 pub mod rlog;
 pub mod state;
 pub mod timestamp;
