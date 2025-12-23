@@ -9,6 +9,7 @@ use rusqlite::{params, Connection, Result};
 use tracing::{debug, error, info};
 
 /// Current schema version for APM tables
+#[allow(dead_code)]
 const APM_SCHEMA_VERSION: i32 = 1;
 
 /// APM event types
