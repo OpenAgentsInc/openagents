@@ -68,6 +68,7 @@ pub async fn start_server(
             .route("/repo/{identifier}/patches/{patch_id}/diff", web::get().to(patch_diff_view))
             .route("/repo/{identifier}/pulls", web::get().to(repository_pulls))
             .route("/repo/{identifier}/pulls/new", web::get().to(pr_create_form))
+            .route("/repo/{identifier}/pulls/available-deps", web::get().to(pr_available_deps))
             .route("/repo/{identifier}/pulls", web::post().to(pr_create))
             .route("/repo/{identifier}/pulls/{pr_id}", web::get().to(pull_request_detail))
             .route("/repo/{identifier}/pulls/{pr_id}/diff", web::get().to(pr_diff_view))
@@ -2037,6 +2038,110 @@ async fn search(
     HttpResponse::Ok()
         .content_type("text/html; charset=utf-8")
         .body(search_results_page(q, &repositories, &issues).into_string())
+}
+
+/// API endpoint to get available PRs for dependency selection
+async fn pr_available_deps(
+    state: web::Data<AppState>,
+    path: web::Path<String>,
+) -> HttpResponse {
+    let identifier = path.into_inner();
+
+    // Fetch repository to get pubkey
+    let repository = match state.nostr_client.get_repository_by_identifier(&identifier).await {
+        Ok(Some(repo)) => repo,
+        Ok(None) => {
+            return HttpResponse::NotFound()
+                .content_type("application/json")
+                .body(r#"{"error": "Repository not found"}"#);
+        }
+        Err(e) => {
+            tracing::error!("Failed to fetch repository: {}", e);
+            return HttpResponse::InternalServerError()
+                .content_type("application/json")
+                .body(r#"{"error": "Failed to fetch repository"}"#);
+        }
+    };
+
+    let repo_address = format!("30617:{}:{}", repository.pubkey, identifier);
+
+    // Fetch all PRs for this repository
+    match state.nostr_client.get_pull_requests_by_repo(&repo_address, 1000).await {
+        Ok(prs) => {
+            // Filter to only unmerged, non-closed PRs
+            let mut available: Vec<serde_json::Value> = Vec::new();
+
+            for pr in prs {
+                // Get PR status
+                match state.nostr_client.get_pr_status(&pr.id).await {
+                    Ok(status) => {
+                        // Only include Open (1630) and Draft (1633) PRs
+                        if status == 1630 || status == 1633 {
+                            let subject = pr.tags.iter()
+                                .find(|tag| tag.len() >= 2 && tag[0] == "subject")
+                                .and_then(|tag| tag.get(1))
+                                .map(|s| s.to_string())
+                                .unwrap_or_else(|| "Untitled PR".to_string());
+
+                            let layer_info = pr.tags.iter()
+                                .find(|tag| tag.len() >= 3 && tag[0] == "layer")
+                                .and_then(|tag| {
+                                    let current = tag.get(1)?;
+                                    let total = tag.get(2)?;
+                                    Some(format!("Layer {} of {}", current, total))
+                                });
+
+                            available.push(serde_json::json!({
+                                "id": pr.id,
+                                "subject": subject,
+                                "status": if status == 1630 { "Open" } else { "Draft" },
+                                "layer": layer_info
+                            }));
+                        }
+                    }
+                    Err(e) => {
+                        tracing::warn!("Failed to get status for PR {}: {}", pr.id, e);
+                    }
+                }
+            }
+
+            // Return HTML options for HTMX
+            let mut html = String::from(r#"<option value="">-- No dependency (base layer) --</option>"#);
+
+            if available.is_empty() {
+                html.push_str(r#"<option value="" disabled>No open PRs available</option>"#);
+            } else {
+                for pr in available {
+                    let id = pr["id"].as_str().unwrap_or("");
+                    let subject = pr["subject"].as_str().unwrap_or("Untitled PR");
+                    let status = pr["status"].as_str().unwrap_or("");
+                    let layer = pr["layer"].as_str();
+
+                    let display_text = if let Some(layer_text) = layer {
+                        format!("{} - {} ({})", subject, layer_text, status)
+                    } else {
+                        format!("{} ({})", subject, status)
+                    };
+
+                    html.push_str(&format!(
+                        r#"<option value="{}">{}</option>"#,
+                        id,
+                        html_escape::encode_text(&display_text)
+                    ));
+                }
+            }
+
+            HttpResponse::Ok()
+                .content_type("text/html; charset=utf-8")
+                .body(html)
+        }
+        Err(e) => {
+            tracing::error!("Failed to fetch PRs: {}", e);
+            HttpResponse::InternalServerError()
+                .content_type("application/json")
+                .body(r#"{"error": "Failed to fetch pull requests"}"#)
+        }
+    }
 }
 
 /// Pull request creation form

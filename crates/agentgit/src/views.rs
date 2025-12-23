@@ -2848,9 +2848,22 @@ pub fn pr_create_form_page(repository: &Event, identifier: &str) -> Markup {
                                     summary style="cursor: pointer; font-weight: 600; margin-bottom: 0.5rem;" { "⚡ Stacked Diff Options (Advanced)" }
 
                                     div.form-group {
-                                        label.form-label for="depends_on" { "Depends On (Event ID)" }
-                                        input class="form-input" id="depends_on" type="text" name="depends_on" placeholder="Event ID of the PR this depends on";
-                                        p.form-help { "This PR must be merged after the dependency" }
+                                        label.form-label for="depends_on" { "Depends On" }
+                                        select
+                                            class="form-input"
+                                            id="depends_on"
+                                            name="depends_on"
+                                            hx-get={"/repo/" (identifier) "/pulls/available-deps"}
+                                            hx-trigger="load"
+                                            hx-swap="innerHTML"
+                                        {
+                                            option value="" { "-- Loading available PRs... --" }
+                                        }
+                                        p.form-help {
+                                            "Select a PR this change depends on. Only open/draft PRs shown. The dependency must be merged first."
+                                            br;
+                                            strong { "⚠️ Creating circular dependencies will fail validation." }
+                                        }
                                     }
 
                                     div.form-group {
