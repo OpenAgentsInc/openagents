@@ -840,7 +840,7 @@ async fn pr_review_submit(
     form: web::Form<std::collections::HashMap<String, String>>,
     state: web::Data<AppState>,
 ) -> HttpResponse {
-    let (_identifier, _pr_id) = path.into_inner();
+    let (identifier, _pr_id) = path.into_inner();
 
     // Extract form data
     let review_type = form.get("review_type").cloned().unwrap_or_else(|| "comment".to_string());
