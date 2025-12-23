@@ -334,9 +334,25 @@ async fn get_oauth_token() -> Option<String> {
         .map(|s| s.to_string())
 }
 
+/// Cache for usage limits to prevent excessive API calls.
+/// Cached value expires after 30 seconds.
+static USAGE_CACHE: once_cell::sync::Lazy<Arc<RwLock<Option<(UsageLimits, std::time::Instant)>>>> =
+    once_cell::sync::Lazy::new(|| Arc::new(RwLock::new(None)));
+
 /// Fetch usage/quota limits from Anthropic's OAuth usage API.
 /// This endpoint returns actual usage data including extra credits.
+/// Results are cached for 30 seconds to avoid rate limits.
 pub async fn fetch_usage_limits() -> Option<UsageLimits> {
+    // Check cache first
+    {
+        let cache = USAGE_CACHE.read().await;
+        if let Some((limits, cached_at)) = cache.as_ref() {
+            if cached_at.elapsed() < std::time::Duration::from_secs(30) {
+                tracing::debug!("Returning cached usage limits (age: {:?})", cached_at.elapsed());
+                return Some(limits.clone());
+            }
+        }
+    }
     let token = match get_oauth_token().await {
         Some(t) => t,
         None => {
@@ -419,6 +435,10 @@ pub async fn fetch_usage_limits() -> Option<UsageLimits> {
 
     // Return if we got any data
     if limits.session_percent.is_some() || limits.weekly_all_percent.is_some() || limits.extra_spent.is_some() {
+        // Cache the result
+        let mut cache = USAGE_CACHE.write().await;
+        *cache = Some((limits.clone(), std::time::Instant::now()));
+        tracing::debug!("Cached fresh usage limits");
         Some(limits)
     } else {
         None
