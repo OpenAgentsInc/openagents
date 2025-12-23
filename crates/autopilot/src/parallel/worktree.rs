@@ -208,7 +208,6 @@ pub fn list_worktrees(project_root: &Path) -> Result<Vec<WorktreeInfo>> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tempfile::TempDir;
 
     #[test]
     fn test_worktree_info() {

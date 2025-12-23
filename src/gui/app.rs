@@ -29,6 +29,29 @@ pub fn run() -> Result<()> {
     // Initialize GTK (required for Wayland support)
     gtk::init().map_err(|e| anyhow::anyhow!("Failed to initialize GTK: {}", e))?;
 
+    // Suppress Gdk clipboard "Broken pipe" warnings on Wayland
+    // These occur when using navigator.clipboard.writeText() but the copy still succeeds.
+    // The warning happens when the clipboard manager closes its data connection.
+    // See: https://gitlab.gnome.org/GNOME/gtk/-/issues/5933
+    glib::log_set_handler(
+        Some("Gdk"),
+        glib::LogLevels::LEVEL_WARNING,
+        false,
+        false,
+        |_domain, level, message| {
+            // Only suppress the specific clipboard broken pipe warning
+            if level == glib::LogLevel::Warning
+                && message.contains("Error writing selection data")
+                && message.contains("Broken pipe")
+            {
+                // Silently ignore - the copy operation still succeeds
+                return;
+            }
+            // Let other Gdk warnings through to the default handler
+            glib::log_default_handler(_domain, level, Some(message));
+        },
+    );
+
     // Shared shutdown signal
     let shutdown = Arc::new(AtomicBool::new(false));
     let shutdown_clone = shutdown.clone();
