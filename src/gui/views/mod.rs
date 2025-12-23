@@ -59,7 +59,7 @@ pub async fn home(state: web::Data<AppState>) -> HttpResponse {
     let chat_pane = ChatPane::new(full_auto).build();
 
     let content = format!(
-        "{}{}{}",
+        r#"<div style="position: fixed; top: 1rem; right: 1rem; z-index: 50;">{}</div>{}{}"#,
         switch.into_string(),
         status.build_positioned().into_string(),
         chat_pane.into_string()
