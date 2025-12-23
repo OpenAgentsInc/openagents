@@ -97,34 +97,22 @@ impl PermissionStorage {
         tokio::task::spawn_blocking(move || {
             let conn = conn.lock().unwrap();
 
+            // Get all rules and check for matches
             let mut stmt = conn
-                .prepare("SELECT allowed FROM permission_rules WHERE pattern = ?1")
+                .prepare("SELECT pattern, allowed FROM permission_rules ORDER BY created_at DESC")
                 .context("Failed to prepare query")?;
 
-            let mut rows = stmt
-                .query(params![pattern.as_str()])
-                .context("Failed to query permission rule")?;
+            let rules = stmt
+                .query_map([], |row| {
+                    Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
+                })
+                .context("Failed to query permission rules")?;
 
-            if let Some(row) = rows.next().context("Failed to get row")? {
-                let allowed: i64 = row.get(0).context("Failed to get allowed column")?;
-                return Ok(Some(allowed == 1));
-            }
+            // Check each rule pattern against the input pattern
+            for rule in rules {
+                let (rule_pattern, allowed) = rule.context("Failed to read rule")?;
 
-            // Try wildcard patterns
-            // For pattern "Bash:npm", try "Bash:*"
-            if let Some((tool, _)) = pattern.split_once(':') {
-                let wildcard = format!("{}:*", tool);
-
-                let mut stmt = conn
-                    .prepare("SELECT allowed FROM permission_rules WHERE pattern = ?1")
-                    .context("Failed to prepare query")?;
-
-                let mut rows = stmt
-                    .query(params![wildcard.as_str()])
-                    .context("Failed to query permission rule")?;
-
-                if let Some(row) = rows.next().context("Failed to get row")? {
-                    let allowed: i64 = row.get(0).context("Failed to get allowed column")?;
+                if Self::matches_pattern(&rule_pattern, &pattern) {
                     return Ok(Some(allowed == 1));
                 }
             }
@@ -133,6 +121,54 @@ impl PermissionStorage {
         })
         .await
         .context("Task join error")?
+    }
+
+    /// Check if a stored pattern matches an input pattern
+    /// Supports wildcards: * matches any sequence of characters
+    /// Examples:
+    ///   "Bash:npm" matches "Bash:npm" (exact)
+    ///   "Bash:*" matches "Bash:npm" (wildcard)
+    ///   "Edit:*.rs" matches "Edit:src/main.rs" (wildcard)
+    fn matches_pattern(stored: &str, input: &str) -> bool {
+        // Exact match
+        if stored == input {
+            return true;
+        }
+
+        // No wildcards in stored pattern
+        if !stored.contains('*') {
+            return false;
+        }
+
+        // Simple glob matching
+        let pattern_parts: Vec<&str> = stored.split('*').collect();
+
+        // Pattern must start with first part (unless starts with *)
+        if !stored.starts_with('*') && !input.starts_with(pattern_parts[0]) {
+            return false;
+        }
+
+        // Pattern must end with last part (unless ends with *)
+        if !stored.ends_with('*') && !input.ends_with(pattern_parts[pattern_parts.len() - 1]) {
+            return false;
+        }
+
+        // Check all parts appear in order
+        let mut pos = 0;
+        for part in pattern_parts.iter() {
+            if part.is_empty() {
+                continue;
+            }
+
+            if let Some(found_pos) = input[pos..].find(part) {
+                pos += found_pos + part.len();
+            } else {
+                // Required part not found
+                return false;
+            }
+        }
+
+        true
     }
 
     /// Get all permission rules
@@ -258,6 +294,59 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_wildcard_file_patterns() {
+        let temp = NamedTempFile::new().unwrap();
+        let storage = PermissionStorage::new(temp.path()).unwrap();
+
+        // Save file extension wildcard rule
+        storage.save_rule("Edit:*.rs", true, true).await.unwrap();
+
+        // Should match Rust files
+        assert_eq!(storage.check_pattern("Edit:src/main.rs").await.unwrap(), Some(true));
+        assert_eq!(storage.check_pattern("Edit:lib.rs").await.unwrap(), Some(true));
+        assert_eq!(storage.check_pattern("Edit:tests/integration.rs").await.unwrap(), Some(true));
+
+        // Should not match non-Rust files
+        assert_eq!(storage.check_pattern("Edit:src/main.js").await.unwrap(), None);
+        assert_eq!(storage.check_pattern("Edit:README.md").await.unwrap(), None);
+    }
+
+    #[tokio::test]
+    async fn test_multiple_wildcards() {
+        let temp = NamedTempFile::new().unwrap();
+        let storage = PermissionStorage::new(temp.path()).unwrap();
+
+        // Pattern with multiple wildcards
+        storage.save_rule("Edit:src/*.rs", true, true).await.unwrap();
+
+        // Should match files in src directory
+        assert_eq!(storage.check_pattern("Edit:src/main.rs").await.unwrap(), Some(true));
+        assert_eq!(storage.check_pattern("Edit:src/lib.rs").await.unwrap(), Some(true));
+
+        // Should not match files outside src
+        assert_eq!(storage.check_pattern("Edit:tests/test.rs").await.unwrap(), None);
+        assert_eq!(storage.check_pattern("Edit:main.rs").await.unwrap(), None);
+    }
+
+    #[tokio::test]
+    async fn test_pattern_priority() {
+        let temp = NamedTempFile::new().unwrap();
+        let storage = PermissionStorage::new(temp.path()).unwrap();
+
+        // Add general rule first
+        storage.save_rule("Bash:*", false, true).await.unwrap();
+
+        // Add more specific rule later
+        storage.save_rule("Bash:npm", true, true).await.unwrap();
+
+        // More specific (newer) rule should take priority
+        assert_eq!(storage.check_pattern("Bash:npm").await.unwrap(), Some(true));
+
+        // General rule still applies to other commands
+        assert_eq!(storage.check_pattern("Bash:cargo").await.unwrap(), Some(false));
+    }
+
+    #[tokio::test]
     async fn test_session_rules() {
         let temp = NamedTempFile::new().unwrap();
         let storage = PermissionStorage::new(temp.path()).unwrap();
@@ -277,5 +366,36 @@ mod tests {
         let rules = storage.get_all_rules().await.unwrap();
         assert_eq!(rules.len(), 1);
         assert_eq!(rules[0].pattern, "Bash:npm");
+    }
+
+    #[test]
+    fn test_matches_pattern() {
+        // Exact matches
+        assert!(PermissionStorage::matches_pattern("Bash:npm", "Bash:npm"));
+        assert!(!PermissionStorage::matches_pattern("Bash:npm", "Bash:cargo"));
+
+        // Simple wildcards
+        assert!(PermissionStorage::matches_pattern("Bash:*", "Bash:npm"));
+        assert!(PermissionStorage::matches_pattern("Bash:*", "Bash:cargo"));
+        assert!(!PermissionStorage::matches_pattern("Bash:*", "Edit:file.rs"));
+
+        // File extension wildcards
+        assert!(PermissionStorage::matches_pattern("Edit:*.rs", "Edit:main.rs"));
+        assert!(PermissionStorage::matches_pattern("Edit:*.rs", "Edit:src/lib.rs"));
+        assert!(!PermissionStorage::matches_pattern("Edit:*.rs", "Edit:main.js"));
+
+        // Path wildcards
+        assert!(PermissionStorage::matches_pattern("Edit:src/*.rs", "Edit:src/main.rs"));
+        assert!(!PermissionStorage::matches_pattern("Edit:src/*.rs", "Edit:tests/test.rs"));
+
+        // Wildcard at start
+        assert!(PermissionStorage::matches_pattern("*.rs", "main.rs"));
+        assert!(PermissionStorage::matches_pattern("*.rs", "src/lib.rs"));
+        assert!(!PermissionStorage::matches_pattern("*.rs", "main.js"));
+
+        // Multiple wildcards
+        assert!(PermissionStorage::matches_pattern("*:*.rs", "Edit:main.rs"));
+        assert!(PermissionStorage::matches_pattern("*:*.rs", "Read:lib.rs"));
+        assert!(!PermissionStorage::matches_pattern("*:*.rs", "Edit:main.js"));
     }
 }
