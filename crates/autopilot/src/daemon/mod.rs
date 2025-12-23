@@ -7,11 +7,13 @@
 pub mod config;
 pub mod control;
 pub mod memory;
+pub mod metrics;
 pub mod state;
 pub mod supervisor;
 
 pub use config::DaemonConfig;
 pub use control::ControlServer;
 pub use memory::MemoryMonitor;
+pub use metrics::{DaemonMetrics, DaemonMetricsCollector, RestartEvent, RestartReasons};
 pub use state::{WorkerState, WorkerStatus};
 pub use supervisor::WorkerSupervisor;

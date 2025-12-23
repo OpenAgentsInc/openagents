@@ -1008,6 +1008,7 @@ mod tests {
                 cost_usd: 0.01,
                 tool_calls: 5,
                 tool_errors: 0,
+                apm: 10.0,
                 custom_metrics: [("custom_metric".to_string(), 42.0)]
                     .iter()
                     .cloned()
