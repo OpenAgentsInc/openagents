@@ -36,7 +36,7 @@ use std::collections::HashMap;
 use std::path::Path;
 use std::sync::Arc;
 
-use crate::git::{rebase_commit, abort_rebase, has_rebase_conflicts};
+use crate::git::{abort_rebase, has_rebase_conflicts, rebase_commit};
 use crate::nostr::NostrClient;
 use crate::nostr::events::PullRequestBuilder;
 use crate::stacks::graph::{StackGraph, LayerInfo};
