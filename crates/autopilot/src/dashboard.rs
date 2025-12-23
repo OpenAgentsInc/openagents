@@ -163,8 +163,8 @@ pub async fn start_dashboard(db_path: &str, port: u16) -> anyhow::Result<()> {
 /// Home page with session list
 async fn index(state: web::Data<DashboardState>) -> ActixResult<HttpResponse> {
     let store = MetricsDb::open(&state.db_path).map_err(|e| actix_web::error::ErrorInternalServerError(e))?;
-    let sessions = store.get_recent_sessions(50).unwrap_or_default();
-    let stats = store.get_summary_stats().unwrap_or_default();
+    let sessions = store.get_recent_sessions(50).map_err(|e| actix_web::error::ErrorInternalServerError(e))?;
+    let stats = store.get_summary_stats().map_err(|e| actix_web::error::ErrorInternalServerError(e))?;
 
     Ok(HttpResponse::Ok()
         .content_type("text/html; charset=utf-8")
