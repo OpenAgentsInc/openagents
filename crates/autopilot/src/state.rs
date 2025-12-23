@@ -410,6 +410,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[ignore] // Requires real relay infrastructure and identity
     async fn test_publish_state_to_relays() {
         let (secret_key, public_key) = create_test_keys();
         let manager = StateManager::new(secret_key, public_key);
@@ -422,15 +423,14 @@ mod tests {
         let relays = vec!["wss://relay.example.com".to_string()];
         let agent_pubkey = "npub1test";
 
-        // Publish state (this will use mock implementation for now)
+        // Publish state (requires identity and real relay connection)
         let result = manager
             .publish_state_to_relays(&content, &relays, agent_pubkey)
             .await;
 
-        // Should succeed with mock implementation
-        assert!(result.is_ok());
-        let event_id = result.unwrap();
-        assert!(event_id.starts_with("mock_event_id_"));
+        // Without identity, should return error
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("No identity configured"));
     }
 
     #[tokio::test]
