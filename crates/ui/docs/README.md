@@ -45,5 +45,5 @@ html! {
 1. **Tailwind-first** - All styling via Tailwind classes
 2. **Semantic colors** - Use `bg-background`, never `bg-zinc-900`
 3. **Sharp corners** - No border-radius anywhere
-4. **Monospace** - Berkeley Mono / system monospace fonts
+4. **Monospace** - Vera Mono / system monospace fonts
 5. **Server-rendered** - No client-side JavaScript frameworks

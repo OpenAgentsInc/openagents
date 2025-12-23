@@ -261,7 +261,7 @@ impl ClaudeStatus {
                     background: #111;
                     border: 1px solid #333;
                     padding: 0.75rem 1rem;
-                    font-family: 'Berkeley Mono', ui-monospace, monospace;
+                    font-family: 'Vera Mono', ui-monospace, monospace;
                     font-size: 0.65rem;
                     min-width: 220px;
                 "

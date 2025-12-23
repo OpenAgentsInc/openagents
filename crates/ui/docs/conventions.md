@@ -54,7 +54,7 @@ Always use monospace:
 <body class="font-mono">
 ```
 
-The theme uses: `'Berkeley Mono', ui-monospace, monospace`
+The theme uses: `'Vera Mono', ui-monospace, monospace`
 
 ### Sizes
 

@@ -254,7 +254,7 @@ cargo run -p desktop
 Maud/HTMX/Tailwind component library with:
 - 40+ recorder components (Atomic Design)
 - Sharp corner design system
-- Berkeley Mono typography
+- Vera Mono typography
 - Dark mode color scheme
 
 **Example:**
@@ -651,7 +651,7 @@ cargo add tokio --features full
 - No border radius (sharp corners in UI)
 - Inline-first CSS with custom properties
 - Server-rendered (no SPA)
-- Berkeley Mono font stack
+- Vera Mono font stack
 
 ### Testing
 

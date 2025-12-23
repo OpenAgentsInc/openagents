@@ -33,7 +33,7 @@ impl LogPane {
                     border-top: 1px solid #333;
                     display: flex;
                     flex-direction: column;
-                    font-family: 'Berkeley Mono', ui-monospace, monospace;
+                    font-family: 'Vera Mono', ui-monospace, monospace;
                     z-index: 100;
                 "
             {

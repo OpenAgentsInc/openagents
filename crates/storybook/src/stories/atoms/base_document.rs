@@ -40,7 +40,7 @@ pub fn base_document_story() -> Markup {
             ul class="list-disc list-inside space-y-2 text-sm text-muted-foreground" {
                 li { "Tailwind Play CDN for development (inline script)" }
                 li { "Custom semantic color theme with CSS custom properties" }
-                li { "Monospace font stack (Berkeley Mono / system monospace)" }
+                li { "Monospace font stack (Vera Mono / system monospace)" }
                 li { "Dark mode by default with semantic tokens" }
                 li { "Responsive viewport meta tag" }
                 li { "Sharp corners only (no curves)" }
