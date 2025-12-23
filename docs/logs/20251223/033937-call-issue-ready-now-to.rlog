@@ -761,3 +761,46 @@ t!:Bash id=8NzPG6vn cmd="cargo test -p issues 2>&1 | tail -15" → [running] tok
 o: id=8NzPG6vn → [ok] test result: ok. 21 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s
 a: Excellent! All tests pass. Now let's commit and push: tokens_in=0 tokens_out=8 tokens_cached=93977
 t!:Bash id=Lb1PyLmj cmd="git add -A && git commit -m "$(cat <<'EOF'" → [running] tokens_in=0 tokens_out=288 tokens_cached=93977
+o: id=Lb1PyLmj → [ok] [main f0df1fc57] Add logging to migration v2 deletions (DATA-6)
+a: Perfect! Now let's complete and continue: tokens_in=0 tokens_out=1 tokens_cached=94411
+t!:Bash id=ZREibKtZ cmd="cargo autopilot issue complete 841 && cargo aut..." → [running] tokens_in=0 tokens_out=1 tokens_cached=94411
+o: id=ZREibKtZ → [ok] ✓ Completed issue #841: DATA-6: Add logging to migration v2 deletions
+a: Perfect! Issue #842 (DB-1) - add missing index on issues.agent column. Let me claim it: tokens_in=0 tokens_out=3 tokens_cached=94925
+t!:Bash id=d6But7wX cmd="cargo autopilot issue claim 842" → [running] tokens_in=0 tokens_out=3 tokens_cached=94925
+o: id=d6But7wX → [ok] ✓ Claimed issue #842: DB-1: Add missing index on issues.agent column
+a: Let me check where indexes are created and where the agent column is used: tokens_in=0 tokens_out=1 tokens_cached=95594
+t!:Grep id=fR8ixUMy pattern="CREATE INDEX.*issues" → [running] tokens_in=0 tokens_out=149 tokens_cached=95594
+o: id=fR8ixUMy → [ok] 139:        CREATE INDEX IF NOT EXISTS idx_issues_status ON issues(status);
+a: I can see there are indexes on status, number, directive_id, and project_id, but no index on agent. Let me check where the agent column is used in WHERE clauses: tokens_in=0 tokens_out=1 tokens_cached=95775
+t!:Grep id=UHWrFdSe pattern="WHERE.*agent|AND.*agent" → [running] tokens_in=0 tokens_out=173 tokens_cached=95775
+o: id=UHWrFdSe → [ok] crates/issues/src/issue.rs:245:                  AND agent = ?
+a: Let me see that context: tokens_in=0 tokens_out=3 tokens_cached=96150
+t!:Read id=HJjU3xHf file_path=/home/christopherdavid/code/openagents/crates/issues/src/issue.rs → [running] tokens_in=0 tokens_out=3 tokens_cached=96150
+o: id=HJjU3xHf → [ok]    235→    match agent {
+a: Good! The agent column is used in WHERE clauses for filtering issues by agent. This query would benefit from an index. Since we already have a migration system in place, I should add this as a new ... tokens_in=0 tokens_out=1 tokens_cached=96354
+t!:Read id=R3vQ5PtG file_path=/home/christopherdavid/code/openagents/crates/issues/src/db.rs → [running] tokens_in=0 tokens_out=1 tokens_cached=96354
+o: id=R3vQ5PtG → [ok]      8→#[allow(dead_code)]
+a: First, update the schema version: tokens_in=0 tokens_out=1 tokens_cached=96904
+t!:Edit id=cDRFgB9M file_path=/home/christopherdavid/code/openagents/crates/issues/src/db.rs → [running] tokens_in=0 tokens_out=1 tokens_cached=96904
+o: id=cDRFgB9M → [ok] The file /home/christopherdavid/code/openagents/crates/issues/src/db.rs has been updated. Here's ...
+a: Now add the migration check in both init_db and init_memory_db: tokens_in=0 tokens_out=1 tokens_cached=97223
+t!:Edit id=NbC8Ypch file_path=/home/christopherdavid/code/openagents/crates/issues/src/db.rs → [running] tokens_in=0 tokens_out=233 tokens_cached=97223
+o: id=NbC8Ypch → [ok] The file /home/christopherdavid/code/openagents/crates/issues/src/db.rs has been updated. Here's ...
+a: Now update init_memory_db: tokens_in=0 tokens_out=1 tokens_cached=97642
+t!:Edit id=Y1FtF5DV file_path=/home/christopherdavid/code/openagents/crates/issues/src/db.rs → [running] tokens_in=0 tokens_out=242 tokens_cached=97642
+o: id=Y1FtF5DV → [ok] The file /home/christopherdavid/code/openagents/crates/issues/src/db.rs has been updated. Here's ...
+a: Now let me find where migrate_v8 ends to add migrate_v9: tokens_in=0 tokens_out=1 tokens_cached=98134
+t!:Read id=XNggEo2V file_path=/home/christopherdavid/code/openagents/crates/issues/src/db.rs → [running] tokens_in=0 tokens_out=130 tokens_cached=98134
+o: id=XNggEo2V → [ok]    377→            old_value TEXT,
+t!:Read id=iwdtd1at file_path=/home/christopherdavid/code/openagents/crates/issues/src/db.rs → [running] tokens_in=0 tokens_out=25 tokens_cached=98734
+o: id=iwdtd1at → [ok]    390→
+a: Now I'll add the migrate_v9 function and move the "Database initialized" message to it: tokens_in=0 tokens_out=1 tokens_cached=99097
+t!:Edit id=NcaPQNUA file_path=/home/christopherdavid/code/openagents/crates/issues/src/db.rs → [running] tokens_in=0 tokens_out=366 tokens_cached=99097
+o: id=NcaPQNUA → [ok] The file /home/christopherdavid/code/openagents/crates/issues/src/db.rs has been updated. Here's ...
+a: Now let's compile and test: tokens_in=0 tokens_out=2 tokens_cached=99580
+t!:Bash id=o4tJz8bF cmd="cargo build -p issues 2>&1 | head -20" → [running] tokens_in=0 tokens_out=2 tokens_cached=99580
+o: id=o4tJz8bF → [ok]    Compiling issues v0.1.0 (/home/christopherdavid/code/openagents/crates/issues)
+t!:Bash id=EEyQrWYF cmd="cargo test -p issues 2>&1 | tail -15" → [running] tokens_in=0 tokens_out=25 tokens_cached=100373
+o: id=EEyQrWYF → [ok] test result: ok. 21 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s
+a: Perfect! All tests pass. Let's commit and push: tokens_in=0 tokens_out=1 tokens_cached=100638
+t!:Bash id=JZ5CgCJg cmd="git add -A && git commit -m "$(cat <<'EOF'" → [running] tokens_in=0 tokens_out=305 tokens_cached=100638
