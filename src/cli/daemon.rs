@@ -72,15 +72,11 @@ pub fn run(cmd: DaemonCommands) -> anyhow::Result<()> {
             config.max_budget = max_budget;
 
             runtime.block_on(async {
-                // Use the daemon control client to start
-                // For now, print instructions since starting daemon requires forking
-                println!("To start the daemon, run:");
-                println!("  cargo daemon --workdir {:?} --project {:?}",
+                // Daemon start requires process forking which is not yet integrated
+                anyhow::bail!("Daemon start requires the standalone daemon binary. Use: cargo run --bin daemon -- start --workdir {:?} --project {:?}",
                     config.working_dir,
                     config.project.as_deref().unwrap_or("(none)")
-                );
-                println!("\nNote: Daemon start integration is in progress.");
-                Ok(())
+                )
             })
         }
         DaemonCommands::Stop => {
