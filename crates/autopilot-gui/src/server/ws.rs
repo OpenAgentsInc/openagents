@@ -191,41 +191,35 @@ enum ServerMessage {
 async fn handle_client_message(msg: ClientMessage, session: &mut Session) {
     match msg {
         ClientMessage::Prompt { text } => {
-            debug!("Handling prompt: {}", text);
+            debug!("Prompt received (not implemented): {}", text);
 
-            // Demo: Send tool call
-            let tool_call = ServerMessage::ToolCall {
-                tool: "Bash".to_string(),
-                input: serde_json::json!({"command": "echo Demo"}),
-                status: "running".to_string(),
-            };
-            send_message(session, tool_call).await;
+            // === BLOCKED: Claude Agent SDK integration required (d-009) ===
+            // This requires bidirectional communication between the GUI WebSocket
+            // and the Claude Agent SDK session. Currently there's no integration.
+            //
+            // When implementing:
+            // 1. Create channel between WebSocket handler and SDK session
+            // 2. Forward prompt to SDK via channel
+            // 3. Stream back SDK responses (tool calls, results, messages)
+            // 4. Handle session lifecycle (start, continue, abort)
+            //
+            // See d-009 Phase 3 for full specification.
 
-            // Simulate delay
-            tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
-
-            // Demo: Send tool result
-            let tool_result = ServerMessage::ToolResult {
-                tool: "Bash".to_string(),
-                output: "Demo\n".to_string(),
-                elapsed_ms: Some(500),
-            };
-            send_message(session, tool_result).await;
-
-            // Echo back
-            let response = ServerMessage::Message {
-                role: "assistant".to_string(),
-                content: format!("Echo: {}", text),
+            let response = ServerMessage::Error {
+                message: "Agent SDK integration not yet implemented. This GUI is under development per d-009.".to_string(),
             };
             send_message(session, response).await;
         }
         ClientMessage::Abort => {
             debug!("Abort requested");
 
-            let response = ServerMessage::Status {
-                status: "aborted".to_string(),
-            };
+            // === BLOCKED: Agent SDK integration required (d-009) ===
+            // Abort requires sending interrupt signal to active SDK session.
+            // No session management is currently implemented.
 
+            let response = ServerMessage::Error {
+                message: "Abort requires Agent SDK session integration (d-009 pending)".to_string(),
+            };
             send_message(session, response).await;
         }
         ClientMessage::PermissionResponse {
@@ -239,10 +233,16 @@ async fn handle_client_message(msg: ClientMessage, session: &mut Session) {
                 request_id, action, persistent
             );
 
-            // Per d-012: Permission response integration requires bidirectional channel
+            // === BLOCKED: Agent SDK integration required (d-009) ===
+            // Permission response integration requires bidirectional channel
             // between GUI WebSocket and autopilot permission handler.
             // This is experimental UI (d-009) - full integration pending.
-            // For now, responses are logged for debugging.
+
+            let response = ServerMessage::Error {
+                message: "Permission handling requires Agent SDK integration (d-009 pending)".to_string(),
+            };
+            send_message(session, response).await;
+
             let _ = (request_id, action, pattern, persistent);
         }
     }
