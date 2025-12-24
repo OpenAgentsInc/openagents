@@ -556,19 +556,19 @@ fn run_demo_script(demo: &mut DemoState, _width: f32, _height: f32) {
     let t = demo.elapsed();
     
     if demo.scenario_index == 0 && t >= 0.5 {
-        demo.create_pane("editor", "Code Editor", 30.0, 50.0, 500.0, 350.0, "code");
+        demo.create_pane("editor", "Code Editor", 50.0, 60.0, 450.0, 250.0, "code");
         demo.scenario_index = 1;
     }
     if demo.scenario_index == 1 && t >= 1.0 {
-        demo.create_pane("terminal", "Terminal", 30.0, 420.0, 500.0, 150.0, "terminal");
+        demo.create_pane("terminal", "Terminal", 50.0, 340.0, 450.0, 180.0, "terminal");
         demo.scenario_index = 2;
     }
     if demo.scenario_index == 2 && t >= 1.5 {
-        demo.create_pane("chat", "AI Assistant", 550.0, 50.0, 350.0, 300.0, "chat");
+        demo.create_pane("chat", "AI Assistant", 540.0, 60.0, 340.0, 230.0, "chat");
         demo.scenario_index = 3;
     }
     if demo.scenario_index == 3 && t >= 2.0 {
-        demo.create_pane("diagnostics", "Diagnostics", 550.0, 370.0, 350.0, 200.0, "diagnostics");
+        demo.create_pane("diagnostics", "Diagnostics", 540.0, 320.0, 340.0, 200.0, "diagnostics");
         demo.scenario_index = 4;
     }
 
@@ -600,7 +600,7 @@ fn run_demo_script(demo: &mut DemoState, _width: f32, _height: f32) {
     }
 
     if demo.scenario_index == 9 && t >= 6.5 {
-        demo.move_pane("terminal", 30.0, 300.0);
+        demo.move_pane("terminal", 50.0, 330.0);
         demo.scenario_index = 10;
     }
     if demo.scenario_index == 10 && t >= 6.8 {
@@ -642,7 +642,7 @@ fn render_demo(
 
     let dots_progress = demo.dots_anim.current_value();
     let mut dots_grid = DotsGrid::new()
-        .color(Hsla::new(0.5, 0.6, 0.4, 0.5)) // cyan dots
+        .color(Hsla::new(0.0, 0.0, 0.3, 0.25))
         .shape(DotShape::Cross)
         .distance(28.0)
         .size(5.0)
