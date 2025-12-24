@@ -33,9 +33,9 @@ impl Priority {
     fn glow_color(&self) -> Option<Hsla> {
         match self {
             Priority::Background | Priority::Normal => None,
-            Priority::Elevated => Some(Hsla::new(180.0, 1.0, 0.7, 0.7)),
-            Priority::Urgent => Some(Hsla::new(45.0, 1.0, 0.7, 0.8)),
-            Priority::Critical => Some(Hsla::new(0.0, 1.0, 0.7, 0.9)),
+            Priority::Elevated => Some(Hsla::new(0.5, 1.0, 0.6, 0.8)),    // cyan (180°)
+            Priority::Urgent => Some(Hsla::new(0.125, 1.0, 0.5, 0.9)),   // orange (45°)
+            Priority::Critical => Some(Hsla::new(0.0, 1.0, 0.5, 1.0)),   // red (0°)
         }
     }
 }
@@ -595,7 +595,7 @@ fn run_demo_script(demo: &mut DemoState, _width: f32, _height: f32) {
     }
     if demo.scenario_index == 8 && t >= 5.3 {
         demo.focus_pane("editor");
-        demo.set_glow("editor", Some(Hsla::new(140.0, 1.0, 0.5, 0.6)));
+        demo.set_glow("editor", Some(Hsla::new(0.389, 1.0, 0.5, 0.8))); // green (140°)
         demo.scenario_index = 9;
     }
 
@@ -642,7 +642,7 @@ fn render_demo(
 
     let dots_progress = demo.dots_anim.current_value();
     let mut dots_grid = DotsGrid::new()
-        .color(Hsla::new(180.0, 0.4, 0.25, 0.35))
+        .color(Hsla::new(0.5, 0.6, 0.4, 0.5)) // cyan dots
         .shape(DotShape::Cross)
         .distance(28.0)
         .size(5.0)
