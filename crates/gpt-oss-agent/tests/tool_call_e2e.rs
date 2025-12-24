@@ -367,7 +367,8 @@ async fn test_agent_lists_available_tools() {
     assert!(tools.contains(&"browser".to_string()));
     assert!(tools.contains(&"python".to_string()));
     assert!(tools.contains(&"apply_patch".to_string()));
-    assert_eq!(tools.len(), 3);
+    assert!(tools.contains(&"ui_pane".to_string()));
+    assert_eq!(tools.len(), 4);
 }
 
 #[tokio::test]
