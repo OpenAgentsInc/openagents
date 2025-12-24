@@ -14,6 +14,68 @@ use std::io::{self, Write};
 
 const KEYRING_SERVICE: &str = "openagents-wallet";
 const FROSTR_SHARE_KEY: &str = "frostr-share";
+const FROSTR_PEERS_KEY: &str = "frostr-peers";
+
+/// A stored peer for threshold signing coordination
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StoredPeer {
+    /// Peer's Nostr public key (32 bytes, hex encoded)
+    pub pubkey: String,
+    /// Preferred relays for this peer
+    pub relays: Vec<String>,
+    /// Optional human-readable name
+    pub name: Option<String>,
+    /// When this peer was added (Unix timestamp)
+    pub added_at: u64,
+}
+
+/// Collection of stored peers
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct StoredPeers {
+    pub peers: Vec<StoredPeer>,
+}
+
+impl StoredPeers {
+    /// Load peers from keychain
+    pub fn load() -> Result<Self> {
+        let entry = Entry::new(KEYRING_SERVICE, FROSTR_PEERS_KEY)?;
+        match entry.get_password() {
+            Ok(encoded) => {
+                let bytes = BASE64.decode(&encoded).context("Failed to decode peers")?;
+                postcard::from_bytes(&bytes).context("Failed to deserialize peers")
+            }
+            Err(_) => Ok(Self::default()),
+        }
+    }
+
+    /// Save peers to keychain
+    pub fn save(&self) -> Result<()> {
+        let bytes = postcard::to_stdvec(self).context("Failed to serialize peers")?;
+        let encoded = BASE64.encode(&bytes);
+        let entry = Entry::new(KEYRING_SERVICE, FROSTR_PEERS_KEY)?;
+        entry.set_password(&encoded).context("Failed to save peers to keychain")?;
+        Ok(())
+    }
+
+    /// Add a peer (updates if pubkey exists)
+    pub fn add(&mut self, peer: StoredPeer) {
+        // Remove existing peer with same pubkey
+        self.peers.retain(|p| p.pubkey != peer.pubkey);
+        self.peers.push(peer);
+    }
+
+    /// Remove a peer by pubkey
+    pub fn remove(&mut self, pubkey: &str) -> bool {
+        let len_before = self.peers.len();
+        self.peers.retain(|p| p.pubkey != pubkey);
+        self.peers.len() < len_before
+    }
+
+    /// Find a peer by pubkey
+    pub fn find(&self, pubkey: &str) -> Option<&StoredPeer> {
+        self.peers.iter().find(|p| p.pubkey == pubkey)
+    }
+}
 
 /// Stored representation of a FROST share for keychain persistence
 ///
@@ -410,8 +472,25 @@ pub async fn status() -> Result<()> {
         }
     }
 
+    // Show peer status
+    let peers = StoredPeers::load()?;
+    if peers.peers.is_empty() {
+        println!("\n{} Threshold Peers: none configured", "PEERS".bright_yellow());
+        println!("  Run 'openagents wallet frostr peers add <npub>' to add peers");
+    } else {
+        println!("\n{} Threshold Peers: {} configured", "PEERS".bright_cyan(), peers.peers.len());
+        for peer in &peers.peers {
+            let name = peer.name.as_deref().unwrap_or("(unnamed)");
+            let relay_count = if peer.relays.is_empty() {
+                "default relays".to_string()
+            } else {
+                format!("{} relay(s)", peer.relays.len())
+            };
+            println!("  - {} ({}...): {}", name, &peer.pubkey[..8], relay_count);
+        }
+    }
+
     println!("\n{} Relay Connections: (not configured)", "TODO".bright_yellow());
-    println!("{} Threshold Peers: (not configured)", "TODO".bright_yellow());
 
     Ok(())
 }
@@ -491,6 +570,129 @@ mod tests {
         // Verify key_package has correct identifier
         let _identifier = key_package.identifier();
     }
+
+    #[test]
+    fn test_stored_peers_add_and_find() {
+        let mut peers = StoredPeers::default();
+        assert!(peers.peers.is_empty());
+
+        // Add a peer
+        let peer1 = StoredPeer {
+            pubkey: "a".repeat(64),
+            relays: vec!["wss://relay.example.com".to_string()],
+            name: Some("Alice".to_string()),
+            added_at: 1234567890,
+        };
+        peers.add(peer1.clone());
+
+        assert_eq!(peers.peers.len(), 1);
+        assert!(peers.find(&"a".repeat(64)).is_some());
+        assert_eq!(peers.find(&"a".repeat(64)).unwrap().name, Some("Alice".to_string()));
+
+        // Add another peer
+        let peer2 = StoredPeer {
+            pubkey: "b".repeat(64),
+            relays: vec![],
+            name: None,
+            added_at: 1234567891,
+        };
+        peers.add(peer2);
+        assert_eq!(peers.peers.len(), 2);
+
+        // Update existing peer (same pubkey)
+        let peer1_updated = StoredPeer {
+            pubkey: "a".repeat(64),
+            relays: vec!["wss://new-relay.example.com".to_string()],
+            name: Some("Alice Updated".to_string()),
+            added_at: 1234567892,
+        };
+        peers.add(peer1_updated);
+
+        // Should still have 2 peers (updated, not added)
+        assert_eq!(peers.peers.len(), 2);
+        assert_eq!(
+            peers.find(&"a".repeat(64)).unwrap().name,
+            Some("Alice Updated".to_string())
+        );
+    }
+
+    #[test]
+    fn test_stored_peers_remove() {
+        let mut peers = StoredPeers::default();
+
+        // Add peers
+        peers.add(StoredPeer {
+            pubkey: "a".repeat(64),
+            relays: vec![],
+            name: Some("Alice".to_string()),
+            added_at: 1,
+        });
+        peers.add(StoredPeer {
+            pubkey: "b".repeat(64),
+            relays: vec![],
+            name: Some("Bob".to_string()),
+            added_at: 2,
+        });
+        assert_eq!(peers.peers.len(), 2);
+
+        // Remove a peer
+        let removed = peers.remove(&"a".repeat(64));
+        assert!(removed);
+        assert_eq!(peers.peers.len(), 1);
+        assert!(peers.find(&"a".repeat(64)).is_none());
+        assert!(peers.find(&"b".repeat(64)).is_some());
+
+        // Try to remove non-existent peer
+        let removed_again = peers.remove(&"a".repeat(64));
+        assert!(!removed_again);
+        assert_eq!(peers.peers.len(), 1);
+    }
+
+    #[test]
+    fn test_stored_peers_serialization() {
+        let mut peers = StoredPeers::default();
+        peers.add(StoredPeer {
+            pubkey: "a".repeat(64),
+            relays: vec!["wss://relay1.com".to_string(), "wss://relay2.com".to_string()],
+            name: Some("Test Peer".to_string()),
+            added_at: 1234567890,
+        });
+
+        // Serialize
+        let bytes = postcard::to_stdvec(&peers).expect("serialization failed");
+
+        // Deserialize
+        let decoded: StoredPeers = postcard::from_bytes(&bytes).expect("deserialization failed");
+
+        assert_eq!(decoded.peers.len(), 1);
+        assert_eq!(decoded.peers[0].pubkey, "a".repeat(64));
+        assert_eq!(decoded.peers[0].relays.len(), 2);
+        assert_eq!(decoded.peers[0].name, Some("Test Peer".to_string()));
+    }
+
+    #[test]
+    fn test_parse_nostr_pubkey_hex() {
+        // Valid 64-char hex
+        let hex_pubkey = "a".repeat(64);
+        let result = parse_nostr_pubkey(&hex_pubkey).expect("should parse hex");
+        assert_eq!(result, hex_pubkey);
+
+        // Invalid hex (wrong length)
+        let short_hex = "a".repeat(32);
+        assert!(parse_nostr_pubkey(&short_hex).is_err());
+
+        // Invalid chars
+        let invalid = "z".repeat(64);
+        assert!(parse_nostr_pubkey(&invalid).is_err());
+    }
+
+    #[test]
+    fn test_parse_nostr_pubkey_npub() {
+        // Valid npub (from NIP-19 test vectors)
+        let npub = "npub180cvv07tjdrrgpa0j7j7tmnyl2yr6yr7l8j4s3evf6u64th6gkwsyjh6w6";
+        let result = parse_nostr_pubkey(npub).expect("should parse npub");
+        assert_eq!(result, "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d");
+    }
 }
 
 /// Show available FROSTR group credentials (if any)
@@ -532,6 +734,162 @@ pub async fn list_groups() -> Result<()> {
             println!("{} No groups found", "WARN".bright_yellow());
             println!("  Run 'openagents wallet frostr keygen' to create a group");
         }
+    }
+
+    Ok(())
+}
+
+/// Parse a Nostr public key from npub bech32 or hex format
+fn parse_nostr_pubkey(input: &str) -> Result<String> {
+    if input.starts_with("npub1") {
+        // Decode bech32 npub using nostr crate's NIP-19 decoder
+        let decoded = nostr::decode(input).context("Invalid npub format")?;
+        match decoded {
+            nostr::Nip19Entity::Pubkey(pk) => Ok(hex::encode(pk)),
+            _ => anyhow::bail!("Expected npub, got different bech32 type"),
+        }
+    } else if input.len() == 64 && input.chars().all(|c| c.is_ascii_hexdigit()) {
+        // Already hex format
+        Ok(input.to_string())
+    } else {
+        anyhow::bail!("Invalid public key format. Use npub1... or 64-char hex")
+    }
+}
+
+/// Add a threshold signing peer
+pub async fn peers_add(npub: String, relays: Vec<String>, name: Option<String>) -> Result<()> {
+    println!("{} Adding FROSTR peer...", "PEERS".bright_blue());
+
+    // Parse the public key
+    let pubkey = parse_nostr_pubkey(&npub)?;
+    println!("{} Parsed pubkey: {}...", "[OK]".bright_green(), &pubkey[..16]);
+
+    // Load existing peers
+    let mut peers = StoredPeers::load()?;
+
+    // Check if updating existing peer
+    let is_update = peers.find(&pubkey).is_some();
+
+    // Create the peer entry
+    let peer = StoredPeer {
+        pubkey: pubkey.clone(),
+        relays: relays.clone(),
+        name: name.clone(),
+        added_at: std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs(),
+    };
+
+    // Add and save
+    peers.add(peer);
+    peers.save()?;
+
+    if is_update {
+        println!("{} Updated peer:", "[OK]".bright_green());
+    } else {
+        println!("{} Added peer:", "[OK]".bright_green());
+    }
+
+    if let Some(n) = &name {
+        println!("  Name:   {}", n);
+    }
+    println!("  Pubkey: {}...", &pubkey[..16]);
+
+    if relays.is_empty() {
+        println!("  Relays: (default relays will be used)");
+    } else {
+        println!("  Relays:");
+        for relay in &relays {
+            println!("    - {}", relay);
+        }
+    }
+
+    println!(
+        "\n{} Total peers: {}",
+        "INFO".bright_blue(),
+        peers.peers.len()
+    );
+
+    Ok(())
+}
+
+/// List threshold signing peers
+pub async fn peers_list() -> Result<()> {
+    println!("{} FROSTR Threshold Peers\n", "PEERS".bright_blue());
+
+    let peers = StoredPeers::load()?;
+
+    if peers.peers.is_empty() {
+        println!("{} No peers configured", "WARN".bright_yellow());
+        println!("  Use 'openagents wallet frostr peers add <npub>' to add peers");
+        return Ok(());
+    }
+
+    for (i, peer) in peers.peers.iter().enumerate() {
+        let display_name = peer.name.as_deref().unwrap_or("(unnamed)");
+        println!(
+            "{} Peer {} - {}",
+            "[PEER]".bright_cyan(),
+            i + 1,
+            display_name
+        );
+        println!("  Pubkey: {}", peer.pubkey);
+
+        if peer.relays.is_empty() {
+            println!("  Relays: (default)");
+        } else {
+            println!("  Relays:");
+            for relay in &peer.relays {
+                println!("    - {}", relay);
+            }
+        }
+
+        // Format added time
+        let added = chrono::DateTime::from_timestamp(peer.added_at as i64, 0)
+            .map(|dt| dt.format("%Y-%m-%d %H:%M").to_string())
+            .unwrap_or_else(|| "unknown".to_string());
+        println!("  Added:  {}", added);
+        println!();
+    }
+
+    println!(
+        "{} Total: {} peer(s)",
+        "INFO".bright_blue(),
+        peers.peers.len()
+    );
+
+    Ok(())
+}
+
+/// Remove a threshold signing peer
+pub async fn peers_remove(npub: String) -> Result<()> {
+    println!("{} Removing FROSTR peer...", "PEERS".bright_blue());
+
+    // Parse the public key
+    let pubkey = parse_nostr_pubkey(&npub)?;
+
+    // Load existing peers
+    let mut peers = StoredPeers::load()?;
+
+    // Check if peer exists
+    if let Some(peer) = peers.find(&pubkey) {
+        let name = peer.name.clone();
+        if peers.remove(&pubkey) {
+            peers.save()?;
+            println!(
+                "{} Removed peer: {}",
+                "[OK]".bright_green(),
+                name.as_deref().unwrap_or(&format!("{}...", &pubkey[..16]))
+            );
+            println!(
+                "{} Remaining peers: {}",
+                "INFO".bright_blue(),
+                peers.peers.len()
+            );
+        }
+    } else {
+        println!("{} Peer not found: {}...", "WARN".bright_yellow(), &pubkey[..16]);
     }
 
     Ok(())

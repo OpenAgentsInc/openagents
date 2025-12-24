@@ -349,6 +349,36 @@ enum FrostrCommands {
 
     /// List available group credentials
     ListGroups,
+
+    /// Manage threshold signing peers
+    #[command(subcommand)]
+    Peers(PeersCommands),
+}
+
+#[derive(Subcommand)]
+enum PeersCommands {
+    /// Add a threshold signing peer
+    Add {
+        /// Peer's Nostr public key (npub1... or hex)
+        npub: String,
+
+        /// Relay URLs for this peer (can specify multiple times)
+        #[arg(short, long)]
+        relay: Vec<String>,
+
+        /// Optional name for this peer
+        #[arg(short, long)]
+        name: Option<String>,
+    },
+
+    /// List configured peers
+    List,
+
+    /// Remove a peer
+    Remove {
+        /// Peer's Nostr public key (npub1... or hex)
+        npub: String,
+    },
 }
 
 fn main() {
@@ -522,6 +552,17 @@ fn run(command: Commands) -> anyhow::Result<()> {
                     FrostrCommands::ListGroups => {
                         cli::frostr::list_groups().await
                     }
+                    FrostrCommands::Peers(peers_cmd) => match peers_cmd {
+                        PeersCommands::Add { npub, relay, name } => {
+                            cli::frostr::peers_add(npub, relay, name).await
+                        }
+                        PeersCommands::List => {
+                            cli::frostr::peers_list().await
+                        }
+                        PeersCommands::Remove { npub } => {
+                            cli::frostr::peers_remove(npub).await
+                        }
+                    },
                 }
             })
         },
