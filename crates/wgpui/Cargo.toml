@@ -84,6 +84,17 @@ getrandom = { version = "0.3", features = ["wasm_js"] }
 winit = { version = "0.30", optional = true }
 pollster = { version = "0.4", optional = true }
 
+[dev-dependencies]
+criterion = "0.5"
+
 [[example]]
 name = "first_light"
 required-features = ["desktop"]
+
+[[example]]
+name = "component_showcase"
+required-features = ["desktop"]
+
+[[bench]]
+name = "performance"
+harness = false
