@@ -1,28 +1,82 @@
 //! Parallel autopilot orchestration
 //!
-//! This module provides functionality to run multiple autopilot instances
-//! in isolated Docker containers with git worktrees for parallel issue resolution.
+//! This module enables running multiple autopilot instances simultaneously in isolated
+//! Docker containers, dramatically increasing throughput for large issue queues.
+//!
+//! # Overview
+//!
+//! When there are 50+ open issues, a single agent processes them sequentially. The parallel
+//! system solves this by running 3-10 agents concurrently (depending on available resources),
+//! with each agent claiming and working on different issues atomically.
+//!
+//! # Key Features
+//!
+//! - **Atomic Issue Claiming**: All containers share `autopilot.db` via bind mount.
+//!   SQLite's WAL mode + atomic operations prevent race conditions.
+//! - **Git Isolation**: Each agent works in its own git worktree with a separate branch
+//!   (`agent/001`, `agent/002`, etc.), preventing merge conflicts.
+//! - **Resource Management**: Platform-aware memory/CPU limits (12GB/4 cores on Linux,
+//!   3GB/2 cores on macOS).
+//! - **Automatic Recovery**: 15-minute claim expiry means crashed agents release issues
+//!   automatically.
 //!
 //! # Architecture
 //!
-//! - Each agent runs in a Docker container
-//! - Each container has a git worktree mounted at /workspace
-//! - All containers share autopilot.db via bind mount
-//! - SQLite atomic claiming prevents race conditions
+//! ```text
+//! Host Machine
+//! ├── .git/                    (shared object database)
+//! ├── autopilot.db             (SHARED - atomic issue claiming)
+//! ├── .worktrees/
+//! │   ├── agent-001/           (worktree → branch agent/001)
+//! │   ├── agent-002/           (worktree → branch agent/002)
+//! │   └── agent-00N/
+//! └── docs/logs/               (shared log output)
 //!
-//! # Usage
+//! Docker Containers
+//! ├── autopilot-001 → /workspace mounted from .worktrees/agent-001
+//! ├── autopilot-002 → /workspace mounted from .worktrees/agent-002
+//! └── autopilot-00N → each mounts shared autopilot.db
+//! ```
+//!
+//! # Quick Start
+//!
+//! ## CLI Usage
+//!
+//! ```bash
+//! # Start 3 agents (default)
+//! ./scripts/parallel-autopilot.sh start
+//!
+//! # Start 5 agents
+//! ./scripts/parallel-autopilot.sh start 5
+//!
+//! # Check status
+//! ./scripts/parallel-autopilot.sh status
+//!
+//! # View issue queue
+//! ./scripts/parallel-autopilot.sh queue
+//!
+//! # Stop all agents
+//! ./scripts/parallel-autopilot.sh stop
+//! ```
+//!
+//! ## Programmatic Usage
 //!
 //! ```no_run
-//! use autopilot::parallel::{start_agents, stop_agents, list_agents};
+//! use autopilot::parallel::{start_agents, stop_agents, list_agents, Platform};
 //!
 //! # async fn example() -> anyhow::Result<()> {
+//! // Auto-detect platform and start agents
+//! let platform = Platform::detect();
+//! println!("Platform: {:?}, max agents: {}", platform, platform.max_agents());
+//!
 //! // Start 5 agents
-//! start_agents(5).await?;
+//! let agents = start_agents(5).await?;
+//! println!("Started {} agents", agents.len());
 //!
 //! // Check status
 //! let agents = list_agents().await?;
 //! for agent in agents {
-//!     println!("{}: {}", agent.id, agent.status);
+//!     println!("Agent {}: {:?}", agent.id, agent.status);
 //! }
 //!
 //! // Stop all agents
@@ -30,6 +84,26 @@
 //! # Ok(())
 //! # }
 //! ```
+//!
+//! # Performance Guidelines
+//!
+//! | Platform       | CPU           | RAM   | Recommended | Max |
+//! |----------------|---------------|-------|-------------|-----|
+//! | Linux Desktop  | i7-14700K     | 128GB | 6-8 agents  | 10  |
+//! | Linux Server   | AMD EPYC      | 256GB | 10-15 agents| 20  |
+//! | MacBook Pro    | M2 Pro        | 16GB  | 3 agents    | 5   |
+//! | MacBook Pro    | M3 Max        | 64GB  | 5-7 agents  | 10  |
+//!
+//! # Modules
+//!
+//! - [`docker`]: Docker Compose wrapper for starting/stopping containers
+//! - [`worktree`]: Git worktree creation and cleanup
+//!
+//! # See Also
+//!
+//! - [Parallel Autopilot Documentation](../../docs/development/parallel-autopilot.md)
+//! - [`crates/issues`](../issues/index.html): Atomic issue claiming
+//! - [`scripts/parallel-autopilot.sh`](https://github.com/OpenAgentsInc/openagents/blob/main/scripts/parallel-autopilot.sh)
 
 mod docker;
 mod worktree;
