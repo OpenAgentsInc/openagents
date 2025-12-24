@@ -23,6 +23,7 @@
 
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
+use sha2::{Sha256, Digest};
 
 // TEMP: When Spark SDK is available, uncomment:
 // use openagents_spark::{SparkWallet, SendPaymentResponse, ReceivePaymentResponse};
@@ -185,9 +186,7 @@ impl PaymentManager {
     ) -> Result<PaymentRecord> {
         // Extract amount from invoice if not provided
         let amount = amount_msats.unwrap_or_else(|| {
-            // TODO: Parse invoice to extract amount
-            // For now, require explicit amount
-            0
+            Self::parse_invoice_amount(invoice).unwrap_or(0)
         });
 
         let _payment = PaymentRecord::new(
@@ -323,15 +322,75 @@ impl PaymentManager {
     /// after verifying the provider delivered the result.
     ///
     /// # Arguments
-    /// * `payment_hash` - The payment hash from the invoice
-    /// * `preimage` - The preimage provided by the payee
+    /// * `payment_hash` - The payment hash from the invoice (hex encoded)
+    /// * `preimage` - The preimage provided by the payee (hex encoded)
     ///
     /// # Returns
     /// true if preimage is valid for the given hash
-    pub fn verify_preimage(&self, _payment_hash: &str, _preimage: &str) -> bool {
-        // TODO: Implement actual preimage verification
-        // sha256(preimage) == payment_hash
-        false
+    pub fn verify_preimage(&self, payment_hash: &str, preimage: &str) -> bool {
+        // Decode preimage from hex
+        let preimage_bytes = match hex::decode(preimage) {
+            Ok(bytes) => bytes,
+            Err(_) => return false,
+        };
+
+        // Compute SHA256 hash of preimage
+        let mut hasher = Sha256::new();
+        hasher.update(&preimage_bytes);
+        let computed_hash = hasher.finalize();
+        let computed_hash_hex = hex::encode(computed_hash);
+
+        // Compare with provided payment hash
+        computed_hash_hex.eq_ignore_ascii_case(payment_hash)
+    }
+
+    /// Parse amount from BOLT11 invoice
+    ///
+    /// Extracts the amount in millisatoshis from a BOLT11 Lightning invoice.
+    /// BOLT11 format: ln{network}{amount}{units}...
+    ///
+    /// # Arguments
+    /// * `invoice` - BOLT11 invoice string
+    ///
+    /// # Returns
+    /// Amount in millisatoshis, or None if parsing fails
+    fn parse_invoice_amount(invoice: &str) -> Option<u64> {
+        // BOLT11 invoices start with 'ln' followed by network prefix (bc/tb/bcrt)
+        if !invoice.starts_with("ln") {
+            return None;
+        }
+
+        // Find the separator (first '1' after the network prefix)
+        let separator_pos = invoice[2..].find('1').map(|pos| pos + 2)?;
+
+        // Amount is between network prefix and separator
+        let amount_str = &invoice[4..separator_pos]; // Skip 'ln' + 2-char network
+
+        if amount_str.is_empty() {
+            // No amount specified (amount-less invoice)
+            return None;
+        }
+
+        // Last character indicates the multiplier
+        let (num_str, multiplier) = if let Some(last_char) = amount_str.chars().last() {
+            match last_char {
+                'p' => (&amount_str[..amount_str.len()-1], 0.0001), // pico-bitcoin (0.1 nanosat)
+                'n' => (&amount_str[..amount_str.len()-1], 0.1),    // nano-bitcoin (100 picosat)
+                'u' => (&amount_str[..amount_str.len()-1], 100.0),  // micro-bitcoin
+                'm' => (&amount_str[..amount_str.len()-1], 100_000.0), // milli-bitcoin
+                _ => (amount_str, 100_000_000.0), // No suffix = bitcoin
+            }
+        } else {
+            return None;
+        };
+
+        // Parse the number
+        let amount: f64 = num_str.parse().ok()?;
+
+        // Convert to millisatoshis (1 BTC = 100_000_000_000 msats)
+        let msats = (amount * multiplier * 1_000.0) as u64;
+
+        Some(msats)
     }
 
     /// Check payment status
@@ -429,5 +488,76 @@ mod tests {
         let result = manager.create_invoice(1000, "test").await;
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("Spark SDK"));
+    }
+
+    #[test]
+    fn test_parse_invoice_amount_micro_bitcoin() {
+        // lnbc2500u = 2500 micro-bitcoin = 250,000 sats = 250,000,000 msats
+        let invoice = "lnbc2500u1pvjluezpp5qqqsyqcyq5rqwzqfqqqsyqcyq5rqwzqfqqqsyqcyq5rqwzqfqypq";
+        let amount = PaymentManager::parse_invoice_amount(invoice);
+        assert_eq!(amount, Some(250_000_000));
+    }
+
+    #[test]
+    fn test_parse_invoice_amount_milli_bitcoin() {
+        // lnbc20m = 20 milli-bitcoin = 2,000,000 sats = 2,000,000,000 msats
+        let invoice = "lnbc20m1pvjluezpp5qqqsyqcyq5rqwzqfqqqsyqcyq5rqwzqfqqqsyqcyq5rqwzqfqypq";
+        let amount = PaymentManager::parse_invoice_amount(invoice);
+        assert_eq!(amount, Some(2_000_000_000));
+    }
+
+    #[test]
+    fn test_parse_invoice_amount_nano_bitcoin() {
+        // lnbc250n = 250 nano-bitcoin = 25 sats = 25,000 msats
+        let invoice = "lnbc250n1pvjluezpp5qqqsyqcyq5rqwzqfqqqsyqcyq5rqwzqfqqqsyqcyq5rqwzqfqypq";
+        let amount = PaymentManager::parse_invoice_amount(invoice);
+        assert_eq!(amount, Some(25_000));
+    }
+
+    #[test]
+    fn test_parse_invoice_amount_no_amount() {
+        // Invoice with no amount (amount-less invoice)
+        let invoice = "lnbc1pvjluezpp5qqqsyqcyq5rqwzqfqqqsyqcyq5rqwzqfqqqsyqcyq5rqwzqfqypq";
+        let amount = PaymentManager::parse_invoice_amount(invoice);
+        assert_eq!(amount, None);
+    }
+
+    #[test]
+    fn test_parse_invoice_amount_invalid() {
+        // Not a valid BOLT11 invoice
+        let invoice = "not-an-invoice";
+        let amount = PaymentManager::parse_invoice_amount(invoice);
+        assert_eq!(amount, None);
+    }
+
+    #[test]
+    fn test_verify_preimage_valid() {
+        let manager = PaymentManager::new();
+
+        // Test with a known preimage and its hash
+        // Preimage: "0000000000000000000000000000000000000000000000000000000000000000"
+        let preimage = "0000000000000000000000000000000000000000000000000000000000000000";
+        let payment_hash = "66687aadf862bd776c8fc18b8e9f8e20089714856ee233b3902a591d0d5f2925";
+
+        assert!(manager.verify_preimage(payment_hash, preimage));
+    }
+
+    #[test]
+    fn test_verify_preimage_invalid() {
+        let manager = PaymentManager::new();
+
+        let preimage = "0000000000000000000000000000000000000000000000000000000000000000";
+        let wrong_hash = "1111111111111111111111111111111111111111111111111111111111111111";
+
+        assert!(!manager.verify_preimage(wrong_hash, preimage));
+    }
+
+    #[test]
+    fn test_verify_preimage_malformed() {
+        let manager = PaymentManager::new();
+
+        // Invalid hex strings
+        assert!(!manager.verify_preimage("invalid", "also-invalid"));
+        assert!(!manager.verify_preimage("valid66687aadf862bd", "not-hex"));
     }
 }

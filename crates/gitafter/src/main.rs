@@ -8,6 +8,7 @@ mod middleware;
 mod nostr;
 mod reputation;
 mod review;
+mod secure_storage;
 mod server;
 mod trajectory;
 mod views;
@@ -96,10 +97,64 @@ fn main() -> Result<()> {
                     }
                 }
             } else {
-                // TODO: Implement loading from secure storage (keychain/keyring)
-                tracing::warn!("No GITAFTER_MNEMONIC environment variable set - running in read-only mode");
-                tracing::info!("To enable event signing and publishing, use secure storage (not yet implemented) or set GITAFTER_MNEMONIC (insecure)");
-                (None, None)
+                // Try loading from secure storage (keychain/keyring)
+                match secure_storage::load_mnemonic() {
+                    Ok(Some(mnemonic_str)) => {
+                        tracing::info!("Loading mnemonic from secure storage (keychain)");
+                        match Mnemonic::parse(&mnemonic_str) {
+                            Ok(mnemonic) => {
+                                let identity_result = UnifiedIdentity::from_mnemonic(mnemonic.clone());
+
+                                // Create Spark wallet from mnemonic
+                                let wallet_result = async {
+                                    let signer = SparkSigner::from_mnemonic(&mnemonic.to_string(), "")?;
+                                    let config = WalletConfig {
+                                        network: Network::Testnet,
+                                        api_key: None,
+                                        storage_dir: dirs::data_local_dir()
+                                            .unwrap_or_else(|| std::path::PathBuf::from("."))
+                                            .join("openagents")
+                                            .join("gitafter")
+                                            .join("spark"),
+                                    };
+                                    SparkWallet::new(signer, config).await
+                                }.await;
+
+                                match (identity_result, wallet_result) {
+                                    (Ok(id), Ok(w)) => {
+                                        tracing::info!("Loaded identity and wallet from secure storage");
+                                        (Some(Arc::new(id)), Some(Arc::new(w)))
+                                    }
+                                    (Ok(id), Err(e)) => {
+                                        tracing::error!("Failed to create wallet: {}", e);
+                                        tracing::info!("Running without wallet - bounty payments disabled");
+                                        (Some(Arc::new(id)), None)
+                                    }
+                                    (Err(e), _) => {
+                                        tracing::error!("Failed to create identity from stored mnemonic: {}", e);
+                                        (None, None)
+                                    }
+                                }
+                            }
+                            Err(e) => {
+                                tracing::error!("Failed to parse mnemonic from secure storage: {}", e);
+                                (None, None)
+                            }
+                        }
+                    }
+                    Ok(None) => {
+                        tracing::warn!("No mnemonic found in secure storage - running in read-only mode");
+                        tracing::info!("To enable event signing and publishing:");
+                        tracing::info!("  1. Use `openagents wallet init` to create a new identity");
+                        tracing::info!("  2. Or set GITAFTER_MNEMONIC environment variable (less secure)");
+                        (None, None)
+                    }
+                    Err(e) => {
+                        tracing::error!("Failed to access secure storage: {}", e);
+                        tracing::warn!("Running in read-only mode");
+                        (None, None)
+                    }
+                }
             };
 
             // Initialize Nostr client
