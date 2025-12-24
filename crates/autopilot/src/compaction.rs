@@ -2,8 +2,12 @@
 //!
 //! This module provides compaction prompt templates that can be used with
 //! the Claude Code CLI's built-in compaction feature via the PreCompact hook.
+//!
+//! Implements shape-preserving compaction that keeps first/last conversation windows
+//! intact while only compacting the middle section.
 
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 
 /// Compaction strategy for different use cases
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -198,5 +202,300 @@ mod tests {
         let prompt = generate_compaction_prompt(CompactionStrategy::Detailed, None);
         assert!(prompt.contains("detailed technical summary"));
         assert!(!prompt.contains("Additional context"));
+    }
+}
+
+/// Configuration for shape-preserving compaction
+#[derive(Debug, Clone, Copy)]
+pub struct ShapePreservingConfig {
+    /// Number of turns to preserve at the beginning (default: 3)
+    pub first_window_turns: usize,
+    /// Number of turns to preserve at the end (default: 10)
+    pub last_window_turns: usize,
+    /// Token threshold to trigger compaction (default: 80000)
+    pub compaction_threshold_tokens: u64,
+}
+
+impl Default for ShapePreservingConfig {
+    fn default() -> Self {
+        Self {
+            first_window_turns: 3,
+            last_window_turns: 10,
+            compaction_threshold_tokens: 80_000,
+        }
+    }
+}
+
+/// Message abstraction for compaction analysis
+#[derive(Debug, Clone)]
+pub struct Message {
+    /// Role (user, assistant, system)
+    pub role: String,
+    /// Message content
+    pub content: String,
+    /// Estimated token count (rough estimate: chars / 4)
+    pub estimated_tokens: u64,
+}
+
+impl Message {
+    /// Create a new message with estimated token count
+    pub fn new(role: String, content: String) -> Self {
+        let estimated_tokens = (content.len() as u64) / 4;
+        Self {
+            role,
+            content,
+            estimated_tokens,
+        }
+    }
+
+    /// Parse message from SDK message JSON
+    pub fn from_sdk_message(msg: &Value) -> Option<Self> {
+        let msg_type = msg.get("type")?.as_str()?;
+
+        match msg_type {
+            "user" => {
+                let content = msg.get("message")
+                    .and_then(|m| m.get("content"))
+                    .and_then(|c| c.as_str())
+                    .unwrap_or("");
+                Some(Message::new("user".to_string(), content.to_string()))
+            }
+            "assistant" => {
+                let content = msg.get("message")
+                    .and_then(|m| serde_json::to_string(m).ok())
+                    .unwrap_or_default();
+                Some(Message::new("assistant".to_string(), content))
+            }
+            "system" => {
+                let content = serde_json::to_string(msg).unwrap_or_default();
+                Some(Message::new("system".to_string(), content))
+            }
+            _ => None,
+        }
+    }
+}
+
+/// Window of messages to preserve or compact
+#[derive(Debug)]
+pub struct MessageWindow {
+    /// Messages in this window
+    pub messages: Vec<Message>,
+    /// Total estimated tokens
+    pub total_tokens: u64,
+}
+
+impl MessageWindow {
+    /// Create an empty window
+    pub fn new() -> Self {
+        Self {
+            messages: Vec::new(),
+            total_tokens: 0,
+        }
+    }
+
+    /// Add a message to the window
+    pub fn push(&mut self, message: Message) {
+        self.total_tokens += message.estimated_tokens;
+        self.messages.push(message);
+    }
+
+    /// Get the content for summarization
+    pub fn to_summarizable_text(&self) -> String {
+        self.messages
+            .iter()
+            .map(|m| format!("{}: {}", m.role, m.content))
+            .collect::<Vec<_>>()
+            .join("\n\n")
+    }
+}
+
+/// Result of shape-preserving compaction analysis
+#[derive(Debug)]
+pub struct CompactionPlan {
+    /// Messages in the first window (preserve as-is)
+    pub first_window: MessageWindow,
+    /// Messages in the middle window (to be compacted)
+    pub middle_window: MessageWindow,
+    /// Messages in the last window (preserve as-is)
+    pub last_window: MessageWindow,
+    /// Whether compaction is needed
+    pub should_compact: bool,
+    /// Total tokens across all windows
+    pub total_tokens: u64,
+}
+
+impl CompactionPlan {
+    /// Analyze messages and create a compaction plan
+    pub fn analyze(messages: Vec<Message>, config: ShapePreservingConfig) -> Self {
+        let total_tokens: u64 = messages.iter().map(|m| m.estimated_tokens).sum();
+        let should_compact = total_tokens > config.compaction_threshold_tokens;
+
+        // If we don't need to compact, return everything in the last window
+        if !should_compact {
+            let mut last_window = MessageWindow::new();
+            for msg in messages {
+                last_window.push(msg);
+            }
+            return Self {
+                first_window: MessageWindow::new(),
+                middle_window: MessageWindow::new(),
+                last_window,
+                should_compact: false,
+                total_tokens,
+            };
+        }
+
+        // Calculate message ranges
+        let total_messages = messages.len();
+        let first_end = config.first_window_turns.min(total_messages);
+        let last_start = if total_messages > config.last_window_turns {
+            total_messages - config.last_window_turns
+        } else {
+            total_messages
+        };
+
+        // Ensure no overlap
+        let (first_end, middle_start, middle_end, last_start) = if first_end >= last_start {
+            // Windows would overlap - adjust
+            let mid_point = total_messages / 2;
+            (mid_point, mid_point, mid_point, mid_point)
+        } else {
+            (first_end, first_end, last_start, last_start)
+        };
+
+        // Build windows
+        let mut first_window = MessageWindow::new();
+        let mut middle_window = MessageWindow::new();
+        let mut last_window = MessageWindow::new();
+
+        for (i, msg) in messages.into_iter().enumerate() {
+            if i < first_end {
+                first_window.push(msg);
+            } else if i >= middle_start && i < middle_end {
+                middle_window.push(msg);
+            } else if i >= last_start {
+                last_window.push(msg);
+            }
+        }
+
+        Self {
+            first_window,
+            middle_window,
+            last_window,
+            should_compact: true,
+            total_tokens,
+        }
+    }
+
+    /// Get summary of the plan for logging
+    pub fn summary(&self) -> String {
+        format!(
+            "Compaction plan: {} total tokens, first: {} msgs ({} tokens), middle: {} msgs ({} tokens), last: {} msgs ({} tokens), compact: {}",
+            self.total_tokens,
+            self.first_window.messages.len(),
+            self.first_window.total_tokens,
+            self.middle_window.messages.len(),
+            self.middle_window.total_tokens,
+            self.last_window.messages.len(),
+            self.last_window.total_tokens,
+            self.should_compact
+        )
+    }
+}
+
+#[cfg(test)]
+mod shape_preserving_tests {
+    use super::*;
+
+    fn create_test_message(role: &str, content: &str) -> Message {
+        Message::new(role.to_string(), content.to_string())
+    }
+
+    #[test]
+    fn test_message_token_estimation() {
+        let msg = create_test_message("user", "Hello world");
+        assert_eq!(msg.estimated_tokens, 11 / 4); // "Hello world".len() = 11, /4 = 2
+    }
+
+    #[test]
+    fn test_compaction_not_needed() {
+        let messages = vec![
+            create_test_message("user", "Hello"),
+            create_test_message("assistant", "Hi there"),
+        ];
+
+        let config = ShapePreservingConfig {
+            compaction_threshold_tokens: 1000,
+            ..Default::default()
+        };
+
+        let plan = CompactionPlan::analyze(messages, config);
+        assert!(!plan.should_compact);
+        assert_eq!(plan.first_window.messages.len(), 0);
+        assert_eq!(plan.middle_window.messages.len(), 0);
+        assert_eq!(plan.last_window.messages.len(), 2);
+    }
+
+    #[test]
+    fn test_compaction_needed_with_all_windows() {
+        // Create enough messages to trigger compaction
+        let mut messages = Vec::new();
+        for i in 0..20 {
+            messages.push(create_test_message(
+                if i % 2 == 0 { "user" } else { "assistant" },
+                &"x".repeat(1000), // 1000 chars = ~250 tokens
+            ));
+        }
+
+        let config = ShapePreservingConfig {
+            first_window_turns: 3,
+            last_window_turns: 5,
+            compaction_threshold_tokens: 1000, // 20 messages * 250 tokens = 5000 > 1000
+        };
+
+        let plan = CompactionPlan::analyze(messages, config);
+        assert!(plan.should_compact);
+        assert_eq!(plan.first_window.messages.len(), 3);
+        assert_eq!(plan.middle_window.messages.len(), 12); // 20 - 3 - 5
+        assert_eq!(plan.last_window.messages.len(), 5);
+    }
+
+    #[test]
+    fn test_compaction_with_window_overlap() {
+        // Test case where first + last windows would overlap
+        let messages = vec![
+            create_test_message("user", &"x".repeat(1000)),
+            create_test_message("assistant", &"x".repeat(1000)),
+            create_test_message("user", &"x".repeat(1000)),
+        ];
+
+        let config = ShapePreservingConfig {
+            first_window_turns: 2,
+            last_window_turns: 2,
+            compaction_threshold_tokens: 500, // Will trigger compaction
+        };
+
+        let plan = CompactionPlan::analyze(messages, config);
+        // When windows overlap, should adjust to prevent overlap
+        assert!(plan.should_compact);
+    }
+
+    #[test]
+    fn test_message_window_to_text() {
+        let mut window = MessageWindow::new();
+        window.push(create_test_message("user", "Hello"));
+        window.push(create_test_message("assistant", "Hi there"));
+
+        let text = window.to_summarizable_text();
+        assert!(text.contains("user: Hello"));
+        assert!(text.contains("assistant: Hi there"));
+    }
+
+    #[test]
+    fn test_default_config() {
+        let config = ShapePreservingConfig::default();
+        assert_eq!(config.first_window_turns, 3);
+        assert_eq!(config.last_window_turns, 10);
+        assert_eq!(config.compaction_threshold_tokens, 80_000);
     }
 }
