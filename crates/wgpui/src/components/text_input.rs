@@ -123,6 +123,14 @@ impl TextInput {
         self.selection_start = None;
     }
 
+    pub fn set_focused(&mut self, focused: bool) {
+        if focused {
+            self.focus();
+        } else {
+            self.blur();
+        }
+    }
+
     fn insert_str(&mut self, s: &str) {
         if self.cursor_pos <= self.value.len() {
             self.value.insert_str(self.cursor_pos, s);
