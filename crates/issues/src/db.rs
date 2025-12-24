@@ -17,9 +17,14 @@ pub fn init_db(path: &Path) -> Result<Connection> {
         e
     })?;
 
-    // Enable foreign keys
-    conn.execute_batch("PRAGMA foreign_keys = ON;").map_err(|e| {
-        error!("Failed to enable foreign keys: {}", e);
+    // Configure SQLite for concurrent access (WAL mode) and enable foreign keys
+    conn.execute_batch(
+        "PRAGMA journal_mode = WAL;
+         PRAGMA busy_timeout = 5000;
+         PRAGMA foreign_keys = ON;",
+    )
+    .map_err(|e| {
+        error!("Failed to configure database pragmas: {}", e);
         e
     })?;
 

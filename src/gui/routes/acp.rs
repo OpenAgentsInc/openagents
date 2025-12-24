@@ -7,6 +7,9 @@
 //! - POST /api/acp/sessions/{id}/cancel - Cancel session
 //! - DELETE /api/acp/sessions/{id} - Close session
 
+use std::path::PathBuf;
+use std::sync::Arc;
+
 use actix_web::{web, HttpResponse};
 use serde::{Deserialize, Serialize};
 
@@ -136,6 +139,32 @@ async fn create_session(
         .clone()
         .unwrap_or_else(|| std::env::current_dir().unwrap().to_string_lossy().to_string());
 
+    let cwd_path = PathBuf::from(&cwd);
+
+    // Spawn the actual agent connection
+    let connection_result = match body.agent.as_str() {
+        "claude" => {
+            let config = acp_adapter::agents::ClaudeAgentConfig::new();
+            acp_adapter::agents::connect_claude(config, &cwd_path).await
+        }
+        "codex" => {
+            let config = acp_adapter::agents::CodexAgentConfig::new();
+            acp_adapter::agents::connect_codex(config, &cwd_path).await
+        }
+        _ => unreachable!(), // Already validated above
+    };
+
+    let connection = match connection_result {
+        Ok(conn) => conn,
+        Err(e) => {
+            tracing::error!(error = %e, agent = %body.agent, "Failed to spawn agent");
+            return HttpResponse::InternalServerError().json(serde_json::json!({
+                "error": "Failed to spawn agent",
+                "message": e.to_string()
+            }));
+        }
+    };
+
     // Create session info
     let session = AcpSessionInfo {
         id: session_id.clone(),
@@ -148,10 +177,14 @@ async fn create_session(
         last_activity: now,
     };
 
-    // Store session
+    // Store session and connection
     {
         let mut sessions = state.acp_sessions.write().await;
         sessions.insert(session_id.clone(), session.clone());
+    }
+    {
+        let mut connections = state.acp_connections.write().await;
+        connections.insert(session_id.clone(), Arc::new(tokio::sync::Mutex::new(connection)));
     }
 
     // Broadcast session created event
@@ -163,7 +196,7 @@ async fn create_session(
     tracing::info!(
         session_id = %session_id,
         agent = %body.agent,
-        "ACP session created"
+        "ACP session created with agent connection"
     );
 
     HttpResponse::Created().json(session)
@@ -218,21 +251,73 @@ async fn send_prompt(
     tracing::info!(
         session_id = %session_id,
         content_len = body.content.len(),
-        "Prompt sent to ACP session"
+        "Sending prompt to ACP session"
     );
 
-    // TODO: Actually send prompt to agent via ACP connection
-    // For now, return acknowledgment
-    // In full implementation, this would:
-    // 1. Get the AcpAgentConnection for this session
-    // 2. Call connection.prompt(session_id, content)
-    // 3. Stream updates back via WebSocket
+    // Get the ACP connection for this session
+    let connection = {
+        let connections = state.acp_connections.read().await;
+        connections.get(&session_id).cloned()
+    };
 
-    HttpResponse::Ok().json(serde_json::json!({
-        "status": "prompt_received",
-        "session_id": session_id,
-        "message": "Prompt queued for processing"
-    }))
+    let connection = match connection {
+        Some(conn) => conn,
+        None => {
+            tracing::warn!(session_id = %session_id, "No agent connection found for session");
+            return HttpResponse::InternalServerError().json(serde_json::json!({
+                "error": "No agent connection",
+                "session_id": session_id,
+                "message": "Agent connection not found for this session"
+            }));
+        }
+    };
+
+    // Send prompt to the agent
+    let prompt_result = {
+        let conn = connection.lock().await;
+        // We need to create a new session in the connection if we don't have one
+        // For now, we'll create one on demand
+        let acp_session_id = agent_client_protocol_schema::SessionId::new(session_id.clone());
+        conn.prompt(&acp_session_id, &body.content).await
+    };
+
+    match prompt_result {
+        Ok(response) => {
+            tracing::info!(session_id = %session_id, "Prompt sent successfully");
+
+            // Add assistant response to entries
+            {
+                let mut sessions = state.acp_sessions.write().await;
+                if let Some(session) = sessions.get_mut(&session_id) {
+                    // The response content would come from streaming, but for now add a placeholder
+                    session.entries.push(SessionEntry {
+                        entry_type: "assistant".to_string(),
+                        content: "Processing...".to_string(),
+                        tool_name: None,
+                        tool_status: None,
+                        timestamp: chrono::Utc::now().to_rfc3339(),
+                    });
+                    session.last_activity = chrono::Utc::now().to_rfc3339();
+                }
+            }
+
+            broadcast_session_update(&state, &session_id).await;
+
+            HttpResponse::Ok().json(serde_json::json!({
+                "status": "prompt_sent",
+                "session_id": session_id,
+                "response": format!("{:?}", response)
+            }))
+        }
+        Err(e) => {
+            tracing::error!(session_id = %session_id, error = %e, "Failed to send prompt");
+            HttpResponse::InternalServerError().json(serde_json::json!({
+                "error": "Failed to send prompt",
+                "session_id": session_id,
+                "message": e.to_string()
+            }))
+        }
+    }
 }
 
 /// POST /api/acp/sessions/{id}/cancel - Cancel ongoing work in a session
@@ -260,13 +345,25 @@ async fn cancel_session(state: web::Data<AppState>, path: web::Path<String>) -> 
         }
     }
 
+    // Get the ACP connection for this session and send cancel
+    let connection = {
+        let connections = state.acp_connections.read().await;
+        connections.get(&session_id).cloned()
+    };
+
+    if let Some(conn) = connection {
+        let conn = conn.lock().await;
+        let acp_session_id = agent_client_protocol_schema::SessionId::new(session_id.clone());
+        conn.cancel(&acp_session_id).await;
+        tracing::info!(session_id = %session_id, "Cancel sent to agent");
+    } else {
+        tracing::warn!(session_id = %session_id, "No agent connection to cancel");
+    }
+
     // Broadcast update
     broadcast_session_update(&state, &session_id).await;
 
     tracing::info!(session_id = %session_id, "ACP session cancelled");
-
-    // TODO: Actually send cancel to agent via ACP connection
-    // In full implementation: connection.cancel(session_id)
 
     HttpResponse::Ok().json(serde_json::json!({
         "status": "cancelled",
@@ -278,11 +375,17 @@ async fn cancel_session(state: web::Data<AppState>, path: web::Path<String>) -> 
 async fn delete_session(state: web::Data<AppState>, path: web::Path<String>) -> HttpResponse {
     let session_id = path.into_inner();
 
-    // Remove session
+    // Remove session and connection
     let removed = {
         let mut sessions = state.acp_sessions.write().await;
         sessions.remove(&session_id)
     };
+
+    // Also remove the agent connection (this will drop the connection and kill the subprocess)
+    {
+        let mut connections = state.acp_connections.write().await;
+        connections.remove(&session_id);
+    }
 
     if removed.is_some() {
         // Broadcast session list update

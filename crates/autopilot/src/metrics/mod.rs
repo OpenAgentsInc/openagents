@@ -401,8 +401,12 @@ impl MetricsDb {
 
     /// Initialize database schema
     fn init_schema(&self) -> Result<()> {
-        // Enable foreign keys
-        self.conn.execute_batch("PRAGMA foreign_keys = ON;")?;
+        // Configure SQLite for concurrent access (WAL mode) and enable foreign keys
+        self.conn.execute_batch(
+            "PRAGMA journal_mode = WAL;
+             PRAGMA busy_timeout = 5000;
+             PRAGMA foreign_keys = ON;",
+        )?;
 
         // Create schema_version table if it doesn't exist
         self.conn.execute(

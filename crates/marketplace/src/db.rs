@@ -11,8 +11,12 @@ const SCHEMA_VERSION: i32 = 1;
 pub fn init_db(path: &Path) -> Result<Connection> {
     let conn = Connection::open(path)?;
 
-    // Enable foreign keys
-    conn.execute_batch("PRAGMA foreign_keys = ON;")?;
+    // Configure SQLite for concurrent access (WAL mode) and enable foreign keys
+    conn.execute_batch(
+        "PRAGMA journal_mode = WAL;
+         PRAGMA busy_timeout = 5000;
+         PRAGMA foreign_keys = ON;",
+    )?;
 
     // Check current version
     let version = get_schema_version(&conn)?;
@@ -28,7 +32,11 @@ pub fn init_db(path: &Path) -> Result<Connection> {
 /// Initialize an in-memory database (for testing)
 pub fn init_memory_db() -> Result<Connection> {
     let conn = Connection::open_in_memory()?;
-    conn.execute_batch("PRAGMA foreign_keys = ON;")?;
+    // Note: WAL mode not needed for in-memory, but busy_timeout and foreign_keys still useful
+    conn.execute_batch(
+        "PRAGMA busy_timeout = 5000;
+         PRAGMA foreign_keys = ON;",
+    )?;
 
     let version = get_schema_version(&conn)?;
     if version < 1 {

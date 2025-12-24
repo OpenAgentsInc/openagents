@@ -1159,17 +1159,44 @@ async fn run_task(
         println!("{} {}", "Issues DB:".dimmed(), db_path);
 
         // Build MCP server configuration
-        let mcp_config = json!({
-            "mcpServers": {
-                "issues": {
-                    "command": "cargo",
-                    "args": ["run", "--release", "-p", "issues-mcp"],
-                    "env": {
-                        "ISSUES_DB": db_path
+        // Use pre-built binary if available (e.g., in Docker containers), otherwise use cargo
+        let issues_mcp_binary = std::env::var("ISSUES_MCP_BINARY")
+            .ok()
+            .or_else(|| {
+                let default_path = "/usr/local/bin/issues-mcp";
+                if std::path::Path::new(default_path).exists() {
+                    Some(default_path.to_string())
+                } else {
+                    None
+                }
+            });
+
+        let mcp_config = if let Some(binary_path) = issues_mcp_binary {
+            println!("{} {}", "Issues MCP binary:".dimmed(), binary_path);
+            json!({
+                "mcpServers": {
+                    "issues": {
+                        "command": binary_path,
+                        "args": [],
+                        "env": {
+                            "ISSUES_DB": db_path
+                        }
                     }
                 }
-            }
-        });
+            })
+        } else {
+            json!({
+                "mcpServers": {
+                    "issues": {
+                        "command": "cargo",
+                        "args": ["run", "--release", "-p", "issues-mcp"],
+                        "env": {
+                            "ISSUES_DB": db_path
+                        }
+                    }
+                }
+            })
+        };
 
         // Write .mcp.json file
         let json = serde_json::to_string_pretty(&mcp_config)

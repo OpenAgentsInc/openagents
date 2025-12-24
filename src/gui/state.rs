@@ -8,7 +8,7 @@ use tokio::task::JoinHandle;
 
 use super::routes::acp::AcpSessionInfo;
 use super::ws::WsBroadcaster;
-use acp_adapter::PermissionRequestManager;
+use acp_adapter::{AcpAgentConnection, PermissionRequestManager};
 
 /// Running autopilot process state
 pub struct AutopilotProcess {
@@ -130,6 +130,9 @@ pub struct AppState {
     /// ACP (Agent Client Protocol) sessions
     pub acp_sessions: RwLock<HashMap<String, AcpSessionInfo>>,
 
+    /// ACP agent connections (session_id -> connection)
+    pub acp_connections: RwLock<HashMap<String, Arc<tokio::sync::Mutex<AcpAgentConnection>>>>,
+
     /// ACP permission request manager
     pub permission_manager: Arc<PermissionRequestManager>,
 
@@ -153,6 +156,7 @@ impl AppState {
             daemon_info: RwLock::new(DaemonInfo::default()),
             autopilot_process: RwLock::new(None),
             acp_sessions: RwLock::new(HashMap::new()),
+            acp_connections: RwLock::new(HashMap::new()),
             permission_manager: Arc::new(PermissionRequestManager::new()),
             selected_agent: RwLock::new("claude".to_string()),
             agent_availability: RwLock::new(HashMap::new()),

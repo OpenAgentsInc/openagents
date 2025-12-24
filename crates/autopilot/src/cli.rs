@@ -65,7 +65,7 @@ pub enum Commands {
         with_issues: bool,
 
         /// Path to issues database (default: autopilot.db in workspace root)
-        #[arg(long)]
+        #[arg(long, env = "ISSUES_DB")]
         issues_db: Option<PathBuf>,
 
         /// Full auto mode: continuously work on issues and discover new work
@@ -145,7 +145,7 @@ pub enum Commands {
         with_issues: bool,
 
         /// Path to issues database (default: autopilot.db in workspace root)
-        #[arg(long)]
+        #[arg(long, env = "ISSUES_DB")]
         issues_db: Option<PathBuf>,
     },
     /// Manage issues
@@ -636,7 +636,7 @@ pub enum MetricsCommands {
         metrics_db: Option<PathBuf>,
 
         /// Path to issues database (default: autopilot.db in workspace root)
-        #[arg(long)]
+        #[arg(long, env = "ISSUES_DB")]
         issues_db: Option<PathBuf>,
 
         /// Dry run - show what would be created without creating issues
