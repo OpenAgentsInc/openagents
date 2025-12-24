@@ -147,11 +147,10 @@ pub mod peer;
 pub mod serialization;
 pub mod transport;
 
-pub use aggregator::{EcdhAggregator, SigningAggregator};
+pub use aggregator::EcdhAggregator;
 pub use messages::{
-    BifrostMessage, EcdhRequest, EcdhResponse, Ping, Pong, SignError, SignRequest, SignResponse,
-    SignResult,
-    // Two-phase protocol types (for threshold > 2)
+    BifrostMessage, EcdhRequest, EcdhResponse, Ping, Pong, SignError, SignResult,
+    // FROST two-phase signing protocol (RFC 9591)
     CommitmentRequest, CommitmentResponse, SigningPackageMessage, ParticipantCommitment, PartialSignature,
 };
 pub use node::{BifrostConfig, BifrostNode, RetryConfig as NodeRetryConfig, TimeoutConfig};
