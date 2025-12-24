@@ -4,14 +4,42 @@ use anyhow::{Context, Result};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-/// Information about a worktree
+/// Information about a git worktree for a parallel agent
+///
+/// Each parallel agent works in its own isolated git worktree, which is a separate
+/// working directory linked to the same .git database. This allows multiple agents
+/// to work on different branches simultaneously without conflicts.
+///
+/// # Example
+///
+/// ```
+/// use autopilot::parallel::WorktreeInfo;
+/// use std::path::PathBuf;
+///
+/// let worktree = WorktreeInfo {
+///     path: PathBuf::from("/workspace/.worktrees/agent-001"),
+///     branch: "agent/001".to_string(),
+///     agent_id: "001".to_string(),
+/// };
+///
+/// println!("Agent {} works in {:?} on branch {}",
+///     worktree.agent_id, worktree.path, worktree.branch);
+/// ```
 #[derive(Debug, Clone)]
 pub struct WorktreeInfo {
-    /// Path to the worktree
+    /// Path to the worktree directory
+    ///
+    /// Example: `/workspace/.worktrees/agent-001`
     pub path: PathBuf,
-    /// Branch name
+
+    /// Git branch name for this worktree
+    ///
+    /// Example: `agent/001`
     pub branch: String,
-    /// Agent ID (e.g., "001")
+
+    /// Zero-padded agent identifier
+    ///
+    /// Example: `001`, `002`, `010`
     pub agent_id: String,
 }
 
