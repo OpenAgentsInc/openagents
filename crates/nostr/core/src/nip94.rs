@@ -425,6 +425,40 @@ pub fn is_file_metadata_kind(kind: u16) -> bool {
     kind == FILE_METADATA_KIND
 }
 
+/// Create an EventTemplate for file metadata.
+///
+/// This is a convenience function that converts FileMetadata into an EventTemplate
+/// ready to be signed and published. The content field comes from the metadata's
+/// content (description/caption).
+///
+/// # Example
+///
+/// ```
+/// use nostr::nip94::{FileMetadata, create_file_metadata_event};
+///
+/// let metadata = FileMetadata::new(
+///     "https://example.com/dataset.csv".to_string(),
+///     "text/csv".to_string(),
+///     "abc123def456".to_string(),
+/// )
+/// .with_content("Sales data Q4 2024".to_string())
+/// .with_size(1024000);
+///
+/// let event_template = create_file_metadata_event(&metadata);
+/// assert_eq!(event_template.kind, 1063);
+/// ```
+pub fn create_file_metadata_event(metadata: &FileMetadata) -> crate::nip01::EventTemplate {
+    crate::nip01::EventTemplate {
+        kind: FILE_METADATA_KIND,
+        tags: metadata.to_tags(),
+        content: metadata.content.clone(),
+        created_at: std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -567,6 +601,24 @@ mod tests {
         assert_eq!(reconstructed.dimensions, original.dimensions);
         assert_eq!(reconstructed.thumbnail, original.thumbnail);
         assert_eq!(reconstructed.fallbacks, original.fallbacks);
+    }
+
+    #[test]
+    fn test_create_file_metadata_event() {
+        let metadata = FileMetadata::new(
+            "https://example.com/data.csv".to_string(),
+            "text/csv".to_string(),
+            "hash123".to_string(),
+        )
+        .with_content("Dataset description".to_string())
+        .with_size(500000);
+
+        let event = create_file_metadata_event(&metadata);
+
+        assert_eq!(event.kind, FILE_METADATA_KIND);
+        assert!(event.tags.iter().any(|t| t[0] == "url"));
+        assert!(event.tags.iter().any(|t| t[0] == "m" && t[1] == "text/csv"));
+        assert_eq!(event.content, "Dataset description");
     }
 
     #[test]
