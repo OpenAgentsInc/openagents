@@ -339,6 +339,10 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "chrono",
+ "frostr",
+ "hex",
+ "openagents-spark",
+ "postcard",
  "serde",
  "serde_json",
  "serde_yaml",

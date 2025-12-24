@@ -12,11 +12,14 @@ pub use config::{AgentConfig, AgentMode, AgentPermission, BashPermission, Permis
 pub use error::{Error, Result};
 pub use hooks::{Hook, HookManager, HookResult};
 pub use integrations::{
+    generate_threshold_identity, generate_threshold_shares, is_frostr_available, is_spark_available,
     ActionMetric, AgentIdentity, ApmTracker, AutopilotIntegration, AutonomyLevel, BackendConfig,
-    BackendProvider, BudgetConfig, BudgetStatus, CostRecord, CostTracker, CostTrackingHook,
-    DirectiveContext, DirectiveInjectionConfig, DirectiveSummary, IssueClaimHook,
-    IssueCompleteHook, MarketplaceIntegration, MultiBackendRouter, PendingApproval,
-    SkillLicenseHook, SkillLicenseInfo, SkillPricing, SkillUsageHook, SolverAgentCoordinator,
-    ThresholdConfig, TrajectoryLogger,
+    BackendProvider, BudgetConfig, BudgetStatus, CostPaymentBridge, CostRecord, CostTracker,
+    CostTrackingHook, DirectiveContext, DirectiveInjectionConfig, DirectiveSummary,
+    FrostShareInfo, FrostrBridgeError, IssueClaimHook, IssueCompleteHook, MarketplaceIntegration,
+    MockPaymentProvider, MultiBackendRouter, PaymentError, PaymentProvider, PaymentResult,
+    PaymentStatus, PendingApproval, SkillLicenseHook, SkillLicenseInfo, SkillPricing,
+    SkillUsageHook, SolverAgentCoordinator, SparkPaymentProvider, ThresholdConfig,
+    TrajectoryLogger, WalletBalance,
 };
 pub use registry::AgentRegistry;
