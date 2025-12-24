@@ -10,13 +10,13 @@
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use wgpui::{
-    Animation, Bounds, Button, ButtonVariant, Component, Div, Easing, Hsla,
-    PaintContext, Point, Quad, Scene, Size, SpringAnimation, Text, TextSystem,
+    Animation, Bounds, Button, ButtonVariant, Component, Div, Easing, EventContext, Hsla,
+    InputEvent, PaintContext, Point, Quad, Scene, Size, SpringAnimation, Text, TextSystem,
     VirtualList, theme,
 };
 use wgpui::components::atoms::{Mode, Model, Status, StatusDot, ModeBadge, ModelBadge, StreamingIndicator};
 use wgpui::components::molecules::{MessageHeader, ModeSelector, ModelSelector};
-use wgpui::components::hud::{StatusBar, StatusItem, Notifications};
+use wgpui::components::hud::{CornerConfig, Frame, StatusBar, StatusItem, Notifications};
 use wgpui::renderer::Renderer;
 use winit::application::ApplicationHandler;
 use winit::event::WindowEvent;
@@ -51,6 +51,10 @@ struct DemoState {
     position_anim: Animation<f32>,
     color_anim: Animation<Hsla>,
     spring: SpringAnimation<f32>,
+    spring_going_up: bool,
+    streaming_indicator: StreamingIndicator,
+    virtual_list: VirtualList<String>,
+    virtual_list_bounds: Bounds,
     status_bar: StatusBar,
     #[allow(dead_code)]
     notifications: Notifications,
@@ -79,11 +83,26 @@ impl Default for DemoState {
             .stiffness(80.0)
             .damping(8.0);
 
+        let items: Vec<String> = (0..10000).map(|i| format!("Item #{} - Virtual scrolling", i)).collect();
+        let item_height = 26.0;
+        let font_size = 12.0;
+        let virtual_list = VirtualList::new(items, item_height, move |item: &String, idx: usize, bounds: Bounds, cx: &mut PaintContext| {
+            let bg = if idx % 2 == 0 { theme::bg::SURFACE } else { theme::bg::MUTED };
+            cx.scene.draw_quad(Quad::new(bounds).with_background(bg));
+            let text_y = bounds.origin.y + (bounds.size.height - font_size) / 2.0;
+            let run = cx.text.layout(item, Point::new(bounds.origin.x + 10.0, text_y), font_size, theme::text::PRIMARY);
+            cx.scene.draw_text(run);
+        });
+
         Self {
             start_time: Instant::now(),
             position_anim,
             color_anim,
             spring,
+            spring_going_up: true,
+            streaming_indicator: StreamingIndicator::new(),
+            virtual_list,
+            virtual_list_bounds: Bounds::ZERO,
             status_bar: StatusBar::new().items(vec![
                 StatusItem::mode("mode", Mode::Normal).left(),
                 StatusItem::text("file", "first_light.rs").center(),
@@ -189,6 +208,16 @@ impl ApplicationHandler for App {
                 state.surface.configure(&state.device, &state.config);
                 state.window.request_redraw();
             }
+            WindowEvent::MouseWheel { delta, .. } => {
+                let (dx, dy) = match delta {
+                    winit::event::MouseScrollDelta::LineDelta(x, y) => (-x * 20.0, -y * 20.0),
+                    winit::event::MouseScrollDelta::PixelDelta(pos) => (-pos.x as f32, -pos.y as f32),
+                };
+                let scroll_event = InputEvent::Scroll { dx, dy };
+                let mut ecx = EventContext::new();
+                state.demo.virtual_list.event(&scroll_event, state.demo.virtual_list_bounds, &mut ecx);
+                state.window.request_redraw();
+            }
             WindowEvent::RedrawRequested => {
                 let width = state.config.width as f32;
                 let height = state.config.height as f32;
@@ -197,7 +226,17 @@ impl ApplicationHandler for App {
                 state.demo.position_anim.tick(delta);
                 state.demo.color_anim.tick(delta);
                 state.demo.spring.tick(delta);
+                state.demo.streaming_indicator.tick();
                 state.demo.frame_count += 1;
+
+                if state.demo.spring.is_settled() {
+                    if state.demo.spring_going_up {
+                        state.demo.spring.set_target(0.0);
+                    } else {
+                        state.demo.spring.set_target(100.0);
+                    }
+                    state.demo.spring_going_up = !state.demo.spring_going_up;
+                }
 
                 let mut scene = Scene::new();
                 build_full_demo(
@@ -279,7 +318,7 @@ fn build_full_demo(
     demo_animation_system(scene, text_system, demo, left_x, col_width, &mut left_y);
     left_y += section_spacing;
 
-    demo_atoms(scene, text_system, right_x, col_width, &mut right_y);
+    demo_atoms(scene, text_system, demo, right_x, col_width, &mut right_y);
     right_y += section_spacing;
 
     demo_text_component(scene, text_system, left_x, col_width, &mut left_y);
@@ -294,10 +333,13 @@ fn build_full_demo(
     demo_div_component(scene, text_system, right_x, col_width, &mut right_y);
     right_y += section_spacing;
 
-    demo_virtual_list(scene, text_system, left_x, col_width, &mut left_y);
+    demo_virtual_list(scene, text_system, demo, left_x, col_width, &mut left_y);
     let _unused = left_y;
 
     demo_theme_colors(scene, text_system, right_x, &mut right_y);
+    right_y += section_spacing;
+
+    demo_bitcoin_wallet(scene, text_system, right_x, col_width, &mut right_y);
 
     let mut cx = PaintContext::new(scene, text_system, 1.0);
     demo.status_bar.paint(Bounds::new(0.0, 0.0, width, height), &mut cx);
@@ -368,7 +410,7 @@ fn demo_animation_system(
     *y += 110.0;
 }
 
-fn demo_atoms(scene: &mut Scene, text_system: &mut TextSystem, x: f32, width: f32, y: &mut f32) {
+fn demo_atoms(scene: &mut Scene, text_system: &mut TextSystem, demo: &mut DemoState, x: f32, width: f32, y: &mut f32) {
     draw_section_header(scene, text_system, x, y, "Atoms (13 Components)");
 
     scene.draw_quad(
@@ -411,7 +453,7 @@ fn demo_atoms(scene: &mut Scene, text_system: &mut TextSystem, x: f32, width: f3
     let label3 = cx.text.layout("ModelBadge", Point::new(x + width - 160.0, ay + 26.0), 10.0, theme::text::MUTED);
     cx.scene.draw_text(label3);
 
-    StreamingIndicator::new().paint(Bounds::new(x + width - 80.0, ay2, 60.0, 18.0), &mut cx);
+    demo.streaming_indicator.paint(Bounds::new(x + width - 80.0, ay2, 60.0, 18.0), &mut cx);
     let label4 = cx.text.layout("Streaming", Point::new(x + width - 80.0, ay2 + 24.0), 10.0, theme::text::MUTED);
     cx.scene.draw_text(label4);
 
@@ -514,28 +556,21 @@ fn demo_div_component(scene: &mut Scene, text_system: &mut TextSystem, x: f32, w
     *y += div_h + 8.0;
 }
 
-fn demo_virtual_list(scene: &mut Scene, text_system: &mut TextSystem, x: f32, width: f32, y: &mut f32) {
+fn demo_virtual_list(scene: &mut Scene, text_system: &mut TextSystem, demo: &mut DemoState, x: f32, width: f32, y: &mut f32) {
     draw_section_header(scene, text_system, x, y, "VirtualList (10k items)");
 
     let list_h = 130.0;
-    let item_h = 26.0;
-    let items: Vec<String> = (0..10000).map(|i| format!("Item #{} - Virtual scrolling", i)).collect();
+    let list_bounds = Bounds::new(x, *y, width, list_h);
+    demo.virtual_list_bounds = list_bounds;
 
     scene.draw_quad(
-        Quad::new(Bounds::new(x, *y, width, list_h))
+        Quad::new(list_bounds)
             .with_background(theme::bg::SURFACE)
             .with_border(theme::border::DEFAULT, 1.0),
     );
 
-    let mut virtual_list = VirtualList::new(items, item_h, move |item: &String, idx: usize, bounds: Bounds, cx: &mut PaintContext| {
-        let bg = if idx % 2 == 0 { theme::bg::SURFACE } else { theme::bg::MUTED };
-        cx.scene.draw_quad(Quad::new(bounds).with_background(bg));
-        let run = cx.text.layout(item, Point::new(bounds.origin.x + 10.0, bounds.origin.y + bounds.size.height * 0.6), 12.0, theme::text::PRIMARY);
-        cx.scene.draw_text(run);
-    });
-
     let mut cx = PaintContext::new(scene, text_system, 1.0);
-    virtual_list.paint(Bounds::new(x, *y, width, list_h), &mut cx);
+    demo.virtual_list.paint(list_bounds, &mut cx);
 
     *y += list_h + 8.0;
 }
@@ -563,4 +598,126 @@ fn demo_theme_colors(scene: &mut Scene, text_system: &mut TextSystem, x: f32, y:
     }
 
     *y += size + 8.0;
+}
+
+fn draw_bitcoin_symbol(scene: &mut Scene, text_system: &mut TextSystem, x: f32, y: f32, font_size: f32, color: Hsla) {
+    let bar_h = font_size * 0.18;
+    let bar_w = 2.0;
+    let bar_x1 = x + font_size * 0.15;
+    let bar_x2 = x + font_size * 0.38;
+    
+    scene.draw_quad(Quad::new(Bounds::new(bar_x1, y - bar_h + 2.0, bar_w, bar_h)).with_background(color));
+    scene.draw_quad(Quad::new(Bounds::new(bar_x2, y - bar_h + 2.0, bar_w, bar_h)).with_background(color));
+    scene.draw_quad(Quad::new(Bounds::new(bar_x1, y + font_size - 4.0, bar_w, bar_h)).with_background(color));
+    scene.draw_quad(Quad::new(Bounds::new(bar_x2, y + font_size - 4.0, bar_w, bar_h)).with_background(color));
+    
+    let b = text_system.layout("B", Point::new(x, y), font_size, color);
+    scene.draw_text(b);
+}
+
+fn demo_bitcoin_wallet(scene: &mut Scene, text_system: &mut TextSystem, x: f32, width: f32, y: &mut f32) {
+    draw_section_header(scene, text_system, x, y, "Frames (6 Arwes Styles)");
+
+    let white = Hsla::new(0.0, 0.0, 1.0, 1.0);
+    let white_glow = Hsla::new(0.0, 0.0, 1.0, 0.6);
+    let dark_bg = Hsla::new(0.0, 0.0, 0.08, 0.8);
+    let cyan_glow = Hsla::new(180.0, 1.0, 0.7, 0.5);
+    let muted = Hsla::new(0.0, 0.0, 0.7, 1.0);
+
+    let frame_w = (width - 16.0) / 3.0;
+    let frame_h = 70.0;
+    let mut cx = PaintContext::new(scene, text_system, 1.0);
+
+    Frame::corners()
+        .line_color(white)
+        .bg_color(dark_bg)
+        .glow_color(white_glow)
+        .stroke_width(2.0)
+        .corner_length(18.0)
+        .paint(Bounds::new(x, *y, frame_w, frame_h), &mut cx);
+    let lbl = cx.text.layout("Corners", Point::new(x + 10.0, *y + frame_h / 2.0), 11.0, white);
+    cx.scene.draw_text(lbl);
+
+    Frame::lines()
+        .line_color(white)
+        .bg_color(dark_bg)
+        .glow_color(white_glow)
+        .stroke_width(2.0)
+        .paint(Bounds::new(x + frame_w + 8.0, *y, frame_w, frame_h), &mut cx);
+    let lbl = cx.text.layout("Lines", Point::new(x + frame_w + 18.0, *y + frame_h / 2.0), 11.0, white);
+    cx.scene.draw_text(lbl);
+
+    Frame::octagon()
+        .line_color(white)
+        .bg_color(dark_bg)
+        .glow_color(white_glow)
+        .stroke_width(2.0)
+        .corner_length(14.0)
+        .paint(Bounds::new(x + (frame_w + 8.0) * 2.0, *y, frame_w, frame_h), &mut cx);
+    let lbl = cx.text.layout("Octagon", Point::new(x + (frame_w + 8.0) * 2.0 + 10.0, *y + frame_h / 2.0), 11.0, white);
+    cx.scene.draw_text(lbl);
+
+    *y += frame_h + 10.0;
+
+    Frame::underline()
+        .line_color(white)
+        .bg_color(dark_bg)
+        .glow_color(white_glow)
+        .stroke_width(2.0)
+        .square_size(12.0)
+        .paint(Bounds::new(x, *y, frame_w, frame_h), &mut cx);
+    let lbl = cx.text.layout("Underline", Point::new(x + 10.0, *y + frame_h / 2.0), 11.0, white);
+    cx.scene.draw_text(lbl);
+
+    Frame::nefrex()
+        .line_color(white)
+        .bg_color(dark_bg)
+        .glow_color(white_glow)
+        .stroke_width(1.5)
+        .square_size(12.0)
+        .small_line_length(12.0)
+        .large_line_length(40.0)
+        .corner_config(CornerConfig::diagonal())
+        .paint(Bounds::new(x + frame_w + 8.0, *y, frame_w, frame_h), &mut cx);
+    let lbl = cx.text.layout("Nefrex", Point::new(x + frame_w + 18.0, *y + frame_h / 2.0), 11.0, white);
+    cx.scene.draw_text(lbl);
+
+    Frame::kranox()
+        .line_color(white)
+        .bg_color(dark_bg)
+        .glow_color(cyan_glow)
+        .stroke_width(2.0)
+        .square_size(10.0)
+        .small_line_length(10.0)
+        .large_line_length(35.0)
+        .paint(Bounds::new(x + (frame_w + 8.0) * 2.0, *y, frame_w, frame_h), &mut cx);
+    let lbl = cx.text.layout("Kranox", Point::new(x + (frame_w + 8.0) * 2.0 + 15.0, *y + frame_h / 2.0), 11.0, white);
+    cx.scene.draw_text(lbl);
+
+    *y += frame_h + 14.0;
+
+    let wallet_bounds = Bounds::new(x, *y, width, 80.0);
+    Frame::corners()
+        .line_color(white)
+        .bg_color(dark_bg)
+        .glow_color(cyan_glow)
+        .stroke_width(2.0)
+        .corner_length(24.0)
+        .paint(wallet_bounds, &mut cx);
+
+    let balance_label = cx.text.layout("Balance", Point::new(x + 20.0, *y + 14.0), 11.0, muted);
+    cx.scene.draw_text(balance_label);
+
+    let font_size = 28.0;
+    let symbol_x = x + 20.0;
+    let symbol_y = *y + 28.0;
+    draw_bitcoin_symbol(cx.scene, cx.text, symbol_x, symbol_y, font_size, white);
+
+    let sats_amount = cx.text.layout("42069", Point::new(symbol_x + font_size * 0.55, symbol_y), font_size, white);
+    cx.scene.draw_text(sats_amount);
+
+    let usd_value = cx.text.layout("~ $42.07", Point::new(x + 20.0, *y + 60.0), 13.0, muted);
+    cx.scene.draw_text(usd_value);
+
+    *y += 88.0;
 }
