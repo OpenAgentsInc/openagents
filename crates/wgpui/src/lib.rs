@@ -54,8 +54,10 @@ pub use markdown::{
     SyntaxHighlighter, TextStyle, render_markdown, SUPPORTED_LANGUAGES,
 };
 pub use animation::{
-    Animation, AnimationController, AnimationState, Animatable, Easing,
-    Keyframe, KeyframeAnimation, SpringAnimation,
+    Animation, AnimationController, AnimationState, Animatable,
+    AnimatorId, AnimatorManagerKind, AnimatorMessage, AnimatorNode, AnimatorSettings,
+    AnimatorState, AnimatorTiming, Easing, Keyframe, KeyframeAnimation, SpringAnimation,
+    Transition, TransitionAnimation, draw, fade, flicker,
 };
 pub use accessibility::{
     AccessibilityContext, AccessibilityTree, AccessibleId, AccessibleNode,

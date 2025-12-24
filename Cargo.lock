@@ -10890,6 +10890,7 @@ dependencies = [
  "smallvec",
  "syntect",
  "taffy",
+ "tokio",
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",
