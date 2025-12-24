@@ -60,13 +60,17 @@ fn get_compose_command() -> &'static ComposeCommand {
     COMPOSE_CMD.get_or_init(ComposeCommand::detect)
 }
 
-/// Agent status
+/// Agent container status
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum AgentStatus {
+    /// Agent is actively running and processing issues
     Running,
+    /// Agent container is stopped (not processing issues)
     Stopped,
+    /// Agent is in the process of starting up
     Starting,
+    /// Agent encountered an error and may have crashed
     Error,
 }
 
