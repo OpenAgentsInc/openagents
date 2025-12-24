@@ -8,6 +8,7 @@ High-performance Nostr client implementation with relay pool management, intelli
 - **Event Publishing**: Publish events with confirmation and retry logic
 - **Subscriptions**: Manage event subscriptions with real-time delivery
 - **Relay Pool**: Intelligent multi-relay management with load balancing
+- **DVM Client (NIP-90)**: Submit jobs to Data Vending Machines and await results
 - **Outbox Model (NIP-65)**: Route events to optimal relays based on user preferences
 - **Local Caching**: Cache events locally for faster access
 - **Contact Sync (NIP-02)**: Synchronize contact lists across relays
@@ -74,7 +75,12 @@ RelayPool
 │   ├── MessageQueue (offline support)
 │   └── Subscriptions
 ├── RelayConnection (relay 2)
-└── OutboxModel (NIP-65 routing)
+├── OutboxModel (NIP-65 routing)
+└── DvmClient (NIP-90 jobs)
+    ├── Job submission
+    ├── Result awaiting
+    ├── Feedback streaming
+    └── Provider discovery
 ```
 
 ## Relay Pool Example
@@ -95,6 +101,92 @@ println!("Published to {} relays", confirmations.len());
 
 // Subscribe across all relays
 pool.subscribe("global-sub", &filters).await?;
+```
+
+## DVM Client (NIP-90)
+
+Submit jobs to Data Vending Machines and await results:
+
+```rust
+use nostr_client::{DvmClient, DvmClientConfig};
+use nostr::{Keys, nip90::JobRequest};
+
+// Create a DVM client with custom config
+let keys = Keys::generate();
+let config = DvmClientConfig {
+    default_timeout: Duration::from_secs(120),
+    feedback_subscription: true,
+    ..Default::default()
+};
+let client = DvmClient::with_config(pool, keys.clone(), config);
+
+// Create a text generation job request
+let job = JobRequest::text_generation("Explain Nostr in one paragraph");
+
+// Submit and await result
+let result = client.submit_and_await(&job, None).await?;
+println!("Response: {}", result.content);
+
+// Or submit without waiting (fire-and-forget)
+let submission = client.submit_job(&job).await?;
+println!("Job submitted: {}", submission.job_id);
+
+// Later, await the result
+let result = client.await_result(&submission.job_id, Duration::from_secs(60)).await?;
+```
+
+### Streaming Feedback
+
+Subscribe to real-time feedback events during job processing:
+
+```rust
+use futures::StreamExt;
+
+// Submit a job
+let submission = client.submit_job(&job).await?;
+
+// Subscribe to feedback
+let mut feedback_stream = client.subscribe_to_feedback(&submission.job_id).await?;
+
+while let Some(feedback) = feedback_stream.next().await {
+    match feedback.status.as_str() {
+        "processing" => println!("Status: {}", feedback.extra_info.unwrap_or_default()),
+        "partial" => println!("Partial result: {}", feedback.content.unwrap_or_default()),
+        "error" => eprintln!("Error: {}", feedback.content.unwrap_or_default()),
+        _ => {}
+    }
+}
+```
+
+### Provider Discovery (NIP-89)
+
+Discover DVM providers by their capabilities:
+
+```rust
+// Find providers for text generation (kind 5050)
+let providers = client.discover_providers(5050).await?;
+
+for provider in providers {
+    println!("Provider: {} ({})", provider.display_name, provider.pubkey);
+    if let Some(about) = provider.about {
+        println!("  About: {}", about);
+    }
+}
+
+// Submit to a specific provider
+let job = JobRequest::text_generation("Hello")
+    .with_provider(&providers[0].pubkey);
+```
+
+### Job Cancellation
+
+Cancel a pending job (NIP-90 kind 7000):
+
+```rust
+let submission = client.submit_job(&job).await?;
+
+// Cancel if needed
+client.cancel_job(&submission.job_id).await?;
 ```
 
 ## Offline Support with Message Queue
