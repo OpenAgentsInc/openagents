@@ -696,6 +696,7 @@ mod tests {
             stream: false,
             json: false,
             target_language: None,
+            local_first: false,
         };
 
         let _status = ComputeCommands::Status {
@@ -724,6 +725,7 @@ mod tests {
             stream: false,
             json: false,
             target_language: None,
+            local_first: false,
         };
 
         let result = cmd.execute();
@@ -794,6 +796,7 @@ mod tests {
             stream: false,
             json: false,
             target_language: None,
+            local_first: false,
         };
 
         let result = cmd.execute();
@@ -812,6 +815,7 @@ mod tests {
             stream: false,
             json: true,
             target_language: None,
+            local_first: false,
         };
 
         let result = cmd.execute();
@@ -830,6 +834,7 @@ mod tests {
             stream: false,
             json: false,
             target_language: None,
+            local_first: false,
         };
 
         let result = cmd.execute();
