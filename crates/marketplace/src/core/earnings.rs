@@ -545,7 +545,7 @@ mod tests {
             .record_earnings(&conn, RevenueType::Compute, "job-1", 100_000, false)
             .unwrap();
 
-        let csv = tracker.export_as_csv(&conn, 0, u64::MAX).unwrap();
+        let csv = tracker.export_as_csv(&conn, 0, i64::MAX as u64).unwrap();
         assert!(csv.contains("bucket_time,revenue_type"));
         assert!(csv.contains("compute,job-1,100000"));
     }
@@ -559,10 +559,11 @@ mod tests {
             .record_earnings(&conn, RevenueType::Skill, "skill-1", 50_000, false)
             .unwrap();
 
-        let json = tracker.export_as_json(&conn, 0, u64::MAX).unwrap();
+        let json = tracker.export_as_json(&conn, 0, i64::MAX as u64).unwrap();
         assert!(json.contains("\"revenue_type\""));
         assert!(json.contains("\"skill\""));
-        assert!(json.contains("\"gross_sats\":50000"));
+        // to_string_pretty adds space after colon
+        assert!(json.contains("\"gross_sats\": 50000"));
     }
 
     #[test]
