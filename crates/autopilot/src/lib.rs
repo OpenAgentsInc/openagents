@@ -18,6 +18,7 @@ pub mod compaction;
 pub mod context_analysis;
 pub mod daemon;
 pub mod dashboard;
+pub mod error_recovery;
 pub mod goals;
 pub mod learning;
 pub mod lockfile;
