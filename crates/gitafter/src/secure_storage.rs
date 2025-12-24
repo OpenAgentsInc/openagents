@@ -7,10 +7,17 @@
 //! - Linux: Secret Service (libsecret)
 
 use anyhow::{Context, Result};
-use keyring::Entry;
+use keyring_core::{Entry, Error as KeyringError};
 
 const SERVICE_NAME: &str = "com.openagents.gitafter";
 const MNEMONIC_KEY: &str = "mnemonic";
+
+/// Initialize the keyring store for the current platform
+fn ensure_store_initialized() -> Result<()> {
+    // Initialize native keyring store on first use
+    keyring::use_native_store(false)
+        .map_err(|e| anyhow::anyhow!("Failed to initialize keyring store: {}", e))
+}
 
 /// Save mnemonic to secure storage
 ///
@@ -23,6 +30,8 @@ const MNEMONIC_KEY: &str = "mnemonic";
 /// # Errors
 /// Returns error if keychain access fails or storage is unavailable
 pub fn save_mnemonic(mnemonic: &str) -> Result<()> {
+    ensure_store_initialized()?;
+
     let entry = Entry::new(SERVICE_NAME, MNEMONIC_KEY)
         .context("Failed to create keyring entry")?;
 
@@ -42,6 +51,8 @@ pub fn save_mnemonic(mnemonic: &str) -> Result<()> {
 /// # Errors
 /// Returns error if keychain access fails (but not if entry doesn't exist)
 pub fn load_mnemonic() -> Result<Option<String>> {
+    ensure_store_initialized()?;
+
     let entry = Entry::new(SERVICE_NAME, MNEMONIC_KEY)
         .context("Failed to create keyring entry")?;
 
@@ -50,12 +61,12 @@ pub fn load_mnemonic() -> Result<Option<String>> {
             tracing::info!("Loaded mnemonic from secure storage");
             Ok(Some(mnemonic))
         }
-        Err(keyring::Error::NoEntry) => {
+        Err(KeyringError::NoEntry) => {
             tracing::debug!("No mnemonic found in secure storage");
             Ok(None)
         }
         Err(e) => {
-            Err(e).context("Failed to load mnemonic from keychain")
+            Err(anyhow::anyhow!("{}", e)).context("Failed to load mnemonic from keychain")
         }
     }
 }
@@ -68,6 +79,8 @@ pub fn load_mnemonic() -> Result<Option<String>> {
 /// # Errors
 /// Returns error if keychain access fails
 pub fn delete_mnemonic() -> Result<()> {
+    ensure_store_initialized()?;
+
     let entry = Entry::new(SERVICE_NAME, MNEMONIC_KEY)
         .context("Failed to create keyring entry")?;
 
@@ -76,12 +89,12 @@ pub fn delete_mnemonic() -> Result<()> {
             tracing::info!("Deleted mnemonic from secure storage");
             Ok(())
         }
-        Err(keyring::Error::NoEntry) => {
+        Err(KeyringError::NoEntry) => {
             tracing::debug!("No mnemonic to delete");
             Ok(())
         }
         Err(e) => {
-            Err(e).context("Failed to delete mnemonic from keychain")
+            Err(anyhow::anyhow!("{}", e)).context("Failed to delete mnemonic from keychain")
         }
     }
 }
