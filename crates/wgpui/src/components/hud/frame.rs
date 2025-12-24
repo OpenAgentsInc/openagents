@@ -314,6 +314,67 @@ impl Frame {
         }
     }
 
+    fn draw_animated_glow_line(&self, cx: &mut PaintContext, x: f32, y: f32, w: f32, h: f32, horizontal: bool, glow: Hsla) {
+        let p = self.animation_progress;
+        match self.animation_mode {
+            FrameAnimation::Fade => {
+                self.draw_glow_line(cx, x, y, w, h, glow);
+            }
+            FrameAnimation::Draw => {
+                if horizontal {
+                    let len = w * p;
+                    match self.draw_direction {
+                        DrawDirection::LeftToRight | DrawDirection::TopToBottom => {
+                            self.draw_glow_line(cx, x, y, len, h, glow);
+                        }
+                        DrawDirection::RightToLeft | DrawDirection::BottomToTop => {
+                            self.draw_glow_line(cx, x + w - len, y, len, h, glow);
+                        }
+                        DrawDirection::CenterOut => {
+                            let half = len / 2.0;
+                            self.draw_glow_line(cx, x + w / 2.0 - half, y, len, h, glow);
+                        }
+                        DrawDirection::EdgesIn => {
+                            let half = len / 2.0;
+                            self.draw_glow_line(cx, x, y, half, h, glow);
+                            self.draw_glow_line(cx, x + w - half, y, half, h, glow);
+                        }
+                    }
+                } else {
+                    let len = h * p;
+                    match self.draw_direction {
+                        DrawDirection::TopToBottom | DrawDirection::LeftToRight => {
+                            self.draw_glow_line(cx, x, y, w, len, glow);
+                        }
+                        DrawDirection::BottomToTop | DrawDirection::RightToLeft => {
+                            self.draw_glow_line(cx, x, y + h - len, w, len, glow);
+                        }
+                        DrawDirection::CenterOut => {
+                            let half = len / 2.0;
+                            self.draw_glow_line(cx, x, y + h / 2.0 - half, w, len, glow);
+                        }
+                        DrawDirection::EdgesIn => {
+                            let half = len / 2.0;
+                            self.draw_glow_line(cx, x, y, w, half, glow);
+                            self.draw_glow_line(cx, x, y + h - half, w, half, glow);
+                        }
+                    }
+                }
+            }
+            FrameAnimation::Flicker => {
+                self.draw_glow_line(cx, x, y, w, h, glow);
+            }
+            FrameAnimation::Assemble => {
+                let offset = (1.0 - p) * 20.0;
+                if horizontal {
+                    self.draw_glow_line(cx, x - offset, y, w, h, glow);
+                } else {
+                    self.draw_glow_line(cx, x, y - offset, w, h, glow);
+                }
+            }
+        }
+    }
+
     fn paint_corners(&self, bounds: Bounds, cx: &mut PaintContext) {
         let p = self.padding;
         let t = self.stroke_width;
@@ -329,17 +390,16 @@ impl Frame {
                 .with_background(self.bg_color.with_alpha(bg_alpha)),
         );
 
-        let glow_alpha = self.compute_alpha();
         if let Some(glow) = self.glow_color {
-            let g = glow.with_alpha(glow.a * glow_alpha);
-            self.draw_glow_line(cx, x, y, cl, t, g);
-            self.draw_glow_line(cx, x, y, t, cl, g);
-            self.draw_glow_line(cx, x + w - cl, y, cl, t, g);
-            self.draw_glow_line(cx, x + w - t, y, t, cl, g);
-            self.draw_glow_line(cx, x + w - cl, y + h - t, cl, t, g);
-            self.draw_glow_line(cx, x + w - t, y + h - cl, t, cl, g);
-            self.draw_glow_line(cx, x, y + h - t, cl, t, g);
-            self.draw_glow_line(cx, x, y + h - cl, t, cl, g);
+            let g = glow.with_alpha(glow.a * self.compute_alpha());
+            self.draw_animated_glow_line(cx, x, y, cl, t, true, g);
+            self.draw_animated_glow_line(cx, x, y, t, cl, false, g);
+            self.draw_animated_glow_line(cx, x + w - cl, y, cl, t, true, g);
+            self.draw_animated_glow_line(cx, x + w - t, y, t, cl, false, g);
+            self.draw_animated_glow_line(cx, x + w - cl, y + h - t, cl, t, true, g);
+            self.draw_animated_glow_line(cx, x + w - t, y + h - cl, t, cl, false, g);
+            self.draw_animated_glow_line(cx, x, y + h - t, cl, t, true, g);
+            self.draw_animated_glow_line(cx, x, y + h - cl, t, cl, false, g);
         }
 
         self.draw_animated_line(cx, x, y, cl, t, true);
@@ -366,13 +426,12 @@ impl Frame {
                 .with_background(self.bg_color.with_alpha(bg_alpha)),
         );
 
-        let glow_alpha = self.compute_alpha();
         if let Some(glow) = self.glow_color {
-            let g = glow.with_alpha(glow.a * glow_alpha);
-            self.draw_glow_line(cx, x, y, w, t, g);
-            self.draw_glow_line(cx, x, y + h - t, w, t, g);
-            self.draw_glow_line(cx, x, y, t, h, g);
-            self.draw_glow_line(cx, x + w - t, y, t, h, g);
+            let g = glow.with_alpha(glow.a * self.compute_alpha());
+            self.draw_animated_glow_line(cx, x, y, w, t, true, g);
+            self.draw_animated_glow_line(cx, x, y + h - t, w, t, true, g);
+            self.draw_animated_glow_line(cx, x, y, t, h, false, g);
+            self.draw_animated_glow_line(cx, x + w - t, y, t, h, false, g);
         }
 
         self.draw_animated_line(cx, x, y, w, t, true);
@@ -396,13 +455,20 @@ impl Frame {
                 .with_background(self.bg_color.with_alpha(bg_alpha)),
         );
 
-        let glow_alpha = self.compute_alpha();
         if let Some(glow) = self.glow_color {
-            let g = glow.with_alpha(glow.a * glow_alpha);
-            self.draw_glow_line(cx, x + cut, y, w - cut * 2.0, t, g);
-            self.draw_glow_line(cx, x + cut, y + h - t, w - cut * 2.0, t, g);
-            self.draw_glow_line(cx, x, y + cut, t, h - cut * 2.0, g);
-            self.draw_glow_line(cx, x + w - t, y + cut, t, h - cut * 2.0, g);
+            let g = glow.with_alpha(glow.a * self.compute_alpha());
+            self.draw_animated_glow_line(cx, x + cut, y, w - cut * 2.0, t, true, g);
+            self.draw_animated_glow_line(cx, x + cut, y + h - t, w - cut * 2.0, t, true, g);
+            self.draw_animated_glow_line(cx, x, y + cut, t, h - cut * 2.0, false, g);
+            self.draw_animated_glow_line(cx, x + w - t, y + cut, t, h - cut * 2.0, false, g);
+            self.draw_animated_glow_line(cx, x, y + cut - t, cut, t, true, g);
+            self.draw_animated_glow_line(cx, x + cut - t, y, t, cut, false, g);
+            self.draw_animated_glow_line(cx, x + w - cut, y, cut, t, true, g);
+            self.draw_animated_glow_line(cx, x + w - t, y, t, cut, false, g);
+            self.draw_animated_glow_line(cx, x + w - cut, y + h - t, cut, t, true, g);
+            self.draw_animated_glow_line(cx, x + w - t, y + h - cut, t, cut, false, g);
+            self.draw_animated_glow_line(cx, x, y + h - t, cut, t, true, g);
+            self.draw_animated_glow_line(cx, x, y + h - cut, t, cut, false, g);
         }
 
         self.draw_animated_line(cx, x + cut, y, w - cut * 2.0, t, true);
@@ -428,6 +494,7 @@ impl Frame {
         let y = bounds.origin.y + p;
         let w = bounds.size.width - p * 2.0;
         let h = bounds.size.height - p * 2.0;
+        let prog = self.animation_progress;
 
         let bg_alpha = self.bg_color.a * self.compute_alpha();
         cx.scene.draw_quad(
@@ -435,16 +502,31 @@ impl Frame {
                 .with_background(self.bg_color.with_alpha(bg_alpha)),
         );
 
-        let glow_alpha = self.compute_alpha();
-        if let Some(glow) = self.glow_color {
-            let g = glow.with_alpha(glow.a * glow_alpha);
-            self.draw_glow_line(cx, x, y + h - t, w - ss, t, g);
-            self.draw_glow_line(cx, x + w - t, y + h - ss, t, ss, g);
-        }
+        let alpha = self.compute_alpha();
+        let color = self.line_color.with_alpha(self.line_color.a * alpha);
 
-        self.draw_animated_line(cx, x, y + h - t, w - ss, t, true);
-        self.draw_animated_line(cx, x + w - ss, y + h - t, ss - t, t, true);
-        self.draw_animated_line(cx, x + w - t, y + h - ss, t, ss, false);
+        let main_prog = (prog * 2.0).min(1.0);
+        let main_w = (w - ss) * main_prog;
+
+        if let Some(glow) = self.glow_color {
+            let g = glow.with_alpha(glow.a * alpha);
+            self.draw_glow_line(cx, x, y + h - t, main_w, t, g);
+        }
+        cx.scene.draw_quad(Quad::new(Bounds::new(x, y + h - t, main_w, t)).with_background(color));
+
+        if prog > 0.5 {
+            let corner_prog = (prog - 0.5) * 2.0;
+            let corner_h_w = (ss - t) * corner_prog;
+            let corner_v_h = ss * corner_prog;
+
+            if let Some(glow) = self.glow_color {
+                let g = glow.with_alpha(glow.a * alpha);
+                self.draw_glow_line(cx, x + w - ss, y + h - t, corner_h_w, t, g);
+                self.draw_glow_line(cx, x + w - t, y + h - corner_v_h, t, corner_v_h, g);
+            }
+            cx.scene.draw_quad(Quad::new(Bounds::new(x + w - ss, y + h - t, corner_h_w, t)).with_background(color));
+            cx.scene.draw_quad(Quad::new(Bounds::new(x + w - t, y + h - corner_v_h, t, corner_v_h)).with_background(color));
+        }
     }
 
     fn paint_nefrex(&self, bounds: Bounds, cx: &mut PaintContext) {
@@ -465,28 +547,14 @@ impl Frame {
                 .with_background(self.bg_color.with_alpha(bg_alpha)),
         );
 
-        let glow_alpha = self.compute_alpha();
-        if let Some(glow) = self.glow_color {
-            let g = glow.with_alpha(glow.a * glow_alpha);
-            if cfg.left_top {
-                self.draw_glow_line(cx, x + ss, y, lll, t, g);
-                self.draw_glow_line(cx, x, y + ss, t, sll, g);
-            }
-            if cfg.right_bottom {
-                self.draw_glow_line(cx, x + w - ss - lll, y + h - t, lll, t, g);
-                self.draw_glow_line(cx, x + w - t, y + h - ss - sll, t, sll, g);
-            }
-            if cfg.right_top {
-                self.draw_glow_line(cx, x + w - ss - lll, y, lll, t, g);
-                self.draw_glow_line(cx, x + w - t, y + ss, t, sll, g);
-            }
-            if cfg.left_bottom {
-                self.draw_glow_line(cx, x + ss, y + h - t, lll, t, g);
-                self.draw_glow_line(cx, x, y + h - ss - sll, t, sll, g);
-            }
-        }
-
         if cfg.left_top {
+            if let Some(glow) = self.glow_color {
+                let g = glow.with_alpha(glow.a * self.compute_alpha());
+                self.draw_animated_glow_line(cx, x, y + ss, t, sll, false, g);
+                self.draw_animated_glow_line(cx, x, y + ss - t, ss, t, true, g);
+                self.draw_animated_glow_line(cx, x + ss, y, lll, t, true, g);
+                self.draw_animated_glow_line(cx, x + ss - t, y, t, ss, false, g);
+            }
             self.draw_animated_line(cx, x, y + ss, t, sll, false);
             self.draw_animated_line(cx, x, y + ss - t, ss, t, true);
             self.draw_animated_line(cx, x + ss, y, lll, t, true);
@@ -494,6 +562,13 @@ impl Frame {
         }
 
         if cfg.right_top {
+            if let Some(glow) = self.glow_color {
+                let g = glow.with_alpha(glow.a * self.compute_alpha());
+                self.draw_animated_glow_line(cx, x + w - t, y + ss, t, sll, false, g);
+                self.draw_animated_glow_line(cx, x + w - ss, y + ss - t, ss, t, true, g);
+                self.draw_animated_glow_line(cx, x + w - ss - lll, y, lll, t, true, g);
+                self.draw_animated_glow_line(cx, x + w - ss, y, t, ss, false, g);
+            }
             self.draw_animated_line(cx, x + w - t, y + ss, t, sll, false);
             self.draw_animated_line(cx, x + w - ss, y + ss - t, ss, t, true);
             self.draw_animated_line(cx, x + w - ss - lll, y, lll, t, true);
@@ -501,6 +576,13 @@ impl Frame {
         }
 
         if cfg.left_bottom {
+            if let Some(glow) = self.glow_color {
+                let g = glow.with_alpha(glow.a * self.compute_alpha());
+                self.draw_animated_glow_line(cx, x, y + h - ss - sll, t, sll, false, g);
+                self.draw_animated_glow_line(cx, x, y + h - ss, ss, t, true, g);
+                self.draw_animated_glow_line(cx, x + ss, y + h - t, lll, t, true, g);
+                self.draw_animated_glow_line(cx, x + ss - t, y + h - ss, t, ss, false, g);
+            }
             self.draw_animated_line(cx, x, y + h - ss - sll, t, sll, false);
             self.draw_animated_line(cx, x, y + h - ss, ss, t, true);
             self.draw_animated_line(cx, x + ss, y + h - t, lll, t, true);
@@ -508,6 +590,13 @@ impl Frame {
         }
 
         if cfg.right_bottom {
+            if let Some(glow) = self.glow_color {
+                let g = glow.with_alpha(glow.a * self.compute_alpha());
+                self.draw_animated_glow_line(cx, x + w - t, y + h - ss - sll, t, sll, false, g);
+                self.draw_animated_glow_line(cx, x + w - ss, y + h - ss, ss, t, true, g);
+                self.draw_animated_glow_line(cx, x + w - ss - lll, y + h - t, lll, t, true, g);
+                self.draw_animated_glow_line(cx, x + w - ss, y + h - ss, t, ss, false, g);
+            }
             self.draw_animated_line(cx, x + w - t, y + h - ss - sll, t, sll, false);
             self.draw_animated_line(cx, x + w - ss, y + h - ss, ss, t, true);
             self.draw_animated_line(cx, x + w - ss - lll, y + h - t, lll, t, true);
@@ -532,13 +621,25 @@ impl Frame {
                 .with_background(self.bg_color.with_alpha(bg_alpha)),
         );
 
-        let glow_alpha = self.compute_alpha();
         if let Some(glow) = self.glow_color {
-            let g = glow.with_alpha(glow.a * glow_alpha);
-            self.draw_glow_line(cx, x + ss * 2.0, y, lll, t, g);
-            self.draw_glow_line(cx, x + ss, y + ss, t, sll, g);
-            self.draw_glow_line(cx, x + w - ss * 2.0 - lll, y + h - t, lll, t, g);
-            self.draw_glow_line(cx, x + w - ss - t, y + h - ss - sll, t, sll, g);
+            let g = glow.with_alpha(glow.a * self.compute_alpha());
+            self.draw_animated_glow_line(cx, x + ss, y + ss, t, sll, false, g);
+            self.draw_animated_glow_line(cx, x + ss - t, y + ss - t, ss, t, true, g);
+            self.draw_animated_glow_line(cx, x + ss * 2.0 - t, y, t, ss, false, g);
+            self.draw_animated_glow_line(cx, x + ss * 2.0, y, lll, t, true, g);
+
+            self.draw_animated_glow_line(cx, x + w - ss - t, y + h - ss - sll, t, sll, false, g);
+            self.draw_animated_glow_line(cx, x + w - ss * 2.0, y + h - ss, ss, t, true, g);
+            self.draw_animated_glow_line(cx, x + w - ss * 2.0, y + h - ss, t, ss, false, g);
+            self.draw_animated_glow_line(cx, x + w - ss * 2.0 - lll, y + h - t, lll, t, true, g);
+
+            self.draw_animated_glow_line(cx, x, y + h - ss * 3.0 - sll - lll, t, lll, false, g);
+            self.draw_animated_glow_line(cx, x, y + h - ss * 2.0 - sll, ss, t, true, g);
+            self.draw_animated_glow_line(cx, x + ss, y + h - ss * 2.0 - sll, t, sll, false, g);
+
+            self.draw_animated_glow_line(cx, x + w - t, y + ss * 3.0 + sll, t, lll, false, g);
+            self.draw_animated_glow_line(cx, x + w - ss, y + ss * 2.0 + sll - t, ss, t, true, g);
+            self.draw_animated_glow_line(cx, x + w - ss - t, y + ss * 2.0, t, sll, false, g);
         }
 
         self.draw_animated_line(cx, x + ss, y + ss, t, sll, false);

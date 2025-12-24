@@ -658,17 +658,20 @@ fn draw_bitcoin_symbol(scene: &mut Scene, text_system: &mut TextSystem, x: f32, 
     scene.draw_text(b);
 }
 
-fn demo_bitcoin_wallet(scene: &mut Scene, text_system: &mut TextSystem, x: f32, width: f32, y: &mut f32) {
-    draw_section_header(scene, text_system, x, y, "Frames (6 Arwes Styles)");
+fn demo_animated_frames(scene: &mut Scene, text_system: &mut TextSystem, demo: &DemoState, x: f32, width: f32, y: &mut f32) {
+    draw_section_header(scene, text_system, x, y, "Animated Frames (4 Modes)");
 
     let white = Hsla::new(0.0, 0.0, 1.0, 1.0);
     let white_glow = Hsla::new(0.0, 0.0, 1.0, 0.6);
     let dark_bg = Hsla::new(0.0, 0.0, 0.08, 0.8);
     let cyan_glow = Hsla::new(180.0, 1.0, 0.7, 0.5);
+    let purple_glow = Hsla::new(280.0, 1.0, 0.7, 0.5);
+    let green_glow = Hsla::new(120.0, 1.0, 0.6, 0.5);
     let muted = Hsla::new(0.0, 0.0, 0.7, 1.0);
 
-    let frame_w = (width - 16.0) / 3.0;
-    let frame_h = 70.0;
+    let frame_w = (width - 16.0) / 2.0;
+    let frame_h = 60.0;
+    let progress = demo.frame_anim.current_value();
     let mut cx = PaintContext::new(scene, text_system, 1.0);
 
     Frame::corners()
@@ -677,27 +680,51 @@ fn demo_bitcoin_wallet(scene: &mut Scene, text_system: &mut TextSystem, x: f32, 
         .glow_color(white_glow)
         .stroke_width(2.0)
         .corner_length(18.0)
+        .animation_mode(FrameAnimation::Fade)
+        .animation_progress(progress)
         .paint(Bounds::new(x, *y, frame_w, frame_h), &mut cx);
-    let lbl = cx.text.layout("Corners", Point::new(x + 10.0, *y + frame_h / 2.0), 11.0, white);
+    let lbl = cx.text.layout("Fade", Point::new(x + 10.0, *y + frame_h / 2.0), 11.0, white.with_alpha(progress));
     cx.scene.draw_text(lbl);
 
     Frame::lines()
         .line_color(white)
         .bg_color(dark_bg)
-        .glow_color(white_glow)
+        .glow_color(cyan_glow)
         .stroke_width(2.0)
+        .animation_mode(FrameAnimation::Draw)
+        .draw_direction(DrawDirection::CenterOut)
+        .animation_progress(progress)
         .paint(Bounds::new(x + frame_w + 8.0, *y, frame_w, frame_h), &mut cx);
-    let lbl = cx.text.layout("Lines", Point::new(x + frame_w + 18.0, *y + frame_h / 2.0), 11.0, white);
+    let lbl = cx.text.layout("Draw (CenterOut)", Point::new(x + frame_w + 18.0, *y + frame_h / 2.0), 11.0, white);
     cx.scene.draw_text(lbl);
+
+    *y += frame_h + 10.0;
 
     Frame::octagon()
         .line_color(white)
         .bg_color(dark_bg)
-        .glow_color(white_glow)
+        .glow_color(purple_glow)
         .stroke_width(2.0)
         .corner_length(14.0)
-        .paint(Bounds::new(x + (frame_w + 8.0) * 2.0, *y, frame_w, frame_h), &mut cx);
-    let lbl = cx.text.layout("Octagon", Point::new(x + (frame_w + 8.0) * 2.0 + 10.0, *y + frame_h / 2.0), 11.0, white);
+        .animation_mode(FrameAnimation::Flicker)
+        .animation_progress(progress)
+        .paint(Bounds::new(x, *y, frame_w, frame_h), &mut cx);
+    let lbl = cx.text.layout("Flicker", Point::new(x + 10.0, *y + frame_h / 2.0), 11.0, white);
+    cx.scene.draw_text(lbl);
+
+    Frame::nefrex()
+        .line_color(white)
+        .bg_color(dark_bg)
+        .glow_color(green_glow)
+        .stroke_width(1.5)
+        .square_size(12.0)
+        .small_line_length(12.0)
+        .large_line_length(40.0)
+        .corner_config(CornerConfig::all())
+        .animation_mode(FrameAnimation::Assemble)
+        .animation_progress(progress)
+        .paint(Bounds::new(x + frame_w + 8.0, *y, frame_w, frame_h), &mut cx);
+    let lbl = cx.text.layout("Assemble", Point::new(x + frame_w + 18.0, *y + frame_h / 2.0), 11.0, white);
     cx.scene.draw_text(lbl);
 
     *y += frame_h + 10.0;
@@ -708,21 +735,11 @@ fn demo_bitcoin_wallet(scene: &mut Scene, text_system: &mut TextSystem, x: f32, 
         .glow_color(white_glow)
         .stroke_width(2.0)
         .square_size(12.0)
+        .animation_mode(FrameAnimation::Draw)
+        .draw_direction(DrawDirection::LeftToRight)
+        .animation_progress(progress)
         .paint(Bounds::new(x, *y, frame_w, frame_h), &mut cx);
-    let lbl = cx.text.layout("Underline", Point::new(x + 10.0, *y + frame_h / 2.0), 11.0, white);
-    cx.scene.draw_text(lbl);
-
-    Frame::nefrex()
-        .line_color(white)
-        .bg_color(dark_bg)
-        .glow_color(white_glow)
-        .stroke_width(1.5)
-        .square_size(12.0)
-        .small_line_length(12.0)
-        .large_line_length(40.0)
-        .corner_config(CornerConfig::diagonal())
-        .paint(Bounds::new(x + frame_w + 8.0, *y, frame_w, frame_h), &mut cx);
-    let lbl = cx.text.layout("Nefrex", Point::new(x + frame_w + 18.0, *y + frame_h / 2.0), 11.0, white);
+    let lbl = cx.text.layout("Underline (Draw)", Point::new(x + 10.0, *y + frame_h / 2.0), 11.0, white);
     cx.scene.draw_text(lbl);
 
     Frame::kranox()
@@ -733,8 +750,11 @@ fn demo_bitcoin_wallet(scene: &mut Scene, text_system: &mut TextSystem, x: f32, 
         .square_size(10.0)
         .small_line_length(10.0)
         .large_line_length(35.0)
-        .paint(Bounds::new(x + (frame_w + 8.0) * 2.0, *y, frame_w, frame_h), &mut cx);
-    let lbl = cx.text.layout("Kranox", Point::new(x + (frame_w + 8.0) * 2.0 + 15.0, *y + frame_h / 2.0), 11.0, white);
+        .animation_mode(FrameAnimation::Draw)
+        .draw_direction(DrawDirection::EdgesIn)
+        .animation_progress(progress)
+        .paint(Bounds::new(x + frame_w + 8.0, *y, frame_w, frame_h), &mut cx);
+    let lbl = cx.text.layout("Kranox (EdgesIn)", Point::new(x + frame_w + 18.0, *y + frame_h / 2.0), 11.0, white);
     cx.scene.draw_text(lbl);
 
     *y += frame_h + 14.0;
@@ -746,6 +766,9 @@ fn demo_bitcoin_wallet(scene: &mut Scene, text_system: &mut TextSystem, x: f32, 
         .glow_color(cyan_glow)
         .stroke_width(2.0)
         .corner_length(24.0)
+        .animation_mode(FrameAnimation::Draw)
+        .draw_direction(DrawDirection::CenterOut)
+        .animation_progress(progress)
         .paint(wallet_bounds, &mut cx);
 
     let balance_label = cx.text.layout("Balance", Point::new(x + 20.0, *y + 14.0), 11.0, muted);
