@@ -62,4 +62,5 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=10s \
 
 # Run autopilot in full-auto mode with issues
 # The prompt is required but in full-auto mode it just processes issues
-ENTRYPOINT ["autopilot", "run", "--full-auto", "--with-issues", "Process issues from database"]
+# --issues-db points to the shared database mounted from host
+ENTRYPOINT ["autopilot", "run", "--full-auto", "--with-issues", "--issues-db", "/shared/autopilot.db", "Process issues from database"]
