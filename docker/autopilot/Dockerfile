@@ -31,6 +31,9 @@ RUN apt-get update && apt-get install -y \
 ARG HOST_UID=1000
 RUN useradd -m -u ${HOST_UID} -s /bin/bash agent
 
+# Create /shared directory with agent ownership for database mount
+RUN mkdir -p /shared && chown agent:agent /shared
+
 # Copy pre-built binaries from host
 # Build on host with: cargo build --release -p autopilot -p issues-mcp
 COPY docker/autopilot/bin/autopilot /usr/local/bin/autopilot
