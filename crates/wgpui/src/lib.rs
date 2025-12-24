@@ -26,6 +26,7 @@ pub mod components;
 pub mod geometry;
 pub mod hit_test;
 pub mod input;
+pub mod integration;
 pub mod layout;
 pub mod markdown;
 pub mod platform;

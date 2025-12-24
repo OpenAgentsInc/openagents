@@ -21,7 +21,9 @@
 //! }
 //! ```
 
-use crate::integrations::advanced::{AgentIdentity, AutonomyLevel, ThresholdConfig};
+use crate::integrations::advanced::{AgentIdentity, ThresholdConfig};
+#[cfg(feature = "frostr")]
+use crate::integrations::advanced::AutonomyLevel;
 use serde::{Deserialize, Serialize};
 
 /// Error type for FROSTR bridge operations
@@ -91,7 +93,9 @@ pub fn generate_threshold_shares(
     }
 
     let group_verifying_key = frost_shares[0].public_key_package.verifying_key();
-    let group_pubkey_bytes = group_verifying_key.serialize();
+    let group_pubkey_bytes = group_verifying_key
+        .serialize()
+        .map_err(|e| FrostrBridgeError::KeygenFailed(format!("Failed to serialize group key: {:?}", e)))?;
     let group_pubkey = hex::encode(group_pubkey_bytes);
 
     let mut signer_pubkeys = Vec::with_capacity(total as usize);
@@ -105,7 +109,10 @@ pub fn generate_threshold_shares(
             .get(identifier)
             .expect("Participant should exist in public key package");
 
-        let signer_pubkey = hex::encode(verifying_share.serialize());
+        let signer_pubkey_bytes = verifying_share
+            .serialize()
+            .map_err(|e| FrostrBridgeError::KeygenFailed(format!("Failed to serialize signer key: {:?}", e)))?;
+        let signer_pubkey = hex::encode(signer_pubkey_bytes);
         signer_pubkeys.push(signer_pubkey);
 
         // SECURITY: Encrypt share_data before distributing to operators
