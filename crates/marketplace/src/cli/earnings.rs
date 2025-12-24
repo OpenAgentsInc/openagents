@@ -100,6 +100,7 @@ impl EarningsCommands {
 
 /// Revenue source type
 #[derive(Debug, Clone, Copy)]
+#[allow(dead_code)]
 enum RevenueSource {
     Compute,
     Skills,

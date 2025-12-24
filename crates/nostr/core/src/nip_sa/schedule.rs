@@ -49,7 +49,7 @@ pub enum ScheduleError {
 }
 
 /// Event trigger type
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum TriggerType {
     /// Mentioned in a note

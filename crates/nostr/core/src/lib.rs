@@ -234,7 +234,7 @@ mod nip28;
 mod nip29;
 mod nip30;
 mod nip31;
-mod nip32;
+pub mod nip32;
 mod nip33;
 mod nip34;
 mod nip35;
@@ -294,7 +294,7 @@ mod nip99;
 #[cfg(feature = "full")]
 mod nip98;
 mod nipc7;
-mod nip_sa;
+pub mod nip_sa;
 #[cfg(feature = "full")]
 mod payments;
 mod provider;

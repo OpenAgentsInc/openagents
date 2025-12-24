@@ -10,6 +10,46 @@
 
 use anyhow::Result;
 
+/// Query wallet balance
+/// BLOCKED: Requires Spark SDK integration (d-001)
+pub fn balance() -> Result<()> {
+    anyhow::bail!(
+        "Wallet commands require Spark SDK integration (d-001).\n\
+        The Breez Spark SDK is not yet integrated.\n\n\
+        Track progress: https://github.com/OpenAgentsInc/openagents/issues?q=d-001"
+    )
+}
+
+/// Generate a receive address or invoice
+/// BLOCKED: Requires Spark SDK integration (d-001)
+pub fn receive(_amount: Option<u64>) -> Result<()> {
+    anyhow::bail!(
+        "Wallet commands require Spark SDK integration (d-001).\n\
+        The Breez Spark SDK is not yet integrated.\n\n\
+        Track progress: https://github.com/OpenAgentsInc/openagents/issues?q=d-001"
+    )
+}
+
+/// Send payment to address or pay invoice
+/// BLOCKED: Requires Spark SDK integration (d-001)
+pub fn send(_destination: String, _amount: u64) -> Result<()> {
+    anyhow::bail!(
+        "Wallet commands require Spark SDK integration (d-001).\n\
+        The Breez Spark SDK is not yet integrated.\n\n\
+        Track progress: https://github.com/OpenAgentsInc/openagents/issues?q=d-001"
+    )
+}
+
+/// Show transaction history
+/// BLOCKED: Requires Spark SDK integration (d-001)
+pub fn history(_limit: usize) -> Result<()> {
+    anyhow::bail!(
+        "Wallet commands require Spark SDK integration (d-001).\n\
+        The Breez Spark SDK is not yet integrated.\n\n\
+        Track progress: https://github.com/OpenAgentsInc/openagents/issues?q=d-001"
+    )
+}
+
 // === BLOCKED: Spark SDK Integration Required (d-001) ===
 // Waiting for: ~/code/spark-sdk integration into crates/spark/
 // When ready: Uncomment functions below and update CLI commands in crates/wallet/src/cli/mod.rs

@@ -207,6 +207,60 @@ impl HandlerInfo {
 
         tags
     }
+
+    /// Parse a HandlerInfo from a Nostr event.
+    pub fn from_event(event: &crate::Event) -> Result<Self, Nip89Error> {
+        if event.kind != KIND_HANDLER_INFO {
+            return Err(Nip89Error::InvalidKind(event.kind, "31990".to_string()));
+        }
+
+        // Parse handler type from tags
+        let handler_type = event
+            .tags
+            .iter()
+            .find(|t| t.len() >= 2 && t[0] == "handler")
+            .map(|t| HandlerType::from_str(&t[1]))
+            .transpose()?
+            .ok_or_else(|| Nip89Error::MissingTag("handler".to_string()))?;
+
+        // Parse capabilities from tags
+        let capabilities: Vec<String> = event
+            .tags
+            .iter()
+            .filter(|t| t.len() >= 2 && t[0] == "capability")
+            .map(|t| t[1].clone())
+            .collect();
+
+        // Parse pricing from tags
+        let pricing = event
+            .tags
+            .iter()
+            .find(|t| t.len() >= 2 && t[0] == "price")
+            .and_then(|t| t[1].parse::<u64>().ok())
+            .map(|amount| {
+                let tag = event.tags.iter().find(|t| t.len() >= 2 && t[0] == "price").unwrap();
+                let mut pricing = PricingInfo::new(amount);
+                if tag.len() >= 3 {
+                    pricing = pricing.with_model(tag[2].clone());
+                }
+                if tag.len() >= 4 {
+                    pricing = pricing.with_currency(tag[3].clone());
+                }
+                pricing
+            });
+
+        // Parse metadata from content (JSON)
+        let metadata: HandlerMetadata = serde_json::from_str(&event.content)
+            .map_err(|e| Nip89Error::Serialization(e.to_string()))?;
+
+        Ok(Self {
+            pubkey: event.pubkey.clone(),
+            handler_type,
+            capabilities,
+            pricing,
+            metadata,
+        })
+    }
 }
 
 /// Handler recommendation event data (kind 31989).
