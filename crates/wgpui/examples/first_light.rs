@@ -16,7 +16,7 @@ use wgpui::{
 };
 use wgpui::components::atoms::{Mode, Model, Status, StatusDot, ModeBadge, ModelBadge, StreamingIndicator};
 use wgpui::components::molecules::{MessageHeader, ModeSelector, ModelSelector};
-use wgpui::components::hud::{CornerConfig, DotsGrid, DotShape, Frame, StatusBar, StatusItem, Notifications};
+use wgpui::components::hud::{CornerConfig, DotsGrid, DotsOrigin, DotShape, Frame, StatusBar, StatusItem, Notifications};
 use wgpui::renderer::Renderer;
 use winit::application::ApplicationHandler;
 use winit::event::WindowEvent;
@@ -59,6 +59,7 @@ struct DemoState {
     #[allow(dead_code)]
     notifications: Notifications,
     dots_grid: DotsGrid,
+    dots_anim: Animation<f32>,
     frame_count: u64,
 }
 
@@ -116,7 +117,17 @@ impl Default for DemoState {
                 .shape(DotShape::Cross)
                 .distance(24.0)
                 .size(6.0)
-                .cross_thickness(1.0),
+                .cross_thickness(1.0)
+                .origin(DotsOrigin::Center)
+                .easing(Easing::EaseOut),
+            dots_anim: {
+                let mut anim = Animation::new(0.0_f32, 1.0, Duration::from_millis(1500))
+                    .easing(Easing::Linear)
+                    .iterations(0)
+                    .alternate();
+                anim.start();
+                anim
+            },
             frame_count: 0,
         }
     }
@@ -233,6 +244,7 @@ impl ApplicationHandler for App {
                 state.demo.position_anim.tick(delta);
                 state.demo.color_anim.tick(delta);
                 state.demo.spring.tick(delta);
+                state.demo.dots_anim.tick(delta);
                 state.demo.streaming_indicator.tick();
                 state.demo.frame_count += 1;
 
@@ -313,6 +325,17 @@ fn build_full_demo(
     let col_width = (width - margin * 3.0) / 2.0;
 
     scene.draw_quad(Quad::new(Bounds::new(0.0, 0.0, width, height)).with_background(theme::bg::APP));
+
+    let dots_progress = demo.dots_anim.current_value();
+    demo.dots_grid = DotsGrid::new()
+        .color(Hsla::new(180.0, 0.5, 0.3, 0.4))
+        .shape(DotShape::Cross)
+        .distance(24.0)
+        .size(6.0)
+        .cross_thickness(1.0)
+        .origin(DotsOrigin::Center)
+        .easing(Easing::EaseOut)
+        .animation_progress(dots_progress);
 
     let mut cx = PaintContext::new(scene, text_system, 1.0);
     demo.dots_grid.paint(Bounds::new(0.0, 0.0, width, height), &mut cx);

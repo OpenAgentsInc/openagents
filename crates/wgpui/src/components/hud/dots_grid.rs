@@ -1,3 +1,4 @@
+use crate::animation::Easing;
 use crate::components::context::PaintContext;
 use crate::components::{Component, ComponentId, EventResult};
 use crate::{Bounds, Hsla, InputEvent, Quad};
@@ -15,6 +16,30 @@ impl Default for DotShape {
     }
 }
 
+/// Origin point for animation reveal effect.
+/// Dots animate outward from this point.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum DotsOrigin {
+    /// Animate from left edge
+    Left,
+    /// Animate from right edge
+    Right,
+    /// Animate from top edge
+    Top,
+    /// Animate from bottom edge
+    Bottom,
+    /// Animate from center
+    Center,
+    /// Animate from custom point (x%, y%) where 0.0-1.0
+    Point(f32, f32),
+}
+
+impl Default for DotsOrigin {
+    fn default() -> Self {
+        Self::Center
+    }
+}
+
 pub struct DotsGrid {
     id: Option<ComponentId>,
     color: Hsla,
@@ -23,6 +48,10 @@ pub struct DotsGrid {
     size: f32,
     cross_thickness: f32,
     opacity: f32,
+    origin: DotsOrigin,
+    animation_progress: f32,
+    origin_inverted: bool,
+    easing: Easing,
 }
 
 impl DotsGrid {
@@ -35,6 +64,10 @@ impl DotsGrid {
             size: 2.0,
             cross_thickness: 1.0,
             opacity: 1.0,
+            origin: DotsOrigin::Center,
+            animation_progress: 1.0,
+            origin_inverted: false,
+            easing: Easing::EaseIn,
         }
     }
 
@@ -73,8 +106,84 @@ impl DotsGrid {
         self
     }
 
-    fn draw_dot(&self, cx: &mut PaintContext, x: f32, y: f32) {
-        let color = self.color.with_alpha(self.color.a * self.opacity);
+    pub fn origin(mut self, origin: DotsOrigin) -> Self {
+        self.origin = origin;
+        self
+    }
+
+    pub fn animation_progress(mut self, progress: f32) -> Self {
+        self.animation_progress = progress.clamp(0.0, 1.0);
+        self
+    }
+
+    pub fn origin_inverted(mut self, inverted: bool) -> Self {
+        self.origin_inverted = inverted;
+        self
+    }
+
+    pub fn easing(mut self, easing: Easing) -> Self {
+        self.easing = easing;
+        self
+    }
+
+    fn distance_from_origin(&self, x: f32, y: f32, width: f32, height: f32) -> f32 {
+        match self.origin {
+            DotsOrigin::Left => x / width,
+            DotsOrigin::Right => 1.0 - x / width,
+            DotsOrigin::Top => y / height,
+            DotsOrigin::Bottom => 1.0 - y / height,
+            DotsOrigin::Center => {
+                self.distance_from_point(x, y, width, height, 0.5, 0.5)
+            }
+            DotsOrigin::Point(px, py) => {
+                self.distance_from_point(x, y, width, height, px, py)
+            }
+        }
+    }
+
+    fn distance_from_point(
+        &self,
+        x: f32,
+        y: f32,
+        width: f32,
+        height: f32,
+        origin_x: f32,
+        origin_y: f32,
+    ) -> f32 {
+        let ox = width * origin_x;
+        let oy = height * origin_y;
+        let dist = ((x - ox).powi(2) + (y - oy).powi(2)).sqrt();
+
+        let corner_x = if origin_x < 0.5 { width } else { 0.0 };
+        let corner_y = if origin_y < 0.5 { height } else { 0.0 };
+        let max_dist = ((ox - corner_x).powi(2) + (oy - corner_y).powi(2)).sqrt();
+
+        if max_dist > 0.0 {
+            dist / max_dist
+        } else {
+            0.0
+        }
+    }
+
+    fn dot_alpha(&self, distance_progress: f32) -> f32 {
+        let dist = if self.origin_inverted {
+            1.0 - distance_progress
+        } else {
+            distance_progress
+        };
+
+        let eased_progress = self.easing.apply(self.animation_progress);
+
+        if dist <= 0.0 {
+            return eased_progress;
+        }
+
+        let alpha_progress = eased_progress / dist;
+        alpha_progress.clamp(0.0, 1.0)
+    }
+
+    fn draw_dot(&self, cx: &mut PaintContext, x: f32, y: f32, alpha: f32) {
+        let color = self.color.with_alpha(self.color.a * self.opacity * alpha);
         let s = self.size;
         let half = s / 2.0;
 
@@ -133,6 +242,10 @@ impl Default for DotsGrid {
 
 impl Component for DotsGrid {
     fn paint(&mut self, bounds: Bounds, cx: &mut PaintContext) {
+        if self.animation_progress <= 0.0 {
+            return;
+        }
+
         let d = self.distance;
         let x_count = (bounds.size.width / d).ceil() as i32 + 1;
         let y_count = (bounds.size.height / d).ceil() as i32 + 1;
@@ -140,14 +253,25 @@ impl Component for DotsGrid {
         let x_margin = (bounds.size.width % d) / 2.0;
         let y_margin = (bounds.size.height % d) / 2.0;
 
+        let w = bounds.size.width;
+        let h = bounds.size.height;
+
         for xi in 0..x_count {
-            let x = bounds.origin.x + x_margin + (xi as f32 * d);
+            let local_x = x_margin + (xi as f32 * d);
+            let x = bounds.origin.x + local_x;
             for yi in 0..y_count {
-                let y = bounds.origin.y + y_margin + (yi as f32 * d);
-                if x >= bounds.origin.x && x <= bounds.origin.x + bounds.size.width
-                    && y >= bounds.origin.y && y <= bounds.origin.y + bounds.size.height
+                let local_y = y_margin + (yi as f32 * d);
+                let y = bounds.origin.y + local_y;
+                if x >= bounds.origin.x
+                    && x <= bounds.origin.x + w
+                    && y >= bounds.origin.y
+                    && y <= bounds.origin.y + h
                 {
-                    self.draw_dot(cx, x, y);
+                    let dist = self.distance_from_origin(local_x, local_y, w, h);
+                    let alpha = self.dot_alpha(dist);
+                    if alpha > 0.001 {
+                        self.draw_dot(cx, x, y, alpha);
+                    }
                 }
             }
         }
@@ -180,6 +304,8 @@ mod tests {
         let grid = DotsGrid::new();
         assert_eq!(grid.distance, 30.0);
         assert_eq!(grid.size, 2.0);
+        assert_eq!(grid.animation_progress, 1.0);
+        assert_eq!(grid.origin, DotsOrigin::Center);
     }
 
     #[test]
@@ -206,5 +332,70 @@ mod tests {
         assert_eq!(grid.distance, 5.0);
         assert_eq!(grid.size, 1.0);
         assert_eq!(grid.opacity, 1.0);
+    }
+
+    #[test]
+    fn test_dots_grid_animation_builders() {
+        let grid = DotsGrid::new()
+            .origin(DotsOrigin::Left)
+            .animation_progress(0.5)
+            .origin_inverted(true)
+            .easing(Easing::EaseOut);
+
+        assert_eq!(grid.origin, DotsOrigin::Left);
+        assert_eq!(grid.animation_progress, 0.5);
+        assert!(grid.origin_inverted);
+    }
+
+    #[test]
+    fn test_dots_grid_animation_progress_clamping() {
+        let grid = DotsGrid::new().animation_progress(1.5);
+        assert_eq!(grid.animation_progress, 1.0);
+
+        let grid = DotsGrid::new().animation_progress(-0.5);
+        assert_eq!(grid.animation_progress, 0.0);
+    }
+
+    #[test]
+    fn test_distance_from_origin_left() {
+        let grid = DotsGrid::new().origin(DotsOrigin::Left);
+        let dist = grid.distance_from_origin(0.0, 50.0, 100.0, 100.0);
+        assert!((dist - 0.0).abs() < 0.01);
+
+        let dist = grid.distance_from_origin(100.0, 50.0, 100.0, 100.0);
+        assert!((dist - 1.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn test_distance_from_origin_center() {
+        let grid = DotsGrid::new().origin(DotsOrigin::Center);
+        let dist = grid.distance_from_origin(50.0, 50.0, 100.0, 100.0);
+        assert!((dist - 0.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn test_dot_alpha_full_progress() {
+        let grid = DotsGrid::new().animation_progress(1.0);
+        let alpha = grid.dot_alpha(0.5);
+        assert!((alpha - 1.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn test_dot_alpha_zero_progress() {
+        let grid = DotsGrid::new().animation_progress(0.0);
+        let alpha = grid.dot_alpha(0.5);
+        assert!((alpha - 0.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn test_dot_alpha_partial_progress() {
+        let grid = DotsGrid::new()
+            .animation_progress(0.5)
+            .easing(Easing::Linear);
+        
+        let alpha_near = grid.dot_alpha(0.25);
+        let alpha_far = grid.dot_alpha(0.75);
+        
+        assert!(alpha_near > alpha_far);
     }
 }
