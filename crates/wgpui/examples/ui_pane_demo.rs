@@ -5,7 +5,7 @@ use wgpui::{
     Animation, Bounds, Component, Easing, Hsla, PaintContext, Point, Quad, Scene, Size,
     SpringAnimation, TextSystem, theme,
 };
-use wgpui::components::hud::{CornerConfig, DotsGrid, DotsOrigin, DotShape, Frame, FrameStyle};
+use wgpui::components::hud::{CornerConfig, DotsGrid, DotsOrigin, DotShape, DrawDirection, Frame, FrameAnimation, FrameStyle};
 use wgpui::renderer::Renderer;
 use winit::application::ApplicationHandler;
 use winit::event::WindowEvent;
@@ -49,7 +49,7 @@ enum PaneState {
 }
 
 struct VisualPane {
-    #[allow(dead_code)] // Part of pane identity, used for lookup
+    #[allow(dead_code)]
     id: String,
     title: String,
     target_x: f32,
@@ -64,6 +64,8 @@ struct VisualPane {
     priority: Priority,
     custom_glow: Option<Hsla>,
     frame_style: FrameStyle,
+    frame_animation: FrameAnimation,
+    draw_direction: DrawDirection,
     state: PaneState,
     z_index: i32,
     shake: SpringAnimation<f32>,
@@ -74,9 +76,9 @@ struct VisualPane {
 
 impl VisualPane {
     fn new(id: &str, title: &str, x: f32, y: f32, w: f32, h: f32) -> Self {
-        let mut x_anim = Animation::new(x - 200.0, x, Duration::from_millis(500))
+        let x_anim = Animation::new(x, x, Duration::from_millis(500))
             .easing(Easing::EaseOutCubic);
-        let mut y_anim = Animation::new(y, y, Duration::from_millis(500))
+        let y_anim = Animation::new(y, y, Duration::from_millis(500))
             .easing(Easing::EaseOutCubic);
         let w_anim = Animation::new(w, w, Duration::from_millis(300))
             .easing(Easing::EaseOutCubic);
@@ -85,8 +87,6 @@ impl VisualPane {
         let mut alpha_anim = Animation::new(0.0, 1.0, Duration::from_millis(400))
             .easing(Easing::EaseOut);
         
-        x_anim.start();
-        y_anim.start();
         alpha_anim.start();
         
         Self {
@@ -104,6 +104,8 @@ impl VisualPane {
             priority: Priority::Normal,
             custom_glow: None,
             frame_style: FrameStyle::Corners,
+            frame_animation: FrameAnimation::Fade,
+            draw_direction: DrawDirection::CenterOut,
             state: PaneState::Creating,
             z_index: 0,
             shake: SpringAnimation::new(0.0, 0.0).stiffness(300.0).damping(10.0),
@@ -247,6 +249,7 @@ struct DemoState {
     scenario_index: usize,
     paused: bool,
     dots_anim: Animation<f32>,
+    frame_anim: Animation<f32>,
 }
 
 impl DemoState {
@@ -257,6 +260,12 @@ impl DemoState {
             .alternate();
         dots_anim.start();
 
+        let mut frame_anim = Animation::new(0.0_f32, 1.0, Duration::from_millis(2500))
+            .easing(Easing::EaseInOutCubic)
+            .iterations(0)
+            .alternate();
+        frame_anim.start();
+
         Self {
             panes: HashMap::new(),
             z_counter: 0,
@@ -266,6 +275,7 @@ impl DemoState {
             scenario_index: 0,
             paused: false,
             dots_anim,
+            frame_anim,
         }
     }
 
@@ -276,6 +286,31 @@ impl DemoState {
     fn create_pane(&mut self, id: &str, title: &str, x: f32, y: f32, w: f32, h: f32, content_type: &str) {
         let mut pane = VisualPane::new(id, title, x, y, w, h);
         pane.content_type = content_type.to_string();
+        
+        match content_type {
+            "code" => {
+                pane.frame_style = FrameStyle::Corners;
+                pane.frame_animation = FrameAnimation::Draw;
+                pane.draw_direction = DrawDirection::CenterOut;
+            }
+            "terminal" => {
+                pane.frame_style = FrameStyle::Lines;
+                pane.frame_animation = FrameAnimation::Draw;
+                pane.draw_direction = DrawDirection::LeftToRight;
+            }
+            "chat" => {
+                pane.frame_style = FrameStyle::Nefrex;
+                pane.frame_animation = FrameAnimation::Assemble;
+                pane.draw_direction = DrawDirection::CenterOut;
+            }
+            "diagnostics" => {
+                pane.frame_style = FrameStyle::Octagon;
+                pane.frame_animation = FrameAnimation::Flicker;
+                pane.draw_direction = DrawDirection::EdgesIn;
+            }
+            _ => {}
+        }
+        
         self.z_counter += 1;
         pane.z_index = self.z_counter;
         self.panes.insert(id.to_string(), pane);
@@ -353,6 +388,7 @@ impl DemoState {
 
     fn tick(&mut self, dt: Duration) {
         self.dots_anim.tick(dt);
+        self.frame_anim.tick(dt);
         for pane in self.panes.values_mut() {
             pane.tick(dt);
         }
@@ -701,11 +737,14 @@ fn render_demo(
                 .large_line_length(35.0),
         };
 
+        let frame_progress = demo.frame_anim.current_value();
         let mut frame = frame
             .line_color(white)
             .bg_color(dark_bg)
             .stroke_width(2.0)
-            .animation_progress(alpha);
+            .animation_mode(pane.frame_animation)
+            .draw_direction(pane.draw_direction)
+            .animation_progress(frame_progress);
 
         if let Some(g) = glow {
             frame = frame.glow_color(g);
