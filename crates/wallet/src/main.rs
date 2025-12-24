@@ -416,29 +416,69 @@ fn run(command: Commands) -> anyhow::Result<()> {
             cli::identity::feed(limit)
         }
         Commands::Bitcoin(cmd) => match cmd {
-            BitcoinCommands::Balance => cli::bitcoin::balance_detailed(),
-            BitcoinCommands::Deposit => cli::bitcoin::deposit(),
-            BitcoinCommands::Withdraw { address, amount } => {
-                cli::bitcoin::withdraw(address, amount)
+            BitcoinCommands::Balance => {
+                anyhow::bail!(
+                    "Bitcoin balance commands require Spark SDK integration (d-001).\n\
+                    The Breez SDK integration is pending. See crates/spark/src/wallet.rs.\n\n\
+                    Track progress: directive d-001"
+                )
+            }
+            BitcoinCommands::Deposit => {
+                anyhow::bail!(
+                    "Deposit commands require Spark SDK integration (d-001).\n\
+                    The Breez SDK integration is pending. See crates/spark/src/wallet.rs.\n\n\
+                    Track progress: directive d-001"
+                )
+            }
+            BitcoinCommands::Withdraw { address: _, amount: _ } => {
+                anyhow::bail!(
+                    "Withdraw commands require Spark SDK integration (d-001).\n\
+                    The Breez SDK integration is pending. See crates/spark/src/wallet.rs.\n\n\
+                    Track progress: directive d-001"
+                )
             }
         },
         Commands::Balance => {
-            cli::bitcoin::balance()
+            anyhow::bail!(
+                "Balance command requires Spark SDK integration (d-001).\n\
+                The Breez SDK integration is pending. See crates/spark/src/wallet.rs.\n\n\
+                Track progress: directive d-001"
+            )
         }
-        Commands::Receive { amount } => {
-            cli::bitcoin::receive(amount)
+        Commands::Receive { amount: _ } => {
+            anyhow::bail!(
+                "Receive command requires Spark SDK integration (d-001).\n\
+                The Breez SDK integration is pending. See crates/spark/src/wallet.rs.\n\n\
+                Track progress: directive d-001"
+            )
         }
-        Commands::Send { address, amount } => {
-            cli::bitcoin::send(address, amount)
+        Commands::Send { address: _, amount: _ } => {
+            anyhow::bail!(
+                "Send command requires Spark SDK integration (d-001).\n\
+                The Breez SDK integration is pending. See crates/spark/src/wallet.rs.\n\n\
+                Track progress: directive d-001"
+            )
         }
-        Commands::Invoice { amount, description } => {
-            cli::bitcoin::invoice(amount, description)
+        Commands::Invoice { amount: _, description: _ } => {
+            anyhow::bail!(
+                "Invoice command requires Spark SDK integration (d-001).\n\
+                The Breez SDK integration is pending. See crates/spark/src/wallet.rs.\n\n\
+                Track progress: directive d-001"
+            )
         }
-        Commands::Pay { invoice } => {
-            cli::bitcoin::pay(invoice)
+        Commands::Pay { invoice: _ } => {
+            anyhow::bail!(
+                "Pay command requires Spark SDK integration (d-001).\n\
+                The Breez SDK integration is pending. See crates/spark/src/wallet.rs.\n\n\
+                Track progress: directive d-001"
+            )
         }
-        Commands::History { limit } => {
-            cli::bitcoin::history(limit)
+        Commands::History { limit: _ } => {
+            anyhow::bail!(
+                "History command requires Spark SDK integration (d-001).\n\
+                The Breez SDK integration is pending. See crates/spark/src/wallet.rs.\n\n\
+                Track progress: directive d-001"
+            )
         }
         Commands::Zap { note_id, amount } => {
             cli::bitcoin::zap(note_id, amount)
