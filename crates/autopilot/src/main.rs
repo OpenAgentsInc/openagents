@@ -5174,7 +5174,7 @@ async fn handle_apm_command(command: ApmCommands) -> Result<()> {
             window,
             start_date,
             end_date,
-            include_events,
+            include_events: _,
             db,
         } => {
             use autopilot::apm_storage::get_snapshots_filtered;
