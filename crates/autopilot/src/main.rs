@@ -357,6 +357,27 @@ impl HookCallback for PostRunHook {
                                     if let Ok(anomalies) = db.detect_anomalies(&session_metrics) {
                                         if !anomalies.is_empty() {
                                             eprintln!("⚠ PostRun hook detected {} anomalies", anomalies.len());
+
+                                            // Log critical anomalies (>3σ) to stderr for immediate visibility
+                                            let critical_anomalies: Vec<_> = anomalies.iter()
+                                                .filter(|a| matches!(a.severity, autopilot::metrics::AnomalySeverity::Critical))
+                                                .collect();
+
+                                            if !critical_anomalies.is_empty() {
+                                                eprintln!("\n🚨 CRITICAL ANOMALIES DETECTED:");
+                                                for anomaly in &critical_anomalies {
+                                                    let pct_change = ((anomaly.actual_value - anomaly.expected_value) / anomaly.expected_value) * 100.0;
+                                                    eprintln!("   {} in session {}...: expected {:.3}, actual {:.3} ({:+.1}%)",
+                                                        anomaly.dimension,
+                                                        &session_metrics.id[..8.min(session_metrics.id.len())],
+                                                        anomaly.expected_value,
+                                                        anomaly.actual_value,
+                                                        pct_change
+                                                    );
+                                                }
+                                                eprintln!("   Run 'cargo autopilot metrics show {}' for details\n", session_metrics.id);
+                                            }
+
                                             for anomaly in &anomalies {
                                                 if let Err(e) = db.store_anomaly(anomaly) {
                                                     eprintln!("Warning: Failed to store anomaly: {}", e);
