@@ -10,7 +10,7 @@ mod thinking_block;
 mod tool_header;
 
 pub use checkpoint_restore::CheckpointRestore;
-pub use diff_header::DiffHeader;
+pub use diff_header::{DiffHeader, DiffType};
 pub use entry_actions::EntryActions;
 pub use message_header::MessageHeader;
 pub use mode_selector::ModeSelector;
