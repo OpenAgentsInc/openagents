@@ -351,7 +351,8 @@ mod tests {
         assert!(!normalized.contains("//"));
 
         // Test home directory expansion
-        std::env::set_var("HOME", "/home/test");
+        // SAFETY: This is a test-only operation that sets HOME env var
+        unsafe { std::env::set_var("HOME", "/home/test"); }
         let normalized = recovery.normalize_path("~/file.txt").unwrap();
         assert!(normalized.starts_with("/home/test"));
     }
