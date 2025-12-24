@@ -6,12 +6,19 @@
 //! - **Autopilot**: Issue tracking hooks for claim/complete workflows
 //! - **Trajectory**: APM metrics and action logging for performance tracking
 //! - **Marketplace**: Skill licensing and usage tracking (NIP-SA kinds 38020, 38021)
+//! - **Advanced**: FROSTR threshold signatures, NIP-SA solver agents, multi-backend routing
 
+pub mod advanced;
 pub mod autopilot;
 pub mod directives;
 pub mod marketplace;
 pub mod trajectory;
 
+pub use advanced::{
+    AgentIdentity, AutonomyLevel, BackendConfig, BackendProvider, BudgetConfig, BudgetStatus,
+    CostRecord, CostTracker, CostTrackingHook, MultiBackendRouter, PendingApproval,
+    SolverAgentCoordinator, ThresholdConfig,
+};
 pub use autopilot::{AutopilotIntegration, IssueClaimHook, IssueCompleteHook};
 pub use directives::{DirectiveContext, DirectiveInjectionConfig, DirectiveSummary};
 pub use marketplace::{
