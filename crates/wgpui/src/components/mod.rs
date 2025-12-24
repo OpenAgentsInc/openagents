@@ -12,6 +12,7 @@ mod modal;
 mod scroll_view;
 mod tabs;
 mod text;
+mod text_effects;
 mod text_input;
 mod virtual_list;
 
@@ -24,5 +25,6 @@ pub use modal::Modal;
 pub use scroll_view::ScrollView;
 pub use tabs::{Tab, Tabs};
 pub use text::Text;
+pub use text_effects::{TextDecipher, TextEffectAnimator, TextEffectFrame, TextEffectTiming, TextSequence};
 pub use text_input::TextInput;
 pub use virtual_list::VirtualList;
