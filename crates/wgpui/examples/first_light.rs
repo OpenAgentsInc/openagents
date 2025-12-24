@@ -16,7 +16,7 @@ use wgpui::{
 };
 use wgpui::components::atoms::{Mode, Model, Status, StatusDot, ModeBadge, ModelBadge, StreamingIndicator};
 use wgpui::components::molecules::{MessageHeader, ModeSelector, ModelSelector};
-use wgpui::components::hud::{CornerConfig, Frame, StatusBar, StatusItem, Notifications};
+use wgpui::components::hud::{CornerConfig, DotsGrid, DotShape, Frame, StatusBar, StatusItem, Notifications};
 use wgpui::renderer::Renderer;
 use winit::application::ApplicationHandler;
 use winit::event::WindowEvent;
@@ -58,6 +58,7 @@ struct DemoState {
     status_bar: StatusBar,
     #[allow(dead_code)]
     notifications: Notifications,
+    dots_grid: DotsGrid,
     frame_count: u64,
 }
 
@@ -110,6 +111,12 @@ impl Default for DemoState {
                 StatusItem::status("status", Status::Online).right(),
             ]),
             notifications: Notifications::new(),
+            dots_grid: DotsGrid::new()
+                .color(Hsla::new(180.0, 0.5, 0.3, 0.4))
+                .shape(DotShape::Cross)
+                .distance(24.0)
+                .size(6.0)
+                .cross_thickness(1.0),
             frame_count: 0,
         }
     }
@@ -306,6 +313,9 @@ fn build_full_demo(
     let col_width = (width - margin * 3.0) / 2.0;
 
     scene.draw_quad(Quad::new(Bounds::new(0.0, 0.0, width, height)).with_background(theme::bg::APP));
+
+    let mut cx = PaintContext::new(scene, text_system, 1.0);
+    demo.dots_grid.paint(Bounds::new(0.0, 0.0, width, height), &mut cx);
 
     let mut y = margin;
     draw_header(scene, text_system, margin, &mut y, width);

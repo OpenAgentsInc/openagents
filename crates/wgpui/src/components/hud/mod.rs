@@ -1,5 +1,6 @@
 mod command_palette;
 mod context_menu;
+mod dots_grid;
 mod frame;
 mod notifications;
 mod status_bar;
@@ -7,6 +8,7 @@ mod tooltip;
 
 pub use command_palette::{Command, CommandPalette};
 pub use context_menu::{ContextMenu, MenuItem};
+pub use dots_grid::{DotsGrid, DotShape};
 pub use frame::{CornerConfig, Frame, FrameStyle};
 pub use notifications::{Notification, NotificationLevel, NotificationPosition, Notifications};
 pub use status_bar::{
