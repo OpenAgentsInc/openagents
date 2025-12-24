@@ -2,6 +2,7 @@
 resolver = "2"
 members = [
     "crates/acp-adapter",
+    "crates/agent-orchestrator",
     "crates/gitafter",
     "crates/autopilot",
     "crates/autopilot-gui",
