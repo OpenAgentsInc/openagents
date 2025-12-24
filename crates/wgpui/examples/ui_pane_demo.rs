@@ -5,7 +5,7 @@ use wgpui::{
     Animation, Bounds, Component, Easing, Hsla, PaintContext, Point, Quad, Scene, Size,
     SpringAnimation, TextSystem, theme,
 };
-use wgpui::components::hud::{CornerConfig, Frame, FrameStyle};
+use wgpui::components::hud::{CornerConfig, DotsGrid, DotsOrigin, DotShape, Frame, FrameStyle};
 use wgpui::renderer::Renderer;
 use winit::application::ApplicationHandler;
 use winit::event::WindowEvent;
@@ -33,9 +33,9 @@ impl Priority {
     fn glow_color(&self) -> Option<Hsla> {
         match self {
             Priority::Background | Priority::Normal => None,
-            Priority::Elevated => Some(Hsla::new(200.0, 1.0, 0.5, 0.6)),
-            Priority::Urgent => Some(Hsla::new(45.0, 1.0, 0.5, 0.8)),
-            Priority::Critical => Some(Hsla::new(0.0, 1.0, 0.5, 0.9)),
+            Priority::Elevated => Some(Hsla::new(180.0, 1.0, 0.7, 0.7)),
+            Priority::Urgent => Some(Hsla::new(45.0, 1.0, 0.7, 0.8)),
+            Priority::Critical => Some(Hsla::new(0.0, 1.0, 0.7, 0.9)),
         }
     }
 }
@@ -246,10 +246,17 @@ struct DemoState {
     last_action_time: f32,
     scenario_index: usize,
     paused: bool,
+    dots_anim: Animation<f32>,
 }
 
 impl DemoState {
     fn new() -> Self {
+        let mut dots_anim = Animation::new(0.0_f32, 1.0, Duration::from_millis(2000))
+            .easing(Easing::Linear)
+            .iterations(0)
+            .alternate();
+        dots_anim.start();
+
         Self {
             panes: HashMap::new(),
             z_counter: 0,
@@ -258,6 +265,7 @@ impl DemoState {
             last_action_time: 0.0,
             scenario_index: 0,
             paused: false,
+            dots_anim,
         }
     }
 
@@ -344,6 +352,7 @@ impl DemoState {
     }
 
     fn tick(&mut self, dt: Duration) {
+        self.dots_anim.tick(dt);
         for pane in self.panes.values_mut() {
             pane.tick(dt);
         }
@@ -630,6 +639,19 @@ fn render_demo(
     height: f32,
 ) {
     scene.draw_quad(Quad::new(Bounds::new(0.0, 0.0, width, height)).with_background(theme::bg::APP));
+
+    let dots_progress = demo.dots_anim.current_value();
+    let mut dots_grid = DotsGrid::new()
+        .color(Hsla::new(180.0, 0.4, 0.25, 0.35))
+        .shape(DotShape::Cross)
+        .distance(28.0)
+        .size(5.0)
+        .cross_thickness(1.0)
+        .origin(DotsOrigin::Center)
+        .easing(Easing::EaseOut)
+        .animation_progress(dots_progress);
+    let mut cx = PaintContext::new(scene, text_system, 1.0);
+    dots_grid.paint(Bounds::new(0.0, 40.0, width, height - 180.0), &mut cx);
 
     let title = "UI Pane Demo - Agent Tool Calls";
     let run = text_system.layout(title, Point::new(20.0, 18.0), 18.0, theme::text::PRIMARY);
