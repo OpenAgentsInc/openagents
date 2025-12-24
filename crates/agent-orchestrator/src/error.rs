@@ -20,11 +20,17 @@ pub enum Error {
     #[error("Hook blocked execution: {message}")]
     HookBlocked { message: String },
 
-    #[error("Task not found: {id}")]
-    TaskNotFound { id: String },
+    #[error("Task not found: {0}")]
+    TaskNotFound(String),
 
-    #[error("Task already completed: {id}")]
-    TaskAlreadyCompleted { id: String },
+    #[error("Task already completed: {0}")]
+    TaskAlreadyCompleted(String),
+
+    #[error("Task failed: {0}")]
+    TaskFailed(String),
+
+    #[error("Task cancelled: {0}")]
+    TaskCancelled(String),
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
