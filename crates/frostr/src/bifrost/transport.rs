@@ -153,6 +153,7 @@ impl NostrTransport {
         secret_key: &[u8; 32],
         peer_pubkeys: &[[u8; 32]],
         incoming_tx: &mpsc::Sender<BifrostMessage>,
+        pending: Arc<RwLock<HashMap<String, PendingRequest>>>,
         relay_pool: Option<Arc<RelayPool>>,
         _relays: &[String],
         event_kind: u16,
@@ -255,7 +256,33 @@ impl NostrTransport {
             }
         }
 
-        // Forward to incoming channel
+        // Check if this is a response to a pending request
+        let session_id = Self::extract_session_id(&message);
+        let is_response = matches!(
+            &message,
+            BifrostMessage::SignResponse(_)
+            | BifrostMessage::EcdhResponse(_)
+            | BifrostMessage::Pong(_)
+            // Two-phase protocol responses
+            | BifrostMessage::CommitmentResponse(_)
+            | BifrostMessage::PartialSignature(_)
+        );
+
+        if is_response {
+            if let Some(session_id) = session_id {
+                // Try to route to pending request
+                let pending_guard = pending.write().await;
+                if let Some(pending_req) = pending_guard.get(&session_id) {
+                    // Send to the pending request's channel
+                    if pending_req.tx.send(message.clone()).await.is_ok() {
+                        // Successfully routed to pending request
+                        return Ok(());
+                    }
+                }
+            }
+        }
+
+        // Forward to incoming channel for responder processing
         incoming_tx.send(message).await
             .map_err(|e| Error::Transport(format!("Failed to forward message: {}", e)))?;
 
@@ -264,8 +291,12 @@ impl NostrTransport {
 
     /// Connect to Nostr relays and start listening for messages
     pub async fn connect(&mut self) -> Result<()> {
-        // Create relay pool with default config
-        let pool_config = PoolConfig::default();
+        // Create relay pool with config appropriate for Bifrost
+        // We only require 1 confirmation since Bifrost may use a single relay
+        let pool_config = PoolConfig {
+            min_write_confirmations: 1,
+            ..PoolConfig::default()
+        };
         let pool = Arc::new(RelayPool::new(pool_config));
 
         // Add all configured relays
@@ -305,6 +336,7 @@ impl NostrTransport {
         let relay_pool_clone = pool.clone();
         let relays = self.config.relays.clone();
         let event_kind = self.config.event_kind;
+        let pending = Arc::clone(&self.pending);
 
         tokio::spawn(async move {
             while let Some(event) = event_rx.recv().await {
@@ -314,6 +346,7 @@ impl NostrTransport {
                     &secret_key,
                     &peer_pubkeys,
                     &incoming_tx,
+                    Arc::clone(&pending),
                     Some(relay_pool_clone.clone()),
                     &relays,
                     event_kind,
@@ -407,6 +440,11 @@ impl NostrTransport {
             BifrostMessage::EcdhError(err) => Some(err.session_id.clone()),
             BifrostMessage::Ping(ping) => Some(ping.session_id.clone()),
             BifrostMessage::Pong(pong) => Some(pong.session_id.clone()),
+            // Two-phase protocol messages
+            BifrostMessage::CommitmentRequest(req) => Some(req.session_id.clone()),
+            BifrostMessage::CommitmentResponse(res) => Some(res.session_id.clone()),
+            BifrostMessage::SigningPackage(pkg) => Some(pkg.session_id.clone()),
+            BifrostMessage::PartialSignature(sig) => Some(sig.session_id.clone()),
         }
     }
 
@@ -599,6 +637,11 @@ impl NostrTransport {
             BifrostMessage::EcdhError(_) => "ecdh_err".to_string(),
             BifrostMessage::Ping(_) => "ping".to_string(),
             BifrostMessage::Pong(_) => "pong".to_string(),
+            // Two-phase protocol messages
+            BifrostMessage::CommitmentRequest(_) => "commit_req".to_string(),
+            BifrostMessage::CommitmentResponse(_) => "commit_res".to_string(),
+            BifrostMessage::SigningPackage(_) => "sign_pkg".to_string(),
+            BifrostMessage::PartialSignature(_) => "partial_sig".to_string(),
         }
     }
 

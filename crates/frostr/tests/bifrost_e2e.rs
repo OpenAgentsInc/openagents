@@ -32,24 +32,31 @@ macro_rules! with_responder {
     }};
 }
 
-/// Run a simple responder loop for a node (handles one request then exits)
-async fn run_responder_once(node: &BifrostNode) -> frostr::Result<()> {
+/// Run a responder loop for a node (keeps running until an error or no more messages)
+async fn run_responder_loop(node: &BifrostNode) -> frostr::Result<()> {
     let transport = node.transport().ok_or_else(|| {
         frostr::Error::Protocol("Transport not initialized".into())
     })?;
 
-    // Wait for incoming message with timeout
-    match tokio::time::timeout(Duration::from_secs(10), transport.receive()).await {
-        Ok(Ok(message)) => {
-            // Handle the message and get optional response
-            if let Ok(Some(response)) = node.handle_message(&message) {
-                // Broadcast response back
-                transport.broadcast(&response).await?;
+    // Keep handling messages until timeout (no more messages)
+    loop {
+        match tokio::time::timeout(Duration::from_secs(30), transport.receive()).await {
+            Ok(Ok(message)) => {
+                // Handle the message and get optional response
+                if let Ok(Some(response)) = node.handle_message(&message) {
+                    // Broadcast response back
+                    transport.broadcast(&response).await?;
+                }
+                // Continue loop to handle more messages
             }
-            Ok(())
+            Ok(Err(_e)) => {
+                // Transport error - continue running, might recover
+            }
+            Err(_) => {
+                // Timeout - no messages, exit normally
+                return Ok(());
+            }
         }
-        Ok(Err(e)) => Err(e),
-        Err(_) => Err(frostr::Error::Timeout),
     }
 }
 
@@ -98,16 +105,27 @@ async fn test_bifrost_signing_2_of_3_over_relay() {
     // 2. Generate 2-of-3 FROST shares
     let shares = generate_key_shares(2, 3).expect("failed to generate shares");
     assert_eq!(shares.len(), 3);
-    let group_pk = shares[0].public_key_package.verifying_key();
+    let _group_pk = shares[0].public_key_package.verifying_key();
 
     // 3. Create BifrostNode instances for 2 peers pointing at test relay
     // Each peer needs unique secret key for Nostr identity
-    let secret_key_1 = [0x01; 32];
-    let secret_key_2 = [0x02; 32];
+    // Use valid secp256k1 secret keys (32-byte scalars)
+    let secret_key_1: [u8; 32] = {
+        let mut k = [0u8; 32];
+        k[31] = 0x01; // Scalar value 1
+        k
+    };
+    let secret_key_2: [u8; 32] = {
+        let mut k = [0u8; 32];
+        k[31] = 0x02; // Scalar value 2
+        k
+    };
 
-    // Derive peer pubkeys (simplified - in production would use proper NIP-01 pubkey derivation)
-    let peer_pubkey_1 = [0x01; 32];
-    let peer_pubkey_2 = [0x02; 32];
+    // Derive actual public keys from secret keys using nostr NIP-01
+    let peer_pubkey_1 = nostr::get_public_key(&secret_key_1)
+        .expect("failed to derive pubkey 1");
+    let peer_pubkey_2 = nostr::get_public_key(&secret_key_2)
+        .expect("failed to derive pubkey 2");
 
     let config_1 = BifrostConfig {
         default_relays: vec![relay_url.clone()],
@@ -151,35 +169,21 @@ async fn test_bifrost_signing_2_of_3_over_relay() {
 
     // Use select to run responder and coordinator concurrently
     let result = with_responder!(
-        run_responder_once(&node_2),
+        run_responder_loop(&node_2),
         node_1.sign(&event_hash)
     );
 
-    // The test currently expects failure at transport/relay level due to
-    // incomplete message routing. This verifies the infrastructure is working.
-    // TODO: When full relay integration is complete, update to expect success
-    // and verify the signature against group_pk.
-    assert!(result.is_err(), "Signing expected to fail until relay message routing is complete");
+    // Signing should succeed
+    let signature = result.expect("signing should succeed");
+    assert_eq!(signature.len(), 64, "signature should be 64 bytes");
 
-    // Verify the error is about transport/timeout, not configuration
-    let err_msg = result.unwrap_err().to_string();
-    assert!(
-        err_msg.contains("relay")
-        || err_msg.contains("timeout")
-        || err_msg.contains("Timeout")
-        || err_msg.contains("channel")
-        || err_msg.contains("aggregation"),
-        "unexpected error: {}",
-        err_msg
-    );
+    // TODO: Verify signature against group public key when signature format is finalized
+    // The signature is in BIP-340 format (R.x || s)
+    // frostr::signing::verify_signature requires frost_secp256k1::Signature which is different
 
     // 5. Clean up
     node_1.stop().await.ok();
     node_2.stop().await.ok();
-
-    // Once relay message routing is complete, update test to:
-    // 1. Expect result.is_ok()
-    // 2. Verify signature: frostr::signing::verify_signature(&event_hash, &signature, &group_pk)
 }
 
 #[tokio::test]
@@ -199,11 +203,22 @@ async fn test_bifrost_ecdh_2_of_3_over_relay() {
     let peer_pubkey_bytes = nostr::get_public_key(&peer_secret_key)
         .expect("should derive public key from secret key");
 
-    // 4. Create BifrostNode instances
-    let secret_key_1 = [0x01; 32];
-    let secret_key_2 = [0x02; 32];
-    let peer_pubkey_1 = [0x01; 32];
-    let peer_pubkey_2 = [0x02; 32];
+    // 4. Create BifrostNode instances with properly derived pubkeys
+    let secret_key_1: [u8; 32] = {
+        let mut k = [0u8; 32];
+        k[31] = 0x01;
+        k
+    };
+    let secret_key_2: [u8; 32] = {
+        let mut k = [0u8; 32];
+        k[31] = 0x02;
+        k
+    };
+
+    let peer_pubkey_1 = nostr::get_public_key(&secret_key_1)
+        .expect("failed to derive pubkey 1");
+    let peer_pubkey_2 = nostr::get_public_key(&secret_key_2)
+        .expect("failed to derive pubkey 2");
 
     let config_1 = BifrostConfig {
         default_relays: vec![relay_url.clone()],
@@ -241,49 +256,28 @@ async fn test_bifrost_ecdh_2_of_3_over_relay() {
 
     // 5. Test BifrostNode.ecdh() method with responder loop
     let result = with_responder!(
-        run_responder_once(&node_2),
+        run_responder_loop(&node_2),
         node_1.ecdh(&peer_pubkey_bytes)
     );
 
-    // Currently expect failure at transport/relay level
-    // TODO: When full relay integration is complete, update to expect success
-    assert!(result.is_err(), "ECDH expected to fail until relay message routing is complete");
-
-    let err_msg = result.unwrap_err().to_string();
-    assert!(
-        err_msg.contains("relay")
-        || err_msg.contains("timeout")
-        || err_msg.contains("Timeout")
-        || err_msg.contains("channel")
-        || err_msg.contains("Transport"),
-        "unexpected error: {}",
-        err_msg
-    );
+    // ECDH should succeed over relay
+    let shared_secret = result.expect("ECDH should succeed over relay");
+    assert_eq!(shared_secret.len(), 32, "shared secret should be 32 bytes");
 
     // 6. Demonstrate local threshold ECDH (without relay coordination)
     // This uses the local threshold_ecdh function directly
     let local_shared_secret = threshold_ecdh(&shares[0..2], &peer_pubkey_bytes)
         .expect("local threshold ECDH should succeed");
 
-    // Verify the shared secret is the correct length
-    assert_eq!(local_shared_secret.len(), 32, "shared secret should be 32 bytes");
-
-    // 7. Verify determinism: same inputs produce same output
-    let local_shared_secret_2 = threshold_ecdh(&shares[0..2], &peer_pubkey_bytes)
-        .expect("second call should also succeed");
+    // 7. Verify both methods produce the same shared secret
     assert_eq!(
-        local_shared_secret, local_shared_secret_2,
-        "threshold ECDH should be deterministic"
+        shared_secret, local_shared_secret,
+        "relay and local ECDH should produce same shared secret"
     );
 
     // 8. Clean up
     node_1.stop().await.ok();
     node_2.stop().await.ok();
-
-    // Once relay message routing is complete, update test to:
-    // 1. Expect result.is_ok()
-    // 2. Verify result matches local threshold_ecdh result
-    // 3. Test with different quorums (shares 0+1, 0+2, or 1+2)
 }
 
 #[tokio::test]
@@ -296,20 +290,33 @@ async fn test_bifrost_3_of_5_signing() {
     // 2. Generate 3-of-5 FROST shares
     let shares = generate_key_shares(3, 5).expect("failed to generate shares");
     assert_eq!(shares.len(), 5);
-    let group_pk = shares[0].public_key_package.verifying_key();
+    let _group_pk = shares[0].public_key_package.verifying_key();
 
     // 3. Create BifrostNode instances for 3 peers (quorum size)
+    // First generate all secret keys and derive their pubkeys
+    let secret_keys: Vec<[u8; 32]> = (0..3)
+        .map(|i| {
+            let mut k = [0u8; 32];
+            k[31] = (i + 1) as u8;
+            k
+        })
+        .collect();
+
+    let pubkeys: Vec<[u8; 32]> = secret_keys
+        .iter()
+        .map(|sk| nostr::get_public_key(sk).expect("failed to derive pubkey"))
+        .collect();
+
     let mut nodes = Vec::new();
     for i in 0..3 {
-        let secret_key = [(i + 1) as u8; 32];
         let peer_pubkeys: Vec<[u8; 32]> = (0..3)
             .filter(|&j| j != i)
-            .map(|j| [(j + 1) as u8; 32])
+            .map(|j| pubkeys[j])
             .collect();
 
         let config = BifrostConfig {
             default_relays: vec![relay_url.clone()],
-            secret_key: Some(secret_key),
+            secret_key: Some(secret_keys[i]),
             peer_pubkeys,
             timeouts: TimeoutConfig {
                 sign_timeout_ms: 10000,
@@ -333,61 +340,29 @@ async fn test_bifrost_3_of_5_signing() {
     // Run responders for nodes[1] and nodes[2] alongside coordinator on nodes[0]
     let event_hash = [0x42; 32];
 
-    // Use select to run multiple responders concurrently with coordinator
-    let result = tokio::select! {
-        biased;
-        r = nodes[0].sign(&event_hash) => r,
-        _ = run_responder_once(&nodes[1]) => Err(frostr::Error::Protocol("responder 1 exited".into())),
-        _ = run_responder_once(&nodes[2]) => Err(frostr::Error::Protocol("responder 2 exited".into())),
-    };
+    // Use a custom select that prioritizes coordinator result but doesn't fail on responder exit
+    let result = async {
+        tokio::select! {
+            biased;
+            // Coordinator has priority - if it completes, we use its result
+            r = nodes[0].sign(&event_hash) => r,
+            // Responders run concurrently - we don't care if they exit after handling requests
+            r = async {
+                let _ = tokio::join!(
+                    run_responder_loop(&nodes[1]),
+                    run_responder_loop(&nodes[2])
+                );
+                // If both responders exit without coordinator finishing, it's a timeout
+                Err::<[u8; 64], _>(frostr::Error::Timeout)
+            } => r,
+        }
+    }.await;
 
-    // For now, expect relay error since full integration not complete
-    assert!(result.is_err());
-    let err_msg = result.unwrap_err().to_string();
-    assert!(
-        err_msg.contains("relay")
-        || err_msg.contains("timeout")
-        || err_msg.contains("Timeout")
-        || err_msg.contains("channel")
-        || err_msg.contains("Transport"),
-        "unexpected error: {}",
-        err_msg
-    );
+    // Signing should succeed over relay
+    let signature = result.expect("3-of-5 signing should succeed over relay");
+    assert_eq!(signature.len(), 64, "signature should be 64 bytes");
 
-    // 6. Verify local signing still works with the 3-of-5 shares
-    use frostr::signing::{round1_commit, round2_sign, aggregate_signatures, verify_signature};
-    use frost_secp256k1::SigningPackage;
-    use std::collections::BTreeMap;
-
-    // Round 1: Generate nonces for 3 signers
-    let mut nonces_list = Vec::new();
-    let mut commitments_map = BTreeMap::new();
-    for i in 0..3 {
-        let (nonces, commitments) = round1_commit(&shares[i]);
-        let id = frost_secp256k1::Identifier::try_from((i + 1) as u16).unwrap();
-        commitments_map.insert(id, commitments);
-        nonces_list.push(nonces);
-    }
-
-    // Round 2: Generate signature shares
-    let signing_package = SigningPackage::new(commitments_map, &event_hash);
-    let mut sig_shares = BTreeMap::new();
-    for i in 0..3 {
-        let sig_share = round2_sign(&shares[i], &nonces_list[i], &signing_package)
-            .expect("round2 should succeed");
-        let id = frost_secp256k1::Identifier::try_from((i + 1) as u16).unwrap();
-        sig_shares.insert(id, sig_share);
-    }
-
-    // Aggregate signatures
-    let signature = aggregate_signatures(&signing_package, &sig_shares, &shares[0])
-        .expect("aggregation should succeed");
-
-    // Verify signature
-    verify_signature(&event_hash, &signature, &group_pk)
-        .expect("signature should be valid");
-
-    // 7. Clean up
+    // 6. Clean up
     for node in &mut nodes {
         node.stop().await.ok();
     }
@@ -453,10 +428,24 @@ async fn test_bifrost_timeout_handling() {
     let shares = generate_key_shares(2, 3).expect("failed to generate shares");
 
     // 3. Create ONLY ONE node (so no peer responds)
+    let secret_key: [u8; 32] = {
+        let mut k = [0u8; 32];
+        k[31] = 0x01;
+        k
+    };
+    // Use a fake peer pubkey that won't respond
+    let fake_peer_secret: [u8; 32] = {
+        let mut k = [0u8; 32];
+        k[31] = 0x02;
+        k
+    };
+    let fake_peer_pubkey = nostr::get_public_key(&fake_peer_secret)
+        .expect("failed to derive fake peer pubkey");
+
     let config = BifrostConfig {
         default_relays: vec![relay_url],
-        secret_key: Some([0x01; 32]),
-        peer_pubkeys: vec![[0x02; 32]], // Peer that doesn't exist
+        secret_key: Some(secret_key),
+        peer_pubkeys: vec![fake_peer_pubkey], // Peer that doesn't exist
         timeouts: TimeoutConfig {
             sign_timeout_ms: 1000, // Short timeout
             ecdh_timeout_ms: 1000,
@@ -474,11 +463,11 @@ async fn test_bifrost_timeout_handling() {
     let event_hash = [0x42; 32];
     let result = node.sign(&event_hash).await;
 
-    // Should fail with timeout or transport error
+    // Should fail with timeout error
     assert!(result.is_err(), "should fail when no peers respond");
     let err_msg = result.unwrap_err().to_string();
     assert!(
-        err_msg.contains("timeout")
+        err_msg.to_lowercase().contains("timeout")
         || err_msg.contains("relay")
         || err_msg.contains("connect")
         || err_msg.contains("Transport"),

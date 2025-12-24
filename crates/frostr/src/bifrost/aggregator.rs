@@ -66,7 +66,9 @@ impl SigningAggregator {
 
     /// Check if we have enough responses to aggregate
     pub fn is_ready(&self) -> bool {
-        self.partial_sigs.len() >= self.threshold
+        // We need (threshold - 1) peer responses since the coordinator
+        // contributes their own partial signature separately
+        self.partial_sigs.len() >= self.threshold.saturating_sub(1)
     }
 
     /// Get the number of responses collected
@@ -135,11 +137,24 @@ impl SigningAggregator {
         // Aggregate signatures using the frost_share for the public key package
         let signature = aggregate_signatures(&signing_package, &signature_shares, frost_share)?;
 
-        // Convert to 64-byte format (R || s)
+        // Convert to 64-byte BIP-340 format (R.x || s)
+        // FROST serializes as: R (33 bytes compressed point) || z (32 bytes scalar)
+        // BIP-340 needs: R.x (32 bytes x-coordinate) || s (32 bytes scalar)
         let sig_bytes = signature.serialize()
             .map_err(|e| Error::Encoding(format!("Failed to serialize signature: {:?}", e)))?;
+
+        if sig_bytes.len() != 65 {
+            return Err(Error::Encoding(format!(
+                "Unexpected signature length: expected 65, got {}",
+                sig_bytes.len()
+            )));
+        }
+
         let mut result = [0u8; 64];
-        result.copy_from_slice(&sig_bytes);
+        // Skip the first byte (compression prefix 0x02 or 0x03) and take x-coordinate (32 bytes)
+        result[..32].copy_from_slice(&sig_bytes[1..33]);
+        // Copy the scalar z (32 bytes)
+        result[32..].copy_from_slice(&sig_bytes[33..65]);
 
         Ok(result)
     }
@@ -270,7 +285,8 @@ mod tests {
 
     #[test]
     fn test_signing_aggregator_add_response() {
-        let mut agg = SigningAggregator::new(2, "test-session".to_string());
+        // For threshold=3, we need 2 peer responses (coordinator contributes 1 separately)
+        let mut agg = SigningAggregator::new(3, "test-session".to_string());
 
         let response1 = SignResponse {
             session_id: "test-session".to_string(),
@@ -281,7 +297,7 @@ mod tests {
 
         agg.add_response(response1).unwrap();
         assert_eq!(agg.response_count(), 1);
-        assert!(!agg.is_ready());
+        assert!(!agg.is_ready()); // 1 < 2 required peer responses
 
         let response2 = SignResponse {
             session_id: "test-session".to_string(),
@@ -292,7 +308,7 @@ mod tests {
 
         agg.add_response(response2).unwrap();
         assert_eq!(agg.response_count(), 2);
-        assert!(agg.is_ready());
+        assert!(agg.is_ready()); // 2 >= 2 required peer responses
     }
 
     #[test]
@@ -313,9 +329,10 @@ mod tests {
 
     #[test]
     fn test_signing_aggregator_threshold() {
-        let mut agg = SigningAggregator::new(3, "test-session".to_string());
+        // For threshold=4, we need 3 peer responses (coordinator contributes 1 separately)
+        let mut agg = SigningAggregator::new(4, "test-session".to_string());
 
-        // Add 2 responses - not enough
+        // Add 2 responses - not enough (need 3)
         for i in 1..=2 {
             let response = SignResponse {
                 session_id: "test-session".to_string(),
@@ -325,7 +342,7 @@ mod tests {
             };
             agg.add_response(response).unwrap();
         }
-        assert!(!agg.is_ready());
+        assert!(!agg.is_ready()); // 2 < 3 required peer responses
 
         // Add 3rd response - now ready
         let response = SignResponse {
@@ -335,7 +352,7 @@ mod tests {
             nonce_commitment: [3; 66],
         };
         agg.add_response(response).unwrap();
-        assert!(agg.is_ready());
+        assert!(agg.is_ready()); // 3 >= 3 required peer responses
     }
 
     #[test]
