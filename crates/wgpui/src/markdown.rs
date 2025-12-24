@@ -23,6 +23,7 @@ impl Default for StreamingConfig {
 
 pub struct StreamingMarkdown {
     document: MarkdownDocument,
+    #[allow(dead_code)]
     config: StreamingConfig,
 }
 
