@@ -89,40 +89,14 @@ fn sidebar_nav(active_story: &str) -> Markup {
         aside class="fixed top-0 left-0 bottom-0 w-48 border-r border-border overflow-y-auto p-3 bg-background z-50" {
             h1 class="font-bold mb-3 text-foreground" { "Storybook" }
             nav {
-                h2 class="uppercase text-muted-foreground mb-1 mt-3 pl-1 tracking-wide text-xs" { "Atoms" }
-                a href="/stories/base-document" class=(link_class("base-document")) { "Base Document" }
-                a href="/stories/button" class=(link_class("button")) { "Button" }
-                a href="/stories/claude-status" class=(link_class("claude-status")) { "Claude Status" }
-                h2 class="uppercase text-muted-foreground mb-1 mt-4 pl-1 tracking-wide text-xs" { "Molecules" }
-                p class="text-muted-foreground text-xs pl-1 py-1" { "No stories yet" }
-                h2 class="uppercase text-muted-foreground mb-1 mt-4 pl-1 tracking-wide text-xs" { "Organisms" }
-                a href="/stories/recorder" class=(link_class("recorder")) { "Recorder Index" }
-                a href="/stories/recorder/atoms" class=(link_class("recorder/atoms")) { "Recorder Atoms" }
-                a href="/stories/recorder/molecules" class=(link_class("recorder/molecules")) { "Recorder Molecules" }
-                a href="/stories/recorder/organisms" class=(link_class("recorder/organisms")) { "Recorder Organisms" }
-                a href="/stories/recorder/sections" class=(link_class("recorder/sections")) { "Recorder Sections" }
-                a href="/stories/recorder/demo" class=(link_class("recorder/demo")) { "Recorder Demo" }
-                h2 class="uppercase text-muted-foreground mb-1 mt-3 pl-1 tracking-wide text-xs" { "Recorder Atoms" }
-                a href="/stories/recorder/atoms/status-dot" class=(link_class("recorder/atoms/status-dot")) { "Status Dot" }
-                a href="/stories/recorder/atoms/line-type-label" class=(link_class("recorder/atoms/line-type-label")) { "Line Type Label" }
-                a href="/stories/recorder/atoms/step-badge" class=(link_class("recorder/atoms/step-badge")) { "Step Badge" }
-                a href="/stories/recorder/atoms/timestamp-badge" class=(link_class("recorder/atoms/timestamp-badge")) { "Timestamp Badge" }
-                a href="/stories/recorder/atoms/call-id-badge" class=(link_class("recorder/atoms/call-id-badge")) { "Call ID Badge" }
-                a href="/stories/recorder/atoms/cost-badge" class=(link_class("recorder/atoms/cost-badge")) { "Cost Badge" }
-                a href="/stories/recorder/atoms/token-badge" class=(link_class("recorder/atoms/token-badge")) { "Token Badge" }
-                a href="/stories/recorder/atoms/latency-badge" class=(link_class("recorder/atoms/latency-badge")) { "Latency Badge" }
-                a href="/stories/recorder/atoms/attempt-badge" class=(link_class("recorder/atoms/attempt-badge")) { "Attempt Badge" }
-                a href="/stories/recorder/atoms/tid-badge" class=(link_class("recorder/atoms/tid-badge")) { "TID Badge" }
-                a href="/stories/recorder/atoms/blob-ref" class=(link_class("recorder/atoms/blob-ref")) { "Blob Ref" }
-                a href="/stories/recorder/atoms/redacted-value" class=(link_class("recorder/atoms/redacted-value")) { "Redacted Value" }
-                a href="/stories/recorder/atoms/result-arrow" class=(link_class("recorder/atoms/result-arrow")) { "Result Arrow" }
-                h2 class="uppercase text-muted-foreground mb-1 mt-4 pl-1 tracking-wide text-xs" { "ACP" }
+                // ACP Components (top priority)
+                h2 class="uppercase text-muted-foreground mb-1 mt-3 pl-1 tracking-wide text-xs" { "ACP" }
                 a href="/stories/acp" class=(link_class("acp")) { "ACP Index" }
+                a href="/stories/acp/demo" class=(link_class("acp/demo")) { "ACP Demo" }
                 a href="/stories/acp/atoms" class=(link_class("acp/atoms")) { "ACP Atoms" }
                 a href="/stories/acp/molecules" class=(link_class("acp/molecules")) { "ACP Molecules" }
                 a href="/stories/acp/organisms" class=(link_class("acp/organisms")) { "ACP Organisms" }
                 a href="/stories/acp/sections" class=(link_class("acp/sections")) { "ACP Sections" }
-                a href="/stories/acp/demo" class=(link_class("acp/demo")) { "ACP Demo" }
                 h2 class="uppercase text-muted-foreground mb-1 mt-3 pl-1 tracking-wide text-xs" { "ACP Atoms" }
                 a href="/stories/acp/atoms/tool-icon" class=(link_class("acp/atoms/tool-icon")) { "Tool Icon" }
                 a href="/stories/acp/atoms/tool-status-badge" class=(link_class("acp/atoms/tool-status-badge")) { "Tool Status Badge" }
@@ -147,10 +121,32 @@ fn sidebar_nav(active_story: &str) -> Markup {
                 a href="/stories/acp/molecules/terminal-header" class=(link_class("acp/molecules/terminal-header")) { "Terminal Header" }
                 a href="/stories/acp/molecules/checkpoint-restore" class=(link_class("acp/molecules/checkpoint-restore")) { "Checkpoint Restore" }
                 a href="/stories/acp/molecules/entry-actions" class=(link_class("acp/molecules/entry-actions")) { "Entry Actions" }
-                h2 class="uppercase text-muted-foreground mb-1 mt-4 pl-1 tracking-wide text-xs" { "Screens" }
-                p class="text-muted-foreground text-xs pl-1 py-1" { "No stories yet" }
-                h2 class="uppercase text-muted-foreground mb-1 mt-4 pl-1 tracking-wide text-xs" { "Layouts" }
-                p class="text-muted-foreground text-xs pl-1 py-1" { "No stories yet" }
+                // Other components
+                h2 class="uppercase text-muted-foreground mb-1 mt-4 pl-1 tracking-wide text-xs" { "Atoms" }
+                a href="/stories/base-document" class=(link_class("base-document")) { "Base Document" }
+                a href="/stories/button" class=(link_class("button")) { "Button" }
+                a href="/stories/claude-status" class=(link_class("claude-status")) { "Claude Status" }
+                h2 class="uppercase text-muted-foreground mb-1 mt-4 pl-1 tracking-wide text-xs" { "Recorder" }
+                a href="/stories/recorder" class=(link_class("recorder")) { "Recorder Index" }
+                a href="/stories/recorder/demo" class=(link_class("recorder/demo")) { "Recorder Demo" }
+                a href="/stories/recorder/atoms" class=(link_class("recorder/atoms")) { "Recorder Atoms" }
+                a href="/stories/recorder/molecules" class=(link_class("recorder/molecules")) { "Recorder Molecules" }
+                a href="/stories/recorder/organisms" class=(link_class("recorder/organisms")) { "Recorder Organisms" }
+                a href="/stories/recorder/sections" class=(link_class("recorder/sections")) { "Recorder Sections" }
+                h2 class="uppercase text-muted-foreground mb-1 mt-3 pl-1 tracking-wide text-xs" { "Recorder Atoms" }
+                a href="/stories/recorder/atoms/status-dot" class=(link_class("recorder/atoms/status-dot")) { "Status Dot" }
+                a href="/stories/recorder/atoms/line-type-label" class=(link_class("recorder/atoms/line-type-label")) { "Line Type Label" }
+                a href="/stories/recorder/atoms/step-badge" class=(link_class("recorder/atoms/step-badge")) { "Step Badge" }
+                a href="/stories/recorder/atoms/timestamp-badge" class=(link_class("recorder/atoms/timestamp-badge")) { "Timestamp Badge" }
+                a href="/stories/recorder/atoms/call-id-badge" class=(link_class("recorder/atoms/call-id-badge")) { "Call ID Badge" }
+                a href="/stories/recorder/atoms/cost-badge" class=(link_class("recorder/atoms/cost-badge")) { "Cost Badge" }
+                a href="/stories/recorder/atoms/token-badge" class=(link_class("recorder/atoms/token-badge")) { "Token Badge" }
+                a href="/stories/recorder/atoms/latency-badge" class=(link_class("recorder/atoms/latency-badge")) { "Latency Badge" }
+                a href="/stories/recorder/atoms/attempt-badge" class=(link_class("recorder/atoms/attempt-badge")) { "Attempt Badge" }
+                a href="/stories/recorder/atoms/tid-badge" class=(link_class("recorder/atoms/tid-badge")) { "TID Badge" }
+                a href="/stories/recorder/atoms/blob-ref" class=(link_class("recorder/atoms/blob-ref")) { "Blob Ref" }
+                a href="/stories/recorder/atoms/redacted-value" class=(link_class("recorder/atoms/redacted-value")) { "Redacted Value" }
+                a href="/stories/recorder/atoms/result-arrow" class=(link_class("recorder/atoms/result-arrow")) { "Result Arrow" }
             }
         }
     }
