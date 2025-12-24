@@ -1246,11 +1246,15 @@ async fn run_task(
             })
         };
 
-        // Write .mcp.json file
-        let json = serde_json::to_string_pretty(&mcp_config)
-            .expect("Failed to serialize MCP config to JSON");
-        std::fs::write(&mcp_json_path, json)?;
-        println!("{} {}", "MCP config:".dimmed(), mcp_json_path.display());
+        // Write .mcp.json file (skip if already exists - e.g., mounted in Docker)
+        if mcp_json_path.exists() {
+            println!("{} {} {}", "MCP config:".dimmed(), mcp_json_path.display(), "(pre-configured)".dimmed());
+        } else {
+            let json = serde_json::to_string_pretty(&mcp_config)
+                .expect("Failed to serialize MCP config to JSON");
+            std::fs::write(&mcp_json_path, json)?;
+            println!("{} {}", "MCP config:".dimmed(), mcp_json_path.display());
+        }
 
         // Store path for cleanup on panic/signal
         MCP_JSON_PATH.set(mcp_json_path).ok();
