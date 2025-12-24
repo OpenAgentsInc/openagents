@@ -19,4 +19,5 @@ chrono = { version = "0.4", features = ["serde"] }
 uuid = { version = "1", features = ["v4", "serde"] }
 
 [dev-dependencies]
+tempfile.workspace = true
 tokio-test = "0.4"
