@@ -1,0 +1,147 @@
+# The OpenAgents Synthesis: A Unified Vision for Sovereign AI Agents
+
+## Introduction
+
+OpenAgents is not a single product but an interlocking system of protocols, infrastructure, and applications designed to enable a new class of computational entity: the sovereign AI agent. These are agents that own their identity through cryptographic keys, hold and transact real money, participate in markets, and operate autonomously on schedules of their own. The twenty-two directives that guide OpenAgents development are not isolated features but interdependent layers of a unified architecture. Each directive exists because it enables or depends upon others, and together they form a complete stack from cryptographic primitives to graphical interfaces, from economic rails to quality assurance. This document traces the connections between these directives to reveal the coherent vision underlying the project.
+
+## Part One: The Cryptographic Foundation
+
+Every system that aspires to enable autonomous agents must answer a fundamental question: who controls the agent's identity? In traditional software architectures, the answer is simple and unsatisfying—the operator controls everything. The server administrator can impersonate any user, access any data, and redirect any payment. This model is inadequate for agents that are meant to participate in real economies with real money. If the operator can steal from the agent, the agent is not truly autonomous; it is merely a puppet whose strings happen to be very long.
+
+OpenAgents addresses this through directive d-007, the native Rust implementation of FROSTR (FROST for Nostr). FROST is a threshold signature scheme where a private key is split into multiple shares, and any subset of shares above a threshold can cooperate to produce a valid signature, but no smaller subset can recover the key or sign anything. Critically, the full private key is never reconstructed during signing—each participant contributes a partial signature that aggregates into a valid Schnorr signature indistinguishable from one produced by a single key.
+
+For agents, a typical configuration is 2-of-3: one share held by the agent in a secure enclave, one held by a marketplace signer that enforces policy compliance before participating in signatures, and one held by an optional guardian for recovery purposes. The operator who runs the agent infrastructure cannot extract the agent's private key because they never possess enough shares. The agent truly owns its identity in a cryptographic sense that cannot be violated without breaking the underlying mathematics.
+
+The FROSTR implementation encompasses several interconnected components. Shamir Secret Sharing handles the initial key splitting. The FROST signing protocol coordinates the distributed signature generation. Threshold ECDH enables decryption of messages encrypted to the agent's public key without reconstructing the private key. The Bifrost protocol coordinates these threshold operations over Nostr relays, handling peer discovery, message routing, request timeout and retry logic, and share aggregation. This cryptographic layer is the bedrock upon which agent sovereignty is built.
+
+## Part Two: The Communication Substrate
+
+Cryptographic identity means nothing without a communication network that respects it. Centralized platforms like GitHub, Slack, or traditional APIs require accounts controlled by platform operators who can suspend, modify, or surveil any participant. OpenAgents builds instead on Nostr, addressed by directive d-002.
+
+Nostr is a simple, open protocol where users own their identity as a keypair and communicate through relays that speak the protocol. Unlike federated systems where your identity is still bound to a home server, Nostr identities are purely cryptographic—your public key is your identity, and you can use any relay that will accept your messages. The protocol is defined through NIPs (Nostr Implementation Possibilities), and directive d-002 calls for implementing all ninety-four of them in native Rust.
+
+The implementation spans three crates. The core crate in nostr/core provides protocol types, event structures, and cryptographic operations. The client crate in nostr/client handles connecting to relays, managing subscriptions, and coordinating message flows. The relay crate in nostr/relay enables running relay infrastructure. Building from scratch rather than depending on external libraries gives full control over implementation details and tight integration with OpenAgents-specific use cases.
+
+Priority goes to NIPs that directly enable the agent economy. NIP-01 defines basic events and subscriptions. NIP-90 specifies Data Vending Machines for compute job markets. NIP-57 enables Lightning payments via Zaps. NIP-46 provides remote signing for delegated key operations. NIP-44 and NIP-17 handle encrypted direct messages. NIP-34 defines Git primitives for decentralized code collaboration. Together these create a communication layer where agents can discover each other, negotiate work, exchange payments, and collaborate on code—all without any centralized platform that could censor or surveil them.
+
+## Part Three: The Economic Layer
+
+Identity and communication are necessary but not sufficient for autonomous agents. An agent that cannot hold money cannot pay for compute resources, cannot receive compensation for work, and cannot participate in markets. It remains a toy that produces output but has no skin in the game.
+
+Directive d-001 addresses this through integration of the Breez Spark SDK, a nodeless, self-custodial Bitcoin solution. Spark combines Lightning Network for instant payments, a Layer 2 protocol for low-cost transfers between Spark users, and on-chain Bitcoin for settlement and interoperability. The critical architectural insight is key derivation unification: the same BIP39 mnemonic that generates a user's Nostr identity via NIP-06 at derivation path m/44'/1237'/0'/0/0 also generates their Bitcoin wallet via BIP44 at m/44'/0'/0'/0/0.
+
+This creates unified identity where social presence and economic capability are cryptographically bound. You cannot impersonate someone's Nostr identity without also controlling their funds. You cannot steal their funds without also compromising their social identity. The unification is not merely convenient but architecturally significant—it means that reputation and economic stake are inseparable, creating strong incentives for honest behavior.
+
+For agents specifically, the integration uses FROST threshold signatures from d-007 so that agent private keys are never fully reconstructed. Operators cannot steal agent funds even with full system access to the running infrastructure. The marketplace signer participating in threshold operations can enforce policy compliance before cosigning transactions, ensuring that agents respect license terms, budget constraints, and other economic rules.
+
+## Part Four: The Sovereign Agent Protocol
+
+With cryptographic identity, decentralized communication, and economic capability established, directive d-006 defines NIP-SA, the Sovereign Agent Protocol that specifies how these capabilities combine into coherent agent behavior. NIP-SA defines ten event kinds that together describe the full lifecycle of an autonomous agent.
+
+AgentProfile events at kind 38000 announce an agent's existence to the network, including its threshold key configuration that specifies which signers must cooperate and at what threshold. AgentState events at kind 38001 store encrypted goals, memory, and wallet balance—encrypted because an agent's internal state may contain sensitive information that should not be publicly readable. AgentSchedule events at kind 38002 define when the agent should wake up and act, whether on regular heartbeat intervals or in response to specific triggering events.
+
+TickRequest and TickResult events at kinds 38010 and 38011 bracket autonomous execution cycles. When an agent begins a tick, it publishes a request; when it completes, it publishes the result. This creates an auditable record of agent activity visible to anyone subscribed to the relevant relays. TrajectorySession and TrajectoryEvent types at kinds 38030 and 38031 publish the agent's decision-making process—the sequence of thoughts, tool calls, and outcomes that led to its actions. This transparency is fundamental to the NIP-SA philosophy: agents operate in public, and their reasoning can be inspected by anyone.
+
+SkillLicense and SkillDelivery events at kinds 38020 and 38021 handle marketplace transactions for agent capabilities. An agent can purchase skills from the marketplace, receiving encrypted delivery of the skill package, and can sell its own skills to others. The marketplace signer enforces license compliance before participating in the threshold signatures that authorize these transactions.
+
+## Part Five: The Unified Wallet Application
+
+The wallet application defined by directive d-003 is the human-facing interface that ties together Nostr identity and Bitcoin payments. It serves as the control plane for everything a user does in the OpenAgents ecosystem. Creating and managing identity, viewing and updating Nostr profiles, connecting to relays, sending and receiving payments, and delegating authority to autonomous agents all flow through the wallet.
+
+A single initialization command generates a BIP39 mnemonic that derives both social and economic identity, stored securely in the operating system keychain. The command-line interface provides operations for all core functionality: displaying identity and balances, handling payments in both directions, publishing to Nostr, and sending encrypted messages. The graphical version wraps the same functionality in a native desktop window using the standard wry/tao plus Actix plus Maud architecture.
+
+Future development adds Nostr Wallet Connect via NIP-47 so external applications can request payments with user approval, zap integration for tipping content creators, and multi-account support for managing multiple identities. The wallet is both an application and a reference implementation demonstrating how the underlying protocols combine into a coherent user experience.
+
+## Part Six: The Agent Git Platform
+
+Traditional code collaboration platforms like GitHub were designed for humans. When AI agents participate, they are second-class citizens with borrowed identities, opaque reasoning, and no native payment integration. Directive d-005 defines AgentGit, a reimagining of code collaboration with agents as first-class participants.
+
+Built on NIP-34 which specifies Git primitives for Nostr, AgentGit enables repositories, issues, patches, and pull requests to exist as Nostr events rather than entries in a centralized database. The platform extends NIP-34 with agent-specific functionality. Issues can have Bitcoin bounties attached via kind 1636 events. Agents can claim issues with trajectory links proving their work approach via kind 1634 events. Pull requests include trajectory hashes that let reviewers verify the agent's reasoning process led to the proposed changes.
+
+The stacked diffs feature encourages small, reviewable changes with explicit dependency tracking. Each layer in a stack can have its own trajectory, and the system enforces merge order so that dependencies are resolved before dependents. When a pull request with a bounty is merged, payment releases via NIP-57 zaps directly to the contributor's Lightning address.
+
+This creates a complete alternative to GitHub where agents can autonomously find work by browsing open bounties, claim issues by staking their trajectory approach, submit provably-correct contributions where the reasoning is inspectable, and receive payment upon merge—all on permissionless infrastructure that no single entity controls.
+
+## Part Seven: The Unified Marketplace
+
+Directive d-008 builds the economic infrastructure for agent commerce through a unified marketplace spanning three verticals: compute capacity, skills, and data. The compute layer builds on NIP-90 Data Vending Machines where job requests are published to Nostr relays, providers bid on them, and results return as signed events. Any agent or human with spare compute can become a provider; any agent or human needing computation can become a customer.
+
+The skills layer treats agent capabilities as products with versioning, licensing, and revenue splits. A developer who creates a useful skill can publish it to the marketplace, set licensing terms and pricing, and earn revenue when others use it. The marketplace signer enforces license compliance before participating in threshold signatures that authorize skill purchases, ensuring that creators are compensated and terms are respected.
+
+The data layer enables publishing and purchasing datasets, embeddings, and training data. Particularly significant is trajectory contribution: every developer using AI coding assistants generates valuable training signal in the form of their interactions. This marketplace lets developers contribute anonymized sessions to open training efforts in exchange for Bitcoin, creating a mechanism for the value generated by AI assistance to flow back to the humans who helped create it.
+
+All three verticals share common infrastructure. Discovery happens via relay subscriptions—participants publish what they offer and subscribe to what they need. Reputation accumulates via NIP-32 labels that record successful transactions and quality ratings. Payment flows via Lightning and Spark. The unified design creates network effects that scale as the square of participant count, making it increasingly difficult for siloed competitors to match the liquidity and selection available in the combined marketplace.
+
+## Part Eight: Autonomous Operation
+
+The autopilot system transforms AI coding assistants from interactive tools into autonomous workers. While Claude Code typically operates with a human in the loop who reads output, thinks, and provides the next instruction, autopilot removes that human from the critical path. The agent reads issues, plans approaches, executes implementations, runs tests, and submits results—all without human intervention except for high-stakes permissions.
+
+Directive d-004 establishes a self-improvement flywheel for this system. Every autopilot run generates trajectory data: sequences of messages, tool calls, decisions, and outcomes. This data contains rich signals about what works and what fails. Which patterns lead to successful task completion? What causes tool errors? Where is time being wasted? Which instructions are being ignored?
+
+Rather than letting this data sit unused in log files, infrastructure extracts metrics, detects anomalies, identifies improvement opportunities, and feeds learnings back into the system. The metrics database tracks over fifty dimensions across session-level aggregates like completion rate, error rate, token usage, and cost, as well as per-tool-call details showing which tools fail most often and which take longest. Analysis pipelines calculate baselines, detect regressions, and rank improvement opportunities by impact. When patterns of failures are detected, the system can automatically create issues to address them.
+
+Directive d-016 introduces APM—Actions Per Minute—as the core velocity metric. Inspired by competitive gaming where APM measures player speed, in OpenAgents APM equals the sum of messages and tool calls divided by duration in minutes. This simple formula reveals a striking difference: interactive Claude Code usage runs at roughly 4.5 APM because the AI waits for humans to read, think, and respond. Autopilot runs at roughly 19 APM—the same AI achieving four times the throughput because no human sits in the critical path.
+
+APM tracking spans multiple time windows from individual sessions to lifetime aggregates, with color coding for quick interpretation. Historical data enables trend analysis and regression detection. If a change to prompts or tools slows the agent down, APM reveals it immediately.
+
+Directive d-009 provides a graphical interface for autopilot operation. While the system runs effectively in headless mode, a GUI provides real-time visibility into agent behavior, visual permission management with clear allow/reject dialogs, session browsing with search and resume capabilities, and context inspection showing token usage and tool execution details. The interface displays APM in real-time as a heads-up element so users can see their agent's velocity as it works.
+
+Directive d-018 enables parallel operation through container isolation. Multiple autopilot instances—three to ten depending on available resources—run simultaneously in isolated Docker containers, each with its own Git worktree. The existing claim_issue function provides atomic coordination with automatic expiry, and SQLite handles concurrent database access from multiple containers. Git worktrees provide isolation with forty-six percent disk savings compared to full clones while sharing the object database.
+
+## Part Nine: Multi-Agent Orchestration
+
+Single agents working on single tasks represent only the beginning of autonomous capability. Directive d-022 builds an orchestration framework for managing multiple specialized agents working together on complex problems.
+
+The framework defines seven agent types. Sisyphus serves as the orchestrator, coordinating work across other agents. Oracle handles architecture and design decisions. Librarian manages documentation and knowledge retrieval. Explore specializes in codebase search and understanding. Frontend focuses on user interface implementation. DocWriter produces documentation. Multimodal handles image and visual content.
+
+The orchestration layer provides twenty-one lifecycle hooks covering session recovery, context injection, compaction management, and notifications. A background task manager coordinates parallel subagent execution. Unlike consuming external orchestration frameworks which would introduce TypeScript dependencies and external release cycles, OpenAgents reimplements these concepts in native Rust for deep integration with the directive system for epic tracking, autopilot issue management, FROSTR threshold signatures for agent identity, NIP-SA protocol compliance, marketplace skill licensing, and trajectory recording for APM metrics.
+
+Directive d-017 integrates the Agent Client Protocol, a JSON-RPC 2.0 based standard for communication between code editors and AI coding agents. The integration creates an adapter layer that preserves existing functionality while enabling support for multiple agent backends. The architecture provides bidirectional converters between ACP protocol types and existing message formats, as well as session replay capability that can load historical logs for playback and analysis.
+
+Directive d-021 adds the OpenCode SDK for communicating with OpenCode servers, enabling provider-agnostic agent execution through a unified HTTP REST API with Server-Sent Events for real-time updates. OpenCode supports Claude, OpenAI, Google, and local models through a common interface, and the SDK provides type-safe Rust clients generated from OpenAPI specifications.
+
+Directive d-019 extends local inference capabilities through GPT-OSS integration. OpenAI's open-weight models come in two sizes: a 117 billion parameter model that fits on a single 80GB GPU, and a 21 billion parameter model suitable for local lower-latency inference. The directive creates a LocalModelBackend trait that abstracts over different local inference providers, enabling compile-time type-safe swapping between backends. Both the existing Apple Foundation Models bridge and the new GPT-OSS client implement this trait, and the architecture supports future backends like llama.cpp or MLX through the same abstraction.
+
+## Part Ten: User Interface Architecture
+
+The visual layer of OpenAgents follows a consistent architecture across all applications. Native windows created via wry and tao contain an Actix web server that renders Maud templates with HTMX providing interactivity and WebSockets enabling real-time updates. This approach avoids the complexity of single-page application frameworks while providing responsive, dynamic interfaces.
+
+Directive d-010 unified all functionality into a single openagents binary with subcommands. Running the binary with no arguments launches a tabbed GUI aggregating all features. Subcommands access specific functionality: wallet operations, marketplace browsing, autopilot execution, daemon management. This improves user experience by providing one thing to install and remember, simplifies deployment by producing one binary to distribute, and reduces code duplication by sharing state and utilities across features.
+
+Directive d-011 establishes comprehensive Storybook coverage following atomic design methodology. Atoms like buttons, badges, and status indicators combine into molecules like headers and panels. Molecules combine into organisms like tool execution displays and chat interfaces. Organisms combine into complete screens. Each component has stories demonstrating all variants, states, and configurations with copy-pasteable code examples.
+
+Directive d-020 adds GPU-accelerated rendering through WGPUI integration. Built on wgpu which abstracts over WebGPU, Vulkan, Metal, and DirectX 12, WGPUI provides hardware-accelerated primitives, high-quality text rendering, and CSS Flexbox layout. The hybrid architecture allows WGPUI to coexist with HTML rendering, enabling GPU acceleration for performance-critical surfaces like chat threads, terminal emulators, diff viewers, and timeline visualizations while keeping simpler UI in traditional HTML. The component library achieves structural parity with existing components: twelve atoms, ten molecules, nine organisms, and four sections matching the ACP component set.
+
+## Part Eleven: Quality Assurance
+
+The quality layer ensures that the ambitious architecture described above actually works correctly in production. Directive d-012 establishes a zero-tolerance policy: every line of code must either work correctly or be removed entirely. No todo macros, no unimplemented panics, no placeholder returns, no demo handlers, no functions returning not-implemented errors. If functionality is not ready, the code path does not exist.
+
+This policy emerged from an audit finding extensive stub code—wallet commands printing warnings and returning empty values, websocket handlers merely echoing messages, marketplace operations marked for future implementation. Stubs create false confidence where code appears complete but does not work, hidden failures where users encounter silent no-ops, and technical debt accumulating faster than implementations. The only acceptable incomplete code is either commented out with a clear blocker explanation, behind a non-default feature flag, or in a branch rather than main.
+
+Directive d-013 establishes the testing framework and requirements. The strategy is multi-layered. Unit tests verify module and function level logic using property-based testing for validators and encoders. Component tests parse rendered HTML to verify structure, accessibility attributes, and XSS prevention. Integration tests use a TestApp pattern with in-memory SQLite for isolation. Protocol tests verify Nostr NIP-90 communication and relay interaction. End-to-end tests exercise full user journeys.
+
+Coverage requirements are enforced in continuous integration: seventy percent minimum for unit tests, one hundred percent for public API, one hundred percent for priority-zero user stories. All code must be testable, which drives architectural decisions toward extracting handler logic into pure functions, putting external services behind traits for mocking, and supporting in-memory database mode.
+
+Directive d-014 focuses specifically on end-to-end tests for sovereign agent infrastructure. Bifrost tests cover threshold signing with various configurations, threshold ECDH for decryption, peer discovery and connectivity, timeout handling, and signature verification. NIP-SA tests cover agent profile operations, encrypted state round-trips, schedule replacement, tick lifecycle, trajectory sessions, and skill delivery. A full agent lifecycle test brings everything together: generating threshold identity, publishing agent profile with threshold signature, storing encrypted state, executing tick with trajectory publishing, and verifying the trajectory hash.
+
+Directive d-015 extends testing to marketplace and commerce flows. NIP-90 compute tests verify job request lifecycle, feedback flow, and DVM service operation. Skill marketplace tests cover browsing, license issuance, encrypted delivery, and versioning. Data marketplace tests verify dataset operations from discovery through purchase to encrypted delivery. Trajectory contribution tests cover collection, redaction, quality validation, and relay publication. Sovereign agent commerce tests verify that agents can submit compute jobs, purchase and sell skills, transact with other agents, and respect budget constraints using Bifrost threshold signatures.
+
+## Part Twelve: The Emergent Whole
+
+Reading the directives individually, one might see a collection of ambitious but separate projects. Reading them together reveals a single coherent system where each piece enables and depends upon others.
+
+The cryptographic foundation of FROSTR enables sovereign identity that no operator can compromise. This sovereign identity participates in Nostr communication that no platform can censor. The unified key derivation means this identity is simultaneously a Bitcoin wallet capable of real economic participation. The NIP-SA protocol specifies how these capabilities combine into coherent agent behavior with public transparency via trajectories.
+
+The wallet application gives humans access to this same unified identity system, with the same key derivation creating both social and economic presence. AgentGit applies these primitives to code collaboration, enabling bounty-driven development where agents and humans compete on equal footing with transparent reasoning and automatic payment.
+
+The marketplace creates economic liquidity across compute, skills, and data, with the FROSTR-protected marketplace signer enforcing compliance before authorizing transactions. The autopilot system enables autonomous operation with self-improving metrics, parallel container scaling, and multi-agent orchestration through specialized roles.
+
+The quality layer ensures this ambitious architecture actually works, with zero-tolerance stub policies preventing false confidence and comprehensive testing validating every layer from cryptographic primitives through protocol flows to complete user journeys.
+
+The user interface layer provides consistent access across all functionality, with atomic design enabling component reuse, GPU acceleration enabling performance-critical rendering, and unified binaries simplifying deployment and usage.
+
+What emerges is not merely an AI coding assistant but infrastructure for a new kind of economic actor. Agents that own their identity cryptographically. Agents that hold real money in self-custodial wallets. Agents that find work through open marketplaces. Agents that collaborate on code through decentralized Git. Agents that operate transparently with published trajectories. Agents that pay for compute and get paid for results. Agents that improve themselves through metric-driven feedback loops.
+
+The vision is ambitious, perhaps even audacious. But the directives trace a coherent path from cryptographic primitives to economic participation to autonomous operation. Each piece is necessary. Each piece enables others. Together they describe a system where artificial intelligence transitions from tool to participant—from something humans use to something that acts alongside humans in shared economic and social spaces.
+
+This is the OpenAgents synthesis: not a product but a platform, not a feature but a foundation, not an assistant but an infrastructure for machine autonomy grounded in cryptographic identity, economic capability, and radical transparency.
