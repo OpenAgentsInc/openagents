@@ -141,6 +141,7 @@ pub async fn start_dashboard(db_path: &str, port: u16) -> anyhow::Result<()> {
             .route("/", web::get().to(index))
             .route("/sessions", web::get().to(sessions_list))
             .route("/session/{id}", web::get().to(session_detail))
+            .route("/dashboard/apm-compare", web::get().to(apm_compare))
             .route("/export/sessions.json", web::get().to(export_json))
             .route("/export/sessions.csv", web::get().to(export_csv))
             .route("/ws", web::get().to(websocket))
@@ -153,7 +154,9 @@ pub async fn start_dashboard(db_path: &str, port: u16) -> anyhow::Result<()> {
             .route("/api/velocity", web::get().to(api_velocity))
             .route("/api/apm-timeline", web::get().to(api_apm_timeline))
             .route("/api/action-breakdown", web::get().to(api_action_breakdown))
+            .route("/api/apm-compare-data", web::get().to(api_apm_compare_data))
             .route("/ws/metrics", web::get().to(websocket_metrics))
+            .route("/ws/apm", web::get().to(websocket_apm))
     })
     .bind(("127.0.0.1", port))?
     .run()
@@ -201,6 +204,13 @@ async fn session_detail(
         }
         _ => Ok(HttpResponse::NotFound().body("Session not found")),
     }
+}
+
+/// APM comparison page
+async fn apm_compare(_state: web::Data<DashboardState>) -> ActixResult<HttpResponse> {
+    Ok(HttpResponse::Ok()
+        .content_type("text/html; charset=utf-8")
+        .body(apm_compare_page()))
 }
 
 /// Export sessions as JSON
@@ -324,6 +334,7 @@ pub(crate) fn dashboard_page(sessions: &[SessionMetrics], stats: &SummaryStats) 
                     nav.header-nav {
                         a href="/" class="active" { "Dashboard" }
                         a href="/sessions" { "All Sessions" }
+                        a href="/dashboard/apm-compare" { "APM Compare" }
                         a href="/export/sessions.json" { "Export JSON" }
                         a href="/export/sessions.csv" { "Export CSV" }
                     }
@@ -746,6 +757,115 @@ fn session_detail_page(session: &SessionMetrics, _tool_calls: &[crate::metrics::
     markup.into_string()
 }
 
+/// Render APM comparison page
+fn apm_compare_page() -> String {
+    let markup = html! {
+        (DOCTYPE)
+        html lang="en" {
+            head {
+                meta charset="utf-8";
+                meta name="viewport" content="width=device-width, initial-scale=1.0";
+                title { "APM Comparison - Autopilot vs Claude Code" }
+                style { (dashboard_styles()) }
+                script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js" {}
+                script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js" {}
+                script { (raw_html(apm_compare_script())) }
+            }
+            body {
+                header {
+                    h1 { "APM Comparison" }
+                    p.subtitle { "Claude Code vs Autopilot Velocity Analysis (d-016)" }
+                    nav.header-nav {
+                        a href="/" { "Dashboard" }
+                        a href="/sessions" { "All Sessions" }
+                        a href="/dashboard/apm-compare" class="active" { "APM Compare" }
+                    }
+                }
+
+                main {
+                    // Time window selector
+                    div.summary-card {
+                        h2 { "Time Window" }
+                        div style="display: flex; gap: 1rem; margin-top: 1rem;" {
+                            button.time-filter.active data-window="1h" { "1 Hour" }
+                            button.time-filter data-window="6h" { "6 Hours" }
+                            button.time-filter data-window="1d" { "1 Day" }
+                            button.time-filter data-window="1w" { "1 Week" }
+                            button.time-filter data-window="1m" { "1 Month" }
+                        }
+                    }
+
+                    // Summary comparison stats
+                    div.summary-card {
+                        h2 { "APM Summary" }
+                        div #apm-summary .stats-grid {
+                            div.stat {
+                                span.stat-label { "Autopilot (avg)" }
+                                span #autopilot-avg .stat-value style="color: #10b981;" { "—" }
+                                span.stat-unit { "APM" }
+                            }
+                            div.stat {
+                                span.stat-label { "Claude Code (avg)" }
+                                span #claude-code-avg .stat-value style="color: #3b82f6;" { "—" }
+                                span.stat-unit { "APM" }
+                            }
+                            div.stat {
+                                span.stat-label { "Efficiency Ratio" }
+                                span #efficiency-ratio .stat-value style="color: #f59e0b;" { "—" }
+                                span.stat-unit { "" }
+                            }
+                            div.stat {
+                                span.stat-label { "Autopilot Sessions" }
+                                span #autopilot-count .stat-value { "—" }
+                                span.stat-unit { "sessions" }
+                            }
+                            div.stat {
+                                span.stat-label { "Claude Code Sessions" }
+                                span #claude-code-count .stat-value { "—" }
+                                span.stat-unit { "sessions" }
+                            }
+                            div.stat {
+                                span.stat-label { "Total Actions" }
+                                span #total-actions .stat-value { "—" }
+                                span.stat-unit { "tracked" }
+                            }
+                        }
+                    }
+
+                    // Charts
+                    div.charts-section {
+                        h2 { "Comparison Charts" }
+                        div.charts-grid {
+                            div.chart-container {
+                                h3 { "APM Over Time" }
+                                canvas #apmCompareChart {}
+                            }
+                            div.chart-container {
+                                h3 { "Average APM by Source" }
+                                canvas #apmBarChart {}
+                            }
+                            div.chart-container {
+                                h3 { "APM Distribution" }
+                                canvas #apmHistogramChart {}
+                            }
+                            div.chart-container {
+                                h3 { "Tool Category Breakdown" }
+                                canvas #toolCategoryChart {}
+                            }
+                        }
+                    }
+                }
+
+                footer {
+                    p { "OpenAgents Autopilot • APM Comparison powered by d-016" }
+                }
+            }
+        }
+    };
+
+    markup.into_string()
+}
+
 /// CSS styles for dashboard
 fn dashboard_styles() -> &'static str {
     r#"
@@ -1001,6 +1121,29 @@ footer a {
 
 footer a:hover {
     text-decoration: underline;
+}
+
+.time-filter {
+    background: var(--bg-tertiary);
+    color: var(--text-primary);
+    border: 2px solid var(--border);
+    padding: 0.5rem 1rem;
+    cursor: pointer;
+    font-size: 0.875rem;
+    font-weight: 600;
+    transition: all 0.2s;
+}
+
+.time-filter:hover {
+    background: var(--accent);
+    color: var(--bg-primary);
+    border-color: var(--accent);
+}
+
+.time-filter.active {
+    background: var(--accent);
+    color: var(--bg-primary);
+    border-color: var(--accent);
 }
 "#
 }
@@ -1468,6 +1611,326 @@ function updateLiveCounters() {
 "#
 }
 
+/// JavaScript for APM comparison page
+fn apm_compare_script() -> &'static str {
+    r#"
+const chartColors = {
+    autopilot: '#10b981',
+    claudeCode: '#3b82f6',
+    bg: '#1a1b26',
+    gridColor: '#414868',
+    textColor: '#c0caf5',
+};
+
+let currentWindow = '1h';
+let compareChart, barChart, histogramChart, categoryChart;
+
+document.addEventListener('DOMContentLoaded', () => {
+    setupTimeFilters();
+    loadComparisonData(currentWindow);
+});
+
+function setupTimeFilters() {
+    document.querySelectorAll('.time-filter').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            // Update active state
+            document.querySelectorAll('.time-filter').forEach(b => b.classList.remove('active'));
+            e.target.classList.add('active');
+
+            // Load new data
+            currentWindow = e.target.getAttribute('data-window');
+            loadComparisonData(currentWindow);
+        });
+    });
+}
+
+async function loadComparisonData(window) {
+    try {
+        const response = await fetch(`/api/apm-compare-data?window=${window}`);
+        const data = await response.json();
+
+        // Update summary stats
+        updateSummaryStats(data);
+
+        // Update charts
+        updateComparisonChart(data);
+        updateBarChart(data);
+        updateHistogramChart(data);
+        updateCategoryChart(data);
+    } catch (error) {
+        console.error('Failed to load comparison data:', error);
+    }
+}
+
+function updateSummaryStats(data) {
+    document.getElementById('autopilot-avg').textContent = data.autopilot.avg_apm.toFixed(1);
+    document.getElementById('claude-code-avg').textContent = data.claude_code.avg_apm.toFixed(1);
+
+    const ratio = data.summary.efficiency_ratio;
+    const ratioElem = document.getElementById('efficiency-ratio');
+    ratioElem.textContent = ratio > 0 ? `${ratio.toFixed(1)}x` : 'N/A';
+    if (ratio > 0) {
+        ratioElem.nextElementSibling.textContent = 'faster';
+    } else {
+        ratioElem.nextElementSibling.textContent = '';
+    }
+
+    document.getElementById('autopilot-count').textContent = data.autopilot.count;
+    document.getElementById('claude-code-count').textContent = data.claude_code.count;
+    document.getElementById('total-actions').textContent = data.summary.total_actions;
+}
+
+function updateComparisonChart(data) {
+    const ctx = document.getElementById('apmCompareChart').getContext('2d');
+
+    if (compareChart) {
+        compareChart.destroy();
+    }
+
+    // Prepare data for line chart
+    const autopilotData = data.autopilot.sessions.map(s => ({
+        x: new Date(s.timestamp),
+        y: s.apm
+    })).reverse();
+
+    const claudeCodeData = data.claude_code.sessions.map(s => ({
+        x: new Date(s.timestamp),
+        y: s.apm
+    })).reverse();
+
+    compareChart = new Chart(ctx, {
+        type: 'scatter',
+        data: {
+            datasets: [
+                {
+                    label: 'Autopilot',
+                    data: autopilotData,
+                    borderColor: chartColors.autopilot,
+                    backgroundColor: chartColors.autopilot,
+                    showLine: true,
+                    tension: 0.3,
+                    pointRadius: 4,
+                },
+                {
+                    label: 'Claude Code',
+                    data: claudeCodeData,
+                    borderColor: chartColors.claudeCode,
+                    backgroundColor: chartColors.claudeCode,
+                    showLine: true,
+                    tension: 0.3,
+                    pointRadius: 4,
+                },
+            ],
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: true,
+            plugins: {
+                legend: {
+                    display: true,
+                    labels: {
+                        color: chartColors.textColor,
+                    },
+                },
+            },
+            scales: {
+                x: {
+                    type: 'time',
+                    time: {
+                        unit: 'hour',
+                    },
+                    grid: {
+                        color: chartColors.gridColor,
+                    },
+                    ticks: {
+                        color: chartColors.textColor,
+                    },
+                },
+                y: {
+                    grid: {
+                        color: chartColors.gridColor,
+                    },
+                    ticks: {
+                        color: chartColors.textColor,
+                    },
+                    title: {
+                        display: true,
+                        text: 'APM',
+                        color: chartColors.textColor,
+                    },
+                },
+            },
+        },
+    });
+}
+
+function updateBarChart(data) {
+    const ctx = document.getElementById('apmBarChart').getContext('2d');
+
+    if (barChart) {
+        barChart.destroy();
+    }
+
+    barChart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: ['Autopilot', 'Claude Code'],
+            datasets: [{
+                label: 'Average APM',
+                data: [data.autopilot.avg_apm, data.claude_code.avg_apm],
+                backgroundColor: [chartColors.autopilot, chartColors.claudeCode],
+                borderColor: [chartColors.autopilot, chartColors.claudeCode],
+                borderWidth: 2,
+            }],
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: true,
+            plugins: {
+                legend: {
+                    display: false,
+                },
+            },
+            scales: {
+                x: {
+                    grid: {
+                        color: chartColors.gridColor,
+                    },
+                    ticks: {
+                        color: chartColors.textColor,
+                    },
+                },
+                y: {
+                    grid: {
+                        color: chartColors.gridColor,
+                    },
+                    ticks: {
+                        color: chartColors.textColor,
+                    },
+                    title: {
+                        display: true,
+                        text: 'APM',
+                        color: chartColors.textColor,
+                    },
+                },
+            },
+        },
+    });
+}
+
+function updateHistogramChart(data) {
+    const ctx = document.getElementById('apmHistogramChart').getContext('2d');
+
+    if (histogramChart) {
+        histogramChart.destroy();
+    }
+
+    if (!data.histogram || data.histogram.length === 0) {
+        // No data - show placeholder
+        return;
+    }
+
+    histogramChart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: data.histogram.map(bin => bin.range),
+            datasets: [{
+                label: 'Sessions',
+                data: data.histogram.map(bin => bin.count),
+                backgroundColor: chartColors.autopilot,
+                borderColor: chartColors.autopilot,
+                borderWidth: 1,
+            }],
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: true,
+            plugins: {
+                legend: {
+                    display: false,
+                },
+            },
+            scales: {
+                x: {
+                    grid: {
+                        color: chartColors.gridColor,
+                    },
+                    ticks: {
+                        color: chartColors.textColor,
+                        maxRotation: 45,
+                        minRotation: 45,
+                    },
+                    title: {
+                        display: true,
+                        text: 'APM Range',
+                        color: chartColors.textColor,
+                    },
+                },
+                y: {
+                    grid: {
+                        color: chartColors.gridColor,
+                    },
+                    ticks: {
+                        color: chartColors.textColor,
+                        precision: 0,
+                    },
+                    title: {
+                        display: true,
+                        text: 'Session Count',
+                        color: chartColors.textColor,
+                    },
+                },
+            },
+        },
+    });
+}
+
+function updateCategoryChart(data) {
+    const ctx = document.getElementById('toolCategoryChart').getContext('2d');
+
+    if (categoryChart) {
+        categoryChart.destroy();
+    }
+
+    // Calculate breakdown from all sessions
+    let totalMessages = 0;
+    let totalToolCalls = 0;
+
+    [...data.autopilot.sessions, ...data.claude_code.sessions].forEach(s => {
+        totalMessages += s.messages || 0;
+        totalToolCalls += s.tool_calls || 0;
+    });
+
+    categoryChart = new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+            labels: ['Messages', 'Tool Calls'],
+            datasets: [{
+                data: [totalMessages, totalToolCalls],
+                backgroundColor: [chartColors.claudeCode, chartColors.autopilot],
+                borderColor: chartColors.bg,
+                borderWidth: 2,
+            }],
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: true,
+            plugins: {
+                legend: {
+                    display: true,
+                    position: 'bottom',
+                    labels: {
+                        color: chartColors.textColor,
+                        padding: 15,
+                    },
+                },
+            },
+        },
+    });
+}
+"#
+}
+
 // ============================================================================
 // API Endpoints (JSON)
 // ============================================================================
@@ -1856,6 +2319,156 @@ async fn api_action_breakdown(
     Ok(HttpResponse::Ok().json(response))
 }
 
+/// API endpoint: GET /api/apm-compare-data
+/// Returns APM comparison data for Claude Code vs Autopilot sessions
+async fn api_apm_compare_data(
+    state: web::Data<DashboardState>,
+    query: web::Query<std::collections::HashMap<String, String>>,
+) -> ActixResult<HttpResponse> {
+    let window = query.get("window")
+        .map(|s| s.as_str())
+        .unwrap_or("1d");
+
+    let db_path = state.db_path.clone();
+    let window_str = window.to_string();
+
+    // Run blocking database operations
+    let result = web::block(move || -> Result<serde_json::Value, anyhow::Error> {
+        let conn = rusqlite::Connection::open(&db_path)?;
+
+        // Query apm_snapshots for the requested window
+        let mut stmt = conn.prepare(
+            "SELECT source, apm, actions, duration_minutes, messages, tool_calls, timestamp
+             FROM apm_snapshots
+             WHERE window = ?1
+             ORDER BY timestamp DESC
+             LIMIT 100"
+        )?;
+
+        let mut autopilot_sessions = Vec::new();
+        let mut claude_code_sessions = Vec::new();
+        let mut autopilot_apm_sum = 0.0;
+        let mut claude_code_apm_sum = 0.0;
+        let mut total_actions = 0i64;
+
+        let rows = stmt.query_map([&window_str], |row| {
+            Ok((
+                row.get::<_, String>(0)?,  // source
+                row.get::<_, f64>(1)?,      // apm
+                row.get::<_, i64>(2)?,      // actions
+                row.get::<_, f64>(3)?,      // duration_minutes
+                row.get::<_, i64>(4)?,      // messages
+                row.get::<_, i64>(5)?,      // tool_calls
+                row.get::<_, String>(6)?,   // timestamp
+            ))
+        })?;
+
+        for row_result in rows {
+            let (source, apm, actions, duration_minutes, messages, tool_calls, timestamp) = row_result?;
+            total_actions += actions;
+
+            let session_data = serde_json::json!({
+                "timestamp": timestamp,
+                "apm": apm,
+                "actions": actions,
+                "duration_minutes": duration_minutes,
+                "messages": messages,
+                "tool_calls": tool_calls,
+            });
+
+            if source == "autopilot" {
+                autopilot_apm_sum += apm;
+                autopilot_sessions.push(session_data);
+            } else if source == "claude_code" {
+                claude_code_apm_sum += apm;
+                claude_code_sessions.push(session_data);
+            }
+        }
+
+        let autopilot_avg = if !autopilot_sessions.is_empty() {
+            autopilot_apm_sum / autopilot_sessions.len() as f64
+        } else {
+            0.0
+        };
+
+        let claude_code_avg = if !claude_code_sessions.is_empty() {
+            claude_code_apm_sum / claude_code_sessions.len() as f64
+        } else {
+            0.0
+        };
+
+        let efficiency_ratio = if claude_code_avg > 0.0 {
+            autopilot_avg / claude_code_avg
+        } else {
+            0.0
+        };
+
+        // Calculate histogram bins for APM distribution
+        let all_apm_values: Vec<f64> = autopilot_sessions.iter()
+            .chain(claude_code_sessions.iter())
+            .filter_map(|s| s.get("apm").and_then(|v| v.as_f64()))
+            .collect();
+
+        let histogram_bins = calculate_histogram(&all_apm_values, 10);
+
+        Ok(serde_json::json!({
+            "window": window_str,
+            "autopilot": {
+                "sessions": autopilot_sessions,
+                "avg_apm": autopilot_avg,
+                "count": autopilot_sessions.len(),
+            },
+            "claude_code": {
+                "sessions": claude_code_sessions,
+                "avg_apm": claude_code_avg,
+                "count": claude_code_sessions.len(),
+            },
+            "summary": {
+                "efficiency_ratio": efficiency_ratio,
+                "total_actions": total_actions,
+            },
+            "histogram": histogram_bins,
+        }))
+    })
+    .await
+    .map_err(|e| actix_web::error::ErrorInternalServerError(e))?
+    .map_err(|e| actix_web::error::ErrorInternalServerError(e))?;
+
+    Ok(HttpResponse::Ok().json(result))
+}
+
+/// Calculate histogram bins for APM values
+fn calculate_histogram(values: &[f64], bin_count: usize) -> Vec<serde_json::Value> {
+    if values.is_empty() {
+        return vec![];
+    }
+
+    let min = values.iter().copied().fold(f64::INFINITY, f64::min);
+    let max = values.iter().copied().fold(f64::NEG_INFINITY, f64::max);
+    let bin_width = (max - min) / bin_count as f64;
+
+    let mut bins = vec![0; bin_count];
+    for &value in values {
+        let bin_index = ((value - min) / bin_width).floor() as usize;
+        let bin_index = bin_index.min(bin_count - 1);
+        bins[bin_index] += 1;
+    }
+
+    bins.iter()
+        .enumerate()
+        .map(|(i, &count)| {
+            let bin_start = min + i as f64 * bin_width;
+            let bin_end = bin_start + bin_width;
+            serde_json::json!({
+                "range": format!("{:.1}-{:.1}", bin_start, bin_end),
+                "count": count,
+                "bin_start": bin_start,
+                "bin_end": bin_end,
+            })
+        })
+        .collect()
+}
+
 /// Calculate tool error rate trend
 fn calculate_error_rate_trend(sessions: &[SessionMetrics], _granularity: &str) -> Vec<serde_json::Value> {
     // Simple implementation: daily buckets
@@ -2053,6 +2666,135 @@ async fn websocket_metrics(
                 else => {
                     // Both channels closed
                     break;
+                }
+            }
+        }
+        let _ = session.close(None).await;
+    });
+
+    Ok(response)
+}
+
+/// WebSocket endpoint for real-time APM metrics streaming
+async fn websocket_apm(
+    req: actix_web::HttpRequest,
+    stream: web::Payload,
+    state: web::Data<DashboardState>,
+) -> ActixResult<HttpResponse> {
+    use crate::apm::{APMSource, APMTier, APMWindow};
+    use crate::apm_storage;
+
+    let (response, mut session, mut msg_stream) = actix_ws::handle(&req, stream)?;
+    let db_path = state.db_path.clone();
+
+    actix_web::rt::spawn(async move {
+        // Send initial connection message
+        let _ = session.text(serde_json::json!({
+            "type": "connected",
+            "message": "APM metrics stream connected",
+            "timestamp": Utc::now().to_rfc3339(),
+        }).to_string()).await;
+
+        // Create interval for periodic updates (every 5 seconds)
+        let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(5));
+
+        loop {
+            tokio::select! {
+                // Handle incoming WebSocket messages
+                Some(Ok(msg)) = msg_stream.recv() => {
+                    match msg {
+                        Message::Ping(bytes) => {
+                            let _ = session.pong(&bytes).await;
+                        }
+                        Message::Close(_) => break,
+                        _ => {}
+                    }
+                }
+                // Send periodic APM updates
+                _ = interval.tick() => {
+                    // Open database connection
+                    let conn = match rusqlite::Connection::open(&db_path) {
+                        Ok(c) => c,
+                        Err(_) => continue,
+                    };
+
+                    // Collect APM snapshots for different windows
+                    let mut apm_data = serde_json::Map::new();
+
+                    // Add Combined source data
+                    for window in [APMWindow::Hour1, APMWindow::Hour6, APMWindow::Day1] {
+                        if let Ok(Some(snapshot)) = apm_storage::get_latest_snapshot(&conn, APMSource::Combined, window) {
+                            let window_key = match window {
+                                APMWindow::Hour1 => "1h",
+                                APMWindow::Hour6 => "6h",
+                                APMWindow::Day1 => "1d",
+                                _ => continue,
+                            };
+
+                            let tier = APMTier::from_apm(snapshot.apm);
+                            let color = match tier {
+                                APMTier::Baseline => "gray",
+                                APMTier::Active => "blue",
+                                APMTier::Productive => "green",
+                                APMTier::HighPerformance => "amber",
+                                APMTier::Elite => "gold",
+                            };
+
+                            apm_data.insert(window_key.to_string(), serde_json::json!({
+                                "apm": snapshot.apm,
+                                "actions": snapshot.actions,
+                                "duration_minutes": snapshot.duration_minutes,
+                                "messages": snapshot.messages,
+                                "tool_calls": snapshot.tool_calls,
+                                "tier": tier.name(),
+                                "color": color,
+                            }));
+                        }
+                    }
+
+                    // Get current session APM if available
+                    let current_session_apm = if let Ok(mut stmt) = conn.prepare(
+                        "SELECT id, apm FROM apm_sessions WHERE end_time IS NULL ORDER BY start_time DESC LIMIT 1"
+                    ) {
+                        stmt.query_row([], |row| {
+                            let session_id: String = row.get(0)?;
+                            let apm: Option<f64> = row.get(1).ok();
+                            Ok((session_id, apm))
+                        }).ok()
+                    } else {
+                        None
+                    };
+
+                    if let Some((session_id, Some(apm))) = current_session_apm {
+                        let tier = APMTier::from_apm(apm);
+                        let color = match tier {
+                            APMTier::Baseline => "gray",
+                            APMTier::Active => "blue",
+                            APMTier::Productive => "green",
+                            APMTier::HighPerformance => "amber",
+                            APMTier::Elite => "gold",
+                        };
+
+                        apm_data.insert("current_session".to_string(), serde_json::json!({
+                            "session_id": session_id,
+                            "apm": apm,
+                            "tier": tier.name(),
+                            "color": color,
+                        }));
+                    }
+
+                    // Send APM update
+                    let update = serde_json::json!({
+                        "type": "apm_update",
+                        "timestamp": Utc::now().to_rfc3339(),
+                        "data": apm_data,
+                    });
+
+                    if let Ok(json) = serde_json::to_string(&update) {
+                        if session.text(json).await.is_err() {
+                            break;
+                        }
+                    }
                 }
             }
         }
