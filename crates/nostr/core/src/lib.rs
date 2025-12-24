@@ -850,6 +850,7 @@ pub use nip90::{
     JOB_RESULT_KIND_MIN, JobFeedback, JobInput, JobParam, JobRequest, JobResult, JobStatus,
     KIND_JOB_FEEDBACK, KIND_JOB_IMAGE_GENERATION, KIND_JOB_SPEECH_TO_TEXT, KIND_JOB_SUMMARIZATION,
     KIND_JOB_TEXT_EXTRACTION, KIND_JOB_TEXT_GENERATION, KIND_JOB_TRANSLATION, Nip90Error,
+    create_job_feedback_event, create_job_request_event, create_job_result_event,
     get_request_kind, get_result_kind, is_dvm_kind, is_job_feedback_kind, is_job_request_kind,
     is_job_result_kind,
 };
