@@ -109,6 +109,7 @@ logs/test-gen-*.json
 # GPUI example assets (large gifs from Zed)
 crates/gpui/examples/**/*.gif
 *.db
+*.db.bak
 *.db-shm
 *.db-wal
 *.db.corrupt*
