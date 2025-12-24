@@ -29,6 +29,7 @@ members = [
     "crates/spark",
     "crates/wallet",
     "crates/auth",
+    "crates/wgpui",
 ]
 
 # Unified OpenAgents binary
