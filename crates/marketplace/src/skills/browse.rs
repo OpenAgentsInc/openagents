@@ -228,13 +228,30 @@ impl SkillListing {
 
 /// Skill browser for NIP-89 discovery
 pub struct SkillBrowser {
-    // Future: add relay pool connection
+    pool: nostr_client::RelayPool,
 }
 
 impl SkillBrowser {
-    /// Create a new skill browser
+    /// Create a new skill browser with default relay configuration
     pub fn new() -> Self {
-        Self {}
+        let config = nostr_client::PoolConfig::default();
+        let pool = nostr_client::RelayPool::new(config);
+        Self { pool }
+    }
+
+    /// Create a new skill browser with custom relay URLs
+    pub async fn with_relays(relay_urls: Vec<String>) -> Result<Self, BrowseError> {
+        let config = nostr_client::PoolConfig::default();
+        let pool = nostr_client::RelayPool::new(config);
+
+        // Add relays to pool
+        for url in relay_urls {
+            pool.add_relay(&url)
+                .await
+                .map_err(|e| BrowseError::Network(format!("Failed to add relay {}: {}", url, e)))?;
+        }
+
+        Ok(Self { pool })
     }
 
     /// Browse all skills
@@ -242,14 +259,85 @@ impl SkillBrowser {
     /// This will fetch all skill handlers from relays and return them as listings.
     pub async fn browse(
         &self,
-        _filters: SearchFilters,
-        _sort_by: SortBy,
+        filters: SearchFilters,
+        sort_by: SortBy,
     ) -> Result<Vec<SkillListing>, BrowseError> {
-        // Skill browsing requires Nostr relay integration which is not yet implemented.
-        // Per d-012 (No Stubs), we return an explicit error instead of an empty list.
-        Err(BrowseError::Network(
-            "Skill browsing not yet implemented. Requires Nostr relay client integration for fetching NIP-89 skill handler events.".to_string()
-        ))
+        use nostr::{HandlerInfo, KIND_HANDLER_INFO};
+
+        // Connect to relays
+        self.pool
+            .connect_all()
+            .await
+            .map_err(|e| BrowseError::Network(format!("Failed to connect to relays: {}", e)))?;
+
+        // Build NIP-89 handler info filter (kind 31990)
+        let filter = serde_json::json!({
+            "kinds": [KIND_HANDLER_INFO],
+            "limit": 1000
+        });
+
+        // Subscribe to handler events
+        let sub_id = format!("browse-skills-{}", std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs());
+
+        let mut rx = self
+            .pool
+            .subscribe(&sub_id, &[filter])
+            .await
+            .map_err(|e| BrowseError::Network(format!("Failed to subscribe: {}", e)))?;
+
+        // Collect events
+        let mut listings = Vec::new();
+        let timeout = tokio::time::Duration::from_secs(10);
+        let deadline = tokio::time::Instant::now() + timeout;
+
+        loop {
+            tokio::select! {
+                result = rx.recv() => {
+                    match result {
+                        Some(event) => {
+                            // Parse HandlerInfo from event
+                            match HandlerInfo::from_event(&event) {
+                                Ok(handler) => {
+                                    let listing = SkillListing::from_handler_info(handler);
+
+                                    // Apply filters
+                                    if listing.matches_filters(&filters) {
+                                        listings.push(listing);
+                                    }
+                                }
+                                Err(e) => {
+                                    // Skip malformed events
+                                    tracing::debug!("Failed to parse handler event: {}", e);
+                                }
+                            }
+                        }
+                        None => {
+                            // Channel closed, we're done
+                            break;
+                        }
+                    }
+                }
+                _ = tokio::time::sleep_until(deadline) => {
+                    // Timeout reached
+                    break;
+                }
+            }
+        }
+
+        // Disconnect from relays
+        let _ = self.pool.disconnect_all().await;
+
+        // Sort listings
+        self.sort_listings(&mut listings, sort_by);
+
+        if listings.is_empty() {
+            Err(BrowseError::NoSkillsFound)
+        } else {
+            Ok(listings)
+        }
     }
 
     /// Search for skills by query
@@ -262,13 +350,50 @@ impl SkillBrowser {
         self.browse(filters, sort_by).await
     }
 
-    /// Get a specific skill by ID
-    pub async fn get_skill(&self, _skill_id: &str) -> Result<SkillListing, BrowseError> {
-        // Skill fetching requires Nostr relay integration which is not yet implemented.
-        // Per d-012 (No Stubs), we return an explicit error.
-        Err(BrowseError::Network(
-            "Skill fetching not yet implemented. Requires Nostr relay client integration for fetching NIP-89 skill handler events.".to_string()
-        ))
+    /// Get a specific skill by ID (handler pubkey)
+    pub async fn get_skill(&self, skill_id: &str) -> Result<SkillListing, BrowseError> {
+        use nostr::{HandlerInfo, KIND_HANDLER_INFO};
+
+        // Connect to relays
+        self.pool
+            .connect_all()
+            .await
+            .map_err(|e| BrowseError::Network(format!("Failed to connect to relays: {}", e)))?;
+
+        // Build filter for specific handler by pubkey
+        let filter = serde_json::json!({
+            "kinds": [KIND_HANDLER_INFO],
+            "authors": [skill_id],
+            "limit": 1
+        });
+
+        // Subscribe
+        let sub_id = format!("get-skill-{}", skill_id);
+        let mut rx = self
+            .pool
+            .subscribe(&sub_id, &[filter])
+            .await
+            .map_err(|e| BrowseError::Network(format!("Failed to subscribe: {}", e)))?;
+
+        // Wait for event with timeout
+        let timeout = tokio::time::Duration::from_secs(10);
+        let result = tokio::time::timeout(timeout, rx.recv()).await;
+
+        // Disconnect from relays
+        let _ = self.pool.disconnect_all().await;
+
+        match result {
+            Ok(Some(event)) => {
+                match HandlerInfo::from_event(&event) {
+                    Ok(handler) => Ok(SkillListing::from_handler_info(handler)),
+                    Err(e) => Err(BrowseError::Parse(format!("Failed to parse handler: {}", e))),
+                }
+            }
+            Ok(None) => Err(BrowseError::NoSkillsFound),
+            Err(_) => Err(BrowseError::Network(
+                format!("Timeout fetching skill {}", skill_id)
+            )),
+        }
     }
 
     /// Sort listings according to the specified order
@@ -434,11 +559,11 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_skill_browser_empty() {
+    async fn test_skill_browser_no_relays() {
+        // Browser with no relays configured will fail to connect
         let browser = SkillBrowser::new();
         let result = browser.browse(SearchFilters::new(), SortBy::Name).await;
-        // Browser returns error when not implemented per d-012 (No Stubs)
+        // Should fail to connect since no relays were added
         assert!(result.is_err());
-        assert!(matches!(result.unwrap_err(), BrowseError::Network(_)));
     }
 }
