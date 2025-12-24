@@ -5140,36 +5140,140 @@ async fn handle_apm_command(command: ApmCommands) -> Result<()> {
 
             Ok(())
         }
-        ApmCommands::Export { output, source, db } => {
+        ApmCommands::Export {
+            format,
+            output,
+            source,
+            window,
+            start_date,
+            end_date,
+            include_events,
+            db,
+        } => {
+            use autopilot::apm_storage::get_snapshots_filtered;
+            use chrono::NaiveDate;
+
             let db_path = db.unwrap_or(default_db);
             let conn = Connection::open(&db_path)?;
             init_apm_tables(&conn)?;
 
-            let src = source.as_deref().map(|s| match s {
+            // Parse source filter
+            let src_filter = source.as_deref().map(|s| match s {
                 "autopilot" => APMSource::Autopilot,
                 "claude_code" | "claude" => APMSource::ClaudeCode,
                 _ => {
                     eprintln!("Invalid source: {}. Valid values: autopilot, claude_code", s);
                     std::process::exit(1);
                 }
-            }).unwrap_or(APMSource::Autopilot);
-
-            let sessions = get_sessions_by_source(&conn, src)?;
-
-            let export_data = serde_json::json!({
-                "source": src.as_str(),
-                "exported_at": chrono::Utc::now().to_rfc3339(),
-                "sessions": sessions.iter().map(|(id, start, end)| {
-                    serde_json::json!({
-                        "id": id,
-                        "start_time": start.to_rfc3339(),
-                        "end_time": end.as_ref().map(|t| t.to_rfc3339()),
-                    })
-                }).collect::<Vec<_>>()
             });
 
-            std::fs::write(&output, serde_json::to_string_pretty(&export_data)?)?;
-            println!("{} Exported {} sessions to {}", "✓".green(), sessions.len(), output.display());
+            // Parse window filter
+            let window_filter = window.as_deref().map(|w| match w {
+                "session" => autopilot::apm::APMWindow::Session,
+                "1h" => autopilot::apm::APMWindow::Hour1,
+                "6h" => autopilot::apm::APMWindow::Hour6,
+                "1d" => autopilot::apm::APMWindow::Day1,
+                "1w" => autopilot::apm::APMWindow::Week1,
+                "1m" => autopilot::apm::APMWindow::Month1,
+                "lifetime" => autopilot::apm::APMWindow::Lifetime,
+                _ => {
+                    eprintln!("Invalid window: {}. Valid values: session, 1h, 6h, 1d, 1w, 1m, lifetime", w);
+                    std::process::exit(1);
+                }
+            });
+
+            // Parse date filters
+            let start_filter = start_date.as_deref().map(|s| {
+                // Try RFC3339 first, then fall back to YYYY-MM-DD
+                chrono::DateTime::parse_from_rfc3339(s)
+                    .map(|dt| dt.with_timezone(&chrono::Utc))
+                    .or_else(|_| {
+                        NaiveDate::parse_from_str(s, "%Y-%m-%d")
+                            .map(|d| d.and_hms_opt(0, 0, 0).unwrap().and_utc())
+                    })
+                    .unwrap_or_else(|_| {
+                        eprintln!("Invalid start_date format: {}. Use RFC3339 or YYYY-MM-DD", s);
+                        std::process::exit(1);
+                    })
+            });
+
+            let end_filter = end_date.as_deref().map(|s| {
+                chrono::DateTime::parse_from_rfc3339(s)
+                    .map(|dt| dt.with_timezone(&chrono::Utc))
+                    .or_else(|_| {
+                        NaiveDate::parse_from_str(s, "%Y-%m-%d")
+                            .map(|d| d.and_hms_opt(23, 59, 59).unwrap().and_utc())
+                    })
+                    .unwrap_or_else(|_| {
+                        eprintln!("Invalid end_date format: {}. Use RFC3339 or YYYY-MM-DD", s);
+                        std::process::exit(1);
+                    })
+            });
+
+            // Get filtered snapshots
+            let snapshots = get_snapshots_filtered(&conn, src_filter, window_filter, start_filter, end_filter)?;
+
+            // Format output based on format flag
+            let output_content = match format.as_str() {
+                "json" => {
+                    let data = serde_json::json!({
+                        "exported_at": chrono::Utc::now().to_rfc3339(),
+                        "filters": {
+                            "source": src_filter.map(|s| s.as_str().to_string()),
+                            "window": window_filter.map(|w| w.as_str().to_string()),
+                            "start_date": start_filter.map(|d| d.to_rfc3339()),
+                            "end_date": end_filter.map(|d| d.to_rfc3339()),
+                        },
+                        "count": snapshots.len(),
+                        "snapshots": snapshots.iter().map(|snap| {
+                            serde_json::json!({
+                                "timestamp": snap.timestamp.to_rfc3339(),
+                                "source": snap.source.as_str(),
+                                "window": snap.window.as_str(),
+                                "apm": snap.apm,
+                                "actions": snap.actions,
+                                "duration_minutes": snap.duration_minutes,
+                                "messages": snap.messages,
+                                "tool_calls": snap.tool_calls,
+                            })
+                        }).collect::<Vec<_>>()
+                    });
+                    serde_json::to_string_pretty(&data)?
+                }
+                "csv" | "tsv" => {
+                    let delimiter = if format == "csv" { "," } else { "\t" };
+                    let mut lines = vec![
+                        format!("timestamp{}source{}window{}apm{}actions{}duration_minutes{}messages{}tool_calls",
+                                delimiter, delimiter, delimiter, delimiter, delimiter, delimiter, delimiter)
+                    ];
+                    for snap in &snapshots {
+                        lines.push(format!(
+                            "{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}",
+                            snap.timestamp.to_rfc3339(), delimiter,
+                            snap.source.as_str(), delimiter,
+                            snap.window.as_str(), delimiter,
+                            snap.apm, delimiter,
+                            snap.actions, delimiter,
+                            snap.duration_minutes, delimiter,
+                            snap.messages, delimiter,
+                            snap.tool_calls
+                        ));
+                    }
+                    lines.join("\n")
+                }
+                _ => {
+                    eprintln!("Invalid format: {}. Valid values: json, csv, tsv", format);
+                    std::process::exit(1);
+                }
+            };
+
+            // Write to file or stdout
+            if let Some(output_path) = output {
+                std::fs::write(&output_path, output_content)?;
+                println!("{} Exported {} snapshots to {}", "✓".green(), snapshots.len(), output_path.display());
+            } else {
+                println!("{}", output_content);
+            }
 
             Ok(())
         }

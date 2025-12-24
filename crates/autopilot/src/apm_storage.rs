@@ -473,6 +473,69 @@ pub fn get_sessions_by_source(
     Ok(sessions)
 }
 
+/// Get all APM snapshots with optional filtering
+pub fn get_snapshots_filtered(
+    conn: &Connection,
+    source: Option<APMSource>,
+    window: Option<APMWindow>,
+    start_date: Option<DateTime<Utc>>,
+    end_date: Option<DateTime<Utc>>,
+) -> Result<Vec<APMSnapshot>> {
+    let mut query = String::from(
+        "SELECT timestamp, source, window, apm, actions, duration_minutes, messages, tool_calls \
+         FROM apm_snapshots WHERE 1=1"
+    );
+    let mut params_vec: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
+
+    if let Some(src) = source {
+        query.push_str(" AND source = ?");
+        params_vec.push(Box::new(src.as_str().to_string()));
+    }
+
+    if let Some(win) = window {
+        query.push_str(" AND window = ?");
+        params_vec.push(Box::new(win.as_str().to_string()));
+    }
+
+    if let Some(start) = start_date {
+        query.push_str(" AND timestamp >= ?");
+        params_vec.push(Box::new(start.to_rfc3339()));
+    }
+
+    if let Some(end) = end_date {
+        query.push_str(" AND timestamp <= ?");
+        params_vec.push(Box::new(end.to_rfc3339()));
+    }
+
+    query.push_str(" ORDER BY timestamp DESC");
+
+    let params_refs: Vec<&dyn rusqlite::ToSql> = params_vec.iter().map(|b| b.as_ref()).collect();
+
+    let mut stmt = conn.prepare(&query)?;
+    let snapshots = stmt
+        .query_map(params_refs.as_slice(), |row| {
+            let timestamp: String = row.get(0)?;
+            let source_str: String = row.get(1)?;
+            let window_str: String = row.get(2)?;
+
+            Ok(APMSnapshot {
+                timestamp: DateTime::parse_from_rfc3339(&timestamp)
+                    .unwrap()
+                    .with_timezone(&Utc),
+                source: APMSource::from_str(&source_str).unwrap(),
+                window: APMWindow::from_str(&window_str).unwrap(),
+                apm: row.get(3)?,
+                actions: row.get(4)?,
+                duration_minutes: row.get(5)?,
+                messages: row.get(6)?,
+                tool_calls: row.get(7)?,
+            })
+        })?
+        .collect::<Result<Vec<_>>>()?;
+
+    Ok(snapshots)
+}
+
 /// Get latest snapshot for a source and window
 pub fn get_latest_snapshot(
     conn: &Connection,
