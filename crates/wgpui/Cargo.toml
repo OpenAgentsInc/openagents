@@ -83,3 +83,7 @@ getrandom = { version = "0.3", features = ["wasm_js"] }
 # Desktop (optional)
 winit = { version = "0.30", optional = true }
 pollster = { version = "0.4", optional = true }
+
+[[example]]
+name = "first_light"
+required-features = ["desktop"]
