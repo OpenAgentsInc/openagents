@@ -41,6 +41,9 @@ pub mod signing;
 pub use credential::{GroupCredential, ShareCredential};
 pub use keygen::{generate_key_shares, FrostShare, Share};
 
+// Re-export frost-secp256k1 types for consumers that need direct access
+pub use frost_secp256k1 as frost;
+
 /// FROSTR protocol version
 pub const VERSION: &str = "0.1.0";
 
