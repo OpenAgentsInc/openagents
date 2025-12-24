@@ -52,6 +52,8 @@ services:
       # Git credentials (read-only)
       - ~/.gitconfig:/home/agent/.gitconfig:ro
       - ~/.ssh:/home/agent/.ssh:ro
+      # Container-specific MCP config (uses pre-built binary)
+      - ./mcp.json:/workspace/.mcp.json:ro
     environment:
       - AGENT_ID=001
       - ISSUES_DB=/shared/autopilot.db
@@ -68,6 +70,7 @@ services:
       - ~/.claude:/home/agent/.claude:rw
       - ~/.gitconfig:/home/agent/.gitconfig:ro
       - ~/.ssh:/home/agent/.ssh:ro
+      - ./mcp.json:/workspace/.mcp.json:ro
     environment:
       - AGENT_ID=002
       - ISSUES_DB=/shared/autopilot.db
@@ -84,6 +87,7 @@ services:
       - ~/.claude:/home/agent/.claude:rw
       - ~/.gitconfig:/home/agent/.gitconfig:ro
       - ~/.ssh:/home/agent/.ssh:ro
+      - ./mcp.json:/workspace/.mcp.json:ro
     environment:
       - AGENT_ID=003
       - ISSUES_DB=/shared/autopilot.db
@@ -102,6 +106,7 @@ services:
       - ~/.claude:/home/agent/.claude:rw
       - ~/.gitconfig:/home/agent/.gitconfig:ro
       - ~/.ssh:/home/agent/.ssh:ro
+      - ./mcp.json:/workspace/.mcp.json:ro
     environment:
       - AGENT_ID=004
       - ISSUES_DB=/shared/autopilot.db
@@ -120,6 +125,7 @@ services:
       - ~/.claude:/home/agent/.claude:rw
       - ~/.gitconfig:/home/agent/.gitconfig:ro
       - ~/.ssh:/home/agent/.ssh:ro
+      - ./mcp.json:/workspace/.mcp.json:ro
     environment:
       - AGENT_ID=005
       - ISSUES_DB=/shared/autopilot.db
@@ -138,6 +144,7 @@ services:
       - ~/.claude:/home/agent/.claude:rw
       - ~/.gitconfig:/home/agent/.gitconfig:ro
       - ~/.ssh:/home/agent/.ssh:ro
+      - ./mcp.json:/workspace/.mcp.json:ro
     environment:
       - AGENT_ID=006
       - ISSUES_DB=/shared/autopilot.db
@@ -155,6 +162,7 @@ services:
       - ~/.claude:/home/agent/.claude:rw
       - ~/.gitconfig:/home/agent/.gitconfig:ro
       - ~/.ssh:/home/agent/.ssh:ro
+      - ./mcp.json:/workspace/.mcp.json:ro
     environment:
       - AGENT_ID=007
       - ISSUES_DB=/shared/autopilot.db
@@ -172,6 +180,7 @@ services:
       - ~/.claude:/home/agent/.claude:rw
       - ~/.gitconfig:/home/agent/.gitconfig:ro
       - ~/.ssh:/home/agent/.ssh:ro
+      - ./mcp.json:/workspace/.mcp.json:ro
     environment:
       - AGENT_ID=008
       - ISSUES_DB=/shared/autopilot.db
@@ -189,6 +198,7 @@ services:
       - ~/.claude:/home/agent/.claude:rw
       - ~/.gitconfig:/home/agent/.gitconfig:ro
       - ~/.ssh:/home/agent/.ssh:ro
+      - ./mcp.json:/workspace/.mcp.json:ro
     environment:
       - AGENT_ID=009
       - ISSUES_DB=/shared/autopilot.db
@@ -206,6 +216,7 @@ services:
       - ~/.claude:/home/agent/.claude:rw
       - ~/.gitconfig:/home/agent/.gitconfig:ro
       - ~/.ssh:/home/agent/.ssh:ro
+      - ./mcp.json:/workspace/.mcp.json:ro
     environment:
       - AGENT_ID=010
       - ISSUES_DB=/shared/autopilot.db
