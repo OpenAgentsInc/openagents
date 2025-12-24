@@ -193,7 +193,7 @@ impl Component for Button {
         if !self.label.is_empty() {
             let content_width = self.label.chars().count() as f32 * self.font_size * 0.6;
             let text_x = bounds.origin.x + (bounds.size.width - content_width) / 2.0;
-            let text_y = bounds.origin.y + (bounds.size.height + self.font_size) / 2.0;
+            let text_y = bounds.origin.y + bounds.size.height * 0.5 - self.font_size * 0.55;
 
             let text_run = cx.text.layout(
                 &self.label,
