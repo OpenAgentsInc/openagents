@@ -306,7 +306,7 @@ impl Frame {
         let layers = 4;
         for i in 0..layers {
             let spread = (i as f32 + 1.0) * 2.5;
-            let alpha = glow.a * (1.0 - (i as f32 / layers as f32)).powi(2) * 0.4;
+            let alpha = glow.a * (1.0 - (i as f32 / layers as f32)).powi(2) * 0.2;
             cx.scene.draw_quad(
                 Quad::new(Bounds::new(bx - spread, by - spread, bw + spread * 2.0, bh + spread * 2.0))
                     .with_background(glow.with_alpha(alpha)),
@@ -459,62 +459,59 @@ impl Frame {
         let h = bounds.size.height - p * 2.0;
         let cfg = self.corner_config;
 
-        let progress = self.animation_progress;
-        let bg_alpha = self.bg_color.a * progress;
-        let line_alpha = self.line_color.a * progress;
-
+        let bg_alpha = self.bg_color.a * self.compute_alpha();
         cx.scene.draw_quad(
             Quad::new(Bounds::new(x + t, y + t, w - t * 2.0, h - t * 2.0))
                 .with_background(self.bg_color.with_alpha(bg_alpha)),
         );
 
+        let glow_alpha = self.compute_alpha();
         if let Some(glow) = self.glow_color {
+            let g = glow.with_alpha(glow.a * glow_alpha);
             if cfg.left_top {
-                self.draw_glow_line(cx, x + ss, y, lll, t, glow);
-                self.draw_glow_line(cx, x, y + ss, t, sll, glow);
+                self.draw_glow_line(cx, x + ss, y, lll, t, g);
+                self.draw_glow_line(cx, x, y + ss, t, sll, g);
             }
             if cfg.right_bottom {
-                self.draw_glow_line(cx, x + w - ss - lll, y + h - t, lll, t, glow);
-                self.draw_glow_line(cx, x + w - t, y + h - ss - sll, t, sll, glow);
+                self.draw_glow_line(cx, x + w - ss - lll, y + h - t, lll, t, g);
+                self.draw_glow_line(cx, x + w - t, y + h - ss - sll, t, sll, g);
             }
             if cfg.right_top {
-                self.draw_glow_line(cx, x + w - ss - lll, y, lll, t, glow);
-                self.draw_glow_line(cx, x + w - t, y + ss, t, sll, glow);
+                self.draw_glow_line(cx, x + w - ss - lll, y, lll, t, g);
+                self.draw_glow_line(cx, x + w - t, y + ss, t, sll, g);
             }
             if cfg.left_bottom {
-                self.draw_glow_line(cx, x + ss, y + h - t, lll, t, glow);
-                self.draw_glow_line(cx, x, y + h - ss - sll, t, sll, glow);
+                self.draw_glow_line(cx, x + ss, y + h - t, lll, t, g);
+                self.draw_glow_line(cx, x, y + h - ss - sll, t, sll, g);
             }
         }
 
-        let line_color = self.line_color.with_alpha(line_alpha);
-
         if cfg.left_top {
-            cx.scene.draw_quad(Quad::new(Bounds::new(x, y + ss, t, sll)).with_background(line_color));
-            cx.scene.draw_quad(Quad::new(Bounds::new(x, y + ss - t, ss, t)).with_background(line_color));
-            cx.scene.draw_quad(Quad::new(Bounds::new(x + ss, y, lll, t)).with_background(line_color));
-            cx.scene.draw_quad(Quad::new(Bounds::new(x + ss - t, y, t, ss)).with_background(line_color));
+            self.draw_animated_line(cx, x, y + ss, t, sll, false);
+            self.draw_animated_line(cx, x, y + ss - t, ss, t, true);
+            self.draw_animated_line(cx, x + ss, y, lll, t, true);
+            self.draw_animated_line(cx, x + ss - t, y, t, ss, false);
         }
 
         if cfg.right_top {
-            cx.scene.draw_quad(Quad::new(Bounds::new(x + w - t, y + ss, t, sll)).with_background(line_color));
-            cx.scene.draw_quad(Quad::new(Bounds::new(x + w - ss, y + ss - t, ss, t)).with_background(line_color));
-            cx.scene.draw_quad(Quad::new(Bounds::new(x + w - ss - lll, y, lll, t)).with_background(line_color));
-            cx.scene.draw_quad(Quad::new(Bounds::new(x + w - ss, y, t, ss)).with_background(line_color));
+            self.draw_animated_line(cx, x + w - t, y + ss, t, sll, false);
+            self.draw_animated_line(cx, x + w - ss, y + ss - t, ss, t, true);
+            self.draw_animated_line(cx, x + w - ss - lll, y, lll, t, true);
+            self.draw_animated_line(cx, x + w - ss, y, t, ss, false);
         }
 
         if cfg.left_bottom {
-            cx.scene.draw_quad(Quad::new(Bounds::new(x, y + h - ss - sll, t, sll)).with_background(line_color));
-            cx.scene.draw_quad(Quad::new(Bounds::new(x, y + h - ss, ss, t)).with_background(line_color));
-            cx.scene.draw_quad(Quad::new(Bounds::new(x + ss, y + h - t, lll, t)).with_background(line_color));
-            cx.scene.draw_quad(Quad::new(Bounds::new(x + ss - t, y + h - ss, t, ss)).with_background(line_color));
+            self.draw_animated_line(cx, x, y + h - ss - sll, t, sll, false);
+            self.draw_animated_line(cx, x, y + h - ss, ss, t, true);
+            self.draw_animated_line(cx, x + ss, y + h - t, lll, t, true);
+            self.draw_animated_line(cx, x + ss - t, y + h - ss, t, ss, false);
         }
 
         if cfg.right_bottom {
-            cx.scene.draw_quad(Quad::new(Bounds::new(x + w - t, y + h - ss - sll, t, sll)).with_background(line_color));
-            cx.scene.draw_quad(Quad::new(Bounds::new(x + w - ss, y + h - ss, ss, t)).with_background(line_color));
-            cx.scene.draw_quad(Quad::new(Bounds::new(x + w - ss - lll, y + h - t, lll, t)).with_background(line_color));
-            cx.scene.draw_quad(Quad::new(Bounds::new(x + w - ss, y + h - ss, t, ss)).with_background(line_color));
+            self.draw_animated_line(cx, x + w - t, y + h - ss - sll, t, sll, false);
+            self.draw_animated_line(cx, x + w - ss, y + h - ss, ss, t, true);
+            self.draw_animated_line(cx, x + w - ss - lll, y + h - t, lll, t, true);
+            self.draw_animated_line(cx, x + w - ss, y + h - ss, t, ss, false);
         }
     }
 
@@ -529,41 +526,38 @@ impl Frame {
         let w = bounds.size.width - p * 2.0;
         let h = bounds.size.height - p * 2.0;
 
-        let progress = self.animation_progress;
-        let bg_alpha = self.bg_color.a * progress;
-        let line_alpha = self.line_color.a * progress;
-
+        let bg_alpha = self.bg_color.a * self.compute_alpha();
         cx.scene.draw_quad(
             Quad::new(Bounds::new(x + ss * 2.0, y + t * 2.0, w - ss * 4.0, h - t * 4.0))
                 .with_background(self.bg_color.with_alpha(bg_alpha)),
         );
 
+        let glow_alpha = self.compute_alpha();
         if let Some(glow) = self.glow_color {
-            self.draw_glow_line(cx, x + ss * 2.0, y, lll, t, glow);
-            self.draw_glow_line(cx, x + ss, y + ss, t, sll, glow);
-            self.draw_glow_line(cx, x + w - ss * 2.0 - lll, y + h - t, lll, t, glow);
-            self.draw_glow_line(cx, x + w - ss - t, y + h - ss - sll, t, sll, glow);
+            let g = glow.with_alpha(glow.a * glow_alpha);
+            self.draw_glow_line(cx, x + ss * 2.0, y, lll, t, g);
+            self.draw_glow_line(cx, x + ss, y + ss, t, sll, g);
+            self.draw_glow_line(cx, x + w - ss * 2.0 - lll, y + h - t, lll, t, g);
+            self.draw_glow_line(cx, x + w - ss - t, y + h - ss - sll, t, sll, g);
         }
 
-        let line_color = self.line_color.with_alpha(line_alpha);
+        self.draw_animated_line(cx, x + ss, y + ss, t, sll, false);
+        self.draw_animated_line(cx, x + ss - t, y + ss - t, ss, t, true);
+        self.draw_animated_line(cx, x + ss * 2.0 - t, y, t, ss, false);
+        self.draw_animated_line(cx, x + ss * 2.0, y, lll, t, true);
 
-        cx.scene.draw_quad(Quad::new(Bounds::new(x + ss, y + ss, t, sll)).with_background(line_color));
-        cx.scene.draw_quad(Quad::new(Bounds::new(x + ss - t, y + ss - t, ss, t)).with_background(line_color));
-        cx.scene.draw_quad(Quad::new(Bounds::new(x + ss * 2.0 - t, y, t, ss)).with_background(line_color));
-        cx.scene.draw_quad(Quad::new(Bounds::new(x + ss * 2.0, y, lll, t)).with_background(line_color));
+        self.draw_animated_line(cx, x + w - ss - t, y + h - ss - sll, t, sll, false);
+        self.draw_animated_line(cx, x + w - ss * 2.0, y + h - ss, ss, t, true);
+        self.draw_animated_line(cx, x + w - ss * 2.0, y + h - ss, t, ss, false);
+        self.draw_animated_line(cx, x + w - ss * 2.0 - lll, y + h - t, lll, t, true);
 
-        cx.scene.draw_quad(Quad::new(Bounds::new(x + w - ss - t, y + h - ss - sll, t, sll)).with_background(line_color));
-        cx.scene.draw_quad(Quad::new(Bounds::new(x + w - ss * 2.0, y + h - ss, ss, t)).with_background(line_color));
-        cx.scene.draw_quad(Quad::new(Bounds::new(x + w - ss * 2.0, y + h - ss, t, ss)).with_background(line_color));
-        cx.scene.draw_quad(Quad::new(Bounds::new(x + w - ss * 2.0 - lll, y + h - t, lll, t)).with_background(line_color));
+        self.draw_animated_line(cx, x, y + h - ss * 3.0 - sll - lll, t, lll, false);
+        self.draw_animated_line(cx, x, y + h - ss * 2.0 - sll, ss, t, true);
+        self.draw_animated_line(cx, x + ss, y + h - ss * 2.0 - sll, t, sll, false);
 
-        cx.scene.draw_quad(Quad::new(Bounds::new(x, y + h - ss * 3.0 - sll - lll, t, lll)).with_background(line_color));
-        cx.scene.draw_quad(Quad::new(Bounds::new(x, y + h - ss * 2.0 - sll, ss, t)).with_background(line_color));
-        cx.scene.draw_quad(Quad::new(Bounds::new(x + ss, y + h - ss * 2.0 - sll, t, sll)).with_background(line_color));
-
-        cx.scene.draw_quad(Quad::new(Bounds::new(x + w - t, y + ss * 3.0 + sll, t, lll)).with_background(line_color));
-        cx.scene.draw_quad(Quad::new(Bounds::new(x + w - ss, y + ss * 2.0 + sll - t, ss, t)).with_background(line_color));
-        cx.scene.draw_quad(Quad::new(Bounds::new(x + w - ss - t, y + ss * 2.0, t, sll)).with_background(line_color));
+        self.draw_animated_line(cx, x + w - t, y + ss * 3.0 + sll, t, lll, false);
+        self.draw_animated_line(cx, x + w - ss, y + ss * 2.0 + sll - t, ss, t, true);
+        self.draw_animated_line(cx, x + w - ss - t, y + ss * 2.0, t, sll, false);
     }
 }
 
@@ -707,5 +701,145 @@ mod tests {
 
         let clamped_neg = Frame::new().animation_progress(-0.5);
         assert_eq!(clamped_neg.animation_progress, 0.0);
+    }
+
+    #[test]
+    fn test_animation_mode_builder() {
+        let fade = Frame::new().animation_mode(FrameAnimation::Fade);
+        assert_eq!(fade.animation_mode, FrameAnimation::Fade);
+
+        let draw = Frame::new().animation_mode(FrameAnimation::Draw);
+        assert_eq!(draw.animation_mode, FrameAnimation::Draw);
+
+        let flicker = Frame::new().animation_mode(FrameAnimation::Flicker);
+        assert_eq!(flicker.animation_mode, FrameAnimation::Flicker);
+
+        let assemble = Frame::new().animation_mode(FrameAnimation::Assemble);
+        assert_eq!(assemble.animation_mode, FrameAnimation::Assemble);
+    }
+
+    #[test]
+    fn test_draw_direction_builder() {
+        let ltr = Frame::new().draw_direction(DrawDirection::LeftToRight);
+        assert_eq!(ltr.draw_direction, DrawDirection::LeftToRight);
+
+        let rtl = Frame::new().draw_direction(DrawDirection::RightToLeft);
+        assert_eq!(rtl.draw_direction, DrawDirection::RightToLeft);
+
+        let ttb = Frame::new().draw_direction(DrawDirection::TopToBottom);
+        assert_eq!(ttb.draw_direction, DrawDirection::TopToBottom);
+
+        let btt = Frame::new().draw_direction(DrawDirection::BottomToTop);
+        assert_eq!(btt.draw_direction, DrawDirection::BottomToTop);
+
+        let center = Frame::new().draw_direction(DrawDirection::CenterOut);
+        assert_eq!(center.draw_direction, DrawDirection::CenterOut);
+
+        let edges = Frame::new().draw_direction(DrawDirection::EdgesIn);
+        assert_eq!(edges.draw_direction, DrawDirection::EdgesIn);
+    }
+
+    #[test]
+    fn test_is_exiting_builder() {
+        let entering = Frame::new().is_exiting(false);
+        assert!(!entering.is_exiting);
+
+        let exiting = Frame::new().is_exiting(true);
+        assert!(exiting.is_exiting);
+    }
+
+    #[test]
+    fn test_compute_alpha_fade() {
+        let frame_0 = Frame::new()
+            .animation_mode(FrameAnimation::Fade)
+            .animation_progress(0.0);
+        assert_eq!(frame_0.compute_alpha(), 0.0);
+
+        let frame_50 = Frame::new()
+            .animation_mode(FrameAnimation::Fade)
+            .animation_progress(0.5);
+        assert_eq!(frame_50.compute_alpha(), 0.5);
+
+        let frame_100 = Frame::new()
+            .animation_mode(FrameAnimation::Fade)
+            .animation_progress(1.0);
+        assert_eq!(frame_100.compute_alpha(), 1.0);
+    }
+
+    #[test]
+    fn test_compute_alpha_draw_and_assemble() {
+        let draw = Frame::new()
+            .animation_mode(FrameAnimation::Draw)
+            .animation_progress(0.5);
+        assert_eq!(draw.compute_alpha(), 1.0);
+
+        let assemble = Frame::new()
+            .animation_mode(FrameAnimation::Assemble)
+            .animation_progress(0.5);
+        assert_eq!(assemble.compute_alpha(), 1.0);
+    }
+
+    #[test]
+    fn test_compute_alpha_flicker_entering() {
+        let early = Frame::new()
+            .animation_mode(FrameAnimation::Flicker)
+            .animation_progress(0.1)
+            .is_exiting(false);
+        assert!(early.compute_alpha() > 0.0 && early.compute_alpha() < 0.5);
+
+        let mid = Frame::new()
+            .animation_mode(FrameAnimation::Flicker)
+            .animation_progress(0.5)
+            .is_exiting(false);
+        assert!(mid.compute_alpha() > 0.5);
+
+        let late = Frame::new()
+            .animation_mode(FrameAnimation::Flicker)
+            .animation_progress(0.9)
+            .is_exiting(false);
+        assert!(late.compute_alpha() > 0.8);
+    }
+
+    #[test]
+    fn test_compute_alpha_flicker_exiting() {
+        let early = Frame::new()
+            .animation_mode(FrameAnimation::Flicker)
+            .animation_progress(0.1)
+            .is_exiting(true);
+        assert!(early.compute_alpha() > 0.5);
+
+        let late = Frame::new()
+            .animation_mode(FrameAnimation::Flicker)
+            .animation_progress(0.9)
+            .is_exiting(true);
+        assert!(late.compute_alpha() < 0.2);
+    }
+
+    #[test]
+    fn test_animation_defaults() {
+        let frame = Frame::new();
+        assert_eq!(frame.animation_mode, FrameAnimation::Fade);
+        assert_eq!(frame.draw_direction, DrawDirection::LeftToRight);
+        assert!(!frame.is_exiting);
+    }
+
+    #[test]
+    fn test_frame_animation_default() {
+        assert_eq!(FrameAnimation::default(), FrameAnimation::Fade);
+    }
+
+    #[test]
+    fn test_chained_animation_config() {
+        let frame = Frame::corners()
+            .animation_mode(FrameAnimation::Draw)
+            .draw_direction(DrawDirection::CenterOut)
+            .animation_progress(0.7)
+            .is_exiting(false);
+
+        assert_eq!(frame.style, FrameStyle::Corners);
+        assert_eq!(frame.animation_mode, FrameAnimation::Draw);
+        assert_eq!(frame.draw_direction, DrawDirection::CenterOut);
+        assert_eq!(frame.animation_progress, 0.7);
+        assert!(!frame.is_exiting);
     }
 }

@@ -16,7 +16,7 @@ use wgpui::{
 };
 use wgpui::components::atoms::{Mode, Model, Status, StatusDot, ModeBadge, ModelBadge, StreamingIndicator};
 use wgpui::components::molecules::{MessageHeader, ModeSelector, ModelSelector};
-use wgpui::components::hud::{CornerConfig, DotsGrid, DotsOrigin, DotShape, Frame, StatusBar, StatusItem, Notifications};
+use wgpui::components::hud::{CornerConfig, DotsGrid, DotsOrigin, DotShape, DrawDirection, Frame, FrameAnimation, StatusBar, StatusItem, Notifications};
 use wgpui::renderer::Renderer;
 use winit::application::ApplicationHandler;
 use winit::event::WindowEvent;
@@ -60,6 +60,7 @@ struct DemoState {
     notifications: Notifications,
     dots_grid: DotsGrid,
     dots_anim: Animation<f32>,
+    frame_anim: Animation<f32>,
     frame_count: u64,
 }
 
@@ -123,6 +124,14 @@ impl Default for DemoState {
             dots_anim: {
                 let mut anim = Animation::new(0.0_f32, 1.0, Duration::from_millis(1500))
                     .easing(Easing::Linear)
+                    .iterations(0)
+                    .alternate();
+                anim.start();
+                anim
+            },
+            frame_anim: {
+                let mut anim = Animation::new(0.0_f32, 1.0, Duration::from_millis(2000))
+                    .easing(Easing::EaseInOutCubic)
                     .iterations(0)
                     .alternate();
                 anim.start();
@@ -245,6 +254,7 @@ impl ApplicationHandler for App {
                 state.demo.color_anim.tick(delta);
                 state.demo.spring.tick(delta);
                 state.demo.dots_anim.tick(delta);
+                state.demo.frame_anim.tick(delta);
                 state.demo.streaming_indicator.tick();
                 state.demo.frame_count += 1;
 
@@ -372,7 +382,7 @@ fn build_full_demo(
     demo_theme_colors(scene, text_system, right_x, &mut right_y);
     right_y += section_spacing;
 
-    demo_bitcoin_wallet(scene, text_system, right_x, col_width, &mut right_y);
+    demo_animated_frames(scene, text_system, demo, right_x, col_width, &mut right_y);
 
     let mut cx = PaintContext::new(scene, text_system, 1.0);
     demo.status_bar.paint(Bounds::new(0.0, 0.0, width, height), &mut cx);
