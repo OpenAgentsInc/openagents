@@ -36,6 +36,7 @@
 //! - [`tick`] - Tick Request/Result events (kinds:38010, 38011)
 //! - [`trajectory`] - Trajectory Session/Event (kinds:38030, 38031)
 //! - [`skill`] - Skill License/Delivery events (kinds:38020, 38021)
+//! - [`wallet_integration`] - Integration with Spark wallet for balance queries
 //!
 //! ## Specification
 //!
@@ -48,6 +49,7 @@ pub mod skill;
 pub mod state;
 pub mod tick;
 pub mod trajectory;
+pub mod wallet_integration;
 
 // Re-export key types for convenience
 pub use goals::*;
@@ -57,3 +59,4 @@ pub use skill::*;
 pub use state::*;
 pub use tick::*;
 pub use trajectory::*;
+pub use wallet_integration::*;

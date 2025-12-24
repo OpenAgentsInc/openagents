@@ -171,6 +171,18 @@ impl AgentStateContent {
     }
 
     /// Update wallet balance
+    ///
+    /// # Arguments
+    /// * `balance_sats` - Total balance in satoshis across all layers (Spark L2, Lightning, on-chain)
+    ///
+    /// # Example
+    /// ```
+    /// use nostr::nip_sa::AgentStateContent;
+    ///
+    /// let mut state = AgentStateContent::new();
+    /// state.update_balance(100_000);
+    /// assert_eq!(state.wallet_balance_sats, 100_000);
+    /// ```
     pub fn update_balance(&mut self, balance_sats: u64) {
         self.wallet_balance_sats = balance_sats;
     }
