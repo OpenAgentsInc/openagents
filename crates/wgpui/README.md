@@ -24,13 +24,14 @@ A cross-platform GPU-accelerated UI rendering library built on wgpu (WebGPU/Vulk
 | Issue | Description | Status |
 |-------|-------------|--------|
 | wgpui-001 | Create crate skeleton with Cargo.toml | ✅ Complete |
-| wgpui-002 | Port color.rs and geometry.rs primitives | 🚧 In Progress |
-| wgpui-003 | Port scene.rs with Quad and TextRun | ⏳ Planned |
-| wgpui-004 | Port renderer.rs with wgpu pipelines | ⏳ Planned |
-| wgpui-005 | Port text.rs with cosmic-text integration | ⏳ Planned |
+| wgpui-002 | Port color.rs and geometry.rs primitives | ✅ Complete |
+| wgpui-003 | Port scene.rs with Quad and TextRun | ✅ Complete |
+| wgpui-004 | Port renderer.rs with wgpu pipelines | ✅ Complete |
+| wgpui-005 | Port text.rs with cosmic-text integration | ✅ Complete |
 | wgpui-006 | Port layout.rs with Taffy wrapper | ⏳ Planned |
 | wgpui-007 | Port platform/web.rs for WASM | ⏳ Planned |
 | wgpui-008 | Port theme.rs with aligned tokens | ⏳ Planned |
+| **wgpui-009** | **First Light: Visual demo with colored quads** | ⏳ Planned |
 
 ## Why wgpui?
 

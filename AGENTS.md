@@ -26,6 +26,7 @@ Conventions:
 - Inline-first CSS with custom properties
 - No border radius (sharp corners)
 - Keep UI server-rendered (no SPA)
+- **Vera Mono font ONLY** - Use `src/gui/assets/fonts/VeraMono*.ttf` for ALL text rendering. No other fonts allowed.
 
 ---
 

@@ -41,8 +41,8 @@ impl ScrollContainer {
     }
 
     fn clamp_scroll(&mut self) {
-        let max_x = (self.content_size.0 - self.bounds.width).max(0.0);
-        let max_y = (self.content_size.1 - self.bounds.height).max(0.0);
+        let max_x = (self.content_size.0 - self.bounds.width()).max(0.0);
+        let max_y = (self.content_size.1 - self.bounds.height()).max(0.0);
         self.scroll_offset.0 = self.scroll_offset.0.clamp(0.0, max_x);
         self.scroll_offset.1 = self.scroll_offset.1.clamp(0.0, max_y);
     }
