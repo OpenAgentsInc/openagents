@@ -16,7 +16,9 @@ use tokio::sync::mpsc;
 use tokio::time::sleep;
 
 // Stub types until nostr crate provides them
+#[allow(dead_code)]
 type Filter = ();
+#[allow(dead_code)]
 type Kind = u16;
 
 /// Trigger event that signals the agent should run
