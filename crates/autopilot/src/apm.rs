@@ -192,6 +192,15 @@ impl APMSource {
             Self::Combined => "combined",
         }
     }
+
+    pub fn from_str(s: &str) -> Option<Self> {
+        match s {
+            "autopilot" => Some(Self::Autopilot),
+            "claude_code" => Some(Self::ClaudeCode),
+            "combined" => Some(Self::Combined),
+            _ => None,
+        }
+    }
 }
 
 /// Time window for APM calculation
@@ -224,6 +233,19 @@ impl APMWindow {
             Self::Week1 => "1w",
             Self::Month1 => "1m",
             Self::Lifetime => "lifetime",
+        }
+    }
+
+    pub fn from_str(s: &str) -> Option<Self> {
+        match s {
+            "session" => Some(Self::Session),
+            "1h" => Some(Self::Hour1),
+            "6h" => Some(Self::Hour6),
+            "1d" => Some(Self::Day1),
+            "1w" => Some(Self::Week1),
+            "1m" => Some(Self::Month1),
+            "lifetime" => Some(Self::Lifetime),
+            _ => None,
         }
     }
 

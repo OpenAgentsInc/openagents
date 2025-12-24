@@ -881,15 +881,35 @@ pub enum ApmCommands {
         #[arg(long)]
         db: Option<PathBuf>,
     },
-    /// Export APM data to JSON
+    /// Export APM data in various formats
     Export {
-        /// Output file path
-        #[arg(required = true)]
-        output: PathBuf,
+        /// Output format (json, csv, tsv)
+        #[arg(short, long, default_value = "json")]
+        format: String,
+
+        /// Output file path (if not specified, writes to stdout)
+        #[arg(short, long)]
+        output: Option<PathBuf>,
 
         /// Source filter (autopilot, claude_code)
         #[arg(short, long)]
         source: Option<String>,
+
+        /// Time window filter (session, 1h, 6h, 1d, 1w, 1m, lifetime)
+        #[arg(short, long)]
+        window: Option<String>,
+
+        /// Start date filter (RFC3339 or YYYY-MM-DD format)
+        #[arg(long)]
+        start_date: Option<String>,
+
+        /// End date filter (RFC3339 or YYYY-MM-DD format)
+        #[arg(long)]
+        end_date: Option<String>,
+
+        /// Include raw event data (not just aggregated snapshots)
+        #[arg(long)]
+        include_events: bool,
 
         /// Path to database (default: autopilot.db in workspace root)
         #[arg(long)]
