@@ -95,6 +95,10 @@ required-features = ["desktop"]
 name = "component_showcase"
 required-features = ["desktop"]
 
+[[example]]
+name = "ui_pane_demo"
+required-features = ["desktop"]
+
 [[bench]]
 name = "performance"
 harness = false
