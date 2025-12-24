@@ -37,11 +37,13 @@
 //! - [`trajectory`] - Trajectory Session/Event (kinds:38030, 38031)
 //! - [`skill`] - Skill License/Delivery events (kinds:38020, 38021)
 //! - [`wallet_integration`] - Integration with Spark wallet for balance queries
+//! - [`budget`] - Budget constraints and spending enforcement
 //!
 //! ## Specification
 //!
 //! See `crates/nostr/nips/SA.md` for the complete NIP-SA specification.
 
+pub mod budget;
 pub mod goals;
 pub mod profile;
 pub mod schedule;
@@ -52,6 +54,7 @@ pub mod trajectory;
 pub mod wallet_integration;
 
 // Re-export key types for convenience
+pub use budget::*;
 pub use goals::*;
 pub use profile::*;
 pub use schedule::*;
