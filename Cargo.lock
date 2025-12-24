@@ -3306,6 +3306,7 @@ dependencies = [
  "acp-adapter",
  "async-trait",
  "chrono",
+ "futures-util",
  "gpt-oss",
  "local-inference",
  "recorder",
