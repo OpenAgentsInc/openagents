@@ -7,6 +7,14 @@ use serde::{Deserialize, Serialize};
 use std::str::FromStr;
 use thiserror::Error;
 
+/// Default relays for skill discovery
+const DEFAULT_RELAYS: &[&str] = &[
+    "wss://relay.damus.io",
+    "wss://nos.lol",
+    "wss://relay.nostr.band",
+    "wss://relay.primal.net",
+];
+
 /// Errors that can occur during skill browsing operations
 #[derive(Debug, Error)]
 pub enum BrowseError {
@@ -233,10 +241,9 @@ pub struct SkillBrowser {
 
 impl SkillBrowser {
     /// Create a new skill browser with default relay configuration
-    pub fn new() -> Self {
-        let config = nostr_client::PoolConfig::default();
-        let pool = nostr_client::RelayPool::new(config);
-        Self { pool }
+    pub async fn new() -> Result<Self, BrowseError> {
+        let relay_urls: Vec<String> = DEFAULT_RELAYS.iter().map(|s| s.to_string()).collect();
+        Self::with_relays(relay_urls).await
     }
 
     /// Create a new skill browser with custom relay URLs
@@ -426,11 +433,8 @@ impl SkillBrowser {
     }
 }
 
-impl Default for SkillBrowser {
-    fn default() -> Self {
-        Self::new()
-    }
-}
+// Note: Default impl removed because new() is now async.
+// Use SkillBrowser::new().await instead.
 
 #[cfg(test)]
 mod tests {
@@ -559,11 +563,19 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_skill_browser_no_relays() {
-        // Browser with no relays configured will fail to connect
-        let browser = SkillBrowser::new();
+    async fn test_skill_browser_with_default_relays() {
+        // Browser with default relays should be created successfully
+        let browser = SkillBrowser::new().await;
+        assert!(browser.is_ok());
+
+        // Browse will attempt to connect to default relays
+        // In test environment without actual relay connections, this may timeout
+        // but the browser itself should be properly configured
+        let browser = browser.unwrap();
         let result = browser.browse(SearchFilters::new(), SortBy::Name).await;
-        // Should fail to connect since no relays were added
+
+        // Result may be NoSkillsFound or Network error depending on relay availability
+        // The important thing is the browser was created with default relays
         assert!(result.is_err());
     }
 }
