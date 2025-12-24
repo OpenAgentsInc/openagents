@@ -8,30 +8,50 @@ A cross-platform GPU-accelerated UI rendering library built on wgpu (WebGPU/Vulk
 
 | Phase | Description | Status |
 |-------|-------------|--------|
-| **Phase 1** | Core Framework | 🚧 In Progress |
-| Phase 2 | Widget System | ⏳ Planned |
+| **Phase 1** | Core Framework | ✅ Complete |
+| **Phase 2** | Component System | ✅ Complete |
 | Phase 3 | Atoms | ⏳ Planned |
 | Phase 4 | Molecules | ⏳ Planned |
 | Phase 5 | Organisms | ⏳ Planned |
-| Phase 6 | Markdown & Streaming | ⏳ Planned |
+| Phase 6 | Markdown & Streaming | 🚧 In Progress |
 | Phase 7 | Sections (Surfaces) | ⏳ Planned |
 | Phase 8 | HUD Components | ⏳ Planned |
 | Phase 9 | Integration | ⏳ Planned |
 | Phase 10 | Testing & Docs | ⏳ Planned |
 
-### Phase 1 Progress
+### Phase 1: Core Framework ✅
 
-| Issue | Description | Status |
-|-------|-------------|--------|
-| wgpui-001 | Create crate skeleton with Cargo.toml | ✅ Complete |
-| wgpui-002 | Port color.rs and geometry.rs primitives | ✅ Complete |
-| wgpui-003 | Port scene.rs with Quad and TextRun | ✅ Complete |
-| wgpui-004 | Port renderer.rs with wgpu pipelines | ✅ Complete |
-| wgpui-005 | Port text.rs with cosmic-text integration | ✅ Complete |
-| wgpui-006 | Port layout.rs with Taffy wrapper | ⏳ Planned |
-| wgpui-007 | Port platform/web.rs for WASM | ⏳ Planned |
-| wgpui-008 | Port theme.rs with aligned tokens | ⏳ Planned |
-| **wgpui-009** | **First Light: Visual demo with colored quads** | ⏳ Planned |
+| Module | Description | Status |
+|--------|-------------|--------|
+| `color.rs` | HSLA color type with GPU-friendly derives | ✅ Complete |
+| `geometry.rs` | Point, Size, Bounds, Edges primitives | ✅ Complete |
+| `scene.rs` | Quad, TextRun, Scene accumulator | ✅ Complete |
+| `renderer.rs` | wgpu pipelines and GPU buffer management | ✅ Complete |
+| `text.rs` | cosmic-text integration and glyph atlas | ✅ Complete |
+| `layout.rs` | Taffy-based CSS Flexbox layout engine | ✅ Complete |
+| `platform.rs` | Web (WASM) and desktop (winit) abstraction | ✅ Complete |
+| `theme.rs` | Color and spacing tokens aligned with Tailwind | ✅ Complete |
+| `scroll.rs` | Virtual scrolling containers | ✅ Complete |
+| `input.rs` | Platform-agnostic input events | ✅ Complete |
+| `first_light` | Visual demo example | ✅ Complete |
+
+### Phase 2: Component System ✅
+
+| Component | Description | Status |
+|-----------|-------------|--------|
+| `Component` trait | Core component abstraction with paint/event | ✅ Complete |
+| `Div` | Container component with background/border | ✅ Complete |
+| `Text` | Text rendering with font styling | ✅ Complete |
+| `Button` | Interactive button with variants | ✅ Complete |
+| `TextInput` | Full keyboard/mouse input, cursor, focus | ✅ Complete |
+| `ScrollView` | Scrollable container | ✅ Complete |
+| `VirtualList` | Virtualized list for large datasets | ✅ Complete |
+| `Modal` | Overlay dialog with backdrop | ✅ Complete |
+| `Dropdown` | Select component with keyboard navigation | ✅ Complete |
+| `Tabs` | Tab bar with active indicator | ✅ Complete |
+| `AnyComponent` | Type-erased component wrapper | ✅ Complete |
+
+**127 unit tests passing.**
 
 ## Why wgpui?
 
@@ -65,8 +85,8 @@ OpenAgents uses a **hybrid rendering model**:
 │  └─────────────────────────────────────────────────────────────┘   │
 │                              │                                      │
 │  ┌─────────────────────────────────────────────────────────────┐   │
-│  │                      Widget System                           │   │
-│  │   Widget trait, Div, Text, Button, TextInput, VirtualList   │   │
+│  │                    Component System                          │   │
+│  │  Component trait, Div, Text, Button, TextInput, VirtualList  │   │
 │  └─────────────────────────────────────────────────────────────┘   │
 │                              │                                      │
 │  ┌──────────────┬──────────────┬──────────────┬────────────────┐   │
