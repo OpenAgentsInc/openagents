@@ -13,6 +13,7 @@ struct SubmitParams<'a> {
     stream: bool,
     json: bool,
     target_language: Option<&'a str>,
+    local_first: bool,
 }
 
 #[derive(Debug, Subcommand)]
@@ -77,6 +78,10 @@ pub enum ComputeCommands {
         /// Target language for translation jobs (e.g., "en", "es", "fr")
         #[arg(long)]
         target_language: Option<String>,
+
+        /// Try local inference first, fallback to swarm if unavailable
+        #[arg(long)]
+        local_first: bool,
     },
 
     /// Check job status
@@ -158,6 +163,7 @@ impl ComputeCommands {
                 stream,
                 json,
                 target_language,
+                local_first,
             } => self.submit(SubmitParams {
                 job_type,
                 prompt: prompt.as_deref(),
@@ -167,6 +173,7 @@ impl ComputeCommands {
                 stream: *stream,
                 json: *json,
                 target_language: target_language.as_deref(),
+                local_first: *local_first,
             }),
 
             ComputeCommands::Status { job_id, json } => self.status(job_id, *json),
@@ -312,7 +319,7 @@ impl ComputeCommands {
     }
 
     fn submit(&self, params: SubmitParams) -> anyhow::Result<()> {
-        let SubmitParams { job_type, prompt, file, model, budget, stream, json, target_language } = params;
+        let SubmitParams { job_type, prompt, file, model, budget, stream, json, target_language, local_first } = params;
         // Validate input
         if prompt.is_none() && file.is_none() {
             anyhow::bail!("Either --prompt or --file must be provided");
@@ -348,7 +355,83 @@ impl ComputeCommands {
             request = request.with_bid(budget * 1000);
         }
 
-        // Create consumer and submit job
+        // Handle local-first fallback logic
+        let model_name = model.unwrap_or("default");
+
+        if local_first {
+            // Try local inference first with fallback to swarm
+            use crate::compute::fallback::{FallbackManager, FallbackConfig, FallbackResult};
+
+            let fallback_config = FallbackConfig {
+                enabled: true,
+                max_price_msats: budget.map(|b| b * 1000), // Convert sats to msats
+                local_timeout_secs: 30,
+                force_local: false,
+                force_swarm: false,
+            };
+
+            let manager = FallbackManager::new(fallback_config);
+
+            // Execute with fallback using tokio runtime
+            let rt = tokio::runtime::Runtime::new()?;
+            let result = rt.block_on(async {
+                manager.execute_with_fallback(model_name, &input).await
+            })?;
+
+            match result {
+                FallbackResult::Local { response, duration_ms } => {
+                    if json {
+                        println!("{}", serde_json::json!({
+                            "status": "completed",
+                            "source": "local",
+                            "response": response,
+                            "duration_ms": duration_ms,
+                        }));
+                    } else {
+                        println!("✓ Completed locally in {}ms\n", duration_ms);
+                        println!("{}", response);
+                    }
+                    return Ok(());
+                }
+                FallbackResult::Swarm { job_id, provider, cost_msats, duration_ms } => {
+                    if json {
+                        println!("{}", serde_json::json!({
+                            "status": "submitted_to_swarm",
+                            "source": "swarm",
+                            "job_id": job_id,
+                            "provider": provider,
+                            "cost_msats": cost_msats,
+                            "duration_ms": duration_ms,
+                        }));
+                    } else {
+                        println!("✓ Submitted to swarm (local unavailable)");
+                        println!("Job ID: {}", job_id);
+                        println!("Provider: {}", provider);
+                        println!("Cost: {} msats ({} sats)", cost_msats, cost_msats / 1000);
+                        println!("Duration: {}ms", duration_ms);
+                    }
+                    return Ok(());
+                }
+                FallbackResult::Failed { local_error, swarm_error } => {
+                    if json {
+                        println!("{}", serde_json::json!({
+                            "status": "failed",
+                            "local_error": local_error,
+                            "swarm_error": swarm_error,
+                        }));
+                    } else {
+                        println!("✗ Job failed");
+                        println!("Local error: {}", local_error);
+                        if let Some(err) = swarm_error {
+                            println!("Swarm error: {}", err);
+                        }
+                    }
+                    anyhow::bail!("Job execution failed");
+                }
+            }
+        }
+
+        // Standard marketplace submission (no local-first)
         use crate::compute::consumer::Consumer;
         use crate::compute::db::JobDatabase;
 

@@ -51,7 +51,8 @@ impl JobDatabase {
                 payment_amount INTEGER,
                 payment_bolt11 TEXT,
                 submitted_at INTEGER NOT NULL,
-                completed_at INTEGER
+                completed_at INTEGER,
+                local_attempted INTEGER DEFAULT 0
             )",
             [],
         )?;
