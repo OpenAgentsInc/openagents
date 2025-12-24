@@ -14,9 +14,11 @@ dependencies = [
  "codex-agent-sdk",
  "futures",
  "recorder",
+ "rusqlite",
  "serde",
  "serde_json",
  "serde_yaml",
+ "tempfile",
  "thiserror 2.0.17",
  "tokio",
  "tracing",
@@ -806,6 +808,7 @@ checksum = "c08606f8c3cbf4ce6ec8e28fb0014a2c086708fe954eaa885384a6165172e7e8"
 name = "autopilot"
 version = "0.1.0"
 dependencies = [
+ "acp-adapter",
  "actix-web",
  "actix-ws",
  "anyhow",

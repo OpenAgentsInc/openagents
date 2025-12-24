@@ -10,6 +10,7 @@ pub mod analyze;
 pub mod apm;
 pub mod apm_parser;
 pub mod apm_storage;
+pub mod apm_telemetry_bridge;
 pub mod auto_issues;
 pub mod benchmark;
 pub mod cli;

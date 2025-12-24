@@ -13,6 +13,7 @@ use tokio::sync::RwLock;
 
 use crate::error::{AcpError, Result};
 use crate::session::AcpAgentSession;
+use crate::telemetry::{ActionEvent, ApmTelemetry};
 use crate::transport::StdioTransport;
 use crate::AgentCommand;
 
@@ -169,6 +170,48 @@ impl AcpAgentConnection {
         tracing::info!(session_id = %session_id, "Session created");
 
         Ok(session)
+    }
+
+    /// Create a new session with APM telemetry enabled
+    ///
+    /// Returns both the session and a receiver for ActionEvents.
+    /// The caller should spawn a task to consume events from the receiver.
+    pub async fn new_session_with_telemetry(
+        &self,
+        cwd: PathBuf,
+    ) -> Result<(AcpAgentSession, tokio::sync::mpsc::UnboundedReceiver<ActionEvent>)> {
+        let request = acp::NewSessionRequest::new(cwd.clone());
+
+        tracing::debug!(cwd = %cwd.display(), "Creating new session with telemetry");
+
+        let response: acp::NewSessionResponse = self
+            .transport
+            .request("session/new", &request)
+            .await
+            .map_err(|e| AcpError::ProtocolError(e.to_string()))?;
+
+        let session_id = response.session_id.to_string();
+
+        // Create telemetry tracker
+        let (telemetry, rx) = ApmTelemetry::new(&session_id);
+        let telemetry = Arc::new(telemetry);
+
+        let session = AcpAgentSession::with_telemetry(
+            response.session_id.clone(),
+            self.transport.clone(),
+            cwd,
+            telemetry,
+        );
+
+        // Store session
+        self.sessions
+            .write()
+            .await
+            .insert(session_id.clone(), session.clone());
+
+        tracing::info!(session_id = %session_id, "Session with telemetry created");
+
+        Ok((session, rx))
     }
 
     /// Send a prompt to a session

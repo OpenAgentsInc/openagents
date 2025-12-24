@@ -151,6 +151,8 @@ pub async fn start_dashboard(db_path: &str, port: u16) -> anyhow::Result<()> {
             .route("/api/anomalies", web::get().to(api_anomalies))
             .route("/api/trends", web::get().to(api_trends))
             .route("/api/velocity", web::get().to(api_velocity))
+            .route("/api/apm-timeline", web::get().to(api_apm_timeline))
+            .route("/api/action-breakdown", web::get().to(api_action_breakdown))
             .route("/ws/metrics", web::get().to(websocket_metrics))
     })
     .bind(("127.0.0.1", port))?
@@ -355,6 +357,14 @@ fn charts_section() -> Markup {
         div.charts-section {
             h2 { "Metrics Trends" }
             div.charts-grid {
+                div.chart-container {
+                    h3 { "APM Timeline (Last 7 Days)" }
+                    canvas id="apmTimelineChart" {}
+                }
+                div.chart-container {
+                    h3 { "Action Breakdown (Last 7 Days)" }
+                    canvas id="actionBreakdownChart" {}
+                }
                 div.chart-container {
                     h3 { "Tool Error Rate (Last 7 Days)" }
                     canvas id="errorRateChart" {}
@@ -575,6 +585,7 @@ pub(crate) fn sessions_table(sessions: &[SessionMetrics]) -> Markup {
                             th { "Cost" }
                             th { "Issues" }
                             th { "Velocity" }
+                            th { "APM" }
                             th { "Status" }
                         }
                     }
@@ -591,6 +602,8 @@ pub(crate) fn sessions_table(sessions: &[SessionMetrics]) -> Markup {
 
 /// Render single session row
 fn session_row(session: &SessionMetrics) -> Markup {
+    use crate::apm::APMTier;
+
     let status_class = match session.final_status {
         SessionStatus::Completed => "status-completed",
         SessionStatus::Crashed => "status-crashed",
@@ -625,6 +638,24 @@ fn session_row(session: &SessionMetrics) -> Markup {
             td title="Issues completed per hour" {
                 @if velocity_score > 0.0 {
                     (format!("{:.2}", velocity_score))
+                } @else {
+                    span style="color: #666;" { "—" }
+                }
+            }
+            td {
+                @if let Some(apm) = session.apm {
+                    @let tier = APMTier::from_apm(apm);
+                    @let tier_color = match tier {
+                        APMTier::Elite => "#fbbf24",
+                        APMTier::HighPerformance => "#f59e0b",
+                        APMTier::Productive => "#10b981",
+                        APMTier::Active => "#3b82f6",
+                        APMTier::Baseline => "#6b7280",
+                    };
+                    span.apm-badge style=(format!("background-color: {}; color: white; padding: 2px 6px; border-radius: 3px; font-size: 0.85rem; font-weight: 500;", tier_color))
+                         title=(tier.name()) {
+                        (format!("{:.1}", apm))
+                    }
                 } @else {
                     span style="color: #666;" { "—" }
                 }
@@ -1028,11 +1059,142 @@ document.addEventListener('DOMContentLoaded', async () => {
 
 async function loadAllCharts() {
     await Promise.all([
+        loadAPMTimelineChart(),
+        loadActionBreakdownChart(),
         loadErrorRateChart(),
         loadCompletionRateChart(),
         loadCostChart(),
         loadTokensChart(),
     ]);
+}
+
+async function loadAPMTimelineChart() {
+    try {
+        const response = await fetch('/api/apm-timeline?hours=168');
+        const data = await response.json();
+
+        const ctx = document.getElementById('apmTimelineChart').getContext('2d');
+
+        if (window.apmTimelineChart) {
+            window.apmTimelineChart.destroy();
+        }
+
+        // Separate data by source
+        const autopilotData = data.sessions
+            .filter(s => s.source === 'autopilot')
+            .map(s => ({ x: s.timestamp, y: s.apm }));
+        const claudeCodeData = data.sessions
+            .filter(s => s.source === 'claude_code')
+            .map(s => ({ x: s.timestamp, y: s.apm }));
+
+        window.apmTimelineChart = new Chart(ctx, {
+            type: 'scatter',
+            data: {
+                datasets: [
+                    {
+                        label: 'Autopilot',
+                        data: autopilotData,
+                        borderColor: chartColors.green,
+                        backgroundColor: chartColors.green,
+                        pointRadius: 4,
+                        showLine: true,
+                        tension: 0.3,
+                    },
+                    {
+                        label: 'Claude Code',
+                        data: claudeCodeData,
+                        borderColor: chartColors.primary,
+                        backgroundColor: chartColors.primary,
+                        pointRadius: 4,
+                        showLine: true,
+                        tension: 0.3,
+                    },
+                ],
+            },
+            options: {
+                ...chartOptions,
+                plugins: {
+                    legend: {
+                        display: true,
+                        labels: {
+                            color: chartColors.textColor,
+                        },
+                    },
+                },
+                scales: {
+                    x: {
+                        type: 'time',
+                        time: {
+                            unit: 'day',
+                        },
+                        grid: {
+                            color: chartColors.gridColor,
+                        },
+                        ticks: {
+                            color: chartColors.textColor,
+                        },
+                    },
+                    y: {
+                        grid: {
+                            color: chartColors.gridColor,
+                        },
+                        ticks: {
+                            color: chartColors.textColor,
+                        },
+                        title: {
+                            display: true,
+                            text: 'APM',
+                            color: chartColors.textColor,
+                        },
+                    },
+                },
+            },
+        });
+    } catch (error) {
+        console.error('Failed to load APM timeline chart:', error);
+    }
+}
+
+async function loadActionBreakdownChart() {
+    try {
+        const response = await fetch('/api/action-breakdown?hours=168');
+        const data = await response.json();
+
+        const ctx = document.getElementById('actionBreakdownChart').getContext('2d');
+
+        if (window.actionBreakdownChart) {
+            window.actionBreakdownChart.destroy();
+        }
+
+        window.actionBreakdownChart = new Chart(ctx, {
+            type: 'doughnut',
+            data: {
+                labels: ['Messages', 'Tool Calls'],
+                datasets: [{
+                    data: [data.total_messages, data.total_tool_calls],
+                    backgroundColor: [chartColors.primary, chartColors.green],
+                    borderColor: chartColors.bg,
+                    borderWidth: 2,
+                }],
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: true,
+                plugins: {
+                    legend: {
+                        display: true,
+                        position: 'bottom',
+                        labels: {
+                            color: chartColors.textColor,
+                            padding: 15,
+                        },
+                    },
+                },
+            },
+        });
+    } catch (error) {
+        console.error('Failed to load action breakdown chart:', error);
+    }
 }
 
 async function loadErrorRateChart() {
@@ -1618,6 +1780,77 @@ async fn api_velocity(
     let response = serde_json::json!({
         "current": current_velocity,
         "history": snapshots,
+    });
+
+    Ok(HttpResponse::Ok().json(response))
+}
+
+/// API endpoint: GET /api/apm-timeline
+/// Returns APM data for timeline chart with session timestamps and APM values
+async fn api_apm_timeline(
+    state: web::Data<DashboardState>,
+    query: web::Query<std::collections::HashMap<String, String>>,
+) -> ActixResult<HttpResponse> {
+    let hours = query.get("hours")
+        .and_then(|h| h.parse::<i64>().ok())
+        .unwrap_or(168); // Default to 7 days
+
+    let store = MetricsDb::open(&state.db_path)
+        .map_err(|e| actix_web::error::ErrorInternalServerError(e))?;
+
+    let cutoff = chrono::Utc::now() - chrono::Duration::hours(hours);
+    let all_sessions = store.get_all_sessions()
+        .map_err(|e| actix_web::error::ErrorInternalServerError(e))?;
+
+    // Filter sessions within time range and with APM data
+    let sessions: Vec<_> = all_sessions.into_iter()
+        .filter(|s| s.timestamp >= cutoff && s.apm.is_some())
+        .map(|s| serde_json::json!({
+            "timestamp": s.timestamp.to_rfc3339(),
+            "apm": s.apm.unwrap_or(0.0),
+            "source": s.source,
+        }))
+        .collect();
+
+    let response = serde_json::json!({
+        "sessions": sessions,
+    });
+
+    Ok(HttpResponse::Ok().json(response))
+}
+
+/// API endpoint: GET /api/action-breakdown
+/// Returns total messages and tool calls for action breakdown pie chart
+async fn api_action_breakdown(
+    state: web::Data<DashboardState>,
+    query: web::Query<std::collections::HashMap<String, String>>,
+) -> ActixResult<HttpResponse> {
+    let hours = query.get("hours")
+        .and_then(|h| h.parse::<i64>().ok())
+        .unwrap_or(168); // Default to 7 days
+
+    let store = MetricsDb::open(&state.db_path)
+        .map_err(|e| actix_web::error::ErrorInternalServerError(e))?;
+
+    let cutoff = chrono::Utc::now() - chrono::Duration::hours(hours);
+    let all_sessions = store.get_all_sessions()
+        .map_err(|e| actix_web::error::ErrorInternalServerError(e))?;
+
+    // Calculate totals
+    let mut total_messages: i64 = 0;
+    let mut total_tool_calls: i64 = 0;
+
+    for session in all_sessions.iter() {
+        if session.timestamp >= cutoff {
+            total_messages += session.messages as i64;
+            total_tool_calls += session.tool_calls as i64;
+        }
+    }
+
+    let response = serde_json::json!({
+        "total_messages": total_messages,
+        "total_tool_calls": total_tool_calls,
+        "total_actions": total_messages + total_tool_calls,
     });
 
     Ok(HttpResponse::Ok().json(response))

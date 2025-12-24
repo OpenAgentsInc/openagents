@@ -27,7 +27,7 @@ serde_json = { workspace = true }
 serde_yaml = "0.9"
 
 # Time
-chrono = { workspace = true }
+chrono = { workspace = true, features = ["serde"] }
 
 # Error handling
 thiserror = { workspace = true }
@@ -41,6 +41,8 @@ uuid = { workspace = true }
 which = "7"
 
 [dev-dependencies]
+rusqlite = { version = "0.32", features = ["bundled"] }
+tempfile.workspace = true
 tokio = { workspace = true, features = ["test-util", "macros"] }
 
 [lints]

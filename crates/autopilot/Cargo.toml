@@ -25,6 +25,7 @@ path = "src/lib.rs"
 claude-agent-sdk.workspace = true
 codex-agent-sdk.workspace = true
 gpt-oss-agent = { path = "../gpt-oss-agent" }
+acp-adapter = { path = "../acp-adapter" }
 issues.workspace = true
 ui.workspace = true
 nostr.workspace = true

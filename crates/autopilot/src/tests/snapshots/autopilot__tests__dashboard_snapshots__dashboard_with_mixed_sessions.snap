@@ -308,11 +308,142 @@ document.addEventListener('DOMContentLoaded', async () => {
 
 async function loadAllCharts() {
     await Promise.all([
+        loadAPMTimelineChart(),
+        loadActionBreakdownChart(),
         loadErrorRateChart(),
         loadCompletionRateChart(),
         loadCostChart(),
         loadTokensChart(),
     ]);
+}
+
+async function loadAPMTimelineChart() {
+    try {
+        const response = await fetch('/api/apm-timeline?hours=168');
+        const data = await response.json();
+
+        const ctx = document.getElementById('apmTimelineChart').getContext('2d');
+
+        if (window.apmTimelineChart) {
+            window.apmTimelineChart.destroy();
+        }
+
+        // Separate data by source
+        const autopilotData = data.sessions
+            .filter(s => s.source === 'autopilot')
+            .map(s => ({ x: s.timestamp, y: s.apm }));
+        const claudeCodeData = data.sessions
+            .filter(s => s.source === 'claude_code')
+            .map(s => ({ x: s.timestamp, y: s.apm }));
+
+        window.apmTimelineChart = new Chart(ctx, {
+            type: 'scatter',
+            data: {
+                datasets: [
+                    {
+                        label: 'Autopilot',
+                        data: autopilotData,
+                        borderColor: chartColors.green,
+                        backgroundColor: chartColors.green,
+                        pointRadius: 4,
+                        showLine: true,
+                        tension: 0.3,
+                    },
+                    {
+                        label: 'Claude Code',
+                        data: claudeCodeData,
+                        borderColor: chartColors.primary,
+                        backgroundColor: chartColors.primary,
+                        pointRadius: 4,
+                        showLine: true,
+                        tension: 0.3,
+                    },
+                ],
+            },
+            options: {
+                ...chartOptions,
+                plugins: {
+                    legend: {
+                        display: true,
+                        labels: {
+                            color: chartColors.textColor,
+                        },
+                    },
+                },
+                scales: {
+                    x: {
+                        type: 'time',
+                        time: {
+                            unit: 'day',
+                        },
+                        grid: {
+                            color: chartColors.gridColor,
+                        },
+                        ticks: {
+                            color: chartColors.textColor,
+                        },
+                    },
+                    y: {
+                        grid: {
+                            color: chartColors.gridColor,
+                        },
+                        ticks: {
+                            color: chartColors.textColor,
+                        },
+                        title: {
+                            display: true,
+                            text: 'APM',
+                            color: chartColors.textColor,
+                        },
+                    },
+                },
+            },
+        });
+    } catch (error) {
+        console.error('Failed to load APM timeline chart:', error);
+    }
+}
+
+async function loadActionBreakdownChart() {
+    try {
+        const response = await fetch('/api/action-breakdown?hours=168');
+        const data = await response.json();
+
+        const ctx = document.getElementById('actionBreakdownChart').getContext('2d');
+
+        if (window.actionBreakdownChart) {
+            window.actionBreakdownChart.destroy();
+        }
+
+        window.actionBreakdownChart = new Chart(ctx, {
+            type: 'doughnut',
+            data: {
+                labels: ['Messages', 'Tool Calls'],
+                datasets: [{
+                    data: [data.total_messages, data.total_tool_calls],
+                    backgroundColor: [chartColors.primary, chartColors.green],
+                    borderColor: chartColors.bg,
+                    borderWidth: 2,
+                }],
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: true,
+                plugins: {
+                    legend: {
+                        display: true,
+                        position: 'bottom',
+                        labels: {
+                            color: chartColors.textColor,
+                            padding: 15,
+                        },
+                    },
+                },
+            },
+        });
+    } catch (error) {
+        console.error('Failed to load action breakdown chart:', error);
+    }
 }
 
 async function loadErrorRateChart() {
@@ -478,18 +609,38 @@ function setupWebSocket() {
             return;
         }
 
-        // Reload charts and session list on any metrics update
-        if (data.update_type === 'session_updated' ||
-            data.update_type === 'session_created' ||
-            data.update_type === 'metrics_update') {
-            loadAllCharts();
+        // Handle different update types
+        switch (data.update_type) {
+            case 'session_updated':
+            case 'session_created':
+            case 'metrics_update':
+                // Reload charts for session-level updates
+                loadAllCharts();
 
-            // If we're on the main page, reload the session list too
-            if (window.location.pathname === '/') {
-                setTimeout(() => {
-                    window.location.reload();
-                }, 500);
-            }
+                // If we're on the main page, reload the session list
+                if (window.location.pathname === '/') {
+                    setTimeout(() => {
+                        window.location.reload();
+                    }, 500);
+                }
+                break;
+
+            case 'tool_call':
+                // Show real-time tool call notification
+                showToast(`Tool call executed in session ${data.session_id?.substring(0, 8)}...`, 'info');
+                // Update live counters if on session detail page
+                updateLiveCounters();
+                break;
+
+            case 'anomaly_detected':
+                // Show alert for anomaly detection
+                showToast(`⚠️ Anomaly detected in session ${data.session_id?.substring(0, 8)}...`, 'warning');
+                // Reload to show new anomaly
+                setTimeout(() => window.location.reload(), 1000);
+                break;
+
+            default:
+                console.log('Unknown update type:', data.update_type);
         }
     };
 
@@ -506,13 +657,61 @@ function setupWebSocket() {
 }
 
 function showConnectionStatus(status) {
-    // You could add a UI indicator here
-    // For now just log to console
     const statusEmoji = {
         'connected': '🟢',
         'disconnected': '🔴',
         'error': '🟠'
     };
     console.log(`${statusEmoji[status] || '⚪'} Connection status: ${status}`);
+
+    // Update visual indicator if it exists
+    const indicator = document.getElementById('ws-status');
+    if (indicator) {
+        indicator.textContent = statusEmoji[status] || '⚪';
+        indicator.title = `WebSocket: ${status}`;
+    }
 }
-</script></head><body><header><h1>⚡ Autopilot Metrics Dashboard</h1><p class="subtitle">Continual Constant Improvement (d-004)</p><nav class="header-nav"><a href="/" class="active">Dashboard</a><a href="/sessions">All Sessions</a><a href="/export/sessions.json">Export JSON</a><a href="/export/sessions.csv">Export CSV</a></nav></header><main><div class="summary-card"><h2>Summary Statistics</h2><div class="stats-grid"><div class="stat"><span class="stat-label">Total Sessions</span><span class="stat-value">4</span></div><div class="stat"><span class="stat-label">Issues Completed</span><span class="stat-value">11</span></div><div class="stat"><span class="stat-label">Total Cost</span><span class="stat-value">$6.50</span></div><div class="stat"><span class="stat-label">Avg Duration</span><span class="stat-value">250s</span></div><div class="stat"><span class="stat-label">Avg Tokens</span><span class="stat-value">15000</span></div><div class="stat"><span class="stat-label">Completion Rate</span><span class="stat-value">85.0%</span></div></div></div><div class="summary-card"><h2>APM (Actions Per Minute)</h2><p class="subtitle" style="margin-bottom: 1rem; color: #666;">Agent velocity metrics • Autopilot vs Claude Code</p><div class="stats-grid"><div class="stat"><span class="stat-label">Autopilot (avg)</span><span class="stat-value" style="color: #10b981;">20.0</span><span class="stat-unit">APM</span></div><div class="stat"><span class="stat-label">Claude Code (avg)</span><span class="stat-value" style="color: #666;">N/A</span><span class="stat-unit"></span></div><div class="stat"><span class="stat-label">Efficiency Ratio</span><span class="stat-value" style="color: #666;">N/A</span><span class="stat-unit"></span></div><div class="stat"><span class="stat-label">Latest Session</span><span class="stat-value">20.0</span><span class="stat-unit">APM</span></div><div class="stat"><span class="stat-label">Performance Tier</span><span class="stat-value" style="color: #10b981;">Productive</span><span class="stat-unit">green</span></div><div class="stat"><span class="stat-label">Total Actions</span><span class="stat-value">140</span><span class="stat-unit">tracked</span></div></div></div><div class="charts-section"><h2>Metrics Trends</h2><div class="charts-grid"><div class="chart-container"><h3>Tool Error Rate (Last 7 Days)</h3><canvas id="errorRateChart"></canvas></div><div class="chart-container"><h3>Completion Rate (Last 7 Days)</h3><canvas id="completionRateChart"></canvas></div><div class="chart-container"><h3>Average Cost per Session (Last 7 Days)</h3><canvas id="costChart"></canvas></div><div class="chart-container"><h3>Token Usage Trend (Last 7 Days)</h3><canvas id="tokensChart"></canvas></div></div></div><div class="sessions-section"><h2>Recent Sessions (4)</h2><table class="sessions-table"><thead><tr><th>Session ID</th><th>Timestamp</th><th>Model</th><th>Duration</th><th>Tokens</th><th>Cost</th><th>Issues</th><th>Velocity</th><th>Status</th></tr></thead><tbody><tr class="status-completed"><td><a href="/session/session-001">session-...</a></td><td title="2025-12-22T00:00:00+00:00">yesterday</td><td>claude-sonnet-4-5</td><td>300s</td><td>15000</td><td>$1.500</td><td>5/6</td><td title="Issues completed per hour">60.00</td><td>Completed</td></tr><tr class="status-crashed"><td><a href="/session/session-002">session-...</a></td><td title="2025-12-22T00:00:00+00:00">yesterday</td><td>claude-sonnet-4-5</td><td>300s</td><td>15000</td><td>$1.500</td><td>0/1</td><td title="Issues completed per hour"><span style="color: #666;">—</span></td><td>Crashed</td></tr><tr class="status-maxturns"><td><a href="/session/session-003">session-...</a></td><td title="2025-12-22T00:00:00+00:00">yesterday</td><td>claude-sonnet-4-5</td><td>300s</td><td>15000</td><td>$1.500</td><td>2/3</td><td title="Issues completed per hour">24.00</td><td>MaxTurns</td></tr><tr class="status-completed"><td><a href="/session/session-004">session-...</a></td><td title="2025-12-22T00:00:00+00:00">yesterday</td><td>claude-sonnet-4-5</td><td>300s</td><td>15000</td><td>$1.500</td><td>4/5</td><td title="Issues completed per hour">48.00</td><td>Completed</td></tr></tbody></table></div></main><footer><p>OpenAgents Autopilot • Real-time metrics powered by WebSocket</p></footer></body></html>
+
+function showToast(message, type = 'info') {
+    const toast = document.createElement('div');
+    toast.className = 'toast toast-' + type;
+    toast.textContent = message;
+    toast.style.cssText = `
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        padding: 1rem 1.5rem;
+        background: var(--bg-tertiary, #1a1a1a);
+        border: 2px solid ${type === 'warning' ? '#fbbf24' : type === 'info' ? '#3b82f6' : '#10b981'};
+        color: white;
+        z-index: 10000;
+        font-weight: 600;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+        animation: slideIn 0.3s ease-out;
+    `;
+
+    document.body.appendChild(toast);
+
+    setTimeout(() => {
+        toast.style.animation = 'slideOut 0.3s ease-out';
+        setTimeout(() => toast.remove(), 300);
+    }, 3000);
+}
+
+function updateLiveCounters() {
+    // If we're on a session detail page, refresh tool call counts
+    const sessionPath = window.location.pathname.match(/\/session\/([^/]+)/);
+    if (sessionPath) {
+        // Fetch updated session data and update counters
+        fetch('/api/sessions/' + sessionPath[1])
+            .then(r => r.json())
+            .then(data => {
+                const toolCallsElem = document.getElementById('live-tool-calls');
+                const errorsElem = document.getElementById('live-errors');
+                if (toolCallsElem) toolCallsElem.textContent = data.tool_calls || 0;
+                if (errorsElem) toolCallsElem.textContent = data.tool_errors || 0;
+            })
+            .catch(err => console.error('Failed to update live counters:', err));
+    }
+}
+</script></head><body><header><div style="display: flex; justify-content: space-between; align-items: center;"><div><h1>⚡ Autopilot Metrics Dashboard</h1><p class="subtitle">Continual Constant Improvement (d-004)</p></div><div style="text-align: right;"><span id="ws-status" style="font-size: 1.5em;" title="WebSocket status">⚪</span><p style="font-size: 0.8em; margin: 0; color: #888;">Live Updates</p></div></div><nav class="header-nav"><a href="/" class="active">Dashboard</a><a href="/sessions">All Sessions</a><a href="/export/sessions.json">Export JSON</a><a href="/export/sessions.csv">Export CSV</a></nav></header><main><div class="summary-card"><h2>Summary Statistics</h2><div class="stats-grid"><div class="stat"><span class="stat-label">Total Sessions</span><span class="stat-value">4</span></div><div class="stat"><span class="stat-label">Issues Completed</span><span class="stat-value">11</span></div><div class="stat"><span class="stat-label">Total Cost</span><span class="stat-value">$6.50</span></div><div class="stat"><span class="stat-label">Avg Duration</span><span class="stat-value">250s</span></div><div class="stat"><span class="stat-label">Avg Tokens</span><span class="stat-value">15000</span></div><div class="stat"><span class="stat-label">Completion Rate</span><span class="stat-value">85.0%</span></div></div></div><div class="summary-card"><h2>APM (Actions Per Minute)</h2><p class="subtitle" style="margin-bottom: 1rem; color: #666;">Agent velocity metrics • Autopilot vs Claude Code</p><div class="stats-grid"><div class="stat"><span class="stat-label">Autopilot (avg)</span><span class="stat-value" style="color: #10b981;">20.0</span><span class="stat-unit">APM</span></div><div class="stat"><span class="stat-label">Claude Code (avg)</span><span class="stat-value" style="color: #666;">N/A</span><span class="stat-unit"></span></div><div class="stat"><span class="stat-label">Efficiency Ratio</span><span class="stat-value" style="color: #666;">N/A</span><span class="stat-unit"></span></div><div class="stat"><span class="stat-label">Latest Session</span><span class="stat-value">20.0</span><span class="stat-unit">APM</span></div><div class="stat"><span class="stat-label">Performance Tier</span><span class="stat-value" style="color: #10b981;">Productive</span><span class="stat-unit">green</span></div><div class="stat"><span class="stat-label">Total Actions</span><span class="stat-value">140</span><span class="stat-unit">tracked</span></div></div></div><div class="charts-section"><h2>Metrics Trends</h2><div class="charts-grid"><div class="chart-container"><h3>APM Timeline (Last 7 Days)</h3><canvas id="apmTimelineChart"></canvas></div><div class="chart-container"><h3>Action Breakdown (Last 7 Days)</h3><canvas id="actionBreakdownChart"></canvas></div><div class="chart-container"><h3>Tool Error Rate (Last 7 Days)</h3><canvas id="errorRateChart"></canvas></div><div class="chart-container"><h3>Completion Rate (Last 7 Days)</h3><canvas id="completionRateChart"></canvas></div><div class="chart-container"><h3>Average Cost per Session (Last 7 Days)</h3><canvas id="costChart"></canvas></div><div class="chart-container"><h3>Token Usage Trend (Last 7 Days)</h3><canvas id="tokensChart"></canvas></div></div></div><div class="sessions-section"><h2>Recent Sessions (4)</h2><table class="sessions-table"><thead><tr><th>Session ID</th><th>Timestamp</th><th>Model</th><th>Duration</th><th>Tokens</th><th>Cost</th><th>Issues</th><th>Velocity</th><th>APM</th><th>Status</th></tr></thead><tbody><tr class="status-completed"><td><a href="/session/session-001">session-...</a></td><td title="2025-12-22T00:00:00+00:00">2 days ago</td><td>claude-sonnet-4-5</td><td>300s</td><td>15000</td><td>$1.500</td><td>5/6</td><td title="Issues completed per hour">60.00</td><td><span class="apm-badge" style="background-color: #10b981; color: white; padding: 2px 6px; border-radius: 3px; font-size: 0.85rem; font-weight: 500;" title="Productive">20.0</span></td><td>Completed</td></tr><tr class="status-crashed"><td><a href="/session/session-002">session-...</a></td><td title="2025-12-22T00:00:00+00:00">2 days ago</td><td>claude-sonnet-4-5</td><td>300s</td><td>15000</td><td>$1.500</td><td>0/1</td><td title="Issues completed per hour"><span style="color: #666;">—</span></td><td><span class="apm-badge" style="background-color: #10b981; color: white; padding: 2px 6px; border-radius: 3px; font-size: 0.85rem; font-weight: 500;" title="Productive">20.0</span></td><td>Crashed</td></tr><tr class="status-maxturns"><td><a href="/session/session-003">session-...</a></td><td title="2025-12-22T00:00:00+00:00">2 days ago</td><td>claude-sonnet-4-5</td><td>300s</td><td>15000</td><td>$1.500</td><td>2/3</td><td title="Issues completed per hour">24.00</td><td><span class="apm-badge" style="background-color: #10b981; color: white; padding: 2px 6px; border-radius: 3px; font-size: 0.85rem; font-weight: 500;" title="Productive">20.0</span></td><td>MaxTurns</td></tr><tr class="status-completed"><td><a href="/session/session-004">session-...</a></td><td title="2025-12-22T00:00:00+00:00">2 days ago</td><td>claude-sonnet-4-5</td><td>300s</td><td>15000</td><td>$1.500</td><td>4/5</td><td title="Issues completed per hour">48.00</td><td><span class="apm-badge" style="background-color: #10b981; color: white; padding: 2px 6px; border-radius: 3px; font-size: 0.85rem; font-weight: 500;" title="Productive">20.0</span></td><td>Completed</td></tr></tbody></table></div></main><footer><p>OpenAgents Autopilot • Real-time metrics powered by WebSocket</p></footer></body></html>
