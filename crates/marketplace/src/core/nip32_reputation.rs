@@ -17,7 +17,6 @@
 //! - **Trusted**: 50-200 jobs, >90% success rate
 //! - **Expert**: 200+ jobs, >95% success rate
 
-use anyhow::Result;
 use nostr::nip32::{Label, LabelEvent, LabelTarget};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -388,7 +387,7 @@ impl ReputationAggregator {
                         "poor" => SkillQuality::Poor,
                         _ => continue,
                     };
-                    metrics.record_skill_quality(skill, quality);
+                    metrics.record_skill_quality(skill.clone(), quality);
                 }
             }
         }

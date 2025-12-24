@@ -2,8 +2,7 @@
 //!
 //! Retrieves TrajectorySession (kind:38030) and TrajectoryEvent (kind:38031) from relays.
 
-use anyhow::{Context, Result};
-use nostr_core::nip_sa::trajectory::{KIND_TRAJECTORY_SESSION, KIND_TRAJECTORY_EVENT};
+use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -50,8 +49,8 @@ pub struct TrajectoryEventData {
 /// # Returns
 /// Complete trajectory with all events in sequence order
 pub async fn fetch_trajectory(
-    session_id: &str,
-    relay_urls: &[String],
+    _session_id: &str,
+    _relay_urls: &[String],
 ) -> Result<FetchedTrajectory> {
     // TODO: Implement actual relay client integration
     // For now, return stub data
@@ -70,8 +69,8 @@ pub async fn fetch_trajectory(
 
 /// Fetch trajectory session metadata only
 pub async fn fetch_trajectory_session(
-    session_id: &str,
-    relay_urls: &[String],
+    _session_id: &str,
+    _relay_urls: &[String],
 ) -> Result<TrajectorySessionData> {
     // TODO: Implement relay query for kind:38030
     Err(anyhow::anyhow!("Not yet implemented"))

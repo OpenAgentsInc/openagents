@@ -3,7 +3,7 @@
 use anyhow::Result;
 use clap::{Args, Subcommand};
 use colored::Colorize;
-use crate::core::nip32_reputation::{TrustTier, ReputationMetrics, ReputationAggregator};
+use crate::core::nip32_reputation::{TrustTier, ReputationAggregator};
 
 /// Reputation commands
 #[derive(Debug, Args)]
@@ -165,6 +165,7 @@ async fn execute_list_by_tier(tier_str: &str, json: bool) -> Result<()> {
     );
     println!("{}", "─".repeat(90).bright_black());
 
+    let providers_count = providers.len();
     for metrics in providers {
         let pubkey_short = if metrics.provider_pubkey.len() > 64 {
             &metrics.provider_pubkey[..64]
@@ -181,7 +182,7 @@ async fn execute_list_by_tier(tier_str: &str, json: bool) -> Result<()> {
     }
 
     println!();
-    println!("{}", format!("Found {} providers", providers.len()).bright_black());
+    println!("{}", format!("Found {} providers", providers_count).bright_black());
     println!();
 
     Ok(())

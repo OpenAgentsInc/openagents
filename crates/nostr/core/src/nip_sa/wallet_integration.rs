@@ -3,7 +3,7 @@
 //! This module provides integration between NIP-SA agent state and the Spark wallet,
 //! enabling agents to query their balance and include it in encrypted state updates.
 
-use super::state::{AgentStateContent, StateError};
+use super::state::AgentStateContent;
 
 /// Wallet balance breakdown
 #[derive(Debug, Clone)]

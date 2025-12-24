@@ -91,7 +91,7 @@ impl BudgetTracker {
         // Convert to UTC date
         let days = now / 86400;
         let epoch_days = 719_163; // Days from year 0 to Unix epoch (1970-01-01)
-        let total_days = epoch_days + days;
+        let _total_days = epoch_days + days;
 
         // Calculate year (approximation)
         let year = 1970 + (days / 365);

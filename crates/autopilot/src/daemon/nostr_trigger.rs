@@ -9,10 +9,9 @@
 //! When a trigger fires, it signals the daemon supervisor to spawn a worker.
 
 use anyhow::{Context, Result};
-use nostr_core::nip_sa::schedule::{AgentSchedule, TriggerType, KIND_AGENT_SCHEDULE};
-use nostr_core::{Event, Filter, Kind};
+use nostr::nip_sa::schedule::{AgentSchedule, TriggerType};
+use nostr::Event;
 use std::collections::HashSet;
-use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::mpsc;
 use tokio::time::sleep;
@@ -133,7 +132,7 @@ impl NostrTrigger {
     }
 
     /// Check for new Nostr events that match triggers
-    async fn check_nostr_events(&self, tx: &mpsc::UnboundedSender<TriggerEvent>) -> Result<()> {
+    async fn check_nostr_events(&self, _tx: &mpsc::UnboundedSender<TriggerEvent>) -> Result<()> {
         // TODO: Connect to relays and subscribe to filters
         // For now, this is a stub that will be implemented when we have relay client
 
@@ -165,6 +164,7 @@ impl NostrTrigger {
     }
 
     /// Parse a mention event and send trigger
+    #[allow(dead_code)]
     fn handle_mention(&self, event: &Event, tx: &mpsc::UnboundedSender<TriggerEvent>) -> Result<()> {
         eprintln!("NostrTrigger: Mention detected from {}", event.pubkey);
         tx.send(TriggerEvent::Mention {
@@ -175,6 +175,7 @@ impl NostrTrigger {
     }
 
     /// Parse a DM event and send trigger
+    #[allow(dead_code)]
     fn handle_dm(&self, event: &Event, tx: &mpsc::UnboundedSender<TriggerEvent>) -> Result<()> {
         eprintln!("NostrTrigger: DM received from {}", event.pubkey);
         tx.send(TriggerEvent::DirectMessage {
@@ -185,6 +186,7 @@ impl NostrTrigger {
     }
 
     /// Parse a zap event and send trigger
+    #[allow(dead_code)]
     fn handle_zap(&self, event: &Event, tx: &mpsc::UnboundedSender<TriggerEvent>) -> Result<()> {
         // Extract amount from zap receipt (bolt11 invoice)
         let amount_msats = extract_zap_amount(event).unwrap_or(0);
@@ -199,6 +201,7 @@ impl NostrTrigger {
 }
 
 /// Extract zap amount from a zap receipt event
+#[allow(dead_code)]
 fn extract_zap_amount(event: &Event) -> Option<u64> {
     // Look for "bolt11" tag
     for tag in &event.tags {
