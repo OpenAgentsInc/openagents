@@ -694,4 +694,221 @@ mod tests {
         assert_eq!(pane.priority, Priority::Urgent);
         assert!(pane.glow_color.is_some(), "Urgent priority should auto-enable glow");
     }
+
+    #[tokio::test]
+    async fn test_ui_pane_tool_resize() {
+        let manager = Arc::new(RwLock::new(PaneManager::new()));
+        {
+            let mut mgr = manager.write().unwrap();
+            mgr.add_pane(Pane::new("test", "Test"));
+        }
+        
+        let tool = UiPaneTool::new(manager.clone());
+        
+        let result = tool.execute(serde_json::json!({
+            "action": "ResizePane",
+            "id": "test",
+            "size": { "width": 600.0, "height": 400.0 }
+        })).await.unwrap();
+        
+        assert!(result.success);
+        
+        let mgr = manager.read().unwrap();
+        let pane = mgr.get_pane("test").unwrap();
+        assert_eq!(pane.size.width, 600.0);
+        assert_eq!(pane.size.height, 400.0);
+    }
+
+    #[tokio::test]
+    async fn test_ui_pane_tool_set_state() {
+        let manager = Arc::new(RwLock::new(PaneManager::new()));
+        {
+            let mut mgr = manager.write().unwrap();
+            mgr.add_pane(Pane::new("test", "Test"));
+        }
+        
+        let tool = UiPaneTool::new(manager.clone());
+        
+        let result = tool.execute(serde_json::json!({
+            "action": "SetState",
+            "id": "test",
+            "state": "Minimized"
+        })).await.unwrap();
+        
+        assert!(result.success);
+        
+        let mgr = manager.read().unwrap();
+        let pane = mgr.get_pane("test").unwrap();
+        assert_eq!(pane.state, PaneState::Minimized);
+    }
+
+    #[tokio::test]
+    async fn test_ui_pane_tool_frame_style() {
+        let manager = Arc::new(RwLock::new(PaneManager::new()));
+        {
+            let mut mgr = manager.write().unwrap();
+            mgr.add_pane(Pane::new("test", "Test"));
+        }
+        
+        let tool = UiPaneTool::new(manager.clone());
+        
+        let result = tool.execute(serde_json::json!({
+            "action": "SetFrameStyle",
+            "id": "test",
+            "style": "Kranox"
+        })).await.unwrap();
+        
+        assert!(result.success);
+        
+        let mgr = manager.read().unwrap();
+        let pane = mgr.get_pane("test").unwrap();
+        assert_eq!(pane.frame_style, FrameStyle::Kranox);
+    }
+
+    #[tokio::test]
+    async fn test_ui_pane_tool_glow() {
+        let manager = Arc::new(RwLock::new(PaneManager::new()));
+        {
+            let mut mgr = manager.write().unwrap();
+            mgr.add_pane(Pane::new("test", "Test"));
+        }
+        
+        let tool = UiPaneTool::new(manager.clone());
+        
+        let result = tool.execute(serde_json::json!({
+            "action": "SetGlow",
+            "id": "test",
+            "color": "#00ff00"
+        })).await.unwrap();
+        
+        assert!(result.success);
+        
+        let mgr = manager.read().unwrap();
+        let pane = mgr.get_pane("test").unwrap();
+        assert_eq!(pane.glow_color, Some("#00ff00".to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_ui_pane_tool_list() {
+        let manager = Arc::new(RwLock::new(PaneManager::new()));
+        {
+            let mut mgr = manager.write().unwrap();
+            mgr.add_pane(Pane::new("pane1", "First"));
+            mgr.add_pane(Pane::new("pane2", "Second"));
+        }
+        
+        let tool = UiPaneTool::new(manager.clone());
+        
+        let result = tool.execute(serde_json::json!({
+            "action": "ListPanes"
+        })).await.unwrap();
+        
+        assert!(result.success);
+        assert!(result.output.contains("pane1"));
+        assert!(result.output.contains("pane2"));
+    }
+
+    #[tokio::test]
+    async fn test_ui_pane_tool_close() {
+        let manager = Arc::new(RwLock::new(PaneManager::new()));
+        {
+            let mut mgr = manager.write().unwrap();
+            mgr.add_pane(Pane::new("test", "Test"));
+        }
+        
+        let tool = UiPaneTool::new(manager.clone());
+        
+        let result = tool.execute(serde_json::json!({
+            "action": "ClosePane",
+            "id": "test"
+        })).await.unwrap();
+        
+        assert!(result.success);
+        
+        let mgr = manager.read().unwrap();
+        let pane = mgr.get_pane("test").unwrap();
+        assert_eq!(pane.state, PaneState::SlideOut);
+    }
+
+    #[tokio::test]
+    async fn test_ui_pane_tool_focus() {
+        let manager = Arc::new(RwLock::new(PaneManager::new()));
+        {
+            let mut mgr = manager.write().unwrap();
+            mgr.add_pane(Pane::new("pane1", "First"));
+            mgr.add_pane(Pane::new("pane2", "Second"));
+        }
+        
+        let tool = UiPaneTool::new(manager.clone());
+        
+        let result = tool.execute(serde_json::json!({
+            "action": "Focus",
+            "id": "pane1"
+        })).await.unwrap();
+        
+        assert!(result.success);
+        
+        let mgr = manager.read().unwrap();
+        assert_eq!(mgr.get_focused_pane(), Some("pane1"));
+    }
+
+    #[tokio::test]
+    async fn test_ui_pane_tool_request_attention() {
+        let manager = Arc::new(RwLock::new(PaneManager::new()));
+        {
+            let mut mgr = manager.write().unwrap();
+            mgr.add_pane(Pane::new("alert", "Alert"));
+        }
+        
+        let tool = UiPaneTool::new(manager.clone());
+        
+        let result = tool.execute(serde_json::json!({
+            "action": "RequestAttention",
+            "id": "alert",
+            "message": "Error detected!"
+        })).await.unwrap();
+        
+        assert!(result.success);
+        assert!(result.output.contains("Error detected!"));
+        
+        let mgr = manager.read().unwrap();
+        let pane = mgr.get_pane("alert").unwrap();
+        assert_eq!(pane.priority, Priority::Urgent);
+        assert_eq!(pane.glow_color, Some("#ff0000".to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_ui_pane_tool_not_found() {
+        let manager = Arc::new(RwLock::new(PaneManager::new()));
+        let tool = UiPaneTool::new(manager.clone());
+        
+        let result = tool.execute(serde_json::json!({
+            "action": "MovePane",
+            "id": "nonexistent",
+            "position": { "x": 0.0, "y": 0.0 }
+        })).await.unwrap();
+        
+        assert!(!result.success);
+        assert!(result.error.unwrap().contains("not found"));
+    }
+
+    #[tokio::test]
+    async fn test_ui_pane_tool_animate() {
+        let manager = Arc::new(RwLock::new(PaneManager::new()));
+        {
+            let mut mgr = manager.write().unwrap();
+            mgr.add_pane(Pane::new("test", "Test"));
+        }
+        
+        let tool = UiPaneTool::new(manager.clone());
+        
+        let result = tool.execute(serde_json::json!({
+            "action": "Animate",
+            "id": "test",
+            "animation": { "Pulse": { "count": 3, "duration_ms": 500 } }
+        })).await.unwrap();
+        
+        assert!(result.success);
+        assert!(result.output.contains("animation"));
+    }
 }

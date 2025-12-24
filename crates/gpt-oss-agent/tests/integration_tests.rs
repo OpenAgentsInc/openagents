@@ -32,7 +32,7 @@ async fn test_agent_lists_all_tools() {
     let agent = GptOssAgent::new(config).await.unwrap();
     let tools = agent.list_tools().await;
 
-    assert_eq!(tools.len(), 3, "Should have exactly 3 tools");
+    assert_eq!(tools.len(), 4, "Should have exactly 4 tools");
     assert!(
         tools.contains(&"browser".to_string()),
         "Should have browser tool"
@@ -44,6 +44,10 @@ async fn test_agent_lists_all_tools() {
     assert!(
         tools.contains(&"apply_patch".to_string()),
         "Should have apply_patch tool"
+    );
+    assert!(
+        tools.contains(&"ui_pane".to_string()),
+        "Should have ui_pane tool"
     );
 }
 
@@ -57,7 +61,7 @@ async fn test_agent_get_tool_schemas() {
 
     let agent = GptOssAgent::new(config).await.unwrap();
 
-    for tool_name in &["browser", "python", "apply_patch"] {
+    for tool_name in &["browser", "python", "apply_patch", "ui_pane"] {
         let schema = agent.get_tool_schema(tool_name).await;
         assert!(
             schema.is_some(),

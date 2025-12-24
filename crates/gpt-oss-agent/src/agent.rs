@@ -12,8 +12,9 @@ use gpt_oss::{GptOssClient, GptOssRequest};
 use crate::error::Result;
 use crate::session::GptOssSession;
 use crate::tools::{
-    apply_patch::ApplyPatchTool, browser::BrowserTool, python::PythonTool, Tool, ToolRequest,
-    ToolResult,
+    apply_patch::ApplyPatchTool, browser::BrowserTool, python::PythonTool,
+    ui_pane::{PaneManager, UiPaneTool},
+    Tool, ToolRequest, ToolResult,
 };
 
 /// GPT-OSS agent configuration
@@ -55,10 +56,12 @@ impl GptOssAgent {
             .default_model(&config.model)
             .build()?;
 
+        let pane_manager = Arc::new(std::sync::RwLock::new(PaneManager::new()));
         let tools: Vec<Arc<dyn Tool>> = vec![
             Arc::new(BrowserTool::new()),
             Arc::new(PythonTool::new()),
             Arc::new(ApplyPatchTool::new(config.workspace_root.clone())),
+            Arc::new(UiPaneTool::new(pane_manager)),
         ];
 
         Ok(Self {
@@ -153,9 +156,10 @@ mod tests {
         let config = GptOssAgentConfig::default();
         let agent = GptOssAgent::new(config).await.unwrap();
         let tools = agent.list_tools().await;
-        assert_eq!(tools.len(), 3);
+        assert_eq!(tools.len(), 4);
         assert!(tools.contains(&"browser".to_string()));
         assert!(tools.contains(&"python".to_string()));
         assert!(tools.contains(&"apply_patch".to_string()));
+        assert!(tools.contains(&"ui_pane".to_string()));
     }
 }
