@@ -5,7 +5,7 @@ use std::path::Path;
 
 /// Current schema version (used in tests)
 #[cfg(test)]
-const SCHEMA_VERSION: i32 = 1;
+const SCHEMA_VERSION: i32 = 2;
 
 /// Initialize the database with migrations
 pub fn init_db(path: &Path) -> Result<Connection> {
@@ -25,6 +25,9 @@ pub fn init_db(path: &Path) -> Result<Connection> {
     if version < 1 {
         migrate_v1(&conn)?;
     }
+    if version < 2 {
+        migrate_v2(&conn)?;
+    }
 
     Ok(conn)
 }
@@ -41,6 +44,9 @@ pub fn init_memory_db() -> Result<Connection> {
     let version = get_schema_version(&conn)?;
     if version < 1 {
         migrate_v1(&conn)?;
+    }
+    if version < 2 {
+        migrate_v2(&conn)?;
     }
 
     Ok(conn)
@@ -131,6 +137,73 @@ fn migrate_v1(conn: &Connection) -> Result<()> {
     )?;
 
     set_schema_version(conn, 1)?;
+    Ok(())
+}
+
+fn migrate_v2(conn: &Connection) -> Result<()> {
+    conn.execute_batch(
+        r#"
+        -- Payment tracking table
+        CREATE TABLE IF NOT EXISTS payments (
+            id TEXT PRIMARY KEY,
+            payment_type TEXT NOT NULL,
+            item_id TEXT NOT NULL,
+            amount_msats INTEGER NOT NULL,
+            invoice TEXT NOT NULL,
+            payment_hash TEXT,
+            preimage TEXT,
+            status TEXT NOT NULL,
+            created_at INTEGER NOT NULL,
+            completed_at INTEGER
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_payments_item_id ON payments(item_id);
+        CREATE INDEX IF NOT EXISTS idx_payments_status ON payments(status);
+        CREATE INDEX IF NOT EXISTS idx_payments_type ON payments(payment_type);
+        CREATE INDEX IF NOT EXISTS idx_payments_hash ON payments(payment_hash);
+
+        -- Earnings tracking table
+        CREATE TABLE IF NOT EXISTS earnings (
+            id TEXT PRIMARY KEY,
+            type TEXT NOT NULL,
+            item_id TEXT NOT NULL,
+            gross_sats INTEGER NOT NULL,
+            platform_fee_sats INTEGER NOT NULL,
+            net_sats INTEGER NOT NULL,
+            period_start INTEGER NOT NULL,
+            period_end INTEGER NOT NULL,
+            paid_out INTEGER NOT NULL DEFAULT 0,
+            payment_preimage TEXT,
+            created_at INTEGER NOT NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_earnings_type ON earnings(type);
+        CREATE INDEX IF NOT EXISTS idx_earnings_item_id ON earnings(item_id);
+        CREATE INDEX IF NOT EXISTS idx_earnings_paid_out ON earnings(paid_out);
+
+        -- Revenue buckets table (minute-level tracking)
+        CREATE TABLE IF NOT EXISTS revenue_buckets (
+            id TEXT PRIMARY KEY,
+            bucket_minute INTEGER NOT NULL,
+            type TEXT NOT NULL,
+            item_id TEXT NOT NULL,
+            gross_sats INTEGER NOT NULL,
+            creator_sats INTEGER NOT NULL,
+            compute_sats INTEGER NOT NULL,
+            platform_sats INTEGER NOT NULL,
+            referrer_sats INTEGER,
+            split_version INTEGER NOT NULL,
+            created_at INTEGER NOT NULL,
+            UNIQUE(bucket_minute, type, item_id)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_revenue_buckets_minute ON revenue_buckets(bucket_minute);
+        CREATE INDEX IF NOT EXISTS idx_revenue_buckets_type ON revenue_buckets(type);
+        CREATE INDEX IF NOT EXISTS idx_revenue_buckets_item_id ON revenue_buckets(item_id);
+        "#,
+    )?;
+
+    set_schema_version(conn, 2)?;
     Ok(())
 }
 

@@ -5,3 +5,4 @@ pub mod bidding;
 pub mod reputation;
 pub mod licensing;
 pub mod payments;
+pub mod revenue;
