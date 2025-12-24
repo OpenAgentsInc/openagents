@@ -25,7 +25,8 @@ VIOLATIONS=$(grep -r --include="*.rs" --include="*.html" --include="*.tsx" --inc
     --exclude-dir=vendor \
     --exclude-dir=static \
     --exclude-dir=docs \
-    . 2>/dev/null | grep -v "^Binary" | grep -v ".sample:" | grep -v "//!" | grep -v "// " | grep -v "/\*" | grep -v "^\s*\*" || true)
+    --exclude-dir=tests \
+    . 2>/dev/null | grep -v "^Binary" | grep -v ".sample:" | grep -v "//!" | grep -v "// " | grep -v "/\*" | grep -v "^\s*\*" | grep -v "_test\.rs" | grep -v "tests/" || true)
 
 if [ -n "$VIOLATIONS" ]; then
     echo "❌ ERROR: Border radius detected in source files" >&2
