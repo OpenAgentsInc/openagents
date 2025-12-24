@@ -4,15 +4,138 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 use anyhow::Result;
-use gtk::glib;
-use gtk::prelude::*;
-use wry::WebViewBuilderExtUnix;
 
 use super::server::start_server;
 
 /// Run the unified OpenAgents GUI
 pub fn run() -> Result<()> {
     tracing::info!("Starting OpenAgents Desktop...");
+
+    #[cfg(target_os = "macos")]
+    {
+        run_macos()
+    }
+
+    #[cfg(any(
+        target_os = "linux",
+        target_os = "dragonfly",
+        target_os = "freebsd",
+        target_os = "netbsd",
+        target_os = "openbsd",
+    ))]
+    {
+        run_linux()
+    }
+
+    #[cfg(not(any(
+        target_os = "macos",
+        target_os = "linux",
+        target_os = "dragonfly",
+        target_os = "freebsd",
+        target_os = "netbsd",
+        target_os = "openbsd",
+    )))]
+    {
+        Err(anyhow::anyhow!("Unsupported platform for GUI"))
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn run_macos() -> Result<()> {
+    use tao::{
+        event::{Event, WindowEvent},
+        event_loop::{ControlFlow, EventLoop},
+        window::WindowBuilder,
+    };
+
+    // Shared shutdown signal
+    let shutdown = Arc::new(AtomicBool::new(false));
+    let shutdown_clone = shutdown.clone();
+
+    // Start tokio runtime + actix server in background thread
+    let (port_tx, port_rx) = std::sync::mpsc::channel();
+
+    std::thread::spawn(move || {
+        let rt = tokio::runtime::Builder::new_multi_thread()
+            .enable_all()
+            .build()
+            .expect("tokio runtime");
+
+        rt.block_on(async move {
+            let port = start_server().await.expect("start server");
+            port_tx.send(port).expect("send port");
+
+            // Wait for shutdown signal or Ctrl+C
+            loop {
+                tokio::select! {
+                    _ = tokio::signal::ctrl_c() => {
+                        tracing::info!("Received Ctrl+C, shutting down...");
+                        shutdown_clone.store(true, Ordering::SeqCst);
+                        break;
+                    }
+                    _ = tokio::time::sleep(tokio::time::Duration::from_millis(100)) => {
+                        if shutdown_clone.load(Ordering::SeqCst) {
+                            break;
+                        }
+                    }
+                }
+            }
+        });
+    });
+
+    // Wait for server to start
+    let port = port_rx.recv().expect("receive port from server thread");
+    println!("OPENAGENTS_PORT={}", port);
+    tracing::info!("Server running on http://127.0.0.1:{}", port);
+
+    // Create event loop and window using tao
+    let event_loop = EventLoop::new();
+    let window = WindowBuilder::new()
+        .with_title("OpenAgents")
+        .with_inner_size(tao::dpi::LogicalSize::new(1200.0, 800.0))
+        .build(&event_loop)
+        .map_err(|e| anyhow::anyhow!("Failed to create window: {}", e))?;
+
+    // Create webview
+    let url = format!("http://127.0.0.1:{}", port);
+    let _webview = wry::WebViewBuilder::new()
+        .with_url(&url)
+        .build(&window)
+        .map_err(|e| anyhow::anyhow!("Failed to create webview: {}", e))?;
+
+    // Run event loop
+    let shutdown_for_event = shutdown.clone();
+    event_loop.run(move |event, _, control_flow| {
+        *control_flow = ControlFlow::Wait;
+
+        if shutdown_for_event.load(Ordering::SeqCst) {
+            *control_flow = ControlFlow::Exit;
+        }
+
+        match event {
+            Event::WindowEvent {
+                event: WindowEvent::CloseRequested,
+                ..
+            } => {
+                shutdown.store(true, Ordering::SeqCst);
+                *control_flow = ControlFlow::Exit;
+            }
+            _ => {}
+        }
+    });
+}
+
+#[cfg(any(
+    target_os = "linux",
+    target_os = "dragonfly",
+    target_os = "freebsd",
+    target_os = "netbsd",
+    target_os = "openbsd",
+))]
+fn run_linux() -> Result<()> {
+    use gtk::glib;
+    use gtk::prelude::*;
+    use wry::WebViewBuilderExtUnix;
 
     // Workaround for webkit2gtk Wayland DMABUF issue
     // The DMABUF renderer causes "Error 71 (Protocol error) dispatching to Wayland display"
