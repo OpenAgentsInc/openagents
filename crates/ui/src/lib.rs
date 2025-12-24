@@ -26,6 +26,7 @@
 //! });
 //! ```
 
+pub mod acp;
 mod agent_selector;
 mod button;
 mod chat_pane;

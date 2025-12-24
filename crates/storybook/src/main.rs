@@ -45,6 +45,25 @@ use stories::organisms::recorder::sections::recorder_sections_story;
 use stories::atoms::base_document::base_document_story;
 use stories::atoms::button::button_story;
 use stories::atoms::claude_status::claude_status_story;
+// ACP stories
+use stories::acp::index::acp_index_story;
+use stories::acp::demo::acp_demo_story;
+use stories::acp::atoms::atoms_index_story as acp_atoms_index_story;
+use stories::acp::atoms::tool_icon::tool_icon_story;
+use stories::acp::atoms::tool_status_badge::tool_status_badge_story;
+use stories::acp::atoms::permission_button::permission_button_story;
+use stories::acp::atoms::mode_badge::mode_badge_story;
+use stories::acp::atoms::model_badge::model_badge_story;
+use stories::acp::atoms::thinking_toggle::thinking_toggle_story;
+use stories::acp::atoms::checkpoint_badge::checkpoint_badge_story;
+use stories::acp::atoms::feedback_button::feedback_button_story;
+use stories::acp::atoms::content_type_icon::content_type_icon_story;
+use stories::acp::atoms::entry_marker::entry_marker_story;
+use stories::acp::atoms::keybinding_hint::keybinding_hint_story;
+use stories::acp::atoms::streaming_indicator::streaming_indicator_story;
+use stories::acp::molecules::molecules_index_story as acp_molecules_index_story;
+use stories::acp::organisms::organisms_index_story as acp_organisms_index_story;
+use stories::acp::sections::sections_index_story as acp_sections_index_story;
 use ui::{TAILWIND_CDN, TAILWIND_THEME};
 
 fn sidebar_nav(active_story: &str) -> Markup {
@@ -87,6 +106,26 @@ fn sidebar_nav(active_story: &str) -> Markup {
                 a href="/stories/recorder/atoms/blob-ref" class=(link_class("recorder/atoms/blob-ref")) { "Blob Ref" }
                 a href="/stories/recorder/atoms/redacted-value" class=(link_class("recorder/atoms/redacted-value")) { "Redacted Value" }
                 a href="/stories/recorder/atoms/result-arrow" class=(link_class("recorder/atoms/result-arrow")) { "Result Arrow" }
+                h2 class="uppercase text-muted-foreground mb-1 mt-4 pl-1 tracking-wide text-xs" { "ACP" }
+                a href="/stories/acp" class=(link_class("acp")) { "ACP Index" }
+                a href="/stories/acp/atoms" class=(link_class("acp/atoms")) { "ACP Atoms" }
+                a href="/stories/acp/molecules" class=(link_class("acp/molecules")) { "ACP Molecules" }
+                a href="/stories/acp/organisms" class=(link_class("acp/organisms")) { "ACP Organisms" }
+                a href="/stories/acp/sections" class=(link_class("acp/sections")) { "ACP Sections" }
+                a href="/stories/acp/demo" class=(link_class("acp/demo")) { "ACP Demo" }
+                h2 class="uppercase text-muted-foreground mb-1 mt-3 pl-1 tracking-wide text-xs" { "ACP Atoms" }
+                a href="/stories/acp/atoms/tool-icon" class=(link_class("acp/atoms/tool-icon")) { "Tool Icon" }
+                a href="/stories/acp/atoms/tool-status-badge" class=(link_class("acp/atoms/tool-status-badge")) { "Tool Status Badge" }
+                a href="/stories/acp/atoms/permission-button" class=(link_class("acp/atoms/permission-button")) { "Permission Button" }
+                a href="/stories/acp/atoms/mode-badge" class=(link_class("acp/atoms/mode-badge")) { "Mode Badge" }
+                a href="/stories/acp/atoms/model-badge" class=(link_class("acp/atoms/model-badge")) { "Model Badge" }
+                a href="/stories/acp/atoms/thinking-toggle" class=(link_class("acp/atoms/thinking-toggle")) { "Thinking Toggle" }
+                a href="/stories/acp/atoms/checkpoint-badge" class=(link_class("acp/atoms/checkpoint-badge")) { "Checkpoint Badge" }
+                a href="/stories/acp/atoms/feedback-button" class=(link_class("acp/atoms/feedback-button")) { "Feedback Button" }
+                a href="/stories/acp/atoms/content-type-icon" class=(link_class("acp/atoms/content-type-icon")) { "Content Type Icon" }
+                a href="/stories/acp/atoms/entry-marker" class=(link_class("acp/atoms/entry-marker")) { "Entry Marker" }
+                a href="/stories/acp/atoms/keybinding-hint" class=(link_class("acp/atoms/keybinding-hint")) { "Keybinding Hint" }
+                a href="/stories/acp/atoms/streaming-indicator" class=(link_class("acp/atoms/streaming-indicator")) { "Streaming Indicator" }
                 h2 class="uppercase text-muted-foreground mb-1 mt-4 pl-1 tracking-wide text-xs" { "Screens" }
                 p class="text-muted-foreground text-xs pl-1 py-1" { "No stories yet" }
                 h2 class="uppercase text-muted-foreground mb-1 mt-4 pl-1 tracking-wide text-xs" { "Layouts" }
@@ -359,6 +398,151 @@ async fn recorder_demo_page() -> impl Responder {
         .body(html.into_string())
 }
 
+// ACP handlers
+async fn acp_index_page() -> impl Responder {
+    let content = acp_index_story();
+    let html = base_layout("ACP", "acp", content);
+    HttpResponse::Ok()
+        .content_type("text/html; charset=utf-8")
+        .body(html.into_string())
+}
+
+async fn acp_atoms_page() -> impl Responder {
+    let content = acp_atoms_index_story();
+    let html = base_layout("ACP Atoms", "acp/atoms", content);
+    HttpResponse::Ok()
+        .content_type("text/html; charset=utf-8")
+        .body(html.into_string())
+}
+
+async fn acp_molecules_page() -> impl Responder {
+    let content = acp_molecules_index_story();
+    let html = base_layout("ACP Molecules", "acp/molecules", content);
+    HttpResponse::Ok()
+        .content_type("text/html; charset=utf-8")
+        .body(html.into_string())
+}
+
+async fn acp_organisms_page() -> impl Responder {
+    let content = acp_organisms_index_story();
+    let html = base_layout("ACP Organisms", "acp/organisms", content);
+    HttpResponse::Ok()
+        .content_type("text/html; charset=utf-8")
+        .body(html.into_string())
+}
+
+async fn acp_sections_page() -> impl Responder {
+    let content = acp_sections_index_story();
+    let html = base_layout("ACP Sections", "acp/sections", content);
+    HttpResponse::Ok()
+        .content_type("text/html; charset=utf-8")
+        .body(html.into_string())
+}
+
+async fn acp_demo_page() -> impl Responder {
+    let content = acp_demo_story();
+    let html = base_layout("ACP Demo", "acp/demo", content);
+    HttpResponse::Ok()
+        .content_type("text/html; charset=utf-8")
+        .body(html.into_string())
+}
+
+async fn acp_atom_tool_icon_page() -> impl Responder {
+    let content = tool_icon_story();
+    let html = base_layout("Tool Icon", "acp/atoms/tool-icon", content);
+    HttpResponse::Ok()
+        .content_type("text/html; charset=utf-8")
+        .body(html.into_string())
+}
+
+async fn acp_atom_tool_status_badge_page() -> impl Responder {
+    let content = tool_status_badge_story();
+    let html = base_layout("Tool Status Badge", "acp/atoms/tool-status-badge", content);
+    HttpResponse::Ok()
+        .content_type("text/html; charset=utf-8")
+        .body(html.into_string())
+}
+
+async fn acp_atom_permission_button_page() -> impl Responder {
+    let content = permission_button_story();
+    let html = base_layout("Permission Button", "acp/atoms/permission-button", content);
+    HttpResponse::Ok()
+        .content_type("text/html; charset=utf-8")
+        .body(html.into_string())
+}
+
+async fn acp_atom_mode_badge_page() -> impl Responder {
+    let content = mode_badge_story();
+    let html = base_layout("Mode Badge", "acp/atoms/mode-badge", content);
+    HttpResponse::Ok()
+        .content_type("text/html; charset=utf-8")
+        .body(html.into_string())
+}
+
+async fn acp_atom_model_badge_page() -> impl Responder {
+    let content = model_badge_story();
+    let html = base_layout("Model Badge", "acp/atoms/model-badge", content);
+    HttpResponse::Ok()
+        .content_type("text/html; charset=utf-8")
+        .body(html.into_string())
+}
+
+async fn acp_atom_thinking_toggle_page() -> impl Responder {
+    let content = thinking_toggle_story();
+    let html = base_layout("Thinking Toggle", "acp/atoms/thinking-toggle", content);
+    HttpResponse::Ok()
+        .content_type("text/html; charset=utf-8")
+        .body(html.into_string())
+}
+
+async fn acp_atom_checkpoint_badge_page() -> impl Responder {
+    let content = checkpoint_badge_story();
+    let html = base_layout("Checkpoint Badge", "acp/atoms/checkpoint-badge", content);
+    HttpResponse::Ok()
+        .content_type("text/html; charset=utf-8")
+        .body(html.into_string())
+}
+
+async fn acp_atom_feedback_button_page() -> impl Responder {
+    let content = feedback_button_story();
+    let html = base_layout("Feedback Button", "acp/atoms/feedback-button", content);
+    HttpResponse::Ok()
+        .content_type("text/html; charset=utf-8")
+        .body(html.into_string())
+}
+
+async fn acp_atom_content_type_icon_page() -> impl Responder {
+    let content = content_type_icon_story();
+    let html = base_layout("Content Type Icon", "acp/atoms/content-type-icon", content);
+    HttpResponse::Ok()
+        .content_type("text/html; charset=utf-8")
+        .body(html.into_string())
+}
+
+async fn acp_atom_entry_marker_page() -> impl Responder {
+    let content = entry_marker_story();
+    let html = base_layout("Entry Marker", "acp/atoms/entry-marker", content);
+    HttpResponse::Ok()
+        .content_type("text/html; charset=utf-8")
+        .body(html.into_string())
+}
+
+async fn acp_atom_keybinding_hint_page() -> impl Responder {
+    let content = keybinding_hint_story();
+    let html = base_layout("Keybinding Hint", "acp/atoms/keybinding-hint", content);
+    HttpResponse::Ok()
+        .content_type("text/html; charset=utf-8")
+        .body(html.into_string())
+}
+
+async fn acp_atom_streaming_indicator_page() -> impl Responder {
+    let content = streaming_indicator_story();
+    let html = base_layout("Streaming Indicator", "acp/atoms/streaming-indicator", content);
+    HttpResponse::Ok()
+        .content_type("text/html; charset=utf-8")
+        .body(html.into_string())
+}
+
 #[tokio::main]
 async fn main() -> std::io::Result<()> {
     // Read port from environment variable or use default
@@ -394,6 +578,25 @@ async fn main() -> std::io::Result<()> {
             .route("/stories/recorder/atoms/blob-ref", web::get().to(atoms_blob_ref_page))
             .route("/stories/recorder/atoms/redacted-value", web::get().to(atoms_redacted_value_page))
             .route("/stories/recorder/atoms/result-arrow", web::get().to(atoms_result_arrow_page))
+            // ACP routes
+            .route("/stories/acp", web::get().to(acp_index_page))
+            .route("/stories/acp/atoms", web::get().to(acp_atoms_page))
+            .route("/stories/acp/molecules", web::get().to(acp_molecules_page))
+            .route("/stories/acp/organisms", web::get().to(acp_organisms_page))
+            .route("/stories/acp/sections", web::get().to(acp_sections_page))
+            .route("/stories/acp/demo", web::get().to(acp_demo_page))
+            .route("/stories/acp/atoms/tool-icon", web::get().to(acp_atom_tool_icon_page))
+            .route("/stories/acp/atoms/tool-status-badge", web::get().to(acp_atom_tool_status_badge_page))
+            .route("/stories/acp/atoms/permission-button", web::get().to(acp_atom_permission_button_page))
+            .route("/stories/acp/atoms/mode-badge", web::get().to(acp_atom_mode_badge_page))
+            .route("/stories/acp/atoms/model-badge", web::get().to(acp_atom_model_badge_page))
+            .route("/stories/acp/atoms/thinking-toggle", web::get().to(acp_atom_thinking_toggle_page))
+            .route("/stories/acp/atoms/checkpoint-badge", web::get().to(acp_atom_checkpoint_badge_page))
+            .route("/stories/acp/atoms/feedback-button", web::get().to(acp_atom_feedback_button_page))
+            .route("/stories/acp/atoms/content-type-icon", web::get().to(acp_atom_content_type_icon_page))
+            .route("/stories/acp/atoms/entry-marker", web::get().to(acp_atom_entry_marker_page))
+            .route("/stories/acp/atoms/keybinding-hint", web::get().to(acp_atom_keybinding_hint_page))
+            .route("/stories/acp/atoms/streaming-indicator", web::get().to(acp_atom_streaming_indicator_page))
             .route("/__ws_reload", web::get().to(ws_reload))
     });
 
