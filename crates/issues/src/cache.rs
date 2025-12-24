@@ -220,6 +220,7 @@ mod tests {
             agent: "claude".to_string(),
             directive_id: None,
             project_id: None,
+            auto_created: false,
         }
     }
 

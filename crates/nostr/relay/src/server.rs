@@ -760,7 +760,16 @@ mod tests {
 
         let msg = json!(["EVENT", event_json]);
         let metrics = RelayMetrics::new();
-        let responses = handle_nostr_message(&msg, &db, &mut subs, &mut neg_sessions, conn_id, &broadcast_tx, &rate_limiter, &metrics).await;
+        let mut ctx = MessageContext {
+            db: &db,
+            subscriptions: &mut subs,
+            negentropy_sessions: &mut neg_sessions,
+            connection_id: conn_id,
+            broadcast_tx: &broadcast_tx,
+            rate_limiter: &rate_limiter,
+            metrics: &metrics,
+        };
+        let responses = handle_nostr_message(&msg, &mut ctx).await;
 
         assert!(!responses.is_empty());
         let resp = &responses[0];
@@ -784,7 +793,16 @@ mod tests {
         let metrics = RelayMetrics::new();
 
         let msg = json!(["REQ", "sub_123", {"kinds": [1]}]);
-        let responses = handle_nostr_message(&msg, &db, &mut subs, &mut neg_sessions, conn_id, &broadcast_tx, &rate_limiter, &metrics).await;
+        let mut ctx = MessageContext {
+            db: &db,
+            subscriptions: &mut subs,
+            negentropy_sessions: &mut neg_sessions,
+            connection_id: conn_id,
+            broadcast_tx: &broadcast_tx,
+            rate_limiter: &rate_limiter,
+            metrics: &metrics,
+        };
+        let responses = handle_nostr_message(&msg, &mut ctx).await;
 
         assert!(!responses.is_empty());
         // Last response should be EOSE
@@ -814,12 +832,32 @@ mod tests {
 
         // First create a subscription
         let msg1 = json!(["REQ", "sub_123", {"kinds": [1]}]);
-        handle_nostr_message(&msg1, &db, &mut subs, &mut neg_sessions, conn_id, &broadcast_tx, &rate_limiter, &metrics).await;
+        {
+            let mut ctx = MessageContext {
+                db: &db,
+                subscriptions: &mut subs,
+                negentropy_sessions: &mut neg_sessions,
+                connection_id: conn_id,
+                broadcast_tx: &broadcast_tx,
+                rate_limiter: &rate_limiter,
+                metrics: &metrics,
+            };
+            handle_nostr_message(&msg1, &mut ctx).await;
+        }
         assert_eq!(subs.len(), 1);
 
         // Now close it
         let msg2 = json!(["CLOSE", "sub_123"]);
-        let responses = handle_nostr_message(&msg2, &db, &mut subs, &mut neg_sessions, conn_id, &broadcast_tx, &rate_limiter, &metrics).await;
+        let mut ctx = MessageContext {
+            db: &db,
+            subscriptions: &mut subs,
+            negentropy_sessions: &mut neg_sessions,
+            connection_id: conn_id,
+            broadcast_tx: &broadcast_tx,
+            rate_limiter: &rate_limiter,
+            metrics: &metrics,
+        };
+        let responses = handle_nostr_message(&msg2, &mut ctx).await;
 
         assert!(responses.is_empty()); // CLOSE doesn't send responses
         assert_eq!(subs.len(), 0); // Subscription removed
@@ -842,7 +880,16 @@ mod tests {
         let metrics = RelayMetrics::new();
 
         let msg = json!(["UNKNOWN", "data"]);
-        let responses = handle_nostr_message(&msg, &db, &mut subs, &mut neg_sessions, conn_id, &broadcast_tx, &rate_limiter, &metrics).await;
+        let mut ctx = MessageContext {
+            db: &db,
+            subscriptions: &mut subs,
+            negentropy_sessions: &mut neg_sessions,
+            connection_id: conn_id,
+            broadcast_tx: &broadcast_tx,
+            rate_limiter: &rate_limiter,
+            metrics: &metrics,
+        };
+        let responses = handle_nostr_message(&msg, &mut ctx).await;
 
         assert!(!responses.is_empty());
         let resp = &responses[0];
