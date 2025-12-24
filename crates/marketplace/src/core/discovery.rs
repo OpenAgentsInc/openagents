@@ -227,6 +227,8 @@ pub enum SortBy {
     Price,
     /// Sort by number of recommendations (descending)
     Recommendations,
+    /// Sort by reputation-weighted discovery ranking (descending)
+    ReputationWeighted,
 }
 
 impl Default for ProviderQuery {
@@ -307,6 +309,8 @@ impl ProviderQuery {
     }
 
     /// Sort providers according to the sort order
+    ///
+    /// For ReputationWeighted sorting, you must call sort_with_reputation instead.
     pub fn sort(&self, providers: &mut [ComputeProvider]) {
         match self.sort_by {
             SortBy::TrustScore => {
@@ -326,6 +330,37 @@ impl ProviderQuery {
             SortBy::Recommendations => {
                 providers.sort_by(|a, b| b.recommendation_count.cmp(&a.recommendation_count));
             }
+            SortBy::ReputationWeighted => {
+                // Fallback to trust score if reputation data not provided
+                providers.sort_by(|a, b| {
+                    b.trust_score
+                        .partial_cmp(&a.trust_score)
+                        .unwrap_or(std::cmp::Ordering::Equal)
+                });
+            }
+        }
+    }
+
+    /// Sort providers with reputation data
+    ///
+    /// Uses ReputationMetrics to calculate discovery weights that combine
+    /// trust tier, success rate, and review ratings for optimal ranking.
+    pub fn sort_with_reputation(
+        &self,
+        providers: &mut [ComputeProvider],
+        reputation_lookup: &dyn Fn(&str) -> Option<f32>,
+    ) {
+        match self.sort_by {
+            SortBy::ReputationWeighted => {
+                providers.sort_by(|a, b| {
+                    let a_weight = reputation_lookup(&a.pubkey).unwrap_or(a.trust_score);
+                    let b_weight = reputation_lookup(&b.pubkey).unwrap_or(b.trust_score);
+                    b_weight
+                        .partial_cmp(&a_weight)
+                        .unwrap_or(std::cmp::Ordering::Equal)
+                });
+            }
+            _ => self.sort(providers),
         }
     }
 }

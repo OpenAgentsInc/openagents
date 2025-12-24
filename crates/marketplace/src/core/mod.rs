@@ -7,3 +7,4 @@ pub mod licensing;
 pub mod payments;
 pub mod revenue;
 pub mod earnings;
+pub mod nip32_reputation;
