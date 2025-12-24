@@ -663,7 +663,7 @@ fn session_row(session: &SessionMetrics) -> Markup {
                         APMTier::Active => "#3b82f6",
                         APMTier::Baseline => "#6b7280",
                     };
-                    span.apm-badge style=(format!("background-color: {}; color: white; padding: 2px 6px; border-radius: 3px; font-size: 0.85rem; font-weight: 500;", tier_color))
+                    span.apm-badge style=(format!("background-color: {}; color: white; padding: 2px 6px; font-size: 0.85rem; font-weight: 500;", tier_color))
                          title=(tier.name()) {
                         (format!("{:.1}", apm))
                     }
