@@ -19,3 +19,6 @@ reqwest = { version = "0.12", features = ["json"] }
 tempfile = "3.0"
 uuid = { workspace = true }
 chrono = { workspace = true }
+
+[dev-dependencies]
+futures-util = "0.3"
