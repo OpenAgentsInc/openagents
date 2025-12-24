@@ -131,6 +131,48 @@ impl Default for RestartConfig {
     }
 }
 
+/// Nostr trigger configuration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NostrConfig {
+    /// Enable Nostr event triggers
+    pub enabled: bool,
+
+    /// Agent public key (npub format)
+    pub agent_pubkey: Option<String>,
+
+    /// Relay URLs to monitor
+    pub relays: Vec<String>,
+
+    /// Heartbeat interval in seconds (0 = disabled)
+    pub heartbeat_seconds: u64,
+
+    /// Enable mention triggers
+    pub trigger_on_mention: bool,
+
+    /// Enable DM triggers
+    pub trigger_on_dm: bool,
+
+    /// Enable zap triggers
+    pub trigger_on_zap: bool,
+}
+
+impl Default for NostrConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            agent_pubkey: None,
+            relays: vec![
+                "wss://relay.damus.io".to_string(),
+                "wss://nos.lol".to_string(),
+            ],
+            heartbeat_seconds: 900, // 15 minutes
+            trigger_on_mention: true,
+            trigger_on_dm: true,
+            trigger_on_zap: true,
+        }
+    }
+}
+
 /// Main daemon configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DaemonConfig {
@@ -148,6 +190,9 @@ pub struct DaemonConfig {
 
     /// Restart policy
     pub restart: RestartConfig,
+
+    /// Nostr trigger configuration
+    pub nostr: NostrConfig,
 
     /// Control socket path
     pub socket_path: PathBuf,
@@ -176,6 +221,7 @@ impl Default for DaemonConfig {
             project: None,
             memory: MemoryConfig::default(),
             restart: RestartConfig::default(),
+            nostr: NostrConfig::default(),
             socket_path: autopilot_dir.join("autopilotd.sock"),
             pid_file: autopilot_dir.join("autopilotd.pid"),
             model: "sonnet".to_string(),

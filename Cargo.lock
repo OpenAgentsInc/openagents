@@ -3248,6 +3248,7 @@ dependencies = [
  "hex",
  "html-escape",
  "keyring 4.0.0-alpha.5",
+ "keyring-core",
  "maud 0.26.0",
  "nostr",
  "nostr-client",
@@ -4711,6 +4712,7 @@ dependencies = [
  "actix-web",
  "actix-ws",
  "anyhow",
+ "bip39",
  "chrono",
  "clap",
  "colored 3.0.0",
@@ -4720,6 +4722,7 @@ dependencies = [
  "nostr",
  "nostr-client",
  "nostr-relay",
+ "openagents-spark",
  "regex",
  "rusqlite",
  "serde",
@@ -4734,6 +4737,7 @@ dependencies = [
  "tracing",
  "uuid",
  "walkdir",
+ "wallet",
  "wry 0.35.2",
 ]
 
