@@ -194,6 +194,31 @@ pub struct ToolCallMetrics {
     pub tokens_out: i64,
 }
 
+/// Error recovery attempt tracking
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ErrorRecovery {
+    /// Parent session ID
+    pub session_id: String,
+    /// Tool call ID that failed (if available)
+    pub tool_call_id: Option<i64>,
+    /// Recovery attempt timestamp
+    pub timestamp: DateTime<Utc>,
+    /// Type of error (EISDIR, ENOENT, etc.)
+    pub error_type: String,
+    /// Original error message
+    pub original_error: String,
+    /// Whether recovery was attempted
+    pub recovery_attempted: bool,
+    /// Recovery action taken
+    pub recovery_action: Option<String>,
+    /// Whether recovery succeeded
+    pub recovery_succeeded: bool,
+    /// Number of retries
+    pub retry_count: i32,
+    /// Final result after recovery
+    pub final_result: Option<String>,
+}
+
 /// Aggregate metrics for a specific issue
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct IssueAggregateMetrics {
@@ -399,6 +424,10 @@ impl MetricsDb {
         }
         if version < 3 {
             self.migrate_v3()?;
+        }
+
+        if version < 4 {
+            self.migrate_v4()?;
         }
 
         Ok(())
@@ -644,6 +673,37 @@ impl MetricsDb {
         Ok(())
     }
 
+    fn migrate_v4(&self) -> Result<()> {
+        // Add error_recoveries table for tracking automatic error recovery
+        self.conn.execute_batch(
+            r#"
+            CREATE TABLE IF NOT EXISTS error_recoveries (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                session_id TEXT NOT NULL,
+                tool_call_id INTEGER,
+                timestamp TEXT NOT NULL,
+                error_type TEXT NOT NULL,
+                original_error TEXT NOT NULL,
+                recovery_attempted INTEGER NOT NULL DEFAULT 1,
+                recovery_action TEXT,
+                recovery_succeeded INTEGER NOT NULL DEFAULT 0,
+                retry_count INTEGER NOT NULL DEFAULT 0,
+                final_result TEXT,
+                FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE,
+                FOREIGN KEY (tool_call_id) REFERENCES tool_calls(id) ON DELETE SET NULL
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_error_recoveries_session ON error_recoveries(session_id);
+            CREATE INDEX IF NOT EXISTS idx_error_recoveries_type ON error_recoveries(error_type);
+            CREATE INDEX IF NOT EXISTS idx_error_recoveries_success ON error_recoveries(recovery_succeeded);
+            CREATE INDEX IF NOT EXISTS idx_error_recoveries_timestamp ON error_recoveries(timestamp);
+            "#
+        )?;
+
+        self.set_schema_version(4)?;
+        Ok(())
+    }
+
     fn set_schema_version(&self, version: i32) -> Result<()> {
         self.conn.execute("DELETE FROM schema_version", [])?;
         self.conn.execute("INSERT INTO schema_version (version) VALUES (?)", [version])?;
@@ -743,6 +803,69 @@ impl MetricsDb {
         crate::dashboard::broadcast_metrics_update("anomaly_detected", Some(anomaly.session_id.clone()));
 
         Ok(())
+    }
+
+    /// Store error recovery attempt
+    pub fn store_error_recovery(&self, recovery: &ErrorRecovery) -> Result<()> {
+        self.conn.execute(
+            r#"
+            INSERT INTO error_recoveries
+            (session_id, tool_call_id, timestamp, error_type, original_error,
+             recovery_attempted, recovery_action, recovery_succeeded, retry_count, final_result)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
+            "#,
+            params![
+                recovery.session_id,
+                recovery.tool_call_id,
+                recovery.timestamp.to_rfc3339(),
+                recovery.error_type,
+                recovery.original_error,
+                recovery.recovery_attempted as i32,
+                recovery.recovery_action,
+                recovery.recovery_succeeded as i32,
+                recovery.retry_count,
+                recovery.final_result,
+            ],
+        )
+        .context("Failed to store error recovery")?;
+
+        Ok(())
+    }
+
+    /// Get error recoveries for a specific session
+    pub fn get_error_recoveries(&self, session_id: &str) -> Result<Vec<ErrorRecovery>> {
+        let mut stmt = self.conn.prepare(
+            r#"
+            SELECT session_id, tool_call_id, timestamp, error_type, original_error,
+                   recovery_attempted, recovery_action, recovery_succeeded, retry_count, final_result
+            FROM error_recoveries
+            WHERE session_id = ?1
+            ORDER BY timestamp DESC
+            "#,
+        )?;
+
+        let recoveries = stmt
+            .query_map(params![session_id], |row| {
+                let timestamp_str = row.get::<_, String>(2)?;
+                let timestamp = timestamp_str.parse()
+                    .unwrap_or_else(|_| Utc::now());
+
+                Ok(ErrorRecovery {
+                    session_id: row.get(0)?,
+                    tool_call_id: row.get(1)?,
+                    timestamp,
+                    error_type: row.get(3)?,
+                    original_error: row.get(4)?,
+                    recovery_attempted: row.get::<_, i32>(5)? != 0,
+                    recovery_action: row.get(6)?,
+                    recovery_succeeded: row.get::<_, i32>(7)? != 0,
+                    retry_count: row.get(8)?,
+                    final_result: row.get(9)?,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+
+        Ok(recoveries)
     }
 
     /// Get anomalies for a specific session
