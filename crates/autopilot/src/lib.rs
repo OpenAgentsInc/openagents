@@ -109,6 +109,8 @@ pub struct TrajectoryCollector {
     apm_db_path: Option<PathBuf>,
     /// Whether to stream full JSON to stdout (for GUI)
     json_stdout: bool,
+    /// Real-time APM metrics aggregator (if APM tracking is enabled)
+    apm_metrics: Option<apm::APMMetrics>,
 }
 
 impl TrajectoryCollector {
@@ -130,6 +132,7 @@ impl TrajectoryCollector {
             apm_session_id: None,
             apm_db_path: None,
             json_stdout: false,
+            apm_metrics: None,
         }
     }
 
@@ -221,14 +224,37 @@ impl TrajectoryCollector {
         self.apm_session_id = Some(session_id.clone());
         self.apm_db_path = Some(db_path.to_path_buf());
 
+        // Initialize real-time metrics aggregator
+        self.apm_metrics = Some(apm::APMMetrics::new());
+
         Ok(session_id)
     }
 
+    /// Get current real-time APM (if tracking is enabled)
+    pub fn current_apm(&self) -> Option<f64> {
+        self.apm_metrics.as_ref().and_then(|m| m.current_apm())
+    }
+
+    /// Get APM metrics (if tracking is enabled)
+    pub fn apm_metrics(&self) -> Option<&apm::APMMetrics> {
+        self.apm_metrics.as_ref()
+    }
+
     /// Record an APM event (if APM tracking is enabled)
-    fn record_apm_event(&self, event_type: apm_storage::APMEventType, metadata: Option<&str>) {
+    fn record_apm_event(&mut self, event_type: apm_storage::APMEventType, metadata: Option<&str>) {
         use apm_storage::record_event;
         use rusqlite::Connection;
 
+        // Update real-time metrics
+        if let Some(metrics) = &mut self.apm_metrics {
+            match event_type {
+                apm_storage::APMEventType::Message => metrics.record_message(),
+                apm_storage::APMEventType::ToolCall => metrics.record_tool_call(),
+                _ => {} // Other types don't contribute to APM calculation
+            }
+        }
+
+        // Record to database
         if let (Some(session_id), Some(db_path)) = (&self.apm_session_id, &self.apm_db_path) {
             if let Ok(conn) = Connection::open(db_path) {
                 if let Err(e) = record_event(&conn, session_id, event_type, metadata) {

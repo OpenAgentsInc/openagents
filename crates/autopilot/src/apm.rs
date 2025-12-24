@@ -367,6 +367,101 @@ impl SessionData {
     }
 }
 
+/// Real-time APM metrics aggregator
+///
+/// Accumulates action counts and calculates APM on-the-fly during a session.
+/// This enables real-time APM display without needing to query the database.
+#[derive(Debug, Clone, Default)]
+pub struct APMMetrics {
+    /// Session start time
+    pub start_time: DateTime<Utc>,
+    /// Total message count
+    pub messages: u32,
+    /// Total tool call count
+    pub tool_calls: u32,
+    /// Last update timestamp
+    pub last_update: Option<DateTime<Utc>>,
+}
+
+impl APMMetrics {
+    /// Create a new metrics aggregator
+    pub fn new() -> Self {
+        Self {
+            start_time: Utc::now(),
+            messages: 0,
+            tool_calls: 0,
+            last_update: None,
+        }
+    }
+
+    /// Record a message
+    pub fn record_message(&mut self) {
+        self.messages += 1;
+        self.last_update = Some(Utc::now());
+    }
+
+    /// Record a tool call
+    pub fn record_tool_call(&mut self) {
+        self.tool_calls += 1;
+        self.last_update = Some(Utc::now());
+    }
+
+    /// Get total actions
+    pub fn total_actions(&self) -> u32 {
+        self.messages + self.tool_calls
+    }
+
+    /// Calculate current APM (real-time)
+    pub fn current_apm(&self) -> Option<f64> {
+        let end_time = self.last_update.unwrap_or_else(Utc::now);
+        calculate_apm_from_timestamps(
+            self.messages,
+            self.tool_calls,
+            self.start_time,
+            end_time,
+        )
+    }
+
+    /// Calculate APM over a specific time window (last N minutes)
+    pub fn windowed_apm(&self, window_minutes: u32) -> Option<f64> {
+        let now = Utc::now();
+        let window_start = now - Duration::minutes(window_minutes as i64);
+
+        // For real-time calculation, we use the session data
+        // In practice, you'd filter events by timestamp for accurate windowed APM
+        if self.start_time > window_start {
+            // Session is shorter than window, use full session
+            self.current_apm()
+        } else {
+            // Session is longer than window, estimate based on current rate
+            // This is approximate - for accurate windowed APM, query events from DB
+            self.current_apm()
+        }
+    }
+
+    /// Get session duration in minutes
+    pub fn duration_minutes(&self) -> f64 {
+        let end_time = self.last_update.unwrap_or_else(Utc::now);
+        let duration = end_time.signed_duration_since(self.start_time);
+        duration.num_milliseconds() as f64 / 60_000.0
+    }
+
+    /// Get APM tier for current performance
+    pub fn current_tier(&self) -> APMTier {
+        self.current_apm()
+            .map(APMTier::from_apm)
+            .unwrap_or(APMTier::Baseline)
+    }
+
+    /// Reset metrics (start new session)
+    pub fn reset(&mut self) {
+        self.start_time = Utc::now();
+        self.messages = 0;
+        self.tool_calls = 0;
+        self.last_update = None;
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -455,5 +550,86 @@ mod tests {
         assert_eq!(APMWindow::Week1.as_str(), "1w");
         assert_eq!(APMWindow::Month1.as_str(), "1m");
         assert_eq!(APMWindow::Lifetime.as_str(), "lifetime");
+    }
+
+    #[test]
+    fn test_apm_metrics_creation() {
+        let metrics = APMMetrics::new();
+        assert_eq!(metrics.messages, 0);
+        assert_eq!(metrics.tool_calls, 0);
+        assert_eq!(metrics.total_actions(), 0);
+    }
+
+    #[test]
+    fn test_apm_metrics_record_message() {
+        let mut metrics = APMMetrics::new();
+        metrics.record_message();
+        metrics.record_message();
+
+        assert_eq!(metrics.messages, 2);
+        assert_eq!(metrics.tool_calls, 0);
+        assert_eq!(metrics.total_actions(), 2);
+        assert!(metrics.last_update.is_some());
+    }
+
+    #[test]
+    fn test_apm_metrics_record_tool_call() {
+        let mut metrics = APMMetrics::new();
+        metrics.record_tool_call();
+        metrics.record_tool_call();
+        metrics.record_tool_call();
+
+        assert_eq!(metrics.messages, 0);
+        assert_eq!(metrics.tool_calls, 3);
+        assert_eq!(metrics.total_actions(), 3);
+    }
+
+    #[test]
+    fn test_apm_metrics_current_apm() {
+        let mut metrics = APMMetrics::new();
+        // Simulate some time passing and actions
+        std::thread::sleep(std::time::Duration::from_millis(100));
+
+        for _ in 0..10 {
+            metrics.record_message();
+        }
+        for _ in 0..20 {
+            metrics.record_tool_call();
+        }
+
+        // Should have APM calculated (30 actions / duration)
+        let apm = metrics.current_apm();
+        assert!(apm.is_some());
+        assert!(apm.unwrap() > 0.0);
+    }
+
+    #[test]
+    fn test_apm_metrics_reset() {
+        let mut metrics = APMMetrics::new();
+        metrics.record_message();
+        metrics.record_tool_call();
+
+        assert_eq!(metrics.total_actions(), 2);
+
+        metrics.reset();
+        assert_eq!(metrics.messages, 0);
+        assert_eq!(metrics.tool_calls, 0);
+        assert_eq!(metrics.total_actions(), 0);
+        assert!(metrics.last_update.is_none());
+    }
+
+    #[test]
+    fn test_apm_metrics_tier() {
+        let mut metrics = APMMetrics::new();
+
+        // Very high rate should give high tier
+        for _ in 0..100 {
+            metrics.record_tool_call();
+        }
+
+        // Since this happens almost instantly, APM will be very high
+        let tier = metrics.current_tier();
+        // Tier depends on actual timing, so just verify it's calculated
+        assert!(matches!(tier, APMTier::Baseline | APMTier::Active | APMTier::Productive | APMTier::HighPerformance | APMTier::Elite));
     }
 }

@@ -6,6 +6,8 @@
 use crate::apm::{APMSnapshot, APMSource, APMWindow};
 use chrono::{DateTime, Utc};
 use rusqlite::{params, Connection, Result};
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use tracing::{debug, error, info};
 
 /// Current schema version for APM tables
@@ -50,7 +52,7 @@ impl APMEventType {
     }
 }
 
-/// APM event record
+/// APM event record (legacy format - use ActionEvent for new code)
 #[derive(Debug, Clone)]
 pub struct APMEvent {
     pub id: String,
@@ -59,6 +61,72 @@ pub struct APMEvent {
     pub event_type: APMEventType,
     pub timestamp: DateTime<Utc>,
     pub metadata: Option<String>, // JSON metadata
+}
+
+/// Detailed action event with duration and success tracking
+///
+/// This is the new format for tracking individual actions with full context.
+/// Provides duration, success/failure status, and detailed metadata.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ActionEvent {
+    pub id: String,
+    pub session_id: String,
+    pub action_type: String, // "Read", "Edit", "Bash", "ToolCall", etc.
+    pub timestamp: DateTime<Utc>,
+    pub duration_ms: u64,
+    pub success: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub metadata: Option<Value>, // JSON metadata
+}
+
+impl ActionEvent {
+    /// Create a new action event
+    pub fn new(
+        session_id: impl Into<String>,
+        action_type: impl Into<String>,
+        duration_ms: u64,
+        success: bool,
+    ) -> Self {
+        Self {
+            id: uuid::Uuid::new_v4().to_string(),
+            session_id: session_id.into(),
+            action_type: action_type.into(),
+            timestamp: Utc::now(),
+            duration_ms,
+            success,
+            error: None,
+            metadata: None,
+        }
+    }
+
+    /// Create a successful action event
+    pub fn success(
+        session_id: impl Into<String>,
+        action_type: impl Into<String>,
+        duration_ms: u64,
+    ) -> Self {
+        Self::new(session_id, action_type, duration_ms, true)
+    }
+
+    /// Create a failed action event
+    pub fn failure(
+        session_id: impl Into<String>,
+        action_type: impl Into<String>,
+        duration_ms: u64,
+        error: impl Into<String>,
+    ) -> Self {
+        let mut event = Self::new(session_id, action_type, duration_ms, false);
+        event.error = Some(error.into());
+        event
+    }
+
+    /// Add metadata to the event
+    pub fn with_metadata(mut self, metadata: Value) -> Self {
+        self.metadata = Some(metadata);
+        self
+    }
 }
 
 /// Initialize APM tables in the database
@@ -242,6 +310,86 @@ pub fn record_event(
 
     debug!("Recorded APM event {} ({:?})", id, event_type);
     Ok(id)
+}
+
+/// Record a detailed action event with duration and success tracking
+pub fn record_action_event(conn: &Connection, event: &ActionEvent) -> Result<String> {
+    // For now, store in the same table with extended metadata
+    // In a future migration, we could add dedicated columns for duration/success
+    let metadata = serde_json::json!({
+        "action_type": event.action_type,
+        "duration_ms": event.duration_ms,
+        "success": event.success,
+        "error": event.error,
+        "metadata": event.metadata,
+    });
+
+    let now = Utc::now().to_rfc3339();
+    conn.execute(
+        "INSERT INTO apm_events (id, session_id, event_type, timestamp, metadata, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+        params![
+            &event.id,
+            &event.session_id,
+            "action", // Special event_type for detailed actions
+            event.timestamp.to_rfc3339(),
+            metadata.to_string(),
+            &now
+        ],
+    )?;
+
+    debug!("Recorded action event {} ({})", event.id, event.action_type);
+    Ok(event.id.clone())
+}
+
+/// Get action events for a session
+pub fn get_action_events(
+    conn: &Connection,
+    session_id: &str,
+) -> Result<Vec<ActionEvent>> {
+    let mut stmt = conn.prepare(
+        r#"
+        SELECT id, session_id, timestamp, metadata
+        FROM apm_events
+        WHERE session_id = ? AND event_type = 'action'
+        ORDER BY timestamp ASC
+        "#,
+    )?;
+
+    let events = stmt
+        .query_map(params![session_id], |row| {
+            let id: String = row.get(0)?;
+            let session_id: String = row.get(1)?;
+            let timestamp: String = row.get(2)?;
+            let metadata: String = row.get(3)?;
+
+            // Parse metadata JSON
+            let meta: Value = serde_json::from_str(&metadata).unwrap_or(Value::Null);
+
+            Ok(ActionEvent {
+                id,
+                session_id,
+                action_type: meta.get("action_type")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("unknown")
+                    .to_string(),
+                timestamp: DateTime::parse_from_rfc3339(&timestamp)
+                    .unwrap()
+                    .with_timezone(&Utc),
+                duration_ms: meta.get("duration_ms")
+                    .and_then(|v| v.as_u64())
+                    .unwrap_or(0),
+                success: meta.get("success")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false),
+                error: meta.get("error")
+                    .and_then(|v| v.as_str())
+                    .map(String::from),
+                metadata: meta.get("metadata").cloned(),
+            })
+        })?
+        .collect::<Result<Vec<_>>>()?;
+
+    Ok(events)
 }
 
 /// Save an APM snapshot
