@@ -38,6 +38,7 @@ pub mod provider_reputation;
 pub mod redaction;
 pub mod repository;
 pub mod skills;
+pub mod sybil;
 pub mod trust;
 pub mod types;
 
@@ -126,6 +127,11 @@ pub use redaction::{
 };
 pub use repository::{Repository, Skill as SkillRecord, SkillRepository, SkillVersion};
 pub use skills::{Skill, SkillError, SkillManifest, SkillMetadata, discover_skills, validate_skill_name};
+pub use sybil::{
+    ProofOfWork, RateLimitTracker, RateLimitedAction, RateLimits, ReleaseCondition,
+    SlashCondition, SlashRecord, Stake, StakeRequirement, StakeStatus, SybilError,
+    check_rate_limit, generate_challenge, solve_challenge, verify_solution,
+};
 pub use trust::{
     EconomicComponent, EntityType, SocialComponent, TierBenefits as TrustTierBenefits,
     TrackRecordComponent, TrustComponents, TrustError, TrustScore, TrustTier,
