@@ -21,6 +21,8 @@
 //! - `platform` - Platform abstraction (web, native)
 //! - `theme` - Color and style tokens
 
+pub mod accessibility;
+pub mod animation;
 pub mod color;
 pub mod components;
 pub mod geometry;
@@ -51,6 +53,15 @@ pub use markdown::{
     MarkdownRenderer, StreamingConfig, StreamingMarkdown, StyledLine, StyledSpan,
     SyntaxHighlighter, TextStyle, render_markdown, SUPPORTED_LANGUAGES,
 };
+pub use animation::{
+    Animation, AnimationController, AnimationState, Animatable, Easing,
+    Keyframe, KeyframeAnimation, SpringAnimation,
+};
+pub use accessibility::{
+    AccessibilityContext, AccessibilityTree, AccessibleId, AccessibleNode,
+    Announcement, LiveRegion, Role, State as AccessibleState,
+};
+pub use components::hud::{ContextMenu, MenuItem, Tooltip, TooltipPosition};
 
 #[cfg(all(feature = "web", target_arch = "wasm32"))]
 pub use platform::web::{WebPlatform, run_animation_loop, setup_resize_observer};
