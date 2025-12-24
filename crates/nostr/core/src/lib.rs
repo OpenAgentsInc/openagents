@@ -863,7 +863,8 @@ pub use nip92::{
 
 // NIP-94: File Metadata
 pub use nip94::{
-    Dimensions, FileImage, FileMetadata, FILE_METADATA_KIND, Nip94Error, is_file_metadata_kind,
+    create_file_metadata_event, Dimensions, FileImage, FileMetadata, FILE_METADATA_KIND,
+    Nip94Error, is_file_metadata_kind,
 };
 
 // NIP-95: File Storage on Relays
