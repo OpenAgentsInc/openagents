@@ -44,6 +44,7 @@
 mod cache;
 mod connection_pool;
 mod contacts;
+pub mod dvm;
 mod error;
 mod negentropy;
 mod outbox;
