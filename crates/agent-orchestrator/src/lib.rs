@@ -12,8 +12,11 @@ pub use config::{AgentConfig, AgentMode, AgentPermission, BashPermission, Permis
 pub use error::{Error, Result};
 pub use hooks::{Hook, HookManager, HookResult};
 pub use integrations::{
-    ActionMetric, ApmTracker, AutopilotIntegration, DirectiveContext, DirectiveInjectionConfig,
-    DirectiveSummary, IssueClaimHook, IssueCompleteHook, MarketplaceIntegration, SkillLicenseHook,
-    SkillLicenseInfo, SkillPricing, SkillUsageHook, TrajectoryLogger,
+    ActionMetric, AgentIdentity, ApmTracker, AutopilotIntegration, AutonomyLevel, BackendConfig,
+    BackendProvider, BudgetConfig, BudgetStatus, CostRecord, CostTracker, CostTrackingHook,
+    DirectiveContext, DirectiveInjectionConfig, DirectiveSummary, IssueClaimHook,
+    IssueCompleteHook, MarketplaceIntegration, MultiBackendRouter, PendingApproval,
+    SkillLicenseHook, SkillLicenseInfo, SkillPricing, SkillUsageHook, SolverAgentCoordinator,
+    ThresholdConfig, TrajectoryLogger,
 };
 pub use registry::AgentRegistry;
