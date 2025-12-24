@@ -8,6 +8,7 @@ pub struct Quad {
     pub background: Option<Hsla>,
     pub border_color: Hsla,
     pub border_width: f32,
+    pub corner_radius: f32,
 }
 
 impl Default for Quad {
@@ -17,6 +18,7 @@ impl Default for Quad {
             background: None,
             border_color: Hsla::transparent(),
             border_width: 0.0,
+            corner_radius: 0.0,
         }
     }
 }
@@ -39,6 +41,11 @@ impl Quad {
         self.border_width = width;
         self
     }
+
+    pub fn with_corner_radius(mut self, radius: f32) -> Self {
+        self.corner_radius = radius;
+        self
+    }
 }
 
 #[repr(C)]
@@ -49,7 +56,8 @@ pub struct GpuQuad {
     pub background: [f32; 4],
     pub border_color: [f32; 4],
     pub border_width: f32,
-    pub _padding: [f32; 3],
+    pub corner_radius: f32,
+    pub _padding: [f32; 2],
 }
 
 impl GpuQuad {
@@ -81,7 +89,8 @@ impl GpuQuad {
                 }
             },
             border_width: quad.border_width,
-            _padding: [0.0, 0.0, 0.0],
+            corner_radius: quad.corner_radius,
+            _padding: [0.0, 0.0],
         }
     }
 }

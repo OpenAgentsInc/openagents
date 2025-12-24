@@ -1,0 +1,356 @@
+//! Button component - clickable button with visual feedback.
+
+use crate::components::context::{EventContext, PaintContext};
+use crate::components::{AnyComponent, Component, ComponentId, EventResult};
+use crate::{Bounds, Hsla, InputEvent, MouseButton, Point, Quad, theme};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ButtonVariant {
+    #[default]
+    Primary,
+    Secondary,
+    Ghost,
+    Danger,
+}
+
+pub type OnClick = Box<dyn FnMut()>;
+
+pub struct Button {
+    id: Option<ComponentId>,
+    label: String,
+    variant: ButtonVariant,
+    disabled: bool,
+    hovered: bool,
+    pressed: bool,
+    font_size: f32,
+    padding: (f32, f32),
+    corner_radius: f32,
+    icon: Option<AnyComponent>,
+    on_click: Option<OnClick>,
+    custom_bg: Option<Hsla>,
+    custom_text: Option<Hsla>,
+}
+
+impl Button {
+    pub fn new(label: impl Into<String>) -> Self {
+        Self {
+            id: None,
+            label: label.into(),
+            variant: ButtonVariant::Primary,
+            disabled: false,
+            hovered: false,
+            pressed: false,
+            font_size: theme::font_size::SM,
+            padding: (theme::spacing::LG, theme::spacing::SM),
+            corner_radius: 0.0,
+            icon: None,
+            on_click: None,
+            custom_bg: None,
+            custom_text: None,
+        }
+    }
+
+    pub fn with_id(mut self, id: ComponentId) -> Self {
+        self.id = Some(id);
+        self
+    }
+
+    pub fn variant(mut self, variant: ButtonVariant) -> Self {
+        self.variant = variant;
+        self
+    }
+
+    pub fn disabled(mut self, disabled: bool) -> Self {
+        self.disabled = disabled;
+        self
+    }
+
+    pub fn font_size(mut self, size: f32) -> Self {
+        self.font_size = size;
+        self
+    }
+
+    pub fn padding(mut self, horizontal: f32, vertical: f32) -> Self {
+        self.padding = (horizontal, vertical);
+        self
+    }
+
+    pub fn corner_radius(mut self, radius: f32) -> Self {
+        self.corner_radius = radius;
+        self
+    }
+
+    pub fn background(mut self, color: Hsla) -> Self {
+        self.custom_bg = Some(color);
+        self
+    }
+
+    pub fn text_color(mut self, color: Hsla) -> Self {
+        self.custom_text = Some(color);
+        self
+    }
+
+    pub fn icon<C: Component + 'static>(mut self, component: C) -> Self {
+        self.icon = Some(AnyComponent::new(component));
+        self
+    }
+
+    pub fn on_click<F>(mut self, f: F) -> Self
+    where
+        F: FnMut() + 'static,
+    {
+        self.on_click = Some(Box::new(f));
+        self
+    }
+
+    pub fn label(&self) -> &str {
+        &self.label
+    }
+
+    pub fn set_label(&mut self, label: impl Into<String>) {
+        self.label = label.into();
+    }
+
+    pub fn is_hovered(&self) -> bool {
+        self.hovered
+    }
+
+    pub fn is_pressed(&self) -> bool {
+        self.pressed
+    }
+
+    fn colors(&self) -> (Hsla, Hsla, Hsla) {
+        let bg = self.custom_bg.unwrap_or_else(|| match self.variant {
+            ButtonVariant::Primary => theme::accent::PRIMARY,
+            ButtonVariant::Secondary => theme::bg::SURFACE,
+            ButtonVariant::Ghost => Hsla::transparent(),
+            ButtonVariant::Danger => theme::status::ERROR,
+        });
+
+        let text = self.custom_text.unwrap_or_else(|| {
+            let on_accent = Hsla::black();
+            match self.variant {
+                ButtonVariant::Primary | ButtonVariant::Danger => on_accent,
+                ButtonVariant::Secondary | ButtonVariant::Ghost => theme::text::PRIMARY,
+            }
+        });
+
+        let border = bg;
+
+        if self.disabled {
+            return (
+                bg.with_alpha(bg.a * 0.5),
+                text.with_alpha(text.a * 0.5),
+                border.with_alpha(border.a * 0.5),
+            );
+        }
+
+        if self.pressed {
+            return (bg.darken(0.15), text, border.darken(0.15));
+        }
+
+        if self.hovered {
+            return (bg.lighten(0.1), text, border.lighten(0.1));
+        }
+
+        (bg, text, border)
+    }
+}
+
+impl Default for Button {
+    fn default() -> Self {
+        Self::new("Button")
+    }
+}
+
+impl Component for Button {
+    fn paint(&mut self, bounds: Bounds, cx: &mut PaintContext) {
+        let (bg_color, text_color, border_color) = self.colors();
+
+        let mut quad = Quad::new(bounds).with_background(bg_color);
+
+        if matches!(self.variant, ButtonVariant::Secondary) {
+            quad = quad.with_border(border_color, 1.0);
+        }
+
+        if self.corner_radius > 0.0 {
+            quad = quad.with_corner_radius(self.corner_radius);
+        }
+
+        cx.scene.draw_quad(quad);
+
+        if let Some(icon) = &mut self.icon {
+            let icon_size = self.font_size;
+            let icon_bounds = Bounds::new(
+                bounds.origin.x + self.padding.0,
+                bounds.origin.y + (bounds.size.height - icon_size) / 2.0,
+                icon_size,
+                icon_size,
+            );
+            icon.paint(icon_bounds, cx);
+        }
+
+        if !self.label.is_empty() {
+            let content_width = self.label.chars().count() as f32 * self.font_size * 0.6;
+            let text_x = bounds.origin.x + (bounds.size.width - content_width) / 2.0;
+            let text_y = bounds.origin.y + (bounds.size.height + self.font_size) / 2.0;
+
+            let text_run = cx.text.layout(
+                &self.label,
+                Point::new(text_x, text_y),
+                self.font_size,
+                text_color,
+            );
+            cx.scene.draw_text(text_run);
+        }
+    }
+
+    fn event(
+        &mut self,
+        event: &InputEvent,
+        bounds: Bounds,
+        _cx: &mut EventContext,
+    ) -> EventResult {
+        if self.disabled {
+            return EventResult::Ignored;
+        }
+
+        match event {
+            InputEvent::MouseMove { x, y } => {
+                let was_hovered = self.hovered;
+                self.hovered = bounds.contains(Point::new(*x, *y));
+
+                if was_hovered != self.hovered {
+                    return EventResult::Handled;
+                }
+            }
+
+            InputEvent::MouseDown { button, x, y } => {
+                if *button == MouseButton::Left && bounds.contains(Point::new(*x, *y)) {
+                    self.pressed = true;
+                    return EventResult::Handled;
+                }
+            }
+
+            InputEvent::MouseUp { button, x, y } => {
+                if *button == MouseButton::Left && self.pressed {
+                    self.pressed = false;
+
+                    if bounds.contains(Point::new(*x, *y)) {
+                        if let Some(on_click) = &mut self.on_click {
+                            on_click();
+                        }
+                    }
+
+                    return EventResult::Handled;
+                }
+            }
+
+            _ => {}
+        }
+
+        EventResult::Ignored
+    }
+
+    fn id(&self) -> Option<ComponentId> {
+        self.id
+    }
+
+    fn size_hint(&self) -> (Option<f32>, Option<f32>) {
+        let width = self.label.chars().count() as f32 * self.font_size * 0.6 + self.padding.0 * 2.0;
+        let height = self.font_size * 1.4 + self.padding.1 * 2.0;
+        (Some(width), Some(height))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_button_new() {
+        let button = Button::new("Click me");
+        assert_eq!(button.label(), "Click me");
+        assert_eq!(button.variant, ButtonVariant::Primary);
+        assert!(!button.disabled);
+    }
+
+    #[test]
+    fn test_button_builder() {
+        let button = Button::new("Test")
+            .with_id(42)
+            .variant(ButtonVariant::Secondary)
+            .disabled(true);
+
+        assert_eq!(Component::id(&button), Some(42));
+        assert_eq!(button.variant, ButtonVariant::Secondary);
+        assert!(button.disabled);
+    }
+
+    #[test]
+    fn test_button_variants() {
+        let primary = Button::new("Primary").variant(ButtonVariant::Primary);
+        let secondary = Button::new("Secondary").variant(ButtonVariant::Secondary);
+        let ghost = Button::new("Ghost").variant(ButtonVariant::Ghost);
+        let danger = Button::new("Danger").variant(ButtonVariant::Danger);
+
+        assert_eq!(primary.variant, ButtonVariant::Primary);
+        assert_eq!(secondary.variant, ButtonVariant::Secondary);
+        assert_eq!(ghost.variant, ButtonVariant::Ghost);
+        assert_eq!(danger.variant, ButtonVariant::Danger);
+    }
+
+    #[test]
+    fn test_button_states() {
+        let mut button = Button::new("Test");
+
+        assert!(!button.is_hovered());
+        assert!(!button.is_pressed());
+
+        button.hovered = true;
+        assert!(button.is_hovered());
+
+        button.pressed = true;
+        assert!(button.is_pressed());
+    }
+
+    #[test]
+    fn test_button_set_label() {
+        let mut button = Button::new("Original");
+        assert_eq!(button.label(), "Original");
+
+        button.set_label("Updated");
+        assert_eq!(button.label(), "Updated");
+    }
+
+    #[test]
+    fn test_button_size_hint() {
+        let button = Button::new("Test Button")
+            .font_size(14.0)
+            .padding(16.0, 8.0);
+
+        let (width, height) = button.size_hint();
+
+        assert!(width.is_some());
+        assert!(width.unwrap() > 32.0);
+
+        assert!(height.is_some());
+        assert!(height.unwrap() > 16.0);
+    }
+
+    #[test]
+    fn test_button_default() {
+        let button = Button::default();
+        assert_eq!(button.label(), "Button");
+    }
+
+    #[test]
+    fn test_button_custom_colors() {
+        let button = Button::new("Custom")
+            .background(theme::bg::MUTED)
+            .text_color(theme::text::SECONDARY);
+
+        assert!(button.custom_bg.is_some());
+        assert!(button.custom_text.is_some());
+    }
+}
