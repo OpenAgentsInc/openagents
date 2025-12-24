@@ -1,0 +1,32 @@
+//! Atoms - The smallest UI building blocks.
+//!
+//! Atoms are the fundamental UI elements that cannot be broken down further.
+//! They include status indicators, badges, icons, and simple interactive elements.
+
+mod checkpoint_badge;
+mod content_type_icon;
+mod entry_marker;
+mod feedback_button;
+mod keybinding_hint;
+mod mode_badge;
+mod model_badge;
+mod permission_button;
+mod status_dot;
+mod streaming_indicator;
+mod thinking_toggle;
+mod tool_icon;
+mod tool_status_badge;
+
+pub use checkpoint_badge::CheckpointBadge;
+pub use content_type_icon::{ContentType, ContentTypeIcon};
+pub use entry_marker::{EntryMarker, EntryType};
+pub use feedback_button::{FeedbackButton, FeedbackType};
+pub use keybinding_hint::KeybindingHint;
+pub use mode_badge::{Mode, ModeBadge};
+pub use model_badge::{Model, ModelBadge};
+pub use permission_button::{PermissionAction, PermissionButton};
+pub use status_dot::{Status, StatusDot};
+pub use streaming_indicator::StreamingIndicator;
+pub use thinking_toggle::ThinkingToggle;
+pub use tool_icon::{ToolIcon, ToolType};
+pub use tool_status_badge::{ToolStatus, ToolStatusBadge};
