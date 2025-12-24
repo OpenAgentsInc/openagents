@@ -1,13 +1,26 @@
-//! Ollama inference service (stubbed for cleanup).
+//! Ollama inference service
 //!
-//! The full LLM integration will be wired back in once the desktop stack is rebuilt.
+//! === BLOCKED: Ollama HTTP API integration required ===
+//!
+//! Per d-012 (No Stubs - Production-Ready Code Only), the Ollama service
+//! integration is not yet implemented. All methods return explicit errors.
+//!
+//! When implementing:
+//! 1. Add reqwest dependency for HTTP client
+//! 2. Implement connection to Ollama API (default: http://localhost:11434)
+//! 3. Add /api/tags endpoint for list_models()
+//! 4. Add /api/generate endpoint for generate()
+//! 5. Add streaming support for real-time completions
+//! 6. Add proper error handling for connection failures
+//!
+//! Reference: https://github.com/ollama/ollama/blob/main/docs/api.md
 
 use thiserror::Error;
 
 /// Errors from the Ollama service
 #[derive(Debug, Error)]
 pub enum OllamaError {
-    #[error("Ollama not available: {0}")]
+    #[error("Ollama integration not implemented. Requires HTTP API client for localhost:11434")]
     NotAvailable(String),
 
     #[error("inference failed: {0}")]
@@ -29,37 +42,42 @@ pub struct OllamaModel {
 }
 
 /// Service for interacting with Ollama
-pub struct OllamaService {
-    available: bool,
-}
+///
+/// This service is a placeholder that returns errors until Ollama HTTP API
+/// integration is implemented per the blocker comments above.
+pub struct OllamaService;
 
 impl OllamaService {
     /// Create a new Ollama service
     pub fn new() -> Self {
-        Self { available: false }
+        Self
     }
 
     /// Check if Ollama is available
+    ///
+    /// Always returns false until Ollama integration is implemented.
+    /// When implemented, this should check http://localhost:11434/api/tags
     pub async fn is_available(&self) -> bool {
-        self.available
+        false
     }
 
     /// List available models
+    ///
+    /// Returns error until Ollama integration is implemented.
+    /// When implemented, call GET http://localhost:11434/api/tags
     pub async fn list_models(&self) -> Result<Vec<OllamaModel>, OllamaError> {
-        if self.available {
-            Ok(Vec::new())
-        } else {
-            Err(OllamaError::NotAvailable(
-                "Ollama integration is currently disabled".into(),
-            ))
-        }
+        Err(OllamaError::NotAvailable(
+            "Ollama integration not implemented. Requires HTTP client for /api/tags endpoint.".into(),
+        ))
     }
 
     /// Generate a completion (non-streaming)
-    pub async fn generate(&self, model: &str, prompt: &str) -> Result<String, OllamaError> {
-        let _ = (model, prompt);
+    ///
+    /// Returns error until Ollama integration is implemented.
+    /// When implemented, call POST http://localhost:11434/api/generate
+    pub async fn generate(&self, _model: &str, _prompt: &str) -> Result<String, OllamaError> {
         Err(OllamaError::NotAvailable(
-            "Ollama integration is currently disabled".into(),
+            "Ollama integration not implemented. Requires HTTP client for /api/generate endpoint.".into(),
         ))
     }
 }
