@@ -1,13 +1,16 @@
 //! Bifrost node implementation
 
-use crate::bifrost::aggregator::SigningAggregator;
+use crate::bifrost::aggregator::{EcdhAggregator, SigningAggregator};
 use crate::bifrost::peer::PeerManager;
+use crate::bifrost::serialization::{serialize_commitments, deserialize_commitments, serialize_sig_share};
 use crate::bifrost::transport::{NostrTransport, TransportConfig};
-use crate::bifrost::{BifrostMessage, Ping, SignRequest};
+use crate::bifrost::{BifrostMessage, EcdhRequest, Ping, SignRequest};
+use crate::ecdh::create_ecdh_share;
 use crate::keygen::FrostShare;
-use crate::signing::round1_commit;
+use crate::signing::{round1_commit, round2_sign};
 use crate::Result;
-use frost_secp256k1::round1::SigningCommitments;
+use frost_secp256k1::{Identifier, SigningPackage};
+use std::collections::BTreeMap;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
@@ -462,10 +465,13 @@ impl BifrostNode {
         let threshold = frost_share.threshold as usize;
 
         // Step 1: Generate our signing nonces and commitments
-        let (_nonces, commitments) = round1_commit(frost_share);
+        let (nonces, commitments) = round1_commit(frost_share);
 
-        // Serialize commitment (simplified - production needs proper serialization)
-        let commitment_bytes = self.serialize_commitment(&commitments)?;
+        // Serialize commitment using proper FROST serialization
+        let commitment_bytes = serialize_commitments(&commitments);
+
+        // Get our participant ID
+        let initiator_id = frost_share.participant_id;
 
         // Step 2: Create and broadcast SignRequest
         let session_id = self.generate_session_id();
@@ -476,13 +482,15 @@ impl BifrostNode {
             nonce_commitment: commitment_bytes,
             session_id: session_id.clone(),
             participants: participants.clone(),
+            initiator_id,
         };
 
         let message = BifrostMessage::SignRequest(request.clone());
 
-        // Step 3: Broadcast and wait for k responses
+        // Step 3: Broadcast and wait for (k-1) responses (we are one of the k signers)
+        let required_responses = threshold.saturating_sub(1);
         let responses = transport
-            .publish_and_wait(&message, threshold)
+            .publish_and_wait(&message, required_responses)
             .await?;
 
         // Step 4: Collect and validate responses
@@ -494,14 +502,33 @@ impl BifrostNode {
             }
         }
 
-        // Step 5: Aggregate partial signatures
-        // Note: This is where we'd call the full aggregation logic
-        // For now, we return an error indicating the implementation is incomplete
+        // Step 5: Build SigningPackage from all commitments
+        let mut signing_commitments = BTreeMap::new();
 
-        Err(crate::Error::Protocol(
-            "Signature aggregation requires full FROST type serialization. \
-             Coordinator flow is implemented but aggregation step needs completion.".into()
-        ))
+        // Add our own commitment
+        let our_id = Identifier::try_from(initiator_id as u16)
+            .map_err(|e| crate::Error::Protocol(format!("Invalid initiator ID: {:?}", e)))?;
+        signing_commitments.insert(our_id, commitments);
+
+        // Add commitments from all responders
+        for (participant_id, response) in aggregator.partial_signatures() {
+            let id = Identifier::try_from(*participant_id as u16)
+                .map_err(|e| crate::Error::Protocol(format!("Invalid participant ID: {:?}", e)))?;
+            let peer_commitment = deserialize_commitments(&response.nonce_commitment)?;
+            signing_commitments.insert(id, peer_commitment);
+        }
+
+        // Build the signing package
+        let signing_package = SigningPackage::new(signing_commitments, event_hash);
+
+        // Step 6: Generate our own partial signature
+        let our_sig_share = round2_sign(frost_share, &nonces, &signing_package)?;
+        let our_partial_sig_bytes = serialize_sig_share(&our_sig_share);
+
+        // Step 7: Aggregate all signatures
+        let signature = aggregator.aggregate(&request, frost_share, &commitment_bytes, &our_partial_sig_bytes)?;
+
+        Ok(signature)
     }
 
     /// Generate a unique session ID
@@ -524,43 +551,198 @@ impl BifrostNode {
         Ok((1..=threshold as u8).collect())
     }
 
-    /// Serialize a signing commitment to bytes
-    fn serialize_commitment(&self, _commitments: &SigningCommitments) -> Result<[u8; 33]> {
-        // In a real implementation, this would serialize the commitment
-        // to the wire format expected by peers.
-        // For now, return placeholder bytes
-        Ok([0u8; 33])
+
+    /// Handle an incoming SignRequest when this node is a responder
+    ///
+    /// This method is called when another node initiates signing and we need to participate:
+    /// 1. Generate our nonces and commitment
+    /// 2. Build a SigningPackage with our commitment + initiator's commitment
+    /// 3. Generate our partial signature
+    /// 4. Return a SignResponse with our commitment and partial signature
+    ///
+    /// Note: In a 2-of-n threshold, only the coordinator and one responder sign.
+    /// The responder needs both commitments to build the SigningPackage.
+    pub fn handle_sign_request(
+        &self,
+        request: &crate::bifrost::SignRequest,
+    ) -> Result<crate::bifrost::SignResponse> {
+        // Need our frost share to sign
+        let frost_share = self.frost_share.as_ref().ok_or_else(|| {
+            crate::Error::Protocol(
+                "FrostShare not set. Call set_frost_share() before handling sign requests.".into()
+            )
+        })?;
+
+        // Step 1: Generate our nonces and commitment
+        let (nonces, our_commitment) = round1_commit(frost_share);
+        let our_commitment_bytes = serialize_commitments(&our_commitment);
+
+        // Step 2: Deserialize initiator's commitment
+        let initiator_commitment = deserialize_commitments(&request.nonce_commitment)?;
+
+        // Step 3: Build SigningPackage with both commitments
+        let mut signing_commitments = BTreeMap::new();
+
+        // Add initiator's commitment
+        let initiator_id = Identifier::try_from(request.initiator_id as u16)
+            .map_err(|e| crate::Error::Protocol(format!("Invalid initiator ID: {:?}", e)))?;
+        signing_commitments.insert(initiator_id, initiator_commitment);
+
+        // Add our commitment
+        let our_id = Identifier::try_from(frost_share.participant_id as u16)
+            .map_err(|e| crate::Error::Protocol(format!("Invalid participant ID: {:?}", e)))?;
+        signing_commitments.insert(our_id, our_commitment);
+
+        let signing_package = SigningPackage::new(signing_commitments, &request.event_hash);
+
+        // Step 4: Generate our partial signature
+        let sig_share = round2_sign(frost_share, &nonces, &signing_package)?;
+        let sig_share_bytes = serialize_sig_share(&sig_share);
+
+        // Step 5: Build and return SignResponse
+        Ok(crate::bifrost::SignResponse {
+            session_id: request.session_id.clone(),
+            participant_id: frost_share.participant_id,
+            partial_sig: sig_share_bytes,
+            nonce_commitment: our_commitment_bytes,
+        })
+    }
+
+    /// Handle an incoming BifrostMessage
+    ///
+    /// This method routes incoming messages to the appropriate handler:
+    /// - SignRequest: Generate partial signature and return SignResponse
+    /// - EcdhRequest: Generate partial ECDH and return EcdhResponse
+    /// - Ping: Automatically handled by transport with Pong
+    ///
+    /// Returns an optional response message to send back.
+    pub fn handle_message(
+        &self,
+        message: &BifrostMessage,
+    ) -> Result<Option<BifrostMessage>> {
+        match message {
+            BifrostMessage::SignRequest(request) => {
+                let response = self.handle_sign_request(request)?;
+                Ok(Some(BifrostMessage::SignResponse(response)))
+            }
+            BifrostMessage::EcdhRequest(request) => {
+                let response = self.handle_ecdh_request(request)?;
+                Ok(Some(BifrostMessage::EcdhResponse(response)))
+            }
+            BifrostMessage::Ping(_) => {
+                // Ping/Pong is handled automatically by transport
+                Ok(None)
+            }
+            _ => {
+                // Other messages (responses, results, errors) don't require action
+                Ok(None)
+            }
+        }
     }
 
     /// Perform threshold ECDH with a peer
     ///
     /// This method coordinates a threshold ECDH operation:
-    /// 1. Broadcasts EcdhRequest to threshold peers
-    /// 2. Collects k-of-n EcdhResponse messages
-    /// 3. Aggregates partial ECDH results into shared secret
+    /// 1. Computes our own partial ECDH share
+    /// 2. Broadcasts EcdhRequest to threshold peers
+    /// 3. Collects k-1 EcdhResponse messages (we are one of the k participants)
+    /// 4. Aggregates partial ECDH results into shared secret
     ///
     /// Requires:
     /// - NostrTransport must be initialized (secret_key in config)
-    /// - Relay coordination for collecting partial shares from peers
+    /// - FrostShare must be set (call set_frost_share() first)
     ///
-    /// Note: The cryptographic primitives for threshold ECDH are implemented
-    /// in `crate::ecdh`. This method needs relay coordination to collect
-    /// partial ECDH shares from threshold peers.
-    pub async fn ecdh(&self, _peer_pubkey: &[u8; 32]) -> Result<[u8; 32]> {
-        // Check if transport is available
-        let _transport = self.transport.as_ref().ok_or_else(|| {
+    /// # Returns
+    /// 32-byte shared secret compatible with NIP-44 encryption
+    pub async fn ecdh(&self, peer_pubkey: &[u8; 32]) -> Result<[u8; 32]> {
+        // Check preconditions
+        let transport = self.transport.as_ref().ok_or_else(|| {
             crate::Error::Protocol(
                 "NostrTransport not initialized. Provide secret_key in BifrostConfig.".into()
             )
         })?;
 
-        // Transport is ready, but relay coordination for collecting partial ECDH shares
-        // from peers is not yet implemented. The cryptographic primitives are available
-        // in crate::ecdh::create_ecdh_share and crate::bifrost::EcdhAggregator.
-        Err(crate::Error::Protocol(
-            "Threshold ECDH relay coordination not yet implemented. \
-             Use crate::ecdh for local threshold ECDH operations.".into()
-        ))
+        let frost_share = self.frost_share.as_ref().ok_or_else(|| {
+            crate::Error::Protocol(
+                "FrostShare not set. Call set_frost_share() before ECDH.".into()
+            )
+        })?;
+
+        // Get threshold requirement
+        let threshold = frost_share.threshold as usize;
+
+        // Step 1: Select participants and compute member list for Lagrange coefficients
+        let participants = self.select_participants(threshold)?;
+        let members: Vec<u16> = participants.iter().map(|&p| p as u16).collect();
+
+        // Step 2: Compute our own partial ECDH share
+        let our_ecdh_share = create_ecdh_share(frost_share, &members, peer_pubkey)?;
+
+        // Step 3: Create and broadcast EcdhRequest
+        let session_id = self.generate_session_id();
+
+        let request = EcdhRequest {
+            target_pubkey: *peer_pubkey,
+            session_id: session_id.clone(),
+            participants: participants.clone(),
+        };
+
+        let message = BifrostMessage::EcdhRequest(request);
+
+        // Step 4: Broadcast and wait for (k-1) responses (we are one of the k participants)
+        let required_responses = threshold.saturating_sub(1);
+        let responses = transport
+            .publish_and_wait(&message, required_responses)
+            .await?;
+
+        // Step 5: Collect and aggregate responses
+        let mut aggregator = EcdhAggregator::new(threshold, session_id);
+
+        // Add our own share first
+        aggregator.add_response(frost_share.participant_id, our_ecdh_share.partial_point)?;
+
+        // Add responses from peers
+        for response in responses {
+            if let BifrostMessage::EcdhResponse(ecdh_response) = response {
+                aggregator.add_response(ecdh_response.participant_id, ecdh_response.partial_ecdh)?;
+            }
+        }
+
+        // Step 6: Aggregate to get shared secret
+        let shared_secret = aggregator.aggregate()?;
+
+        Ok(shared_secret)
+    }
+
+    /// Handle an incoming EcdhRequest when this node is a responder
+    ///
+    /// This method is called when another node initiates ECDH and we need to participate:
+    /// 1. Compute the member list from participants
+    /// 2. Generate our partial ECDH share using Lagrange interpolation
+    /// 3. Return an EcdhResponse with our partial point
+    pub fn handle_ecdh_request(
+        &self,
+        request: &crate::bifrost::EcdhRequest,
+    ) -> Result<crate::bifrost::EcdhResponse> {
+        // Need our frost share to compute ECDH
+        let frost_share = self.frost_share.as_ref().ok_or_else(|| {
+            crate::Error::Protocol(
+                "FrostShare not set. Call set_frost_share() before handling ECDH requests.".into()
+            )
+        })?;
+
+        // Convert participants to member indices for Lagrange coefficients
+        let members: Vec<u16> = request.participants.iter().map(|&p| p as u16).collect();
+
+        // Compute our partial ECDH share
+        let ecdh_share = create_ecdh_share(frost_share, &members, &request.target_pubkey)?;
+
+        // Build and return EcdhResponse
+        Ok(crate::bifrost::EcdhResponse {
+            session_id: request.session_id.clone(),
+            participant_id: frost_share.participant_id,
+            partial_ecdh: ecdh_share.partial_point,
+        })
     }
 }
 
@@ -828,20 +1010,20 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_ecdh_with_transport_not_implemented() {
+    async fn test_ecdh_requires_frost_share() {
         let mut config = BifrostConfig::default();
         config.secret_key = Some([0x42; 32]);
 
         let node = BifrostNode::with_config(config).unwrap();
         let peer_pubkey = [0x42; 32];
 
-        // Should fail because threshold ECDH not implemented
+        // Should fail because FrostShare not set
         let result = node.ecdh(&peer_pubkey).await;
         assert!(result.is_err());
         assert!(result
             .unwrap_err()
             .to_string()
-            .contains("not yet implemented"));
+            .contains("FrostShare not set"));
     }
 
     #[test]
@@ -952,14 +1134,13 @@ mod tests {
 
     #[test]
     fn test_serialize_commitment() {
-        let node = BifrostNode::new().unwrap();
-
         // Generate dummy commitment
         let shares = crate::keygen::generate_key_shares(2, 3).unwrap();
         let (_, commitments) = round1_commit(&shares[0]);
 
-        let bytes = node.serialize_commitment(&commitments).unwrap();
-        assert_eq!(bytes.len(), 33);
+        // Use the serialization module directly
+        let bytes = serialize_commitments(&commitments);
+        assert_eq!(bytes.len(), 66);  // 66 bytes: hiding (33) + binding (33)
     }
 
     #[test]
@@ -1110,5 +1291,150 @@ mod tests {
         // Node is dropped here
         // Running flag should be false
         assert!(!running_flag.load(Ordering::Relaxed));
+    }
+
+    #[test]
+    fn test_handle_sign_request_requires_frost_share() {
+        let node = BifrostNode::new().unwrap();
+
+        let request = crate::bifrost::SignRequest {
+            event_hash: [0x42; 32],
+            nonce_commitment: [0x00; 66],
+            session_id: "test-session".to_string(),
+            participants: vec![1, 2],
+            initiator_id: 1,
+        };
+
+        // Should fail because no frost share
+        let result = node.handle_sign_request(&request);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("FrostShare not set"));
+    }
+
+    #[test]
+    fn test_handle_message_routes_correctly() {
+        let mut node = BifrostNode::new().unwrap();
+
+        // Set up frost share
+        let shares = crate::keygen::generate_key_shares(2, 3).unwrap();
+        node.set_frost_share(shares[1].clone());  // Use share 2 as responder
+
+        // Create a valid sign request (would come from participant 1)
+        let (_, commitments) = crate::signing::round1_commit(&shares[0]);
+        let commitment_bytes = crate::bifrost::serialization::serialize_commitments(&commitments);
+
+        let sign_request = crate::bifrost::SignRequest {
+            event_hash: [0x42; 32],
+            nonce_commitment: commitment_bytes,
+            session_id: "test-session".to_string(),
+            participants: vec![1, 2],
+            initiator_id: 1,  // Initiated by participant 1
+        };
+
+        let message = BifrostMessage::SignRequest(sign_request);
+
+        // handle_message should return a SignResponse
+        let result = node.handle_message(&message);
+        assert!(result.is_ok());
+        let response = result.unwrap();
+        assert!(response.is_some());
+
+        if let Some(BifrostMessage::SignResponse(resp)) = response {
+            assert_eq!(resp.session_id, "test-session");
+            assert_eq!(resp.participant_id, shares[1].participant_id);
+            assert_eq!(resp.partial_sig.len(), 32);
+            assert_eq!(resp.nonce_commitment.len(), 66);
+        } else {
+            panic!("Expected SignResponse");
+        }
+    }
+
+    #[test]
+    fn test_handle_ecdh_request_requires_frost_share() {
+        let node = BifrostNode::new().unwrap();
+
+        let request = crate::bifrost::EcdhRequest {
+            target_pubkey: [0x42; 32],
+            session_id: "ecdh-session".to_string(),
+            participants: vec![1, 2],
+        };
+
+        // Should fail because no frost share
+        let result = node.handle_ecdh_request(&request);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("FrostShare not set"));
+    }
+
+    #[test]
+    fn test_handle_ecdh_request_produces_valid_response() {
+        let mut node = BifrostNode::new().unwrap();
+
+        // Set up frost share
+        let shares = crate::keygen::generate_key_shares(2, 3).unwrap();
+        node.set_frost_share(shares[1].clone());  // Use share 2 as responder
+
+        // Create a valid peer pubkey (generator point x-coordinate works)
+        let peer_pubkey = [
+            0x79, 0xBE, 0x66, 0x7E, 0xF9, 0xDC, 0xBB, 0xAC,
+            0x55, 0xA0, 0x62, 0x95, 0xCE, 0x87, 0x0B, 0x07,
+            0x02, 0x9B, 0xFC, 0xDB, 0x2D, 0xCE, 0x28, 0xD9,
+            0x59, 0xF2, 0x81, 0x5B, 0x16, 0xF8, 0x17, 0x98,
+        ];
+
+        let request = crate::bifrost::EcdhRequest {
+            target_pubkey: peer_pubkey,
+            session_id: "ecdh-session-123".to_string(),
+            participants: vec![1, 2],
+        };
+
+        // Should produce valid response
+        let result = node.handle_ecdh_request(&request);
+        assert!(result.is_ok());
+
+        let response = result.unwrap();
+        assert_eq!(response.session_id, "ecdh-session-123");
+        assert_eq!(response.participant_id, shares[1].participant_id);
+        assert_eq!(response.partial_ecdh.len(), 33);  // Compressed point
+        // First byte should be 0x02 or 0x03 (compressed point prefix)
+        assert!(response.partial_ecdh[0] == 0x02 || response.partial_ecdh[0] == 0x03);
+    }
+
+    #[test]
+    fn test_handle_message_routes_ecdh_correctly() {
+        let mut node = BifrostNode::new().unwrap();
+
+        // Set up frost share
+        let shares = crate::keygen::generate_key_shares(2, 3).unwrap();
+        node.set_frost_share(shares[1].clone());  // Use share 2 as responder
+
+        // Create a valid peer pubkey
+        let peer_pubkey = [
+            0x79, 0xBE, 0x66, 0x7E, 0xF9, 0xDC, 0xBB, 0xAC,
+            0x55, 0xA0, 0x62, 0x95, 0xCE, 0x87, 0x0B, 0x07,
+            0x02, 0x9B, 0xFC, 0xDB, 0x2D, 0xCE, 0x28, 0xD9,
+            0x59, 0xF2, 0x81, 0x5B, 0x16, 0xF8, 0x17, 0x98,
+        ];
+
+        let ecdh_request = crate::bifrost::EcdhRequest {
+            target_pubkey: peer_pubkey,
+            session_id: "ecdh-session".to_string(),
+            participants: vec![1, 2],
+        };
+
+        let message = BifrostMessage::EcdhRequest(ecdh_request);
+
+        // handle_message should return an EcdhResponse
+        let result = node.handle_message(&message);
+        assert!(result.is_ok());
+        let response = result.unwrap();
+        assert!(response.is_some());
+
+        if let Some(BifrostMessage::EcdhResponse(resp)) = response {
+            assert_eq!(resp.session_id, "ecdh-session");
+            assert_eq!(resp.participant_id, shares[1].participant_id);
+            assert_eq!(resp.partial_ecdh.len(), 33);
+        } else {
+            panic!("Expected EcdhResponse");
+        }
     }
 }

@@ -131,7 +131,7 @@ impl MockSigningPeer {
                     // For this test, we just send a placeholder response
                     let response = SignResponse {
                         partial_sig: [self.peer_id; 32], // Mock signature
-                        nonce_share: [self.peer_id; 33], // Mock nonce
+                        nonce_commitment: [self.peer_id; 66], // Mock nonce commitment
                         participant_id: self.peer_id,
                         session_id: req.session_id.clone(),
                     };

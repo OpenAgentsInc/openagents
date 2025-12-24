@@ -144,6 +144,7 @@ pub mod aggregator;
 pub mod messages;
 pub mod node;
 pub mod peer;
+pub mod serialization;
 pub mod transport;
 
 pub use aggregator::{EcdhAggregator, SigningAggregator};
@@ -153,4 +154,11 @@ pub use messages::{
 };
 pub use node::{BifrostConfig, BifrostNode, RetryConfig as NodeRetryConfig, TimeoutConfig};
 pub use peer::{PeerInfo, PeerManager, PeerStatus, RetryConfig as PeerRetryConfig};
+pub use serialization::{
+    serialize_commitments, deserialize_commitments,
+    serialize_sig_share, deserialize_sig_share,
+    serialize_identifier, deserialize_identifier,
+    CommitmentBundle, SignatureBundle,
+    COMMITMENT_SIZE, SIG_SHARE_SIZE, IDENTIFIER_SIZE,
+};
 pub use transport::{NostrTransport, TransportConfig, BIFROST_EVENT_KIND};

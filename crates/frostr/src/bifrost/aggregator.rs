@@ -3,10 +3,13 @@
 //! This module implements the aggregation logic for combining partial
 //! signatures and ECDH shares from threshold peers.
 
+use crate::bifrost::serialization::{deserialize_commitments, deserialize_sig_share};
 use crate::bifrost::{SignRequest, SignResponse};
 use crate::ecdh::EcdhShare;
 use crate::keygen::FrostShare;
+use crate::signing::aggregate_signatures;
 use crate::{Error, Result};
+use frost_secp256k1::{Identifier, SigningPackage};
 use std::collections::BTreeMap;
 
 /// Aggregator for threshold signing operations
@@ -79,14 +82,18 @@ impl SigningAggregator {
     /// 3. Calls the frost-secp256k1 aggregate function
     /// 4. Returns the final 64-byte Schnorr signature
     ///
-    /// Note: This is a simplified implementation. A full implementation would:
-    /// - Properly reconstruct the SigningPackage with all commitments
-    /// - Handle identifier mapping between participant IDs and FROST Identifiers
-    /// - Validate nonce commitments match the signing package
+    /// # Arguments
+    ///
+    /// * `request` - The original SignRequest containing initiator's commitment
+    /// * `frost_share` - The coordinator's FROST share for verification
+    /// * `our_commitment_bytes` - The coordinator's own commitment (already included in request)
+    /// * `our_partial_sig_bytes` - The coordinator's own partial signature
     pub fn aggregate(
         &self,
         request: &SignRequest,
-        _frost_share: &FrostShare,
+        frost_share: &FrostShare,
+        our_commitment_bytes: &[u8; 66],
+        our_partial_sig_bytes: &[u8; 32],
     ) -> Result<[u8; 64]> {
         if !self.is_ready() {
             return Err(Error::Protocol(format!(
@@ -96,27 +103,55 @@ impl SigningAggregator {
             )));
         }
 
-        // In a real implementation, we would:
-        // 1. Reconstruct SigningCommitments from nonce shares in responses
-        // 2. Build SigningPackage with all commitments + message
-        // 3. Deserialize partial signatures from response bytes
-        // 4. Call aggregate_signatures() with proper FROST types
-        //
-        // For now, this is a placeholder that shows the structure
-        // The actual implementation requires:
-        // - Proper serialization/deserialization of FROST types
-        // - Identifier mapping between u8 participant IDs and FROST Identifiers
-        // - Commitment reconstruction from nonce shares
+        // Build map of commitments from all participants
+        let mut signing_commitments = BTreeMap::new();
+        let mut signature_shares = BTreeMap::new();
 
-        let _message = request.event_hash;
-        let _participant_ids: Vec<u8> = self.partial_sigs.keys().copied().collect();
+        // Add coordinator's own commitment and signature
+        let our_id = Identifier::try_from(request.initiator_id as u16)
+            .map_err(|e| Error::Protocol(format!("Invalid initiator ID: {:?}", e)))?;
+        let our_commitment = deserialize_commitments(our_commitment_bytes)?;
+        let our_sig_share = deserialize_sig_share(our_partial_sig_bytes)?;
+        signing_commitments.insert(our_id, our_commitment);
+        signature_shares.insert(our_id, our_sig_share);
 
-        // Placeholder: actual aggregation would happen here
-        Err(Error::Protocol(
-            "Signature aggregation requires full FROST type conversion. \
-             This will be implemented when proper serialization is added."
-                .into(),
-        ))
+        // Add responses from peers
+        for (participant_id, response) in &self.partial_sigs {
+            let id = Identifier::try_from(*participant_id as u16)
+                .map_err(|e| Error::Protocol(format!("Invalid participant ID {}: {:?}", participant_id, e)))?;
+
+            // Deserialize commitment from response
+            let commitment = deserialize_commitments(&response.nonce_commitment)?;
+            signing_commitments.insert(id, commitment);
+
+            // Deserialize signature share from response
+            let sig_share = deserialize_sig_share(&response.partial_sig)?;
+            signature_shares.insert(id, sig_share);
+        }
+
+        // Build SigningPackage with all commitments
+        let signing_package = SigningPackage::new(signing_commitments, &request.event_hash);
+
+        // Aggregate signatures using the frost_share for the public key package
+        let signature = aggregate_signatures(&signing_package, &signature_shares, frost_share)?;
+
+        // Convert to 64-byte format (R || s)
+        let sig_bytes = signature.serialize()
+            .map_err(|e| Error::Encoding(format!("Failed to serialize signature: {:?}", e)))?;
+        let mut result = [0u8; 64];
+        result.copy_from_slice(&sig_bytes);
+
+        Ok(result)
+    }
+
+    /// Get the collected partial signatures for inspection
+    pub fn partial_signatures(&self) -> &BTreeMap<u8, SignResponse> {
+        &self.partial_sigs
+    }
+
+    /// Get the threshold requirement
+    pub fn threshold(&self) -> usize {
+        self.threshold
     }
 }
 
@@ -241,7 +276,7 @@ mod tests {
             session_id: "test-session".to_string(),
             participant_id: 1,
             partial_sig: [0x01; 32],
-            nonce_share: [0x02; 33],
+            nonce_commitment: [0x02; 66],
         };
 
         agg.add_response(response1).unwrap();
@@ -252,7 +287,7 @@ mod tests {
             session_id: "test-session".to_string(),
             participant_id: 2,
             partial_sig: [0x03; 32],
-            nonce_share: [0x04; 33],
+            nonce_commitment: [0x04; 66],
         };
 
         agg.add_response(response2).unwrap();
@@ -268,7 +303,7 @@ mod tests {
             session_id: "wrong-session".to_string(),
             participant_id: 1,
             partial_sig: [0x01; 32],
-            nonce_share: [0x02; 33],
+            nonce_commitment: [0x02; 66],
         };
 
         let result = agg.add_response(response);
@@ -286,7 +321,7 @@ mod tests {
                 session_id: "test-session".to_string(),
                 participant_id: i,
                 partial_sig: [i; 32],
-                nonce_share: [i; 33],
+                nonce_commitment: [i; 66],
             };
             agg.add_response(response).unwrap();
         }
@@ -297,7 +332,7 @@ mod tests {
             session_id: "test-session".to_string(),
             participant_id: 3,
             partial_sig: [3; 32],
-            nonce_share: [3; 33],
+            nonce_commitment: [3; 66],
         };
         agg.add_response(response).unwrap();
         assert!(agg.is_ready());
@@ -370,20 +405,24 @@ mod tests {
             session_id: "test-session".to_string(),
             participant_id: 1,
             partial_sig: [0x01; 32],
-            nonce_share: [0x02; 33],
+            nonce_commitment: [0x02; 66],
         };
         agg.add_response(response).unwrap();
 
         let request = SignRequest {
             event_hash: [0x42; 32],
-            nonce_commitment: [0x99; 33],
+            nonce_commitment: [0x99; 66],
             session_id: "test-session".to_string(),
             participants: vec![1, 2, 3],
+            initiator_id: 1,
         };
 
         // Use dummy FrostShare (we just need the structure)
         let shares = crate::keygen::generate_key_shares(2, 3).unwrap();
-        let result = agg.aggregate(&request, &shares[0]);
+        // Provide dummy commitment and partial sig (test will fail before using them)
+        let dummy_commitment = [0x99; 66];
+        let dummy_partial_sig = [0xAB; 32];
+        let result = agg.aggregate(&request, &shares[0], &dummy_commitment, &dummy_partial_sig);
 
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("Not enough responses"));
