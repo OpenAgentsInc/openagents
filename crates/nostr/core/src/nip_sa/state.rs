@@ -144,6 +144,9 @@ pub struct AgentStateContent {
     pub last_tick: u64,
     /// Total tick count
     pub tick_count: u64,
+    /// Budget tracker for spending enforcement
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub budget: Option<super::budget::BudgetTracker>,
 }
 
 impl AgentStateContent {
@@ -157,7 +160,82 @@ impl AgentStateContent {
             wallet_balance_sats: 0,
             last_tick: 0,
             tick_count: 0,
+            budget: None,
         }
+    }
+
+    /// Create new agent state with budget enforcement
+    pub fn with_budget(budget_limits: super::budget::BudgetLimits) -> Self {
+        Self {
+            goals: Vec::new(),
+            memory: Vec::new(),
+            pending_tasks: Vec::new(),
+            beliefs: HashMap::new(),
+            wallet_balance_sats: 0,
+            last_tick: 0,
+            tick_count: 0,
+            budget: Some(super::budget::BudgetTracker::with_limits(budget_limits)),
+        }
+    }
+
+    /// Enable budget enforcement with default limits
+    pub fn enable_budget(&mut self) {
+        if self.budget.is_none() {
+            self.budget = Some(super::budget::BudgetTracker::new());
+        }
+    }
+
+    /// Get budget tracker (mutable)
+    pub fn budget_mut(&mut self) -> Option<&mut super::budget::BudgetTracker> {
+        self.budget.as_mut()
+    }
+
+    /// Check if a spend operation is allowed
+    ///
+    /// Returns Ok(()) if spend is allowed, Err with reason if not.
+    ///
+    /// # Arguments
+    /// * `amount_sats` - Amount to spend in satoshis
+    ///
+    /// # Example
+    /// ```
+    /// use nostr::nip_sa::AgentStateContent;
+    ///
+    /// let mut state = AgentStateContent::new();
+    /// state.enable_budget();
+    /// state.update_balance(100_000);
+    ///
+    /// // Check if we can spend 500 sats
+    /// assert!(state.check_spend(500).is_ok());
+    /// ```
+    pub fn check_spend(&self, amount_sats: u64) -> Result<(), super::budget::BudgetError> {
+        if let Some(budget) = &self.budget {
+            budget.check_spend(amount_sats, self.wallet_balance_sats)
+        } else {
+            // No budget enforcement - only check balance
+            if amount_sats > self.wallet_balance_sats {
+                Err(super::budget::BudgetError::InsufficientBalance {
+                    needed: amount_sats,
+                    available: self.wallet_balance_sats,
+                })
+            } else {
+                Ok(())
+            }
+        }
+    }
+
+    /// Record a spend operation
+    ///
+    /// Should be called after a spend succeeds to update budget counters.
+    ///
+    /// # Arguments
+    /// * `amount_sats` - Amount spent in satoshis
+    pub fn record_spend(&mut self, amount_sats: u64) {
+        if let Some(budget) = &mut self.budget {
+            budget.record_spend(amount_sats);
+        }
+        // Also update balance
+        self.wallet_balance_sats = self.wallet_balance_sats.saturating_sub(amount_sats);
     }
 
     /// Add a goal
@@ -188,9 +266,17 @@ impl AgentStateContent {
     }
 
     /// Increment tick count and update timestamp
+    ///
+    /// This also resets the per-tick budget counter and checks for daily budget reset.
     pub fn record_tick(&mut self, timestamp: u64) {
         self.tick_count += 1;
         self.last_tick = timestamp;
+
+        // Reset tick budget and check for daily reset
+        if let Some(budget) = &mut self.budget {
+            budget.reset_tick();
+            budget.check_and_reset_daily();
+        }
     }
 
     /// Serialize to JSON string
