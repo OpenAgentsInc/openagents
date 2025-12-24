@@ -1,11 +1,13 @@
 mod command_palette;
 mod context_menu;
+mod backgrounds;
 mod dots_grid;
 mod frame;
 mod notifications;
 mod status_bar;
 mod tooltip;
 
+pub use backgrounds::{GridLinesBackground, LineDirection, MovingLinesBackground, PuffsBackground};
 pub use command_palette::{Command, CommandPalette};
 pub use context_menu::{ContextMenu, MenuItem};
 pub use dots_grid::{DotsGrid, DotsOrigin, DotShape};
@@ -30,6 +32,9 @@ mod tests {
         let _tooltip = Tooltip::new("Test");
         let _menu = ContextMenu::new();
         let _frame = Frame::new();
+        let _grid = GridLinesBackground::new();
+        let _moving = MovingLinesBackground::new();
+        let _puffs = PuffsBackground::new();
     }
 
     #[test]
