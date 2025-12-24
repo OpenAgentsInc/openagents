@@ -23,3 +23,7 @@ chrono = { workspace = true }
 [dev-dependencies]
 futures-util = "0.3"
 wiremock = "0.6"
+
+[[example]]
+name = "ui_pane_agent"
+path = "examples/ui_pane_agent.rs"

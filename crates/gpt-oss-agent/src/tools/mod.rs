@@ -1,13 +1,7 @@
-//! Tool implementations for GPT-OSS agent
-//!
-//! Implements native Rust tools for the GPT-OSS agent:
-//! - browser: HTTP client with search/open/find capabilities
-//! - python: Docker-based code execution sandbox
-//! - apply_patch: File modification tool
-
+pub mod apply_patch;
 pub mod browser;
 pub mod python;
-pub mod apply_patch;
+pub mod ui_pane;
 
 use serde::{Deserialize, Serialize};
 
