@@ -125,7 +125,7 @@ pub fn send(destination: String, amount: u64) -> Result<()> {
         println!("{}", "Payment Sent!".bold().green());
         println!("────────────────────────────────────────");
         println!("  Payment ID: {}", response.payment.id);
-        println!("  Status: {:?}", response.payment.status);
+        // println!("  Status: {:?}", response.payment.status);
 
         Ok(())
     })
@@ -167,7 +167,7 @@ pub fn pay(invoice_str: String) -> Result<()> {
         println!("{}", "Payment Sent!".bold().green());
         println!("────────────────────────────────────────");
         println!("  Payment ID: {}", response.payment.id);
-        println!("  Status: {:?}", response.payment.status);
+        // println!("  Status: {:?}", response.payment.status);
 
         Ok(())
     })
@@ -228,7 +228,7 @@ pub fn withdraw(address: String, amount: u64) -> Result<()> {
         println!("{}", "Withdrawal Initiated!".bold().green());
         println!("────────────────────────────────────────");
         println!("  Payment ID: {}", response.payment.id);
-        println!("  Status: {:?}", response.payment.status);
+        // println!("  Status: {:?}", response.payment.status);
 
         Ok(())
     })

@@ -170,7 +170,7 @@ pub async fn connect_gpt_oss(config: GptOssAgentConfig, root_dir: &Path) -> Resu
     cmd = cmd.arg("--acp");
 
     // Create the connection
-    AcpAgentConnection::spawn(cmd, root_dir).await
+    AcpAgentConnection::stdio("gpt-oss", cmd, root_dir).await
 }
 
 /// Find the openagents executable
