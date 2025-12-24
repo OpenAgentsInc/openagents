@@ -50,6 +50,25 @@ pub enum BifrostMessage {
     /// Pong response to ping
     #[serde(rename = "/pong")]
     Pong(Pong),
+
+    // === Two-Phase Protocol Messages (for threshold > 2) ===
+
+    /// Round 1: Request commitments from participants (coordinator → peers)
+    #[serde(rename = "/sign/commit/req")]
+    CommitmentRequest(CommitmentRequest),
+
+    /// Round 1: Commitment response from participant (peer → coordinator)
+    #[serde(rename = "/sign/commit/res")]
+    CommitmentResponse(CommitmentResponse),
+
+    /// Round 2: Full signing package with all commitments (coordinator → peers)
+    #[serde(rename = "/sign/package")]
+    SigningPackage(SigningPackageMessage),
+
+    /// Round 2: Partial signature response (peer → coordinator)
+    /// Note: No commitment needed - coordinator already has it from Round 1
+    #[serde(rename = "/sign/partial")]
+    PartialSignature(PartialSignature),
 }
 
 /// Request to sign an event hash
@@ -242,6 +261,109 @@ pub struct Pong {
 
     /// Timestamp of pong (milliseconds since epoch)
     pub pong_timestamp: u64,
+}
+
+// ============================================================================
+// Two-Phase Protocol Messages (FROST RFC 9591 compliant for threshold > 2)
+// ============================================================================
+
+/// Round 1: Coordinator requests commitments from all k participants
+///
+/// In the FROST two-round protocol, the coordinator first collects commitments
+/// from all signing participants before anyone generates partial signatures.
+/// This is required when threshold > 2 because each signer needs ALL k
+/// commitments to compute their partial signature correctly.
+///
+/// # Protocol Flow
+/// 1. Coordinator generates their own commitment
+/// 2. Coordinator sends CommitmentRequest to (k-1) other participants
+/// 3. Each participant responds with CommitmentResponse
+/// 4. Coordinator collects all k commitments
+/// 5. Coordinator sends SigningPackageMessage to all participants
+#[serde_as]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct CommitmentRequest {
+    /// Event hash to sign (32 bytes) - participants verify they're signing the right thing
+    pub event_hash: [u8; 32],
+
+    /// Session ID for correlating messages
+    pub session_id: String,
+
+    /// Participant identifiers expected to participate in signing
+    pub participants: Vec<u8>,
+
+    /// Initiator's participant ID
+    pub initiator_id: u8,
+}
+
+/// Round 1: Participant sends their commitment back to coordinator
+///
+/// The commitment is a pair of points (hiding, binding) that will be used
+/// to compute binding factors in Round 2. Participants must store their
+/// secret nonces locally until Round 2.
+#[serde_as]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct CommitmentResponse {
+    /// Session ID from the request
+    pub session_id: String,
+
+    /// Participant ID (FROST identifier as u8)
+    pub participant_id: u8,
+
+    /// This participant's nonce commitment: hiding (33) + binding (33) = 66 bytes
+    #[serde_as(as = "[_; 66]")]
+    pub nonce_commitment: [u8; 66],
+}
+
+/// Round 2: Coordinator sends full signing package with ALL commitments
+///
+/// After collecting all k commitments in Round 1, the coordinator broadcasts
+/// the complete set to all participants. Each participant can now compute
+/// their binding factor and partial signature.
+#[serde_as]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct SigningPackageMessage {
+    /// Event hash to sign (32 bytes)
+    pub event_hash: [u8; 32],
+
+    /// Session ID for correlating messages
+    pub session_id: String,
+
+    /// All k commitments from all participants (participant_id, commitment)
+    /// Participants use this to build the SigningPackage
+    pub commitments: Vec<ParticipantCommitment>,
+
+    /// Participant identifiers who are signing
+    pub participants: Vec<u8>,
+}
+
+/// A single participant's commitment for the SigningPackage
+#[serde_as]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ParticipantCommitment {
+    /// Participant ID
+    pub participant_id: u8,
+
+    /// Their nonce commitment: hiding (33) + binding (33) = 66 bytes
+    #[serde_as(as = "[_; 66]")]
+    pub commitment: [u8; 66],
+}
+
+/// Round 2: Participant sends just their partial signature
+///
+/// Unlike SignResponse (which includes commitment), this message contains
+/// only the partial signature since the coordinator already has all
+/// commitments from Round 1.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct PartialSignature {
+    /// Session ID from the request
+    pub session_id: String,
+
+    /// Participant ID
+    pub participant_id: u8,
+
+    /// Partial signature (32 bytes scalar)
+    pub partial_sig: [u8; 32],
 }
 
 #[cfg(test)]

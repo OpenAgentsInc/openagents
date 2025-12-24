@@ -119,6 +119,8 @@ pub struct RelayConnection {
     queue: Option<Arc<MessageQueue>>,
     /// Queue processing task handle
     queue_task: Arc<Mutex<Option<tokio::task::JoinHandle<()>>>>,
+    /// Receive loop task handle
+    recv_task: Arc<Mutex<Option<tokio::task::JoinHandle<()>>>>,
     /// Circuit breaker for fault tolerance
     circuit_breaker: Arc<CircuitBreaker>,
     /// Exponential backoff for reconnection
@@ -187,6 +189,7 @@ impl RelayConnection {
             subscriptions: Arc::new(Mutex::new(HashMap::new())),
             queue,
             queue_task: Arc::new(Mutex::new(None)),
+            recv_task: Arc::new(Mutex::new(None)),
             circuit_breaker,
             backoff,
             health_metrics,
@@ -276,7 +279,109 @@ impl RelayConnection {
         // Start queue processing task
         self.start_queue_task();
 
+        // Start background receive loop
+        self.start_recv_loop().await;
+
         Ok(())
+    }
+
+    /// Start background receive loop to process incoming messages
+    async fn start_recv_loop(&self) {
+        let ws = Arc::clone(&self.ws);
+        let state = Arc::clone(&self.state);
+        let pending_confirmations = Arc::clone(&self.pending_confirmations);
+        let subscriptions = Arc::clone(&self.subscriptions);
+        let url = self.url.to_string();
+
+        let handle = tokio::spawn(async move {
+            loop {
+                // Check if still connected
+                if *state.read().await != ConnectionState::Connected {
+                    break;
+                }
+
+                // Try to receive a message
+                let msg = {
+                    let mut ws_guard = ws.lock().await;
+                    if let Some(stream) = ws_guard.as_mut() {
+                        match tokio::time::timeout(
+                            Duration::from_millis(100),
+                            stream.next(),
+                        ).await {
+                            Ok(Some(Ok(Message::Text(text)))) => {
+                                Some(text)
+                            }
+                            Ok(Some(Ok(Message::Ping(data)))) => {
+                                // Respond to ping
+                                let _ = stream.send(Message::Pong(data)).await;
+                                None
+                            }
+                            Ok(Some(Ok(Message::Close(_)))) => {
+                                info!("Relay {} closed connection", url);
+                                break;
+                            }
+                            Ok(Some(Err(e))) => {
+                                warn!("WebSocket error from {}: {}", url, e);
+                                break;
+                            }
+                            Ok(Some(Ok(_))) => None, // Ignore other message types
+                            Ok(None) => {
+                                // Stream ended
+                                break;
+                            }
+                            Err(_) => None, // Timeout - continue loop
+                        }
+                    } else {
+                        break;
+                    }
+                };
+
+                // Process received message outside of lock
+                if let Some(text) = msg {
+                    if let Ok(Some(relay_msg)) = Self::parse_relay_message(&text) {
+                        // Handle OK messages for pending confirmations
+                        if let RelayMessage::Ok(event_id, accepted, message) = &relay_msg {
+                            let mut confirmations = pending_confirmations.lock().await;
+                            if let Some(tx) = confirmations.remove(event_id) {
+                                let confirmation = PublishConfirmation {
+                                    event_id: event_id.clone(),
+                                    accepted: *accepted,
+                                    message: message.clone(),
+                                };
+                                let _ = tx.send(confirmation);
+                            }
+                        }
+
+                        // Route EVENT messages to subscriptions
+                        if let RelayMessage::Event(sub_id, event) = &relay_msg {
+                            let subs = subscriptions.lock().await;
+                            if let Some(subscription) = subs.get(sub_id) {
+                                if let Err(e) = subscription.handle_event(event.clone()) {
+                                    warn!("Error handling event for subscription {}: {}", sub_id, e);
+                                }
+                            }
+                        }
+
+                        // Handle EOSE messages for subscriptions
+                        if let RelayMessage::Eose(sub_id) = &relay_msg {
+                            let subs = subscriptions.lock().await;
+                            if let Some(subscription) = subs.get(sub_id) {
+                                subscription.mark_eose();
+                            }
+                        }
+                    }
+                }
+            }
+        });
+
+        *self.recv_task.lock().await = Some(handle);
+    }
+
+    /// Stop background receive loop
+    async fn stop_recv_loop(&self) {
+        if let Some(handle) = self.recv_task.lock().await.take() {
+            handle.abort();
+        }
     }
 
     /// Disconnect from the relay
@@ -287,6 +392,9 @@ impl RelayConnection {
         }
 
         info!("Disconnecting from relay: {}", self.url);
+
+        // Stop receive loop first
+        self.stop_recv_loop().await;
 
         // Stop queue processing task
         self.stop_queue_task().await;

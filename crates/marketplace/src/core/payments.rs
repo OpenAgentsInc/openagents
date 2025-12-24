@@ -25,7 +25,7 @@ use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use sha2::{Sha256, Digest};
 use std::sync::Arc;
-use openagents_spark::{SparkWallet, Payment as SparkPayment};
+use openagents_spark::SparkWallet;
 
 /// Payment status for tracking
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -421,13 +421,12 @@ impl PaymentManager {
             anyhow::anyhow!("Spark wallet not configured. See d-001 directive.")
         })?;
 
-        let _payment = wallet
-            .get_payment(payment_id)
-            .await
-            .map_err(|e| anyhow::anyhow!("Failed to get payment status: {}", e))?;
+        // TODO: SparkWallet doesn't have get_payment yet
+        // Track payment status internally or query Lightning node
+        let _ = wallet; // Use wallet reference to avoid warning
+        let _ = payment_id; // Use payment_id to avoid warning
 
-        // TODO: Map Spark payment status to marketplace PaymentStatus
-        // For now, return pending as placeholder
+        // For now, return pending as placeholder until Spark SDK adds payment lookup
         Ok(PaymentStatus::Pending)
     }
 
@@ -644,7 +643,7 @@ mod tests {
 
     #[test]
     fn test_verify_preimage_valid() {
-        let manager = PaymentManager::new();
+        let manager = PaymentManager::new(None);
 
         // Test with a known preimage and its hash
         // Preimage: "0000000000000000000000000000000000000000000000000000000000000000"
@@ -656,7 +655,7 @@ mod tests {
 
     #[test]
     fn test_verify_preimage_invalid() {
-        let manager = PaymentManager::new();
+        let manager = PaymentManager::new(None);
 
         let preimage = "0000000000000000000000000000000000000000000000000000000000000000";
         let wrong_hash = "1111111111111111111111111111111111111111111111111111111111111111";
@@ -666,7 +665,7 @@ mod tests {
 
     #[test]
     fn test_verify_preimage_malformed() {
-        let manager = PaymentManager::new();
+        let manager = PaymentManager::new(None);
 
         // Invalid hex strings
         assert!(!manager.verify_preimage("invalid", "also-invalid"));

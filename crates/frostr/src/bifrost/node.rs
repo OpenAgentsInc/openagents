@@ -4,15 +4,18 @@ use crate::bifrost::aggregator::{EcdhAggregator, SigningAggregator};
 use crate::bifrost::peer::PeerManager;
 use crate::bifrost::serialization::{serialize_commitments, deserialize_commitments, serialize_sig_share};
 use crate::bifrost::transport::{NostrTransport, TransportConfig};
-use crate::bifrost::{BifrostMessage, EcdhRequest, Ping, SignRequest};
+use crate::bifrost::{
+    BifrostMessage, EcdhRequest, Ping, SignRequest,
+    CommitmentRequest, CommitmentResponse, SigningPackageMessage, ParticipantCommitment, PartialSignature,
+};
 use crate::ecdh::create_ecdh_share;
 use crate::keygen::FrostShare;
 use crate::signing::{round1_commit, round2_sign};
 use crate::Result;
-use frost_secp256k1::{Identifier, SigningPackage};
-use std::collections::BTreeMap;
+use frost_secp256k1::{round1::SigningNonces, Identifier, SigningPackage};
+use std::collections::{BTreeMap, HashMap};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 /// Timeout configuration for different operations
 #[derive(Debug, Clone)]
@@ -160,6 +163,9 @@ pub struct BifrostNode {
     frost_share: Option<FrostShare>,
     /// Running state flag (shared for shutdown signaling)
     running: Arc<AtomicBool>,
+    /// Pending nonces for two-phase signing protocol
+    /// Maps session_id -> SigningNonces (stored after Round 1 until Round 2)
+    pending_nonces: Arc<Mutex<HashMap<String, SigningNonces>>>,
 }
 
 impl BifrostNode {
@@ -193,6 +199,7 @@ impl BifrostNode {
             transport,
             frost_share: None,
             running: Arc::new(AtomicBool::new(false)),
+            pending_nonces: Arc::new(Mutex::new(HashMap::new())),
         })
     }
 
@@ -425,25 +432,15 @@ impl BifrostNode {
 
     /// Sign an event hash using threshold shares
     ///
-    /// This method coordinates a threshold signing operation:
-    /// 1. Generates signing nonces and commitments (round1_commit)
-    /// 2. Broadcasts SignRequest to threshold peers
-    /// 3. Collects k-of-n SignResponse messages
-    /// 4. Aggregates partial signatures into final signature
-    /// 5. Broadcasts SignResult to all participants
-    /// 6. Returns final 64-byte Schnorr signature
+    /// This method coordinates a threshold signing operation using either:
+    /// - Single-round protocol (threshold == 2): Optimized flow where responders
+    ///   can compute signatures immediately since they have all needed commitments
+    /// - Two-round protocol (threshold > 2): FROST RFC 9591 compliant flow where
+    ///   commitments must be collected first before anyone can sign
     ///
     /// Requires:
     /// - NostrTransport must be initialized (secret_key in config)
     /// - FrostShare must be set (call set_frost_share() first)
-    ///
-    /// Note: This is a simplified coordinator implementation. A production
-    /// version would need:
-    /// - Proper session ID generation and management
-    /// - Participant selection logic
-    /// - Full FROST type serialization for network transport
-    /// - Nonce commitment tracking
-    /// - Response validation and error handling
     pub async fn sign(&self, event_hash: &[u8; 32]) -> Result<[u8; 64]> {
         // Check preconditions
         let transport = self.transport.as_ref().ok_or_else(|| {
@@ -458,16 +455,31 @@ impl BifrostNode {
             )
         })?;
 
-        // Get threshold requirement
+        let threshold = frost_share.threshold as usize;
+
+        // Choose protocol based on threshold
+        if threshold > 2 {
+            self.sign_two_phase(event_hash, transport, frost_share).await
+        } else {
+            self.sign_single_round(event_hash, transport, frost_share).await
+        }
+    }
+
+    /// Single-round signing protocol (optimized for threshold == 2)
+    ///
+    /// This works because with threshold=2, the responder has both commitments
+    /// (coordinator + self) and can compute their partial signature immediately.
+    async fn sign_single_round(
+        &self,
+        event_hash: &[u8; 32],
+        transport: &NostrTransport,
+        frost_share: &FrostShare,
+    ) -> Result<[u8; 64]> {
         let threshold = frost_share.threshold as usize;
 
         // Step 1: Generate our signing nonces and commitments
         let (nonces, commitments) = round1_commit(frost_share);
-
-        // Serialize commitment using proper FROST serialization
         let commitment_bytes = serialize_commitments(&commitments);
-
-        // Get our participant ID
         let initiator_id = frost_share.participant_id;
 
         // Step 2: Create and broadcast SignRequest
@@ -484,15 +496,14 @@ impl BifrostNode {
 
         let message = BifrostMessage::SignRequest(request.clone());
 
-        // Step 3: Broadcast and wait for (k-1) responses (we are one of the k signers)
+        // Step 3: Broadcast and wait for (k-1) responses
         let required_responses = threshold.saturating_sub(1);
         let responses = transport
             .publish_and_wait(&message, required_responses)
             .await?;
 
-        // Step 4: Collect and validate responses
+        // Step 4: Collect responses
         let mut aggregator = SigningAggregator::new(threshold, session_id);
-
         for response in responses {
             if let BifrostMessage::SignResponse(sign_response) = response {
                 aggregator.add_response(sign_response)?;
@@ -502,12 +513,10 @@ impl BifrostNode {
         // Step 5: Build SigningPackage from all commitments
         let mut signing_commitments = BTreeMap::new();
 
-        // Add our own commitment
         let our_id = Identifier::try_from(initiator_id as u16)
             .map_err(|e| crate::Error::Protocol(format!("Invalid initiator ID: {:?}", e)))?;
         signing_commitments.insert(our_id, commitments);
 
-        // Add commitments from all responders
         for (participant_id, response) in aggregator.partial_signatures() {
             let id = Identifier::try_from(*participant_id as u16)
                 .map_err(|e| crate::Error::Protocol(format!("Invalid participant ID: {:?}", e)))?;
@@ -515,7 +524,6 @@ impl BifrostNode {
             signing_commitments.insert(id, peer_commitment);
         }
 
-        // Build the signing package
         let signing_package = SigningPackage::new(signing_commitments, event_hash);
 
         // Step 6: Generate our own partial signature
@@ -526,6 +534,137 @@ impl BifrostNode {
         let signature = aggregator.aggregate(&request, frost_share, &commitment_bytes, &our_partial_sig_bytes)?;
 
         Ok(signature)
+    }
+
+    /// Two-round signing protocol (FROST RFC 9591 compliant for threshold > 2)
+    ///
+    /// Round 1: Collect commitments from all k participants
+    /// Round 2: Distribute full SigningPackage and collect partial signatures
+    async fn sign_two_phase(
+        &self,
+        event_hash: &[u8; 32],
+        transport: &NostrTransport,
+        frost_share: &FrostShare,
+    ) -> Result<[u8; 64]> {
+        let threshold = frost_share.threshold as usize;
+        let initiator_id = frost_share.participant_id;
+        let session_id = self.generate_session_id();
+        let participants = self.select_participants(threshold)?;
+
+        // ========== ROUND 1: Collect commitments ==========
+
+        // Generate our own commitment
+        let (nonces, our_commitments) = round1_commit(frost_share);
+        let our_commitment_bytes = serialize_commitments(&our_commitments);
+
+        // Send CommitmentRequest to all participants
+        let commitment_request = CommitmentRequest {
+            event_hash: *event_hash,
+            session_id: session_id.clone(),
+            participants: participants.clone(),
+            initiator_id,
+        };
+
+        let request_message = BifrostMessage::CommitmentRequest(commitment_request);
+
+        // Wait for (k-1) commitment responses
+        let required_responses = threshold.saturating_sub(1);
+        let commitment_responses = transport
+            .publish_and_wait(&request_message, required_responses)
+            .await?;
+
+        // Collect all commitments (ours + peers)
+        let mut all_commitments: Vec<ParticipantCommitment> = vec![
+            ParticipantCommitment {
+                participant_id: initiator_id,
+                commitment: our_commitment_bytes,
+            }
+        ];
+
+        for response in &commitment_responses {
+            if let BifrostMessage::CommitmentResponse(cr) = response {
+                all_commitments.push(ParticipantCommitment {
+                    participant_id: cr.participant_id,
+                    commitment: cr.nonce_commitment,
+                });
+            }
+        }
+
+        // ========== ROUND 2: Distribute SigningPackage and collect signatures ==========
+
+        // Build signing package with ALL commitments
+        let mut signing_commitments = BTreeMap::new();
+        for pc in &all_commitments {
+            let id = Identifier::try_from(pc.participant_id as u16)
+                .map_err(|e| crate::Error::Protocol(format!("Invalid participant ID: {:?}", e)))?;
+            let commitment = deserialize_commitments(&pc.commitment)?;
+            signing_commitments.insert(id, commitment);
+        }
+        let signing_package = SigningPackage::new(signing_commitments, event_hash);
+
+        // Send SigningPackageMessage to all participants
+        let package_message = SigningPackageMessage {
+            event_hash: *event_hash,
+            session_id: session_id.clone(),
+            commitments: all_commitments.clone(),
+            participants: participants.clone(),
+        };
+
+        let package_msg = BifrostMessage::SigningPackage(package_message);
+
+        // Wait for (k-1) partial signatures
+        let signature_responses = transport
+            .publish_and_wait(&package_msg, required_responses)
+            .await?;
+
+        // ========== AGGREGATION ==========
+
+        // Generate our own partial signature
+        let our_sig_share = round2_sign(frost_share, &nonces, &signing_package)?;
+        let our_partial_sig_bytes = serialize_sig_share(&our_sig_share);
+
+        // Collect all signature shares
+        let mut signature_shares = BTreeMap::new();
+
+        // Add our signature
+        let our_id = Identifier::try_from(initiator_id as u16)
+            .map_err(|e| crate::Error::Protocol(format!("Invalid initiator ID: {:?}", e)))?;
+        let our_sig = crate::bifrost::serialization::deserialize_sig_share(&our_partial_sig_bytes)?;
+        signature_shares.insert(our_id, our_sig);
+
+        // Add peer signatures
+        for response in signature_responses {
+            if let BifrostMessage::PartialSignature(ps) = response {
+                let id = Identifier::try_from(ps.participant_id as u16)
+                    .map_err(|e| crate::Error::Protocol(format!("Invalid participant ID: {:?}", e)))?;
+                let sig = crate::bifrost::serialization::deserialize_sig_share(&ps.partial_sig)?;
+                signature_shares.insert(id, sig);
+            }
+        }
+
+        // Aggregate signatures using frost-secp256k1
+        let final_signature = crate::signing::aggregate_signatures(
+            &signing_package,
+            &signature_shares,
+            frost_share,
+        )?;
+
+        // Convert to 64-byte BIP-340 format
+        let sig_bytes = final_signature.serialize()
+            .map_err(|e| crate::Error::Encoding(format!("Failed to serialize signature: {:?}", e)))?;
+
+        if sig_bytes.len() != 65 {
+            return Err(crate::Error::Encoding(format!(
+                "Unexpected signature length: expected 65, got {}",
+                sig_bytes.len()
+            )));
+        }
+
+        let mut result = [0u8; 64];
+        result[..32].copy_from_slice(&sig_bytes[1..33]);  // R.x (skip compression prefix)
+        result[32..].copy_from_slice(&sig_bytes[33..65]); // s scalar
+
+        Ok(result)
     }
 
     /// Generate a unique session ID
@@ -605,6 +744,88 @@ impl BifrostNode {
         })
     }
 
+    /// Handle Round 1 of two-phase signing: CommitmentRequest
+    ///
+    /// This is called when a coordinator requests commitments for threshold > 2.
+    /// We generate nonces, store them keyed by session_id, and return our commitment.
+    /// The nonces will be used in Round 2 when we receive the SigningPackage.
+    pub fn handle_commitment_request(
+        &self,
+        request: &CommitmentRequest,
+    ) -> Result<CommitmentResponse> {
+        let frost_share = self.frost_share.as_ref().ok_or_else(|| {
+            crate::Error::Protocol(
+                "FrostShare not set. Call set_frost_share() before handling commitment requests.".into()
+            )
+        })?;
+
+        // Generate nonces and commitment
+        let (nonces, our_commitment) = round1_commit(frost_share);
+        let our_commitment_bytes = serialize_commitments(&our_commitment);
+
+        // Store nonces for Round 2 (keyed by session_id)
+        {
+            let mut pending = self.pending_nonces.lock().map_err(|e| {
+                crate::Error::Protocol(format!("Failed to lock pending_nonces: {}", e))
+            })?;
+            pending.insert(request.session_id.clone(), nonces);
+        }
+
+        Ok(CommitmentResponse {
+            session_id: request.session_id.clone(),
+            participant_id: frost_share.participant_id,
+            nonce_commitment: our_commitment_bytes,
+        })
+    }
+
+    /// Handle Round 2 of two-phase signing: SigningPackage
+    ///
+    /// This is called when a coordinator sends the full SigningPackage with ALL commitments.
+    /// We retrieve our stored nonces from Round 1, build the SigningPackage, sign, and return.
+    pub fn handle_signing_package(
+        &self,
+        package: &SigningPackageMessage,
+    ) -> Result<PartialSignature> {
+        let frost_share = self.frost_share.as_ref().ok_or_else(|| {
+            crate::Error::Protocol(
+                "FrostShare not set. Call set_frost_share() before handling signing packages.".into()
+            )
+        })?;
+
+        // Retrieve our stored nonces from Round 1
+        let nonces = {
+            let mut pending = self.pending_nonces.lock().map_err(|e| {
+                crate::Error::Protocol(format!("Failed to lock pending_nonces: {}", e))
+            })?;
+            pending.remove(&package.session_id).ok_or_else(|| {
+                crate::Error::Protocol(format!(
+                    "No pending nonces for session {}. Did Round 1 happen?",
+                    package.session_id
+                ))
+            })?
+        };
+
+        // Build SigningPackage from ALL commitments
+        let mut signing_commitments = BTreeMap::new();
+        for pc in &package.commitments {
+            let id = Identifier::try_from(pc.participant_id as u16)
+                .map_err(|e| crate::Error::Protocol(format!("Invalid participant ID: {:?}", e)))?;
+            let commitment = deserialize_commitments(&pc.commitment)?;
+            signing_commitments.insert(id, commitment);
+        }
+        let signing_package = SigningPackage::new(signing_commitments, &package.event_hash);
+
+        // Generate our partial signature
+        let sig_share = round2_sign(frost_share, &nonces, &signing_package)?;
+        let sig_share_bytes = serialize_sig_share(&sig_share);
+
+        Ok(PartialSignature {
+            session_id: package.session_id.clone(),
+            participant_id: frost_share.participant_id,
+            partial_sig: sig_share_bytes,
+        })
+    }
+
     /// Handle an incoming BifrostMessage
     ///
     /// This method routes incoming messages to the appropriate handler:
@@ -629,6 +850,15 @@ impl BifrostNode {
             BifrostMessage::Ping(_) => {
                 // Ping/Pong is handled automatically by transport
                 Ok(None)
+            }
+            // Two-phase protocol handlers (for threshold > 2)
+            BifrostMessage::CommitmentRequest(request) => {
+                let response = self.handle_commitment_request(request)?;
+                Ok(Some(BifrostMessage::CommitmentResponse(response)))
+            }
+            BifrostMessage::SigningPackage(package) => {
+                let response = self.handle_signing_package(package)?;
+                Ok(Some(BifrostMessage::PartialSignature(response)))
             }
             _ => {
                 // Other messages (responses, results, errors) don't require action

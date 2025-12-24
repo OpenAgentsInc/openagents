@@ -151,6 +151,8 @@ pub use aggregator::{EcdhAggregator, SigningAggregator};
 pub use messages::{
     BifrostMessage, EcdhRequest, EcdhResponse, Ping, Pong, SignError, SignRequest, SignResponse,
     SignResult,
+    // Two-phase protocol types (for threshold > 2)
+    CommitmentRequest, CommitmentResponse, SigningPackageMessage, ParticipantCommitment, PartialSignature,
 };
 pub use node::{BifrostConfig, BifrostNode, RetryConfig as NodeRetryConfig, TimeoutConfig};
 pub use peer::{PeerInfo, PeerManager, PeerStatus, RetryConfig as PeerRetryConfig};
