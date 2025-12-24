@@ -258,15 +258,15 @@ impl BifrostNode {
 
     /// Start the Bifrost node
     ///
-    /// Initializes the node and marks it as running. In a full implementation,
-    /// this would:
-    /// - Connect to Nostr relays
-    /// - Start background tasks for message handling
-    /// - Initialize health monitoring
+    /// Initializes the node and connects to Nostr relays:
+    /// - Connects to all configured relays via transport
+    /// - Starts background subscription for incoming messages
+    /// - Marks node as running
     ///
     /// Returns an error if:
     /// - Node is already running
     /// - Transport is not configured
+    /// - Relay connection fails
     pub async fn start(&mut self) -> Result<()> {
         if self.is_running() {
             return Err(crate::Error::Protocol(
@@ -274,20 +274,17 @@ impl BifrostNode {
             ));
         }
 
-        if self.transport.is_none() {
-            return Err(crate::Error::Protocol(
+        let transport = self.transport.as_mut().ok_or_else(|| {
+            crate::Error::Protocol(
                 "Cannot start node without transport. Configure secret_key in BifrostConfig.".into()
-            ));
-        }
+            )
+        })?;
+
+        // Connect to relays and start subscription
+        transport.connect().await?;
 
         // Mark as running
         self.running.store(true, Ordering::Relaxed);
-
-        // In a full implementation, this would:
-        // 1. Connect to all configured relays
-        // 2. Start subscription for incoming messages
-        // 3. Launch background health check task
-        // 4. Start cleanup task for timed-out requests
 
         Ok(())
     }
@@ -712,6 +709,58 @@ impl BifrostNode {
         let shared_secret = aggregator.aggregate()?;
 
         Ok(shared_secret)
+    }
+
+    /// Run the responder loop to handle incoming requests
+    ///
+    /// This method continuously receives incoming Bifrost messages and handles them:
+    /// - SignRequest → generates SignResponse
+    /// - EcdhRequest → generates EcdhResponse
+    ///
+    /// Call this in a background task for nodes that should respond to other coordinators.
+    ///
+    /// # Example
+    /// ```ignore
+    /// // Spawn responder in background
+    /// let node = Arc::new(node);
+    /// let node_clone = node.clone();
+    /// tokio::spawn(async move {
+    ///     node_clone.run_responder().await.ok();
+    /// });
+    /// ```
+    pub async fn run_responder(&self) -> Result<()> {
+        let transport = self.transport.as_ref().ok_or_else(|| {
+            crate::Error::Protocol("Transport not initialized".into())
+        })?;
+
+        while self.is_running() {
+            // Receive incoming message with timeout
+            match tokio::time::timeout(
+                tokio::time::Duration::from_secs(1),
+                transport.receive()
+            ).await {
+                Ok(Ok(message)) => {
+                    // Handle the message and get optional response
+                    if let Ok(Some(response)) = self.handle_message(&message) {
+                        // Broadcast response back
+                        if let Err(e) = transport.broadcast(&response).await {
+                            eprintln!("Failed to broadcast response: {}", e);
+                        }
+                    }
+                }
+                Ok(Err(e)) => {
+                    // Receive error - channel might be closed
+                    if self.is_running() {
+                        eprintln!("Responder receive error: {}", e);
+                    }
+                }
+                Err(_) => {
+                    // Timeout - continue loop to check running flag
+                }
+            }
+        }
+
+        Ok(())
     }
 
     /// Handle an incoming EcdhRequest when this node is a responder
