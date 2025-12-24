@@ -434,6 +434,10 @@ impl MetricsDb {
             self.migrate_v4()?;
         }
 
+        if version < 5 {
+            self.migrate_v5()?;
+        }
+
         Ok(())
     }
 
@@ -705,6 +709,48 @@ impl MetricsDb {
         )?;
 
         self.set_schema_version(4)?;
+        Ok(())
+    }
+
+    fn migrate_v5(&self) -> Result<()> {
+        // Add issue_metrics and directive_metrics tables for per-issue and per-directive tracking
+        self.conn.execute_batch(
+            r#"
+            CREATE TABLE IF NOT EXISTS issue_metrics (
+                issue_number INTEGER NOT NULL,
+                session_id TEXT NOT NULL,
+                duration_seconds REAL NOT NULL,
+                tokens_in INTEGER NOT NULL,
+                tokens_out INTEGER NOT NULL,
+                tool_calls INTEGER NOT NULL,
+                tool_errors INTEGER NOT NULL,
+                timestamp TEXT NOT NULL,
+                PRIMARY KEY (issue_number, session_id),
+                FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
+            );
+
+            CREATE TABLE IF NOT EXISTS directive_metrics (
+                directive_id TEXT NOT NULL,
+                date TEXT NOT NULL,
+                total_duration REAL NOT NULL DEFAULT 0.0,
+                total_tokens INTEGER NOT NULL DEFAULT 0,
+                issue_count INTEGER NOT NULL DEFAULT 0,
+                completion_count INTEGER NOT NULL DEFAULT 0,
+                session_count INTEGER NOT NULL DEFAULT 0,
+                tool_calls INTEGER NOT NULL DEFAULT 0,
+                tool_errors INTEGER NOT NULL DEFAULT 0,
+                PRIMARY KEY (directive_id, date)
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_issue_metrics_issue ON issue_metrics(issue_number);
+            CREATE INDEX IF NOT EXISTS idx_issue_metrics_session ON issue_metrics(session_id);
+            CREATE INDEX IF NOT EXISTS idx_issue_metrics_timestamp ON issue_metrics(timestamp);
+            CREATE INDEX IF NOT EXISTS idx_directive_metrics_directive ON directive_metrics(directive_id);
+            CREATE INDEX IF NOT EXISTS idx_directive_metrics_date ON directive_metrics(date);
+            "#
+        )?;
+
+        self.set_schema_version(5)?;
         Ok(())
     }
 
@@ -1841,6 +1887,64 @@ impl MetricsDb {
         }
 
         Ok(metrics)
+    }
+
+    /// Store per-issue metrics for a specific session
+    pub fn store_issue_metric(&self, issue_number: i32, session_id: &str, duration_seconds: f64, tokens_in: i64, tokens_out: i64, tool_calls: i32, tool_errors: i32) -> Result<()> {
+        self.conn.execute(
+            r#"
+            INSERT OR REPLACE INTO issue_metrics
+            (issue_number, session_id, duration_seconds, tokens_in, tokens_out, tool_calls, tool_errors, timestamp)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+            "#,
+            params![
+                issue_number,
+                session_id,
+                duration_seconds,
+                tokens_in,
+                tokens_out,
+                tool_calls,
+                tool_errors,
+                Utc::now().to_rfc3339(),
+            ],
+        )
+        .context("Failed to store issue metric")?;
+
+        Ok(())
+    }
+
+    /// Update directive metrics for a specific date
+    /// This uses INSERT OR UPDATE pattern to aggregate metrics per directive per day
+    pub fn update_directive_metrics(&self, directive_id: &str, date: &str, duration_delta: f64, tokens_delta: i64, issue_count_delta: i32, completion_delta: i32, tool_calls_delta: i32, tool_errors_delta: i32) -> Result<()> {
+        // First try to insert, if it exists, update
+        let result = self.conn.execute(
+            r#"
+            INSERT INTO directive_metrics
+            (directive_id, date, total_duration, total_tokens, issue_count, completion_count, session_count, tool_calls, tool_errors)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, 1, ?7, ?8)
+            ON CONFLICT(directive_id, date) DO UPDATE SET
+                total_duration = total_duration + ?3,
+                total_tokens = total_tokens + ?4,
+                issue_count = issue_count + ?5,
+                completion_count = completion_count + ?6,
+                session_count = session_count + 1,
+                tool_calls = tool_calls + ?7,
+                tool_errors = tool_errors + ?8
+            "#,
+            params![
+                directive_id,
+                date,
+                duration_delta,
+                tokens_delta,
+                issue_count_delta,
+                completion_delta,
+                tool_calls_delta,
+                tool_errors_delta,
+            ],
+        );
+
+        result.context("Failed to update directive metrics")?;
+        Ok(())
     }
 
     /// Store velocity snapshot

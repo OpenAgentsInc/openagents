@@ -305,6 +305,54 @@ impl HookCallback for PostRunHook {
                                         }
                                     }
 
+                                    // Store per-issue metrics
+                                    if let Some(issue_numbers_str) = &session_metrics.issue_numbers {
+                                        for num_str in issue_numbers_str.split(',') {
+                                            if let Ok(issue_num) = num_str.trim().parse::<i32>() {
+                                                if let Err(e) = db.store_issue_metric(
+                                                    issue_num,
+                                                    &session_metrics.id,
+                                                    session_metrics.duration_seconds,
+                                                    session_metrics.tokens_in,
+                                                    session_metrics.tokens_out,
+                                                    session_metrics.tool_calls,
+                                                    session_metrics.tool_errors,
+                                                ) {
+                                                    eprintln!("Warning: Failed to store issue metric for #{}: {}", issue_num, e);
+                                                } else {
+                                                    eprintln!("✓ Stored metrics for issue #{}", issue_num);
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    // Update directive metrics
+                                    if let Some(directive_id) = &session_metrics.directive_id {
+                                        let date = session_metrics.timestamp.format("%Y-%m-%d").to_string();
+                                        let total_tokens = session_metrics.tokens_in + session_metrics.tokens_out;
+
+                                        // Count issues worked on (for issue_count_delta)
+                                        let issue_count = session_metrics.issue_numbers
+                                            .as_ref()
+                                            .map(|s| s.split(',').count() as i32)
+                                            .unwrap_or(0);
+
+                                        if let Err(e) = db.update_directive_metrics(
+                                            directive_id,
+                                            &date,
+                                            session_metrics.duration_seconds,
+                                            total_tokens,
+                                            issue_count,
+                                            session_metrics.issues_completed,
+                                            session_metrics.tool_calls,
+                                            session_metrics.tool_errors,
+                                        ) {
+                                            eprintln!("Warning: Failed to update directive metrics for {}: {}", directive_id, e);
+                                        } else {
+                                            eprintln!("✓ Updated metrics for directive {}", directive_id);
+                                        }
+                                    }
+
                                     // Detect anomalies
                                     if let Ok(anomalies) = db.detect_anomalies(&session_metrics) {
                                         if !anomalies.is_empty() {
