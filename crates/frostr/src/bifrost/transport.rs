@@ -341,9 +341,13 @@ impl NostrTransport {
         let message_json = serde_json::to_string(message)
             .map_err(|e| Error::Encoding(format!("failed to serialize message: {}", e)))?;
 
+        // Extract session_id from message or generate new one
+        let session_id = Self::extract_session_id(message)
+            .unwrap_or_else(|| self.generate_session_id());
+
         // Create envelope
         let envelope = MessageEnvelope {
-            session_id: self.generate_session_id(),
+            session_id,
             msg_type: self.message_type(message),
             message: message_json,
             timestamp: SystemTime::now()
@@ -390,13 +394,31 @@ impl NostrTransport {
         Ok(())
     }
 
+    /// Extract session_id from a Bifrost message
+    fn extract_session_id(message: &BifrostMessage) -> Option<String> {
+        match message {
+            BifrostMessage::SignRequest(req) => Some(req.session_id.clone()),
+            BifrostMessage::SignResponse(res) => Some(res.session_id.clone()),
+            BifrostMessage::SignResult(res) => Some(res.session_id.clone()),
+            BifrostMessage::SignError(err) => Some(err.session_id.clone()),
+            BifrostMessage::EcdhRequest(req) => Some(req.session_id.clone()),
+            BifrostMessage::EcdhResponse(res) => Some(res.session_id.clone()),
+            BifrostMessage::EcdhResult(res) => Some(res.session_id.clone()),
+            BifrostMessage::EcdhError(err) => Some(err.session_id.clone()),
+            BifrostMessage::Ping(ping) => Some(ping.session_id.clone()),
+            BifrostMessage::Pong(pong) => Some(pong.session_id.clone()),
+        }
+    }
+
     /// Publish a message and wait for responses
     pub async fn publish_and_wait(
         &self,
         message: &BifrostMessage,
         required_responses: usize,
     ) -> Result<Vec<BifrostMessage>> {
-        let session_id = self.generate_session_id();
+        // Use the session_id from the message itself
+        let session_id = Self::extract_session_id(message)
+            .ok_or_else(|| Error::Protocol("Message must have a session_id".to_string()))?;
 
         // Create response channel
         let (tx, mut rx) = mpsc::channel(required_responses);
@@ -628,9 +650,10 @@ mod tests {
 
         let message = BifrostMessage::SignRequest(SignRequest {
             event_hash: [0x42; 32],
-            nonce_commitment: [0x01; 33],
+            nonce_commitment: [0x01; 66],  // 66 bytes: hiding + binding
             session_id: "test-session".to_string(),
             participants: vec![1, 2, 3],
+            initiator_id: 1,
         });
 
         // Broadcast should fail if not connected
@@ -683,15 +706,16 @@ mod tests {
 
         let sign_req = BifrostMessage::SignRequest(SignRequest {
             event_hash: [0; 32],
-            nonce_commitment: [0; 33],
+            nonce_commitment: [0; 66],  // 66 bytes
             session_id: "test".to_string(),
             participants: vec![1],
+            initiator_id: 1,
         });
         assert_eq!(transport.message_type(&sign_req), "sign_req");
 
         let sign_res = BifrostMessage::SignResponse(SignResponse {
             partial_sig: [0; 32],
-            nonce_share: [0; 33],
+            nonce_commitment: [0; 66],  // 66 bytes
             participant_id: 1,
             session_id: "test".to_string(),
         });

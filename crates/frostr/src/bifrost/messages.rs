@@ -61,9 +61,10 @@ pub enum BifrostMessage {
 ///
 /// let request = SignRequest {
 ///     event_hash: [1u8; 32],
-///     nonce_commitment: [2u8; 33],
+///     nonce_commitment: [2u8; 66],  // 66 bytes: hiding (33) + binding (33)
 ///     session_id: "session_123".to_string(),
 ///     participants: vec![1, 2],
+///     initiator_id: 1,
 /// };
 ///
 /// assert_eq!(request.session_id, "session_123");
@@ -75,18 +76,26 @@ pub struct SignRequest {
     /// Event hash to sign (32 bytes)
     pub event_hash: [u8; 32],
 
-    /// Nonce commitment (33 bytes compressed point)
-    #[serde_as(as = "[_; 33]")]
-    pub nonce_commitment: [u8; 33],
+    /// Nonce commitment: hiding (33 bytes) + binding (33 bytes) = 66 bytes
+    /// This is the initiator's FROST commitment serialized as per serialization.rs
+    #[serde_as(as = "[_; 66]")]
+    pub nonce_commitment: [u8; 66],
 
     /// Session ID for correlating messages
     pub session_id: String,
 
     /// Participant identifiers expected to sign
     pub participants: Vec<u8>,
+
+    /// Initiator's participant ID (so responders know who started the round)
+    pub initiator_id: u8,
 }
 
 /// Partial signature response from a participant
+///
+/// In the Bifrost protocol, responders generate their own nonces/commitments
+/// AND their partial signature in a single round. This combines FROST rounds 1 and 2
+/// for the responder side.
 ///
 /// # Examples
 ///
@@ -97,7 +106,7 @@ pub struct SignRequest {
 ///     session_id: "session_123".to_string(),
 ///     participant_id: 1,
 ///     partial_sig: [3u8; 32],
-///     nonce_share: [4u8; 33],
+///     nonce_commitment: [4u8; 66],  // 66 bytes: hiding (33) + binding (33)
 /// };
 ///
 /// assert_eq!(response.participant_id, 1);
@@ -109,15 +118,16 @@ pub struct SignResponse {
     /// Session ID from the request
     pub session_id: String,
 
-    /// Participant ID
+    /// Participant ID (FROST identifier as u8)
     pub participant_id: u8,
 
-    /// Partial signature (32 bytes)
+    /// Partial signature (32 bytes scalar)
     pub partial_sig: [u8; 32],
 
-    /// Nonce share (33 bytes compressed point)
-    #[serde_as(as = "[_; 33]")]
-    pub nonce_share: [u8; 33],
+    /// This participant's nonce commitment: hiding (33) + binding (33) = 66 bytes
+    /// Needed by the coordinator to build the SigningPackage
+    #[serde_as(as = "[_; 66]")]
+    pub nonce_commitment: [u8; 66],
 }
 
 /// Final aggregated signature
@@ -174,6 +184,7 @@ pub struct EcdhRequest {
 }
 
 /// Partial ECDH result from a participant
+#[serde_as]
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct EcdhResponse {
     /// Session ID from the request
@@ -182,8 +193,9 @@ pub struct EcdhResponse {
     /// Participant ID
     pub participant_id: u8,
 
-    /// Partial ECDH computation (32 bytes)
-    pub partial_ecdh: [u8; 32],
+    /// Partial ECDH point (33 bytes compressed point)
+    #[serde_as(as = "[_; 33]")]
+    pub partial_ecdh: [u8; 33],
 }
 
 /// Final aggregated ECDH shared secret
@@ -240,9 +252,10 @@ mod tests {
     fn test_sign_request_serialize() {
         let msg = BifrostMessage::SignRequest(SignRequest {
             event_hash: [0x42; 32],
-            nonce_commitment: [0x99; 33],
+            nonce_commitment: [0x99; 66],  // 66 bytes: hiding + binding
             session_id: "test-session-1".to_string(),
             participants: vec![1, 2, 3],
+            initiator_id: 1,
         });
 
         let json = serde_json::to_string(&msg).unwrap();
@@ -259,7 +272,7 @@ mod tests {
             session_id: "test-session-1".to_string(),
             participant_id: 2,
             partial_sig: [0xAB; 32],
-            nonce_share: [0xCD; 33],
+            nonce_commitment: [0xCD; 66],  // 66 bytes: hiding + binding
         });
 
         let json = serde_json::to_string(&msg).unwrap();
@@ -312,7 +325,7 @@ mod tests {
         let msg = BifrostMessage::EcdhResponse(EcdhResponse {
             session_id: "ecdh-session-1".to_string(),
             participant_id: 1,
-            partial_ecdh: [0x34; 32],
+            partial_ecdh: [0x34; 33],
         });
 
         let json = serde_json::to_string(&msg).unwrap();
@@ -332,15 +345,16 @@ mod tests {
         let messages = vec![
             BifrostMessage::SignRequest(SignRequest {
                 event_hash: [1; 32],
-                nonce_commitment: [2; 33],
+                nonce_commitment: [2; 66],  // 66 bytes
                 session_id: "s1".into(),
                 participants: vec![1, 2],
+                initiator_id: 1,
             }),
             BifrostMessage::SignResponse(SignResponse {
                 session_id: "s1".into(),
                 participant_id: 1,
                 partial_sig: [3; 32],
-                nonce_share: [4; 33],
+                nonce_commitment: [4; 66],  // 66 bytes
             }),
             BifrostMessage::SignResult(SignResult {
                 session_id: "s1".into(),
@@ -359,7 +373,7 @@ mod tests {
             BifrostMessage::EcdhResponse(EcdhResponse {
                 session_id: "e1".into(),
                 participant_id: 1,
-                partial_ecdh: [7; 32],
+                partial_ecdh: [7; 33],
             }),
             BifrostMessage::EcdhResult(EcdhResult {
                 session_id: "e1".into(),

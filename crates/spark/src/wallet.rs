@@ -28,19 +28,23 @@ use std::sync::Arc;
 pub(crate) struct BreezSdk;
 #[derive(Debug)]
 pub struct PrepareSendPaymentResponse;
+/// Status of a payment
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PaymentStatus {
+    /// Payment is pending confirmation
+    Pending,
+    /// Payment completed successfully
+    Complete,
+    /// Payment failed
+    Failed,
+}
+
 #[derive(Debug)]
 pub struct SendPaymentResponse { pub payment: Payment }
 #[derive(Debug)]
 pub struct Payment {
     pub id: String,
     pub status: PaymentStatus,
-}
-
-#[derive(Debug)]
-pub enum PaymentStatus {
-    Pending,
-    Complete,
-    Failed,
 }
 #[derive(Debug)]
 pub struct ReceivePaymentResponse { pub payment_request: String }

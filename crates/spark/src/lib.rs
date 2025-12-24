@@ -82,4 +82,4 @@ pub mod wallet;
 
 pub use error::SparkError;
 pub use signer::SparkSigner;
-pub use wallet::{Balance, Network, SparkWallet, WalletConfig, WalletInfo};
+pub use wallet::{Balance, Network, Payment, PaymentStatus, SparkWallet, WalletConfig, WalletInfo};

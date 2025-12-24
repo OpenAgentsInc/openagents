@@ -109,6 +109,8 @@ pub struct FrostShare {
     pub threshold: u16,
     /// Total number of shares (n)
     pub total: u16,
+    /// Participant ID (1-based index)
+    pub participant_id: u8,
 }
 
 /// Galois Field GF(256) multiplication
@@ -348,17 +350,22 @@ pub fn generate_key_shares(threshold: u32, total: u32) -> Result<Vec<FrostShare>
     .map_err(|e| Error::FrostError(format!("FROST keygen failed: {:?}", e)))?;
 
     // Convert BTreeMap to Vec of FrostShare
+    // We enumerate with 1-based indices since identifiers are created as 1..=n
     let frost_shares: Vec<FrostShare> = secret_shares
-        .into_values()
-        .map(|secret_share| {
+        .into_iter()
+        .enumerate()
+        .map(|(idx, (_identifier, secret_share))| {
             // Convert SecretShare to KeyPackage (performs validation)
             let key_package: KeyPackage = secret_share.try_into().expect("Valid secret share");
+            // Participant ID is 1-based (1..=n)
+            let participant_id = (idx + 1) as u8;
 
             FrostShare {
                 key_package,
                 public_key_package: public_key_package.clone(),
                 threshold: threshold as u16,
                 total: total as u16,
+                participant_id,
             }
         })
         .collect();
