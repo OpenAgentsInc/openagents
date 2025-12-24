@@ -142,8 +142,6 @@ pub struct DiffRenderConfig {
     pub collapse_threshold: usize,
     /// Number of context lines to show around changes when collapsed
     pub context_lines: usize,
-    /// Maximum lines to render initially (for lazy loading)
-    pub initial_chunk_size: Option<usize>,
 }
 
 impl Default for DiffRenderConfig {
@@ -151,7 +149,6 @@ impl Default for DiffRenderConfig {
         Self {
             collapse_threshold: 10,
             context_lines: 3,
-            initial_chunk_size: Some(1000),
         }
     }
 }
@@ -579,6 +576,7 @@ fn render_diff_styles() -> Markup {
 }
 
 /// Render diff with inline comments (legacy, non-optimized)
+#[allow(dead_code)]
 pub fn render_diff_with_comments(
     diff_text: &str,
     comments: &[InlineComment],
