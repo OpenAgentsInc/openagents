@@ -129,7 +129,7 @@ impl HookManager {
 
     pub fn register(&mut self, hook: impl Hook + 'static) {
         self.hooks.push(Box::new(hook));
-        self.hooks.sort_by(|a, b| b.priority().cmp(&a.priority()));
+        self.hooks.sort_by_key(|h| std::cmp::Reverse(h.priority()));
     }
 
     pub fn disable(&mut self, name: &str) {
