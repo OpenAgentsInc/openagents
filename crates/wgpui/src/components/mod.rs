@@ -1,4 +1,5 @@
 pub mod atoms;
+pub mod molecules;
 mod button;
 mod component;
 mod context;
