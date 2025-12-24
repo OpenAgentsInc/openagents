@@ -80,8 +80,27 @@ impl ApplyPatchTool {
         let canonical_workspace = self.workspace_root.canonicalize()
             .map_err(|e| crate::GptOssAgentError::ToolError(format!("Invalid workspace: {}", e)))?;
 
-        let canonical_path = full_path.canonicalize()
-            .unwrap_or_else(|_| full_path.clone());
+        // For path validation, we need to handle the case where the file doesn't exist yet.
+        // We do this by canonicalizing the parent directory (which must exist) and checking
+        // that the final path would be within the workspace.
+        let canonical_path = if full_path.exists() {
+            full_path.canonicalize()
+                .map_err(|e| crate::GptOssAgentError::ToolError(format!("Invalid path: {}", e)))?
+        } else {
+            // File doesn't exist - canonicalize the parent and append the filename
+            let parent = full_path.parent().ok_or_else(|| {
+                crate::GptOssAgentError::ToolError("Invalid file path: no parent directory".to_string())
+            })?;
+
+            let canonical_parent = parent.canonicalize()
+                .map_err(|e| crate::GptOssAgentError::ToolError(format!("Invalid parent directory: {}", e)))?;
+
+            let file_name = full_path.file_name().ok_or_else(|| {
+                crate::GptOssAgentError::ToolError("Invalid file path: no file name".to_string())
+            })?;
+
+            canonical_parent.join(file_name)
+        };
 
         if !canonical_path.starts_with(&canonical_workspace) {
             return Err(crate::GptOssAgentError::ToolError(

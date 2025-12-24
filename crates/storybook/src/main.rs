@@ -62,6 +62,16 @@ use stories::acp::atoms::entry_marker::entry_marker_story;
 use stories::acp::atoms::keybinding_hint::keybinding_hint_story;
 use stories::acp::atoms::streaming_indicator::streaming_indicator_story;
 use stories::acp::molecules::molecules_index_story as acp_molecules_index_story;
+use stories::acp::molecules::tool_header::tool_header_story as acp_molecule_tool_header_story;
+use stories::acp::molecules::permission_bar::permission_bar_story as acp_molecule_permission_bar_story;
+use stories::acp::molecules::mode_selector::mode_selector_story as acp_molecule_mode_selector_story;
+use stories::acp::molecules::model_selector::model_selector_story as acp_molecule_model_selector_story;
+use stories::acp::molecules::message_header::message_header_story as acp_molecule_message_header_story;
+use stories::acp::molecules::thinking_block::thinking_block_story as acp_molecule_thinking_block_story;
+use stories::acp::molecules::diff_header::diff_header_story as acp_molecule_diff_header_story;
+use stories::acp::molecules::terminal_header::terminal_header_story as acp_molecule_terminal_header_story;
+use stories::acp::molecules::checkpoint_restore::checkpoint_restore_story as acp_molecule_checkpoint_restore_story;
+use stories::acp::molecules::entry_actions::entry_actions_story as acp_molecule_entry_actions_story;
 use stories::acp::organisms::organisms_index_story as acp_organisms_index_story;
 use stories::acp::sections::sections_index_story as acp_sections_index_story;
 use ui::{TAILWIND_CDN, TAILWIND_THEME};
@@ -126,6 +136,17 @@ fn sidebar_nav(active_story: &str) -> Markup {
                 a href="/stories/acp/atoms/entry-marker" class=(link_class("acp/atoms/entry-marker")) { "Entry Marker" }
                 a href="/stories/acp/atoms/keybinding-hint" class=(link_class("acp/atoms/keybinding-hint")) { "Keybinding Hint" }
                 a href="/stories/acp/atoms/streaming-indicator" class=(link_class("acp/atoms/streaming-indicator")) { "Streaming Indicator" }
+                h2 class="uppercase text-muted-foreground mb-1 mt-3 pl-1 tracking-wide text-xs" { "ACP Molecules" }
+                a href="/stories/acp/molecules/tool-header" class=(link_class("acp/molecules/tool-header")) { "Tool Header" }
+                a href="/stories/acp/molecules/permission-bar" class=(link_class("acp/molecules/permission-bar")) { "Permission Bar" }
+                a href="/stories/acp/molecules/mode-selector" class=(link_class("acp/molecules/mode-selector")) { "Mode Selector" }
+                a href="/stories/acp/molecules/model-selector" class=(link_class("acp/molecules/model-selector")) { "Model Selector" }
+                a href="/stories/acp/molecules/message-header" class=(link_class("acp/molecules/message-header")) { "Message Header" }
+                a href="/stories/acp/molecules/thinking-block" class=(link_class("acp/molecules/thinking-block")) { "Thinking Block" }
+                a href="/stories/acp/molecules/diff-header" class=(link_class("acp/molecules/diff-header")) { "Diff Header" }
+                a href="/stories/acp/molecules/terminal-header" class=(link_class("acp/molecules/terminal-header")) { "Terminal Header" }
+                a href="/stories/acp/molecules/checkpoint-restore" class=(link_class("acp/molecules/checkpoint-restore")) { "Checkpoint Restore" }
+                a href="/stories/acp/molecules/entry-actions" class=(link_class("acp/molecules/entry-actions")) { "Entry Actions" }
                 h2 class="uppercase text-muted-foreground mb-1 mt-4 pl-1 tracking-wide text-xs" { "Screens" }
                 p class="text-muted-foreground text-xs pl-1 py-1" { "No stories yet" }
                 h2 class="uppercase text-muted-foreground mb-1 mt-4 pl-1 tracking-wide text-xs" { "Layouts" }
@@ -543,6 +564,87 @@ async fn acp_atom_streaming_indicator_page() -> impl Responder {
         .body(html.into_string())
 }
 
+// ACP molecule handlers
+async fn acp_molecule_tool_header_page() -> impl Responder {
+    let content = acp_molecule_tool_header_story();
+    let html = base_layout("Tool Header", "acp/molecules/tool-header", content);
+    HttpResponse::Ok()
+        .content_type("text/html; charset=utf-8")
+        .body(html.into_string())
+}
+
+async fn acp_molecule_permission_bar_page() -> impl Responder {
+    let content = acp_molecule_permission_bar_story();
+    let html = base_layout("Permission Bar", "acp/molecules/permission-bar", content);
+    HttpResponse::Ok()
+        .content_type("text/html; charset=utf-8")
+        .body(html.into_string())
+}
+
+async fn acp_molecule_mode_selector_page() -> impl Responder {
+    let content = acp_molecule_mode_selector_story();
+    let html = base_layout("Mode Selector", "acp/molecules/mode-selector", content);
+    HttpResponse::Ok()
+        .content_type("text/html; charset=utf-8")
+        .body(html.into_string())
+}
+
+async fn acp_molecule_model_selector_page() -> impl Responder {
+    let content = acp_molecule_model_selector_story();
+    let html = base_layout("Model Selector", "acp/molecules/model-selector", content);
+    HttpResponse::Ok()
+        .content_type("text/html; charset=utf-8")
+        .body(html.into_string())
+}
+
+async fn acp_molecule_message_header_page() -> impl Responder {
+    let content = acp_molecule_message_header_story();
+    let html = base_layout("Message Header", "acp/molecules/message-header", content);
+    HttpResponse::Ok()
+        .content_type("text/html; charset=utf-8")
+        .body(html.into_string())
+}
+
+async fn acp_molecule_thinking_block_page() -> impl Responder {
+    let content = acp_molecule_thinking_block_story();
+    let html = base_layout("Thinking Block", "acp/molecules/thinking-block", content);
+    HttpResponse::Ok()
+        .content_type("text/html; charset=utf-8")
+        .body(html.into_string())
+}
+
+async fn acp_molecule_diff_header_page() -> impl Responder {
+    let content = acp_molecule_diff_header_story();
+    let html = base_layout("Diff Header", "acp/molecules/diff-header", content);
+    HttpResponse::Ok()
+        .content_type("text/html; charset=utf-8")
+        .body(html.into_string())
+}
+
+async fn acp_molecule_terminal_header_page() -> impl Responder {
+    let content = acp_molecule_terminal_header_story();
+    let html = base_layout("Terminal Header", "acp/molecules/terminal-header", content);
+    HttpResponse::Ok()
+        .content_type("text/html; charset=utf-8")
+        .body(html.into_string())
+}
+
+async fn acp_molecule_checkpoint_restore_page() -> impl Responder {
+    let content = acp_molecule_checkpoint_restore_story();
+    let html = base_layout("Checkpoint Restore", "acp/molecules/checkpoint-restore", content);
+    HttpResponse::Ok()
+        .content_type("text/html; charset=utf-8")
+        .body(html.into_string())
+}
+
+async fn acp_molecule_entry_actions_page() -> impl Responder {
+    let content = acp_molecule_entry_actions_story();
+    let html = base_layout("Entry Actions", "acp/molecules/entry-actions", content);
+    HttpResponse::Ok()
+        .content_type("text/html; charset=utf-8")
+        .body(html.into_string())
+}
+
 #[tokio::main]
 async fn main() -> std::io::Result<()> {
     // Read port from environment variable or use default
@@ -597,6 +699,17 @@ async fn main() -> std::io::Result<()> {
             .route("/stories/acp/atoms/entry-marker", web::get().to(acp_atom_entry_marker_page))
             .route("/stories/acp/atoms/keybinding-hint", web::get().to(acp_atom_keybinding_hint_page))
             .route("/stories/acp/atoms/streaming-indicator", web::get().to(acp_atom_streaming_indicator_page))
+            // ACP molecule routes
+            .route("/stories/acp/molecules/tool-header", web::get().to(acp_molecule_tool_header_page))
+            .route("/stories/acp/molecules/permission-bar", web::get().to(acp_molecule_permission_bar_page))
+            .route("/stories/acp/molecules/mode-selector", web::get().to(acp_molecule_mode_selector_page))
+            .route("/stories/acp/molecules/model-selector", web::get().to(acp_molecule_model_selector_page))
+            .route("/stories/acp/molecules/message-header", web::get().to(acp_molecule_message_header_page))
+            .route("/stories/acp/molecules/thinking-block", web::get().to(acp_molecule_thinking_block_page))
+            .route("/stories/acp/molecules/diff-header", web::get().to(acp_molecule_diff_header_page))
+            .route("/stories/acp/molecules/terminal-header", web::get().to(acp_molecule_terminal_header_page))
+            .route("/stories/acp/molecules/checkpoint-restore", web::get().to(acp_molecule_checkpoint_restore_page))
+            .route("/stories/acp/molecules/entry-actions", web::get().to(acp_molecule_entry_actions_page))
             .route("/__ws_reload", web::get().to(ws_reload))
     });
 

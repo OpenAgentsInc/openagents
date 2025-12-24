@@ -4,6 +4,61 @@ use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::process::Command;
+use std::sync::OnceLock;
+
+/// Cached compose command preference (modern `docker compose` or legacy `docker-compose`)
+static COMPOSE_CMD: OnceLock<ComposeCommand> = OnceLock::new();
+
+#[derive(Debug, Clone, Copy)]
+enum ComposeCommand {
+    /// Modern `docker compose` subcommand
+    Modern,
+    /// Legacy standalone `docker-compose` binary
+    Legacy,
+}
+
+impl ComposeCommand {
+    /// Detect which compose command is available, preferring modern `docker compose`
+    fn detect() -> Self {
+        // Try modern `docker compose` first
+        if Command::new("docker")
+            .args(["compose", "version"])
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false)
+        {
+            return ComposeCommand::Modern;
+        }
+
+        // Fall back to legacy `docker-compose`
+        ComposeCommand::Legacy
+    }
+
+    /// Run a compose command with the given args
+    fn run(&self, args: &[String], current_dir: &std::path::Path) -> Result<std::process::Output> {
+        match self {
+            ComposeCommand::Modern => {
+                let mut full_args = vec!["compose".to_string()];
+                full_args.extend(args.iter().cloned());
+                Command::new("docker")
+                    .args(&full_args)
+                    .current_dir(current_dir)
+                    .output()
+                    .context("Failed to run docker compose")
+            }
+            ComposeCommand::Legacy => Command::new("docker-compose")
+                .args(args)
+                .current_dir(current_dir)
+                .output()
+                .context("Failed to run docker-compose"),
+        }
+    }
+}
+
+/// Get the cached compose command, detecting it on first call
+fn get_compose_command() -> &'static ComposeCommand {
+    COMPOSE_CMD.get_or_init(ComposeCommand::detect)
+}
 
 /// Agent status
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -69,16 +124,12 @@ pub async fn start_agents(count: usize) -> Result<Vec<AgentInfo>> {
         args.extend(["up".to_string(), "-d".to_string()]);
         args.extend(services);
 
-        // Run docker-compose
-        let output = Command::new("docker-compose")
-            .args(&args)
-            .current_dir(&project_root)
-            .output()
-            .context("Failed to run docker-compose")?;
+        // Run docker compose (modern) or docker-compose (legacy)
+        let output = get_compose_command().run(&args, &project_root)?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
-            anyhow::bail!("docker-compose failed: {}", stderr);
+            anyhow::bail!("docker compose failed: {}", stderr);
         }
 
         Ok(())
@@ -94,20 +145,21 @@ pub async fn stop_agents() -> Result<()> {
         let project_root = find_project_root()?;
         let compose_file = project_root.join("docker/autopilot/docker-compose.yml");
 
-        let output = Command::new("docker-compose")
-            .args([
-                "-f", &compose_file.to_string_lossy(),
-                "--profile", "extended",
-                "--profile", "linux-full",
-                "down",
-            ])
-            .current_dir(&project_root)
-            .output()
-            .context("Failed to run docker-compose down")?;
+        let args = vec![
+            "-f".to_string(),
+            compose_file.to_string_lossy().to_string(),
+            "--profile".to_string(),
+            "extended".to_string(),
+            "--profile".to_string(),
+            "linux-full".to_string(),
+            "down".to_string(),
+        ];
+
+        let output = get_compose_command().run(&args, &project_root)?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
-            anyhow::bail!("docker-compose down failed: {}", stderr);
+            anyhow::bail!("docker compose down failed: {}", stderr);
         }
 
         Ok(())

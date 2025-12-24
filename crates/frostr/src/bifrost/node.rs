@@ -541,10 +541,11 @@ impl BifrostNode {
     ///
     /// Requires:
     /// - NostrTransport must be initialized (secret_key in config)
-    /// - Threshold ECDH implementation (currently not supported)
+    /// - Relay coordination for collecting partial shares from peers
     ///
-    /// Note: Threshold ECDH requires multiplicative secret sharing which
-    /// FROST shares don't directly support. See crate::ecdh module docs.
+    /// Note: The cryptographic primitives for threshold ECDH are implemented
+    /// in `crate::ecdh`. This method needs relay coordination to collect
+    /// partial ECDH shares from threshold peers.
     pub async fn ecdh(&self, _peer_pubkey: &[u8; 32]) -> Result<[u8; 32]> {
         // Check if transport is available
         let _transport = self.transport.as_ref().ok_or_else(|| {
@@ -553,10 +554,12 @@ impl BifrostNode {
             )
         })?;
 
-        // Transport is ready, but ECDH aggregation not implemented
+        // Transport is ready, but relay coordination for collecting partial ECDH shares
+        // from peers is not yet implemented. The cryptographic primitives are available
+        // in crate::ecdh::create_ecdh_share and crate::bifrost::EcdhAggregator.
         Err(crate::Error::Protocol(
-            "Threshold ECDH not yet implemented. FROST shares require \
-             multiplicative threshold ECDH. See crate::ecdh documentation.".into()
+            "Threshold ECDH relay coordination not yet implemented. \
+             Use crate::ecdh for local threshold ECDH operations.".into()
         ))
     }
 }

@@ -1,9 +1,10 @@
 # Dockerfile for parallel autopilot agents
 #
-# IMPORTANT: Build the binary on the host first:
-#   cargo build --release -p autopilot
+# IMPORTANT: Build the binaries on the host first:
+#   cargo build --release -p autopilot -p issues-mcp
 #   mkdir -p docker/autopilot/bin
 #   cp target/release/autopilot docker/autopilot/bin/
+#   cp target/release/issues-mcp docker/autopilot/bin/
 #
 # Then build the image:
 #   docker-compose -f docker/autopilot/docker-compose.yml build
@@ -14,7 +15,7 @@
 # Using trixie (testing) for glibc 2.39+ compatibility with Arch-built binaries
 FROM debian:trixie-slim
 
-# Install runtime dependencies
+# Install runtime dependencies (including procps for healthcheck pgrep)
 RUN apt-get update && apt-get install -y \
     git \
     curl \
@@ -23,16 +24,18 @@ RUN apt-get update && apt-get install -y \
     jq \
     openssh-client \
     ca-certificates \
+    procps \
     && rm -rf /var/lib/apt/lists/*
 
 # Create non-root user with configurable UID to match host
 ARG HOST_UID=1000
 RUN useradd -m -u ${HOST_UID} -s /bin/bash agent
 
-# Copy pre-built autopilot binary from host
-# Build on host with: cargo build --release -p autopilot
+# Copy pre-built binaries from host
+# Build on host with: cargo build --release -p autopilot -p issues-mcp
 COPY docker/autopilot/bin/autopilot /usr/local/bin/autopilot
-RUN chmod +x /usr/local/bin/autopilot
+COPY docker/autopilot/bin/issues-mcp /usr/local/bin/issues-mcp
+RUN chmod +x /usr/local/bin/autopilot /usr/local/bin/issues-mcp
 
 # Switch to non-root user
 USER agent
