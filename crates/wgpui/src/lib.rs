@@ -25,6 +25,7 @@ pub mod accessibility;
 pub mod animation;
 pub mod color;
 pub mod components;
+pub mod effects;
 pub mod geometry;
 pub mod hit_test;
 pub mod input;
@@ -52,6 +53,7 @@ pub use components::{
     EventContext, EventResult, Modal, PaintContext, ScrollView, Tab, Tabs, Text, TextDecipher,
     TextEffectAnimator, TextEffectFrame, TextEffectTiming, TextInput, TextSequence, VirtualList,
 };
+pub use effects::{Illuminator, IlluminatorSvg};
 pub use markdown::{
     FadeState, MarkdownBlock, MarkdownConfig, MarkdownDocument, MarkdownParser,
     MarkdownRenderer, StreamingConfig, StreamingMarkdown, StyledLine, StyledSpan,
