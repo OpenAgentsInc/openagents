@@ -61,6 +61,10 @@ pub enum ClientError {
     #[error("Invalid event: {0}")]
     InvalidEvent(String),
 
+    /// Invalid request
+    #[error("Invalid request: {0}")]
+    InvalidRequest(String),
+
     /// Protocol error
     #[error("Protocol error: {0}")]
     Protocol(String),
