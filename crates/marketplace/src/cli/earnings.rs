@@ -4,6 +4,9 @@ use anyhow::Result;
 use clap::{Args, Subcommand};
 use colored::Colorize;
 use std::fmt;
+use crate::core::earnings::{EarningsTracker, RevenueType};
+use crate::db::init_db;
+use std::path::PathBuf;
 
 /// Earnings commands
 #[derive(Debug, Args)]
@@ -133,138 +136,113 @@ struct EarningRecord {
 }
 
 /// Execute dashboard command
-async fn execute_dashboard(_json: bool, period: &str) -> Result<()> {
+async fn execute_dashboard(json: bool, period: &str) -> Result<()> {
+    // Initialize database
+    let db_path = get_db_path()?;
+    let conn = init_db(&db_path)?;
+    let tracker = EarningsTracker::with_defaults();
+
+    // Get earnings stats
+    let stats = tracker.get_earnings_stats(&conn)?;
+
+    if json {
+        let json_output = serde_json::to_string_pretty(&stats)?;
+        println!("{}", json_output);
+        return Ok(());
+    }
+
     println!("{}", "Marketplace Earnings Dashboard".cyan().bold());
     println!("{}", "═══════════════════════════════════════".cyan());
     println!();
-
-    // Mock data - in production, query from earnings database
-    let total_earned = 125_000u64;
-    let available_balance = 25_000u64;
-    let withdrawn = 100_000u64;
 
     println!("{}", format!("Period: {}", period).bright_white().bold());
     println!();
 
     println!("{}", "Total Earned".bright_green().bold());
-    println!("  {} sats", total_earned.to_string().bright_white());
-    println!();
-
-    println!("{}", "Available Balance".bright_yellow().bold());
-    println!("  {} sats", available_balance.to_string().bright_white());
-    println!();
-
-    println!("{}", "Already Withdrawn".bright_blue().bold());
-    println!("  {} sats", withdrawn.to_string().bright_white());
+    println!("  {} sats", stats.total_gross_sats.to_string().bright_white());
     println!();
 
     println!("{}", "Earnings by Source".bright_cyan().bold());
-    println!("  {:<15} {:>10}", "Compute:", "45,000 sats");
-    println!("  {:<15} {:>10}", "Skills:", "30,000 sats");
-    println!("  {:<15} {:>10}", "Data:", "20,000 sats");
-    println!("  {:<15} {:>10}", "Trajectories:", "30,000 sats");
+    println!("  {:<15} {:>10}", "Compute:", format!("{} sats", stats.by_type.compute_sats));
+    println!("  {:<15} {:>10}", "Skills:", format!("{} sats", stats.by_type.skill_sats));
+    println!("  {:<15} {:>10}", "Data:", format!("{} sats", stats.by_type.data_sats));
+    println!("  {:<15} {:>10}", "Trajectories:", format!("{} sats", stats.by_type.trajectory_sats));
     println!();
 
     println!("{}", "Recent Activity".bright_magenta().bold());
-    println!("  Last 7 days:     +15,000 sats");
-    println!("  Last 30 days:    +55,000 sats");
+    println!("  Last hour:       +{} sats", stats.by_period.last_hour_sats);
+    println!("  Last 24 hours:   +{} sats", stats.by_period.last_day_sats);
+    println!("  Last 7 days:     +{} sats", stats.by_period.last_week_sats);
+    println!("  Last 30 days:    +{} sats", stats.by_period.last_month_sats);
     println!();
 
     println!("{}", "Next Actions".bright_yellow());
     println!("  • Run {} to see detailed history", "marketplace earnings history".cyan());
-    println!("  • Run {} to withdraw funds", "marketplace earnings withdraw".cyan());
+    println!("  • Run {} to export data", "marketplace earnings export".cyan());
     println!();
 
     Ok(())
 }
 
 /// Execute history command
-async fn execute_history(_json: bool, limit: usize, source_filter: Option<String>) -> Result<()> {
+async fn execute_history(json: bool, limit: usize, source_filter: Option<String>) -> Result<()> {
+    // Initialize database
+    let db_path = get_db_path()?;
+    let conn = init_db(&db_path)?;
+    let tracker = EarningsTracker::with_defaults();
+
+    // Parse revenue type filter if provided
+    let revenue_type = source_filter.as_deref().and_then(RevenueType::from_str);
+
+    // Get recent buckets
+    let buckets = tracker.get_recent_buckets(&conn, limit, revenue_type)?;
+
+    if json {
+        let json_output = serde_json::to_string_pretty(&buckets)?;
+        println!("{}", json_output);
+        return Ok(());
+    }
+
     println!("{}", "Earnings History".cyan().bold());
     println!("{}", "═══════════════════════════════════════".cyan());
     println!();
 
-    // Mock data - in production, query from earnings database
-    let records = [
-        EarningRecord {
-            timestamp: 1703001000,
-            source: RevenueSource::Compute,
-            description: "LLM inference job completed".to_string(),
-            amount_sats: 5_000,
-            job_id: Some("job_abc123".to_string()),
-        },
-        EarningRecord {
-            timestamp: 1703002000,
-            source: RevenueSource::Trajectories,
-            description: "Trajectory contribution accepted".to_string(),
-            amount_sats: 2_500,
-            job_id: None,
-        },
-        EarningRecord {
-            timestamp: 1703003000,
-            source: RevenueSource::Skills,
-            description: "Skill license fee".to_string(),
-            amount_sats: 1_000,
-            job_id: Some("lic_xyz789".to_string()),
-        },
-        EarningRecord {
-            timestamp: 1703004000,
-            source: RevenueSource::Data,
-            description: "Dataset sale".to_string(),
-            amount_sats: 10_000,
-            job_id: Some("sale_def456".to_string()),
-        },
-    ];
-
-    // Filter by source if specified
-    let filtered: Vec<_> = if let Some(ref filter) = source_filter {
-        records
-            .iter()
-            .filter(|r| r.source.as_str() == filter.as_str())
-            .take(limit)
-            .collect()
-    } else {
-        records.iter().take(limit).collect()
-    };
-
-    if filtered.is_empty() {
+    if buckets.is_empty() {
         println!("{}", "No earnings records found".yellow());
         return Ok(());
     }
 
-    println!("{:<12} {:<15} {:<40} {:>12}",
-        "DATE".bright_white().bold(),
+    println!("{:<20} {:<15} {:<30} {:>12}",
+        "TIMESTAMP".bright_white().bold(),
         "SOURCE".bright_white().bold(),
-        "DESCRIPTION".bright_white().bold(),
+        "ITEM ID".bright_white().bold(),
         "AMOUNT".bright_white().bold()
     );
     println!("{}", "─".repeat(85).bright_black());
 
-    let filtered_len = filtered.len();
-
-    for record in filtered {
-        let date = chrono::DateTime::from_timestamp(record.timestamp as i64, 0)
+    for bucket in &buckets {
+        let datetime = chrono::DateTime::from_timestamp(bucket.bucket_minute as i64, 0)
             .unwrap()
-            .format("%Y-%m-%d");
+            .format("%Y-%m-%d %H:%M");
 
-        let source_str = match record.source {
-            RevenueSource::Compute => record.source.to_string().bright_blue(),
-            RevenueSource::Skills => record.source.to_string().bright_green(),
-            RevenueSource::Data => record.source.to_string().bright_magenta(),
-            RevenueSource::Trajectories => record.source.to_string().bright_cyan(),
+        let source_str = match bucket.revenue_type {
+            RevenueType::Compute => bucket.revenue_type.as_str().bright_blue(),
+            RevenueType::Skill => bucket.revenue_type.as_str().bright_green(),
+            RevenueType::Data => bucket.revenue_type.as_str().bright_magenta(),
+            RevenueType::Trajectory => bucket.revenue_type.as_str().bright_cyan(),
         };
 
         println!(
-            "{:<12} {:<15} {:<40} {:>12}",
-            date.to_string(),
+            "{:<20} {:<15} {:<30} {:>12}",
+            datetime.to_string(),
             source_str,
-            record.description,
-            format!("{} sats", record.amount_sats).bright_white()
+            &bucket.item_id,
+            format!("{} sats", bucket.gross_sats).bright_white()
         );
     }
 
     println!();
-    println!("{}", format!("Showing {} of available records", filtered_len).bright_black());
+    println!("{}", format!("Showing {} records", buckets.len()).bright_black());
 
     if let Some(filter) = source_filter {
         println!("{}", format!("Filtered by source: {}", filter).bright_black());
@@ -371,23 +349,74 @@ async fn execute_export(
         _ => anyhow::bail!("Unsupported format: {}. Use 'csv' or 'json'.", format),
     }
 
+    // Parse date range
+    let from_timestamp = if let Some(ref from) = from_date {
+        parse_date_to_timestamp(from)?
+    } else {
+        0 // Beginning of time
+    };
+
+    let to_timestamp = if let Some(ref to) = to_date {
+        parse_date_to_timestamp(to)?
+    } else {
+        u64::MAX // End of time
+    };
+
+    // Initialize database
+    let db_path = get_db_path()?;
+    let conn = init_db(&db_path)?;
+    let tracker = EarningsTracker::with_defaults();
+
     println!("{}", "Exporting data...".bright_blue());
 
-    // Mock data - in production, query and export real data
-    let mock_csv = "date,source,description,amount_sats,job_id\n\
-        2024-12-19,compute,LLM inference job,5000,job_abc123\n\
-        2024-12-19,trajectories,Trajectory contribution,2500,\n\
-        2024-12-19,skills,Skill license fee,1000,lic_xyz789\n\
-        2024-12-19,data,Dataset sale,10000,sale_def456\n";
+    // Export in requested format
+    let content = match format {
+        "csv" => tracker.export_as_csv(&conn, from_timestamp, to_timestamp)?,
+        "json" => tracker.export_as_json(&conn, from_timestamp, to_timestamp)?,
+        _ => unreachable!(),
+    };
 
-    std::fs::write(output_path, mock_csv)?;
+    // Write to file
+    std::fs::write(output_path, content)?;
+
+    // Count records
+    let buckets = tracker.export_earnings(&conn, from_timestamp, to_timestamp)?;
+    let record_count = buckets.len();
 
     println!();
     println!("{}", "✓ Export complete!".bright_green().bold());
     println!();
     println!("  File:    {}", output_path);
-    println!("  Records: 4");
+    println!("  Records: {}", record_count);
     println!();
 
     Ok(())
+}
+
+/// Parse date string (YYYY-MM-DD) to unix timestamp
+fn parse_date_to_timestamp(date_str: &str) -> Result<u64> {
+    use chrono::NaiveDate;
+
+    let date = NaiveDate::parse_from_str(date_str, "%Y-%m-%d")
+        .map_err(|e| anyhow::anyhow!("Invalid date format '{}': {}. Use YYYY-MM-DD", date_str, e))?;
+
+    let datetime = date.and_hms_opt(0, 0, 0)
+        .ok_or_else(|| anyhow::anyhow!("Failed to create datetime from date"))?;
+
+    Ok(datetime.and_utc().timestamp() as u64)
+}
+
+/// Get database path for marketplace earnings
+fn get_db_path() -> Result<PathBuf> {
+    let home = std::env::var("HOME")
+        .map_err(|_| anyhow::anyhow!("HOME environment variable not set"))?;
+    let mut path = PathBuf::from(home);
+    path.push(".openagents");
+    path.push("marketplace");
+
+    // Create directory if it doesn't exist
+    std::fs::create_dir_all(&path)?;
+
+    path.push("earnings.db");
+    Ok(path)
 }
