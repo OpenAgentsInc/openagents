@@ -1,0 +1,189 @@
+use crate::components::atoms::EntryType as AtomEntryType;
+use crate::components::context::{EventContext, PaintContext};
+use crate::components::molecules::EntryActions;
+use crate::components::{Component, ComponentId, EventResult};
+use crate::{Bounds, InputEvent, Point, Quad, theme};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum EntryType {
+    #[default]
+    User,
+    Assistant,
+    Tool,
+    System,
+    Error,
+}
+
+impl From<EntryType> for AtomEntryType {
+    fn from(t: EntryType) -> Self {
+        match t {
+            EntryType::User => AtomEntryType::User,
+            EntryType::Assistant => AtomEntryType::Assistant,
+            EntryType::Tool => AtomEntryType::Tool,
+            EntryType::System => AtomEntryType::System,
+            EntryType::Error => AtomEntryType::Error,
+        }
+    }
+}
+
+pub struct ThreadEntry {
+    id: Option<ComponentId>,
+    entry_type: EntryType,
+    content: Box<dyn Component>,
+    show_actions: bool,
+    hovered: bool,
+    on_copy: Option<Box<dyn FnMut()>>,
+    on_retry: Option<Box<dyn FnMut()>>,
+}
+
+impl ThreadEntry {
+    pub fn new(entry_type: EntryType, content: impl Component + 'static) -> Self {
+        Self {
+            id: None,
+            entry_type,
+            content: Box::new(content),
+            show_actions: false,
+            hovered: false,
+            on_copy: None,
+            on_retry: None,
+        }
+    }
+
+    pub fn with_id(mut self, id: ComponentId) -> Self {
+        self.id = Some(id);
+        self
+    }
+
+    pub fn show_actions(mut self, show: bool) -> Self {
+        self.show_actions = show;
+        self
+    }
+
+    pub fn on_copy<F>(mut self, f: F) -> Self
+    where
+        F: FnMut() + 'static,
+    {
+        self.on_copy = Some(Box::new(f));
+        self
+    }
+
+    pub fn on_retry<F>(mut self, f: F) -> Self
+    where
+        F: FnMut() + 'static,
+    {
+        self.on_retry = Some(Box::new(f));
+        self
+    }
+
+    pub fn entry_type(&self) -> EntryType {
+        self.entry_type
+    }
+
+    pub fn is_hovered(&self) -> bool {
+        self.hovered
+    }
+}
+
+impl Component for ThreadEntry {
+    fn paint(&mut self, bounds: Bounds, cx: &mut PaintContext) {
+        let padding = theme::spacing::SM;
+
+        if self.hovered {
+            cx.scene.draw_quad(
+                Quad::new(bounds).with_background(theme::bg::MUTED.with_alpha(0.3)),
+            );
+        }
+
+        let mut content_bounds = bounds;
+        content_bounds.origin.x += padding;
+        content_bounds.origin.y += padding;
+        content_bounds.size.width -= padding * 2.0;
+        content_bounds.size.height -= padding * 2.0;
+
+        if self.show_actions || self.hovered {
+            content_bounds.size.height -= 32.0;
+        }
+
+        self.content.paint(content_bounds, cx);
+
+        if self.show_actions || self.hovered {
+            let actions_y = bounds.origin.y + bounds.size.height - padding - 24.0;
+            let mut actions = EntryActions::new();
+            actions.paint(
+                Bounds::new(
+                    bounds.origin.x + bounds.size.width - padding - 100.0,
+                    actions_y,
+                    100.0,
+                    24.0,
+                ),
+                cx,
+            );
+        }
+    }
+
+    fn event(&mut self, event: &InputEvent, bounds: Bounds, cx: &mut EventContext) -> EventResult {
+        match event {
+            InputEvent::MouseMove { x, y } => {
+                let was_hovered = self.hovered;
+                self.hovered = bounds.contains(Point::new(*x, *y));
+                if was_hovered != self.hovered {
+                    return EventResult::Handled;
+                }
+            }
+            _ => {}
+        }
+
+        let padding = theme::spacing::SM;
+        let mut content_bounds = bounds;
+        content_bounds.origin.x += padding;
+        content_bounds.origin.y += padding;
+        content_bounds.size.width -= padding * 2.0;
+        content_bounds.size.height -= padding * 2.0;
+
+        if self.show_actions || self.hovered {
+            content_bounds.size.height -= 32.0;
+        }
+
+        self.content.event(event, content_bounds, cx)
+    }
+
+    fn id(&self) -> Option<ComponentId> {
+        self.id
+    }
+
+    fn size_hint(&self) -> (Option<f32>, Option<f32>) {
+        let (w, h) = self.content.size_hint();
+        let padding = theme::spacing::SM * 2.0;
+        let actions_height = if self.show_actions { 32.0 } else { 0.0 };
+        (w.map(|w| w + padding), h.map(|h| h + padding + actions_height))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::components::Text;
+
+    #[test]
+    fn test_thread_entry_new() {
+        let entry = ThreadEntry::new(EntryType::User, Text::new("Hello"));
+        assert_eq!(entry.entry_type(), EntryType::User);
+        assert!(!entry.is_hovered());
+    }
+
+    #[test]
+    fn test_thread_entry_builder() {
+        let entry = ThreadEntry::new(EntryType::Assistant, Text::new("Response"))
+            .with_id(1)
+            .show_actions(true);
+
+        assert_eq!(entry.id, Some(1));
+        assert!(entry.show_actions);
+    }
+
+    #[test]
+    fn test_entry_type_conversion() {
+        assert_eq!(AtomEntryType::from(EntryType::User), AtomEntryType::User);
+        assert_eq!(AtomEntryType::from(EntryType::Tool), AtomEntryType::Tool);
+    }
+}

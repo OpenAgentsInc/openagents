@@ -1,5 +1,6 @@
 pub mod atoms;
 pub mod molecules;
+pub mod organisms;
 mod button;
 mod component;
 mod context;
