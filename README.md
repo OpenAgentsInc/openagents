@@ -24,6 +24,10 @@ You allocate capital and attention across agents. You set goals and budgets. You
 
 ---
 
+📖 **[Read the full synthesis →](SYNTHESIS.md)** — A comprehensive 14,000-word document explaining how all the pieces fit together, from cryptographic primitives to economic mechanisms to the company mission.
+
+---
+
 ## The Vision
 
 ### The Problem
@@ -1004,6 +1008,7 @@ This workflow leverages each agent's strengths: Claude for analysis/review, Code
 
 ## Documentation
 
+- **[SYNTHESIS.md](SYNTHESIS.md)**: Comprehensive vision document — how all pieces fit together
 - **Workspace README**: This file
 - **Crate READMEs**: See `crates/*/README.md`
 - **API Docs**: `cargo doc --open`
@@ -1039,7 +1044,7 @@ For questions, issues, or contributions:
 
 ## The Company
 
-OpenAgents, Inc. is building the fundamental research lab for the agent economy — a Bell Labs for the age of autonomous AI. Headquartered in Austin, remote-first, pushing the frontier and commercializing it. [Read more →](docs/company/BELL_LABS_2.md)
+OpenAgents, Inc. is building the TCP/IP of the agent economy — the identity, payment, and coordination protocols that make autonomous AI commerce possible regardless of which models power the agents. Infrastructure-first, remote-first, pushing the frontier and commercializing it simultaneously. [Read more →](SYNTHESIS.md#part-sixteen-the-company-and-the-mission)
 
 ---
 
