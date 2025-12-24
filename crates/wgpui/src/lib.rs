@@ -44,7 +44,7 @@ pub use platform::Platform;
 pub use scene::{GlyphInstance, GpuQuad, GpuTextQuad, Quad, Scene, TextRun};
 pub use scroll::{ScrollContainer, ScrollDirection};
 pub use text::{FontStyle, TextSystem};
-pub use components::{AnyComponent, Button, ButtonVariant, Component, ComponentId, Div, EventResult, EventContext, PaintContext, ScrollView, Text, VirtualList};
+pub use components::{AnyComponent, Button, ButtonVariant, Component, ComponentId, Div, Dropdown, DropdownOption, EventResult, EventContext, Modal, PaintContext, ScrollView, Tab, Tabs, Text, TextInput, VirtualList};
 
 #[cfg(all(feature = "web", target_arch = "wasm32"))]
 pub use platform::web::{WebPlatform, run_animation_loop, setup_resize_observer};
