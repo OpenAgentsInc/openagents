@@ -1,3 +1,4 @@
+pub mod atoms;
 mod button;
 mod component;
 mod context;
