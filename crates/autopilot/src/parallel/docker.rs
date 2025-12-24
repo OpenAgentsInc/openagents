@@ -74,6 +74,17 @@ pub enum AgentStatus {
     Error,
 }
 
+impl std::fmt::Display for AgentStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            AgentStatus::Running => write!(f, "running"),
+            AgentStatus::Stopped => write!(f, "stopped"),
+            AgentStatus::Starting => write!(f, "starting"),
+            AgentStatus::Error => write!(f, "error"),
+        }
+    }
+}
+
 /// Information about a running agent
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AgentInfo {
