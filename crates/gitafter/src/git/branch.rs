@@ -151,7 +151,8 @@ mod tests {
         let (_dir, repo) = create_test_repo();
 
         let current = current_branch(repo.path()).unwrap();
-        assert_eq!(current, "master");
+        // Git default branch depends on system config (main or master)
+        assert!(current == "main" || current == "master", "expected main or master, got {}", current);
     }
 
     #[test]

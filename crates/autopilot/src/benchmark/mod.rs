@@ -1032,6 +1032,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[ignore] // Requires claude CLI executable
     async fn test_benchmark_runner() -> Result<()> {
         let temp_dir = TempDir::new()?;
         let workspace = temp_dir.path().join("workspace");

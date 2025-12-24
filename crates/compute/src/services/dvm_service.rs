@@ -458,6 +458,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[ignore] // Requires relay network connectivity
     async fn test_publish_handler_info() {
         // Create test identity
         let identity = UnifiedIdentity::generate().expect("should generate identity");
@@ -483,6 +484,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[ignore] // Requires relay network connectivity
     async fn test_publish_handler_info_with_pricing() {
         // Create test identity
         let identity = UnifiedIdentity::generate().expect("should generate identity");

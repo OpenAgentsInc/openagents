@@ -159,6 +159,7 @@ impl TaskComplexity {
         indicators.insert("implementation_keywords".to_string(), implementation_score);
 
         // Directive complexity (certain directives are inherently complex)
+        // When no directive, use a low default so simple tasks stay Low complexity
         let directive_score = directive_id
             .map(|id| match id {
                 "d-001" | "d-002" | "d-006" | "d-007" => 1.0, // Protocol/crypto work
@@ -166,7 +167,7 @@ impl TaskComplexity {
                 "d-003" | "d-008" | "d-009" => 0.6,           // Feature work
                 _ => 0.4,
             })
-            .unwrap_or(0.5);
+            .unwrap_or(0.2);
         indicators.insert("directive_complexity".to_string(), directive_score);
 
         // Text length indicator (longer = more complex)

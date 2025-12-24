@@ -1096,6 +1096,7 @@ mod tests {
             "Layer 2: Wire service into auth flow",
             "This layer wires the FooService...",
         )
+        .clone_url("https://github.com/test/repo.git")
         .commit("def456ghi789")
         .depends_on("pr_layer_1_event_id")
         .stack("stack_uuid_123")
