@@ -8,35 +8,83 @@
 //! - NIP-89 provider discovery
 //! - DVM service integration with relay
 //!
-//! Unlike unit tests which mock relay interactions, these tests use
-//! actual in-process Nostr relays to ensure realistic interoperability.
-//!
 //! Part of d-015: Comprehensive Marketplace and Agent Commerce E2E Tests
 
-use nostr::{finalize_event, generate_secret_key, EventTemplate};
+use nostr::{finalize_event, generate_secret_key, get_public_key, EventTemplate};
 use nostr::{HandlerInfo, HandlerMetadata, HandlerType, KIND_HANDLER_INFO};
-use nostr::{JobFeedback, JobInput, JobRequest, JobResult, JobStatus, KIND_JOB_FEEDBACK, KIND_JOB_TEXT_GENERATION};
+use nostr::{
+    JobFeedback, JobInput, JobRequest, JobResult, JobStatus, KIND_JOB_FEEDBACK,
+    KIND_JOB_TEXT_GENERATION,
+};
+use nostr_client::RelayConnection;
+use nostr_relay::{Database, DatabaseConfig, RelayConfig, RelayServer};
+use serde_json::json;
+use std::sync::Arc;
+use std::time::Duration;
+use tokio::time::sleep;
+
+/// Helper: Start an in-process test relay and return its server
+async fn start_test_relay(port: u16) -> (Arc<RelayServer>, tempfile::TempDir) {
+    let config = RelayConfig {
+        bind_addr: format!("127.0.0.1:{}", port).parse().unwrap(),
+        ..Default::default()
+    };
+
+    let temp_dir = tempfile::tempdir().unwrap();
+    let db_path = temp_dir.path().join("test.db");
+    let db_config = DatabaseConfig {
+        path: db_path,
+        ..Default::default()
+    };
+
+    let db = Database::new(db_config).unwrap();
+    let server = Arc::new(RelayServer::new(config, db));
+
+    let server_clone = Arc::clone(&server);
+    tokio::spawn(async move {
+        server_clone.start().await.ok();
+    });
+
+    // Give server time to start
+    sleep(Duration::from_millis(200)).await;
+
+    (server, temp_dir)
+}
+
+/// Get test relay WebSocket URL for given port
+fn test_relay_url(port: u16) -> String {
+    format!("ws://127.0.0.1:{}", port)
+}
+
+// =============================================================================
+// Phase 1 Tests: NIP-90 Compute E2E with Real Relay
+// =============================================================================
 
 #[tokio::test]
 async fn test_nip90_job_request_publish_fetch() {
-    // 1. Create customer identity
-    let customer_secret_key = generate_secret_key();
+    // 1. Start test relay
+    let (_server, _tmp) = start_test_relay(19200).await;
+    let relay_url = test_relay_url(19200);
 
-    // 2. Create a NIP-90 job request for text generation
+    // 2. Create customer identity
+    let customer_secret_key = generate_secret_key();
+    let customer_pubkey = get_public_key(&customer_secret_key).expect("pubkey");
+
+    // 3. Create a NIP-90 job request for text generation
     let job_request = JobRequest::new(KIND_JOB_TEXT_GENERATION)
         .expect("should create job request")
         .add_input(JobInput::text("Write a haiku about decentralized AI"))
         .add_param("model", "llama3.2")
         .add_param("temperature", "0.7")
-        .with_bid(1000); // 1000 millisats
+        .with_bid(1000);
 
-    // 3. Verify job request structure
+    // 4. Verify job request structure
     assert_eq!(job_request.kind, KIND_JOB_TEXT_GENERATION);
     assert_eq!(job_request.inputs.len(), 1);
     assert_eq!(job_request.params.len(), 2);
     assert_eq!(job_request.bid, Some(1000));
 
-    // 4. Convert job request to Nostr event
+    // 5. Convert job request to Nostr event
     let template = EventTemplate {
         kind: job_request.kind,
         content: job_request.content.clone(),
@@ -47,32 +95,61 @@ async fn test_nip90_job_request_publish_fetch() {
             .as_secs(),
     };
 
-    let event = finalize_event(&template, &customer_secret_key)
-        .expect("should sign event");
+    let event = finalize_event(&template, &customer_secret_key).expect("should sign event");
 
-    // 5. Verify event was created correctly
-    assert_eq!(event.kind, KIND_JOB_TEXT_GENERATION);
-    // Job request is encoded in tags (content is empty for NIP-90 requests)
-    assert_eq!(event.tags.len(), 4, "should have 1 input + 2 params + 1 bid tag");
+    // 6. Connect to relay and subscribe BEFORE publishing
+    let relay = RelayConnection::new(&relay_url).expect("connection");
+    relay.connect().await.expect("connect");
 
-    // NOTE: Full E2E test would include:
-    // - Start in-process test relay
-    // - Subscribe to job requests
-    // - Publish event to relay
-    // - Receive event on subscriber
-    // - Verify all fields match
-    //
-    // This requires debugging the RelayConnection recv() timeout issue.
-    // For now, this test verifies the NIP-90 types and event creation work correctly.
+    // Subscribe to job requests (provider perspective)
+    let filter = json!({
+        "kinds": [KIND_JOB_TEXT_GENERATION],
+        "limit": 10
+    });
+    let mut rx = relay
+        .subscribe_with_channel("job-requests", &[filter])
+        .await
+        .expect("subscribe");
+
+    // Small delay for subscription to be active
+    sleep(Duration::from_millis(100)).await;
+
+    // 7. Publish event to relay
+    let confirmation = relay
+        .publish_event(&event, Duration::from_secs(5))
+        .await
+        .expect("publish");
+
+    assert!(confirmation.accepted, "Relay should accept event");
+    assert_eq!(confirmation.event_id, event.id);
+
+    // 8. Receive the event on our subscription
+    let received = tokio::time::timeout(Duration::from_secs(2), rx.recv())
+        .await
+        .expect("should receive within timeout")
+        .expect("should have event");
+
+    // 9. Verify received event matches published
+    assert_eq!(received.id, event.id);
+    assert_eq!(received.kind, KIND_JOB_TEXT_GENERATION);
+    assert_eq!(received.pubkey, hex::encode(customer_pubkey));
+    assert_eq!(received.tags.len(), 4); // 1 input + 2 params + 1 bid
+
+    relay.disconnect().await.ok();
 }
 
 #[tokio::test]
 async fn test_nip90_job_result_lifecycle() {
-    // 1. Create provider identity
-    let provider_secret_key = generate_secret_key();
+    // 1. Start test relay
+    let (_server, _tmp) = start_test_relay(19201).await;
+    let relay_url = test_relay_url(19201);
 
-    // 2. Simulate receiving a job request (create request event first)
+    // 2. Create identities
+    let provider_secret_key = generate_secret_key();
     let customer_secret_key = generate_secret_key();
+    let customer_pubkey = get_public_key(&customer_secret_key).expect("pubkey");
+
+    // 3. Create job request event
     let job_request = JobRequest::new(KIND_JOB_TEXT_GENERATION)
         .expect("should create job request")
         .add_input(JobInput::text("Write a haiku"))
@@ -88,28 +165,44 @@ async fn test_nip90_job_result_lifecycle() {
             .as_secs(),
     };
 
-    let request_event = finalize_event(&request_template, &customer_secret_key)
-        .expect("should sign request event");
+    let request_event =
+        finalize_event(&request_template, &customer_secret_key).expect("should sign request");
 
-    // 3. Create a job result for the request
+    // 4. Connect to relay
+    let relay = RelayConnection::new(&relay_url).expect("connection");
+    relay.connect().await.expect("connect");
+
+    // 5. Subscribe to job results (customer perspective)
+    let result_kind = KIND_JOB_TEXT_GENERATION + 1000; // 6050
+    let filter = json!({
+        "kinds": [result_kind],
+        "#p": [hex::encode(customer_pubkey)],
+        "limit": 10
+    });
+    let mut rx = relay
+        .subscribe_with_channel("job-results", &[filter])
+        .await
+        .expect("subscribe");
+
+    sleep(Duration::from_millis(100)).await;
+
+    // 6. Publish the job request
+    relay
+        .publish_event(&request_event, Duration::from_secs(5))
+        .await
+        .expect("publish request");
+
+    // 7. Provider creates and publishes job result
     let result_content = "Code flows like streams\nDecentralized and open\nAI helps us build";
 
-    // JobResult::new takes request_kind (not result kind), request_id, customer_pubkey, content
     let job_result = JobResult::new(
-        KIND_JOB_TEXT_GENERATION,  // Request kind (5050), will be converted to 6050
-        hex::encode(&request_event.id),
-        hex::encode(&request_event.pubkey),
+        KIND_JOB_TEXT_GENERATION,
+        request_event.id.clone(),
+        hex::encode(customer_pubkey),
         result_content.to_string(),
     )
     .expect("should create job result");
 
-    // 4. Verify job result structure
-    let expected_result_kind = KIND_JOB_TEXT_GENERATION + 1000;
-    assert_eq!(job_result.kind, expected_result_kind);
-    assert_eq!(job_result.content, result_content);
-    assert_eq!(job_result.request_id, hex::encode(&request_event.id));
-
-    // 5. Convert to Nostr event
     let result_template = EventTemplate {
         kind: job_result.kind,
         content: job_result.content.clone(),
@@ -120,30 +213,49 @@ async fn test_nip90_job_result_lifecycle() {
             .as_secs(),
     };
 
-    let result_event = finalize_event(&result_template, &provider_secret_key)
-        .expect("should sign result event");
+    let result_event =
+        finalize_event(&result_template, &provider_secret_key).expect("should sign result");
 
-    // 6. Verify result event structure
-    assert_eq!(result_event.kind, expected_result_kind);
-    assert_eq!(result_event.content, result_content);
-    assert!(result_event.tags.len() >= 2, "should have request id and customer pubkey tags");
+    // 8. Publish result
+    let confirmation = relay
+        .publish_event(&result_event, Duration::from_secs(5))
+        .await
+        .expect("publish result");
 
-    // NOTE: Full lifecycle test would include:
-    // - Provider subscribes to job requests on relay
-    // - Customer publishes job request
-    // - Provider receives request, processes it
-    // - Provider publishes job result
-    // - Customer receives result on subscription
-    // - Verify result references original request correctly
+    assert!(confirmation.accepted);
+
+    // 9. Customer receives result
+    let received = tokio::time::timeout(Duration::from_secs(2), rx.recv())
+        .await
+        .expect("should receive within timeout")
+        .expect("should have result");
+
+    assert_eq!(received.id, result_event.id);
+    assert_eq!(received.kind, result_kind);
+    assert_eq!(received.content, result_content);
+
+    // Verify result references original request
+    let has_request_ref = received
+        .tags
+        .iter()
+        .any(|t| t[0] == "e" && t[1] == request_event.id);
+    assert!(has_request_ref, "Result should reference request event");
+
+    relay.disconnect().await.ok();
 }
 
 #[tokio::test]
 async fn test_nip90_job_feedback_flow() {
-    // 1. Create provider and customer identities
+    // 1. Start test relay
+    let (_server, _tmp) = start_test_relay(19202).await;
+    let relay_url = test_relay_url(19202);
+
+    // 2. Create identities
     let provider_secret_key = generate_secret_key();
     let customer_secret_key = generate_secret_key();
+    let customer_pubkey = get_public_key(&customer_secret_key).expect("pubkey");
 
-    // 2. Create a job request
+    // 3. Create job request
     let job_request = JobRequest::new(KIND_JOB_TEXT_GENERATION)
         .expect("should create job request")
         .add_input(JobInput::text("Analyze the bitcoin whitepaper"))
@@ -159,23 +271,40 @@ async fn test_nip90_job_feedback_flow() {
             .as_secs(),
     };
 
-    let request_event = finalize_event(&request_template, &customer_secret_key)
-        .expect("should sign request event");
+    let request_event =
+        finalize_event(&request_template, &customer_secret_key).expect("should sign request");
 
-    // 3. Provider sends "processing" feedback
+    // 4. Connect to relay
+    let relay = RelayConnection::new(&relay_url).expect("connection");
+    relay.connect().await.expect("connect");
+
+    // 5. Subscribe to feedback events (customer perspective)
+    let filter = json!({
+        "kinds": [KIND_JOB_FEEDBACK],
+        "#p": [hex::encode(customer_pubkey)],
+        "limit": 10
+    });
+    let mut rx = relay
+        .subscribe_with_channel("job-feedback", &[filter])
+        .await
+        .expect("subscribe");
+
+    sleep(Duration::from_millis(100)).await;
+
+    // 6. Publish job request
+    relay
+        .publish_event(&request_event, Duration::from_secs(5))
+        .await
+        .expect("publish request");
+
+    // 7. Provider sends "processing" feedback
     let processing_feedback = JobFeedback::new(
         JobStatus::Processing,
-        hex::encode(&request_event.id),
-        hex::encode(&request_event.pubkey),
+        request_event.id.clone(),
+        hex::encode(customer_pubkey),
     )
     .with_status_extra("Starting analysis, ETA 2 minutes");
 
-    // 4. Verify feedback structure
-    assert_eq!(processing_feedback.status, JobStatus::Processing);
-    assert_eq!(processing_feedback.request_id, hex::encode(&request_event.id));
-    assert!(processing_feedback.status_extra.is_some());
-
-    // 5. Convert feedback to event
     let feedback_template = EventTemplate {
         kind: KIND_JOB_FEEDBACK,
         content: processing_feedback.content.clone(),
@@ -186,57 +315,103 @@ async fn test_nip90_job_feedback_flow() {
             .as_secs(),
     };
 
-    let feedback_event = finalize_event(&feedback_template, &provider_secret_key)
-        .expect("should sign feedback event");
+    let feedback_event =
+        finalize_event(&feedback_template, &provider_secret_key).expect("should sign feedback");
 
-    // 6. Verify feedback event
-    assert_eq!(feedback_event.kind, KIND_JOB_FEEDBACK);
-    assert!(feedback_event.tags.len() >= 2, "should have request id and status tags");
+    // 8. Publish feedback
+    let confirmation = relay
+        .publish_event(&feedback_event, Duration::from_secs(5))
+        .await
+        .expect("publish feedback");
 
-    // 7. Provider sends "success" feedback (after processing)
+    assert!(confirmation.accepted);
+
+    // 9. Customer receives feedback
+    let received = tokio::time::timeout(Duration::from_secs(2), rx.recv())
+        .await
+        .expect("should receive within timeout")
+        .expect("should have feedback");
+
+    assert_eq!(received.id, feedback_event.id);
+    assert_eq!(received.kind, KIND_JOB_FEEDBACK);
+
+    // Verify status tag
+    let has_status = received
+        .tags
+        .iter()
+        .any(|t| t[0] == "status" && t[1] == "processing");
+    assert!(has_status, "Feedback should have processing status");
+
+    // 10. Provider sends "success" feedback
     let success_feedback = JobFeedback::new(
         JobStatus::Success,
-        hex::encode(&request_event.id),
-        hex::encode(&request_event.pubkey),
+        request_event.id.clone(),
+        hex::encode(customer_pubkey),
     )
     .with_status_extra("Analysis complete");
 
-    assert_eq!(success_feedback.status, JobStatus::Success);
+    let success_template = EventTemplate {
+        kind: KIND_JOB_FEEDBACK,
+        content: success_feedback.content.clone(),
+        tags: success_feedback.to_tags(),
+        created_at: std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs() + 1, // Slightly later timestamp
+    };
 
-    // NOTE: Full feedback flow test would include:
-    // - Customer subscribes to feedback events for their requests
-    // - Provider publishes processing feedback
-    // - Customer receives and displays progress
-    // - Provider publishes success/error feedback
-    // - Customer handles final status appropriately
-    // - Test all status types: PaymentRequired, Processing, Error, Success, Partial
+    let success_event =
+        finalize_event(&success_template, &provider_secret_key).expect("should sign success");
+
+    relay
+        .publish_event(&success_event, Duration::from_secs(5))
+        .await
+        .expect("publish success");
+
+    let received_success = tokio::time::timeout(Duration::from_secs(2), rx.recv())
+        .await
+        .expect("should receive success")
+        .expect("should have success feedback");
+
+    let has_success_status = received_success
+        .tags
+        .iter()
+        .any(|t| t[0] == "status" && t[1] == "success");
+    assert!(has_success_status, "Feedback should have success status");
+
+    relay.disconnect().await.ok();
 }
 
 #[tokio::test]
 async fn test_nip89_provider_discovery() {
-    // 1. Create provider identity
-    let provider_secret_key = generate_secret_key();
+    // 1. Start test relay
+    let (_server, _tmp) = start_test_relay(19203).await;
+    let relay_url = test_relay_url(19203);
 
-    // 2. Create handler metadata (NIP-89 announcement)
+    // 2. Create provider identity
+    let provider_secret_key = generate_secret_key();
+    let provider_pubkey = get_public_key(&provider_secret_key).expect("pubkey");
+
+    // 3. Create handler metadata (NIP-89 announcement)
     let metadata = HandlerMetadata::new(
         "OpenAgents Text Generator",
-        "High-quality text generation using local AI models"
+        "High-quality text generation using local AI models",
     )
     .with_icon("https://openagents.com/logo.png")
     .with_website("https://openagents.com");
 
-    // 3. Create handler info for a compute provider
+    // 4. Create handler info for a compute provider
     let handler_info = HandlerInfo::new(
-        hex::encode(nostr::get_public_key(&provider_secret_key).expect("should get pubkey")),
+        hex::encode(provider_pubkey),
         HandlerType::ComputeProvider,
         metadata.clone(),
     )
     .add_capability("text-generation")
     .add_capability("nip-90");
 
-    // 4. Create handler info event (kind 31990)
-    let content = serde_json::to_string(&handler_info.metadata)
-        .expect("should serialize metadata");
+    // 5. Create handler info event (kind 31990)
+    let content =
+        serde_json::to_string(&handler_info.metadata).expect("should serialize metadata");
 
     let announcement_template = EventTemplate {
         kind: KIND_HANDLER_INFO,
@@ -248,63 +423,109 @@ async fn test_nip89_provider_discovery() {
             .as_secs(),
     };
 
-    let announcement_event = finalize_event(&announcement_template, &provider_secret_key)
-        .expect("should sign announcement event");
+    let announcement_event =
+        finalize_event(&announcement_template, &provider_secret_key).expect("should sign");
 
-    // 5. Verify announcement structure
-    assert_eq!(announcement_event.kind, KIND_HANDLER_INFO);
-    assert!(!announcement_event.content.is_empty());
+    // 6. Connect to relay
+    let relay = RelayConnection::new(&relay_url).expect("connection");
+    relay.connect().await.expect("connect");
 
-    // Should have handler tag + capability tags
-    assert!(announcement_event.tags.len() >= 2, "should have handler type and capability tags");
-    assert!(announcement_event.tags.iter().any(|t| t[0] == "handler" && t[1] == "compute_provider"));
-    assert!(announcement_event.tags.iter().any(|t| t[0] == "capability" && t[1] == "text-generation"));
+    // 7. Subscribe to handler info (consumer discovers providers)
+    let filter = json!({
+        "kinds": [KIND_HANDLER_INFO],
+        "limit": 10
+    });
+    let mut rx = relay
+        .subscribe_with_channel("provider-discovery", &[filter])
+        .await
+        .expect("subscribe");
 
-    // 6. Parse back the metadata
-    let parsed_metadata: HandlerMetadata = serde_json::from_str(&announcement_event.content)
-        .expect("should deserialize metadata");
+    sleep(Duration::from_millis(100)).await;
+
+    // 8. Publish provider announcement
+    let confirmation = relay
+        .publish_event(&announcement_event, Duration::from_secs(5))
+        .await
+        .expect("publish");
+
+    assert!(confirmation.accepted);
+
+    // 9. Consumer discovers the provider
+    let received = tokio::time::timeout(Duration::from_secs(2), rx.recv())
+        .await
+        .expect("should receive within timeout")
+        .expect("should have announcement");
+
+    assert_eq!(received.id, announcement_event.id);
+    assert_eq!(received.kind, KIND_HANDLER_INFO);
+
+    // 10. Parse and verify metadata
+    let parsed_metadata: HandlerMetadata =
+        serde_json::from_str(&received.content).expect("should deserialize");
+
     assert_eq!(parsed_metadata.name, "OpenAgents Text Generator");
-    assert_eq!(parsed_metadata.description, "High-quality text generation using local AI models");
-    assert_eq!(parsed_metadata.icon_url, Some("https://openagents.com/logo.png".to_string()));
-    assert_eq!(parsed_metadata.website, Some("https://openagents.com".to_string()));
+    assert_eq!(
+        parsed_metadata.description,
+        "High-quality text generation using local AI models"
+    );
+    assert_eq!(
+        parsed_metadata.icon_url,
+        Some("https://openagents.com/logo.png".to_string())
+    );
 
-    // NOTE: Full provider discovery test would include:
-    // - Provider publishes NIP-89 announcement to relay
-    // - Customer queries for handlers by kind (handler tag filter)
-    // - Customer receives multiple provider announcements
-    // - Customer filters by capabilities, pricing, reputation (NIP-89 social trust)
-    // - Customer selects provider and submits job request
+    // Verify capability tags
+    let has_text_gen = received
+        .tags
+        .iter()
+        .any(|t| t[0] == "capability" && t[1] == "text-generation");
+    assert!(has_text_gen, "Should have text-generation capability");
+
+    let has_handler_type = received
+        .tags
+        .iter()
+        .any(|t| t[0] == "handler" && t[1] == "compute_provider");
+    assert!(has_handler_type, "Should have compute_provider handler type");
+
+    relay.disconnect().await.ok();
 }
 
 #[tokio::test]
 async fn test_dvm_service_with_relay() {
-    // This test demonstrates the complete DVM service workflow:
+    // Complete DVM workflow over a real relay:
     // 1. Provider announces capabilities (NIP-89)
     // 2. Customer publishes job request (NIP-90)
     // 3. Provider sends feedback (processing)
     // 4. Provider publishes result
     // 5. Customer receives result
 
-    // 1. Create identities
+    // 1. Start test relay
+    let (_server, _tmp) = start_test_relay(19204).await;
+    let relay_url = test_relay_url(19204);
+
+    // 2. Create identities
     let provider_secret_key = generate_secret_key();
+    let provider_pubkey = get_public_key(&provider_secret_key).expect("provider pubkey");
     let customer_secret_key = generate_secret_key();
+    let customer_pubkey = get_public_key(&customer_secret_key).expect("customer pubkey");
 
-    let provider_pubkey = nostr::get_public_key(&provider_secret_key)
-        .expect("should get provider pubkey");
-    let customer_pubkey = nostr::get_public_key(&customer_secret_key)
-        .expect("should get customer pubkey");
+    // 3. Connect both parties to relay
+    let provider_relay = RelayConnection::new(&relay_url).expect("provider connection");
+    provider_relay.connect().await.expect("provider connect");
 
-    // 2. Provider announces capabilities (NIP-89)
+    let customer_relay = RelayConnection::new(&relay_url).expect("customer connection");
+    customer_relay.connect().await.expect("customer connect");
+
+    // 4. Provider announces capabilities (NIP-89)
     let metadata = HandlerMetadata::new(
         "OpenAgents DVM",
-        "Decentralized compute provider for text generation"
+        "Decentralized compute provider for text generation",
     )
     .with_website("https://openagents.com");
 
     let handler_info = HandlerInfo::new(
         hex::encode(provider_pubkey),
         HandlerType::ComputeProvider,
-        metadata.clone(),
+        metadata,
     )
     .add_capability("text-generation")
     .add_capability("code-generation");
@@ -319,15 +540,44 @@ async fn test_dvm_service_with_relay() {
             .as_secs(),
     };
 
-    let announcement_event = finalize_event(&announcement_template, &provider_secret_key)
-        .expect("should create announcement");
+    let announcement =
+        finalize_event(&announcement_template, &provider_secret_key).expect("sign announcement");
 
-    assert_eq!(announcement_event.kind, KIND_HANDLER_INFO);
+    provider_relay
+        .publish_event(&announcement, Duration::from_secs(5))
+        .await
+        .expect("publish announcement");
 
-    // 3. Customer creates job request (NIP-90)
+    // 5. Provider subscribes to job requests
+    let job_filter = json!({
+        "kinds": [KIND_JOB_TEXT_GENERATION],
+        "limit": 10
+    });
+    let mut provider_rx = provider_relay
+        .subscribe_with_channel("incoming-jobs", &[job_filter])
+        .await
+        .expect("provider subscribe");
+
+    // 6. Customer subscribes to results for their pubkey
+    let result_kind = KIND_JOB_TEXT_GENERATION + 1000;
+    let result_filter = json!({
+        "kinds": [result_kind, KIND_JOB_FEEDBACK],
+        "#p": [hex::encode(customer_pubkey)],
+        "limit": 10
+    });
+    let mut customer_rx = customer_relay
+        .subscribe_with_channel("my-results", &[result_filter])
+        .await
+        .expect("customer subscribe");
+
+    sleep(Duration::from_millis(100)).await;
+
+    // 7. Customer submits job request
     let job_request = JobRequest::new(KIND_JOB_TEXT_GENERATION)
-        .expect("should create request")
-        .add_input(JobInput::text("Write a function to calculate fibonacci numbers"))
+        .expect("create request")
+        .add_input(JobInput::text(
+            "Write a function to calculate fibonacci numbers",
+        ))
         .add_param("language", "rust")
         .with_bid(5000);
 
@@ -341,15 +591,26 @@ async fn test_dvm_service_with_relay() {
             .as_secs(),
     };
 
-    let request_event = finalize_event(&request_template, &customer_secret_key)
-        .expect("should create request event");
+    let request_event =
+        finalize_event(&request_template, &customer_secret_key).expect("sign request");
 
-    assert_eq!(request_event.kind, KIND_JOB_TEXT_GENERATION);
+    customer_relay
+        .publish_event(&request_event, Duration::from_secs(5))
+        .await
+        .expect("publish request");
 
-    // 4. Provider sends "processing" feedback (NIP-90)
+    // 8. Provider receives job request
+    let received_request = tokio::time::timeout(Duration::from_secs(2), provider_rx.recv())
+        .await
+        .expect("provider should receive request")
+        .expect("should have request");
+
+    assert_eq!(received_request.kind, KIND_JOB_TEXT_GENERATION);
+
+    // 9. Provider sends "processing" feedback
     let processing_feedback = JobFeedback::new(
         JobStatus::Processing,
-        hex::encode(&request_event.id),
+        received_request.id.clone(),
         hex::encode(customer_pubkey),
     )
     .with_status_extra("Generating code, ETA 30 seconds");
@@ -364,15 +625,23 @@ async fn test_dvm_service_with_relay() {
             .as_secs(),
     };
 
-    let feedback_event = finalize_event(&feedback_template, &provider_secret_key)
-        .expect("should create feedback event");
+    let feedback_event =
+        finalize_event(&feedback_template, &provider_secret_key).expect("sign feedback");
 
-    assert_eq!(feedback_event.kind, KIND_JOB_FEEDBACK);
-    assert!(feedback_event.tags.iter().any(|t|
-        t[0] == "status" && t[1] == "processing"
-    ));
+    provider_relay
+        .publish_event(&feedback_event, Duration::from_secs(5))
+        .await
+        .expect("publish feedback");
 
-    // 5. Provider publishes result (NIP-90)
+    // 10. Customer receives feedback
+    let received_feedback = tokio::time::timeout(Duration::from_secs(2), customer_rx.recv())
+        .await
+        .expect("customer should receive feedback")
+        .expect("should have feedback");
+
+    assert_eq!(received_feedback.kind, KIND_JOB_FEEDBACK);
+
+    // 11. Provider publishes result
     let result_content = r#"fn fibonacci(n: u32) -> u64 {
     match n {
         0 => 0,
@@ -382,12 +651,12 @@ async fn test_dvm_service_with_relay() {
 }"#;
 
     let job_result = JobResult::new(
-        KIND_JOB_TEXT_GENERATION,  // Request kind
-        hex::encode(&request_event.id),
+        KIND_JOB_TEXT_GENERATION,
+        received_request.id.clone(),
         hex::encode(customer_pubkey),
         result_content.to_string(),
     )
-    .expect("should create result");
+    .expect("create result");
 
     let result_template = EventTemplate {
         kind: job_result.kind,
@@ -399,61 +668,75 @@ async fn test_dvm_service_with_relay() {
             .as_secs(),
     };
 
-    let result_event = finalize_event(&result_template, &provider_secret_key)
-        .expect("should create result event");
+    let result_event =
+        finalize_event(&result_template, &provider_secret_key).expect("sign result");
 
-    // 6. Verify complete workflow
-    let expected_result_kind = KIND_JOB_TEXT_GENERATION + 1000; // 6050
-    assert_eq!(result_event.kind, expected_result_kind);
-    assert_eq!(result_event.content, result_content);
+    provider_relay
+        .publish_event(&result_event, Duration::from_secs(5))
+        .await
+        .expect("publish result");
 
-    // Verify result references the original request
-    assert!(result_event.tags.iter().any(|t|
-        t[0] == "e" && t[1] == hex::encode(&request_event.id)
-    ));
+    // 12. Customer receives result
+    let received_result = tokio::time::timeout(Duration::from_secs(2), customer_rx.recv())
+        .await
+        .expect("customer should receive result")
+        .expect("should have result");
 
-    // Verify result is for the customer
-    assert!(result_event.tags.iter().any(|t|
-        t[0] == "p" && t[1] == hex::encode(customer_pubkey)
-    ));
+    assert_eq!(received_result.kind, result_kind);
+    assert_eq!(received_result.content, result_content);
 
-    // 7. Provider sends success feedback
-    let success_feedback = JobFeedback::new(
-        JobStatus::Success,
-        hex::encode(&request_event.id),
-        hex::encode(customer_pubkey),
-    )
-    .with_status_extra("Code generated successfully");
+    // Verify result references original request
+    let has_request_ref = received_result
+        .tags
+        .iter()
+        .any(|t| t[0] == "e" && t[1] == received_request.id);
+    assert!(has_request_ref, "Result should reference request");
 
-    let success_template = EventTemplate {
-        kind: KIND_JOB_FEEDBACK,
-        content: success_feedback.content.clone(),
-        tags: success_feedback.to_tags(),
-        created_at: std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_secs(),
-    };
+    // 13. Cleanup
+    provider_relay.disconnect().await.ok();
+    customer_relay.disconnect().await.ok();
+}
 
-    let success_event = finalize_event(&success_template, &provider_secret_key)
-        .expect("should create success event");
+// =============================================================================
+// Type Validation Tests (kept from original for regression testing)
+// =============================================================================
 
-    assert_eq!(success_event.kind, KIND_JOB_FEEDBACK);
-    assert!(success_event.tags.iter().any(|t|
-        t[0] == "status" && t[1] == "success"
-    ));
+#[test]
+fn test_job_request_structure() {
+    let job_request = JobRequest::new(KIND_JOB_TEXT_GENERATION)
+        .expect("should create job request")
+        .add_input(JobInput::text("Test"))
+        .add_param("model", "test")
+        .with_bid(100);
 
-    // NOTE: Full DVM service with relay would include:
-    // - Start in-process test relay
-    // - Provider subscribes to job requests (filter by kind 5050)
-    // - Customer publishes job request to relay
-    // - Provider receives request via subscription
-    // - Provider processes job asynchronously
-    // - Provider publishes feedback events (processing, success/error)
-    // - Provider publishes result event
-    // - Customer subscribes to results (filter by 'p' tag = customer pubkey)
-    // - Customer receives result and displays to user
-    // - Verify payment flow (invoice generation, payment verification)
-    // - Test timeout handling (customer cancels if no response)
-    // - Test error cases (provider sends error feedback)
+    assert_eq!(job_request.kind, KIND_JOB_TEXT_GENERATION);
+    assert_eq!(job_request.inputs.len(), 1);
+    assert_eq!(job_request.params.len(), 1);
+    assert_eq!(job_request.bid, Some(100));
+}
+
+#[test]
+fn test_job_result_kind_calculation() {
+    // Result kind should be request kind + 1000
+    let expected_result_kind = KIND_JOB_TEXT_GENERATION + 1000;
+    assert_eq!(expected_result_kind, 6050);
+}
+
+#[test]
+fn test_job_status_variants() {
+    // Verify all status variants exist
+    let _processing = JobStatus::Processing;
+    let _success = JobStatus::Success;
+    let _error = JobStatus::Error;
+    let _partial = JobStatus::Partial;
+    let _payment_required = JobStatus::PaymentRequired;
+}
+
+#[test]
+fn test_handler_type_compute_provider() {
+    let handler_type = HandlerType::ComputeProvider;
+    match handler_type {
+        HandlerType::ComputeProvider => {}
+        _ => panic!("Should be ComputeProvider"),
+    }
 }

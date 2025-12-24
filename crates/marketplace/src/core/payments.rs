@@ -529,6 +529,84 @@ impl PaymentManager {
     }
 }
 
+/// Mock payment service for testing without Breez/Spark SDK
+/// 
+/// Simulates Lightning payment flows for E2E tests:
+/// - Invoice creation with mock BOLT11 format
+/// - Payment tracking with configurable success/failure
+/// - Preimage generation for payment verification
+#[derive(Debug, Default)]
+pub struct MockPaymentService {
+    pending_payments: std::collections::HashMap<String, u64>,
+    completed_payments: std::collections::HashSet<String>,
+    created_invoices: Vec<MockInvoice>,
+}
+
+#[derive(Debug, Clone)]
+pub struct MockInvoice {
+    pub invoice: String,
+    pub amount_msats: u64,
+    pub description: String,
+    pub payment_hash: String,
+}
+
+impl MockPaymentService {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn create_invoice(&mut self, amount_msats: u64, description: &str) -> MockInvoice {
+        let id = uuid::Uuid::new_v4();
+        let payment_hash = id.to_string().replace('-', "") + &id.to_string().replace('-', "");
+        let invoice = format!(
+            "lnbc{}m1mock{}",
+            amount_msats / 1000,
+            &payment_hash[..16]
+        );
+        
+        self.pending_payments.insert(invoice.clone(), amount_msats);
+        
+        let mock_invoice = MockInvoice {
+            invoice: invoice.clone(),
+            amount_msats,
+            description: description.to_string(),
+            payment_hash,
+        };
+        
+        self.created_invoices.push(mock_invoice.clone());
+        mock_invoice
+    }
+
+    pub fn pay_invoice(&mut self, invoice: &str) -> Result<String, anyhow::Error> {
+        if let Some(_amount) = self.pending_payments.remove(invoice) {
+            let id = uuid::Uuid::new_v4();
+            let preimage = id.to_string().replace('-', "") + &id.to_string().replace('-', "");
+            self.completed_payments.insert(invoice.to_string());
+            Ok(preimage)
+        } else {
+            Err(anyhow::anyhow!("Invoice not found or already paid"))
+        }
+    }
+
+    pub fn is_paid(&self, invoice: &str) -> bool {
+        self.completed_payments.contains(invoice)
+    }
+
+    pub fn pending_count(&self) -> usize {
+        self.pending_payments.len()
+    }
+
+    pub fn completed_count(&self) -> usize {
+        self.completed_payments.len()
+    }
+
+    pub fn get_pending_amount(&self, invoice: &str) -> Option<u64> {
+        self.pending_payments.get(invoice).copied()
+    }
+}
+
+
+
 #[cfg(test)]
 mod tests {
     use super::*;
