@@ -9,3 +9,8 @@ serde = { version = "1.0", features = ["derive"] }
 tokio = { version = "1", features = ["sync"] }
 async-trait = "0.1"
 serde_json.workspace = true
+
+[dev-dependencies]
+tokio = { version = "1", features = ["full", "test-util"] }
+tokio-stream = "0.1"
+wiremock = "0.6"
