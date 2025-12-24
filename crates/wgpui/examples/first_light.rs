@@ -1,5 +1,16 @@
+//! First Light - Component System Demo
+//!
+//! Demonstrates all wgpui components:
+//! - Div: Container with background and border
+//! - Text: Styled text rendering (normal, bold, italic)
+//! - Button: All variants (Primary, Secondary, Ghost, Danger)
+//! - VirtualList: Efficient large list rendering
+
 use std::sync::Arc;
-use wgpui::{Bounds, Quad, Scene, Size, theme};
+use wgpui::{
+    Bounds, Button, ButtonVariant, Component, Div, PaintContext, Point, Quad, Scene, Size, Text,
+    TextSystem, VirtualList, theme,
+};
 use wgpui::renderer::Renderer;
 use winit::application::ApplicationHandler;
 use winit::event::WindowEvent;
@@ -24,6 +35,7 @@ struct RenderState {
     queue: wgpu::Queue,
     config: wgpu::SurfaceConfiguration,
     renderer: Renderer,
+    text_system: TextSystem,
 }
 
 impl ApplicationHandler for App {
@@ -33,8 +45,8 @@ impl ApplicationHandler for App {
         }
 
         let window_attrs = Window::default_attributes()
-            .with_title("wgpui - First Light")
-            .with_inner_size(winit::dpi::LogicalSize::new(800, 600));
+            .with_title("wgpui - Component Demo")
+            .with_inner_size(winit::dpi::LogicalSize::new(900, 700));
 
         let window = Arc::new(
             event_loop
@@ -88,11 +100,8 @@ impl ApplicationHandler for App {
             surface.configure(&device, &config);
 
             let renderer = Renderer::new(&device, surface_format);
-            renderer.resize(
-                &queue,
-                Size::new(size.width as f32, size.height as f32),
-                1.0,
-            );
+            let scale_factor = window.scale_factor() as f32;
+            let text_system = TextSystem::new(scale_factor);
 
             RenderState {
                 window,
@@ -101,6 +110,7 @@ impl ApplicationHandler for App {
                 queue,
                 config,
                 renderer,
+                text_system,
             }
         });
 
@@ -118,15 +128,19 @@ impl ApplicationHandler for App {
                 state.config.width = new_size.width.max(1);
                 state.config.height = new_size.height.max(1);
                 state.surface.configure(&state.device, &state.config);
-                state.renderer.resize(
-                    &state.queue,
-                    Size::new(new_size.width as f32, new_size.height as f32),
-                    1.0,
-                );
                 state.window.request_redraw();
             }
             WindowEvent::RedrawRequested => {
-                let scene = build_scene(state.config.width as f32, state.config.height as f32);
+                let width = state.config.width as f32;
+                let height = state.config.height as f32;
+
+                let mut scene = Scene::new();
+                build_component_demo(
+                    &mut scene,
+                    &mut state.text_system,
+                    width,
+                    height,
+                );
 
                 let output = state
                     .surface
@@ -143,14 +157,23 @@ impl ApplicationHandler for App {
                             label: Some("Render Encoder"),
                         });
 
-                let mut renderer = Renderer::new(&state.device, state.config.format);
-                renderer.resize(
+                state.renderer.resize(
                     &state.queue,
-                    Size::new(state.config.width as f32, state.config.height as f32),
+                    Size::new(width, height),
                     1.0,
                 );
-                renderer.prepare(&state.device, &scene);
-                renderer.render(&mut encoder, &view);
+
+                if state.text_system.is_dirty() {
+                    state.renderer.update_atlas(
+                        &state.queue,
+                        state.text_system.atlas_data(),
+                        state.text_system.atlas_size(),
+                    );
+                    state.text_system.mark_clean();
+                }
+
+                state.renderer.prepare(&state.device, &scene);
+                state.renderer.render(&mut encoder, &view);
 
                 state.queue.submit(std::iter::once(encoder.finish()));
                 output.present();
@@ -166,112 +189,293 @@ impl ApplicationHandler for App {
     }
 }
 
-fn build_scene(width: f32, _height: f32) -> Scene {
-    let mut scene = Scene::new();
-
+fn build_component_demo(
+    scene: &mut Scene,
+    text_system: &mut TextSystem,
+    width: f32,
+    _height: f32,
+) {
     let margin = 20.0;
     let spacing = 16.0;
-    let quad_height = 80.0;
+    let section_spacing = 24.0;
     let content_width = width - margin * 2.0;
 
     let mut y = margin;
 
-    scene.draw_quad(
-        Quad::new(Bounds::new(margin, y, content_width, quad_height))
-            .with_background(theme::bg::APP)
-            .with_border(theme::border::DEFAULT, 1.0),
+    demo_text_component(scene, text_system, margin, content_width, spacing, &mut y);
+    y += section_spacing;
+
+    demo_button_component(scene, text_system, margin, &mut y);
+    y += section_spacing;
+
+    demo_div_component(scene, text_system, margin, content_width, spacing, &mut y);
+    y += section_spacing;
+
+    demo_virtual_list(scene, text_system, margin, content_width, &mut y);
+    y += section_spacing;
+
+    demo_theme_colors(scene, text_system, margin, &mut y);
+}
+
+fn demo_text_component(
+    scene: &mut Scene,
+    text_system: &mut TextSystem,
+    margin: f32,
+    content_width: f32,
+    spacing: f32,
+    y: &mut f32,
+) {
+    draw_section_header(scene, text_system, margin, y, "Text Component");
+
+    let mut text_normal = Text::new("Normal text - The quick brown fox jumps over the lazy dog");
+    let mut text_bold = Text::new("Bold text - WGPUI GPU-accelerated rendering").bold();
+    let mut text_italic = Text::new("Italic text - Beautiful typography").italic();
+    let mut text_large = Text::new("Large text (24px)")
+        .font_size(24.0)
+        .color(theme::accent::PRIMARY);
+    let mut text_muted = Text::new("Muted secondary text").color(theme::text::MUTED);
+
+    let text_height = 24.0;
+    let mut cx = PaintContext::new(scene, text_system, 1.0);
+
+    text_normal.paint(Bounds::new(margin, *y, content_width, text_height), &mut cx);
+    *y += text_height + spacing / 2.0;
+
+    text_bold.paint(Bounds::new(margin, *y, content_width, text_height), &mut cx);
+    *y += text_height + spacing / 2.0;
+
+    text_italic.paint(Bounds::new(margin, *y, content_width, text_height), &mut cx);
+    *y += text_height + spacing / 2.0;
+
+    text_large.paint(Bounds::new(margin, *y, content_width, 32.0), &mut cx);
+    *y += 32.0 + spacing / 2.0;
+
+    text_muted.paint(Bounds::new(margin, *y, content_width, text_height), &mut cx);
+    *y += text_height;
+}
+
+fn demo_button_component(
+    scene: &mut Scene,
+    text_system: &mut TextSystem,
+    margin: f32,
+    y: &mut f32,
+) {
+    draw_section_header(scene, text_system, margin, y, "Button Component");
+
+    let button_height = 36.0;
+    let button_width = 140.0;
+    let button_spacing = 12.0;
+
+    let mut btn_primary = Button::new("Primary");
+    let mut btn_secondary = Button::new("Secondary").variant(ButtonVariant::Secondary);
+    let mut btn_ghost = Button::new("Ghost").variant(ButtonVariant::Ghost);
+    let mut btn_danger = Button::new("Danger").variant(ButtonVariant::Danger);
+    let mut btn_disabled = Button::new("Disabled").disabled(true);
+
+    let mut cx = PaintContext::new(scene, text_system, 1.0);
+
+    let mut x = margin;
+    btn_primary.paint(Bounds::new(x, *y, button_width, button_height), &mut cx);
+    x += button_width + button_spacing;
+
+    btn_secondary.paint(Bounds::new(x, *y, button_width, button_height), &mut cx);
+    x += button_width + button_spacing;
+
+    btn_ghost.paint(Bounds::new(x, *y, button_width, button_height), &mut cx);
+    x += button_width + button_spacing;
+
+    btn_danger.paint(Bounds::new(x, *y, button_width, button_height), &mut cx);
+    x += button_width + button_spacing;
+
+    btn_disabled.paint(Bounds::new(x, *y, button_width, button_height), &mut cx);
+
+    *y += button_height;
+}
+
+fn demo_div_component(
+    scene: &mut Scene,
+    text_system: &mut TextSystem,
+    margin: f32,
+    content_width: f32,
+    spacing: f32,
+    y: &mut f32,
+) {
+    draw_section_header(scene, text_system, margin, y, "Div Container Component");
+
+    let div_height = 60.0;
+    let div_width = (content_width - spacing * 2.0) / 3.0;
+
+    let mut div_bg = Div::new().background(theme::bg::SURFACE);
+    let mut div_border = Div::new()
+        .background(theme::bg::MUTED)
+        .border(theme::border::DEFAULT, 1.0);
+    let mut div_accent = Div::new()
+        .background(theme::accent::PRIMARY.with_alpha(0.2))
+        .border(theme::accent::PRIMARY, 2.0);
+
+    let mut cx = PaintContext::new(scene, text_system, 1.0);
+
+    div_bg.paint(Bounds::new(margin, *y, div_width, div_height), &mut cx);
+    div_border.paint(
+        Bounds::new(margin + div_width + spacing, *y, div_width, div_height),
+        &mut cx,
     );
-    y += quad_height + spacing;
+    div_accent.paint(
+        Bounds::new(margin + (div_width + spacing) * 2.0, *y, div_width, div_height),
+        &mut cx,
+    );
+
+    let mut label1 = Text::new("Surface bg").color(theme::text::MUTED).font_size(12.0);
+    let mut label2 = Text::new("With border").color(theme::text::MUTED).font_size(12.0);
+    let mut label3 = Text::new("Accent style").color(theme::text::MUTED).font_size(12.0);
+
+    label1.paint(Bounds::new(margin + 8.0, *y + div_height / 2.0, 100.0, 20.0), &mut cx);
+    label2.paint(
+        Bounds::new(margin + div_width + spacing + 8.0, *y + div_height / 2.0, 100.0, 20.0),
+        &mut cx,
+    );
+    label3.paint(
+        Bounds::new(
+            margin + (div_width + spacing) * 2.0 + 8.0,
+            *y + div_height / 2.0,
+            100.0,
+            20.0,
+        ),
+        &mut cx,
+    );
+
+    *y += div_height;
+}
+
+fn demo_virtual_list(
+    scene: &mut Scene,
+    text_system: &mut TextSystem,
+    margin: f32,
+    content_width: f32,
+    y: &mut f32,
+) {
+    draw_section_header(scene, text_system, margin, y, "VirtualList Component (100 items)");
+
+    let list_height = 160.0;
+    let item_height = 32.0;
+
+    let items: Vec<String> = (0..100)
+        .map(|i| format!("List Item #{} - Virtual scrolling demo", i))
+        .collect();
 
     scene.draw_quad(
-        Quad::new(Bounds::new(margin, y, content_width, quad_height))
+        Quad::new(Bounds::new(margin, *y, content_width, list_height))
             .with_background(theme::bg::SURFACE)
             .with_border(theme::border::DEFAULT, 1.0),
     );
-    y += quad_height + spacing;
 
-    scene.draw_quad(
-        Quad::new(Bounds::new(margin, y, content_width, quad_height))
-            .with_background(theme::bg::MUTED)
-            .with_border(theme::border::DEFAULT, 1.0),
-    );
-    y += quad_height + spacing;
+    let mut virtual_list = VirtualList::new(
+        items,
+        item_height,
+        move |item: &String, idx: usize, bounds: Bounds, cx: &mut PaintContext| {
+            let bg_color = if idx % 2 == 0 {
+                theme::bg::SURFACE
+            } else {
+                theme::bg::MUTED
+            };
 
-    let accent_width = (content_width - spacing * 4.0) / 5.0;
-    scene.draw_quad(
-        Quad::new(Bounds::new(margin, y, accent_width, quad_height))
-            .with_background(theme::accent::PRIMARY),
-    );
-    scene.draw_quad(
-        Quad::new(Bounds::new(
-            margin + accent_width + spacing,
-            y,
-            accent_width,
-            quad_height,
-        ))
-        .with_background(theme::accent::BLUE),
-    );
-    scene.draw_quad(
-        Quad::new(Bounds::new(
-            margin + (accent_width + spacing) * 2.0,
-            y,
-            accent_width,
-            quad_height,
-        ))
-        .with_background(theme::accent::GREEN),
-    );
-    scene.draw_quad(
-        Quad::new(Bounds::new(
-            margin + (accent_width + spacing) * 3.0,
-            y,
-            accent_width,
-            quad_height,
-        ))
-        .with_background(theme::accent::RED),
-    );
-    scene.draw_quad(
-        Quad::new(Bounds::new(
-            margin + (accent_width + spacing) * 4.0,
-            y,
-            accent_width,
-            quad_height,
-        ))
-        .with_background(theme::accent::PURPLE),
-    );
-    y += quad_height + spacing;
+            cx.scene.draw_quad(Quad::new(bounds).with_background(bg_color));
 
-    let status_width = (content_width - spacing * 3.0) / 4.0;
-    scene.draw_quad(
-        Quad::new(Bounds::new(margin, y, status_width, quad_height))
-            .with_background(theme::status::SUCCESS),
-    );
-    scene.draw_quad(
-        Quad::new(Bounds::new(
-            margin + status_width + spacing,
-            y,
-            status_width,
-            quad_height,
-        ))
-        .with_background(theme::status::WARNING),
-    );
-    scene.draw_quad(
-        Quad::new(Bounds::new(
-            margin + (status_width + spacing) * 2.0,
-            y,
-            status_width,
-            quad_height,
-        ))
-        .with_background(theme::status::ERROR),
-    );
-    scene.draw_quad(
-        Quad::new(Bounds::new(
-            margin + (status_width + spacing) * 3.0,
-            y,
-            status_width,
-            quad_height,
-        ))
-        .with_background(theme::status::INFO),
+            let font_size = theme::font_size::SM;
+            let text_run = cx.text.layout(
+                item,
+                Point::new(bounds.origin.x + 12.0, bounds.origin.y + bounds.size.height * 0.5 - font_size * 0.55),
+                font_size,
+                theme::text::PRIMARY,
+            );
+            cx.scene.draw_text(text_run);
+        },
     );
 
-    scene
+    let mut cx = PaintContext::new(scene, text_system, 1.0);
+    virtual_list.paint(Bounds::new(margin, *y, content_width, list_height), &mut cx);
+
+    *y += list_height;
+}
+
+fn demo_theme_colors(scene: &mut Scene, text_system: &mut TextSystem, margin: f32, y: &mut f32) {
+    draw_section_header(scene, text_system, margin, y, "Theme Colors");
+
+    let swatch_size = 40.0;
+    let swatch_spacing = 8.0;
+
+    let bg_colors = [
+        theme::bg::APP,
+        theme::bg::SURFACE,
+        theme::bg::MUTED,
+    ];
+
+    let mut x = margin;
+    for color in bg_colors {
+        scene.draw_quad(
+            Quad::new(Bounds::new(x, *y, swatch_size, swatch_size))
+                .with_background(color)
+                .with_border(theme::border::DEFAULT, 1.0),
+        );
+        x += swatch_size + swatch_spacing;
+    }
+
+    let accent_colors = [
+        theme::accent::PRIMARY,
+        theme::accent::BLUE,
+        theme::accent::GREEN,
+        theme::accent::RED,
+        theme::accent::PURPLE,
+    ];
+
+    x += swatch_spacing * 2.0;
+    for color in accent_colors {
+        scene.draw_quad(
+            Quad::new(Bounds::new(x, *y, swatch_size, swatch_size)).with_background(color),
+        );
+        x += swatch_size + swatch_spacing;
+    }
+
+    let status_colors = [
+        theme::status::SUCCESS,
+        theme::status::WARNING,
+        theme::status::ERROR,
+        theme::status::INFO,
+    ];
+
+    x += swatch_spacing * 2.0;
+    for color in status_colors {
+        scene.draw_quad(
+            Quad::new(Bounds::new(x, *y, swatch_size, swatch_size)).with_background(color),
+        );
+        x += swatch_size + swatch_spacing;
+    }
+
+    *y += swatch_size;
+}
+
+fn draw_section_header(
+    scene: &mut Scene,
+    text_system: &mut TextSystem,
+    margin: f32,
+    y: &mut f32,
+    title: &str,
+) {
+    let header_height = 28.0;
+
+    let mut header_text = Text::new(title)
+        .font_size(theme::font_size::LG)
+        .bold()
+        .color(theme::text::PRIMARY);
+
+    let mut cx = PaintContext::new(scene, text_system, 1.0);
+    header_text.paint(Bounds::new(margin, *y, 400.0, header_height), &mut cx);
+
+    *y += header_height + 8.0;
+
+    scene.draw_quad(
+        Quad::new(Bounds::new(margin, *y, 200.0, 2.0)).with_background(theme::accent::PRIMARY),
+    );
+
+    *y += 12.0;
 }
