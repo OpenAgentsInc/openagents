@@ -15,6 +15,7 @@ pub mod relay;
 
 // Existing marketplace modules
 pub mod agent_commerce;
+pub mod badges;
 pub mod agent_governance;
 pub mod agent_lifecycle;
 pub mod agents;
@@ -45,6 +46,10 @@ pub mod types;
 pub use agent_commerce::{
     AgentContract, ContractStatus, CoordinatorTask, DelegatedTask,
     HireAgentRequest as AgentHireRequest, HiringRequirements, TaskSpec,
+};
+pub use badges::{
+    Badge, BadgeError, BadgeRequirement, BadgeRequirements, BadgeType, BenchmarkResult,
+    IdentityVerification, calculate_badge_trust_boost, get_badges, is_badge_expired,
 };
 pub use agent_governance::{
     ActionLimits, ActionType, ApprovalRequirement, AutonomyPolicy, EscalationAction,

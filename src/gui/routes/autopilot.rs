@@ -3,10 +3,13 @@
 use std::sync::Arc;
 
 use actix_web::{web, HttpResponse};
+use maud::html;
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
 use tracing::{debug, info};
-use ui::{FullAutoSwitch, render_line_oob};
+use ui::acp::atoms::{ToolKind, ToolStatus};
+use ui::acp::organisms::{AssistantMessage, ToolCallCard};
+use ui::FullAutoSwitch;
 
 use crate::gui::state::{AppState, AutopilotProcess};
 use crate::gui::ws::WsBroadcaster;
@@ -42,9 +45,14 @@ async fn toggle_full_auto(state: web::Data<AppState>) -> HttpResponse {
             *state.full_auto.write().await = false;
 
             // Broadcast error
+            let error_html = html! {
+                div class="mb-4 p-3 border-l-2 border-red" {
+                    span class="text-red text-sm font-mono" { "Failed to start autopilot: " (e.to_string()) }
+                }
+            };
             state.broadcaster.broadcast(&format!(
-                r#"<div id="chat-content-raw" hx-swap-oob="beforeend"><div class="log-error">Failed to start autopilot: {}</div></div>"#,
-                e
+                r#"<div id="chat-content-formatted" hx-swap-oob="beforeend">{}</div>"#,
+                error_html.into_string()
             ));
 
             let switch = FullAutoSwitch::new(false).build();
@@ -130,14 +138,17 @@ async fn spawn_autopilot_process(state: &web::Data<AppState>) -> anyhow::Result<
     let (shutdown_tx, mut shutdown_rx) = tokio::sync::mpsc::channel::<()>(1);
     let broadcaster = state.broadcaster.clone();
 
-    // Broadcast startup message to all views with agent name
+    // Broadcast startup message with ACP styling
     let agent_name = match selected_agent.as_str() {
         "codex" => "Codex",
         _ => "Claude Code",
     };
-    broadcaster.broadcast(&format!(r#"<div id="chat-content-raw" hx-swap-oob="beforeend"><div class="log-line log-success">{} starting...</div></div>"#, agent_name));
-    broadcaster.broadcast(&format!(r#"<div id="chat-content-json" hx-swap-oob="beforeend"><div class="json-line" style="color: var(--color-green);">{} starting...</div></div>"#, agent_name));
-    broadcaster.broadcast(&format!(r#"<div id="chat-content-formatted" hx-swap-oob="beforeend"><div class="px-3 py-2 text-green text-sm">{} starting...</div></div>"#, agent_name));
+    let startup_html = html! {
+        div class="mb-4 p-3 border-l-2 border-green" {
+            span class="text-green text-sm font-mono" { (agent_name) " starting..." }
+        }
+    };
+    broadcaster.broadcast(&format!(r#"<div id="chat-content-formatted" hx-swap-oob="beforeend">{}</div>"#, startup_html.into_string()));
 
     // Spawn output reader task
     let output_task = tokio::spawn(async move {
@@ -170,9 +181,7 @@ async fn read_output_loop(
             biased;
 
             _ = shutdown_rx.recv() => {
-                broadcaster.broadcast(r#"<div id="chat-content-raw" hx-swap-oob="beforeend"><div class="log-line" style="color: #888;">Autopilot stopped.</div></div>"#);
-                broadcaster.broadcast(r#"<div id="chat-content-json" hx-swap-oob="beforeend"><div class="json-line" style="color: #888;">Autopilot stopped.</div></div>"#);
-                broadcaster.broadcast(r#"<div id="chat-content-formatted" hx-swap-oob="beforeend"><div class="px-3 py-2 text-muted-foreground text-sm">Autopilot stopped.</div></div>"#);
+                broadcaster.broadcast(r#"<div id="chat-content-formatted" hx-swap-oob="beforeend"><div class="mb-4 p-3 border-l-2 border-muted"><span class="text-muted-foreground text-sm font-mono">Autopilot stopped.</span></div></div>"#);
                 break;
             }
 
@@ -187,12 +196,7 @@ async fn read_output_loop(
                                 let event_type = json.get("type").and_then(|v| v.as_str()).unwrap_or("unknown");
                                 debug!("Claude event: type={}", event_type);
 
-                                // Broadcast to JSON view (full JSON)
-                                let escaped = html_escape(&text);
-                                let json_html = format!(r#"<div id="chat-content-json" hx-swap-oob="beforeend"><div class="json-line">{}</div></div>"#, escaped);
-                                broadcaster.broadcast(&json_html);
-
-                                // Format for human-readable view
+                                // Format for human-readable ACP view
                                 let formatted = format_claude_event(&json);
                                 match formatted {
                                     StreamingOutput::Block(html) => {
@@ -219,48 +223,26 @@ async fn read_output_loop(
                                     }
                                     StreamingOutput::None => {}
                                 }
-
-                                // Also show key events in raw view
-                                let raw_summary = summarize_claude_event(&json);
-                                if !raw_summary.is_empty() {
-                                    let raw_html = format!(r#"<div id="chat-content-raw" hx-swap-oob="beforeend"><div class="log-line">{}</div></div>"#, html_escape(&raw_summary));
-                                    broadcaster.broadcast(&raw_html);
-                                }
-                            } else {
-                                // Invalid JSON, show as-is
-                                let escaped = html_escape(&text);
-                                let json_html = format!(r#"<div id="chat-content-json" hx-swap-oob="beforeend"><div class="json-line">{}</div></div>"#, escaped);
-                                broadcaster.broadcast(&json_html);
                             }
+                            // Invalid JSON is silently ignored - only valid stream-json is displayed
                         } else {
-                            // Regular rlog output - broadcast to raw RLOG view
+                            // Non-JSON output (rare) - show as plain text
                             let escaped = html_escape(&text);
-                            let raw_html = format!(r#"<div id="chat-content-raw" hx-swap-oob="beforeend"><div class="log-line">{}</div></div>"#, escaped);
-                            broadcaster.broadcast(&raw_html);
-
-                            // Broadcast to formatted view (rendered components)
-                            let formatted_html = render_line_oob(&text);
-                            broadcaster.broadcast(&formatted_html);
+                            let html = format!(
+                                r#"<div id="chat-content-formatted" hx-swap-oob="beforeend"><div class="px-3 py-1 text-xs text-muted-foreground font-mono">{}</div></div>"#,
+                                escaped
+                            );
+                            broadcaster.broadcast(&html);
                         }
                     }
                     Ok(None) => {
                         // EOF - process exited
-                        broadcaster.broadcast(r#"<div id="chat-content-raw" hx-swap-oob="beforeend"><div class="log-error">Autopilot process exited.</div></div>"#);
-                        broadcaster.broadcast(r#"<div id="chat-content-json" hx-swap-oob="beforeend"><div class="json-line" style="color: var(--color-red);">Autopilot process exited.</div></div>"#);
-                        broadcaster.broadcast(r#"<div id="chat-content-formatted" hx-swap-oob="beforeend"><div class="px-3 py-2 text-red text-sm">Autopilot process exited.</div></div>"#);
+                        broadcaster.broadcast(r#"<div id="chat-content-formatted" hx-swap-oob="beforeend"><div class="mb-4 p-3 border-l-2 border-muted"><span class="text-muted-foreground text-sm font-mono">Autopilot process exited.</span></div></div>"#);
                         break;
                     }
                     Err(e) => {
                         broadcaster.broadcast(&format!(
-                            r#"<div id="chat-content-raw" hx-swap-oob="beforeend"><div class="log-error">Read error: {}</div></div>"#,
-                            e
-                        ));
-                        broadcaster.broadcast(&format!(
-                            r#"<div id="chat-content-json" hx-swap-oob="beforeend"><div class="json-line" style="color: var(--color-red);">Read error: {}</div></div>"#,
-                            e
-                        ));
-                        broadcaster.broadcast(&format!(
-                            r#"<div id="chat-content-formatted" hx-swap-oob="beforeend"><div class="px-3 py-2 text-red text-sm">Read error: {}</div></div>"#,
+                            r#"<div id="chat-content-formatted" hx-swap-oob="beforeend"><div class="mb-4 p-3 border-l-2 border-red"><span class="text-red text-sm font-mono">Read error: {}</span></div></div>"#,
                             e
                         ));
                         break;
@@ -271,29 +253,15 @@ async fn read_output_loop(
             line = stderr_reader.next_line() => {
                 match line {
                     Ok(Some(text)) => {
+                        // Show stderr as error message in formatted view
                         let escaped = html_escape(&text);
-                        let raw_html = format!(r#"<div id="chat-content-raw" hx-swap-oob="beforeend"><div class="log-error">{}</div></div>"#, escaped);
-                        broadcaster.broadcast(&raw_html);
-
-                        // Also show in JSON view as error
-                        let json_html = format!(
-                            r#"<div id="chat-content-json" hx-swap-oob="beforeend"><div class="json-line" style="color: var(--color-red);">{}</div></div>"#,
-                            escaped
-                        );
-                        broadcaster.broadcast(&json_html);
-
-                        // Also show in formatted view as error
-                        let formatted_html = format!(
+                        broadcaster.broadcast(&format!(
                             r#"<div id="chat-content-formatted" hx-swap-oob="beforeend"><div class="px-3 py-1 text-xs text-red font-mono">{}</div></div>"#,
                             escaped
-                        );
-                        broadcaster.broadcast(&formatted_html);
+                        ));
                     }
-                    Ok(None) => {
-                        // EOF on stderr is normal
-                    }
-                    Err(_) => {
-                        // Ignore stderr read errors
+                    Ok(None) | Err(_) => {
+                        // EOF or error on stderr is normal
                     }
                 }
             }
@@ -354,7 +322,22 @@ enum StreamingOutput {
     None,
 }
 
-/// Format a Claude Code stream-json event for the human-readable view
+/// Map Claude tool names to ACP ToolKind
+fn tool_name_to_kind(name: &str) -> ToolKind {
+    match name.to_lowercase().as_str() {
+        "read" | "read_file" | "view" => ToolKind::Read,
+        "edit" | "edit_file" | "write" | "write_file" | "str_replace_editor" => ToolKind::Edit,
+        "delete" | "delete_file" | "rm" => ToolKind::Delete,
+        "bash" | "execute" | "run" | "shell" | "terminal" | "command" => ToolKind::Execute,
+        "grep" | "search" | "glob" | "find" | "ripgrep" | "list_files" => ToolKind::Search,
+        "think" | "thinking" | "reason" => ToolKind::Think,
+        "fetch" | "web" | "http" | "curl" | "web_search" | "webfetch" => ToolKind::Fetch,
+        "todowrite" | "task" | "todo" => ToolKind::Other,
+        _ => ToolKind::Other,
+    }
+}
+
+/// Format a Claude Code stream-json event for the human-readable view using ACP components
 fn format_claude_event(json: &serde_json::Value) -> StreamingOutput {
     let event_type = json.get("type").and_then(|v| v.as_str()).unwrap_or("");
 
@@ -371,10 +354,11 @@ fn format_claude_event(json: &serde_json::Value) -> StreamingOutput {
                     }
                     if !text_parts.is_empty() {
                         let text = text_parts.join("");
-                        return StreamingOutput::Block(format!(
-                            r#"<div class="px-3 py-2 text-sm text-foreground whitespace-pre-wrap">{}</div>"#,
-                            html_escape(&text)
-                        ));
+                        let entry_id = format!("assistant-{}", chrono::Utc::now().timestamp_millis());
+                        let msg = AssistantMessage::new(&entry_id)
+                            .text(html_escape(&text))
+                            .build();
+                        return StreamingOutput::Block(msg.into_string());
                     }
                 }
             }
@@ -383,6 +367,22 @@ fn format_claude_event(json: &serde_json::Value) -> StreamingOutput {
         "content_block_start" => {
             // Start of a new content block - create streaming container
             let index = json.get("index").and_then(|i| i.as_u64()).unwrap_or(0);
+
+            // Check if this is a tool_use block
+            if let Some(content_block) = json.get("content_block") {
+                if let Some(block_type) = content_block.get("type").and_then(|t| t.as_str()) {
+                    if block_type == "tool_use" {
+                        let name = content_block.get("name").and_then(|n| n.as_str()).unwrap_or("tool");
+                        let tool_kind = tool_name_to_kind(name);
+                        let entry_id = format!("tool-{}", index);
+                        let card = ToolCallCard::new(tool_kind, name, &entry_id)
+                            .status(ToolStatus::Running)
+                            .build();
+                        return StreamingOutput::Block(card.into_string());
+                    }
+                }
+            }
+
             StreamingOutput::StartBlock { index }
         }
         "content_block_delta" => {
@@ -404,60 +404,77 @@ fn format_claude_event(json: &serde_json::Value) -> StreamingOutput {
             StreamingOutput::EndBlock
         }
         "result" => {
-            // Tool use result
+            // Tool use result - render with ACP status badge style
             if let Some(subtype) = json.get("subtype").and_then(|v| v.as_str()) {
-                if subtype == "success" {
-                    return StreamingOutput::Block(
-                        r#"<div class="px-3 py-1 text-xs text-green">✓ Tool executed successfully</div>"#.to_string()
-                    );
-                } else if subtype == "error" {
-                    let error = json.get("error").and_then(|e| e.as_str()).unwrap_or("Unknown error");
-                    return StreamingOutput::Block(format!(
-                        r#"<div class="px-3 py-1 text-xs text-red">✗ Error: {}</div>"#,
-                        html_escape(error)
-                    ));
+                let result_html = html! {
+                    div class="ml-4 mb-2 py-1 text-xs font-mono" {
+                        @if subtype == "success" {
+                            span class="text-green" { "[+] Success" }
+                        } @else if subtype == "error" {
+                            @let error = json.get("error").and_then(|e| e.as_str()).unwrap_or("Unknown error");
+                            span class="text-red" { "[x] Error: " (error) }
+                        } @else {
+                            span class="text-muted-foreground" { "[*] " (subtype) }
+                        }
+                    }
+                };
+                return StreamingOutput::Block(result_html.into_string());
+            }
+            StreamingOutput::None
+        }
+        "tool_use" => {
+            // Tool invocation - use ACP ToolCallCard
+            if let Some(name) = json.get("name").and_then(|n| n.as_str()) {
+                let tool_kind = tool_name_to_kind(name);
+                let tool_id = json.get("id").and_then(|i| i.as_str()).unwrap_or("unknown");
+                let entry_id = format!("tool-{}", tool_id);
+
+                // Get input if available for display
+                let input_preview = json.get("input")
+                    .map(|i| {
+                        let s = i.to_string();
+                        if s.len() > 200 { format!("{}...", &s[..200]) } else { s }
+                    });
+
+                let mut card = ToolCallCard::new(tool_kind, name, &entry_id)
+                    .status(ToolStatus::Running);
+
+                if let Some(preview) = input_preview {
+                    card = card.content(html_escape(&preview));
+                }
+
+                return StreamingOutput::Block(card.build().into_string());
+            }
+            StreamingOutput::None
+        }
+        "user" => {
+            // User message
+            if let Some(message) = json.get("message") {
+                if let Some(content) = message.get("content").and_then(|c| c.as_str()) {
+                    let user_html = html! {
+                        div class="mb-4 p-3 bg-card border border-border" {
+                            div class="text-xs text-muted-foreground mb-1 font-mono" { "[USER]" }
+                            div class="text-sm text-foreground whitespace-pre-wrap" { (content) }
+                        }
+                    };
+                    return StreamingOutput::Block(user_html.into_string());
                 }
             }
             StreamingOutput::None
         }
-        "tool_use" => {
-            // Tool invocation
-            if let Some(name) = json.get("name").and_then(|n| n.as_str()) {
-                return StreamingOutput::Block(format!(
-                    r#"<div class="px-3 py-1 text-xs text-yellow">🔧 Tool: {}</div>"#,
-                    html_escape(name)
-                ));
+        "system" => {
+            // System message
+            if let Some(content) = json.get("message").and_then(|m| m.get("content")).and_then(|c| c.as_str()) {
+                let sys_html = html! {
+                    div class="mb-2 px-3 py-1 text-xs text-muted-foreground font-mono border-l-2 border-muted" {
+                        "[SYSTEM] " (if content.len() > 100 { &content[..100] } else { content }) "..."
+                    }
+                };
+                return StreamingOutput::Block(sys_html.into_string());
             }
             StreamingOutput::None
         }
         _ => StreamingOutput::None,
-    }
-}
-
-/// Summarize a Claude Code stream-json event for the raw view
-fn summarize_claude_event(json: &serde_json::Value) -> String {
-    let event_type = json.get("type").and_then(|v| v.as_str()).unwrap_or("");
-
-    match event_type {
-        "assistant" => "[assistant message]".to_string(),
-        "content_block_start" => "[content block start]".to_string(),
-        "content_block_delta" => String::new(), // Skip deltas in raw view
-        "content_block_stop" => "[content block stop]".to_string(),
-        "message_start" => "[message start]".to_string(),
-        "message_delta" => "[message delta]".to_string(),
-        "message_stop" => "[message stop]".to_string(),
-        "result" => {
-            let subtype = json.get("subtype").and_then(|v| v.as_str()).unwrap_or("unknown");
-            format!("[result: {}]", subtype)
-        }
-        "tool_use" => {
-            let name = json.get("name").and_then(|n| n.as_str()).unwrap_or("unknown");
-            format!("[tool: {}]", name)
-        }
-        "system" => "[system]".to_string(),
-        "user" => "[user]".to_string(),
-        other if !other.is_empty() => format!("[{}]", other),
-        _ => String::new(),
     }
 }
 
