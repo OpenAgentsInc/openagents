@@ -9,129 +9,19 @@
 //! - Spring physics animations
 //! - Animation composition and chaining
 
+mod animator;
+mod easing;
+mod transitions;
+
 use crate::{Hsla, Point, Size};
 use std::time::Duration;
 
-/// Animation easing function
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum Easing {
-    /// Linear interpolation (constant speed)
-    Linear,
-    /// Slow start, fast end
-    EaseIn,
-    /// Fast start, slow end
-    EaseOut,
-    /// Slow start, fast middle, slow end
-    EaseInOut,
-    /// Quadratic ease-in
-    EaseInQuad,
-    /// Quadratic ease-out
-    EaseOutQuad,
-    /// Quadratic ease-in-out
-    EaseInOutQuad,
-    /// Cubic ease-in
-    EaseInCubic,
-    /// Cubic ease-out
-    EaseOutCubic,
-    /// Cubic ease-in-out
-    EaseInOutCubic,
-    /// Elastic bounce at end
-    EaseOutElastic,
-    /// Overshoot and settle
-    EaseOutBack,
-    /// Custom cubic bezier curve
-    CubicBezier(f32, f32, f32, f32),
-}
-
-impl Easing {
-    /// Apply easing function to normalized time (0.0 to 1.0)
-    pub fn apply(&self, t: f32) -> f32 {
-        let t = t.clamp(0.0, 1.0);
-        match self {
-            Easing::Linear => t,
-            Easing::EaseIn => t * t,
-            Easing::EaseOut => 1.0 - (1.0 - t) * (1.0 - t),
-            Easing::EaseInOut => {
-                if t < 0.5 {
-                    2.0 * t * t
-                } else {
-                    1.0 - (-2.0 * t + 2.0).powi(2) / 2.0
-                }
-            }
-            Easing::EaseInQuad => t * t,
-            Easing::EaseOutQuad => 1.0 - (1.0 - t) * (1.0 - t),
-            Easing::EaseInOutQuad => {
-                if t < 0.5 {
-                    2.0 * t * t
-                } else {
-                    1.0 - (-2.0 * t + 2.0).powi(2) / 2.0
-                }
-            }
-            Easing::EaseInCubic => t * t * t,
-            Easing::EaseOutCubic => 1.0 - (1.0 - t).powi(3),
-            Easing::EaseInOutCubic => {
-                if t < 0.5 {
-                    4.0 * t * t * t
-                } else {
-                    1.0 - (-2.0 * t + 2.0).powi(3) / 2.0
-                }
-            }
-            Easing::EaseOutElastic => {
-                if t == 0.0 || t == 1.0 {
-                    t
-                } else {
-                    let c4 = (2.0 * std::f32::consts::PI) / 3.0;
-                    2.0_f32.powf(-10.0 * t) * ((t * 10.0 - 0.75) * c4).sin() + 1.0
-                }
-            }
-            Easing::EaseOutBack => {
-                let c1 = 1.70158;
-                let c3 = c1 + 1.0;
-                1.0 + c3 * (t - 1.0).powi(3) + c1 * (t - 1.0).powi(2)
-            }
-            Easing::CubicBezier(x1, y1, x2, y2) => {
-                cubic_bezier_sample(t, *x1, *y1, *x2, *y2)
-            }
-        }
-    }
-}
-
-impl Default for Easing {
-    fn default() -> Self {
-        Easing::EaseInOut
-    }
-}
-
-/// Sample cubic bezier curve at time t
-fn cubic_bezier_sample(t: f32, x1: f32, y1: f32, x2: f32, y2: f32) -> f32 {
-    // Newton-Raphson iteration to find parameter for x
-    let mut guess = t;
-    for _ in 0..8 {
-        let x = cubic_bezier_value(guess, x1, x2) - t;
-        if x.abs() < 0.0001 {
-            break;
-        }
-        let dx = cubic_bezier_derivative(guess, x1, x2);
-        if dx.abs() < 0.0001 {
-            break;
-        }
-        guess -= x / dx;
-    }
-    cubic_bezier_value(guess.clamp(0.0, 1.0), y1, y2)
-}
-
-fn cubic_bezier_value(t: f32, p1: f32, p2: f32) -> f32 {
-    let t2 = t * t;
-    let t3 = t2 * t;
-    let mt = 1.0 - t;
-    let mt2 = mt * mt;
-    3.0 * mt2 * t * p1 + 3.0 * mt * t2 * p2 + t3
-}
-
-fn cubic_bezier_derivative(t: f32, p1: f32, p2: f32) -> f32 {
-    let mt = 1.0 - t;
-    3.0 * mt * mt * p1 + 6.0 * mt * t * (p2 - p1) + 3.0 * t * t * (1.0 - p2)
-}
+pub use animator::{
+    AnimatorId, AnimatorManagerKind, AnimatorMessage, AnimatorNode, AnimatorSettings, AnimatorState,
+    AnimatorTiming,
+};
+pub use easing::Easing;
+pub use transitions::{draw, fade, flicker, Transition, TransitionAnimation};
 
 /// Animatable value that can be interpolated
 pub trait Animatable: Clone + Copy {
