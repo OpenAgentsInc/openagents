@@ -34,16 +34,8 @@ impl Priority {
         match self {
             Priority::Background | Priority::Normal => None,
             Priority::Elevated => Some(Hsla::new(200.0, 1.0, 0.5, 0.6)),
-            Priority::Urgent => Some(Hsla::new(30.0, 1.0, 0.5, 0.7)),
-            Priority::Critical => Some(Hsla::new(0.0, 1.0, 0.5, 0.8)),
-        }
-    }
-
-    fn frame_style(&self) -> FrameStyle {
-        match self {
-            Priority::Background => FrameStyle::Lines,
-            Priority::Normal | Priority::Elevated => FrameStyle::Corners,
-            Priority::Urgent | Priority::Critical => FrameStyle::Kranox,
+            Priority::Urgent => Some(Hsla::new(45.0, 1.0, 0.5, 0.8)),
+            Priority::Critical => Some(Hsla::new(0.0, 1.0, 0.5, 0.9)),
         }
     }
 }
@@ -149,7 +141,6 @@ impl VisualPane {
 
     fn set_priority(&mut self, priority: Priority) {
         self.priority = priority;
-        self.frame_style = priority.frame_style();
     }
 
     fn set_glow(&mut self, color: Option<Hsla>) {
