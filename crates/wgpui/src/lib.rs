@@ -45,6 +45,11 @@ pub use scene::{GlyphInstance, GpuQuad, GpuTextQuad, Quad, Scene, TextRun};
 pub use scroll::{ScrollContainer, ScrollDirection};
 pub use text::{FontStyle, TextSystem};
 pub use components::{AnyComponent, Button, ButtonVariant, Component, ComponentId, Div, Dropdown, DropdownOption, EventResult, EventContext, Modal, PaintContext, ScrollView, Tab, Tabs, Text, TextInput, VirtualList};
+pub use markdown::{
+    FadeState, MarkdownBlock, MarkdownConfig, MarkdownDocument, MarkdownParser,
+    MarkdownRenderer, StreamingConfig, StreamingMarkdown, StyledLine, StyledSpan,
+    SyntaxHighlighter, TextStyle, render_markdown, SUPPORTED_LANGUAGES,
+};
 
 #[cfg(all(feature = "web", target_arch = "wasm32"))]
 pub use platform::web::{WebPlatform, run_animation_loop, setup_resize_observer};
