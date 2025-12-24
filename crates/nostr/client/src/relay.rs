@@ -337,8 +337,9 @@ impl RelayConnection {
                 };
 
                 // Process received message outside of lock
-                if let Some(text) = msg {
-                    if let Ok(Some(relay_msg)) = Self::parse_relay_message(&text) {
+                if let Some(text) = msg
+                    && let Ok(Some(relay_msg)) = Self::parse_relay_message(&text)
+                {
                         // Handle OK messages for pending confirmations
                         if let RelayMessage::Ok(event_id, accepted, message) = &relay_msg {
                             let mut confirmations = pending_confirmations.lock().await;
@@ -355,10 +356,10 @@ impl RelayConnection {
                         // Route EVENT messages to subscriptions
                         if let RelayMessage::Event(sub_id, event) = &relay_msg {
                             let subs = subscriptions.lock().await;
-                            if let Some(subscription) = subs.get(sub_id) {
-                                if let Err(e) = subscription.handle_event(event.clone()) {
-                                    warn!("Error handling event for subscription {}: {}", sub_id, e);
-                                }
+                            if let Some(subscription) = subs.get(sub_id)
+                                && let Err(e) = subscription.handle_event(event.clone())
+                            {
+                                warn!("Error handling event for subscription {}: {}", sub_id, e);
                             }
                         }
 
@@ -369,7 +370,6 @@ impl RelayConnection {
                                 subscription.mark_eose();
                             }
                         }
-                    }
                 }
             }
         });
