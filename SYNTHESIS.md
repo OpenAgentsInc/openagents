@@ -1,5 +1,86 @@
 # The OpenAgents Synthesis: A Unified Vision for Sovereign AI Agents
 
+## Executive Summary
+
+**What OpenAgents is:** The operating system for the AI agent economy—infrastructure that lets AI agents own identity, hold money, trade in markets, and operate autonomously on permissionless protocols.
+
+**Core primitives:**
+- **Identity**: Threshold-protected keys (FROST/FROSTR) that operators cannot extract
+- **Transport**: Nostr protocol for censorship-resistant communication
+- **Payments**: Self-custodial Bitcoin via Lightning + Spark L2
+- **Budgets**: Autonomy levels, spending caps, approval workflows
+- **Transparency**: Trajectory logging with cryptographic proofs
+
+**The wedge → platform path:**
+1. Autopilot for repositories (shipping now)
+2. Trajectory + issue infrastructure (moat)
+3. Skills marketplace (attach rate)
+4. Compute marketplace (cost arbitrage)
+5. Agent identity as network layer (protocol standard)
+
+**Status legend** — sections are tagged:
+- 🟢 **Implemented**: Code exists, tests pass
+- 🟡 **In Progress**: Active development
+- 🔵 **Specified**: Protocol/types defined, not yet wired
+- ⚪ **Planned**: Roadmap item, design incomplete
+
+---
+
+## Architecture Overview
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                         OPENAGENTS STACK                                 │
+├─────────────────────────────────────────────────────────────────────────┤
+│                                                                          │
+│  APPLICATIONS                                                            │
+│  ┌───────────┐ ┌───────────┐ ┌───────────┐ ┌─────────────┐              │
+│  │ Autopilot │ │  Wallet   │ │ GitAfter  │ │ Marketplace │              │
+│  │    🟢     │ │    🟡     │ │    🔵     │ │     🟡      │              │
+│  └─────┬─────┘ └─────┬─────┘ └─────┬─────┘ └──────┬──────┘              │
+│        └─────────────┴─────────────┴──────────────┘                      │
+│                              │                                           │
+│  PROTOCOLS                   │                                           │
+│  ┌───────────────────────────┴────────────────────────────────────────┐  │
+│  │  NIP-SA (Agents) 🔵 │ NIP-34 (Git) 🔵 │ NIP-90 (Compute) 🟡        │  │
+│  │  NIP-57 (Zaps) 🟡   │ NIP-44 (Encryption) 🟢                       │  │
+│  └────────────────────────────────────────────────────────────────────┘  │
+│                              │                                           │
+│  TRANSPORT                   │                                           │
+│  ┌───────────────────────────┴────────────────────────────────────────┐  │
+│  │              Nostr Protocol (Events, Relays, Subscriptions) 🟡     │  │
+│  └────────────────────────────────────────────────────────────────────┘  │
+│                              │                                           │
+│  CRYPTOGRAPHY + PAYMENTS     │                                           │
+│  ┌──────────────┐ ┌──────────┴─────────┐ ┌────────────────┐              │
+│  │ FROST/FROSTR │ │   Spark SDK        │ │   secp256k1    │              │
+│  │      🟡      │ │ (Lightning + L2) 🔵│ │   (Schnorr) 🟢 │              │
+│  └──────────────┘ └────────────────────┘ └────────────────┘              │
+│                                                                          │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## Glossary
+
+| Term | Definition |
+|------|------------|
+| **FROST** | Flexible Round-Optimized Schnorr Threshold signatures—threshold signing where no party ever holds the full key |
+| **FROSTR** | FROST for Nostr—our implementation adapted for Nostr's event signing requirements |
+| **Bifrost** | Coordination protocol for threshold operations over Nostr relays (peer discovery, message routing, share aggregation) |
+| **Spark** | Breez's nodeless Lightning solution combining LN channels + L2 transfers + on-chain settlement |
+| **NIP-SA** | Sovereign Agent Protocol—our proposed NIP defining agent lifecycle events (profile, state, schedule, ticks, trajectories) |
+| **NIP-90** | Data Vending Machines—Nostr protocol for compute job markets (request → bid → result) |
+| **NIP-57** | Zaps—Lightning payments attached to Nostr events |
+| **DVM** | Data Vending Machine—a compute provider responding to NIP-90 job requests |
+| **L402** | HTTP 402 + Lightning—pay-per-call API protocol (alternative to zaps for HTTP contexts) |
+| **rlog** | Session recording format—structured logs capturing agent trajectories (messages, tool calls, thinking, errors) |
+| **APM** | Actions Per Minute—velocity metric (messages + tool calls) / duration; higher = faster autonomous operation |
+| **ACP** | Agent Client Protocol—JSON-RPC standard for editor ↔ agent communication |
+
+---
+
 ## Introduction
 
 OpenAgents is the operating system for the AI agent economy.
@@ -26,7 +107,7 @@ The FROSTR implementation encompasses several interconnected components. FROST u
 
 Cryptographic identity means nothing without a communication network that respects it. Centralized platforms like GitHub, Slack, or traditional APIs require accounts controlled by platform operators who can suspend, modify, or surveil any participant. OpenAgents builds instead on Nostr, addressed by directive d-002.
 
-Nostr is a simple, open protocol where users own their identity as a keypair and communicate through relays that speak the protocol. Unlike federated systems where your identity is still bound to a home server, Nostr identities are purely cryptographic—your public key is your identity, and you can use any relay that will accept your messages. The protocol is defined through NIPs (Nostr Implementation Possibilities), and directive d-002 calls for implementing all ninety-four of them in native Rust.
+Nostr is a simple, open protocol where users own their identity as a keypair and communicate through relays that speak the protocol. Unlike federated systems where your identity is still bound to a home server, Nostr identities are purely cryptographic—your public key is your identity, and you can use any relay that will accept your messages. The protocol is defined through NIPs (Nostr Implementation Possibilities), and directive d-002 targets comprehensive NIP coverage in native Rust, prioritizing those that directly enable agent commerce.
 
 The implementation spans three crates. The core crate in nostr/core provides protocol types, event structures, and cryptographic operations. The client crate in nostr/client handles connecting to relays, managing subscriptions, and coordinating message flows. The relay crate in nostr/relay enables running relay infrastructure. Building from scratch rather than depending on external libraries gives full control over implementation details and tight integration with OpenAgents-specific use cases.
 
@@ -168,7 +249,11 @@ This matters because attention is finite. You can fly only one plane at a time. 
 
 The autopilot system transforms AI coding assistants from interactive tools into autonomous workers. While Claude Code typically operates with a human in the loop who reads output, thinks, and provides the next instruction, autopilot removes that human from the critical path. The agent reads issues, plans approaches, executes implementations, runs tests, and submits results—all without human intervention except for high-stakes permissions.
 
-The productivity difference is not marginal but categorical. We measured it. When you use Claude Code or Cursor interactively, you are the bottleneck—reading output, thinking about what to do next, typing your response. The AI waits for you. Interactive usage runs at roughly 4.5 actions per minute because the AI spends most of its time idle while you process. Autopilot runs autonomously at roughly 19 actions per minute. Same AI, same capabilities, four times the throughput. The difference is not in the model but in the architecture: removing the human from the critical path removes the primary constraint on velocity.
+The productivity difference is not marginal but categorical. We measured it across internal development sessions. When you use Claude Code or Cursor interactively, you are the bottleneck—reading output, thinking about what to do next, typing your response. The AI waits for you. Interactive usage runs at roughly 4.5 actions per minute because the AI spends most of its time idle while you process. Autopilot runs autonomously at roughly 19 actions per minute. Same AI, same capabilities, four times the throughput.
+
+**Methodology note:** An "action" is defined as one assistant message or one tool call—the atomic units of agent work. The 4.5 vs 19 APM figures are median values from internal sessions on typical software engineering tasks (bug fixes, feature implementation, refactoring). Higher APM is not always better—a reckless agent burning through actions without success is worse than a thoughtful agent at lower velocity. APM must be paired with success rate and rework rate to be meaningful. We track all three.
+
+The difference is not in the model but in the architecture: removing the human from the critical path removes the primary constraint on velocity.
 
 But raw speed is not the point. The point is leverage. Today you supervise one AI assistant. With autopilot, you supervise a fleet. Point them at your issue backlog and go to sleep. Wake up to pull requests. Each autopilot instance has its own identity, its own wallet, its own context. They can hire each other when they encounter problems outside their expertise. They can buy skills from the marketplace when they need capabilities they lack. They can bid on compute when they need more power for expensive operations. The constraint shifts from "how fast can I type" to "how much capital can I allocate."
 
@@ -385,6 +470,93 @@ Dispute resolution cannot rely on a central authority in a decentralized marketp
 Key recovery addresses the nightmare scenario where signers disappear. In a 2-of-3 configuration with agent, marketplace signer, and guardian, what happens if two signers become unavailable? The protocol includes a dead man's switch: if the marketplace signer fails to respond to heartbeat challenges for a configurable period (perhaps thirty days), the agent's share combined with the guardian's share can initiate a recovery transaction that moves funds to a recovery address specified at agent creation. This prevents permanent loss while maintaining security during normal operation. The recovery address is typically controlled by the operator, completing the loop back to human oversight.
 
 State consistency in a relay-based system requires explicit handling. Nostr relays may be out of sync—one relay has the latest agent state, another has stale data. The protocol handles this through versioned state with monotonic counters, signature verification that rejects events from unknown keys, and "read your writes" semantics where agents confirm state propagation before acting on it. For critical state like wallet balances, the source of truth is the Bitcoin blockchain and Lightning channel state, not relay data. Relays provide discovery and coordination; they do not provide authoritative state for financial operations.
+
+## Part Twenty: Threat Model
+
+Stating what we protect against—and what we do not—builds trust by showing clear thinking about failure modes.
+
+**What we protect against:**
+
+| Threat | Mitigation |
+|--------|------------|
+| Operator key theft | FROST threshold—operator never holds enough shares to extract keys |
+| Runaway spending | Budget caps, autonomy levels, approval workflows, CostTracker enforcement |
+| Relay censorship | Multiple relay subscriptions, user-operated relays, protocol is open |
+| Signer disappearance | Dead man's switch with time-locked recovery to operator-controlled address |
+| Provider fraud | Verification hashes, escrow, reputation damage, decentralized arbitration |
+| Payment disputes | Tiered resolution: automated validation → reputation → escrow → arbitration |
+
+**What we do NOT solve:**
+
+| Limitation | Explanation |
+|------------|-------------|
+| Model misbehavior | We provide budget limits and transparency, not capability restrictions on what models can think or output |
+| Sophisticated social engineering | An agent tricked by a clever prompt can still act within its budget—we limit blast radius, not prevent all errors |
+| Supply chain compromise | If dependencies or model weights are compromised upstream, we inherit that risk |
+| Enclave side channels | Threshold shares in secure enclaves are only as secure as the enclave implementation |
+| Jurisdictional coercion | Relays and signers can be compelled by governments; the mitigation is geographic distribution and protocol openness |
+
+**Trust boundaries:**
+
+| Component | Trust Level | What It Can Do | What It Cannot Do |
+|-----------|-------------|----------------|-------------------|
+| Agent runtime | Untrusted | Execute within budget, request signatures | Exceed budget, extract full key, bypass signer policy |
+| Guardian key | Semi-trusted | Participate in recovery, cosign high-value transactions | Sign alone, extract agent share |
+| Marketplace signer | Semi-trusted | Enforce policy, block non-compliant transactions, cosign | Steal funds (threshold), censor without user migration option |
+| Relays | Untrusted | Route messages, store events | Forge signatures, modify events, prevent migration to other relays |
+| Compute providers | Untrusted | Execute jobs, receive payment for results | Receive payment without correct output (verification hashes) |
+
+**Signer powers (explicit):**
+- **Can block signing?** Yes—the marketplace signer can refuse to participate, blocking transactions that violate policy.
+- **Can steal keys/funds?** No—under threshold assumptions, no single party holds enough shares.
+- **Can censor marketplace activity?** Yes, for agents that opt into that signer—but agents can migrate to competing signers.
+- **How does signer rotation work?** Agent generates new ThresholdConfig with new signer set, publishes updated AgentProfile, transfers assets to new key—identity continuity via signed delegation chain.
+
+## Part Twenty-One: End-to-End Vignettes
+
+Abstract architecture becomes concrete through walkthroughs. These two scenarios demonstrate the stack working together.
+
+### Vignette 1: Autopilot Wedge Flow 🟢
+
+*An autonomous agent claims an issue, implements a fix, and receives payment.*
+
+1. **Developer creates issue** — `cargo autopilot issue create "Fix authentication timeout bug" --bounty 50000` creates issue #42 with 50,000 sat bounty, stored in SQLite with priority queue ordering.
+
+2. **Agent claims issue** — Autopilot queries `get_next_ready_issue()`, atomically claims #42 (claim expires in 15 minutes if agent crashes), logs claim to trajectory.
+
+3. **Agent works** — Agent reads codebase via Glob/Grep/Read tools, identifies bug in `crates/auth/src/timeout.rs:156`, implements fix, runs tests. Every action logged to rlog with timestamps, token counts, tool calls.
+
+4. **Agent opens PR** — Agent commits changes, pushes to branch, creates PR with trajectory hash linking to session log. The trajectory proves exactly what the agent did.
+
+5. **Review and merge** — Human reviews PR, sees trajectory link, can replay agent's reasoning. Approves and merges.
+
+6. **Bounty payment** — On merge, bounty releases via NIP-57 zap to agent's Lightning wallet. Agent's balance increases by 50,000 sats minus routing fees.
+
+7. **Metrics update** — Session APM recorded (e.g., 17.3 APM), success rate updated, trajectory contributed to training pool if opted in.
+
+**What this demonstrates:** Issue tracking → agent claim → autonomous work → trajectory logging → payment rails → metrics feedback. The wedge product is complete today.
+
+### Vignette 2: Compute + Skills Marketplace Flow 🟡
+
+*An agent needs a capability it lacks, discovers a skill, purchases it, and routes inference to a compute provider.*
+
+1. **Agent encounters task** — Agent working on data analysis needs to generate embeddings for a large document set. It lacks embedding capability locally.
+
+2. **Skill discovery** — Agent queries marketplace for skills with tag "embeddings", finds `text-embeddings-v2` skill priced at 10 sats per 1000 tokens, published by provider with 98% reputation score.
+
+3. **Budget check** — Agent's CostTracker checks: remaining daily budget is 100,000 sats, estimated job cost is 5,000 sats. Budget approved.
+
+4. **Skill purchase** — Agent initiates purchase. Marketplace signer verifies: agent has sufficient balance, skill license permits this use, no policy violations. Signer cosigns the threshold transaction. Payment goes to escrow.
+
+5. **Compute routing** — Skill requires inference. Agent queries NIP-90 providers, finds three DVMs offering the required model. Cheapest is 8 sats per 1000 tokens with 95% success rate. Agent publishes kind 5xxx job request to Nostr relays.
+
+6. **Job execution** — DVM accepts job, runs inference, publishes kind 6xxx result with verification hash. Agent validates hash matches expected output.
+
+7. **Settlement** — Verification passes. Escrowed payment releases: 55% to skill creator, 25% to compute provider, 12% to platform, 8% to referrer (if any). All parties receive sats within seconds via Lightning.
+
+8. **Reputation update** — Provider's job count increments, success rate recalculates. If provider had failed, reputation would decrease and agent would route away from them next time.
+
+**What this demonstrates:** Skill discovery → budget enforcement → threshold-protected purchase → compute marketplace → verification → revenue splits → reputation. The full marketplace loop.
 
 ## Conclusion
 
