@@ -1,16 +1,22 @@
-//! First Light - Component System Demo
+//! First Light - Full Component System Demo
 //!
-//! Demonstrates all wgpui components:
-//! - Div: Container with background and border
-//! - Text: Styled text rendering (normal, bold, italic)
-//! - Button: All variants (Primary, Secondary, Ghost, Danger)
-//! - VirtualList: Efficient large list rendering
+//! Demonstrates all wgpui components including:
+//! - Animation system (easing, spring physics)
+//! - Atoms (StatusDot, ModeBadge, ModelBadge, StreamingIndicator)
+//! - Molecules (MessageHeader, ModeSelector, ModelSelector)
+//! - HUD (StatusBar, Tooltip, ContextMenu)
+//! - Basic components (Text, Button, Div, VirtualList)
 
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 use wgpui::{
-    Bounds, Button, ButtonVariant, Component, Div, PaintContext, Point, Quad, Scene, Size, Text,
-    TextSystem, VirtualList, theme,
+    Animation, Bounds, Button, ButtonVariant, Component, Div, Easing, Hsla,
+    PaintContext, Point, Quad, Scene, Size, SpringAnimation, Text, TextSystem,
+    VirtualList, theme,
 };
+use wgpui::components::atoms::{Mode, Model, Status, StatusDot, ModeBadge, ModelBadge, StreamingIndicator};
+use wgpui::components::molecules::{MessageHeader, ModeSelector, ModelSelector};
+use wgpui::components::hud::{StatusBar, StatusItem, Notifications};
 use wgpui::renderer::Renderer;
 use winit::application::ApplicationHandler;
 use winit::event::WindowEvent;
@@ -36,6 +42,58 @@ struct RenderState {
     config: wgpu::SurfaceConfiguration,
     renderer: Renderer,
     text_system: TextSystem,
+    demo: DemoState,
+}
+
+struct DemoState {
+    #[allow(dead_code)]
+    start_time: Instant,
+    position_anim: Animation<f32>,
+    color_anim: Animation<Hsla>,
+    spring: SpringAnimation<f32>,
+    status_bar: StatusBar,
+    #[allow(dead_code)]
+    notifications: Notifications,
+    frame_count: u64,
+}
+
+impl Default for DemoState {
+    fn default() -> Self {
+        let mut position_anim = Animation::new(0.0_f32, 300.0, Duration::from_millis(2000))
+            .easing(Easing::EaseInOutCubic)
+            .iterations(0)
+            .alternate();
+        position_anim.start();
+
+        let mut color_anim = Animation::new(
+            theme::accent::PRIMARY,
+            theme::accent::GREEN,
+            Duration::from_millis(3000),
+        )
+        .easing(Easing::EaseInOut)
+        .iterations(0)
+        .alternate();
+        color_anim.start();
+
+        let spring = SpringAnimation::new(0.0, 100.0)
+            .stiffness(80.0)
+            .damping(8.0);
+
+        Self {
+            start_time: Instant::now(),
+            position_anim,
+            color_anim,
+            spring,
+            status_bar: StatusBar::new().items(vec![
+                StatusItem::mode("mode", Mode::Normal).left(),
+                StatusItem::text("file", "first_light.rs").center(),
+                StatusItem::model("model", Model::Claude).right(),
+                StatusItem::status("status", Status::Online).right(),
+            ]),
+            notifications: Notifications::new(),
+            frame_count: 0,
+        }
+    }
 }
 
 impl ApplicationHandler for App {
@@ -45,8 +103,8 @@ impl ApplicationHandler for App {
         }
 
         let window_attrs = Window::default_attributes()
-            .with_title("wgpui - Component Demo")
-            .with_inner_size(winit::dpi::LogicalSize::new(900, 700));
+            .with_title("wgpui - Full Component Demo")
+            .with_inner_size(winit::dpi::LogicalSize::new(1100, 850));
 
         let window = Arc::new(
             event_loop
@@ -111,6 +169,7 @@ impl ApplicationHandler for App {
                 config,
                 renderer,
                 text_system,
+                demo: DemoState::default(),
             }
         });
 
@@ -133,11 +192,18 @@ impl ApplicationHandler for App {
             WindowEvent::RedrawRequested => {
                 let width = state.config.width as f32;
                 let height = state.config.height as f32;
+                let delta = Duration::from_millis(16);
+
+                state.demo.position_anim.tick(delta);
+                state.demo.color_anim.tick(delta);
+                state.demo.spring.tick(delta);
+                state.demo.frame_count += 1;
 
                 let mut scene = Scene::new();
-                build_component_demo(
+                build_full_demo(
                     &mut scene,
                     &mut state.text_system,
+                    &mut state.demo,
                     width,
                     height,
                 );
@@ -189,293 +255,312 @@ impl ApplicationHandler for App {
     }
 }
 
-fn build_component_demo(
+fn build_full_demo(
     scene: &mut Scene,
     text_system: &mut TextSystem,
+    demo: &mut DemoState,
     width: f32,
-    _height: f32,
+    height: f32,
 ) {
     let margin = 20.0;
-    let spacing = 16.0;
-    let section_spacing = 24.0;
-    let content_width = width - margin * 2.0;
+    let section_spacing = 28.0;
+    let col_width = (width - margin * 3.0) / 2.0;
+
+    scene.draw_quad(Quad::new(Bounds::new(0.0, 0.0, width, height)).with_background(theme::bg::APP));
 
     let mut y = margin;
+    draw_header(scene, text_system, margin, &mut y, width);
 
-    demo_text_component(scene, text_system, margin, content_width, spacing, &mut y);
-    y += section_spacing;
+    let left_x = margin;
+    let right_x = margin * 2.0 + col_width;
+    let mut left_y = y;
+    let mut right_y = y;
 
-    demo_button_component(scene, text_system, margin, &mut y);
-    y += section_spacing;
+    demo_animation_system(scene, text_system, demo, left_x, col_width, &mut left_y);
+    left_y += section_spacing;
 
-    demo_div_component(scene, text_system, margin, content_width, spacing, &mut y);
-    y += section_spacing;
+    demo_atoms(scene, text_system, right_x, col_width, &mut right_y);
+    right_y += section_spacing;
 
-    demo_virtual_list(scene, text_system, margin, content_width, &mut y);
-    y += section_spacing;
+    demo_text_component(scene, text_system, left_x, col_width, &mut left_y);
+    left_y += section_spacing;
 
-    demo_theme_colors(scene, text_system, margin, &mut y);
+    demo_molecules(scene, text_system, right_x, col_width, &mut right_y);
+    right_y += section_spacing;
+
+    demo_button_component(scene, text_system, left_x, &mut left_y);
+    left_y += section_spacing;
+
+    demo_div_component(scene, text_system, right_x, col_width, &mut right_y);
+    right_y += section_spacing;
+
+    demo_virtual_list(scene, text_system, left_x, col_width, &mut left_y);
+    let _unused = left_y;
+
+    demo_theme_colors(scene, text_system, right_x, &mut right_y);
+
+    let mut cx = PaintContext::new(scene, text_system, 1.0);
+    demo.status_bar.paint(Bounds::new(0.0, 0.0, width, height), &mut cx);
+}
+
+fn draw_header(scene: &mut Scene, text_system: &mut TextSystem, margin: f32, y: &mut f32, width: f32) {
+    let title = "wgpui Component Showcase";
+    let subtitle = "GPU-Accelerated UI • Animation • Atoms • Molecules • HUD • 377 Tests";
+
+    let title_run = text_system.layout(title, Point::new(margin, *y + 24.0), 26.0, theme::text::PRIMARY);
+    scene.draw_text(title_run);
+
+    let subtitle_run = text_system.layout(subtitle, Point::new(margin, *y + 50.0), 13.0, theme::text::MUTED);
+    scene.draw_text(subtitle_run);
+
+    scene.draw_quad(
+        Quad::new(Bounds::new(margin, *y + 66.0, width - margin * 2.0, 2.0))
+            .with_background(theme::accent::PRIMARY),
+    );
+
+    *y += 82.0;
+}
+
+fn draw_section_header(scene: &mut Scene, text_system: &mut TextSystem, x: f32, y: &mut f32, title: &str) {
+    let run = text_system.layout(title, Point::new(x, *y + 14.0), 15.0, theme::text::PRIMARY);
+    scene.draw_text(run);
+    scene.draw_quad(
+        Quad::new(Bounds::new(x, *y + 28.0, 150.0, 1.0)).with_background(theme::accent::PRIMARY.with_alpha(0.5)),
+    );
+    *y += 38.0;
+}
+
+fn demo_animation_system(
+    scene: &mut Scene,
+    text_system: &mut TextSystem,
+    demo: &DemoState,
+    x: f32,
+    width: f32,
+    y: &mut f32,
+) {
+    draw_section_header(scene, text_system, x, y, "Animation System");
+
+    scene.draw_quad(
+        Quad::new(Bounds::new(x, *y, width, 100.0))
+            .with_background(theme::bg::SURFACE)
+            .with_border(theme::border::DEFAULT, 1.0),
+    );
+
+    let anim_x = x + demo.position_anim.current_value();
+    let anim_color = demo.color_anim.current_value();
+    scene.draw_quad(
+        Quad::new(Bounds::new(anim_x + 10.0, *y + 15.0, 35.0, 35.0))
+            .with_background(anim_color),
+    );
+
+    let label = text_system.layout("Easing + Color Animation", Point::new(x + 10.0, *y + 70.0), 11.0, theme::text::MUTED);
+    scene.draw_text(label);
+
+    let spring_val = demo.spring.current();
+    scene.draw_quad(
+        Quad::new(Bounds::new(x + width - 55.0, *y + 15.0 + (100.0 - spring_val) * 0.4, 35.0, 35.0))
+            .with_background(theme::accent::PURPLE),
+    );
+
+    let spring_label = text_system.layout("Spring Physics", Point::new(x + width - 100.0, *y + 85.0), 11.0, theme::text::MUTED);
+    scene.draw_text(spring_label);
+
+    *y += 110.0;
+}
+
+fn demo_atoms(scene: &mut Scene, text_system: &mut TextSystem, x: f32, width: f32, y: &mut f32) {
+    draw_section_header(scene, text_system, x, y, "Atoms (13 Components)");
+
+    scene.draw_quad(
+        Quad::new(Bounds::new(x, *y, width, 100.0))
+            .with_background(theme::bg::SURFACE)
+            .with_border(theme::border::DEFAULT, 1.0),
+    );
+
+    let mut cx = PaintContext::new(scene, text_system, 1.0);
+    let mut ax = x + 12.0;
+    let ay = *y + 15.0;
+
+    StatusDot::new(Status::Online).paint(Bounds::new(ax, ay, 10.0, 10.0), &mut cx);
+    ax += 20.0;
+    StatusDot::new(Status::Busy).paint(Bounds::new(ax, ay, 10.0, 10.0), &mut cx);
+    ax += 20.0;
+    StatusDot::new(Status::Away).paint(Bounds::new(ax, ay, 10.0, 10.0), &mut cx);
+    ax += 20.0;
+    StatusDot::new(Status::Offline).paint(Bounds::new(ax, ay, 10.0, 10.0), &mut cx);
+
+    let label = cx.text.layout("StatusDot", Point::new(x + 12.0, ay + 18.0), 10.0, theme::text::MUTED);
+    cx.scene.draw_text(label);
+
+    ax = x + 12.0;
+    let ay2 = *y + 50.0;
+    ModeBadge::new(Mode::Normal).paint(Bounds::new(ax, ay2, 55.0, 18.0), &mut cx);
+    ax += 60.0;
+    ModeBadge::new(Mode::Plan).paint(Bounds::new(ax, ay2, 55.0, 18.0), &mut cx);
+    ax += 60.0;
+    ModeBadge::new(Mode::Act).paint(Bounds::new(ax, ay2, 55.0, 18.0), &mut cx);
+
+    let label2 = cx.text.layout("ModeBadge", Point::new(x + 12.0, ay2 + 24.0), 10.0, theme::text::MUTED);
+    cx.scene.draw_text(label2);
+
+    ax = x + width - 160.0;
+    ModelBadge::new(Model::Claude).paint(Bounds::new(ax, ay, 70.0, 20.0), &mut cx);
+    ax += 75.0;
+    ModelBadge::new(Model::Gpt4).paint(Bounds::new(ax, ay, 70.0, 20.0), &mut cx);
+
+    let label3 = cx.text.layout("ModelBadge", Point::new(x + width - 160.0, ay + 26.0), 10.0, theme::text::MUTED);
+    cx.scene.draw_text(label3);
+
+    StreamingIndicator::new().paint(Bounds::new(x + width - 80.0, ay2, 60.0, 18.0), &mut cx);
+    let label4 = cx.text.layout("Streaming", Point::new(x + width - 80.0, ay2 + 24.0), 10.0, theme::text::MUTED);
+    cx.scene.draw_text(label4);
+
+    *y += 110.0;
+}
+
+fn demo_molecules(scene: &mut Scene, text_system: &mut TextSystem, x: f32, width: f32, y: &mut f32) {
+    draw_section_header(scene, text_system, x, y, "Molecules (10 Components)");
+
+    scene.draw_quad(
+        Quad::new(Bounds::new(x, *y, width, 90.0))
+            .with_background(theme::bg::SURFACE)
+            .with_border(theme::border::DEFAULT, 1.0),
+    );
+
+    let mut cx = PaintContext::new(scene, text_system, 1.0);
+
+    MessageHeader::assistant(Model::Claude)
+        .author("Claude")
+        .timestamp("Just now")
+        .paint(Bounds::new(x + 8.0, *y + 8.0, width - 16.0, 32.0), &mut cx);
+
+    ModeSelector::new(Mode::Normal).paint(Bounds::new(x + 12.0, *y + 50.0, 120.0, 28.0), &mut cx);
+    ModelSelector::new(Model::Claude).paint(Bounds::new(x + 145.0, *y + 50.0, 120.0, 28.0), &mut cx);
+
+    let label = text_system.layout("MessageHeader + Selectors", Point::new(x + 280.0, *y + 58.0), 10.0, theme::text::MUTED);
+    scene.draw_text(label);
+
+    *y += 100.0;
 }
 
 fn demo_text_component(
     scene: &mut Scene,
     text_system: &mut TextSystem,
-    margin: f32,
-    content_width: f32,
-    spacing: f32,
+    x: f32,
+    width: f32,
     y: &mut f32,
 ) {
-    draw_section_header(scene, text_system, margin, y, "Text Component");
+    draw_section_header(scene, text_system, x, y, "Text Component");
 
-    let mut text_normal = Text::new("Normal text - The quick brown fox jumps over the lazy dog");
-    let mut text_bold = Text::new("Bold text - WGPUI GPU-accelerated rendering").bold();
+    let mut text_normal = Text::new("Normal text - The quick brown fox");
+    let mut text_bold = Text::new("Bold text - WGPUI rendering").bold();
     let mut text_italic = Text::new("Italic text - Beautiful typography").italic();
-    let mut text_large = Text::new("Large text (24px)")
-        .font_size(24.0)
-        .color(theme::accent::PRIMARY);
-    let mut text_muted = Text::new("Muted secondary text").color(theme::text::MUTED);
+    let mut text_accent = Text::new("Accent (20px)").font_size(20.0).color(theme::accent::PRIMARY);
 
-    let text_height = 24.0;
+    let text_height = 22.0;
     let mut cx = PaintContext::new(scene, text_system, 1.0);
 
-    text_normal.paint(Bounds::new(margin, *y, content_width, text_height), &mut cx);
-    *y += text_height + spacing / 2.0;
-
-    text_bold.paint(Bounds::new(margin, *y, content_width, text_height), &mut cx);
-    *y += text_height + spacing / 2.0;
-
-    text_italic.paint(Bounds::new(margin, *y, content_width, text_height), &mut cx);
-    *y += text_height + spacing / 2.0;
-
-    text_large.paint(Bounds::new(margin, *y, content_width, 32.0), &mut cx);
-    *y += 32.0 + spacing / 2.0;
-
-    text_muted.paint(Bounds::new(margin, *y, content_width, text_height), &mut cx);
+    text_normal.paint(Bounds::new(x, *y, width, text_height), &mut cx);
     *y += text_height;
+    text_bold.paint(Bounds::new(x, *y, width, text_height), &mut cx);
+    *y += text_height;
+    text_italic.paint(Bounds::new(x, *y, width, text_height), &mut cx);
+    *y += text_height;
+    text_accent.paint(Bounds::new(x, *y, width, 26.0), &mut cx);
+    *y += 26.0;
 }
 
-fn demo_button_component(
-    scene: &mut Scene,
-    text_system: &mut TextSystem,
-    margin: f32,
-    y: &mut f32,
-) {
-    draw_section_header(scene, text_system, margin, y, "Button Component");
+fn demo_button_component(scene: &mut Scene, text_system: &mut TextSystem, x: f32, y: &mut f32) {
+    draw_section_header(scene, text_system, x, y, "Button Variants");
 
-    let button_height = 36.0;
-    let button_width = 140.0;
-    let button_spacing = 12.0;
+    let btn_h = 32.0;
+    let btn_w = 95.0;
+    let spacing = 8.0;
+    let mut cx = PaintContext::new(scene, text_system, 1.0);
+    let mut bx = x;
 
-    let mut btn_primary = Button::new("Primary");
-    let mut btn_secondary = Button::new("Secondary").variant(ButtonVariant::Secondary);
-    let mut btn_ghost = Button::new("Ghost").variant(ButtonVariant::Ghost);
-    let mut btn_danger = Button::new("Danger").variant(ButtonVariant::Danger);
-    let mut btn_disabled = Button::new("Disabled").disabled(true);
+    Button::new("Primary").paint(Bounds::new(bx, *y, btn_w, btn_h), &mut cx);
+    bx += btn_w + spacing;
+    Button::new("Secondary").variant(ButtonVariant::Secondary).paint(Bounds::new(bx, *y, btn_w, btn_h), &mut cx);
+    bx += btn_w + spacing;
+    Button::new("Ghost").variant(ButtonVariant::Ghost).paint(Bounds::new(bx, *y, btn_w, btn_h), &mut cx);
+    bx += btn_w + spacing;
+    Button::new("Danger").variant(ButtonVariant::Danger).paint(Bounds::new(bx, *y, btn_w, btn_h), &mut cx);
+    bx += btn_w + spacing;
+    Button::new("Disabled").disabled(true).paint(Bounds::new(bx, *y, btn_w, btn_h), &mut cx);
 
+    *y += btn_h + 8.0;
+}
+
+fn demo_div_component(scene: &mut Scene, text_system: &mut TextSystem, x: f32, width: f32, y: &mut f32) {
+    draw_section_header(scene, text_system, x, y, "Div Container");
+
+    let div_h = 50.0;
+    let div_w = (width - 16.0) / 3.0;
     let mut cx = PaintContext::new(scene, text_system, 1.0);
 
-    let mut x = margin;
-    btn_primary.paint(Bounds::new(x, *y, button_width, button_height), &mut cx);
-    x += button_width + button_spacing;
+    Div::new().background(theme::bg::SURFACE).paint(Bounds::new(x, *y, div_w, div_h), &mut cx);
+    Div::new().background(theme::bg::MUTED).border(theme::border::DEFAULT, 1.0)
+        .paint(Bounds::new(x + div_w + 8.0, *y, div_w, div_h), &mut cx);
+    Div::new().background(theme::accent::PRIMARY.with_alpha(0.2)).border(theme::accent::PRIMARY, 2.0)
+        .paint(Bounds::new(x + (div_w + 8.0) * 2.0, *y, div_w, div_h), &mut cx);
 
-    btn_secondary.paint(Bounds::new(x, *y, button_width, button_height), &mut cx);
-    x += button_width + button_spacing;
+    let labels = ["Surface", "Border", "Accent"];
+    for (i, label) in labels.iter().enumerate() {
+        let lbl = text_system.layout(label, Point::new(x + (div_w + 8.0) * i as f32 + 8.0, *y + div_h / 2.0 + 4.0), 11.0, theme::text::MUTED);
+        scene.draw_text(lbl);
+    }
 
-    btn_ghost.paint(Bounds::new(x, *y, button_width, button_height), &mut cx);
-    x += button_width + button_spacing;
-
-    btn_danger.paint(Bounds::new(x, *y, button_width, button_height), &mut cx);
-    x += button_width + button_spacing;
-
-    btn_disabled.paint(Bounds::new(x, *y, button_width, button_height), &mut cx);
-
-    *y += button_height;
+    *y += div_h + 8.0;
 }
 
-fn demo_div_component(
-    scene: &mut Scene,
-    text_system: &mut TextSystem,
-    margin: f32,
-    content_width: f32,
-    spacing: f32,
-    y: &mut f32,
-) {
-    draw_section_header(scene, text_system, margin, y, "Div Container Component");
+fn demo_virtual_list(scene: &mut Scene, text_system: &mut TextSystem, x: f32, width: f32, y: &mut f32) {
+    draw_section_header(scene, text_system, x, y, "VirtualList (10k items)");
 
-    let div_height = 60.0;
-    let div_width = (content_width - spacing * 2.0) / 3.0;
-
-    let mut div_bg = Div::new().background(theme::bg::SURFACE);
-    let mut div_border = Div::new()
-        .background(theme::bg::MUTED)
-        .border(theme::border::DEFAULT, 1.0);
-    let mut div_accent = Div::new()
-        .background(theme::accent::PRIMARY.with_alpha(0.2))
-        .border(theme::accent::PRIMARY, 2.0);
-
-    let mut cx = PaintContext::new(scene, text_system, 1.0);
-
-    div_bg.paint(Bounds::new(margin, *y, div_width, div_height), &mut cx);
-    div_border.paint(
-        Bounds::new(margin + div_width + spacing, *y, div_width, div_height),
-        &mut cx,
-    );
-    div_accent.paint(
-        Bounds::new(margin + (div_width + spacing) * 2.0, *y, div_width, div_height),
-        &mut cx,
-    );
-
-    let mut label1 = Text::new("Surface bg").color(theme::text::MUTED).font_size(12.0);
-    let mut label2 = Text::new("With border").color(theme::text::MUTED).font_size(12.0);
-    let mut label3 = Text::new("Accent style").color(theme::text::MUTED).font_size(12.0);
-
-    label1.paint(Bounds::new(margin + 8.0, *y + div_height / 2.0, 100.0, 20.0), &mut cx);
-    label2.paint(
-        Bounds::new(margin + div_width + spacing + 8.0, *y + div_height / 2.0, 100.0, 20.0),
-        &mut cx,
-    );
-    label3.paint(
-        Bounds::new(
-            margin + (div_width + spacing) * 2.0 + 8.0,
-            *y + div_height / 2.0,
-            100.0,
-            20.0,
-        ),
-        &mut cx,
-    );
-
-    *y += div_height;
-}
-
-fn demo_virtual_list(
-    scene: &mut Scene,
-    text_system: &mut TextSystem,
-    margin: f32,
-    content_width: f32,
-    y: &mut f32,
-) {
-    draw_section_header(scene, text_system, margin, y, "VirtualList Component (100 items)");
-
-    let list_height = 160.0;
-    let item_height = 32.0;
-
-    let items: Vec<String> = (0..100)
-        .map(|i| format!("List Item #{} - Virtual scrolling demo", i))
-        .collect();
+    let list_h = 130.0;
+    let item_h = 26.0;
+    let items: Vec<String> = (0..10000).map(|i| format!("Item #{} - Virtual scrolling", i)).collect();
 
     scene.draw_quad(
-        Quad::new(Bounds::new(margin, *y, content_width, list_height))
+        Quad::new(Bounds::new(x, *y, width, list_h))
             .with_background(theme::bg::SURFACE)
             .with_border(theme::border::DEFAULT, 1.0),
     );
 
-    let mut virtual_list = VirtualList::new(
-        items,
-        item_height,
-        move |item: &String, idx: usize, bounds: Bounds, cx: &mut PaintContext| {
-            let bg_color = if idx % 2 == 0 {
-                theme::bg::SURFACE
-            } else {
-                theme::bg::MUTED
-            };
-
-            cx.scene.draw_quad(Quad::new(bounds).with_background(bg_color));
-
-            let font_size = theme::font_size::SM;
-            let text_run = cx.text.layout(
-                item,
-                Point::new(bounds.origin.x + 12.0, bounds.origin.y + bounds.size.height * 0.5 - font_size * 0.55),
-                font_size,
-                theme::text::PRIMARY,
-            );
-            cx.scene.draw_text(text_run);
-        },
-    );
+    let mut virtual_list = VirtualList::new(items, item_h, move |item: &String, idx: usize, bounds: Bounds, cx: &mut PaintContext| {
+        let bg = if idx % 2 == 0 { theme::bg::SURFACE } else { theme::bg::MUTED };
+        cx.scene.draw_quad(Quad::new(bounds).with_background(bg));
+        let run = cx.text.layout(item, Point::new(bounds.origin.x + 10.0, bounds.origin.y + bounds.size.height * 0.6), 12.0, theme::text::PRIMARY);
+        cx.scene.draw_text(run);
+    });
 
     let mut cx = PaintContext::new(scene, text_system, 1.0);
-    virtual_list.paint(Bounds::new(margin, *y, content_width, list_height), &mut cx);
+    virtual_list.paint(Bounds::new(x, *y, width, list_h), &mut cx);
 
-    *y += list_height;
+    *y += list_h + 8.0;
 }
 
-fn demo_theme_colors(scene: &mut Scene, text_system: &mut TextSystem, margin: f32, y: &mut f32) {
-    draw_section_header(scene, text_system, margin, y, "Theme Colors");
+fn demo_theme_colors(scene: &mut Scene, text_system: &mut TextSystem, x: f32, y: &mut f32) {
+    draw_section_header(scene, text_system, x, y, "Theme Colors");
 
-    let swatch_size = 40.0;
-    let swatch_spacing = 8.0;
+    let size = 32.0;
+    let gap = 6.0;
+    let mut cx = x;
 
-    let bg_colors = [
-        theme::bg::APP,
-        theme::bg::SURFACE,
-        theme::bg::MUTED,
-    ];
-
-    let mut x = margin;
-    for color in bg_colors {
-        scene.draw_quad(
-            Quad::new(Bounds::new(x, *y, swatch_size, swatch_size))
-                .with_background(color)
-                .with_border(theme::border::DEFAULT, 1.0),
-        );
-        x += swatch_size + swatch_spacing;
+    for color in [theme::bg::APP, theme::bg::SURFACE, theme::bg::MUTED] {
+        scene.draw_quad(Quad::new(Bounds::new(cx, *y, size, size)).with_background(color).with_border(theme::border::DEFAULT, 1.0));
+        cx += size + gap;
+    }
+    cx += gap;
+    for color in [theme::accent::PRIMARY, theme::accent::BLUE, theme::accent::GREEN, theme::accent::RED, theme::accent::PURPLE] {
+        scene.draw_quad(Quad::new(Bounds::new(cx, *y, size, size)).with_background(color));
+        cx += size + gap;
+    }
+    cx += gap;
+    for color in [theme::status::SUCCESS, theme::status::WARNING, theme::status::ERROR, theme::status::INFO] {
+        scene.draw_quad(Quad::new(Bounds::new(cx, *y, size, size)).with_background(color));
+        cx += size + gap;
     }
 
-    let accent_colors = [
-        theme::accent::PRIMARY,
-        theme::accent::BLUE,
-        theme::accent::GREEN,
-        theme::accent::RED,
-        theme::accent::PURPLE,
-    ];
-
-    x += swatch_spacing * 2.0;
-    for color in accent_colors {
-        scene.draw_quad(
-            Quad::new(Bounds::new(x, *y, swatch_size, swatch_size)).with_background(color),
-        );
-        x += swatch_size + swatch_spacing;
-    }
-
-    let status_colors = [
-        theme::status::SUCCESS,
-        theme::status::WARNING,
-        theme::status::ERROR,
-        theme::status::INFO,
-    ];
-
-    x += swatch_spacing * 2.0;
-    for color in status_colors {
-        scene.draw_quad(
-            Quad::new(Bounds::new(x, *y, swatch_size, swatch_size)).with_background(color),
-        );
-        x += swatch_size + swatch_spacing;
-    }
-
-    *y += swatch_size;
-}
-
-fn draw_section_header(
-    scene: &mut Scene,
-    text_system: &mut TextSystem,
-    margin: f32,
-    y: &mut f32,
-    title: &str,
-) {
-    let header_height = 28.0;
-
-    let mut header_text = Text::new(title)
-        .font_size(theme::font_size::LG)
-        .bold()
-        .color(theme::text::PRIMARY);
-
-    let mut cx = PaintContext::new(scene, text_system, 1.0);
-    header_text.paint(Bounds::new(margin, *y, 400.0, header_height), &mut cx);
-
-    *y += header_height + 8.0;
-
-    scene.draw_quad(
-        Quad::new(Bounds::new(margin, *y, 200.0, 2.0)).with_background(theme::accent::PRIMARY),
-    );
-
-    *y += 12.0;
+    *y += size + 8.0;
 }
