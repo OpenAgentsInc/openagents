@@ -1,6 +1,7 @@
 //! Docker Compose wrapper for parallel agents
 
 use anyhow::{Context, Result};
+use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::process::Command;
@@ -183,6 +184,51 @@ pub async fn stop_agents() -> Result<()> {
     Ok(())
 }
 
+/// Query current issue for a given agent/container from database
+fn query_current_issue(container_name: &str) -> Option<i32> {
+    let db_path = find_project_root().ok()?.join("autopilot.db");
+    if !db_path.exists() {
+        return None;
+    }
+
+    let conn = Connection::open(&db_path).ok()?;
+
+    // Query for issues claimed by this container that are in progress
+    conn.query_row(
+        "SELECT number FROM issues WHERE claimed_by = ? AND status = 'in_progress' LIMIT 1",
+        [container_name],
+        |row| row.get(0),
+    )
+    .ok()
+}
+
+/// Parse uptime in seconds from docker status string
+fn parse_uptime_seconds(status_str: &str) -> Option<u64> {
+    // Docker status format: "Up X seconds/minutes/hours/days"
+    if !status_str.starts_with("Up ") {
+        return None;
+    }
+
+    let parts: Vec<&str> = status_str[3..].split_whitespace().collect();
+    if parts.len() < 2 {
+        return None;
+    }
+
+    let value: u64 = parts[0].parse().ok()?;
+    let unit = parts[1];
+
+    let seconds = match unit {
+        "second" | "seconds" => value,
+        "minute" | "minutes" => value * 60,
+        "hour" | "hours" => value * 3600,
+        "day" | "days" => value * 86400,
+        "week" | "weeks" => value * 604800,
+        _ => return None,
+    };
+
+    Some(seconds)
+}
+
 /// List all agents and their status
 pub async fn list_agents() -> Result<Vec<AgentInfo>> {
     tokio::task::spawn_blocking(move || -> Result<Vec<AgentInfo>> {
@@ -213,12 +259,18 @@ pub async fn list_agents() -> Result<Vec<AgentInfo>> {
                         AgentStatus::Error
                     };
 
+                    // Query database for current issue
+                    let current_issue = query_current_issue(name);
+
+                    // Parse uptime from status string
+                    let uptime_seconds = parse_uptime_seconds(status_str);
+
                     agents.push(AgentInfo {
                         id: id.to_string(),
                         container_name: name.to_string(),
                         status,
-                        current_issue: None, // TODO: Query from database
-                        uptime_seconds: None, // TODO: Parse from status
+                        current_issue,
+                        uptime_seconds,
                     });
                 }
             }
@@ -305,5 +357,24 @@ mod tests {
         let json = serde_json::to_string(&info).unwrap();
         assert!(json.contains("\"id\":\"001\""));
         assert!(json.contains("\"current_issue\":42"));
+    }
+
+    #[test]
+    fn test_parse_uptime_seconds() {
+        assert_eq!(parse_uptime_seconds("Up 5 seconds"), Some(5));
+        assert_eq!(parse_uptime_seconds("Up 30 seconds"), Some(30));
+        assert_eq!(parse_uptime_seconds("Up 2 minutes"), Some(120));
+        assert_eq!(parse_uptime_seconds("Up 1 hour"), Some(3600));
+        assert_eq!(parse_uptime_seconds("Up 3 hours"), Some(10800));
+        assert_eq!(parse_uptime_seconds("Up 2 days"), Some(172800));
+        assert_eq!(parse_uptime_seconds("Up 1 week"), Some(604800));
+    }
+
+    #[test]
+    fn test_parse_uptime_invalid() {
+        assert_eq!(parse_uptime_seconds("Exited (0) 5 minutes ago"), None);
+        assert_eq!(parse_uptime_seconds("Created"), None);
+        assert_eq!(parse_uptime_seconds("Up"), None);
+        assert_eq!(parse_uptime_seconds(""), None);
     }
 }
