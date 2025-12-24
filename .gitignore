@@ -63,6 +63,11 @@ logs/*.log
 runlog-test-*/
 tasks-cli-*/
 
+# Autopilot session logs (trajectory files)
+docs/logs/**/*.rlog
+docs/logs/**/*.jsonl
+docs/logs/**/*.json
+
 # Agent runtime files
 .openagents/agent.lock
 .openagents/locks/
