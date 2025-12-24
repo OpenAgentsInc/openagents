@@ -13,6 +13,8 @@
 
 use crate::color::Hsla;
 
+pub mod dynamic;
+
 /// Background colors aligned with Tailwind's dark theme.
 pub mod bg {
     use super::*;
