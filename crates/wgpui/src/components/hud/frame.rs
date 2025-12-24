@@ -1,6 +1,8 @@
+use crate::animation::{Animation, AnimationController, AnimatorState, AnimatorTiming, Easing};
 use crate::components::context::PaintContext;
 use crate::components::{Component, ComponentId, EventResult};
 use crate::{Bounds, Hsla, InputEvent, Quad};
+use std::time::Duration;
 
 /// Frame style variants inspired by Arwes sci-fi UI framework
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -11,6 +13,9 @@ pub enum FrameStyle {
     Underline,
     Nefrex,
     Kranox,
+    Nero,
+    Header,
+    Circle,
 }
 
 impl Default for FrameStyle {
@@ -93,6 +98,8 @@ pub struct Frame {
     square_size: f32,
     padding: f32,
     corner_config: CornerConfig,
+    header_bottom: bool,
+    circle_segments: u32,
     animation_progress: f32,
     animation_mode: FrameAnimation,
     draw_direction: DrawDirection,
@@ -114,6 +121,8 @@ impl Frame {
             square_size: 16.0,
             padding: 0.0,
             corner_config: CornerConfig::new(),
+            header_bottom: false,
+            circle_segments: 64,
             animation_progress: 1.0,
             animation_mode: FrameAnimation::Fade,
             draw_direction: DrawDirection::LeftToRight,
@@ -143,6 +152,18 @@ impl Frame {
 
     pub fn kranox() -> Self {
         Self::new().style(FrameStyle::Kranox)
+    }
+
+    pub fn nero() -> Self {
+        Self::new().style(FrameStyle::Nero)
+    }
+
+    pub fn header() -> Self {
+        Self::new().style(FrameStyle::Header)
+    }
+
+    pub fn circle() -> Self {
+        Self::new().style(FrameStyle::Circle)
     }
 
     pub fn with_id(mut self, id: ComponentId) -> Self {
@@ -202,6 +223,16 @@ impl Frame {
 
     pub fn corner_config(mut self, config: CornerConfig) -> Self {
         self.corner_config = config;
+        self
+    }
+
+    pub fn header_bottom(mut self, show: bool) -> Self {
+        self.header_bottom = show;
+        self
+    }
+
+    pub fn circle_segments(mut self, segments: u32) -> Self {
+        self.circle_segments = segments.max(8);
         self
     }
 
@@ -660,6 +691,291 @@ impl Frame {
         self.draw_animated_line(cx, x + w - ss, y + ss * 2.0 + sll - t, ss, t, true);
         self.draw_animated_line(cx, x + w - ss - t, y + ss * 2.0, t, sll, false);
     }
+
+    fn paint_nero(&self, bounds: Bounds, cx: &mut PaintContext) {
+        let p = self.padding;
+        let t = self.stroke_width;
+        let cl = self.corner_length.max(t * 2.0);
+        let x = bounds.origin.x + p;
+        let y = bounds.origin.y + p;
+        let w = bounds.size.width - p * 2.0;
+        let h = bounds.size.height - p * 2.0;
+
+        let bg_alpha = self.bg_color.a * self.compute_alpha();
+        cx.scene.draw_quad(
+            Quad::new(Bounds::new(x + t, y + t, w - t * 2.0, h - t * 2.0))
+                .with_background(self.bg_color.with_alpha(bg_alpha)),
+        );
+
+        let inner_offset = (t * 2.0).min(cl * 0.5);
+        let mut inner_len = (cl * 0.5).max(t);
+        let max_inner = (cl - inner_offset).max(t);
+        inner_len = inner_len.min(max_inner);
+
+        let inner_x_left = x + inner_offset;
+        let inner_x_right = x + w - inner_offset - t;
+        let inner_y_top = y + inner_offset;
+        let inner_y_bottom = y + h - inner_offset - t;
+        let inner_h_right_x = inner_x_right + t - inner_len;
+        let inner_v_bottom_y = inner_y_bottom + t - inner_len;
+
+        if let Some(glow) = self.glow_color {
+            let g = glow.with_alpha(glow.a * self.compute_alpha());
+            self.draw_animated_glow_line(cx, x, y, cl, t, true, g);
+            self.draw_animated_glow_line(cx, x, y, t, cl, false, g);
+            self.draw_animated_glow_line(cx, x + w - cl, y, cl, t, true, g);
+            self.draw_animated_glow_line(cx, x + w - t, y, t, cl, false, g);
+            self.draw_animated_glow_line(cx, x + w - cl, y + h - t, cl, t, true, g);
+            self.draw_animated_glow_line(cx, x + w - t, y + h - cl, t, cl, false, g);
+            self.draw_animated_glow_line(cx, x, y + h - t, cl, t, true, g);
+            self.draw_animated_glow_line(cx, x, y + h - cl, t, cl, false, g);
+
+            self.draw_animated_glow_line(cx, inner_x_left, inner_y_top, inner_len, t, true, g);
+            self.draw_animated_glow_line(cx, inner_x_left, inner_y_top, t, inner_len, false, g);
+            self.draw_animated_glow_line(cx, inner_h_right_x, inner_y_top, inner_len, t, true, g);
+            self.draw_animated_glow_line(cx, inner_x_right, inner_y_top, t, inner_len, false, g);
+            self.draw_animated_glow_line(cx, inner_h_right_x, inner_y_bottom, inner_len, t, true, g);
+            self.draw_animated_glow_line(cx, inner_x_right, inner_v_bottom_y, t, inner_len, false, g);
+            self.draw_animated_glow_line(cx, inner_x_left, inner_y_bottom, inner_len, t, true, g);
+            self.draw_animated_glow_line(cx, inner_x_left, inner_v_bottom_y, t, inner_len, false, g);
+        }
+
+        self.draw_animated_line(cx, x, y, cl, t, true);
+        self.draw_animated_line(cx, x, y, t, cl, false);
+        self.draw_animated_line(cx, x + w - cl, y, cl, t, true);
+        self.draw_animated_line(cx, x + w - t, y, t, cl, false);
+        self.draw_animated_line(cx, x + w - cl, y + h - t, cl, t, true);
+        self.draw_animated_line(cx, x + w - t, y + h - cl, t, cl, false);
+        self.draw_animated_line(cx, x, y + h - t, cl, t, true);
+        self.draw_animated_line(cx, x, y + h - cl, t, cl, false);
+
+        self.draw_animated_line(cx, inner_x_left, inner_y_top, inner_len, t, true);
+        self.draw_animated_line(cx, inner_x_left, inner_y_top, t, inner_len, false);
+        self.draw_animated_line(cx, inner_h_right_x, inner_y_top, inner_len, t, true);
+        self.draw_animated_line(cx, inner_x_right, inner_y_top, t, inner_len, false);
+        self.draw_animated_line(cx, inner_h_right_x, inner_y_bottom, inner_len, t, true);
+        self.draw_animated_line(cx, inner_x_right, inner_v_bottom_y, t, inner_len, false);
+        self.draw_animated_line(cx, inner_x_left, inner_y_bottom, inner_len, t, true);
+        self.draw_animated_line(cx, inner_x_left, inner_v_bottom_y, t, inner_len, false);
+    }
+
+    fn paint_header(&self, bounds: Bounds, cx: &mut PaintContext) {
+        let p = self.padding;
+        let t = self.stroke_width;
+        let accent = self.corner_length.max(t * 2.0).min(bounds.size.height * 0.6);
+        let x = bounds.origin.x + p;
+        let y = bounds.origin.y + p;
+        let w = bounds.size.width - p * 2.0;
+        let h = bounds.size.height - p * 2.0;
+
+        let bg_alpha = self.bg_color.a * self.compute_alpha();
+        cx.scene.draw_quad(
+            Quad::new(Bounds::new(x, y, w, h))
+                .with_background(self.bg_color.with_alpha(bg_alpha)),
+        );
+
+        if let Some(glow) = self.glow_color {
+            let g = glow.with_alpha(glow.a * self.compute_alpha());
+            self.draw_animated_glow_line(cx, x, y, w, t, true, g);
+            self.draw_animated_glow_line(cx, x, y, t, accent, false, g);
+            self.draw_animated_glow_line(cx, x + w - t, y, t, accent, false, g);
+
+            if self.header_bottom {
+                let by = y + h - t;
+                self.draw_animated_glow_line(cx, x, by, w, t, true, g);
+                self.draw_animated_glow_line(cx, x, by - accent + t, t, accent, false, g);
+                self.draw_animated_glow_line(cx, x + w - t, by - accent + t, t, accent, false, g);
+            }
+        }
+
+        self.draw_animated_line(cx, x, y, w, t, true);
+        self.draw_animated_line(cx, x, y, t, accent, false);
+        self.draw_animated_line(cx, x + w - t, y, t, accent, false);
+
+        if self.header_bottom {
+            let by = y + h - t;
+            self.draw_animated_line(cx, x, by, w, t, true);
+            self.draw_animated_line(cx, x, by - accent + t, t, accent, false);
+            self.draw_animated_line(cx, x + w - t, by - accent + t, t, accent, false);
+        }
+    }
+
+    fn paint_circle(&self, bounds: Bounds, cx: &mut PaintContext) {
+        let p = self.padding;
+        let t = self.stroke_width.max(0.5);
+        let segments = self.circle_segments.max(8);
+        let progress = self.animation_progress;
+        let alpha = self.compute_alpha();
+        let color = self.line_color.with_alpha(self.line_color.a * alpha);
+
+        let cx_center = bounds.origin.x + bounds.size.width / 2.0;
+        let cy_center = bounds.origin.y + bounds.size.height / 2.0;
+        let radius = (bounds.size.width.min(bounds.size.height) / 2.0) - t / 2.0 - p;
+        if radius <= 0.0 {
+            return;
+        }
+
+        let segments_to_draw = match self.animation_mode {
+            FrameAnimation::Draw | FrameAnimation::Assemble => {
+                ((segments as f32) * progress).ceil().clamp(0.0, segments as f32) as u32
+            }
+            _ => segments,
+        };
+
+        if segments_to_draw == 0 {
+            return;
+        }
+
+        let segment_angle = std::f32::consts::TAU / segments as f32;
+        let half_segments = segments_to_draw / 2;
+
+        let glow = self.glow_color.map(|g| g.with_alpha(g.a * alpha));
+
+        for i in 0..=half_segments {
+            let angle = -std::f32::consts::FRAC_PI_2 + (i as f32) * segment_angle;
+            let x = cx_center + angle.cos() * radius;
+            let y = cy_center + angle.sin() * radius;
+            let bounds = Bounds::new(x - t / 2.0, y - t / 2.0, t, t);
+            if let Some(glow_color) = glow {
+                self.draw_glow_line(cx, bounds.origin.x, bounds.origin.y, bounds.size.width, bounds.size.height, glow_color);
+            }
+            cx.scene.draw_quad(Quad::new(bounds).with_background(color));
+        }
+
+        for i in 1..=half_segments {
+            let angle = -std::f32::consts::FRAC_PI_2 - (i as f32) * segment_angle;
+            let x = cx_center + angle.cos() * radius;
+            let y = cy_center + angle.sin() * radius;
+            let bounds = Bounds::new(x - t / 2.0, y - t / 2.0, t, t);
+            if let Some(glow_color) = glow {
+                self.draw_glow_line(cx, bounds.origin.x, bounds.origin.y, bounds.size.width, bounds.size.height, glow_color);
+            }
+            cx.scene.draw_quad(Quad::new(bounds).with_background(color));
+        }
+    }
+}
+
+/// Animator bridge for frame components driven by wgpui AnimatorState.
+pub struct FrameAnimator {
+    controller: AnimationController,
+    timing: AnimatorTiming,
+    easing: Easing,
+    state: AnimatorState,
+    animation: Option<Animation<f32>>,
+    progress: f32,
+}
+
+impl FrameAnimator {
+    pub fn new() -> Self {
+        Self {
+            controller: AnimationController::new(),
+            timing: AnimatorTiming::default(),
+            easing: Easing::EaseInOut,
+            state: AnimatorState::Exited,
+            animation: None,
+            progress: 0.0,
+        }
+    }
+
+    pub fn timing(mut self, timing: AnimatorTiming) -> Self {
+        self.timing = timing;
+        self
+    }
+
+    pub fn set_timing(&mut self, timing: AnimatorTiming) {
+        self.timing = timing;
+    }
+
+    pub fn easing(mut self, easing: Easing) -> Self {
+        self.easing = easing;
+        self
+    }
+
+    pub fn set_easing(&mut self, easing: Easing) {
+        self.easing = easing;
+    }
+
+    pub fn progress(&self) -> f32 {
+        self.progress
+    }
+
+    pub fn state(&self) -> AnimatorState {
+        self.state
+    }
+
+    pub fn update(&mut self, state: AnimatorState) -> f32 {
+        let delta = self.controller.delta();
+        self.update_with_delta(state, delta)
+    }
+
+    pub fn update_with_delta(&mut self, state: AnimatorState, delta: Duration) -> f32 {
+        if state != self.state {
+            self.start_for(state);
+        }
+
+        if let Some(animation) = &mut self.animation {
+            self.progress = animation.tick(delta);
+            if animation.is_finished() {
+                self.animation = None;
+            }
+        } else {
+            self.progress = match state {
+                AnimatorState::Entered => 1.0,
+                AnimatorState::Exited => 0.0,
+                AnimatorState::Entering | AnimatorState::Exiting => self.progress,
+            };
+        }
+
+        self.progress
+    }
+
+    pub fn apply(&mut self, frame: &mut Frame, state: AnimatorState) {
+        let delta = self.controller.delta();
+        self.apply_with_delta(frame, state, delta);
+    }
+
+    pub fn apply_with_delta(&mut self, frame: &mut Frame, state: AnimatorState, delta: Duration) {
+        let progress = self.update_with_delta(state, delta);
+        frame.animation_progress = progress;
+        frame.is_exiting = matches!(state, AnimatorState::Exiting);
+    }
+
+    fn start_for(&mut self, state: AnimatorState) {
+        self.controller.reset();
+        self.state = state;
+        self.animation = None;
+
+        match state {
+            AnimatorState::Entering => {
+                let duration = ensure_non_zero(self.timing.enter);
+                let mut animation = Animation::new(0.0, 1.0, duration).easing(self.easing);
+                animation.start();
+                self.progress = 0.0;
+                self.animation = Some(animation);
+            }
+            AnimatorState::Exiting => {
+                let duration = ensure_non_zero(self.timing.exit);
+                let mut animation = Animation::new(1.0, 0.0, duration).easing(self.easing);
+                animation.start();
+                self.progress = 1.0;
+                self.animation = Some(animation);
+            }
+            AnimatorState::Entered => {
+                self.progress = 1.0;
+            }
+            AnimatorState::Exited => {
+                self.progress = 0.0;
+            }
+        }
+    }
+}
+
+fn ensure_non_zero(duration: Duration) -> Duration {
+    if duration.is_zero() {
+        Duration::from_millis(1)
+    } else {
+        duration
+    }
 }
 
 impl Default for Frame {
@@ -677,6 +993,9 @@ impl Component for Frame {
             FrameStyle::Underline => self.paint_underline(bounds, cx),
             FrameStyle::Nefrex => self.paint_nefrex(bounds, cx),
             FrameStyle::Kranox => self.paint_kranox(bounds, cx),
+            FrameStyle::Nero => self.paint_nero(bounds, cx),
+            FrameStyle::Header => self.paint_header(bounds, cx),
+            FrameStyle::Circle => self.paint_circle(bounds, cx),
         }
     }
 
@@ -728,6 +1047,15 @@ mod tests {
 
         let kranox = Frame::kranox();
         assert_eq!(kranox.style, FrameStyle::Kranox);
+
+        let nero = Frame::nero();
+        assert_eq!(nero.style, FrameStyle::Nero);
+
+        let header = Frame::header();
+        assert_eq!(header.style, FrameStyle::Header);
+
+        let circle = Frame::circle();
+        assert_eq!(circle.style, FrameStyle::Circle);
     }
 
     #[test]
@@ -783,6 +1111,18 @@ mod tests {
         assert_eq!(frame.small_line_length, 20.0);
         assert_eq!(frame.large_line_length, 80.0);
         assert_eq!(frame.square_size, 20.0);
+    }
+
+    #[test]
+    fn test_header_bottom_builder() {
+        let frame = Frame::header().header_bottom(true);
+        assert!(frame.header_bottom);
+    }
+
+    #[test]
+    fn test_circle_segments_builder() {
+        let frame = Frame::circle().circle_segments(4);
+        assert_eq!(frame.circle_segments, 8);
     }
 
     #[test]
@@ -942,5 +1282,29 @@ mod tests {
         assert_eq!(frame.draw_direction, DrawDirection::CenterOut);
         assert_eq!(frame.animation_progress, 0.7);
         assert!(!frame.is_exiting);
+    }
+
+    #[test]
+    fn test_frame_animator_integration() {
+        let mut animator = FrameAnimator::new().timing(AnimatorTiming::new(
+            Duration::from_millis(10),
+            Duration::from_millis(10),
+            Duration::ZERO,
+        ));
+        let mut frame = Frame::new();
+
+        animator.apply_with_delta(&mut frame, AnimatorState::Entering, Duration::from_millis(5));
+        assert!(frame.animation_progress > 0.0 && frame.animation_progress < 1.0);
+        assert!(!frame.is_exiting);
+
+        animator.apply_with_delta(&mut frame, AnimatorState::Entering, Duration::from_millis(5));
+        assert!(frame.animation_progress >= 0.9);
+
+        animator.apply_with_delta(&mut frame, AnimatorState::Exiting, Duration::from_millis(5));
+        assert!(frame.is_exiting);
+        assert!(frame.animation_progress < 1.0);
+
+        animator.apply_with_delta(&mut frame, AnimatorState::Exiting, Duration::from_millis(5));
+        assert!(frame.animation_progress <= 0.1);
     }
 }

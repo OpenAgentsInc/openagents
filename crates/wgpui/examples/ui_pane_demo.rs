@@ -735,6 +735,9 @@ fn render_demo(
                 .square_size(10.0)
                 .small_line_length(10.0)
                 .large_line_length(35.0),
+            FrameStyle::Nero => Frame::nero().corner_length(20.0),
+            FrameStyle::Header => Frame::header().corner_length(12.0).header_bottom(true),
+            FrameStyle::Circle => Frame::circle().circle_segments(48),
         };
 
         let frame_progress = demo.frame_anim.current_value();
