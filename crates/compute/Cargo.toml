@@ -19,7 +19,11 @@ path = "src/lib.rs"
 [dependencies]
 # Internal crates
 nostr = { path = "../nostr/core", features = ["full"] }
+nostr-client = { path = "../nostr/client" }
 spark = { package = "openagents-spark", path = "../spark" }
+
+# Logging
+tracing = "0.1"
 
 # Cryptography
 bip39 = "2.2"
