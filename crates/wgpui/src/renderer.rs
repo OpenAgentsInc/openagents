@@ -295,14 +295,14 @@ impl Renderer {
     #[allow(dead_code)]
     pub fn update_atlas(&self, queue: &wgpu::Queue, data: &[u8], size: u32) {
         queue.write_texture(
-            wgpu::ImageCopyTexture {
+            wgpu::TexelCopyTextureInfo {
                 texture: &self.atlas_texture,
                 mip_level: 0,
                 origin: wgpu::Origin3d::ZERO,
                 aspect: wgpu::TextureAspect::All,
             },
             data,
-            wgpu::ImageDataLayout {
+            wgpu::TexelCopyBufferLayout {
                 offset: 0,
                 bytes_per_row: Some(size),
                 rows_per_image: Some(size),
