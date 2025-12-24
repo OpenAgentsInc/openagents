@@ -148,7 +148,7 @@ fn browse_skills(
 
     // Create runtime for async operation
     let rt = tokio::runtime::Runtime::new()?;
-    let browser = SkillBrowser::new();
+    let browser = rt.block_on(SkillBrowser::new())?;
     let skills = rt.block_on(browser.browse(filters, sort_by))?;
 
     if skills.is_empty() {
@@ -169,7 +169,7 @@ fn search_skills(query: &str, sort: &str) -> anyhow::Result<()> {
 
     // Create runtime for async operation
     let rt = tokio::runtime::Runtime::new()?;
-    let browser = SkillBrowser::new();
+    let browser = rt.block_on(SkillBrowser::new())?;
     let skills = rt.block_on(browser.search(query, sort_by))?;
 
     if skills.is_empty() {
@@ -188,7 +188,7 @@ fn search_skills(query: &str, sort: &str) -> anyhow::Result<()> {
 fn show_skill(id: &str) -> anyhow::Result<()> {
     // Create runtime for async operation
     let rt = tokio::runtime::Runtime::new()?;
-    let browser = SkillBrowser::new();
+    let browser = rt.block_on(SkillBrowser::new())?;
 
     match rt.block_on(browser.get_skill(id)) {
         Ok(skill) => {
