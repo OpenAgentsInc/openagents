@@ -25,13 +25,23 @@ use std::sync::Arc;
 
 // TEMP: Stub types until spark-sdk is available
 #[allow(dead_code)]
-struct BreezSdk;
+pub(crate) struct BreezSdk;
 #[derive(Debug)]
 pub struct PrepareSendPaymentResponse;
 #[derive(Debug)]
 pub struct SendPaymentResponse { pub payment: Payment }
 #[derive(Debug)]
-pub struct Payment { pub id: String }
+pub struct Payment {
+    pub id: String,
+    pub status: PaymentStatus,
+}
+
+#[derive(Debug)]
+pub enum PaymentStatus {
+    Pending,
+    Complete,
+    Failed,
+}
 #[derive(Debug)]
 pub struct ReceivePaymentResponse { pub payment_request: String }
 #[allow(dead_code)]
@@ -221,6 +231,7 @@ impl Default for WalletConfig {
 pub struct SparkWallet {
     signer: SparkSigner,
     config: WalletConfig,
+    #[allow(dead_code)]
     sdk: Arc<BreezSdk>,
 }
 
@@ -274,7 +285,8 @@ impl SparkWallet {
     /// Get the Breez SDK instance
     ///
     /// This provides direct access to the underlying Breez SDK for advanced operations.
-    pub fn sdk(&self) -> &Arc<BreezSdk> {
+    #[allow(dead_code)]
+    pub(crate) fn sdk(&self) -> &Arc<BreezSdk> {
         &self.sdk
     }
 
