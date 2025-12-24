@@ -96,12 +96,11 @@ pub fn base_layout_with_token(content: &str, auth_token: Option<&str>) -> String
             background: #000 !important;
             color: #fafafa;
             font-family: 'Vera Mono', ui-monospace, monospace;
+            overflow: hidden;
         }}
 
         body {{
             display: flex;
-            align-items: center;
-            justify-content: center;
         }}
     </style>
 </head>

@@ -277,7 +277,7 @@ async fn send_prompt(
         let conn = connection.lock().await;
         // We need to create a new session in the connection if we don't have one
         // For now, we'll create one on demand
-        let acp_session_id = agent_client_protocol_schema::SessionId::new(session_id.clone());
+        let acp_session_id = acp_adapter::acp::SessionId::new(session_id.clone());
         conn.prompt(&acp_session_id, &body.content).await
     };
 
@@ -353,7 +353,7 @@ async fn cancel_session(state: web::Data<AppState>, path: web::Path<String>) -> 
 
     if let Some(conn) = connection {
         let conn = conn.lock().await;
-        let acp_session_id = agent_client_protocol_schema::SessionId::new(session_id.clone());
+        let acp_session_id = acp_adapter::acp::SessionId::new(session_id.clone());
         conn.cancel(&acp_session_id).await;
         tracing::info!(session_id = %session_id, "Cancel sent to agent");
     } else {
