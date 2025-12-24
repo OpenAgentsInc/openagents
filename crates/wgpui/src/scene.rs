@@ -175,10 +175,8 @@ impl Scene {
 
     pub fn draw_quad(&mut self, quad: Quad) {
         if let Some(clip) = self.clip_stack.last() {
-            if let Some(clipped) = quad.bounds.intersection(clip) {
-                let mut clipped_quad = quad;
-                clipped_quad.bounds = clipped;
-                self.quads.push(clipped_quad);
+            if quad.bounds.intersects(clip) {
+                self.quads.push(quad);
             }
         } else {
             self.quads.push(quad);
@@ -263,9 +261,13 @@ mod tests {
         scene.draw_quad(quad);
 
         assert_eq!(scene.quads().len(), 1);
-        let clipped = &scene.quads()[0];
-        assert!((clipped.bounds.width() - 25.0).abs() < 0.001);
-        assert!((clipped.bounds.height() - 25.0).abs() < 0.001);
+        let drawn = &scene.quads()[0];
+        assert!((drawn.bounds.width() - 100.0).abs() < 0.001);
+        assert!((drawn.bounds.height() - 100.0).abs() < 0.001);
+
+        let non_intersecting = Quad::new(Bounds::new(100.0, 100.0, 50.0, 50.0));
+        scene.draw_quad(non_intersecting);
+        assert_eq!(scene.quads().len(), 1);
 
         scene.pop_clip();
         assert!(scene.current_clip().is_none());

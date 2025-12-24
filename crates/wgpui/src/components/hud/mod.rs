@@ -1,11 +1,13 @@
 mod command_palette;
 mod context_menu;
+mod frame;
 mod notifications;
 mod status_bar;
 mod tooltip;
 
 pub use command_palette::{Command, CommandPalette};
 pub use context_menu::{ContextMenu, MenuItem};
+pub use frame::{CornerConfig, Frame, FrameStyle};
 pub use notifications::{Notification, NotificationLevel, NotificationPosition, Notifications};
 pub use status_bar::{
     StatusBar, StatusBarPosition, StatusItem, StatusItemAlignment, StatusItemContent,
@@ -25,6 +27,7 @@ mod tests {
         let _notifs = Notifications::new();
         let _tooltip = Tooltip::new("Test");
         let _menu = ContextMenu::new();
+        let _frame = Frame::new();
     }
 
     #[test]
