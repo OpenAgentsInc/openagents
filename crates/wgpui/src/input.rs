@@ -22,6 +22,18 @@ pub enum Cursor {
     Grabbing,
 }
 
+impl Cursor {
+    pub fn as_css(&self) -> &'static str {
+        match self {
+            Cursor::Default => "default",
+            Cursor::Pointer => "pointer",
+            Cursor::Text => "text",
+            Cursor::Grab => "grab",
+            Cursor::Grabbing => "grabbing",
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct KeyCode(pub u32);
 
