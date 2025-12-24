@@ -88,22 +88,47 @@ systemctl --user daemon-reload
 systemctl --user restart weekly-report.timer
 ```
 
-### Option 2: Cron
+### Option 2: Cron (with helper script)
 
 For systems without systemd or if you prefer cron.
 
-**Installation:**
+**Installation using the helper script:**
+
+The `scripts/weekly-metrics-report.sh` script provides a complete weekly report generation workflow including:
+- Metrics report generation with automatic output directory creation
+- JSON export for programmatic analysis
+- Weekly summary with key metrics
+- Anomaly and regression detection
+- Historical report cleanup (keeps last 12 weeks)
+- Optional webhook notifications
 
 ```bash
 # Edit your crontab
 crontab -e
 
 # Add the following line (adjust path to match your setup):
+# Every Monday at 9:00 AM
+0 9 * * 1 /home/user/code/openagents/scripts/weekly-metrics-report.sh
+
+# Or with custom environment variables:
+0 9 * * 1 METRICS_DB=/custom/path/autopilot-metrics.db REPORTS_OUTPUT=/custom/reports /home/user/code/openagents/scripts/weekly-metrics-report.sh
+```
+
+**Direct command (without script):**
+
+```bash
+# Add the following line (adjust path to match your setup):
 0 9 * * 1 cd /home/user/code/openagents && ./target/release/openagents autopilot metrics report
 
 # Or with email notification:
 0 9 * * 1 cd /home/user/code/openagents && ./target/release/openagents autopilot metrics report && echo "Weekly report generated at $(date)" | mail -s "Autopilot Weekly Report" you@example.com
 ```
+
+**Environment variables for the script:**
+
+- `METRICS_DB` - Path to metrics database (default: `./autopilot-metrics.db`)
+- `REPORTS_OUTPUT` - Output directory (default: `./docs/autopilot/reports/`)
+- `NOTIFY_WEBHOOK` - Optional webhook URL for Slack/Discord notifications
 
 **Cron schedule format:**
 
