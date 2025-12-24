@@ -6,6 +6,7 @@ pub mod nostr;
 pub mod notifications;
 pub mod reputation;
 pub mod review;
+pub mod secure_storage;
 pub mod stacks;
 pub mod trajectory;
 pub mod views;

@@ -87,17 +87,100 @@ pub struct ContextLossAnalyzer;
 impl ContextLossAnalyzer {
     /// Analyze a session before and after compaction
     pub fn analyze_session(
-        _session_id: &str,
-        _before_content: &str,
-        _after_content: &str,
+        session_id: &str,
+        before_content: &str,
+        after_content: &str,
     ) -> Result<Vec<ContextLossInstance>> {
-        // TODO: Implement actual analysis
-        // For now, return empty - this will be filled in with real analysis
-        Ok(Vec::new())
+        let mut instances = Vec::new();
+
+        // Analyze file paths
+        let paths_before = Self::extract_file_paths(before_content);
+        let paths_after = Self::extract_file_paths(after_content);
+        let lost_paths: Vec<_> = paths_before
+            .iter()
+            .filter(|p| !paths_after.contains(p))
+            .collect();
+
+        if !lost_paths.is_empty() {
+            instances.push(ContextLossInstance {
+                context_type: ContextType::FilePaths,
+                session_id: session_id.to_string(),
+                evidence: format!("{} file paths lost: {:?}", lost_paths.len(), lost_paths),
+                impact_severity: if lost_paths.len() > 5 { 8 } else { 6 },
+                caused_failure: false, // Cannot determine without further analysis
+            });
+        }
+
+        // Analyze error messages
+        let errors_before = Self::extract_error_messages(before_content);
+        let errors_after = Self::extract_error_messages(after_content);
+        let lost_errors: Vec<_> = errors_before
+            .iter()
+            .filter(|e| !errors_after.contains(e))
+            .collect();
+
+        if !lost_errors.is_empty() {
+            instances.push(ContextLossInstance {
+                context_type: ContextType::ErrorDetails,
+                session_id: session_id.to_string(),
+                evidence: format!("{} error messages lost", lost_errors.len()),
+                impact_severity: 9, // Error details are critical
+                caused_failure: false,
+            });
+        }
+
+        // Analyze issue/directive references
+        let refs_before = Self::extract_issue_refs(before_content);
+        let refs_after = Self::extract_issue_refs(after_content);
+        let lost_refs: Vec<_> = refs_before
+            .iter()
+            .filter(|r| !refs_after.contains(r))
+            .collect();
+
+        if !lost_refs.is_empty() {
+            instances.push(ContextLossInstance {
+                context_type: ContextType::IssueContext,
+                session_id: session_id.to_string(),
+                evidence: format!("{} issue/directive refs lost: {:?}", lost_refs.len(), lost_refs),
+                impact_severity: 7,
+                caused_failure: false,
+            });
+        }
+
+        // Analyze test result mentions
+        let test_keywords = ["test passed", "test failed", "tests passed", "tests failed", "cargo test"];
+        let tests_before = test_keywords.iter().filter(|&&kw| before_content.contains(kw)).count();
+        let tests_after = test_keywords.iter().filter(|&&kw| after_content.contains(kw)).count();
+
+        if tests_before > 0 && tests_after == 0 {
+            instances.push(ContextLossInstance {
+                context_type: ContextType::TestResults,
+                session_id: session_id.to_string(),
+                evidence: "Test results mentioned before but not after compaction".to_string(),
+                impact_severity: 7,
+                caused_failure: false,
+            });
+        }
+
+        // Analyze git context
+        let git_keywords = ["git checkout", "git commit", "git push", "branch"];
+        let git_before = git_keywords.iter().filter(|&&kw| before_content.contains(kw)).count();
+        let git_after = git_keywords.iter().filter(|&&kw| after_content.contains(kw)).count();
+
+        if git_before > 0 && git_after == 0 {
+            instances.push(ContextLossInstance {
+                context_type: ContextType::GitContext,
+                session_id: session_id.to_string(),
+                evidence: "Git operations mentioned before but lost after compaction".to_string(),
+                impact_severity: 5,
+                caused_failure: false,
+            });
+        }
+
+        Ok(instances)
     }
 
     /// Detect file paths in content
-    #[allow(dead_code)] // Used once analyze_session is fully implemented
     fn extract_file_paths(content: &str) -> Vec<String> {
         // Simple regex for common file paths
         let mut paths = Vec::new();
@@ -119,7 +202,6 @@ impl ContextLossAnalyzer {
     }
 
     /// Detect error messages in content
-    #[allow(dead_code)] // Used once analyze_session is fully implemented
     fn extract_error_messages(content: &str) -> Vec<String> {
         let mut errors = Vec::new();
         for line in content.lines() {
@@ -135,7 +217,6 @@ impl ContextLossAnalyzer {
     }
 
     /// Detect issue/directive references
-    #[allow(dead_code)] // Used once analyze_session is fully implemented
     fn extract_issue_refs(content: &str) -> Vec<String> {
         let mut refs = Vec::new();
         for word in content.split_whitespace() {
