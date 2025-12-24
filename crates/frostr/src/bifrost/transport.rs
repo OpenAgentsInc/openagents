@@ -260,12 +260,13 @@ impl NostrTransport {
         let session_id = Self::extract_session_id(&message);
         let is_response = matches!(
             &message,
-            BifrostMessage::SignResponse(_)
-            | BifrostMessage::EcdhResponse(_)
-            | BifrostMessage::Pong(_)
-            // Two-phase protocol responses
-            | BifrostMessage::CommitmentResponse(_)
+            // Two-phase FROST signing responses
+            BifrostMessage::CommitmentResponse(_)
             | BifrostMessage::PartialSignature(_)
+            // ECDH responses
+            | BifrostMessage::EcdhResponse(_)
+            // Utility responses
+            | BifrostMessage::Pong(_)
         );
 
         if is_response {
@@ -430,21 +431,21 @@ impl NostrTransport {
     /// Extract session_id from a Bifrost message
     fn extract_session_id(message: &BifrostMessage) -> Option<String> {
         match message {
-            BifrostMessage::SignRequest(req) => Some(req.session_id.clone()),
-            BifrostMessage::SignResponse(res) => Some(res.session_id.clone()),
-            BifrostMessage::SignResult(res) => Some(res.session_id.clone()),
-            BifrostMessage::SignError(err) => Some(err.session_id.clone()),
-            BifrostMessage::EcdhRequest(req) => Some(req.session_id.clone()),
-            BifrostMessage::EcdhResponse(res) => Some(res.session_id.clone()),
-            BifrostMessage::EcdhResult(res) => Some(res.session_id.clone()),
-            BifrostMessage::EcdhError(err) => Some(err.session_id.clone()),
-            BifrostMessage::Ping(ping) => Some(ping.session_id.clone()),
-            BifrostMessage::Pong(pong) => Some(pong.session_id.clone()),
-            // Two-phase protocol messages
+            // Two-phase FROST signing
             BifrostMessage::CommitmentRequest(req) => Some(req.session_id.clone()),
             BifrostMessage::CommitmentResponse(res) => Some(res.session_id.clone()),
             BifrostMessage::SigningPackage(pkg) => Some(pkg.session_id.clone()),
             BifrostMessage::PartialSignature(sig) => Some(sig.session_id.clone()),
+            BifrostMessage::SignResult(res) => Some(res.session_id.clone()),
+            BifrostMessage::SignError(err) => Some(err.session_id.clone()),
+            // ECDH
+            BifrostMessage::EcdhRequest(req) => Some(req.session_id.clone()),
+            BifrostMessage::EcdhResponse(res) => Some(res.session_id.clone()),
+            BifrostMessage::EcdhResult(res) => Some(res.session_id.clone()),
+            BifrostMessage::EcdhError(err) => Some(err.session_id.clone()),
+            // Utility
+            BifrostMessage::Ping(ping) => Some(ping.session_id.clone()),
+            BifrostMessage::Pong(pong) => Some(pong.session_id.clone()),
         }
     }
 
@@ -627,21 +628,21 @@ impl NostrTransport {
     /// Get message type string
     fn message_type(&self, message: &BifrostMessage) -> String {
         match message {
-            BifrostMessage::SignRequest(_) => "sign_req".to_string(),
-            BifrostMessage::SignResponse(_) => "sign_res".to_string(),
-            BifrostMessage::SignResult(_) => "sign_ret".to_string(),
-            BifrostMessage::SignError(_) => "sign_err".to_string(),
-            BifrostMessage::EcdhRequest(_) => "ecdh_req".to_string(),
-            BifrostMessage::EcdhResponse(_) => "ecdh_res".to_string(),
-            BifrostMessage::EcdhResult(_) => "ecdh_ret".to_string(),
-            BifrostMessage::EcdhError(_) => "ecdh_err".to_string(),
-            BifrostMessage::Ping(_) => "ping".to_string(),
-            BifrostMessage::Pong(_) => "pong".to_string(),
-            // Two-phase protocol messages
+            // Two-phase FROST signing
             BifrostMessage::CommitmentRequest(_) => "commit_req".to_string(),
             BifrostMessage::CommitmentResponse(_) => "commit_res".to_string(),
             BifrostMessage::SigningPackage(_) => "sign_pkg".to_string(),
             BifrostMessage::PartialSignature(_) => "partial_sig".to_string(),
+            BifrostMessage::SignResult(_) => "sign_ret".to_string(),
+            BifrostMessage::SignError(_) => "sign_err".to_string(),
+            // ECDH
+            BifrostMessage::EcdhRequest(_) => "ecdh_req".to_string(),
+            BifrostMessage::EcdhResponse(_) => "ecdh_res".to_string(),
+            BifrostMessage::EcdhResult(_) => "ecdh_ret".to_string(),
+            BifrostMessage::EcdhError(_) => "ecdh_err".to_string(),
+            // Utility
+            BifrostMessage::Ping(_) => "ping".to_string(),
+            BifrostMessage::Pong(_) => "pong".to_string(),
         }
     }
 
@@ -668,7 +669,7 @@ impl NostrTransport {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::bifrost::{SignRequest, SignResponse};
+    use crate::bifrost::CommitmentRequest;
 
     #[test]
     fn test_transport_config_default() {
@@ -691,9 +692,8 @@ mod tests {
         let config = TransportConfig::default();
         let transport = NostrTransport::new(config).unwrap();
 
-        let message = BifrostMessage::SignRequest(SignRequest {
+        let message = BifrostMessage::CommitmentRequest(CommitmentRequest {
             event_hash: [0x42; 32],
-            nonce_commitment: [0x01; 66],  // 66 bytes: hiding + binding
             session_id: "test-session".to_string(),
             participants: vec![1, 2, 3],
             initiator_id: 1,
@@ -726,8 +726,8 @@ mod tests {
         // Verify deduplication works
         let envelope = MessageEnvelope {
             session_id: "test-session".to_string(),
-            msg_type: "sign_req".to_string(),
-            message: r#"{"SignRequest":{"event_hash":[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],"nonce_commitment":[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],"session_id":"test-session","participants":[1]}}"#.to_string(),
+            msg_type: "commit_req".to_string(),
+            message: r#"{"type":"/sign/commit/req","event_hash":[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],"session_id":"test-session","participants":[1],"initiator_id":1}"#.to_string(),
             timestamp: 1234567890,
         };
 
@@ -747,22 +747,20 @@ mod tests {
         let config = TransportConfig::default();
         let transport = NostrTransport::new(config).unwrap();
 
-        let sign_req = BifrostMessage::SignRequest(SignRequest {
+        let commit_req = BifrostMessage::CommitmentRequest(CommitmentRequest {
             event_hash: [0; 32],
-            nonce_commitment: [0; 66],  // 66 bytes
             session_id: "test".to_string(),
             participants: vec![1],
             initiator_id: 1,
         });
-        assert_eq!(transport.message_type(&sign_req), "sign_req");
+        assert_eq!(transport.message_type(&commit_req), "commit_req");
 
-        let sign_res = BifrostMessage::SignResponse(SignResponse {
-            partial_sig: [0; 32],
-            nonce_commitment: [0; 66],  // 66 bytes
-            participant_id: 1,
+        let commit_res = BifrostMessage::CommitmentResponse(crate::bifrost::CommitmentResponse {
             session_id: "test".to_string(),
+            participant_id: 1,
+            nonce_commitment: [0; 66],
         });
-        assert_eq!(transport.message_type(&sign_res), "sign_res");
+        assert_eq!(transport.message_type(&commit_res), "commit_res");
     }
 
     #[tokio::test]

@@ -9,12 +9,15 @@
 //! When a trigger fires, it signals the daemon supervisor to spawn a worker.
 
 use anyhow::{Context, Result};
-use nostr::nip_sa::schedule::{AgentSchedule, TriggerType};
-use nostr::Event;
+use nostr::{AgentSchedule, Event, TriggerType};
 use std::collections::HashSet;
 use std::time::{Duration, Instant};
 use tokio::sync::mpsc;
 use tokio::time::sleep;
+
+// Stub types until nostr crate provides them
+type Filter = ();
+type Kind = u16;
 
 /// Trigger event that signals the agent should run
 #[derive(Debug, Clone)]
@@ -204,7 +207,8 @@ impl NostrTrigger {
 #[allow(dead_code)]
 fn extract_zap_amount(event: &Event) -> Option<u64> {
     // Look for "bolt11" tag
-    for tag in &event.tags {
+    for tag in event.tags.iter() {
+        let tag: &Vec<String> = tag;
         if tag.len() >= 2 && tag[0] == "bolt11" {
             // Parse bolt11 invoice to extract amount
             // For now, return None - will implement when we have lightning parser

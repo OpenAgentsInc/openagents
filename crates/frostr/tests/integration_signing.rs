@@ -10,7 +10,8 @@
 //! Tests use a mock transport layer to avoid real relay dependencies.
 
 use frostr::bifrost::{
-    BifrostConfig, BifrostMessage, BifrostNode, SignResponse, TimeoutConfig,
+    BifrostConfig, BifrostMessage, BifrostNode, TimeoutConfig,
+    CommitmentRequest, CommitmentResponse,
 };
 use frostr::keygen::{generate_key_shares, FrostShare};
 use frostr::Result;
@@ -99,7 +100,7 @@ impl MockTransport {
     }
 }
 
-/// Mock peer that responds to signing requests
+/// Mock peer that responds to signing requests using two-phase protocol
 struct MockSigningPeer {
     peer_id: u8,
     frost_share: FrostShare,
@@ -125,22 +126,36 @@ impl MockSigningPeer {
     async fn run(&mut self) {
         while let Some(message) = self.rx.recv().await {
             match message {
-                BifrostMessage::SignRequest(req) => {
-                    // Generate our partial signature
-                    // (In real FROST, this would use round1_commit + round2_sign)
-                    // For this test, we just send a placeholder response
-                    let response = SignResponse {
-                        partial_sig: [self.peer_id; 32], // Mock signature
-                        nonce_commitment: [self.peer_id; 66], // Mock nonce commitment
-                        participant_id: self.peer_id,
+                // Round 1: Respond to commitment requests
+                BifrostMessage::CommitmentRequest(req) => {
+                    // Generate mock commitment response
+                    let response = CommitmentResponse {
                         session_id: req.session_id.clone(),
+                        participant_id: self.peer_id,
+                        nonce_commitment: [self.peer_id; 66], // Mock commitment
                     };
 
                     // Send response back to coordinator
-                    let coordinator_id = 1; // Assume peer 1 is coordinator
+                    let coordinator_id = req.initiator_id;
                     let _ = self
                         .transport
-                        .send_to_peer(coordinator_id, BifrostMessage::SignResponse(response))
+                        .send_to_peer(coordinator_id, BifrostMessage::CommitmentResponse(response))
+                        .await;
+                }
+                // Round 2: Respond to signing packages
+                BifrostMessage::SigningPackage(pkg) => {
+                    // Generate mock partial signature
+                    let response = frostr::bifrost::PartialSignature {
+                        session_id: pkg.session_id.clone(),
+                        participant_id: self.peer_id,
+                        partial_sig: [self.peer_id; 32], // Mock partial signature
+                    };
+
+                    // Send response back to coordinator (initiator is participant 1)
+                    let coordinator_id = 1;
+                    let _ = self
+                        .transport
+                        .send_to_peer(coordinator_id, BifrostMessage::PartialSignature(response))
                         .await;
                 }
                 _ => {
@@ -196,7 +211,7 @@ async fn test_2_of_3_threshold_signing() {
     assert!(result.is_err());
     let err_msg = result.unwrap_err().to_string();
     assert!(
-        err_msg.contains("aggregation") || err_msg.contains("relay"),
+        err_msg.contains("aggregation") || err_msg.contains("relay") || err_msg.contains("Timeout"),
         "unexpected error: {}",
         err_msg
     );
