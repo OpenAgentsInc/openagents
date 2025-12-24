@@ -4,7 +4,7 @@
 //! When local inference fails or is unavailable, jobs are automatically
 //! submitted to marketplace providers.
 
-use anyhow::{Context, Result};
+use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -13,7 +13,8 @@ use tokio::sync::RwLock;
 // TEMP: Uncomment when local-inference crate is integrated
 // use local_inference::{LocalModelBackend, CompletionRequest, CompletionResponse};
 
-use super::consumer::ComputeConsumer;
+// FIXME: ComputeConsumer not yet implemented
+// use super::consumer::ComputeConsumer;
 use super::events::ComputeJobRequest;
 
 /// Fallback configuration
@@ -120,7 +121,8 @@ impl FallbackMetrics {
 /// Manages automatic fallback from local inference to marketplace swarm.
 pub struct FallbackManager {
     config: Arc<RwLock<FallbackConfig>>,
-    consumer: Option<Arc<ComputeConsumer>>,
+    // FIXME: ComputeConsumer not yet implemented
+    // consumer: Option<Arc<ComputeConsumer>>,
     metrics: Arc<RwLock<FallbackMetrics>>,
     // TEMP: Add when local-inference is integrated
     // local_backend: Option<Arc<dyn LocalModelBackend>>,
@@ -131,17 +133,19 @@ impl FallbackManager {
     pub fn new(config: FallbackConfig) -> Self {
         Self {
             config: Arc::new(RwLock::new(config)),
-            consumer: None,
+            // consumer: None,
             metrics: Arc::new(RwLock::new(FallbackMetrics::default())),
             // local_backend: None,
         }
     }
 
+    /* FIXME: ComputeConsumer not yet implemented
     /// Set the marketplace consumer for swarm fallback
     pub fn with_consumer(mut self, consumer: Arc<ComputeConsumer>) -> Self {
         self.consumer = Some(consumer);
         self
     }
+    */
 
     // TEMP: Uncomment when local-inference is integrated
     // /// Set the local inference backend
@@ -275,19 +279,20 @@ impl FallbackManager {
     /// Execute via marketplace swarm
     async fn execute_swarm(
         &self,
-        model: &str,
+        _model: &str,
         prompt: &str,
         start_time: std::time::Instant,
     ) -> Result<FallbackResult> {
-        let consumer = self
-            .consumer
-            .as_ref()
-            .ok_or_else(|| anyhow::anyhow!("No marketplace consumer configured"))?;
+        // FIXME: ComputeConsumer not yet implemented
+        // let consumer = self
+        //     .consumer
+        //     .as_ref()
+        //     .ok_or_else(|| anyhow::anyhow!("No marketplace consumer configured"))?;
 
         let config = self.config.read().await;
 
         // Create compute job request
-        let request = ComputeJobRequest::text_generation(prompt, model);
+        let _request = ComputeJobRequest::text_generation(prompt);
 
         // Submit to marketplace
         // TEMP: Actual implementation would use consumer.submit_job()

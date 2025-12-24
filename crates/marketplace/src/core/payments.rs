@@ -21,7 +21,7 @@
 //! 2. Pay access fee via Lightning invoice
 //! 3. Receive decryption key for NIP-44 encrypted data
 
-use anyhow::{Context, Result};
+use anyhow::Result;
 use serde::{Deserialize, Serialize};
 
 // TEMP: When Spark SDK is available, uncomment:
@@ -190,7 +190,7 @@ impl PaymentManager {
             0
         });
 
-        let mut payment = PaymentRecord::new(
+        let _payment = PaymentRecord::new(
             PaymentType::Compute,
             job_id.to_string(),
             amount,
@@ -238,7 +238,7 @@ impl PaymentManager {
         invoice: &str,
         amount_msats: u64,
     ) -> Result<PaymentRecord> {
-        let mut payment = PaymentRecord::new(
+        let _payment = PaymentRecord::new(
             PaymentType::Skill,
             skill_id.to_string(),
             amount_msats,
@@ -269,7 +269,7 @@ impl PaymentManager {
         invoice: &str,
         amount_msats: u64,
     ) -> Result<PaymentRecord> {
-        let mut payment = PaymentRecord::new(
+        let _payment = PaymentRecord::new(
             PaymentType::Data,
             dataset_id.to_string(),
             amount_msats,
@@ -298,8 +298,8 @@ impl PaymentManager {
     /// Returns error if Spark SDK is not available or invoice creation fails
     pub async fn create_invoice(
         &self,
-        amount_msats: u64,
-        description: &str,
+        _amount_msats: u64,
+        _description: &str,
     ) -> Result<String> {
         // TEMP: Until Spark SDK is available
         Err(anyhow::anyhow!(
@@ -328,7 +328,7 @@ impl PaymentManager {
     ///
     /// # Returns
     /// true if preimage is valid for the given hash
-    pub fn verify_preimage(&self, payment_hash: &str, preimage: &str) -> bool {
+    pub fn verify_preimage(&self, _payment_hash: &str, _preimage: &str) -> bool {
         // TODO: Implement actual preimage verification
         // sha256(preimage) == payment_hash
         false
@@ -341,7 +341,7 @@ impl PaymentManager {
     ///
     /// # Returns
     /// Current payment status
-    pub async fn get_payment_status(&self, payment_id: &str) -> Result<PaymentStatus> {
+    pub async fn get_payment_status(&self, _payment_id: &str) -> Result<PaymentStatus> {
         // TEMP: Until Spark SDK is available
         Err(anyhow::anyhow!(
             "Spark SDK integration incomplete - see d-001 directive"
