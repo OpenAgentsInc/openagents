@@ -9,7 +9,7 @@ mod tooltip;
 pub use command_palette::{Command, CommandPalette};
 pub use context_menu::{ContextMenu, MenuItem};
 pub use dots_grid::{DotsGrid, DotsOrigin, DotShape};
-pub use frame::{CornerConfig, DrawDirection, Frame, FrameAnimation, FrameStyle};
+pub use frame::{CornerConfig, DrawDirection, Frame, FrameAnimation, FrameAnimator, FrameStyle};
 pub use notifications::{Notification, NotificationLevel, NotificationPosition, Notifications};
 pub use status_bar::{
     StatusBar, StatusBarPosition, StatusItem, StatusItemAlignment, StatusItemContent,
