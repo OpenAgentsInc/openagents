@@ -10,14 +10,16 @@ A cross-platform GPU-accelerated UI rendering library built on wgpu (WebGPU/Vulk
 |-------|-------------|--------|
 | **Phase 1** | Core Framework | ✅ Complete |
 | **Phase 2** | Component System | ✅ Complete |
-| Phase 3 | Atoms | ⏳ Planned |
-| Phase 4 | Molecules | ⏳ Planned |
-| Phase 5 | Organisms | ⏳ Planned |
-| Phase 6 | Markdown & Streaming | 🚧 In Progress |
-| Phase 7 | Sections (Surfaces) | ⏳ Planned |
-| Phase 8 | HUD Components | ⏳ Planned |
-| Phase 9 | Integration | ⏳ Planned |
-| Phase 10 | Testing & Docs | ⏳ Planned |
+| **Phase 3** | Atoms (13 components) | ✅ Complete |
+| **Phase 4** | Molecules (10 components) | ✅ Complete |
+| **Phase 5** | Organisms (9 components) | ✅ Complete |
+| **Phase 6** | Markdown & Streaming | ✅ Complete |
+| **Phase 7** | Sections (4 components) | ✅ Complete |
+| **Phase 8** | HUD Components (3 components) | ✅ Complete |
+| **Phase 9** | Integration | ✅ Complete |
+| **Phase 10** | Testing & Docs | ✅ Complete |
+
+**332 unit tests passing.**
 
 ### Phase 1: Core Framework ✅
 
@@ -51,7 +53,7 @@ A cross-platform GPU-accelerated UI rendering library built on wgpu (WebGPU/Vulk
 | `Tabs` | Tab bar with active indicator | ✅ Complete |
 | `AnyComponent` | Type-erased component wrapper | ✅ Complete |
 
-**127 unit tests passing.**
+**332 unit tests passing.**
 
 ## Why wgpui?
 
@@ -345,27 +347,81 @@ src/
 ├── hit_test.rs         # Hit testing
 ├── input.rs            # Input events
 ├── theme.rs            # Color tokens
-├── markdown.rs         # Markdown rendering
-└── platform.rs         # Platform abstraction
+├── integration.rs      # ChatApplication demo
+├── markdown/           # Modular markdown system
+│   ├── mod.rs
+│   ├── types.rs        # TextStyle, StyledSpan, MarkdownBlock
+│   ├── parser.rs       # pulldown-cmark parsing
+│   ├── highlighter.rs  # syntect highlighting (21 languages)
+│   ├── renderer.rs     # Scene rendering
+│   ├── streaming.rs    # Real-time streaming
+│   └── remend.rs       # Incomplete marker completion
+├── components/
+│   ├── atoms/          # 13 atomic components
+│   ├── molecules/      # 10 molecular components
+│   ├── organisms/      # 9 organism components
+│   ├── sections/       # 4 section components
+│   └── hud/            # 3 HUD components
+└── platform/
     ├── web.rs          # WASM platform
     └── desktop.rs      # winit platform
 ```
 
-## Future: Component Library
+## Component Library
 
-Once the core framework is complete, wgpui will include a full component library matching ACP (Anthropic Component Protocol) components:
+wgpui includes a full component library following Atomic Design principles:
 
 ### Atoms (13 components)
-`status_dot`, `tool_icon`, `mode_badge`, `model_badge`, `streaming_indicator`, `thinking_toggle`, `tool_status_badge`, `permission_button`, `feedback_button`, `keybinding_hint`, `entry_marker`, `checkpoint_badge`, `content_type_icon`
+- `StatusDot` - Online/offline/busy/away/error indicator
+- `ToolIcon` - Icons for different tool types
+- `ModeBadge` - Mode indicator (Normal/Plan/Act/Code/Chat)
+- `ModelBadge` - Model indicator (Claude/GPT-4/Gemini)
+- `StreamingIndicator` - Animated streaming dots
+- `ThinkingToggle` - Toggle for thinking visibility
+- `ToolStatusBadge` - Status badges for tool calls
+- `PermissionButton` - Allow/Deny/Always permission buttons
+- `FeedbackButton` - Thumbs up/down feedback
+- `KeybindingHint` - Keyboard shortcut display
+- `EntryMarker` - User/Assistant/Tool/System markers
+- `CheckpointBadge` - Checkpoint indicators
+- `ContentTypeIcon` - Icons for content types
 
 ### Molecules (10 components)
-`message_header`, `tool_header`, `terminal_header`, `diff_header`, `thinking_block`, `permission_bar`, `mode_selector`, `model_selector`, `entry_actions`, `checkpoint_restore`
+- `MessageHeader` - Author, timestamp, model info
+- `ToolHeader` - Tool name, status, duration
+- `TerminalHeader` - Command, working directory
+- `DiffHeader` - File path, additions/deletions
+- `ThinkingBlock` - Collapsible thinking content
+- `PermissionBar` - Permission request bar
+- `ModeSelector` - Mode dropdown selector
+- `ModelSelector` - Model dropdown selector
+- `EntryActions` - Copy, retry, feedback actions
+- `CheckpointRestore` - Checkpoint restore controls
 
 ### Organisms (9 components)
-`user_message`, `assistant_message`, `tool_call_card`, `terminal_tool_call`, `diff_tool_call`, `search_tool_call`, `thread_entry`, `thread_controls`, `permission_dialog`
+- `UserMessage` - User message with header
+- `AssistantMessage` - Assistant response with streaming
+- `ToolCallCard` - Generic tool call display
+- `TerminalToolCall` - Terminal command execution
+- `DiffToolCall` - File diff display
+- `SearchToolCall` - Search results display
+- `ThreadEntry` - Any entry type wrapper
+- `ThreadControls` - Thread-level controls
+- `PermissionDialog` - Permission request dialog
 
 ### Sections (4 components)
-`thread_view`, `thread_header`, `thread_feedback`, `message_editor`
+- `ThreadHeader` - Title bar with back/menu buttons
+- `ThreadView` - Scrollable conversation with virtual scrolling
+- `MessageEditor` - Input composer with mode badge
+- `ThreadFeedback` - Feedback collection UI
+
+### HUD Components (3 components)
+- `CommandPalette` - Fuzzy search popup (Cmd+K style)
+- `StatusBar` - Bottom/top bar with mode/model/status
+- `Notifications` - Toast notification system
+
+### Integration
+- `ChatApplication` - Full chat UI composing all components
 
 ## Related
 

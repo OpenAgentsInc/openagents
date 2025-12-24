@@ -29,7 +29,7 @@ uuid = { version = "1", features = ["v4", "serde"] }
 frostr = { path = "../frostr", optional = true }
 openagents-spark = { path = "../spark", package = "openagents-spark", optional = true }
 hex = { version = "0.4", optional = true }
-postcard = { version = "1", features = ["alloc"], optional = true }
+postcard = { version = "1", features = ["alloc", "use-std"], optional = true }
 
 [dev-dependencies]
 tempfile.workspace = true
