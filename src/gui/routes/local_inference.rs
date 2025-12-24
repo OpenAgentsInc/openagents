@@ -3,8 +3,11 @@
 //! Provides endpoints for configuring local model backends (GPT-OSS/llama.cpp).
 
 use actix_web::{web, HttpResponse};
+use anyhow;
 use maud::{html, Markup, PreEscaped};
 use serde::{Deserialize, Serialize};
+use std::path::PathBuf;
+use toml;
 
 use crate::gui::state::AppState;
 
@@ -52,6 +55,55 @@ impl Default for LocalInferenceConfig {
     }
 }
 
+impl LocalInferenceConfig {
+    /// Get the default config file path
+    pub fn config_path() -> PathBuf {
+        let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
+        PathBuf::from(&home)
+            .join(".openagents")
+            .join("local-inference.toml")
+    }
+
+    /// Load configuration from file, or return default if file doesn't exist
+    pub fn load() -> Self {
+        let path = Self::config_path();
+        if path.exists() {
+            match Self::load_from_file(&path) {
+                Ok(config) => return config,
+                Err(e) => {
+                    eprintln!("Warning: Failed to load local inference config: {}", e);
+                }
+            }
+        }
+        Self::default()
+    }
+
+    /// Load configuration from a TOML file
+    pub fn load_from_file(path: &std::path::Path) -> anyhow::Result<Self> {
+        let content = std::fs::read_to_string(path)?;
+        let config: LocalInferenceConfig = toml::from_str(&content)?;
+        Ok(config)
+    }
+
+    /// Save configuration to the default config file
+    pub fn save(&self) -> anyhow::Result<()> {
+        let path = Self::config_path();
+        self.save_to_file(&path)
+    }
+
+    /// Save configuration to a TOML file
+    pub fn save_to_file(&self, path: &std::path::Path) -> anyhow::Result<()> {
+        // Ensure parent directory exists
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+
+        let content = toml::to_string_pretty(self)?;
+        std::fs::write(path, content)?;
+        Ok(())
+    }
+}
+
 /// Server status response
 #[derive(Debug, Clone, Serialize)]
 pub struct ServerStatus {
@@ -72,7 +124,7 @@ pub struct ModelInfo {
 
 /// Get current configuration
 async fn get_config(_state: web::Data<AppState>) -> HttpResponse {
-    let config = LocalInferenceConfig::default();
+    let config = LocalInferenceConfig::load();
     HttpResponse::Ok().json(config)
 }
 
@@ -81,8 +133,6 @@ async fn save_config(
     _state: web::Data<AppState>,
     body: web::Json<LocalInferenceConfig>,
 ) -> HttpResponse {
-    // For now, just validate the config and return success
-    // In a full implementation, this would persist to a config file
     let config = body.into_inner();
 
     // Validate URL format
@@ -99,22 +149,33 @@ async fn save_config(
         }));
     }
 
-    HttpResponse::Ok().json(serde_json::json!({
-        "success": true,
-        "config": config
-    }))
+    // Persist configuration to file
+    match config.save() {
+        Ok(_) => {
+            HttpResponse::Ok().json(serde_json::json!({
+                "success": true,
+                "message": format!("Configuration saved to {}", LocalInferenceConfig::config_path().display()),
+                "config": config
+            }))
+        }
+        Err(e) => {
+            HttpResponse::InternalServerError().json(serde_json::json!({
+                "error": format!("Failed to save configuration: {}", e)
+            }))
+        }
+    }
 }
 
 /// Get server status
 async fn get_status(_state: web::Data<AppState>) -> HttpResponse {
-    let config = LocalInferenceConfig::default();
+    let config = LocalInferenceConfig::load();
     let status = check_server_status(&config.server_url).await;
     HttpResponse::Ok().json(status)
 }
 
 /// List available models
 async fn list_models(_state: web::Data<AppState>) -> HttpResponse {
-    let config = LocalInferenceConfig::default();
+    let config = LocalInferenceConfig::load();
     let models = fetch_available_models(&config.server_url).await;
     HttpResponse::Ok().json(models)
 }
@@ -243,7 +304,7 @@ async fn fetch_available_models(server_url: &str) -> Vec<ModelInfo> {
 
 /// Settings page for local inference configuration
 async fn settings_page(_state: web::Data<AppState>) -> HttpResponse {
-    let config = LocalInferenceConfig::default();
+    let config = LocalInferenceConfig::load();
     let status = check_server_status(&config.server_url).await;
     let models = fetch_available_models(&config.server_url).await;
 

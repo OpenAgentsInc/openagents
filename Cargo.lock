@@ -6207,6 +6207,7 @@ dependencies = [
  "shellexpand 2.1.2",
  "tao 0.33.0",
  "tokio",
+ "toml",
  "tracing",
  "tracing-subscriber",
  "ui",
