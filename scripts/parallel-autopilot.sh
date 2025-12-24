@@ -148,6 +148,49 @@ cmd_status() {
     fi
 }
 
+# Show issue queue
+cmd_queue() {
+    if [ ! -f "$PROJECT_ROOT/autopilot.db" ]; then
+        echo -e "${YELLOW}autopilot.db not found${NC}"
+        return 1
+    fi
+
+    echo -e "${BLUE}=== Open Issues Queue ===${NC}"
+    echo ""
+
+    # Count total open issues
+    local total_open=$(sqlite3 "$PROJECT_ROOT/autopilot.db" \
+        "SELECT COUNT(*) FROM issues WHERE status='open' AND is_blocked=0" 2>/dev/null)
+
+    echo -e "${GREEN}Total open issues: $total_open${NC}"
+    echo ""
+
+    # Show by priority
+    for priority in urgent high medium low; do
+        local count=$(sqlite3 "$PROJECT_ROOT/autopilot.db" \
+            "SELECT COUNT(*) FROM issues WHERE status='open' AND is_blocked=0 AND priority='$priority'" 2>/dev/null)
+
+        if [ "$count" -gt 0 ]; then
+            echo -e "${YELLOW}$priority priority ($count issues):${NC}"
+            sqlite3 "$PROJECT_ROOT/autopilot.db" \
+                "SELECT printf('  #%-4d %s', number, title) FROM issues WHERE status='open' AND is_blocked=0 AND priority='$priority' ORDER BY number LIMIT 10" \
+                2>/dev/null
+            echo ""
+        fi
+    done
+
+    # Show in-progress
+    local in_progress=$(sqlite3 "$PROJECT_ROOT/autopilot.db" \
+        "SELECT COUNT(*) FROM issues WHERE status='in_progress'" 2>/dev/null)
+
+    if [ "$in_progress" -gt 0 ]; then
+        echo -e "${BLUE}In progress ($in_progress issues):${NC}"
+        sqlite3 "$PROJECT_ROOT/autopilot.db" \
+            "SELECT printf('  #%-4d [%-10s] %s', number, claimed_by, title) FROM issues WHERE status='in_progress' ORDER BY number" \
+            2>/dev/null
+    fi
+}
+
 # Tail logs
 cmd_logs() {
     local agent_id="$1"
@@ -206,6 +249,7 @@ cmd_help() {
     echo "  start [N]    Start N agents (default: 3, max: 10 on Linux, 5 on macOS)"
     echo "  stop         Stop all running agents"
     echo "  status       Show running agents and issue queue"
+    echo "  queue        Show detailed issue queue by priority"
     echo "  logs [N]     Tail logs for agent N (or all if N not specified)"
     echo "  cleanup      Remove all worktrees and agent branches"
     echo "  help         Show this help message"
@@ -230,6 +274,9 @@ case "${1:-help}" in
         ;;
     status)
         cmd_status
+        ;;
+    queue)
+        cmd_queue
         ;;
     logs)
         cmd_logs "$2"
