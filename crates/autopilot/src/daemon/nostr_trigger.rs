@@ -9,17 +9,19 @@
 //! When a trigger fires, it signals the daemon supervisor to spawn a worker.
 
 use anyhow::{Context, Result};
-use nostr::{AgentSchedule, Event, TriggerType};
+use nostr::{npub_to_public_key, AgentSchedule, Event, TriggerType};
+use nostr_client::{PoolConfig, RelayPool};
+use serde_json::json;
 use std::collections::HashSet;
-use std::time::{Duration, Instant};
+use std::sync::Arc;
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tokio::sync::mpsc;
 use tokio::time::sleep;
 
-// Stub types until nostr crate provides them
-#[allow(dead_code)]
-type Filter = ();
-#[allow(dead_code)]
-type Kind = u16;
+/// Nostr event kinds for triggers
+const KIND_TEXT_NOTE: u16 = 1;
+const KIND_ENCRYPTED_DM: u16 = 4;
+const KIND_ZAP_RECEIPT: u16 = 9735;
 
 /// Trigger event that signals the agent should run
 #[derive(Debug, Clone)]
@@ -45,7 +47,7 @@ pub enum TriggerEvent {
 
 /// Nostr trigger watcher that monitors relays for agent activation events
 pub struct NostrTrigger {
-    /// Agent's public key (npub format)
+    /// Agent's public key (hex format, 64 chars)
     agent_pubkey: String,
     /// Relay URLs to monitor
     relay_urls: Vec<String>,
@@ -55,18 +57,69 @@ pub struct NostrTrigger {
     last_heartbeat: Option<Instant>,
     /// Enabled trigger types
     enabled_triggers: HashSet<TriggerType>,
+    /// Relay pool for subscriptions
+    relay_pool: Option<Arc<RelayPool>>,
+    /// Last event check timestamp (unix seconds)
+    last_check_time: u64,
 }
 
 impl NostrTrigger {
     /// Create a new Nostr trigger watcher
+    ///
+    /// # Arguments
+    /// * `agent_pubkey` - Agent's public key in hex format (64 chars) or npub format
+    /// * `relay_urls` - List of relay WebSocket URLs to monitor
     pub fn new(agent_pubkey: String, relay_urls: Vec<String>) -> Self {
+        // Convert npub to hex if needed
+        let pubkey_hex = if agent_pubkey.starts_with("npub1") {
+            // Decode bech32 npub to hex
+            match npub_to_public_key(&agent_pubkey) {
+                Ok(bytes) => hex::encode(bytes),
+                Err(_) => agent_pubkey.clone(),
+            }
+        } else {
+            agent_pubkey.clone()
+        };
+
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+
         Self {
-            agent_pubkey,
+            agent_pubkey: pubkey_hex,
             relay_urls,
             schedule: None,
             last_heartbeat: None,
             enabled_triggers: HashSet::new(),
+            relay_pool: None,
+            last_check_time: now,
         }
+    }
+
+    /// Initialize the relay pool and connect to relays
+    async fn init_relay_pool(&mut self) -> Result<()> {
+        if self.relay_pool.is_some() {
+            return Ok(());
+        }
+
+        let mut config = PoolConfig::default();
+        config.max_relays = self.relay_urls.len().max(10);
+        config.connection_timeout = Duration::from_secs(10);
+        config.auto_reconnect = true;
+
+        let pool = RelayPool::new(config);
+
+        for url in &self.relay_urls {
+            if let Err(e) = pool.add_relay(url).await {
+                eprintln!("NostrTrigger: Failed to add relay {}: {}", url, e);
+            }
+        }
+
+        pool.connect_all().await.context("Failed to connect to relays")?;
+
+        self.relay_pool = Some(Arc::new(pool));
+        Ok(())
     }
 
     /// Fetch and update agent schedule from relays
@@ -96,10 +149,24 @@ impl NostrTrigger {
         // Update schedule on startup
         self.update_schedule().await?;
 
+        // Initialize relay pool
+        self.init_relay_pool().await?;
+
         eprintln!("NostrTrigger: Watching for agent activation events");
         eprintln!("  Agent pubkey: {}", self.agent_pubkey);
         eprintln!("  Relays: {:?}", self.relay_urls);
         eprintln!("  Schedule: {:?}", self.schedule);
+
+        // Start event subscription in background
+        let event_rx = self.start_subscription().await?;
+        let tx_clone = tx.clone();
+        let agent_pubkey = self.agent_pubkey.clone();
+        let enabled_triggers = self.enabled_triggers.clone();
+
+        // Spawn event handler task
+        tokio::spawn(async move {
+            Self::handle_events(event_rx, tx_clone, agent_pubkey, enabled_triggers).await;
+        });
 
         loop {
             // Check heartbeat
@@ -119,12 +186,7 @@ impl NostrTrigger {
                 }
             }
 
-            // Check for Nostr events
-            if let Err(e) = self.check_nostr_events(&tx).await {
-                eprintln!("NostrTrigger: Error checking events: {}", e);
-            }
-
-            // Sleep before next check (poll every 10 seconds)
+            // Sleep before next heartbeat check
             sleep(Duration::from_secs(10)).await;
 
             // Periodically refresh schedule (every 5 minutes)
@@ -136,73 +198,109 @@ impl NostrTrigger {
         }
     }
 
-    /// Check for new Nostr events that match triggers
-    async fn check_nostr_events(&self, _tx: &mpsc::UnboundedSender<TriggerEvent>) -> Result<()> {
-        // TODO: Connect to relays and subscribe to filters
-        // For now, this is a stub that will be implemented when we have relay client
+    /// Start subscription to relay events
+    async fn start_subscription(&self) -> Result<mpsc::Receiver<Event>> {
+        let pool = self.relay_pool.as_ref()
+            .context("Relay pool not initialized")?;
 
-        // Filter for mentions (kind:1 with agent pubkey in tags or content)
+        // Build filters based on enabled triggers
+        let mut filters = Vec::new();
+
+        // Filter for mentions (kind:1 notes that tag our pubkey)
         if self.enabled_triggers.contains(&TriggerType::Mention) {
-            // let mention_filter = Filter::new()
-            //     .kind(Kind::Text)
-            //     .pubkey(&self.agent_pubkey)
-            //     .since(last_check_time);
+            filters.push(json!({
+                "kinds": [KIND_TEXT_NOTE],
+                "#p": [&self.agent_pubkey],
+                "since": self.last_check_time
+            }));
         }
 
-        // Filter for DMs (kind:4 to agent)
+        // Filter for DMs (kind:4 encrypted messages to our pubkey)
         if self.enabled_triggers.contains(&TriggerType::Dm) {
-            // let dm_filter = Filter::new()
-            //     .kind(Kind::EncryptedDirectMessage)
-            //     .pubkey(&self.agent_pubkey)
-            //     .since(last_check_time);
+            filters.push(json!({
+                "kinds": [KIND_ENCRYPTED_DM],
+                "#p": [&self.agent_pubkey],
+                "since": self.last_check_time
+            }));
         }
 
-        // Filter for zaps (kind:9735 zap receipts with agent pubkey)
+        // Filter for zaps (kind:9735 zap receipts tagging our pubkey)
         if self.enabled_triggers.contains(&TriggerType::Zap) {
-            // let zap_filter = Filter::new()
-            //     .kind(Kind::Zap)
-            //     .pubkey(&self.agent_pubkey)
-            //     .since(last_check_time);
+            filters.push(json!({
+                "kinds": [KIND_ZAP_RECEIPT],
+                "#p": [&self.agent_pubkey],
+                "since": self.last_check_time
+            }));
         }
 
-        Ok(())
+        if filters.is_empty() {
+            // No triggers enabled, create a dummy filter that won't match anything
+            filters.push(json!({"kinds": [999999], "limit": 0}));
+        }
+
+        let subscription_id = format!("autopilot-{}", &self.agent_pubkey[..8]);
+        let rx = pool.subscribe(&subscription_id, &filters).await
+            .context("Failed to subscribe to relays")?;
+
+        eprintln!("NostrTrigger: Subscribed with {} filters", filters.len());
+
+        Ok(rx)
     }
 
-    /// Parse a mention event and send trigger
-    #[allow(dead_code)]
-    fn handle_mention(&self, event: &Event, tx: &mpsc::UnboundedSender<TriggerEvent>) -> Result<()> {
-        eprintln!("NostrTrigger: Mention detected from {}", event.pubkey);
-        tx.send(TriggerEvent::Mention {
-            event_id: event.id.clone(),
-            author: event.pubkey.clone(),
-        })?;
-        Ok(())
+    /// Handle incoming events from subscription
+    async fn handle_events(
+        mut rx: mpsc::Receiver<Event>,
+        tx: mpsc::UnboundedSender<TriggerEvent>,
+        agent_pubkey: String,
+        enabled_triggers: HashSet<TriggerType>,
+    ) {
+        while let Some(event) = rx.recv().await {
+            let kind = event.kind;
+
+            // Match event kind to trigger type
+            let trigger = match kind {
+                k if k == KIND_TEXT_NOTE && enabled_triggers.contains(&TriggerType::Mention) => {
+                    // Check if we're actually mentioned (in tags or content)
+                    let mentioned_in_tags = event.tags.iter().any(|tag| {
+                        tag.len() >= 2 && tag[0] == "p" && tag[1] == agent_pubkey
+                    });
+                    let mentioned_in_content = event.content.contains(&agent_pubkey);
+
+                    if mentioned_in_tags || mentioned_in_content {
+                        Some(TriggerEvent::Mention {
+                            event_id: event.id.clone(),
+                            author: event.pubkey.clone(),
+                        })
+                    } else {
+                        None
+                    }
+                }
+                k if k == KIND_ENCRYPTED_DM && enabled_triggers.contains(&TriggerType::Dm) => {
+                    Some(TriggerEvent::DirectMessage {
+                        event_id: event.id.clone(),
+                        author: event.pubkey.clone(),
+                    })
+                }
+                k if k == KIND_ZAP_RECEIPT && enabled_triggers.contains(&TriggerType::Zap) => {
+                    let amount_msats = extract_zap_amount(&event).unwrap_or(0);
+                    Some(TriggerEvent::Zap {
+                        event_id: event.id.clone(),
+                        amount_msats,
+                    })
+                }
+                _ => None,
+            };
+
+            if let Some(trigger) = trigger {
+                eprintln!("NostrTrigger: Event received - {:?}", trigger);
+                if tx.send(trigger).is_err() {
+                    eprintln!("NostrTrigger: Trigger channel closed, stopping event handler");
+                    break;
+                }
+            }
+        }
     }
 
-    /// Parse a DM event and send trigger
-    #[allow(dead_code)]
-    fn handle_dm(&self, event: &Event, tx: &mpsc::UnboundedSender<TriggerEvent>) -> Result<()> {
-        eprintln!("NostrTrigger: DM received from {}", event.pubkey);
-        tx.send(TriggerEvent::DirectMessage {
-            event_id: event.id.clone(),
-            author: event.pubkey.clone(),
-        })?;
-        Ok(())
-    }
-
-    /// Parse a zap event and send trigger
-    #[allow(dead_code)]
-    fn handle_zap(&self, event: &Event, tx: &mpsc::UnboundedSender<TriggerEvent>) -> Result<()> {
-        // Extract amount from zap receipt (bolt11 invoice)
-        let amount_msats = extract_zap_amount(event).unwrap_or(0);
-
-        eprintln!("NostrTrigger: Zap received: {} msats", amount_msats);
-        tx.send(TriggerEvent::Zap {
-            event_id: event.id.clone(),
-            amount_msats,
-        })?;
-        Ok(())
-    }
 }
 
 /// Extract zap amount from a zap receipt event
