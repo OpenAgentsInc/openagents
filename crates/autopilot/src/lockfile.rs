@@ -172,3 +172,197 @@ pub async fn check_and_handle_stale_lockfile(cwd: &PathBuf) -> Result<()> {
 
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use std::sync::Mutex;
+    use tempfile::TempDir;
+
+    // Use a mutex to serialize tests that modify environment variables
+    static TEST_MUTEX: Mutex<()> = Mutex::new(());
+
+    /// Setup test environment with temp directory
+    fn setup_test_env() -> TempDir {
+        TempDir::new().expect("Failed to create temp dir")
+    }
+
+    /// Override HOME to temp directory for testing
+    fn with_temp_home<F, R>(f: F) -> R
+    where
+        F: FnOnce(&TempDir) -> R,
+    {
+        // Lock to prevent parallel test execution (ignore poison errors)
+        let _guard = TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+
+        let temp_dir = setup_test_env();
+        let old_home = std::env::var("HOME").ok();
+
+        unsafe {
+            std::env::set_var("HOME", temp_dir.path());
+        }
+
+        let result = f(&temp_dir);
+
+        // Restore original HOME
+        unsafe {
+            match old_home {
+                Some(home) => std::env::set_var("HOME", home),
+                None => std::env::remove_var("HOME"),
+            }
+        }
+
+        result
+    }
+
+    #[test]
+    fn test_get_lockfile_path() {
+        with_temp_home(|temp_dir| {
+            let path = get_lockfile_path();
+            assert_eq!(
+                path,
+                temp_dir.path().join(".autopilot").join("run.lock")
+            );
+        });
+    }
+
+    #[test]
+    fn test_write_lockfile_creates_directory() {
+        with_temp_home(|_temp_dir| {
+            let lockfile_path = get_lockfile_path();
+            assert!(!lockfile_path.parent().unwrap().exists());
+
+            write_lockfile(Some(42), Some("test-session".to_string()), None)
+                .expect("Failed to write lockfile");
+
+            assert!(lockfile_path.parent().unwrap().exists());
+        });
+    }
+
+    #[test]
+    fn test_write_lockfile_content() {
+        with_temp_home(|_temp_dir| {
+            let issue_num = 42;
+            let session_id = "test-session-123".to_string();
+            let rlog_path = PathBuf::from("/tmp/test.rlog");
+
+            write_lockfile(Some(issue_num), Some(session_id.clone()), Some(rlog_path.clone()))
+                .expect("Failed to write lockfile");
+
+            let lockfile_path = get_lockfile_path();
+            let content = fs::read_to_string(&lockfile_path).expect("Failed to read lockfile");
+            let lockfile: Lockfile = serde_json::from_str(&content).expect("Invalid JSON");
+
+            assert_eq!(lockfile.issue_number, Some(issue_num));
+            assert_eq!(lockfile.session_id, Some(session_id));
+            assert_eq!(lockfile.rlog_path, Some("/tmp/test.rlog".to_string()));
+            assert!(!lockfile.started_at.is_empty());
+        });
+    }
+
+    #[test]
+    fn test_write_lockfile_with_none_values() {
+        with_temp_home(|_temp_dir| {
+            write_lockfile(None, None, None).expect("Failed to write lockfile");
+
+            let lockfile_path = get_lockfile_path();
+            let content = fs::read_to_string(&lockfile_path).expect("Failed to read lockfile");
+            let lockfile: Lockfile = serde_json::from_str(&content).expect("Invalid JSON");
+
+            assert_eq!(lockfile.issue_number, None);
+            assert_eq!(lockfile.session_id, None);
+            assert_eq!(lockfile.rlog_path, None);
+            assert!(!lockfile.started_at.is_empty());
+        });
+    }
+
+    #[test]
+    fn test_cleanup_lockfile() {
+        with_temp_home(|_temp_dir| {
+            write_lockfile(Some(1), Some("test".to_string()), None)
+                .expect("Failed to write lockfile");
+
+            let lockfile_path = get_lockfile_path();
+            assert!(lockfile_path.exists());
+
+            cleanup_lockfile();
+            assert!(!lockfile_path.exists());
+        });
+    }
+
+    #[test]
+    fn test_cleanup_lockfile_when_not_exists() {
+        with_temp_home(|_temp_dir| {
+            // Calling cleanup when no lockfile exists should not panic
+            cleanup_lockfile();
+        });
+    }
+
+    #[test]
+    fn test_cleanup_mcp_json() {
+        with_temp_home(|temp_dir| {
+            let mcp_json_path = temp_dir.path().join(".mcp.json");
+            fs::write(&mcp_json_path, "{}").expect("Failed to write test MCP file");
+
+            MCP_JSON_PATH.set(mcp_json_path.clone()).ok();
+            assert!(mcp_json_path.exists());
+
+            cleanup_mcp_json();
+            assert!(!mcp_json_path.exists());
+        });
+    }
+
+    #[test]
+    fn test_cleanup_mcp_json_when_not_exists() {
+        // Calling cleanup when no MCP file exists should not panic
+        cleanup_mcp_json();
+    }
+
+    #[test]
+    fn test_lockfile_serialization() {
+        let lockfile = Lockfile {
+            issue_number: Some(42),
+            session_id: Some("test-session".to_string()),
+            rlog_path: Some("/tmp/test.rlog".to_string()),
+            started_at: "2025-12-23T10:00:00Z".to_string(),
+        };
+
+        let json = serde_json::to_string(&lockfile).expect("Failed to serialize");
+        let deserialized: Lockfile = serde_json::from_str(&json).expect("Failed to deserialize");
+
+        assert_eq!(lockfile.issue_number, deserialized.issue_number);
+        assert_eq!(lockfile.session_id, deserialized.session_id);
+        assert_eq!(lockfile.rlog_path, deserialized.rlog_path);
+        assert_eq!(lockfile.started_at, deserialized.started_at);
+    }
+
+    #[test]
+    fn test_write_lockfile_sets_global_path() {
+        with_temp_home(|_temp_dir| {
+            write_lockfile(Some(1), None, None).expect("Failed to write lockfile");
+
+            // Verify the global path is set (may have been set by previous tests)
+            assert!(LOCKFILE_PATH.get().is_some());
+
+            // The global path should point to a valid lockfile location
+            // (Note: OnceLock can only be set once, so we can't guarantee it's this test's path)
+            let global_path = LOCKFILE_PATH.get().unwrap();
+            assert!(global_path.ends_with(".autopilot/run.lock"));
+        });
+    }
+
+    #[test]
+    fn test_lockfile_contains_valid_timestamp() {
+        with_temp_home(|_temp_dir| {
+            write_lockfile(Some(1), None, None).expect("Failed to write lockfile");
+
+            let content = fs::read_to_string(get_lockfile_path()).expect("Failed to read lockfile");
+            let lockfile: Lockfile = serde_json::from_str(&content).expect("Invalid JSON");
+
+            // Verify timestamp is valid RFC3339
+            chrono::DateTime::parse_from_rfc3339(&lockfile.started_at)
+                .expect("Invalid timestamp format");
+        });
+    }
+}

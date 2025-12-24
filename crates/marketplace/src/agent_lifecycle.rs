@@ -109,15 +109,49 @@ impl SponsorInfo {
 }
 
 /// Autonomy level for agent
+///
+/// Defines how much human oversight is required for agent operations.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum AutonomyLevel {
-    /// Requires approval for all actions
+    /// Human approves every action before execution
+    Assisted,
+    /// Human monitors and can intervene on exceptions
     Supervised,
-    /// Can perform routine tasks autonomously
+    /// Can perform routine tasks autonomously within policy
     SemiAutonomous,
-    /// Fully autonomous decision making
+    /// Fully autonomous decision making within policy limits
     Autonomous,
+    /// Full autonomy without policy limits (rare, high-trust only)
+    Unsupervised,
+}
+
+impl AutonomyLevel {
+    /// Check if this level requires human approval for all actions
+    pub fn requires_all_approvals(&self) -> bool {
+        matches!(self, AutonomyLevel::Assisted)
+    }
+
+    /// Check if this level allows fully independent operation
+    pub fn is_fully_independent(&self) -> bool {
+        matches!(self, AutonomyLevel::Unsupervised)
+    }
+
+    /// Check if this level operates within policy limits
+    pub fn has_policy_limits(&self) -> bool {
+        !matches!(self, AutonomyLevel::Unsupervised)
+    }
+
+    /// Get human-readable description
+    pub fn description(&self) -> &'static str {
+        match self {
+            AutonomyLevel::Assisted => "Human approves every action",
+            AutonomyLevel::Supervised => "Human monitors, intervenes on exceptions",
+            AutonomyLevel::SemiAutonomous => "Routine tasks autonomous, major decisions reviewed",
+            AutonomyLevel::Autonomous => "Operates independently within policy",
+            AutonomyLevel::Unsupervised => "Full autonomy (high-trust only)",
+        }
+    }
 }
 
 /// Capability manifest for agent
@@ -642,5 +676,58 @@ mod tests {
         assert_eq!(json, "\"active\"");
         let deserialized: AgentLifecycleState = serde_json::from_str(&json).unwrap();
         assert_eq!(deserialized, state);
+    }
+
+    #[test]
+    fn test_autonomy_level_requires_all_approvals() {
+        assert!(AutonomyLevel::Assisted.requires_all_approvals());
+        assert!(!AutonomyLevel::Supervised.requires_all_approvals());
+        assert!(!AutonomyLevel::SemiAutonomous.requires_all_approvals());
+        assert!(!AutonomyLevel::Autonomous.requires_all_approvals());
+        assert!(!AutonomyLevel::Unsupervised.requires_all_approvals());
+    }
+
+    #[test]
+    fn test_autonomy_level_is_fully_independent() {
+        assert!(!AutonomyLevel::Assisted.is_fully_independent());
+        assert!(!AutonomyLevel::Supervised.is_fully_independent());
+        assert!(!AutonomyLevel::SemiAutonomous.is_fully_independent());
+        assert!(!AutonomyLevel::Autonomous.is_fully_independent());
+        assert!(AutonomyLevel::Unsupervised.is_fully_independent());
+    }
+
+    #[test]
+    fn test_autonomy_level_has_policy_limits() {
+        assert!(AutonomyLevel::Assisted.has_policy_limits());
+        assert!(AutonomyLevel::Supervised.has_policy_limits());
+        assert!(AutonomyLevel::SemiAutonomous.has_policy_limits());
+        assert!(AutonomyLevel::Autonomous.has_policy_limits());
+        assert!(!AutonomyLevel::Unsupervised.has_policy_limits());
+    }
+
+    #[test]
+    fn test_autonomy_level_description() {
+        assert!(!AutonomyLevel::Assisted.description().is_empty());
+        assert!(!AutonomyLevel::Supervised.description().is_empty());
+        assert!(!AutonomyLevel::SemiAutonomous.description().is_empty());
+        assert!(!AutonomyLevel::Autonomous.description().is_empty());
+        assert!(!AutonomyLevel::Unsupervised.description().is_empty());
+    }
+
+    #[test]
+    fn test_autonomy_level_serde() {
+        let levels = vec![
+            AutonomyLevel::Assisted,
+            AutonomyLevel::Supervised,
+            AutonomyLevel::SemiAutonomous,
+            AutonomyLevel::Autonomous,
+            AutonomyLevel::Unsupervised,
+        ];
+
+        for level in levels {
+            let json = serde_json::to_string(&level).unwrap();
+            let deserialized: AutonomyLevel = serde_json::from_str(&json).unwrap();
+            assert_eq!(deserialized, level);
+        }
     }
 }
