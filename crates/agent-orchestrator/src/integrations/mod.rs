@@ -7,11 +7,15 @@
 //! - **Trajectory**: APM metrics and action logging for performance tracking
 //! - **Marketplace**: Skill licensing and usage tracking (NIP-SA kinds 38020, 38021)
 //! - **Advanced**: FROSTR threshold signatures, NIP-SA solver agents, multi-backend routing
+//! - **FROSTR Bridge**: Real threshold signing with FROSTR (feature-gated)
+//! - **Spark Bridge**: Bitcoin payment provider integration (feature-gated)
 
 pub mod advanced;
 pub mod autopilot;
 pub mod directives;
+pub mod frostr_bridge;
 pub mod marketplace;
+pub mod spark_bridge;
 pub mod trajectory;
 
 pub use advanced::{
@@ -21,7 +25,15 @@ pub use advanced::{
 };
 pub use autopilot::{AutopilotIntegration, IssueClaimHook, IssueCompleteHook};
 pub use directives::{DirectiveContext, DirectiveInjectionConfig, DirectiveSummary};
+pub use frostr_bridge::{
+    generate_threshold_identity, generate_threshold_shares, is_frostr_available, FrostShareInfo,
+    FrostrBridgeError,
+};
 pub use marketplace::{
     MarketplaceIntegration, SkillLicenseHook, SkillLicenseInfo, SkillPricing, SkillUsageHook,
+};
+pub use spark_bridge::{
+    is_spark_available, CostPaymentBridge, MockPaymentProvider, PaymentError, PaymentProvider,
+    PaymentResult, PaymentStatus, SparkPaymentProvider, WalletBalance,
 };
 pub use trajectory::{ActionMetric, ApmTracker, TrajectoryLogger};
