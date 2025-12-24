@@ -52,21 +52,11 @@ pub enum PaymentStatus {
     Failed,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct WalletBalance {
     pub total_sats: u64,
     pub available_sats: u64,
     pub pending_sats: u64,
-}
-
-impl Default for WalletBalance {
-    fn default() -> Self {
-        Self {
-            total_sats: 0,
-            available_sats: 0,
-            pending_sats: 0,
-        }
-    }
 }
 
 #[async_trait]
