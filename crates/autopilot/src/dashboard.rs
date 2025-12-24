@@ -144,7 +144,6 @@ pub async fn start_dashboard(db_path: &str, port: u16) -> anyhow::Result<()> {
             .route("/dashboard/apm-compare", web::get().to(apm_compare))
             .route("/export/sessions.json", web::get().to(export_json))
             .route("/export/sessions.csv", web::get().to(export_csv))
-            .route("/ws", web::get().to(websocket))
             // API endpoints
             .route("/api/sessions", web::get().to(api_sessions))
             .route("/api/sessions/{id}", web::get().to(api_session_detail))
@@ -255,32 +254,10 @@ async fn export_csv(state: web::Data<DashboardState>) -> ActixResult<HttpRespons
         .body(csv))
 }
 
-/// WebSocket endpoint for real-time updates
-async fn websocket(
-    req: actix_web::HttpRequest,
-    stream: web::Payload,
-) -> ActixResult<HttpResponse> {
-    let (response, mut session, mut msg_stream) = actix_ws::handle(&req, stream)?;
-
-    actix_web::rt::spawn(async move {
-        while let Some(Ok(msg)) = msg_stream.recv().await {
-            match msg {
-                Message::Ping(bytes) => {
-                    let _ = session.pong(&bytes).await;
-                }
-                Message::Text(text) => {
-                    // Echo back for now - in production would push metrics updates
-                    let _ = session.text(text).await;
-                }
-                Message::Close(_) => break,
-                _ => {}
-            }
-        }
-        let _ = session.close(None).await;
-    });
-
-    Ok(response)
-}
+// === REMOVED: Echo-only WebSocket stub (d-012) ===
+// The /ws route with echo handler was unused dead code.
+// Real WebSocket implementations are at /ws/metrics and /ws/apm endpoints.
+// See websocket_metrics() and websocket_apm() below for production implementations.
 
 /// Summary statistics for dashboard
 #[derive(Debug, Clone, Serialize, Deserialize)]
