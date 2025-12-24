@@ -9,6 +9,7 @@ use std::sync::Arc;
 use agent_client_protocol_schema as acp;
 use tokio::sync::{mpsc, RwLock};
 
+use crate::telemetry::ApmTelemetry;
 use crate::transport::StdioTransport;
 
 /// An active ACP session with an agent
@@ -28,6 +29,9 @@ pub struct AcpAgentSession {
 
     /// Channel for session updates (notifications from agent)
     updates_tx: mpsc::Sender<acp::SessionNotification>,
+
+    /// Optional APM telemetry tracker
+    telemetry: Option<Arc<ApmTelemetry>>,
 }
 
 /// Internal session state
@@ -61,6 +65,30 @@ impl AcpAgentSession {
                 is_active: true,
             })),
             updates_tx,
+            telemetry: None,
+        }
+    }
+
+    /// Create a new session with APM telemetry enabled
+    pub(crate) fn with_telemetry(
+        session_id: acp::SessionId,
+        transport: Arc<StdioTransport>,
+        cwd: PathBuf,
+        telemetry: Arc<ApmTelemetry>,
+    ) -> Self {
+        let (updates_tx, _updates_rx) = mpsc::channel(256);
+
+        Self {
+            session_id,
+            cwd,
+            transport,
+            state: Arc::new(RwLock::new(SessionState {
+                current_mode: None,
+                available_modes: Vec::new(),
+                is_active: true,
+            })),
+            updates_tx,
+            telemetry: Some(telemetry),
         }
     }
 
@@ -100,6 +128,11 @@ impl AcpAgentSession {
 
     /// Handle a session notification from the agent
     pub(crate) async fn handle_notification(&self, notification: acp::SessionNotification) {
+        // Process telemetry if enabled
+        if let Some(telemetry) = &self.telemetry {
+            telemetry.process_notification(&notification).await;
+        }
+
         // Update local state based on notification type
         match &notification.update {
             acp::SessionUpdate::CurrentModeUpdate(mode_update) => {

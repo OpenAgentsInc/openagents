@@ -32,6 +32,7 @@ pub mod permissions;
 pub mod replay;
 pub mod session;
 pub mod streaming;
+pub mod telemetry;
 pub mod transport;
 
 // Re-export main types
@@ -49,6 +50,7 @@ pub use permissions::{
 pub use replay::{ReplayConfig, ReplayStats, RlogReplay};
 pub use session::AcpAgentSession;
 pub use streaming::{RlogBuffer, RlogHeaderInfo, RlogStreamer, StreamConfig};
+pub use telemetry::{ActionEvent, ApmTelemetry};
 
 /// Command configuration for spawning an agent subprocess
 #[derive(Debug, Clone)]
