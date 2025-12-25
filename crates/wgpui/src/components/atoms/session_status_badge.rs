@@ -51,6 +51,26 @@ impl SessionStatus {
             SessionStatus::Aborted => Hsla::new(30.0, 0.7, 0.5, 1.0),     // Orange
         }
     }
+
+    /// Can this session be resumed?
+    pub fn can_resume(&self) -> bool {
+        matches!(self, SessionStatus::Paused)
+    }
+
+    /// Can this session be forked?
+    pub fn can_fork(&self) -> bool {
+        matches!(self, SessionStatus::Completed | SessionStatus::Failed | SessionStatus::Aborted)
+    }
+
+    /// Is the session currently active?
+    pub fn is_active(&self) -> bool {
+        matches!(self, SessionStatus::Running | SessionStatus::Paused)
+    }
+
+    /// Is the session in a terminal state?
+    pub fn is_terminal(&self) -> bool {
+        matches!(self, SessionStatus::Completed | SessionStatus::Failed | SessionStatus::Aborted)
+    }
 }
 
 /// Badge showing session status

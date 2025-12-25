@@ -44,6 +44,12 @@ use wgpui::components::sections::{
     FeedbackRating, MessageEditor, ThreadFeedback, ThreadHeader, ThreadView,
 };
 use wgpui::components::molecules::{EntryActions, TerminalHeader};
+use wgpui::components::molecules::{
+    PermissionHistoryItem, PermissionHistory, PermissionRuleRow, PermissionRule,
+    PermissionDecision, PermissionScope,
+    SessionCard, SessionInfo, SessionSearchBar,
+};
+use wgpui::components::atoms::{BreadcrumbItem, SessionBreadcrumb};
 use wgpui::renderer::Renderer;
 use winit::application::ApplicationHandler;
 use winit::event::{ElementState, WindowEvent};
@@ -96,6 +102,8 @@ const SECTION_SOVEREIGN_AGENTS: usize = 17;
 const SECTION_MARKETPLACE: usize = 18;
 const SECTION_AUTOPILOT: usize = 19;
 const SECTION_THREAD_COMPONENTS: usize = 20;
+const SECTION_SESSIONS: usize = 21;
+const SECTION_PERMISSIONS: usize = 22;
 
 #[derive(Clone, Copy)]
 struct GlowPreset {
@@ -498,6 +506,8 @@ impl Storybook {
             "Marketplace",
             "Autopilot",
             "Thread Components",
+            "Sessions",
+            "Permissions",
         ];
         let nav_len = nav_items.len();
 
@@ -605,6 +615,8 @@ impl Storybook {
             SECTION_MARKETPLACE => marketplace_height(bounds),
             SECTION_AUTOPILOT => autopilot_height(bounds),
             SECTION_THREAD_COMPONENTS => thread_components_height(bounds),
+            SECTION_SESSIONS => sessions_height(bounds),
+            SECTION_PERMISSIONS => permissions_height(bounds),
             _ => bounds.size.height,
         }
     }
@@ -652,6 +664,8 @@ impl Storybook {
             SECTION_MARKETPLACE => self.paint_marketplace(content_bounds, cx),
             SECTION_AUTOPILOT => self.paint_autopilot(content_bounds, cx),
             SECTION_THREAD_COMPONENTS => self.paint_thread_components(content_bounds, cx),
+            SECTION_SESSIONS => self.paint_sessions(content_bounds, cx),
+            SECTION_PERMISSIONS => self.paint_permissions(content_bounds, cx),
             _ => {}
         }
         cx.scene.pop_clip();
@@ -5854,6 +5868,446 @@ impl Storybook {
             editor.paint(Bounds::new(inner.origin.x, editor_y, inner.size.width, 64.0), cx);
         });
     }
+
+    fn paint_sessions(&mut self, bounds: Bounds, cx: &mut PaintContext) {
+        let width = bounds.size.width;
+        let mut y = bounds.origin.y;
+
+        // ========== Panel 1: Session Cards ==========
+        let cards_height = panel_height(280.0);
+        let cards_bounds = Bounds::new(bounds.origin.x, y, width, cards_height);
+        draw_panel("Session Cards", cards_bounds, cx, |inner, cx| {
+            let card_w = (inner.size.width - 24.0) / 3.0;
+
+            // Running session
+            let running_info = SessionInfo::new("sess-001", "Implement auth flow")
+                .status(SessionStatus::Running)
+                .timestamp("10:30 AM")
+                .duration(1847)
+                .task_count(12)
+                .model("sonnet");
+            let mut running = SessionCard::new(running_info);
+            running.paint(Bounds::new(inner.origin.x, inner.origin.y, card_w, 160.0), cx);
+
+            // Completed session
+            let completed_info = SessionInfo::new("sess-002", "Fix CI pipeline")
+                .status(SessionStatus::Completed)
+                .timestamp("Yesterday")
+                .duration(3621)
+                .task_count(8)
+                .model("opus");
+            let mut completed = SessionCard::new(completed_info);
+            completed.paint(Bounds::new(inner.origin.x + card_w + 12.0, inner.origin.y, card_w, 160.0), cx);
+
+            // Failed session
+            let failed_info = SessionInfo::new("sess-003", "Migrate database")
+                .status(SessionStatus::Failed)
+                .timestamp("2 days ago")
+                .duration(892)
+                .task_count(5)
+                .model("sonnet");
+            let mut failed = SessionCard::new(failed_info);
+            failed.paint(Bounds::new(inner.origin.x + (card_w + 12.0) * 2.0, inner.origin.y, card_w, 160.0), cx);
+
+            // Second row - more states
+            let row2_y = inner.origin.y + 172.0;
+
+            let paused_info = SessionInfo::new("sess-004", "Refactor components")
+                .status(SessionStatus::Paused)
+                .timestamp("1 hour ago")
+                .duration(1200)
+                .task_count(15)
+                .model("sonnet");
+            let mut paused = SessionCard::new(paused_info);
+            paused.paint(Bounds::new(inner.origin.x, row2_y, card_w, 160.0), cx);
+
+            let aborted_info = SessionInfo::new("sess-005", "Update dependencies")
+                .status(SessionStatus::Aborted)
+                .timestamp("3 hours ago")
+                .duration(456)
+                .task_count(3)
+                .model("haiku");
+            let mut aborted = SessionCard::new(aborted_info);
+            aborted.paint(Bounds::new(inner.origin.x + card_w + 12.0, row2_y, card_w, 160.0), cx);
+
+            let pending_info = SessionInfo::new("sess-006", "Write tests")
+                .status(SessionStatus::Pending)
+                .timestamp("Queued")
+                .model("sonnet");
+            let mut pending = SessionCard::new(pending_info);
+            pending.paint(Bounds::new(inner.origin.x + (card_w + 12.0) * 2.0, row2_y, card_w, 160.0), cx);
+        });
+        y += cards_height + SECTION_GAP;
+
+        // ========== Panel 2: Session Breadcrumbs ==========
+        let breadcrumb_height = panel_height(120.0);
+        let breadcrumb_bounds = Bounds::new(bounds.origin.x, y, width, breadcrumb_height);
+        draw_panel("Session Breadcrumbs", breadcrumb_bounds, cx, |inner, cx| {
+            // Simple breadcrumb
+            let mut bc1 = SessionBreadcrumb::new()
+                .items(vec![
+                    BreadcrumbItem::new("sess-001", "Main Session"),
+                    BreadcrumbItem::new("sess-002", "Fork: Auth").current(true),
+                ]);
+            bc1.paint(Bounds::new(inner.origin.x, inner.origin.y, inner.size.width, 28.0), cx);
+
+            // Deep breadcrumb
+            let mut bc2 = SessionBreadcrumb::new()
+                .items(vec![
+                    BreadcrumbItem::new("root", "Root Session"),
+                    BreadcrumbItem::new("fork-1", "API Changes"),
+                    BreadcrumbItem::new("fork-2", "Error Handling"),
+                    BreadcrumbItem::new("current", "Final Polish").current(true),
+                ]);
+            bc2.paint(Bounds::new(inner.origin.x, inner.origin.y + 36.0, inner.size.width, 28.0), cx);
+
+            // Single item
+            let mut bc3 = SessionBreadcrumb::new()
+                .push_item(BreadcrumbItem::new("standalone", "Standalone Session").current(true));
+            bc3.paint(Bounds::new(inner.origin.x, inner.origin.y + 72.0, inner.size.width, 28.0), cx);
+        });
+        y += breadcrumb_height + SECTION_GAP;
+
+        // ========== Panel 3: Session Search ==========
+        let search_height = panel_height(180.0);
+        let search_bounds = Bounds::new(bounds.origin.x, y, width, search_height);
+        draw_panel("Session Search & Filters", search_bounds, cx, |inner, cx| {
+            // Empty search bar
+            let mut search1 = SessionSearchBar::new();
+            search1.paint(Bounds::new(inner.origin.x, inner.origin.y, inner.size.width, 44.0), cx);
+
+            // Search bar with placeholder
+            let mut search2 = SessionSearchBar::new()
+                .placeholder("Search auth sessions...");
+            search2.paint(Bounds::new(inner.origin.x, inner.origin.y + 52.0, inner.size.width, 44.0), cx);
+
+            // With active filter
+            let mut search3 = SessionSearchBar::new();
+            search3.set_filter(SessionStatus::Running, true);
+            search3.paint(Bounds::new(inner.origin.x, inner.origin.y + 104.0, inner.size.width, 44.0), cx);
+        });
+        y += search_height + SECTION_GAP;
+
+        // ========== Panel 4: Session Actions ==========
+        let actions_height = panel_height(160.0);
+        let actions_bounds = Bounds::new(bounds.origin.x, y, width, actions_height);
+        draw_panel("Session Actions", actions_bounds, cx, |inner, cx| {
+            let label_x = inner.origin.x;
+            let badge_x = inner.origin.x + 200.0;
+            let mut row_y = inner.origin.y;
+
+            // Resumable session (paused)
+            let paused_label = cx.text.layout(
+                "Paused → Can Resume:",
+                Point::new(label_x, row_y + 4.0),
+                theme::font_size::SM,
+                theme::text::PRIMARY,
+            );
+            cx.scene.draw_text(paused_label);
+            let mut paused_badge = SessionStatusBadge::new(SessionStatus::Paused);
+            paused_badge.paint(Bounds::new(badge_x, row_y, 100.0, 24.0), cx);
+            row_y += 32.0;
+
+            // Forkable sessions
+            let completed_label = cx.text.layout(
+                "Completed → Can Fork:",
+                Point::new(label_x, row_y + 4.0),
+                theme::font_size::SM,
+                theme::text::PRIMARY,
+            );
+            cx.scene.draw_text(completed_label);
+            let mut completed_badge = SessionStatusBadge::new(SessionStatus::Completed);
+            completed_badge.paint(Bounds::new(badge_x, row_y, 100.0, 24.0), cx);
+            row_y += 32.0;
+
+            let failed_label = cx.text.layout(
+                "Failed → Can Fork:",
+                Point::new(label_x, row_y + 4.0),
+                theme::font_size::SM,
+                theme::text::PRIMARY,
+            );
+            cx.scene.draw_text(failed_label);
+            let mut failed_badge = SessionStatusBadge::new(SessionStatus::Failed);
+            failed_badge.paint(Bounds::new(badge_x, row_y, 100.0, 24.0), cx);
+            row_y += 32.0;
+
+            // Active session
+            let running_label = cx.text.layout(
+                "Running → Active:",
+                Point::new(label_x, row_y + 4.0),
+                theme::font_size::SM,
+                theme::text::PRIMARY,
+            );
+            cx.scene.draw_text(running_label);
+            let mut running_badge = SessionStatusBadge::new(SessionStatus::Running)
+                .duration(3621)
+                .task_count(8);
+            running_badge.paint(Bounds::new(badge_x, row_y, 200.0, 24.0), cx);
+        });
+        y += actions_height + SECTION_GAP;
+
+        // ========== Panel 5: Complete Session List ==========
+        let list_height = panel_height(320.0);
+        let list_bounds = Bounds::new(bounds.origin.x, y, width, list_height);
+        draw_panel("Complete Session List", list_bounds, cx, |inner, cx| {
+            // Search bar at top
+            let mut search = SessionSearchBar::new();
+            search.paint(Bounds::new(inner.origin.x, inner.origin.y, inner.size.width, 44.0), cx);
+
+            // Breadcrumb showing current path
+            let mut breadcrumb = SessionBreadcrumb::new()
+                .items(vec![
+                    BreadcrumbItem::new("all", "All Sessions"),
+                    BreadcrumbItem::new("today", "Today").current(true),
+                ]);
+            breadcrumb.paint(Bounds::new(inner.origin.x, inner.origin.y + 52.0, inner.size.width, 28.0), cx);
+
+            // Session cards in a grid
+            let cards_y = inner.origin.y + 80.0;
+            let card_w = (inner.size.width - 12.0) / 2.0;
+
+            let sessions = [
+                ("Current Task", SessionStatus::Running, 1847u64, 12u32),
+                ("Yesterday's Work", SessionStatus::Completed, 7200, 15),
+                ("Blocked Task", SessionStatus::Paused, 2400, 10),
+                ("Failed Migration", SessionStatus::Failed, 600, 8),
+            ];
+
+            for (i, (title, status, dur, total)) in sessions.iter().enumerate() {
+                let col = i % 2;
+                let row = i / 2;
+                let x = inner.origin.x + col as f32 * (card_w + 12.0);
+                let y = cards_y + row as f32 * 112.0;
+
+                let info = SessionInfo::new(format!("sess-{}", i), *title)
+                    .status(*status)
+                    .timestamp("Today")
+                    .duration(*dur)
+                    .task_count(*total)
+                    .model("sonnet");
+                let mut card = SessionCard::new(info);
+                card.paint(Bounds::new(x, y, card_w, 100.0), cx);
+            }
+        });
+    }
+
+    fn paint_permissions(&mut self, bounds: Bounds, cx: &mut PaintContext) {
+        let width = bounds.size.width;
+        let mut y = bounds.origin.y;
+
+        // ========== Panel 1: Permission Decisions ==========
+        let decisions_height = panel_height(160.0);
+        let decisions_bounds = Bounds::new(bounds.origin.x, y, width, decisions_height);
+        draw_panel("Permission Decisions", decisions_bounds, cx, |inner, cx| {
+            let decisions = [
+                (PermissionDecision::Ask, "Ask every time"),
+                (PermissionDecision::AllowOnce, "Allow once"),
+                (PermissionDecision::AllowAlways, "Allow always"),
+                (PermissionDecision::Deny, "Deny"),
+            ];
+
+            for (i, (decision, desc)) in decisions.iter().enumerate() {
+                let x = inner.origin.x + (i as f32 * 140.0);
+
+                // Decision badge
+                let color = decision.color();
+                let badge_bounds = Bounds::new(x, inner.origin.y, 120.0, 28.0);
+                cx.scene.draw_quad(
+                    Quad::new(badge_bounds)
+                        .with_background(color.with_alpha(0.2))
+                        .with_border(color, 1.0),
+                );
+                let label = cx.text.layout(
+                    decision.label(),
+                    Point::new(x + 8.0, inner.origin.y + 6.0),
+                    theme::font_size::SM,
+                    color,
+                );
+                cx.scene.draw_text(label);
+
+                // Description
+                let desc_text = cx.text.layout(
+                    desc,
+                    Point::new(x, inner.origin.y + 40.0),
+                    theme::font_size::XS,
+                    theme::text::MUTED,
+                );
+                cx.scene.draw_text(desc_text);
+            }
+
+            // Short labels row
+            let short_y = inner.origin.y + 72.0;
+            let short_label = cx.text.layout(
+                "Short labels:",
+                Point::new(inner.origin.x, short_y),
+                theme::font_size::XS,
+                theme::text::MUTED,
+            );
+            cx.scene.draw_text(short_label);
+
+            for (i, (decision, _)) in decisions.iter().enumerate() {
+                let x = inner.origin.x + 80.0 + (i as f32 * 60.0);
+                let short = cx.text.layout(
+                    decision.short_label(),
+                    Point::new(x, short_y),
+                    theme::font_size::SM,
+                    decision.color(),
+                );
+                cx.scene.draw_text(short);
+            }
+        });
+        y += decisions_height + SECTION_GAP;
+
+        // ========== Panel 2: Permission Rules ==========
+        let rules_height = panel_height(240.0);
+        let rules_bounds = Bounds::new(bounds.origin.x, y, width, rules_height);
+        draw_panel("Permission Rules", rules_bounds, cx, |inner, cx| {
+            let rules = [
+                PermissionRule::new("rule-1", ToolType::Bash, "Bash")
+                    .scope(PermissionScope::Session)
+                    .pattern("cargo *")
+                    .decision(PermissionDecision::AllowAlways),
+                PermissionRule::new("rule-2", ToolType::Write, "Write")
+                    .scope(PermissionScope::Project)
+                    .pattern("src/*")
+                    .decision(PermissionDecision::AllowAlways),
+                PermissionRule::new("rule-3", ToolType::Read, "Read")
+                    .scope(PermissionScope::Global)
+                    .decision(PermissionDecision::AllowAlways),
+                PermissionRule::new("rule-4", ToolType::Edit, "Edit")
+                    .scope(PermissionScope::Session)
+                    .decision(PermissionDecision::Ask),
+                PermissionRule::new("rule-5", ToolType::Bash, "Bash")
+                    .scope(PermissionScope::Global)
+                    .pattern("sudo *")
+                    .decision(PermissionDecision::Deny),
+            ];
+
+            for (i, rule) in rules.iter().enumerate() {
+                let mut row = PermissionRuleRow::new(rule.clone());
+                row.paint(
+                    Bounds::new(inner.origin.x, inner.origin.y + i as f32 * 44.0, inner.size.width, 40.0),
+                    cx,
+                );
+            }
+        });
+        y += rules_height + SECTION_GAP;
+
+        // ========== Panel 3: Permission History ==========
+        let history_height = panel_height(280.0);
+        let history_bounds = Bounds::new(bounds.origin.x, y, width, history_height);
+        draw_panel("Permission History", history_bounds, cx, |inner, cx| {
+            let histories = [
+                PermissionHistory::new("h-1", ToolType::Bash, "Bash", "cargo build --release")
+                    .decision(PermissionDecision::AllowOnce)
+                    .timestamp("2 min ago")
+                    .session("sess-001"),
+                PermissionHistory::new("h-2", ToolType::Write, "Write", "src/lib.rs")
+                    .decision(PermissionDecision::AllowAlways)
+                    .timestamp("5 min ago")
+                    .session("sess-001"),
+                PermissionHistory::new("h-3", ToolType::Bash, "Bash", "rm -rf node_modules/")
+                    .decision(PermissionDecision::Deny)
+                    .timestamp("10 min ago")
+                    .session("sess-001"),
+                PermissionHistory::new("h-4", ToolType::Read, "Read", "/etc/passwd")
+                    .decision(PermissionDecision::Deny)
+                    .timestamp("15 min ago")
+                    .session("sess-002"),
+            ];
+
+            for (i, history) in histories.iter().enumerate() {
+                let mut item = PermissionHistoryItem::new(history.clone());
+                item.paint(
+                    Bounds::new(inner.origin.x, inner.origin.y + i as f32 * 64.0, inner.size.width, 56.0),
+                    cx,
+                );
+            }
+        });
+        y += history_height + SECTION_GAP;
+
+        // ========== Panel 4: Permission Bar Variants ==========
+        let bar_height = panel_height(200.0);
+        let bar_bounds = Bounds::new(bounds.origin.x, y, width, bar_height);
+        draw_panel("Permission Bar Variants", bar_bounds, cx, |inner, cx| {
+            // Standard permission bar
+            let mut bar1 = PermissionBar::new("Bash wants to execute: cargo test");
+            bar1.paint(Bounds::new(inner.origin.x, inner.origin.y, inner.size.width, 48.0), cx);
+
+            // File write permission
+            let mut bar2 = PermissionBar::new("Write wants to create: src/new_module.rs");
+            bar2.paint(Bounds::new(inner.origin.x, inner.origin.y + 56.0, inner.size.width, 48.0), cx);
+
+            // Dangerous operation
+            let mut bar3 = PermissionBar::new("Bash wants to execute: git push --force");
+            bar3.paint(Bounds::new(inner.origin.x, inner.origin.y + 112.0, inner.size.width, 48.0), cx);
+        });
+        y += bar_height + SECTION_GAP;
+
+        // ========== Panel 5: Permission Statistics ==========
+        let stats_height = panel_height(140.0);
+        let stats_bounds = Bounds::new(bounds.origin.x, y, width, stats_height);
+        draw_panel("Permission Statistics", stats_bounds, cx, |inner, cx| {
+            let stats = [
+                ("Total Requests", "247", theme::text::PRIMARY),
+                ("Allowed", "189", Hsla::new(120.0, 0.7, 0.45, 1.0)),
+                ("Denied", "42", Hsla::new(0.0, 0.8, 0.5, 1.0)),
+                ("Pending", "16", Hsla::new(45.0, 0.7, 0.5, 1.0)),
+            ];
+
+            let stat_w = inner.size.width / 4.0;
+            for (i, (label, value, color)) in stats.iter().enumerate() {
+                let x = inner.origin.x + i as f32 * stat_w;
+
+                // Value (large)
+                let value_text = cx.text.layout(
+                    value,
+                    Point::new(x + 12.0, inner.origin.y + 8.0),
+                    24.0,
+                    *color,
+                );
+                cx.scene.draw_text(value_text);
+
+                // Label
+                let label_text = cx.text.layout(
+                    label,
+                    Point::new(x + 12.0, inner.origin.y + 44.0),
+                    theme::font_size::XS,
+                    theme::text::MUTED,
+                );
+                cx.scene.draw_text(label_text);
+            }
+
+            // Rule counts
+            let rule_y = inner.origin.y + 80.0;
+            let rule_label = cx.text.layout(
+                "Active Rules:",
+                Point::new(inner.origin.x + 12.0, rule_y),
+                theme::font_size::SM,
+                theme::text::PRIMARY,
+            );
+            cx.scene.draw_text(rule_label);
+
+            let rule_counts = [
+                ("Global", 5),
+                ("Project", 12),
+                ("Session", 8),
+            ];
+
+            let mut rx = inner.origin.x + 120.0;
+            for (scope, count) in rule_counts {
+                let scope_text = format!("{}: {}", scope, count);
+                let scope_run = cx.text.layout(
+                    &scope_text,
+                    Point::new(rx, rule_y),
+                    theme::font_size::SM,
+                    theme::text::MUTED,
+                );
+                cx.scene.draw_text(scope_run);
+                rx += 100.0;
+            }
+        });
+    }
 }
 
 struct FocusDemo {
@@ -7146,6 +7600,28 @@ fn thread_components_height(_bounds: Bounds) -> f32 {
         panel_height(140.0),  // Entry Actions
         panel_height(140.0),  // Terminal Headers
         panel_height(400.0),  // Complete Thread Layout
+    ];
+    stacked_height(&panels)
+}
+
+fn sessions_height(_bounds: Bounds) -> f32 {
+    let panels = [
+        panel_height(280.0),  // Session Cards (2 rows of 3)
+        panel_height(120.0),  // Session Breadcrumbs
+        panel_height(180.0),  // Session Search & Filters
+        panel_height(160.0),  // Session Actions
+        panel_height(320.0),  // Complete Session List
+    ];
+    stacked_height(&panels)
+}
+
+fn permissions_height(_bounds: Bounds) -> f32 {
+    let panels = [
+        panel_height(160.0),  // Permission Decisions
+        panel_height(240.0),  // Permission Rules
+        panel_height(280.0),  // Permission History
+        panel_height(200.0),  // Permission Bar Variants
+        panel_height(140.0),  // Permission Statistics
     ];
     stacked_height(&panels)
 }
