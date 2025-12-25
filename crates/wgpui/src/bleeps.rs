@@ -5,7 +5,7 @@ use std::time::Duration;
 #[cfg(not(target_arch = "wasm32"))]
 use std::time::Instant;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum BleepCategory {
     Background,
     Transition,
@@ -20,6 +20,8 @@ pub struct BleepGeneralProps {
     pub async_load: Option<bool>,
     pub volume: Option<f32>,
     pub muted: Option<bool>,
+    pub category: Option<BleepCategory>,
+    pub fetch_headers: Option<BTreeMap<String, String>>,
     pub max_playback_delay: Option<Duration>,
     pub mute_on_window_blur: Option<bool>,
     pub disabled: Option<bool>,
@@ -74,6 +76,7 @@ struct ResolvedBleepSettings {
     async_load: bool,
     volume: f32,
     muted: bool,
+    fetch_headers: Option<BTreeMap<String, String>>,
     max_playback_delay: Duration,
     mute_on_window_blur: bool,
     disabled: bool,
@@ -86,6 +89,7 @@ impl Default for ResolvedBleepSettings {
             async_load: false,
             volume: 1.0,
             muted: false,
+            fetch_headers: None,
             max_playback_delay: Duration::from_millis(250),
             mute_on_window_blur: false,
             disabled: false,
@@ -118,6 +122,7 @@ trait BleepBackend: Sized {
 #[cfg(not(target_arch = "wasm32"))]
 mod backend {
     use super::*;
+    use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
     use rodio::{Decoder, OutputStream, OutputStreamHandle, Sink, Source};
     use std::io::Cursor;
     use std::sync::{Mutex, OnceLock};
@@ -154,6 +159,11 @@ mod backend {
         _stream: OutputStream,
         handle: OutputStreamHandle,
     }
+
+    // SAFETY: OutputStream is only held to keep the audio device alive. The handle
+    // is used for playback control and is thread-safe in practice.
+    unsafe impl Send for AudioEngine {}
+    unsafe impl Sync for AudioEngine {}
 
     static AUDIO_ENGINE: OnceLock<Option<AudioEngine>> = OnceLock::new();
 
@@ -214,10 +224,10 @@ mod backend {
                 Ok(decoder) => decoder,
                 Err(_) => return,
             };
-            let source = if inner.props.looped {
-                decoder.repeat_infinite()
+            let source: Box<dyn Source<Item = i16> + Send> = if inner.props.looped {
+                Box::new(decoder.repeat_infinite())
             } else {
-                decoder
+                Box::new(decoder)
             };
 
             let sink = match Sink::try_new(&engine.handle) {
@@ -230,13 +240,31 @@ mod backend {
             inner.sink = Some(sink);
         }
 
-        fn load_data(sources: &[BleepSource]) -> Result<BleepData, ()> {
+        fn load_data(
+            sources: &[BleepSource],
+            fetch_headers: Option<&BTreeMap<String, String>>,
+        ) -> Result<BleepData, ()> {
             for source in sources {
                 let bytes = match source {
                     BleepSource::Bytes { data, .. } => data.clone(),
                     BleepSource::Path { path, .. } => std::fs::read(path).map_err(|_| ())?,
                     BleepSource::Url { url, .. } => {
-                        let response = reqwest::blocking::get(url).map_err(|_| ())?;
+                        let client = reqwest::blocking::Client::new();
+                        let mut request = client.get(url);
+                        if let Some(headers) = fetch_headers {
+                            let mut header_map = HeaderMap::new();
+                            for (key, value) in headers {
+                                let Ok(name) = HeaderName::from_bytes(key.as_bytes()) else {
+                                    continue;
+                                };
+                                let Ok(value) = HeaderValue::from_str(value) else {
+                                    continue;
+                                };
+                                header_map.insert(name, value);
+                            }
+                            request = request.headers(header_map);
+                        }
+                        let response = request.send().map_err(|_| ())?;
                         response.bytes().map_err(|_| ())?.to_vec()
                     }
                 };
@@ -323,12 +351,16 @@ mod backend {
                 self.with_lock(|inner| inner.load_state = LoadState::Loading);
                 let inner = self.inner.clone();
                 std::thread::spawn(move || {
-                    let (sources, last_play) = {
+                    let (sources, last_play, fetch_headers) = {
                         let inner = inner.lock().expect("bleep lock");
-                        (inner.props.sources.clone(), inner.last_play_request)
+                        (
+                            inner.props.sources.clone(),
+                            inner.last_play_request,
+                            inner.props.settings.fetch_headers.clone(),
+                        )
                     };
 
-                    let data = Self::load_data(&sources);
+                    let data = Self::load_data(&sources, fetch_headers.as_ref());
                     let mut inner = inner.lock().expect("bleep lock");
                     match data {
                         Ok(data) => {
@@ -381,11 +413,14 @@ mod backend {
             if async_load {
                 let inner = self.inner.clone();
                 std::thread::spawn(move || {
-                    let sources = {
+                    let (sources, fetch_headers) = {
                         let inner = inner.lock().expect("bleep lock");
-                        inner.props.sources.clone()
+                        (
+                            inner.props.sources.clone(),
+                            inner.props.settings.fetch_headers.clone(),
+                        )
                     };
-                    let data = Self::load_data(&sources);
+                    let data = Self::load_data(&sources, fetch_headers.as_ref());
                     let mut inner = inner.lock().expect("bleep lock");
                     match data {
                         Ok(data) => {
@@ -398,8 +433,10 @@ mod backend {
                     }
                 });
             } else {
-                let sources = self.with_lock(|inner| inner.props.sources.clone());
-                let data = Self::load_data(&sources);
+                let (sources, fetch_headers) = self.with_lock(|inner| {
+                    (inner.props.sources.clone(), inner.props.settings.fetch_headers.clone())
+                });
+                let data = Self::load_data(&sources, fetch_headers.as_ref());
                 self.with_lock(|inner| match data {
                     Ok(data) => {
                         inner.data = Some(data);
@@ -449,9 +486,10 @@ mod backend {
 
     use wasm_bindgen::closure::Closure;
     use wasm_bindgen::JsCast;
+    use wasm_bindgen::JsValue;
     use wasm_bindgen_futures::spawn_local;
     use wasm_bindgen_futures::JsFuture;
-    use web_sys::{AudioBuffer, AudioBufferSourceNode, AudioContext, GainNode};
+    use web_sys::{AudioBuffer, AudioBufferSourceNode, AudioContext, GainNode, Headers, Request, RequestInit};
 
     #[derive(Clone)]
     pub struct WebBleep {
@@ -531,7 +569,11 @@ mod backend {
             inner.borrow_mut().focus_closures = Some((on_focus, on_blur));
         }
 
-        async fn fetch_audio_buffer(source: &BleepSource, context: &AudioContext) -> Option<AudioBuffer> {
+        async fn fetch_audio_buffer(
+            source: &BleepSource,
+            context: &AudioContext,
+            fetch_headers: Option<&BTreeMap<String, String>>,
+        ) -> Option<AudioBuffer> {
             match source {
                 BleepSource::Bytes { data, .. } => {
                     let array = js_sys::Uint8Array::from(data.as_slice());
@@ -540,7 +582,20 @@ mod backend {
                 }
                 BleepSource::Url { url, .. } => {
                     let window = web_sys::window()?;
-                    let response_value = JsFuture::from(window.fetch_with_str(url)).await.ok()?;
+                    let response_value = if let Some(headers) = fetch_headers {
+                        let init = RequestInit::new();
+                        init.set_method("GET");
+                        let header_map = Headers::new().ok()?;
+                        for (key, value) in headers {
+                            let _ = header_map.append(key, value);
+                        }
+                        let headers_js = JsValue::from(header_map);
+                        init.set_headers(&headers_js);
+                        let request = Request::new_with_str_and_init(url, &init).ok()?;
+                        JsFuture::from(window.fetch_with_request(&request)).await.ok()?
+                    } else {
+                        JsFuture::from(window.fetch_with_str(url)).await.ok()?
+                    };
                     let response: web_sys::Response = response_value.dyn_into().ok()?;
                     let buffer = JsFuture::from(response.array_buffer().ok()?).await.ok()?;
                     JsFuture::from(context.decode_audio_data(&buffer)).await.ok()?.dyn_into().ok()
@@ -747,9 +802,15 @@ mod backend {
                     return;
                 };
 
-                let context = inner.borrow().context.clone();
-
-                let buffer = WebBleep::fetch_audio_buffer(&source, &context).await;
+                let (context, fetch_headers) = {
+                    let inner_ref = inner.borrow();
+                    (
+                        inner_ref.context.clone(),
+                        inner_ref.props.settings.fetch_headers.clone(),
+                    )
+                };
+                let buffer =
+                    WebBleep::fetch_audio_buffer(&source, &context, fetch_headers.as_ref()).await;
                 {
                     let mut inner_mut = inner.borrow_mut();
                     match buffer {
@@ -971,6 +1032,12 @@ fn merge_general_props(target: &mut BleepGeneralProps, update: BleepGeneralProps
     if update.muted.is_some() {
         target.muted = update.muted;
     }
+    if update.category.is_some() {
+        target.category = update.category;
+    }
+    if update.fetch_headers.is_some() {
+        target.fetch_headers = update.fetch_headers;
+    }
     if update.max_playback_delay.is_some() {
         target.max_playback_delay = update.max_playback_delay;
     }
@@ -997,7 +1064,11 @@ fn resolve_bleep(
     let mut resolved = ResolvedBleepSettings::default();
 
     apply_general(&mut resolved, common);
-    if let Some(category) = def.category {
+    let category = def
+        .category
+        .or(def.general.category)
+        .or(common.category);
+    if let Some(category) = category {
         if let Some(category_props) = categories.get(&category) {
             apply_general(&mut resolved, category_props);
         }
@@ -1024,6 +1095,9 @@ fn apply_general(settings: &mut ResolvedBleepSettings, props: &BleepGeneralProps
     }
     if let Some(muted) = props.muted {
         settings.muted = muted;
+    }
+    if let Some(fetch_headers) = &props.fetch_headers {
+        settings.fetch_headers = Some(fetch_headers.clone());
     }
     if let Some(delay) = props.max_playback_delay {
         settings.max_playback_delay = delay;

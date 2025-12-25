@@ -85,6 +85,9 @@ web-sys = { version = "0.3", optional = true, features = [
     "AudioParam",
     "GainNode",
     "HtmlAudioElement",
+    "Headers",
+    "Request",
+    "RequestInit",
     "Response",
 ] }
 js-sys = { version = "0.3", optional = true }

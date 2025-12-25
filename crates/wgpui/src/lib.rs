@@ -54,7 +54,8 @@ pub use text::{FontStyle, TextSystem};
 pub use components::{
     AnyComponent, Button, ButtonVariant, Component, ComponentId, Div, Dropdown, DropdownOption,
     EventContext, EventResult, Modal, PaintContext, ScrollView, Tab, Tabs, Text, TextDecipher,
-    TextEffectAnimator, TextEffectFrame, TextEffectTiming, TextInput, TextSequence, VirtualList,
+    TextEffectAnimator, TextEffectFrame, TextEffectTiming, TextDurationOptions,
+    animation_text_duration, TextInput, TextSequence, VirtualList,
 };
 pub use effects::{Illuminator, IlluminatorSvg};
 pub use markdown::{
@@ -65,7 +66,8 @@ pub use markdown::{
 pub use animation::{
     Animation, AnimationController, AnimationState, Animatable,
     AnimatorId, AnimatorManagerKind, AnimatorMessage, AnimatorNode, AnimatorSettings,
-    AnimatorState, AnimatorTiming, EaseAmong, EaseSteps, EaseStepsDirection, Easing,
+    AnimatorSettingsUpdate, AnimatorState, AnimatorTiming, AnimatorTimingUpdate, EaseAmong,
+    EaseSteps, EaseStepsDirection, Easing,
     Keyframe, KeyframeAnimation, SpringAnimation,
     Transition, TransitionAnimation, draw, ease_among, ease_steps, fade, flicker, transition,
 };
@@ -73,7 +75,10 @@ pub use accessibility::{
     AccessibilityContext, AccessibilityTree, AccessibleId, AccessibleNode,
     Announcement, LiveRegion, Role, State as AccessibleState,
 };
-pub use components::hud::{ContextMenu, MenuItem, Tooltip, TooltipPosition};
+pub use components::hud::{
+    ContextMenu, CssSize, MenuItem, StyleFrameClipKranoxProps, StyleFrameClipOctagonProps,
+    Tooltip, TooltipPosition, style_frame_clip_kranox, style_frame_clip_octagon,
+};
 pub use bleeps::{
     Bleep, BleepCategory, BleepGeneralProps, BleepMasterProps, BleepProps, BleepsManager,
     BleepsManagerProps, BleepsManagerUpdate, BleepSource, BleepUpdate,

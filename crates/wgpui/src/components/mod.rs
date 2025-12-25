@@ -25,6 +25,9 @@ pub use modal::Modal;
 pub use scroll_view::ScrollView;
 pub use tabs::{Tab, Tabs};
 pub use text::Text;
-pub use text_effects::{TextDecipher, TextEffectAnimator, TextEffectFrame, TextEffectTiming, TextSequence};
+pub use text_effects::{
+    animation_text_duration, TextDecipher, TextDurationOptions, TextEffectAnimator,
+    TextEffectFrame, TextEffectTiming, TextSequence,
+};
 pub use text_input::TextInput;
 pub use virtual_list::VirtualList;

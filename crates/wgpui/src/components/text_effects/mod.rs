@@ -38,6 +38,37 @@ impl Default for TextEffectTiming {
 }
 
 #[derive(Clone, Copy, Debug)]
+pub struct TextDurationOptions {
+    pub max_duration: Duration,
+    pub characters_per_second: f32,
+}
+
+impl Default for TextDurationOptions {
+    fn default() -> Self {
+        Self {
+            max_duration: Duration::from_secs(4),
+            characters_per_second: 100.0,
+        }
+    }
+}
+
+/// Compute a text animation duration based on text length.
+pub fn animation_text_duration(length: usize, options: TextDurationOptions) -> Duration {
+    if length == 0 {
+        return Duration::ZERO;
+    }
+
+    let cps = options.characters_per_second.max(1.0);
+    let seconds = length as f32 / cps;
+    let real = Duration::from_secs_f32(seconds);
+    if real > options.max_duration {
+        options.max_duration
+    } else {
+        real
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
 pub struct TextEffectFrame {
     pub state: AnimatorState,
     pub length: usize,
@@ -294,5 +325,26 @@ mod tests {
 
         blink.update(Duration::from_millis(60), AnimatorState::Entered, true);
         assert!(!blink.visible());
+    }
+
+    #[test]
+    fn test_animation_text_duration() {
+        let duration = animation_text_duration(
+            200,
+            TextDurationOptions {
+                max_duration: Duration::from_secs(4),
+                characters_per_second: 100.0,
+            },
+        );
+        assert_eq!(duration, Duration::from_secs(2));
+
+        let duration = animation_text_duration(
+            1000,
+            TextDurationOptions {
+                max_duration: Duration::from_secs(1),
+                characters_per_second: 50.0,
+            },
+        );
+        assert_eq!(duration, Duration::from_secs(1));
     }
 }
