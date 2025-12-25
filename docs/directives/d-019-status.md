@@ -148,11 +148,13 @@ The GPT-OSS integration has made significant progress with core infrastructure c
 
 **Completed Items:**
 - ✅ Added "gpt-oss" option to autopilot CLI (`--agent gpt-oss`)
-- ✅ Support in autopilot CLI for model selection (`--model`)
-- ✅ ACP integration allows autopilot to spawn GPT-OSS agents
+- ✅ Autopilot `run` dispatches to GPT-OSS with tool loop + trajectory mapping
+- ✅ Model aliases (`20b`/`120b`) and `GPT_OSS_URL`/`GPT_OSS_SERVER_URL` support
 
 **Files Modified:**
 - `crates/autopilot/src/cli.rs:32` - `--agent` flag with "gpt-oss" option
+- `crates/autopilot/src/main.rs` - GPT-OSS runner + dispatch
+- `crates/autopilot/src/lib.rs` - session_id header update + result setter
 
 **Incomplete Items:**
 - ❌ No "gpt-oss" option in GUI agent selection dropdown
