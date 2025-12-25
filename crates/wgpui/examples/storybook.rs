@@ -16,7 +16,8 @@ use wgpui::components::atoms::{
 };
 use wgpui::components::hud::{
     CornerConfig, DotsGrid, DotsOrigin, DotShape, DrawDirection, Frame, FrameAnimation, FrameStyle,
-    GridLinesBackground, LineDirection, MovingLinesBackground, PuffsBackground,
+    GridLinesBackground, LineDirection, MovingLinesBackground, PuffsBackground, Reticle, Scanlines,
+    SignalMeter,
 };
 use wgpui::components::molecules::{
     CheckpointRestore, DiffHeader, DiffType, MessageHeader, ModeSelector, ModelSelector,
@@ -66,8 +67,9 @@ const SECTION_ARWES_FRAMES: usize = 5;
 const SECTION_ARWES_BACKGROUNDS: usize = 6;
 const SECTION_ARWES_TEXT: usize = 7;
 const SECTION_ARWES_ILLUMINATOR: usize = 8;
-const SECTION_LIGHT_DEMO: usize = 9;
-const SECTION_TOOLCALL_DEMO: usize = 10;
+const SECTION_HUD_WIDGETS: usize = 9;
+const SECTION_LIGHT_DEMO: usize = 10;
+const SECTION_TOOLCALL_DEMO: usize = 11;
 
 #[derive(Clone, Copy)]
 struct GlowPreset {
@@ -458,6 +460,7 @@ impl Storybook {
             "Arwes Backgrounds",
             "Arwes Text Effects",
             "Arwes Illuminator",
+            "HUD Widgets",
             "Light Demo",
             "Toolcall Demo",
         ];
@@ -554,6 +557,7 @@ impl Storybook {
             SECTION_ARWES_BACKGROUNDS => arwes_backgrounds_height(bounds),
             SECTION_ARWES_TEXT => arwes_text_effects_height(bounds),
             SECTION_ARWES_ILLUMINATOR => arwes_illuminator_height(bounds),
+            SECTION_HUD_WIDGETS => hud_widgets_height(bounds),
             SECTION_LIGHT_DEMO => light_demo_height(bounds),
             SECTION_TOOLCALL_DEMO => toolcall_demo_height(bounds),
             _ => bounds.size.height,
@@ -591,6 +595,7 @@ impl Storybook {
             SECTION_ARWES_BACKGROUNDS => self.paint_arwes_backgrounds(content_bounds, cx),
             SECTION_ARWES_TEXT => self.paint_arwes_text_effects(content_bounds, cx),
             SECTION_ARWES_ILLUMINATOR => self.paint_arwes_illuminator(content_bounds, cx),
+            SECTION_HUD_WIDGETS => self.paint_hud_widgets(content_bounds, cx),
             SECTION_LIGHT_DEMO => self.paint_light_demo(content_bounds, cx),
             SECTION_TOOLCALL_DEMO => self.paint_toolcall_demo(content_bounds, cx),
             _ => {}
@@ -2067,6 +2072,124 @@ impl Storybook {
         });
     }
 
+    fn paint_hud_widgets(&mut self, bounds: Bounds, cx: &mut PaintContext) {
+        let mut y = bounds.origin.y;
+        let width = bounds.size.width;
+        let available = (width - PANEL_PADDING * 2.0).max(0.0);
+        let pulse = self.glow_pulse_anim.current_value();
+
+        let scan_presets = [
+            ("Tight", 8.0, 18.0, 0.8, 190.0, 0.0),
+            ("Wide", 20.0, 24.0, 0.6, 190.0, 0.2),
+            ("Soft", 14.0, 30.0, 0.5, 210.0, 0.4),
+            ("Amber", 12.0, 22.0, 0.7, 35.0, 0.1),
+            ("Emerald", 10.0, 28.0, 0.75, 120.0, 0.3),
+            ("Deep", 16.0, 34.0, 0.55, 200.0, 0.55),
+        ];
+
+        let scan_grid = grid_metrics(available, scan_presets.len(), BG_TILE_W, BG_TILE_H, BG_TILE_GAP);
+        let scan_height = panel_height(scan_grid.height);
+        let scan_bounds = Bounds::new(bounds.origin.x, y, width, scan_height);
+        draw_panel("Scanline sweeps", scan_bounds, cx, |inner, cx| {
+            let grid = grid_metrics(inner.size.width, scan_presets.len(), BG_TILE_W, BG_TILE_H, BG_TILE_GAP);
+            for (idx, (label, spacing, scan_width, opacity, hue, offset)) in scan_presets.iter().enumerate() {
+                let row = idx / grid.cols;
+                let col = idx % grid.cols;
+                let tile_bounds = Bounds::new(
+                    inner.origin.x + col as f32 * (BG_TILE_W + BG_TILE_GAP),
+                    inner.origin.y + row as f32 * (BG_TILE_H + BG_TILE_GAP),
+                    BG_TILE_W,
+                    BG_TILE_H,
+                );
+                let progress = (pulse + *offset).fract();
+                draw_tile(tile_bounds, label, cx, |inner, cx| {
+                    let mut scanlines = Scanlines::new()
+                        .spacing(*spacing)
+                        .scan_width(*scan_width)
+                        .scan_progress(progress)
+                        .opacity(*opacity)
+                        .line_color(Hsla::new(*hue, 0.35, 0.6, 0.25))
+                        .scan_color(Hsla::new(*hue, 0.8, 0.7, 0.35));
+                    scanlines.paint(inner, cx);
+                });
+            }
+        });
+        y += scan_height + SECTION_GAP;
+
+        let meter_presets = [
+            ("Low 4", 4, 0.2, 190.0),
+            ("Med 5", 5, 0.45, 190.0),
+            ("High 6", 6, 0.75, 190.0),
+            ("Full 8", 8, 1.0, 150.0),
+            ("Amber", 6, 0.6, 35.0),
+            ("Green", 5, 0.8, 120.0),
+        ];
+
+        let meter_grid = grid_metrics(available, meter_presets.len(), BG_TILE_W, BG_TILE_H, BG_TILE_GAP);
+        let meter_height = panel_height(meter_grid.height);
+        let meter_bounds = Bounds::new(bounds.origin.x, y, width, meter_height);
+        draw_panel("Signal meters", meter_bounds, cx, |inner, cx| {
+            let grid = grid_metrics(inner.size.width, meter_presets.len(), BG_TILE_W, BG_TILE_H, BG_TILE_GAP);
+            for (idx, (label, bars, level, hue)) in meter_presets.iter().enumerate() {
+                let row = idx / grid.cols;
+                let col = idx % grid.cols;
+                let tile_bounds = Bounds::new(
+                    inner.origin.x + col as f32 * (BG_TILE_W + BG_TILE_GAP),
+                    inner.origin.y + row as f32 * (BG_TILE_H + BG_TILE_GAP),
+                    BG_TILE_W,
+                    BG_TILE_H,
+                );
+                draw_tile(tile_bounds, label, cx, |inner, cx| {
+                    let active = Hsla::new(*hue, 0.8, 0.6, 0.9);
+                    let inactive = Hsla::new(*hue, 0.25, 0.3, 0.35);
+                    let mut meter = SignalMeter::new()
+                        .bars(*bars)
+                        .level(*level)
+                        .gap(3.0)
+                        .active_color(active)
+                        .inactive_color(inactive);
+                    meter.paint(inset_bounds(inner, 8.0), cx);
+                });
+            }
+        });
+        y += meter_height + SECTION_GAP;
+
+        let reticle_presets = [
+            ("Compact", 18.0, 4.0, 4.0, 8.0, 190.0),
+            ("Wide", 32.0, 6.0, 6.0, 12.0, 190.0),
+            ("Long", 40.0, 8.0, 4.0, 14.0, 200.0),
+            ("Amber", 28.0, 5.0, 8.0, 10.0, 35.0),
+            ("Green", 26.0, 6.0, 6.0, 12.0, 120.0),
+            ("Offset", 24.0, 10.0, 10.0, 8.0, 160.0),
+        ];
+
+        let reticle_grid = grid_metrics(available, reticle_presets.len(), BG_TILE_W, BG_TILE_H, BG_TILE_GAP);
+        let reticle_height = panel_height(reticle_grid.height);
+        let reticle_bounds = Bounds::new(bounds.origin.x, y, width, reticle_height);
+        draw_panel("Reticle variants", reticle_bounds, cx, |inner, cx| {
+            let grid = grid_metrics(inner.size.width, reticle_presets.len(), BG_TILE_W, BG_TILE_H, BG_TILE_GAP);
+            for (idx, (label, line_length, gap, center, tick, hue)) in reticle_presets.iter().enumerate() {
+                let row = idx / grid.cols;
+                let col = idx % grid.cols;
+                let tile_bounds = Bounds::new(
+                    inner.origin.x + col as f32 * (BG_TILE_W + BG_TILE_GAP),
+                    inner.origin.y + row as f32 * (BG_TILE_H + BG_TILE_GAP),
+                    BG_TILE_W,
+                    BG_TILE_H,
+                );
+                draw_tile(tile_bounds, label, cx, |inner, cx| {
+                    let mut reticle = Reticle::new()
+                        .line_length(*line_length)
+                        .gap(*gap)
+                        .center_size(*center)
+                        .tick_length(*tick)
+                        .color(Hsla::new(*hue, 0.6, 0.6, 0.85));
+                    reticle.paint(inset_bounds(inner, 6.0), cx);
+                });
+            }
+        });
+    }
+
     fn paint_light_demo(&mut self, bounds: Bounds, cx: &mut PaintContext) {
         let mut y = bounds.origin.y;
         let width = bounds.size.width;
@@ -3463,6 +3586,16 @@ fn arwes_illuminator_height(bounds: Bounds) -> f32 {
     let panels = [
         panel_height(grid_metrics(available, 8, ILLUMINATOR_TILE_W, ILLUMINATOR_TILE_H, ILLUMINATOR_TILE_GAP).height),
         panel_height(grid_metrics(available, 4, ILLUMINATOR_TILE_W, ILLUMINATOR_TILE_H, ILLUMINATOR_TILE_GAP).height),
+    ];
+    stacked_height(&panels)
+}
+
+fn hud_widgets_height(bounds: Bounds) -> f32 {
+    let available = (bounds.size.width - PANEL_PADDING * 2.0).max(0.0);
+    let panels = [
+        panel_height(grid_metrics(available, 6, BG_TILE_W, BG_TILE_H, BG_TILE_GAP).height),
+        panel_height(grid_metrics(available, 6, BG_TILE_W, BG_TILE_H, BG_TILE_GAP).height),
+        panel_height(grid_metrics(available, 6, BG_TILE_W, BG_TILE_H, BG_TILE_GAP).height),
     ];
     stacked_height(&panels)
 }

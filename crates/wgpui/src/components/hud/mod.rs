@@ -5,6 +5,9 @@ mod dots_grid;
 mod frame;
 mod frame_clips;
 mod notifications;
+mod reticle;
+mod scanlines;
+mod signal_meter;
 mod status_bar;
 mod tooltip;
 
@@ -18,6 +21,9 @@ pub use frame_clips::{
     style_frame_clip_octagon,
 };
 pub use notifications::{Notification, NotificationLevel, NotificationPosition, Notifications};
+pub use reticle::Reticle;
+pub use scanlines::Scanlines;
+pub use signal_meter::SignalMeter;
 pub use status_bar::{
     StatusBar, StatusBarPosition, StatusItem, StatusItemAlignment, StatusItemContent,
 };
@@ -40,6 +46,9 @@ mod tests {
         let _grid = GridLinesBackground::new();
         let _moving = MovingLinesBackground::new();
         let _puffs = PuffsBackground::new();
+        let _scanlines = Scanlines::new();
+        let _meter = SignalMeter::new();
+        let _reticle = Reticle::new();
     }
 
     #[test]
