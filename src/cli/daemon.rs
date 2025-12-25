@@ -76,7 +76,7 @@ pub fn run(cmd: DaemonCommands) -> anyhow::Result<()> {
     // Load default config
     let config_path = shellexpand::tilde("~/.autopilot/daemon.toml").to_string();
     let config_path = PathBuf::from(config_path);
-    let mut config = if config_path.exists() {
+    let config = if config_path.exists() {
         match DaemonConfig::load_from_file(&config_path) {
             Ok(cfg) => cfg,
             Err(e) => {
