@@ -8,10 +8,6 @@ edition.workspace = true
 # Async runtime
 tokio = "1"
 
-# HTTP testing
-actix-web = "4"
-actix-rt = "2.10"
-
 # Database
 rusqlite = { version = "0.32", features = ["bundled"] }
 

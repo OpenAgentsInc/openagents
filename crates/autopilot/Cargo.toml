@@ -20,6 +20,9 @@ description = "Autonomous task runner with trajectory logging"
 name = "autopilot"
 path = "src/lib.rs"
 
+[features]
+legacy-web = []
+
 [dependencies]
 # Workspace crates
 claude-agent-sdk.workspace = true
@@ -27,13 +30,9 @@ codex-agent-sdk.workspace = true
 gpt-oss-agent = { path = "../gpt-oss-agent" }
 acp-adapter = { path = "../acp-adapter" }
 issues.workspace = true
-ui.workspace = true
 nostr.workspace = true
 nostr-client = { path = "../nostr/client" }
 wallet = { path = "../wallet" }
-
-# UI
-maud = { version = "0.26", features = ["actix-web"] }
 
 # CLI
 clap.workspace = true
@@ -91,8 +90,6 @@ rusqlite = { version = "0.32", features = ["bundled"] }
 
 # Statistics
 statrs = "0.17"
-actix-web = "4.12.1"
-actix-ws = "0.3.0"
 walkdir.workspace = true
 flate2 = "1.1.5"
 bip39 = "2.2.2"

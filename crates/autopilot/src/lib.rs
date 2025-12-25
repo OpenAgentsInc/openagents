@@ -17,7 +17,6 @@ pub mod cli;
 pub mod compaction;
 pub mod context_analysis;
 pub mod daemon;
-pub mod dashboard;
 pub mod error_recovery;
 pub mod goals;
 pub mod learning;
@@ -41,7 +40,6 @@ pub mod timestamp;
 pub mod tool_patterns;
 pub mod trajectory;
 pub mod trajectory_publisher;
-pub mod ui_renderer;
 pub mod weekly_report;
 
 #[cfg(test)]

@@ -72,10 +72,6 @@ pub enum Commands {
         #[arg(long, default_value_t = default_full_auto())]
         full_auto: bool,
 
-        /// Launch desktop UI alongside autopilot
-        #[arg(long, default_value_t = default_ui())]
-        ui: bool,
-
         /// Disable APM (Actions Per Minute) tracking
         #[arg(long)]
         no_apm: bool,
@@ -644,17 +640,6 @@ pub enum MetricsCommands {
         dry_run: bool,
     },
 
-    /// Start web dashboard for metrics visualization
-    Dashboard {
-        /// Path to metrics database (default: autopilot-metrics.db)
-        #[arg(long)]
-        metrics_db: Option<PathBuf>,
-
-        /// Port to bind to (default: 3000)
-        #[arg(short, long, default_value_t = 3000)]
-        port: u16,
-    },
-
     /// Generate automated weekly trend report
     Report {
         /// Path to metrics database (default: autopilot-metrics.db)
@@ -1144,13 +1129,6 @@ fn default_model() -> String {
 
 fn default_full_auto() -> bool {
     std::env::var("AUTOPILOT_FULL_AUTO")
-        .ok()
-        .and_then(|v| v.parse().ok())
-        .unwrap_or(false)
-}
-
-fn default_ui() -> bool {
-    std::env::var("AUTOPILOT_UI")
         .ok()
         .and_then(|v| v.parse().ok())
         .unwrap_or(false)

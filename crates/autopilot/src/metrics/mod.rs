@@ -133,6 +133,17 @@ impl SessionMetrics {
     }
 }
 
+/// Summary statistics for metrics reporting.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct SummaryStats {
+    pub total_sessions: i64,
+    pub total_issues_completed: i64,
+    pub total_cost_usd: f64,
+    pub avg_duration_seconds: f64,
+    pub avg_tokens_per_session: f64,
+    pub completion_rate: f64,
+}
+
 /// Possible session termination states
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -805,9 +816,6 @@ impl MetricsDb {
         )
         .context("Failed to store session metrics")?;
 
-        // Broadcast update to dashboard WebSocket clients (if dashboard is running)
-        crate::dashboard::broadcast_metrics_update("session_updated", Some(metrics.id.clone()));
-
         Ok(())
     }
 
@@ -834,9 +842,6 @@ impl MetricsDb {
             )
             .context("Failed to store tool call metrics")?;
 
-        // Broadcast tool call update for real-time monitoring
-        crate::dashboard::broadcast_metrics_update("tool_call", Some(metrics.session_id.clone()));
-
         Ok(())
     }
 
@@ -861,12 +866,6 @@ impl MetricsDb {
                 ],
             )
             .context("Failed to store anomaly")?;
-
-        // Broadcast anomaly detection for real-time alerts
-        crate::dashboard::broadcast_metrics_update(
-            "anomaly_detected",
-            Some(anomaly.session_id.clone()),
-        );
 
         Ok(())
     }
@@ -1514,8 +1513,8 @@ impl MetricsDb {
         Ok(sessions)
     }
 
-    /// Get summary statistics for dashboard
-    pub fn get_summary_stats(&self) -> Result<crate::dashboard::SummaryStats> {
+    /// Get summary statistics for metrics reporting.
+    pub fn get_summary_stats(&self) -> Result<SummaryStats> {
         let mut stmt = self.conn.prepare(
             r#"
             SELECT
@@ -1533,7 +1532,7 @@ impl MetricsDb {
         )?;
 
         let stats = stmt.query_row([], |row| {
-            Ok(crate::dashboard::SummaryStats {
+            Ok(SummaryStats {
                 total_sessions: row.get(0)?,
                 total_issues_completed: row.get(1)?,
                 total_cost_usd: row.get(2)?,

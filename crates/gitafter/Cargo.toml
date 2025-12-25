@@ -6,10 +6,14 @@ authors.workspace = true
 license.workspace = true
 publish.workspace = true
 description = "GitAfter - Nostr-native GitHub alternative for agent-first collaboration"
+autobins = false
 
 [lib]
 name = "gitafter"
 path = "src/lib.rs"
+
+[features]
+legacy-web = []
 
 # Binary removed - use `openagents gitafter` instead
 # [[bin]]
@@ -17,26 +21,8 @@ path = "src/lib.rs"
 # path = "src/main.rs"
 
 [dependencies]
-# Window + WebView
-wry = "0.50"
-tao = "0.33"
-
 # Async runtime
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "sync"] }
-
-# Web server
-actix-web = "4"
-actix-ws = "0.3"
-futures-util = "0.3"
-
-# Templating
-maud = { version = "0.26", features = ["actix-web"] }
-
-# UI components
-ui = { path = "../ui" }
-
-# Authentication
-auth = { path = "../auth" }
 
 # Nostr
 nostr = { path = "../nostr/core" }

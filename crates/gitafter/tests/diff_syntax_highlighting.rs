@@ -252,3 +252,4 @@ fn test_collapsible_sections_with_large_unchanged_blocks() {
     assert!(html.contains("key === 'e'"), "Should have 'e' to expand all");
     assert!(html.contains("key === 'c'"), "Should have 'c' to collapse all");
 }
+#![cfg(feature = "legacy-web")]

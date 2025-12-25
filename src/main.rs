@@ -1,19 +1,17 @@
 //! OpenAgents - Unified CLI and Desktop Application
 //!
 //! Single binary that provides:
-//! - GUI by default (tabbed view of all apps)
-//! - CLI subcommands for all functionality:
+//! - CLI subcommands for all functionality
 //!   - `openagents wallet ...`
 //!   - `openagents marketplace ...`
 //!   - `openagents autopilot ...`
 //!   - `openagents gitafter ...`
 //!   - `openagents daemon ...`
 
-use clap::{Parser, Subcommand};
+use clap::{CommandFactory, Parser, Subcommand};
 use std::process;
 
 mod cli;
-mod gui;
 
 #[derive(Parser)]
 #[command(name = "openagents")]
@@ -64,7 +62,14 @@ fn main() {
 
     // Run command
     let result = match cli.command {
-        None => gui::run(),
+        None => {
+            let mut cmd = Cli::command();
+            if let Err(err) = cmd.print_help() {
+                exit_with_error(err.into());
+            }
+            println!();
+            Ok(())
+        }
         Some(Commands::Wallet(cmd)) => cli::wallet::run(cmd),
         Some(Commands::Marketplace(cmd)) => cli::marketplace::run(cmd),
         Some(Commands::Autopilot(cmd)) => cli::autopilot::run(cmd),
@@ -73,7 +78,11 @@ fn main() {
     };
 
     if let Err(e) = result {
-        eprintln!("Error: {}", e);
-        process::exit(1);
+        exit_with_error(e);
     }
+}
+
+fn exit_with_error(err: anyhow::Error) -> ! {
+    eprintln!("Error: {}", err);
+    process::exit(1);
 }

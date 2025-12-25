@@ -299,3 +299,4 @@ async fn test_all_routes_unauthorized_without_identity() {
     let dashboard_response = client.get(&dashboard_url).send().await.unwrap();
     assert_eq!(dashboard_response.status(), 200);
 }
+#![cfg(feature = "legacy-web")]

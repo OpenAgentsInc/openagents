@@ -5,7 +5,6 @@ members = [
     "crates/agent-orchestrator",
     "crates/gitafter",
     "crates/autopilot",
-    "crates/autopilot-gui",
     "crates/frostr",
     "crates/gpt-oss",
     "crates/gpt-oss-agent",
@@ -16,7 +15,6 @@ members = [
     "crates/marketplace",
     "crates/recorder",
     "crates/testing",
-    "crates/ui",
     "crates/fm-bridge",
     "crates/claude-agent-sdk",
     "crates/codex-agent-sdk",
@@ -27,7 +25,6 @@ members = [
     "crates/nostr/tests",
     "crates/compute",
     "crates/config",
-    "crates/storybook",
     "crates/spark",
     "crates/wallet",
     "crates/auth",
@@ -54,16 +51,8 @@ wallet = { path = "crates/wallet" }
 marketplace = { path = "crates/marketplace" }
 autopilot = { path = "crates/autopilot" }
 gitafter = { path = "crates/gitafter" }
-ui = { path = "crates/ui" }
 claude-agent-sdk = { path = "crates/claude-agent-sdk" }
-auth = { path = "crates/auth" }
 acp-adapter = { path = "crates/acp-adapter" }
-
-# GUI
-wry = "0.50"
-tao = "0.33"
-actix-web = "4"
-actix-ws = "0.3"
 
 # CLI
 clap = { version = "4.4", features = ["derive", "wrap_help"] }
@@ -97,7 +86,6 @@ reqwest = { version = "0.12", default-features = false, features = ["json", "rus
 governor = "0.10.4"
 once_cell = "1.21.3"
 which = "8.0.0"
-maud = "0.27.0"
 
 [target.'cfg(any(target_os = "linux", target_os = "dragonfly", target_os = "freebsd", target_os = "netbsd", target_os = "openbsd"))'.dependencies]
 gtk = { version = "0.18.2", features = ["v3_24"] }
@@ -138,7 +126,6 @@ issues = { path = "crates/issues" }
 claude-agent-sdk = { path = "crates/claude-agent-sdk" }
 codex-agent-sdk = { path = "crates/codex-agent-sdk" }
 nostr = { path = "crates/nostr/core" }
-ui = { path = "crates/ui" }
 
 # External crates
 anyhow = "1.0.86"
