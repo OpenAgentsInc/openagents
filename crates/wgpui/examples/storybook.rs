@@ -52,6 +52,9 @@ use wgpui::components::molecules::{
     MnemonicDisplay, AddressCard, AddressType, TransactionRow, TransactionInfo, TransactionDirection,
     RepoCard, RepoInfo, RepoVisibility, IssueRow, IssueInfo, IssueLabel,
     PrTimelineItem, PrEvent, PrEventType, ReviewState,
+    ProviderCard, ProviderInfo, ProviderSpecs, ProviderStatus,
+    SkillCard, SkillInfo, SkillCategory, SkillInstallStatus,
+    DatasetCard, DatasetInfo, DataFormat, DataLicense,
 };
 use wgpui::components::atoms::{BreadcrumbItem, SessionBreadcrumb};
 use wgpui::components::organisms::{ApmLeaderboard, LeaderboardEntry, SendFlow, SendStep, ReceiveFlow, ReceiveStep, ReceiveType};
@@ -112,6 +115,7 @@ const SECTION_PERMISSIONS: usize = 22;
 const SECTION_APM_METRICS: usize = 23;
 const SECTION_WALLET_FLOWS: usize = 24;
 const SECTION_GITAFTER_FLOWS: usize = 25;
+const SECTION_MARKETPLACE_FLOWS: usize = 26;
 
 #[derive(Clone, Copy)]
 struct GlowPreset {
@@ -519,6 +523,7 @@ impl Storybook {
             "APM Metrics",
             "Wallet Flows",
             "GitAfter Flows",
+            "Marketplace Flows",
         ];
         let nav_len = nav_items.len();
 
@@ -631,6 +636,7 @@ impl Storybook {
             SECTION_APM_METRICS => apm_metrics_height(bounds),
             SECTION_WALLET_FLOWS => wallet_flows_height(bounds),
             SECTION_GITAFTER_FLOWS => gitafter_flows_height(bounds),
+            SECTION_MARKETPLACE_FLOWS => marketplace_flows_height(bounds),
             _ => bounds.size.height,
         }
     }
@@ -683,6 +689,7 @@ impl Storybook {
             SECTION_APM_METRICS => self.paint_apm_metrics(content_bounds, cx),
             SECTION_WALLET_FLOWS => self.paint_wallet_flows(content_bounds, cx),
             SECTION_GITAFTER_FLOWS => self.paint_gitafter_flows(content_bounds, cx),
+            SECTION_MARKETPLACE_FLOWS => self.paint_marketplace_flows(content_bounds, cx),
             _ => {}
         }
         cx.scene.pop_clip();
@@ -6875,6 +6882,225 @@ impl Storybook {
             }
         });
     }
+
+    fn paint_marketplace_flows(&mut self, bounds: Bounds, cx: &mut PaintContext) {
+        let width = bounds.size.width;
+        let mut y = bounds.origin.y;
+
+        // ========== Panel 1: Compute Providers ==========
+        let provider_height = panel_height(260.0);
+        let provider_bounds = Bounds::new(bounds.origin.x, y, width, provider_height);
+        draw_panel("Compute Providers", provider_bounds, cx, |inner, cx| {
+            let providers = [
+                ProviderInfo::new(
+                    "p1",
+                    "FastCompute Pro",
+                    ProviderSpecs::new(32, 128, 2000).gpu("NVIDIA A100"),
+                )
+                    .status(ProviderStatus::Online)
+                    .price(15000)
+                    .rating(4.9)
+                    .jobs(1250)
+                    .location("US-East"),
+                ProviderInfo::new(
+                    "p2",
+                    "Budget Runner",
+                    ProviderSpecs::new(8, 32, 500),
+                )
+                    .status(ProviderStatus::Busy)
+                    .price(2000)
+                    .rating(4.5)
+                    .jobs(340)
+                    .location("EU-West"),
+            ];
+
+            for (i, provider) in providers.iter().enumerate() {
+                let mut card = ProviderCard::new(provider.clone());
+                card.paint(
+                    Bounds::new(inner.origin.x, inner.origin.y + i as f32 * 115.0, inner.size.width.min(500.0), 110.0),
+                    cx,
+                );
+            }
+        });
+        y += provider_height + SECTION_GAP;
+
+        // ========== Panel 2: Skills Marketplace ==========
+        let skills_height = panel_height(280.0);
+        let skills_bounds = Bounds::new(bounds.origin.x, y, width, skills_height);
+        draw_panel("Skills Marketplace", skills_bounds, cx, |inner, cx| {
+            let skills = [
+                SkillInfo::new("s1", "Code Review Pro", "AI-powered code review with security analysis")
+                    .category(SkillCategory::CodeGeneration)
+                    .author("openagents")
+                    .version("2.1.0")
+                    .status(SkillInstallStatus::Installed)
+                    .downloads(45000)
+                    .rating(4.8),
+                SkillInfo::new("s2", "Data Transformer", "Transform and clean datasets automatically")
+                    .category(SkillCategory::DataAnalysis)
+                    .author("datacraft")
+                    .version("1.5.2")
+                    .status(SkillInstallStatus::Available)
+                    .price(5000)
+                    .downloads(12000)
+                    .rating(4.6),
+            ];
+
+            for (i, skill) in skills.iter().enumerate() {
+                let mut card = SkillCard::new(skill.clone());
+                card.paint(
+                    Bounds::new(inner.origin.x, inner.origin.y + i as f32 * 120.0, inner.size.width.min(500.0), 110.0),
+                    cx,
+                );
+            }
+        });
+        y += skills_height + SECTION_GAP;
+
+        // ========== Panel 3: Data Marketplace ==========
+        let data_height = panel_height(280.0);
+        let data_bounds = Bounds::new(bounds.origin.x, y, width, data_height);
+        draw_panel("Data Marketplace", data_bounds, cx, |inner, cx| {
+            let datasets = [
+                DatasetInfo::new("d1", "LLM Training Corpus", "High-quality text corpus for language model training")
+                    .format(DataFormat::Parquet)
+                    .license(DataLicense::OpenSource)
+                    .size(10_737_418_240) // 10 GB
+                    .rows(50_000_000)
+                    .author("opendata")
+                    .downloads(2500)
+                    .updated_at("2 days ago"),
+                DatasetInfo::new("d2", "Code Embeddings", "Pre-computed embeddings for 100+ programming languages")
+                    .format(DataFormat::Arrow)
+                    .license(DataLicense::Commercial)
+                    .size(5_368_709_120) // 5 GB
+                    .rows(25_000_000)
+                    .author("codebase")
+                    .price(25000)
+                    .downloads(850)
+                    .updated_at("1 week ago"),
+            ];
+
+            for (i, dataset) in datasets.iter().enumerate() {
+                let mut card = DatasetCard::new(dataset.clone());
+                card.paint(
+                    Bounds::new(inner.origin.x, inner.origin.y + i as f32 * 115.0, inner.size.width.min(550.0), 105.0),
+                    cx,
+                );
+            }
+        });
+        y += data_height + SECTION_GAP;
+
+        // ========== Panel 4: Categories & Formats Reference ==========
+        let ref_height = panel_height(180.0);
+        let ref_bounds = Bounds::new(bounds.origin.x, y, width, ref_height);
+        draw_panel("Categories & Formats", ref_bounds, cx, |inner, cx| {
+            // Skill categories
+            let mut cat_x = inner.origin.x;
+            let categories = [
+                SkillCategory::CodeGeneration,
+                SkillCategory::DataAnalysis,
+                SkillCategory::WebAutomation,
+                SkillCategory::FileProcessing,
+                SkillCategory::ApiIntegration,
+            ];
+
+            for cat in &categories {
+                let cat_w = (cat.label().len() as f32 * 6.0) + 12.0;
+                cx.scene.draw_quad(
+                    Quad::new(Bounds::new(cat_x, inner.origin.y, cat_w, 18.0))
+                        .with_background(cat.color().with_alpha(0.2))
+                        .with_border(cat.color(), 1.0),
+                );
+                let text = cx.text.layout(
+                    cat.label(),
+                    Point::new(cat_x + 4.0, inner.origin.y + 3.0),
+                    theme::font_size::XS,
+                    cat.color(),
+                );
+                cx.scene.draw_text(text);
+                cat_x += cat_w + 8.0;
+            }
+
+            // Data formats
+            let mut fmt_x = inner.origin.x;
+            let formats = [
+                DataFormat::Json,
+                DataFormat::Csv,
+                DataFormat::Parquet,
+                DataFormat::Arrow,
+                DataFormat::Sqlite,
+            ];
+
+            for fmt in &formats {
+                let fmt_w = 60.0;
+                cx.scene.draw_quad(
+                    Quad::new(Bounds::new(fmt_x, inner.origin.y + 30.0, fmt_w, 18.0))
+                        .with_background(fmt.color().with_alpha(0.2))
+                        .with_border(fmt.color(), 1.0),
+                );
+                let text = cx.text.layout(
+                    fmt.label(),
+                    Point::new(fmt_x + 6.0, inner.origin.y + 33.0),
+                    theme::font_size::XS,
+                    fmt.color(),
+                );
+                cx.scene.draw_text(text);
+                fmt_x += fmt_w + 8.0;
+            }
+
+            // Provider statuses
+            let mut status_x = inner.origin.x;
+            let statuses = [
+                ProviderStatus::Online,
+                ProviderStatus::Busy,
+                ProviderStatus::Offline,
+                ProviderStatus::Maintenance,
+            ];
+
+            for status in &statuses {
+                let status_w = 90.0;
+                cx.scene.draw_quad(
+                    Quad::new(Bounds::new(status_x, inner.origin.y + 60.0, status_w, 18.0))
+                        .with_background(status.color().with_alpha(0.2))
+                        .with_border(status.color(), 1.0),
+                );
+                let text = cx.text.layout(
+                    status.label(),
+                    Point::new(status_x + 6.0, inner.origin.y + 63.0),
+                    theme::font_size::XS,
+                    status.color(),
+                );
+                cx.scene.draw_text(text);
+                status_x += status_w + 8.0;
+            }
+
+            // Install statuses
+            let mut install_x = inner.origin.x;
+            let install_statuses = [
+                SkillInstallStatus::Available,
+                SkillInstallStatus::Installed,
+                SkillInstallStatus::UpdateAvailable,
+                SkillInstallStatus::Installing,
+            ];
+
+            for status in &install_statuses {
+                let status_w = 90.0;
+                cx.scene.draw_quad(
+                    Quad::new(Bounds::new(install_x, inner.origin.y + 90.0, status_w, 18.0))
+                        .with_background(status.color().with_alpha(0.2))
+                        .with_border(status.color(), 1.0),
+                );
+                let text = cx.text.layout(
+                    status.label(),
+                    Point::new(install_x + 6.0, inner.origin.y + 93.0),
+                    theme::font_size::XS,
+                    status.color(),
+                );
+                cx.scene.draw_text(text);
+                install_x += status_w + 8.0;
+            }
+        });
+    }
 }
 
 struct FocusDemo {
@@ -8221,6 +8447,16 @@ fn gitafter_flows_height(_bounds: Bounds) -> f32 {
         panel_height(320.0),  // Issue List
         panel_height(280.0),  // PR Timeline
         panel_height(200.0),  // Issue Labels & Statuses
+    ];
+    stacked_height(&panels)
+}
+
+fn marketplace_flows_height(_bounds: Bounds) -> f32 {
+    let panels = [
+        panel_height(260.0),  // Compute Providers
+        panel_height(280.0),  // Skills Marketplace
+        panel_height(280.0),  // Data Marketplace
+        panel_height(180.0),  // Categories & Formats Reference
     ];
     stacked_height(&panels)
 }
