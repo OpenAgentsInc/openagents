@@ -42,6 +42,7 @@ pub mod renderer;
 pub mod scene;
 pub mod scroll;
 pub mod styled;
+pub mod testing;
 pub mod text;
 pub mod theme;
 pub mod tools;

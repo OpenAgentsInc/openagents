@@ -163,6 +163,7 @@ A good directive body should include:
 | d-023 | WGPUI - GPU-Accelerated UI Framework | UI/Graphics |
 | d-024 | Achieve 100% Arwes Parity in WGPUI | UI/Graphics |
 | d-025 | All-In WGPUI - Delete Web Stack | UI/Architecture |
+| d-026 | E2E Test Live Viewer for WGPUI | Testing/UI |
 
 View details with `openagents autopilot directive show <id>`
 
@@ -269,3 +270,7 @@ This directive completes the migration of Arwes, the futuristic sci-fi UI framew
 ### d-025: All-In WGPUI - Delete Web Stack
 
 This directive eliminates the HTMX/Maud/Tailwind web stack entirely and commits to WGPUI for all OpenAgents UI. The current architecture runs a localhost Actix server inside a wry/tao webview — unnecessary complexity when WGPUI can render directly to GPU. The web stack (crates/ui, crates/storybook, crates/autopilot-gui) will be moved to `~/code/backroom/openagents-maud-archive/` and replaced with native WGPUI applications. The first app rebuilt is autopilot-gui, following Zed's architecture pattern: a winit event loop driving WGPUI rendering with in-process backend integration (no HTTP server, no WebSocket bridge). This requires adding GPUI-like framework features to WGPUI: an Entity system with reactive state (Entity<T>, Context<T>, cx.notify()), a 3-phase Element lifecycle (request_layout, prepaint, paint), Window abstraction with layout engine integration, Styled trait for fluent builder DSL (div().flex().bg()), and async support via cx.spawn(). The directive contains 24 detailed sub-issues across 4 phases: Framework Foundation (6 issues), Delete Web Stack (5 issues), Autopilot-GUI Native (10 issues), and Component Parity (3 issues). Dependencies to remove: maud, actix-web, actix-ws, wry, tao. Dependencies to add: slotmap, derive_more. Reference implementations: Zed GPUI at `~/code/zed/crates/gpui/` and previous WGPUI work at `~/code/backroom/archive/openagents/coder/`.
+
+### d-026: E2E Test Live Viewer for WGPUI
+
+This directive builds a live e2e test viewer that lets users watch automated tests execute in real-time, with an overlay showing mouse/keyboard input visualization. Tests are specified via a fluent Rust DSL like `test("Login").click("#email").type_text("user@example.com").click("#submit").expect("#dashboard").build()`. The TestHarness wrapper component integrates a TestRunner with any WGPUI component, injecting synthetic InputEvents and running assertions. The InputOverlay renders on top, showing a cursor crosshair at the current position, click ripples that expand outward on each click (400ms animation), and a stack of recent key presses in the corner. Playback controls allow play/pause/step with configurable speed (0.5x to 10x). The implementation lives in `crates/wgpui/src/testing/` with modules for step types, assertions, runner state machine, DSL builder, event injection, overlay component, and harness wrapper. This enables running storybook components through test sequences while watching exactly what happens, catching visual regressions, and generating animated documentation. Inspired by StarCraft replay viewers and Playwright trace viewers, adapted for GPU-accelerated rendering at 60fps.
