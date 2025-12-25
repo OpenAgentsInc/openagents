@@ -2,16 +2,14 @@
 
 use crate::components::context::{EventContext, PaintContext};
 use crate::components::{AnyComponent, Component, ComponentId, EventResult};
+use crate::styled::{StyleRefinement, Styled};
 use crate::{Bounds, Hsla, InputEvent, Quad};
 use smallvec::SmallVec;
 
 /// A container component that can hold children.
 pub struct Div {
     id: Option<ComponentId>,
-    background: Option<Hsla>,
-    border_color: Option<Hsla>,
-    border_width: f32,
-    corner_radius: f32,
+    pub(crate) style: StyleRefinement,
     children: SmallVec<[AnyComponent; 4]>,
 }
 
@@ -19,10 +17,7 @@ impl Div {
     pub fn new() -> Self {
         Self {
             id: None,
-            background: None,
-            border_color: None,
-            border_width: 0.0,
-            corner_radius: 0.0,
+            style: StyleRefinement::default(),
             children: SmallVec::new(),
         }
     }
@@ -33,31 +28,31 @@ impl Div {
     }
 
     pub fn background(mut self, color: Hsla) -> Self {
-        self.background = Some(color);
+        self.style.background = Some(color);
         self
     }
 
     pub fn border(mut self, color: Hsla, width: f32) -> Self {
-        self.border_color = Some(color);
-        self.border_width = width;
+        self.style.border_color = Some(color);
+        self.style.border_width = Some(width);
         self
     }
 
     pub fn border_color(mut self, color: Hsla) -> Self {
-        self.border_color = Some(color);
-        if self.border_width == 0.0 {
-            self.border_width = 1.0;
+        self.style.border_color = Some(color);
+        if self.style.border_width.is_none() {
+            self.style.border_width = Some(1.0);
         }
         self
     }
 
     pub fn border_width(mut self, width: f32) -> Self {
-        self.border_width = width;
+        self.style.border_width = Some(width);
         self
     }
 
     pub fn corner_radius(mut self, radius: f32) -> Self {
-        self.corner_radius = radius;
+        self.style.corner_radius = Some(radius);
         self
     }
 
@@ -99,19 +94,29 @@ impl Default for Div {
 
 impl Component for Div {
     fn paint(&mut self, bounds: Bounds, cx: &mut PaintContext) {
-        if self.background.is_some() || self.border_color.is_some() || self.corner_radius > 0.0 {
+        let border_color = self.style.border_color;
+        let border_width = self.style.border_width.unwrap_or_else(|| {
+            if border_color.is_some() {
+                1.0
+            } else {
+                0.0
+            }
+        });
+        let corner_radius = self.style.corner_radius.unwrap_or(0.0);
+
+        if self.style.background.is_some() || border_color.is_some() || corner_radius > 0.0 {
             let mut quad = Quad::new(bounds);
 
-            if let Some(bg) = self.background {
+            if let Some(bg) = self.style.background {
                 quad = quad.with_background(bg);
             }
 
-            if let Some(border) = self.border_color {
-                quad = quad.with_border(border, self.border_width);
+            if let Some(border) = border_color {
+                quad = quad.with_border(border, border_width);
             }
 
-            if self.corner_radius > 0.0 {
-                quad = quad.with_corner_radius(self.corner_radius);
+            if corner_radius > 0.0 {
+                quad = quad.with_corner_radius(corner_radius);
             }
 
             cx.scene.draw_quad(quad);
@@ -143,6 +148,12 @@ impl Component for Div {
     }
 }
 
+impl Styled for Div {
+    fn style(&mut self) -> &mut StyleRefinement {
+        &mut self.style
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -152,9 +163,9 @@ mod tests {
     fn test_div_new() {
         let div = Div::new();
         assert!(div.id.is_none());
-        assert!(div.background.is_none());
-        assert!(div.border_color.is_none());
-        assert_eq!(div.border_width, 0.0);
+        assert!(div.style.background.is_none());
+        assert!(div.style.border_color.is_none());
+        assert!(div.style.border_width.is_none());
         assert!(div.children.is_empty());
     }
 
@@ -167,21 +178,21 @@ mod tests {
     #[test]
     fn test_div_builder_background() {
         let div = Div::new().background(theme::bg::SURFACE);
-        assert!(div.background.is_some());
+        assert!(div.style.background.is_some());
     }
 
     #[test]
     fn test_div_builder_border() {
         let div = Div::new().border(theme::border::DEFAULT, 2.0);
-        assert!(div.border_color.is_some());
-        assert_eq!(div.border_width, 2.0);
+        assert!(div.style.border_color.is_some());
+        assert_eq!(div.style.border_width, Some(2.0));
     }
 
     #[test]
     fn test_div_border_color_sets_default_width() {
         let div = Div::new().border_color(theme::border::DEFAULT);
-        assert!(div.border_color.is_some());
-        assert_eq!(div.border_width, 1.0);
+        assert!(div.style.border_color.is_some());
+        assert_eq!(div.style.border_width, Some(1.0));
     }
 
     #[test]

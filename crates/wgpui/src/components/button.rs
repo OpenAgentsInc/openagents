@@ -2,6 +2,7 @@
 
 use crate::components::context::{EventContext, PaintContext};
 use crate::components::{AnyComponent, Component, ComponentId, EventResult};
+use crate::styled::{StyleRefinement, Styled};
 use crate::{Bounds, Hsla, InputEvent, MouseButton, Point, Quad, theme};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -22,13 +23,12 @@ pub struct Button {
     disabled: bool,
     hovered: bool,
     pressed: bool,
+    pub(crate) style: StyleRefinement,
     font_size: f32,
     padding: (f32, f32),
     corner_radius: f32,
     icon: Option<AnyComponent>,
     on_click: Option<OnClick>,
-    custom_bg: Option<Hsla>,
-    custom_text: Option<Hsla>,
 }
 
 impl Button {
@@ -40,13 +40,12 @@ impl Button {
             disabled: false,
             hovered: false,
             pressed: false,
+            style: StyleRefinement::default(),
             font_size: theme::font_size::SM,
             padding: (theme::spacing::LG, theme::spacing::SM),
             corner_radius: 0.0,
             icon: None,
             on_click: None,
-            custom_bg: None,
-            custom_text: None,
         }
     }
 
@@ -81,12 +80,12 @@ impl Button {
     }
 
     pub fn background(mut self, color: Hsla) -> Self {
-        self.custom_bg = Some(color);
+        self.style.background = Some(color);
         self
     }
 
     pub fn text_color(mut self, color: Hsla) -> Self {
-        self.custom_text = Some(color);
+        self.style.text_color = Some(color);
         self
     }
 
@@ -120,14 +119,14 @@ impl Button {
     }
 
     fn colors(&self) -> (Hsla, Hsla, Hsla) {
-        let bg = self.custom_bg.unwrap_or_else(|| match self.variant {
+        let bg = self.style.background.unwrap_or_else(|| match self.variant {
             ButtonVariant::Primary => theme::accent::PRIMARY,
             ButtonVariant::Secondary => theme::bg::SURFACE,
             ButtonVariant::Ghost => Hsla::transparent(),
             ButtonVariant::Danger => theme::status::ERROR,
         });
 
-        let text = self.custom_text.unwrap_or_else(|| {
+        let text = self.style.text_color.unwrap_or_else(|| {
             let on_accent = Hsla::black();
             match self.variant {
                 ButtonVariant::Primary | ButtonVariant::Danger => on_accent,
@@ -163,9 +162,16 @@ impl Default for Button {
     }
 }
 
+impl Styled for Button {
+    fn style(&mut self) -> &mut StyleRefinement {
+        &mut self.style
+    }
+}
+
 impl Component for Button {
     fn paint(&mut self, bounds: Bounds, cx: &mut PaintContext) {
         let (bg_color, text_color, border_color) = self.colors();
+        let font_size = self.style.font_size.unwrap_or(self.font_size);
 
         let mut quad = Quad::new(bounds).with_background(bg_color);
 
@@ -180,7 +186,7 @@ impl Component for Button {
         cx.scene.draw_quad(quad);
 
         if let Some(icon) = &mut self.icon {
-            let icon_size = self.font_size;
+            let icon_size = font_size;
             let icon_bounds = Bounds::new(
                 bounds.origin.x + self.padding.0,
                 bounds.origin.y + (bounds.size.height - icon_size) / 2.0,
@@ -191,14 +197,14 @@ impl Component for Button {
         }
 
         if !self.label.is_empty() {
-            let content_width = self.label.chars().count() as f32 * self.font_size * 0.6;
+            let content_width = self.label.chars().count() as f32 * font_size * 0.6;
             let text_x = bounds.origin.x + (bounds.size.width - content_width) / 2.0;
-            let text_y = bounds.origin.y + bounds.size.height * 0.5 - self.font_size * 0.55;
+            let text_y = bounds.origin.y + bounds.size.height * 0.5 - font_size * 0.55;
 
             let text_run = cx.text.layout(
                 &self.label,
                 Point::new(text_x, text_y),
-                self.font_size,
+                font_size,
                 text_color,
             );
             cx.scene.draw_text(text_run);
@@ -257,8 +263,9 @@ impl Component for Button {
     }
 
     fn size_hint(&self) -> (Option<f32>, Option<f32>) {
-        let width = self.label.chars().count() as f32 * self.font_size * 0.6 + self.padding.0 * 2.0;
-        let height = self.font_size * 1.4 + self.padding.1 * 2.0;
+        let font_size = self.style.font_size.unwrap_or(self.font_size);
+        let width = self.label.chars().count() as f32 * font_size * 0.6 + self.padding.0 * 2.0;
+        let height = font_size * 1.4 + self.padding.1 * 2.0;
         (Some(width), Some(height))
     }
 }
@@ -350,7 +357,7 @@ mod tests {
             .background(theme::bg::MUTED)
             .text_color(theme::text::SECONDARY);
 
-        assert!(button.custom_bg.is_some());
-        assert!(button.custom_text.is_some());
+        assert!(button.style.background.is_some());
+        assert!(button.style.text_color.is_some());
     }
 }

@@ -1,5 +1,6 @@
 use crate::components::{Component, PaintContext as ComponentPaintContext};
 use crate::layout::{px, LayoutEngine, LayoutId, LayoutStyle};
+use crate::window::DispatchTree;
 use crate::{Bounds, Point, Scene, Size, TextSystem};
 
 use super::AnyElement;
@@ -42,11 +43,12 @@ impl<'a> LayoutContext<'a> {
 
 pub struct PrepaintContext<'a> {
     layout: &'a LayoutEngine,
+    dispatch: &'a mut DispatchTree,
 }
 
 impl<'a> PrepaintContext<'a> {
-    pub fn new(layout: &'a LayoutEngine) -> Self {
-        Self { layout }
+    pub fn new(layout: &'a LayoutEngine, dispatch: &'a mut DispatchTree) -> Self {
+        Self { layout, dispatch }
     }
 
     pub fn layout(&self, id: LayoutId) -> Bounds {
@@ -55,6 +57,10 @@ impl<'a> PrepaintContext<'a> {
 
     pub fn size(&self, id: LayoutId) -> Size {
         self.layout.size(id)
+    }
+
+    pub fn register(&mut self, id: ElementId, bounds: Bounds, depth: u32) {
+        self.dispatch.register(id, bounds, depth);
     }
 }
 

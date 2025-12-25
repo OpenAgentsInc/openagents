@@ -134,7 +134,8 @@ mod tests {
         layout.compute_layout(layout_id, Size::new(100.0, 100.0));
 
         let bounds = layout.layout(layout_id);
-        let mut prepaint_cx = PrepaintContext::new(&layout);
+        let mut dispatch = crate::window::DispatchTree::new();
+        let mut prepaint_cx = PrepaintContext::new(&layout, &mut dispatch);
         drawable.prepaint(bounds, &mut prepaint_cx);
 
         let mut scene = Scene::new();
