@@ -39,6 +39,56 @@ Stories are prioritized: **P0** (critical), **P1** (high), **P2** (medium), **P3
 
 ---
 
+## Test Coverage
+
+This section tracks which user stories have implemented tests.
+
+### Covered Stories
+
+| Story ID | Description | Test Type | File Path |
+|----------|-------------|-----------|-----------|
+| **d-009: Autopilot GUI** ||||
+| 9.1.1 | Conversation thread display | Visual E2E | `crates/wgpui/examples/chat_streaming_test.rs` |
+| 9.1.2 | Tool calls with output | Visual E2E | `crates/wgpui/examples/chat_streaming_test.rs` |
+| **d-017: ACP Integration** ||||
+| 17.1.2 | ACP event streaming | Unit + Visual | `crates/wgpui/src/testing/chat_tests.rs` |
+| **d-023: WGPUI Framework** ||||
+| 23.1.1 | Quad rendering with colors/borders | Unit | `crates/wgpui/src/testing/framework_tests.rs` |
+| 23.1.2 | Text rendering | Unit | `crates/wgpui/src/testing/framework_tests.rs` |
+| 23.2.1 | Flexbox layout (bounds) | Unit | `crates/wgpui/src/testing/framework_tests.rs` |
+| 23.2.3 | Margin/padding/gap | Unit | `crates/wgpui/src/testing/framework_tests.rs` |
+| 23.3.1 | Mouse click handling | Unit | `crates/wgpui/src/testing/framework_tests.rs` |
+| 23.3.2 | Keyboard input handling | Unit | `crates/wgpui/src/testing/framework_tests.rs` |
+| 23.3.3 | Mouse hover handling | Unit | `crates/wgpui/src/testing/framework_tests.rs` |
+| 23.3.4 | Scroll event handling | Unit | `crates/wgpui/src/testing/framework_tests.rs` |
+| **d-024: Arwes Parity** ||||
+| 24.2.1 | All easing functions | Unit | `crates/wgpui/src/testing/framework_tests.rs` |
+| 24.3.1 | Sequence text effect | Unit | `crates/wgpui/src/testing/framework_tests.rs` |
+| **d-026: E2E Test Live Viewer** ||||
+| 26.1.1 | Fluent DSL for tests | Unit | `crates/wgpui/src/testing/dsl.rs` (module tests) |
+| 26.1.2 | Click elements by selector | Unit | `crates/wgpui/src/testing/step.rs` |
+| 26.2.1 | Real-time test execution | Visual E2E | `crates/wgpui/examples/test_viewer.rs` |
+| 26.2.2 | Click ripples | Visual E2E | `crates/wgpui/examples/test_viewer.rs` |
+| 26.3.1 | Component test harness | Unit | `crates/wgpui/src/testing/harness.rs` |
+| 26.3.2 | Synthetic event injection | Unit | `crates/wgpui/src/testing/injection.rs` |
+
+### Test Files Summary
+
+| File | Purpose | Stories Covered |
+|------|---------|-----------------|
+| `crates/wgpui/examples/chat_streaming_test.rs` | Visual demo of ACP chat streaming with assertions | 9.1.1, 9.1.2, 17.1.2 |
+| `crates/wgpui/examples/test_viewer.rs` | Visual demo of E2E test framework | 26.2.1, 26.2.2 |
+| `crates/wgpui/src/testing/chat_tests.rs` | 18 unit tests for streaming mechanics | 17.1.2 |
+| `crates/wgpui/src/testing/framework_tests.rs` | 43 unit tests for WGPUI framework | 23.1.1, 23.1.2, 23.2.1, 23.2.3, 23.3.1-4, 24.2.1, 24.3.1 |
+| `crates/wgpui/src/testing/mod.rs` | Testing framework module exports | 26.1.1 |
+| `crates/wgpui/src/testing/dsl.rs` | Fluent test builder API | 26.1.1 |
+| `crates/wgpui/src/testing/step.rs` | TestStep, ElementSelector types | 26.1.2 |
+| `crates/wgpui/src/testing/harness.rs` | TestHarness wrapper component | 26.3.1 |
+| `crates/wgpui/src/testing/injection.rs` | EventSequence for synthetic events | 26.3.2 |
+| `crates/wgpui/src/testing/overlay.rs` | InputOverlay for click ripples | 26.2.2, 26.2.3 |
+
+---
+
 ## d-001: Breez Spark SDK Integration
 
 ### Wallet Initialization
