@@ -136,6 +136,9 @@ mod step;
 #[cfg(test)]
 mod chat_tests;
 
+#[cfg(test)]
+mod framework_tests;
+
 pub use assertion::{AssertionResult, TestAssertion};
 pub use context::{ComponentRegistry, TestContext};
 pub use dsl::{test, Test};
