@@ -3,9 +3,11 @@ mod apm_leaderboard;
 mod assistant_message;
 mod diff_tool_call;
 mod dm_thread;
+mod event_inspector;
 mod permission_dialog;
 mod receive_flow;
 mod relay_manager;
+mod schedule_config;
 mod search_tool_call;
 mod send_flow;
 mod terminal_tool_call;
@@ -36,4 +38,8 @@ pub use threshold_key_manager::{
 };
 pub use tool_call_card::ToolCallCard;
 pub use user_message::UserMessage;
+pub use event_inspector::{EventCategory, EventData, EventInspector, InspectorView, TagData};
+pub use schedule_config::{
+    ConfigSection, IntervalUnit, ScheduleConfig, ScheduleData, ScheduleType,
+};
 pub use zap_flow::{ZapFlow, ZapStep, ZAP_PRESETS};
