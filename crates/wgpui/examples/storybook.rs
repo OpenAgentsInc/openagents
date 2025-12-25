@@ -64,8 +64,10 @@ use wgpui::components::molecules::{
 use wgpui::components::atoms::{BreadcrumbItem, SessionBreadcrumb};
 use wgpui::components::organisms::{
     AgentAction, AgentGoal, AgentGoalStatus, AgentStateInspector, ApmLeaderboard, DmThread,
-    KeyShare, LeaderboardEntry, PeerStatus, ReceiveFlow, ReceiveStep, ReceiveType, RelayManager,
-    ResourceUsage, SendFlow, SendStep, SigningRequest, ThresholdKeyManager, ThresholdPeer, ZapFlow,
+    EventCategory, EventData, EventInspector, InspectorView, IntervalUnit, KeyShare,
+    LeaderboardEntry, PeerStatus, ReceiveFlow, ReceiveStep, ReceiveType, RelayManager,
+    ResourceUsage, ScheduleConfig, ScheduleData, ScheduleType, SendFlow, SendStep, SigningRequest,
+    TagData, ThresholdKeyManager, ThresholdPeer, ZapFlow,
 };
 use wgpui::renderer::Renderer;
 use winit::application::ApplicationHandler;
@@ -7281,7 +7283,34 @@ impl Storybook {
         });
         y += zap_flow_height + SECTION_GAP;
 
-        // ========== Panel 7: Status Reference ==========
+        // ========== Panel 7: Event Inspector Organism ==========
+        let event_inspector_height = panel_height(400.0);
+        let event_inspector_bounds = Bounds::new(bounds.origin.x, y, width, event_inspector_height);
+        draw_panel("Event Inspector (Organism)", event_inspector_bounds, cx, |inner, cx| {
+            let event_data = EventData::new(
+                "abcd1234567890abcd1234567890abcd1234567890abcd1234567890abcd",
+                "npub1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq",
+                1,
+            )
+            .content("GM! Building the future of decentralized AI. #OpenAgents #Nostr")
+            .created_at(1700000000)
+            .tags(vec![
+                TagData::new("t", vec!["OpenAgents".to_string()]),
+                TagData::new("t", vec!["Nostr".to_string()]),
+                TagData::new("p", vec!["npub1alice...".to_string()]),
+            ])
+            .sig("abcd1234567890abcd1234567890abcd1234567890abcd1234567890abcd1234")
+            .verified(true);
+
+            let mut inspector = EventInspector::new(event_data);
+            inspector.paint(
+                Bounds::new(inner.origin.x, inner.origin.y, inner.size.width.min(450.0), 350.0),
+                cx,
+            );
+        });
+        y += event_inspector_height + SECTION_GAP;
+
+        // ========== Panel 8: Status Reference ==========
         let ref_height = panel_height(180.0);
         let ref_bounds = Bounds::new(bounds.origin.x, y, width, ref_height);
         draw_panel("Nostr Status Reference", ref_bounds, cx, |inner, cx| {
@@ -7634,7 +7663,26 @@ impl Storybook {
         });
         y += key_mgr_height + SECTION_GAP;
 
-        // ========== Panel 6: Type & Status Reference ==========
+        // ========== Panel 6: Schedule Configuration Organism ==========
+        let schedule_height = panel_height(400.0);
+        let schedule_bounds = Bounds::new(bounds.origin.x, y, width, schedule_height);
+        draw_panel("Schedule Configuration (Organism)", schedule_bounds, cx, |inner, cx| {
+            let config = ScheduleData::new(ScheduleType::Continuous)
+                .heartbeat(30, IntervalUnit::Seconds)
+                .tick(5, IntervalUnit::Minutes)
+                .enabled(true)
+                .next_run(1700050000)
+                .last_run(1700000000);
+
+            let mut schedule = ScheduleConfig::new(config);
+            schedule.paint(
+                Bounds::new(inner.origin.x, inner.origin.y, inner.size.width.min(450.0), 360.0),
+                cx,
+            );
+        });
+        y += schedule_height + SECTION_GAP;
+
+        // ========== Panel 7: Type & Status Reference ==========
         let ref_height = panel_height(180.0);
         let ref_bounds = Bounds::new(bounds.origin.x, y, width, ref_height);
         draw_panel("Agent Types & Statuses", ref_bounds, cx, |inner, cx| {
@@ -9125,6 +9173,7 @@ fn nostr_flows_height(_bounds: Bounds) -> f32 {
         panel_height(420.0),  // Relay Manager Organism
         panel_height(450.0),  // DM Thread Organism
         panel_height(420.0),  // Zap Flow Organism
+        panel_height(400.0),  // Event Inspector Organism
         panel_height(180.0),  // Status Reference
     ];
     stacked_height(&panels)
@@ -9137,6 +9186,7 @@ fn sovereign_agent_flows_height(_bounds: Bounds) -> f32 {
         panel_height(280.0),  // Agent Status Matrix
         panel_height(450.0),  // Agent State Inspector Organism
         panel_height(450.0),  // Threshold Key Manager Organism
+        panel_height(400.0),  // Schedule Configuration Organism
         panel_height(180.0),  // Type & Status Reference
     ];
     stacked_height(&panels)
