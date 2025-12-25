@@ -18,6 +18,7 @@ pub struct App {
     pub(crate) observers: SubscriberSet<EntityId, ObserverCallback>,
     pub(crate) release_listeners: SubscriberSet<EntityId, ReleaseCallback>,
     pending_notifications: Vec<EntityId>,
+    deferred: Vec<Box<dyn FnOnce(&mut App) + 'static>>,
     flushing: bool,
 }
 
@@ -28,6 +29,7 @@ impl App {
             observers: SubscriberSet::new(),
             release_listeners: SubscriberSet::new(),
             pending_notifications: Vec::new(),
+            deferred: Vec::new(),
             flushing: false,
         }
     }
@@ -98,28 +100,38 @@ impl App {
     }
 
     pub fn defer(&mut self, callback: impl FnOnce(&mut App) + 'static) {
-        let mut callback = Some(callback);
-        if let Some(cb) = callback.take() {
-            cb(self);
+        self.deferred.push(Box::new(callback));
+        if !self.flushing {
+            self.flush_effects();
         }
     }
 
     fn flush_effects(&mut self) {
         self.flushing = true;
-        
-        while let Some(entity_id) = self.pending_notifications.pop() {
-            let observers = self.observers.clone();
-            observers.retain(&entity_id, |callback| callback(self));
-        }
-        
-        let dropped = self.entities.take_dropped();
-        for (entity_id, mut entity) in dropped {
-            let callbacks: Vec<_> = self.release_listeners.remove(&entity_id).into_iter().collect();
-            for callback in callbacks {
-                callback(&mut *entity, self);
+
+        loop {
+            while let Some(entity_id) = self.pending_notifications.pop() {
+                let observers = self.observers.clone();
+                observers.retain(&entity_id, |callback| callback(self));
+            }
+
+            let dropped = self.entities.take_dropped();
+            for (entity_id, mut entity) in dropped {
+                let callbacks: Vec<_> = self.release_listeners.remove(&entity_id).into_iter().collect();
+                for callback in callbacks {
+                    callback(&mut *entity, self);
+                }
+            }
+
+            while let Some(callback) = self.deferred.pop() {
+                callback(self);
+            }
+
+            if self.pending_notifications.is_empty() && self.deferred.is_empty() {
+                break;
             }
         }
-        
+
         self.flushing = false;
     }
 }
@@ -225,6 +237,10 @@ mod tests {
         value: i32,
     }
 
+    struct ReleaseCounter {
+        _release: Subscription,
+    }
+
     #[test]
     fn test_new_entity() {
         let mut app = App::new();
@@ -267,5 +283,50 @@ mod tests {
         });
         
         assert_eq!(*(*observed_count).borrow(), 1);
+    }
+
+    #[test]
+    fn test_defer_runs_during_flush() {
+        let mut app = App::new();
+        let ran = Rc::new(RefCell::new(false));
+        let ran_clone = ran.clone();
+
+        let entity = app.new_entity(|_cx| Counter { value: 0 });
+        let _sub = app.observe(&entity, move |_entity, app| {
+            let ran_clone = ran_clone.clone();
+            app.defer(move |_app| {
+                *(*ran_clone).borrow_mut() = true;
+            });
+        });
+
+        app.notify(entity.entity_id());
+
+        assert!(*(*ran).borrow());
+    }
+
+    #[test]
+    fn test_release_notify_flushes() {
+        let mut app = App::new();
+        let observed_count: Rc<RefCell<i32>> = Rc::new(RefCell::new(0));
+        let observed_count_clone = observed_count.clone();
+
+        let target = app.new_entity(|_cx| Counter { value: 0 });
+        let target_id = target.entity_id();
+        let _sub = app.observe(&target, move |_entity, _app| {
+            *(*observed_count_clone).borrow_mut() += 1;
+        });
+
+        let target_for_release = target.clone();
+        let entity = app.new_entity(|cx| {
+            let release = cx.on_release(move |_state: &mut ReleaseCounter, app| {
+                app.notify(target_for_release.entity_id());
+            });
+            ReleaseCounter { _release: release }
+        });
+
+        drop(entity);
+        app.notify(target_id);
+
+        assert_eq!(*(*observed_count).borrow(), 2);
     }
 }
