@@ -30,6 +30,7 @@ pub mod bleeps;
 pub mod color;
 pub mod components;
 pub mod effects;
+pub mod focus;
 pub mod geometry;
 pub mod hit_test;
 pub mod input;
@@ -63,6 +64,7 @@ pub use components::{
     animation_text_duration, TextInput, TextSequence, VirtualList,
 };
 pub use effects::{Illuminator, IlluminatorSvg};
+pub use focus::{FocusChain, FocusHandle, FocusId};
 pub use markdown::{
     FadeState, MarkdownBlock, MarkdownConfig, MarkdownDocument, MarkdownParser,
     MarkdownRenderer, StreamingConfig, StreamingMarkdown, StyledLine, StyledSpan,

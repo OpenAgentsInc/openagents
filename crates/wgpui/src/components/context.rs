@@ -1,4 +1,4 @@
-use crate::{Point, Scene, TextSystem};
+use crate::{Bounds, FocusChain, FocusHandle, FocusId, Point, Scene, TextSystem};
 
 pub struct PaintContext<'a> {
     pub scene: &'a mut Scene,
@@ -36,6 +36,7 @@ pub struct EventContext {
     pub focused: Option<u64>,
     pub hovered: Option<u64>,
     pub scroll_offset: Point,
+    focus_chain: FocusChain,
 }
 
 impl EventContext {
@@ -44,19 +45,53 @@ impl EventContext {
             focused: None,
             hovered: None,
             scroll_offset: Point::ZERO,
+            focus_chain: FocusChain::new(),
         }
     }
 
     pub fn set_focus(&mut self, id: u64) {
         self.focused = Some(id);
+        self.focus_chain.set_focus(FocusId::new(id));
     }
 
     pub fn clear_focus(&mut self) {
         self.focused = None;
+        self.focus_chain.clear_focus();
     }
 
     pub fn has_focus(&self, id: u64) -> bool {
         self.focused == Some(id)
+    }
+
+    pub fn focused_id(&self) -> Option<u64> {
+        self.focused
+    }
+
+    pub fn register_focusable(
+        &mut self,
+        id: u64,
+        bounds: Bounds,
+        tab_index: i32,
+    ) -> FocusHandle {
+        let focus_id = FocusId::new(id);
+        self.focus_chain.register(focus_id, bounds, tab_index);
+        FocusHandle::new(id)
+    }
+
+    pub fn clear_focusables(&mut self) {
+        self.focus_chain.clear_entries();
+    }
+
+    pub fn focus_next(&mut self) -> Option<u64> {
+        let next = self.focus_chain.focus_next();
+        self.focused = next.map(FocusId::value);
+        self.focused
+    }
+
+    pub fn focus_prev(&mut self) -> Option<u64> {
+        let prev = self.focus_chain.focus_prev();
+        self.focused = prev.map(FocusId::value);
+        self.focused
     }
 
     pub fn set_hover(&mut self, id: u64) {
