@@ -269,6 +269,26 @@ impl TrajectoryCollector {
     /// Set the session_id (useful when resuming a session)
     pub fn set_session_id(&mut self, session_id: String) {
         self.trajectory.session_id = session_id;
+
+        // Update the header now that we have the session_id
+        if let (Some(writer), Some(path)) = (&mut self.rlog_writer, &self.rlog_path) {
+            if let Err(e) = writer.update_header(path, &self.trajectory) {
+                eprintln!("ERROR: Failed to update rlog header: {}", e);
+            }
+        }
+
+        if let Some(callback) = self.session_id_callback.take() {
+            callback(&self.trajectory.session_id);
+        }
+    }
+
+    /// Set the trajectory result and mark the session as ended
+    pub fn set_result(&mut self, mut result: TrajectoryResult) {
+        self.trajectory.ended_at = Some(Utc::now());
+        if result.apm.is_none() {
+            result.apm = self.calculate_trajectory_apm();
+        }
+        self.trajectory.result = Some(result);
     }
 
     /// Stream the last added step to rlog file (if streaming is enabled)

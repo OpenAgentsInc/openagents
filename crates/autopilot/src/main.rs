@@ -39,7 +39,7 @@ use autopilot::nip_sa_trajectory::TrajectoryPublisher as NipSaTrajectoryPublishe
 use autopilot::replay;
 use autopilot::rlog::RlogWriter;
 use autopilot::timestamp::{date_dir, filename, generate_slug};
-use autopilot::trajectory::{StepType, Trajectory};
+use autopilot::trajectory::{StepType, Trajectory, TrajectoryResult};
 use autopilot::trajectory_publisher::{TrajectoryPublishConfig, TrajectorySessionPublisher};
 use autopilot::{extract_session_id_from_json, extract_session_id_from_rlog};
 
@@ -144,6 +144,15 @@ fn resolve_model(model: &str) -> String {
         "opus" => "claude-opus-4-5-20251101".to_string(),
         "haiku" => "claude-haiku-4-20250514".to_string(),
         // If not a friendly name, assume it's a full model ID
+        _ => model.to_string(),
+    }
+}
+
+fn resolve_gpt_oss_model(model: &str) -> String {
+    match model.to_lowercase().as_str() {
+        "20b" | "gpt-oss-20b" => "gpt-oss-20b".to_string(),
+        "120b" | "gpt-oss-120b" => "gpt-oss-120b".to_string(),
+        "sonnet" | "opus" | "haiku" => "gpt-oss-20b".to_string(),
         _ => model.to_string(),
     }
 }
@@ -930,6 +939,165 @@ async fn run_codex_agent(
     Ok(())
 }
 
+fn parse_gpt_oss_tool_input(raw: &str) -> serde_json::Value {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        serde_json::Value::Object(serde_json::Map::new())
+    } else {
+        serde_json::from_str(trimmed)
+            .unwrap_or_else(|_| serde_json::Value::String(raw.to_string()))
+    }
+}
+
+fn parse_gpt_oss_tool_result(raw: &str) -> (bool, Option<String>) {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return (true, None);
+    }
+
+    match serde_json::from_str::<serde_json::Value>(trimmed) {
+        Ok(value) => {
+            let success = value
+                .get("success")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(true);
+            let output = value
+                .get("output")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string());
+            let error = value
+                .get("error")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string());
+            let payload = if success { output } else { error.or(output) };
+            (success, payload)
+        }
+        Err(_) => (true, Some(raw.to_string())),
+    }
+}
+
+/// Run GPT-OSS agent with the given prompt
+async fn run_gpt_oss_agent(
+    prompt: &str,
+    cwd: &PathBuf,
+    model: &str,
+    max_turns: u32,
+    _max_budget: f64,
+    collector: &mut TrajectoryCollector,
+    verbose: bool,
+) -> Result<()> {
+    use gpt_oss_agent::{GptOssAgent, GptOssAgentConfig};
+    use std::collections::{HashMap, VecDeque};
+
+    let base_url = std::env::var("GPT_OSS_URL")
+        .or_else(|_| std::env::var("GPT_OSS_SERVER_URL"))
+        .unwrap_or_else(|_| "http://localhost:8000".to_string());
+
+    let config = GptOssAgentConfig {
+        base_url: base_url.clone(),
+        model: model.to_string(),
+        workspace_root: cwd.clone(),
+        record_trajectory: false,
+    };
+
+    let agent = GptOssAgent::new(config).await?;
+    if !agent.is_ready().await {
+        anyhow::bail!("GPT-OSS server at {} is not responding", base_url);
+    }
+
+    let session = agent.create_session().await;
+    collector.set_session_id(session.session_id().to_string());
+    collector.add_step(StepType::SystemInit {
+        model: model.to_string(),
+    });
+
+    let response = session.send_with_tools(prompt, max_turns).await?;
+    let history = session.history().await;
+    let state = session.state().await;
+
+    let mut tool_counter: u64 = 0;
+    let mut tool_ids: HashMap<String, VecDeque<String>> = HashMap::new();
+
+    for message in history {
+        match message.role.as_str() {
+            "user" => {
+                if !message.content.trim().is_empty() {
+                    collector.add_step(StepType::User {
+                        content: message.content,
+                    });
+                }
+            }
+            "assistant" => {
+                if let Some(tool_name) = message.recipient.clone() {
+                    tool_counter += 1;
+                    let tool_id = format!("gpt-oss-tool-{}", tool_counter);
+                    tool_ids
+                        .entry(tool_name.clone())
+                        .or_default()
+                        .push_back(tool_id.clone());
+
+                    collector.add_step(StepType::ToolCall {
+                        tool: tool_name,
+                        tool_id,
+                        input: parse_gpt_oss_tool_input(&message.content),
+                    });
+                } else if message.channel.as_deref() == Some("analysis") {
+                    if !message.content.trim().is_empty() {
+                        collector.add_step(StepType::Thinking {
+                            content: message.content,
+                            signature: None,
+                        });
+                    }
+                } else if !message.content.trim().is_empty() {
+                    collector.add_step(StepType::Assistant {
+                        content: message.content,
+                    });
+                }
+            }
+            "tool" => {
+                let tool_name = message.name.unwrap_or_else(|| "tool".to_string());
+                let tool_id = tool_ids
+                    .get_mut(&tool_name)
+                    .and_then(|queue| queue.pop_front())
+                    .unwrap_or_else(|| {
+                        tool_counter += 1;
+                        format!("gpt-oss-tool-{}", tool_counter)
+                    });
+
+                let (success, output) = parse_gpt_oss_tool_result(&message.content);
+                collector.add_step(StepType::ToolResult {
+                    tool_id,
+                    success,
+                    output,
+                });
+            }
+            _ => {}
+        }
+    }
+
+    if verbose {
+        println!("{} {}", "GPT-OSS:".cyan().bold(), response);
+    } else {
+        println!("{}", response);
+    }
+
+    let duration_ms = (chrono::Utc::now() - collector.trajectory().started_at)
+        .num_milliseconds()
+        .max(0) as u64;
+
+    collector.set_result(TrajectoryResult {
+        success: true,
+        duration_ms,
+        num_turns: state.turn,
+        result_text: Some(response),
+        errors: Vec::new(),
+        issues_completed: 0,
+        apm: None,
+    });
+
+    Ok(())
+}
+
 /// Publish trajectory to Nostr relays
 async fn publish_trajectory_to_nostr(
     trajectory: &Trajectory,
@@ -1183,7 +1351,11 @@ async fn run_task(
     check_and_handle_stale_lockfile(&cwd).await?;
 
     // Resolve friendly model names to full model IDs
-    let model = resolve_model(&model);
+    let model = if agent == "gpt-oss" {
+        resolve_gpt_oss_model(&model)
+    } else {
+        resolve_model(&model)
+    };
 
     // Get git info
     let repo_sha = get_git_sha(&cwd).unwrap_or_else(|_| "unknown".to_string());
@@ -1417,8 +1589,23 @@ async fn run_task(
                 )
                 .await?;
             }
+            "gpt-oss" => {
+                run_gpt_oss_agent(
+                    &prompt,
+                    &cwd,
+                    &model,
+                    max_turns,
+                    max_budget,
+                    &mut collector,
+                    verbose,
+                )
+                .await?;
+            }
             _ => {
-                anyhow::bail!("Unknown agent: {}. Use 'claude' or 'codex'", agent);
+                anyhow::bail!(
+                    "Unknown agent: {}. Use 'claude', 'codex', or 'gpt-oss'",
+                    agent
+                );
             }
         }
     }
