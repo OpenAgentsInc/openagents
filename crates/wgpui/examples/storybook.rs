@@ -9,18 +9,19 @@ use wgpui::{
     theme,
 };
 use wgpui::components::atoms::{
-    AgentScheduleBadge, AgentStatus, AgentStatusBadge, AgentType, AmountDirection, Bech32Entity,
-    Bech32Type, BitcoinAmount, BitcoinNetwork, BitcoinUnit, BountyBadge, BountyStatus,
-    CheckpointBadge, ContentType, ContentTypeIcon, ContributionStatus, EarningsBadge, EarningsType,
-    EntryMarker, EntryType, EventKind, EventKindBadge, FeedbackButton, GoalPriority,
-    GoalProgressBadge, GoalStatus, IssueStatus, IssueStatusBadge, JobStatus, JobStatusBadge,
+    AgentScheduleBadge, AgentStatus, AgentStatusBadge, AgentType, AmountDirection, ApmGauge,
+    Bech32Entity, Bech32Type, BitcoinAmount, BitcoinNetwork, BitcoinUnit, BountyBadge, BountyStatus,
+    CheckpointBadge, ContentType, ContentTypeIcon, ContributionStatus, DaemonStatus, DaemonStatusBadge,
+    EarningsBadge, EarningsType, EntryMarker, EntryType, EventKind, EventKindBadge, FeedbackButton,
+    GoalPriority, GoalProgressBadge, GoalStatus, IssueStatus, IssueStatusBadge, JobStatus, JobStatusBadge,
     KeybindingHint, LicenseStatus, MarketType, MarketTypeBadge, Mode, ModeBadge, Model, ModelBadge,
-    NetworkBadge, PaymentMethod, PaymentMethodIcon, PaymentStatus, PaymentStatusBadge,
-    PermissionAction, PermissionButton, PrStatus, PrStatusBadge, RelayStatus, RelayStatusBadge,
-    RelayStatusDot, ReputationBadge, SkillLicenseBadge, SkillType, StackLayerBadge,
-    StackLayerStatus, Status, StatusDot, StreamingIndicator, ThinkingToggle, ThresholdKeyBadge,
-    TickEventBadge, TickOutcome, ToolIcon, ToolStatus, ToolStatusBadge, ToolType, TrajectorySource,
-    TrajectorySourceBadge, TrajectoryStatus, TrajectoryStatusBadge, TriggerType, TrustTier,
+    NetworkBadge, ParallelAgentBadge, ParallelAgentStatus, PaymentMethod, PaymentMethodIcon, PaymentStatus,
+    PaymentStatusBadge, PermissionAction, PermissionButton, PrStatus, PrStatusBadge, RelayStatus,
+    RelayStatusBadge, RelayStatusDot, ReputationBadge, ResourceType, ResourceUsageBar, SessionStatus,
+    SessionStatusBadge, SkillLicenseBadge, SkillType, StackLayerBadge, StackLayerStatus, Status, StatusDot,
+    StreamingIndicator, ThinkingToggle, ThresholdKeyBadge, TickEventBadge, TickOutcome,
+    ToolIcon, ToolStatus, ToolStatusBadge, ToolType, TrajectorySource, TrajectorySourceBadge,
+    TrajectoryStatus, TrajectoryStatusBadge, TriggerType, TrustTier,
 };
 use wgpui::components::hud::{
     Command, CommandPalette, ContextMenu, CornerConfig, DotsGrid, DotsOrigin, DotShape, DrawDirection,
@@ -89,6 +90,7 @@ const SECTION_NOSTR_PROTOCOL: usize = 15;
 const SECTION_GITAFTER: usize = 16;
 const SECTION_SOVEREIGN_AGENTS: usize = 17;
 const SECTION_MARKETPLACE: usize = 18;
+const SECTION_AUTOPILOT: usize = 19;
 
 #[derive(Clone, Copy)]
 struct GlowPreset {
@@ -489,6 +491,7 @@ impl Storybook {
             "GitAfter",
             "Sovereign Agents",
             "Marketplace",
+            "Autopilot",
         ];
         let nav_len = nav_items.len();
 
@@ -579,6 +582,7 @@ impl Storybook {
 
     fn section_content_height(&self, section: usize, bounds: Bounds) -> f32 {
         match section {
+            SECTION_ATOMS => atoms_height(bounds),
             SECTION_ARWES_FRAMES => arwes_frames_height(bounds),
             SECTION_ARWES_BACKGROUNDS => arwes_backgrounds_height(bounds),
             SECTION_ARWES_TEXT => arwes_text_effects_height(bounds),
@@ -593,6 +597,7 @@ impl Storybook {
             SECTION_GITAFTER => gitafter_height(bounds),
             SECTION_SOVEREIGN_AGENTS => sovereign_agents_height(bounds),
             SECTION_MARKETPLACE => marketplace_height(bounds),
+            SECTION_AUTOPILOT => autopilot_height(bounds),
             _ => bounds.size.height,
         }
     }
@@ -638,6 +643,7 @@ impl Storybook {
             SECTION_GITAFTER => self.paint_gitafter(content_bounds, cx),
             SECTION_SOVEREIGN_AGENTS => self.paint_sovereign_agents(content_bounds, cx),
             SECTION_MARKETPLACE => self.paint_marketplace(content_bounds, cx),
+            SECTION_AUTOPILOT => self.paint_autopilot(content_bounds, cx),
             _ => {}
         }
         cx.scene.pop_clip();
@@ -870,100 +876,445 @@ impl Storybook {
     }
 
     fn paint_atoms(&mut self, bounds: Bounds, cx: &mut PaintContext) {
-        let cols = 3;
-        let gap = 16.0;
-        let tile_w = ((bounds.size.width - gap * (cols as f32 - 1.0)) / cols as f32).max(0.0);
-        let tile_h = 96.0;
+        let mut y = bounds.origin.y;
+        let width = bounds.size.width;
 
-        let tiles = [
-            "Tool icon",
-            "Tool status",
-            "Streaming",
-            "Mode badge",
-            "Model badge",
-            "Status dot",
-            "Permission button",
-            "Thinking toggle",
-            "Feedback buttons",
-            "Entry marker",
-            "Content type",
-            "Checkpoint badge",
-            "Keybinding hint",
-        ];
+        // ========== Panel 1: Tool & Status Atoms ==========
+        let tool_height = panel_height(140.0);
+        let tool_bounds = Bounds::new(bounds.origin.x, y, width, tool_height);
+        draw_panel("Tool & Status Atoms", tool_bounds, cx, |inner, cx| {
+            let mut x = inner.origin.x;
+            let row_y = inner.origin.y;
 
-        for (index, label) in tiles.iter().enumerate() {
-            let col = (index % cols) as f32;
-            let row = (index / cols) as f32;
-            let x = bounds.origin.x + col * (tile_w + gap);
-            let y = bounds.origin.y + row * (tile_h + gap);
-            let tile_bounds = Bounds::new(x, y, tile_w, tile_h);
+            // Tool icons
+            for tool_type in &[ToolType::Bash, ToolType::Read, ToolType::Edit, ToolType::Search] {
+                let mut icon = ToolIcon::new(*tool_type);
+                icon.paint(Bounds::new(x, row_y, 28.0, 22.0), cx);
+                x += 36.0;
+            }
 
-            draw_tile(tile_bounds, label, cx, |inner, cx| {
-                match *label {
-                    "Tool icon" => {
-                        let mut icon = ToolIcon::new(ToolType::Bash);
-                        paint_centered(&mut icon, inner, cx);
-                    }
-                    "Tool status" => {
-                        let mut badge = ToolStatusBadge::new(ToolStatus::Running);
-                        paint_centered(&mut badge, inner, cx);
-                    }
-                    "Streaming" => {
-                        self.streaming_indicator
-                            .paint(center_bounds(inner, 80.0, 20.0), cx);
-                    }
-                    "Mode badge" => {
-                        let mut badge = ModeBadge::new(Mode::Act);
-                        paint_centered(&mut badge, inner, cx);
-                    }
-                    "Model badge" => {
-                        let mut badge = ModelBadge::new(Model::ClaudeSonnet);
-                        paint_centered(&mut badge, inner, cx);
-                    }
-                    "Status dot" => {
-                        let mut dot = StatusDot::new(Status::Busy).size(10.0);
-                        paint_centered(&mut dot, inner, cx);
-                    }
-                    "Permission button" => {
-                        let mut btn = PermissionButton::new(PermissionAction::AllowOnce);
-                        paint_centered(&mut btn, inner, cx);
-                    }
-                    "Thinking toggle" => {
-                        let mut toggle = ThinkingToggle::new().expanded(true);
-                        paint_centered(&mut toggle, inner, cx);
-                    }
-                    "Feedback buttons" => {
-                        let mut up = FeedbackButton::thumbs_up().selected(true);
-                        let mut down = FeedbackButton::thumbs_down();
-                        let left = Bounds::new(inner.origin.x, inner.origin.y, inner.size.width / 2.0, inner.size.height);
-                        let right = Bounds::new(
-                            inner.origin.x + inner.size.width / 2.0,
-                            inner.origin.y,
-                            inner.size.width / 2.0,
-                            inner.size.height,
-                        );
-                        paint_centered(&mut up, left, cx);
-                        paint_centered(&mut down, right, cx);
-                    }
-                    "Entry marker" => {
-                        let mut marker = EntryMarker::new(EntryType::Tool);
-                        paint_centered(&mut marker, inner, cx);
-                    }
-                    "Content type" => {
-                        let mut icon = ContentTypeIcon::new(ContentType::Markdown);
-                        paint_centered(&mut icon, inner, cx);
-                    }
-                    "Checkpoint badge" => {
-                        let mut badge = CheckpointBadge::new("v1.2").active(true);
-                        paint_centered(&mut badge, inner, cx);
-                    }
-                    _ => {
-                        let mut hint = KeybindingHint::combo(&["Ctrl", "K"]);
-                        paint_centered(&mut hint, inner, cx);
-                    }
-                }
-            });
-        }
+            // Tool status badges
+            x = inner.origin.x;
+            let status_y = row_y + 35.0;
+            for status in &[ToolStatus::Running, ToolStatus::Success, ToolStatus::Error] {
+                let mut badge = ToolStatusBadge::new(*status);
+                badge.paint(Bounds::new(x, status_y, 90.0, 22.0), cx);
+                x += 100.0;
+            }
+
+            // Status dots
+            x = inner.origin.x;
+            let dots_y = status_y + 35.0;
+            for status in &[Status::Online, Status::Busy, Status::Away, Status::Error] {
+                let mut dot = StatusDot::new(*status).size(10.0);
+                dot.paint(Bounds::new(x, dots_y, 12.0, 12.0), cx);
+                let label = match status {
+                    Status::Online => "Online",
+                    Status::Busy => "Busy",
+                    Status::Away => "Away",
+                    Status::Error => "Error",
+                    _ => "",
+                };
+                let label_run = cx.text.layout(label, Point::new(x + 16.0, dots_y), theme::font_size::XS, theme::text::MUTED);
+                cx.scene.draw_text(label_run);
+                x += 70.0;
+            }
+        });
+        y += tool_height + SECTION_GAP;
+
+        // ========== Panel 2: Mode & Model Atoms ==========
+        let mode_height = panel_height(160.0);
+        let mode_bounds = Bounds::new(bounds.origin.x, y, width, mode_height);
+        draw_panel("Mode & Model Atoms", mode_bounds, cx, |inner, cx| {
+            // Mode badges
+            let mut x = inner.origin.x;
+            for mode in &[Mode::Normal, Mode::Act, Mode::Plan] {
+                let mut badge = ModeBadge::new(*mode);
+                badge.paint(Bounds::new(x, inner.origin.y, 70.0, 22.0), cx);
+                x += 80.0;
+            }
+
+            // Model badges
+            x = inner.origin.x;
+            let model_y = inner.origin.y + 35.0;
+            for model in &[Model::ClaudeSonnet, Model::ClaudeOpus, Model::ClaudeHaiku] {
+                let mut badge = ModelBadge::new(*model);
+                badge.paint(Bounds::new(x, model_y, 100.0, 22.0), cx);
+                x += 110.0;
+            }
+
+            // Content types
+            x = inner.origin.x;
+            let content_y = model_y + 35.0;
+            for content in &[ContentType::Markdown, ContentType::Code, ContentType::Image, ContentType::Text] {
+                let mut icon = ContentTypeIcon::new(*content);
+                icon.paint(Bounds::new(x, content_y, 28.0, 22.0), cx);
+                x += 36.0;
+            }
+
+            // Entry markers
+            x = inner.origin.x + 180.0;
+            for entry in &[EntryType::User, EntryType::Assistant, EntryType::Tool, EntryType::System] {
+                let mut marker = EntryMarker::new(*entry);
+                marker.paint(Bounds::new(x, content_y, 28.0, 22.0), cx);
+                x += 36.0;
+            }
+        });
+        y += mode_height + SECTION_GAP;
+
+        // ========== Panel 3: Agent Status Badges ==========
+        let agent_height = panel_height(180.0);
+        let agent_bounds = Bounds::new(bounds.origin.x, y, width, agent_height);
+        draw_panel("Agent Status Badges", agent_bounds, cx, |inner, cx| {
+            // Agent status badges
+            let mut x = inner.origin.x;
+            for (status, atype) in &[
+                (AgentStatus::Idle, AgentType::Human),
+                (AgentStatus::Online, AgentType::Sovereign),
+                (AgentStatus::Busy, AgentType::Sovereign),
+                (AgentStatus::Error, AgentType::Custodial),
+            ] {
+                let mut badge = AgentStatusBadge::new(*status).agent_type(*atype);
+                badge.paint(Bounds::new(x, inner.origin.y, 120.0, 22.0), cx);
+                x += 130.0;
+            }
+
+            // Agent schedule badges (heartbeat intervals)
+            x = inner.origin.x;
+            let sched_y = inner.origin.y + 35.0;
+            for seconds in &[60, 300, 900, 3600] {
+                let mut badge = AgentScheduleBadge::new(*seconds);
+                badge.paint(Bounds::new(x, sched_y, 100.0, 22.0), cx);
+                x += 110.0;
+            }
+
+            // Goal progress badges
+            x = inner.origin.x;
+            let goal_y = sched_y + 35.0;
+            for (progress, status, priority) in &[
+                (0.0, GoalStatus::NotStarted, GoalPriority::Low),
+                (0.5, GoalStatus::InProgress, GoalPriority::Medium),
+                (1.0, GoalStatus::Completed, GoalPriority::High),
+                (0.3, GoalStatus::Blocked, GoalPriority::Critical),
+            ] {
+                let mut badge = GoalProgressBadge::new(*progress).status(*status).priority(*priority);
+                badge.paint(Bounds::new(x, goal_y, 130.0, 22.0), cx);
+                x += 140.0;
+            }
+
+            // Stack layer badges
+            x = inner.origin.x;
+            let stack_y = goal_y + 35.0;
+            for (layer, status) in &[(1, StackLayerStatus::Pending), (2, StackLayerStatus::Ready), (3, StackLayerStatus::Merged)] {
+                let mut badge = StackLayerBadge::new(*layer, 3).status(status.clone());
+                badge.paint(Bounds::new(x, stack_y, 100.0, 22.0), cx);
+                x += 110.0;
+            }
+        });
+        y += agent_height + SECTION_GAP;
+
+        // ========== Panel 4: Bitcoin & Payment Atoms ==========
+        let btc_height = panel_height(180.0);
+        let btc_bounds = Bounds::new(bounds.origin.x, y, width, btc_height);
+        draw_panel("Bitcoin & Payment Atoms", btc_bounds, cx, |inner, cx| {
+            // Bitcoin amounts
+            let mut x = inner.origin.x;
+            for (sats, unit, dir) in &[
+                (100_000u64, BitcoinUnit::Sats, AmountDirection::Incoming),
+                (100_000u64, BitcoinUnit::Btc, AmountDirection::Outgoing),
+                (50_000u64, BitcoinUnit::Sats, AmountDirection::Neutral),
+            ] {
+                let mut badge = BitcoinAmount::new(*sats).unit(*unit).direction(*dir);
+                badge.paint(Bounds::new(x, inner.origin.y, 130.0, 22.0), cx);
+                x += 140.0;
+            }
+
+            // Network badges
+            x = inner.origin.x;
+            let net_y = inner.origin.y + 35.0;
+            for network in &[BitcoinNetwork::Mainnet, BitcoinNetwork::Testnet, BitcoinNetwork::Signet, BitcoinNetwork::Regtest] {
+                let mut badge = NetworkBadge::new(*network);
+                badge.paint(Bounds::new(x, net_y, 80.0, 22.0), cx);
+                x += 90.0;
+            }
+
+            // Payment method icons
+            x = inner.origin.x;
+            let method_y = net_y + 35.0;
+            for method in &[PaymentMethod::Lightning, PaymentMethod::OnChain, PaymentMethod::Spark] {
+                let mut icon = PaymentMethodIcon::new(*method);
+                icon.paint(Bounds::new(x, method_y, 28.0, 22.0), cx);
+                x += 36.0;
+            }
+
+            // Payment status badges
+            x = inner.origin.x + 120.0;
+            for status in &[PaymentStatus::Pending, PaymentStatus::Completed, PaymentStatus::Failed] {
+                let mut badge = PaymentStatusBadge::new(*status);
+                badge.paint(Bounds::new(x, method_y, 90.0, 22.0), cx);
+                x += 100.0;
+            }
+
+            // Threshold key badges
+            x = inner.origin.x;
+            let key_y = method_y + 35.0;
+            let mut key1 = ThresholdKeyBadge::new(1, 3);
+            key1.paint(Bounds::new(x, key_y, 80.0, 22.0), cx);
+            let mut key2 = ThresholdKeyBadge::new(2, 3);
+            key2.paint(Bounds::new(x + 90.0, key_y, 80.0, 22.0), cx);
+        });
+        y += btc_height + SECTION_GAP;
+
+        // ========== Panel 5: Nostr Protocol Atoms ==========
+        let nostr_height = panel_height(180.0);
+        let nostr_bounds = Bounds::new(bounds.origin.x, y, width, nostr_height);
+        draw_panel("Nostr Protocol Atoms", nostr_bounds, cx, |inner, cx| {
+            // Relay status badges
+            let mut x = inner.origin.x;
+            for status in &[RelayStatus::Connected, RelayStatus::Connecting, RelayStatus::Disconnected, RelayStatus::Error] {
+                let mut badge = RelayStatusBadge::new(*status);
+                badge.paint(Bounds::new(x, inner.origin.y, 160.0, 22.0), cx);
+                x += 170.0;
+            }
+
+            // Relay status dots
+            x = inner.origin.x;
+            let dot_y = inner.origin.y + 35.0;
+            for status in &[RelayStatus::Connected, RelayStatus::Connecting, RelayStatus::Disconnected, RelayStatus::Error] {
+                let mut dot = RelayStatusDot::new(*status);
+                dot.paint(Bounds::new(x, dot_y, 12.0, 12.0), cx);
+                x += 24.0;
+            }
+
+            // Event kind badges
+            x = inner.origin.x;
+            let event_y = dot_y + 30.0;
+            for kind in &[EventKind::TextNote, EventKind::EncryptedDm, EventKind::Reaction, EventKind::Repost] {
+                let mut badge = EventKindBadge::new(*kind);
+                badge.paint(Bounds::new(x, event_y, 90.0, 22.0), cx);
+                x += 100.0;
+            }
+
+            // Bech32 entities
+            x = inner.origin.x;
+            let bech_y = event_y + 35.0;
+            for btype in &[Bech32Type::Npub, Bech32Type::Note, Bech32Type::Nevent] {
+                let mut entity = Bech32Entity::new(*btype, "abc123def456");
+                entity.paint(Bounds::new(x, bech_y, 140.0, 22.0), cx);
+                x += 150.0;
+            }
+        });
+        y += nostr_height + SECTION_GAP;
+
+        // ========== Panel 6: GitAfter Atoms ==========
+        let git_height = panel_height(180.0);
+        let git_bounds = Bounds::new(bounds.origin.x, y, width, git_height);
+        draw_panel("GitAfter Atoms", git_bounds, cx, |inner, cx| {
+            // Issue status badges
+            let mut x = inner.origin.x;
+            for status in &[IssueStatus::Open, IssueStatus::InProgress, IssueStatus::Closed, IssueStatus::Claimed] {
+                let mut badge = IssueStatusBadge::new(*status);
+                badge.paint(Bounds::new(x, inner.origin.y, 100.0, 22.0), cx);
+                x += 110.0;
+            }
+
+            // PR status badges
+            x = inner.origin.x;
+            let pr_y = inner.origin.y + 35.0;
+            for status in &[PrStatus::Open, PrStatus::Merged, PrStatus::Closed, PrStatus::Draft] {
+                let mut badge = PrStatusBadge::new(*status);
+                badge.paint(Bounds::new(x, pr_y, 80.0, 22.0), cx);
+                x += 90.0;
+            }
+
+            // Bounty badges
+            x = inner.origin.x;
+            let bounty_y = pr_y + 35.0;
+            for (status, sats) in &[
+                (BountyStatus::Active, 50000u64),
+                (BountyStatus::Claimed, 100000u64),
+                (BountyStatus::Paid, 250000u64),
+                (BountyStatus::Expired, 10000u64),
+            ] {
+                let mut badge = BountyBadge::new(*sats).status(*status);
+                badge.paint(Bounds::new(x, bounty_y, 130.0, 22.0), cx);
+                x += 140.0;
+            }
+
+            // Tick event badges
+            x = inner.origin.x;
+            let tick_y = bounty_y + 35.0;
+            let mut request = TickEventBadge::request();
+            request.paint(Bounds::new(x, tick_y, 100.0, 22.0), cx);
+            x += 110.0;
+            let mut result_success = TickEventBadge::result(TickOutcome::Success);
+            result_success.paint(Bounds::new(x, tick_y, 100.0, 22.0), cx);
+            x += 110.0;
+            let mut result_fail = TickEventBadge::result(TickOutcome::Failure);
+            result_fail.paint(Bounds::new(x, tick_y, 100.0, 22.0), cx);
+        });
+        y += git_height + SECTION_GAP;
+
+        // ========== Panel 7: Marketplace Atoms ==========
+        let market_height = panel_height(180.0);
+        let market_bounds = Bounds::new(bounds.origin.x, y, width, market_height);
+        draw_panel("Marketplace Atoms", market_bounds, cx, |inner, cx| {
+            // Market type badges
+            let mut x = inner.origin.x;
+            for mtype in &[MarketType::Compute, MarketType::Skills, MarketType::Data, MarketType::Trajectories] {
+                let mut badge = MarketTypeBadge::new(*mtype);
+                badge.paint(Bounds::new(x, inner.origin.y, 90.0, 22.0), cx);
+                x += 100.0;
+            }
+
+            // Job status badges
+            x = inner.origin.x;
+            let job_y = inner.origin.y + 35.0;
+            for status in &[JobStatus::Pending, JobStatus::Processing, JobStatus::Completed, JobStatus::Failed] {
+                let mut badge = JobStatusBadge::new(*status);
+                badge.paint(Bounds::new(x, job_y, 100.0, 22.0), cx);
+                x += 110.0;
+            }
+
+            // Reputation badges
+            x = inner.origin.x;
+            let rep_y = job_y + 35.0;
+            for tier in &[TrustTier::New, TrustTier::Established, TrustTier::Trusted, TrustTier::Expert] {
+                let mut badge = ReputationBadge::new(*tier);
+                badge.paint(Bounds::new(x, rep_y, 100.0, 22.0), cx);
+                x += 110.0;
+            }
+
+            // Trajectory source badges
+            x = inner.origin.x;
+            let traj_y = rep_y + 35.0;
+            for source in &[TrajectorySource::Claude, TrajectorySource::Cursor, TrajectorySource::Codex] {
+                let mut badge = TrajectorySourceBadge::new(*source);
+                badge.paint(Bounds::new(x, traj_y, 90.0, 22.0), cx);
+                x += 100.0;
+            }
+
+            // Trajectory status badges
+            for status in &[TrajectoryStatus::Verified, TrajectoryStatus::Partial, TrajectoryStatus::Suspicious] {
+                let mut badge = TrajectoryStatusBadge::new(*status);
+                badge.paint(Bounds::new(x, traj_y, 100.0, 22.0), cx);
+                x += 110.0;
+            }
+        });
+        y += market_height + SECTION_GAP;
+
+        // ========== Panel 8: Autopilot Atoms ==========
+        let auto_height = panel_height(180.0);
+        let auto_bounds = Bounds::new(bounds.origin.x, y, width, auto_height);
+        draw_panel("Autopilot Atoms", auto_bounds, cx, |inner, cx| {
+            // Session status badges
+            let mut x = inner.origin.x;
+            for status in &[SessionStatus::Pending, SessionStatus::Running, SessionStatus::Completed, SessionStatus::Failed] {
+                let mut badge = SessionStatusBadge::new(*status);
+                badge.paint(Bounds::new(x, inner.origin.y, 90.0, 22.0), cx);
+                x += 100.0;
+            }
+
+            // APM gauges
+            x = inner.origin.x;
+            let apm_y = inner.origin.y + 35.0;
+            for apm in &[0.0, 15.0, 45.0, 80.0] {
+                let mut gauge = ApmGauge::new(*apm).compact(true);
+                gauge.paint(Bounds::new(x, apm_y, 70.0, 22.0), cx);
+                x += 80.0;
+            }
+
+            // Resource usage bars
+            x = inner.origin.x;
+            let res_y = apm_y + 35.0;
+            for (rtype, pct) in &[(ResourceType::Memory, 35.0), (ResourceType::Memory, 75.0), (ResourceType::Cpu, 50.0)] {
+                let mut bar = ResourceUsageBar::new(*rtype, *pct).bar_width(50.0);
+                bar.paint(Bounds::new(x, res_y, 140.0, 22.0), cx);
+                x += 150.0;
+            }
+
+            // Daemon status badges
+            x = inner.origin.x;
+            let daemon_y = res_y + 35.0;
+            for status in &[DaemonStatus::Offline, DaemonStatus::Online, DaemonStatus::Error] {
+                let mut badge = DaemonStatusBadge::new(*status).compact(true);
+                badge.paint(Bounds::new(x, daemon_y, 28.0, 22.0), cx);
+                x += 36.0;
+            }
+
+            // Parallel agent badges
+            x = inner.origin.x + 120.0;
+            for (idx, status) in &[(0, ParallelAgentStatus::Idle), (1, ParallelAgentStatus::Running), (2, ParallelAgentStatus::Completed)] {
+                let mut badge = ParallelAgentBadge::new(*idx, *status).compact(true);
+                badge.paint(Bounds::new(x, daemon_y, 50.0, 22.0), cx);
+                x += 60.0;
+            }
+        });
+        y += auto_height + SECTION_GAP;
+
+        // ========== Panel 9: Interactive Atoms ==========
+        let interact_height = panel_height(160.0);
+        let interact_bounds = Bounds::new(bounds.origin.x, y, width, interact_height);
+        draw_panel("Interactive Atoms", interact_bounds, cx, |inner, cx| {
+            // Permission buttons
+            let mut x = inner.origin.x;
+            for action in &[PermissionAction::AllowOnce, PermissionAction::AllowAlways, PermissionAction::Deny] {
+                let mut btn = PermissionButton::new(*action);
+                btn.paint(Bounds::new(x, inner.origin.y, 100.0, 26.0), cx);
+                x += 110.0;
+            }
+
+            // Feedback buttons
+            x = inner.origin.x;
+            let feedback_y = inner.origin.y + 38.0;
+            let mut up = FeedbackButton::thumbs_up();
+            up.paint(Bounds::new(x, feedback_y, 32.0, 26.0), cx);
+            let mut down = FeedbackButton::thumbs_down();
+            down.paint(Bounds::new(x + 40.0, feedback_y, 32.0, 26.0), cx);
+
+            // Thinking toggle
+            let mut toggle = ThinkingToggle::new().expanded(true);
+            toggle.paint(Bounds::new(x + 100.0, feedback_y, 100.0, 26.0), cx);
+
+            // Keybinding hints
+            x = inner.origin.x;
+            let key_y = feedback_y + 38.0;
+            let mut hint1 = KeybindingHint::single("K");
+            hint1.paint(Bounds::new(x, key_y, 24.0, 22.0), cx);
+            let mut hint2 = KeybindingHint::combo(&["Ctrl", "K"]);
+            hint2.paint(Bounds::new(x + 32.0, key_y, 60.0, 22.0), cx);
+            let mut hint3 = KeybindingHint::combo(&["Cmd", "Shift", "P"]);
+            hint3.paint(Bounds::new(x + 100.0, key_y, 100.0, 22.0), cx);
+
+            // Checkpoint badges
+            let mut cp1 = CheckpointBadge::new("v1.0").active(false);
+            cp1.paint(Bounds::new(x + 220.0, key_y, 60.0, 22.0), cx);
+            let mut cp2 = CheckpointBadge::new("v1.2").active(true);
+            cp2.paint(Bounds::new(x + 290.0, key_y, 60.0, 22.0), cx);
+
+            // Streaming indicator
+            self.streaming_indicator.paint(Bounds::new(x + 370.0, key_y, 80.0, 22.0), cx);
+
+            // Skill license badges
+            x = inner.origin.x;
+            let skill_y = key_y + 32.0;
+            for (stype, lstatus) in &[
+                (SkillType::Code, LicenseStatus::Active),
+                (SkillType::Data, LicenseStatus::Expired),
+                (SkillType::Model, LicenseStatus::Pending),
+            ] {
+                let mut badge = SkillLicenseBadge::new(*stype, *lstatus);
+                badge.paint(Bounds::new(x, skill_y, 110.0, 22.0), cx);
+                x += 120.0;
+            }
+
+            // Earnings badges (compact)
+            for etype in &[EarningsType::Compute, EarningsType::Skills, EarningsType::Data] {
+                let mut badge = EarningsBadge::new(*etype, 25000).compact(true);
+                badge.paint(Bounds::new(x, skill_y, 70.0, 22.0), cx);
+                x += 80.0;
+            }
+        });
     }
 
     fn paint_molecules(&mut self, bounds: Bounds, cx: &mut PaintContext) {
@@ -4862,6 +5213,366 @@ impl Storybook {
             today_earn.paint(Bounds::new(inner.origin.x + 80.0, total_y, 150.0, 22.0), cx);
         });
     }
+
+    fn paint_autopilot(&mut self, bounds: Bounds, cx: &mut PaintContext) {
+        let mut y = bounds.origin.y;
+        let width = bounds.size.width;
+
+        // ========== Panel 1: Session Status Badges ==========
+        let session_height = panel_height(180.0);
+        let session_bounds = Bounds::new(bounds.origin.x, y, width, session_height);
+        draw_panel("Session Status Badges", session_bounds, cx, |inner, cx| {
+            let statuses = [
+                (SessionStatus::Pending, None, None, "Pending"),
+                (SessionStatus::Running, Some(125), Some(8), "Running"),
+                (SessionStatus::Paused, Some(340), Some(12), "Paused"),
+                (SessionStatus::Completed, Some(1800), Some(45), "Completed"),
+                (SessionStatus::Failed, Some(65), Some(3), "Failed"),
+                (SessionStatus::Aborted, Some(200), Some(5), "Aborted"),
+            ];
+
+            let tile_w = 150.0;
+            let tile_h = 55.0;
+            let gap = 12.0;
+            let cols = ((inner.size.width + gap) / (tile_w + gap)).floor().max(1.0) as usize;
+
+            for (idx, (status, duration, tasks, label)) in statuses.iter().enumerate() {
+                let row = idx / cols;
+                let col = idx % cols;
+                let tile_x = inner.origin.x + col as f32 * (tile_w + gap);
+                let tile_y = inner.origin.y + row as f32 * (tile_h + gap);
+
+                // Label
+                let label_run = cx.text.layout(
+                    *label,
+                    Point::new(tile_x, tile_y),
+                    theme::font_size::XS,
+                    theme::text::MUTED,
+                );
+                cx.scene.draw_text(label_run);
+
+                // Badge
+                let mut badge = SessionStatusBadge::new(*status);
+                if let Some(secs) = duration {
+                    badge = badge.duration(*secs);
+                }
+                if let Some(count) = tasks {
+                    badge = badge.task_count(*count);
+                }
+                badge.paint(Bounds::new(tile_x, tile_y + 18.0, 140.0, 22.0), cx);
+            }
+        });
+        y += session_height + SECTION_GAP;
+
+        // ========== Panel 2: APM Gauges ==========
+        let apm_height = panel_height(160.0);
+        let apm_bounds = Bounds::new(bounds.origin.x, y, width, apm_height);
+        draw_panel("APM (Actions Per Minute) Gauges", apm_bounds, cx, |inner, cx| {
+            let apms = [
+                (0.0, "Idle"),
+                (5.0, "Low"),
+                (22.0, "Normal"),
+                (45.0, "High"),
+                (80.0, "Intense"),
+            ];
+
+            let tile_w = 160.0;
+            let tile_h = 55.0;
+            let gap = 12.0;
+            let cols = ((inner.size.width + gap) / (tile_w + gap)).floor().max(1.0) as usize;
+
+            for (idx, (apm, label)) in apms.iter().enumerate() {
+                let row = idx / cols;
+                let col = idx % cols;
+                let tile_x = inner.origin.x + col as f32 * (tile_w + gap);
+                let tile_y = inner.origin.y + row as f32 * (tile_h + gap);
+
+                // Label
+                let label_run = cx.text.layout(
+                    *label,
+                    Point::new(tile_x, tile_y),
+                    theme::font_size::XS,
+                    theme::text::MUTED,
+                );
+                cx.scene.draw_text(label_run);
+
+                // Gauge
+                let mut gauge = ApmGauge::new(*apm);
+                gauge.paint(Bounds::new(tile_x, tile_y + 18.0, 150.0, 22.0), cx);
+            }
+        });
+        y += apm_height + SECTION_GAP;
+
+        // ========== Panel 3: Resource Usage Bars ==========
+        let resource_height = panel_height(180.0);
+        let resource_bounds = Bounds::new(bounds.origin.x, y, width, resource_height);
+        draw_panel("Resource Usage Bars", resource_bounds, cx, |inner, cx| {
+            let resources = [
+                (ResourceType::Memory, 35.0, "Normal Memory (35%)"),
+                (ResourceType::Memory, 65.0, "Warning Memory (65%)"),
+                (ResourceType::Memory, 92.0, "Critical Memory (92%)"),
+                (ResourceType::Cpu, 28.0, "Normal CPU (28%)"),
+                (ResourceType::Cpu, 75.0, "Warning CPU (75%)"),
+                (ResourceType::Cpu, 95.0, "Critical CPU (95%)"),
+            ];
+
+            let tile_w = 200.0;
+            let tile_h = 50.0;
+            let gap = 12.0;
+            let cols = ((inner.size.width + gap) / (tile_w + gap)).floor().max(1.0) as usize;
+
+            for (idx, (rtype, pct, label)) in resources.iter().enumerate() {
+                let row = idx / cols;
+                let col = idx % cols;
+                let tile_x = inner.origin.x + col as f32 * (tile_w + gap);
+                let tile_y = inner.origin.y + row as f32 * (tile_h + gap);
+
+                // Label
+                let label_run = cx.text.layout(
+                    *label,
+                    Point::new(tile_x, tile_y),
+                    theme::font_size::XS,
+                    theme::text::MUTED,
+                );
+                cx.scene.draw_text(label_run);
+
+                // Bar
+                let mut bar = ResourceUsageBar::new(*rtype, *pct);
+                bar.paint(Bounds::new(tile_x, tile_y + 18.0, 180.0, 22.0), cx);
+            }
+        });
+        y += resource_height + SECTION_GAP;
+
+        // ========== Panel 4: Daemon Status Badges ==========
+        let daemon_height = panel_height(160.0);
+        let daemon_bounds = Bounds::new(bounds.origin.x, y, width, daemon_height);
+        draw_panel("Daemon Status Badges", daemon_bounds, cx, |inner, cx| {
+            let statuses = [
+                (DaemonStatus::Offline, None, None, "Offline"),
+                (DaemonStatus::Starting, None, None, "Starting"),
+                (DaemonStatus::Online, Some(86400), Some(3), "Online (1d, 3 workers)"),
+                (DaemonStatus::Restarting, None, None, "Restarting"),
+                (DaemonStatus::Error, None, None, "Error"),
+                (DaemonStatus::Stopping, None, None, "Stopping"),
+            ];
+
+            let tile_w = 170.0;
+            let tile_h = 55.0;
+            let gap = 12.0;
+            let cols = ((inner.size.width + gap) / (tile_w + gap)).floor().max(1.0) as usize;
+
+            for (idx, (status, uptime, workers, label)) in statuses.iter().enumerate() {
+                let row = idx / cols;
+                let col = idx % cols;
+                let tile_x = inner.origin.x + col as f32 * (tile_w + gap);
+                let tile_y = inner.origin.y + row as f32 * (tile_h + gap);
+
+                // Label
+                let label_run = cx.text.layout(
+                    *label,
+                    Point::new(tile_x, tile_y),
+                    theme::font_size::XS,
+                    theme::text::MUTED,
+                );
+                cx.scene.draw_text(label_run);
+
+                // Badge
+                let mut badge = DaemonStatusBadge::new(*status);
+                if let Some(secs) = uptime {
+                    badge = badge.uptime(*secs);
+                }
+                if let Some(count) = workers {
+                    badge = badge.worker_count(*count);
+                }
+                badge.paint(Bounds::new(tile_x, tile_y + 18.0, 160.0, 22.0), cx);
+            }
+        });
+        y += daemon_height + SECTION_GAP;
+
+        // ========== Panel 5: Parallel Agent Badges ==========
+        let parallel_height = panel_height(180.0);
+        let parallel_bounds = Bounds::new(bounds.origin.x, y, width, parallel_height);
+        draw_panel("Parallel Agent Badges", parallel_bounds, cx, |inner, cx| {
+            let agents = [
+                (0, ParallelAgentStatus::Idle, None, "Agent 0: Idle"),
+                (1, ParallelAgentStatus::Running, Some("Building tests"), "Agent 1: Running"),
+                (2, ParallelAgentStatus::Waiting, Some("Awaiting input"), "Agent 2: Waiting"),
+                (3, ParallelAgentStatus::Completed, None, "Agent 3: Done"),
+                (4, ParallelAgentStatus::Failed, Some("Build error"), "Agent 4: Failed"),
+                (5, ParallelAgentStatus::Initializing, None, "Agent 5: Init"),
+            ];
+
+            let tile_w = 220.0;
+            let tile_h = 55.0;
+            let gap = 12.0;
+            let cols = ((inner.size.width + gap) / (tile_w + gap)).floor().max(1.0) as usize;
+
+            for (idx, (agent_idx, status, task, label)) in agents.iter().enumerate() {
+                let row = idx / cols;
+                let col = idx % cols;
+                let tile_x = inner.origin.x + col as f32 * (tile_w + gap);
+                let tile_y = inner.origin.y + row as f32 * (tile_h + gap);
+
+                // Label
+                let label_run = cx.text.layout(
+                    *label,
+                    Point::new(tile_x, tile_y),
+                    theme::font_size::XS,
+                    theme::text::MUTED,
+                );
+                cx.scene.draw_text(label_run);
+
+                // Badge
+                let mut badge = ParallelAgentBadge::new(*agent_idx, *status);
+                if let Some(t) = task {
+                    badge = badge.current_task(*t);
+                }
+                badge.paint(Bounds::new(tile_x, tile_y + 18.0, 200.0, 22.0), cx);
+            }
+        });
+        y += parallel_height + SECTION_GAP;
+
+        // ========== Panel 6: Complete Autopilot Dashboard ==========
+        let dashboard_height = panel_height(400.0);
+        let dashboard_bounds = Bounds::new(bounds.origin.x, y, width, dashboard_height);
+        draw_panel("Autopilot Dashboard Preview", dashboard_bounds, cx, |inner, cx| {
+            // Header bar
+            cx.scene.draw_quad(
+                Quad::new(Bounds::new(inner.origin.x, inner.origin.y, inner.size.width, 50.0))
+                    .with_background(theme::bg::ELEVATED)
+                    .with_border(theme::accent::PRIMARY, 1.0),
+            );
+
+            // Title
+            let title = cx.text.layout(
+                "Autopilot Control",
+                Point::new(inner.origin.x + 12.0, inner.origin.y + 8.0),
+                theme::font_size::BASE,
+                theme::text::PRIMARY,
+            );
+            cx.scene.draw_text(title);
+
+            // Daemon status on right
+            let mut daemon = DaemonStatusBadge::new(DaemonStatus::Online)
+                .uptime(86400)
+                .worker_count(3);
+            daemon.paint(Bounds::new(inner.origin.x + inner.size.width - 180.0, inner.origin.y + 10.0, 170.0, 22.0), cx);
+
+            // APM gauge
+            let mut apm = ApmGauge::new(28.5);
+            apm.paint(Bounds::new(inner.origin.x + 12.0, inner.origin.y + 32.0, 140.0, 22.0), cx);
+
+            // Active session row
+            let session_y = inner.origin.y + 62.0;
+            cx.scene.draw_quad(
+                Quad::new(Bounds::new(inner.origin.x, session_y, inner.size.width, 56.0))
+                    .with_background(theme::bg::SURFACE)
+                    .with_border(theme::border::DEFAULT, 1.0),
+            );
+
+            // Session info
+            let session_title = cx.text.layout(
+                "Active Session #1234",
+                Point::new(inner.origin.x + 8.0, session_y + 8.0),
+                theme::font_size::SM,
+                theme::text::PRIMARY,
+            );
+            cx.scene.draw_text(session_title);
+
+            let mut session = SessionStatusBadge::new(SessionStatus::Running)
+                .duration(325)
+                .task_count(12);
+            session.paint(Bounds::new(inner.origin.x + 160.0, session_y + 6.0, 200.0, 22.0), cx);
+
+            // Task info
+            let task_info = cx.text.layout(
+                "Current: Building component tests",
+                Point::new(inner.origin.x + 8.0, session_y + 32.0),
+                theme::font_size::XS,
+                theme::text::MUTED,
+            );
+            cx.scene.draw_text(task_info);
+
+            // Parallel agents section
+            let agents_y = session_y + 68.0;
+            cx.scene.draw_quad(
+                Quad::new(Bounds::new(inner.origin.x, agents_y, inner.size.width, 100.0))
+                    .with_background(theme::bg::SURFACE)
+                    .with_border(theme::border::DEFAULT, 1.0),
+            );
+
+            let agents_label = cx.text.layout(
+                "Parallel Agents",
+                Point::new(inner.origin.x + 8.0, agents_y + 8.0),
+                theme::font_size::SM,
+                theme::text::PRIMARY,
+            );
+            cx.scene.draw_text(agents_label);
+
+            // Agent badges in a row
+            let mut x = inner.origin.x + 8.0;
+            for (idx, status) in [
+                ParallelAgentStatus::Running,
+                ParallelAgentStatus::Running,
+                ParallelAgentStatus::Waiting,
+            ].iter().enumerate() {
+                let mut agent = ParallelAgentBadge::new(idx as u8, *status).compact(true);
+                agent.paint(Bounds::new(x, agents_y + 32.0, 50.0, 22.0), cx);
+                x += 60.0;
+            }
+
+            // Resource bars
+            let res_y = agents_y + 60.0;
+            let mut mem = ResourceUsageBar::new(ResourceType::Memory, 45.0)
+                .bar_width(80.0);
+            mem.paint(Bounds::new(inner.origin.x + 8.0, res_y, 160.0, 22.0), cx);
+
+            let mut cpu = ResourceUsageBar::new(ResourceType::Cpu, 62.0)
+                .bar_width(80.0);
+            cpu.paint(Bounds::new(inner.origin.x + 180.0, res_y, 160.0, 22.0), cx);
+
+            // Session history section
+            let history_y = agents_y + 112.0;
+            cx.scene.draw_quad(
+                Quad::new(Bounds::new(inner.origin.x, history_y, inner.size.width, 80.0))
+                    .with_background(theme::bg::SURFACE)
+                    .with_border(theme::border::DEFAULT, 1.0),
+            );
+
+            let history_label = cx.text.layout(
+                "Recent Sessions",
+                Point::new(inner.origin.x + 8.0, history_y + 8.0),
+                theme::font_size::SM,
+                theme::text::PRIMARY,
+            );
+            cx.scene.draw_text(history_label);
+
+            // Completed sessions
+            let mut completed1 = SessionStatusBadge::new(SessionStatus::Completed)
+                .duration(1800)
+                .task_count(45)
+                .compact(true);
+            completed1.paint(Bounds::new(inner.origin.x + 8.0, history_y + 32.0, 28.0, 22.0), cx);
+            let c1_label = cx.text.layout(
+                "#1233 - 45 tasks",
+                Point::new(inner.origin.x + 42.0, history_y + 36.0),
+                theme::font_size::XS,
+                theme::text::MUTED,
+            );
+            cx.scene.draw_text(c1_label);
+
+            let mut completed2 = SessionStatusBadge::new(SessionStatus::Failed)
+                .compact(true);
+            completed2.paint(Bounds::new(inner.origin.x + 8.0, history_y + 56.0, 28.0, 22.0), cx);
+            let c2_label = cx.text.layout(
+                "#1232 - Build error",
+                Point::new(inner.origin.x + 42.0, history_y + 60.0),
+                theme::font_size::XS,
+                theme::text::MUTED,
+            );
+            cx.scene.draw_text(c2_label);
+        });
+    }
 }
 
 struct FocusDemo {
@@ -5963,6 +6674,21 @@ fn line_direction_label(direction: LineDirection) -> &'static str {
     }
 }
 
+fn atoms_height(_bounds: Bounds) -> f32 {
+    let panels = [
+        panel_height(140.0),  // Tool & Status Atoms
+        panel_height(160.0),  // Mode & Model Atoms
+        panel_height(180.0),  // Agent Status Badges
+        panel_height(180.0),  // Bitcoin & Payment Atoms
+        panel_height(180.0),  // Nostr Protocol Atoms
+        panel_height(180.0),  // GitAfter Atoms
+        panel_height(180.0),  // Marketplace Atoms
+        panel_height(180.0),  // Autopilot Atoms
+        panel_height(160.0),  // Interactive Atoms
+    ];
+    stacked_height(&panels)
+}
+
 fn arwes_frames_height(bounds: Bounds) -> f32 {
     let available = (bounds.size.width - PANEL_PADDING * 2.0).max(0.0);
     let permutations = FRAME_STYLES.len() * FRAME_ANIMATIONS.len() * FRAME_DIRECTIONS.len();
@@ -6115,6 +6841,18 @@ fn marketplace_height(_bounds: Bounds) -> f32 {
         panel_height(180.0),  // Trajectory Source Badges
         panel_height(180.0),  // Earnings Badges
         panel_height(400.0),  // Complete Marketplace Dashboard
+    ];
+    stacked_height(&panels)
+}
+
+fn autopilot_height(_bounds: Bounds) -> f32 {
+    let panels = [
+        panel_height(180.0),  // Session Status Badges
+        panel_height(160.0),  // APM Gauges
+        panel_height(180.0),  // Resource Usage Bars
+        panel_height(160.0),  // Daemon Status Badges
+        panel_height(180.0),  // Parallel Agent Badges
+        panel_height(400.0),  // Complete Autopilot Dashboard
     ];
     stacked_height(&panels)
 }
