@@ -6271,7 +6271,7 @@ dependencies = [
 
 [[package]]
 name = "openai-harmony"
-version = "0.0.8"
+version = "0.0.4"
 dependencies = [
  "anyhow",
  "base64 0.22.1",

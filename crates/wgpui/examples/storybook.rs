@@ -15,9 +15,11 @@ use wgpui::components::atoms::{
     ToolStatusBadge, ToolType,
 };
 use wgpui::components::hud::{
-    CornerConfig, DotsGrid, DotsOrigin, DotShape, DrawDirection, Frame, FrameAnimation, FrameStyle,
-    GridLinesBackground, LineDirection, MovingLinesBackground, PuffsBackground, Reticle, Scanlines,
-    SignalMeter,
+    Command, CommandPalette, ContextMenu, CornerConfig, DotsGrid, DotsOrigin, DotShape, DrawDirection,
+    Frame, FrameAnimation, FrameStyle, GridLinesBackground, LineDirection, MenuItem,
+    MovingLinesBackground, Notification, NotificationLevel, NotificationPosition, Notifications,
+    PuffsBackground, Reticle, Scanlines, SignalMeter, StatusBar, StatusBarPosition, StatusItem,
+    StatusItemAlignment, Tooltip, TooltipPosition,
 };
 use wgpui::components::molecules::{
     CheckpointRestore, DiffHeader, DiffType, MessageHeader, ModeSelector, ModelSelector,
@@ -37,7 +39,7 @@ use winit::window::{Window, WindowId};
 const MARGIN: f32 = 24.0;
 const HEADER_HEIGHT: f32 = 48.0;
 const NAV_WIDTH: f32 = 220.0;
-const NAV_ITEM_HEIGHT: f32 = 32.0;
+const NAV_ITEM_HEIGHT: f32 = 36.0;
 const GAP: f32 = 20.0;
 const PANEL_PADDING: f32 = 12.0;
 const SECTION_GAP: f32 = 24.0;
@@ -46,9 +48,9 @@ const FRAME_TILE_H: f32 = 110.0;
 const FRAME_TILE_GAP: f32 = 12.0;
 const FRAME_VARIANT_W: f32 = 160.0;
 const FRAME_VARIANT_H: f32 = 100.0;
-const BG_TILE_W: f32 = 180.0;
-const BG_TILE_H: f32 = 120.0;
-const BG_TILE_GAP: f32 = 12.0;
+const BG_TILE_W: f32 = 300.0;
+const BG_TILE_H: f32 = 200.0;
+const BG_TILE_GAP: f32 = 16.0;
 const TEXT_TILE_W: f32 = 240.0;
 const TEXT_TILE_H: f32 = 80.0;
 const TEXT_TILE_GAP: f32 = 12.0;
@@ -70,6 +72,7 @@ const SECTION_ARWES_ILLUMINATOR: usize = 8;
 const SECTION_HUD_WIDGETS: usize = 9;
 const SECTION_LIGHT_DEMO: usize = 10;
 const SECTION_TOOLCALL_DEMO: usize = 11;
+const SECTION_SYSTEM_UI: usize = 12;
 
 #[derive(Clone, Copy)]
 struct GlowPreset {
@@ -463,6 +466,7 @@ impl Storybook {
             "HUD Widgets",
             "Light Demo",
             "Toolcall Demo",
+            "System UI",
         ];
         let nav_len = nav_items.len();
 
@@ -560,6 +564,7 @@ impl Storybook {
             SECTION_HUD_WIDGETS => hud_widgets_height(bounds),
             SECTION_LIGHT_DEMO => light_demo_height(bounds),
             SECTION_TOOLCALL_DEMO => toolcall_demo_height(bounds),
+            SECTION_SYSTEM_UI => system_ui_height(bounds),
             _ => bounds.size.height,
         }
     }
@@ -598,6 +603,7 @@ impl Storybook {
             SECTION_HUD_WIDGETS => self.paint_hud_widgets(content_bounds, cx),
             SECTION_LIGHT_DEMO => self.paint_light_demo(content_bounds, cx),
             SECTION_TOOLCALL_DEMO => self.paint_toolcall_demo(content_bounds, cx),
+            SECTION_SYSTEM_UI => self.paint_system_ui(content_bounds, cx),
             _ => {}
         }
         cx.scene.pop_clip();
@@ -669,9 +675,9 @@ impl Storybook {
         title_text.paint(
             Bounds::new(
                 bounds.origin.x,
-                bounds.origin.y,
+                bounds.origin.y + 4.0,
                 bounds.size.width,
-                bounds.size.height,
+                24.0,
             ),
             cx,
         );
@@ -682,9 +688,9 @@ impl Storybook {
         subtitle_text.paint(
             Bounds::new(
                 bounds.origin.x,
-                bounds.origin.y + 26.0,
+                bounds.origin.y + 28.0,
                 bounds.size.width,
-                bounds.size.height,
+                20.0,
             ),
             cx,
         );
@@ -1614,10 +1620,10 @@ impl Storybook {
                                     .shape(shape)
                                     .origin(origin)
                                     .origin_inverted(inverted)
-                                    .distance(26.0)
-                                    .size(2.0)
-                                    .opacity(0.8)
-                                    .color(Hsla::new(190.0, 0.4, 0.6, 0.6));
+                                    .distance(20.0)
+                                    .size(4.0)
+                                    .opacity(1.0)
+                                    .color(Hsla::new(180.0, 0.8, 0.5, 0.9));
                                 grid.paint(inner, cx);
                             });
                             idx += 1;
@@ -1649,11 +1655,11 @@ impl Storybook {
                     let mut grid = DotsGrid::new()
                         .shape(DotShape::Box)
                         .origin(DotsOrigin::Center)
-                        .distance(26.0)
-                        .size(2.0)
-                        .opacity(0.8)
+                        .distance(18.0)
+                        .size(5.0)
+                        .opacity(1.0)
                         .animation_progress(*progress)
-                        .color(Hsla::new(190.0, 0.4, 0.6, 0.6));
+                        .color(Hsla::new(280.0, 0.9, 0.6, 0.95));
                     grid.paint(inner, cx);
                 });
             }
@@ -1689,9 +1695,9 @@ impl Storybook {
                         let mut grid = GridLinesBackground::new()
                             .horizontal(h)
                             .vertical(v)
-                            .spacing(28.0)
-                            .line_width(1.0)
-                            .color(Hsla::new(190.0, 0.3, 0.7, 0.5))
+                            .spacing(24.0)
+                            .line_width(2.0)
+                            .color(Hsla::new(120.0, 0.7, 0.5, 0.8))
                             .horizontal_dash(dash.clone())
                             .vertical_dash(dash.clone());
                         grid.set_state(AnimatorState::Entered);
@@ -1726,10 +1732,10 @@ impl Storybook {
                         let mut lines = MovingLinesBackground::new()
                             .direction(direction)
                             .spacing(spacing)
-                            .line_width(1.0)
-                            .color(Hsla::new(200.0, 0.3, 0.7, 0.4))
-                            .sets(4)
-                            .cycle_duration(Duration::from_secs(6));
+                            .line_width(2.5)
+                            .color(Hsla::new(45.0, 0.9, 0.6, 0.85))
+                            .sets(5)
+                            .cycle_duration(Duration::from_secs(4));
                         lines.update_with_delta(AnimatorState::Entered, Duration::from_millis(600));
                         lines.paint(inner, cx);
                     });
@@ -1746,41 +1752,48 @@ impl Storybook {
         draw_panel("Puffs permutations", puff_bounds, cx, |inner, cx| {
             let grid = grid_metrics(inner.size.width, puff_presets, BG_TILE_W, BG_TILE_H, BG_TILE_GAP);
             let presets: Vec<(&str, PuffsBackground)> = vec![
-                ("Default", PuffsBackground::new()),
+                ("Cyan", PuffsBackground::new()
+                    .color(Hsla::new(180.0, 0.9, 0.5, 0.4))
+                    .quantity(12)
+                    .layers(8)),
                 (
-                    "Dense",
+                    "Dense Magenta",
                     PuffsBackground::new()
-                        .quantity(18)
-                        .layers(12)
-                        .radius_offset((6.0, 60.0)),
+                        .color(Hsla::new(300.0, 0.85, 0.5, 0.35))
+                        .quantity(20)
+                        .layers(14)
+                        .radius_offset((8.0, 70.0)),
                 ),
                 (
-                    "Sparse",
+                    "Sparse Blue",
                     PuffsBackground::new()
+                        .color(Hsla::new(220.0, 0.8, 0.6, 0.45))
                         .quantity(6)
-                        .layers(5)
-                        .radius_offset((2.0, 24.0)),
+                        .layers(6)
+                        .radius_offset((4.0, 30.0)),
                 ),
                 (
-                    "Warm",
+                    "Warm Orange",
                     PuffsBackground::new()
-                        .color(Hsla::new(32.0, 0.8, 0.6, 0.2))
-                        .quantity(12)
-                        .layers(10),
+                        .color(Hsla::new(32.0, 0.95, 0.55, 0.4))
+                        .quantity(14)
+                        .layers(12),
                 ),
                 (
-                    "Wide",
+                    "Wide Green",
                     PuffsBackground::new()
-                        .quantity(8)
-                        .padding(80.0)
-                        .radius_offset((6.0, 50.0)),
-                ),
-                (
-                    "Offset",
-                    PuffsBackground::new()
+                        .color(Hsla::new(140.0, 0.8, 0.45, 0.4))
                         .quantity(10)
-                        .y_offset((-20.0, -120.0))
-                        .x_offset((10.0, 40.0)),
+                        .padding(60.0)
+                        .radius_offset((8.0, 55.0)),
+                ),
+                (
+                    "Offset Purple",
+                    PuffsBackground::new()
+                        .color(Hsla::new(270.0, 0.85, 0.55, 0.4))
+                        .quantity(12)
+                        .y_offset((-30.0, -100.0))
+                        .x_offset((15.0, 50.0)),
                 ),
             ];
 
@@ -2439,6 +2452,319 @@ impl Storybook {
         let panel_bounds = Bounds::new(bounds.origin.x, bounds.origin.y, bounds.size.width, demo_height);
         draw_panel("Toolcall UI demo", panel_bounds, cx, |inner, cx| {
             self.toolcall_demo.paint(inner, cx);
+        });
+    }
+
+    fn paint_system_ui(&mut self, bounds: Bounds, cx: &mut PaintContext) {
+        let mut y = bounds.origin.y;
+        let width = bounds.size.width;
+
+        // Tooltip demos
+        let tooltip_height = panel_height(180.0);
+        let tooltip_bounds = Bounds::new(bounds.origin.x, y, width, tooltip_height);
+        draw_panel("Tooltip positions", tooltip_bounds, cx, |inner, cx| {
+            let positions = [
+                ("Top", TooltipPosition::Top, 0),
+                ("Bottom", TooltipPosition::Bottom, 1),
+                ("Left", TooltipPosition::Left, 2),
+                ("Right", TooltipPosition::Right, 3),
+                ("Auto", TooltipPosition::Auto, 4),
+            ];
+            let tile_w = 140.0;
+            let tile_h = 60.0;
+            let gap = 16.0;
+            let cols = ((inner.size.width + gap) / (tile_w + gap)).floor() as usize;
+
+            for (idx, (label, position, _)) in positions.iter().enumerate() {
+                let row = idx / cols;
+                let col = idx % cols;
+                let tile_bounds = Bounds::new(
+                    inner.origin.x + col as f32 * (tile_w + gap),
+                    inner.origin.y + row as f32 * (tile_h + gap),
+                    tile_w,
+                    tile_h,
+                );
+
+                // Draw target button
+                let btn_bounds = Bounds::new(
+                    tile_bounds.origin.x + tile_w / 2.0 - 40.0,
+                    tile_bounds.origin.y + tile_h / 2.0 - 12.0,
+                    80.0,
+                    24.0,
+                );
+                cx.scene.draw_quad(
+                    Quad::new(btn_bounds)
+                        .with_background(theme::bg::MUTED)
+                        .with_border(theme::border::DEFAULT, 1.0),
+                );
+                let btn_text = cx.text.layout(
+                    *label,
+                    Point::new(btn_bounds.origin.x + 8.0, btn_bounds.origin.y + 6.0),
+                    theme::font_size::SM,
+                    theme::text::PRIMARY,
+                );
+                cx.scene.draw_text(btn_text);
+
+                // Draw tooltip (always visible for demo)
+                let mut tooltip = Tooltip::new(format!("Tooltip positioned {}", label.to_lowercase()))
+                    .position(*position)
+                    .target(btn_bounds);
+                tooltip.show();
+                tooltip.paint(tile_bounds, cx);
+            }
+        });
+        y += tooltip_height + SECTION_GAP;
+
+        // StatusBar demos
+        let status_height = panel_height(120.0);
+        let status_bounds = Bounds::new(bounds.origin.x, y, width, status_height);
+        draw_panel("StatusBar variants", status_bounds, cx, |inner, cx| {
+            // Top status bar
+            let top_bar_bounds = Bounds::new(inner.origin.x, inner.origin.y, inner.size.width, 32.0);
+            let mut top_bar = StatusBar::new()
+                .position(StatusBarPosition::Top)
+                .height(28.0)
+                .items(vec![
+                    StatusItem::mode("mode", Mode::Plan).left(),
+                    StatusItem::text("file", "src/main.rs").center(),
+                    StatusItem::model("model", Model::ClaudeOpus).right(),
+                    StatusItem::status("status", Status::Online).right(),
+                ]);
+            top_bar.paint(top_bar_bounds, cx);
+
+            // Bottom status bar
+            let bot_bar_bounds = Bounds::new(inner.origin.x, inner.origin.y + 50.0, inner.size.width, 32.0);
+            let mut bot_bar = StatusBar::new()
+                .position(StatusBarPosition::Top)
+                .height(28.0)
+                .items(vec![
+                    StatusItem::mode("mode", Mode::Act).left(),
+                    StatusItem::text("branch", "main").left(),
+                    StatusItem::text("line", "Ln 42, Col 8").center(),
+                    StatusItem::status("status", Status::Busy).right(),
+                    StatusItem::model("model", Model::ClaudeSonnet).right(),
+                ]);
+            bot_bar.paint(bot_bar_bounds, cx);
+        });
+        y += status_height + SECTION_GAP;
+
+        // Notifications demos
+        let notif_height = panel_height(260.0);
+        let notif_bounds = Bounds::new(bounds.origin.x, y, width, notif_height);
+        draw_panel("Notification levels", notif_bounds, cx, |inner, cx| {
+            let levels = [
+                ("Info", NotificationLevel::Info, "System update available"),
+                ("Success", NotificationLevel::Success, "Build completed successfully"),
+                ("Warning", NotificationLevel::Warning, "Deprecated API usage detected"),
+                ("Error", NotificationLevel::Error, "Connection to server failed"),
+            ];
+
+            let notif_w = 320.0;
+            let notif_h = 50.0;
+            let gap = 12.0;
+
+            for (idx, (title, level, message)) in levels.iter().enumerate() {
+                let notif_bounds = Bounds::new(
+                    inner.origin.x,
+                    inner.origin.y + idx as f32 * (notif_h + gap),
+                    notif_w,
+                    notif_h,
+                );
+
+                // Draw notification preview manually
+                cx.scene.draw_quad(
+                    Quad::new(notif_bounds)
+                        .with_background(theme::bg::SURFACE)
+                        .with_border(level.color(), 2.0),
+                );
+
+                let icon_run = cx.text.layout(
+                    level.icon(),
+                    Point::new(notif_bounds.origin.x + 10.0, notif_bounds.origin.y + 10.0),
+                    theme::font_size::LG,
+                    level.color(),
+                );
+                cx.scene.draw_text(icon_run);
+
+                let title_run = cx.text.layout(
+                    *title,
+                    Point::new(notif_bounds.origin.x + 40.0, notif_bounds.origin.y + 10.0),
+                    theme::font_size::SM,
+                    theme::text::PRIMARY,
+                );
+                cx.scene.draw_text(title_run);
+
+                let msg_run = cx.text.layout(
+                    *message,
+                    Point::new(notif_bounds.origin.x + 40.0, notif_bounds.origin.y + 28.0),
+                    theme::font_size::XS,
+                    theme::text::MUTED,
+                );
+                cx.scene.draw_text(msg_run);
+            }
+        });
+        y += notif_height + SECTION_GAP;
+
+        // ContextMenu demo
+        let menu_height = panel_height(200.0);
+        let menu_bounds = Bounds::new(bounds.origin.x, y, width, menu_height);
+        draw_panel("ContextMenu preview", menu_bounds, cx, |inner, cx| {
+            // Draw a static preview of a context menu
+            let menu_w = 180.0;
+            let menu_h = 160.0;
+            let menu_bounds = Bounds::new(inner.origin.x + 20.0, inner.origin.y + 10.0, menu_w, menu_h);
+
+            cx.scene.draw_quad(
+                Quad::new(menu_bounds)
+                    .with_background(theme::bg::ELEVATED)
+                    .with_border(theme::border::DEFAULT, 1.0),
+            );
+
+            let items = [
+                ("Cut", Some("Cmd+X"), false, false),
+                ("Copy", Some("Cmd+C"), false, false),
+                ("Paste", Some("Cmd+V"), true, false),
+                ("---", None, false, true),
+                ("Select All", Some("Cmd+A"), false, false),
+            ];
+
+            let item_h = 28.0;
+            let sep_h = 9.0;
+            let mut item_y = menu_bounds.origin.y + 4.0;
+
+            for (idx, (label, shortcut, disabled, is_sep)) in items.iter().enumerate() {
+                if *is_sep {
+                    cx.scene.draw_quad(
+                        Quad::new(Bounds::new(
+                            menu_bounds.origin.x + 4.0,
+                            item_y + sep_h / 2.0,
+                            menu_w - 8.0,
+                            1.0,
+                        ))
+                        .with_background(theme::border::DEFAULT),
+                    );
+                    item_y += sep_h;
+                    continue;
+                }
+
+                let is_hovered = idx == 1; // Highlight "Copy"
+                if is_hovered {
+                    cx.scene.draw_quad(
+                        Quad::new(Bounds::new(menu_bounds.origin.x + 4.0, item_y, menu_w - 8.0, item_h))
+                            .with_background(theme::bg::MUTED),
+                    );
+                }
+
+                let text_color = if *disabled { theme::text::MUTED } else { theme::text::PRIMARY };
+                let label_run = cx.text.layout(
+                    *label,
+                    Point::new(menu_bounds.origin.x + 12.0, item_y + 8.0),
+                    theme::font_size::SM,
+                    text_color,
+                );
+                cx.scene.draw_text(label_run);
+
+                if let Some(sc) = shortcut {
+                    let sc_run = cx.text.layout(
+                        *sc,
+                        Point::new(menu_bounds.origin.x + menu_w - 60.0, item_y + 8.0),
+                        theme::font_size::XS,
+                        theme::text::MUTED,
+                    );
+                    cx.scene.draw_text(sc_run);
+                }
+
+                item_y += item_h;
+            }
+
+            // Description
+            let desc = cx.text.layout(
+                "Right-click context menu with shortcuts",
+                Point::new(inner.origin.x + menu_w + 40.0, inner.origin.y + 80.0),
+                theme::font_size::SM,
+                theme::text::MUTED,
+            );
+            cx.scene.draw_text(desc);
+        });
+        y += menu_height + SECTION_GAP;
+
+        // CommandPalette demo
+        let palette_height = panel_height(240.0);
+        let palette_bounds = Bounds::new(bounds.origin.x, y, width, palette_height);
+        draw_panel("CommandPalette preview", palette_bounds, cx, |inner, cx| {
+            let palette_w = 400.0;
+            let palette_h = 200.0;
+            let palette_x = inner.origin.x + (inner.size.width - palette_w) / 2.0;
+            let palette_y = inner.origin.y + 10.0;
+
+            // Palette container
+            cx.scene.draw_quad(
+                Quad::new(Bounds::new(palette_x, palette_y, palette_w, palette_h))
+                    .with_background(theme::bg::ELEVATED)
+                    .with_border(theme::accent::PRIMARY, 1.0),
+            );
+
+            // Search input
+            let input_h = 36.0;
+            cx.scene.draw_quad(
+                Quad::new(Bounds::new(palette_x + 8.0, palette_y + 8.0, palette_w - 16.0, input_h))
+                    .with_background(theme::bg::SURFACE)
+                    .with_border(theme::border::DEFAULT, 1.0),
+            );
+            let search_text = cx.text.layout(
+                "file",
+                Point::new(palette_x + 16.0, palette_y + 18.0),
+                theme::font_size::SM,
+                theme::text::PRIMARY,
+            );
+            cx.scene.draw_text(search_text);
+
+            // Command list
+            let commands = [
+                ("file.new", "New File", "Cmd+N"),
+                ("file.open", "Open File", "Cmd+O"),
+                ("file.save", "Save", "Cmd+S"),
+                ("file.close", "Close Tab", "Cmd+W"),
+            ];
+
+            let item_h = 36.0;
+            let list_y = palette_y + input_h + 16.0;
+
+            for (idx, (id, label, shortcut)) in commands.iter().enumerate() {
+                let item_y = list_y + idx as f32 * item_h;
+                let is_selected = idx == 0;
+
+                if is_selected {
+                    cx.scene.draw_quad(
+                        Quad::new(Bounds::new(palette_x + 4.0, item_y, palette_w - 8.0, item_h))
+                            .with_background(theme::bg::MUTED),
+                    );
+                }
+
+                let label_run = cx.text.layout(
+                    *label,
+                    Point::new(palette_x + 16.0, item_y + 10.0),
+                    theme::font_size::SM,
+                    theme::text::PRIMARY,
+                );
+                cx.scene.draw_text(label_run);
+
+                let id_run = cx.text.layout(
+                    *id,
+                    Point::new(palette_x + 16.0, item_y + 24.0),
+                    theme::font_size::XS,
+                    theme::text::MUTED,
+                );
+                cx.scene.draw_text(id_run);
+
+                let shortcut_run = cx.text.layout(
+                    *shortcut,
+                    Point::new(palette_x + palette_w - 70.0, item_y + 12.0),
+                    theme::font_size::XS,
+                    theme::text::MUTED,
+                );
+                cx.scene.draw_text(shortcut_run);
+            }
         });
     }
 }
@@ -3277,18 +3603,18 @@ fn draw_panel(
         bounds.origin.x + PANEL_PADDING,
         bounds.origin.y + PANEL_PADDING,
         bounds.size.width - PANEL_PADDING * 2.0,
-        20.0,
+        24.0,
     );
     let mut title_text = Text::new(title)
-        .font_size(theme::font_size::SM)
+        .font_size(theme::font_size::BASE)
         .color(theme::text::PRIMARY);
     title_text.paint(title_bounds, cx);
 
     let inner = Bounds::new(
         bounds.origin.x + PANEL_PADDING,
-        bounds.origin.y + PANEL_PADDING + 22.0,
+        bounds.origin.y + PANEL_PADDING + 28.0,
         (bounds.size.width - PANEL_PADDING * 2.0).max(0.0),
-        (bounds.size.height - PANEL_PADDING * 2.0 - 22.0).max(0.0),
+        (bounds.size.height - PANEL_PADDING * 2.0 - 28.0).max(0.0),
     );
     paint(inner, cx);
 }
@@ -3296,9 +3622,9 @@ fn draw_panel(
 fn panel_inner(bounds: Bounds) -> Bounds {
     Bounds::new(
         bounds.origin.x + PANEL_PADDING,
-        bounds.origin.y + PANEL_PADDING + 22.0,
+        bounds.origin.y + PANEL_PADDING + 28.0,
         (bounds.size.width - PANEL_PADDING * 2.0).max(0.0),
-        (bounds.size.height - PANEL_PADDING * 2.0 - 22.0).max(0.0),
+        (bounds.size.height - PANEL_PADDING * 2.0 - 28.0).max(0.0),
     )
 }
 
@@ -3315,23 +3641,23 @@ fn draw_tile(
     );
 
     let mut text = Text::new(label)
-        .font_size(theme::font_size::XS)
+        .font_size(theme::font_size::SM)
         .color(theme::text::MUTED);
     text.paint(
         Bounds::new(
-            bounds.origin.x + 8.0,
-            bounds.origin.y + 6.0,
-            bounds.size.width - 16.0,
-            16.0,
+            bounds.origin.x + 10.0,
+            bounds.origin.y + 8.0,
+            bounds.size.width - 20.0,
+            20.0,
         ),
         cx,
     );
 
     let inner = Bounds::new(
-        bounds.origin.x + 8.0,
-        bounds.origin.y + 26.0,
-        (bounds.size.width - 16.0).max(0.0),
-        (bounds.size.height - 32.0).max(0.0),
+        bounds.origin.x + 10.0,
+        bounds.origin.y + 32.0,
+        (bounds.size.width - 20.0).max(0.0),
+        (bounds.size.height - 42.0).max(0.0),
     );
     paint(inner, cx);
 }
@@ -3384,7 +3710,7 @@ fn grid_metrics(width: f32, items: usize, tile_w: f32, tile_h: f32, gap: f32) ->
 }
 
 fn panel_height(inner_height: f32) -> f32 {
-    inner_height + PANEL_PADDING * 2.0 + 22.0
+    inner_height + PANEL_PADDING * 2.0 + 28.0
 }
 
 fn toolcall_animations() -> (Animation<f32>, Animation<f32>) {
@@ -3610,4 +3936,15 @@ fn light_demo_height(_bounds: Bounds) -> f32 {
 
 fn toolcall_demo_height(_bounds: Bounds) -> f32 {
     panel_height(TOOLCALL_DEMO_INNER_H)
+}
+
+fn system_ui_height(_bounds: Bounds) -> f32 {
+    let panels = [
+        panel_height(180.0),  // Tooltip demos
+        panel_height(120.0),  // StatusBar demos
+        panel_height(260.0),  // Notifications demos
+        panel_height(200.0),  // ContextMenu demo
+        panel_height(240.0),  // CommandPalette demo
+    ];
+    stacked_height(&panels)
 }
