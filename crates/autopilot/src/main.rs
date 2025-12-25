@@ -66,7 +66,6 @@ async fn main() -> Result<()> {
             with_issues,
             issues_db,
             full_auto,
-            ui,
             no_apm,
             publish_trajectory,
         } => {
@@ -85,7 +84,6 @@ async fn main() -> Result<()> {
                 with_issues,
                 issues_db,
                 full_auto,
-                ui,
                 no_apm,
                 publish_trajectory,
             )
@@ -560,7 +558,6 @@ async fn run_claude_agent(
     options: QueryOptions,
     collector: &mut TrajectoryCollector,
     verbose: bool,
-    ui_port: Option<u16>,
 ) -> Result<()> {
     let mut stream = query(prompt, options).await?;
 
@@ -569,13 +566,6 @@ async fn run_claude_agent(
 
         // Collect trajectory
         collector.process_message(&msg);
-
-        // Stream to desktop UI if enabled
-        if let Some(port) = ui_port {
-            if let Some(html) = autopilot::ui_renderer::render_sdk_message(&msg) {
-                let _ = stream_to_desktop(port, html.into_string()).await;
-            }
-        }
 
         // Print progress
         if verbose {
@@ -595,7 +585,6 @@ async fn run_full_auto_loop(
     options: QueryOptions,
     collector: &mut TrajectoryCollector,
     verbose: bool,
-    ui_port: Option<u16>,
     cwd: &PathBuf,
     issues_db: Option<&PathBuf>,
 ) -> Result<()> {
@@ -763,13 +752,6 @@ async fn run_full_auto_loop(
                         // Success means the agent decided to stop - we may need to continue
                     }
                     _ => {}
-                }
-            }
-
-            // Stream to UI
-            if let Some(port) = ui_port {
-                if let Some(html) = autopilot::ui_renderer::render_sdk_message(&msg) {
-                    let _ = stream_to_desktop(port, html.into_string()).await;
                 }
             }
 
@@ -1170,7 +1152,6 @@ async fn run_task(
     with_issues: bool,
     issues_db: Option<PathBuf>,
     full_auto: bool,
-    ui: bool,
     no_apm: bool,
     publish_trajectory: bool,
 ) -> Result<()> {
@@ -1228,60 +1209,6 @@ async fn run_task(
 
     // Check for stale lockfile and handle crash recovery
     check_and_handle_stale_lockfile(&cwd).await?;
-
-    // Launch desktop UI if requested
-    let _ui_port: Option<u16> = if ui {
-        println_flush!("{} Launching desktop UI...", "UI:".cyan().bold());
-
-        // Spawn desktop app as subprocess
-        let mut child = std::process::Command::new("cargo")
-            .args(["run", "--release", "-p", "desktop"])
-            .current_dir(&cwd)
-            .stdout(std::process::Stdio::piped())
-            .stderr(std::process::Stdio::piped())
-            .spawn()?;
-
-        // Wait for server to start by reading stdout for the port
-        use std::io::{BufRead, BufReader};
-        let port = if let Some(stdout) = child.stdout.take() {
-            let reader = BufReader::new(stdout);
-
-            let mut port = None;
-            for line in reader.lines().take(20).flatten() {
-                // Look for "DESKTOP_PORT=PORT"
-                if let Some(rest) = line.strip_prefix("DESKTOP_PORT=") {
-                    if let Ok(p) = rest.trim().parse::<u16>() {
-                        port = Some(p);
-                        break;
-                    }
-                }
-            }
-            port
-        } else {
-            eprintln!("Warning: Failed to get stdout from desktop process");
-            None
-        };
-
-        if let Some(p) = port {
-            println_flush!(
-                "{} Desktop running at http://127.0.0.1:{}/autopilot",
-                "UI:".cyan().bold(),
-                p
-            );
-            // Open browser
-            let _ = std::process::Command::new("open")
-                .arg(format!("http://127.0.0.1:{}/autopilot", p))
-                .spawn();
-            Some(p)
-        } else {
-            eprintln!("{} Failed to detect desktop UI port", "Warning:".yellow());
-            // Kill the child process
-            let _ = child.kill();
-            None
-        }
-    } else {
-        None
-    };
 
     // Resolve friendly model names to full model IDs
     let model = resolve_model(&model);
@@ -1498,7 +1425,6 @@ async fn run_task(
             options,
             &mut collector,
             verbose,
-            _ui_port,
             &cwd,
             issues_db.as_ref(),
         )
@@ -1506,7 +1432,7 @@ async fn run_task(
     } else {
         match agent.as_str() {
             "claude" => {
-                run_claude_agent(&prompt, options, &mut collector, verbose, _ui_port).await?;
+                run_claude_agent(&prompt, options, &mut collector, verbose).await?;
             }
             "codex" => {
                 run_codex_agent(
@@ -2234,21 +2160,6 @@ fn get_git_branch(cwd: &PathBuf) -> Result<String> {
         .current_dir(cwd)
         .output()?;
     Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
-}
-
-/// Stream HTML fragment to desktop app /events endpoint
-async fn stream_to_desktop(port: u16, html: String) -> Result<()> {
-    let client = reqwest::Client::new();
-    let url = format!("http://127.0.0.1:{}/events", port);
-
-    let _ = client
-        .post(&url)
-        .header("Content-Type", "text/html")
-        .body(html)
-        .send()
-        .await;
-
-    Ok(())
 }
 
 /// Resume a previous autopilot session
@@ -4325,29 +4236,6 @@ async fn handle_metrics_command(command: MetricsCommands) -> Result<()> {
             }
 
             println!("{}", "=".repeat(80));
-        }
-        MetricsCommands::Dashboard { metrics_db, port } => {
-            use autopilot::dashboard::start_dashboard;
-
-            let db_path = metrics_db
-                .unwrap_or_else(default_db_path)
-                .to_string_lossy()
-                .to_string();
-
-            println!("{}", "=".repeat(80));
-            println!(
-                "{} Starting Autopilot Metrics Dashboard",
-                "📊".cyan().bold()
-            );
-            println!("{}", "=".repeat(80));
-            println!();
-            println!("  Database: {}", db_path);
-            println!("  URL: http://127.0.0.1:{}", port);
-            println!();
-            println!("  Press Ctrl+C to stop");
-            println!();
-
-            start_dashboard(&db_path, port).await?;
         }
         MetricsCommands::Report { metrics_db, output } => {
             use autopilot::weekly_report::generate_weekly_report;

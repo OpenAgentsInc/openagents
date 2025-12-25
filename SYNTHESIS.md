@@ -173,7 +173,7 @@ SkillLicense and SkillDelivery events (kinds 38020/38021) handle marketplace tra
 
 The wallet application (directive d-003) is the human-facing interface tying together Nostr identity and Bitcoin payments. It serves as the control plane for everything a user does in OpenAgents: creating and managing identity, viewing Nostr profiles, connecting to relays, sending and receiving payments, delegating authority to agents.
 
-A single initialization command generates a BIP39 mnemonic deriving both social and economic identity, stored in the OS keychain. The CLI provides operations for all core functionality: displaying identity and balances, handling payments, publishing to Nostr, sending encrypted messages. The GUI wraps the same functionality in a native desktop window using wry/tao plus Actix plus Maud.
+A single initialization command generates a BIP39 mnemonic deriving both social and economic identity, stored in the OS keychain. The CLI provides operations for all core functionality: displaying identity and balances, handling payments, publishing to Nostr, sending encrypted messages. The GUI wraps the same functionality in a native WGPUI desktop window (wgpu + winit).
 
 Future development adds Nostr Wallet Connect via NIP-47 so external applications can request payments with user approval, zap integration for tipping content creators, and multi-account support for managing multiple identities. The wallet is both an application and a reference implementation demonstrating how the underlying protocols combine into a coherent user experience.
 
@@ -343,7 +343,7 @@ The ultimate vision is an agent economy. Agents have identity through FROSTR and
 
 ## Part Eleven: User Interface Architecture
 
-The visual layer of OpenAgents follows a consistent architecture across all applications. Native windows created via wry and tao contain an Actix web server that renders Maud templates with HTMX providing interactivity and WebSockets enabling real-time updates. This approach avoids the complexity of single-page application frameworks while providing responsive, dynamic interfaces.
+The visual layer of OpenAgents follows a consistent architecture across all applications. Native windows created via winit drive WGPUI rendering directly to the GPU. The UI is purely native (no embedded web server), with interactivity and layout handled inside WGPUI components and the event loop.
 
 The interface paradigm is inspired by real-time strategy games, not traditional IDEs. Managing a fleet of AI agents should feel like playing StarCraft—hotkeys for switching between agent groups, a minimap showing activity across all agents, rapid context-switching without losing state. The existing coding tool interfaces—terminals, chat windows, IDE sidebars—are designed for single-agent interaction. When you orchestrate twenty agents across multiple codebases, you need command-and-control infrastructure. Control groups let you select and command agent clusters with a keystroke. A heads-up display shows APM, budget burn rate, and active task counts at a glance. The escape from terminal UIs is not about aesthetics but about the operational requirements of multi-agent management.
 
@@ -373,7 +373,7 @@ Directive d-015 extends testing to marketplace and commerce flows. NIP-90 comput
 
 OpenAgents is implemented as a Cargo workspace with sixteen or more crates organized by functionality. The architecture reflects the layered design described throughout this document, with each crate responsible for a specific capability and dependencies flowing upward from foundational to application layers.
 
-The desktop and UI crates provide the visual layer. The desktop crate is the native webview shell using wry and tao with a local Actix server, producing a single-binary desktop application with WebSocket hot-reload, Maud server-side rendering, and HTMX interactions. The ui crate is the Maud/HTMX/Tailwind component library with over forty recorder components following atomic design, a sharp-corner design system, Vera Mono typography, and a dark mode color scheme. The storybook crate is the visual component explorer with hot-reload for development.
+The visual layer now centers on WGPUI. The `crates/wgpui` crate provides the renderer, layout, and component primitives used across native apps. The legacy webview shell, template-based UI library, and storybook explorer were archived as part of the web stack removal.
 
 The autonomous execution crates handle agent operation. The autopilot crate is the autonomous task runner with complete trajectory logging, supporting multi-agent backends (Claude, Codex), issue-based workflows, JSON and rlog output formats, budget tracking, and session resumption. The recorder crate parses and validates session files in the rlog format, extracting metadata, calculating statistics, and enabling conversion to JSON for downstream processing.
 
@@ -387,7 +387,7 @@ The configuration crate handles project settings including Claude Code configura
 
 The agent SDK crates provide integration with external AI systems. The claude-agent-sdk crate is a Rust SDK for Claude Code CLI with approximately one hundred percent parity with the TypeScript SDK, including permission handlers, session management, streaming support, and Rust-only extensions like abort. The codex-agent-sdk crate provides similar functionality for OpenAI Codex CLI. The fm-bridge crate is the Apple Foundation Models client for macOS 15.1 and later, supporting chat completions, guided generation for structured output, and on-device inference.
 
-The tech stack underlying all crates uses Rust edition 2024 with workspace-based organization, Tokio for async runtime, Actix-web for HTTP serving, and SQLite via rusqlite for embedded database. The UI layer uses Maud for type-safe HTML templates, HTMX for dynamic interactions, Tailwind CSS for utility-first styling, and wry/tao for native webview embedding. The protocol layer uses Nostr for decentralized messaging, NIP-90 for Data Vending Machines, MCP for model context protocol, and JSON-RPC 2.0 for RPC communication.
+The tech stack underlying all crates uses Rust edition 2024 with workspace-based organization, Tokio for async runtime, and SQLite via rusqlite for embedded database. The UI layer uses WGPUI (wgpu + winit) for native GPU-rendered interfaces. The protocol layer uses Nostr for decentralized messaging, NIP-90 for Data Vending Machines, MCP for model context protocol, and JSON-RPC 2.0 for RPC communication.
 
 This crate structure maps directly to the directives. Each directive addresses one or more crates, and each crate serves one or more directives. The modular organization enables parallel development—different teams or agents can work on different crates simultaneously with clear interfaces between them.
 

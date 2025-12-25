@@ -66,13 +66,6 @@ pub enum AutopilotCommands {
         category: Option<String>,
     },
 
-    /// Start the dashboard web UI
-    Dashboard {
-        /// Port to listen on
-        #[arg(short, long, default_value = "3000")]
-        port: u16,
-    },
-
     /// Replay a saved trajectory
     Replay {
         /// Path to trajectory file
@@ -154,15 +147,6 @@ pub fn run(cmd: AutopilotCommands) -> anyhow::Result<()> {
     // For the unified binary, we print a message directing to the legacy binary
     // until we refactor autopilot to expose its CLI as a library.
     match cmd {
-        AutopilotCommands::Dashboard { port } => {
-            let runtime = tokio::runtime::Runtime::new()?;
-            runtime.block_on(async {
-                // Use workspace root db path
-                let db_path = autopilot::default_db_path();
-                let db_str = db_path.to_string_lossy();
-                autopilot::dashboard::start_dashboard(&db_str, port).await
-            })
-        }
         AutopilotCommands::Replay { trajectory } => {
             // Load trajectory first, then replay
             let traj = autopilot::replay::load_trajectory(&trajectory)?;

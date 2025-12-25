@@ -177,3 +177,4 @@ async fn test_apm_websocket_connection() {
         panic!("Expected connection message");
     }
 }
+#![cfg(feature = "legacy-web")]

@@ -15,6 +15,9 @@ license = "MIT"
 name = "wallet"
 path = "src/lib.rs"
 
+[features]
+legacy-web = []
+
 [dependencies]
 # CLI
 clap = { version = "4", features = ["derive", "cargo"] }
@@ -62,12 +65,6 @@ hex = "0.4"
 chrono.workspace = true
 spark = { package = "openagents-spark", path = "../spark" }
 reqwest = { workspace = true, features = ["json", "blocking"] }
-
-# GUI dependencies
-wry = "0.50"
-tao = "0.33"
-actix-web = "4"
-maud = { version = "0.26", features = ["actix-web"] }
 
 [dev-dependencies]
 reqwest = { workspace = true, features = ["blocking"] }

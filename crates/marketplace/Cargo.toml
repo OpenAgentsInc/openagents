@@ -20,13 +20,6 @@ openagents-spark = { path = "../spark" }
 # CLI
 clap = { version = "4", features = ["derive"] }
 
-# GUI
-wry = "0.35"
-tao = "0.24"
-actix-web = "4"
-actix-ws = "0.3"
-maud = "0.26"
-
 # Database
 rusqlite = { version = "0.32", features = ["bundled"] }
 

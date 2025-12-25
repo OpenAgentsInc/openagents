@@ -6,9 +6,6 @@ use clap::Subcommand;
 
 #[derive(Subcommand)]
 pub enum WalletCommands {
-    /// Launch the wallet GUI
-    Gui,
-
     /// Initialize a new wallet with generated mnemonic
     Init {
         /// Display the mnemonic (WARNING: insecure)
@@ -57,7 +54,6 @@ pub enum WalletCommands {
 
 pub fn run(cmd: WalletCommands) -> anyhow::Result<()> {
     match cmd {
-        WalletCommands::Gui => wallet::gui::run_gui(),
         WalletCommands::Init { show_mnemonic } => wallet::cli::identity::init(show_mnemonic),
         WalletCommands::Import { mnemonic } => wallet::cli::identity::import(mnemonic),
         WalletCommands::Export => wallet::cli::identity::export(),

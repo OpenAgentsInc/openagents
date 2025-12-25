@@ -161,7 +161,7 @@ The autonomous coding agent:
 │                                                                          │
 │  INFRASTRUCTURE                                                          │
 │  ┌────────────────────────────────────────────────────────────────────┐  │
-│  │  Rust · Tokio · Actix · SQLite · wry/tao · Maud/HTMX              │  │
+│  │  Rust · Tokio · SQLite · WGPUI (wgpu + winit)                    │  │
 │  └────────────────────────────────────────────────────────────────────┘  │
 │                                                                          │
 └──────────────────────────────────────────────────────────────────────────┘
@@ -189,14 +189,14 @@ cd openagents
 # Build all crates
 cargo build --release
 
-# Run desktop shell
-cargo run -p desktop
+# Run the unified CLI
+cargo run --bin openagents -- --help
 
 # Run autopilot
 cargo run -p autopilot -- run "Fix all clippy warnings"
 
-# Run storybook (component explorer)
-cargo run -p storybook
+# Run WGPUI component showcase
+cargo run -p wgpui --example component_showcase --features desktop
 ```
 
 ### Installation
@@ -208,8 +208,6 @@ cargo install --path crates/autopilot
 # Install recorder CLI
 cargo install --path crates/recorder
 
-# Install storybook
-cargo install --path crates/storybook
 ```
 
 ## Architecture
@@ -219,12 +217,10 @@ OpenAgents is a Cargo workspace with 16+ crates organized by functionality:
 ```
 openagents/
 ├── crates/
-│   ├── desktop/          Desktop shell (UI + server)
+│   ├── wgpui/            Native UI foundation (wgpu + winit)
 │   ├── autopilot/        Autonomous task runner
 │   ├── marketplace/      Skills & agent marketplace
 │   ├── compute/          NIP-90 compute provider
-│   ├── ui/               Maud/HTMX component library
-│   ├── storybook/        Component explorer
 │   ├── recorder/         Session format parser
 │   ├── issues/           Issue tracking library
 │   ├── issues-mcp/       MCP server for issues
@@ -238,48 +234,17 @@ openagents/
 
 ## Crates
 
-### Desktop & UI
+### UI
 
-#### `desktop`
-Native webview shell using wry/tao with local Actix server. Provides:
-- Single-binary desktop app
-- WebSocket hot-reload
-- Maud SSR rendering
-- HTMX interactions
+#### `wgpui`
+Native GPU UI foundation with layout, text, and component primitives.
 
 **Quick start:**
 ```bash
-cargo run -p desktop
+cargo run -p wgpui --example component_showcase --features desktop
 ```
 
-[Full documentation →](crates/desktop/README.md)
-
-#### `ui`
-Maud/HTMX/Tailwind component library with:
-- 40+ recorder components (Atomic Design)
-- Sharp corner design system
-- Vera Mono typography
-- Dark mode color scheme
-
-**Example:**
-```rust
-use ui::{Button, ButtonVariant};
-
-Button::new("Click me")
-    .variant(ButtonVariant::Primary)
-    .render()
-```
-
-[Full documentation →](crates/ui/README.md)
-
-#### `storybook`
-Visual component explorer with hot-reload:
-```bash
-cargo run -p storybook
-# Opens http://localhost:3030
-```
-
-[Full documentation →](crates/storybook/README.md)
+[Full documentation →](crates/wgpui/README.md)
 
 ### Autonomous Execution
 
@@ -525,14 +490,10 @@ Supports:
 **Core:**
 - **Rust** - Edition 2024, workspace-based
 - **Tokio** - Async runtime
-- **Actix-web** - HTTP server
 - **SQLite/rusqlite** - Embedded database
 
 **UI:**
-- **Maud** - Type-safe HTML templates
-- **HTMX** - Dynamic interactions
-- **Tailwind CSS** - Utility-first styling
-- **wry/tao** - Native webview
+- **WGPUI** - Native GPU UI (wgpu + winit)
 
 **Protocols:**
 - **Nostr** - Decentralized messaging
@@ -614,7 +575,7 @@ The pre-commit hook ensures code quality before commits and catches issues early
 cargo doc --workspace --no-deps --open
 
 # Build specific crate
-cargo doc -p desktop --no-deps --open
+cargo doc -p wgpui --no-deps --open
 ```
 
 ### Code Quality
@@ -653,8 +614,7 @@ cargo add tokio --features full
 
 - Edition 2024 for all crates
 - No border radius (sharp corners in UI)
-- Inline-first CSS with custom properties
-- Server-rendered (no SPA)
+- Inline-first styling via WGPUI StyleRefinement
 - Vera Mono font stack
 
 ### Testing
@@ -674,12 +634,10 @@ cargo add tokio --features full
 ## Roadmap
 
 **Phase 1: Foundation (Current)**
-- ✅ Desktop shell with webview
+- ✅ WGPUI foundation layer
 - ✅ Autopilot with trajectory logging
 - ✅ Issue tracking system
 - ✅ Recorder format parser
-- ✅ UI component library
-- ✅ Storybook explorer
 - 🚧 Marketplace infrastructure
 - 🚧 NIP-90 compute provider
 
@@ -865,48 +823,17 @@ fn analyze_session(path: &str) -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
-### Browsing UI Components in Storybook
+### Exploring WGPUI Components
 
-Launch the component explorer to develop and test UI components:
+Run the WGPUI component showcase:
 
 ```bash
-# Start storybook server
-cargo run -p storybook
-
-# Expected output:
-# Server running at http://localhost:3030
-# Opening browser...
-
-# With hot-reload (recommended for development)
-cargo install systemfd cargo-watch
-systemfd --no-pid -s http::3030 -- cargo watch -x 'run -p storybook'
-
-# Expected output:
-# Watching for changes in crates/ui/ and crates/storybook/
-# Browser will auto-refresh on changes
+cargo run -p wgpui --example component_showcase --features desktop
 ```
 
-Navigate to specific components:
-- http://localhost:3030/stories/button - Button variants and states
-- http://localhost:3030/stories/recorder/atoms - Atomic recorder components
-- http://localhost:3030/stories/recorder/demo - Full session viewer
-
-Develop new components with instant feedback:
-
-```rust
-// crates/ui/src/my_component.rs
-use maud::{Markup, html};
-
-pub fn my_component(text: &str) -> Markup {
-    html! {
-        div class="p-4 bg-card border border-border" {
-            (text)
-        }
-    }
-}
-
-// Save file → storybook auto-refreshes → see changes immediately
-```
+Other useful examples:
+- `cargo run -p wgpui --example first_light --features desktop`
+- `cargo run -p wgpui --example ui_pane_demo --features desktop`
 
 ### Building a NIP-90 Compute Provider
 
