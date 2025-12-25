@@ -4,7 +4,7 @@
 
 use crate::testing::step::{ClickTarget, ElementSelector, TestStep};
 use crate::testing::context::ComponentRegistry;
-use crate::{InputEvent, Key, Modifiers, MouseButton, NamedKey, Point};
+use crate::{InputEvent, Key, Modifiers, MouseButton, Point};
 use std::time::{Duration, Instant};
 
 /// A timed event to be injected.
@@ -327,6 +327,7 @@ pub fn generate_step_events(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::NamedKey;
 
     #[test]
     fn test_event_sequence_click() {
@@ -345,6 +346,41 @@ mod tests {
     fn test_event_sequence_type_text() {
         let seq = EventSequence::type_text("hi", Some(Duration::from_millis(50)));
         assert_eq!(seq.len(), 4); // 2 chars * (down + up)
+    }
+
+    #[test]
+    fn test_type_text_default_delay_and_events() {
+        let seq = EventSequence::type_text("ab", None);
+        assert_eq!(seq.len(), 4);
+
+        let events = seq.events();
+        assert_eq!(events[0].delay, Duration::from_millis(50));
+        assert_eq!(events[1].delay, Duration::from_millis(20));
+        assert_eq!(events[2].delay, Duration::from_millis(50));
+        assert_eq!(events[3].delay, Duration::from_millis(20));
+
+        match &events[0].event {
+            InputEvent::KeyDown { key, modifiers } => {
+                if let Key::Character(c) = key {
+                    assert_eq!(c, "a");
+                } else {
+                    panic!("Expected KeyDown with Character");
+                }
+                assert!(!modifiers.shift && !modifiers.ctrl && !modifiers.alt && !modifiers.meta);
+            }
+            _ => panic!("Expected KeyDown event"),
+        }
+
+        match &events[1].event {
+            InputEvent::KeyUp { key, .. } => {
+                if let Key::Character(c) = key {
+                    assert_eq!(c, "a");
+                } else {
+                    panic!("Expected KeyUp with Character");
+                }
+            }
+            _ => panic!("Expected KeyUp event"),
+        }
     }
 
     #[test]

@@ -437,6 +437,7 @@ impl Test {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::testing::step::{ElementSelector, TestStep};
 
     #[test]
     fn test_builder_basic() {
@@ -542,5 +543,52 @@ mod tests {
 
         assert_eq!(runner.name(), "Login Flow");
         assert_eq!(runner.total_steps(), 8);
+    }
+
+    #[test]
+    fn test_builder_type_text_default_delay() {
+        let runner = test("Typing").type_text("hi").build();
+
+        match &runner.steps()[0] {
+            TestStep::Type { text, delay_per_char } => {
+                assert_eq!(text, "hi");
+                assert_eq!(*delay_per_char, Some(Duration::from_millis(50)));
+            }
+            _ => panic!("Expected Type step"),
+        }
+    }
+
+    #[test]
+    fn test_builder_expect_parses_selector() {
+        let runner = test("Expect").expect("#42").build();
+
+        match &runner.steps()[0] {
+            TestStep::Expect { selector: ElementSelector::Id(42) } => {}
+            _ => panic!("Expected Expect step with Id selector"),
+        }
+    }
+
+    #[test]
+    fn test_builder_wait_for_default_timeout() {
+        let runner = test("Wait").wait_for("#7").build();
+
+        match &runner.steps()[0] {
+            TestStep::WaitFor { selector: ElementSelector::Id(7), timeout } => {
+                assert_eq!(*timeout, Duration::from_secs(5));
+            }
+            _ => panic!("Expected WaitFor step with default timeout"),
+        }
+    }
+
+    #[test]
+    fn test_builder_wait_for_custom_timeout() {
+        let runner = test("Wait").wait_for_timeout("#7", 1500).build();
+
+        match &runner.steps()[0] {
+            TestStep::WaitFor { selector: ElementSelector::Id(7), timeout } => {
+                assert_eq!(*timeout, Duration::from_millis(1500));
+            }
+            _ => panic!("Expected WaitFor step with custom timeout"),
+        }
     }
 }

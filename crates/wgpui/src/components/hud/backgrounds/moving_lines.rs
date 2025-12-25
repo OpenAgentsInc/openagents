@@ -463,4 +463,20 @@ mod tests {
         lines.update_with_delta(AnimatorState::Entered, Duration::from_secs(1));
         assert!((lines.cycle.progress() - 0.5).abs() < 0.01);
     }
+
+    #[test]
+    fn test_moving_lines_builder_clamps_and_direction() {
+        let lines = MovingLinesBackground::new()
+            .spacing(2.0)
+            .line_width(0.1)
+            .sets(0)
+            .seed(0)
+            .direction(LineDirection::Down);
+
+        assert!(lines.spacing >= 10.0);
+        assert!(lines.line_width >= 0.5);
+        assert!(lines.sets >= 1);
+        assert!(lines.seed >= 1);
+        assert_eq!(lines.direction, LineDirection::Down);
+    }
 }

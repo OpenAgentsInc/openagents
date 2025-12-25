@@ -470,6 +470,21 @@ mod tests {
     }
 
     #[test]
+    fn test_overlay_key_press_stack_caps() {
+        let mut overlay = InputOverlay::new();
+        for ch in ["a", "b", "c", "d", "e", "f"] {
+            overlay.observe_event(&InputEvent::KeyDown {
+                key: crate::Key::Character(ch.to_string()),
+                modifiers: crate::Modifiers::default(),
+            });
+        }
+
+        assert_eq!(overlay.key_presses.len(), MAX_KEYS);
+        assert_eq!(overlay.key_presses[0].key_text, "B");
+        assert_eq!(overlay.key_presses[4].key_text, "F");
+    }
+
+    #[test]
     fn test_format_key_display() {
         assert_eq!(
             format_key_display(

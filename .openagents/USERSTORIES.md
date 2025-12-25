@@ -74,15 +74,25 @@ This section tracks which user stories have implemented tests.
 | 24.1.3 | Animated frame corners | Unit | `crates/wgpui/src/testing/component_tests.rs` |
 | 24.2.1 | All easing functions | Unit | `crates/wgpui/src/testing/framework_tests.rs` |
 | 24.3.1 | Sequence text effect | Unit | `crates/wgpui/src/testing/framework_tests.rs` |
+| 24.3.2 | Decipher text effect | Unit | `crates/wgpui/src/components/text_effects/decipher.rs` |
 | 24.4.1 | DotsGrid background | Unit | `crates/wgpui/src/testing/component_tests.rs` |
+| 24.4.2 | GridLines background | Unit | `crates/wgpui/src/components/hud/backgrounds/grid_lines.rs` |
+| 24.4.3 | MovingLines background | Unit | `crates/wgpui/src/components/hud/backgrounds/moving_lines.rs` |
+| 24.4.4 | Puffs background | Unit | `crates/wgpui/src/components/hud/backgrounds/puffs.rs` |
 | **d-025: All-In WGPUI** ||||
 | 25.1.2 | Element lifecycle | Unit | `crates/wgpui/src/testing/component_tests.rs` |
 | 25.1.4 | Styled trait for fluent builder DSL | Unit | `crates/wgpui/src/testing/component_tests.rs` |
 | **d-026: E2E Test Live Viewer** ||||
 | 26.1.1 | Fluent DSL for tests | Unit | `crates/wgpui/src/testing/dsl.rs` (module tests) |
 | 26.1.2 | Click elements by selector | Unit | `crates/wgpui/src/testing/step.rs` |
+| 26.1.3 | Type text into inputs | Unit | `crates/wgpui/src/testing/dsl.rs` (module tests) |
+| 26.1.4 | Assert element existence | Unit | `crates/wgpui/src/testing/dsl.rs` (module tests) |
+| 26.1.5 | Wait for elements to appear | Unit | `crates/wgpui/src/testing/dsl.rs` (module tests) |
 | 26.2.1 | Real-time test execution | Visual E2E | `crates/wgpui/examples/test_viewer.rs` |
 | 26.2.2 | Click ripples | Visual E2E | `crates/wgpui/examples/test_viewer.rs` |
+| 26.2.3 | Key presses displayed | Unit | `crates/wgpui/src/testing/overlay.rs` |
+| 26.2.4 | Pause/step through tests | Unit | `crates/wgpui/src/testing/runner.rs` |
+| 26.2.5 | Playback speed control | Unit | `crates/wgpui/src/testing/runner.rs` |
 | 26.3.1 | Component test harness | Unit | `crates/wgpui/src/testing/harness.rs` |
 | 26.3.2 | Synthetic event injection | Unit | `crates/wgpui/src/testing/injection.rs` |
 
@@ -96,11 +106,16 @@ This section tracks which user stories have implemented tests.
 | `crates/wgpui/src/testing/component_tests.rs` | 44 unit tests for component integration | 20.1.1-5, 20.2.1, 24.1.1-3, 24.4.1, 25.1.2, 25.1.4 |
 | `crates/wgpui/src/testing/framework_tests.rs` | 43 unit tests for WGPUI framework | 23.1.1, 23.1.2, 23.2.1, 23.2.3, 23.3.1-4, 24.2.1, 24.3.1 |
 | `crates/wgpui/src/testing/mod.rs` | Testing framework module exports | 26.1.1 |
-| `crates/wgpui/src/testing/dsl.rs` | Fluent test builder API | 26.1.1 |
+| `crates/wgpui/src/testing/dsl.rs` | Fluent test builder API | 26.1.1, 26.1.3-26.1.5 |
 | `crates/wgpui/src/testing/step.rs` | TestStep, ElementSelector types | 26.1.2 |
 | `crates/wgpui/src/testing/harness.rs` | TestHarness wrapper component | 26.3.1 |
 | `crates/wgpui/src/testing/injection.rs` | EventSequence for synthetic events | 26.3.2 |
 | `crates/wgpui/src/testing/overlay.rs` | InputOverlay for click ripples | 26.2.2, 26.2.3 |
+| `crates/wgpui/src/testing/runner.rs` | TestRunner playback + step control | 26.2.4, 26.2.5 |
+| `crates/wgpui/src/components/text_effects/decipher.rs` | Decipher text effect tests | 24.3.2 |
+| `crates/wgpui/src/components/hud/backgrounds/grid_lines.rs` | GridLines background tests | 24.4.2 |
+| `crates/wgpui/src/components/hud/backgrounds/moving_lines.rs` | MovingLines background tests | 24.4.3 |
+| `crates/wgpui/src/components/hud/backgrounds/puffs.rs` | Puffs background tests | 24.4.4 |
 
 ---
 

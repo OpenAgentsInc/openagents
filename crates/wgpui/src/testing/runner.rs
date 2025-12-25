@@ -369,6 +369,17 @@ mod tests {
     }
 
     #[test]
+    fn test_runner_step_forward_marks_started() {
+        let mut runner = TestRunner::new("Test", test_steps());
+        runner.step_mode();
+        runner.step_forward();
+
+        assert_eq!(runner.state(), RunnerState::Stepping);
+        assert!(runner.step_started.is_some());
+        assert_eq!(runner.current_step(), 0);
+    }
+
+    #[test]
     fn test_runner_complete_step() {
         let mut runner = TestRunner::new("Test", test_steps());
         runner.start();
@@ -431,6 +442,14 @@ mod tests {
             PlaybackSpeed::SLOW.scale(duration),
             Duration::from_secs(4)
         );
+    }
+
+    #[test]
+    fn test_playback_speed_custom_clamps() {
+        let slow = PlaybackSpeed::custom(0.01);
+        let fast = PlaybackSpeed::custom(200.0);
+        assert!((slow.multiplier() - 0.1).abs() < 0.0001);
+        assert!((fast.multiplier() - 100.0).abs() < 0.0001);
     }
 
     #[test]
