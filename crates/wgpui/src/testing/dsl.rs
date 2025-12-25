@@ -1,8 +1,9 @@
-//! Fluent DSL for writing tests.
+//! Fluent DSL for writing E2E tests.
 //!
-//! Provides a builder pattern for creating test sequences.
+//! Provides a builder pattern for creating test sequences with an intuitive,
+//! chainable API.
 //!
-//! # Example
+//! # Quick Start
 //!
 //! ```rust,ignore
 //! use wgpui::testing::{test, Test};
@@ -10,12 +11,121 @@
 //! let my_test = test("Login Flow")
 //!     .click("#email-input")
 //!     .type_text("user@example.com")
-//!     .press_key(Key::Named(NamedKey::Tab))
+//!     .press_tab()
 //!     .type_text("password123")
 //!     .click("#login-button")
 //!     .wait(500)
 //!     .expect("#dashboard")
 //!     .build();
+//! ```
+//!
+//! # Element Selectors
+//!
+//! Elements can be selected using string patterns:
+//!
+//! - `#123` - Select by ComponentId (the number after #)
+//! - `text:Hello` - Select by visible text content
+//! - `Hello` - Plain strings are treated as text search
+//!
+//! ```rust,ignore
+//! test("Selectors")
+//!     .click("#42")              // Click element with ComponentId 42
+//!     .click("text:Submit")      // Click element showing "Submit"
+//!     .click("Cancel")           // Also clicks element with text "Cancel"
+//!     .build();
+//! ```
+//!
+//! # Mouse Actions
+//!
+//! ```rust,ignore
+//! test("Mouse Actions")
+//!     .click("#button")              // Left click
+//!     .click_at(100.0, 200.0)        // Click at coordinates
+//!     .right_click("#menu-trigger")  // Right click (context menu)
+//!     .double_click("#file")         // Double click
+//!     .hover("#tooltip-target")      // Move without clicking
+//!     .build();
+//! ```
+//!
+//! # Keyboard Actions
+//!
+//! ```rust,ignore
+//! use wgpui::{Key, Modifiers, NamedKey};
+//!
+//! test("Keyboard Actions")
+//!     .type_text("Hello!")           // Type with 50ms delay per char
+//!     .type_instant("Fast typing")   // Type immediately
+//!     .type_with_delay("Slow", 100)  // Custom delay (100ms)
+//!     .press_enter()                 // Common keys have shortcuts
+//!     .press_tab()
+//!     .press_escape()
+//!     .press_backspace()
+//!     .press_key(Key::Named(NamedKey::ArrowDown))
+//!     .press_key_with(
+//!         Key::Character("s".to_string()),
+//!         Modifiers { ctrl: true, ..Default::default() }
+//!     )  // Ctrl+S
+//!     .build();
+//! ```
+//!
+//! # Scrolling
+//!
+//! ```rust,ignore
+//! test("Scrolling")
+//!     .scroll("#container", 0.0, 100.0)  // Scroll by dx, dy
+//!     .scroll_down("#list", 50.0)        // Scroll down
+//!     .scroll_up("#list", 25.0)          // Scroll up
+//!     .build();
+//! ```
+//!
+//! # Timing
+//!
+//! ```rust,ignore
+//! use std::time::Duration;
+//!
+//! test("Timing")
+//!     .click("#async-action")
+//!     .wait(1000)                              // Wait 1 second
+//!     .wait_duration(Duration::from_secs(2))   // Wait 2 seconds
+//!     .wait_for("#loading-done")               // Wait for element (5s timeout)
+//!     .wait_for_timeout("#slow-load", 15000)   // Custom timeout (15s)
+//!     .build();
+//! ```
+//!
+//! # Assertions
+//!
+//! ```rust,ignore
+//! test("Assertions")
+//!     .click("#submit")
+//!     .expect("#success-message")          // Element exists
+//!     .expect_text("#status", "Complete")  // Has specific text
+//!     .expect_visible("#main-content")     // Is visible on screen
+//!     .build();
+//! ```
+//!
+//! # Complete Example
+//!
+//! ```rust,ignore
+//! use wgpui::testing::{test, TestHarness, PlaybackSpeed};
+//!
+//! // Build the test
+//! let counter_test = test("Counter Operations")
+//!     .click("#increment")
+//!     .expect_text("#count", "1")
+//!     .click("#increment")
+//!     .click("#increment")
+//!     .expect_text("#count", "3")
+//!     .click("#decrement")
+//!     .expect_text("#count", "2")
+//!     .click("#reset")
+//!     .expect_text("#count", "0")
+//!     .build();
+//!
+//! // Run it
+//! counter_test.set_speed(PlaybackSpeed::SLOW);
+//! let harness = TestHarness::new(my_counter)
+//!     .with_runner(counter_test)
+//!     .show_overlay(true);
 //! ```
 
 use crate::testing::runner::TestRunner;
@@ -24,11 +134,51 @@ use crate::{Key, Modifiers, MouseButton, NamedKey};
 use std::time::Duration;
 
 /// Create a new test builder with a name.
+///
+/// This is the entry point for the fluent test DSL. Chain methods to add
+/// steps, then call `.build()` to get a [`TestRunner`].
+///
+/// # Example
+///
+/// ```rust,ignore
+/// use wgpui::testing::test;
+///
+/// let runner = test("My Test")
+///     .click("#button")
+///     .expect("#result")
+///     .build();
+/// ```
 pub fn test(name: impl Into<String>) -> Test {
     Test::new(name)
 }
 
 /// Fluent test builder.
+///
+/// Use the [`test()`] function to create instances. Chain methods to add
+/// test steps, and call [`build()`](Test::build) to create a [`TestRunner`].
+///
+/// # Example
+///
+/// ```rust,ignore
+/// use wgpui::testing::test;
+///
+/// let runner = test("Form Submission")
+///     .click("#name-input")
+///     .type_text("John Doe")
+///     .click("#email-input")
+///     .type_text("john@example.com")
+///     .click("#submit")
+///     .wait(500)
+///     .expect("#success-message")
+///     .build();
+///
+/// // Access test metadata before building
+/// let builder = test("Counter")
+///     .click("#increment")
+///     .click("#increment");
+/// println!("Test has {} steps", builder.step_count());
+/// let runner = builder.build();
+/// ```
 pub struct Test {
     name: String,
     steps: Vec<TestStep>,
@@ -51,7 +201,22 @@ impl Test {
 
     // --- Click methods ---
 
-    /// Click on an element (left button).
+    /// Click on an element (left mouse button).
+    ///
+    /// The selector can be:
+    /// - `"#123"` - ComponentId 123
+    /// - `"text:Submit"` - Element with visible text "Submit"
+    /// - `"Submit"` - Also searches by text
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// test("Clicks")
+    ///     .click("#submit-button")
+    ///     .click("text:Cancel")
+    ///     .click("OK")
+    ///     .build();
+    /// ```
     pub fn click(self, selector: impl Into<String>) -> Self {
         let target = ClickTarget::from_selector(&selector.into());
         self.step(TestStep::Click {
@@ -232,7 +397,28 @@ impl Test {
         })
     }
 
-    /// Build the test into a TestRunner.
+    /// Build the test into a [`TestRunner`].
+    ///
+    /// This consumes the builder and creates an executable test runner.
+    /// The runner can be passed to a [`TestHarness`](super::TestHarness)
+    /// for live visualization.
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// use wgpui::testing::{test, TestHarness, PlaybackSpeed};
+    ///
+    /// let runner = test("My Test")
+    ///     .click("#button")
+    ///     .expect("#result")
+    ///     .build();
+    ///
+    /// // Configure the runner
+    /// runner.set_speed(PlaybackSpeed::SLOW);
+    ///
+    /// // Use with harness
+    /// let harness = TestHarness::new(component).with_runner(runner);
+    /// ```
     pub fn build(self) -> TestRunner {
         TestRunner::new(self.name, self.steps)
     }
