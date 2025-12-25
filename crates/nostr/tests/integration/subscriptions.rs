@@ -1,7 +1,10 @@
 //! Subscription behavior tests
 
 use super::*;
-use nostr::{finalize_event, generate_secret_key, EventTemplate};
+use nostr::{
+    create_job_request_event, finalize_event, generate_secret_key, EventTemplate, JobInput,
+    JobRequest, KIND_JOB_TEXT_GENERATION,
+};
 use nostr_client::{RelayConnection, RelayMessage};
 use tokio::time::{timeout, Duration};
 
@@ -284,4 +287,64 @@ async fn test_realtime_event_delivery() {
 
     relay1.disconnect().await.ok();
     relay2.disconnect().await.ok();
+}
+
+#[tokio::test]
+async fn test_subscription_receives_job_request_kind() {
+    let port = 17104;
+    let (_server, _addr, _temp_dir) = start_test_relay(port).await;
+    let url = test_relay_url(port);
+
+    let relay_sub = RelayConnection::new(&url).unwrap();
+    let relay_pub = RelayConnection::new(&url).unwrap();
+
+    relay_sub.connect().await.unwrap();
+    relay_pub.connect().await.unwrap();
+
+    let filters = vec![serde_json::json!({"kinds": [KIND_JOB_TEXT_GENERATION]})];
+    relay_sub.subscribe("job-sub", &filters).await.unwrap();
+
+    timeout(Duration::from_secs(1), async {
+        loop {
+            if let Ok(Some(RelayMessage::Eose(_))) = relay_sub.recv().await {
+                break;
+            }
+        }
+    })
+    .await
+    .ok();
+
+    let secret_key = generate_secret_key();
+    let request = JobRequest::new(KIND_JOB_TEXT_GENERATION)
+        .unwrap()
+        .add_input(JobInput::text("Write a summary"));
+    let template = create_job_request_event(&request);
+    let event = finalize_event(&template, &secret_key).unwrap();
+    let event_id = event.id.clone();
+
+    relay_pub
+        .publish_event(&event, Duration::from_secs(5))
+        .await
+        .unwrap();
+
+    let result = timeout(Duration::from_secs(2), async {
+        loop {
+            if let Ok(Some(msg)) = relay_sub.recv().await {
+                if let RelayMessage::Event(sub_id, evt) = msg {
+                    if evt.id == event_id {
+                        return (sub_id, evt);
+                    }
+                }
+            }
+        }
+    })
+    .await;
+
+    assert!(result.is_ok(), "Should receive job request event");
+    let (sub_id, received_event) = result.unwrap();
+    assert_eq!(sub_id, "job-sub");
+    assert_eq!(received_event.kind, KIND_JOB_TEXT_GENERATION);
+
+    relay_sub.disconnect().await.ok();
+    relay_pub.disconnect().await.ok();
 }
