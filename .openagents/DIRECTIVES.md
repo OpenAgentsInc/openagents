@@ -95,11 +95,13 @@ Progress is automatically tracked based on completed/total linked issues.
 - **WGPUI-only UI**: All new GUI work (wallet, marketplace, autopilot) targets WGPUI and launches via `openagents`; no new Actix/Maud/HTMX routes.
 - **Unified entrypoint**: CLI docs and UX use `openagents` subcommands; no new standalone binaries (GitAfter is the only legacy web-stack exception).
 - **Legacy web stack**: GitAfter remains wry/tao + Actix for now; document integration boundaries clearly until migrated.
+- **Autopilot delegation**: `openagents autopilot`/`openagents daemon` forward to the autopilot binaries when present; keep CLI parity and document `OPENAGENTS_AUTOPILOT_BIN`/`OPENAGENTS_AUTOPILOTD_BIN`.
 - **Shared state**: Autopilot GUI, metrics, and APM read/write the same `autopilot` metrics DB and issue DB; avoid forked storage.
 - **Local inference**: GPT-OSS and fm-bridge backends integrate through `local-inference`; ACP adapters should accept both and pass through `openagents autopilot`.
 - **Trajectories**: GitAfter and NIP-SA should consume the same trajectory/rlog formats produced by autopilot and recorder.
 - **Agent backends**: ACP/OpenCode/orchestrator sessions should emit consistent rlog headers and session IDs for metrics + replay.
 - **Payments & identity**: Wallet + marketplace share Spark + NIP-SA identity; do not implement separate key derivations.
+- **Fonts**: All UI surfaces use Vera Mono from `src/gui/assets/fonts/VeraMono*.ttf`.
 
 ## Best Practices for Writing Directives
 
