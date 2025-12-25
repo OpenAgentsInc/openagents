@@ -34,6 +34,7 @@ impl BackgroundAnimator {
         }
     }
 
+    #[allow(dead_code)]
     pub fn timing(mut self, timing: AnimatorTiming) -> Self {
         self.timing = timing;
         self
@@ -43,6 +44,7 @@ impl BackgroundAnimator {
         self.timing = timing;
     }
 
+    #[allow(dead_code)]
     pub fn easing(mut self, easing: Easing) -> Self {
         self.easing = easing;
         self
@@ -70,7 +72,7 @@ impl BackgroundAnimator {
     }
 
     pub fn update_with_delta(&mut self, state: AnimatorState, delta: Duration) -> f32 {
-        if state != self.state {
+        if state != self.state() {
             self.start_for(state);
         }
 

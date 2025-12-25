@@ -1,11 +1,9 @@
 use crate::components::atoms::{Mode, Model};
-use crate::components::hud::{
-    Command, CommandPalette, Notification, Notifications, StatusBar, StatusItem,
-};
+use crate::components::hud::{Command, CommandPalette, Notifications, StatusBar, StatusItem};
 use crate::components::organisms::{ThreadEntry, ThreadEntryType};
 use crate::components::sections::{MessageEditor, ThreadFeedback, ThreadHeader, ThreadView};
 use crate::components::{Component, ComponentId, EventContext, EventResult, PaintContext, Text};
-use crate::{Bounds, InputEvent, theme};
+use crate::{Bounds, InputEvent};
 
 pub struct ChatApplication {
     id: Option<ComponentId>,

@@ -127,16 +127,6 @@ impl EntityMap {
         );
     }
 
-    pub fn extend_accessed(&mut self, entities: &HashSet<EntityId>) {
-        self.accessed_entities
-            .borrow_mut()
-            .extend(entities.iter().copied());
-    }
-
-    pub fn clear_accessed(&mut self) {
-        self.accessed_entities.borrow_mut().clear();
-    }
-
     pub fn take_dropped(&mut self) -> Vec<(EntityId, Box<dyn Any>)> {
         let mut ref_counts = self.ref_counts.write();
         let dropped_entity_ids = mem::take(&mut ref_counts.dropped_entity_ids);

@@ -2,7 +2,7 @@ use crate::element::{Element, ElementPaintContext, LayoutContext, PrepaintContex
 use crate::layout::LayoutEngine;
 use crate::scene::Scene;
 use crate::text::TextSystem;
-use crate::{Bounds, Size};
+use crate::Size;
 
 use super::dispatch::DispatchTree;
 use super::invalidator::{InvalidationFlags, Invalidator};
@@ -149,7 +149,7 @@ mod tests {
     use super::*;
     use crate::element::Element;
     use crate::layout::{px, LayoutStyle};
-    use crate::Point;
+    use crate::{Bounds, Point};
 
     struct TestElement {
         id: u64,
