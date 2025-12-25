@@ -2,7 +2,7 @@ use issues::{db, issue};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Connect to the autopilot database
-    let conn = db::init_db(std::path::Path::new("autopilot.db"))?;
+    let conn = db::init_db(std::path::Path::new(".openagents/autopilot.db"))?;
 
     // Get next ready issue for claude
     match issue::get_next_ready_issue(&conn, Some("claude"))? {

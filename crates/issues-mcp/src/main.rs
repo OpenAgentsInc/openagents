@@ -1006,7 +1006,7 @@ fn main() -> Result<()> {
     // Get database path from environment or use default at workspace root
     let db_path = std::env::var("ISSUES_DB")
         .map(PathBuf::from)
-        .unwrap_or_else(|_| find_workspace_root().join("autopilot.db"));
+        .unwrap_or_else(|_| find_workspace_root().join(".openagents/autopilot.db"));
 
     let server = McpServer::new(db_path)?;
 

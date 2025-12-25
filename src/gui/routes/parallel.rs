@@ -209,7 +209,7 @@ fn format_uptime(seconds: u64) -> String {
 }
 
 async fn get_open_issues_count() -> anyhow::Result<usize> {
-    let db_path = "autopilot.db";
+    let db_path = ".openagents/autopilot.db";
     if !std::path::Path::new(db_path).exists() {
         return Ok(0);
     }

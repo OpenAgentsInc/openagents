@@ -10,7 +10,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let issue_id = &args[1];
     let run_id = &args[2];
 
-    let conn = db::init_db(std::path::Path::new("autopilot.db"))?;
+    let conn = db::init_db(std::path::Path::new(".openagents/autopilot.db"))?;
     issue::claim_issue(&conn, issue_id, run_id)?;
 
     println!("✓ Claimed issue {}", issue_id);

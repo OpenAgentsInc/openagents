@@ -99,7 +99,7 @@ pub struct ContributionConfig {
 impl Default for ContributionConfig {
     fn default() -> Self {
         Self {
-            db_path: PathBuf::from("marketplace.db"),
+            db_path: PathBuf::from(".openagents/marketplace.db"),
             relays: vec![
                 "wss://relay.damus.io".to_string(),
                 "wss://relay.nostr.band".to_string(),

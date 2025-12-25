@@ -185,7 +185,7 @@ pub async fn stop_agents() -> Result<()> {
 
 /// Query current issue for a given agent/container from database
 fn query_current_issue(container_name: &str) -> Option<i32> {
-    let db_path = find_project_root().ok()?.join("autopilot.db");
+    let db_path = find_project_root().ok()?.join(".openagents/autopilot.db");
     if !db_path.exists() {
         return None;
     }

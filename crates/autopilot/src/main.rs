@@ -1172,7 +1172,7 @@ async fn run_task(
                 println_flush!("{} {}", "Path:".dimmed(), proj.path);
                 (
                     PathBuf::from(&proj.path),
-                    Some(PathBuf::from(&proj.path).join("autopilot.db")),
+                    Some(PathBuf::from(&proj.path).join(".openagents/autopilot.db")),
                     Some(proj.id),
                 )
             }
@@ -2027,7 +2027,7 @@ fn auto_create_issues_from_patterns(
     }
 
     // Find issues database
-    let issues_db_path = workdir.join("autopilot.db");
+    let issues_db_path = workdir.join(".openagents/autopilot.db");
     if !issues_db_path.exists() {
         // No issues database yet, skip auto-creation
         return Ok(());
@@ -4573,7 +4573,7 @@ async fn handle_metrics_command(command: MetricsCommands) -> Result<()> {
             let issues_db_path = issues_db.unwrap_or_else(|| {
                 std::env::current_dir()
                     .unwrap_or_else(|_| PathBuf::from("."))
-                    .join("autopilot.db")
+                    .join(".openagents/autopilot.db")
             });
 
             println!("{}", "=".repeat(80));
@@ -5513,7 +5513,7 @@ async fn handle_benchmark_command(
         BenchmarkRunner,
     };
 
-    let db_path = db.unwrap_or_else(|| PathBuf::from("autopilot-benchmarks.db"));
+    let db_path = db.unwrap_or_else(|| PathBuf::from(".openagents/autopilot-benchmarks.db"));
     let workspace_path = workspace.unwrap_or_else(|| PathBuf::from("benchmark-workspace"));
     let version = save_baseline
         .clone()
@@ -6568,7 +6568,7 @@ async fn handle_logs_command(command: LogsCommands) -> Result<()> {
             let config = LogsConfig {
                 logs_dir: logs_dir.unwrap_or_else(|| PathBuf::from("docs/logs")),
                 delete_after_days: days,
-                db_path: db.or_else(|| Some(PathBuf::from("autopilot.db"))),
+                db_path: db.or_else(|| Some(PathBuf::from(".openagents/autopilot.db"))),
                 ..Default::default()
             };
 

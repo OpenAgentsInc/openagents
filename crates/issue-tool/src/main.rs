@@ -256,6 +256,6 @@ fn resolve_db_path(db: Option<PathBuf>) -> Result<PathBuf> {
         return Ok(path);
     }
 
-    // Default to autopilot.db in current directory
-    Ok(PathBuf::from("autopilot.db"))
+    // Default to .openagents/autopilot.db in current directory
+    Ok(PathBuf::from(".openagents/autopilot.db"))
 }
