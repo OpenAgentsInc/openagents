@@ -8,7 +8,7 @@
 //!   - `openagents gitafter ...`
 //!   - `openagents daemon ...`
 
-use clap::{CommandFactory, Parser, Subcommand};
+use clap::{Parser, Subcommand};
 use std::process;
 
 mod cli;
@@ -63,11 +63,9 @@ fn main() {
     // Run command
     let result = match cli.command {
         None => {
-            let mut cmd = Cli::command();
-            if let Err(err) = cmd.print_help() {
-                exit_with_error(err.into());
+            if let Err(err) = autopilot_gui::run() {
+                exit_with_error(err);
             }
-            println!();
             Ok(())
         }
         Some(Commands::Wallet(cmd)) => cli::wallet::run(cmd),

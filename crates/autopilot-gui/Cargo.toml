@@ -1,0 +1,28 @@
+[package]
+name = "autopilot-gui"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "Native WGPUI interface for Autopilot"
+
+[lib]
+name = "autopilot_gui"
+path = "src/lib.rs"
+
+[[bin]]
+name = "autopilot-gui"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = { workspace = true }
+autopilot = { path = "../autopilot" }
+tracing = { workspace = true }
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+wgpui = { path = "../wgpui", default-features = false, features = ["desktop"] }
+wgpu = { version = "24.0" }
+winit = { version = "0.30" }
+pollster = { version = "0.4" }
+tokio = { workspace = true }

@@ -641,6 +641,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "autopilot-gui"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "autopilot",
+ "pollster",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+ "wgpu",
+ "wgpui",
+ "winit",
+]
+
+[[package]]
 name = "base16ct"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5275,6 +5290,7 @@ dependencies = [
  "anyhow",
  "assert_cmd",
  "autopilot",
+ "autopilot-gui",
  "base64 0.22.1",
  "chrono",
  "clap",

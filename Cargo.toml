@@ -5,6 +5,7 @@ members = [
     "crates/agent-orchestrator",
     "crates/gitafter",
     "crates/autopilot",
+    "crates/autopilot-gui",
     "crates/frostr",
     "crates/gpt-oss",
     "crates/gpt-oss-agent",
@@ -50,6 +51,7 @@ path = "src/main.rs"
 wallet = { path = "crates/wallet" }
 marketplace = { path = "crates/marketplace" }
 autopilot = { path = "crates/autopilot" }
+autopilot-gui = { path = "crates/autopilot-gui" }
 gitafter = { path = "crates/gitafter" }
 claude-agent-sdk = { path = "crates/claude-agent-sdk" }
 acp-adapter = { path = "crates/acp-adapter" }
