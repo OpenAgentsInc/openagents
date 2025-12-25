@@ -38,9 +38,40 @@ use maud::{DOCTYPE, Markup, html};
 use serde::{Deserialize, Serialize};
 use tokio::sync::broadcast;
 
+#[cfg(test)]
+use std::sync::OnceLock;
+
+#[cfg(test)]
+static TEST_NOW: OnceLock<DateTime<Utc>> = OnceLock::new();
+
+#[cfg(test)]
+pub(crate) fn set_test_now(now: DateTime<Utc>) {
+    let _ = TEST_NOW.set(now);
+}
+
+#[cfg(test)]
+fn test_now() -> DateTime<Utc> {
+    TEST_NOW
+        .get_or_init(|| {
+            chrono::DateTime::parse_from_rfc3339("2025-12-24T00:00:00Z")
+                .unwrap()
+                .with_timezone(&Utc)
+        })
+        .clone()
+}
+
 /// Format a Unix timestamp as a human-readable relative time
 fn format_relative_time(dt: &DateTime<Utc>) -> String {
-    let now = Utc::now();
+    let now = {
+        #[cfg(test)]
+        {
+            test_now()
+        }
+        #[cfg(not(test))]
+        {
+            Utc::now()
+        }
+    };
     let duration = now.signed_duration_since(*dt);
 
     if duration.num_seconds() < 60 {
