@@ -61,6 +61,16 @@ This section tracks which user stories have implemented tests.
 | 2.2.6 | Manage multiple relay connections in a pool | Integration | `crates/nostr/tests/integration/pool.rs` |
 | 2.3.1 | Encrypt messages with NIP-44 | Unit | `crates/nostr/core/src/nip44.rs` |
 | 2.3.2 | Decrypt NIP-44 messages | Unit | `crates/nostr/core/src/nip44.rs` |
+| 2.3.3 | Send encrypted DMs (kind:14 per NIP-17) | Unit | `crates/nostr/core/src/nip17.rs` |
+| 2.3.4 | Receive and decrypt DMs from others | Unit | `crates/nostr/core/src/nip17.rs` |
+| 2.4.1 | Publish a job request (kind:5000-5999) | Unit | `crates/nostr/core/src/tests/nip90_integration.rs` |
+| 2.4.2 | Subscribe to job requests for supported kinds | Integration | `crates/nostr/tests/integration/subscriptions.rs` |
+| 2.4.3 | Publish job results (kind:6000-6999) | Unit | `crates/nostr/core/src/tests/nip90_integration.rs` |
+| 2.4.4 | Leave feedback on job quality | Unit | `crates/nostr/core/src/nip90.rs` |
+| 2.5.1 | Send a zap to a note or profile | Unit | `crates/nostr/core/src/nip57.rs` |
+| 2.5.2 | Receive zaps on content | Unit | `crates/nostr/core/src/nip57.rs` |
+| 2.6.1 | Connect a signer app via NIP-46 | Unit | `crates/nostr/core/src/nip46.rs` |
+| 2.6.2 | Approve or deny signing requests | Unit | `crates/nostr/core/src/nip46.rs` |
 | **d-009: Autopilot GUI** ||||
 | 9.1.1 | Conversation thread display | Visual E2E | `crates/wgpui/examples/chat_streaming_test.rs` |
 | 9.1.2 | Tool calls with output | Visual E2E | `crates/wgpui/examples/chat_streaming_test.rs` |
@@ -148,9 +158,15 @@ This section tracks which user stories have implemented tests.
 | `crates/autopilot/src/apm_storage.rs` | APM window snapshot tests | 16.1.3 |
 | `crates/autopilot/src/apm.rs` | APM tier + stats tests | 16.2.3 |
 | `crates/nostr/core/src/tests/event_validation.rs` | NIP-01 event validation and signing tests | 2.1.1-2.1.5 |
+| `crates/nostr/core/src/nip17.rs` | NIP-17 DM creation and gift wrap tests | 2.3.3-2.3.4 |
 | `crates/nostr/core/src/nip44.rs` | NIP-44 encryption/decryption tests | 2.3.1-2.3.2 |
+| `crates/nostr/core/src/tests/nip90_integration.rs` | NIP-90 job request/result lifecycle tests | 2.4.1, 2.4.3 |
+| `crates/nostr/core/src/nip90.rs` | NIP-90 feedback and kind validation tests | 2.4.4 |
+| `crates/nostr/core/src/nip57.rs` | NIP-57 zap request/receipt tests | 2.5.1-2.5.2 |
+| `crates/nostr/core/src/nip46.rs` | NIP-46 connect request/response tests | 2.6.1-2.6.2 |
 | `crates/nostr/tests/integration/client_relay.rs` | Client/relay integration flows | 2.2.1, 2.2.3-2.2.5 |
 | `crates/nostr/tests/integration/pool.rs` | RelayPool multi-relay publish tests | 2.2.2, 2.2.6 |
+| `crates/nostr/tests/integration/subscriptions.rs` | Subscription behavior across kinds and filters | 2.4.2 |
 
 ---
 

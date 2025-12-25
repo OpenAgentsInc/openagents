@@ -428,6 +428,20 @@ mod tests {
     }
 
     #[test]
+    fn test_zap_request_profile_only() {
+        let mut event = example_zap_request();
+        event.tags.retain(|tag| tag[0] != "e");
+
+        let zap_req = ZapRequest::from_event(event).expect("should parse zap request");
+        assert_eq!(
+            zap_req.recipient_pubkey,
+            "04c915daefee38317fa734444acee390a8269fe5810b2241e5e6dd343dfbecc9"
+        );
+        assert!(zap_req.zapped_event.is_none());
+        zap_req.validate().expect("should validate");
+    }
+
+    #[test]
     fn test_zap_request_validation() {
         let event = example_zap_request();
         let zap_req = ZapRequest::from_event(event).expect("should parse zap request");
