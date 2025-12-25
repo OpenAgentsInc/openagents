@@ -330,6 +330,7 @@ impl Component for StatusBar {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::{Bounds, EventContext, InputEvent, MouseButton};
 
     #[test]
     fn test_status_item_text() {
@@ -408,5 +409,60 @@ mod tests {
         let (w, h) = bar.size_hint();
         assert!(w.is_none());
         assert_eq!(h, Some(24.0));
+    }
+
+    #[test]
+    fn test_status_bar_alignment_filters() {
+        let bar = StatusBar::new().items(vec![
+            StatusItem::text("left", "Left").left(),
+            StatusItem::text("center", "Center").center(),
+            StatusItem::text("right", "Right").right(),
+        ]);
+
+        let left_ids: Vec<_> = bar.left_items().map(|item| item.id.as_str()).collect();
+        let center_ids: Vec<_> = bar.center_items().map(|item| item.id.as_str()).collect();
+        let right_ids: Vec<_> = bar.right_items().map(|item| item.id.as_str()).collect();
+
+        assert_eq!(left_ids, vec!["left"]);
+        assert_eq!(center_ids, vec!["center"]);
+        assert_eq!(right_ids, vec!["right"]);
+    }
+
+    #[test]
+    fn test_status_bar_event_inside_outside_bottom() {
+        let mut bar = StatusBar::new().height(20.0).position(StatusBarPosition::Bottom);
+        let bounds = Bounds::new(0.0, 0.0, 200.0, 100.0);
+        let mut cx = EventContext::new();
+
+        let inside = InputEvent::MouseUp {
+            button: MouseButton::Left,
+            x: 10.0,
+            y: 95.0,
+        };
+        let result = bar.event(&inside, bounds, &mut cx);
+        assert_eq!(result, EventResult::Handled);
+
+        let outside = InputEvent::MouseUp {
+            button: MouseButton::Left,
+            x: 10.0,
+            y: 10.0,
+        };
+        let result = bar.event(&outside, bounds, &mut cx);
+        assert_eq!(result, EventResult::Ignored);
+    }
+
+    #[test]
+    fn test_status_bar_event_inside_top() {
+        let mut bar = StatusBar::new().height(20.0).position(StatusBarPosition::Top);
+        let bounds = Bounds::new(0.0, 0.0, 200.0, 100.0);
+        let mut cx = EventContext::new();
+
+        let inside = InputEvent::MouseUp {
+            button: MouseButton::Left,
+            x: 10.0,
+            y: 5.0,
+        };
+        let result = bar.event(&inside, bounds, &mut cx);
+        assert_eq!(result, EventResult::Handled);
     }
 }

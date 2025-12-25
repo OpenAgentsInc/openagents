@@ -297,6 +297,7 @@ impl Component for Tooltip {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::{Bounds, Size};
 
     #[test]
     fn test_tooltip_creation() {
@@ -353,5 +354,74 @@ mod tests {
     fn test_tooltip_max_width() {
         let tooltip = Tooltip::new("Test").max_width(300.0);
         assert_eq!(tooltip.max_width, 300.0);
+    }
+
+    #[test]
+    fn test_tooltip_calculate_bounds_top() {
+        let target = Bounds::new(150.0, 120.0, 40.0, 20.0);
+        let tooltip = Tooltip::new("Test")
+            .position(TooltipPosition::Top)
+            .target(target);
+        let viewport = Bounds::new(0.0, 0.0, 400.0, 300.0);
+        let text_size = Size::new(80.0, 14.0);
+
+        let (bounds, arrow) = tooltip.calculate_bounds(viewport, text_size);
+        assert_eq!(arrow, ArrowDirection::Down);
+
+        let tooltip_height = text_size.height + tooltip.padding * 2.0;
+        let expected_y = target.origin.y - tooltip_height - tooltip.offset - tooltip.arrow_size;
+        assert!((bounds.origin.y - expected_y).abs() < 0.01);
+    }
+
+    #[test]
+    fn test_tooltip_calculate_bounds_auto_prefers_top() {
+        let target = Bounds::new(160.0, 150.0, 40.0, 20.0);
+        let tooltip = Tooltip::new("Test")
+            .position(TooltipPosition::Auto)
+            .target(target);
+        let viewport = Bounds::new(0.0, 0.0, 400.0, 300.0);
+        let text_size = Size::new(60.0, 14.0);
+
+        let (_bounds, arrow) = tooltip.calculate_bounds(viewport, text_size);
+        assert_eq!(arrow, ArrowDirection::Down);
+    }
+
+    #[test]
+    fn test_tooltip_calculate_bounds_auto_prefers_bottom() {
+        let target = Bounds::new(120.0, 5.0, 40.0, 20.0);
+        let tooltip = Tooltip::new("Test")
+            .position(TooltipPosition::Auto)
+            .target(target);
+        let viewport = Bounds::new(0.0, 0.0, 400.0, 200.0);
+        let text_size = Size::new(80.0, 24.0);
+
+        let (_bounds, arrow) = tooltip.calculate_bounds(viewport, text_size);
+        assert_eq!(arrow, ArrowDirection::Up);
+    }
+
+    #[test]
+    fn test_tooltip_calculate_bounds_auto_left_fallback() {
+        let target = Bounds::new(110.0, 20.0, 20.0, 10.0);
+        let tooltip = Tooltip::new("Test")
+            .position(TooltipPosition::Auto)
+            .target(target);
+        let viewport = Bounds::new(0.0, 0.0, 140.0, 60.0);
+        let text_size = Size::new(60.0, 40.0);
+
+        let (_bounds, arrow) = tooltip.calculate_bounds(viewport, text_size);
+        assert_eq!(arrow, ArrowDirection::Right);
+    }
+
+    #[test]
+    fn test_tooltip_calculate_bounds_clamps_x() {
+        let target = Bounds::new(2.0, 100.0, 20.0, 20.0);
+        let tooltip = Tooltip::new("Wide tooltip")
+            .position(TooltipPosition::Top)
+            .target(target);
+        let viewport = Bounds::new(0.0, 0.0, 200.0, 200.0);
+        let text_size = Size::new(180.0, 14.0);
+
+        let (bounds, _arrow) = tooltip.calculate_bounds(viewport, text_size);
+        assert!(bounds.origin.x >= viewport.origin.x);
     }
 }

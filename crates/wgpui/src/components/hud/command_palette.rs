@@ -421,6 +421,9 @@ impl Component for CommandPalette {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::{Bounds, EventContext, InputEvent, Modifiers, MouseButton, Point};
+    use std::cell::RefCell;
+    use std::rc::Rc;
 
     #[test]
     fn test_command_new() {
@@ -501,5 +504,182 @@ mod tests {
 
         palette.move_selection_up();
         assert_eq!(palette.selected_index, 1);
+    }
+
+    #[test]
+    fn test_command_palette_filtering_by_query() {
+        let mut palette = CommandPalette::new().commands(vec![
+            Command::new("open", "Open File")
+                .description("Open from disk")
+                .category("File"),
+            Command::new("build", "Build Project")
+                .description("Compile assets")
+                .category("Project"),
+            Command::new("deploy", "Deploy").category("Ops"),
+        ]);
+
+        palette.search_input.set_value("open");
+        palette.update_filtered();
+        assert_eq!(palette.filtered_commands, vec![0]);
+
+        palette.search_input.set_value("ops");
+        palette.update_filtered();
+        assert_eq!(palette.filtered_commands, vec![2]);
+
+        palette.search_input.set_value("compile");
+        palette.update_filtered();
+        assert_eq!(palette.filtered_commands, vec![1]);
+
+        palette.selected_index = 2;
+        palette.scroll_offset = 1;
+        palette.search_input.set_value("file");
+        palette.update_filtered();
+        assert_eq!(palette.selected_index, 0);
+        assert_eq!(palette.scroll_offset, 0);
+    }
+
+    #[test]
+    fn test_command_palette_scroll_offset_updates() {
+        let mut palette = CommandPalette::new()
+            .max_visible_items(2)
+            .commands(vec![
+                Command::new("a", "A"),
+                Command::new("b", "B"),
+                Command::new("c", "C"),
+                Command::new("d", "D"),
+            ]);
+
+        palette.move_selection_down();
+        assert_eq!(palette.selected_index, 1);
+        assert_eq!(palette.scroll_offset, 0);
+
+        palette.move_selection_down();
+        assert_eq!(palette.selected_index, 2);
+        assert_eq!(palette.scroll_offset, 1);
+
+        palette.move_selection_down();
+        assert_eq!(palette.selected_index, 3);
+        assert_eq!(palette.scroll_offset, 2);
+    }
+
+    #[test]
+    fn test_command_palette_select_current_invokes_callback() {
+        let selected = Rc::new(RefCell::new(None));
+        let closed = Rc::new(RefCell::new(false));
+        let selected_clone = Rc::clone(&selected);
+        let closed_clone = Rc::clone(&closed);
+
+        let mut palette = CommandPalette::new()
+            .commands(vec![
+                Command::new("alpha", "Alpha"),
+                Command::new("beta", "Beta"),
+            ])
+            .on_select(move |cmd| {
+                *selected_clone.borrow_mut() = Some(cmd.id.clone());
+            })
+            .on_close(move || {
+                *closed_clone.borrow_mut() = true;
+            });
+
+        palette.open();
+        palette.select_current();
+
+        assert_eq!(selected.borrow().as_deref(), Some("alpha"));
+        assert!(!palette.is_open());
+        assert!(*closed.borrow());
+    }
+
+    #[test]
+    fn test_command_palette_event_keyboard() {
+        let selected = Rc::new(RefCell::new(None));
+        let selected_clone = Rc::clone(&selected);
+        let mut palette = CommandPalette::new()
+            .commands(vec![
+                Command::new("alpha", "Alpha"),
+                Command::new("beta", "Beta"),
+            ])
+            .on_select(move |cmd| {
+                *selected_clone.borrow_mut() = Some(cmd.id.clone());
+            });
+
+        palette.open();
+
+        let bounds = Bounds::new(0.0, 0.0, 800.0, 600.0);
+        let mut cx = EventContext::new();
+
+        let down = InputEvent::KeyDown {
+            key: Key::Named(NamedKey::ArrowDown),
+            modifiers: Modifiers::default(),
+        };
+        palette.event(&down, bounds, &mut cx);
+        assert_eq!(palette.selected_index, 1);
+
+        let enter = InputEvent::KeyDown {
+            key: Key::Named(NamedKey::Enter),
+            modifiers: Modifiers::default(),
+        };
+        palette.event(&enter, bounds, &mut cx);
+        assert_eq!(selected.borrow().as_deref(), Some("beta"));
+        assert!(!palette.is_open());
+
+        palette.open();
+        let escape = InputEvent::KeyDown {
+            key: Key::Named(NamedKey::Escape),
+            modifiers: Modifiers::default(),
+        };
+        palette.event(&escape, bounds, &mut cx);
+        assert!(!palette.is_open());
+    }
+
+    #[test]
+    fn test_command_palette_mouse_clicks() {
+        let selected = Rc::new(RefCell::new(None));
+        let selected_clone = Rc::clone(&selected);
+        let mut palette = CommandPalette::new()
+            .commands(vec![
+                Command::new("alpha", "Alpha"),
+                Command::new("beta", "Beta"),
+            ])
+            .on_select(move |cmd| {
+                *selected_clone.borrow_mut() = Some(cmd.id.clone());
+            });
+
+        palette.open();
+        let bounds = Bounds::new(0.0, 0.0, 800.0, 600.0);
+        let mut cx = EventContext::new();
+
+        let outside = InputEvent::MouseUp {
+            button: MouseButton::Left,
+            x: 5.0,
+            y: 5.0,
+        };
+        palette.event(&outside, bounds, &mut cx);
+        assert!(!palette.is_open());
+
+        palette.open();
+        let palette_width = 500.0_f32.min(bounds.size.width - 40.0);
+        let input_height = 48.0;
+        let padding = theme::spacing::XS;
+        let visible_items = palette.filtered_commands.len().min(palette.max_visible_items);
+        let list_height = visible_items as f32 * palette.item_height;
+        let palette_height = input_height + padding + list_height + padding;
+
+        let palette_bounds = Bounds::new(
+            bounds.origin.x + (bounds.size.width - palette_width) / 2.0,
+            bounds.origin.y + 100.0,
+            palette_width,
+            palette_height,
+        );
+        let item_bounds = palette.item_bounds(&palette_bounds, 0);
+        let click = Point::new(item_bounds.origin.x + 2.0, item_bounds.origin.y + 2.0);
+
+        let inside = InputEvent::MouseUp {
+            button: MouseButton::Left,
+            x: click.x,
+            y: click.y,
+        };
+        palette.event(&inside, bounds, &mut cx);
+        assert_eq!(selected.borrow().as_deref(), Some("alpha"));
+        assert!(!palette.is_open());
     }
 }

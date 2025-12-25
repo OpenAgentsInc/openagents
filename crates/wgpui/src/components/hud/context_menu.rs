@@ -522,6 +522,7 @@ impl Component for ContextMenu {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::{Bounds, EventContext, InputEvent, Key, Modifiers, MouseButton, NamedKey, Point};
 
     #[test]
     fn test_menu_item_creation() {
@@ -631,5 +632,140 @@ mod tests {
     fn test_checked_item() {
         let item = MenuItem::new("toggle", "Toggle Option").checked(true);
         assert_eq!(item.checked, Some(true));
+    }
+
+    #[test]
+    fn test_context_menu_bounds_clamp_to_viewport() {
+        let mut menu = ContextMenu::new().items(vec![
+            MenuItem::new("long", "Very Long Menu Item"),
+            MenuItem::new("short", "Short"),
+        ]);
+        let viewport = Bounds::new(0.0, 0.0, 300.0, 200.0);
+
+        menu.open(Point::new(290.0, 190.0));
+        let bounds = menu.calculate_bounds(viewport);
+
+        assert!(bounds.origin.x >= viewport.origin.x);
+        assert!(bounds.origin.y >= viewport.origin.y);
+        assert!(bounds.origin.x + bounds.size.width <= viewport.origin.x + viewport.size.width);
+        assert!(bounds.origin.y + bounds.size.height <= viewport.origin.y + viewport.size.height);
+    }
+
+    #[test]
+    fn test_context_menu_item_at_point_skips_separator() {
+        let mut menu = ContextMenu::new().items(vec![
+            MenuItem::new("a", "Item A"),
+            MenuItem::separator(),
+            MenuItem::new("b", "Item B"),
+        ]);
+        let viewport = Bounds::new(0.0, 0.0, 200.0, 200.0);
+        menu.open(Point::new(10.0, 10.0));
+        let menu_bounds = menu.calculate_bounds(viewport);
+
+        let separator_y = menu_bounds.origin.y + menu.padding + menu.item_height + menu.separator_height / 2.0;
+        let sep_point = Point::new(menu_bounds.origin.x + menu.padding + 1.0, separator_y);
+        assert!(menu.item_at_point(sep_point, menu_bounds).is_none());
+
+        let item_b_y = menu_bounds.origin.y
+            + menu.padding
+            + menu.item_height
+            + menu.separator_height
+            + menu.item_height / 2.0;
+        let item_b_point = Point::new(menu_bounds.origin.x + menu.padding + 1.0, item_b_y);
+        assert_eq!(menu.item_at_point(item_b_point, menu_bounds), Some(2));
+    }
+
+    #[test]
+    fn test_context_menu_mouse_hover_and_click() {
+        let mut menu = ContextMenu::new().items(vec![
+            MenuItem::new("a", "Item A"),
+            MenuItem::new("b", "Item B"),
+        ]);
+        let viewport = Bounds::new(0.0, 0.0, 300.0, 200.0);
+        menu.open(Point::new(20.0, 20.0));
+        let menu_bounds = menu.calculate_bounds(viewport);
+
+        let point = Point::new(
+            menu_bounds.origin.x + menu.padding + 2.0,
+            menu_bounds.origin.y + menu.padding + menu.item_height / 2.0,
+        );
+
+        let mut cx = EventContext::new();
+        let move_event = InputEvent::MouseMove { x: point.x, y: point.y };
+        let result = menu.event(&move_event, viewport, &mut cx);
+        assert_eq!(result, EventResult::Handled);
+        assert_eq!(menu.hovered, Some(0));
+        assert_eq!(menu.selected, Some(0));
+
+        let click_event = InputEvent::MouseDown {
+            button: MouseButton::Left,
+            x: point.x,
+            y: point.y,
+        };
+        menu.event(&click_event, viewport, &mut cx);
+        assert!(!menu.is_open());
+        assert_eq!(menu.take_selected(), Some("a".to_string()));
+    }
+
+    #[test]
+    fn test_context_menu_mouse_click_outside_closes() {
+        let mut menu = ContextMenu::new().items(vec![
+            MenuItem::new("a", "Item A"),
+            MenuItem::new("b", "Item B"),
+        ]);
+        let viewport = Bounds::new(0.0, 0.0, 300.0, 200.0);
+        menu.open(Point::new(30.0, 30.0));
+
+        let mut cx = EventContext::new();
+        let click_event = InputEvent::MouseDown {
+            button: MouseButton::Left,
+            x: 0.0,
+            y: 0.0,
+        };
+        let result = menu.event(&click_event, viewport, &mut cx);
+        assert_eq!(result, EventResult::Handled);
+        assert!(!menu.is_open());
+    }
+
+    #[test]
+    fn test_context_menu_keyboard_submenu_toggle() {
+        let mut menu = ContextMenu::new().items(vec![
+            MenuItem::new("parent", "Parent").submenu(vec![
+                MenuItem::new("child", "Child"),
+            ]),
+            MenuItem::new("solo", "Solo"),
+        ]);
+        let viewport = Bounds::new(0.0, 0.0, 300.0, 200.0);
+        menu.open(Point::new(10.0, 10.0));
+        menu.selected = Some(0);
+
+        let mut cx = EventContext::new();
+        let right = InputEvent::KeyDown {
+            key: Key::Named(NamedKey::ArrowRight),
+            modifiers: Modifiers::default(),
+        };
+        menu.event(&right, viewport, &mut cx);
+        assert_eq!(menu.open_submenu, Some(0));
+
+        let left = InputEvent::KeyDown {
+            key: Key::Named(NamedKey::ArrowLeft),
+            modifiers: Modifiers::default(),
+        };
+        menu.event(&left, viewport, &mut cx);
+        assert!(menu.open_submenu.is_none());
+    }
+
+    #[test]
+    fn test_context_menu_escape_closes() {
+        let mut menu = ContextMenu::new().items(vec![MenuItem::new("a", "Item A")]);
+        let viewport = Bounds::new(0.0, 0.0, 300.0, 200.0);
+        menu.open(Point::new(10.0, 10.0));
+        let mut cx = EventContext::new();
+        let escape = InputEvent::KeyDown {
+            key: Key::Named(NamedKey::Escape),
+            modifiers: Modifiers::default(),
+        };
+        menu.event(&escape, viewport, &mut cx);
+        assert!(!menu.is_open());
     }
 }
