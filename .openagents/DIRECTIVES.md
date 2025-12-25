@@ -46,25 +46,25 @@ Additional context, links to specs, etc.
 
 ```bash
 # List all directives
-cargo autopilot directive list
+openagents autopilot directive list
 
 # List only active directives
-cargo autopilot directive list --status active
+openagents autopilot directive list --status active
 
 # Show directive details
-cargo autopilot directive show d-001
+openagents autopilot directive show d-001
 
 # Create a new directive
-cargo autopilot directive create d-002 "Add Test Coverage"
+openagents autopilot directive create d-002 "Add Test Coverage"
 
 # Pause a directive
-cargo autopilot directive pause d-001
+openagents autopilot directive pause d-001
 
 # Complete a directive
-cargo autopilot directive complete d-001
+openagents autopilot directive complete d-001
 
 # Resume a paused directive
-cargo autopilot directive resume d-001
+openagents autopilot directive resume d-001
 ```
 
 ## Linking Issues to Directives
@@ -76,7 +76,7 @@ When creating issues, use the `directive_id` parameter to link them:
 issue_create title="Implement NIP-01" directive_id="d-001"
 
 # Linked issues appear in directive progress
-cargo autopilot directive show d-001
+openagents autopilot directive show d-001
 ```
 
 ## How Autopilot Uses Directives
@@ -93,9 +93,11 @@ Progress is automatically tracked based on completed/total linked issues.
 ## Cross-Directive Integration Checks
 
 - **WGPUI-only UI**: All new GUI work (wallet, marketplace, autopilot) targets WGPUI and launches via `openagents`; no new Actix/Maud/HTMX routes.
+- **Unified entrypoint**: CLI docs and UX use `openagents` subcommands; no new standalone binaries (GitAfter is the only legacy web-stack exception).
 - **Shared state**: Autopilot GUI, metrics, and APM read/write the same `autopilot` metrics DB and issue DB; avoid forked storage.
 - **Local inference**: GPT-OSS and fm-bridge backends integrate through `local-inference`; ACP adapters should accept both and pass through `openagents autopilot`.
 - **Trajectories**: GitAfter and NIP-SA should consume the same trajectory/rlog formats produced by autopilot and recorder.
+- **Agent backends**: ACP/OpenCode/orchestrator sessions should emit consistent rlog headers and session IDs for metrics + replay.
 - **Payments & identity**: Wallet + marketplace share Spark + NIP-SA identity; do not implement separate key derivations.
 
 ## Best Practices for Writing Directives
@@ -157,7 +159,7 @@ A good directive body should include:
 | d-024 | Achieve 100% Arwes Parity in WGPUI | UI/Graphics |
 | d-025 | All-In WGPUI - Delete Web Stack | UI/Architecture |
 
-View details with `cargo autopilot directive show <id>`
+View details with `openagents autopilot directive show <id>`
 
 ---
 
@@ -173,7 +175,7 @@ Nostr is the communication substrate for the entire OpenAgents ecosystem. Unlike
 
 ### d-003: OpenAgents Wallet - Complete Identity & Payment Solution
 
-The wallet is the human-facing application that ties together Nostr identity and Bitcoin payments into a coherent user experience. It serves as the control plane for everything a user does in the OpenAgents ecosystem — creating and managing their identity, viewing and updating their Nostr profile, connecting to relays, sending and receiving payments, and eventually delegating authority to autonomous agents. The wallet unifies two previously separate concerns: social identity (your npub, your follows, your reputation) and economic identity (your balance, your transaction history, your payment channels). A single `cargo wallet init` command generates a BIP39 mnemonic that derives both, stored securely in the OS keychain. The CLI provides commands for all core operations: `wallet whoami` shows your identity and balances, `wallet send` and `wallet receive` handle payments, `wallet post` publishes to Nostr, `wallet dm` sends encrypted messages. The GUI version targets WGPUI (winit + wgpu) to align with d-025's all-in WGPUI architecture. Future phases add Nostr Wallet Connect (NIP-47) so external applications can request payments, zap integration for tipping content, and multi-account support for managing multiple identities.
+The wallet is the human-facing application that ties together Nostr identity and Bitcoin payments into a coherent user experience. It serves as the control plane for everything a user does in the OpenAgents ecosystem — creating and managing their identity, viewing and updating their Nostr profile, connecting to relays, sending and receiving payments, and eventually delegating authority to autonomous agents. The wallet unifies two previously separate concerns: social identity (your npub, your follows, your reputation) and economic identity (your balance, your transaction history, your payment channels). A single `openagents wallet init` command generates a BIP39 mnemonic that derives both, stored securely in the OS keychain. The CLI provides commands for all core operations: `openagents wallet whoami` shows your identity and balances, `openagents wallet send` and `openagents wallet receive` handle payments, `openagents wallet post` publishes to Nostr, `openagents wallet dm` sends encrypted messages. The GUI version targets WGPUI (winit + wgpu) to align with d-025's all-in WGPUI architecture. Future phases add Nostr Wallet Connect (NIP-47) so external applications can request payments, zap integration for tipping content, and multi-account support for managing multiple identities.
 
 ### d-004: Continual Constant Improvement of Autopilot
 
@@ -225,7 +227,7 @@ Building on d-014's Bifrost/NIP-SA foundation, this directive adds end-to-end te
 
 ### d-016: Measure Actions Per Minute (APM)
 
-APM is a velocity metric inspired by StarCraft 2's competitive measurement of player speed. In OpenAgents, APM = (messages + tool_calls) / duration_minutes. This simple formula reveals a striking difference between interactive and autonomous usage: when you use Claude Code interactively, APM is ~4.5 because the AI waits for you to read, think, and type. Autopilot runs autonomously at ~19 APM — the same AI, 4x the throughput, because there's no human in the loop. This directive implements APM tracking across both usage modes. Data sources include Claude Code JSONL logs from `~/.claude/projects/` and Autopilot trajectory logs from `docs/logs/`. The system tracks APM across multiple time windows (session, 1h, 6h, 1d, 1w, 1m, lifetime) and color-codes results for quick interpretation: gray (0-5, baseline), blue (5-15, active), green (15-30, productive), amber (30-50, high performance), gold (50+, elite). APM appears in the CLI via `cargo autopilot apm`, in the WGPUI dashboard pane, and in the autopilot-gui HUD overlay. Historical data enables trend analysis and regression detection — if a change slows the agent down, APM will reveal it. The metric reinforces the core value proposition: autonomous agents are dramatically more productive than interactive assistants.
+APM is a velocity metric inspired by StarCraft 2's competitive measurement of player speed. In OpenAgents, APM = (messages + tool_calls) / duration_minutes. This simple formula reveals a striking difference between interactive and autonomous usage: when you use Claude Code interactively, APM is ~4.5 because the AI waits for you to read, think, and type. Autopilot runs autonomously at ~19 APM — the same AI, 4x the throughput, because there's no human in the loop. This directive implements APM tracking across both usage modes. Data sources include Claude Code JSONL logs from `~/.claude/projects/` and Autopilot trajectory logs from `docs/logs/`. The system tracks APM across multiple time windows (session, 1h, 6h, 1d, 1w, 1m, lifetime) and color-codes results for quick interpretation: gray (0-5, baseline), blue (5-15, active), green (15-30, productive), amber (30-50, high performance), gold (50+, elite). APM appears in the CLI via `openagents autopilot apm`, in the WGPUI dashboard pane, and in the autopilot-gui HUD overlay. Historical data enables trend analysis and regression detection — if a change slows the agent down, APM will reveal it. The metric reinforces the core value proposition: autonomous agents are dramatically more productive than interactive assistants.
 
 ### d-017: Integrate Agent Client Protocol (ACP)
 
