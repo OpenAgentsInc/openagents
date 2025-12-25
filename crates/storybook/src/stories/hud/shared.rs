@@ -19,21 +19,6 @@ pub fn section(content: Markup) -> Markup {
     }
 }
 
-pub fn row(content: Markup) -> Markup {
-    html! {
-        div class="flex gap-6 items-start flex-wrap" { (content) }
-    }
-}
-
-pub fn item(label: &str, content: Markup) -> Markup {
-    html! {
-        div class="flex flex-col gap-2" {
-            span class="text-xs text-muted-foreground" { (label) }
-            (content)
-        }
-    }
-}
-
 pub fn code_block(code: &str) -> Markup {
     html! {
         pre class="text-xs bg-secondary border border-border p-4 overflow-x-auto text-muted-foreground" {
