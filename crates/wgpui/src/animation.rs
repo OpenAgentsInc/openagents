@@ -20,8 +20,8 @@ pub use animator::{
     AnimatorId, AnimatorManagerKind, AnimatorMessage, AnimatorNode, AnimatorSettings, AnimatorState,
     AnimatorTiming,
 };
-pub use easing::Easing;
-pub use transitions::{draw, fade, flicker, Transition, TransitionAnimation};
+pub use easing::{ease_among, ease_steps, EaseAmong, EaseSteps, EaseStepsDirection, Easing};
+pub use transitions::{draw, fade, flicker, transition, Transition, TransitionAnimation};
 
 /// Animatable value that can be interpolated
 pub trait Animatable: Clone + Copy {
@@ -829,5 +829,18 @@ mod tests {
         // Elastic can overshoot
         let mid = easing.apply(0.5);
         assert!(mid > 0.0);
+    }
+
+    #[test]
+    fn test_transition_builder() {
+        let mut transition = transition(0.0_f32, 1.0, Duration::from_millis(10), Easing::Linear, None);
+        transition.entering.start();
+        let v = transition.entering.tick(Duration::from_millis(5));
+        assert!((v - 0.5).abs() < 0.1);
+
+        let mut transition = transition(0.0_f32, 1.0, Duration::from_millis(10), Easing::Linear, Some(-1.0));
+        transition.exiting.start();
+        let v = transition.exiting.tick(Duration::from_millis(10));
+        assert!((v + 1.0).abs() < 0.1);
     }
 }

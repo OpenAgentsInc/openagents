@@ -4,10 +4,12 @@
 //! an autopilot run starts and receives its session_id from the SDK.
 
 use anyhow::{Context, Result};
-use nostr::{TrajectorySession, TrajectorySessionContent, TrajectoryVisibility, KIND_TRAJECTORY_SESSION};
+use nostr::{
+    KIND_TRAJECTORY_SESSION, TrajectorySession, TrajectorySessionContent, TrajectoryVisibility,
+};
 use nostr_client::{PoolConfig, RelayPool};
-use wallet::core::UnifiedIdentity;
 use std::sync::Arc;
+use wallet::core::UnifiedIdentity;
 
 /// Configuration for trajectory publishing
 #[derive(Debug, Clone)]
@@ -72,12 +74,18 @@ pub struct TrajectorySessionPublisher {
 impl TrajectorySessionPublisher {
     /// Create new publisher
     pub fn new(config: TrajectoryPublishConfig) -> Self {
-        Self { config, identity: None }
+        Self {
+            config,
+            identity: None,
+        }
     }
 
     /// Create new publisher with identity for signing
     pub fn with_identity(config: TrajectoryPublishConfig, identity: Arc<UnifiedIdentity>) -> Self {
-        Self { config, identity: Some(identity) }
+        Self {
+            config,
+            identity: Some(identity),
+        }
     }
 
     /// Publish a trajectory session event
@@ -142,7 +150,9 @@ impl TrajectorySessionPublisher {
             Some(id) => id,
             None => {
                 // No identity - graceful degradation
-                eprintln!("Warning: No identity configured, trajectory session will not be published");
+                eprintln!(
+                    "Warning: No identity configured, trajectory session will not be published"
+                );
                 let _ = pool.disconnect_all().await;
                 return Ok(None);
             }
@@ -182,9 +192,7 @@ impl TrajectorySessionPublisher {
                 if success_count > 0 {
                     eprintln!(
                         "✓ Published trajectory session {} to {}/{} relays",
-                        event_id,
-                        success_count,
-                        total_count
+                        event_id, success_count, total_count
                     );
                 } else {
                     eprintln!(
@@ -242,8 +250,8 @@ mod tests {
 
     #[test]
     fn test_config_disable() {
-        let config = TrajectoryPublishConfig::new(vec!["wss://relay.example.com".to_string()])
-            .disable();
+        let config =
+            TrajectoryPublishConfig::new(vec!["wss://relay.example.com".to_string()]).disable();
 
         assert!(!config.enabled);
     }

@@ -1,13 +1,12 @@
 //! Autopilot CLI - Run autonomous tasks with Claude and log trajectories
 
 use anyhow::Result;
+use async_trait::async_trait;
 use clap::Parser;
 use claude_agent_sdk::{
-    QueryOptions, SdkMessage, SettingSource, query,
-    HookCallback, HookCallbackMatcher, HookEvent, HookInput, HookOutput,
-    SyncHookOutput, unstable_v2_create_session,
+    HookCallback, HookCallbackMatcher, HookEvent, HookInput, HookOutput, QueryOptions, SdkMessage,
+    SettingSource, SyncHookOutput, query, unstable_v2_create_session,
 };
-use async_trait::async_trait;
 use colored::*;
 use futures::StreamExt;
 use serde_json::json;
@@ -22,27 +21,27 @@ macro_rules! println_flush {
     }};
 }
 
-use autopilot::apm::APMTier;
+use autopilot::TrajectoryCollector;
 use autopilot::analyze;
+use autopilot::apm::APMTier;
 use autopilot::cli::{
-    Cli, Commands, IssueCommands, ProjectCommands, SessionCommands,
-    DirectiveCommands, MetricsCommands, ApmCommands, AlertCommands,
-    BaselineCommands, LogsCommands,
+    AlertCommands, ApmCommands, BaselineCommands, Cli, Commands, DirectiveCommands, IssueCommands,
+    LogsCommands, MetricsCommands, ProjectCommands, SessionCommands,
 };
 use autopilot::lockfile::{
-    check_and_handle_stale_lockfile, cleanup_lockfile, cleanup_mcp_json,
+    MCP_JSON_PATH, check_and_handle_stale_lockfile, cleanup_lockfile, cleanup_mcp_json,
     setup_cleanup_handlers, write_lockfile,
-    MCP_JSON_PATH,
 };
-use autopilot::memory::{check_memory, check_and_kill_memory_hogs, format_bytes, min_available_memory_bytes};
+use autopilot::memory::{
+    check_and_kill_memory_hogs, check_memory, format_bytes, min_available_memory_bytes,
+};
+use autopilot::nip_sa_trajectory::TrajectoryPublisher as NipSaTrajectoryPublisher;
 use autopilot::replay;
 use autopilot::rlog::RlogWriter;
 use autopilot::timestamp::{date_dir, filename, generate_slug};
 use autopilot::trajectory::{StepType, Trajectory};
-use autopilot::{extract_session_id_from_json, extract_session_id_from_rlog};
-use autopilot::TrajectoryCollector;
 use autopilot::trajectory_publisher::{TrajectoryPublishConfig, TrajectorySessionPublisher};
-use autopilot::nip_sa_trajectory::TrajectoryPublisher as NipSaTrajectoryPublisher;
+use autopilot::{extract_session_id_from_json, extract_session_id_from_rlog};
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -72,20 +71,36 @@ async fn main() -> Result<()> {
             publish_trajectory,
         } => {
             run_task(
-                prompt, project, cwd, agent, model, max_turns, max_budget, output_dir, slug, dry_run, verbose,
-                with_issues, issues_db, full_auto, ui, no_apm, publish_trajectory,
+                prompt,
+                project,
+                cwd,
+                agent,
+                model,
+                max_turns,
+                max_budget,
+                output_dir,
+                slug,
+                dry_run,
+                verbose,
+                with_issues,
+                issues_db,
+                full_auto,
+                ui,
+                no_apm,
+                publish_trajectory,
             )
             .await
         }
-        Commands::Replay { trajectory, mode } => {
-            replay_trajectory(trajectory, mode).await
-        }
-        Commands::Compare { trajectory1, trajectory2 } => {
-            compare_trajectories(trajectory1, trajectory2).await
-        }
-        Commands::Analyze { path, aggregate, json } => {
-            analyze_trajectories(path, aggregate, json).await
-        }
+        Commands::Replay { trajectory, mode } => replay_trajectory(trajectory, mode).await,
+        Commands::Compare {
+            trajectory1,
+            trajectory2,
+        } => compare_trajectories(trajectory1, trajectory2).await,
+        Commands::Analyze {
+            path,
+            aggregate,
+            json,
+        } => analyze_trajectories(path, aggregate, json).await,
         Commands::Resume {
             trajectory,
             continue_last,
@@ -96,28 +111,22 @@ async fn main() -> Result<()> {
             issues_db,
         } => {
             resume_task(
-                trajectory, continue_last, cwd, prompt, max_budget, with_issues, issues_db,
+                trajectory,
+                continue_last,
+                cwd,
+                prompt,
+                max_budget,
+                with_issues,
+                issues_db,
             )
             .await
         }
-        Commands::Issue { command } => {
-            handle_issue_command(command).await
-        }
-        Commands::Project { command } => {
-            handle_project_command(command).await
-        }
-        Commands::Session { command } => {
-            handle_session_command(command).await
-        }
-        Commands::Directive { command } => {
-            handle_directive_command(command).await
-        }
-        Commands::Metrics { command } => {
-            handle_metrics_command(command).await
-        }
-        Commands::Apm { command } => {
-            handle_apm_command(command).await
-        }
+        Commands::Issue { command } => handle_issue_command(command).await,
+        Commands::Project { command } => handle_project_command(command).await,
+        Commands::Session { command } => handle_session_command(command).await,
+        Commands::Directive { command } => handle_directive_command(command).await,
+        Commands::Metrics { command } => handle_metrics_command(command).await,
+        Commands::Apm { command } => handle_apm_command(command).await,
         Commands::Benchmark {
             benchmark_id,
             category,
@@ -154,9 +163,7 @@ async fn main() -> Result<()> {
             webhook,
             config,
             metadata,
-        } => {
-            handle_notify_command(title, message, severity, webhook, config, metadata).await
-        }
+        } => handle_notify_command(title, message, severity, webhook, config, metadata).await,
     }
 }
 
@@ -194,12 +201,17 @@ impl HookCallback for CompactionHook {
                 compact_input.custom_instructions.as_deref(),
             );
 
-            eprintln!("🔄 Compaction triggered ({})",
-                if matches!(compact_input.trigger, claude_agent_sdk::CompactTrigger::Auto) {
+            eprintln!(
+                "🔄 Compaction triggered ({})",
+                if matches!(
+                    compact_input.trigger,
+                    claude_agent_sdk::CompactTrigger::Auto
+                ) {
                     "auto"
                 } else {
                     "manual"
-                });
+                }
+            );
             eprintln!("📝 Using strategy: {}", strategy.as_str());
 
             return Ok(HookOutput::Sync(SyncHookOutput {
@@ -267,7 +279,8 @@ impl HookCallback for PostRunHook {
                 let mut json_files: Vec<_> = entries
                     .filter_map(|e| e.ok())
                     .filter(|e| {
-                        e.path().extension()
+                        e.path()
+                            .extension()
                             .and_then(|s| s.to_str())
                             .map(|s| s == "json")
                             .unwrap_or(false)
@@ -275,16 +288,15 @@ impl HookCallback for PostRunHook {
                     .collect();
 
                 // Sort by modification time
-                json_files.sort_by_key(|e| {
-                    std::fs::metadata(e.path())
-                        .and_then(|m| m.modified())
-                        .ok()
-                });
+                json_files
+                    .sort_by_key(|e| std::fs::metadata(e.path()).and_then(|m| m.modified()).ok());
 
                 // Load the most recent trajectory
                 if let Some(json_file) = json_files.last() {
+                    use autopilot::metrics::{
+                        MetricsDb, default_db_path, extract_metrics_from_trajectory,
+                    };
                     use autopilot::replay::load_trajectory;
-                    use autopilot::metrics::{extract_metrics_from_trajectory, MetricsDb, default_db_path};
 
                     if let Ok(trajectory) = load_trajectory(&json_file.path()) {
                         // Extract and store metrics
@@ -293,7 +305,10 @@ impl HookCallback for PostRunHook {
                                 if let Ok(db) = MetricsDb::open(default_db_path()) {
                                     // Store session metrics
                                     if let Err(e) = db.store_session(&session_metrics) {
-                                        eprintln!("Warning: PostRun hook failed to store session metrics: {}", e);
+                                        eprintln!(
+                                            "Warning: PostRun hook failed to store session metrics: {}",
+                                            e
+                                        );
                                     } else {
                                         eprintln!("✓ PostRun hook stored session metrics");
                                     }
@@ -301,12 +316,16 @@ impl HookCallback for PostRunHook {
                                     // Store tool call metrics
                                     for tool_call in &tool_call_metrics {
                                         if let Err(e) = db.store_tool_call(tool_call) {
-                                            eprintln!("Warning: PostRun hook failed to store tool call: {}", e);
+                                            eprintln!(
+                                                "Warning: PostRun hook failed to store tool call: {}",
+                                                e
+                                            );
                                         }
                                     }
 
                                     // Store per-issue metrics
-                                    if let Some(issue_numbers_str) = &session_metrics.issue_numbers {
+                                    if let Some(issue_numbers_str) = &session_metrics.issue_numbers
+                                    {
                                         for num_str in issue_numbers_str.split(',') {
                                             if let Ok(issue_num) = num_str.trim().parse::<i32>() {
                                                 if let Err(e) = db.store_issue_metric(
@@ -318,9 +337,15 @@ impl HookCallback for PostRunHook {
                                                     session_metrics.tool_calls,
                                                     session_metrics.tool_errors,
                                                 ) {
-                                                    eprintln!("Warning: Failed to store issue metric for #{}: {}", issue_num, e);
+                                                    eprintln!(
+                                                        "Warning: Failed to store issue metric for #{}: {}",
+                                                        issue_num, e
+                                                    );
                                                 } else {
-                                                    eprintln!("✓ Stored metrics for issue #{}", issue_num);
+                                                    eprintln!(
+                                                        "✓ Stored metrics for issue #{}",
+                                                        issue_num
+                                                    );
                                                 }
                                             }
                                         }
@@ -328,11 +353,16 @@ impl HookCallback for PostRunHook {
 
                                     // Update directive metrics
                                     if let Some(directive_id) = &session_metrics.directive_id {
-                                        let date = session_metrics.timestamp.format("%Y-%m-%d").to_string();
-                                        let total_tokens = session_metrics.tokens_in + session_metrics.tokens_out;
+                                        let date = session_metrics
+                                            .timestamp
+                                            .format("%Y-%m-%d")
+                                            .to_string();
+                                        let total_tokens =
+                                            session_metrics.tokens_in + session_metrics.tokens_out;
 
                                         // Count issues worked on (for issue_count_delta)
-                                        let issue_count = session_metrics.issue_numbers
+                                        let issue_count = session_metrics
+                                            .issue_numbers
                                             .as_ref()
                                             .map(|s| s.split(',').count() as i32)
                                             .unwrap_or(0);
@@ -347,16 +377,25 @@ impl HookCallback for PostRunHook {
                                             session_metrics.tool_calls,
                                             session_metrics.tool_errors,
                                         ) {
-                                            eprintln!("Warning: Failed to update directive metrics for {}: {}", directive_id, e);
+                                            eprintln!(
+                                                "Warning: Failed to update directive metrics for {}: {}",
+                                                directive_id, e
+                                            );
                                         } else {
-                                            eprintln!("✓ Updated metrics for directive {}", directive_id);
+                                            eprintln!(
+                                                "✓ Updated metrics for directive {}",
+                                                directive_id
+                                            );
                                         }
                                     }
 
                                     // Detect anomalies
                                     if let Ok(anomalies) = db.detect_anomalies(&session_metrics) {
                                         if !anomalies.is_empty() {
-                                            eprintln!("⚠ PostRun hook detected {} anomalies", anomalies.len());
+                                            eprintln!(
+                                                "⚠ PostRun hook detected {} anomalies",
+                                                anomalies.len()
+                                            );
 
                                             // Log critical anomalies (>3σ) to stderr for immediate visibility
                                             let critical_anomalies: Vec<_> = anomalies.iter()
@@ -366,36 +405,57 @@ impl HookCallback for PostRunHook {
                                             if !critical_anomalies.is_empty() {
                                                 eprintln!("\n🚨 CRITICAL ANOMALIES DETECTED:");
                                                 for anomaly in &critical_anomalies {
-                                                    let pct_change = ((anomaly.actual_value - anomaly.expected_value) / anomaly.expected_value) * 100.0;
-                                                    eprintln!("   {} in session {}...: expected {:.3}, actual {:.3} ({:+.1}%)",
+                                                    let pct_change = ((anomaly.actual_value
+                                                        - anomaly.expected_value)
+                                                        / anomaly.expected_value)
+                                                        * 100.0;
+                                                    eprintln!(
+                                                        "   {} in session {}...: expected {:.3}, actual {:.3} ({:+.1}%)",
                                                         anomaly.dimension,
-                                                        &session_metrics.id[..8.min(session_metrics.id.len())],
+                                                        &session_metrics.id
+                                                            [..8.min(session_metrics.id.len())],
                                                         anomaly.expected_value,
                                                         anomaly.actual_value,
                                                         pct_change
                                                     );
                                                 }
-                                                eprintln!("   Run 'cargo autopilot metrics show {}' for details\n", session_metrics.id);
+                                                eprintln!(
+                                                    "   Run 'cargo autopilot metrics show {}' for details\n",
+                                                    session_metrics.id
+                                                );
                                             }
 
                                             for anomaly in &anomalies {
                                                 if let Err(e) = db.store_anomaly(anomaly) {
-                                                    eprintln!("Warning: Failed to store anomaly: {}", e);
+                                                    eprintln!(
+                                                        "Warning: Failed to store anomaly: {}",
+                                                        e
+                                                    );
                                                 }
                                             }
 
                                             // Auto-create issues from patterns
                                             let workdir = std::env::current_dir()
                                                 .unwrap_or_else(|_| PathBuf::from("."));
-                                            if let Err(e) = auto_create_issues_from_patterns(&db, &workdir) {
-                                                eprintln!("Warning: PostRun hook failed to auto-create issues: {}", e);
+                                            if let Err(e) =
+                                                auto_create_issues_from_patterns(&db, &workdir)
+                                            {
+                                                eprintln!(
+                                                    "Warning: PostRun hook failed to auto-create issues: {}",
+                                                    e
+                                                );
                                             }
                                         }
                                     }
 
                                     // Evaluate alerts
-                                    if let Err(e) = evaluate_and_notify_alerts(&db, &session_metrics) {
-                                        eprintln!("Warning: PostRun hook failed to evaluate alerts: {}", e);
+                                    if let Err(e) =
+                                        evaluate_and_notify_alerts(&db, &session_metrics)
+                                    {
+                                        eprintln!(
+                                            "Warning: PostRun hook failed to evaluate alerts: {}",
+                                            e
+                                        );
                                     }
                                 }
                             }
@@ -429,20 +489,30 @@ fn load_directive_summary(cwd: &std::path::Path) -> String {
     let mut summary = String::from("\n\nACTIVE DIRECTIVES (high-level goals guiding your work):\n");
     for d in &directives {
         // Extract first line of Goal section if present
-        let goal_line = d.body.lines()
+        let goal_line = d
+            .body
+            .lines()
             .skip_while(|l| !l.starts_with("## Goal"))
-            .nth(2)  // Skip "## Goal" and blank line
+            .nth(2) // Skip "## Goal" and blank line
             .unwrap_or("")
             .trim();
 
         summary.push_str(&format!(
             "\n[{}] {} (priority: {})\n  {}\n",
-            d.id, d.title, d.priority.as_str(),
-            if goal_line.is_empty() { "See directive for details" } else { goal_line }
+            d.id,
+            d.title,
+            d.priority.as_str(),
+            if goal_line.is_empty() {
+                "See directive for details"
+            } else {
+                goal_line
+            }
         ));
     }
     summary.push_str("\nUse directive_get <id> for full details, success criteria, and phases.\n");
-    summary.push_str("When creating issues, link them with: issue_create title=\"...\" directive_id=\"<id>\"\n");
+    summary.push_str(
+        "When creating issues, link them with: issue_create title=\"...\" directive_id=\"<id>\"\n",
+    );
 
     summary
 }
@@ -540,10 +610,12 @@ async fn run_full_auto_loop(
         let (available_mem, needs_cleanup, is_critical) = check_memory();
 
         if needs_cleanup || is_critical {
-            println!("\n{} Memory {} ({}) - checking for processes to kill...",
+            println!(
+                "\n{} Memory {} ({}) - checking for processes to kill...",
                 "MEMORY:".yellow().bold(),
                 if is_critical { "critical" } else { "low" },
-                format_bytes(available_mem));
+                format_bytes(available_mem)
+            );
 
             // Try to free memory by killing hogs with retry
             let mut new_avail = check_and_kill_memory_hogs();
@@ -552,16 +624,22 @@ async fn run_full_auto_loop(
             // macOS can take a moment to reclaim memory
             if new_avail < min_available_memory_bytes() {
                 for retry in 1..=3 {
-                    println!("{} Waiting for memory to be reclaimed (attempt {}/3)...",
-                        "MEM:".yellow().bold(), retry);
+                    println!(
+                        "{} Waiting for memory to be reclaimed (attempt {}/3)...",
+                        "MEM:".yellow().bold(),
+                        retry
+                    );
                     std::thread::sleep(std::time::Duration::from_secs(2));
 
                     let (new_check, _, still_critical) = check_memory();
                     new_avail = new_check;
 
                     if !still_critical {
-                        println!("{} Memory recovered to {} - continuing",
-                            "MEMORY:".green().bold(), format_bytes(new_avail));
+                        println!(
+                            "{} Memory recovered to {} - continuing",
+                            "MEMORY:".green().bold(),
+                            format_bytes(new_avail)
+                        );
                         break;
                     }
                 }
@@ -569,20 +647,32 @@ async fn run_full_auto_loop(
 
             // Final check after all retries
             if new_avail < min_available_memory_bytes() {
-                println!("\n{} Still insufficient memory ({}) after cleanup - aborting",
+                println!(
+                    "\n{} Still insufficient memory ({}) after cleanup - aborting",
                     "MEMORY:".red().bold(),
-                    format_bytes(new_avail));
-                anyhow::bail!("Insufficient memory: {} available, {} required",
+                    format_bytes(new_avail)
+                );
+                anyhow::bail!(
+                    "Insufficient memory: {} available, {} required",
                     format_bytes(new_avail),
-                    format_bytes(min_available_memory_bytes()));
+                    format_bytes(min_available_memory_bytes())
+                );
             } else {
-                println!("{} Memory recovered to {} - continuing", "MEMORY:".green().bold(), format_bytes(new_avail));
+                println!(
+                    "{} Memory recovered to {} - continuing",
+                    "MEMORY:".green().bold(),
+                    format_bytes(new_avail)
+                );
             }
         }
 
         // Log memory status periodically (every iteration or every 5)
         if continuation_count % 5 == 0 {
-            println!("{} Available memory: {}", "MEM:".dimmed(), format_bytes(available_mem));
+            println!(
+                "{} Available memory: {}",
+                "MEM:".dimmed(),
+                format_bytes(available_mem)
+            );
         }
 
         // Use query() directly - same approach as run_claude_agent which works
@@ -609,7 +699,11 @@ async fn run_full_auto_loop(
                     println!("{} Memory: {}", "MEM:".dimmed(), format_bytes(avail));
                 }
                 if is_critical {
-                    println!("\n{} Memory critical ({}) - attempting cleanup", "MEMORY:".yellow().bold(), format_bytes(avail));
+                    println!(
+                        "\n{} Memory critical ({}) - attempting cleanup",
+                        "MEMORY:".yellow().bold(),
+                        format_bytes(avail)
+                    );
                     let mut new_avail = check_and_kill_memory_hogs();
 
                     // Retry a couple times for memory to be reclaimed
@@ -618,16 +712,25 @@ async fn run_full_auto_loop(
                             std::thread::sleep(std::time::Duration::from_secs(2));
                             let (check, _, still_critical) = check_memory();
                             new_avail = check;
-                            if !still_critical { break; }
+                            if !still_critical {
+                                break;
+                            }
                         }
                     }
 
                     if new_avail < min_available_memory_bytes() {
-                        anyhow::bail!("Memory critical after cleanup: {} available", format_bytes(new_avail));
+                        anyhow::bail!(
+                            "Memory critical after cleanup: {} available",
+                            format_bytes(new_avail)
+                        );
                     }
                 } else if needs_cleanup && message_count % 50 == 0 {
                     // Proactive cleanup when memory is getting low (not critical)
-                    println!("{} Memory getting low ({}) - proactive cleanup", "MEM:".yellow(), format_bytes(avail));
+                    println!(
+                        "{} Memory getting low ({}) - proactive cleanup",
+                        "MEM:".yellow(),
+                        format_bytes(avail)
+                    );
                     check_and_kill_memory_hogs();
                 }
             }
@@ -680,18 +783,28 @@ async fn run_full_auto_loop(
 
         // If budget or turns exhausted, we're done
         if budget_exhausted {
-            println!("\n{} Budget exhausted - stopping full-auto loop", "STOP:".red().bold());
+            println!(
+                "\n{} Budget exhausted - stopping full-auto loop",
+                "STOP:".red().bold()
+            );
             break;
         }
         if max_turns_reached {
-            println!("\n{} Max turns reached - stopping full-auto loop", "STOP:".red().bold());
+            println!(
+                "\n{} Max turns reached - stopping full-auto loop",
+                "STOP:".red().bold()
+            );
             break;
         }
 
         // Safety limit
         continuation_count += 1;
         if continuation_count >= MAX_CONTINUATIONS {
-            println!("\n{} Max continuations ({}) reached", "STOP:".yellow().bold(), MAX_CONTINUATIONS);
+            println!(
+                "\n{} Max continuations ({}) reached",
+                "STOP:".yellow().bold(),
+                MAX_CONTINUATIONS
+            );
             break;
         }
 
@@ -707,19 +820,35 @@ async fn run_full_auto_loop(
 
         if !has_more_work {
             // No more issues - but in full-auto we should create new work
-            println!("\n{} No ready issues - sending continuation to create work", "AUTO:".cyan().bold());
+            println!(
+                "\n{} No ready issues - sending continuation to create work",
+                "AUTO:".cyan().bold()
+            );
         } else {
-            println!("\n{} Issues still available - forcing continuation", "AUTO:".cyan().bold());
+            println!(
+                "\n{} Issues still available - forcing continuation",
+                "AUTO:".cyan().bold()
+            );
         }
 
         // Set up for continuation - include directive summary and FULL_AUTO_PROMPT again
-        println!("{} Continuing with new query (attempt {})", "AUTO:".yellow().bold(), continuation_count);
+        println!(
+            "{} Continuing with new query (attempt {})",
+            "AUTO:".yellow().bold(),
+            continuation_count
+        );
 
         let directive_summary = load_directive_summary(&cwd);
         current_prompt = if has_more_work {
-            format!("{}{}\n\nCONTINUE: You stopped prematurely. There are still issues to work on. Call issue_ready NOW. DO NOT output any text first - immediately call issue_ready.", directive_summary, FULL_AUTO_PROMPT_BASE)
+            format!(
+                "{}{}\n\nCONTINUE: You stopped prematurely. There are still issues to work on. Call issue_ready NOW. DO NOT output any text first - immediately call issue_ready.",
+                directive_summary, FULL_AUTO_PROMPT_BASE
+            )
         } else {
-            format!("{}{}\n\nCONTINUE: You stopped prematurely. No issues are ready. Review the directives above and create a new issue linked to one. DO NOT output any text first.", directive_summary, FULL_AUTO_PROMPT_BASE)
+            format!(
+                "{}{}\n\nCONTINUE: You stopped prematurely. No issues are ready. Review the directives above and create a new issue linked to one. DO NOT output any text first.",
+                directive_summary, FULL_AUTO_PROMPT_BASE
+            )
         };
     }
 
@@ -793,7 +922,11 @@ async fn run_codex_agent(
                         }
                     }
                     ThreadItemDetails::FileChange(file) => {
-                        println!("{} {} file(s) changed", "File change:".green().bold(), file.changes.len());
+                        println!(
+                            "{} {} file(s) changed",
+                            "File change:".green().bold(),
+                            file.changes.len()
+                        );
                         if verbose {
                             for change in &file.changes {
                                 println!("  {}", change.path);
@@ -833,8 +966,11 @@ async fn run_codex_agent(
     if let Some(usage) = usage {
         // Add usage tracking
         // For now, just print - full trajectory integration would need TrajectoryEvent adapter
-        println!("{} Total tokens: {}", "Usage:".dimmed(),
-            usage.input_tokens + usage.output_tokens);
+        println!(
+            "{} Total tokens: {}",
+            "Usage:".dimmed(),
+            usage.input_tokens + usage.output_tokens
+        );
     }
 
     Ok(())
@@ -867,7 +1003,10 @@ async fn publish_trajectory_to_nostr(
         let mnemonic = Mnemonic::from_str(&mnemonic_str)?;
         Arc::new(UnifiedIdentity::from_mnemonic(mnemonic)?)
     } else {
-        eprintln!("{} No wallet identity found. Run 'openagents wallet init' first.", "Warning:".yellow());
+        eprintln!(
+            "{} No wallet identity found. Run 'openagents wallet init' first.",
+            "Warning:".yellow()
+        );
         anyhow::bail!("No wallet identity found");
     };
 
@@ -881,22 +1020,38 @@ async fn publish_trajectory_to_nostr(
 
     let started_at = trajectory.started_at.timestamp() as u64;
 
-    let session_publisher = TrajectorySessionPublisher::with_identity(publish_config, identity.clone());
+    let session_publisher =
+        TrajectorySessionPublisher::with_identity(publish_config, identity.clone());
 
-    println!("{} Publishing trajectory session to Nostr relays...", "Publishing:".cyan());
+    println!(
+        "{} Publishing trajectory session to Nostr relays...",
+        "Publishing:".cyan()
+    );
 
     match session_publisher
-        .publish_session(&trajectory.session_id, &tick_id, &trajectory.model, started_at)
+        .publish_session(
+            &trajectory.session_id,
+            &tick_id,
+            &trajectory.model,
+            started_at,
+        )
         .await
     {
         Ok(Some(event_id)) => {
             println!("{} Trajectory session published: {}", "✓".green(), event_id);
         }
         Ok(None) => {
-            eprintln!("{} Trajectory session publishing was skipped", "Warning:".yellow());
+            eprintln!(
+                "{} Trajectory session publishing was skipped",
+                "Warning:".yellow()
+            );
         }
         Err(e) => {
-            eprintln!("{} Failed to publish trajectory session: {}", "Error:".red(), e);
+            eprintln!(
+                "{} Failed to publish trajectory session: {}",
+                "Error:".red(),
+                e
+            );
             return Err(e);
         }
     }
@@ -912,7 +1067,11 @@ async fn publish_trajectory_to_nostr(
         TrajectoryVisibility::Public,
     );
 
-    println!("{} Publishing {} trajectory events...", "Publishing:".cyan(), events.len());
+    println!(
+        "{} Publishing {} trajectory events...",
+        "Publishing:".cyan(),
+        events.len()
+    );
 
     // Publish each event to relays
     use nostr_client::{PoolConfig, RelayPool};
@@ -934,9 +1093,15 @@ async fn publish_trajectory_to_nostr(
     for (i, trajectory_event) in events.iter().enumerate() {
         // Build Nostr event
         let tags = vec![
-            vec!["session_id".to_string(), trajectory_event.session_id.clone()],
+            vec![
+                "session_id".to_string(),
+                trajectory_event.session_id.clone(),
+            ],
             vec!["tick_id".to_string(), trajectory_event.tick_id.clone()],
-            vec!["sequence".to_string(), trajectory_event.sequence.to_string()],
+            vec![
+                "sequence".to_string(),
+                trajectory_event.sequence.to_string(),
+            ],
         ];
 
         let content_json = trajectory_event
@@ -967,7 +1132,12 @@ async fn publish_trajectory_to_nostr(
                 }
             }
             Err(e) => {
-                eprintln!("{} Failed to publish event {}: {}", "Warning:".yellow(), i, e);
+                eprintln!(
+                    "{} Failed to publish event {}: {}",
+                    "Warning:".yellow(),
+                    i,
+                    e
+                );
             }
         }
     }
@@ -1013,12 +1183,16 @@ async fn run_task(
 
         match project::get_project_by_name(&conn, &project_name)? {
             Some(proj) => {
-                println_flush!("{} Loading project '{}'", "Project:".cyan().bold(), proj.name);
+                println_flush!(
+                    "{} Loading project '{}'",
+                    "Project:".cyan().bold(),
+                    proj.name
+                );
                 println_flush!("{} {}", "Path:".dimmed(), proj.path);
                 (
                     PathBuf::from(&proj.path),
                     Some(PathBuf::from(&proj.path).join("autopilot.db")),
-                    Some(proj.id)
+                    Some(proj.id),
                 )
             }
             None => {
@@ -1028,9 +1202,11 @@ async fn run_task(
             }
         }
     } else {
-        (cwd.unwrap_or_else(|| {
-            std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."))
-        }), issues_db, None)
+        (
+            cwd.unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."))),
+            issues_db,
+            None,
+        )
     };
 
     // Create session record if we have a project
@@ -1087,7 +1263,11 @@ async fn run_task(
         };
 
         if let Some(p) = port {
-            println_flush!("{} Desktop running at http://127.0.0.1:{}/autopilot", "UI:".cyan().bold(), p);
+            println_flush!(
+                "{} Desktop running at http://127.0.0.1:{}/autopilot",
+                "UI:".cyan().bold(),
+                p
+            );
             // Open browser
             let _ = std::process::Command::new("open")
                 .arg(format!("http://127.0.0.1:{}/autopilot", p))
@@ -1124,7 +1304,11 @@ async fn run_task(
         prompt
     };
 
-    println_flush!("{} {}", "Running:".cyan().bold(), prompt.lines().next().unwrap_or(&prompt));
+    println_flush!(
+        "{} {}",
+        "Running:".cyan().bold(),
+        prompt.lines().next().unwrap_or(&prompt)
+    );
     println_flush!("{} {}", "Model:".dimmed(), model);
     println_flush!("{} {}", "CWD:".dimmed(), cwd.display());
     if full_auto {
@@ -1149,7 +1333,12 @@ async fn run_task(
             eprintln!("Warning: Failed to enable rlog streaming: {}", e);
             None
         } else {
-            println!("{} {} {}", "Streaming to:".dimmed(), rlog_path.display(), "(tail -f to watch)".dimmed());
+            println!(
+                "{} {} {}",
+                "Streaming to:".dimmed(),
+                rlog_path.display(),
+                "(tail -f to watch)".dimmed()
+            );
             Some(rlog_path)
         }
     } else {
@@ -1162,7 +1351,12 @@ async fn run_task(
         if let Err(e) = collector.enable_jsonl_streaming(&jsonl_path) {
             eprintln!("Warning: Failed to enable JSONL streaming: {}", e);
         } else {
-            println!("{} {} {}", "Full data:".dimmed(), jsonl_path.display(), "(APM source)".dimmed());
+            println!(
+                "{} {} {}",
+                "Full data:".dimmed(),
+                jsonl_path.display(),
+                "(APM source)".dimmed()
+            );
         }
     }
 
@@ -1177,7 +1371,12 @@ async fn run_task(
         let db_path = issues_db.as_ref().unwrap_or(&default_db);
         match collector.enable_apm_tracking(db_path, autopilot::apm::APMSource::Autopilot) {
             Ok(apm_session_id) => {
-                println!("{} {} {}", "APM:".dimmed(), &apm_session_id[..apm_session_id.len().min(20)], "(tracking enabled)".dimmed());
+                println!(
+                    "{} {} {}",
+                    "APM:".dimmed(),
+                    &apm_session_id[..apm_session_id.len().min(20)],
+                    "(tracking enabled)".dimmed()
+                );
             }
             Err(e) => {
                 eprintln!("Warning: Failed to enable APM tracking: {}", e);
@@ -1229,16 +1428,14 @@ async fn run_task(
 
         // Build MCP server configuration
         // Use pre-built binary if available (e.g., in Docker containers), otherwise use cargo
-        let issues_mcp_binary = std::env::var("ISSUES_MCP_BINARY")
-            .ok()
-            .or_else(|| {
-                let default_path = "/usr/local/bin/issues-mcp";
-                if std::path::Path::new(default_path).exists() {
-                    Some(default_path.to_string())
-                } else {
-                    None
-                }
-            });
+        let issues_mcp_binary = std::env::var("ISSUES_MCP_BINARY").ok().or_else(|| {
+            let default_path = "/usr/local/bin/issues-mcp";
+            if std::path::Path::new(default_path).exists() {
+                Some(default_path.to_string())
+            } else {
+                None
+            }
+        });
 
         let mcp_config = if let Some(binary_path) = issues_mcp_binary {
             println!("{} {}", "Issues MCP binary:".dimmed(), binary_path);
@@ -1269,7 +1466,12 @@ async fn run_task(
 
         // Write .mcp.json file (skip if already exists - e.g., mounted in Docker)
         if mcp_json_path.exists() {
-            println!("{} {} {}", "MCP config:".dimmed(), mcp_json_path.display(), "(pre-configured)".dimmed());
+            println!(
+                "{} {} {}",
+                "MCP config:".dimmed(),
+                mcp_json_path.display(),
+                "(pre-configured)".dimmed()
+            );
         } else {
             let json = serde_json::to_string_pretty(&mcp_config)
                 .expect("Failed to serialize MCP config to JSON");
@@ -1304,14 +1506,7 @@ async fn run_task(
     } else {
         match agent.as_str() {
             "claude" => {
-                run_claude_agent(
-                    &prompt,
-                    options,
-                    &mut collector,
-                    verbose,
-                    _ui_port,
-                )
-                .await?;
+                run_claude_agent(&prompt, options, &mut collector, verbose, _ui_port).await?;
             }
             "codex" => {
                 run_codex_agent(
@@ -1358,8 +1553,14 @@ async fn run_task(
 
         // Print resume hints if session failed or was interrupted
         if let Some(ref result) = trajectory.result {
-            let is_budget_error = result.errors.iter().any(|e| e.contains("budget") || e.contains("Budget"));
-            let is_max_turns = result.errors.iter().any(|e| e.contains("max_turns") || e.contains("turns"));
+            let is_budget_error = result
+                .errors
+                .iter()
+                .any(|e| e.contains("budget") || e.contains("Budget"));
+            let is_max_turns = result
+                .errors
+                .iter()
+                .any(|e| e.contains("max_turns") || e.contains("turns"));
 
             if !result.success && (is_budget_error || is_max_turns || !result.errors.is_empty()) {
                 println!();
@@ -1376,7 +1577,10 @@ async fn run_task(
 
                 println!();
                 println!("{} To resume this session:", "→".cyan());
-                println!("  {}", format!("autopilot resume {}", json_path.display()).cyan());
+                println!(
+                    "  {}",
+                    format!("autopilot resume {}", json_path.display()).cyan()
+                );
                 println!("  or");
                 println!("  {}", "autopilot resume --continue-last".cyan());
                 println!("{}", "=".repeat(60).yellow());
@@ -1389,32 +1593,54 @@ async fn run_task(
             let default_db = autopilot::default_db_path();
             let db_path = issues_db.as_ref().unwrap_or(&default_db);
             if let Ok(conn) = db::init_db(db_path) {
-                let _ = session::update_session_trajectory(&conn, sess_id, &json_path.display().to_string());
+                let _ = session::update_session_trajectory(
+                    &conn,
+                    sess_id,
+                    &json_path.display().to_string(),
+                );
             }
         }
     }
 
     // Update session status on completion
     if let Some(ref sess_id) = session_id {
-        use issues::{db, session, SessionStatus};
+        use issues::{SessionStatus, db, session};
         let default_db = autopilot::default_db_path();
         let db_path = issues_db.as_ref().unwrap_or(&default_db);
         if let Ok(conn) = db::init_db(db_path) {
-            let status = if trajectory.result.as_ref().map(|r| r.success).unwrap_or(false) {
+            let status = if trajectory
+                .result
+                .as_ref()
+                .map(|r| r.success)
+                .unwrap_or(false)
+            {
                 SessionStatus::Completed
             } else {
                 SessionStatus::Failed
             };
             let _ = session::update_session_status(&conn, sess_id, status);
-            let issues_completed = trajectory.result.as_ref().map(|r| r.issues_completed as i32).unwrap_or(0);
-            let _ = session::update_session_metrics(&conn, sess_id, trajectory.usage.cost_usd, issues_completed);
+            let issues_completed = trajectory
+                .result
+                .as_ref()
+                .map(|r| r.issues_completed as i32)
+                .unwrap_or(0);
+            let _ = session::update_session_metrics(
+                &conn,
+                sess_id,
+                trajectory.usage.cost_usd,
+                issues_completed,
+            );
         }
     }
 
     // Publish trajectory to Nostr relays if enabled
     if publish_trajectory {
         if let Err(e) = publish_trajectory_to_nostr(&trajectory, session_id.as_ref()).await {
-            eprintln!("{} Failed to publish trajectory: {}", "Warning:".yellow(), e);
+            eprintln!(
+                "{} Failed to publish trajectory: {}",
+                "Warning:".yellow(),
+                e
+            );
         }
     }
 
@@ -1434,15 +1660,8 @@ fn print_message(msg: &SdkMessage) {
                     let block_type = block.get("type").and_then(|t| t.as_str()).unwrap_or("");
                     match block_type {
                         "thinking" => {
-                            let text = block
-                                .get("thinking")
-                                .and_then(|t| t.as_str())
-                                .unwrap_or("");
-                            println!(
-                                "{} {}",
-                                "THINK".yellow(),
-                                truncate(text, 100)
-                            );
+                            let text = block.get("thinking").and_then(|t| t.as_str()).unwrap_or("");
+                            println!("{} {}", "THINK".yellow(), truncate(text, 100));
                         }
                         "text" => {
                             let text = block.get("text").and_then(|t| t.as_str()).unwrap_or("");
@@ -1556,7 +1775,11 @@ fn print_progress(msg: &SdkMessage) {
                                     .and_then(|i| i.get("command"))
                                     .and_then(|c| c.as_str())
                                     .map(|c| {
-                                        let truncated = if c.len() > 50 { format!("{}...", &c[..47]) } else { c.to_string() };
+                                        let truncated = if c.len() > 50 {
+                                            format!("{}...", &c[..47])
+                                        } else {
+                                            c.to_string()
+                                        };
                                         format!("cmd=\"{}\"", truncated)
                                     })
                                     .unwrap_or_default(),
@@ -1574,7 +1797,11 @@ fn print_progress(msg: &SdkMessage) {
                                     .and_then(|i| i.get("pattern"))
                                     .and_then(|p| p.as_str())
                                     .map(|p| {
-                                        let truncated = if p.len() > 30 { format!("{}...", &p[..27]) } else { p.to_string() };
+                                        let truncated = if p.len() > 30 {
+                                            format!("{}...", &p[..27])
+                                        } else {
+                                            p.to_string()
+                                        };
                                         format!("pattern=\"{}\"", truncated)
                                     })
                                     .unwrap_or_default(),
@@ -1582,7 +1809,11 @@ fn print_progress(msg: &SdkMessage) {
                                     .and_then(|i| i.get("description"))
                                     .and_then(|d| d.as_str())
                                     .map(|d| {
-                                        let truncated = if d.len() > 40 { format!("{}...", &d[..37]) } else { d.to_string() };
+                                        let truncated = if d.len() > 40 {
+                                            format!("{}...", &d[..37])
+                                        } else {
+                                            d.to_string()
+                                        };
                                         format!("desc=\"{}\"", truncated)
                                     })
                                     .unwrap_or_default(),
@@ -1751,7 +1982,7 @@ fn print_summary(traj: &Trajectory) {
 
 /// Store trajectory metrics in the metrics database
 fn store_trajectory_metrics(trajectory: &Trajectory) {
-    use autopilot::metrics::{extract_metrics_from_trajectory, MetricsDb, default_db_path};
+    use autopilot::metrics::{MetricsDb, default_db_path, extract_metrics_from_trajectory};
 
     match extract_metrics_from_trajectory(trajectory) {
         Ok((session_metrics, tool_call_metrics)) => {
@@ -1792,9 +2023,13 @@ fn store_trajectory_metrics(trajectory: &Trajectory) {
                                 println!("\n{}", "⚠ Anomalies Detected:".yellow().bold());
                                 for anomaly in &anomalies {
                                     let severity_str = match anomaly.severity {
-                                        autopilot::metrics::AnomalySeverity::Critical => "CRITICAL".red().bold(),
+                                        autopilot::metrics::AnomalySeverity::Critical => {
+                                            "CRITICAL".red().bold()
+                                        }
                                         autopilot::metrics::AnomalySeverity::Error => "ERROR".red(),
-                                        autopilot::metrics::AnomalySeverity::Warning => "WARNING".yellow(),
+                                        autopilot::metrics::AnomalySeverity::Warning => {
+                                            "WARNING".yellow()
+                                        }
                                     };
                                     println!(
                                         "  [{}] {}: expected {:.3}, got {:.3}",
@@ -1813,9 +2048,13 @@ fn store_trajectory_metrics(trajectory: &Trajectory) {
                                 }
 
                                 // Auto-create issues from patterns (if threshold met)
-                                let workdir = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+                                let workdir =
+                                    std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
                                 if let Err(e) = auto_create_issues_from_patterns(&db, &workdir) {
-                                    eprintln!("Warning: Failed to auto-create issues from patterns: {}", e);
+                                    eprintln!(
+                                        "Warning: Failed to auto-create issues from patterns: {}",
+                                        e
+                                    );
                                 }
                             }
                         }
@@ -1841,7 +2080,10 @@ fn store_trajectory_metrics(trajectory: &Trajectory) {
 }
 
 /// Auto-create issues from detected patterns (PostRun hook)
-fn auto_create_issues_from_patterns(metrics_db: &autopilot::metrics::MetricsDb, workdir: &PathBuf) -> Result<()> {
+fn auto_create_issues_from_patterns(
+    metrics_db: &autopilot::metrics::MetricsDb,
+    workdir: &PathBuf,
+) -> Result<()> {
     use autopilot::auto_issues::{create_issues, detect_all_patterns, generate_issues};
 
     // Detect all patterns (both anomaly and tool error patterns)
@@ -1889,8 +2131,8 @@ fn evaluate_and_notify_alerts(
     session_metrics: &autopilot::metrics::SessionMetrics,
 ) -> Result<()> {
     use autopilot::alerts::{
-        init_alerts_schema, add_default_alerts, evaluate_alerts,
-        log_alert_to_stdout, log_alert_to_file,
+        add_default_alerts, evaluate_alerts, init_alerts_schema, log_alert_to_file,
+        log_alert_to_stdout,
     };
     use rusqlite::Connection;
 
@@ -1918,7 +2160,8 @@ fn evaluate_and_notify_alerts(
     };
 
     let tokens_per_task = if session_metrics.issues_completed > 0 {
-        (session_metrics.tokens_in + session_metrics.tokens_out) as f64 / session_metrics.issues_completed as f64
+        (session_metrics.tokens_in + session_metrics.tokens_out) as f64
+            / session_metrics.issues_completed as f64
     } else {
         0.0
     };
@@ -1934,7 +2177,10 @@ fn evaluate_and_notify_alerts(
         match evaluate_alerts(&conn, session_id, metric_name, value) {
             Ok(mut alerts) => all_alerts.append(&mut alerts),
             Err(e) => {
-                eprintln!("Warning: Failed to evaluate alerts for {}: {}", metric_name, e);
+                eprintln!(
+                    "Warning: Failed to evaluate alerts for {}: {}",
+                    metric_name, e
+                );
             }
         }
     }
@@ -2015,20 +2261,26 @@ async fn resume_task(
     with_issues: bool,
     issues_db: Option<PathBuf>,
 ) -> Result<()> {
-    let cwd = cwd.unwrap_or_else(|| {
-        std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."))
-    });
+    let cwd = cwd.unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
 
     // Track original trajectory path for appending logs
     let original_trajectory_path = trajectory.clone();
 
     // Get session_id from trajectory file or use --continue
     let session_id = if continue_last {
-        println!("{} Continuing most recent session...", "Resume:".cyan().bold());
+        println!(
+            "{} Continuing most recent session...",
+            "Resume:".cyan().bold()
+        );
         None
     } else {
-        let path = trajectory.ok_or_else(|| anyhow::anyhow!("trajectory path required for resume"))?;
-        println!("{} Loading session from {:?}", "Resume:".cyan().bold(), path);
+        let path =
+            trajectory.ok_or_else(|| anyhow::anyhow!("trajectory path required for resume"))?;
+        println!(
+            "{} Loading session from {:?}",
+            "Resume:".cyan().bold(),
+            path
+        );
 
         let id = if path.extension().and_then(|e| e.to_str()) == Some("json") {
             extract_session_id_from_json(&path)?
@@ -2041,7 +2293,11 @@ async fn resume_task(
             })?
         };
 
-        println!("{} session_id={}", "Resume:".dimmed(), &id[..id.len().min(8)]);
+        println!(
+            "{} session_id={}",
+            "Resume:".dimmed(),
+            &id[..id.len().min(8)]
+        );
         Some(id)
     };
 
@@ -2092,7 +2348,10 @@ async fn resume_task(
     let (rlog_path, json_path, jsonl_path) = if let Some(ref orig_path) = original_trajectory_path {
         // Use same directory and derive paths from original
         let parent = orig_path.parent().unwrap_or(std::path::Path::new("."));
-        let stem = orig_path.file_stem().and_then(|s| s.to_str()).unwrap_or("resumed");
+        let stem = orig_path
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("resumed");
         (
             parent.join(format!("{}.rlog", stem)),
             parent.join(format!("{}.json", stem)),
@@ -2115,7 +2374,9 @@ async fn resume_task(
     let branch = get_git_branch(&cwd).ok();
 
     // Create trajectory collector for the resumed session
-    let resume_prompt = prompt.clone().unwrap_or_else(|| "Continue from where you left off.".to_string());
+    let resume_prompt = prompt
+        .clone()
+        .unwrap_or_else(|| "Continue from where you left off.".to_string());
     let mut collector = TrajectoryCollector::new(
         format!("[RESUMED] {}", resume_prompt),
         "resumed".to_string(), // model not known in resume
@@ -2133,14 +2394,24 @@ async fn resume_task(
     if let Err(e) = collector.enable_streaming(&rlog_path) {
         eprintln!("Warning: Failed to enable rlog streaming: {}", e);
     } else {
-        println!("{} {} {}", "Streaming to:".dimmed(), rlog_path.display(), "(tail -f to watch)".dimmed());
+        println!(
+            "{} {} {}",
+            "Streaming to:".dimmed(),
+            rlog_path.display(),
+            "(tail -f to watch)".dimmed()
+        );
     }
 
     // Enable JSONL streaming for full data capture
     if let Err(e) = collector.enable_jsonl_streaming(&jsonl_path) {
         eprintln!("Warning: Failed to enable JSONL streaming: {}", e);
     } else {
-        println!("{} {} {}", "Full data:".dimmed(), jsonl_path.display(), "(APM source)".dimmed());
+        println!(
+            "{} {} {}",
+            "Full data:".dimmed(),
+            jsonl_path.display(),
+            "(APM source)".dimmed()
+        );
     }
 
     // Create session
@@ -2280,7 +2551,10 @@ async fn handle_session_command(command: SessionCommands) -> Result<()> {
     let default_db = autopilot::default_db_path();
 
     match command {
-        SessionCommands::List { project: proj_name, db } => {
+        SessionCommands::List {
+            project: proj_name,
+            db,
+        } => {
             let db_path = db.unwrap_or(default_db);
             let conn = db::init_db(&db_path)?;
 
@@ -2302,7 +2576,10 @@ async fn handle_session_command(command: SessionCommands) -> Result<()> {
             if sessions.is_empty() {
                 println!("No sessions found");
             } else {
-                println!("{:<10} {:<10} {:<40} {:<10} {:<8}", "ID", "Status", "Prompt", "Budget", "Issues");
+                println!(
+                    "{:<10} {:<10} {:<40} {:<10} {:<8}",
+                    "ID", "Status", "Prompt", "Budget", "Issues"
+                );
                 println!("{}", "-".repeat(85));
                 for s in sessions {
                     let id_short = if s.id.len() > 8 { &s.id[..8] } else { &s.id };
@@ -2355,7 +2632,11 @@ async fn handle_session_command(command: SessionCommands) -> Result<()> {
                     }
                 }
                 _ => {
-                    eprintln!("{} Multiple sessions match '{}'. Please be more specific:", "Error:".yellow(), id);
+                    eprintln!(
+                        "{} Multiple sessions match '{}'. Please be more specific:",
+                        "Error:".yellow(),
+                        id
+                    );
                     for s in matching {
                         eprintln!("  {}", &s.id[..16]);
                     }
@@ -2400,11 +2681,7 @@ async fn handle_project_command(command: ProjectCommands) -> Result<()> {
                 budget,
             )?;
 
-            println!(
-                "{} Created project '{}'",
-                "✓".green(),
-                created.name
-            );
+            println!("{} Created project '{}'", "✓".green(), created.name);
             println!("  Path:   {}", created.path);
             if let Some(ref desc) = created.description {
                 println!("  Desc:   {}", desc);
@@ -2417,7 +2694,7 @@ async fn handle_project_command(command: ProjectCommands) -> Result<()> {
             }
         }
         ProjectCommands::List { db } => {
-            use issues::{issue, Status};
+            use issues::{Status, issue};
 
             let db_path = db.unwrap_or(default_db);
             let conn = db::init_db(&db_path)?;
@@ -2440,25 +2717,29 @@ async fn handle_project_command(command: ProjectCommands) -> Result<()> {
                     let session_count = sessions.len();
                     total_sessions += session_count;
 
-                    println!(
-                        "{:<20} {:<40} {:<12}",
-                        p.name,
-                        p.path,
-                        session_count
-                    );
+                    println!("{:<20} {:<40} {:<12}", p.name, p.path, session_count);
                 }
 
                 // Count total issues (not per-project since issues don't have project_id)
                 let all_issues = issue::list_issues(&conn, None)?;
-                let total_open = all_issues.iter().filter(|i| i.status == Status::Open).count();
-                let total_completed = all_issues.iter().filter(|i| i.status == Status::Done).count();
+                let total_open = all_issues
+                    .iter()
+                    .filter(|i| i.status == Status::Open)
+                    .count();
+                let total_completed = all_issues
+                    .iter()
+                    .filter(|i| i.status == Status::Done)
+                    .count();
 
                 // Print totals
                 println!("{}", "-".repeat(75));
                 println!(
                     "{:<20} {:<40} {:<12}",
                     "TOTAL",
-                    format!("({} open, {} completed issues)", total_open, total_completed),
+                    format!(
+                        "({} open, {} completed issues)",
+                        total_open, total_completed
+                    ),
                     total_sessions
                 );
             }
@@ -2484,7 +2765,7 @@ async fn handle_project_command(command: ProjectCommands) -> Result<()> {
 }
 
 async fn handle_issue_command(command: IssueCommands) -> Result<()> {
-    use issues::{db, issue, IssueType, Priority, Status};
+    use issues::{IssueType, Priority, Status, db, issue};
 
     let default_db = autopilot::default_db_path();
 
@@ -2505,7 +2786,10 @@ async fn handle_issue_command(command: IssueCommands) -> Result<()> {
             if issues.is_empty() {
                 println!("No issues found");
             } else {
-                println!("{:<6} {:<10} {:<8} {:<8} {:<50}", "Number", "Status", "Priority", "Agent", "Title");
+                println!(
+                    "{:<6} {:<10} {:<8} {:<8} {:<50}",
+                    "Number", "Status", "Priority", "Agent", "Title"
+                );
                 println!("{}", "-".repeat(90));
                 for i in issues {
                     let status_str = i.status.as_str();
@@ -2540,7 +2824,10 @@ async fn handle_issue_command(command: IssueCommands) -> Result<()> {
             } else {
                 println!("Auto-created issues (from anomaly detection):");
                 println!();
-                println!("{:<6} {:<10} {:<8} {:<8} {:<50}", "Number", "Status", "Priority", "Agent", "Title");
+                println!(
+                    "{:<6} {:<10} {:<8} {:<8} {:<50}",
+                    "Number", "Status", "Priority", "Agent", "Title"
+                );
                 println!("{}", "-".repeat(90));
                 for i in issues {
                     let status_str = i.status.as_str();
@@ -2572,7 +2859,16 @@ async fn handle_issue_command(command: IssueCommands) -> Result<()> {
             let priority = Priority::from_str(&priority);
             let issue_type = IssueType::from_str(&issue_type);
 
-            let created = issue::create_issue(&conn, &title, description.as_deref(), priority, issue_type, Some(&agent), directive.as_deref(), None)?;
+            let created = issue::create_issue(
+                &conn,
+                &title,
+                description.as_deref(),
+                priority,
+                issue_type,
+                Some(&agent),
+                directive.as_deref(),
+                None,
+            )?;
 
             println!(
                 "{} Created issue #{}: {} (agent: {})",
@@ -2586,9 +2882,8 @@ async fn handle_issue_command(command: IssueCommands) -> Result<()> {
             let db_path = db.unwrap_or(default_db);
             let conn = db::init_db(&db_path)?;
 
-            let run_id = run_id.unwrap_or_else(|| {
-                format!("manual-{}", chrono::Utc::now().timestamp())
-            });
+            let run_id =
+                run_id.unwrap_or_else(|| format!("manual-{}", chrono::Utc::now().timestamp()));
 
             if let Some(i) = issue::get_issue_by_number(&conn, number)? {
                 if issue::claim_issue(&conn, &i.id, &run_id)? {
@@ -2638,8 +2933,12 @@ async fn handle_issue_command(command: IssueCommands) -> Result<()> {
 
             let released = issue::release_stale_issues(&conn, stale_minutes)?;
             if released > 0 {
-                println!("{} Released {} stale in_progress issue(s) claimed more than {} minutes ago",
-                    "✓".green(), released, stale_minutes);
+                println!(
+                    "{} Released {} stale in_progress issue(s) claimed more than {} minutes ago",
+                    "✓".green(),
+                    released,
+                    stale_minutes
+                );
             } else {
                 println!("No stale in_progress issues found");
             }
@@ -2668,7 +2967,11 @@ async fn handle_issue_command(command: IssueCommands) -> Result<()> {
                 }
             }
         }
-        IssueCommands::Export { output, include_completed, db } => {
+        IssueCommands::Export {
+            output,
+            include_completed,
+            db,
+        } => {
             let db_path = db.unwrap_or(default_db);
             let conn = db::init_db(&db_path)?;
 
@@ -2679,7 +2982,10 @@ async fn handle_issue_command(command: IssueCommands) -> Result<()> {
             let issues_to_export: Vec<_> = if include_completed {
                 issues
             } else {
-                issues.into_iter().filter(|i| i.status != Status::Done).collect()
+                issues
+                    .into_iter()
+                    .filter(|i| i.status != Status::Done)
+                    .collect()
             };
 
             // Serialize to JSON
@@ -2699,7 +3005,8 @@ async fn handle_issue_command(command: IssueCommands) -> Result<()> {
             // Write JSON file
             std::fs::write(&output_path, json)?;
 
-            println!("{} Exported {} issues to {}",
+            println!(
+                "{} Exported {} issues to {}",
                 "✓".green(),
                 issues_to_export.len(),
                 output_path.display()
@@ -2775,14 +3082,21 @@ async fn handle_issue_command(command: IssueCommands) -> Result<()> {
                             &if imported_issue.is_blocked { "1" } else { "0" },
                             &imported_issue.blocked_reason.as_deref().unwrap_or("") as &str,
                             &imported_issue.claimed_by.as_deref().unwrap_or("") as &str,
-                            &imported_issue.claimed_at.map(|dt| dt.to_rfc3339()).unwrap_or_default() as &str,
+                            &imported_issue
+                                .claimed_at
+                                .map(|dt| dt.to_rfc3339())
+                                .unwrap_or_default() as &str,
                             &imported_issue.created_at.to_rfc3339() as &str,
                             &now as &str,
-                            &imported_issue.completed_at.map(|dt| dt.to_rfc3339()).unwrap_or_default() as &str,
+                            &imported_issue
+                                .completed_at
+                                .map(|dt| dt.to_rfc3339())
+                                .unwrap_or_default() as &str,
                             &imported_issue.directive_id.as_deref().unwrap_or("") as &str,
                             &imported_issue.project_id.as_deref().unwrap_or("") as &str,
                         ],
-                    ).map_err(|e| anyhow::anyhow!("Failed to insert issue: {}", e))?;
+                    )
+                    .map_err(|e| anyhow::anyhow!("Failed to insert issue: {}", e))?;
                     imported += 1;
 
                     // Update issue counter if needed
@@ -2815,7 +3129,7 @@ async fn handle_issue_command(command: IssueCommands) -> Result<()> {
 }
 
 async fn handle_directive_command(command: DirectiveCommands) -> Result<()> {
-    use issues::{db, directive, DirectiveStatus};
+    use issues::{DirectiveStatus, db, directive};
 
     let default_db = autopilot::default_db_path();
     let directives_dir = std::env::current_dir()?.join(".openagents/directives");
@@ -2831,7 +3145,10 @@ async fn handle_directive_command(command: DirectiveCommands) -> Result<()> {
             // Filter by status if specified
             let directives: Vec<_> = if let Some(ref status_str) = status {
                 let filter_status = DirectiveStatus::from_str(status_str);
-                all_directives.into_iter().filter(|d| d.status == filter_status).collect()
+                all_directives
+                    .into_iter()
+                    .filter(|d| d.status == filter_status)
+                    .collect()
             } else {
                 all_directives
             };
@@ -2840,15 +3157,26 @@ async fn handle_directive_command(command: DirectiveCommands) -> Result<()> {
                 if directives_dir.exists() {
                     println!("No directives found");
                 } else {
-                    println!("No directives directory found. Create {} to get started.", directives_dir.display());
+                    println!(
+                        "No directives directory found. Create {} to get started.",
+                        directives_dir.display()
+                    );
                 }
             } else {
-                println!("{:<12} {:<8} {:<10} {:<40} {}", "ID", "Status", "Progress", "Title", "Priority");
+                println!(
+                    "{:<12} {:<8} {:<10} {:<40} {}",
+                    "ID", "Status", "Progress", "Title", "Priority"
+                );
                 println!("{}", "-".repeat(85));
                 for d in directives {
                     let progress = directive::calculate_progress(&conn, &d.id)?;
                     let progress_str = if progress.total_issues > 0 {
-                        format!("{}/{} ({}%)", progress.completed_issues, progress.total_issues, progress.percentage())
+                        format!(
+                            "{}/{} ({}%)",
+                            progress.completed_issues,
+                            progress.total_issues,
+                            progress.percentage()
+                        )
                     } else {
                         "0/0".to_string()
                     };
@@ -2886,7 +3214,13 @@ async fn handle_directive_command(command: DirectiveCommands) -> Result<()> {
                     println!("  Created:  {}", d.created);
                     println!("  Updated:  {}", d.updated);
                     println!();
-                    println!("{} Progress: {}/{} issues ({}%)", "→".cyan(), progress.completed_issues, progress.total_issues, progress.percentage());
+                    println!(
+                        "{} Progress: {}/{} issues ({}%)",
+                        "→".cyan(),
+                        progress.completed_issues,
+                        progress.total_issues,
+                        progress.percentage()
+                    );
                     if progress.in_progress_issues > 0 {
                         println!("  In progress: {}", progress.in_progress_issues);
                     }
@@ -2907,7 +3241,13 @@ async fn handle_directive_command(command: DirectiveCommands) -> Result<()> {
                                 "in_progress" => "●".yellow(),
                                 _ => "○".white(),
                             };
-                            println!("  {} #{} - {} [{}]", status_icon, i.number, i.title, i.status.as_str());
+                            println!(
+                                "  {} #{} - {} [{}]",
+                                status_icon,
+                                i.number,
+                                i.title,
+                                i.status.as_str()
+                            );
                         }
                     }
                 }
@@ -2917,7 +3257,11 @@ async fn handle_directive_command(command: DirectiveCommands) -> Result<()> {
                 }
             }
         }
-        DirectiveCommands::Create { id, title, priority } => {
+        DirectiveCommands::Create {
+            id,
+            title,
+            priority,
+        } => {
             let priority = match priority.as_str() {
                 "urgent" => directive::DirectivePriority::Urgent,
                 "high" => directive::DirectivePriority::High,
@@ -2973,7 +3317,7 @@ async fn handle_directive_command(command: DirectiveCommands) -> Result<()> {
 
 /// Handle metrics commands
 async fn handle_metrics_command(command: MetricsCommands) -> Result<()> {
-    use autopilot::metrics::{extract_metrics_from_json_file, MetricsDb, default_db_path};
+    use autopilot::metrics::{MetricsDb, default_db_path, extract_metrics_from_json_file};
 
     match command {
         MetricsCommands::Import { log_dir, db } => {
@@ -2985,18 +3329,24 @@ async fn handle_metrics_command(command: MetricsCommands) -> Result<()> {
             // Find all .json files in the directory
             let json_files: Vec<_> = std::fs::read_dir(&log_dir)?
                 .filter_map(|entry| entry.ok())
-                .filter(|entry| {
-                    entry.path().extension().and_then(|s| s.to_str()) == Some("json")
-                })
+                .filter(|entry| entry.path().extension().and_then(|s| s.to_str()) == Some("json"))
                 .map(|entry| entry.path())
                 .collect();
 
             if json_files.is_empty() {
-                println!("{} No JSON trajectory files found in {:?}", "⚠".yellow(), log_dir);
+                println!(
+                    "{} No JSON trajectory files found in {:?}",
+                    "⚠".yellow(),
+                    log_dir
+                );
                 return Ok(());
             }
 
-            println!("{} Found {} trajectory files", "🔍".cyan(), json_files.len());
+            println!(
+                "{} Found {} trajectory files",
+                "🔍".cyan(),
+                json_files.len()
+            );
             println!();
 
             let mut imported = 0;
@@ -3005,7 +3355,12 @@ async fn handle_metrics_command(command: MetricsCommands) -> Result<()> {
 
             for (i, json_file) in json_files.iter().enumerate() {
                 let filename = json_file.file_name().unwrap().to_string_lossy();
-                print!("[{}/{}] Importing {}... ", i + 1, json_files.len(), filename);
+                print!(
+                    "[{}/{}] Importing {}... ",
+                    i + 1,
+                    json_files.len(),
+                    filename
+                );
 
                 match extract_metrics_from_json_file(&json_file) {
                     Ok((session_metrics, tool_call_metrics)) => {
@@ -3071,7 +3426,11 @@ async fn handle_metrics_command(command: MetricsCommands) -> Result<()> {
                 .collect();
 
             if date_dirs.is_empty() {
-                println!("{} No date directories found in {:?}", "⚠".yellow(), logs_root);
+                println!(
+                    "{} No date directories found in {:?}",
+                    "⚠".yellow(),
+                    logs_root
+                );
                 return Ok(());
             }
 
@@ -3084,7 +3443,12 @@ async fn handle_metrics_command(command: MetricsCommands) -> Result<()> {
 
             for (dir_idx, date_dir) in date_dirs.iter().enumerate() {
                 let dir_name = date_dir.file_name().unwrap().to_string_lossy();
-                println!("[{}/{}] Processing directory: {}", dir_idx + 1, date_dirs.len(), dir_name);
+                println!(
+                    "[{}/{}] Processing directory: {}",
+                    dir_idx + 1,
+                    date_dirs.len(),
+                    dir_name
+                );
 
                 // Find all .json files in this directory
                 let json_files: Vec<_> = match std::fs::read_dir(date_dir) {
@@ -3107,7 +3471,11 @@ async fn handle_metrics_command(command: MetricsCommands) -> Result<()> {
                     continue;
                 }
 
-                println!("  {} Found {} trajectory files", "🔍".cyan(), json_files.len());
+                println!(
+                    "  {} Found {} trajectory files",
+                    "🔍".cyan(),
+                    json_files.len()
+                );
 
                 let mut dir_imported = 0;
                 let mut dir_skipped = 0;
@@ -3173,10 +3541,22 @@ async fn handle_metrics_command(command: MetricsCommands) -> Result<()> {
 
             println!("{}", "=".repeat(60));
             println!("{} Backfill complete:", "📊".cyan().bold());
-            println!("  Directories processed: {}", date_dirs.len().to_string().cyan());
-            println!("  Total imported:        {}", total_imported.to_string().green());
-            println!("  Total skipped:         {}", total_skipped.to_string().yellow());
-            println!("  Total errors:          {}", total_errors.to_string().red());
+            println!(
+                "  Directories processed: {}",
+                date_dirs.len().to_string().cyan()
+            );
+            println!(
+                "  Total imported:        {}",
+                total_imported.to_string().green()
+            );
+            println!(
+                "  Total skipped:         {}",
+                total_skipped.to_string().yellow()
+            );
+            println!(
+                "  Total errors:          {}",
+                total_errors.to_string().red()
+            );
             println!("{}", "=".repeat(60));
         }
         MetricsCommands::Show { session_id, db } => {
@@ -3194,7 +3574,11 @@ async fn handle_metrics_command(command: MetricsCommands) -> Result<()> {
             println!("{}", "=".repeat(60));
             println!();
             println!("{} Model:      {}", "🤖", session.model);
-            println!("{} Timestamp:  {}", "📅", session.timestamp.format("%Y-%m-%d %H:%M:%S UTC"));
+            println!(
+                "{} Timestamp:  {}",
+                "📅",
+                session.timestamp.format("%Y-%m-%d %H:%M:%S UTC")
+            );
             println!("{} Duration:   {:.1}s", "⏱", session.duration_seconds);
             println!("{} Status:     {:?}", "📍", session.final_status);
             println!();
@@ -3210,7 +3594,8 @@ async fn handle_metrics_command(command: MetricsCommands) -> Result<()> {
             println!();
             println!("{} Tool Calls:", "🔧".cyan().bold());
             println!("  Total:  {}", session.tool_calls);
-            println!("  Errors: {} ({:.1}%)",
+            println!(
+                "  Errors: {} ({:.1}%)",
                 session.tool_errors,
                 if session.tool_calls > 0 {
                     (session.tool_errors as f64 / session.tool_calls as f64) * 100.0
@@ -3336,9 +3721,7 @@ async fn handle_metrics_command(command: MetricsCommands) -> Result<()> {
                     };
                     println!(
                         "  Cost per issue:    ${:.4} vs ${:.4} baseline {}",
-                        cost_per_issue,
-                        baseline.mean,
-                        status
+                        cost_per_issue, baseline.mean, status
                     );
                 }
             }
@@ -3406,7 +3789,13 @@ async fn handle_metrics_command(command: MetricsCommands) -> Result<()> {
                 }
             }
         }
-        MetricsCommands::List { status, issue, directive, limit, db } => {
+        MetricsCommands::List {
+            status,
+            issue,
+            directive,
+            limit,
+            db,
+        } => {
             let db_path = db.unwrap_or_else(default_db_path);
             let metrics_db = MetricsDb::open(&db_path)?;
 
@@ -3422,7 +3811,10 @@ async fn handle_metrics_command(command: MetricsCommands) -> Result<()> {
             let filtered: Vec<_> = if let Some(status_filter) = status {
                 sessions
                     .into_iter()
-                    .filter(|s| format!("{:?}", s.final_status).to_lowercase() == status_filter.to_lowercase())
+                    .filter(|s| {
+                        format!("{:?}", s.final_status).to_lowercase()
+                            == status_filter.to_lowercase()
+                    })
                     .take(limit)
                     .collect()
             } else {
@@ -3435,7 +3827,11 @@ async fn handle_metrics_command(command: MetricsCommands) -> Result<()> {
             }
 
             println!("{}", "=".repeat(100));
-            println!("{} Sessions (showing {} of total)", "📊".cyan().bold(), filtered.len());
+            println!(
+                "{} Sessions (showing {} of total)",
+                "📊".cyan().bold(),
+                filtered.len()
+            );
             println!("{}", "=".repeat(100));
             println!(
                 "{:20} {:8} {:12} {:>8} {:>8} {:>6} {:>6}  {}",
@@ -3474,7 +3870,15 @@ async fn handle_metrics_command(command: MetricsCommands) -> Result<()> {
 
             println!("{}", "=".repeat(100));
         }
-        MetricsCommands::Analyze { period, compare, issue, directive, db, errors, anomalies } => {
+        MetricsCommands::Analyze {
+            period,
+            compare,
+            issue,
+            directive,
+            db,
+            errors,
+            anomalies,
+        } => {
             use autopilot::analyze::{
                 calculate_aggregate_stats_from_sessions, detect_regressions,
                 get_sessions_in_period, get_slowest_tools, get_top_error_tools,
@@ -3495,13 +3899,15 @@ async fn handle_metrics_command(command: MetricsCommands) -> Result<()> {
             let mut sessions = if let Some(issue_num) = issue {
                 let all_issue_sessions = metrics_db.get_sessions_for_issue(issue_num)?;
                 // Filter by time period
-                all_issue_sessions.into_iter()
+                all_issue_sessions
+                    .into_iter()
                     .filter(|s| time_period.contains(&s.timestamp))
                     .collect()
             } else if let Some(dir_id) = &directive {
                 let all_directive_sessions = metrics_db.get_sessions_for_directive(dir_id)?;
                 // Filter by time period
-                all_directive_sessions.into_iter()
+                all_directive_sessions
+                    .into_iter()
                     .filter(|s| time_period.contains(&s.timestamp))
                     .collect()
             } else {
@@ -3509,7 +3915,11 @@ async fn handle_metrics_command(command: MetricsCommands) -> Result<()> {
             };
 
             if sessions.is_empty() {
-                println!("{} No sessions found in {}", "⚠".yellow(), time_period.name());
+                println!(
+                    "{} No sessions found in {}",
+                    "⚠".yellow(),
+                    time_period.name()
+                );
                 return Ok(());
             }
 
@@ -3525,7 +3935,11 @@ async fn handle_metrics_command(command: MetricsCommands) -> Result<()> {
                 });
 
                 if sessions.is_empty() {
-                    println!("{} No high error rate sessions found in {}", "✓".green(), time_period.name());
+                    println!(
+                        "{} No high error rate sessions found in {}",
+                        "✓".green(),
+                        time_period.name()
+                    );
                     println!("  All sessions have tool error rate ≤10%");
                     return Ok(());
                 }
@@ -3550,11 +3964,7 @@ async fn handle_metrics_command(command: MetricsCommands) -> Result<()> {
             } else {
                 format!("Metrics Analysis: {}", time_period.name())
             };
-            println!(
-                "{} {}",
-                "📊".cyan().bold(),
-                title
-            );
+            println!("{} {}", "📊".cyan().bold(), title);
             println!("{}", "=".repeat(80));
             println!();
             println!("{} Overview:", "📈".cyan().bold());
@@ -3613,7 +4023,11 @@ async fn handle_metrics_command(command: MetricsCommands) -> Result<()> {
                 let session_id = format!("aggregate-{}", time_period.name());
                 match store_regressions_as_anomalies(&metrics_db, &regressions, &session_id) {
                     Ok(count) => {
-                        println!("{} Stored {} regressions as anomalies", "💾".dimmed(), count);
+                        println!(
+                            "{} Stored {} regressions as anomalies",
+                            "💾".dimmed(),
+                            count
+                        );
                         println!();
                     }
                     Err(e) => {
@@ -3648,7 +4062,10 @@ async fn handle_metrics_command(command: MetricsCommands) -> Result<()> {
             if errors {
                 use autopilot::metrics::{Anomaly, AnomalySeverity};
 
-                println!("{} High Error Rate Sessions (flagged for review):", "🚨".red().bold());
+                println!(
+                    "{} High Error Rate Sessions (flagged for review):",
+                    "🚨".red().bold()
+                );
                 println!();
 
                 for session in &sessions {
@@ -3672,11 +4089,24 @@ async fn handle_metrics_command(command: MetricsCommands) -> Result<()> {
                         AnomalySeverity::Warning => "WARNING".yellow(),
                     };
 
-                    println!("  {} Session: {} ({})", severity_text, &session.id[..12.min(session.id.len())], session.timestamp.format("%Y-%m-%d %H:%M"));
-                    println!("    Error Rate:   {:.1}% ({}/{})", error_rate * 100.0, session.tool_errors, session.tool_calls);
+                    println!(
+                        "  {} Session: {} ({})",
+                        severity_text,
+                        &session.id[..12.min(session.id.len())],
+                        session.timestamp.format("%Y-%m-%d %H:%M")
+                    );
+                    println!(
+                        "    Error Rate:   {:.1}% ({}/{})",
+                        error_rate * 100.0,
+                        session.tool_errors,
+                        session.tool_calls
+                    );
                     println!("    Prompt:       {}", truncate_string(&session.prompt, 60));
                     println!("    Model:        {}", session.model);
-                    println!("    Issues:       {}/{} completed", session.issues_completed, session.issues_claimed);
+                    println!(
+                        "    Issues:       {}/{} completed",
+                        session.issues_completed, session.issues_claimed
+                    );
                     println!();
 
                     // Store in anomalies table
@@ -3691,12 +4121,21 @@ async fn handle_metrics_command(command: MetricsCommands) -> Result<()> {
                     };
 
                     if let Err(e) = metrics_db.store_anomaly(&anomaly) {
-                        eprintln!("Warning: Failed to store anomaly for session {}: {}", session.id, e);
+                        eprintln!(
+                            "Warning: Failed to store anomaly for session {}: {}",
+                            session.id, e
+                        );
                     }
                 }
 
-                println!("{} {} high error sessions flagged and stored in anomalies table", "✓".green(), sessions.len());
-                println!("  Run `cargo autopilot metrics create-issues` to create improvement tasks");
+                println!(
+                    "{} {} high error sessions flagged and stored in anomalies table",
+                    "✓".green(),
+                    sessions.len()
+                );
+                println!(
+                    "  Run `cargo autopilot metrics create-issues` to create improvement tasks"
+                );
                 println!();
             }
 
@@ -3713,7 +4152,10 @@ async fn handle_metrics_command(command: MetricsCommands) -> Result<()> {
                 }
 
                 if !all_anomalies.is_empty() {
-                    println!("{} Detected Anomalies (>2σ from baseline):", "⚠".yellow().bold());
+                    println!(
+                        "{} Detected Anomalies (>2σ from baseline):",
+                        "⚠".yellow().bold()
+                    );
                     println!();
 
                     // Group by severity
@@ -3730,9 +4172,17 @@ async fn handle_metrics_command(command: MetricsCommands) -> Result<()> {
                     }
 
                     if !critical.is_empty() {
-                        println!("{} {} Critical Anomalies:", "🔴".red().bold(), critical.len());
+                        println!(
+                            "{} {} Critical Anomalies:",
+                            "🔴".red().bold(),
+                            critical.len()
+                        );
                         for anomaly in critical {
-                            println!("  Session: {} ({})", &anomaly.session_id[..12.min(anomaly.session_id.len())], anomaly.dimension);
+                            println!(
+                                "  Session: {} ({})",
+                                &anomaly.session_id[..12.min(anomaly.session_id.len())],
+                                anomaly.dimension
+                            );
                             println!("    Expected: {:.4}", anomaly.expected_value);
                             println!("    Actual:   {:.4}", anomaly.actual_value);
                             if let Some(issue) = anomaly.issue_number {
@@ -3745,8 +4195,15 @@ async fn handle_metrics_command(command: MetricsCommands) -> Result<()> {
                     if !errors.is_empty() {
                         println!("{} {} Error Anomalies:", "🟠".yellow(), errors.len());
                         for anomaly in errors {
-                            println!("  Session: {} ({})", &anomaly.session_id[..12.min(anomaly.session_id.len())], anomaly.dimension);
-                            println!("    Expected: {:.4}, Actual: {:.4}", anomaly.expected_value, anomaly.actual_value);
+                            println!(
+                                "  Session: {} ({})",
+                                &anomaly.session_id[..12.min(anomaly.session_id.len())],
+                                anomaly.dimension
+                            );
+                            println!(
+                                "    Expected: {:.4}, Actual: {:.4}",
+                                anomaly.expected_value, anomaly.actual_value
+                            );
                             if let Some(issue) = anomaly.issue_number {
                                 println!("    Issue: #{}", issue);
                             }
@@ -3755,9 +4212,14 @@ async fn handle_metrics_command(command: MetricsCommands) -> Result<()> {
                     }
 
                     if !warnings.is_empty() {
-                        println!("{} {} Warning Anomalies (showing first 5):", "🟡".yellow(), warnings.len());
+                        println!(
+                            "{} {} Warning Anomalies (showing first 5):",
+                            "🟡".yellow(),
+                            warnings.len()
+                        );
                         for anomaly in warnings.iter().take(5) {
-                            println!("  {} ({}): {:.4} vs {:.4} expected",
+                            println!(
+                                "  {} ({}): {:.4} vs {:.4} expected",
                                 &anomaly.session_id[..12.min(anomaly.session_id.len())],
                                 anomaly.dimension,
                                 anomaly.actual_value,
@@ -3770,8 +4232,14 @@ async fn handle_metrics_command(command: MetricsCommands) -> Result<()> {
                         println!();
                     }
 
-                    println!("{} Total anomalies detected: {}", "📊".cyan(), all_anomalies.len());
-                    println!("  Run `cargo autopilot metrics create-issues` to auto-create improvement tasks");
+                    println!(
+                        "{} Total anomalies detected: {}",
+                        "📊".cyan(),
+                        all_anomalies.len()
+                    );
+                    println!(
+                        "  Run `cargo autopilot metrics create-issues` to auto-create improvement tasks"
+                    );
                     println!();
                 } else {
                     println!("{} No anomalies detected in period", "✓".green().bold());
@@ -3782,8 +4250,12 @@ async fn handle_metrics_command(command: MetricsCommands) -> Result<()> {
 
             println!("{}", "=".repeat(80));
         }
-        MetricsCommands::Trends { recent, baseline, db } => {
-            use autopilot::analyze::{detect_trends, TrendDirection};
+        MetricsCommands::Trends {
+            recent,
+            baseline,
+            db,
+        } => {
+            use autopilot::analyze::{TrendDirection, detect_trends};
 
             let db_path = db.unwrap_or_else(default_db_path);
             let metrics_db = MetricsDb::open(&db_path)?;
@@ -3854,10 +4326,7 @@ async fn handle_metrics_command(command: MetricsCommands) -> Result<()> {
 
             println!("{}", "=".repeat(80));
         }
-        MetricsCommands::Dashboard {
-            metrics_db,
-            port,
-        } => {
+        MetricsCommands::Dashboard { metrics_db, port } => {
             use autopilot::dashboard::start_dashboard;
 
             let db_path = metrics_db
@@ -3866,7 +4335,10 @@ async fn handle_metrics_command(command: MetricsCommands) -> Result<()> {
                 .to_string();
 
             println!("{}", "=".repeat(80));
-            println!("{} Starting Autopilot Metrics Dashboard", "📊".cyan().bold());
+            println!(
+                "{} Starting Autopilot Metrics Dashboard",
+                "📊".cyan().bold()
+            );
             println!("{}", "=".repeat(80));
             println!();
             println!("  Database: {}", db_path);
@@ -3877,10 +4349,7 @@ async fn handle_metrics_command(command: MetricsCommands) -> Result<()> {
 
             start_dashboard(&db_path, port).await?;
         }
-        MetricsCommands::Report {
-            metrics_db,
-            output,
-        } => {
+        MetricsCommands::Report { metrics_db, output } => {
             use autopilot::weekly_report::generate_weekly_report;
 
             let db_path = metrics_db.unwrap_or_else(default_db_path);
@@ -3907,7 +4376,10 @@ async fn handle_metrics_command(command: MetricsCommands) -> Result<()> {
                 }
             }
             if content.contains("regressions detected") {
-                println!("  {} Regressions detected - review recommended", "⚠️".yellow());
+                println!(
+                    "  {} Regressions detected - review recommended",
+                    "⚠️".yellow()
+                );
             }
             println!();
         }
@@ -3933,7 +4405,11 @@ async fn handle_metrics_command(command: MetricsCommands) -> Result<()> {
                 let recent = db.get_recent_sessions(limit)?;
                 recent.into_iter().map(|s| s.id).collect()
             } else {
-                println!("{} Analyzing {} specific sessions...", "📊".cyan(), sessions.len());
+                println!(
+                    "{} Analyzing {} specific sessions...",
+                    "📊".cyan(),
+                    sessions.len()
+                );
                 sessions
             };
 
@@ -3953,11 +4429,20 @@ async fn handle_metrics_command(command: MetricsCommands) -> Result<()> {
                 }
                 _ => {
                     println!();
-                    println!("{} {} improvements detected", "✨".green(), report.improvements.len());
+                    println!(
+                        "{} {} improvements detected",
+                        "✨".green(),
+                        report.improvements.len()
+                    );
                     println!();
 
                     for improvement in &report.improvements {
-                        println!("{} {:?} (severity: {}/10)", "⚠️".yellow(), improvement.improvement_type, improvement.severity);
+                        println!(
+                            "{} {:?} (severity: {}/10)",
+                            "⚠️".yellow(),
+                            improvement.improvement_type,
+                            improvement.severity
+                        );
                         println!("  Description: {}", improvement.description);
                         println!("  Proposed fix: {}", improvement.proposed_fix);
                         println!("  Evidence: {} items", improvement.evidence.len());
@@ -3965,7 +4450,11 @@ async fn handle_metrics_command(command: MetricsCommands) -> Result<()> {
                     }
 
                     if !report.prompt_updates.is_empty() {
-                        println!("{} {} prompt updates proposed", "📝".cyan(), report.prompt_updates.len());
+                        println!(
+                            "{} {} prompt updates proposed",
+                            "📝".cyan(),
+                            report.prompt_updates.len()
+                        );
                         for update in &report.prompt_updates {
                             println!("  {}: {}", update.file_path, update.section);
                             println!("    {}", update.rationale);
@@ -3974,7 +4463,11 @@ async fn handle_metrics_command(command: MetricsCommands) -> Result<()> {
                     }
 
                     if !report.hook_updates.is_empty() {
-                        println!("{} {} hook updates proposed", "🪝".cyan(), report.hook_updates.len());
+                        println!(
+                            "{} {} hook updates proposed",
+                            "🪝".cyan(),
+                            report.hook_updates.len()
+                        );
                         for update in &report.hook_updates {
                             println!("  {}", update.hook_name);
                             println!("    {}", update.rationale);
@@ -3983,13 +4476,22 @@ async fn handle_metrics_command(command: MetricsCommands) -> Result<()> {
                     }
 
                     if !report.issues_created.is_empty() {
-                        println!("{} {} issues created", "📋".cyan(), report.issues_created.len());
+                        println!(
+                            "{} {} issues created",
+                            "📋".cyan(),
+                            report.issues_created.len()
+                        );
                         println!();
                     }
                 }
             }
         }
-        MetricsCommands::Export { db, period, format, output } => {
+        MetricsCommands::Export {
+            db,
+            period,
+            format,
+            output,
+        } => {
             let db_path = db.unwrap_or_else(default_db_path);
             let metrics_db = MetricsDb::open(&db_path)?;
 
@@ -3997,7 +4499,7 @@ async fn handle_metrics_command(command: MetricsCommands) -> Result<()> {
             let sessions = if period == "all" {
                 metrics_db.get_all_sessions()?
             } else {
-                use autopilot::analyze::{get_sessions_in_period, TimePeriod};
+                use autopilot::analyze::{TimePeriod, get_sessions_in_period};
                 let time_period = match period.as_str() {
                     "7d" => TimePeriod::Last7Days,
                     "30d" => TimePeriod::Last30Days,
@@ -4046,7 +4548,11 @@ async fn handle_metrics_command(command: MetricsCommands) -> Result<()> {
             // Output to file or stdout
             if let Some(output_path) = output {
                 std::fs::write(&output_path, export_data)?;
-                eprintln!("Exported {} sessions to {}", sessions.len(), output_path.display());
+                eprintln!(
+                    "Exported {} sessions to {}",
+                    sessions.len(),
+                    output_path.display()
+                );
             } else {
                 println!("{}", export_data);
             }
@@ -4057,7 +4563,10 @@ async fn handle_metrics_command(command: MetricsCommands) -> Result<()> {
 
             let db_path = db.unwrap_or_else(default_db_path);
 
-            println!("{} Backfilling APM data for existing sessions...", "📊".cyan());
+            println!(
+                "{} Backfilling APM data for existing sessions...",
+                "📊".cyan()
+            );
             println!("{} Database: {:?}", "📂".dimmed(), db_path);
             println!();
 
@@ -4081,7 +4590,10 @@ async fn handle_metrics_command(command: MetricsCommands) -> Result<()> {
 
             let db_path = db.unwrap_or_else(default_db_path);
 
-            println!("{} Backfilling metrics from trajectory logs...", "📊".cyan());
+            println!(
+                "{} Backfilling metrics from trajectory logs...",
+                "📊".cyan()
+            );
             println!("{} Logs directory: {:?}", "📂".dimmed(), logs_dir);
             println!("{} Database: {:?}", "💾".dimmed(), db_path);
             println!();
@@ -4116,12 +4628,21 @@ async fn handle_metrics_command(command: MetricsCommands) -> Result<()> {
             match metrics_db.update_baselines(min_samples) {
                 Ok(updated) => {
                     if updated.is_empty() {
-                        println!("{} No baselines updated - not enough samples (min: {})", "⚠".yellow(), min_samples);
+                        println!(
+                            "{} No baselines updated - not enough samples (min: {})",
+                            "⚠".yellow(),
+                            min_samples
+                        );
                     } else {
-                        println!("{} Updated {} baseline metrics:", "✅".green(), updated.len());
+                        println!(
+                            "{} Updated {} baseline metrics:",
+                            "✅".green(),
+                            updated.len()
+                        );
                         for dimension in &updated {
                             if let Ok(Some(baseline)) = metrics_db.get_baseline(dimension) {
-                                println!("  {} {:20} mean={:.4}, σ={:.4}, n={}",
+                                println!(
+                                    "  {} {:20} mean={:.4}, σ={:.4}, n={}",
                                     "•".dimmed(),
                                     dimension,
                                     baseline.mean,
@@ -4131,8 +4652,12 @@ async fn handle_metrics_command(command: MetricsCommands) -> Result<()> {
                             }
                         }
                         println!();
-                        println!("{} Baselines are now available for regression detection", "ℹ".cyan());
-                        println!("{} Run {} to analyze metrics against baselines",
+                        println!(
+                            "{} Baselines are now available for regression detection",
+                            "ℹ".cyan()
+                        );
+                        println!(
+                            "{} Run {} to analyze metrics against baselines",
                             "→".dimmed(),
                             "cargo autopilot metrics analyze".bold()
                         );
@@ -4150,7 +4675,9 @@ async fn handle_metrics_command(command: MetricsCommands) -> Result<()> {
             issues_db,
             dry_run,
         } => {
-            use autopilot::auto_issues::{create_issues, detect_all_patterns, generate_issues, Pattern};
+            use autopilot::auto_issues::{
+                Pattern, create_issues, detect_all_patterns, generate_issues,
+            };
 
             let metrics_db_path = metrics_db.unwrap_or_else(default_db_path);
             let metrics = MetricsDb::open(&metrics_db_path)?;
@@ -4181,8 +4708,14 @@ async fn handle_metrics_command(command: MetricsCommands) -> Result<()> {
             }
 
             // Count pattern types
-            let anomaly_count = patterns.iter().filter(|p| matches!(p, Pattern::Anomaly(_))).count();
-            let tool_error_count = patterns.iter().filter(|p| matches!(p, Pattern::ToolError(_))).count();
+            let anomaly_count = patterns
+                .iter()
+                .filter(|p| matches!(p, Pattern::Anomaly(_)))
+                .count();
+            let tool_error_count = patterns
+                .iter()
+                .filter(|p| matches!(p, Pattern::ToolError(_)))
+                .count();
 
             println!("{} Found {} patterns:", "📊".cyan(), patterns.len());
             if anomaly_count > 0 {
@@ -4203,25 +4736,20 @@ async fn handle_metrics_command(command: MetricsCommands) -> Result<()> {
                     "high" => issue.priority.yellow(),
                     _ => issue.priority.normal(),
                 };
-                println!(
-                    "\n{}. {} [{}]",
-                    i + 1,
-                    issue.title.bold(),
-                    priority_colored
-                );
+                println!("\n{}. {} [{}]", i + 1, issue.title.bold(), priority_colored);
                 // Show pattern-specific details
                 match &issue.pattern {
                     Pattern::Anomaly(p) => {
                         println!("   Type: Anomaly pattern");
-                        println!("   Dimension: {} ({} sessions, {:?} severity)",
-                            p.dimension,
-                            p.occurrence_count,
-                            p.severity
+                        println!(
+                            "   Dimension: {} ({} sessions, {:?} severity)",
+                            p.dimension, p.occurrence_count, p.severity
                         );
                     }
                     Pattern::ToolError(p) => {
                         println!("   Type: Tool error pattern");
-                        println!("   Tool: {} ({:.1}% error rate, {} failures)",
+                        println!(
+                            "   Tool: {} ({:.1}% error rate, {} failures)",
                             p.tool_name,
                             p.error_rate * 100.0,
                             p.failed_calls
@@ -4249,10 +4777,14 @@ async fn handle_metrics_command(command: MetricsCommands) -> Result<()> {
                 issue_numbers.len()
             );
             println!();
-            println!("Issue numbers: {}", issue_numbers.iter()
-                .map(|n| format!("#{}", n))
-                .collect::<Vec<_>>()
-                .join(", "));
+            println!(
+                "Issue numbers: {}",
+                issue_numbers
+                    .iter()
+                    .map(|n| format!("#{}", n))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            );
             println!();
             println!("View issues: cargo autopilot issue list");
             println!("{}", "=".repeat(80));
@@ -4263,10 +4795,10 @@ async fn handle_metrics_command(command: MetricsCommands) -> Result<()> {
             use autopilot::metrics::MetricsDb;
 
             let db_path = match &cmd {
-                AlertCommands::List { db, .. } |
-                AlertCommands::Add { db, .. } |
-                AlertCommands::Remove { db, .. } |
-                AlertCommands::History { db, .. } => db.clone().unwrap_or_else(default_db_path),
+                AlertCommands::List { db, .. }
+                | AlertCommands::Add { db, .. }
+                | AlertCommands::Remove { db, .. }
+                | AlertCommands::History { db, .. } => db.clone().unwrap_or_else(default_db_path),
             };
 
             let metrics_db = MetricsDb::open(&db_path)?;
@@ -4290,26 +4822,54 @@ async fn handle_metrics_command(command: MetricsCommands) -> Result<()> {
                     println!("{} Alert Rules", "📋".cyan().bold());
                     println!();
                     for rule in rules {
-                        let enabled = if rule.enabled { "✓".green() } else { "✗".red() };
+                        let enabled = if rule.enabled {
+                            "✓".green()
+                        } else {
+                            "✗".red()
+                        };
                         let severity_colored = match rule.severity {
                             alerts::AlertSeverity::Warning => "warning".yellow(),
                             alerts::AlertSeverity::Error => "error".red(),
                             alerts::AlertSeverity::Critical => "critical".red().bold(),
                         };
-                        println!("{} Rule #{}: {} [{}]", enabled, rule.id, rule.metric_name, severity_colored);
-                        println!("   Type: {:?}, Threshold: {:.2}", rule.alert_type, rule.threshold);
+                        println!(
+                            "{} Rule #{}: {} [{}]",
+                            enabled, rule.id, rule.metric_name, severity_colored
+                        );
+                        println!(
+                            "   Type: {:?}, Threshold: {:.2}",
+                            rule.alert_type, rule.threshold
+                        );
                         println!("   Description: {}", rule.description);
                         println!();
                     }
                 }
 
-                AlertCommands::Add { metric, alert_type, severity, threshold, description, .. } => {
-                    let alert_type = alerts::AlertType::from_str(&alert_type)
-                        .ok_or_else(|| anyhow::anyhow!("Invalid alert type. Use: threshold, regression, or rate_of_change"))?;
-                    let severity = alerts::AlertSeverity::from_str(&severity)
-                        .ok_or_else(|| anyhow::anyhow!("Invalid severity. Use: warning, error, or critical"))?;
+                AlertCommands::Add {
+                    metric,
+                    alert_type,
+                    severity,
+                    threshold,
+                    description,
+                    ..
+                } => {
+                    let alert_type = alerts::AlertType::from_str(&alert_type).ok_or_else(|| {
+                        anyhow::anyhow!(
+                            "Invalid alert type. Use: threshold, regression, or rate_of_change"
+                        )
+                    })?;
+                    let severity = alerts::AlertSeverity::from_str(&severity).ok_or_else(|| {
+                        anyhow::anyhow!("Invalid severity. Use: warning, error, or critical")
+                    })?;
 
-                    let rule_id = alerts::add_alert_rule(conn, &metric, alert_type, severity, threshold, &description)?;
+                    let rule_id = alerts::add_alert_rule(
+                        conn,
+                        &metric,
+                        alert_type,
+                        severity,
+                        threshold,
+                        &description,
+                    )?;
 
                     println!("{} Created alert rule #{}", "✓".green(), rule_id);
                     println!("  Metric: {}", metric);
@@ -4323,7 +4883,12 @@ async fn handle_metrics_command(command: MetricsCommands) -> Result<()> {
                     println!("{} Removed alert rule #{}", "✓".green(), rule_id);
                 }
 
-                AlertCommands::History { session, metric, limit, .. } => {
+                AlertCommands::History {
+                    session,
+                    metric,
+                    limit,
+                    ..
+                } => {
                     let alerts = alerts::get_alert_history(
                         conn,
                         session.as_deref(),
@@ -4336,7 +4901,11 @@ async fn handle_metrics_command(command: MetricsCommands) -> Result<()> {
                         return Ok(());
                     }
 
-                    println!("{} Alert History ({} alerts)", "📜".cyan().bold(), alerts.len());
+                    println!(
+                        "{} Alert History ({} alerts)",
+                        "📜".cyan().bold(),
+                        alerts.len()
+                    );
                     println!();
                     for alert in alerts {
                         let severity_colored = match alert.severity {
@@ -4344,7 +4913,11 @@ async fn handle_metrics_command(command: MetricsCommands) -> Result<()> {
                             alerts::AlertSeverity::Error => "ERROR".red(),
                             alerts::AlertSeverity::Critical => "CRITICAL".red().bold(),
                         };
-                        println!("[{}] {}", severity_colored, alert.fired_at.format("%Y-%m-%d %H:%M:%S"));
+                        println!(
+                            "[{}] {}",
+                            severity_colored,
+                            alert.fired_at.format("%Y-%m-%d %H:%M:%S")
+                        );
                         println!("  {}", alert.message);
                         println!("  Session: {}", alert.session_id);
                         println!();
@@ -4353,7 +4926,11 @@ async fn handle_metrics_command(command: MetricsCommands) -> Result<()> {
             }
         }
 
-        MetricsCommands::IssueMetrics { issue_number, db, format } => {
+        MetricsCommands::IssueMetrics {
+            issue_number,
+            db,
+            format,
+        } => {
             use autopilot::metrics::MetricsDb;
 
             let db_path = db.unwrap_or_else(default_db_path);
@@ -4367,20 +4944,41 @@ async fn handle_metrics_command(command: MetricsCommands) -> Result<()> {
                         println!("{} Issue #{} Metrics", "📊".cyan().bold(), issue_number);
                         println!();
                         println!("Sessions:        {}", metrics.sessions_count);
-                        println!("Duration:        {:.1}s total, {:.1}s avg", metrics.total_duration_seconds, metrics.avg_duration_seconds);
-                        println!("Tokens:          {} total, {:.0} avg", format_number(metrics.total_tokens), metrics.avg_tokens);
-                        println!("Cost:            ${:.4} total, ${:.4} avg", metrics.total_cost_usd, metrics.avg_cost_usd);
+                        println!(
+                            "Duration:        {:.1}s total, {:.1}s avg",
+                            metrics.total_duration_seconds, metrics.avg_duration_seconds
+                        );
+                        println!(
+                            "Tokens:          {} total, {:.0} avg",
+                            format_number(metrics.total_tokens),
+                            metrics.avg_tokens
+                        );
+                        println!(
+                            "Cost:            ${:.4} total, ${:.4} avg",
+                            metrics.total_cost_usd, metrics.avg_cost_usd
+                        );
                         println!("Tool Calls:      {}", metrics.tool_calls);
-                        println!("Tool Errors:     {} ({:.1}% error rate)", metrics.tool_errors, metrics.error_rate);
+                        println!(
+                            "Tool Errors:     {} ({:.1}% error rate)",
+                            metrics.tool_errors, metrics.error_rate
+                        );
                     }
                 }
                 None => {
-                    println!("{} No metrics found for issue #{}", "ℹ".yellow(), issue_number);
+                    println!(
+                        "{} No metrics found for issue #{}",
+                        "ℹ".yellow(),
+                        issue_number
+                    );
                 }
             }
         }
 
-        MetricsCommands::DirectiveMetrics { directive_id, db, format } => {
+        MetricsCommands::DirectiveMetrics {
+            directive_id,
+            db,
+            format,
+        } => {
             use autopilot::metrics::MetricsDb;
 
             let db_path = db.unwrap_or_else(default_db_path);
@@ -4395,15 +4993,32 @@ async fn handle_metrics_command(command: MetricsCommands) -> Result<()> {
                         println!();
                         println!("Sessions:          {}", metrics.sessions_count);
                         println!("Issues Completed:  {}", metrics.issues_completed);
-                        println!("Duration:          {:.1}s total, {:.1}s avg", metrics.total_duration_seconds, metrics.avg_duration_seconds);
-                        println!("Tokens:            {} total, {:.0} avg", format_number(metrics.total_tokens), metrics.avg_tokens);
-                        println!("Cost:              ${:.4} total, ${:.4} avg", metrics.total_cost_usd, metrics.avg_cost_usd);
+                        println!(
+                            "Duration:          {:.1}s total, {:.1}s avg",
+                            metrics.total_duration_seconds, metrics.avg_duration_seconds
+                        );
+                        println!(
+                            "Tokens:            {} total, {:.0} avg",
+                            format_number(metrics.total_tokens),
+                            metrics.avg_tokens
+                        );
+                        println!(
+                            "Cost:              ${:.4} total, ${:.4} avg",
+                            metrics.total_cost_usd, metrics.avg_cost_usd
+                        );
                         println!("Tool Calls:        {}", metrics.tool_calls);
-                        println!("Tool Errors:       {} ({:.1}% error rate)", metrics.tool_errors, metrics.error_rate);
+                        println!(
+                            "Tool Errors:       {} ({:.1}% error rate)",
+                            metrics.tool_errors, metrics.error_rate
+                        );
                     }
                 }
                 None => {
-                    println!("{} No metrics found for directive {}", "ℹ".yellow(), directive_id);
+                    println!(
+                        "{} No metrics found for directive {}",
+                        "ℹ".yellow(),
+                        directive_id
+                    );
                 }
             }
         }
@@ -4426,12 +5041,15 @@ async fn handle_metrics_command(command: MetricsCommands) -> Result<()> {
 
                 println!("{} Metrics by Issue", "📊".cyan().bold());
                 println!();
-                println!("{:<8} {:>10} {:>12} {:>12} {:>10} {:>10}",
-                    "Issue", "Sessions", "Duration", "Tokens", "Cost", "Error %");
+                println!(
+                    "{:<8} {:>10} {:>12} {:>12} {:>10} {:>10}",
+                    "Issue", "Sessions", "Duration", "Tokens", "Cost", "Error %"
+                );
                 println!("{}", "─".repeat(80));
 
                 for metric in all_metrics {
-                    println!("{:<8} {:>10} {:>12.1}s {:>12} ${:>9.4} {:>9.1}%",
+                    println!(
+                        "{:<8} {:>10} {:>12.1}s {:>12} ${:>9.4} {:>9.1}%",
                         format!("#{}", metric.issue_number),
                         metric.sessions_count,
                         metric.avg_duration_seconds,
@@ -4461,12 +5079,15 @@ async fn handle_metrics_command(command: MetricsCommands) -> Result<()> {
 
                 println!("{} Metrics by Directive", "📊".cyan().bold());
                 println!();
-                println!("{:<12} {:>10} {:>12} {:>12} {:>12} {:>10} {:>10}",
-                    "Directive", "Sessions", "Issues", "Duration", "Tokens", "Cost", "Error %");
+                println!(
+                    "{:<12} {:>10} {:>12} {:>12} {:>12} {:>10} {:>10}",
+                    "Directive", "Sessions", "Issues", "Duration", "Tokens", "Cost", "Error %"
+                );
                 println!("{}", "─".repeat(95));
 
                 for metric in all_metrics {
-                    println!("{:<12} {:>10} {:>12} {:>12.1}s {:>12} ${:>9.4} {:>9.1}%",
+                    println!(
+                        "{:<12} {:>10} {:>12} {:>12.1}s {:>12} ${:>9.4} {:>9.1}%",
                         metric.directive_id,
                         metric.sessions_count,
                         metric.issues_completed,
@@ -4513,24 +5134,51 @@ async fn handle_metrics_command(command: MetricsCommands) -> Result<()> {
 
             // Current velocity
             println!("{} Current Period: {}", "📊".cyan(), velocity.period);
-            println!("  Velocity Score:    {:.2} (-1.0 to 1.0)", velocity.velocity_score);
-            println!("  Issues Completed:  {}", velocity.issues_completed.to_string().cyan());
-            println!("  Improving Metrics: {}", velocity.improving_metrics.to_string().green());
+            println!(
+                "  Velocity Score:    {:.2} (-1.0 to 1.0)",
+                velocity.velocity_score
+            );
+            println!(
+                "  Issues Completed:  {}",
+                velocity.issues_completed.to_string().cyan()
+            );
+            println!(
+                "  Improving Metrics: {}",
+                velocity.improving_metrics.to_string().green()
+            );
             println!("  Stable Metrics:    {}", velocity.stable_metrics);
-            println!("  Degrading Metrics: {}", velocity.degrading_metrics.to_string().red());
+            println!(
+                "  Degrading Metrics: {}",
+                velocity.degrading_metrics.to_string().red()
+            );
             println!();
 
             // Celebrate improvements!
             if velocity.velocity_score > celebrate_threshold {
-                println!("{} {} Great work! Autopilot is significantly improving!", "🎉".cyan().bold(), "CELEBRATION:".green().bold());
-                println!("  {} metrics are improving, showing strong upward momentum!", velocity.improving_metrics);
+                println!(
+                    "{} {} Great work! Autopilot is significantly improving!",
+                    "🎉".cyan().bold(),
+                    "CELEBRATION:".green().bold()
+                );
+                println!(
+                    "  {} metrics are improving, showing strong upward momentum!",
+                    velocity.improving_metrics
+                );
                 println!();
             } else if velocity.velocity_score > progress_threshold {
-                println!("{} {} Autopilot is getting better!", "✨".cyan(), "Progress:".green().bold());
+                println!(
+                    "{} {} Autopilot is getting better!",
+                    "✨".cyan(),
+                    "Progress:".green().bold()
+                );
                 println!("  Positive improvements detected across key metrics.");
                 println!();
             } else if velocity.velocity_score < warning_threshold {
-                println!("{} {} Attention needed - metrics are degrading.", "⚠️".yellow().bold(), "Warning:".yellow().bold());
+                println!(
+                    "{} {} Attention needed - metrics are degrading.",
+                    "⚠️".yellow().bold(),
+                    "Warning:".yellow().bold()
+                );
                 println!("  Consider investigating recent changes and running diagnostics.");
                 println!();
             }
@@ -4546,9 +5194,7 @@ async fn handle_metrics_command(command: MetricsCommands) -> Result<()> {
                     };
                     println!(
                         "  {:<25} {} {:>7.1}%",
-                        metric.dimension,
-                        direction_icon,
-                        metric.percent_change
+                        metric.dimension, direction_icon, metric.percent_change
                     );
                 }
                 println!();
@@ -4602,11 +5248,14 @@ async fn handle_metrics_command(command: MetricsCommands) -> Result<()> {
             };
 
             if format == "json" {
-                println!("{}", json!({
-                    "model": model,
-                    "confidence": 0.7,
-                    "reasoning": "Based on task complexity analysis"
-                }));
+                println!(
+                    "{}",
+                    json!({
+                        "model": model,
+                        "confidence": 0.7,
+                        "reasoning": "Based on task complexity analysis"
+                    })
+                );
             } else {
                 println!("{}", "=".repeat(60));
                 println!("{} Model Recommendation", "🤖".cyan().bold());
@@ -4614,7 +5263,11 @@ async fn handle_metrics_command(command: MetricsCommands) -> Result<()> {
                 println!();
                 println!("{} {}", "Recommended:".green().bold(), model.cyan());
                 println!("{} {}", "Confidence:".dimmed(), "70%");
-                println!("{} {}", "Reasoning:".dimmed(), "Based on task complexity analysis");
+                println!(
+                    "{} {}",
+                    "Reasoning:".dimmed(),
+                    "Based on task complexity analysis"
+                );
                 println!();
                 println!("{}", "=".repeat(60));
             }
@@ -4673,7 +5326,10 @@ fn truncate_string(s: &str, max_len: usize) -> String {
 }
 
 /// Handle compare analysis between two date ranges
-fn handle_compare_analysis(metrics_db: &autopilot::metrics::MetricsDb, compare_str: &str) -> Result<()> {
+fn handle_compare_analysis(
+    metrics_db: &autopilot::metrics::MetricsDb,
+    compare_str: &str,
+) -> Result<()> {
     use anyhow::Context;
     use autopilot::analyze::{calculate_aggregate_stats_from_sessions, get_sessions_between_dates};
     use chrono::NaiveDate;
@@ -4697,8 +5353,12 @@ fn handle_compare_analysis(metrics_db: &autopilot::metrics::MetricsDb, compare_s
     let sessions = get_sessions_between_dates(metrics_db, start, end)?;
 
     if sessions.is_empty() {
-        println!("{} No sessions found between {} and {}",
-            "⚠".yellow(), parts[0], parts[1]);
+        println!(
+            "{} No sessions found between {} and {}",
+            "⚠".yellow(),
+            parts[0],
+            parts[1]
+        );
         return Ok(());
     }
 
@@ -4707,8 +5367,12 @@ fn handle_compare_analysis(metrics_db: &autopilot::metrics::MetricsDb, compare_s
 
     // Print report
     println!("{}", "=".repeat(80));
-    println!("{} Metrics Comparison: {} to {}",
-        "📊".cyan().bold(), parts[0], parts[1]);
+    println!(
+        "{} Metrics Comparison: {} to {}",
+        "📊".cyan().bold(),
+        parts[0],
+        parts[1]
+    );
     println!("{}", "=".repeat(80));
     println!();
     println!("{} Overview:", "📈".cyan().bold());
@@ -4767,10 +5431,12 @@ async fn handle_benchmark_comparison(
         return Ok(());
     }
 
-    let by_id1: std::collections::HashMap<_, _> = results1.iter()
+    let by_id1: std::collections::HashMap<_, _> = results1
+        .iter()
         .map(|r| (r.benchmark_id.clone(), r))
         .collect();
-    let by_id2: std::collections::HashMap<_, _> = results2.iter()
+    let by_id2: std::collections::HashMap<_, _> = results2
+        .iter()
         .map(|r| (r.benchmark_id.clone(), r))
         .collect();
 
@@ -4784,64 +5450,112 @@ async fn handle_benchmark_comparison(
         if let Some(r1) = by_id1.get(id) {
             // Compare duration
             let duration_pct = ((r2.metrics.duration_ms as f64 - r1.metrics.duration_ms as f64)
-                / r1.metrics.duration_ms as f64).abs();
-            let duration_regressed = r2.metrics.duration_ms > r1.metrics.duration_ms
-                && duration_pct > threshold;
+                / r1.metrics.duration_ms as f64)
+                .abs();
+            let duration_regressed =
+                r2.metrics.duration_ms > r1.metrics.duration_ms && duration_pct > threshold;
 
             // Compare tokens
             let tokens_in_pct = ((r2.metrics.tokens_in as f64 - r1.metrics.tokens_in as f64)
-                / r1.metrics.tokens_in as f64).abs();
-            let tokens_in_regressed = r2.metrics.tokens_in > r1.metrics.tokens_in
-                && tokens_in_pct > threshold;
+                / r1.metrics.tokens_in as f64)
+                .abs();
+            let tokens_in_regressed =
+                r2.metrics.tokens_in > r1.metrics.tokens_in && tokens_in_pct > threshold;
 
             let tokens_out_pct = ((r2.metrics.tokens_out as f64 - r1.metrics.tokens_out as f64)
-                / r1.metrics.tokens_out as f64).abs();
-            let tokens_out_regressed = r2.metrics.tokens_out > r1.metrics.tokens_out
-                && tokens_out_pct > threshold;
+                / r1.metrics.tokens_out as f64)
+                .abs();
+            let tokens_out_regressed =
+                r2.metrics.tokens_out > r1.metrics.tokens_out && tokens_out_pct > threshold;
 
             // Compare cost
-            let cost_pct = ((r2.metrics.cost_usd - r1.metrics.cost_usd)
-                / r1.metrics.cost_usd).abs();
-            let cost_regressed = r2.metrics.cost_usd > r1.metrics.cost_usd
-                && cost_pct > threshold;
+            let cost_pct =
+                ((r2.metrics.cost_usd - r1.metrics.cost_usd) / r1.metrics.cost_usd).abs();
+            let cost_regressed = r2.metrics.cost_usd > r1.metrics.cost_usd && cost_pct > threshold;
 
             // Compare errors
             let errors_increased = r2.metrics.tool_errors > r1.metrics.tool_errors;
 
             // Duration row
             let duration_change = ((r2.metrics.duration_ms as f64 - r1.metrics.duration_ms as f64)
-                / r1.metrics.duration_ms as f64) * 100.0;
-            let duration_status = if duration_regressed { "❌ FAIL" } else { "✅ PASS" };
-            println!("| {} | Duration | {}ms | {}ms | {:+.1}% | {} |",
-                id, r1.metrics.duration_ms, r2.metrics.duration_ms, duration_change, duration_status);
+                / r1.metrics.duration_ms as f64)
+                * 100.0;
+            let duration_status = if duration_regressed {
+                "❌ FAIL"
+            } else {
+                "✅ PASS"
+            };
+            println!(
+                "| {} | Duration | {}ms | {}ms | {:+.1}% | {} |",
+                id,
+                r1.metrics.duration_ms,
+                r2.metrics.duration_ms,
+                duration_change,
+                duration_status
+            );
 
             // Tokens in row
             let tokens_in_change = ((r2.metrics.tokens_in as f64 - r1.metrics.tokens_in as f64)
-                / r1.metrics.tokens_in as f64) * 100.0;
-            let tokens_in_status = if tokens_in_regressed { "❌ FAIL" } else { "✅ PASS" };
-            println!("| {} | Tokens In | {} | {} | {:+.1}% | {} |",
-                id, r1.metrics.tokens_in, r2.metrics.tokens_in, tokens_in_change, tokens_in_status);
+                / r1.metrics.tokens_in as f64)
+                * 100.0;
+            let tokens_in_status = if tokens_in_regressed {
+                "❌ FAIL"
+            } else {
+                "✅ PASS"
+            };
+            println!(
+                "| {} | Tokens In | {} | {} | {:+.1}% | {} |",
+                id, r1.metrics.tokens_in, r2.metrics.tokens_in, tokens_in_change, tokens_in_status
+            );
 
             // Tokens out row
             let tokens_out_change = ((r2.metrics.tokens_out as f64 - r1.metrics.tokens_out as f64)
-                / r1.metrics.tokens_out as f64) * 100.0;
-            let tokens_out_status = if tokens_out_regressed { "❌ FAIL" } else { "✅ PASS" };
-            println!("| {} | Tokens Out | {} | {} | {:+.1}% | {} |",
-                id, r1.metrics.tokens_out, r2.metrics.tokens_out, tokens_out_change, tokens_out_status);
+                / r1.metrics.tokens_out as f64)
+                * 100.0;
+            let tokens_out_status = if tokens_out_regressed {
+                "❌ FAIL"
+            } else {
+                "✅ PASS"
+            };
+            println!(
+                "| {} | Tokens Out | {} | {} | {:+.1}% | {} |",
+                id,
+                r1.metrics.tokens_out,
+                r2.metrics.tokens_out,
+                tokens_out_change,
+                tokens_out_status
+            );
 
             // Cost row
-            let cost_change = ((r2.metrics.cost_usd - r1.metrics.cost_usd)
-                / r1.metrics.cost_usd) * 100.0;
-            let cost_status = if cost_regressed { "❌ FAIL" } else { "✅ PASS" };
-            println!("| {} | Cost | ${:.4} | ${:.4} | {:+.1}% | {} |",
-                id, r1.metrics.cost_usd, r2.metrics.cost_usd, cost_change, cost_status);
+            let cost_change =
+                ((r2.metrics.cost_usd - r1.metrics.cost_usd) / r1.metrics.cost_usd) * 100.0;
+            let cost_status = if cost_regressed {
+                "❌ FAIL"
+            } else {
+                "✅ PASS"
+            };
+            println!(
+                "| {} | Cost | ${:.4} | ${:.4} | {:+.1}% | {} |",
+                id, r1.metrics.cost_usd, r2.metrics.cost_usd, cost_change, cost_status
+            );
 
             // Errors row
-            let errors_status = if errors_increased { "❌ FAIL" } else { "✅ PASS" };
-            println!("| {} | Tool Errors | {} | {} | - | {} |",
-                id, r1.metrics.tool_errors, r2.metrics.tool_errors, errors_status);
+            let errors_status = if errors_increased {
+                "❌ FAIL"
+            } else {
+                "✅ PASS"
+            };
+            println!(
+                "| {} | Tool Errors | {} | {} | - | {} |",
+                id, r1.metrics.tool_errors, r2.metrics.tool_errors, errors_status
+            );
 
-            if duration_regressed || tokens_in_regressed || tokens_out_regressed || cost_regressed || errors_increased {
+            if duration_regressed
+                || tokens_in_regressed
+                || tokens_out_regressed
+                || cost_regressed
+                || errors_increased
+            {
                 has_regression = true;
                 let mut regression_details = Vec::new();
                 if duration_regressed {
@@ -4857,7 +5571,10 @@ async fn handle_benchmark_comparison(
                     regression_details.push(format!("cost +{:.1}%", cost_change));
                 }
                 if errors_increased {
-                    regression_details.push(format!("errors +{}", r2.metrics.tool_errors - r1.metrics.tool_errors));
+                    regression_details.push(format!(
+                        "errors +{}",
+                        r2.metrics.tool_errors - r1.metrics.tool_errors
+                    ));
                 }
                 regressed_benchmarks.push(format!("{}: {}", id, regression_details.join(", ")));
             }
@@ -4867,7 +5584,10 @@ async fn handle_benchmark_comparison(
     println!();
 
     if has_regression {
-        println!("❌ **Benchmark regression detected!** One or more metrics regressed by more than {:.0}%", threshold * 100.0);
+        println!(
+            "❌ **Benchmark regression detected!** One or more metrics regressed by more than {:.0}%",
+            threshold * 100.0
+        );
         println!();
         println!("**Regressed benchmarks:**");
         for regression in &regressed_benchmarks {
@@ -4898,20 +5618,21 @@ async fn handle_benchmark_command(
     workspace: Option<PathBuf>,
 ) -> Result<()> {
     use autopilot::benchmark::{
-        BenchmarkRunner, BenchmarkDatabase,
-        B001SimpleFileEdit, B002MultiFileEdit, B003StructRename,
-        B004SimpleCommit, B005BranchWorkflow,
-        B006IssueWorkflow, B007MultiStepRefactor, B008TestDrivenFix,
-        B009DocumentationGeneration, B010DependencyUpdate,
-        B011ErrorRecovery, B012ContextGathering, B013CrossFileConsistency,
-        B014PerformanceOptimization, B015SecurityFix,
+        B001SimpleFileEdit, B002MultiFileEdit, B003StructRename, B004SimpleCommit,
+        B005BranchWorkflow, B006IssueWorkflow, B007MultiStepRefactor, B008TestDrivenFix,
+        B009DocumentationGeneration, B010DependencyUpdate, B011ErrorRecovery, B012ContextGathering,
+        B013CrossFileConsistency, B014PerformanceOptimization, B015SecurityFix, BenchmarkDatabase,
+        BenchmarkRunner,
     };
 
     let db_path = db.unwrap_or_else(|| PathBuf::from("autopilot-benchmarks.db"));
     let workspace_path = workspace.unwrap_or_else(|| PathBuf::from("benchmark-workspace"));
-    let version = save_baseline.clone().unwrap_or_else(|| "current".to_string());
+    let version = save_baseline
+        .clone()
+        .unwrap_or_else(|| "current".to_string());
 
-    let mut runner = BenchmarkRunner::new(workspace_path.clone(), db_path.clone(), version.clone())?;
+    let mut runner =
+        BenchmarkRunner::new(workspace_path.clone(), db_path.clone(), version.clone())?;
 
     // All available tasks
     let all_tasks: Vec<(&str, Box<dyn autopilot::benchmark::BenchmarkTask>)> = vec![
@@ -4941,9 +5662,8 @@ async fn handle_benchmark_command(
 
         // Query all distinct versions with baselines
         let conn = rusqlite::Connection::open(&db_path)?;
-        let mut stmt = conn.prepare(
-            "SELECT DISTINCT version FROM benchmark_baselines ORDER BY version"
-        )?;
+        let mut stmt =
+            conn.prepare("SELECT DISTINCT version FROM benchmark_baselines ORDER BY version")?;
         let versions: Vec<String> = stmt
             .query_map([], |row| row.get(0))?
             .collect::<std::result::Result<_, _>>()?;
@@ -4958,8 +5678,12 @@ async fn handle_benchmark_command(
                     [&version],
                     |row| Ok((row.get(0)?, row.get(1)?)),
                 )?;
-                println!("  {} - {} benchmarks (updated: {})",
-                    version.cyan().bold(), count, updated);
+                println!(
+                    "  {} - {} benchmarks (updated: {})",
+                    version.cyan().bold(),
+                    count,
+                    updated
+                );
             }
         }
         println!();
@@ -4990,7 +5714,9 @@ async fn handle_benchmark_command(
         let current_branch = std::process::Command::new("git")
             .args(&["rev-parse", "--abbrev-ref", "HEAD"])
             .output()?;
-        let current_branch = String::from_utf8_lossy(&current_branch.stdout).trim().to_string();
+        let current_branch = String::from_utf8_lossy(&current_branch.stdout)
+            .trim()
+            .to_string();
 
         // Get results for commit 1
         let commit1_results = {
@@ -5025,30 +5751,35 @@ async fn handle_benchmark_command(
 
         // Compare results
         println!("{} Comparison Results:", "📊".cyan());
-        println!("{:<20} {:>15} {:>15} {:>12}", "Benchmark", parts[0], parts[1], "Change");
+        println!(
+            "{:<20} {:>15} {:>15} {:>12}",
+            "Benchmark", parts[0], parts[1], "Change"
+        );
         println!("{}", "-".repeat(80));
 
-        let by_id1: std::collections::HashMap<_, _> = commit1_results.iter()
+        let by_id1: std::collections::HashMap<_, _> = commit1_results
+            .iter()
             .map(|r| (r.benchmark_id.clone(), r))
             .collect();
-        let by_id2: std::collections::HashMap<_, _> = commit2_results.iter()
+        let by_id2: std::collections::HashMap<_, _> = commit2_results
+            .iter()
             .map(|r| (r.benchmark_id.clone(), r))
             .collect();
 
         for (id, r2) in &by_id2 {
             if let Some(r1) = by_id1.get(id) {
-                let duration_change = ((r2.metrics.duration_ms as f64 - r1.metrics.duration_ms as f64)
-                    / r1.metrics.duration_ms as f64) * 100.0;
+                let duration_change = ((r2.metrics.duration_ms as f64
+                    - r1.metrics.duration_ms as f64)
+                    / r1.metrics.duration_ms as f64)
+                    * 100.0;
                 let change_str = if duration_change > 0.0 {
                     format!("+{:.1}%", duration_change).red()
                 } else {
                     format!("{:.1}%", duration_change).green()
                 };
-                println!("{:<20} {:>12}ms {:>12}ms {:>12}",
-                    id,
-                    r1.metrics.duration_ms,
-                    r2.metrics.duration_ms,
-                    change_str
+                println!(
+                    "{:<20} {:>12}ms {:>12}ms {:>12}",
+                    id, r1.metrics.duration_ms, r2.metrics.duration_ms, change_str
                 );
             }
         }
@@ -5058,13 +5789,22 @@ async fn handle_benchmark_command(
     }
 
     // Determine which tasks to run
-    let tasks_to_run: Vec<&Box<dyn autopilot::benchmark::BenchmarkTask>> = if let Some(id) = &benchmark_id {
-        all_tasks.iter().filter(|(_, t)| t.id() == id).map(|(_, t)| t).collect()
-    } else if let Some(cat) = &category {
-        all_tasks.iter().filter(|(c, _)| *c == cat).map(|(_, t)| t).collect()
-    } else {
-        all_tasks.iter().map(|(_, t)| t).collect()
-    };
+    let tasks_to_run: Vec<&Box<dyn autopilot::benchmark::BenchmarkTask>> =
+        if let Some(id) = &benchmark_id {
+            all_tasks
+                .iter()
+                .filter(|(_, t)| t.id() == id)
+                .map(|(_, t)| t)
+                .collect()
+        } else if let Some(cat) = &category {
+            all_tasks
+                .iter()
+                .filter(|(c, _)| *c == cat)
+                .map(|(_, t)| t)
+                .collect()
+        } else {
+            all_tasks.iter().map(|(_, t)| t).collect()
+        };
 
     if tasks_to_run.is_empty() {
         println!("No benchmarks match the specified criteria");
@@ -5141,7 +5881,9 @@ async fn handle_benchmark_command(
 /// Handle APM commands
 async fn handle_apm_command(command: ApmCommands) -> Result<()> {
     use autopilot::apm::{APMSource, APMTier};
-    use autopilot::apm_storage::{get_latest_snapshot, get_sessions_by_source, get_session_stats, init_apm_tables};
+    use autopilot::apm_storage::{
+        get_latest_snapshot, get_session_stats, get_sessions_by_source, init_apm_tables,
+    };
     use autopilot::default_db_path;
     use colored::Colorize;
     use rusqlite::Connection;
@@ -5158,7 +5900,10 @@ async fn handle_apm_command(command: ApmCommands) -> Result<()> {
                 "autopilot" => APMSource::Autopilot,
                 "claude_code" | "claude" => APMSource::ClaudeCode,
                 _ => {
-                    eprintln!("Invalid source: {}. Valid values: autopilot, claude_code", s);
+                    eprintln!(
+                        "Invalid source: {}. Valid values: autopilot, claude_code",
+                        s
+                    );
                     std::process::exit(1);
                 }
             });
@@ -5187,7 +5932,11 @@ async fn handle_apm_command(command: ApmCommands) -> Result<()> {
                         snap.tool_calls
                     );
                 } else {
-                    println!("{:<15} {}", format!("{:?}", src).dimmed(), "No data".dimmed());
+                    println!(
+                        "{:<15} {}",
+                        format!("{:?}", src).dimmed(),
+                        "No data".dimmed()
+                    );
                 }
             }
 
@@ -5199,14 +5948,20 @@ async fn handle_apm_command(command: ApmCommands) -> Result<()> {
             let conn = Connection::open(&db_path)?;
             init_apm_tables(&conn)?;
 
-            let src = source.as_deref().map(|s| match s {
-                "autopilot" => APMSource::Autopilot,
-                "claude_code" | "claude" => APMSource::ClaudeCode,
-                _ => {
-                    eprintln!("Invalid source: {}. Valid values: autopilot, claude_code", s);
-                    std::process::exit(1);
-                }
-            }).unwrap_or(APMSource::Autopilot);
+            let src = source
+                .as_deref()
+                .map(|s| match s {
+                    "autopilot" => APMSource::Autopilot,
+                    "claude_code" | "claude" => APMSource::ClaudeCode,
+                    _ => {
+                        eprintln!(
+                            "Invalid source: {}. Valid values: autopilot, claude_code",
+                            s
+                        );
+                        std::process::exit(1);
+                    }
+                })
+                .unwrap_or(APMSource::Autopilot);
 
             let sessions = get_sessions_by_source(&conn, src)?;
 
@@ -5216,11 +5971,20 @@ async fn handle_apm_command(command: ApmCommands) -> Result<()> {
 
             for (id, start_time, end_time) in sessions.iter().take(limit) {
                 let status = if end_time.is_some() { "✓" } else { "•" };
-                println!("{} {:<20} {}", status.green(), &id[..id.len().min(20)], start_time.format("%Y-%m-%d %H:%M:%S"));
+                println!(
+                    "{} {:<20} {}",
+                    status.green(),
+                    &id[..id.len().min(20)],
+                    start_time.format("%Y-%m-%d %H:%M:%S")
+                );
             }
 
             println!();
-            println!("Showing {} of {} sessions", sessions.len().min(limit), sessions.len());
+            println!(
+                "Showing {} of {} sessions",
+                sessions.len().min(limit),
+                sessions.len()
+            );
             Ok(())
         }
         ApmCommands::Show { session_id, db } => {
@@ -5262,7 +6026,10 @@ async fn handle_apm_command(command: ApmCommands) -> Result<()> {
                 "autopilot" => APMSource::Autopilot,
                 "claude_code" | "claude" => APMSource::ClaudeCode,
                 _ => {
-                    eprintln!("Invalid source: {}. Valid values: autopilot, claude_code", s);
+                    eprintln!(
+                        "Invalid source: {}. Valid values: autopilot, claude_code",
+                        s
+                    );
                     std::process::exit(1);
                 }
             });
@@ -5277,7 +6044,10 @@ async fn handle_apm_command(command: ApmCommands) -> Result<()> {
                 "1m" => autopilot::apm::APMWindow::Month1,
                 "lifetime" => autopilot::apm::APMWindow::Lifetime,
                 _ => {
-                    eprintln!("Invalid window: {}. Valid values: session, 1h, 6h, 1d, 1w, 1m, lifetime", w);
+                    eprintln!(
+                        "Invalid window: {}. Valid values: session, 1h, 6h, 1d, 1w, 1m, lifetime",
+                        w
+                    );
                     std::process::exit(1);
                 }
             });
@@ -5292,7 +6062,10 @@ async fn handle_apm_command(command: ApmCommands) -> Result<()> {
                             .map(|d| d.and_hms_opt(0, 0, 0).unwrap().and_utc())
                     })
                     .unwrap_or_else(|_| {
-                        eprintln!("Invalid start_date format: {}. Use RFC3339 or YYYY-MM-DD", s);
+                        eprintln!(
+                            "Invalid start_date format: {}. Use RFC3339 or YYYY-MM-DD",
+                            s
+                        );
                         std::process::exit(1);
                     })
             });
@@ -5311,7 +6084,8 @@ async fn handle_apm_command(command: ApmCommands) -> Result<()> {
             });
 
             // Get filtered snapshots
-            let snapshots = get_snapshots_filtered(&conn, src_filter, window_filter, start_filter, end_filter)?;
+            let snapshots =
+                get_snapshots_filtered(&conn, src_filter, window_filter, start_filter, end_filter)?;
 
             // Format output based on format flag
             let output_content = match format.as_str() {
@@ -5342,20 +6116,27 @@ async fn handle_apm_command(command: ApmCommands) -> Result<()> {
                 }
                 "csv" | "tsv" => {
                     let delimiter = if format == "csv" { "," } else { "\t" };
-                    let mut lines = vec![
-                        format!("timestamp{}source{}window{}apm{}actions{}duration_minutes{}messages{}tool_calls",
-                                delimiter, delimiter, delimiter, delimiter, delimiter, delimiter, delimiter)
-                    ];
+                    let mut lines = vec![format!(
+                        "timestamp{}source{}window{}apm{}actions{}duration_minutes{}messages{}tool_calls",
+                        delimiter, delimiter, delimiter, delimiter, delimiter, delimiter, delimiter
+                    )];
                     for snap in &snapshots {
                         lines.push(format!(
                             "{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}",
-                            snap.timestamp.to_rfc3339(), delimiter,
-                            snap.source.as_str(), delimiter,
-                            snap.window.as_str(), delimiter,
-                            snap.apm, delimiter,
-                            snap.actions, delimiter,
-                            snap.duration_minutes, delimiter,
-                            snap.messages, delimiter,
+                            snap.timestamp.to_rfc3339(),
+                            delimiter,
+                            snap.source.as_str(),
+                            delimiter,
+                            snap.window.as_str(),
+                            delimiter,
+                            snap.apm,
+                            delimiter,
+                            snap.actions,
+                            delimiter,
+                            snap.duration_minutes,
+                            delimiter,
+                            snap.messages,
+                            delimiter,
                             snap.tool_calls
                         ));
                     }
@@ -5370,24 +6151,39 @@ async fn handle_apm_command(command: ApmCommands) -> Result<()> {
             // Write to file or stdout
             if let Some(output_path) = output {
                 std::fs::write(&output_path, output_content)?;
-                println!("{} Exported {} snapshots to {}", "✓".green(), snapshots.len(), output_path.display());
+                println!(
+                    "{} Exported {} snapshots to {}",
+                    "✓".green(),
+                    snapshots.len(),
+                    output_path.display()
+                );
             } else {
                 println!("{}", output_content);
             }
 
             Ok(())
         }
-        ApmCommands::Watch { interval, source, db } => {
+        ApmCommands::Watch {
+            interval,
+            source,
+            db,
+        } => {
             let db_path = db.unwrap_or(default_db);
 
-            let src = source.as_deref().map(|s| match s {
-                "autopilot" => APMSource::Autopilot,
-                "claude_code" | "claude" => APMSource::ClaudeCode,
-                _ => {
-                    eprintln!("Invalid source: {}. Valid values: autopilot, claude_code", s);
-                    std::process::exit(1);
-                }
-            }).unwrap_or(APMSource::Autopilot);
+            let src = source
+                .as_deref()
+                .map(|s| match s {
+                    "autopilot" => APMSource::Autopilot,
+                    "claude_code" | "claude" => APMSource::ClaudeCode,
+                    _ => {
+                        eprintln!(
+                            "Invalid source: {}. Valid values: autopilot, claude_code",
+                            s
+                        );
+                        std::process::exit(1);
+                    }
+                })
+                .unwrap_or(APMSource::Autopilot);
 
             println!("{}", "Press Ctrl+C to stop...".dimmed());
             println!();
@@ -5423,21 +6219,41 @@ async fn handle_apm_command(command: ApmCommands) -> Result<()> {
                     };
 
                     let tier = APMTier::from_apm(apm);
-                    let status = if end_time.is_some() { "Complete" } else { "Running" };
+                    let status = if end_time.is_some() {
+                        "Complete"
+                    } else {
+                        "Running"
+                    };
 
                     println!("{}", "═".repeat(70).cyan());
                     println!("{:^70}", format!("APM Dashboard - {:?}", src).bold());
                     println!("{}", "═".repeat(70).cyan());
                     println!();
 
-                    println!("{:<20} {}", "Session:", &session_id[..session_id.len().min(40)]);
-                    println!("{:<20} {}", "Status:", if end_time.is_some() { status.green() } else { status.yellow() });
+                    println!(
+                        "{:<20} {}",
+                        "Session:",
+                        &session_id[..session_id.len().min(40)]
+                    );
+                    println!(
+                        "{:<20} {}",
+                        "Status:",
+                        if end_time.is_some() {
+                            status.green()
+                        } else {
+                            status.yellow()
+                        }
+                    );
                     println!("{:<20} {:.1} minutes", "Duration:", duration_mins);
                     println!();
 
                     println!("{:<20} {}", "Messages:", messages.to_string().cyan());
                     println!("{:<20} {}", "Tool Calls:", tool_calls.to_string().cyan());
-                    println!("{:<20} {}", "Total Actions:", total_actions.to_string().cyan().bold());
+                    println!(
+                        "{:<20} {}",
+                        "Total Actions:",
+                        total_actions.to_string().cyan().bold()
+                    );
                     println!();
 
                     println!("{:<20} {:.1} APM", "Current APM:", apm);
@@ -5446,7 +6262,8 @@ async fn handle_apm_command(command: ApmCommands) -> Result<()> {
 
                     // Show tier thresholds
                     println!("{}", "Tier Thresholds:".dimmed());
-                    println!("  {} 0-5   {} 5-10   {} 10-15   {} 15-20   {} 20+",
+                    println!(
+                        "  {} 0-5   {} 5-10   {} 10-15   {} 15-20   {} 20+",
                         "Baseline".dimmed(),
                         "Active".green(),
                         "Productive".cyan(),
@@ -5458,14 +6275,24 @@ async fn handle_apm_command(command: ApmCommands) -> Result<()> {
                 }
 
                 println!();
-                println!("{}", format!("Updated: {} | Refresh: {}s", chrono::Local::now().format("%H:%M:%S"), interval).dimmed());
+                println!(
+                    "{}",
+                    format!(
+                        "Updated: {} | Refresh: {}s",
+                        chrono::Local::now().format("%H:%M:%S"),
+                        interval
+                    )
+                    .dimmed()
+                );
 
                 tokio::time::sleep(tokio::time::Duration::from_secs(interval)).await;
             }
         }
         ApmCommands::Baseline { command } => {
             use autopilot::apm::APMBaseline;
-            use autopilot::metrics::{delete_apm_baseline, get_apm_baseline, list_apm_baselines, store_apm_baseline};
+            use autopilot::metrics::{
+                delete_apm_baseline, get_apm_baseline, list_apm_baselines, store_apm_baseline,
+            };
 
             let default_db = default_db_path();
 
@@ -5478,7 +6305,9 @@ async fn handle_apm_command(command: ApmCommands) -> Result<()> {
                         println!("No APM baselines found.");
                         println!();
                         println!("Create a baseline with:");
-                        println!("  cargo autopilot apm baseline set <id> <name> --source autopilot --median 19.0");
+                        println!(
+                            "  cargo autopilot apm baseline set <id> <name> --source autopilot --median 19.0"
+                        );
                         return Ok(());
                     }
 
@@ -5492,12 +6321,23 @@ async fn handle_apm_command(command: ApmCommands) -> Result<()> {
                         println!("  Name:        {}", baseline.name);
                         println!("  Source:      {:?}", baseline.source);
                         println!("  Median APM:  {:.1}", baseline.median_apm);
-                        println!("  Range:       {:.1} - {:.1}", baseline.min_apm, baseline.max_apm);
+                        println!(
+                            "  Range:       {:.1} - {:.1}",
+                            baseline.min_apm, baseline.max_apm
+                        );
                         println!("  Samples:     {}", baseline.sample_size);
                         println!();
                     }
                 }
-                BaselineCommands::Set { id, name, source, median, min, max, db } => {
+                BaselineCommands::Set {
+                    id,
+                    name,
+                    source,
+                    median,
+                    min,
+                    max,
+                    db,
+                } => {
                     let db_path = db.unwrap_or(default_db);
 
                     let source_enum = match source.as_str() {
@@ -5505,13 +6345,23 @@ async fn handle_apm_command(command: ApmCommands) -> Result<()> {
                         "claude_code" | "claude" => APMSource::ClaudeCode,
                         "combined" => APMSource::Combined,
                         _ => {
-                            eprintln!("Invalid source: {}. Valid values: autopilot, claude_code, combined", source);
+                            eprintln!(
+                                "Invalid source: {}. Valid values: autopilot, claude_code, combined",
+                                source
+                            );
                             std::process::exit(1);
                         }
                     };
 
                     let baseline = if let (Some(min_val), Some(max_val)) = (min, max) {
-                        APMBaseline::with_thresholds(id, name, source_enum, median, min_val, max_val)
+                        APMBaseline::with_thresholds(
+                            id,
+                            name,
+                            source_enum,
+                            median,
+                            min_val,
+                            max_val,
+                        )
                     } else {
                         APMBaseline::new(id, name, source_enum, median)
                     };
@@ -5524,8 +6374,16 @@ async fn handle_apm_command(command: ApmCommands) -> Result<()> {
                     println!("  Name:        {}", baseline.name);
                     println!("  Source:      {:?}", baseline.source);
                     println!("  Median APM:  {:.1}", baseline.median_apm);
-                    println!("  Min APM:     {:.1} ({})", baseline.min_apm, "warning threshold".yellow());
-                    println!("  Max APM:     {:.1} ({})", baseline.max_apm, "excellent threshold".green());
+                    println!(
+                        "  Min APM:     {:.1} ({})",
+                        baseline.min_apm,
+                        "warning threshold".yellow()
+                    );
+                    println!(
+                        "  Max APM:     {:.1} ({})",
+                        baseline.max_apm,
+                        "excellent threshold".green()
+                    );
                 }
                 BaselineCommands::Show { id, db } => {
                     let db_path = db.unwrap_or(default_db);
@@ -5540,11 +6398,29 @@ async fn handle_apm_command(command: ApmCommands) -> Result<()> {
                             println!("{:<20} {}", "ID:", b.id);
                             println!("{:<20} {:?}", "Source:", b.source);
                             println!("{:<20} {:.1} APM", "Median:", b.median_apm);
-                            println!("{:<20} {:.1} APM ({})", "Minimum:", b.min_apm, "warning".yellow());
-                            println!("{:<20} {:.1} APM ({})", "Maximum:", b.max_apm, "excellent".green());
+                            println!(
+                                "{:<20} {:.1} APM ({})",
+                                "Minimum:",
+                                b.min_apm,
+                                "warning".yellow()
+                            );
+                            println!(
+                                "{:<20} {:.1} APM ({})",
+                                "Maximum:",
+                                b.max_apm,
+                                "excellent".green()
+                            );
                             println!("{:<20} {}", "Samples:", b.sample_size);
-                            println!("{:<20} {}", "Created:", b.created_at.format("%Y-%m-%d %H:%M:%S"));
-                            println!("{:<20} {}", "Updated:", b.updated_at.format("%Y-%m-%d %H:%M:%S"));
+                            println!(
+                                "{:<20} {}",
+                                "Created:",
+                                b.created_at.format("%Y-%m-%d %H:%M:%S")
+                            );
+                            println!(
+                                "{:<20} {}",
+                                "Updated:",
+                                b.updated_at.format("%Y-%m-%d %H:%M:%S")
+                            );
                             println!();
                         }
                         None => {
@@ -5557,7 +6433,11 @@ async fn handle_apm_command(command: ApmCommands) -> Result<()> {
                     delete_apm_baseline(&db_path, &id)?;
                     println!("{}", format!("✓ Baseline '{}' deleted", id).green().bold());
                 }
-                BaselineCommands::Check { baseline_id, apm, db } => {
+                BaselineCommands::Check {
+                    baseline_id,
+                    apm,
+                    db,
+                } => {
                     use autopilot::apm_storage::get_sessions_by_source;
                     use rusqlite::Connection;
 
@@ -5574,7 +6454,8 @@ async fn handle_apm_command(command: ApmCommands) -> Result<()> {
                                 let sessions = get_sessions_by_source(&conn, b.source)?;
                                 if let Some((session_id, start, end)) = sessions.first() {
                                     use autopilot::apm_storage::get_session_stats;
-                                    let (messages, tool_calls) = get_session_stats(&conn, session_id)?;
+                                    let (messages, tool_calls) =
+                                        get_session_stats(&conn, session_id)?;
                                     let duration_secs = if let Some(end_time) = end {
                                         (end_time.timestamp() - start.timestamp()) as f64
                                     } else {
@@ -5603,19 +6484,37 @@ async fn handle_apm_command(command: ApmCommands) -> Result<()> {
                             println!("{:<20} {:.1} APM", "Baseline Median:", b.median_apm);
                             println!("{:<20} {:.1}%", "Deviation:", deviation.abs());
                             println!();
-                            println!("{:<20} {} {}", "Status:", status.emoji(), match status {
-                                autopilot::apm::BaselineStatus::BelowBaseline => "Below Baseline (Performance Regression)".red().bold(),
-                                autopilot::apm::BaselineStatus::Normal => "Within Expected Range".green(),
-                                autopilot::apm::BaselineStatus::AboveBaseline => "Above Baseline (Excellent Performance)".yellow().bold(),
-                            });
+                            println!(
+                                "{:<20} {} {}",
+                                "Status:",
+                                status.emoji(),
+                                match status {
+                                    autopilot::apm::BaselineStatus::BelowBaseline =>
+                                        "Below Baseline (Performance Regression)".red().bold(),
+                                    autopilot::apm::BaselineStatus::Normal =>
+                                        "Within Expected Range".green(),
+                                    autopilot::apm::BaselineStatus::AboveBaseline =>
+                                        "Above Baseline (Excellent Performance)".yellow().bold(),
+                                }
+                            );
                             println!();
 
                             if deviation < -20.0 {
-                                println!("{}", "⚠️  WARNING: APM is more than 20% below baseline!".red().bold());
+                                println!(
+                                    "{}",
+                                    "⚠️  WARNING: APM is more than 20% below baseline!"
+                                        .red()
+                                        .bold()
+                                );
                                 println!("   This may indicate a performance regression.");
                                 println!();
                             } else if deviation > 50.0 {
-                                println!("{}", "⭐ EXCELLENT: APM is significantly above baseline!".yellow().bold());
+                                println!(
+                                    "{}",
+                                    "⭐ EXCELLENT: APM is significantly above baseline!"
+                                        .yellow()
+                                        .bold()
+                                );
                                 println!();
                             }
                         }
@@ -5647,7 +6546,11 @@ async fn handle_apm_command(command: ApmCommands) -> Result<()> {
 
             Ok(())
         }
-        ApmCommands::Best { metric, project, db } => {
+        ApmCommands::Best {
+            metric,
+            project,
+            db,
+        } => {
             use autopilot::metrics::MetricsDb;
             use std::iter;
 
@@ -5660,10 +6563,15 @@ async fn handle_apm_command(command: ApmCommands) -> Result<()> {
 
             if let Some(metric_name) = metric {
                 // Show specific metric
-                if let Some(best) = metrics_db.get_personal_best(&metric_name, project.as_deref())? {
+                if let Some(best) =
+                    metrics_db.get_personal_best(&metric_name, project.as_deref())?
+                {
                     display_personal_best(&best);
                 } else {
-                    println!("{}", format!("No personal best found for {}", metric_name).yellow());
+                    println!(
+                        "{}",
+                        format!("No personal best found for {}", metric_name).yellow()
+                    );
                 }
             } else {
                 // Show all personal bests
@@ -5671,7 +6579,10 @@ async fn handle_apm_command(command: ApmCommands) -> Result<()> {
 
                 if bests.is_empty() {
                     println!("{}", "No personal bests recorded yet.".yellow());
-                    println!("{}", "Run autopilot sessions to start tracking your bests!".dimmed());
+                    println!(
+                        "{}",
+                        "Run autopilot sessions to start tracking your bests!".dimmed()
+                    );
                 } else {
                     for best in bests {
                         display_personal_best(&best);
@@ -5700,7 +6611,14 @@ fn display_personal_best(best: &autopilot::metrics::PersonalBest) {
         println!("{:<20} {}", "Project:".bold(), project);
     }
 
-    println!("{:<20} {}", "Achieved:".bold(), best.timestamp.format("%Y-%m-%d %H:%M:%S").to_string().dimmed());
+    println!(
+        "{:<20} {}",
+        "Achieved:".bold(),
+        best.timestamp
+            .format("%Y-%m-%d %H:%M:%S")
+            .to_string()
+            .dimmed()
+    );
 
     if let Some(ref context) = best.context {
         println!("{:<20} {}", "Context:".bold(), context.dimmed());
@@ -5723,7 +6641,11 @@ async fn handle_logs_command(command: LogsCommands) -> Result<()> {
 
             Ok(())
         }
-        LogsCommands::Archive { days, logs_dir, dry_run } => {
+        LogsCommands::Archive {
+            days,
+            logs_dir,
+            dry_run,
+        } => {
             let config = LogsConfig {
                 logs_dir: logs_dir.unwrap_or_else(|| PathBuf::from("docs/logs")),
                 archive_after_days: days,
@@ -5731,10 +6653,17 @@ async fn handle_logs_command(command: LogsCommands) -> Result<()> {
             };
 
             if dry_run {
-                println!("{} Running in dry-run mode (no changes will be made)\n", "ℹ️ ".cyan());
+                println!(
+                    "{} Running in dry-run mode (no changes will be made)\n",
+                    "ℹ️ ".cyan()
+                );
             }
 
-            println!("{} Archiving logs older than {} days...\n", "📦".cyan(), days);
+            println!(
+                "{} Archiving logs older than {} days...\n",
+                "📦".cyan(),
+                days
+            );
 
             let archived = logs::archive_logs(&config, dry_run)?;
 
@@ -5742,7 +6671,12 @@ async fn handle_logs_command(command: LogsCommands) -> Result<()> {
 
             Ok(())
         }
-        LogsCommands::Cleanup { days, logs_dir, db, dry_run } => {
+        LogsCommands::Cleanup {
+            days,
+            logs_dir,
+            db,
+            dry_run,
+        } => {
             let config = LogsConfig {
                 logs_dir: logs_dir.unwrap_or_else(|| PathBuf::from("docs/logs")),
                 delete_after_days: days,
@@ -5751,10 +6685,17 @@ async fn handle_logs_command(command: LogsCommands) -> Result<()> {
             };
 
             if dry_run {
-                println!("{} Running in dry-run mode (no changes will be made)\n", "ℹ️ ".cyan());
+                println!(
+                    "{} Running in dry-run mode (no changes will be made)\n",
+                    "ℹ️ ".cyan()
+                );
             }
 
-            println!("{} Cleaning up archived logs older than {} days...\n", "🗑️ ".cyan(), days);
+            println!(
+                "{} Cleaning up archived logs older than {} days...\n",
+                "🗑️ ".cyan(),
+                days
+            );
 
             let deleted = logs::cleanup_logs(&config, dry_run)?;
 
@@ -5783,7 +6724,10 @@ async fn handle_notify_command(
         if let Some((key, value)) = meta.split_once('=') {
             metadata_map.insert(key.to_string(), value.to_string());
         } else {
-            eprintln!("Warning: Invalid metadata format '{}', expected key=value", meta);
+            eprintln!(
+                "Warning: Invalid metadata format '{}', expected key=value",
+                meta
+            );
         }
     }
 
@@ -5810,7 +6754,9 @@ async fn handle_notify_command(
     } else {
         // Try default config location
         let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
-        let default_config = PathBuf::from(home).join(".openagents").join("notifications.toml");
+        let default_config = PathBuf::from(home)
+            .join(".openagents")
+            .join("notifications.toml");
 
         if default_config.exists() {
             let config_content = std::fs::read_to_string(&default_config)?;
@@ -5818,7 +6764,9 @@ async fn handle_notify_command(
             let manager = NotificationManager::new(config);
             manager.send(&notification).await?;
         } else {
-            anyhow::bail!("No webhook URLs provided and no config file found. Use --webhook or create ~/.openagents/notifications.toml");
+            anyhow::bail!(
+                "No webhook URLs provided and no config file found. Use --webhook or create ~/.openagents/notifications.toml"
+            );
         }
     }
 

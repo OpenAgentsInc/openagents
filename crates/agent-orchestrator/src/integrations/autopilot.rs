@@ -49,11 +49,12 @@ impl IssueStore for InMemoryIssueStore {
     fn claim_issue(&self, issue_id: &str, run_id: &str) -> Result<bool, String> {
         let mut guard = self.issues.write().map_err(|e| e.to_string())?;
         if let Some(issue) = guard.get_mut(issue_id)
-            && issue.status == IssueStatus::Open {
-                issue.status = IssueStatus::InProgress;
-                issue.claimed_by = Some(run_id.to_string());
-                return Ok(true);
-            }
+            && issue.status == IssueStatus::Open
+        {
+            issue.status = IssueStatus::InProgress;
+            issue.claimed_by = Some(run_id.to_string());
+            return Ok(true);
+        }
         Ok(false)
     }
 
@@ -84,7 +85,10 @@ impl IssueStore for InMemoryIssueStore {
 
     fn get_next_ready(&self, _agent: Option<&str>) -> Option<IssueInfo> {
         let guard = self.issues.read().ok()?;
-        guard.values().find(|i| i.status == IssueStatus::Open).cloned()
+        guard
+            .values()
+            .find(|i| i.status == IssueStatus::Open)
+            .cloned()
     }
 }
 
@@ -107,26 +111,24 @@ impl Hook for IssueClaimHook {
 
     async fn before_tool(&self, call: &mut ToolCall) -> HookResult {
         if call.name == "issue_claim"
-            && let Some(issue_id) = call.parameters.get("issue_id").and_then(|v| v.as_str()) {
-                match self.store.claim_issue(issue_id, &self.run_id) {
-                    Ok(true) => {
-                        tracing::info!("Claimed issue: {}", issue_id);
-                    }
-                    Ok(false) => {
-                        return HookResult::Block {
-                            message: format!(
-                                "Issue {} is not available for claiming",
-                                issue_id
-                            ),
-                        };
-                    }
-                    Err(e) => {
-                        return HookResult::Block {
-                            message: format!("Failed to claim issue: {}", e),
-                        };
-                    }
+            && let Some(issue_id) = call.parameters.get("issue_id").and_then(|v| v.as_str())
+        {
+            match self.store.claim_issue(issue_id, &self.run_id) {
+                Ok(true) => {
+                    tracing::info!("Claimed issue: {}", issue_id);
+                }
+                Ok(false) => {
+                    return HookResult::Block {
+                        message: format!("Issue {} is not available for claiming", issue_id),
+                    };
+                }
+                Err(e) => {
+                    return HookResult::Block {
+                        message: format!("Failed to claim issue: {}", e),
+                    };
                 }
             }
+        }
         HookResult::Continue
     }
 }
@@ -150,9 +152,10 @@ impl Hook for IssueCompleteHook {
     async fn after_tool(&self, call: &ToolCall, _output: &mut ToolOutput) -> HookResult {
         if call.name == "issue_complete"
             && let Some(issue_id) = call.parameters.get("issue_id").and_then(|v| v.as_str())
-                && let Err(e) = self.store.complete_issue(issue_id) {
-                    tracing::warn!("Failed to complete issue {}: {}", issue_id, e);
-                }
+            && let Err(e) = self.store.complete_issue(issue_id)
+        {
+            tracing::warn!("Failed to complete issue {}: {}", issue_id, e);
+        }
         HookResult::Continue
     }
 
@@ -202,15 +205,16 @@ impl AutopilotIntegration {
             .and_then(|guard| guard.clone());
 
         if let Some(id) = issue_id
-            && self.store.complete_issue(&id).unwrap_or(false) {
-                if let Ok(mut guard) = self.current_issue.write() {
-                    *guard = None;
-                }
-                if let Ok(mut count) = self.completed_count.write() {
-                    *count += 1;
-                }
-                return true;
+            && self.store.complete_issue(&id).unwrap_or(false)
+        {
+            if let Ok(mut guard) = self.current_issue.write() {
+                *guard = None;
             }
+            if let Ok(mut count) = self.completed_count.write() {
+                *count += 1;
+            }
+            return true;
+        }
         false
     }
 
@@ -222,17 +226,21 @@ impl AutopilotIntegration {
             .and_then(|guard| guard.clone());
 
         if let Some(id) = issue_id
-            && self.store.block_issue(&id, reason).unwrap_or(false) {
-                if let Ok(mut guard) = self.current_issue.write() {
-                    *guard = None;
-                }
-                return true;
+            && self.store.block_issue(&id, reason).unwrap_or(false)
+        {
+            if let Ok(mut guard) = self.current_issue.write() {
+                *guard = None;
             }
+            return true;
+        }
         false
     }
 
     pub fn current_issue_id(&self) -> Option<String> {
-        self.current_issue.read().ok().and_then(|guard| guard.clone())
+        self.current_issue
+            .read()
+            .ok()
+            .and_then(|guard| guard.clone())
     }
 
     pub fn completed_count(&self) -> u32 {

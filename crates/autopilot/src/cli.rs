@@ -842,7 +842,6 @@ pub enum MetricsCommands {
         #[arg(long, default_value_t = -0.3)]
         warning_threshold: f64,
     },
-
 }
 
 #[derive(Subcommand)]

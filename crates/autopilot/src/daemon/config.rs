@@ -30,14 +30,19 @@ impl Default for WorkerCommand {
 
         // Default to known-good binary location
         let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
-        let binary_path = PathBuf::from(&home).join(".autopilot").join("bin").join("autopilot");
+        let binary_path = PathBuf::from(&home)
+            .join(".autopilot")
+            .join("bin")
+            .join("autopilot");
 
         // If the known-good binary exists, use it
         if binary_path.exists() {
             WorkerCommand::Binary { path: binary_path }
         } else {
             // Fall back to cargo run (for first-time setup)
-            WorkerCommand::Cargo { manifest_path: None }
+            WorkerCommand::Cargo {
+                manifest_path: None,
+            }
         }
     }
 }
@@ -65,10 +70,10 @@ pub struct MemoryConfig {
 impl Default for MemoryConfig {
     fn default() -> Self {
         Self {
-            min_available_bytes: 2 * 1024 * 1024 * 1024,        // 2 GB
-            critical_threshold_bytes: 1024 * 1024 * 1024,   // 1 GB
-            poll_interval_ms: 5000,                              // 5 seconds
-            node_kill_threshold_bytes: 500 * 1024 * 1024,        // 500 MB
+            min_available_bytes: 2 * 1024 * 1024 * 1024,  // 2 GB
+            critical_threshold_bytes: 1024 * 1024 * 1024, // 1 GB
+            poll_interval_ms: 5000,                       // 5 seconds
+            node_kill_threshold_bytes: 500 * 1024 * 1024, // 500 MB
         }
     }
 }
@@ -248,7 +253,10 @@ impl DaemonConfig {
             match Self::load_from_file(&config_path) {
                 Ok(config) => return config,
                 Err(e) => {
-                    eprintln!("Warning: Failed to load config from {:?}: {}", config_path, e);
+                    eprintln!(
+                        "Warning: Failed to load config from {:?}: {}",
+                        config_path, e
+                    );
                 }
             }
         }

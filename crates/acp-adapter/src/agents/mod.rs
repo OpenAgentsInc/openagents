@@ -7,6 +7,6 @@ pub mod claude;
 pub mod codex;
 pub mod gpt_oss;
 
-pub use claude::{connect_claude, ClaudeAgentConfig};
-pub use codex::{connect_codex, CodexAgentConfig};
-pub use gpt_oss::{connect_gpt_oss, GptOssAgentConfig};
+pub use claude::{ClaudeAgentConfig, connect_claude};
+pub use codex::{CodexAgentConfig, connect_codex};
+pub use gpt_oss::{GptOssAgentConfig, connect_gpt_oss};

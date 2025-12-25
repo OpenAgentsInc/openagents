@@ -253,12 +253,16 @@ impl BackgroundTaskManager {
     /// Try to get task output without blocking.
     async fn try_get_output(&self, task_id: &TaskId) -> Result<Option<String>> {
         let tasks = self.tasks.read().await;
-        let task = tasks.get(task_id).ok_or(Error::TaskNotFound(task_id.to_string()))?;
+        let task = tasks
+            .get(task_id)
+            .ok_or(Error::TaskNotFound(task_id.to_string()))?;
 
         match task.status {
             TaskStatus::Completed => Ok(task.result.clone()),
             TaskStatus::Error => Err(Error::TaskFailed(
-                task.error.clone().unwrap_or_else(|| "Unknown error".to_string()),
+                task.error
+                    .clone()
+                    .unwrap_or_else(|| "Unknown error".to_string()),
             )),
             TaskStatus::Cancelled => Err(Error::TaskCancelled(task_id.to_string())),
             TaskStatus::Pending | TaskStatus::Running => Ok(None),

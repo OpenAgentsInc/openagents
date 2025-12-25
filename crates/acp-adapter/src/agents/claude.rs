@@ -4,9 +4,9 @@
 
 use std::path::{Path, PathBuf};
 
+use crate::AgentCommand;
 use crate::connection::AcpAgentConnection;
 use crate::error::{AcpError, Result};
-use crate::AgentCommand;
 
 /// Configuration for Claude Code agent
 #[derive(Debug, Clone)]
@@ -89,7 +89,10 @@ impl ClaudeAgentConfig {
 /// Connect to Claude Code agent
 ///
 /// Spawns the Claude Code CLI as a subprocess and establishes an ACP connection.
-pub async fn connect_claude(config: ClaudeAgentConfig, root_dir: &Path) -> Result<AcpAgentConnection> {
+pub async fn connect_claude(
+    config: ClaudeAgentConfig,
+    root_dir: &Path,
+) -> Result<AcpAgentConnection> {
     let executable = config
         .executable_path
         .unwrap_or_else(|| find_claude_executable().unwrap_or_else(|| PathBuf::from("claude")));

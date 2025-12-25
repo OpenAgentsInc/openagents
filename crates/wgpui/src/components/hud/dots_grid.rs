@@ -1,7 +1,9 @@
-use crate::animation::Easing;
+use crate::animation::{AnimatorState, AnimatorTiming, Easing};
 use crate::components::context::PaintContext;
 use crate::components::{Component, ComponentId, EventResult};
 use crate::{Bounds, Hsla, InputEvent, Quad};
+
+use super::backgrounds::BackgroundAnimator;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum DotShape {
@@ -52,6 +54,9 @@ pub struct DotsGrid {
     animation_progress: f32,
     origin_inverted: bool,
     easing: Easing,
+    animator: BackgroundAnimator,
+    animator_enabled: bool,
+    state: AnimatorState,
 }
 
 impl DotsGrid {
@@ -68,6 +73,9 @@ impl DotsGrid {
             animation_progress: 1.0,
             origin_inverted: false,
             easing: Easing::EaseIn,
+            animator: BackgroundAnimator::new(),
+            animator_enabled: false,
+            state: AnimatorState::Entered,
         }
     }
 
@@ -113,6 +121,12 @@ impl DotsGrid {
 
     pub fn animation_progress(mut self, progress: f32) -> Self {
         self.animation_progress = progress.clamp(0.0, 1.0);
+        self.animator_enabled = false;
+        self.state = match self.animation_progress {
+            p if p <= 0.0 => AnimatorState::Exited,
+            p if p >= 1.0 => AnimatorState::Entered,
+            _ => AnimatorState::Entering,
+        };
         self
     }
 
@@ -123,7 +137,54 @@ impl DotsGrid {
 
     pub fn easing(mut self, easing: Easing) -> Self {
         self.easing = easing;
+        self.animator.set_easing(easing);
         self
+    }
+
+    pub fn timing(mut self, timing: AnimatorTiming) -> Self {
+        self.animator.set_timing(timing);
+        self.animator_enabled = true;
+        self
+    }
+
+    pub fn set_timing(&mut self, timing: AnimatorTiming) {
+        self.animator.set_timing(timing);
+        self.animator_enabled = true;
+    }
+
+    pub fn set_easing(&mut self, easing: Easing) {
+        self.easing = easing;
+        self.animator.set_easing(easing);
+    }
+
+    pub fn progress(&self) -> f32 {
+        if self.animator_enabled {
+            self.animator.progress()
+        } else {
+            self.animation_progress
+        }
+    }
+
+    pub fn update(&mut self, state: AnimatorState) -> f32 {
+        self.animator_enabled = true;
+        self.state = state;
+        let progress = self.animator.update(state);
+        self.animation_progress = progress;
+        progress
+    }
+
+    pub fn update_with_delta(&mut self, state: AnimatorState, delta: std::time::Duration) -> f32 {
+        self.animator_enabled = true;
+        self.state = state;
+        let progress = self.animator.update_with_delta(state, delta);
+        self.animation_progress = progress;
+        progress
+    }
+
+    pub fn set_state(&mut self, state: AnimatorState) {
+        self.animator_enabled = true;
+        self.state = state;
+        self.animation_progress = self.animator.update_with_delta(state, std::time::Duration::ZERO);
     }
 
     fn distance_from_origin(&self, x: f32, y: f32, width: f32, height: f32) -> f32 {
@@ -166,7 +227,11 @@ impl DotsGrid {
     }
 
     fn dot_alpha(&self, distance_progress: f32) -> f32 {
-        let dist = if self.origin_inverted {
+        let invert_origin = match self.state {
+            AnimatorState::Exiting => !self.origin_inverted,
+            _ => self.origin_inverted,
+        };
+        let dist = if invert_origin {
             1.0 - distance_progress
         } else {
             distance_progress
@@ -179,7 +244,12 @@ impl DotsGrid {
         }
 
         let alpha_progress = eased_progress / dist;
-        alpha_progress.clamp(0.0, 1.0)
+        let alpha = alpha_progress.clamp(0.0, 1.0);
+        if self.state == AnimatorState::Exiting {
+            1.0 - alpha
+        } else {
+            alpha
+        }
     }
 
     fn draw_dot(&self, cx: &mut PaintContext, x: f32, y: f32, alpha: f32) {

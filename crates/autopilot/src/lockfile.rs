@@ -87,8 +87,14 @@ pub fn setup_cleanup_handlers() {
     }));
 
     // Setup signal handlers for SIGINT and SIGTERM
-    let _ = signal_hook::flag::register(signal_hook::consts::SIGINT, std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)));
-    let _ = signal_hook::flag::register(signal_hook::consts::SIGTERM, std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)));
+    let _ = signal_hook::flag::register(
+        signal_hook::consts::SIGINT,
+        std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
+    );
+    let _ = signal_hook::flag::register(
+        signal_hook::consts::SIGTERM,
+        std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
+    );
 
     // Use iterator-based signal handling for cleanup
     std::thread::spawn(|| {
@@ -125,11 +131,19 @@ pub async fn check_and_handle_stale_lockfile(cwd: &PathBuf) -> Result<()> {
     let content = std::fs::read_to_string(&lockfile_path)?;
     let lockfile: Lockfile = serde_json::from_str(&content)?;
 
-    eprintln!("{} Found stale lockfile from {}", "Warning:".yellow(), lockfile.started_at);
+    eprintln!(
+        "{} Found stale lockfile from {}",
+        "Warning:".yellow(),
+        lockfile.started_at
+    );
 
     // If there's an issue number, block it via MCP
     if let Some(issue_num) = lockfile.issue_number {
-        eprintln!("{} Attempting to block issue #{} due to crash", "Crash:".red().bold(), issue_num);
+        eprintln!(
+            "{} Attempting to block issue #{} due to crash",
+            "Crash:".red().bold(),
+            issue_num
+        );
 
         // Try to use the issues MCP to block the issue
         // Check if .mcp.json exists (issues tracking enabled)
@@ -138,13 +152,14 @@ pub async fn check_and_handle_stale_lockfile(cwd: &PathBuf) -> Result<()> {
             // Use the handle_issue_command to block
             let reason = format!(
                 "Autopilot crashed during execution. Session started at {}. Rlog: {:?}",
-                lockfile.started_at,
-                lockfile.rlog_path
+                lockfile.started_at, lockfile.rlog_path
             );
 
             use issues::{db, issue};
             let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
-            let db_path = std::path::PathBuf::from(&home).join(".autopilot").join("autopilot.db");
+            let db_path = std::path::PathBuf::from(&home)
+                .join(".autopilot")
+                .join("autopilot.db");
             let conn = db::init_db(&db_path)?;
 
             if let Some(i) = issue::get_issue_by_number(&conn, issue_num)? {
@@ -220,10 +235,7 @@ mod tests {
     fn test_get_lockfile_path() {
         with_temp_home(|temp_dir| {
             let path = get_lockfile_path();
-            assert_eq!(
-                path,
-                temp_dir.path().join(".autopilot").join("run.lock")
-            );
+            assert_eq!(path, temp_dir.path().join(".autopilot").join("run.lock"));
         });
     }
 
@@ -247,8 +259,12 @@ mod tests {
             let session_id = "test-session-123".to_string();
             let rlog_path = PathBuf::from("/tmp/test.rlog");
 
-            write_lockfile(Some(issue_num), Some(session_id.clone()), Some(rlog_path.clone()))
-                .expect("Failed to write lockfile");
+            write_lockfile(
+                Some(issue_num),
+                Some(session_id.clone()),
+                Some(rlog_path.clone()),
+            )
+            .expect("Failed to write lockfile");
 
             let lockfile_path = get_lockfile_path();
             let content = fs::read_to_string(&lockfile_path).expect("Failed to read lockfile");

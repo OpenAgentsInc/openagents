@@ -126,12 +126,12 @@ fn test_session_detail_data() {
         tool_calls: 25,
         tool_errors: 2,
         final_status: SessionStatus::Completed,
-            messages: 10,
-            apm: None,
-            source: "autopilot".to_string(),
-            issue_numbers: None,
-            directive_id: None,
-        };
+        messages: 10,
+        apm: None,
+        source: "autopilot".to_string(),
+        issue_numbers: None,
+        directive_id: None,
+    };
     store.store_session(&metrics).unwrap();
 
     // Retrieve session

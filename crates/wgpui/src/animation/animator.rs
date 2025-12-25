@@ -1,4 +1,6 @@
+use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
@@ -35,12 +37,51 @@ impl Default for AnimatorState {
     }
 }
 
+pub type AnimatorConditionFn = Arc<dyn Fn(AnimatorId) -> bool + Send + Sync>;
+pub type AnimatorTransitionFn = Arc<dyn Fn(AnimatorId, AnimatorState) + Send + Sync>;
+pub type AnimatorSubscriber = Arc<dyn Fn(AnimatorId, AnimatorState) + Send + Sync>;
+
+#[derive(Clone)]
+pub enum AnimatorCondition {
+    Static(bool),
+    Dynamic(AnimatorConditionFn),
+}
+
+impl AnimatorCondition {
+    fn allows(&self, id: AnimatorId) -> bool {
+        match self {
+            AnimatorCondition::Static(value) => *value,
+            AnimatorCondition::Dynamic(func) => func(id),
+        }
+    }
+}
+
+impl From<bool> for AnimatorCondition {
+    fn from(value: bool) -> Self {
+        AnimatorCondition::Static(value)
+    }
+}
+
+impl<F> From<F> for AnimatorCondition
+where
+    F: Fn(AnimatorId) -> bool + Send + Sync + 'static,
+{
+    fn from(func: F) -> Self {
+        AnimatorCondition::Dynamic(Arc::new(func))
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct AnimatorSubscription(usize);
+
 /// Orchestration strategy for child nodes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AnimatorManagerKind {
     Parallel,
     Stagger,
+    StaggerReverse,
     Sequence,
+    SequenceReverse,
     Switch,
 }
 
@@ -56,11 +97,31 @@ pub struct AnimatorTiming {
     pub enter: Duration,
     pub exit: Duration,
     pub delay: Duration,
+    pub offset: Duration,
 }
 
 impl AnimatorTiming {
     pub const fn new(enter: Duration, exit: Duration, delay: Duration) -> Self {
-        Self { enter, exit, delay }
+        Self {
+            enter,
+            exit,
+            delay,
+            offset: Duration::ZERO,
+        }
+    }
+
+    pub const fn with_offset(
+        enter: Duration,
+        exit: Duration,
+        delay: Duration,
+        offset: Duration,
+    ) -> Self {
+        Self {
+            enter,
+            exit,
+            delay,
+            offset,
+        }
     }
 }
 
@@ -70,29 +131,79 @@ impl Default for AnimatorTiming {
             enter: Duration::from_millis(200),
             exit: Duration::from_millis(200),
             delay: Duration::ZERO,
+            offset: Duration::ZERO,
         }
     }
 }
 
 /// Node settings used by managers and timing.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub struct AnimatorSettings {
     pub timing: AnimatorTiming,
     pub stagger: Duration,
+    pub active: bool,
+    pub combine: bool,
+    pub merge: bool,
+    pub initial_state: AnimatorState,
+    pub condition: Option<AnimatorCondition>,
+    pub on_transition: Option<AnimatorTransitionFn>,
+    pub limit: Option<f32>,
 }
 
 impl AnimatorSettings {
     pub const fn new(timing: AnimatorTiming, stagger: Duration) -> Self {
-        Self { timing, stagger }
+        Self {
+            timing,
+            stagger,
+            active: true,
+            combine: false,
+            merge: false,
+            initial_state: AnimatorState::Exited,
+            condition: None,
+            on_transition: None,
+            limit: None,
+        }
+    }
+
+    pub fn active(mut self, active: bool) -> Self {
+        self.active = active;
+        self
+    }
+
+    pub fn combine(mut self, combine: bool) -> Self {
+        self.combine = combine;
+        self
+    }
+
+    pub fn merge(mut self, merge: bool) -> Self {
+        self.merge = merge;
+        self
+    }
+
+    pub fn initial_state(mut self, state: AnimatorState) -> Self {
+        self.initial_state = state;
+        self
+    }
+
+    pub fn condition(mut self, condition: AnimatorCondition) -> Self {
+        self.condition = Some(condition);
+        self
+    }
+
+    pub fn on_transition(mut self, callback: AnimatorTransitionFn) -> Self {
+        self.on_transition = Some(callback);
+        self
+    }
+
+    pub fn limit(mut self, limit: f32) -> Self {
+        self.limit = Some(limit);
+        self
     }
 }
 
 impl Default for AnimatorSettings {
     fn default() -> Self {
-        Self {
-            timing: AnimatorTiming::default(),
-            stagger: Duration::from_millis(50),
-        }
+        Self::new(AnimatorTiming::default(), Duration::from_millis(50))
     }
 }
 
@@ -132,6 +243,8 @@ struct AnimatorChild {
     command_tx: UnboundedSender<AnimatorCommand>,
     state: AnimatorState,
     timing: AnimatorTiming,
+    merge: bool,
+    condition: Option<AnimatorCondition>,
 }
 
 /// Animator node with channel-based parent/child communication.
@@ -149,6 +262,8 @@ pub struct AnimatorNode {
     command_rx: UnboundedReceiver<AnimatorCommand>,
     children: Vec<AnimatorChild>,
     scheduled: Vec<ScheduledAction>,
+    subscribers: HashMap<usize, AnimatorSubscriber>,
+    next_subscriber_id: usize,
 }
 
 impl AnimatorNode {
@@ -159,7 +274,7 @@ impl AnimatorNode {
 
         Self {
             id: AnimatorId::next(),
-            state: AnimatorState::Exited,
+            state: settings.initial_state,
             settings,
             manager,
             switch_active: None,
@@ -170,6 +285,8 @@ impl AnimatorNode {
             command_rx,
             children: Vec::new(),
             scheduled: Vec::new(),
+            subscribers: HashMap::new(),
+            next_subscriber_id: 0,
         }
     }
 
@@ -182,13 +299,15 @@ impl AnimatorNode {
         self.children.push(AnimatorChild {
             id: child_id,
             command_tx,
-            state: AnimatorState::Exited,
+            state: settings.initial_state,
             timing: settings.timing,
+            merge: settings.merge,
+            condition: settings.condition.clone(),
         });
 
         Self {
             id: child_id,
-            state: AnimatorState::Exited,
+            state: settings.initial_state,
             settings,
             manager,
             switch_active: None,
@@ -199,6 +318,8 @@ impl AnimatorNode {
             command_rx,
             children: Vec::new(),
             scheduled: Vec::new(),
+            subscribers: HashMap::new(),
+            next_subscriber_id: 0,
         }
     }
 
@@ -214,12 +335,73 @@ impl AnimatorNode {
 
     /// Current settings.
     pub fn settings(&self) -> AnimatorSettings {
-        self.settings
+        self.settings.clone()
     }
 
     /// Return a child's last known state.
     pub fn child_state(&self, id: AnimatorId) -> Option<AnimatorState> {
         self.children.iter().find(|child| child.id == id).map(|child| child.state)
+    }
+
+    /// Subscribe to state changes for this node.
+    pub fn subscribe(&mut self, subscriber: AnimatorSubscriber) -> AnimatorSubscription {
+        let id = self.next_subscriber_id;
+        self.next_subscriber_id += 1;
+        self.subscribers.insert(id, subscriber.clone());
+        subscriber(self.id, self.state);
+        AnimatorSubscription(id)
+    }
+
+    /// Unsubscribe a previously registered subscriber.
+    pub fn unsubscribe(&mut self, subscription: AnimatorSubscription) {
+        self.subscribers.remove(&subscription.0);
+    }
+
+    /// Set active state and trigger enter/exit accordingly.
+    pub fn set_active(&mut self, active: bool) {
+        self.settings.active = active;
+        if active {
+            self.enter();
+        } else {
+            self.exit();
+        }
+    }
+
+    /// Refresh child conditions and state transitions.
+    pub fn refresh(&mut self) {
+        self.refresh_at(Instant::now());
+    }
+
+    /// Refresh child conditions and state transitions at a specific time.
+    pub fn refresh_at(&mut self, now: Instant) {
+        let parent_entering = self.state == AnimatorState::Entering;
+        let parent_entered = self.state == AnimatorState::Entered;
+        if !(parent_entering || parent_entered) {
+            return;
+        }
+
+        for child in &self.children {
+            let allowed = self.child_allows(child);
+            match child.state {
+                AnimatorState::Entered | AnimatorState::Entering => {
+                    if !allowed {
+                        self.schedule_child_action(child.id, now, AnimatorCommand::Exit);
+                    }
+                }
+                AnimatorState::Exited | AnimatorState::Exiting => {
+                    if allowed {
+                        let should_enter = if parent_entering {
+                            self.settings.combine || child.merge
+                        } else {
+                            !self.settings.combine && !child.merge
+                        };
+                        if should_enter {
+                            self.schedule_child_action(child.id, now, AnimatorCommand::Enter);
+                        }
+                    }
+                }
+            }
+        }
     }
 
     /// Trigger enter using the current time.
@@ -334,10 +516,8 @@ impl AnimatorNode {
                 }
                 self.cancel_self_actions();
                 self.set_state(AnimatorState::Entering);
-                self.schedule_self_action(
-                    now + self.settings.timing.enter,
-                    AnimatorAction::EnterComplete,
-                );
+                let enter_duration = self.enter_duration();
+                self.schedule_self_action(now + enter_duration, AnimatorAction::EnterComplete);
                 self.handle_parent_enter(now);
             }
             AnimatorCommand::Exit => {
@@ -355,9 +535,12 @@ impl AnimatorNode {
         }
     }
 
-    fn handle_self_action(&mut self, action: AnimatorAction, _now: Instant) {
+    fn handle_self_action(&mut self, action: AnimatorAction, now: Instant) {
         match action {
-            AnimatorAction::EnterComplete => self.set_state(AnimatorState::Entered),
+            AnimatorAction::EnterComplete => {
+                self.set_state(AnimatorState::Entered);
+                self.handle_enter_complete(now);
+            }
             AnimatorAction::ExitComplete => self.set_state(AnimatorState::Exited),
         }
     }
@@ -490,8 +673,167 @@ impl AnimatorNode {
             return;
         }
         self.state = state;
+        if let Some(callback) = &self.settings.on_transition {
+            callback(self.id, self.state);
+        }
+        for subscriber in self.subscribers.values() {
+            subscriber(self.id, self.state);
+        }
         if let Some(parent_tx) = &self.parent_tx {
             let _ = parent_tx.send(AnimatorMessage::StateChanged { id: self.id, state });
+        }
+    }
+
+    fn child_allows(&self, child: &AnimatorChild) -> bool {
+        match &child.condition {
+            Some(condition) => condition.allows(child.id),
+            None => true,
+        }
+    }
+
+    fn enter_duration(&self) -> Duration {
+        let base = self.settings.timing.enter + self.settings.timing.delay;
+        if !self.settings.combine {
+            return base;
+        }
+
+        let children: Vec<&AnimatorChild> = self
+            .children
+            .iter()
+            .filter(|child| self.child_allows(child))
+            .collect();
+        if children.is_empty() {
+            return base;
+        }
+
+        let duration = match self.manager {
+            AnimatorManagerKind::Parallel => children
+                .iter()
+                .map(|child| child.timing.delay + child.timing.offset + child.timing.enter)
+                .max()
+                .unwrap_or(Duration::ZERO),
+            AnimatorManagerKind::Stagger | AnimatorManagerKind::StaggerReverse => {
+                let mut ordered = children.clone();
+                if self.manager == AnimatorManagerKind::StaggerReverse {
+                    ordered.reverse();
+                }
+                let mut max = Duration::ZERO;
+                for (index, child) in ordered.iter().enumerate() {
+                    let mut offset = scaled_duration(self.settings.stagger, index)
+                        + child.timing.delay
+                        + child.timing.offset;
+                    if let Some(limit) = self.settings.limit {
+                        let limit_duration =
+                            Duration::from_secs_f32(self.settings.stagger.as_secs_f32() * limit);
+                        if offset > limit_duration {
+                            offset = limit_duration + child.timing.delay + child.timing.offset;
+                        }
+                    }
+                    let total = offset + child.timing.enter;
+                    if total > max {
+                        max = total;
+                    }
+                }
+                max
+            }
+            AnimatorManagerKind::Sequence | AnimatorManagerKind::SequenceReverse => {
+                let mut ordered = children.clone();
+                if self.manager == AnimatorManagerKind::SequenceReverse {
+                    ordered.reverse();
+                }
+                let mut cursor = Duration::ZERO;
+                for child in ordered {
+                    cursor += child.timing.delay + child.timing.offset;
+                    cursor += child.timing.enter;
+                    cursor += self.settings.stagger;
+                }
+                cursor
+            }
+            AnimatorManagerKind::Switch => {
+                if let Some(active) = self.switch_active {
+                    children
+                        .iter()
+                        .find(|child| child.id == active)
+                        .map(|child| child.timing.delay + child.timing.offset + child.timing.enter)
+                        .unwrap_or(Duration::ZERO)
+                } else {
+                    children
+                        .first()
+                        .map(|child| child.timing.delay + child.timing.offset + child.timing.enter)
+                        .unwrap_or(Duration::ZERO)
+                }
+            }
+        };
+
+        base.max(duration)
+    }
+
+    fn handle_enter_complete(&mut self, now: Instant) {
+        if self.settings.combine {
+            return;
+        }
+
+        let children: Vec<&AnimatorChild> = self
+            .children
+            .iter()
+            .filter(|child| !child.merge && self.child_allows(child))
+            .collect();
+        self.schedule_children_enter(children, now);
+    }
+
+    fn schedule_children_enter(&mut self, children: Vec<&AnimatorChild>, now: Instant) {
+        match self.manager {
+            AnimatorManagerKind::Parallel => {
+                for child in children {
+                    let due = now + child.timing.delay + child.timing.offset;
+                    self.schedule_child_action(child.id, due, AnimatorCommand::Enter);
+                }
+            }
+            AnimatorManagerKind::Stagger | AnimatorManagerKind::StaggerReverse => {
+                let mut ordered = children;
+                if self.manager == AnimatorManagerKind::StaggerReverse {
+                    ordered.reverse();
+                }
+                for (index, child) in ordered.iter().enumerate() {
+                    let mut offset = scaled_duration(self.settings.stagger, index)
+                        + child.timing.delay
+                        + child.timing.offset;
+                    if let Some(limit) = self.settings.limit {
+                        let limit_duration =
+                            Duration::from_secs_f32(self.settings.stagger.as_secs_f32() * limit);
+                        if offset > limit_duration {
+                            offset = limit_duration + child.timing.delay + child.timing.offset;
+                        }
+                    }
+                    self.schedule_child_action(child.id, now + offset, AnimatorCommand::Enter);
+                }
+            }
+            AnimatorManagerKind::Sequence | AnimatorManagerKind::SequenceReverse => {
+                let mut ordered = children;
+                if self.manager == AnimatorManagerKind::SequenceReverse {
+                    ordered.reverse();
+                }
+                let mut cursor = now;
+                for (index, child) in ordered.iter().enumerate() {
+                    cursor += child.timing.delay + child.timing.offset;
+                    self.schedule_child_action(child.id, cursor, AnimatorCommand::Enter);
+                    cursor += child.timing.enter;
+                    if index + 1 < ordered.len() {
+                        cursor += self.settings.stagger;
+                    }
+                }
+            }
+            AnimatorManagerKind::Switch => {
+                if let Some(active_id) = self.switch_active {
+                    if let Some(child) = children.iter().find(|c| c.id == active_id) {
+                        let due = now + child.timing.delay + child.timing.offset;
+                        self.schedule_child_action(child.id, due, AnimatorCommand::Enter);
+                    }
+                } else if let Some(child) = children.first() {
+                    let due = now + child.timing.delay + child.timing.offset;
+                    self.schedule_child_action(child.id, due, AnimatorCommand::Enter);
+                }
+            }
         }
     }
 }

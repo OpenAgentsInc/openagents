@@ -214,7 +214,9 @@ fn parse_tool_start(
     // Extract ID if present
     let id = if content.contains("id=") {
         let id_start = content.find("id=")? + 3;
-        let id_end = content[id_start..].find(' ').unwrap_or(content.len() - id_start);
+        let id_end = content[id_start..]
+            .find(' ')
+            .unwrap_or(content.len() - id_start);
         content[id_start..id_start + id_end].to_string()
     } else {
         uuid::Uuid::new_v4().to_string()
@@ -293,10 +295,7 @@ fn parse_observation(
 }
 
 /// Parse a todo list line
-fn parse_todo_list(
-    session_id: &acp::SessionId,
-    content: &str,
-) -> Option<acp::SessionNotification> {
+fn parse_todo_list(session_id: &acp::SessionId, content: &str) -> Option<acp::SessionNotification> {
     // Format: [status] item [status] item ...
     let mut entries = Vec::new();
 

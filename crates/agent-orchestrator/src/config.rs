@@ -100,10 +100,7 @@ impl Default for BashPermission {
                 "node".to_string(),
                 "rustc".to_string(),
             ],
-            denied_commands: vec![
-                "rm -rf /".to_string(),
-                "sudo".to_string(),
-            ],
+            denied_commands: vec!["rm -rf /".to_string(), "sudo".to_string()],
         }
     }
 }
@@ -231,8 +228,17 @@ mod tests {
 
     #[test]
     fn permission_level_serialize() {
-        assert_eq!(serde_json::to_string(&PermissionLevel::Allow).unwrap(), r#""allow""#);
-        assert_eq!(serde_json::to_string(&PermissionLevel::Ask).unwrap(), r#""ask""#);
-        assert_eq!(serde_json::to_string(&PermissionLevel::Deny).unwrap(), r#""deny""#);
+        assert_eq!(
+            serde_json::to_string(&PermissionLevel::Allow).unwrap(),
+            r#""allow""#
+        );
+        assert_eq!(
+            serde_json::to_string(&PermissionLevel::Ask).unwrap(),
+            r#""ask""#
+        );
+        assert_eq!(
+            serde_json::to_string(&PermissionLevel::Deny).unwrap(),
+            r#""deny""#
+        );
     }
 }

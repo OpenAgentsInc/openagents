@@ -12,7 +12,7 @@ use autopilot::daemon::{
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 use std::sync::Arc;
-use tokio::sync::{mpsc, Mutex};
+use tokio::sync::{Mutex, mpsc};
 
 /// Guard to ensure PID file and socket are cleaned up on error/panic
 struct CleanupGuard {
@@ -187,7 +187,10 @@ async fn run_daemon(config: DaemonConfig) -> Result<()> {
     let control_metrics = shared_metrics.clone();
     let control_shutdown_tx = shutdown_tx.clone();
     let control_handle = tokio::spawn(async move {
-        if let Err(e) = control_server.run(control_supervisor, control_metrics, control_shutdown_tx).await {
+        if let Err(e) = control_server
+            .run(control_supervisor, control_metrics, control_shutdown_tx)
+            .await
+        {
             eprintln!("Control server error: {}", e);
         }
     });

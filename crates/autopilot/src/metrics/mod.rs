@@ -70,7 +70,7 @@ pub mod baseline;
 
 use anyhow::{Context, Result};
 use chrono::{DateTime, Utc};
-use rusqlite::{params, Connection, OptionalExtension};
+use rusqlite::{Connection, OptionalExtension, params};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
@@ -378,8 +378,7 @@ pub struct MetricsDb {
 impl MetricsDb {
     /// Open or create metrics database at the given path
     pub fn open<P: AsRef<Path>>(path: P) -> Result<Self> {
-        let conn = Connection::open(path.as_ref())
-            .context("Failed to open metrics database")?;
+        let conn = Connection::open(path.as_ref()).context("Failed to open metrics database")?;
 
         let db = Self { conn };
         db.init_schema()?;
@@ -390,8 +389,7 @@ impl MetricsDb {
     /// Create an in-memory database (for testing)
     #[allow(dead_code)]
     pub fn in_memory() -> Result<Self> {
-        let conn = Connection::open_in_memory()
-            .context("Failed to create in-memory database")?;
+        let conn = Connection::open_in_memory().context("Failed to create in-memory database")?;
 
         let db = Self { conn };
         db.init_schema()?;
@@ -415,7 +413,8 @@ impl MetricsDb {
         )?;
 
         // Get current schema version
-        let version: i32 = self.conn
+        let version: i32 = self
+            .conn
             .query_row("SELECT version FROM schema_version", [], |row| row.get(0))
             .unwrap_or(0);
 
@@ -566,31 +565,42 @@ impl MetricsDb {
 
         // Migrate existing sessions table to add APM fields
         // This is safe because we're adding nullable columns with defaults
-        let columns: Vec<String> = self.conn.prepare("PRAGMA table_info(sessions)")?
+        let columns: Vec<String> = self
+            .conn
+            .prepare("PRAGMA table_info(sessions)")?
             .query_map([], |row| row.get::<_, String>(1))?
             .collect::<Result<Vec<_>, _>>()?;
 
         if !columns.contains(&"apm".to_string()) {
-            self.conn.execute("ALTER TABLE sessions ADD COLUMN apm REAL", [])?;
+            self.conn
+                .execute("ALTER TABLE sessions ADD COLUMN apm REAL", [])?;
         }
         if !columns.contains(&"source".to_string()) {
-            self.conn.execute("ALTER TABLE sessions ADD COLUMN source TEXT DEFAULT 'autopilot'", [])?;
+            self.conn.execute(
+                "ALTER TABLE sessions ADD COLUMN source TEXT DEFAULT 'autopilot'",
+                [],
+            )?;
         }
         if !columns.contains(&"messages".to_string()) {
-            self.conn.execute("ALTER TABLE sessions ADD COLUMN messages INTEGER NOT NULL DEFAULT 0", [])?;
+            self.conn.execute(
+                "ALTER TABLE sessions ADD COLUMN messages INTEGER NOT NULL DEFAULT 0",
+                [],
+            )?;
         }
         if !columns.contains(&"issue_numbers".to_string()) {
-            self.conn.execute("ALTER TABLE sessions ADD COLUMN issue_numbers TEXT", [])?;
+            self.conn
+                .execute("ALTER TABLE sessions ADD COLUMN issue_numbers TEXT", [])?;
         }
         if !columns.contains(&"directive_id".to_string()) {
-            self.conn.execute("ALTER TABLE sessions ADD COLUMN directive_id TEXT", [])?;
+            self.conn
+                .execute("ALTER TABLE sessions ADD COLUMN directive_id TEXT", [])?;
         }
 
         // Add indexes for issue and directive filtering
         self.conn.execute_batch(
             r#"
             CREATE INDEX IF NOT EXISTS idx_sessions_directive ON sessions(directive_id);
-            "#
+            "#,
         )?;
 
         // Set schema version
@@ -641,7 +651,7 @@ impl MetricsDb {
             ALTER TABLE anomalies_new RENAME TO anomalies;
             CREATE INDEX idx_anomalies_session_id ON anomalies(session_id);
             CREATE INDEX idx_anomalies_severity ON anomalies(severity);
-            "#
+            "#,
         )?;
 
         self.set_schema_version(2)?;
@@ -756,7 +766,8 @@ impl MetricsDb {
 
     fn set_schema_version(&self, version: i32) -> Result<()> {
         self.conn.execute("DELETE FROM schema_version", [])?;
-        self.conn.execute("INSERT INTO schema_version (version) VALUES (?)", [version])?;
+        self.conn
+            .execute("INSERT INTO schema_version (version) VALUES (?)", [version])?;
         Ok(())
     }
 
@@ -802,25 +813,26 @@ impl MetricsDb {
 
     /// Store tool call metrics
     pub fn store_tool_call(&self, metrics: &ToolCallMetrics) -> Result<()> {
-        self.conn.execute(
-            r#"
+        self.conn
+            .execute(
+                r#"
             INSERT INTO tool_calls
             (session_id, timestamp, tool_name, duration_ms, success, error_type,
              tokens_in, tokens_out)
             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
             "#,
-            params![
-                metrics.session_id,
-                metrics.timestamp.to_rfc3339(),
-                metrics.tool_name,
-                metrics.duration_ms,
-                metrics.success as i32,
-                metrics.error_type,
-                metrics.tokens_in,
-                metrics.tokens_out,
-            ],
-        )
-        .context("Failed to store tool call metrics")?;
+                params![
+                    metrics.session_id,
+                    metrics.timestamp.to_rfc3339(),
+                    metrics.tool_name,
+                    metrics.duration_ms,
+                    metrics.success as i32,
+                    metrics.error_type,
+                    metrics.tokens_in,
+                    metrics.tokens_out,
+                ],
+            )
+            .context("Failed to store tool call metrics")?;
 
         // Broadcast tool call update for real-time monitoring
         crate::dashboard::broadcast_metrics_update("tool_call", Some(metrics.session_id.clone()));
@@ -830,54 +842,59 @@ impl MetricsDb {
 
     /// Store anomaly
     pub fn store_anomaly(&self, anomaly: &Anomaly) -> Result<()> {
-        self.conn.execute(
-            r#"
+        self.conn
+            .execute(
+                r#"
             INSERT INTO anomalies
             (session_id, dimension, expected_value, actual_value, severity,
              investigated, issue_number)
             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
             "#,
-            params![
-                anomaly.session_id,
-                anomaly.dimension,
-                anomaly.expected_value,
-                anomaly.actual_value,
-                anomaly.severity.to_string(),
-                anomaly.investigated as i32,
-                anomaly.issue_number,
-            ],
-        )
-        .context("Failed to store anomaly")?;
+                params![
+                    anomaly.session_id,
+                    anomaly.dimension,
+                    anomaly.expected_value,
+                    anomaly.actual_value,
+                    anomaly.severity.to_string(),
+                    anomaly.investigated as i32,
+                    anomaly.issue_number,
+                ],
+            )
+            .context("Failed to store anomaly")?;
 
         // Broadcast anomaly detection for real-time alerts
-        crate::dashboard::broadcast_metrics_update("anomaly_detected", Some(anomaly.session_id.clone()));
+        crate::dashboard::broadcast_metrics_update(
+            "anomaly_detected",
+            Some(anomaly.session_id.clone()),
+        );
 
         Ok(())
     }
 
     /// Store error recovery attempt
     pub fn store_error_recovery(&self, recovery: &ErrorRecovery) -> Result<()> {
-        self.conn.execute(
-            r#"
+        self.conn
+            .execute(
+                r#"
             INSERT INTO error_recoveries
             (session_id, tool_call_id, timestamp, error_type, original_error,
              recovery_attempted, recovery_action, recovery_succeeded, retry_count, final_result)
             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
             "#,
-            params![
-                recovery.session_id,
-                recovery.tool_call_id,
-                recovery.timestamp.to_rfc3339(),
-                recovery.error_type,
-                recovery.original_error,
-                recovery.recovery_attempted as i32,
-                recovery.recovery_action,
-                recovery.recovery_succeeded as i32,
-                recovery.retry_count,
-                recovery.final_result,
-            ],
-        )
-        .context("Failed to store error recovery")?;
+                params![
+                    recovery.session_id,
+                    recovery.tool_call_id,
+                    recovery.timestamp.to_rfc3339(),
+                    recovery.error_type,
+                    recovery.original_error,
+                    recovery.recovery_attempted as i32,
+                    recovery.recovery_action,
+                    recovery.recovery_succeeded as i32,
+                    recovery.retry_count,
+                    recovery.final_result,
+                ],
+            )
+            .context("Failed to store error recovery")?;
 
         Ok(())
     }
@@ -897,8 +914,7 @@ impl MetricsDb {
         let recoveries = stmt
             .query_map(params![session_id], |row| {
                 let timestamp_str = row.get::<_, String>(2)?;
-                let timestamp = timestamp_str.parse()
-                    .unwrap_or_else(|_| Utc::now());
+                let timestamp = timestamp_str.parse().unwrap_or_else(|_| Utc::now());
 
                 Ok(ErrorRecovery {
                     session_id: row.get(0)?,
@@ -933,11 +949,13 @@ impl MetricsDb {
         let anomalies = stmt
             .query_map(params![session_id], |row| {
                 let severity_str = row.get::<_, String>(4)?;
-                let severity = AnomalySeverity::from_str(&severity_str)
-                    .unwrap_or_else(|e| {
-                        eprintln!("Invalid anomaly severity '{}': {}. Using 'warning' as fallback.", severity_str, e);
-                        AnomalySeverity::Warning
-                    });
+                let severity = AnomalySeverity::from_str(&severity_str).unwrap_or_else(|e| {
+                    eprintln!(
+                        "Invalid anomaly severity '{}': {}. Using 'warning' as fallback.",
+                        severity_str, e
+                    );
+                    AnomalySeverity::Warning
+                });
                 Ok(Anomaly {
                     session_id: row.get(0)?,
                     dimension: row.get(1)?,
@@ -955,24 +973,25 @@ impl MetricsDb {
 
     /// Store baseline
     pub fn store_baseline(&self, baseline: &Baseline) -> Result<()> {
-        self.conn.execute(
-            r#"
+        self.conn
+            .execute(
+                r#"
             INSERT OR REPLACE INTO baselines
             (dimension, mean, stddev, p50, p90, p99, sample_count, updated_at)
             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
             "#,
-            params![
-                baseline.dimension,
-                baseline.mean,
-                baseline.stddev,
-                baseline.p50,
-                baseline.p90,
-                baseline.p99,
-                baseline.sample_count,
-                baseline.updated_at.to_rfc3339(),
-            ],
-        )
-        .context("Failed to store baseline")?;
+                params![
+                    baseline.dimension,
+                    baseline.mean,
+                    baseline.stddev,
+                    baseline.p50,
+                    baseline.p90,
+                    baseline.p99,
+                    baseline.sample_count,
+                    baseline.updated_at.to_rfc3339(),
+                ],
+            )
+            .context("Failed to store baseline")?;
 
         Ok(())
     }
@@ -990,18 +1009,22 @@ impl MetricsDb {
 
         let result = stmt.query_row(params![session_id], |row| {
             let timestamp_str = row.get::<_, String>(1)?;
-            let timestamp = timestamp_str.parse()
-                .unwrap_or_else(|e| {
-                    eprintln!("Invalid timestamp '{}': {}. Using current time.", timestamp_str, e);
-                    Utc::now()
-                });
+            let timestamp = timestamp_str.parse().unwrap_or_else(|e| {
+                eprintln!(
+                    "Invalid timestamp '{}': {}. Using current time.",
+                    timestamp_str, e
+                );
+                Utc::now()
+            });
 
             let status_str = row.get::<_, String>(13)?;
-            let final_status = SessionStatus::from_str(&status_str)
-                .unwrap_or_else(|e| {
-                    eprintln!("Invalid session status '{}': {}. Using 'crashed' as fallback.", status_str, e);
-                    SessionStatus::Crashed
-                });
+            let final_status = SessionStatus::from_str(&status_str).unwrap_or_else(|e| {
+                eprintln!(
+                    "Invalid session status '{}': {}. Using 'crashed' as fallback.",
+                    status_str, e
+                );
+                SessionStatus::Crashed
+            });
 
             Ok(SessionMetrics {
                 id: row.get(0)?,
@@ -1065,8 +1088,8 @@ impl MetricsDb {
                     messages: row.get(14).unwrap_or(0),
                     apm: row.get(15).ok(),
                     source: row.get(16).unwrap_or_else(|_| "autopilot".to_string()),
-                issue_numbers: row.get(17).ok(),
-                directive_id: row.get(18).ok(),
+                    issue_numbers: row.get(17).ok(),
+                    directive_id: row.get(18).ok(),
                 })
             })?
             .collect::<Result<Vec<_>, _>>()?;
@@ -1142,15 +1165,19 @@ impl MetricsDb {
     }
 
     /// Calculate baseline statistics for a metric dimension from historical sessions
-    pub fn calculate_baseline(&self, dimension: &str, min_samples: usize) -> Result<Option<Baseline>> {
+    pub fn calculate_baseline(
+        &self,
+        dimension: &str,
+        min_samples: usize,
+    ) -> Result<Option<Baseline>> {
         use statrs::statistics::{Data, Distribution, OrderStatistics};
 
         // Get historical values for this dimension
         let values: Vec<f64> = match dimension {
             "tool_error_rate" => {
-                let mut stmt = self.conn.prepare(
-                    "SELECT tool_calls, tool_errors FROM sessions WHERE tool_calls > 0"
-                )?;
+                let mut stmt = self
+                    .conn
+                    .prepare("SELECT tool_calls, tool_errors FROM sessions WHERE tool_calls > 0")?;
                 stmt.query_map([], |row| {
                     let calls: i32 = row.get(0)?;
                     let errors: i32 = row.get(1)?;
@@ -1183,7 +1210,7 @@ impl MetricsDb {
             }
             "cost_per_issue" => {
                 let mut stmt = self.conn.prepare(
-                    "SELECT cost_usd, issues_completed FROM sessions WHERE issues_completed > 0"
+                    "SELECT cost_usd, issues_completed FROM sessions WHERE issues_completed > 0",
                 )?;
                 stmt.query_map([], |row| {
                     let cost: f64 = row.get(0)?;
@@ -1402,7 +1429,8 @@ impl MetricsDb {
 
         // Completion rate
         if session.issues_claimed > 0 {
-            let completion_rate = (session.issues_completed as f64) / (session.issues_claimed as f64);
+            let completion_rate =
+                (session.issues_completed as f64) / (session.issues_claimed as f64);
 
             if let Some(baseline) = self.get_baseline("completion_rate")? {
                 if baseline.stddev > 0.0 {
@@ -1477,8 +1505,8 @@ impl MetricsDb {
                     messages: row.get(14).unwrap_or(0),
                     apm: row.get(15).ok(),
                     source: row.get(16).unwrap_or_else(|_| "autopilot".to_string()),
-                issue_numbers: row.get(17).ok(),
-                directive_id: row.get(18).ok(),
+                    issue_numbers: row.get(17).ok(),
+                    directive_id: row.get(18).ok(),
                 })
             })?
             .collect::<Result<Vec<_>, _>>()?;
@@ -1652,7 +1680,10 @@ impl MetricsDb {
     }
 
     /// Calculate aggregate metrics for a specific issue
-    pub fn get_issue_aggregate_metrics(&self, issue_number: i32) -> Result<Option<IssueAggregateMetrics>> {
+    pub fn get_issue_aggregate_metrics(
+        &self,
+        issue_number: i32,
+    ) -> Result<Option<IssueAggregateMetrics>> {
         let sessions = self.get_sessions_for_issue(issue_number)?;
 
         if sessions.is_empty() {
@@ -1686,7 +1717,10 @@ impl MetricsDb {
     }
 
     /// Calculate aggregate metrics for a specific directive
-    pub fn get_directive_aggregate_metrics(&self, directive_id: &str) -> Result<Option<DirectiveAggregateMetrics>> {
+    pub fn get_directive_aggregate_metrics(
+        &self,
+        directive_id: &str,
+    ) -> Result<Option<DirectiveAggregateMetrics>> {
         let sessions = self.get_sessions_for_directive(directive_id)?;
 
         if sessions.is_empty() {
@@ -1778,7 +1812,10 @@ impl MetricsDb {
     }
 
     /// Get aggregate metrics for a specific directive
-    pub fn get_directive_metrics(&self, directive_id: &str) -> Result<Option<DirectiveAggregateMetrics>> {
+    pub fn get_directive_metrics(
+        &self,
+        directive_id: &str,
+    ) -> Result<Option<DirectiveAggregateMetrics>> {
         let mut stmt = self.conn.prepare(
             r#"
             SELECT
@@ -1890,7 +1927,16 @@ impl MetricsDb {
     }
 
     /// Store per-issue metrics for a specific session
-    pub fn store_issue_metric(&self, issue_number: i32, session_id: &str, duration_seconds: f64, tokens_in: i64, tokens_out: i64, tool_calls: i32, tool_errors: i32) -> Result<()> {
+    pub fn store_issue_metric(
+        &self,
+        issue_number: i32,
+        session_id: &str,
+        duration_seconds: f64,
+        tokens_in: i64,
+        tokens_out: i64,
+        tool_calls: i32,
+        tool_errors: i32,
+    ) -> Result<()> {
         self.conn.execute(
             r#"
             INSERT OR REPLACE INTO issue_metrics
@@ -1915,7 +1961,17 @@ impl MetricsDb {
 
     /// Update directive metrics for a specific date
     /// This uses INSERT OR UPDATE pattern to aggregate metrics per directive per day
-    pub fn update_directive_metrics(&self, directive_id: &str, date: &str, duration_delta: f64, tokens_delta: i64, issue_count_delta: i32, completion_delta: i32, tool_calls_delta: i32, tool_errors_delta: i32) -> Result<()> {
+    pub fn update_directive_metrics(
+        &self,
+        directive_id: &str,
+        date: &str,
+        duration_delta: f64,
+        tokens_delta: i64,
+        issue_count_delta: i32,
+        completion_delta: i32,
+        tool_calls_delta: i32,
+        tool_errors_delta: i32,
+    ) -> Result<()> {
         // First try to insert, if it exists, update
         let result = self.conn.execute(
             r#"
@@ -2019,11 +2075,14 @@ impl MetricsDb {
         let timestamp = Utc::now().to_rfc3339();
 
         // Check if this beats the current personal best
-        let current_best: Option<f64> = self.conn.query_row(
-            "SELECT value FROM personal_bests WHERE metric = ? AND project IS ?",
-            params![metric, project],
-            |row| row.get(0),
-        ).optional()?;
+        let current_best: Option<f64> = self
+            .conn
+            .query_row(
+                "SELECT value FROM personal_bests WHERE metric = ? AND project IS ?",
+                params![metric, project],
+                |row| row.get(0),
+            )
+            .optional()?;
 
         let is_new_best = current_best.map_or(true, |best| value > best);
 
@@ -2070,17 +2129,18 @@ impl MetricsDb {
             "SELECT metric, value, session_id, project, timestamp, context FROM personal_bests ORDER BY timestamp DESC"
         )?;
 
-        let bests = stmt.query_map([], |row| {
-            Ok(PersonalBest {
-                metric: row.get(0)?,
-                value: row.get(1)?,
-                session_id: row.get(2)?,
-                project: row.get(3)?,
-                timestamp: row.get::<_, String>(4)?.parse().unwrap(),
-                context: row.get(5)?,
-            })
-        })?
-        .collect::<Result<Vec<_>, _>>()?;
+        let bests = stmt
+            .query_map([], |row| {
+                Ok(PersonalBest {
+                    metric: row.get(0)?,
+                    value: row.get(1)?,
+                    session_id: row.get(2)?,
+                    project: row.get(3)?,
+                    timestamp: row.get::<_, String>(4)?.parse().unwrap(),
+                    context: row.get(5)?,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
 
         Ok(bests)
     }
@@ -2129,15 +2189,10 @@ pub fn extract_metrics_from_trajectory(
         match &step.step_type {
             StepType::ToolCall { tool, tool_id, .. } => {
                 tool_calls_count += 1;
-                tool_call_map.insert(
-                    tool_id.clone(),
-                    (tool.clone(), step.timestamp),
-                );
+                tool_call_map.insert(tool_id.clone(), (tool.clone(), step.timestamp));
             }
             StepType::ToolResult {
-                tool_id,
-                success,
-                ..
+                tool_id, success, ..
             } => {
                 if !success {
                     tool_errors_count += 1;
@@ -2191,7 +2246,11 @@ pub fn extract_metrics_from_trajectory(
             SessionStatus::Completed
         } else if result.errors.iter().any(|e| e.contains("budget")) {
             SessionStatus::BudgetExhausted
-        } else if result.errors.iter().any(|e| e.contains("max turns") || e.contains("MaxTurns")) {
+        } else if result
+            .errors
+            .iter()
+            .any(|e| e.contains("max turns") || e.contains("MaxTurns"))
+        {
             SessionStatus::MaxTurns
         } else {
             SessionStatus::Crashed
@@ -2222,7 +2281,12 @@ pub fn extract_metrics_from_trajectory(
     let messages_count = traj
         .steps
         .iter()
-        .filter(|s| matches!(&s.step_type, StepType::User { .. } | StepType::Assistant { .. }))
+        .filter(|s| {
+            matches!(
+                &s.step_type,
+                StepType::User { .. } | StepType::Assistant { .. }
+            )
+        })
         .count() as i32;
 
     let mut session_metrics = SessionMetrics {
@@ -2242,8 +2306,8 @@ pub fn extract_metrics_from_trajectory(
         final_status,
         messages: messages_count,
         apm: None,
-                issue_numbers: None,
-                directive_id: None,
+        issue_numbers: None,
+        directive_id: None,
         source: "autopilot".to_string(),
     };
 
@@ -2260,8 +2324,8 @@ pub fn extract_metrics_from_json_file<P: AsRef<Path>>(
     let content = std::fs::read_to_string(path.as_ref())
         .with_context(|| format!("Failed to read trajectory file: {:?}", path.as_ref()))?;
 
-    let traj: crate::trajectory::Trajectory = serde_json::from_str(&content)
-        .context("Failed to parse trajectory JSON")?;
+    let traj: crate::trajectory::Trajectory =
+        serde_json::from_str(&content).context("Failed to parse trajectory JSON")?;
 
     extract_metrics_from_trajectory(&traj)
 }
@@ -2295,17 +2359,12 @@ pub fn backfill_apm_for_sessions(db_path: &Path) -> Result<usize> {
 
     // Get all sessions without APM
     let mut stmt = conn.prepare(
-        "SELECT id, duration_seconds, tool_calls, messages FROM sessions WHERE apm IS NULL"
+        "SELECT id, duration_seconds, tool_calls, messages FROM sessions WHERE apm IS NULL",
     )?;
 
     let sessions: Vec<(String, f64, u32, u32)> = stmt
         .query_map([], |row| {
-            Ok((
-                row.get(0)?,
-                row.get(1)?,
-                row.get(2)?,
-                row.get(3)?,
-            ))
+            Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?))
         })?
         .collect::<std::result::Result<Vec<_>, _>>()?;
 
@@ -2332,7 +2391,10 @@ pub fn backfill_apm_for_sessions(db_path: &Path) -> Result<usize> {
 /// This provides historical baseline data for trend analysis and regression detection.
 ///
 /// Returns a tuple of (files_processed, records_created, errors_encountered)
-pub fn backfill_metrics_from_logs(logs_dir: &Path, db_path: &Path) -> Result<(usize, usize, usize)> {
+pub fn backfill_metrics_from_logs(
+    logs_dir: &Path,
+    db_path: &Path,
+) -> Result<(usize, usize, usize)> {
     use walkdir::WalkDir;
 
     let db = MetricsDb::open(db_path)?;
@@ -2361,11 +2423,15 @@ pub fn backfill_metrics_from_logs(logs_dir: &Path, db_path: &Path) -> Result<(us
             let session_id_prefix = filename.split('-').next().unwrap_or("");
 
             // Check if we already have a session with this timestamp
-            let exists = db.conn.query_row(
-                "SELECT COUNT(*) FROM sessions WHERE id LIKE ?1",
-                params![format!("%{}%", session_id_prefix)],
-                |row| row.get::<_, i64>(0)
-            ).unwrap_or(0) > 0;
+            let exists = db
+                .conn
+                .query_row(
+                    "SELECT COUNT(*) FROM sessions WHERE id LIKE ?1",
+                    params![format!("%{}%", session_id_prefix)],
+                    |row| row.get::<_, i64>(0),
+                )
+                .unwrap_or(0)
+                > 0;
 
             if exists {
                 // Skip this file - already imported
@@ -2410,8 +2476,8 @@ pub fn backfill_metrics_from_logs(logs_dir: &Path, db_path: &Path) -> Result<(us
 fn extract_metrics_from_jsonl_file<P: AsRef<Path>>(
     path: P,
 ) -> Result<(SessionMetrics, Vec<ToolCallMetrics>)> {
-    use std::io::{BufRead, BufReader};
     use std::fs::File;
+    use std::io::{BufRead, BufReader};
 
     let file = File::open(path.as_ref())
         .with_context(|| format!("Failed to open file: {:?}", path.as_ref()))?;
@@ -2469,9 +2535,18 @@ fn extract_metrics_from_jsonl_file<P: AsRef<Path>>(
             messages += 1;
 
             if let Some(usage) = msg["message"]["usage"].as_object() {
-                total_input_tokens += usage.get("input_tokens").and_then(|v| v.as_u64()).unwrap_or(0);
-                total_output_tokens += usage.get("output_tokens").and_then(|v| v.as_u64()).unwrap_or(0);
-                cache_read_tokens += usage.get("cache_read_input_tokens").and_then(|v| v.as_u64()).unwrap_or(0);
+                total_input_tokens += usage
+                    .get("input_tokens")
+                    .and_then(|v| v.as_u64())
+                    .unwrap_or(0);
+                total_output_tokens += usage
+                    .get("output_tokens")
+                    .and_then(|v| v.as_u64())
+                    .unwrap_or(0);
+                cache_read_tokens += usage
+                    .get("cache_read_input_tokens")
+                    .and_then(|v| v.as_u64())
+                    .unwrap_or(0);
             }
 
             // Count tool calls
@@ -2523,7 +2598,7 @@ fn extract_metrics_from_jsonl_file<P: AsRef<Path>>(
         tokens_out: total_output_tokens as i64,
         tokens_cached: cache_read_tokens as i64,
         cost_usd: calculate_cost(total_input_tokens, total_output_tokens, cache_read_tokens),
-        issues_claimed: 0, // Not available from JSONL
+        issues_claimed: 0,   // Not available from JSONL
         issues_completed: 0, // Not available from JSONL
         tool_calls: tool_calls as i32,
         tool_errors: 0, // Would need to parse tool results
@@ -2556,10 +2631,7 @@ fn calculate_cost(input_tokens: u64, output_tokens: u64, cache_tokens: u64) -> f
 }
 
 /// Store an APM snapshot
-pub fn store_apm_snapshot(
-    db_path: &Path,
-    snapshot: &crate::apm::APMSnapshot,
-) -> Result<()> {
+pub fn store_apm_snapshot(db_path: &Path, snapshot: &crate::apm::APMSnapshot) -> Result<()> {
     let db = MetricsDb::open(db_path)?;
 
     db.conn.execute(
@@ -2583,10 +2655,7 @@ pub fn store_apm_snapshot(
 }
 
 /// Store or update an APM baseline
-pub fn store_apm_baseline(
-    db_path: &Path,
-    baseline: &crate::apm::APMBaseline,
-) -> Result<()> {
+pub fn store_apm_baseline(db_path: &Path, baseline: &crate::apm::APMBaseline) -> Result<()> {
     let db = MetricsDb::open(db_path)?;
 
     db.conn.execute(
@@ -2751,8 +2820,8 @@ mod tests {
             final_status: SessionStatus::Completed,
             messages: 10,
             apm: None,
-                issue_numbers: None,
-                directive_id: None,
+            issue_numbers: None,
+            directive_id: None,
             source: "autopilot".to_string(),
         };
 
@@ -2787,8 +2856,8 @@ mod tests {
             final_status: SessionStatus::Completed,
             messages: 10,
             apm: None,
-                issue_numbers: None,
-                directive_id: None,
+            issue_numbers: None,
+            directive_id: None,
             source: "autopilot".to_string(),
         };
         db.store_session(&session).unwrap();
@@ -2834,8 +2903,8 @@ mod tests {
             final_status: SessionStatus::Completed,
             messages: 10,
             apm: None,
-                issue_numbers: None,
-                directive_id: None,
+            issue_numbers: None,
+            directive_id: None,
             source: "autopilot".to_string(),
         };
         db.store_session(&session).unwrap();
@@ -2988,7 +3057,11 @@ mod tests {
         let test_file = "docs/logs/20251220/020941-start-working.json";
         if std::path::Path::new(test_file).exists() {
             let result = extract_metrics_from_json_file(test_file);
-            assert!(result.is_ok(), "Failed to extract metrics: {:?}", result.err());
+            assert!(
+                result.is_ok(),
+                "Failed to extract metrics: {:?}",
+                result.err()
+            );
 
             let (session, tool_calls) = result.unwrap();
             // Verify we got valid metrics
@@ -3020,12 +3093,12 @@ mod tests {
                 tool_calls: 100,
                 tool_errors: i, // 0% to 9% error rate
                 final_status: SessionStatus::Completed,
-            messages: 10,
-            apm: None,
+                messages: 10,
+                apm: None,
                 issue_numbers: None,
                 directive_id: None,
-            source: "autopilot".to_string(),
-        };
+                source: "autopilot".to_string(),
+            };
             db.store_session(&session).unwrap();
         }
 
@@ -3061,12 +3134,12 @@ mod tests {
                 tool_calls: 100,
                 tool_errors: i,
                 final_status: SessionStatus::Completed,
-            messages: 10,
-            apm: None,
+                messages: 10,
+                apm: None,
                 issue_numbers: None,
                 directive_id: None,
-            source: "autopilot".to_string(),
-        };
+                source: "autopilot".to_string(),
+            };
             db.store_session(&session).unwrap();
         }
 
@@ -3101,8 +3174,8 @@ mod tests {
             final_status: SessionStatus::Completed,
             messages: 10,
             apm: None,
-                issue_numbers: None,
-                directive_id: None,
+            issue_numbers: None,
+            directive_id: None,
             source: "autopilot".to_string(),
         };
 
@@ -3128,8 +3201,8 @@ mod tests {
             final_status: SessionStatus::Completed,
             messages: 10,
             apm: None,
-                issue_numbers: None,
-                directive_id: None,
+            issue_numbers: None,
+            directive_id: None,
             source: "autopilot".to_string(),
         };
 
@@ -3163,12 +3236,12 @@ mod tests {
                 tool_calls: 100,
                 tool_errors: 2, // Consistent 2% error rate
                 final_status: SessionStatus::Completed,
-            messages: 10,
-            apm: None,
+                messages: 10,
+                apm: None,
                 issue_numbers: None,
                 directive_id: None,
-            source: "autopilot".to_string(),
-        };
+                source: "autopilot".to_string(),
+            };
             db.store_session(&session).unwrap();
         }
 
@@ -3193,8 +3266,8 @@ mod tests {
             final_status: SessionStatus::Completed,
             messages: 10,
             apm: None,
-                issue_numbers: None,
-                directive_id: None,
+            issue_numbers: None,
+            directive_id: None,
             source: "autopilot".to_string(),
         };
 
@@ -3202,9 +3275,7 @@ mod tests {
         assert!(anomalies.len() > 0);
 
         // Should detect anomaly in tokens_per_issue
-        let tokens_anomaly = anomalies
-            .iter()
-            .find(|a| a.dimension == "tokens_per_issue");
+        let tokens_anomaly = anomalies.iter().find(|a| a.dimension == "tokens_per_issue");
         assert!(tokens_anomaly.is_some());
     }
 
@@ -3260,22 +3331,30 @@ mod metrics_cascade_tests {
         ).unwrap();
 
         // Verify tool_call exists
-        let count: i64 = db.conn.query_row(
-            "SELECT COUNT(*) FROM tool_calls WHERE session_id = 'test-session'",
-            [],
-            |row| row.get(0),
-        ).unwrap();
+        let count: i64 = db
+            .conn
+            .query_row(
+                "SELECT COUNT(*) FROM tool_calls WHERE session_id = 'test-session'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
         assert_eq!(count, 1);
 
         // Delete session
-        db.conn.execute("DELETE FROM sessions WHERE id = 'test-session'", []).unwrap();
+        db.conn
+            .execute("DELETE FROM sessions WHERE id = 'test-session'", [])
+            .unwrap();
 
         // Verify tool_call was CASCADE deleted
-        let count: i64 = db.conn.query_row(
-            "SELECT COUNT(*) FROM tool_calls WHERE session_id = 'test-session'",
-            [],
-            |row| row.get(0),
-        ).unwrap();
+        let count: i64 = db
+            .conn
+            .query_row(
+                "SELECT COUNT(*) FROM tool_calls WHERE session_id = 'test-session'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
         assert_eq!(count, 0);
     }
 
@@ -3300,22 +3379,30 @@ mod metrics_cascade_tests {
         ).unwrap();
 
         // Verify anomaly exists
-        let count: i64 = db.conn.query_row(
-            "SELECT COUNT(*) FROM anomalies WHERE session_id = 'test-session'",
-            [],
-            |row| row.get(0),
-        ).unwrap();
+        let count: i64 = db
+            .conn
+            .query_row(
+                "SELECT COUNT(*) FROM anomalies WHERE session_id = 'test-session'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
         assert_eq!(count, 1);
 
         // Delete session
-        db.conn.execute("DELETE FROM sessions WHERE id = 'test-session'", []).unwrap();
+        db.conn
+            .execute("DELETE FROM sessions WHERE id = 'test-session'", [])
+            .unwrap();
 
         // Verify anomaly was CASCADE deleted
-        let count: i64 = db.conn.query_row(
-            "SELECT COUNT(*) FROM anomalies WHERE session_id = 'test-session'",
-            [],
-            |row| row.get(0),
-        ).unwrap();
+        let count: i64 = db
+            .conn
+            .query_row(
+                "SELECT COUNT(*) FROM anomalies WHERE session_id = 'test-session'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
         assert_eq!(count, 0);
     }
 }

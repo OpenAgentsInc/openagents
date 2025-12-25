@@ -149,7 +149,8 @@ impl MemoryMonitor {
 
     /// Kill a specific process by PID
     pub fn kill_process(&mut self, pid: u32) -> bool {
-        self.sys.refresh_processes(sysinfo::ProcessesToUpdate::All, true);
+        self.sys
+            .refresh_processes(sysinfo::ProcessesToUpdate::All, true);
         if let Some(proc) = self.sys.process(Pid::from_u32(pid)) {
             proc.kill_with(Signal::Term).unwrap_or(false)
         } else {

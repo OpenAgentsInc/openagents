@@ -6,7 +6,7 @@
 use chrono::{Datelike, Utc};
 use std::path::{Path, PathBuf};
 
-use crate::analyze::{detect_trends, detect_regressions, TimePeriod};
+use crate::analyze::{TimePeriod, detect_regressions, detect_trends};
 use crate::metrics::MetricsDb;
 
 /// Generate a weekly trend report
@@ -52,7 +52,10 @@ pub fn generate_weekly_report(
         "# Autopilot Weekly Report - {} Week {}\n\n",
         year, week
     ));
-    report.push_str(&format!("Generated: {}\n\n", now.format("%Y-%m-%d %H:%M:%S UTC")));
+    report.push_str(&format!(
+        "Generated: {}\n\n",
+        now.format("%Y-%m-%d %H:%M:%S UTC")
+    ));
 
     // Executive Summary
     report.push_str("## Executive Summary\n\n");
@@ -134,8 +137,14 @@ pub fn generate_weekly_report(
                 crate::analyze::RegressionSeverity::Warning => "🟡 WARNING",
             };
 
-            report.push_str(&format!("### {} - {}\n\n", severity_label, regression.dimension));
-            report.push_str(&format!("- **Baseline**: {:.2}\n", regression.baseline_value));
+            report.push_str(&format!(
+                "### {} - {}\n\n",
+                severity_label, regression.dimension
+            ));
+            report.push_str(&format!(
+                "- **Baseline**: {:.2}\n",
+                regression.baseline_value
+            ));
             report.push_str(&format!("- **Current**: {:.2}\n", regression.current_value));
             report.push_str(&format!(
                 "- **Degradation**: {:.1}% worse\n",
@@ -176,7 +185,10 @@ pub fn generate_weekly_report(
                     report.push_str("- **Completion Rate**: Review failed sessions to understand blocking issues. Improve error recovery strategies.\n");
                 }
                 _ => {
-                    report.push_str(&format!("- **{}**: Investigate cause of regression.\n", regression.dimension));
+                    report.push_str(&format!(
+                        "- **{}**: Investigate cause of regression.\n",
+                        regression.dimension
+                    ));
                 }
             }
         }

@@ -8,7 +8,7 @@ use std::sync::Arc;
 
 use agent_client_protocol_schema as acp;
 use serde::{Deserialize, Serialize};
-use tokio::sync::{oneshot, RwLock};
+use tokio::sync::{RwLock, oneshot};
 
 use crate::error::Result;
 
@@ -206,10 +206,7 @@ impl PermissionRequestManager {
     }
 
     /// Get all pending permission requests for a session
-    pub async fn get_pending_for_session(
-        &self,
-        session_id: &str,
-    ) -> Vec<UiPermissionRequest> {
+    pub async fn get_pending_for_session(&self, session_id: &str) -> Vec<UiPermissionRequest> {
         let pending = self.pending.read().await;
         pending
             .values()
@@ -293,9 +290,8 @@ mod tests {
         // Submit request in background
         let manager_clone = manager.clone();
         let request_clone = request.clone();
-        let handle = tokio::spawn(async move {
-            manager_clone.request_permission(request_clone).await
-        });
+        let handle =
+            tokio::spawn(async move { manager_clone.request_permission(request_clone).await });
 
         // Wait a bit to ensure request is pending
         tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;

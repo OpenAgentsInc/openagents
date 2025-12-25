@@ -185,9 +185,9 @@ impl Profiler {
 
     /// Stop profiling and return results
     pub fn stop(&mut self) -> Result<ProfilingSession> {
-        let start_time = self.start_time.ok_or_else(|| {
-            anyhow::anyhow!("Profiling not started")
-        })?;
+        let start_time = self
+            .start_time
+            .ok_or_else(|| anyhow::anyhow!("Profiling not started"))?;
 
         let duration = start_time.elapsed();
 
@@ -227,7 +227,10 @@ impl Profiler {
         // perf record -F {sample_rate} -g -p {pid} -o {output}
 
         // For now, just track that CPU profiling is enabled
-        println!("CPU profiling enabled (sample rate: {} Hz)", self.config.cpu_sample_rate);
+        println!(
+            "CPU profiling enabled (sample rate: {} Hz)",
+            self.config.cpu_sample_rate
+        );
 
         Ok(())
     }
@@ -271,13 +274,19 @@ impl Profiler {
 
     /// Generate flamegraph from profiling data
     fn generate_flamegraph(&self) -> Result<PathBuf> {
-        let output_path = self.config.output_dir.join(format!("{}.svg", self.session_id));
+        let output_path = self
+            .config
+            .output_dir
+            .join(format!("{}.svg", self.session_id));
 
         // NOTE: This is a placeholder
         // In production, would run:
         // perf script | stackcollapse-perf.pl | flamegraph.pl > output.svg
 
-        println!("Flamegraph would be generated at: {}", output_path.display());
+        println!(
+            "Flamegraph would be generated at: {}",
+            output_path.display()
+        );
 
         Ok(output_path)
     }

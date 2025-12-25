@@ -4,9 +4,9 @@
 
 use std::path::{Path, PathBuf};
 
+use crate::AgentCommand;
 use crate::connection::AcpAgentConnection;
 use crate::error::{AcpError, Result};
-use crate::AgentCommand;
 
 /// Configuration for Codex agent
 #[derive(Debug, Clone)]
@@ -69,7 +69,10 @@ impl CodexAgentConfig {
 /// Connect to Codex agent
 ///
 /// Spawns the Codex CLI as a subprocess and establishes an ACP connection.
-pub async fn connect_codex(config: CodexAgentConfig, root_dir: &Path) -> Result<AcpAgentConnection> {
+pub async fn connect_codex(
+    config: CodexAgentConfig,
+    root_dir: &Path,
+) -> Result<AcpAgentConnection> {
     let executable = config
         .executable_path
         .unwrap_or_else(|| find_codex_executable().unwrap_or_else(|| PathBuf::from("codex")));

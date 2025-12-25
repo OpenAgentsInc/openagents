@@ -49,8 +49,7 @@ pub fn parse_claude_code_session(path: impl AsRef<Path>) -> Result<SessionData> 
         match parsed.line_type.as_str() {
             "message" => {
                 // Extract timestamp from message
-                if let Some(timestamp_str) = parsed.data.get("timestamp").and_then(|t| t.as_str())
-                {
+                if let Some(timestamp_str) = parsed.data.get("timestamp").and_then(|t| t.as_str()) {
                     if let Ok(timestamp) = DateTime::parse_from_rfc3339(timestamp_str) {
                         let utc_timestamp = timestamp.with_timezone(&Utc);
                         if start_time.is_none() {
@@ -65,8 +64,7 @@ pub fn parse_claude_code_session(path: impl AsRef<Path>) -> Result<SessionData> 
             }
             "tool_use" | "tool_call" => {
                 // Extract timestamp
-                if let Some(timestamp_str) = parsed.data.get("timestamp").and_then(|t| t.as_str())
-                {
+                if let Some(timestamp_str) = parsed.data.get("timestamp").and_then(|t| t.as_str()) {
                     if let Ok(timestamp) = DateTime::parse_from_rfc3339(timestamp_str) {
                         let utc_timestamp = timestamp.with_timezone(&Utc);
                         if start_time.is_none() {
@@ -80,8 +78,7 @@ pub fn parse_claude_code_session(path: impl AsRef<Path>) -> Result<SessionData> 
             }
             "tool_result" => {
                 // Update end time but don't count as action
-                if let Some(timestamp_str) = parsed.data.get("timestamp").and_then(|t| t.as_str())
-                {
+                if let Some(timestamp_str) = parsed.data.get("timestamp").and_then(|t| t.as_str()) {
                     if let Ok(timestamp) = DateTime::parse_from_rfc3339(timestamp_str) {
                         end_time = Some(timestamp.with_timezone(&Utc));
                     }
@@ -95,10 +92,7 @@ pub fn parse_claude_code_session(path: impl AsRef<Path>) -> Result<SessionData> 
 
     // Validate we have data
     let start = start_time.ok_or_else(|| {
-        anyhow::anyhow!(
-            "No timestamps found in session file: {}",
-            path.display()
-        )
+        anyhow::anyhow!("No timestamps found in session file: {}", path.display())
     })?;
     let end = end_time.unwrap_or(start);
 
@@ -180,10 +174,7 @@ pub fn parse_autopilot_session(path: impl AsRef<Path>) -> Result<SessionData> {
 
     // Validate we have data
     let start = start_time.ok_or_else(|| {
-        anyhow::anyhow!(
-            "No timestamps found in session file: {}",
-            path.display()
-        )
+        anyhow::anyhow!("No timestamps found in session file: {}", path.display())
     })?;
     let end = end_time.unwrap_or(start);
 
@@ -206,10 +197,7 @@ pub fn parse_autopilot_session(path: impl AsRef<Path>) -> Result<SessionData> {
 pub fn find_autopilot_sessions(logs_dir: impl AsRef<Path>) -> Result<Vec<std::path::PathBuf>> {
     let logs_dir = logs_dir.as_ref();
     if !logs_dir.exists() {
-        anyhow::bail!(
-            "Autopilot logs directory not found: {}",
-            logs_dir.display()
-        );
+        anyhow::bail!("Autopilot logs directory not found: {}", logs_dir.display());
     }
 
     let mut sessions = Vec::new();

@@ -11,8 +11,7 @@ use chrono::{DateTime, Duration, Utc};
 use serde::{Deserialize, Serialize};
 
 /// APM statistics for various time windows
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[derive(Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct APMStats {
     /// APM for current session only
     pub session: Option<f64>,
@@ -157,7 +156,6 @@ impl BaselineStatus {
         }
     }
 }
-
 
 /// APM snapshot for a specific time period
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -436,12 +434,7 @@ impl APMMetrics {
     /// Calculate current APM (real-time)
     pub fn current_apm(&self) -> Option<f64> {
         let end_time = self.last_update.unwrap_or_else(Utc::now);
-        calculate_apm_from_timestamps(
-            self.messages,
-            self.tool_calls,
-            self.start_time,
-            end_time,
-        )
+        calculate_apm_from_timestamps(self.messages, self.tool_calls, self.start_time, end_time)
     }
 
     /// Calculate APM over a specific time window (last N minutes)
@@ -652,6 +645,13 @@ mod tests {
         // Since this happens almost instantly, APM will be very high
         let tier = metrics.current_tier();
         // Tier depends on actual timing, so just verify it's calculated
-        assert!(matches!(tier, APMTier::Baseline | APMTier::Active | APMTier::Productive | APMTier::HighPerformance | APMTier::Elite));
+        assert!(matches!(
+            tier,
+            APMTier::Baseline
+                | APMTier::Active
+                | APMTier::Productive
+                | APMTier::HighPerformance
+                | APMTier::Elite
+        ));
     }
 }

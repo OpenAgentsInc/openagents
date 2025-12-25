@@ -14,7 +14,10 @@ pub enum WorkerStatus {
     /// Worker is being stopped
     Stopping,
     /// Worker is restarting after a failure
-    Restarting { attempt: u32, next_attempt_at: Instant },
+    Restarting {
+        attempt: u32,
+        next_attempt_at: Instant,
+    },
     /// Worker has failed too many times
     Failed { reason: String, failed_at: Instant },
 }

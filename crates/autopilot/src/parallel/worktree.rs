@@ -70,9 +70,11 @@ pub fn create_worktrees(project_root: &Path, count: usize) -> Result<Vec<Worktre
         // Try to create new worktree with new branch
         let result = Command::new("git")
             .args([
-                "worktree", "add",
+                "worktree",
+                "add",
                 &worktree_path.to_string_lossy(),
-                "-b", &branch_name,
+                "-b",
+                &branch_name,
                 "main",
             ])
             .current_dir(project_root)
@@ -90,7 +92,8 @@ pub fn create_worktrees(project_root: &Path, count: usize) -> Result<Vec<Worktre
                 // Branch might already exist, try without -b
                 let output = Command::new("git")
                     .args([
-                        "worktree", "add",
+                        "worktree",
+                        "add",
                         &worktree_path.to_string_lossy(),
                         &branch_name,
                     ])
@@ -105,7 +108,10 @@ pub fn create_worktrees(project_root: &Path, count: usize) -> Result<Vec<Worktre
                     });
                 } else {
                     let stderr = String::from_utf8_lossy(&output.stderr);
-                    eprintln!("Warning: Failed to create worktree for agent-{}: {}", agent_id, stderr);
+                    eprintln!(
+                        "Warning: Failed to create worktree for agent-{}: {}",
+                        agent_id, stderr
+                    );
                 }
             }
             Err(e) => {
@@ -205,7 +211,7 @@ pub fn list_worktrees(project_root: &Path) -> Result<Vec<WorktreeInfo>> {
             current_branch = Some(
                 line.strip_prefix("branch refs/heads/")
                     .unwrap_or("")
-                    .to_string()
+                    .to_string(),
             );
         } else if line.is_empty() {
             // End of entry

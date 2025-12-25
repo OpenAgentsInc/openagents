@@ -144,9 +144,7 @@ fn convert_thread_item(
             convert_command_execution(session_id, &item.id, cmd, phase)
         }
 
-        ThreadItemDetails::FileChange(fc) => {
-            convert_file_change(session_id, &item.id, fc, phase)
-        }
+        ThreadItemDetails::FileChange(fc) => convert_file_change(session_id, &item.id, fc, phase),
 
         ThreadItemDetails::McpToolCall(mcp) => {
             convert_mcp_tool_call(session_id, &item.id, mcp, phase)
@@ -172,9 +170,7 @@ fn convert_thread_item(
             )]
         }
 
-        ThreadItemDetails::TodoList(todos) => {
-            convert_todo_list(session_id, todos)
-        }
+        ThreadItemDetails::TodoList(todos) => convert_todo_list(session_id, todos),
 
         ThreadItemDetails::Error(error) => {
             vec![acp::SessionNotification::new(
@@ -481,20 +477,18 @@ mod tests {
         let event = ThreadEvent::ItemCompleted(ItemCompletedEvent {
             item: ThreadItem {
                 id: "item_3".to_string(),
-                details: ThreadItemDetails::TodoList(
-                    codex_agent_sdk::items::TodoListItem {
-                        items: vec![
-                            TodoItem {
-                                text: "Fix bug".to_string(),
-                                completed: true,
-                            },
-                            TodoItem {
-                                text: "Add tests".to_string(),
-                                completed: false,
-                            },
-                        ],
-                    },
-                ),
+                details: ThreadItemDetails::TodoList(codex_agent_sdk::items::TodoListItem {
+                    items: vec![
+                        TodoItem {
+                            text: "Fix bug".to_string(),
+                            completed: true,
+                        },
+                        TodoItem {
+                            text: "Add tests".to_string(),
+                            completed: false,
+                        },
+                    ],
+                }),
             },
         });
 

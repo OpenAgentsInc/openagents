@@ -1,9 +1,9 @@
 //! Performance benchmarks for NIP-SA state encryption operations
 
-use criterion::{black_box, criterion_group, criterion_main, Criterion, BenchmarkId, Throughput};
-use serde_json::json;
-use nostr::{encrypt_v2, decrypt_v2};
+use criterion::{BenchmarkId, Criterion, Throughput, black_box, criterion_group, criterion_main};
+use nostr::{decrypt_v2, encrypt_v2};
 use rand::Rng;
+use serde_json::json;
 
 /// Generate test state data of specified size
 fn generate_state_data(size_kb: usize) -> String {
@@ -19,7 +19,8 @@ fn generate_state_data(size_kb: usize) -> String {
             "balance_sats": 100000,
             "address": "spark1test"
         }
-    }).to_string()
+    })
+    .to_string()
 }
 
 /// Generate random keys for encryption
@@ -74,11 +75,8 @@ fn bench_nip44_decryption(c: &mut Criterion) {
                 let (secret_key, recipient_pubkey) = generate_test_keys();
 
                 // Pre-encrypt for decryption benchmark
-                let encrypted = encrypt_v2(
-                    &secret_key,
-                    &recipient_pubkey,
-                    &state_data,
-                ).expect("encryption failed");
+                let encrypted = encrypt_v2(&secret_key, &recipient_pubkey, &state_data)
+                    .expect("encryption failed");
 
                 b.iter(|| {
                     let decrypted = decrypt_v2(
@@ -132,7 +130,8 @@ fn bench_state_deserialization(c: &mut Criterion) {
                 let serialized = serde_json::to_string(&state_data).unwrap();
 
                 b.iter(|| {
-                    let deserialized: Result<serde_json::Value, _> = serde_json::from_str(black_box(&serialized));
+                    let deserialized: Result<serde_json::Value, _> =
+                        serde_json::from_str(black_box(&serialized));
                     black_box(deserialized)
                 });
             },
@@ -187,11 +186,8 @@ fn bench_full_decrypt_cycle(c: &mut Criterion) {
 
                 // Pre-encrypt
                 let serialized = serde_json::to_string(&state_data).unwrap();
-                let encrypted = encrypt_v2(
-                    &secret_key,
-                    &recipient_pubkey,
-                    &serialized,
-                ).expect("encryption failed");
+                let encrypted = encrypt_v2(&secret_key, &recipient_pubkey, &serialized)
+                    .expect("encryption failed");
 
                 b.iter(|| {
                     // Full cycle: decrypt → deserialize
@@ -199,8 +195,10 @@ fn bench_full_decrypt_cycle(c: &mut Criterion) {
                         black_box(&secret_key),
                         black_box(&recipient_pubkey),
                         black_box(&encrypted),
-                    ).unwrap();
-                    let deserialized: Result<serde_json::Value, _> = serde_json::from_str(black_box(&decrypted));
+                    )
+                    .unwrap();
+                    let deserialized: Result<serde_json::Value, _> =
+                        serde_json::from_str(black_box(&decrypted));
                     black_box(deserialized)
                 });
             },

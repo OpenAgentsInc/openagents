@@ -81,7 +81,12 @@ pub fn notification_to_sdk_message(notification: &acp::SessionNotification) -> O
             let status = update.fields.status;
             let has_output = update.fields.raw_output.is_some();
 
-            if has_output || matches!(status, Some(acp::ToolCallStatus::Completed | acp::ToolCallStatus::Failed)) {
+            if has_output
+                || matches!(
+                    status,
+                    Some(acp::ToolCallStatus::Completed | acp::ToolCallStatus::Failed)
+                )
+            {
                 // Tool result - convert to user message with tool_result
                 let is_error = matches!(status, Some(acp::ToolCallStatus::Failed));
                 let result_content = update.fields.raw_output.clone().unwrap_or_default();

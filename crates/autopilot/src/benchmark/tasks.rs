@@ -36,8 +36,8 @@ impl BenchmarkTask for B001SimpleFileEdit {
 
     fn validate(&self, workspace: &Path) -> Result<ValidationResult> {
         let version_file = workspace.join("version.txt");
-        let content = std::fs::read_to_string(&version_file)
-            .context("Failed to read version.txt")?;
+        let content =
+            std::fs::read_to_string(&version_file).context("Failed to read version.txt")?;
 
         let success = content.contains("1.0.1");
         let mut messages = Vec::new();
@@ -138,10 +138,7 @@ impl BenchmarkTask for B002MultiFileEdit {
 
         let mut custom_metrics = HashMap::new();
         custom_metrics.insert("replacements".to_string(), total_occurrences as f64);
-        custom_metrics.insert(
-            "files_missed".to_string(),
-            files_with_old_api.len() as f64,
-        );
+        custom_metrics.insert("files_missed".to_string(), files_with_old_api.len() as f64);
 
         Ok(ValidationResult {
             success,
@@ -270,8 +267,14 @@ impl BenchmarkTask for B003StructRename {
             account_refs_db, user_refs_db
         ));
 
-        custom_metrics.insert("user_refs_remaining".to_string(), (user_refs_handlers + user_refs_db) as f64);
-        custom_metrics.insert("account_refs".to_string(), (account_refs_handlers + account_refs_db) as f64);
+        custom_metrics.insert(
+            "user_refs_remaining".to_string(),
+            (user_refs_handlers + user_refs_db) as f64,
+        );
+        custom_metrics.insert(
+            "account_refs".to_string(),
+            (account_refs_handlers + account_refs_db) as f64,
+        );
 
         // Check compilation (optional - requires cargo)
         let compiles = std::process::Command::new("cargo")
@@ -289,11 +292,8 @@ impl BenchmarkTask for B003StructRename {
 
         custom_metrics.insert("compiles".to_string(), if compiles { 1.0 } else { 0.0 });
 
-        let success = has_account
-            && !has_user
-            && user_refs_handlers == 0
-            && user_refs_db == 0
-            && compiles;
+        let success =
+            has_account && !has_user && user_refs_handlers == 0 && user_refs_db == 0 && compiles;
 
         Ok(ValidationResult {
             success,
@@ -406,7 +406,10 @@ impl BenchmarkTask for B004SimpleCommit {
         if is_clean {
             messages.push("✓ Working tree is clean".to_string());
         } else {
-            messages.push(format!("✗ Working tree has uncommitted changes: {}", status));
+            messages.push(format!(
+                "✗ Working tree has uncommitted changes: {}",
+                status
+            ));
         }
 
         let success = has_update_commit && is_clean && commits.len() == 2;
@@ -511,7 +514,9 @@ impl BenchmarkTask for B005BranchWorkflow {
             .current_dir(workspace)
             .output()?;
 
-        let current_branch = String::from_utf8_lossy(&current_branch_output.stdout).trim().to_string();
+        let current_branch = String::from_utf8_lossy(&current_branch_output.stdout)
+            .trim()
+            .to_string();
         let on_main = current_branch == "main" || current_branch == "master";
 
         if on_main {
@@ -535,7 +540,10 @@ impl BenchmarkTask for B005BranchWorkflow {
             messages.push("✗ Commit 'Add feature X' not found".to_string());
         }
 
-        custom_metrics.insert("has_branch".to_string(), if has_feature_branch { 1.0 } else { 0.0 });
+        custom_metrics.insert(
+            "has_branch".to_string(),
+            if has_feature_branch { 1.0 } else { 0.0 },
+        );
         custom_metrics.insert("on_main".to_string(), if on_main { 1.0 } else { 0.0 });
 
         let success = has_feature_branch && on_main && has_feature_commit;
@@ -576,8 +584,7 @@ impl BenchmarkTask for B006IssueWorkflow {
     fn setup(&self, workspace: &Path) -> Result<()> {
         // Create a simple autopilot.db with one issue
         let db_path = workspace.join("autopilot.db");
-        let conn = rusqlite::Connection::open(&db_path)
-            .context("Failed to create autopilot.db")?;
+        let conn = rusqlite::Connection::open(&db_path).context("Failed to create autopilot.db")?;
 
         // Create minimal schema
         conn.execute(
@@ -599,7 +606,10 @@ impl BenchmarkTask for B006IssueWorkflow {
         )?;
 
         // Create README with typo
-        std::fs::write(workspace.join("README.md"), "# Project\n\nThis is teh README.\n")?;
+        std::fs::write(
+            workspace.join("README.md"),
+            "# Project\n\nThis is teh README.\n",
+        )?;
 
         Ok(())
     }
@@ -625,11 +635,10 @@ impl BenchmarkTask for B006IssueWorkflow {
         // Check issue status was updated
         let db_path = workspace.join("autopilot.db");
         let conn = rusqlite::Connection::open(&db_path)?;
-        let status: String = conn.query_row(
-            "SELECT status FROM issues WHERE number = 1",
-            [],
-            |row| row.get(0),
-        )?;
+        let status: String =
+            conn.query_row("SELECT status FROM issues WHERE number = 1", [], |row| {
+                row.get(0)
+            })?;
 
         let status_updated = status == "done";
         if status_updated {
@@ -639,7 +648,10 @@ impl BenchmarkTask for B006IssueWorkflow {
         }
 
         custom_metrics.insert("typo_fixed".to_string(), if typo_fixed { 1.0 } else { 0.0 });
-        custom_metrics.insert("status_updated".to_string(), if status_updated { 1.0 } else { 0.0 });
+        custom_metrics.insert(
+            "status_updated".to_string(),
+            if status_updated { 1.0 } else { 0.0 },
+        );
 
         Ok(ValidationResult {
             success: typo_fixed && status_updated,
@@ -744,7 +756,10 @@ impl BenchmarkTask for B007MultiStepRefactor {
             } else {
                 messages.push("✗ No validation function in utils.rs".to_string());
             }
-            custom_metrics.insert("has_validation_fn".to_string(), if has_validation_fn { 1.0 } else { 0.0 });
+            custom_metrics.insert(
+                "has_validation_fn".to_string(),
+                if has_validation_fn { 1.0 } else { 0.0 },
+            );
         } else {
             messages.push("✗ utils.rs module not created".to_string());
             custom_metrics.insert("has_validation_fn".to_string(), 0.0);
@@ -787,7 +802,10 @@ impl BenchmarkTask for B007MultiStepRefactor {
             messages.push("✗ Code does not compile".to_string());
         }
 
-        custom_metrics.insert("utils_created".to_string(), if utils_exists { 1.0 } else { 0.0 });
+        custom_metrics.insert(
+            "utils_created".to_string(),
+            if utils_exists { 1.0 } else { 0.0 },
+        );
         custom_metrics.insert("compiles".to_string(), if compiles { 1.0 } else { 0.0 });
 
         let success = utils_exists && includes_utils && compiles;
@@ -970,10 +988,7 @@ impl BenchmarkTask for B009DocumentationGeneration {
              edition = \"2021\"\n",
         )?;
 
-        std::fs::write(
-            workspace.join("lib.rs"),
-            "pub mod math;\n",
-        )?;
+        std::fs::write(workspace.join("lib.rs"), "pub mod math;\n")?;
 
         Ok(())
     }
@@ -990,12 +1005,12 @@ impl BenchmarkTask for B009DocumentationGeneration {
 
         // Count doc comments
         let doc_comment_count = math_content.matches("///").count();
-        let has_square_doc = math_content.contains("/// ") &&
-            (math_content[..math_content.find("fn square").unwrap_or(0)].contains("///"));
-        let has_cube_doc = math_content.contains("/// ") &&
-            (math_content[..math_content.find("fn cube").unwrap_or(0)].contains("///"));
-        let has_is_even_doc = math_content.contains("/// ") &&
-            (math_content[..math_content.find("fn is_even").unwrap_or(0)].contains("///"));
+        let has_square_doc = math_content.contains("/// ")
+            && (math_content[..math_content.find("fn square").unwrap_or(0)].contains("///"));
+        let has_cube_doc = math_content.contains("/// ")
+            && (math_content[..math_content.find("fn cube").unwrap_or(0)].contains("///"));
+        let has_is_even_doc = math_content.contains("/// ")
+            && (math_content[..math_content.find("fn is_even").unwrap_or(0)].contains("///"));
 
         if has_square_doc {
             messages.push("✓ square() has documentation".to_string());
@@ -1029,8 +1044,13 @@ impl BenchmarkTask for B009DocumentationGeneration {
         }
 
         custom_metrics.insert("doc_comments".to_string(), doc_comment_count as f64);
-        custom_metrics.insert("documented_functions".to_string(),
-            [has_square_doc, has_cube_doc, has_is_even_doc].iter().filter(|&&x| x).count() as f64);
+        custom_metrics.insert(
+            "documented_functions".to_string(),
+            [has_square_doc, has_cube_doc, has_is_even_doc]
+                .iter()
+                .filter(|&&x| x)
+                .count() as f64,
+        );
 
         let success = has_square_doc && has_cube_doc && has_is_even_doc && doc_builds;
 
@@ -1105,12 +1125,16 @@ impl BenchmarkTask for B010DependencyUpdate {
         let cargo_content = std::fs::read_to_string(workspace.join("Cargo.toml"))?;
 
         // Parse version - look for serde = "1.0.XXX"
-        let version_updated = if let Some(serde_line) = cargo_content.lines().find(|l| l.contains("serde")) {
-            // Extract version number
-            if let Some(version_str) = serde_line.split('"').nth(1) {
-                if let Some(patch) = version_str.split('.').nth(2) {
-                    if let Ok(patch_num) = patch.parse::<u32>() {
-                        patch_num >= 200
+        let version_updated =
+            if let Some(serde_line) = cargo_content.lines().find(|l| l.contains("serde")) {
+                // Extract version number
+                if let Some(version_str) = serde_line.split('"').nth(1) {
+                    if let Some(patch) = version_str.split('.').nth(2) {
+                        if let Ok(patch_num) = patch.parse::<u32>() {
+                            patch_num >= 200
+                        } else {
+                            false
+                        }
                     } else {
                         false
                     }
@@ -1119,10 +1143,7 @@ impl BenchmarkTask for B010DependencyUpdate {
                 }
             } else {
                 false
-            }
-        } else {
-            false
-        };
+            };
 
         if version_updated {
             messages.push("✓ serde updated to 1.0.200 or later".to_string());
@@ -1145,7 +1166,10 @@ impl BenchmarkTask for B010DependencyUpdate {
             messages.push("✗ Code does not compile".to_string());
         }
 
-        custom_metrics.insert("version_updated".to_string(), if version_updated { 1.0 } else { 0.0 });
+        custom_metrics.insert(
+            "version_updated".to_string(),
+            if version_updated { 1.0 } else { 0.0 },
+        );
         custom_metrics.insert("compiles".to_string(), if compiles { 1.0 } else { 0.0 });
 
         Ok(ValidationResult {
@@ -1214,7 +1238,10 @@ impl BenchmarkTask for B011ErrorRecovery {
                 messages.push("✓ Output file created with SUCCESS".to_string());
                 custom_metrics.insert("output_correct".to_string(), 1.0);
             } else {
-                messages.push(format!("✗ Output file exists but content is wrong: {}", content));
+                messages.push(format!(
+                    "✗ Output file exists but content is wrong: {}",
+                    content
+                ));
                 custom_metrics.insert("output_correct".to_string(), 0.0);
             }
         } else {
@@ -1227,7 +1254,10 @@ impl BenchmarkTask for B011ErrorRecovery {
         if data_created {
             messages.push("✓ Missing data file was created".to_string());
         }
-        custom_metrics.insert("data_created".to_string(), if data_created { 1.0 } else { 0.0 });
+        custom_metrics.insert(
+            "data_created".to_string(),
+            if data_created { 1.0 } else { 0.0 },
+        );
 
         let success = output_exists && output_path.exists();
 
@@ -1266,7 +1296,15 @@ impl BenchmarkTask for B012ContextGathering {
 
     fn setup(&self, workspace: &Path) -> Result<()> {
         // Create a realistic directory structure with 50+ files
-        let dirs = vec!["src", "src/api", "src/models", "src/utils", "src/auth", "tests", "docs"];
+        let dirs = vec![
+            "src",
+            "src/api",
+            "src/models",
+            "src/utils",
+            "src/auth",
+            "tests",
+            "docs",
+        ];
         for dir in dirs {
             std::fs::create_dir_all(workspace.join(dir))?;
         }
@@ -1333,9 +1371,12 @@ impl BenchmarkTask for B012ContextGathering {
         let answer_content = std::fs::read_to_string(workspace.join("ANSWER.md"))?;
 
         // Check if key files were identified
-        let found_login = answer_content.contains("auth/login") || answer_content.contains("login.rs");
-        let found_session = answer_content.contains("session") || answer_content.contains("session.rs");
-        let found_authenticate = answer_content.contains("authenticate") || answer_content.contains("verify");
+        let found_login =
+            answer_content.contains("auth/login") || answer_content.contains("login.rs");
+        let found_session =
+            answer_content.contains("session") || answer_content.contains("session.rs");
+        let found_authenticate =
+            answer_content.contains("authenticate") || answer_content.contains("verify");
 
         if found_login {
             messages.push("✓ Identified auth/login.rs".to_string());
@@ -1349,9 +1390,18 @@ impl BenchmarkTask for B012ContextGathering {
             messages.push("✗ Did not describe authentication".to_string());
         }
 
-        custom_metrics.insert("found_login".to_string(), if found_login { 1.0 } else { 0.0 });
-        custom_metrics.insert("found_session".to_string(), if found_session { 1.0 } else { 0.0 });
-        custom_metrics.insert("found_authenticate".to_string(), if found_authenticate { 1.0 } else { 0.0 });
+        custom_metrics.insert(
+            "found_login".to_string(),
+            if found_login { 1.0 } else { 0.0 },
+        );
+        custom_metrics.insert(
+            "found_session".to_string(),
+            if found_session { 1.0 } else { 0.0 },
+        );
+        custom_metrics.insert(
+            "found_authenticate".to_string(),
+            if found_authenticate { 1.0 } else { 0.0 },
+        );
 
         let success = found_login && found_authenticate;
 
@@ -1493,12 +1543,29 @@ impl BenchmarkTask for B013CrossFileConsistency {
             messages.push("✗ Code does not compile".to_string());
         }
 
-        custom_metrics.insert("field_added".to_string(), if field_added { 1.0 } else { 0.0 });
-        custom_metrics.insert("repo_updated".to_string(), if repo_create_updated && repo_default_updated { 1.0 } else { 0.0 });
-        custom_metrics.insert("service_updated".to_string(), if service_updated { 1.0 } else { 0.0 });
+        custom_metrics.insert(
+            "field_added".to_string(),
+            if field_added { 1.0 } else { 0.0 },
+        );
+        custom_metrics.insert(
+            "repo_updated".to_string(),
+            if repo_create_updated && repo_default_updated {
+                1.0
+            } else {
+                0.0
+            },
+        );
+        custom_metrics.insert(
+            "service_updated".to_string(),
+            if service_updated { 1.0 } else { 0.0 },
+        );
         custom_metrics.insert("compiles".to_string(), if compiles { 1.0 } else { 0.0 });
 
-        let success = field_added && repo_create_updated && repo_default_updated && service_updated && compiles;
+        let success = field_added
+            && repo_create_updated
+            && repo_default_updated
+            && service_updated
+            && compiles;
 
         Ok(ValidationResult {
             success,
@@ -1580,7 +1647,8 @@ impl BenchmarkTask for B014PerformanceOptimization {
         let lib_content = std::fs::read_to_string(workspace.join("lib.rs"))?;
 
         // Check that temp_vec allocation was removed
-        let allocation_removed = !lib_content.contains("vec![doubled]") && !lib_content.contains("temp_vec");
+        let allocation_removed =
+            !lib_content.contains("vec![doubled]") && !lib_content.contains("temp_vec");
 
         if allocation_removed {
             messages.push("✓ Unnecessary allocation removed".to_string());
@@ -1608,7 +1676,10 @@ impl BenchmarkTask for B014PerformanceOptimization {
             messages.push("✗ Tests failing after optimization".to_string());
         }
 
-        custom_metrics.insert("allocation_removed".to_string(), if allocation_removed { 1.0 } else { 0.0 });
+        custom_metrics.insert(
+            "allocation_removed".to_string(),
+            if allocation_removed { 1.0 } else { 0.0 },
+        );
         custom_metrics.insert("tests_pass".to_string(), if tests_pass { 1.0 } else { 0.0 });
 
         let success = allocation_removed && tests_pass;
@@ -1723,8 +1794,14 @@ impl BenchmarkTask for B015SecurityFix {
             messages.push("✗ Code does not compile".to_string());
         }
 
-        custom_metrics.insert("format_removed".to_string(), if format_removed { 1.0 } else { 0.0 });
-        custom_metrics.insert("uses_params".to_string(), if uses_params { 1.0 } else { 0.0 });
+        custom_metrics.insert(
+            "format_removed".to_string(),
+            if format_removed { 1.0 } else { 0.0 },
+        );
+        custom_metrics.insert(
+            "uses_params".to_string(),
+            if uses_params { 1.0 } else { 0.0 },
+        );
         custom_metrics.insert("compiles".to_string(), if compiles { 1.0 } else { 0.0 });
 
         let success = format_removed && uses_params && compiles;

@@ -14,6 +14,9 @@
 use crate::color::Hsla;
 
 pub mod dynamic;
+pub mod color;
+pub mod style;
+pub mod builder;
 
 /// Background colors aligned with Tailwind's dark theme.
 pub mod bg {

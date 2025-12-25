@@ -22,9 +22,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut trajectory = Trajectory::new(
         task.to_string(),
         "claude-sonnet-4-5".to_string(),
-        std::env::current_dir()?
-            .to_string_lossy()
-            .to_string(),
+        std::env::current_dir()?.to_string_lossy().to_string(),
         "example".to_string(),
         Some("main".to_string()),
     );

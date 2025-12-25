@@ -46,7 +46,10 @@ pub enum RecoveryAction {
     /// Use Glob to list directory contents
     UseGlob(String),
     /// Use Grep to search for file
-    UseGrep { pattern: String, path: Option<PathBuf> },
+    UseGrep {
+        pattern: String,
+        path: Option<PathBuf>,
+    },
     /// Retry with corrected path
     RetryWithPath(PathBuf),
     /// Suggest alternative approach
@@ -162,9 +165,9 @@ impl ErrorRecovery {
         let normalized = self.normalize_path(path_str)?;
 
         if Path::new(&normalized).exists() {
-            Ok(RecoveryResult::Recovered(
-                RecoveryAction::RetryWithPath(PathBuf::from(normalized)),
-            ))
+            Ok(RecoveryResult::Recovered(RecoveryAction::RetryWithPath(
+                PathBuf::from(normalized),
+            )))
         } else {
             Ok(RecoveryResult::Failed(format!(
                 "Path '{}' is invalid and cannot be normalized",
@@ -352,7 +355,9 @@ mod tests {
 
         // Test home directory expansion
         // SAFETY: This is a test-only operation that sets HOME env var
-        unsafe { std::env::set_var("HOME", "/home/test"); }
+        unsafe {
+            std::env::set_var("HOME", "/home/test");
+        }
         let normalized = recovery.normalize_path("~/file.txt").unwrap();
         assert!(normalized.starts_with("/home/test"));
     }

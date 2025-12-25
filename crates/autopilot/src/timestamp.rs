@@ -37,7 +37,13 @@ pub fn generate_slug(prompt: &str) -> String {
         .join("-")
         .to_lowercase()
         .chars()
-        .map(|c| if c.is_alphanumeric() || c == '-' { c } else { '-' })
+        .map(|c| {
+            if c.is_alphanumeric() || c == '-' {
+                c
+            } else {
+                '-'
+            }
+        })
         .collect::<String>();
 
     // Remove consecutive dashes and trim
@@ -65,7 +71,10 @@ mod tests {
 
     #[test]
     fn test_generate_slug() {
-        assert_eq!(generate_slug("Say hello and list files"), "say-hello-and-list");
+        assert_eq!(
+            generate_slug("Say hello and list files"),
+            "say-hello-and-list"
+        );
         assert_eq!(generate_slug("Fix the bug!"), "fix-the-bug");
         assert_eq!(generate_slug("a b c d e f"), ""); // Skips all single chars, returns empty
         assert_eq!(generate_slug("Read README.md"), "read-readme-md");

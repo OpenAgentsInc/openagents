@@ -9,7 +9,7 @@
 //! When a trigger fires, it signals the daemon supervisor to spawn a worker.
 
 use anyhow::{Context, Result};
-use nostr::{npub_to_public_key, AgentSchedule, Event, TriggerType};
+use nostr::{AgentSchedule, Event, TriggerType, npub_to_public_key};
 use nostr_client::{PoolConfig, RelayPool};
 use serde_json::json;
 use std::collections::HashSet;
@@ -29,20 +29,11 @@ pub enum TriggerEvent {
     /// Heartbeat timer expired
     Heartbeat,
     /// Agent was mentioned in a note
-    Mention {
-        event_id: String,
-        author: String,
-    },
+    Mention { event_id: String, author: String },
     /// Agent received a DM
-    DirectMessage {
-        event_id: String,
-        author: String,
-    },
+    DirectMessage { event_id: String, author: String },
     /// Agent received a zap
-    Zap {
-        event_id: String,
-        amount_msats: u64,
-    },
+    Zap { event_id: String, amount_msats: u64 },
 }
 
 /// Nostr trigger watcher that monitors relays for agent activation events
@@ -116,7 +107,9 @@ impl NostrTrigger {
             }
         }
 
-        pool.connect_all().await.context("Failed to connect to relays")?;
+        pool.connect_all()
+            .await
+            .context("Failed to connect to relays")?;
 
         self.relay_pool = Some(Arc::new(pool));
         Ok(())
@@ -128,11 +121,7 @@ impl NostrTrigger {
         // For now, use default schedule
         let default_schedule = AgentSchedule {
             heartbeat_seconds: Some(900), // 15 minutes
-            triggers: vec![
-                TriggerType::Mention,
-                TriggerType::Dm,
-                TriggerType::Zap,
-            ],
+            triggers: vec![TriggerType::Mention, TriggerType::Dm, TriggerType::Zap],
         };
 
         self.enabled_triggers = default_schedule.triggers.iter().cloned().collect();
@@ -142,10 +131,7 @@ impl NostrTrigger {
     }
 
     /// Start watching for triggers and send to channel
-    pub async fn watch(
-        mut self,
-        tx: mpsc::UnboundedSender<TriggerEvent>,
-    ) -> Result<()> {
+    pub async fn watch(mut self, tx: mpsc::UnboundedSender<TriggerEvent>) -> Result<()> {
         // Update schedule on startup
         self.update_schedule().await?;
 
@@ -190,7 +176,12 @@ impl NostrTrigger {
             sleep(Duration::from_secs(10)).await;
 
             // Periodically refresh schedule (every 5 minutes)
-            if self.last_heartbeat.as_ref().map(|t| t.elapsed().as_secs() > 300).unwrap_or(false) {
+            if self
+                .last_heartbeat
+                .as_ref()
+                .map(|t| t.elapsed().as_secs() > 300)
+                .unwrap_or(false)
+            {
                 if let Err(e) = self.update_schedule().await {
                     eprintln!("NostrTrigger: Error updating schedule: {}", e);
                 }
@@ -200,7 +191,9 @@ impl NostrTrigger {
 
     /// Start subscription to relay events
     async fn start_subscription(&self) -> Result<mpsc::Receiver<Event>> {
-        let pool = self.relay_pool.as_ref()
+        let pool = self
+            .relay_pool
+            .as_ref()
             .context("Relay pool not initialized")?;
 
         // Build filters based on enabled triggers
@@ -239,7 +232,9 @@ impl NostrTrigger {
         }
 
         let subscription_id = format!("autopilot-{}", &self.agent_pubkey[..8]);
-        let rx = pool.subscribe(&subscription_id, &filters).await
+        let rx = pool
+            .subscribe(&subscription_id, &filters)
+            .await
             .context("Failed to subscribe to relays")?;
 
         eprintln!("NostrTrigger: Subscribed with {} filters", filters.len());
@@ -261,9 +256,10 @@ impl NostrTrigger {
             let trigger = match kind {
                 k if k == KIND_TEXT_NOTE && enabled_triggers.contains(&TriggerType::Mention) => {
                     // Check if we're actually mentioned (in tags or content)
-                    let mentioned_in_tags = event.tags.iter().any(|tag| {
-                        tag.len() >= 2 && tag[0] == "p" && tag[1] == agent_pubkey
-                    });
+                    let mentioned_in_tags = event
+                        .tags
+                        .iter()
+                        .any(|tag| tag.len() >= 2 && tag[0] == "p" && tag[1] == agent_pubkey);
                     let mentioned_in_content = event.content.contains(&agent_pubkey);
 
                     if mentioned_in_tags || mentioned_in_content {
@@ -300,7 +296,6 @@ impl NostrTrigger {
             }
         }
     }
-
 }
 
 /// Extract zap amount from a zap receipt event

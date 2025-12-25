@@ -3,7 +3,7 @@
 //! These tests capture HTML output from dashboard rendering functions
 //! to catch unintended UI regressions when refactoring.
 
-use crate::dashboard::{dashboard_page, summary_card, sessions_table, SummaryStats};
+use crate::dashboard::{SummaryStats, dashboard_page, sessions_table, summary_card};
 use crate::metrics::{SessionMetrics, SessionStatus};
 use chrono::Utc;
 use insta::assert_snapshot;
@@ -38,17 +38,13 @@ fn create_test_session(
         messages: 10,
         apm: Some(20.0), // (10 messages + 25 tool_calls) / 5 minutes = 7.0 APM
         source: "autopilot".to_string(),
-            issue_numbers: None,
-            directive_id: None,
+        issue_numbers: None,
+        directive_id: None,
     }
 }
 
 /// Create test summary stats
-fn create_test_stats(
-    total_sessions: i64,
-    total_issues: i64,
-    cost: f64,
-) -> SummaryStats {
+fn create_test_stats(total_sessions: i64, total_issues: i64, cost: f64) -> SummaryStats {
     SummaryStats {
         total_sessions,
         total_issues_completed: total_issues,
@@ -71,9 +67,12 @@ fn test_dashboard_empty_state() {
 
 #[test]
 fn test_dashboard_with_successful_session() {
-    let sessions = vec![
-        create_test_session("session-001", SessionStatus::Completed, 3, 0),
-    ];
+    let sessions = vec![create_test_session(
+        "session-001",
+        SessionStatus::Completed,
+        3,
+        0,
+    )];
     let stats = create_test_stats(1, 3, 1.50);
 
     let html = dashboard_page(&sessions, &stats);
@@ -83,9 +82,12 @@ fn test_dashboard_with_successful_session() {
 
 #[test]
 fn test_dashboard_with_error_session() {
-    let sessions = vec![
-        create_test_session("session-002", SessionStatus::Crashed, 0, 5),
-    ];
+    let sessions = vec![create_test_session(
+        "session-002",
+        SessionStatus::Crashed,
+        0,
+        5,
+    )];
     let stats = create_test_stats(1, 0, 0.75);
 
     let html = dashboard_page(&sessions, &stats);
@@ -95,9 +97,12 @@ fn test_dashboard_with_error_session() {
 
 #[test]
 fn test_dashboard_with_timeout_session() {
-    let sessions = vec![
-        create_test_session("session-003", SessionStatus::MaxTurns, 1, 2),
-    ];
+    let sessions = vec![create_test_session(
+        "session-003",
+        SessionStatus::MaxTurns,
+        1,
+        2,
+    )];
     let stats = create_test_stats(1, 1, 2.00);
 
     let html = dashboard_page(&sessions, &stats);
@@ -169,9 +174,12 @@ fn test_sessions_table_empty() {
 
 #[test]
 fn test_sessions_table_single_session() {
-    let sessions = vec![
-        create_test_session("session-001", SessionStatus::Completed, 3, 0),
-    ];
+    let sessions = vec![create_test_session(
+        "session-001",
+        SessionStatus::Completed,
+        3,
+        0,
+    )];
 
     let markup = sessions_table(&sessions);
     let html = markup.into_string();

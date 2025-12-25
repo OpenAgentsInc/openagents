@@ -10,7 +10,7 @@
 //! cargo run --example issue_workflow
 //! ```
 
-use issues::{db, issue, Priority, IssueType, Status};
+use issues::{IssueType, Priority, Status, db, issue};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("🎯 Autopilot Issue Workflow Example");
@@ -32,7 +32,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Some("claude"),
         None,
     )?;
-    println!("  #{}: {} [{:?}]", issue1.number, issue1.title, issue1.priority);
+    println!(
+        "  #{}: {} [{:?}]",
+        issue1.number, issue1.title, issue1.priority
+    );
 
     let issue2 = issue::create_issue(
         &conn,
@@ -43,7 +46,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Some("claude"),
         None,
     )?;
-    println!("  #{}: {} [{:?}]", issue2.number, issue2.title, issue2.priority);
+    println!(
+        "  #{}: {} [{:?}]",
+        issue2.number, issue2.title, issue2.priority
+    );
 
     let issue3 = issue::create_issue(
         &conn,
@@ -54,7 +60,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Some("claude"),
         None,
     )?;
-    println!("  #{}: {} [{:?}]", issue3.number, issue3.title, issue3.priority);
+    println!(
+        "  #{}: {} [{:?}]",
+        issue3.number, issue3.title, issue3.priority
+    );
 
     let issue4 = issue::create_issue(
         &conn,
@@ -65,7 +74,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Some("claude"),
         None,
     )?;
-    println!("  #{}: {} [{:?}]", issue4.number, issue4.title, issue4.priority);
+    println!(
+        "  #{}: {} [{:?}]",
+        issue4.number, issue4.title, issue4.priority
+    );
 
     println!("\n✓ Created {} issues\n", 4);
 

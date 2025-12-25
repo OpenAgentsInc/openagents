@@ -98,7 +98,10 @@ impl<'a> BaselineCalculator<'a> {
     }
 
     /// Calculate baselines for all dimensions from recent sessions
-    pub fn calculate_baselines(&self, sessions: &[SessionMetrics]) -> Result<HashMap<String, Baseline>> {
+    pub fn calculate_baselines(
+        &self,
+        sessions: &[SessionMetrics],
+    ) -> Result<HashMap<String, Baseline>> {
         let mut baselines = HashMap::new();
 
         for dimension in MetricDimension::all() {
@@ -158,7 +161,10 @@ impl<'a> BaselineCalculator<'a> {
         let valid_values: Vec<f64> = values.iter().copied().filter(|v| !v.is_nan()).collect();
 
         if valid_values.is_empty() {
-            anyhow::bail!("No valid values (all NaN) to compute baseline for dimension: {}", dimension);
+            anyhow::bail!(
+                "No valid values (all NaN) to compute baseline for dimension: {}",
+                dimension
+            );
         }
 
         let mut sorted = valid_values.clone();
@@ -166,10 +172,7 @@ impl<'a> BaselineCalculator<'a> {
 
         let mean = valid_values.iter().sum::<f64>() / valid_values.len() as f64;
 
-        let variance = valid_values
-            .iter()
-            .map(|v| (v - mean).powi(2))
-            .sum::<f64>()
+        let variance = valid_values.iter().map(|v| (v - mean).powi(2)).sum::<f64>()
             / valid_values.len() as f64;
         let stddev = variance.sqrt();
 
@@ -243,7 +246,9 @@ impl<'a> BaselineComparator<'a> {
             // Check for regression (metric is worse than baseline)
             let regression_detected = match dimension {
                 // Lower is better
-                MetricDimension::ToolErrorRate | MetricDimension::AvgDuration | MetricDimension::AvgCost => {
+                MetricDimension::ToolErrorRate
+                | MetricDimension::AvgDuration
+                | MetricDimension::AvgCost => {
                     current_baseline.mean > stored_baseline.mean * 1.10 // >10% worse
                 }
                 // Higher is better
@@ -252,12 +257,14 @@ impl<'a> BaselineComparator<'a> {
                 }
                 // Stable is better
                 MetricDimension::AvgTokens => {
-                    (current_baseline.mean - stored_baseline.mean).abs() > stored_baseline.mean * 0.20 // >20% change
+                    (current_baseline.mean - stored_baseline.mean).abs()
+                        > stored_baseline.mean * 0.20 // >20% change
                 }
             };
 
             if regression_detected {
-                let percent_change = ((current_baseline.mean - stored_baseline.mean) / stored_baseline.mean) * 100.0;
+                let percent_change =
+                    ((current_baseline.mean - stored_baseline.mean) / stored_baseline.mean) * 100.0;
 
                 regressions.push(Regression {
                     dimension: dimension,
@@ -321,7 +328,10 @@ impl<'a> BaselineReportGenerator<'a> {
         let mut report = String::new();
 
         report.push_str("# Autopilot Baseline Metrics\n\n");
-        report.push_str(&format!("Generated: {}\n\n", Utc::now().format("%Y-%m-%d %H:%M UTC")));
+        report.push_str(&format!(
+            "Generated: {}\n\n",
+            Utc::now().format("%Y-%m-%d %H:%M UTC")
+        ));
 
         report.push_str("## Current Baselines\n\n");
         report.push_str("| Dimension | Mean | StdDev | p50 | p90 | p99 | Samples |\n");
@@ -383,12 +393,12 @@ mod tests {
                 tool_calls: 20,
                 tool_errors: i % 5, // Varying error rates
                 final_status: SessionStatus::Completed,
-            messages: 10,
-            apm: None,
-            source: "autopilot".to_string(),
+                messages: 10,
+                apm: None,
+                source: "autopilot".to_string(),
                 issue_numbers: None,
                 directive_id: None,
-        };
+            };
             sessions.push(session);
         }
 
@@ -437,12 +447,12 @@ mod tests {
                 tool_calls: 20,
                 tool_errors: 3, // 15% error rate (3x baseline)
                 final_status: SessionStatus::Completed,
-            messages: 10,
-            apm: None,
-            source: "autopilot".to_string(),
+                messages: 10,
+                apm: None,
+                source: "autopilot".to_string(),
                 issue_numbers: None,
                 directive_id: None,
-        };
+            };
             sessions.push(session);
         }
 

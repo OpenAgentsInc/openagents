@@ -26,7 +26,12 @@ impl GoalManager {
     }
 
     /// Add a new goal
-    pub fn add_goal(&mut self, id: impl Into<String>, description: impl Into<String>, priority: u32) -> &Goal {
+    pub fn add_goal(
+        &mut self,
+        id: impl Into<String>,
+        description: impl Into<String>,
+        priority: u32,
+    ) -> &Goal {
         let goal = Goal::new(id, description, priority);
         self.state.add_goal(goal);
         self.state.goals.last().unwrap()
@@ -34,7 +39,8 @@ impl GoalManager {
 
     /// Update goal progress
     pub fn update_progress(&mut self, goal_id: &str, progress: f64) -> Result<()> {
-        let goal = self.find_goal_mut(goal_id)
+        let goal = self
+            .find_goal_mut(goal_id)
             .context(format!("Goal not found: {}", goal_id))?;
         goal.update_progress(progress);
         Ok(())
@@ -42,7 +48,8 @@ impl GoalManager {
 
     /// Pause a goal
     pub fn pause_goal(&mut self, goal_id: &str) -> Result<()> {
-        let goal = self.find_goal_mut(goal_id)
+        let goal = self
+            .find_goal_mut(goal_id)
             .context(format!("Goal not found: {}", goal_id))?;
         goal.pause();
         Ok(())
@@ -50,7 +57,8 @@ impl GoalManager {
 
     /// Resume a goal
     pub fn resume_goal(&mut self, goal_id: &str) -> Result<()> {
-        let goal = self.find_goal_mut(goal_id)
+        let goal = self
+            .find_goal_mut(goal_id)
             .context(format!("Goal not found: {}", goal_id))?;
         goal.resume();
         Ok(())
@@ -58,7 +66,8 @@ impl GoalManager {
 
     /// Cancel a goal
     pub fn cancel_goal(&mut self, goal_id: &str) -> Result<()> {
-        let goal = self.find_goal_mut(goal_id)
+        let goal = self
+            .find_goal_mut(goal_id)
             .context(format!("Goal not found: {}", goal_id))?;
         goal.cancel();
         Ok(())
@@ -66,7 +75,11 @@ impl GoalManager {
 
     /// Remove a goal by ID
     pub fn remove_goal(&mut self, goal_id: &str) -> Result<()> {
-        let index = self.state.goals.iter().position(|g| g.id == goal_id)
+        let index = self
+            .state
+            .goals
+            .iter()
+            .position(|g| g.id == goal_id)
             .context(format!("Goal not found: {}", goal_id))?;
         self.state.goals.remove(index);
         Ok(())
@@ -79,14 +92,18 @@ impl GoalManager {
 
     /// Get active goals only
     pub fn get_active_goals(&self) -> Vec<&Goal> {
-        self.state.goals.iter()
+        self.state
+            .goals
+            .iter()
             .filter(|g| g.status == GoalStatus::Active)
             .collect()
     }
 
     /// Get completed goals
     pub fn get_completed_goals(&self) -> Vec<&Goal> {
-        self.state.goals.iter()
+        self.state
+            .goals
+            .iter()
             .filter(|g| g.status == GoalStatus::Completed)
             .collect()
     }
@@ -109,12 +126,16 @@ impl GoalManager {
 
     /// Associate a goal with an issue number
     pub fn link_goal_to_issue(&mut self, goal_id: &str, issue_number: u32) -> Result<()> {
-        let goal = self.find_goal_mut(goal_id)
+        let goal = self
+            .find_goal_mut(goal_id)
             .context(format!("Goal not found: {}", goal_id))?;
 
         // Store issue number in description or add metadata
         // For now, we'll update the description to include the issue reference
-        if !goal.description.contains(&format!("#issue-{}", issue_number)) {
+        if !goal
+            .description
+            .contains(&format!("#issue-{}", issue_number))
+        {
             goal.description = format!("{} #issue-{}", goal.description, issue_number);
         }
 

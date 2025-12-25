@@ -23,6 +23,7 @@
 
 pub mod accessibility;
 pub mod animation;
+pub mod bleeps;
 pub mod color;
 pub mod components;
 pub mod effects;
@@ -38,6 +39,8 @@ pub mod scene;
 pub mod scroll;
 pub mod text;
 pub mod theme;
+pub mod tools;
+pub mod styles;
 
 pub use color::Hsla;
 pub use geometry::{Bounds, Edges, Point, Size};
@@ -62,14 +65,19 @@ pub use markdown::{
 pub use animation::{
     Animation, AnimationController, AnimationState, Animatable,
     AnimatorId, AnimatorManagerKind, AnimatorMessage, AnimatorNode, AnimatorSettings,
-    AnimatorState, AnimatorTiming, Easing, Keyframe, KeyframeAnimation, SpringAnimation,
-    Transition, TransitionAnimation, draw, fade, flicker,
+    AnimatorState, AnimatorTiming, EaseAmong, EaseSteps, EaseStepsDirection, Easing,
+    Keyframe, KeyframeAnimation, SpringAnimation,
+    Transition, TransitionAnimation, draw, ease_among, ease_steps, fade, flicker, transition,
 };
 pub use accessibility::{
     AccessibilityContext, AccessibilityTree, AccessibleId, AccessibleNode,
     Announcement, LiveRegion, Role, State as AccessibleState,
 };
 pub use components::hud::{ContextMenu, MenuItem, Tooltip, TooltipPosition};
+pub use bleeps::{
+    Bleep, BleepCategory, BleepGeneralProps, BleepMasterProps, BleepProps, BleepsManager,
+    BleepsManagerProps, BleepsManagerUpdate, BleepSource, BleepUpdate,
+};
 
 #[cfg(all(feature = "web", target_arch = "wasm32"))]
 pub use platform::web::{WebPlatform, run_animation_loop, setup_resize_observer};
