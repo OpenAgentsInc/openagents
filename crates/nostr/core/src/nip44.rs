@@ -411,6 +411,7 @@ pub fn decrypt(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use bitcoin::secp256k1::Secp256k1;
 
     #[test]
     fn test_calc_padded_len() {
@@ -481,6 +482,24 @@ mod tests {
         assert!(matches!(result, Err(Nip44Error::InvalidPadding)));
     }
 
-    // Note: Full encryption/decryption tests would require valid secp256k1 key pairs
-    // and are better suited for integration tests
+    #[test]
+    fn test_encrypt_decrypt_roundtrip() {
+        let secp = Secp256k1::new();
+        let sender_sk = SecretKey::from_slice(&[1u8; 32]).unwrap();
+        let recipient_sk = SecretKey::from_slice(&[2u8; 32]).unwrap();
+        let sender_pk = PublicKey::from_secret_key(&secp, &sender_sk);
+        let recipient_pk = PublicKey::from_secret_key(&secp, &recipient_sk);
+
+        let sender_secret = sender_sk.secret_bytes();
+        let recipient_secret = recipient_sk.secret_bytes();
+        let recipient_pub = recipient_pk.serialize();
+        let sender_pub = sender_pk.serialize();
+
+        let plaintext = "Hello NIP-44";
+        let encrypted = encrypt(&sender_secret, &recipient_pub, plaintext).unwrap();
+        assert_ne!(encrypted, plaintext);
+
+        let decrypted = decrypt(&recipient_secret, &sender_pub, &encrypted).unwrap();
+        assert_eq!(decrypted, plaintext);
+    }
 }

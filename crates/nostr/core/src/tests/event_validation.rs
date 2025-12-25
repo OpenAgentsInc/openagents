@@ -374,6 +374,62 @@ mod signature_verification {
 }
 
 // =============================================================================
+// Event Kind Creation Tests
+// =============================================================================
+
+#[cfg(feature = "full")]
+mod kind_event_creation {
+    use super::*;
+
+    #[test]
+    fn test_create_metadata_event_kind_0() {
+        let secret_key = generate_secret_key();
+        let template = EventTemplate {
+            created_at: 1234567890,
+            kind: 0,
+            tags: vec![],
+            content: "{\"name\":\"alice\",\"about\":\"test\"}".to_string(),
+        };
+
+        let event = finalize_event(&template, &secret_key).unwrap();
+        assert_eq!(event.kind, 0);
+        assert!(verify_event(&event).unwrap());
+    }
+
+    #[test]
+    fn test_create_ephemeral_event_kind_20000() {
+        let secret_key = generate_secret_key();
+        let template = EventTemplate {
+            created_at: 1234567890,
+            kind: 20000,
+            tags: vec![vec!["t".to_string(), "ephemeral".to_string()]],
+            content: "ephemeral payload".to_string(),
+        };
+
+        let event = finalize_event(&template, &secret_key).unwrap();
+        assert_eq!(event.kind, 20000);
+        assert!(verify_event(&event).unwrap());
+    }
+
+    #[test]
+    fn test_create_parameterized_replaceable_event_kind_30000() {
+        let secret_key = generate_secret_key();
+        let template = EventTemplate {
+            created_at: 1234567890,
+            kind: 30000,
+            tags: vec![vec!["d".to_string(), "profile".to_string()]],
+            content: "addressable content".to_string(),
+        };
+
+        let event = finalize_event(&template, &secret_key).unwrap();
+        assert_eq!(event.kind, 30000);
+        assert_eq!(event.tags.len(), 1);
+        assert_eq!(event.tags[0][0], "d");
+        assert!(verify_event(&event).unwrap());
+    }
+}
+
+// =============================================================================
 // Event ID Verification Tests
 // =============================================================================
 
