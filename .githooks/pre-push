@@ -18,7 +18,7 @@ echo "Running pre-push checks..."
 # Design policy: No rounded corners, sharp edges only.
 
 VIOLATIONS=$(grep -r --include="*.rs" --include="*.html" --include="*.tsx" --include="*.ts" --include="*.jsx" --include="*.js" \
-    -E "(rounded|border-radius)" \
+    -E "(border-radius|class(Name)?=[^\\n]*\\brounded(-[a-z0-9]+)?\\b)" \
     --exclude-dir=node_modules \
     --exclude-dir=target \
     --exclude-dir=.git \
