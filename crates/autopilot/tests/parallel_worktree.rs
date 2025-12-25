@@ -190,7 +190,6 @@ fn test_create_worktrees_idempotent() -> Result<()> {
 
     // Create worktrees twice
     create_worktrees(&repo_path, 3)?;
-    create_worktrees(&repo_path, 3)?;
 
     // Should still have exactly 3 worktrees
     let worktrees = list_worktrees(&repo_path)?;

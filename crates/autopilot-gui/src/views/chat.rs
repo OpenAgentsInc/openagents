@@ -563,3 +563,64 @@ impl MessageHeaderExt for MessageHeader {
         self
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::mpsc;
+    use wgpui::{EventContext, Modifiers, NamedKey, Scene, TextSystem};
+
+    fn make_context(scale: f32) -> (Scene, TextSystem) {
+        (Scene::new(), TextSystem::new(scale))
+    }
+
+    #[test]
+    fn test_chat_view_builds_layout_from_entries() {
+        let state = Rc::new(RefCell::new(AppState::new()));
+        state.borrow_mut().set_chat_entries(vec![
+            ChatEntry::User {
+                text: "Hello".to_string(),
+                timestamp: None,
+            },
+            ChatEntry::Assistant {
+                text: "Hi there".to_string(),
+                timestamp: None,
+                streaming: false,
+            },
+        ]);
+
+        let (tx, _rx) = mpsc::channel();
+        let mut view = ChatView::new(state, tx);
+        let bounds = Bounds::new(0.0, 0.0, 640.0, 480.0);
+        let (mut scene, mut text) = make_context(1.0);
+        let mut cx = wgpui::PaintContext::new(&mut scene, &mut text, 1.0);
+
+        view.paint(bounds, &mut cx);
+
+        assert_eq!(view.layout_entries.len(), 2);
+        assert!(view.content_height > 0.0);
+    }
+
+    #[test]
+    fn test_chat_view_sends_prompt() {
+        let state = Rc::new(RefCell::new(AppState::new()));
+        let (tx, rx) = mpsc::channel();
+        let mut view = ChatView::new(state, tx);
+        let bounds = Bounds::new(0.0, 0.0, 640.0, 320.0);
+
+        view.editor.set_value("Ship it");
+        view.editor.focus();
+
+        let mut event_cx = EventContext::new();
+        let event = InputEvent::KeyDown {
+            key: wgpui::Key::Named(NamedKey::Enter),
+            modifiers: Modifiers::default(),
+        };
+
+        let result = view.event(&event, bounds, &mut event_cx);
+        assert!(matches!(result, EventResult::Handled));
+
+        let cmd = rx.try_recv().expect("command");
+        assert!(matches!(cmd, BackendCommand::RunPrompt { ref prompt } if prompt == "Ship it"));
+    }
+}

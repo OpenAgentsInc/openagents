@@ -307,6 +307,14 @@ mod tests {
     }
 
     #[test]
+    fn test_message_editor_set_streaming() {
+        let mut editor = MessageEditor::new();
+        assert!(!editor.is_streaming());
+        editor.set_streaming(true);
+        assert!(editor.is_streaming());
+    }
+
+    #[test]
     fn test_message_editor_value() {
         let mut editor = MessageEditor::new();
         editor.set_value("Hello");

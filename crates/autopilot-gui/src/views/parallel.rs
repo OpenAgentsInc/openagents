@@ -336,3 +336,107 @@ impl Component for ParallelView {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use autopilot::parallel::{AgentInfo, AgentStatus};
+    use std::sync::mpsc;
+    use wgpui::{EventContext, Modifiers, MouseButton};
+
+    fn control_anchor(bounds: Bounds) -> f32 {
+        let padding = theme::spacing::MD;
+        let line_height = theme::font_size::SM * 1.5;
+        let line_height_xs = theme::font_size::XS * 1.5;
+        let mut y = bounds.origin.y + padding + line_height * 4.0;
+        y += theme::spacing::SM + line_height_xs + theme::spacing::XS;
+        y
+    }
+
+    #[test]
+    fn test_parallel_view_start_sends_command() {
+        let state = Rc::new(RefCell::new(AppState::new()));
+        state.borrow_mut().parallel_platform.max_agents = 5;
+        let (tx, rx) = mpsc::channel();
+        let mut view = ParallelView::new(state, tx);
+        let bounds = Bounds::new(0.0, 0.0, 480.0, 320.0);
+
+        let y = control_anchor(bounds);
+        let button_size = view.start_button.size_hint();
+        let controls = view.control_layout(bounds, y, button_size);
+
+        let mut cx = EventContext::new();
+        let down = InputEvent::MouseDown {
+            button: MouseButton::Left,
+            x: controls.button.origin.x + 2.0,
+            y: controls.button.origin.y + 2.0,
+        };
+        let up = InputEvent::MouseUp {
+            button: MouseButton::Left,
+            x: controls.button.origin.x + 2.0,
+            y: controls.button.origin.y + 2.0,
+        };
+
+        view.event(&down, bounds, &mut cx);
+        view.event(&up, bounds, &mut cx);
+
+        let cmd = rx.try_recv().expect("command");
+        assert!(matches!(cmd, BackendCommand::StartParallel { count: 3 }));
+    }
+
+    #[test]
+    fn test_parallel_view_stop_sends_command() {
+        let state = Rc::new(RefCell::new(AppState::new()));
+        state.borrow_mut().agents = vec![AgentInfo {
+            id: "001".to_string(),
+            container_name: "agent-001".to_string(),
+            status: AgentStatus::Running,
+            current_issue: Some(42),
+            uptime_seconds: Some(10),
+        }];
+
+        let (tx, rx) = mpsc::channel();
+        let mut view = ParallelView::new(state, tx);
+        let bounds = Bounds::new(0.0, 0.0, 480.0, 320.0);
+
+        let y = control_anchor(bounds);
+        let button_size = view.stop_button.size_hint();
+        let controls = view.control_layout(bounds, y, button_size);
+
+        let mut cx = EventContext::new();
+        let down = InputEvent::MouseDown {
+            button: MouseButton::Left,
+            x: controls.button.origin.x + 2.0,
+            y: controls.button.origin.y + 2.0,
+        };
+        let up = InputEvent::MouseUp {
+            button: MouseButton::Left,
+            x: controls.button.origin.x + 2.0,
+            y: controls.button.origin.y + 2.0,
+        };
+
+        view.event(&down, bounds, &mut cx);
+        view.event(&up, bounds, &mut cx);
+
+        let cmd = rx.try_recv().expect("command");
+        assert!(matches!(cmd, BackendCommand::StopParallel));
+    }
+
+    #[test]
+    fn test_parallel_view_accepts_text_input() {
+        let state = Rc::new(RefCell::new(AppState::new()));
+        let (tx, _rx) = mpsc::channel();
+        let mut view = ParallelView::new(state, tx);
+        view.count_input.focus();
+        let bounds = Bounds::new(0.0, 0.0, 480.0, 320.0);
+        let mut cx = EventContext::new();
+
+        let event = InputEvent::KeyDown {
+            key: wgpui::Key::Character("7".to_string()),
+            modifiers: Modifiers::default(),
+        };
+        let result = view.event(&event, bounds, &mut cx);
+        assert!(matches!(result, EventResult::Handled));
+        assert!(view.count_input.get_value().contains('7'));
+    }
+}

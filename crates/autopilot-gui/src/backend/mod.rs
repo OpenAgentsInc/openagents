@@ -1093,3 +1093,217 @@ fn find_latest_log(logs_dir: &Path, extensions: &[&str]) -> Option<PathBuf> {
 
     logs.first().map(|entry| entry.path())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+    use std::time::Duration;
+
+    fn record(kind: &str, message: serde_json::Value) -> String {
+        json!({
+            "type": kind,
+            "message": message,
+            "timestamp": "2025-01-01T00:00:00Z"
+        })
+        .to_string()
+    }
+
+    #[test]
+    fn test_parse_jsonl_chat_stream_and_tool_calls() {
+        let system_init = json!({
+            "subtype": "init",
+            "agents": ["default"],
+            "apiKeySource": "none",
+            "betas": null,
+            "claude_code_version": "1.0.0",
+            "cwd": "/workspace",
+            "tools": ["Bash"],
+            "mcp_servers": [],
+            "model": "claude-sonnet-4-5-20250929",
+            "permissionMode": "bypassPermissions",
+            "slash_commands": [],
+            "output_style": "default",
+            "skills": [],
+            "plugins": [],
+            "uuid": "00000000-0000-0000-0000-000000000000",
+            "session_id": "session-123"
+        });
+
+        let user_message = json!({
+            "role": "user",
+            "content": [
+                { "type": "text", "text": "run command" }
+            ]
+        });
+
+        let stream_start = json!({
+            "type": "content_block_start",
+            "content_block": { "type": "text" }
+        });
+        let stream_delta = json!({
+            "type": "content_block_delta",
+            "delta": { "type": "text_delta", "text": "Working..." }
+        });
+        let stream_stop = json!({
+            "type": "content_block_stop"
+        });
+
+        let assistant_message = json!({
+            "role": "assistant",
+            "content": [
+                { "type": "text", "text": "Working..." },
+                { "type": "tool_use", "id": "toolu_1", "name": "Bash", "input": { "command": "ls -la" } }
+            ]
+        });
+
+        let tool_result = json!({
+            "role": "user",
+            "content": [
+                { "type": "tool_result", "tool_use_id": "toolu_1", "is_error": false, "content": "ok" }
+            ]
+        });
+
+        let content = vec![
+            record("system", system_init),
+            record("user", user_message),
+            record("stream_event", stream_start),
+            record("stream_event", stream_delta),
+            record("stream_event", stream_stop),
+            record("assistant", assistant_message),
+            record("user", tool_result),
+        ]
+        .join("\n");
+
+        let (entries, session_id) = parse_jsonl_chat(&content, 50);
+
+        assert_eq!(session_id.as_deref(), Some("session-123"));
+        assert_eq!(
+            entries
+                .iter()
+                .filter(|entry| matches!(entry, ChatEntry::Assistant { .. }))
+                .count(),
+            1
+        );
+
+        let assistant = entries.iter().find_map(|entry| match entry {
+            ChatEntry::Assistant {
+                text,
+                streaming,
+                ..
+            } => Some((text, streaming)),
+            _ => None,
+        });
+        let (assistant_text, streaming) = assistant.expect("assistant entry");
+        assert!(assistant_text.contains("Working..."));
+        assert!(!*streaming);
+
+        let tool = entries.iter().find_map(|entry| match entry {
+            ChatEntry::ToolCall(tool) => Some(tool),
+            _ => None,
+        });
+        let tool = tool.expect("tool call entry");
+        assert_eq!(tool.name, "Bash");
+        assert_eq!(tool.status, ToolStatus::Success);
+        assert!(tool.input.as_deref().unwrap_or_default().contains("cmd="));
+        assert!(tool.output.as_deref().unwrap_or_default().contains("ok"));
+    }
+
+    #[test]
+    fn test_build_prompt_command_cargo_uses_openagents() {
+        let mut config = BackendConfig::default();
+        config.model = "sonnet".to_string();
+        let command = build_prompt_command(
+            &WorkerCommand::Cargo {
+                manifest_path: Some(PathBuf::from("Cargo.toml")),
+            },
+            &config,
+            "do the thing",
+        );
+
+        let program = command.get_program().to_string_lossy().to_string();
+        let args: Vec<String> = command
+            .get_args()
+            .map(|arg| arg.to_string_lossy().to_string())
+            .collect();
+
+        assert_eq!(program, "cargo");
+        assert!(
+            args.iter()
+                .take(6)
+                .map(String::as_str)
+                .eq(["run", "--bin", "openagents", "--", "autopilot", "run"])
+        );
+        assert!(args.contains(&"do the thing".to_string()));
+    }
+
+    #[test]
+    fn test_build_prompt_command_binary_openagents() {
+        let config = BackendConfig::default();
+        let command = build_prompt_command(
+            &WorkerCommand::Binary {
+                path: PathBuf::from("/usr/bin/openagents"),
+            },
+            &config,
+            "hello",
+        );
+
+        let args: Vec<String> = command
+            .get_args()
+            .map(|arg| arg.to_string_lossy().to_string())
+            .collect();
+
+        assert!(
+            args.iter()
+                .take(2)
+                .map(String::as_str)
+                .eq(["autopilot", "run"])
+        );
+    }
+
+    #[test]
+    fn test_build_prompt_command_binary_autopilot() {
+        let config = BackendConfig::default();
+        let command = build_prompt_command(
+            &WorkerCommand::Binary {
+                path: PathBuf::from("/usr/bin/autopilot"),
+            },
+            &config,
+            "hello",
+        );
+
+        let args: Vec<String> = command
+            .get_args()
+            .map(|arg| arg.to_string_lossy().to_string())
+            .collect();
+
+        assert!(
+            args.iter()
+                .take(1)
+                .map(String::as_str)
+                .eq(["run"])
+        );
+    }
+
+    #[test]
+    fn test_find_latest_log_prefers_latest_dir_and_time() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let logs_dir = temp.path();
+        let older = logs_dir.join("20250101");
+        let newer = logs_dir.join("20250102");
+        std::fs::create_dir_all(&older).expect("older");
+        std::fs::create_dir_all(&newer).expect("newer");
+
+        let older_file = older.join("000000-old.jsonl");
+        std::fs::write(&older_file, "older").expect("older file");
+
+        let first = newer.join("000001-first.jsonl");
+        std::fs::write(&first, "first").expect("first file");
+        std::thread::sleep(Duration::from_millis(10));
+        let second = newer.join("000002-second.jsonl");
+        std::fs::write(&second, "second").expect("second file");
+
+        let found = find_latest_log(logs_dir, &["jsonl"]).expect("latest log");
+        assert_eq!(found, second);
+    }
+}

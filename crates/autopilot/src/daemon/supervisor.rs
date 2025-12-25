@@ -539,3 +539,67 @@ fn format_bytes(bytes: u64) -> String {
         format!("{:.1} KB", bytes as f64 / 1024.0)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    fn args_to_strings(cmd: &Command) -> Vec<String> {
+        cmd.get_args()
+            .map(|arg| arg.to_string_lossy().to_string())
+            .collect()
+    }
+
+    #[test]
+    fn test_build_command_cargo_uses_openagents() {
+        let mut config = DaemonConfig::default();
+        config.worker_command = WorkerCommand::Cargo {
+            manifest_path: Some(PathBuf::from("Cargo.toml")),
+        };
+        let supervisor = WorkerSupervisor::new(config);
+        let cmd = supervisor.build_command();
+
+        let program = cmd.get_program().to_string_lossy().to_string();
+        let args = args_to_strings(&cmd);
+
+        assert_eq!(program, "cargo");
+        assert!(
+            args.iter()
+                .take(6)
+                .map(String::as_str)
+                .eq(["run", "--bin", "openagents", "--", "autopilot", "run"])
+        );
+    }
+
+    #[test]
+    fn test_build_command_binary_openagents() {
+        let mut config = DaemonConfig::default();
+        config.worker_command = WorkerCommand::Binary {
+            path: PathBuf::from("/usr/bin/openagents"),
+        };
+        let supervisor = WorkerSupervisor::new(config);
+        let cmd = supervisor.build_command();
+
+        let args = args_to_strings(&cmd);
+        assert!(
+            args.iter()
+                .take(2)
+                .map(String::as_str)
+                .eq(["autopilot", "run"])
+        );
+    }
+
+    #[test]
+    fn test_build_command_binary_autopilot() {
+        let mut config = DaemonConfig::default();
+        config.worker_command = WorkerCommand::Binary {
+            path: PathBuf::from("/usr/bin/autopilot"),
+        };
+        let supervisor = WorkerSupervisor::new(config);
+        let cmd = supervisor.build_command();
+
+        let args = args_to_strings(&cmd);
+        assert!(args.iter().take(1).map(String::as_str).eq(["run"]));
+    }
+}
