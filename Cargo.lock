@@ -646,7 +646,12 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "autopilot",
+ "claude-agent-sdk",
+ "issues",
  "pollster",
+ "rusqlite",
+ "serde",
+ "serde_json",
  "tokio",
  "tracing",
  "tracing-subscriber",

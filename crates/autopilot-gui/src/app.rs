@@ -1,13 +1,17 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use anyhow::Result;
-use wgpui::components::hud::{DotsGrid, DotsOrigin, DotShape, DrawDirection, Frame, FrameAnimation};
+use wgpui::components::hud::{
+    DotsGrid, DotsOrigin, DotShape, DrawDirection, Frame, FrameAnimation, FrameStyle,
+};
 use wgpui::renderer::Renderer;
 use wgpui::{
-    Bounds, Component, EventContext, EventResult, Hsla, InputEvent, Key, Modifiers, MouseButton,
-    NamedKey, PaintContext, Point, Quad, Scene, Size, Text, TextSystem, theme,
+    Animation, Bounds, Component, Easing, EventContext, EventResult, Hsla, InputEvent, Key,
+    Modifiers, MouseButton, NamedKey, PaintContext, Point, Quad, Scene, Size, Text, TextSystem,
+    theme,
 };
 use winit::application::ApplicationHandler;
 use winit::event::{ElementState, WindowEvent};
@@ -15,7 +19,7 @@ use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
 use winit::keyboard::{Key as WinitKey, ModifiersState, NamedKey as WinitNamedKey};
 use winit::window::{Window, WindowId};
 
-use crate::backend::{BackendConfig, BackendEvent, BackendHandle, start_backend};
+use crate::backend::{BackendCommand, BackendConfig, BackendEvent, BackendHandle, start_backend};
 use crate::state::AppState;
 use crate::views::{ChatView, ContextView, DashboardView, ParallelView};
 
@@ -84,7 +88,10 @@ impl ApplicationHandler for GuiApp {
                 .expect("failed to create window"),
         );
 
-        let state = pollster::block_on(init_render_state(window));
+        let state = pollster::block_on(init_render_state(
+            window,
+            self.backend.sender.clone(),
+        ));
         self.state = Some(state);
     }
 
@@ -226,14 +233,21 @@ impl ApplicationHandler for GuiApp {
 
     fn about_to_wait(&mut self, _event_loop: &ActiveEventLoop) {
         if let Some(state) = &mut self.state {
-            if Self::apply_backend_events(&self.backend, &mut state.ui) {
+            let mut redraw = Self::apply_backend_events(&self.backend, &mut state.ui);
+            if state.ui.tick() {
+                redraw = true;
+            }
+            if redraw {
                 state.window.request_redraw();
             }
         }
     }
 }
 
-async fn init_render_state(window: Arc<Window>) -> RenderState {
+async fn init_render_state(
+    window: Arc<Window>,
+    command_tx: std::sync::mpsc::Sender<BackendCommand>,
+) -> RenderState {
     let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
         backends: wgpu::Backends::all(),
         ..Default::default()
@@ -291,7 +305,7 @@ async fn init_render_state(window: Arc<Window>) -> RenderState {
         config,
         renderer,
         text_system,
-        ui: AutopilotUi::new(scale_factor),
+        ui: AutopilotUi::new(scale_factor, command_tx),
     }
 }
 
@@ -339,17 +353,19 @@ struct AutopilotUi {
     shell: Shell,
     event_context: EventContext,
     scale_factor: f32,
+    last_tick: Instant,
 }
 
 impl AutopilotUi {
-    fn new(scale_factor: f32) -> Self {
+    fn new(scale_factor: f32, command_tx: std::sync::mpsc::Sender<BackendCommand>) -> Self {
         let state = Rc::new(RefCell::new(AppState::new()));
-        let shell = Shell::new(state.clone());
+        let shell = Shell::new(state.clone(), command_tx);
         Self {
             state,
             shell,
             event_context: EventContext::new(),
             scale_factor,
+            last_tick: Instant::now(),
         }
     }
 
@@ -372,17 +388,30 @@ impl AutopilotUi {
                 state.sessions = sessions;
                 state.summary = summary;
             }
-            BackendEvent::Logs {
+            BackendEvent::Chat {
                 path,
                 session_id,
-                lines,
+                entries,
             } => {
                 state.log_path = path;
                 state.log_session_id = session_id;
-                state.log_lines = lines;
+                state.set_chat_entries(entries);
             }
             BackendEvent::Agents { agents } => {
                 state.agents = agents;
+            }
+            BackendEvent::Issues { issues } => {
+                state.open_issues = issues;
+            }
+            BackendEvent::Platform { info } => {
+                state.parallel_platform = info;
+            }
+            BackendEvent::FullAuto { metrics } => {
+                state.full_auto_metrics = metrics;
+            }
+            BackendEvent::PromptStatus { running, last_prompt } => {
+                state.prompt_running = running;
+                state.prompt_last = last_prompt;
             }
             BackendEvent::Status { message } => {
                 state.set_status(Some(message));
@@ -396,6 +425,14 @@ impl AutopilotUi {
 
     fn scale_factor(&self) -> f32 {
         self.scale_factor
+    }
+
+    fn tick(&mut self) -> bool {
+        let now = Instant::now();
+        let delta = now.duration_since(self.last_tick);
+        self.last_tick = now;
+        self.shell.tick(delta);
+        true
     }
 }
 
@@ -431,6 +468,15 @@ struct PaneLayout {
     content: Bounds,
 }
 
+#[derive(Clone, Copy)]
+struct PaneStyle {
+    frame_style: FrameStyle,
+    animation: FrameAnimation,
+    draw_direction: DrawDirection,
+    glow: Hsla,
+    background: Hsla,
+}
+
 struct Shell {
     state: Rc<RefCell<AppState>>,
     dashboard: DashboardView,
@@ -439,10 +485,15 @@ struct Shell {
     parallel: ParallelView,
     hovered_pane: Option<PaneKind>,
     dots: DotsGrid,
+    frame_anim: Animation<f32>,
+    glow_anim: Animation<f32>,
 }
 
 impl Shell {
-    fn new(state: Rc<RefCell<AppState>>) -> Self {
+    fn new(
+        state: Rc<RefCell<AppState>>,
+        command_tx: std::sync::mpsc::Sender<BackendCommand>,
+    ) -> Self {
         let dots = DotsGrid::new()
             .color(Hsla::new(0.0, 0.0, 0.3, 0.25))
             .shape(DotShape::Cross)
@@ -452,15 +503,35 @@ impl Shell {
             .origin(DotsOrigin::Center)
             .animation_progress(1.0);
 
+        let mut frame_anim = Animation::new(0.0, 1.0, Duration::from_millis(2200))
+            .easing(Easing::EaseInOutCubic)
+            .iterations(0)
+            .alternate();
+        frame_anim.start();
+
+        let mut glow_anim = Animation::new(0.65, 1.0, Duration::from_millis(1600))
+            .easing(Easing::EaseInOut)
+            .iterations(0)
+            .alternate();
+        glow_anim.start();
+
         Self {
-            dashboard: DashboardView::new(state.clone()),
-            chat: ChatView::new(state.clone()),
+            dashboard: DashboardView::new(state.clone(), command_tx.clone()),
+            chat: ChatView::new(state.clone(), command_tx.clone()),
             context: ContextView::new(state.clone()),
-            parallel: ParallelView::new(state.clone()),
+            parallel: ParallelView::new(state.clone(), command_tx),
             state,
             hovered_pane: None,
             dots,
+            frame_anim,
+            glow_anim,
         }
+    }
+
+    fn tick(&mut self, delta: Duration) {
+        self.frame_anim.tick(delta);
+        self.glow_anim.tick(delta);
+        self.chat.tick(delta);
     }
 
     fn pane_view_mut(&mut self, kind: PaneKind) -> &mut dyn Component {
@@ -541,32 +612,83 @@ impl Shell {
         ]
     }
 
+    fn pane_style(kind: PaneKind) -> PaneStyle {
+        match kind {
+            PaneKind::Dashboard => PaneStyle {
+                frame_style: FrameStyle::Corners,
+                animation: FrameAnimation::Fade,
+                draw_direction: DrawDirection::CenterOut,
+                glow: Hsla::new(0.0, 0.0, 1.0, 0.6),
+                background: Hsla::new(0.0, 0.0, 0.07, 0.92),
+            },
+            PaneKind::Parallel => PaneStyle {
+                frame_style: FrameStyle::Octagon,
+                animation: FrameAnimation::Flicker,
+                draw_direction: DrawDirection::EdgesIn,
+                glow: Hsla::new(0.125, 1.0, 0.55, 0.65),
+                background: Hsla::new(0.0, 0.0, 0.06, 0.92),
+            },
+            PaneKind::Chat => PaneStyle {
+                frame_style: FrameStyle::Nefrex,
+                animation: FrameAnimation::Assemble,
+                draw_direction: DrawDirection::CenterOut,
+                glow: Hsla::new(180.0, 1.0, 0.7, 0.6),
+                background: Hsla::new(0.0, 0.0, 0.05, 0.93),
+            },
+            PaneKind::Context => PaneStyle {
+                frame_style: FrameStyle::Kranox,
+                animation: FrameAnimation::Draw,
+                draw_direction: DrawDirection::LeftToRight,
+                glow: Hsla::new(280.0, 1.0, 0.7, 0.55),
+                background: Hsla::new(0.0, 0.0, 0.06, 0.92),
+            },
+        }
+    }
+
+    fn build_frame(style: PaneStyle) -> Frame {
+        let mut frame = Frame::new().style(style.frame_style);
+        frame = match style.frame_style {
+            FrameStyle::Corners => frame.corner_length(18.0),
+            FrameStyle::Octagon => frame.corner_length(14.0),
+            FrameStyle::Nefrex => frame
+                .square_size(12.0)
+                .small_line_length(12.0)
+                .large_line_length(40.0),
+            FrameStyle::Kranox => frame
+                .square_size(10.0)
+                .small_line_length(10.0)
+                .large_line_length(36.0),
+            _ => frame,
+        };
+        frame
+    }
+
     fn paint_pane(&mut self, layout: PaneLayout, cx: &mut PaintContext) {
         if layout.frame.size.width <= 1.0 || layout.frame.size.height <= 1.0 {
             return;
         }
 
         let hovered = self.hovered_pane == Some(layout.kind);
-        let base_line = Hsla::new(0.0, 0.0, 1.0, 0.75);
+        let style = Self::pane_style(layout.kind);
+        let base_line = Hsla::new(0.0, 0.0, 1.0, 0.7);
         let accent = theme::accent::PRIMARY;
         let line_color = if hovered { accent } else { base_line };
-        let glow = if hovered { Some(accent.with_alpha(0.35)) } else { None };
-        let bg_color = Hsla::new(0.0, 0.0, 0.07, 0.85);
+        let glow_pulse = self.glow_anim.current_value();
+        let glow = if hovered {
+            accent.with_alpha(0.75)
+        } else {
+            style.glow.with_alpha(style.glow.a * glow_pulse)
+        };
+        let frame_progress = self.frame_anim.current_value();
 
-        let mut frame = Frame::kranox()
+        let mut frame = Self::build_frame(style)
             .line_color(line_color)
-            .bg_color(bg_color)
+            .bg_color(style.background)
             .stroke_width(2.0)
-            .small_line_length(10.0)
-            .large_line_length(36.0)
-            .square_size(10.0)
-            .animation_mode(FrameAnimation::Fade)
-            .draw_direction(DrawDirection::CenterOut)
-            .animation_progress(1.0);
-
-        if let Some(glow) = glow {
-            frame = frame.glow_color(glow);
-        }
+            .animation_mode(style.animation)
+            .draw_direction(style.draw_direction)
+            .animation_progress(frame_progress)
+            .glow_color(glow);
 
         frame.paint(layout.frame, cx);
 

@@ -56,6 +56,10 @@ impl MessageEditor {
         self
     }
 
+    pub fn set_streaming(&mut self, streaming: bool) {
+        self.is_streaming = streaming;
+    }
+
     pub fn show_mode_badge(mut self, show: bool) -> Self {
         self.show_mode_badge = show;
         self

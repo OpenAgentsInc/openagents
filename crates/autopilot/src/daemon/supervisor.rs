@@ -5,6 +5,7 @@ use crate::daemon::memory::{MemoryMonitor, MemoryStatus};
 use crate::daemon::state::{WorkerState, WorkerStatus};
 use anyhow::Result;
 use std::process::{Child, Command, ExitStatus, Stdio};
+use std::path::Path;
 use std::time::{Duration, Instant};
 use tokio::sync::mpsc;
 
@@ -82,9 +83,9 @@ impl WorkerSupervisor {
             WorkerCommand::Cargo { manifest_path } => {
                 let mut cmd = Command::new("cargo");
                 cmd.arg("run");
-                cmd.arg("-p").arg("autopilot");
-                cmd.arg("--bin").arg("autopilot");
+                cmd.arg("--bin").arg("openagents");
                 cmd.arg("--");
+                cmd.arg("autopilot");
                 cmd.arg("run");
                 cmd.arg("--full-auto");
                 cmd.arg("--with-issues");
@@ -113,7 +114,12 @@ impl WorkerSupervisor {
             }
             WorkerCommand::Binary { path } => {
                 let mut cmd = Command::new(path);
-                cmd.arg("run");
+                if is_openagents_binary(path) {
+                    cmd.arg("autopilot");
+                    cmd.arg("run");
+                } else {
+                    cmd.arg("run");
+                }
                 cmd.arg("--full-auto");
                 cmd.arg("--with-issues");
                 cmd.arg("--model").arg(&self.config.model);
@@ -499,6 +505,13 @@ impl WorkerSupervisor {
 
         Ok(())
     }
+}
+
+fn is_openagents_binary(path: &Path) -> bool {
+    path.file_stem()
+        .and_then(|name| name.to_str())
+        .map(|name| name.eq_ignore_ascii_case("openagents"))
+        .unwrap_or(false)
 }
 
 /// Metrics for daemon status
