@@ -2,11 +2,20 @@
 //!
 //! Wraps marketplace crate CLI functions for unified binary.
 
-use clap::Subcommand;
+use clap::{Args, Subcommand};
 use marketplace::cli::compute::ComputeCommands;
 use marketplace::cli::data::DataCommands;
+use marketplace::cli::earnings::EarningsCommands;
+use marketplace::cli::provider::ProviderCommands;
+use marketplace::cli::reputation::ReputationCommands;
 use marketplace::cli::skills::SkillsCommands;
 use marketplace::cli::trajectories::TrajectoriesCommands;
+
+#[derive(Debug, Args)]
+pub struct ProviderArgs {
+    #[command(subcommand)]
+    command: ProviderCommands,
+}
 
 #[derive(Subcommand)]
 pub enum MarketplaceCommands {
@@ -28,9 +37,11 @@ pub enum MarketplaceCommands {
     /// Trajectory contribution commands
     Trajectories(TrajectoriesCommands),
     /// Provider commands
-    Provider,
+    Provider(ProviderArgs),
     /// Earnings and payouts
-    Earnings,
+    Earnings(EarningsCommands),
+    /// Reputation and trust tiers
+    Reputation(ReputationCommands),
 }
 
 pub fn run(cmd: MarketplaceCommands) -> anyhow::Result<()> {
@@ -41,12 +52,9 @@ pub fn run(cmd: MarketplaceCommands) -> anyhow::Result<()> {
             MarketplaceCommands::Skills { command } => command.execute(),
             MarketplaceCommands::Data { command } => command.execute(),
             MarketplaceCommands::Trajectories(command) => command.execute().await,
-            MarketplaceCommands::Provider => {
-                anyhow::bail!("Provider management not yet implemented")
-            }
-            MarketplaceCommands::Earnings => {
-                anyhow::bail!("Earnings dashboard not yet implemented")
-            }
+            MarketplaceCommands::Provider(command) => command.command.execute(),
+            MarketplaceCommands::Earnings(command) => command.execute().await,
+            MarketplaceCommands::Reputation(command) => command.execute().await,
         }
     })
 }
