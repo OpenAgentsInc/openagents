@@ -1,0 +1,932 @@
+# User Stories by Directive
+
+Comprehensive catalog of user stories that should be tested for each directive. Each story follows the format:
+
+> **As a** [user type], **I want to** [action], **so that** [benefit].
+
+Stories are prioritized: **P0** (critical), **P1** (high), **P2** (medium), **P3** (low).
+
+---
+
+## Table of Contents
+
+1. [d-001: Breez Spark SDK Integration](#d-001-breez-spark-sdk-integration)
+2. [d-002: Nostr Protocol Implementation](#d-002-nostr-protocol-implementation)
+3. [d-003: OpenAgents Wallet](#d-003-openagents-wallet)
+4. [d-004: Autopilot Improvement](#d-004-autopilot-improvement)
+5. [d-005: GitAfter (Nostr GitHub Alternative)](#d-005-gitafter-nostr-github-alternative)
+6. [d-006: NIP-SA (Sovereign Agents Protocol)](#d-006-nip-sa-sovereign-agents-protocol)
+7. [d-007: FROSTR (Threshold Signatures)](#d-007-frostr-threshold-signatures)
+8. [d-008: Unified Marketplace](#d-008-unified-marketplace)
+9. [d-009: Autopilot GUI](#d-009-autopilot-gui)
+10. [d-010: Unified Binary](#d-010-unified-binary)
+11. [d-011: Storybook Coverage](#d-011-storybook-coverage)
+12. [d-012: No Stubs Policy](#d-012-no-stubs-policy)
+13. [d-013: Testing Framework](#d-013-testing-framework)
+14. [d-014: NIP-SA/Bifrost Integration Tests](#d-014-nip-sabifrost-integration-tests)
+15. [d-015: Marketplace E2E Tests](#d-015-marketplace-e2e-tests)
+16. [d-016: APM Metrics](#d-016-apm-metrics)
+17. [d-017: ACP Integration](#d-017-acp-integration)
+18. [d-018: Parallel Container Isolation](#d-018-parallel-container-isolation)
+19. [d-019: GPT-OSS Local Inference](#d-019-gpt-oss-local-inference)
+20. [d-020: WGPUI Component Integration](#d-020-wgpui-component-integration)
+21. [d-021: OpenCode SDK](#d-021-opencode-sdk)
+22. [d-022: Agent Orchestration](#d-022-agent-orchestration)
+23. [d-023: WGPUI Framework](#d-023-wgpui-framework)
+24. [d-024: Arwes Parity](#d-024-arwes-parity)
+25. [d-025: All-In WGPUI](#d-025-all-in-wgpui)
+26. [d-026: E2E Test Live Viewer](#d-026-e2e-test-live-viewer)
+
+---
+
+## d-001: Breez Spark SDK Integration
+
+### Wallet Initialization
+
+| ID | Priority | User Story |
+|----|----------|------------|
+| 1.1.1 | P0 | As a new user, I want to generate a BIP39 mnemonic when I run `wallet init`, so that I have a secure seed for both Nostr identity and Bitcoin wallet. |
+| 1.1.2 | P0 | As a returning user, I want to restore my wallet from an existing 12/24-word mnemonic, so that I can recover my funds and identity on a new device. |
+| 1.1.3 | P0 | As a user, I want my mnemonic stored securely in the OS keychain, so that it's protected by system-level encryption. |
+| 1.1.4 | P1 | As a user, I want to see my Nostr npub and Lightning address derived from the same seed, so that I understand my unified identity. |
+| 1.1.5 | P1 | As a user, I want to set a wallet password for additional protection, so that even if someone accesses my keychain, they can't use my funds. |
+
+### Balance & Transactions
+
+| ID | Priority | User Story |
+|----|----------|------------|
+| 1.2.1 | P0 | As a user, I want to see my current balance in sats and USD, so that I know how much I have available. |
+| 1.2.2 | P0 | As a user, I want to see separate Lightning and Spark L2 balances, so that I understand where my funds are. |
+| 1.2.3 | P0 | As a user, I want to view my transaction history with timestamps and amounts, so that I can track my spending. |
+| 1.2.4 | P1 | As a user, I want to see pending transactions marked clearly, so that I know which payments are in-flight. |
+| 1.2.5 | P2 | As a user, I want to export my transaction history as CSV, so that I can track for tax purposes. |
+
+### Send Payments
+
+| ID | Priority | User Story |
+|----|----------|------------|
+| 1.3.1 | P0 | As a user, I want to send Bitcoin to a Lightning invoice, so that I can pay for services instantly. |
+| 1.3.2 | P0 | As a user, I want to send Bitcoin to an on-chain address, so that I can withdraw to cold storage. |
+| 1.3.3 | P0 | As a user, I want to send to another Spark user by their Spark address, so that I can transfer cheaply. |
+| 1.3.4 | P0 | As a user, I want to see a confirmation screen with fee estimate before sending, so that I can approve the transaction. |
+| 1.3.5 | P1 | As a user, I want to cancel a pending transaction before it confirms, so that I can correct mistakes. |
+| 1.3.6 | P1 | As a user, I want to scan a QR code to populate payment details, so that I don't have to type long addresses. |
+| 1.3.7 | P2 | As a user, I want to save frequently-used addresses as contacts, so that I can pay them quickly. |
+
+### Receive Payments
+
+| ID | Priority | User Story |
+|----|----------|------------|
+| 1.4.1 | P0 | As a user, I want to generate a Lightning invoice for a specific amount, so that I can receive payments. |
+| 1.4.2 | P0 | As a user, I want to see a QR code for my invoice, so that payers can scan it easily. |
+| 1.4.3 | P0 | As a user, I want to copy my invoice string to clipboard, so that I can share it in chat. |
+| 1.4.4 | P1 | As a user, I want to receive push notifications when a payment arrives, so that I know immediately. |
+| 1.4.5 | P1 | As a user, I want to generate a reusable Lightning address, so that I don't need new invoices each time. |
+| 1.4.6 | P2 | As a user, I want to set an invoice expiry time, so that stale invoices don't clutter my history. |
+
+### Error Handling
+
+| ID | Priority | User Story |
+|----|----------|------------|
+| 1.5.1 | P0 | As a user, I want to see clear error messages when a payment fails, so that I understand what went wrong. |
+| 1.5.2 | P0 | As a user, I want failed transactions to not deduct my balance, so that I don't lose funds. |
+| 1.5.3 | P1 | As a user, I want to retry failed payments with one click, so that I can complete the transaction. |
+| 1.5.4 | P1 | As a user, I want to see network status (connected/disconnected), so that I know if payments will work. |
+
+---
+
+## d-002: Nostr Protocol Implementation
+
+### Event Creation & Signing
+
+| ID | Priority | User Story |
+|----|----------|------------|
+| 2.1.1 | P0 | As a developer, I want to create and sign kind:1 text notes, so that I can post to Nostr. |
+| 2.1.2 | P0 | As a developer, I want to create and sign kind:0 metadata events, so that I can set my profile. |
+| 2.1.3 | P0 | As a developer, I want to verify event signatures, so that I can trust event authenticity. |
+| 2.1.4 | P1 | As a developer, I want to create parameterized replaceable events (kind:30000-39999), so that I can store mutable data. |
+| 2.1.5 | P1 | As a developer, I want to create ephemeral events (kind:20000-29999), so that relays don't persist them. |
+
+### Relay Communication
+
+| ID | Priority | User Story |
+|----|----------|------------|
+| 2.2.1 | P0 | As a developer, I want to connect to a Nostr relay via WebSocket, so that I can send and receive events. |
+| 2.2.2 | P0 | As a developer, I want to publish events to multiple relays, so that my content is distributed. |
+| 2.2.3 | P0 | As a developer, I want to subscribe to events with filters (kinds, authors, tags), so that I get relevant data. |
+| 2.2.4 | P0 | As a developer, I want to receive EOSE (end of stored events) signals, so that I know when historical data is complete. |
+| 2.2.5 | P1 | As a developer, I want to handle relay disconnections with automatic reconnect, so that the app stays connected. |
+| 2.2.6 | P1 | As a developer, I want to manage multiple relay connections in a pool, so that I have redundancy. |
+
+### Encryption (NIP-44)
+
+| ID | Priority | User Story |
+|----|----------|------------|
+| 2.3.1 | P0 | As a user, I want to encrypt messages with NIP-44, so that only the recipient can read them. |
+| 2.3.2 | P0 | As a user, I want to decrypt NIP-44 messages I receive, so that I can read private content. |
+| 2.3.3 | P1 | As a user, I want to send encrypted DMs (kind:14 per NIP-17), so that I can communicate privately. |
+| 2.3.4 | P1 | As a user, I want to receive and decrypt DMs from others, so that I can read private messages. |
+
+### NIP-90 Data Vending Machines
+
+| ID | Priority | User Story |
+|----|----------|------------|
+| 2.4.1 | P0 | As a compute consumer, I want to publish a job request (kind:5000-5999), so that DVMs can bid on my work. |
+| 2.4.2 | P0 | As a compute provider, I want to subscribe to job requests for my supported kinds, so that I can bid. |
+| 2.4.3 | P0 | As a compute provider, I want to publish job results (kind:6000-6999), so that consumers get their output. |
+| 2.4.4 | P1 | As a compute consumer, I want to leave feedback on job quality, so that providers build reputation. |
+| 2.4.5 | P1 | As a compute consumer, I want to see provider pricing before accepting a bid, so that I can compare. |
+
+### NIP-57 Zaps
+
+| ID | Priority | User Story |
+|----|----------|------------|
+| 2.5.1 | P0 | As a user, I want to send a zap to a note or profile, so that I can tip content creators. |
+| 2.5.2 | P0 | As a user, I want to receive zaps on my content, so that I can earn from my work. |
+| 2.5.3 | P1 | As a user, I want to see a zap count on notes, so that I know what's popular. |
+| 2.5.4 | P2 | As a user, I want to set a default zap amount, so that I can tip quickly. |
+
+### NIP-46 Remote Signing
+
+| ID | Priority | User Story |
+|----|----------|------------|
+| 2.6.1 | P0 | As a user, I want to connect a signer app via NIP-46, so that my keys stay on a secure device. |
+| 2.6.2 | P0 | As a signer, I want to approve or deny signing requests, so that I control what gets signed. |
+| 2.6.3 | P1 | As a user, I want to see what I'm signing before approving, so that I don't sign malicious events. |
+
+---
+
+## d-003: OpenAgents Wallet
+
+### Identity Management
+
+| ID | Priority | User Story |
+|----|----------|------------|
+| 3.1.1 | P0 | As a user, I want to run `openagents wallet whoami` to see my npub and balance, so that I can verify my identity. |
+| 3.1.2 | P0 | As a user, I want to update my Nostr profile (name, picture, about), so that others can identify me. |
+| 3.1.3 | P1 | As a user, I want to follow/unfollow other Nostr users, so that I can curate my feed. |
+| 3.1.4 | P1 | As a user, I want to see my follower count and list, so that I know my audience. |
+| 3.1.5 | P2 | As a user, I want to manage multiple identities, so that I can separate personal and work accounts. |
+
+### Wallet CLI
+
+| ID | Priority | User Story |
+|----|----------|------------|
+| 3.2.1 | P0 | As a user, I want to run `openagents wallet send <address> <amount>` to send payments, so that I can pay from the terminal. |
+| 3.2.2 | P0 | As a user, I want to run `openagents wallet receive <amount>` to generate an invoice, so that I can receive payments. |
+| 3.2.3 | P0 | As a user, I want to run `openagents wallet balance` to check my funds, so that I know my current state. |
+| 3.2.4 | P1 | As a user, I want to run `openagents wallet history` to see past transactions, so that I can review activity. |
+| 3.2.5 | P1 | As a user, I want to run `openagents wallet post "Hello Nostr"` to post a note, so that I can share content. |
+| 3.2.6 | P2 | As a user, I want to run `openagents wallet dm <npub> "message"` to send encrypted DMs, so that I can chat privately. |
+
+### Wallet GUI
+
+| ID | Priority | User Story |
+|----|----------|------------|
+| 3.3.1 | P0 | As a user, I want to see my balance prominently in the GUI header, so that I always know my funds. |
+| 3.3.2 | P0 | As a user, I want to click "Send" and fill out a payment form, so that I can send without CLI. |
+| 3.3.3 | P0 | As a user, I want to click "Receive" and see a QR code, so that I can get paid easily. |
+| 3.3.4 | P1 | As a user, I want to see my transaction list with infinite scroll, so that I can browse history. |
+| 3.3.5 | P1 | As a user, I want to click on a transaction to see details, so that I can understand each payment. |
+| 3.3.6 | P2 | As a user, I want to see a chart of my balance over time, so that I can visualize trends. |
+
+### Security
+
+| ID | Priority | User Story |
+|----|----------|------------|
+| 3.4.1 | P0 | As a user, I want to lock my wallet with a password/biometric, so that others can't access my funds. |
+| 3.4.2 | P0 | As a user, I want to back up my seed phrase, so that I can recover from device loss. |
+| 3.4.3 | P1 | As a user, I want to set transaction limits, so that a compromised device can't drain my wallet. |
+| 3.4.4 | P1 | As a user, I want to require confirmation for large transactions, so that I prevent accidental sends. |
+
+---
+
+## d-004: Autopilot Improvement
+
+### Trajectory Analysis
+
+| ID | Priority | User Story |
+|----|----------|------------|
+| 4.1.1 | P0 | As an operator, I want to see metrics (token usage, error rate, duration) for each autopilot run, so that I can assess performance. |
+| 4.1.2 | P0 | As an operator, I want to compare runs against baselines, so that I can detect regressions. |
+| 4.1.3 | P1 | As an operator, I want to identify the most common tool errors, so that I can prioritize fixes. |
+| 4.1.4 | P1 | As an operator, I want to see which patterns lead to success vs failure, so that I can improve prompts. |
+| 4.1.5 | P2 | As an operator, I want anomaly detection alerts, so that I'm notified of unusual behavior. |
+
+### Self-Improvement
+
+| ID | Priority | User Story |
+|----|----------|------------|
+| 4.2.1 | P0 | As an operator, I want autopilot to automatically create issues for detected problems, so that they get tracked. |
+| 4.2.2 | P1 | As an operator, I want autopilot to suggest hook improvements based on failure patterns, so that I can tune behavior. |
+| 4.2.3 | P1 | As an operator, I want autopilot to learn from successful runs, so that future runs are more efficient. |
+| 4.2.4 | P2 | As an operator, I want to see a weekly improvement report, so that I can track progress over time. |
+
+### Session Management
+
+| ID | Priority | User Story |
+|----|----------|------------|
+| 4.3.1 | P0 | As an operator, I want to start an autopilot run with a prompt, so that it works on my task. |
+| 4.3.2 | P0 | As an operator, I want to stop a running autopilot session, so that I can interrupt bad runs. |
+| 4.3.3 | P1 | As an operator, I want to resume a paused session, so that I can continue interrupted work. |
+| 4.3.4 | P1 | As an operator, I want to replay a past session, so that I can understand what happened. |
+
+---
+
+## d-005: GitAfter (Nostr GitHub Alternative)
+
+### Repository Management
+
+| ID | Priority | User Story |
+|----|----------|------------|
+| 5.1.1 | P0 | As a developer, I want to create a repository on GitAfter, so that I can host my project. |
+| 5.1.2 | P0 | As a developer, I want to clone a repository from GitAfter, so that I can work locally. |
+| 5.1.3 | P0 | As a developer, I want to push commits to GitAfter, so that my changes are published. |
+| 5.1.4 | P1 | As a developer, I want to browse repositories by topic/language, so that I can discover projects. |
+| 5.1.5 | P1 | As a developer, I want to star/follow repositories, so that I can track favorites. |
+
+### Issue Tracking
+
+| ID | Priority | User Story |
+|----|----------|------------|
+| 5.2.1 | P0 | As a maintainer, I want to create issues with titles and descriptions, so that I can track work. |
+| 5.2.2 | P0 | As a contributor, I want to view open issues, so that I can find work to do. |
+| 5.2.3 | P0 | As a maintainer, I want to attach bounties to issues, so that I can incentivize contributions. |
+| 5.2.4 | P1 | As an agent, I want to claim an issue, so that others know I'm working on it. |
+| 5.2.5 | P1 | As a contributor, I want to comment on issues, so that I can discuss the work. |
+| 5.2.6 | P2 | As a maintainer, I want to add labels to issues, so that I can categorize them. |
+
+### Pull Requests
+
+| ID | Priority | User Story |
+|----|----------|------------|
+| 5.3.1 | P0 | As a contributor, I want to create a pull request from my branch, so that I can submit changes. |
+| 5.3.2 | P0 | As a reviewer, I want to see the diff of a pull request, so that I can review changes. |
+| 5.3.3 | P0 | As a reviewer, I want to approve or request changes on a PR, so that I can gate merges. |
+| 5.3.4 | P0 | As a maintainer, I want to merge an approved PR, so that changes go to main. |
+| 5.3.5 | P1 | As a reviewer, I want to see the agent's trajectory linked to the PR, so that I understand reasoning. |
+| 5.3.6 | P1 | As a contributor, I want to update my PR with new commits, so that I can address feedback. |
+
+### Bounty Payments
+
+| ID | Priority | User Story |
+|----|----------|------------|
+| 5.4.1 | P0 | As a maintainer, I want to release bounty payment when a PR is merged, so that contributors get paid. |
+| 5.4.2 | P0 | As a contributor, I want to receive payment to my Lightning address, so that I earn Bitcoin. |
+| 5.4.3 | P1 | As a maintainer, I want to split a bounty between multiple contributors, so that everyone gets credit. |
+| 5.4.4 | P2 | As a maintainer, I want to set bounty tiers based on issue complexity, so that pricing is fair. |
+
+---
+
+## d-006: NIP-SA (Sovereign Agents Protocol)
+
+### Agent Profile
+
+| ID | Priority | User Story |
+|----|----------|------------|
+| 6.1.1 | P0 | As an agent operator, I want to publish an AgentProfile (kind:38000), so that the agent is discoverable. |
+| 6.1.2 | P0 | As a user, I want to view an agent's profile, so that I understand its capabilities. |
+| 6.1.3 | P1 | As an agent operator, I want to update the agent's profile, so that I can change capabilities. |
+| 6.1.4 | P1 | As a user, I want to see an agent's threshold key configuration, so that I know its security model. |
+
+### Agent State
+
+| ID | Priority | User Story |
+|----|----------|------------|
+| 6.2.1 | P0 | As an agent, I want to store my encrypted state (kind:38001), so that I persist between runs. |
+| 6.2.2 | P0 | As an agent, I want to retrieve my encrypted state on startup, so that I resume where I left off. |
+| 6.2.3 | P1 | As an agent operator, I want to inspect (but not decrypt) state metadata, so that I can monitor size/frequency. |
+| 6.2.4 | P2 | As an agent, I want to compact old state events, so that I don't bloat the relay. |
+
+### Agent Schedule
+
+| ID | Priority | User Story |
+|----|----------|------------|
+| 6.3.1 | P0 | As an agent operator, I want to set a heartbeat interval, so that the agent wakes periodically. |
+| 6.3.2 | P0 | As an agent operator, I want to set event triggers, so that the agent wakes on relevant events. |
+| 6.3.3 | P1 | As an agent operator, I want to pause/resume the schedule, so that I can control activity. |
+| 6.3.4 | P2 | As an agent operator, I want to set business hours, so that the agent only runs during work time. |
+
+### Tick Lifecycle
+
+| ID | Priority | User Story |
+|----|----------|------------|
+| 6.4.1 | P0 | As an agent, I want to publish a TickRequest (kind:38010) when I wake, so that my activity is logged. |
+| 6.4.2 | P0 | As an agent, I want to publish a TickResult (kind:38011) when I complete, so that outcomes are recorded. |
+| 6.4.3 | P1 | As an observer, I want to see an agent's tick history, so that I can monitor its activity. |
+| 6.4.4 | P1 | As an agent, I want to include a trajectory hash in my TickResult, so that my reasoning is verifiable. |
+
+### Trajectory Publishing
+
+| ID | Priority | User Story |
+|----|----------|------------|
+| 6.5.1 | P0 | As an agent, I want to publish TrajectorySession (kind:38030) with my decision history, so that my work is transparent. |
+| 6.5.2 | P0 | As an agent, I want to publish TrajectoryEvents (kind:38031) for each step, so that reasoning is traceable. |
+| 6.5.3 | P1 | As a reviewer, I want to fetch and verify an agent's trajectory, so that I can audit its work. |
+| 6.5.4 | P2 | As an agent, I want to redact sensitive content from trajectories, so that secrets aren't leaked. |
+
+---
+
+## d-007: FROSTR (Threshold Signatures)
+
+### Key Generation
+
+| ID | Priority | User Story |
+|----|----------|------------|
+| 7.1.1 | P0 | As an operator, I want to generate a 2-of-3 threshold keypair, so that no single party controls the key. |
+| 7.1.2 | P0 | As an operator, I want to distribute shares to designated holders, so that the quorum is established. |
+| 7.1.3 | P1 | As an operator, I want to generate 3-of-5 or other configurations, so that I can tune security. |
+| 7.1.4 | P2 | As an operator, I want to reshare a key to new holders, so that I can rotate participants. |
+
+### Threshold Signing
+
+| ID | Priority | User Story |
+|----|----------|------------|
+| 7.2.1 | P0 | As a share holder, I want to participate in a signing round, so that we produce a valid signature. |
+| 7.2.2 | P0 | As a requester, I want to initiate a signing request via Bifrost, so that holders are notified. |
+| 7.2.3 | P0 | As a verifier, I want to validate a threshold signature as a normal Schnorr signature, so that compatibility is maintained. |
+| 7.2.4 | P1 | As a share holder, I want to see what I'm signing before contributing, so that I can refuse bad requests. |
+| 7.2.5 | P1 | As a requester, I want signing to complete within a timeout, so that I'm not blocked indefinitely. |
+
+### Threshold ECDH (Decryption)
+
+| ID | Priority | User Story |
+|----|----------|------------|
+| 7.3.1 | P0 | As an agent, I want to decrypt NIP-44 messages using threshold ECDH, so that no single party can read my DMs. |
+| 7.3.2 | P0 | As a share holder, I want to contribute my ECDH share, so that decryption can complete. |
+| 7.3.3 | P1 | As an agent, I want decryption to be as fast as regular ECDH, so that performance is acceptable. |
+
+### Bifrost Coordination
+
+| ID | Priority | User Story |
+|----|----------|------------|
+| 7.4.1 | P0 | As a node, I want to discover other Bifrost peers on Nostr relays, so that we can coordinate. |
+| 7.4.2 | P0 | As a node, I want to send and receive Bifrost messages, so that protocols can execute. |
+| 7.4.3 | P1 | As a node, I want to handle peer disconnection gracefully, so that the group remains functional. |
+| 7.4.4 | P1 | As a requester, I want to retry failed requests automatically, so that transient failures don't block me. |
+
+---
+
+## d-008: Unified Marketplace
+
+### Compute Marketplace
+
+| ID | Priority | User Story |
+|----|----------|------------|
+| 8.1.1 | P0 | As a compute consumer, I want to browse available compute providers, so that I can find one for my job. |
+| 8.1.2 | P0 | As a compute consumer, I want to submit a job and receive a result, so that my work gets done. |
+| 8.1.3 | P0 | As a compute provider, I want to register my capabilities and pricing, so that consumers can find me. |
+| 8.1.4 | P1 | As a compute consumer, I want to see provider ratings, so that I can choose quality providers. |
+| 8.1.5 | P1 | As a compute provider, I want to set my availability schedule, so that I'm not disturbed off-hours. |
+
+### Skills Marketplace
+
+| ID | Priority | User Story |
+|----|----------|------------|
+| 8.2.1 | P0 | As a skill creator, I want to publish a skill with description and pricing, so that agents can purchase it. |
+| 8.2.2 | P0 | As an agent, I want to browse and search available skills, so that I can extend my capabilities. |
+| 8.2.3 | P0 | As an agent, I want to purchase a skill license, so that I can use it in my work. |
+| 8.2.4 | P1 | As a skill creator, I want to see my sales and revenue, so that I can track earnings. |
+| 8.2.5 | P1 | As an agent, I want to rate skills I've used, so that others benefit from my experience. |
+| 8.2.6 | P2 | As a skill creator, I want to set usage-based pricing, so that I earn per invocation. |
+
+### Data Marketplace
+
+| ID | Priority | User Story |
+|----|----------|------------|
+| 8.3.1 | P0 | As a data provider, I want to publish a dataset with metadata and price, so that buyers can find it. |
+| 8.3.2 | P0 | As a data consumer, I want to search for datasets by topic/format, so that I can find relevant data. |
+| 8.3.3 | P0 | As a data consumer, I want to purchase and download a dataset, so that I can use it. |
+| 8.3.4 | P1 | As a data provider, I want to see download statistics, so that I know my data's value. |
+| 8.3.5 | P2 | As a data provider, I want to offer dataset previews, so that buyers can evaluate before purchasing. |
+
+### Trajectory Contributions
+
+| ID | Priority | User Story |
+|----|----------|------------|
+| 8.4.1 | P0 | As a developer, I want to contribute my anonymized coding trajectories, so that I earn Bitcoin. |
+| 8.4.2 | P0 | As a developer, I want to see which trajectories I've contributed, so that I track my contributions. |
+| 8.4.3 | P1 | As a developer, I want to set redaction rules for my contributions, so that secrets are protected. |
+| 8.4.4 | P1 | As a researcher, I want to purchase trajectory datasets, so that I can train models. |
+
+---
+
+## d-009: Autopilot GUI
+
+### Session View
+
+| ID | Priority | User Story |
+|----|----------|------------|
+| 9.1.1 | P0 | As a user, I want to see the conversation thread between me and the agent, so that I can follow progress. |
+| 9.1.2 | P0 | As a user, I want to see tool calls with their output, so that I understand what the agent is doing. |
+| 9.1.3 | P0 | As a user, I want to type a prompt and send it to the agent, so that I can direct the work. |
+| 9.1.4 | P1 | As a user, I want to expand/collapse thinking blocks, so that I can see or hide reasoning. |
+| 9.1.5 | P1 | As a user, I want to see a token usage gauge, so that I know my consumption. |
+
+### Control Panel
+
+| ID | Priority | User Story |
+|----|----------|------------|
+| 9.2.1 | P0 | As a user, I want to start a new autopilot session, so that I can begin work. |
+| 9.2.2 | P0 | As a user, I want to stop a running session, so that I can interrupt if needed. |
+| 9.2.3 | P1 | As a user, I want to switch between multiple active sessions, so that I can multitask. |
+| 9.2.4 | P1 | As a user, I want to see session history, so that I can resume past work. |
+| 9.2.5 | P2 | As a user, I want to export a session transcript, so that I can share the conversation. |
+
+### Metrics Display
+
+| ID | Priority | User Story |
+|----|----------|------------|
+| 9.3.1 | P0 | As a user, I want to see my current APM, so that I know how fast the agent is working. |
+| 9.3.2 | P1 | As a user, I want to see error rate for the session, so that I can assess quality. |
+| 9.3.3 | P1 | As a user, I want to see cost estimate for the session, so that I can budget. |
+| 9.3.4 | P2 | As a user, I want to see a timeline of agent activity, so that I can visualize the flow. |
+
+---
+
+## d-010: Unified Binary
+
+### Subcommand Structure
+
+| ID | Priority | User Story |
+|----|----------|------------|
+| 10.1.1 | P0 | As a user, I want to run `openagents` without arguments to launch the GUI, so that I have a visual interface. |
+| 10.1.2 | P0 | As a user, I want to run `openagents wallet init` to initialize my wallet, so that I can manage identity. |
+| 10.1.3 | P0 | As a user, I want to run `openagents autopilot run "task"` to start an autonomous run, so that work happens. |
+| 10.1.4 | P0 | As a user, I want to run `openagents daemon start` to launch the background daemon, so that agents run continuously. |
+| 10.1.5 | P1 | As a user, I want to run `openagents --help` to see all available commands, so that I can discover features. |
+| 10.1.6 | P1 | As a user, I want to run `openagents <subcommand> --help` for detailed help, so that I understand options. |
+
+### Backward Compatibility
+
+| ID | Priority | User Story |
+|----|----------|------------|
+| 10.2.1 | P1 | As a user with legacy scripts, I want deprecation warnings when using old binary names, so that I can migrate. |
+| 10.2.2 | P2 | As a user, I want symlinks for old binary names to keep working temporarily, so that scripts don't break. |
+
+---
+
+## d-011: Storybook Coverage
+
+### Component Stories
+
+| ID | Priority | User Story |
+|----|----------|------------|
+| 11.1.1 | P0 | As a developer, I want to see Button stories with all variants, so that I understand how to use it. |
+| 11.1.2 | P0 | As a developer, I want to see TextInput stories with different states, so that I can use it correctly. |
+| 11.1.3 | P1 | As a developer, I want to see all atom components in a gallery, so that I can browse available UI elements. |
+| 11.1.4 | P1 | As a developer, I want copy-pasteable code snippets for each story, so that I can use components quickly. |
+| 11.1.5 | P2 | As a developer, I want interactive controls to tweak component props, so that I can experiment. |
+
+### Storybook Navigation
+
+| ID | Priority | User Story |
+|----|----------|------------|
+| 11.2.1 | P0 | As a developer, I want hierarchical navigation (atoms/molecules/organisms), so that I can find components. |
+| 11.2.2 | P1 | As a developer, I want to search stories by name, so that I can find specific components. |
+| 11.2.3 | P2 | As a developer, I want to bookmark frequently used stories, so that I can access them quickly. |
+
+---
+
+## d-012: No Stubs Policy
+
+### Code Quality
+
+| ID | Priority | User Story |
+|----|----------|------------|
+| 12.1.1 | P0 | As a developer, I want pre-commit hooks to reject `todo!()`, so that stubs don't enter main. |
+| 12.1.2 | P0 | As a developer, I want pre-commit hooks to reject `unimplemented!()`, so that incomplete code is blocked. |
+| 12.1.3 | P1 | As a developer, I want CI to scan for stub patterns, so that nothing slips through. |
+| 12.1.4 | P1 | As a developer, I want to see a list of allowed exceptions (with justification), so that I know what's permitted. |
+
+---
+
+## d-013: Testing Framework
+
+### Unit Tests
+
+| ID | Priority | User Story |
+|----|----------|------------|
+| 13.1.1 | P0 | As a developer, I want to run `cargo test` to execute all unit tests, so that I can verify correctness. |
+| 13.1.2 | P0 | As a developer, I want tests to run in parallel, so that the suite finishes quickly. |
+| 13.1.3 | P1 | As a developer, I want to see code coverage reports, so that I know what's untested. |
+| 13.1.4 | P1 | As a developer, I want property-based tests for encoders/validators, so that edge cases are covered. |
+
+### Integration Tests
+
+| ID | Priority | User Story |
+|----|----------|------------|
+| 13.2.1 | P0 | As a developer, I want integration tests to use in-memory databases, so that they're isolated. |
+| 13.2.2 | P0 | As a developer, I want integration tests to not require network access, so that they run offline. |
+| 13.2.3 | P1 | As a developer, I want a TestApp pattern for setting up test contexts, so that boilerplate is minimal. |
+
+### Snapshot Tests
+
+| ID | Priority | User Story |
+|----|----------|------------|
+| 13.3.1 | P0 | As a developer, I want snapshot tests for WGPUI scenes, so that visual regressions are caught. |
+| 13.3.2 | P1 | As a developer, I want to update snapshots with a single command, so that intentional changes are easy. |
+| 13.3.3 | P1 | As a developer, I want snapshot diffs in CI, so that I can review changes in PRs. |
+
+---
+
+## d-014: NIP-SA/Bifrost Integration Tests
+
+### Bifrost Tests
+
+| ID | Priority | User Story |
+|----|----------|------------|
+| 14.1.1 | P0 | As a developer, I want E2E tests for 2-of-3 threshold signing, so that the common case is verified. |
+| 14.1.2 | P0 | As a developer, I want E2E tests for threshold ECDH decryption, so that DM reading works. |
+| 14.1.3 | P1 | As a developer, I want tests for peer discovery over test relays, so that coordination works. |
+| 14.1.4 | P1 | As a developer, I want tests for timeout handling when peers are offline, so that failures are graceful. |
+
+### NIP-SA Tests
+
+| ID | Priority | User Story |
+|----|----------|------------|
+| 14.2.1 | P0 | As a developer, I want E2E tests for agent profile publish/fetch, so that discovery works. |
+| 14.2.2 | P0 | As a developer, I want E2E tests for encrypted state round-trips, so that persistence works. |
+| 14.2.3 | P0 | As a developer, I want E2E tests for tick request/result lifecycle, so that heartbeats work. |
+| 14.2.4 | P1 | As a developer, I want E2E tests for trajectory publish/verify, so that transparency works. |
+
+---
+
+## d-015: Marketplace E2E Tests
+
+### Compute Tests
+
+| ID | Priority | User Story |
+|----|----------|------------|
+| 15.1.1 | P0 | As a developer, I want E2E tests for NIP-90 job submission, so that DVM requests work. |
+| 15.1.2 | P0 | As a developer, I want E2E tests for job result delivery, so that outputs arrive correctly. |
+| 15.1.3 | P1 | As a developer, I want E2E tests for job feedback flow, so that ratings work. |
+
+### Skill Tests
+
+| ID | Priority | User Story |
+|----|----------|------------|
+| 15.2.1 | P0 | As a developer, I want E2E tests for skill browsing, so that discovery works. |
+| 15.2.2 | P0 | As a developer, I want E2E tests for skill purchase with mock payment, so that licensing works. |
+| 15.2.3 | P1 | As a developer, I want E2E tests for encrypted skill delivery, so that content is protected. |
+
+### Agent Commerce Tests
+
+| ID | Priority | User Story |
+|----|----------|------------|
+| 15.3.1 | P0 | As a developer, I want E2E tests for agent-to-agent transactions, so that the economy works. |
+| 15.3.2 | P1 | As a developer, I want E2E tests for budget constraint enforcement, so that agents don't overspend. |
+
+---
+
+## d-016: APM Metrics
+
+### Data Collection
+
+| ID | Priority | User Story |
+|----|----------|------------|
+| 16.1.1 | P0 | As an operator, I want APM calculated from Claude Code JSONL logs, so that interactive usage is tracked. |
+| 16.1.2 | P0 | As an operator, I want APM calculated from autopilot trajectory logs, so that autonomous usage is tracked. |
+| 16.1.3 | P1 | As an operator, I want APM tracked across multiple time windows, so that I can see trends. |
+
+### Display
+
+| ID | Priority | User Story |
+|----|----------|------------|
+| 16.2.1 | P0 | As a user, I want to see my current APM in the CLI, so that I know my velocity. |
+| 16.2.2 | P0 | As a user, I want to see APM in the GUI dashboard, so that I have visual feedback. |
+| 16.2.3 | P1 | As a user, I want APM color-coded by tier, so that I quickly understand performance level. |
+| 16.2.4 | P2 | As a user, I want to see APM history charts, so that I can analyze trends. |
+
+---
+
+## d-017: ACP Integration
+
+### Protocol Support
+
+| ID | Priority | User Story |
+|----|----------|------------|
+| 17.1.1 | P0 | As a developer, I want to send ACP messages to Claude Code, so that sessions work. |
+| 17.1.2 | P0 | As a developer, I want to receive ACP events from Claude Code, so that responses stream. |
+| 17.1.3 | P1 | As a developer, I want to switch between Claude/Codex backends, so that I can choose agents. |
+| 17.1.4 | P1 | As a developer, I want to convert ACP events to rlog format, so that replay works. |
+
+### Session Management
+
+| ID | Priority | User Story |
+|----|----------|------------|
+| 17.2.1 | P0 | As a user, I want to start an ACP session, so that I can interact with an agent. |
+| 17.2.2 | P0 | As a user, I want to send messages and receive responses, so that conversation works. |
+| 17.2.3 | P1 | As a user, I want to replay old sessions from rlog files, so that I can review past work. |
+
+---
+
+## d-018: Parallel Container Isolation
+
+### Container Management
+
+| ID | Priority | User Story |
+|----|----------|------------|
+| 18.1.1 | P0 | As an operator, I want to start N autopilot containers in parallel, so that throughput increases. |
+| 18.1.2 | P0 | As an operator, I want each container to have its own git worktree, so that agents don't conflict. |
+| 18.1.3 | P0 | As an operator, I want containers to share the issue database, so that coordination works. |
+| 18.1.4 | P1 | As an operator, I want to see status of all running agents, so that I can monitor progress. |
+| 18.1.5 | P1 | As an operator, I want to stop individual agents, so that I can control resources. |
+
+### Resource Management
+
+| ID | Priority | User Story |
+|----|----------|------------|
+| 18.2.1 | P0 | As an operator, I want agents to respect memory limits, so that the host isn't overwhelmed. |
+| 18.2.2 | P1 | As an operator, I want platform-aware defaults (10 agents on Linux, 5 on macOS), so that resources are tuned. |
+| 18.2.3 | P2 | As an operator, I want to customize resource limits per agent, so that I can tune performance. |
+
+---
+
+## d-019: GPT-OSS Local Inference
+
+### Model Access
+
+| ID | Priority | User Story |
+|----|----------|------------|
+| 19.1.1 | P0 | As a developer, I want to run inference with gpt-oss-120b, so that I can use the largest model. |
+| 19.1.2 | P0 | As a developer, I want to run inference with gpt-oss-20b, so that I can use a faster model. |
+| 19.1.3 | P0 | As a developer, I want to check if GPT-OSS is available locally, so that I know if I can use it. |
+| 19.1.4 | P1 | As a developer, I want to stream responses, so that output appears incrementally. |
+
+### Agent Integration
+
+| ID | Priority | User Story |
+|----|----------|------------|
+| 19.2.1 | P0 | As an operator, I want to run autopilot with GPT-OSS as the backend, so that I use local inference. |
+| 19.2.2 | P1 | As a GUI user, I want to select GPT-OSS from the model dropdown, so that I can switch models. |
+| 19.2.3 | P1 | As a developer, I want GPT-OSS to support tool calls, so that full agent capabilities work. |
+
+---
+
+## d-020: WGPUI Component Integration
+
+### Foundation Components
+
+| ID | Priority | User Story |
+|----|----------|------------|
+| 20.1.1 | P0 | As a developer, I want Button components with all variants, so that I can build interactive UIs. |
+| 20.1.2 | P0 | As a developer, I want TextInput components, so that users can enter text. |
+| 20.1.3 | P0 | As a developer, I want Dropdown components, so that users can select options. |
+| 20.1.4 | P0 | As a developer, I want Modal components, so that I can show dialogs. |
+| 20.1.5 | P0 | As a developer, I want ScrollView components, so that content can scroll. |
+
+### ACP Component Parity
+
+| ID | Priority | User Story |
+|----|----------|------------|
+| 20.2.1 | P0 | As a developer, I want all ACP atoms ported to WGPUI, so that I have the same building blocks. |
+| 20.2.2 | P0 | As a developer, I want all ACP molecules ported to WGPUI, so that I have composite components. |
+| 20.2.3 | P0 | As a developer, I want all ACP organisms ported to WGPUI, so that I have complete features. |
+| 20.2.4 | P1 | As a developer, I want HUD components (StatusBar, Notifications), so that I have overlays. |
+
+---
+
+## d-021: OpenCode SDK
+
+### API Integration
+
+| ID | Priority | User Story |
+|----|----------|------------|
+| 21.1.1 | P0 | As a developer, I want to connect to an OpenCode server, so that I can use its capabilities. |
+| 21.1.2 | P0 | As a developer, I want to send messages and receive responses, so that conversation works. |
+| 21.1.3 | P0 | As a developer, I want to receive SSE events, so that I get real-time updates. |
+| 21.1.4 | P1 | As a developer, I want to list available providers, so that I can choose backends. |
+
+### Server Management
+
+| ID | Priority | User Story |
+|----|----------|------------|
+| 21.2.1 | P0 | As a developer, I want to spawn an OpenCode server process, so that I can use it locally. |
+| 21.2.2 | P1 | As a developer, I want to stop the server gracefully, so that resources are freed. |
+
+---
+
+## d-022: Agent Orchestration
+
+### Agent Management
+
+| ID | Priority | User Story |
+|----|----------|------------|
+| 22.1.1 | P0 | As an orchestrator, I want to spawn specialized sub-agents, so that tasks are delegated. |
+| 22.1.2 | P0 | As an orchestrator, I want to collect results from sub-agents, so that I can synthesize responses. |
+| 22.1.3 | P1 | As an orchestrator, I want to timeout slow agents, so that I'm not blocked indefinitely. |
+| 22.1.4 | P1 | As an orchestrator, I want to retry failed agents, so that transient failures are handled. |
+
+### Lifecycle Hooks
+
+| ID | Priority | User Story |
+|----|----------|------------|
+| 22.2.1 | P0 | As an orchestrator, I want session start hooks, so that I can set up context. |
+| 22.2.2 | P0 | As an orchestrator, I want session end hooks, so that I can clean up. |
+| 22.2.3 | P1 | As an orchestrator, I want message hooks, so that I can transform inputs/outputs. |
+| 22.2.4 | P1 | As an orchestrator, I want error hooks, so that I can handle failures gracefully. |
+
+---
+
+## d-023: WGPUI Framework
+
+### Rendering
+
+| ID | Priority | User Story |
+|----|----------|------------|
+| 23.1.1 | P0 | As a developer, I want to render quads with colors and borders, so that I can draw rectangles. |
+| 23.1.2 | P0 | As a developer, I want to render text with different fonts and sizes, so that I can display content. |
+| 23.1.3 | P0 | As a developer, I want GPU-accelerated rendering at 60fps, so that the UI is smooth. |
+| 23.1.4 | P1 | As a developer, I want to render on web via WebGPU, so that browser apps work. |
+| 23.1.5 | P1 | As a developer, I want to render on desktop via Vulkan/Metal/DX12, so that native apps work. |
+
+### Layout
+
+| ID | Priority | User Story |
+|----|----------|------------|
+| 23.2.1 | P0 | As a developer, I want Flexbox layout, so that I can arrange components. |
+| 23.2.2 | P1 | As a developer, I want percentage-based sizing, so that layouts are responsive. |
+| 23.2.3 | P1 | As a developer, I want margin/padding/gap, so that I can space elements. |
+
+### Input Handling
+
+| ID | Priority | User Story |
+|----|----------|------------|
+| 23.3.1 | P0 | As a developer, I want to handle mouse clicks, so that buttons work. |
+| 23.3.2 | P0 | As a developer, I want to handle keyboard input, so that text fields work. |
+| 23.3.3 | P1 | As a developer, I want to handle mouse hover, so that hover states work. |
+| 23.3.4 | P1 | As a developer, I want to handle scroll events, so that scrolling works. |
+
+---
+
+## d-024: Arwes Parity
+
+### Frame Styles
+
+| ID | Priority | User Story |
+|----|----------|------------|
+| 24.1.1 | P0 | As a developer, I want all 6 frame styles (Corners, Lines, Octagon, etc.), so that I can create sci-fi UI. |
+| 24.1.2 | P1 | As a developer, I want 3 additional frame styles (Nero, Header, Circle), so that I have full parity. |
+| 24.1.3 | P1 | As a developer, I want animated frame corners, so that UI feels alive. |
+
+### Easing Functions
+
+| ID | Priority | User Story |
+|----|----------|------------|
+| 24.2.1 | P0 | As a developer, I want all 13 current easing functions, so that animations are smooth. |
+| 24.2.2 | P1 | As a developer, I want 18 additional easing functions (Quart, Bounce, etc.), so that I have full control. |
+
+### Text Effects
+
+| ID | Priority | User Story |
+|----|----------|------------|
+| 24.3.1 | P0 | As a developer, I want Sequence text effect (char-by-char reveal), so that text animates in. |
+| 24.3.2 | P1 | As a developer, I want Decipher text effect (scramble reveal), so that text has a hacker feel. |
+| 24.3.3 | P1 | As a developer, I want blinking cursor, so that inputs feel responsive. |
+
+### Backgrounds
+
+| ID | Priority | User Story |
+|----|----------|------------|
+| 24.4.1 | P0 | As a developer, I want DotsGrid background, so that I can create sci-fi panels. |
+| 24.4.2 | P1 | As a developer, I want GridLines background, so that I have more options. |
+| 24.4.3 | P1 | As a developer, I want MovingLines background, so that UI feels dynamic. |
+| 24.4.4 | P2 | As a developer, I want Puffs background, so that I can add particle effects. |
+
+---
+
+## d-025: All-In WGPUI
+
+### Framework Features
+
+| ID | Priority | User Story |
+|----|----------|------------|
+| 25.1.1 | P0 | As a developer, I want Entity system for reactive state, so that UI updates automatically. |
+| 25.1.2 | P0 | As a developer, I want Element lifecycle (layout/prepaint/paint), so that rendering is structured. |
+| 25.1.3 | P0 | As a developer, I want Window abstraction, so that I can create native windows. |
+| 25.1.4 | P1 | As a developer, I want Styled trait for fluent builder DSL, so that styling is ergonomic. |
+| 25.1.5 | P1 | As a developer, I want async support via cx.spawn(), so that I can do background work. |
+
+### Web Stack Removal
+
+| ID | Priority | User Story |
+|----|----------|------------|
+| 25.2.1 | P0 | As a maintainer, I want the HTML/Maud stack archived, so that there's one UI path. |
+| 25.2.2 | P0 | As a developer, I want autopilot-gui rebuilt in pure WGPUI, so that no web dependencies remain. |
+| 25.2.3 | P1 | As a developer, I want all examples to be WGPUI-only, so that documentation is consistent. |
+
+---
+
+## d-026: E2E Test Live Viewer
+
+### Test DSL
+
+| ID | Priority | User Story |
+|----|----------|------------|
+| 26.1.1 | P0 | As a tester, I want to write tests with fluent DSL, so that test code is readable. |
+| 26.1.2 | P0 | As a tester, I want to click elements by selector, so that I can simulate user interaction. |
+| 26.1.3 | P0 | As a tester, I want to type text into inputs, so that I can test forms. |
+| 26.1.4 | P0 | As a tester, I want to assert element existence, so that I can verify UI state. |
+| 26.1.5 | P1 | As a tester, I want to wait for elements to appear, so that async UI works. |
+
+### Live Viewer
+
+| ID | Priority | User Story |
+|----|----------|------------|
+| 26.2.1 | P0 | As a tester, I want to see tests execute in real-time, so that I can watch what happens. |
+| 26.2.2 | P0 | As a tester, I want to see click ripples, so that I know where clicks occurred. |
+| 26.2.3 | P0 | As a tester, I want to see key presses displayed, so that I know what was typed. |
+| 26.2.4 | P1 | As a tester, I want to pause/step through tests, so that I can debug failures. |
+| 26.2.5 | P1 | As a tester, I want playback speed control, so that I can watch slowly or quickly. |
+
+### Test Harness
+
+| ID | Priority | User Story |
+|----|----------|------------|
+| 26.3.1 | P0 | As a tester, I want to wrap any component in a test harness, so that it can be tested. |
+| 26.3.2 | P0 | As a tester, I want synthetic events injected into components, so that interaction is simulated. |
+| 26.3.3 | P1 | As a tester, I want control bar with play/pause/step, so that I control execution. |
+| 26.3.4 | P2 | As a tester, I want to record tests by performing actions, so that I don't write code. |
+
+---
+
+## Summary Statistics
+
+| Directive | User Stories | P0 | P1 | P2 |
+|-----------|-------------|----|----|-----|
+| d-001 | 24 | 15 | 8 | 1 |
+| d-002 | 22 | 14 | 7 | 1 |
+| d-003 | 20 | 11 | 7 | 2 |
+| d-004 | 12 | 5 | 5 | 2 |
+| d-005 | 18 | 10 | 6 | 2 |
+| d-006 | 16 | 9 | 6 | 1 |
+| d-007 | 14 | 8 | 5 | 1 |
+| d-008 | 18 | 10 | 7 | 1 |
+| d-009 | 13 | 6 | 5 | 2 |
+| d-010 | 7 | 5 | 2 | 0 |
+| d-011 | 8 | 3 | 3 | 2 |
+| d-012 | 4 | 2 | 2 | 0 |
+| d-013 | 10 | 5 | 4 | 1 |
+| d-014 | 8 | 5 | 3 | 0 |
+| d-015 | 6 | 4 | 2 | 0 |
+| d-016 | 7 | 3 | 3 | 1 |
+| d-017 | 7 | 4 | 3 | 0 |
+| d-018 | 8 | 4 | 3 | 1 |
+| d-019 | 7 | 4 | 3 | 0 |
+| d-020 | 9 | 7 | 2 | 0 |
+| d-021 | 6 | 4 | 2 | 0 |
+| d-022 | 8 | 4 | 4 | 0 |
+| d-023 | 12 | 6 | 5 | 1 |
+| d-024 | 11 | 4 | 6 | 1 |
+| d-025 | 8 | 4 | 3 | 1 |
+| d-026 | 13 | 7 | 5 | 1 |
+| **TOTAL** | **296** | **173** | **111** | **22** |
+
+---
+
+## Implementation Notes
+
+### Test Priority Guidelines
+
+- **P0 (Critical)**: Must work for the feature to be considered complete. Block release if failing.
+- **P1 (High)**: Important for quality user experience. Should be fixed before release.
+- **P2 (Medium)**: Nice to have. Can be deferred if time-constrained.
+- **P3 (Low)**: Edge cases and polish. Implement when capacity allows.
+
+### Mapping to Test Types
+
+| User Story Type | Test Type |
+|-----------------|-----------|
+| "I want to see X" | Snapshot/visual test |
+| "I want to click X and Y happens" | E2E interaction test |
+| "I want to run `command`" | Integration test |
+| "I want error message when..." | Error handling test |
+| "I want to receive notification" | Async behavior test |
+
+### Creating Tests from Stories
+
+```rust
+// From story 26.1.1: "As a tester, I want to write tests with fluent DSL"
+test("DSL Fluent API Works")
+    .click("#button")
+    .type_text("hello")
+    .expect("#result")
+    .build();
+
+// From story 1.3.1: "As a user, I want to send Bitcoin to a Lightning invoice"
+test("Send to Lightning Invoice")
+    .click("#send-button")
+    .click("#invoice-input")
+    .type_text("lnbc...")
+    .click("#amount-input")
+    .type_text("1000")
+    .click("#confirm-button")
+    .wait_for("#success-screen", 5000)
+    .expect_text("#status", "Payment Sent")
+    .build();
+```
+
+---
+
+*Last updated: 2024-12*
