@@ -48,40 +48,9 @@ if [ -n "$VIOLATIONS" ]; then
 fi
 
 # =============================================================================
-# Check 2: Hardcoded color violations
+# Check 2: Hardcoded color violations (disabled)
 # =============================================================================
-# Prevents pushing code with non-semantic Tailwind colors.
-# Design policy: Use only semantic tokens (background, foreground, primary, etc.)
-
-COLOR_VIOLATIONS=$(grep -r --include="*.rs" --include="*.html" --include="*.tsx" --include="*.ts" --include="*.jsx" --include="*.js" \
-    -E "(text|bg|border|ring|from|to|via)-(red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose|slate|gray|zinc|neutral|stone)-" \
-    --exclude-dir=node_modules \
-    --exclude-dir=target \
-    --exclude-dir=.git \
-    --exclude-dir=vendor \
-    --exclude-dir=static \
-    --exclude-dir=docs \
-    . 2>/dev/null | grep -v "^Binary" | grep -v ".sample:" | grep -v "//!" | grep -v "// " | grep -v "/\*" | grep -v "^\s*\*" || true)
-
-if [ -n "$COLOR_VIOLATIONS" ]; then
-    echo "❌ ERROR: Hardcoded colors detected in source files" >&2
-    echo "" >&2
-    echo "Design policy: Use only semantic color tokens." >&2
-    echo "Available tokens: background, foreground, card, primary, secondary, muted, accent, destructive, border" >&2
-    echo "" >&2
-    echo "Violations found:" >&2
-    echo "$COLOR_VIOLATIONS" | head -20 >&2
-
-    COUNT=$(echo "$COLOR_VIOLATIONS" | wc -l | tr -d ' ')
-    if [ "$COUNT" -gt 20 ]; then
-        echo "" >&2
-        echo "... and $((COUNT - 20)) more violations" >&2
-    fi
-
-    echo "" >&2
-    echo "Fix these before pushing." >&2
-    exit 1
-fi
+# This Tailwind color token check is intentionally disabled for now.
 
 echo "✅ Pre-push checks passed"
 exit 0

@@ -95,6 +95,13 @@ fn sidebar_nav(active_story: &str) -> Markup {
         aside class="fixed top-0 left-0 bottom-0 w-48 border-r border-border overflow-y-auto p-3 bg-background z-50" {
             h1 class="font-bold mb-3 text-foreground" { "Storybook" }
             nav {
+                h2 class="uppercase text-muted-foreground mb-1 mt-3 pl-1 tracking-wide text-xs" { "HUD" }
+                a href="/stories/hud" class=(link_class("hud")) { "HUD Index" }
+                a href="/stories/hud/command-palette" class=(link_class("hud/command-palette")) { "Command Palette" }
+                a href="/stories/hud/context-menu" class=(link_class("hud/context-menu")) { "Context Menu" }
+                a href="/stories/hud/notifications" class=(link_class("hud/notifications")) { "Notifications" }
+                a href="/stories/hud/status-bar" class=(link_class("hud/status-bar")) { "Status Bar" }
+                a href="/stories/hud/tooltip" class=(link_class("hud/tooltip")) { "Tooltip" }
                 // ACP Components (top priority)
                 h2 class="uppercase text-muted-foreground mb-1 mt-3 pl-1 tracking-wide text-xs" { "ACP" }
                 a href="/stories/acp" class=(link_class("acp")) { "ACP Index" }
@@ -127,13 +134,6 @@ fn sidebar_nav(active_story: &str) -> Markup {
                 a href="/stories/acp/molecules/terminal-header" class=(link_class("acp/molecules/terminal-header")) { "Terminal Header" }
                 a href="/stories/acp/molecules/checkpoint-restore" class=(link_class("acp/molecules/checkpoint-restore")) { "Checkpoint Restore" }
                 a href="/stories/acp/molecules/entry-actions" class=(link_class("acp/molecules/entry-actions")) { "Entry Actions" }
-                h2 class="uppercase text-muted-foreground mb-1 mt-3 pl-1 tracking-wide text-xs" { "HUD" }
-                a href="/stories/hud" class=(link_class("hud")) { "HUD Index" }
-                a href="/stories/hud/command-palette" class=(link_class("hud/command-palette")) { "Command Palette" }
-                a href="/stories/hud/context-menu" class=(link_class("hud/context-menu")) { "Context Menu" }
-                a href="/stories/hud/notifications" class=(link_class("hud/notifications")) { "Notifications" }
-                a href="/stories/hud/status-bar" class=(link_class("hud/status-bar")) { "Status Bar" }
-                a href="/stories/hud/tooltip" class=(link_class("hud/tooltip")) { "Tooltip" }
                 // Other components
                 h2 class="uppercase text-muted-foreground mb-1 mt-4 pl-1 tracking-wide text-xs" { "Atoms" }
                 a href="/stories/base-document" class=(link_class("base-document")) { "Base Document" }
