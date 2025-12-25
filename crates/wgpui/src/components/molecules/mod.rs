@@ -1,20 +1,26 @@
+mod balance_card;
 mod checkpoint_restore;
 mod diff_header;
 mod entry_actions;
+mod invoice_display;
 mod message_header;
 mod mode_selector;
 mod model_selector;
+mod payment_row;
 mod permission_bar;
 mod terminal_header;
 mod thinking_block;
 mod tool_header;
 
+pub use balance_card::{BalanceCard, WalletBalance};
 pub use checkpoint_restore::CheckpointRestore;
 pub use diff_header::{DiffHeader, DiffType};
 pub use entry_actions::EntryActions;
+pub use invoice_display::{InvoiceDisplay, InvoiceInfo, InvoiceType};
 pub use message_header::MessageHeader;
 pub use mode_selector::ModeSelector;
 pub use model_selector::ModelSelector;
+pub use payment_row::{PaymentDirection, PaymentInfo, PaymentRow};
 pub use permission_bar::PermissionBar;
 pub use terminal_header::TerminalHeader;
 pub use thinking_block::ThinkingBlock;
