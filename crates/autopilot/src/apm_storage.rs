@@ -973,6 +973,7 @@ pub fn get_baselines_by_source(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use chrono::Duration;
 
     fn setup_test_db() -> Connection {
         let conn = Connection::open_in_memory().unwrap();
@@ -1113,5 +1114,45 @@ mod tests {
             Some(APMEventType::ToolCall)
         );
         assert_eq!(APMEventType::from_str("invalid"), None);
+    }
+
+    #[test]
+    fn test_generate_window_snapshots_includes_all_windows() {
+        let conn = setup_test_db();
+        let session_id = "window-session";
+        create_session(&conn, session_id, APMSource::Autopilot).unwrap();
+
+        let first_id = record_event(&conn, session_id, APMEventType::Message, None).unwrap();
+        let second_id = record_event(&conn, session_id, APMEventType::ToolCall, None).unwrap();
+
+        let now = Utc::now();
+        let start = now - Duration::minutes(10);
+
+        conn.execute(
+            "UPDATE apm_events SET timestamp = ? WHERE id = ?",
+            params![start.to_rfc3339(), first_id],
+        )
+        .unwrap();
+        conn.execute(
+            "UPDATE apm_events SET timestamp = ? WHERE id = ?",
+            params![now.to_rfc3339(), second_id],
+        )
+        .unwrap();
+
+        let snapshots = generate_window_snapshots(&conn, APMSource::Autopilot).unwrap();
+        let windows: Vec<APMWindow> = snapshots.iter().map(|s| s.window).collect();
+
+        let expected = [
+            APMWindow::Hour1,
+            APMWindow::Hour6,
+            APMWindow::Day1,
+            APMWindow::Week1,
+            APMWindow::Month1,
+            APMWindow::Lifetime,
+        ];
+
+        for window in expected {
+            assert!(windows.contains(&window), "missing {:?}", window);
+        }
     }
 }

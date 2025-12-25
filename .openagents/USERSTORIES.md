@@ -50,6 +50,11 @@ This section tracks which user stories have implemented tests.
 | **d-009: Autopilot GUI** ||||
 | 9.1.1 | Conversation thread display | Visual E2E | `crates/wgpui/examples/chat_streaming_test.rs` |
 | 9.1.2 | Tool calls with output | Visual E2E | `crates/wgpui/examples/chat_streaming_test.rs` |
+| **d-016: APM Metrics** ||||
+| 16.1.1 | APM calculated from Claude Code JSONL logs | Unit | `crates/autopilot/src/apm_parser.rs` |
+| 16.1.2 | APM calculated from autopilot trajectory logs | Unit | `crates/autopilot/src/apm_parser.rs` |
+| 16.1.3 | APM tracked across multiple time windows | Unit | `crates/autopilot/src/apm_storage.rs` |
+| 16.2.3 | APM color-coded by tier | Unit | `crates/autopilot/src/apm.rs` |
 | **d-017: ACP Integration** ||||
 | 17.1.2 | ACP event streaming | Unit + Visual | `crates/wgpui/src/testing/chat_tests.rs` |
 | **d-020: WGPUI Component Integration** ||||
@@ -59,6 +64,9 @@ This section tracks which user stories have implemented tests.
 | 20.1.4 | Modal components | Unit | `crates/wgpui/src/testing/component_tests.rs` |
 | 20.1.5 | ScrollView components | Unit | `crates/wgpui/src/testing/component_tests.rs` |
 | 20.2.1 | ACP atoms ported to WGPUI | Unit | `crates/wgpui/src/testing/component_tests.rs` |
+| 20.2.2 | ACP molecules ported to WGPUI | Unit | `crates/wgpui/src/testing/component_tests.rs` |
+| 20.2.3 | ACP organisms ported to WGPUI | Unit | `crates/wgpui/src/testing/component_tests.rs` |
+| 20.2.4 | HUD components (StatusBar, Notifications) | Unit | `crates/wgpui/src/components/hud/status_bar.rs`, `crates/wgpui/src/components/hud/notifications.rs` |
 | **d-023: WGPUI Framework** ||||
 | 23.1.1 | Quad rendering with colors/borders | Unit | `crates/wgpui/src/testing/framework_tests.rs` |
 | 23.1.2 | Text rendering | Unit | `crates/wgpui/src/testing/framework_tests.rs` |
@@ -73,8 +81,10 @@ This section tracks which user stories have implemented tests.
 | 24.1.2 | 3 additional frame styles | Unit | `crates/wgpui/src/testing/component_tests.rs` |
 | 24.1.3 | Animated frame corners | Unit | `crates/wgpui/src/testing/component_tests.rs` |
 | 24.2.1 | All easing functions | Unit | `crates/wgpui/src/testing/framework_tests.rs` |
+| 24.2.2 | Additional easing functions | Unit | `crates/wgpui/src/testing/framework_tests.rs` |
 | 24.3.1 | Sequence text effect | Unit | `crates/wgpui/src/testing/framework_tests.rs` |
 | 24.3.2 | Decipher text effect | Unit | `crates/wgpui/src/components/text_effects/decipher.rs` |
+| 24.3.3 | Blinking cursor | Unit | `crates/wgpui/src/components/text_effects/mod.rs` |
 | 24.4.1 | DotsGrid background | Unit | `crates/wgpui/src/testing/component_tests.rs` |
 | 24.4.2 | GridLines background | Unit | `crates/wgpui/src/components/hud/backgrounds/grid_lines.rs` |
 | 24.4.3 | MovingLines background | Unit | `crates/wgpui/src/components/hud/backgrounds/moving_lines.rs` |
@@ -95,6 +105,7 @@ This section tracks which user stories have implemented tests.
 | 26.2.5 | Playback speed control | Unit | `crates/wgpui/src/testing/runner.rs` |
 | 26.3.1 | Component test harness | Unit | `crates/wgpui/src/testing/harness.rs` |
 | 26.3.2 | Synthetic event injection | Unit | `crates/wgpui/src/testing/injection.rs` |
+| 26.3.3 | Control bar with play/pause/step | Unit | `crates/wgpui/src/testing/harness.rs` |
 
 ### Test Files Summary
 
@@ -103,19 +114,25 @@ This section tracks which user stories have implemented tests.
 | `crates/wgpui/examples/chat_streaming_test.rs` | Visual demo of ACP chat streaming with assertions | 9.1.1, 9.1.2, 17.1.2 |
 | `crates/wgpui/examples/test_viewer.rs` | Visual demo of E2E test framework | 26.2.1, 26.2.2 |
 | `crates/wgpui/src/testing/chat_tests.rs` | 18 unit tests for streaming mechanics | 17.1.2 |
-| `crates/wgpui/src/testing/component_tests.rs` | 44 unit tests for component integration | 20.1.1-5, 20.2.1, 24.1.1-3, 24.4.1, 25.1.2, 25.1.4 |
-| `crates/wgpui/src/testing/framework_tests.rs` | 43 unit tests for WGPUI framework | 23.1.1, 23.1.2, 23.2.1, 23.2.3, 23.3.1-4, 24.2.1, 24.3.1 |
+| `crates/wgpui/src/testing/component_tests.rs` | 46 unit tests for component integration | 20.1.1-5, 20.2.1-3, 24.1.1-3, 24.4.1, 25.1.2, 25.1.4 |
+| `crates/wgpui/src/testing/framework_tests.rs` | 44 unit tests for WGPUI framework | 23.1.1, 23.1.2, 23.2.1, 23.2.3, 23.3.1-4, 24.2.1-2, 24.3.1 |
 | `crates/wgpui/src/testing/mod.rs` | Testing framework module exports | 26.1.1 |
 | `crates/wgpui/src/testing/dsl.rs` | Fluent test builder API | 26.1.1, 26.1.3-26.1.5 |
 | `crates/wgpui/src/testing/step.rs` | TestStep, ElementSelector types | 26.1.2 |
-| `crates/wgpui/src/testing/harness.rs` | TestHarness wrapper component | 26.3.1 |
+| `crates/wgpui/src/testing/harness.rs` | TestHarness wrapper component | 26.3.1, 26.3.3 |
 | `crates/wgpui/src/testing/injection.rs` | EventSequence for synthetic events | 26.3.2 |
 | `crates/wgpui/src/testing/overlay.rs` | InputOverlay for click ripples | 26.2.2, 26.2.3 |
 | `crates/wgpui/src/testing/runner.rs` | TestRunner playback + step control | 26.2.4, 26.2.5 |
 | `crates/wgpui/src/components/text_effects/decipher.rs` | Decipher text effect tests | 24.3.2 |
+| `crates/wgpui/src/components/text_effects/mod.rs` | Cursor blink timing tests | 24.3.3 |
 | `crates/wgpui/src/components/hud/backgrounds/grid_lines.rs` | GridLines background tests | 24.4.2 |
 | `crates/wgpui/src/components/hud/backgrounds/moving_lines.rs` | MovingLines background tests | 24.4.3 |
 | `crates/wgpui/src/components/hud/backgrounds/puffs.rs` | Puffs background tests | 24.4.4 |
+| `crates/wgpui/src/components/hud/status_bar.rs` | StatusBar HUD tests | 20.2.4 |
+| `crates/wgpui/src/components/hud/notifications.rs` | Notifications HUD tests | 20.2.4 |
+| `crates/autopilot/src/apm_parser.rs` | APM log parsing tests | 16.1.1-16.1.2 |
+| `crates/autopilot/src/apm_storage.rs` | APM window snapshot tests | 16.1.3 |
+| `crates/autopilot/src/apm.rs` | APM tier + stats tests | 16.2.3 |
 
 ---
 

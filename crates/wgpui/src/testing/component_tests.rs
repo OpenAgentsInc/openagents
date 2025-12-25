@@ -26,6 +26,7 @@ use crate::components::{
     Component, Button, ButtonVariant, TextInput, Dropdown, DropdownOption,
     Modal, ScrollView, Tab, Tabs, VirtualList, Text,
 };
+use crate::components::{molecules, organisms};
 use crate::components::hud::{Frame, FrameAnimation, DotsGrid, DotShape};
 use crate::components::atoms::{
     StatusDot, Status, ModeBadge, Mode, ToolStatusBadge, ToolStatus,
@@ -155,6 +156,75 @@ fn test_scroll_view_scroll_operations() {
 
     scroll.scroll_to(crate::Point::new(0.0, 100.0));
     // Note: actual scroll clamping depends on viewport set during paint
+}
+
+// ============================================================================
+// d-020: ACP Molecules + Organisms (Component Parity)
+// ============================================================================
+
+fn assert_component<T: Component>() {}
+
+#[test]
+fn test_acp_molecules_are_components() {
+    // 20.2.2: ACP molecules ported to WGPUI
+    assert_component::<molecules::AddressCard>();
+    assert_component::<molecules::AgentProfileCard>();
+    assert_component::<molecules::ApmComparisonCard>();
+    assert_component::<molecules::ApmSessionRow>();
+    assert_component::<molecules::BalanceCard>();
+    assert_component::<molecules::CheckpointRestore>();
+    assert_component::<molecules::ContactCard>();
+    assert_component::<molecules::DatasetCard>();
+    assert_component::<molecules::DiffHeader>();
+    assert_component::<molecules::DmBubble>();
+    assert_component::<molecules::EntryActions>();
+    assert_component::<molecules::InvoiceDisplay>();
+    assert_component::<molecules::IssueRow>();
+    assert_component::<molecules::MessageHeader>();
+    assert_component::<molecules::MnemonicDisplay>();
+    assert_component::<molecules::ModeSelector>();
+    assert_component::<molecules::ModelSelector>();
+    assert_component::<molecules::PaymentRow>();
+    assert_component::<molecules::PermissionBar>();
+    assert_component::<molecules::PermissionHistoryItem>();
+    assert_component::<molecules::PermissionRuleRow>();
+    assert_component::<molecules::PrTimelineItem>();
+    assert_component::<molecules::ProviderCard>();
+    assert_component::<molecules::RelayRow>();
+    assert_component::<molecules::RepoCard>();
+    assert_component::<molecules::SessionCard>();
+    assert_component::<molecules::SessionSearchBar>();
+    assert_component::<molecules::SigningRequestCard>();
+    assert_component::<molecules::SkillCard>();
+    assert_component::<molecules::TerminalHeader>();
+    assert_component::<molecules::ThinkingBlock>();
+    assert_component::<molecules::ToolHeader>();
+    assert_component::<molecules::TransactionRow>();
+    assert_component::<molecules::ZapCard>();
+}
+
+#[test]
+fn test_acp_organisms_are_components() {
+    // 20.2.3: ACP organisms ported to WGPUI
+    assert_component::<organisms::AgentStateInspector>();
+    assert_component::<organisms::ApmLeaderboard>();
+    assert_component::<organisms::AssistantMessage>();
+    assert_component::<organisms::DiffToolCall>();
+    assert_component::<organisms::DmThread>();
+    assert_component::<organisms::EventInspector>();
+    assert_component::<organisms::PermissionDialog>();
+    assert_component::<organisms::ReceiveFlow>();
+    assert_component::<organisms::RelayManager>();
+    assert_component::<organisms::ScheduleConfig>();
+    assert_component::<organisms::SearchToolCall>();
+    assert_component::<organisms::SendFlow>();
+    assert_component::<organisms::TerminalToolCall>();
+    assert_component::<organisms::ThreadControls>();
+    assert_component::<organisms::ThreadEntry>();
+    assert_component::<organisms::ThresholdKeyManager>();
+    assert_component::<organisms::ToolCallCard>();
+    assert_component::<organisms::UserMessage>();
+    assert_component::<organisms::ZapFlow>();
 }
 
 // ============================================================================

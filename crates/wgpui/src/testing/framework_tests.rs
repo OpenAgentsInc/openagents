@@ -369,6 +369,49 @@ fn test_all_easing_functions_valid_range() {
 }
 
 #[test]
+fn test_extended_easing_functions_valid_range() {
+    let easings = [
+        Easing::EaseInQuint,
+        Easing::EaseOutQuint,
+        Easing::EaseInOutQuint,
+        Easing::EaseInExpo,
+        Easing::EaseOutExpo,
+        Easing::EaseInOutExpo,
+        Easing::EaseInCirc,
+        Easing::EaseOutCirc,
+        Easing::EaseInOutCirc,
+        Easing::EaseInBounce,
+        Easing::EaseOutBounce,
+        Easing::EaseInOutBounce,
+        Easing::EaseInElastic,
+        Easing::EaseOutElastic,
+        Easing::EaseInOutElastic,
+        Easing::EaseInBack,
+        Easing::EaseOutBack,
+        Easing::EaseInOutBack,
+        Easing::CubicBezier(0.42, 0.0, 0.58, 1.0),
+    ];
+
+    for easing in easings {
+        assert!((easing.apply(0.0) - 0.0).abs() < 0.001, "{:?} failed at 0.0", easing);
+        assert!((easing.apply(1.0) - 1.0).abs() < 0.001, "{:?} failed at 1.0", easing);
+
+        for i in 0..=10 {
+            let t = i as f32 / 10.0;
+            let result = easing.apply(t);
+            assert!(result.is_finite(), "{:?} returned non-finite at {}", easing, t);
+            assert!(
+                result >= -2.0 && result <= 2.0,
+                "{:?} out of range at {}: {}",
+                easing,
+                t,
+                result
+            );
+        }
+    }
+}
+
+#[test]
 fn test_bounce_easing() {
     let easing = Easing::EaseOutBounce;
 
