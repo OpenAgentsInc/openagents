@@ -14,7 +14,7 @@ pub struct GptOssAgentConfig {
     /// Path to openagents executable (auto-detected if None)
     pub executable_path: Option<PathBuf>,
 
-    /// Model to use (e.g., "gpt-4o-mini", "gpt-4o")
+    /// Model to use (e.g., "gpt-oss-20b", "gpt-oss-120b")
     pub model: Option<String>,
 
     /// Base URL for llama.cpp server
@@ -40,8 +40,8 @@ impl Default for GptOssAgentConfig {
     fn default() -> Self {
         Self {
             executable_path: None,
-            model: Some("gpt-4o-mini".to_string()),
-            server_url: Some("http://localhost:8080".to_string()),
+            model: Some("gpt-oss-20b".to_string()),
+            server_url: Some("http://localhost:8000".to_string()),
             max_turns: Some(100),
             permission_mode: Some("default".to_string()),
             system_prompt: None,
@@ -206,8 +206,8 @@ mod tests {
     #[test]
     fn test_default_config() {
         let config = GptOssAgentConfig::default();
-        assert_eq!(config.model, Some("gpt-4o-mini".to_string()));
-        assert_eq!(config.server_url, Some("http://localhost:8080".to_string()));
+        assert_eq!(config.model, Some("gpt-oss-20b".to_string()));
+        assert_eq!(config.server_url, Some("http://localhost:8000".to_string()));
         assert_eq!(config.max_turns, Some(100));
         assert!(!config.record_trajectory);
     }
@@ -215,12 +215,12 @@ mod tests {
     #[test]
     fn test_config_builder() {
         let config = GptOssAgentConfig::new()
-            .model("gpt-4o")
+            .model("gpt-oss-120b")
             .server_url("http://localhost:8081")
             .max_turns(50)
             .record_trajectory(true);
 
-        assert_eq!(config.model, Some("gpt-4o".to_string()));
+        assert_eq!(config.model, Some("gpt-oss-120b".to_string()));
         assert_eq!(config.server_url, Some("http://localhost:8081".to_string()));
         assert_eq!(config.max_turns, Some(50));
         assert!(config.record_trajectory);

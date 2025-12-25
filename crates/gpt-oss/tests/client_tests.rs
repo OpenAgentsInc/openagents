@@ -1,11 +1,13 @@
 //! Unit tests for GPT-OSS client
 
-use gpt_oss::{GptOssClient, GptOssRequest};
+use std::time::Duration;
+
+use gpt_oss::{GptOssClient, GptOssRequest, GptOssResponsesRequest};
 
 #[test]
 fn test_client_builder() {
     let client = GptOssClient::builder()
-        .base_url("http://localhost:8080")
+        .base_url("http://localhost:8000")
         .default_model("gpt-oss-20b")
         .build();
 
@@ -27,7 +29,7 @@ fn test_client_new_default() {
 #[tokio::test]
 async fn test_client_health_check() {
     let client = GptOssClient::builder()
-        .base_url("http://localhost:8080")
+        .base_url("http://localhost:8000")
         .build()
         .unwrap();
 
@@ -45,7 +47,7 @@ async fn test_complete_with_invalid_server() {
         .unwrap();
 
     let request = GptOssRequest {
-        model: "gpt-4o-mini".to_string(),
+        model: "gpt-oss-20b".to_string(),
         prompt: "Test".to_string(),
         max_tokens: None,
         temperature: None,
@@ -68,16 +70,29 @@ async fn test_complete_simple_with_invalid_server() {
         .build()
         .unwrap();
 
-    let result = client.complete_simple("gpt-4o-mini", "Test prompt").await;
+    let result = client.complete_simple("gpt-oss-20b", "Test prompt").await;
     assert!(result.is_err(), "Simple complete should fail with invalid server");
+}
+
+#[tokio::test]
+async fn test_responses_with_invalid_server() {
+    let client = GptOssClient::builder()
+        .base_url("http://localhost:9999")
+        .build()
+        .unwrap();
+
+    let request = GptOssResponsesRequest::new("gpt-oss-20b", "Test");
+
+    let result = client.responses(request).await;
+    assert!(result.is_err(), "Responses API should fail with invalid server");
 }
 
 #[test]
 fn test_builder_chaining() {
     let result = GptOssClient::builder()
-        .base_url("http://localhost:8080")
+        .base_url("http://localhost:8000")
         .default_model("custom-model")
-        .timeout_secs(60)
+        .timeout(Duration::from_secs(60))
         .build();
 
     assert!(result.is_ok(), "Builder chaining should work");

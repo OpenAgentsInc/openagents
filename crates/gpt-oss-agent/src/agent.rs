@@ -33,7 +33,7 @@ pub struct GptOssAgentConfig {
 impl Default for GptOssAgentConfig {
     fn default() -> Self {
         Self {
-            base_url: "http://localhost:8080".to_string(),
+            base_url: "http://localhost:8000".to_string(),
             model: "gpt-oss-20b".to_string(),
             workspace_root: std::env::current_dir().unwrap_or_default(),
             record_trajectory: false,

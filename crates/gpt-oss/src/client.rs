@@ -6,7 +6,7 @@ use std::time::Duration;
 use tokio_stream::Stream;
 
 const DEFAULT_BASE_URL: &str = "http://localhost:8000";
-const DEFAULT_MODEL: &str = "gpt-4o-mini";
+const DEFAULT_MODEL: &str = "gpt-oss-20b";
 const DEFAULT_TIMEOUT_SECS: u64 = 120;
 
 /// GPT-OSS Responses API client
@@ -81,6 +81,38 @@ impl GptOssClient {
         Ok(response.text)
     }
 
+    /// Call the Responses API (tool use, reasoning effort, rich outputs)
+    pub async fn responses(
+        &self,
+        request: GptOssResponsesRequest,
+    ) -> Result<GptOssResponsesResponse> {
+        let url = format!("{}/v1/responses", self.base_url);
+
+        let response = self.http_client.post(&url).json(&request).send().await?;
+
+        if !response.status().is_success() {
+            let status = response.status().as_u16();
+            let text = response.text().await.unwrap_or_default();
+            return Err(GptOssError::ApiError {
+                status,
+                message: text,
+            });
+        }
+
+        let output = response.json::<GptOssResponsesResponse>().await?;
+        Ok(output)
+    }
+
+    /// Convenience wrapper around `responses` with string input
+    pub async fn responses_simple(
+        &self,
+        model: &str,
+        input: &str,
+    ) -> Result<GptOssResponsesResponse> {
+        let request = GptOssResponsesRequest::new(model, input);
+        self.responses(request).await
+    }
+
     /// Stream a completion
     pub async fn stream(
         &self,
@@ -150,7 +182,8 @@ impl GptOssClient {
             });
         }
 
-        let models = response.json::<Vec<GptOssModelInfo>>().await?;
+        let value = response.json::<serde_json::Value>().await?;
+        let models = parse_models_response(value)?;
         Ok(models)
     }
 
@@ -176,6 +209,49 @@ impl GptOssClient {
     /// Get the default model
     pub fn default_model(&self) -> &str {
         &self.default_model
+    }
+}
+
+fn parse_models_response(value: serde_json::Value) -> Result<Vec<GptOssModelInfo>> {
+    if value.is_array() {
+        return serde_json::from_value(value).map_err(GptOssError::JsonError);
+    }
+
+    let data = value
+        .get("data")
+        .cloned()
+        .ok_or_else(|| GptOssError::InvalidRequest("Models response missing data array".to_string()))?;
+
+    serde_json::from_value(data).map_err(GptOssError::JsonError)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_models_response_array() {
+        let value = serde_json::json!([
+            {"id": "gpt-oss-20b", "name": "GPT-OSS 20B", "context_length": 8192},
+            {"id": "gpt-oss-120b", "name": "GPT-OSS 120B", "context_length": 8192}
+        ]);
+
+        let models = parse_models_response(value).expect("Should parse array response");
+        assert_eq!(models.len(), 2);
+        assert_eq!(models[0].id, "gpt-oss-20b");
+    }
+
+    #[test]
+    fn test_parse_models_response_data_wrapper() {
+        let value = serde_json::json!({
+            "data": [
+                {"id": "gpt-oss-20b", "name": "GPT-OSS 20B", "context_length": 8192}
+            ]
+        });
+
+        let models = parse_models_response(value).expect("Should parse data wrapper response");
+        assert_eq!(models.len(), 1);
+        assert_eq!(models[0].id, "gpt-oss-20b");
     }
 }
 

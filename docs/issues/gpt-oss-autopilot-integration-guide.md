@@ -101,7 +101,7 @@ async fn run_gpt_oss_agent(
     // Build agent configuration
     let config = GptOssAgentConfig {
         base_url: std::env::var("GPT_OSS_SERVER_URL")
-            .unwrap_or_else(|_| "http://localhost:8080".to_string()),
+            .unwrap_or_else(|_| "http://localhost:8000".to_string()),
         model: model.to_string(),
         workspace_root: cwd.to_path_buf(),
         record_trajectory: true,
@@ -155,7 +155,7 @@ Once implemented in a dev environment with build tools:
 # 1. Start GPT-OSS server (llama-server)
 ~/code/llama.cpp/build/bin/llama-server \
   -m ~/models/gpt-oss/gpt-oss-20b-mxfp4.gguf \
-  --port 8080
+  --port 8000
 
 # 2. Test basic execution
 autopilot run --agent gpt-oss --model gpt-oss-20b "List files in current directory"
@@ -225,7 +225,7 @@ No new dependencies needed.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `GPT_OSS_SERVER_URL` | `http://localhost:8080` | URL for llama-server |
+| `GPT_OSS_SERVER_URL` | `http://localhost:8000` | URL for llama-server |
 | `GPT_OSS_MODEL_PATH` | - | Path to GGUF model file (for reference) |
 
 ## Related Files

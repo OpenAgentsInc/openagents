@@ -3,7 +3,11 @@
 //! Inspired by GPT-OSS's SimpleBrowserTool, implemented in native Rust.
 
 use async_trait::async_trait;
+use scraper::{Html, Selector};
 use serde::Deserialize;
+
+const SEARCH_ENDPOINT: &str = "https://duckduckgo.com/html/";
+const MAX_SEARCH_RESULTS: usize = 5;
 
 use super::{Tool, ToolResult};
 
@@ -132,12 +136,25 @@ impl BrowserTool {
     }
 
     async fn search(&self, query: &str) -> crate::Result<String> {
-        // For now, return a message that search is not implemented
-        // In production, this would integrate with a search API
-        Ok(format!(
-            "Search functionality not yet implemented. Query: {}",
-            query
-        ))
+        let mut url = reqwest::Url::parse(SEARCH_ENDPOINT).map_err(|e| {
+            crate::GptOssAgentError::ToolError(format!("Invalid search URL: {}", e))
+        })?;
+        url.query_pairs_mut().append_pair("q", query);
+
+        let response = self.client.get(url).send().await.map_err(|e| {
+            crate::GptOssAgentError::ToolError(format!("Search request failed: {}", e))
+        })?;
+
+        let body = response.text().await.map_err(|e| {
+            crate::GptOssAgentError::ToolError(format!("Failed to read search response: {}", e))
+        })?;
+
+        let results = parse_duckduckgo_html(&body);
+        if results.is_empty() {
+            return Ok(format!("No results found for query: {}", query));
+        }
+
+        Ok(format_search_results(&results))
     }
 
     async fn find_text(&self, url: &str, text: &str) -> crate::Result<String> {
@@ -166,4 +183,125 @@ fn strip_html_basic(html: &str) -> String {
     }
 
     result
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct SearchResult {
+    title: String,
+    url: String,
+    snippet: Option<String>,
+}
+
+fn parse_duckduckgo_html(html: &str) -> Vec<SearchResult> {
+    let document = Html::parse_document(html);
+    let result_selector = Selector::parse(".result").ok();
+    let link_selector = Selector::parse(".result__a").ok();
+    let snippet_selector = Selector::parse(".result__snippet").ok();
+
+    let mut results = Vec::new();
+
+    if let (Some(result_selector), Some(link_selector)) =
+        (result_selector.as_ref(), link_selector.as_ref())
+    {
+        for result in document.select(result_selector) {
+            if let Some(link) = result.select(link_selector).next() {
+                let title = link.text().collect::<Vec<_>>().join("").trim().to_string();
+                let url = link.value().attr("href").unwrap_or("").to_string();
+                if title.is_empty() || url.is_empty() {
+                    continue;
+                }
+
+                let snippet = snippet_selector
+                    .as_ref()
+                    .and_then(|selector| result.select(selector).next())
+                    .map(|node| node.text().collect::<Vec<_>>().join("").trim().to_string())
+                    .filter(|text| !text.is_empty());
+
+                results.push(SearchResult { title, url, snippet });
+                if results.len() >= MAX_SEARCH_RESULTS {
+                    break;
+                }
+            }
+        }
+    }
+
+    if results.is_empty() {
+        if let Some(link_selector) = link_selector.as_ref() {
+            for link in document.select(link_selector).take(MAX_SEARCH_RESULTS) {
+                let title = link.text().collect::<Vec<_>>().join("").trim().to_string();
+                let url = link.value().attr("href").unwrap_or("").to_string();
+                if title.is_empty() || url.is_empty() {
+                    continue;
+                }
+                results.push(SearchResult {
+                    title,
+                    url,
+                    snippet: None,
+                });
+            }
+        }
+    }
+
+    results
+}
+
+fn format_search_results(results: &[SearchResult]) -> String {
+    let mut lines = Vec::new();
+    for (idx, result) in results.iter().enumerate() {
+        lines.push(format!("{}. {}", idx + 1, result.title));
+        lines.push(format!("   {}", result.url));
+        if let Some(snippet) = &result.snippet {
+            lines.push(format!("   {}", snippet));
+        }
+    }
+    lines.join("\n")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_duckduckgo_html() {
+        let html = r#"
+            <div class="results">
+                <div class="result">
+                    <a class="result__a" href="https://example.com/one">Example One</a>
+                    <a class="result__snippet">First result snippet.</a>
+                </div>
+                <div class="result">
+                    <a class="result__a" href="https://example.com/two">Example Two</a>
+                    <a class="result__snippet">Second result snippet.</a>
+                </div>
+            </div>
+        "#;
+
+        let results = parse_duckduckgo_html(html);
+        assert_eq!(results.len(), 2);
+        assert_eq!(results[0].title, "Example One");
+        assert_eq!(results[0].url, "https://example.com/one");
+        assert_eq!(results[0].snippet.as_deref(), Some("First result snippet."));
+    }
+
+    #[test]
+    fn test_format_search_results() {
+        let results = vec![
+            SearchResult {
+                title: "Result One".to_string(),
+                url: "https://example.com/one".to_string(),
+                snippet: Some("Snippet one.".to_string()),
+            },
+            SearchResult {
+                title: "Result Two".to_string(),
+                url: "https://example.com/two".to_string(),
+                snippet: None,
+            },
+        ];
+
+        let formatted = format_search_results(&results);
+        assert!(formatted.contains("1. Result One"));
+        assert!(formatted.contains("https://example.com/one"));
+        assert!(formatted.contains("Snippet one."));
+        assert!(formatted.contains("2. Result Two"));
+    }
 }

@@ -82,36 +82,17 @@ async fn run_gpt_oss(cli: Cli) -> anyhow::Result<()> {
     let agent = GptOssAgent::new(config).await?;
     let session = Arc::new(agent.create_session().await);
 
-    let tool_schemas = if cli.tools {
-        let mut schemas = Vec::new();
-        for name in TOOL_NAMES {
-            let schema = agent.get_tool_schema(name).await.unwrap_or(Value::Null);
-            schemas.push((name.to_string(), schema));
-        }
-        schemas
-    } else {
-        Vec::new()
-    };
+    if cli.tools {
+        let response = session
+            .send_with_tools(&cli.prompt, cli.max_tool_turns)
+            .await?;
+        println!("{}", response.trim());
+        return Ok(());
+    }
 
-    let session_for_tools = Arc::clone(&session);
-    let session_for_send = Arc::clone(&session);
-
-    run_loop(
-        "gpt-oss",
-        cli.prompt,
-        cli.tools,
-        cli.max_tool_turns,
-        tool_schemas,
-        move |req| {
-            let session = Arc::clone(&session_for_tools);
-            async move { session.execute_tool(req).await }
-        },
-        move |message| {
-            let session = Arc::clone(&session_for_send);
-            async move { session.send(&message).await }
-        },
-    )
-    .await
+    let response = session.send(&cli.prompt).await?;
+    println!("{}", response.trim());
+    Ok(())
 }
 
 async fn run_fm_bridge(cli: Cli) -> anyhow::Result<()> {

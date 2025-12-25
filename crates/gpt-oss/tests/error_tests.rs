@@ -1,5 +1,7 @@
 //! Error handling tests for GPT-OSS client
 
+use std::time::Duration;
+
 use gpt_oss::{GptOssClient, GptOssError, GptOssRequest};
 
 #[test]
@@ -29,7 +31,7 @@ fn test_error_debug() {
 async fn test_network_error_handling() {
     let client = GptOssClient::builder()
         .base_url("http://invalid.localhost:9999")
-        .timeout_secs(1) // Short timeout
+        .timeout(Duration::from_secs(1)) // Short timeout
         .build()
         .unwrap();
 
@@ -47,11 +49,11 @@ async fn test_network_error_handling() {
 
     assert!(result.is_err(), "Should fail with network error");
 
-    // Verify it's a network error (not an API error)
-    if let Err(GptOssError::NetworkError(_)) = result {
+    // Verify it's an HTTP/network error (not an API error)
+    if let Err(GptOssError::HttpError(_)) = result {
         // Expected
     } else {
-        panic!("Expected NetworkError variant");
+        panic!("Expected HttpError variant");
     }
 }
 
@@ -59,7 +61,7 @@ async fn test_network_error_handling() {
 async fn test_timeout_error() {
     let client = GptOssClient::builder()
         .base_url("http://httpbin.org/delay/10") // Delayed response
-        .timeout_secs(1) // Short timeout
+        .timeout(Duration::from_secs(1)) // Short timeout
         .build()
         .unwrap();
 
@@ -88,17 +90,17 @@ fn test_error_is_send_and_sync() {
     assert_sync::<GptOssError>();
 }
 
-#[test]
-fn test_error_from_reqwest() {
+#[tokio::test]
+async fn test_error_from_reqwest() {
     // Test that reqwest errors convert properly
-    let reqwest_error = reqwest::Error::from(reqwest::blocking::get("http://invalid.url").unwrap_err());
+    let reqwest_error = reqwest::get("http://[::1").await.unwrap_err();
     let gpt_oss_error: GptOssError = reqwest_error.into();
 
-    // Should be NetworkError variant
-    if let GptOssError::NetworkError(_) = gpt_oss_error {
+    // Should be HttpError variant
+    if let GptOssError::HttpError(_) = gpt_oss_error {
         // Expected
     } else {
-        panic!("Expected NetworkError from reqwest error");
+        panic!("Expected HttpError from reqwest error");
     }
 }
 

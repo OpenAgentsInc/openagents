@@ -76,14 +76,14 @@ async fn test_gpt_oss_list_models() {
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({
             "data": [
                 {
-                    "id": "gpt-4o-mini",
-                    "name": "GPT-4o Mini",
+                    "id": "gpt-oss-20b",
+                    "name": "GPT-OSS 20B",
                     "context_length": 128000,
                     "description": "Small but capable model"
                 },
                 {
-                    "id": "gpt-4o",
-                    "name": "GPT-4o",
+                    "id": "gpt-oss-120b",
+                    "name": "GPT-OSS 120B",
                     "context_length": 128000,
                     "description": "Large multimodal model"
                 }
@@ -100,9 +100,9 @@ async fn test_gpt_oss_list_models() {
     let models = client.list_models().await.expect("Should list models");
 
     assert_eq!(models.len(), 2);
-    assert_eq!(models[0].id, "gpt-4o-mini");
+    assert_eq!(models[0].id, "gpt-oss-20b");
     assert_eq!(models[0].context_length, 128000);
-    assert_eq!(models[1].id, "gpt-4o");
+    assert_eq!(models[1].id, "gpt-oss-120b");
 }
 
 #[tokio::test]
@@ -124,8 +124,8 @@ async fn test_gpt_oss_get_model_info() {
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({
             "data": [
                 {
-                    "id": "gpt-4o-mini",
-                    "name": "GPT-4o Mini",
+                    "id": "gpt-oss-20b",
+                    "name": "GPT-OSS 20B",
                     "context_length": 128000,
                     "description": "Small but capable model"
                 }
@@ -140,12 +140,12 @@ async fn test_gpt_oss_get_model_info() {
         .expect("Failed to build client");
 
     let model = client
-        .get_model_info("gpt-4o-mini")
+        .get_model_info("gpt-oss-20b")
         .await
         .expect("Should get model info");
 
-    assert_eq!(model.id, "gpt-4o-mini");
-    assert_eq!(model.name, "GPT-4o Mini");
+    assert_eq!(model.id, "gpt-oss-20b");
+    assert_eq!(model.name, "GPT-OSS 20B");
     assert_eq!(model.context_length, 128000);
 
     let result = client.get_model_info("nonexistent").await;
@@ -170,8 +170,8 @@ async fn test_gpt_oss_complete() {
         .and(path("/v1/completions"))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({
             "id": "completion-123",
-            "model": "gpt-4o-mini",
-            "text": "This is a test response from GPT-4o Mini.",
+            "model": "gpt-oss-20b",
+            "text": "This is a test response from GPT-OSS 20B.",
             "finish_reason": "stop",
             "usage": {
                 "prompt_tokens": 5,
@@ -189,12 +189,14 @@ async fn test_gpt_oss_complete() {
 
     client.initialize().await.expect("Initialization should succeed");
 
-    let request = CompletionRequest::new("gpt-4o-mini", "What is Rust?");
-    let response = client.complete(request).await.expect("Completion should succeed");
+    let request = CompletionRequest::new("gpt-oss-20b", "What is Rust?");
+    let response = LocalModelBackend::complete(&client, request)
+        .await
+        .expect("Completion should succeed");
 
     assert_eq!(response.id, "completion-123");
-    assert_eq!(response.model, "gpt-4o-mini");
-    assert_eq!(response.text, "This is a test response from GPT-4o Mini.");
+    assert_eq!(response.model, "gpt-oss-20b");
+    assert_eq!(response.text, "This is a test response from GPT-OSS 20B.");
     assert_eq!(response.finish_reason, Some("stop".to_string()));
 
     let usage = response.usage.expect("Should have usage info");
@@ -221,7 +223,7 @@ async fn test_gpt_oss_complete_simple() {
         .and(path("/v1/completions"))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({
             "id": "completion-456",
-            "model": "gpt-4o-mini",
+            "model": "gpt-oss-20b",
             "text": "Rust is a systems programming language.",
             "finish_reason": "stop",
             "usage": {
@@ -242,7 +244,7 @@ async fn test_gpt_oss_complete_simple() {
 
     // Test the convenience method from LocalModelBackendExt
     let text = client
-        .complete_simple("gpt-4o-mini", "What is Rust?")
+        .complete_simple("gpt-oss-20b", "What is Rust?")
         .await
         .expect("Simple completion should succeed");
 
@@ -268,10 +270,10 @@ async fn test_gpt_oss_complete_stream() {
         .respond_with(
             ResponseTemplate::new(200)
                 .set_body_string(
-                    "data: {\"id\":\"chunk-1\",\"model\":\"gpt-4o-mini\",\"delta\":\"Rust \",\"finish_reason\":null}\n\n\
-                     data: {\"id\":\"chunk-2\",\"model\":\"gpt-4o-mini\",\"delta\":\"is \",\"finish_reason\":null}\n\n\
-                     data: {\"id\":\"chunk-3\",\"model\":\"gpt-4o-mini\",\"delta\":\"great!\",\"finish_reason\":null}\n\n\
-                     data: {\"id\":\"final\",\"model\":\"gpt-4o-mini\",\"delta\":\"\",\"finish_reason\":\"stop\"}\n\n"
+                    "data: {\"id\":\"chunk-1\",\"model\":\"gpt-oss-20b\",\"delta\":\"Rust \",\"finish_reason\":null}\n\n\
+                     data: {\"id\":\"chunk-2\",\"model\":\"gpt-oss-20b\",\"delta\":\"is \",\"finish_reason\":null}\n\n\
+                     data: {\"id\":\"chunk-3\",\"model\":\"gpt-oss-20b\",\"delta\":\"great!\",\"finish_reason\":null}\n\n\
+                     data: {\"id\":\"final\",\"model\":\"gpt-oss-20b\",\"delta\":\"\",\"finish_reason\":\"stop\"}\n\n"
                 )
                 .insert_header("content-type", "text/event-stream")
         )
@@ -285,7 +287,7 @@ async fn test_gpt_oss_complete_stream() {
 
     client.initialize().await.expect("Initialization should succeed");
 
-    let request = CompletionRequest::new("gpt-4o-mini", "What is Rust?");
+    let request = CompletionRequest::new("gpt-oss-20b", "What is Rust?");
     let mut rx = client
         .complete_stream(request)
         .await
@@ -323,8 +325,8 @@ async fn test_gpt_oss_has_model() {
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({
             "data": [
                 {
-                    "id": "gpt-4o-mini",
-                    "name": "GPT-4o Mini",
+                    "id": "gpt-oss-20b",
+                    "name": "GPT-OSS 20B",
                     "context_length": 128000,
                     "description": "Small model"
                 }
@@ -340,8 +342,8 @@ async fn test_gpt_oss_has_model() {
 
     // Test the convenience method from LocalModelBackendExt
     assert!(
-        client.has_model("gpt-4o-mini").await.expect("has_model should succeed"),
-        "Should have gpt-4o-mini"
+        client.has_model("gpt-oss-20b").await.expect("has_model should succeed"),
+        "Should have gpt-oss-20b"
     );
 
     assert!(

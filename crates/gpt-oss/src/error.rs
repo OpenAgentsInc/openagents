@@ -26,6 +26,9 @@ pub enum GptOssError {
     #[error("Invalid request: {0}")]
     InvalidRequest(String),
 
+    #[error("Harmony error: {0}")]
+    HarmonyError(String),
+
     #[error("IO error: {0}")]
     IoError(#[from] std::io::Error),
 }
@@ -52,6 +55,7 @@ impl From<GptOssError> for local_inference::LocalModelError {
                 local_inference::LocalModelError::InitializationError(e)
             }
             GptOssError::InvalidRequest(e) => local_inference::LocalModelError::InvalidRequest(e),
+            GptOssError::HarmonyError(e) => local_inference::LocalModelError::InvalidRequest(e),
             GptOssError::IoError(e) => local_inference::LocalModelError::IoError(e),
         }
     }
