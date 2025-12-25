@@ -130,13 +130,10 @@ fn test_gitafter_help() {
 }
 
 #[test]
-fn test_gitafter_gui() {
+fn test_gitafter_repos_help() {
     let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("openagents"));
-    cmd.arg("gitafter").arg("gui");
-    // GUI commands would normally block, so we just test help
-    let mut help_cmd = Command::new(assert_cmd::cargo::cargo_bin!("openagents"));
-    help_cmd.arg("gitafter").arg("gui").arg("--help");
-    help_cmd.assert().success();
+    cmd.arg("gitafter").arg("repos").arg("--help");
+    cmd.assert().success();
 }
 
 // Daemon commands
@@ -224,7 +221,7 @@ fn test_autopilot_subcommands_listed() {
     cmd.assert()
         .success()
         .stdout(predicate::str::contains("run"))
-        .stdout(predicate::str::contains("dashboard"))
+        .stdout(predicate::str::contains("resume"))
         .stdout(predicate::str::contains("metrics"));
 }
 

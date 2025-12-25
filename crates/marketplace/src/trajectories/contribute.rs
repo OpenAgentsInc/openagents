@@ -429,7 +429,7 @@ mod tests {
     #[test]
     fn test_contribution_config_default() {
         let config = ContributionConfig::default();
-        assert_eq!(config.db_path, std::path::PathBuf::from("marketplace.db"));
+        assert_eq!(config.db_path, std::path::PathBuf::from(".openagents/marketplace.db"));
         assert_eq!(config.relays.len(), 2);
         assert_eq!(config.min_quality, 0.5);
     }
