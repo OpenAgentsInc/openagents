@@ -53,6 +53,24 @@ cargo install --path .
 fm --url http://localhost:3030 complete "Hello, world!"
 ```
 
+## OpenAgents Integration
+
+If you want agent-style sessions with tool execution and rlog recording, use `fm-bridge-agent` from the workspace:
+
+```rust
+use fm_bridge_agent::{FmBridgeAgent, FmBridgeAgentConfig};
+
+let agent = FmBridgeAgent::new(FmBridgeAgentConfig::default()).await?;
+let session = agent.create_session().await;
+let response = session.send("Hello from FM").await?;
+```
+
+For quick local inference across GPT-OSS or FM bridge, from the repo root:
+
+```bash
+scripts/local-infer.sh --backend fm-bridge --tools "Hello from FM"
+```
+
 ## Requirements
 
 **For the Swift Bridge:**
