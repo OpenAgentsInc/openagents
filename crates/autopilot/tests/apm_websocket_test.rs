@@ -1,9 +1,10 @@
+#![cfg(feature = "legacy-web")]
 //! Integration test for APM WebSocket streaming endpoint
 //!
 //! Tests that the `/ws/apm` endpoint correctly streams APM metrics
 //! in real-time with proper format and color coding.
 
-use autopilot::apm::{APMSource, APMWindow};
+use autopilot::apm::APMSource;
 use autopilot::apm_storage;
 use autopilot::dashboard::start_dashboard;
 use chrono::Utc;
@@ -177,4 +178,3 @@ async fn test_apm_websocket_connection() {
         panic!("Expected connection message");
     }
 }
-#![cfg(feature = "legacy-web")]

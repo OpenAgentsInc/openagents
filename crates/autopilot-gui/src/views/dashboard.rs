@@ -182,3 +182,85 @@ impl Component for DashboardView {
         button.event(event, button_bounds, cx)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use autopilot::daemon::supervisor::DaemonMetrics;
+    use std::sync::mpsc;
+    use wgpui::{EventContext, MouseButton};
+
+    fn button_bounds(bounds: Bounds, button: &Button) -> Bounds {
+        let padding = theme::spacing::MD;
+        let (button_w, button_h) = button.size_hint();
+        let button_w = button_w.unwrap_or(140.0);
+        let button_h = button_h.unwrap_or(32.0);
+        Bounds::new(
+            bounds.origin.x + bounds.size.width - padding - button_w,
+            bounds.origin.y + bounds.size.height - padding - button_h,
+            button_w,
+            button_h,
+        )
+    }
+
+    #[test]
+    fn test_dashboard_view_start_full_auto() {
+        let state = Rc::new(RefCell::new(AppState::new()));
+        let (tx, rx) = mpsc::channel();
+        let mut view = DashboardView::new(state, tx);
+        let bounds = Bounds::new(0.0, 0.0, 520.0, 320.0);
+
+        let button = &view.start_button;
+        let button_bounds = button_bounds(bounds, button);
+        let mut cx = EventContext::new();
+        let down = InputEvent::MouseDown {
+            button: MouseButton::Left,
+            x: button_bounds.origin.x + 2.0,
+            y: button_bounds.origin.y + 2.0,
+        };
+        let up = InputEvent::MouseUp {
+            button: MouseButton::Left,
+            x: button_bounds.origin.x + 2.0,
+            y: button_bounds.origin.y + 2.0,
+        };
+
+        view.event(&down, bounds, &mut cx);
+        view.event(&up, bounds, &mut cx);
+
+        let cmd = rx.try_recv().expect("command");
+        assert!(matches!(cmd, BackendCommand::StartFullAuto));
+    }
+
+    #[test]
+    fn test_dashboard_view_stop_full_auto() {
+        let state = Rc::new(RefCell::new(AppState::new()));
+        state.borrow_mut().full_auto_metrics = Some(DaemonMetrics {
+            worker_status: "running".to_string(),
+            ..DaemonMetrics::default()
+        });
+
+        let (tx, rx) = mpsc::channel();
+        let mut view = DashboardView::new(state, tx);
+        let bounds = Bounds::new(0.0, 0.0, 520.0, 320.0);
+
+        let button = &view.stop_button;
+        let button_bounds = button_bounds(bounds, button);
+        let mut cx = EventContext::new();
+        let down = InputEvent::MouseDown {
+            button: MouseButton::Left,
+            x: button_bounds.origin.x + 2.0,
+            y: button_bounds.origin.y + 2.0,
+        };
+        let up = InputEvent::MouseUp {
+            button: MouseButton::Left,
+            x: button_bounds.origin.x + 2.0,
+            y: button_bounds.origin.y + 2.0,
+        };
+
+        view.event(&down, bounds, &mut cx);
+        view.event(&up, bounds, &mut cx);
+
+        let cmd = rx.try_recv().expect("command");
+        assert!(matches!(cmd, BackendCommand::StopFullAuto));
+    }
+}

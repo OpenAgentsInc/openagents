@@ -122,6 +122,10 @@ required-features = ["desktop"]
 name = "ui_pane_demo"
 required-features = ["desktop"]
 
+[[example]]
+name = "pane_sequence"
+required-features = ["desktop"]
+
 [[bench]]
 name = "performance"
 harness = false

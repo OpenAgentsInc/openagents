@@ -825,7 +825,6 @@ impl AccessibilityContext {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::Size;
 
     fn test_bounds() -> Bounds {
         Bounds::new(0.0, 0.0, 100.0, 50.0)

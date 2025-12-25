@@ -830,3 +830,74 @@ impl Component for Shell {
         EventResult::Ignored
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::state::ChatEntry;
+    use std::sync::mpsc;
+
+    fn make_paint_context(scale: f32) -> (Scene, TextSystem) {
+        (Scene::new(), TextSystem::new(scale))
+    }
+
+    #[test]
+    fn test_shell_paints_and_tracks_hover() {
+        let state = Rc::new(RefCell::new(AppState::new()));
+        state.borrow_mut().set_chat_entries(vec![
+            ChatEntry::User {
+                text: "hello".to_string(),
+                timestamp: None,
+            },
+            ChatEntry::Assistant {
+                text: "hi".to_string(),
+                timestamp: None,
+                streaming: false,
+            },
+        ]);
+
+        let (tx, _rx) = mpsc::channel();
+        let mut shell = Shell::new(state, tx);
+        let bounds = Bounds::new(0.0, 0.0, 1200.0, 820.0);
+        let (mut scene, mut text) = make_paint_context(1.0);
+        let mut cx = PaintContext::new(&mut scene, &mut text, 1.0);
+
+        shell.paint(bounds, &mut cx);
+        assert!(!scene.quads().is_empty());
+        assert!(!scene.text_runs().is_empty());
+
+        let mut event_cx = EventContext::new();
+        let event = InputEvent::MouseMove {
+            x: bounds.origin.x + MARGIN + 2.0,
+            y: bounds.origin.y + HEADER_HEIGHT + MARGIN + 2.0,
+        };
+        shell.event(&event, bounds, &mut event_cx);
+        assert_eq!(shell.hovered_pane, Some(PaneKind::Dashboard));
+    }
+
+    #[test]
+    fn test_autopilot_ui_applies_backend_events() {
+        let (tx, _rx) = mpsc::channel();
+        let mut ui = AutopilotUi::new(1.0, tx);
+
+        ui.apply_backend_event(BackendEvent::Chat {
+            path: None,
+            session_id: Some("session-1".to_string()),
+            entries: vec![ChatEntry::System {
+                text: "boot".to_string(),
+                timestamp: None,
+            }],
+        });
+
+        ui.apply_backend_event(BackendEvent::PromptStatus {
+            running: true,
+            last_prompt: Some("do it".to_string()),
+        });
+
+        let state = ui.state.borrow();
+        assert_eq!(state.log_session_id.as_deref(), Some("session-1"));
+        assert!(state.prompt_running);
+        assert_eq!(state.prompt_last.as_deref(), Some("do it"));
+        assert_eq!(state.chat_entries.len(), 1);
+    }
+}

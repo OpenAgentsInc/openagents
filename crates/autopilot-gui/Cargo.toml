@@ -31,3 +31,6 @@ wgpu = { version = "24.0" }
 winit = { version = "0.30" }
 pollster = { version = "0.4" }
 tokio = { workspace = true }
+
+[dev-dependencies]
+tempfile = "3.10"
