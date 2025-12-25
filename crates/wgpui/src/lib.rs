@@ -23,6 +23,7 @@
 
 pub mod accessibility;
 pub mod animation;
+pub mod app;
 pub mod bleeps;
 pub mod color;
 pub mod components;
@@ -82,6 +83,9 @@ pub use components::hud::{
 pub use bleeps::{
     Bleep, BleepCategory, BleepGeneralProps, BleepMasterProps, BleepProps, BleepsManager,
     BleepsManagerProps, BleepsManagerUpdate, BleepSource, BleepUpdate,
+};
+pub use app::{
+    App, AnyEntity, AnyWeakEntity, Context, Entity, EntityId, Subscription, WeakEntity,
 };
 
 #[cfg(all(feature = "web", target_arch = "wasm32"))]
