@@ -71,7 +71,7 @@ pub enum BleepSource {
 }
 
 #[derive(Clone, Debug)]
-struct ResolvedBleepSettings {
+pub(crate) struct ResolvedBleepSettings {
     preload: bool,
     async_load: bool,
     volume: f32,
@@ -98,7 +98,7 @@ impl Default for ResolvedBleepSettings {
 }
 
 #[derive(Clone, Debug)]
-struct ResolvedBleepProps {
+pub(crate) struct ResolvedBleepProps {
     sources: Vec<BleepSource>,
     looped: bool,
     settings: ResolvedBleepSettings,
@@ -884,7 +884,7 @@ pub struct Bleep {
 }
 
 impl Bleep {
-    pub fn new(props: ResolvedBleepProps) -> Option<Self> {
+    pub(crate) fn new(props: ResolvedBleepProps) -> Option<Self> {
         BackendBleep::new(props).map(|backend| Self { backend })
     }
 
@@ -924,7 +924,7 @@ impl Bleep {
         self.backend.unload();
     }
 
-    pub fn update(&self, settings: ResolvedBleepSettings, master_volume: f32) {
+    pub(crate) fn update(&self, settings: ResolvedBleepSettings, master_volume: f32) {
         self.backend.update(settings, master_volume);
     }
 }

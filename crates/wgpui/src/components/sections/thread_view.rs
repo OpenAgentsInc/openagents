@@ -1,6 +1,6 @@
 use crate::components::context::{EventContext, PaintContext};
-use crate::components::organisms::{ThreadEntry, ThreadEntryType as EntryType};
-use crate::components::{Component, ComponentId, EventResult, Text};
+use crate::components::organisms::ThreadEntry;
+use crate::components::{Component, ComponentId, EventResult};
 use crate::{Bounds, InputEvent, Point, Quad, theme};
 
 pub struct ThreadView {
@@ -200,6 +200,8 @@ impl Component for ThreadView {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::components::organisms::ThreadEntryType as EntryType;
+    use crate::components::Text;
 
     #[test]
     fn test_thread_view_new() {

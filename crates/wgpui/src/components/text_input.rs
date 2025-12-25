@@ -139,6 +139,7 @@ impl TextInput {
         }
     }
 
+    #[cfg(test)]
     fn insert_char(&mut self, c: char) {
         if self.cursor_pos <= self.value.len() {
             self.value.insert(self.cursor_pos, c);
