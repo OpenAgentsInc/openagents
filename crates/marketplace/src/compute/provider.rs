@@ -141,8 +141,10 @@ impl ProviderConfig {
         let avg_price = (self.price_per_1k_input + self.price_per_1k_output) / 2;
         info = info.with_pricing(PricingInfo::new(avg_price).with_model("per-token"));
 
-        // Note: Region is stored in the struct but not added to the event
-        // This would require extending HandlerInfo with custom tags support
+        // Add region as custom tag if present
+        if let Some(ref region) = self.region {
+            info = info.add_custom_tag("region", region);
+        }
 
         info
     }

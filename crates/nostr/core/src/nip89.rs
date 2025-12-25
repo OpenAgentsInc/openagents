@@ -151,6 +151,8 @@ pub struct HandlerInfo {
     pub pricing: Option<PricingInfo>,
     /// Handler metadata
     pub metadata: HandlerMetadata,
+    /// Custom tags (e.g., region, availability)
+    pub custom_tags: Vec<(String, String)>,
 }
 
 impl HandlerInfo {
@@ -166,6 +168,7 @@ impl HandlerInfo {
             capabilities: Vec::new(),
             pricing: None,
             metadata,
+            custom_tags: Vec::new(),
         }
     }
 
@@ -178,6 +181,12 @@ impl HandlerInfo {
     /// Set pricing information.
     pub fn with_pricing(mut self, pricing: PricingInfo) -> Self {
         self.pricing = Some(pricing);
+        self
+    }
+
+    /// Add a custom tag (key-value pair).
+    pub fn add_custom_tag(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
+        self.custom_tags.push((key.into(), value.into()));
         self
     }
 
@@ -203,6 +212,11 @@ impl HandlerInfo {
                 price_tag.push(currency.clone());
             }
             tags.push(price_tag);
+        }
+
+        // Add custom tags
+        for (key, value) in &self.custom_tags {
+            tags.push(vec![key.clone(), value.clone()]);
         }
 
         tags
@@ -253,12 +267,22 @@ impl HandlerInfo {
         let metadata: HandlerMetadata = serde_json::from_str(&event.content)
             .map_err(|e| Nip89Error::Serialization(e.to_string()))?;
 
+        // Parse custom tags (everything except known tag types)
+        let known_tags = ["handler", "capability", "price", "p", "e", "a", "d", "rating"];
+        let custom_tags: Vec<(String, String)> = event
+            .tags
+            .iter()
+            .filter(|t| t.len() >= 2 && !known_tags.contains(&t[0].as_str()))
+            .map(|t| (t[0].clone(), t[1].clone()))
+            .collect();
+
         Ok(Self {
             pubkey: event.pubkey.clone(),
             handler_type,
             capabilities,
             pricing,
             metadata,
+            custom_tags,
         })
     }
 }

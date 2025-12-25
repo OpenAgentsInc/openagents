@@ -385,7 +385,14 @@ impl ProviderDiscovery {
 
     /// Add a provider from a HandlerInfo event
     pub fn add_provider(&mut self, info: HandlerInfo, relay: Option<String>) {
-        let mut provider = ComputeProvider::new(info.pubkey.clone(), info.metadata.into());
+        let mut metadata: ProviderMetadata = info.metadata.into();
+
+        // Extract region from custom tags if present
+        if let Some((_, region)) = info.custom_tags.iter().find(|(k, _)| k == "region") {
+            metadata = metadata.with_region(region);
+        }
+
+        let mut provider = ComputeProvider::new(info.pubkey.clone(), metadata);
 
         // Add capabilities
         for capability in info.capabilities {
