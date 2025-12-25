@@ -2539,7 +2539,7 @@ async fn pr_create(
 
         // Build dependency graph from existing PRs
         if !prs.is_empty() {
-            use gitafter::stacks::StackGraph;
+            use crate::stacks::StackGraph;
 
             match StackGraph::from_pr_events(&prs) {
                 Ok(graph) => {
@@ -3988,7 +3988,7 @@ async fn pr_auto_checks(
     state: web::Data<AppState>,
     path: web::Path<(String, String)>,
 ) -> HttpResponse {
-    use gitafter::review::AutoCheckRunner;
+    use crate::review::AutoCheckRunner;
 
     let (identifier, pr_id) = path.into_inner();
 
@@ -4050,7 +4050,7 @@ async fn pr_auto_checks(
 
     // Render results as HTML component
     use maud::{html, Markup};
-    use gitafter::review::CheckStatus;
+    use crate::review::CheckStatus;
 
     let html_body: Markup = html! {
         div.check-results {
@@ -4125,7 +4125,7 @@ async fn pr_checklist(
     state: web::Data<AppState>,
     path: web::Path<(String, String)>,
 ) -> HttpResponse {
-    use gitafter::review::{ChecklistGenerator, ReviewTemplate};
+    use crate::review::{AutoCheckRunner, CheckStatus, ChecklistGenerator, ReviewTemplate};
 
     let (identifier, pr_id) = path.into_inner();
 
@@ -4183,7 +4183,7 @@ async fn pr_checklist(
     if is_repository_cloned(&identifier) {
         if let Ok(repo_path) = get_repository_path(&identifier) {
             // Run auto-checks and populate auto-check results
-            let runner = gitafter::review::AutoCheckRunner::new(&repo_path, &pr_id);
+            let runner = AutoCheckRunner::new(&repo_path, &pr_id);
             let check_results = runner.run_all().await;
 
             // Match auto-check results to checklist items
@@ -4201,7 +4201,7 @@ async fn pr_checklist(
 
                     if let Some(result) = matching_result {
                         item.set_auto_result(result.status.to_string());
-                        if matches!(result.status, gitafter::review::CheckStatus::Pass) {
+                        if matches!(result.status, CheckStatus::Pass) {
                             item.check();
                         }
                     }
