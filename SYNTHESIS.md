@@ -1,4 +1,4 @@
-# The OpenAgents Synthesis: A Unified Vision for Sovereign AI Agents
+# OpenAgents: The Agentic OS
 
 ## Executive Summary
 
