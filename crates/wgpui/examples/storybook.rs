@@ -40,6 +40,10 @@ use wgpui::components::organisms::{
     SearchToolCall, TerminalToolCall, ThreadControls, ThreadEntry, ThreadEntryType, ToolCallCard,
     UserMessage,
 };
+use wgpui::components::sections::{
+    FeedbackRating, MessageEditor, ThreadFeedback, ThreadHeader, ThreadView,
+};
+use wgpui::components::molecules::{EntryActions, TerminalHeader};
 use wgpui::renderer::Renderer;
 use winit::application::ApplicationHandler;
 use winit::event::{ElementState, WindowEvent};
@@ -91,6 +95,7 @@ const SECTION_GITAFTER: usize = 16;
 const SECTION_SOVEREIGN_AGENTS: usize = 17;
 const SECTION_MARKETPLACE: usize = 18;
 const SECTION_AUTOPILOT: usize = 19;
+const SECTION_THREAD_COMPONENTS: usize = 20;
 
 #[derive(Clone, Copy)]
 struct GlowPreset {
@@ -492,6 +497,7 @@ impl Storybook {
             "Sovereign Agents",
             "Marketplace",
             "Autopilot",
+            "Thread Components",
         ];
         let nav_len = nav_items.len();
 
@@ -598,6 +604,7 @@ impl Storybook {
             SECTION_SOVEREIGN_AGENTS => sovereign_agents_height(bounds),
             SECTION_MARKETPLACE => marketplace_height(bounds),
             SECTION_AUTOPILOT => autopilot_height(bounds),
+            SECTION_THREAD_COMPONENTS => thread_components_height(bounds),
             _ => bounds.size.height,
         }
     }
@@ -644,6 +651,7 @@ impl Storybook {
             SECTION_SOVEREIGN_AGENTS => self.paint_sovereign_agents(content_bounds, cx),
             SECTION_MARKETPLACE => self.paint_marketplace(content_bounds, cx),
             SECTION_AUTOPILOT => self.paint_autopilot(content_bounds, cx),
+            SECTION_THREAD_COMPONENTS => self.paint_thread_components(content_bounds, cx),
             _ => {}
         }
         cx.scene.pop_clip();
@@ -5573,6 +5581,279 @@ impl Storybook {
             cx.scene.draw_text(c2_label);
         });
     }
+
+    fn paint_thread_components(&mut self, bounds: Bounds, cx: &mut PaintContext) {
+        let mut y = bounds.origin.y;
+        let width = bounds.size.width;
+
+        // ========== Panel 1: Thread Headers ==========
+        let header_height = panel_height(160.0);
+        let header_bounds = Bounds::new(bounds.origin.x, y, width, header_height);
+        draw_panel("Thread Headers", header_bounds, cx, |inner, cx| {
+            let variants = [
+                ("Full header", true, true, Some("3 messages")),
+                ("No back button", false, true, None),
+                ("No menu button", true, false, None),
+                ("Minimal", false, false, Some("subtitle only")),
+            ];
+
+            let tile_w = 280.0;
+            let tile_h = 60.0;
+            let gap = 16.0;
+            let cols = ((inner.size.width + gap) / (tile_w + gap)).floor().max(1.0) as usize;
+
+            for (idx, (label, show_back, show_menu, subtitle)) in variants.iter().enumerate() {
+                let row = idx / cols;
+                let col = idx % cols;
+                let tile_x = inner.origin.x + col as f32 * (tile_w + gap);
+                let tile_y = inner.origin.y + row as f32 * (tile_h + gap);
+
+                // Label
+                let label_run = cx.text.layout(
+                    *label,
+                    Point::new(tile_x, tile_y),
+                    theme::font_size::XS,
+                    theme::text::MUTED,
+                );
+                cx.scene.draw_text(label_run);
+
+                // ThreadHeader
+                let mut header = ThreadHeader::new("Conversation")
+                    .show_back_button(*show_back)
+                    .show_menu_button(*show_menu);
+                if let Some(sub) = subtitle {
+                    header = header.subtitle(*sub);
+                }
+                header.paint(Bounds::new(tile_x, tile_y + 14.0, tile_w, 48.0), cx);
+            }
+        });
+        y += header_height + SECTION_GAP;
+
+        // ========== Panel 2: Message Editor States ==========
+        let editor_height = panel_height(180.0);
+        let editor_bounds = Bounds::new(bounds.origin.x, y, width, editor_height);
+        draw_panel("Message Editor States", editor_bounds, cx, |inner, cx| {
+            let states = [
+                ("Normal mode", Mode::Normal, false, "Type a message..."),
+                ("Plan mode", Mode::Plan, false, "Describe your plan..."),
+                ("Streaming", Mode::Normal, true, ""),
+            ];
+
+            let tile_w = 320.0;
+            let tile_h = 70.0;
+            let gap = 16.0;
+            let cols = ((inner.size.width + gap) / (tile_w + gap)).floor().max(1.0) as usize;
+
+            for (idx, (label, mode, streaming, placeholder)) in states.iter().enumerate() {
+                let row = idx / cols;
+                let col = idx % cols;
+                let tile_x = inner.origin.x + col as f32 * (tile_w + gap);
+                let tile_y = inner.origin.y + row as f32 * (tile_h + gap);
+
+                // Label
+                let label_run = cx.text.layout(
+                    *label,
+                    Point::new(tile_x, tile_y),
+                    theme::font_size::XS,
+                    theme::text::MUTED,
+                );
+                cx.scene.draw_text(label_run);
+
+                // MessageEditor
+                let mut editor = MessageEditor::new()
+                    .mode(*mode)
+                    .streaming(*streaming);
+                if !placeholder.is_empty() {
+                    editor = editor.placeholder(*placeholder);
+                }
+                editor.paint(Bounds::new(tile_x, tile_y + 14.0, tile_w, 64.0), cx);
+            }
+        });
+        y += editor_height + SECTION_GAP;
+
+        // ========== Panel 3: Thread Feedback ==========
+        let feedback_height = panel_height(200.0);
+        let feedback_bounds = Bounds::new(bounds.origin.x, y, width, feedback_height);
+        draw_panel("Thread Feedback", feedback_bounds, cx, |inner, cx| {
+            let tile_w = 280.0;
+            let tile_h = 90.0;
+            let gap = 16.0;
+
+            // Default state
+            let label_run = cx.text.layout(
+                "Default (no rating)",
+                Point::new(inner.origin.x, inner.origin.y),
+                theme::font_size::XS,
+                theme::text::MUTED,
+            );
+            cx.scene.draw_text(label_run);
+
+            let mut feedback1 = ThreadFeedback::new();
+            feedback1.paint(Bounds::new(inner.origin.x, inner.origin.y + 14.0, tile_w, 80.0), cx);
+
+            // Second column - with comment shown (simulated by larger height)
+            let label_run2 = cx.text.layout(
+                "Rating selected",
+                Point::new(inner.origin.x + tile_w + gap, inner.origin.y),
+                theme::font_size::XS,
+                theme::text::MUTED,
+            );
+            cx.scene.draw_text(label_run2);
+
+            // Show a description of what would happen
+            let info = cx.text.layout(
+                "Click thumbs up/down to rate",
+                Point::new(inner.origin.x + tile_w + gap, inner.origin.y + 50.0),
+                theme::font_size::XS,
+                theme::text::DISABLED,
+            );
+            cx.scene.draw_text(info);
+        });
+        y += feedback_height + SECTION_GAP;
+
+        // ========== Panel 4: Entry Actions ==========
+        let actions_height = panel_height(140.0);
+        let actions_bounds = Bounds::new(bounds.origin.x, y, width, actions_height);
+        draw_panel("Entry Actions", actions_bounds, cx, |inner, cx| {
+            let variants = [
+                ("Default (feedback + copy)", true, true, false, false, false),
+                ("With retry", true, true, true, false, false),
+                ("With edit/delete", true, true, false, true, true),
+                ("All actions", true, true, true, true, true),
+                ("No feedback", false, true, true, false, false),
+            ];
+
+            let tile_w = 200.0;
+            let tile_h = 45.0;
+            let gap = 12.0;
+            let cols = ((inner.size.width + gap) / (tile_w + gap)).floor().max(1.0) as usize;
+
+            for (idx, (label, feedback, copy, retry, edit, delete)) in variants.iter().enumerate() {
+                let row = idx / cols;
+                let col = idx % cols;
+                let tile_x = inner.origin.x + col as f32 * (tile_w + gap);
+                let tile_y = inner.origin.y + row as f32 * (tile_h + gap);
+
+                // Label
+                let label_run = cx.text.layout(
+                    *label,
+                    Point::new(tile_x, tile_y),
+                    theme::font_size::XS,
+                    theme::text::MUTED,
+                );
+                cx.scene.draw_text(label_run);
+
+                // EntryActions
+                let mut actions = EntryActions::new()
+                    .show_feedback(*feedback)
+                    .show_copy(*copy)
+                    .show_retry(*retry)
+                    .show_edit(*edit)
+                    .show_delete(*delete);
+                actions.paint(Bounds::new(tile_x, tile_y + 16.0, tile_w, 24.0), cx);
+            }
+        });
+        y += actions_height + SECTION_GAP;
+
+        // ========== Panel 5: Terminal Headers ==========
+        let terminal_height = panel_height(140.0);
+        let terminal_bounds = Bounds::new(bounds.origin.x, y, width, terminal_height);
+        draw_panel("Terminal Headers", terminal_bounds, cx, |inner, cx| {
+            let variants = [
+                ("Pending", "cargo build", ToolStatus::Pending, None),
+                ("Running", "npm install", ToolStatus::Running, None),
+                ("Success", "cargo test", ToolStatus::Success, Some(0)),
+                ("Error", "rm -rf /", ToolStatus::Error, Some(1)),
+            ];
+
+            let tile_w = 280.0;
+            let tile_h = 45.0;
+            let gap = 12.0;
+            let cols = ((inner.size.width + gap) / (tile_w + gap)).floor().max(1.0) as usize;
+
+            for (idx, (label, cmd, status, exit_code)) in variants.iter().enumerate() {
+                let row = idx / cols;
+                let col = idx % cols;
+                let tile_x = inner.origin.x + col as f32 * (tile_w + gap);
+                let tile_y = inner.origin.y + row as f32 * (tile_h + gap);
+
+                // Label
+                let label_run = cx.text.layout(
+                    *label,
+                    Point::new(tile_x, tile_y),
+                    theme::font_size::XS,
+                    theme::text::MUTED,
+                );
+                cx.scene.draw_text(label_run);
+
+                // TerminalHeader
+                let mut header = TerminalHeader::new(*cmd).status(*status);
+                if let Some(code) = exit_code {
+                    header = header.exit_code(*code);
+                }
+                header.paint(Bounds::new(tile_x, tile_y + 14.0, tile_w, 32.0), cx);
+            }
+        });
+        y += terminal_height + SECTION_GAP;
+
+        // ========== Panel 6: Complete Thread Layout ==========
+        let layout_height = panel_height(400.0);
+        let layout_bounds = Bounds::new(bounds.origin.x, y, width, layout_height);
+        draw_panel("Complete Thread Layout", layout_bounds, cx, |inner, cx| {
+            // ThreadHeader at top
+            let mut header = ThreadHeader::new("Code Review Session")
+                .subtitle("5 messages")
+                .show_back_button(true)
+                .show_menu_button(true);
+            header.paint(Bounds::new(inner.origin.x, inner.origin.y, inner.size.width, 48.0), cx);
+
+            // Thread content area
+            let content_y = inner.origin.y + 56.0;
+            let content_h = inner.size.height - 56.0 - 72.0;
+            cx.scene.draw_quad(
+                Quad::new(Bounds::new(inner.origin.x, content_y, inner.size.width, content_h))
+                    .with_background(theme::bg::APP)
+                    .with_border(theme::border::DEFAULT, 1.0),
+            );
+
+            // Sample messages
+            let msg1 = cx.text.layout(
+                "User: Can you review this code?",
+                Point::new(inner.origin.x + 12.0, content_y + 12.0),
+                theme::font_size::SM,
+                theme::text::PRIMARY,
+            );
+            cx.scene.draw_text(msg1);
+
+            let msg2 = cx.text.layout(
+                "Assistant: I'll analyze the code structure...",
+                Point::new(inner.origin.x + 12.0, content_y + 36.0),
+                theme::font_size::SM,
+                theme::text::MUTED,
+            );
+            cx.scene.draw_text(msg2);
+
+            // Entry actions for a message
+            let mut actions = EntryActions::new()
+                .show_feedback(true)
+                .show_copy(true)
+                .show_retry(true);
+            actions.paint(Bounds::new(inner.origin.x + 12.0, content_y + 60.0, 180.0, 24.0), cx);
+
+            // Terminal header in content
+            let mut terminal = TerminalHeader::new("cargo clippy")
+                .status(ToolStatus::Success)
+                .exit_code(0);
+            terminal.paint(Bounds::new(inner.origin.x + 12.0, content_y + 92.0, 300.0, 32.0), cx);
+
+            // MessageEditor at bottom
+            let editor_y = inner.origin.y + inner.size.height - 64.0;
+            let mut editor = MessageEditor::new()
+                .mode(Mode::Normal)
+                .placeholder("Continue the conversation...");
+            editor.paint(Bounds::new(inner.origin.x, editor_y, inner.size.width, 64.0), cx);
+        });
+    }
 }
 
 struct FocusDemo {
@@ -6853,6 +7134,18 @@ fn autopilot_height(_bounds: Bounds) -> f32 {
         panel_height(160.0),  // Daemon Status Badges
         panel_height(180.0),  // Parallel Agent Badges
         panel_height(400.0),  // Complete Autopilot Dashboard
+    ];
+    stacked_height(&panels)
+}
+
+fn thread_components_height(_bounds: Bounds) -> f32 {
+    let panels = [
+        panel_height(160.0),  // Thread Headers
+        panel_height(180.0),  // Message Editor States
+        panel_height(200.0),  // Thread Feedback
+        panel_height(140.0),  // Entry Actions
+        panel_height(140.0),  // Terminal Headers
+        panel_height(400.0),  // Complete Thread Layout
     ];
     stacked_height(&panels)
 }
