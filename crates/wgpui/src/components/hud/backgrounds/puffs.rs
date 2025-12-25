@@ -454,6 +454,22 @@ mod tests {
     }
 
     #[test]
+    fn test_puffs_builder_clamps() {
+        let puffs = PuffsBackground::new()
+            .quantity(0)
+            .padding(-10.0)
+            .radius_initial(0.1)
+            .layers(100)
+            .seed(0);
+
+        assert_eq!(puffs.quantity, 1);
+        assert_eq!(puffs.padding, 0.0);
+        assert_eq!(puffs.radius_initial, 1.0);
+        assert_eq!(puffs.layers, 32);
+        assert_eq!(puffs.seed, 0);
+    }
+
+    #[test]
     fn test_cycle_timer_progress() {
         let mut cycle = CycleTimer::new(Duration::from_secs(2), Duration::ZERO);
         cycle.update(Duration::from_secs(1), AnimatorState::Entered);

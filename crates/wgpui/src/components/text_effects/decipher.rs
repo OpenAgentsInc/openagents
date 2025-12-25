@@ -337,6 +337,21 @@ mod tests {
     use super::*;
 
     #[test]
+    fn test_decipher_updates_text_and_frame_length() {
+        let mut decipher = TextDecipher::new("Hello");
+        assert_eq!(decipher.text_value(), "Hello");
+        assert_eq!(decipher.frame().length, 5);
+
+        decipher.set_text("World!");
+        assert_eq!(decipher.text_value(), "World!");
+        assert_eq!(decipher.frame().length, 6);
+
+        decipher.set_state(AnimatorState::Entering);
+        let frame = decipher.update_with_delta(AnimatorState::Entering, Duration::from_millis(100));
+        assert!(frame.progress() >= 0.0 && frame.progress() <= 1.0);
+    }
+
+    #[test]
     fn test_decipher_custom_charset() {
         let mut decipher = TextDecipher::new("A B")
             .characters("01")

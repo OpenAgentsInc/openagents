@@ -199,6 +199,23 @@ mod tests {
         assert!(grid.spacing >= 10.0);
         assert!(grid.line_width >= 0.5);
     }
+
+    #[test]
+    fn test_grid_lines_flags_and_progress() {
+        let mut grid = GridLinesBackground::new()
+            .horizontal(false)
+            .vertical(false)
+            .spacing(40.0)
+            .line_width(2.0);
+
+        assert!(!grid.horizontal);
+        assert!(!grid.vertical);
+        assert_eq!(grid.spacing, 40.0);
+        assert_eq!(grid.line_width, 2.0);
+
+        let progress = grid.update(AnimatorState::Entered);
+        assert!(progress >= 0.0 && progress <= 1.0);
+    }
 }
 
 fn normalized_dash(dash: &[f32]) -> Vec<f32> {
