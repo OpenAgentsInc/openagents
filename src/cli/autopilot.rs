@@ -83,6 +83,10 @@ pub enum AutopilotCommands {
     /// View APM (Actions Per Minute) statistics
     #[command(subcommand)]
     Apm(ApmCommands),
+
+    /// Forward any other subcommand to the autopilot binary
+    #[command(external_subcommand)]
+    Passthrough(Vec<String>),
 }
 
 #[derive(Subcommand)]
@@ -429,5 +433,6 @@ pub fn run(cmd: AutopilotCommands) -> anyhow::Result<()> {
         AutopilotCommands::Benchmark { .. } => {
             anyhow::bail!("Benchmark runner not wired yet for unified CLI")
         }
+        AutopilotCommands::Passthrough(args) => run_autopilot_bin(&args),
     }
 }
