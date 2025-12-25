@@ -2,13 +2,16 @@
 
 pub mod git;
 pub mod app;
+pub mod middleware;
 pub mod nostr;
 pub mod notifications;
 pub mod reputation;
 pub mod review;
+pub mod server;
 pub mod secure_storage;
 pub mod stacks;
 pub mod trajectory;
+pub mod views;
 pub mod ws;
 
 // Re-export commonly used types
