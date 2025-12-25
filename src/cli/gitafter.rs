@@ -1,6 +1,6 @@
 //! GitAfter CLI subcommands
 //!
-//! GitAfter's GUI is being rebuilt with WGPUI; CLI commands are minimal for now.
+//! Launches GitAfter desktop UI with optional deep links.
 
 use clap::Subcommand;
 
@@ -19,10 +19,11 @@ pub enum GitafterCommands {
 pub fn run(cmd: GitafterCommands) -> anyhow::Result<()> {
     match cmd {
         GitafterCommands::Repos => {
-            anyhow::bail!("Repository listing requires Nostr relay connection. GitAfter UI is being rebuilt with WGPUI.")
+            gitafter::run_with_route(Some("/"))
         }
         GitafterCommands::Repo { id } => {
-            anyhow::bail!("Repository info for '{}' requires Nostr relay connection. GitAfter UI is being rebuilt with WGPUI.", id)
+            let route = format!("/repo/{}", id);
+            gitafter::run_with_route(Some(&route))
         }
     }
 }
