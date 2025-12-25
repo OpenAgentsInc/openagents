@@ -22,6 +22,7 @@
 //! - `theme` - Color and style tokens
 
 pub mod accessibility;
+pub mod r#async;
 pub mod animation;
 pub mod app;
 pub mod element;
@@ -39,10 +40,12 @@ pub mod platform;
 pub mod renderer;
 pub mod scene;
 pub mod scroll;
+pub mod styled;
 pub mod text;
 pub mod theme;
 pub mod tools;
 pub mod styles;
+pub mod window;
 
 pub use color::Hsla;
 pub use geometry::{Bounds, Edges, Point, Size};
@@ -77,6 +80,7 @@ pub use accessibility::{
     AccessibilityContext, AccessibilityTree, AccessibleId, AccessibleNode,
     Announcement, LiveRegion, Role, State as AccessibleState,
 };
+pub use r#async::{BackgroundExecutor, ForegroundExecutor, Task};
 pub use components::hud::{
     ContextMenu, CssSize, MenuItem, StyleFrameClipKranoxProps, StyleFrameClipOctagonProps,
     Tooltip, TooltipPosition, style_frame_clip_kranox, style_frame_clip_octagon,
@@ -92,6 +96,8 @@ pub use element::{
     AnyElement, ComponentElement, Drawable, Element, ElementId, ElementPaintContext, IntoElement,
     LayoutContext, PrepaintContext, Render, RenderOnce,
 };
+pub use styled::{Style, StyleRefinement, Styled, button, div, text};
+pub use window::{DispatchTree, InvalidationFlags, Invalidator, Window, WindowHandle};
 
 #[cfg(all(feature = "web", target_arch = "wasm32"))]
 pub use platform::web::{WebPlatform, run_animation_loop, setup_resize_observer};

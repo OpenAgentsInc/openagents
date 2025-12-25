@@ -2,6 +2,7 @@
 
 use crate::components::context::{EventContext, PaintContext};
 use crate::components::{Component, ComponentId, EventResult};
+use crate::styled::{StyleRefinement, Styled};
 use crate::text::FontStyle;
 use crate::{Bounds, Hsla, InputEvent, Point, theme};
 
@@ -9,9 +10,10 @@ use crate::{Bounds, Hsla, InputEvent, Point, theme};
 pub struct Text {
     id: Option<ComponentId>,
     content: String,
+    pub(crate) style: StyleRefinement,
     font_size: f32,
     color: Hsla,
-    style: FontStyle,
+    font_style: FontStyle,
 }
 
 impl Text {
@@ -19,9 +21,10 @@ impl Text {
         Self {
             id: None,
             content: content.into(),
+            style: StyleRefinement::default(),
             font_size: theme::font_size::SM,
             color: theme::text::PRIMARY,
-            style: FontStyle::normal(),
+            font_style: FontStyle::normal(),
         }
     }
 
@@ -41,22 +44,22 @@ impl Text {
     }
 
     pub fn bold(mut self) -> Self {
-        self.style = FontStyle::bold();
+        self.font_style = FontStyle::bold();
         self
     }
 
     pub fn italic(mut self) -> Self {
-        self.style = FontStyle::italic();
+        self.font_style = FontStyle::italic();
         self
     }
 
     pub fn bold_italic(mut self) -> Self {
-        self.style = FontStyle::bold_italic();
+        self.font_style = FontStyle::bold_italic();
         self
     }
 
     pub fn style(mut self, style: FontStyle) -> Self {
-        self.style = style;
+        self.font_style = style;
         self
     }
 
@@ -75,12 +78,15 @@ impl Component for Text {
             return;
         }
 
+        let font_size = self.style.font_size.unwrap_or(self.font_size);
+        let color = self.style.text_color.unwrap_or(self.color);
+
         let text_run = cx.text.layout_styled(
             &self.content,
-            Point::new(bounds.origin.x, bounds.origin.y + self.font_size),
-            self.font_size,
-            self.color,
-            self.style,
+            Point::new(bounds.origin.x, bounds.origin.y + font_size),
+            font_size,
+            color,
+            self.font_style,
         );
         cx.scene.draw_text(text_run);
     }
@@ -100,9 +106,16 @@ impl Component for Text {
 
     fn size_hint(&self) -> (Option<f32>, Option<f32>) {
         let char_count = self.content.chars().count() as f32;
-        let width = char_count * self.font_size * 0.6;
-        let height = self.font_size * 1.4;
+        let font_size = self.style.font_size.unwrap_or(self.font_size);
+        let width = char_count * font_size * 0.6;
+        let height = font_size * 1.4;
         (Some(width), Some(height))
+    }
+}
+
+impl Styled for Text {
+    fn style(&mut self) -> &mut StyleRefinement {
+        &mut self.style
     }
 }
 
@@ -125,23 +138,23 @@ mod tests {
             .bold();
 
         assert_eq!(text.font_size, 18.0);
-        assert!(text.style.bold);
-        assert!(!text.style.italic);
+        assert!(text.font_style.bold);
+        assert!(!text.font_style.italic);
     }
 
     #[test]
     fn test_text_styles() {
         let bold = Text::new("Bold").bold();
-        assert!(bold.style.bold);
-        assert!(!bold.style.italic);
+        assert!(bold.font_style.bold);
+        assert!(!bold.font_style.italic);
 
         let italic = Text::new("Italic").italic();
-        assert!(!italic.style.bold);
-        assert!(italic.style.italic);
+        assert!(!italic.font_style.bold);
+        assert!(italic.font_style.italic);
 
         let bold_italic = Text::new("Both").bold_italic();
-        assert!(bold_italic.style.bold);
-        assert!(bold_italic.style.italic);
+        assert!(bold_italic.font_style.bold);
+        assert!(bold_italic.font_style.italic);
     }
 
     #[test]

@@ -2,6 +2,7 @@
 
 use std::{
     borrow::{Borrow, BorrowMut},
+    future::Future,
     ops,
 };
 
@@ -9,6 +10,7 @@ use super::{
     entity_map::{Entity, EntityId, EntityMap, WeakEntity},
     subscription::{SubscriberSet, Subscription},
 };
+use crate::r#async::{BackgroundExecutor, ForegroundExecutor, Task};
 
 type ObserverCallback = Box<dyn FnMut(&mut App) -> bool + 'static>;
 type ReleaseCallback = Box<dyn FnOnce(&mut dyn std::any::Any, &mut App) + 'static>;
@@ -20,6 +22,8 @@ pub struct App {
     pending_notifications: Vec<EntityId>,
     deferred: Vec<Box<dyn FnOnce(&mut App) + 'static>>,
     flushing: bool,
+    background_executor: BackgroundExecutor,
+    foreground_executor: ForegroundExecutor,
 }
 
 impl App {
@@ -31,6 +35,8 @@ impl App {
             pending_notifications: Vec::new(),
             deferred: Vec::new(),
             flushing: false,
+            background_executor: BackgroundExecutor::new(),
+            foreground_executor: ForegroundExecutor::new(),
         }
     }
 
@@ -134,6 +140,14 @@ impl App {
 
         self.flushing = false;
     }
+
+    pub fn background_executor(&self) -> &BackgroundExecutor {
+        &self.background_executor
+    }
+
+    pub fn foreground_executor(&self) -> &ForegroundExecutor {
+        &self.foreground_executor
+    }
 }
 
 impl Default for App {
@@ -212,6 +226,13 @@ impl<'a, T: 'static> Context<'a, T> {
         );
         activate();
         subscription
+    }
+
+    pub fn spawn<R>(&mut self, future: impl Future<Output = R> + Send + 'static) -> Task<R>
+    where
+        R: Send + 'static,
+    {
+        self.app.background_executor.spawn(future)
     }
 }
 
