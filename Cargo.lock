@@ -11198,6 +11198,7 @@ dependencies = [
  "console_error_panic_hook",
  "cosmic-text",
  "criterion 0.5.1",
+ "derive_more 2.1.1",
  "futures",
  "getrandom 0.3.4",
  "image 0.25.9",
