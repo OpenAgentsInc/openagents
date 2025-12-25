@@ -51,6 +51,8 @@ autopilot = { version = "0.1.0", path = "../autopilot" }
 governor = "0.10.4"
 keyring = "4.0.0-alpha.5"
 keyring-core = "0.7"
+wry = "0.48"
+tao = "0.30"
 
 [lints]
 workspace = true
