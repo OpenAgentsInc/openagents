@@ -97,6 +97,7 @@ Progress is automatically tracked based on completed/total linked issues.
 - **Legacy web stack**: GitAfter remains wry/tao + Actix for now; document integration boundaries clearly until migrated.
 - **Autopilot delegation**: `openagents autopilot`/`openagents daemon` forward to the autopilot binaries when present; keep CLI parity and document `OPENAGENTS_AUTOPILOT_BIN`/`OPENAGENTS_AUTOPILOTD_BIN`.
 - **Shared state**: Autopilot GUI, metrics, and APM read/write the same `autopilot` metrics DB and issue DB; avoid forked storage.
+- **Logs & metrics paths**: Use `docs/logs/` for trajectories and `autopilot::metrics::default_db_path()` for metrics DB across GUI, CLI, and recorder.
 - **Local inference**: GPT-OSS and fm-bridge backends integrate through `local-inference`; ACP adapters should accept both and pass through `openagents autopilot`.
 - **Trajectories**: GitAfter and NIP-SA should consume the same trajectory/rlog formats produced by autopilot and recorder.
 - **Agent backends**: ACP/OpenCode/orchestrator sessions should emit consistent rlog headers and session IDs for metrics + replay.
