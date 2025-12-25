@@ -141,6 +141,7 @@ pub async fn connect_gpt_oss(
 
     // Add server URL
     if let Some(url) = config.server_url {
+        cmd = cmd.env("GPT_OSS_URL", &url);
         cmd = cmd.env("GPT_OSS_SERVER_URL", url);
     }
 

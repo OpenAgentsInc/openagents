@@ -100,7 +100,7 @@ async fn run_gpt_oss_agent(
 
     // Build agent configuration
     let config = GptOssAgentConfig {
-        base_url: std::env::var("GPT_OSS_SERVER_URL")
+        base_url: std::env::var("GPT_OSS_URL")
             .unwrap_or_else(|_| "http://localhost:8000".to_string()),
         model: model.to_string(),
         workspace_root: cwd.to_path_buf(),
@@ -163,7 +163,7 @@ autopilot run --agent gpt-oss --model gpt-oss-20b "List files in current directo
 # Expected: No "Unknown agent" error, task executes
 
 # 3. Test with custom server URL
-GPT_OSS_SERVER_URL=http://localhost:8081 \
+GPT_OSS_URL=http://localhost:8081 \
 autopilot run --agent gpt-oss --model gpt-oss-120b "Explain Rust ownership"
 
 # 4. Test trajectory recording
@@ -225,7 +225,7 @@ No new dependencies needed.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `GPT_OSS_SERVER_URL` | `http://localhost:8000` | URL for llama-server |
+| `GPT_OSS_URL` | `http://localhost:8000` | URL for llama-server |
 | `GPT_OSS_MODEL_PATH` | - | Path to GGUF model file (for reference) |
 
 ## Related Files
@@ -260,4 +260,4 @@ This issue is **BLOCKED** in the current environment because:
 - [ ] Tool calls execute correctly
 - [ ] Trajectory logs contain GPT-OSS activity
 - [ ] Respects max_turns and max_budget
-- [ ] Environment variable GPT_OSS_SERVER_URL is honored
+- [ ] Environment variable GPT_OSS_URL is honored
