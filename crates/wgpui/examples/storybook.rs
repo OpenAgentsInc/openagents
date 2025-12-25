@@ -1,10 +1,12 @@
+use std::collections::HashMap;
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use wgpui::{
-    AnimatorState, Bounds, Component, EventContext, EventResult, Hsla, Illuminator, InputEvent,
-    Key, Modifiers, MouseButton, NamedKey, PaintContext, Point, Quad, Scene, Size, Text,
-    TextDecipher, TextEffectTiming, TextSequence, TextSystem, theme,
+    Animation, AnimatorState, Bounds, Component, Easing, EventContext, EventResult, Hsla,
+    Illuminator, InputEvent, Key, Modifiers, MouseButton, NamedKey, PaintContext, Point, Quad,
+    Scene, Size, SpringAnimation, Text, TextDecipher, TextEffectTiming, TextSequence, TextSystem,
+    theme,
 };
 use wgpui::components::atoms::{
     CheckpointBadge, ContentType, ContentTypeIcon, EntryMarker, EntryType, FeedbackButton,
@@ -52,6 +54,9 @@ const TEXT_TILE_GAP: f32 = 12.0;
 const ILLUMINATOR_TILE_W: f32 = 200.0;
 const ILLUMINATOR_TILE_H: f32 = 140.0;
 const ILLUMINATOR_TILE_GAP: f32 = 12.0;
+const LIGHT_DEMO_FRAMES_INNER_H: f32 = 320.0;
+const LIGHT_DEMO_HERO_INNER_H: f32 = 280.0;
+const TOOLCALL_DEMO_INNER_H: f32 = 520.0;
 const SECTION_OVERVIEW: usize = 0;
 const SECTION_ATOMS: usize = 1;
 const SECTION_MOLECULES: usize = 2;
@@ -61,6 +66,25 @@ const SECTION_ARWES_FRAMES: usize = 5;
 const SECTION_ARWES_BACKGROUNDS: usize = 6;
 const SECTION_ARWES_TEXT: usize = 7;
 const SECTION_ARWES_ILLUMINATOR: usize = 8;
+const SECTION_LIGHT_DEMO: usize = 9;
+const SECTION_TOOLCALL_DEMO: usize = 10;
+
+#[derive(Clone, Copy)]
+struct GlowPreset {
+    short: &'static str,
+    color: Hsla,
+}
+
+const GLOW_PRESETS: [GlowPreset; 8] = [
+    GlowPreset { short: "Wht", color: Hsla::new(0.0, 0.0, 1.0, 0.6) },
+    GlowPreset { short: "Cyn", color: Hsla::new(180.0, 1.0, 0.7, 0.5) },
+    GlowPreset { short: "Pur", color: Hsla::new(280.0, 1.0, 0.7, 0.5) },
+    GlowPreset { short: "Grn", color: Hsla::new(120.0, 1.0, 0.6, 0.5) },
+    GlowPreset { short: "C2", color: Hsla::new(0.5, 1.0, 0.6, 0.8) },
+    GlowPreset { short: "Org", color: Hsla::new(0.125, 1.0, 0.5, 0.9) },
+    GlowPreset { short: "Red", color: Hsla::new(0.0, 1.0, 0.5, 1.0) },
+    GlowPreset { short: "G2", color: Hsla::new(0.389, 1.0, 0.5, 0.8) },
+];
 
 const FRAME_STYLES: [FrameStyle; 9] = [
     FrameStyle::Corners,
@@ -400,6 +424,9 @@ struct Storybook {
     scroll_offsets: Vec<f32>,
     cursor_position: Point,
     event_context: EventContext,
+    last_tick: Instant,
+    light_frame_anim: Animation<f32>,
+    glow_pulse_anim: Animation<f32>,
     mode_selector: ModeSelector,
     model_selector: ModelSelector,
     permission_bar: PermissionBar,
@@ -411,6 +438,7 @@ struct Storybook {
     permission_dialog: PermissionDialog,
     focus_demo: FocusDemo,
     show_permission_dialog: bool,
+    toolcall_demo: ToolcallDemo,
 }
 
 impl Storybook {
@@ -430,8 +458,22 @@ impl Storybook {
             "Arwes Backgrounds",
             "Arwes Text Effects",
             "Arwes Illuminator",
+            "Light Demo",
+            "Toolcall Demo",
         ];
         let nav_len = nav_items.len();
+
+        let mut light_frame_anim = Animation::new(0.0_f32, 1.0, Duration::from_millis(2400))
+            .easing(Easing::EaseInOutCubic)
+            .iterations(0)
+            .alternate();
+        light_frame_anim.start();
+
+        let mut glow_pulse_anim = Animation::new(0.4_f32, 1.0, Duration::from_millis(1800))
+            .easing(Easing::EaseInOutSine)
+            .iterations(0)
+            .alternate();
+        glow_pulse_anim.start();
 
         Self {
             nav_items,
@@ -440,6 +482,9 @@ impl Storybook {
             scroll_offsets: vec![0.0; nav_len],
             cursor_position: Point::new(0.0, 0.0),
             event_context: EventContext::new(),
+            last_tick: Instant::now(),
+            light_frame_anim,
+            glow_pulse_anim,
             mode_selector: ModeSelector::new(Mode::Normal),
             model_selector: ModelSelector::new(Model::ClaudeSonnet),
             permission_bar: PermissionBar::new("Permission: read repository?"),
@@ -455,12 +500,19 @@ impl Storybook {
             permission_dialog: PermissionDialog::default(),
             focus_demo: FocusDemo::new(),
             show_permission_dialog: true,
+            toolcall_demo: ToolcallDemo::new(),
         }
     }
 
     fn tick(&mut self) {
+        let now = Instant::now();
+        let delta = now.saturating_duration_since(self.last_tick);
+        self.last_tick = now;
         self.streaming_indicator.tick();
         self.assistant_message.tick();
+        self.light_frame_anim.tick(delta);
+        self.glow_pulse_anim.tick(delta);
+        self.toolcall_demo.tick(delta);
     }
 
     fn layout(&self, bounds: Bounds) -> StoryLayout {
@@ -502,6 +554,8 @@ impl Storybook {
             SECTION_ARWES_BACKGROUNDS => arwes_backgrounds_height(bounds),
             SECTION_ARWES_TEXT => arwes_text_effects_height(bounds),
             SECTION_ARWES_ILLUMINATOR => arwes_illuminator_height(bounds),
+            SECTION_LIGHT_DEMO => light_demo_height(bounds),
+            SECTION_TOOLCALL_DEMO => toolcall_demo_height(bounds),
             _ => bounds.size.height,
         }
     }
@@ -537,6 +591,8 @@ impl Storybook {
             SECTION_ARWES_BACKGROUNDS => self.paint_arwes_backgrounds(content_bounds, cx),
             SECTION_ARWES_TEXT => self.paint_arwes_text_effects(content_bounds, cx),
             SECTION_ARWES_ILLUMINATOR => self.paint_arwes_illuminator(content_bounds, cx),
+            SECTION_LIGHT_DEMO => self.paint_light_demo(content_bounds, cx),
+            SECTION_TOOLCALL_DEMO => self.paint_toolcall_demo(content_bounds, cx),
             _ => {}
         }
         cx.scene.pop_clip();
@@ -1345,6 +1401,65 @@ impl Storybook {
         });
         y += glow_height + SECTION_GAP;
 
+        let glow_palette_count = FRAME_STYLES.len() * FRAME_ANIMATIONS.len() * GLOW_PRESETS.len();
+        let glow_palette_grid =
+            grid_metrics(available, glow_palette_count, FRAME_VARIANT_W, FRAME_VARIANT_H, FRAME_TILE_GAP);
+        let glow_palette_height = panel_height(glow_palette_grid.height);
+        let glow_palette_bounds = Bounds::new(bounds.origin.x, y, width, glow_palette_height);
+        draw_panel("Glow palette x animation", glow_palette_bounds, cx, |inner, cx| {
+            let grid = grid_metrics(
+                inner.size.width,
+                glow_palette_count,
+                FRAME_VARIANT_W,
+                FRAME_VARIANT_H,
+                FRAME_TILE_GAP,
+            );
+            let progress = self.light_frame_anim.current_value();
+            let glow_pulse = self.glow_pulse_anim.current_value();
+            let flicker_exit = progress > 0.5;
+            let white = Hsla::new(0.0, 0.0, 1.0, 1.0);
+            let dark_bg = Hsla::new(0.0, 0.0, 0.08, 0.85);
+            let mut idx = 0;
+
+            for style in FRAME_STYLES.iter().copied() {
+                for animation in FRAME_ANIMATIONS.iter().copied() {
+                    for preset in GLOW_PRESETS.iter().copied() {
+                        let row = idx / grid.cols;
+                        let col = idx % grid.cols;
+                        let tile_bounds = Bounds::new(
+                            inner.origin.x + col as f32 * (FRAME_VARIANT_W + FRAME_TILE_GAP),
+                            inner.origin.y + row as f32 * (FRAME_VARIANT_H + FRAME_TILE_GAP),
+                            FRAME_VARIANT_W,
+                            FRAME_VARIANT_H,
+                        );
+                        let label = format!(
+                            "{} {} {}",
+                            frame_style_short(style),
+                            frame_animation_label(animation),
+                            preset.short
+                        );
+                        draw_tile(tile_bounds, &label, cx, |inner, cx| {
+                            let mut frame = demo_frame(style)
+                                .line_color(white)
+                                .bg_color(dark_bg)
+                                .stroke_width(2.0)
+                                .animation_mode(animation)
+                                .draw_direction(DrawDirection::CenterOut)
+                                .animation_progress(progress);
+                            if animation == FrameAnimation::Flicker {
+                                frame = frame.is_exiting(flicker_exit);
+                            }
+                            let glow = preset.color.with_alpha(preset.color.a * glow_pulse);
+                            frame = frame.glow_color(glow);
+                            frame.paint(inset_bounds(inner, 4.0), cx);
+                        });
+                        idx += 1;
+                    }
+                }
+            }
+        });
+        y += glow_palette_height + SECTION_GAP;
+
         let nefrex_count = 16;
         let nefrex_grid = grid_metrics(available, nefrex_count, FRAME_VARIANT_W, FRAME_VARIANT_H, FRAME_TILE_GAP);
         let nefrex_height = panel_height(nefrex_grid.height);
@@ -1951,6 +2066,258 @@ impl Storybook {
             }
         });
     }
+
+    fn paint_light_demo(&mut self, bounds: Bounds, cx: &mut PaintContext) {
+        let mut y = bounds.origin.y;
+        let width = bounds.size.width;
+        let progress = self.light_frame_anim.current_value();
+        let glow_pulse = self.glow_pulse_anim.current_value();
+
+        let frames_height = panel_height(LIGHT_DEMO_FRAMES_INNER_H);
+        let frames_bounds = Bounds::new(bounds.origin.x, y, width, frames_height);
+        draw_panel("Light demo frames", frames_bounds, cx, |inner, cx| {
+            let frame_w = ((inner.size.width - 16.0).max(0.0) / 2.0).max(0.0);
+            let frame_h = 60.0;
+            let left_x = inner.origin.x;
+            let right_x = inner.origin.x + frame_w + 8.0;
+            let mut row_y = inner.origin.y;
+
+            let white = Hsla::new(0.0, 0.0, 1.0, 1.0);
+            let dark_bg = Hsla::new(0.0, 0.0, 0.08, 0.8);
+            let muted = Hsla::new(0.0, 0.0, 0.7, 1.0);
+            let white_glow = Hsla::new(0.0, 0.0, 1.0, 0.6 * glow_pulse);
+            let cyan_glow = Hsla::new(180.0, 1.0, 0.7, 0.5 * glow_pulse);
+            let purple_glow = Hsla::new(280.0, 1.0, 0.7, 0.5 * glow_pulse);
+            let green_glow = Hsla::new(120.0, 1.0, 0.6, 0.5 * glow_pulse);
+
+            Frame::corners()
+                .line_color(white)
+                .bg_color(dark_bg)
+                .glow_color(white_glow)
+                .stroke_width(2.0)
+                .corner_length(18.0)
+                .animation_mode(FrameAnimation::Fade)
+                .animation_progress(progress)
+                .paint(Bounds::new(left_x, row_y, frame_w, frame_h), cx);
+            let lbl = cx.text.layout(
+                "Fade",
+                Point::new(left_x + 10.0, row_y + frame_h / 2.0),
+                11.0,
+                white.with_alpha(progress),
+            );
+            cx.scene.draw_text(lbl);
+
+            Frame::lines()
+                .line_color(white)
+                .bg_color(dark_bg)
+                .glow_color(cyan_glow)
+                .stroke_width(2.0)
+                .animation_mode(FrameAnimation::Draw)
+                .draw_direction(DrawDirection::CenterOut)
+                .animation_progress(progress)
+                .paint(Bounds::new(right_x, row_y, frame_w, frame_h), cx);
+            let lbl = cx.text.layout(
+                "Draw (CenterOut)",
+                Point::new(right_x + 10.0, row_y + frame_h / 2.0),
+                11.0,
+                white,
+            );
+            cx.scene.draw_text(lbl);
+
+            row_y += frame_h + 10.0;
+
+            Frame::octagon()
+                .line_color(white)
+                .bg_color(dark_bg)
+                .glow_color(purple_glow)
+                .stroke_width(2.0)
+                .corner_length(14.0)
+                .animation_mode(FrameAnimation::Flicker)
+                .animation_progress(progress)
+                .paint(Bounds::new(left_x, row_y, frame_w, frame_h), cx);
+            let lbl = cx.text.layout(
+                "Flicker",
+                Point::new(left_x + 10.0, row_y + frame_h / 2.0),
+                11.0,
+                white,
+            );
+            cx.scene.draw_text(lbl);
+
+            Frame::nefrex()
+                .line_color(white)
+                .bg_color(dark_bg)
+                .glow_color(green_glow)
+                .stroke_width(1.5)
+                .square_size(12.0)
+                .small_line_length(12.0)
+                .large_line_length(40.0)
+                .corner_config(CornerConfig::all())
+                .animation_mode(FrameAnimation::Assemble)
+                .animation_progress(progress)
+                .paint(Bounds::new(right_x, row_y, frame_w, frame_h), cx);
+            let lbl = cx.text.layout(
+                "Assemble",
+                Point::new(right_x + 10.0, row_y + frame_h / 2.0),
+                11.0,
+                white,
+            );
+            cx.scene.draw_text(lbl);
+
+            row_y += frame_h + 10.0;
+
+            Frame::underline()
+                .line_color(white)
+                .bg_color(dark_bg)
+                .glow_color(white_glow)
+                .stroke_width(2.0)
+                .square_size(12.0)
+                .animation_mode(FrameAnimation::Draw)
+                .draw_direction(DrawDirection::LeftToRight)
+                .animation_progress(progress)
+                .paint(Bounds::new(left_x, row_y, frame_w, frame_h), cx);
+            let lbl = cx.text.layout(
+                "Underline (Draw)",
+                Point::new(left_x + 10.0, row_y + frame_h / 2.0),
+                11.0,
+                white,
+            );
+            cx.scene.draw_text(lbl);
+
+            Frame::kranox()
+                .line_color(white)
+                .bg_color(dark_bg)
+                .glow_color(cyan_glow)
+                .stroke_width(2.0)
+                .square_size(10.0)
+                .small_line_length(10.0)
+                .large_line_length(35.0)
+                .animation_mode(FrameAnimation::Draw)
+                .draw_direction(DrawDirection::EdgesIn)
+                .animation_progress(progress)
+                .paint(Bounds::new(right_x, row_y, frame_w, frame_h), cx);
+            let lbl = cx.text.layout(
+                "Kranox (EdgesIn)",
+                Point::new(right_x + 10.0, row_y + frame_h / 2.0),
+                11.0,
+                white,
+            );
+            cx.scene.draw_text(lbl);
+
+            row_y += frame_h + 14.0;
+
+            let wallet_bounds = Bounds::new(left_x, row_y, inner.size.width, 80.0);
+            Frame::corners()
+                .line_color(white)
+                .bg_color(dark_bg)
+                .glow_color(cyan_glow)
+                .stroke_width(2.0)
+                .corner_length(24.0)
+                .animation_mode(FrameAnimation::Draw)
+                .draw_direction(DrawDirection::CenterOut)
+                .animation_progress(progress)
+                .paint(wallet_bounds, cx);
+
+            let balance_label = cx.text.layout(
+                "Balance",
+                Point::new(wallet_bounds.origin.x + 20.0, wallet_bounds.origin.y + 14.0),
+                11.0,
+                muted,
+            );
+            cx.scene.draw_text(balance_label);
+
+            let font_size = 28.0;
+            let symbol_x = wallet_bounds.origin.x + 20.0;
+            let symbol_y = wallet_bounds.origin.y + 28.0;
+            draw_bitcoin_symbol(cx.scene, cx.text, symbol_x, symbol_y, font_size, white);
+
+            let sats_amount = cx.text.layout(
+                "42069",
+                Point::new(symbol_x + font_size * 0.55, symbol_y),
+                font_size,
+                white,
+            );
+            cx.scene.draw_text(sats_amount);
+
+            let usd_value = cx.text.layout(
+                "~ $42.07",
+                Point::new(wallet_bounds.origin.x + 20.0, wallet_bounds.origin.y + 60.0),
+                13.0,
+                muted,
+            );
+            cx.scene.draw_text(usd_value);
+        });
+
+        y += frames_height + SECTION_GAP;
+
+        let hero_height = panel_height(LIGHT_DEMO_HERO_INNER_H);
+        let hero_bounds = Bounds::new(bounds.origin.x, y, width, hero_height);
+        draw_panel("Light demo hero frame", hero_bounds, cx, |inner, cx| {
+            let pane_w = inner.size.width.min(520.0);
+            let pane_h = inner.size.height.min(220.0);
+            let pane_x = inner.origin.x + (inner.size.width - pane_w) / 2.0;
+            let pane_y = inner.origin.y + (inner.size.height - pane_h) / 2.0;
+            let text_alpha = ((progress - 0.2) / 0.8).clamp(0.0, 1.0);
+
+            let white = Hsla::new(0.0, 0.0, 1.0, text_alpha);
+            let muted = Hsla::new(0.0, 0.0, 0.7, text_alpha);
+            let accent = Hsla::new(0.5, 1.0, 0.6, text_alpha);
+            let dark_bg = Hsla::new(0.0, 0.0, 0.06, 0.9);
+            let cyan_glow = Hsla::new(0.5, 1.0, 0.6, 0.7 * glow_pulse);
+
+            let mut frame = Frame::nefrex()
+                .line_color(white)
+                .bg_color(dark_bg)
+                .glow_color(cyan_glow)
+                .stroke_width(2.0)
+                .corner_config(CornerConfig::all())
+                .square_size(14.0)
+                .small_line_length(14.0)
+                .large_line_length(50.0)
+                .animation_mode(FrameAnimation::Assemble)
+                .draw_direction(DrawDirection::CenterOut)
+                .animation_progress(progress);
+            frame.paint(Bounds::new(pane_x, pane_y, pane_w, pane_h), cx);
+
+            if text_alpha > 0.01 {
+                let title = cx.text.layout(
+                    "OpenAgents",
+                    Point::new(pane_x + 30.0, pane_y + 40.0),
+                    32.0,
+                    white,
+                );
+                cx.scene.draw_text(title);
+
+                let subtitle = cx.text.layout(
+                    "Decentralized AI Infrastructure",
+                    Point::new(pane_x + 30.0, pane_y + 80.0),
+                    16.0,
+                    muted,
+                );
+                cx.scene.draw_text(subtitle);
+
+                let body_lines = [
+                    "Build autonomous agents",
+                    "Deploy on decentralized compute",
+                    "Earn Bitcoin for contributions",
+                ];
+                for (idx, line) in body_lines.iter().enumerate() {
+                    let line_y = pane_y + 130.0 + idx as f32 * 28.0;
+                    let bullet = cx.text.layout(">", Point::new(pane_x + 30.0, line_y), 14.0, accent);
+                    cx.scene.draw_text(bullet);
+                    let text = cx.text.layout(line, Point::new(pane_x + 44.0, line_y + 2.0), 13.0, muted);
+                    cx.scene.draw_text(text);
+                }
+            }
+        });
+    }
+
+    fn paint_toolcall_demo(&mut self, bounds: Bounds, cx: &mut PaintContext) {
+        let demo_height = panel_height(TOOLCALL_DEMO_INNER_H);
+        let panel_bounds = Bounds::new(bounds.origin.x, bounds.origin.y, bounds.size.width, demo_height);
+        draw_panel("Toolcall UI demo", panel_bounds, cx, |inner, cx| {
+            self.toolcall_demo.paint(inner, cx);
+        });
+    }
 }
 
 struct FocusDemo {
@@ -2113,6 +2480,664 @@ impl FocusDemo {
     }
 }
 
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[allow(dead_code)]
+enum PanePriority {
+    Background,
+    Normal,
+    Elevated,
+    Urgent,
+    Critical,
+}
+
+impl PanePriority {
+    fn glow_color(&self) -> Option<Hsla> {
+        match self {
+            PanePriority::Background | PanePriority::Normal => None,
+            PanePriority::Elevated => Some(Hsla::new(0.5, 1.0, 0.6, 0.8)),
+            PanePriority::Urgent => Some(Hsla::new(0.125, 1.0, 0.5, 0.9)),
+            PanePriority::Critical => Some(Hsla::new(0.0, 1.0, 0.5, 1.0)),
+        }
+    }
+}
+
+#[derive(Clone, Copy, PartialEq)]
+enum PaneState {
+    Creating,
+    Open,
+    Minimized,
+    Closing,
+}
+
+struct ToolcallPane {
+    title: String,
+    target_x: f32,
+    target_y: f32,
+    target_w: f32,
+    target_h: f32,
+    x_anim: Animation<f32>,
+    y_anim: Animation<f32>,
+    w_anim: Animation<f32>,
+    h_anim: Animation<f32>,
+    alpha_anim: Animation<f32>,
+    priority: PanePriority,
+    custom_glow: Option<Hsla>,
+    frame_style: FrameStyle,
+    frame_animation: FrameAnimation,
+    draw_direction: DrawDirection,
+    state: PaneState,
+    z_index: i32,
+    shake: SpringAnimation<f32>,
+    shake_target: f32,
+    shake_phase: u8,
+    content_type: String,
+}
+
+impl ToolcallPane {
+    fn new(_id: &str, title: &str, x: f32, y: f32, w: f32, h: f32) -> Self {
+        let x_anim = Animation::new(x, x, Duration::from_millis(500))
+            .easing(Easing::EaseOutCubic);
+        let y_anim = Animation::new(y, y, Duration::from_millis(500))
+            .easing(Easing::EaseOutCubic);
+        let w_anim = Animation::new(w, w, Duration::from_millis(300))
+            .easing(Easing::EaseOutCubic);
+        let h_anim = Animation::new(h, h, Duration::from_millis(300))
+            .easing(Easing::EaseOutCubic);
+        let mut alpha_anim = Animation::new(0.0, 1.0, Duration::from_millis(400))
+            .easing(Easing::EaseOut);
+        alpha_anim.start();
+
+        Self {
+            title: title.to_string(),
+            target_x: x,
+            target_y: y,
+            target_w: w,
+            target_h: h,
+            x_anim,
+            y_anim,
+            w_anim,
+            h_anim,
+            alpha_anim,
+            priority: PanePriority::Normal,
+            custom_glow: None,
+            frame_style: FrameStyle::Corners,
+            frame_animation: FrameAnimation::Fade,
+            draw_direction: DrawDirection::CenterOut,
+            state: PaneState::Creating,
+            z_index: 0,
+            shake: SpringAnimation::new(0.0, 0.0).stiffness(300.0).damping(10.0),
+            shake_target: 0.0,
+            shake_phase: 0,
+            content_type: "generic".to_string(),
+        }
+    }
+
+    fn move_to(&mut self, x: f32, y: f32, animate: bool) {
+        self.target_x = x;
+        self.target_y = y;
+        if animate {
+            self.x_anim = Animation::new(self.x_anim.current_value(), x, Duration::from_millis(400))
+                .easing(Easing::EaseInOutCubic);
+            self.y_anim = Animation::new(self.y_anim.current_value(), y, Duration::from_millis(400))
+                .easing(Easing::EaseInOutCubic);
+            self.x_anim.start();
+            self.y_anim.start();
+        }
+    }
+
+    fn resize_to(&mut self, w: f32, h: f32, animate: bool) {
+        self.target_w = w;
+        self.target_h = h;
+        if animate {
+            self.w_anim = Animation::new(self.w_anim.current_value(), w, Duration::from_millis(300))
+                .easing(Easing::EaseInOutCubic);
+            self.h_anim = Animation::new(self.h_anim.current_value(), h, Duration::from_millis(300))
+                .easing(Easing::EaseInOutCubic);
+            self.w_anim.start();
+            self.h_anim.start();
+        }
+    }
+
+    fn set_priority(&mut self, priority: PanePriority) {
+        self.priority = priority;
+    }
+
+    fn set_glow(&mut self, color: Option<Hsla>) {
+        self.custom_glow = color;
+    }
+
+    fn request_attention(&mut self) {
+        self.shake_phase = 1;
+        self.shake_target = 15.0;
+        self.shake.set_target(15.0);
+    }
+
+    fn minimize(&mut self) {
+        self.state = PaneState::Minimized;
+        self.h_anim = Animation::new(self.h_anim.current_value(), 30.0, Duration::from_millis(300))
+            .easing(Easing::EaseInOutCubic);
+        self.h_anim.start();
+    }
+
+    fn close(&mut self) {
+        self.state = PaneState::Closing;
+        self.alpha_anim = Animation::new(1.0, 0.0, Duration::from_millis(300))
+            .easing(Easing::EaseIn);
+        self.alpha_anim.start();
+    }
+
+    fn tick(&mut self, dt: Duration) {
+        self.x_anim.tick(dt);
+        self.y_anim.tick(dt);
+        self.w_anim.tick(dt);
+        self.h_anim.tick(dt);
+        self.alpha_anim.tick(dt);
+        self.shake.tick(dt);
+
+        if self.shake_phase > 0 && self.shake.is_settled() {
+            match self.shake_phase {
+                1 => {
+                    self.shake_target = -12.0;
+                    self.shake.set_target(-12.0);
+                    self.shake_phase = 2;
+                }
+                2 => {
+                    self.shake_target = 0.0;
+                    self.shake.set_target(0.0);
+                    self.shake_phase = 3;
+                }
+                _ => {
+                    self.shake_phase = 0;
+                }
+            }
+        }
+
+        if self.state == PaneState::Creating && self.alpha_anim.is_finished() {
+            self.state = PaneState::Open;
+        }
+    }
+
+    fn current_bounds(&self) -> Bounds {
+        let shake_offset = if self.shake_phase > 0 { self.shake.current() } else { 0.0 };
+        Bounds::new(
+            self.x_anim.current_value() + shake_offset,
+            self.y_anim.current_value(),
+            self.w_anim.current_value(),
+            self.h_anim.current_value(),
+        )
+    }
+
+    fn glow_color(&self) -> Option<Hsla> {
+        self.custom_glow.or_else(|| self.priority.glow_color())
+    }
+
+    fn is_visible(&self) -> bool {
+        self.alpha_anim.current_value() > 0.01
+    }
+}
+
+struct ToolCallLog {
+    entries: Vec<(f32, String)>,
+    max_entries: usize,
+}
+
+impl ToolCallLog {
+    fn new() -> Self {
+        Self {
+            entries: Vec::new(),
+            max_entries: 8,
+        }
+    }
+
+    fn add(&mut self, time: f32, msg: String) {
+        self.entries.push((time, msg));
+        if self.entries.len() > self.max_entries {
+            self.entries.remove(0);
+        }
+    }
+}
+
+struct ToolcallDemo {
+    panes: HashMap<String, ToolcallPane>,
+    z_counter: i32,
+    tool_log: ToolCallLog,
+    elapsed: f32,
+    scenario_index: usize,
+    dots_anim: Animation<f32>,
+    frame_anim: Animation<f32>,
+}
+
+impl ToolcallDemo {
+    fn new() -> Self {
+        let (dots_anim, frame_anim) = toolcall_animations();
+        Self {
+            panes: HashMap::new(),
+            z_counter: 0,
+            tool_log: ToolCallLog::new(),
+            elapsed: 0.0,
+            scenario_index: 0,
+            dots_anim,
+            frame_anim,
+        }
+    }
+
+    fn tick(&mut self, dt: Duration) {
+        self.elapsed += dt.as_secs_f32();
+        self.run_script();
+        self.dots_anim.tick(dt);
+        self.frame_anim.tick(dt);
+        for pane in self.panes.values_mut() {
+            pane.tick(dt);
+        }
+        self.panes.retain(|_, pane| pane.is_visible() || pane.state != PaneState::Closing);
+    }
+
+    fn paint(&self, bounds: Bounds, cx: &mut PaintContext) {
+        cx.scene.push_clip(bounds);
+        cx.scene.draw_quad(Quad::new(bounds).with_background(theme::bg::APP));
+
+        let width = bounds.size.width;
+        let height = bounds.size.height;
+        let origin = bounds.origin;
+
+        let dots_progress = self.dots_anim.current_value();
+        let dots_height = (height - 180.0).max(0.0);
+        let mut dots_grid = DotsGrid::new()
+            .color(Hsla::new(0.0, 0.0, 0.3, 0.25))
+            .shape(DotShape::Cross)
+            .distance(28.0)
+            .size(5.0)
+            .cross_thickness(1.0)
+            .origin(DotsOrigin::Center)
+            .easing(Easing::EaseOut)
+            .animation_progress(dots_progress);
+        dots_grid.paint(
+            Bounds::new(origin.x, origin.y + 40.0, width, dots_height),
+            cx,
+        );
+
+        let title = cx.text.layout(
+            "Toolcall UI Demo",
+            Point::new(origin.x + 20.0, origin.y + 18.0),
+            16.0,
+            theme::text::PRIMARY,
+        );
+        cx.scene.draw_text(title);
+
+        let subtitle = cx.text.layout(
+            "Auto-animated panes + glow",
+            Point::new(origin.x + width - 250.0, origin.y + 22.0),
+            11.0,
+            theme::text::MUTED,
+        );
+        cx.scene.draw_text(subtitle);
+
+        cx.scene.draw_quad(
+            Quad::new(Bounds::new(origin.x, origin.y + 40.0, width, 2.0))
+                .with_background(theme::accent::PRIMARY.with_alpha(0.5)),
+        );
+
+        let mut panes: Vec<_> = self.panes.values().collect();
+        panes.sort_by_key(|pane| pane.z_index);
+
+        for pane in panes {
+            if !pane.is_visible() {
+                continue;
+            }
+
+            let bounds = pane.current_bounds();
+            let bounds = Bounds::new(
+                bounds.origin.x + origin.x,
+                bounds.origin.y + origin.y,
+                bounds.size.width,
+                bounds.size.height,
+            );
+            let alpha = pane.alpha_anim.current_value();
+
+            let white = Hsla::new(0.0, 0.0, 1.0, alpha);
+            let dark_bg = Hsla::new(0.0, 0.0, 0.08, 0.85 * alpha);
+            let muted = Hsla::new(0.0, 0.0, 0.6, alpha);
+
+            let glow = pane.glow_color().map(|c| c.with_alpha(c.a * alpha));
+            let frame_progress = self.frame_anim.current_value();
+            let mut frame = demo_frame(pane.frame_style)
+                .line_color(white)
+                .bg_color(dark_bg)
+                .stroke_width(2.0)
+                .animation_mode(pane.frame_animation)
+                .draw_direction(pane.draw_direction)
+                .animation_progress(frame_progress);
+
+            if let Some(glow) = glow {
+                frame = frame.glow_color(glow);
+            }
+
+            frame.paint(bounds, cx);
+
+            let title_run = cx.text.layout(
+                &pane.title,
+                Point::new(bounds.origin.x + 12.0, bounds.origin.y + 14.0),
+                13.0,
+                white,
+            );
+            cx.scene.draw_text(title_run);
+
+            let type_run = cx.text.layout(
+                &pane.content_type,
+                Point::new(bounds.origin.x + 12.0, bounds.origin.y + 32.0),
+                10.0,
+                muted,
+            );
+            cx.scene.draw_text(type_run);
+
+            if pane.state == PaneState::Minimized {
+                continue;
+            }
+
+            let content_y = bounds.origin.y + 50.0;
+            let content_h = bounds.size.height - 60.0;
+            if content_h > 20.0 {
+                let content_color = Hsla::new(0.0, 0.0, 0.15, 0.5 * alpha);
+                cx.scene.draw_quad(
+                    Quad::new(Bounds::new(
+                        bounds.origin.x + 8.0,
+                        content_y,
+                        bounds.size.width - 16.0,
+                        content_h,
+                    ))
+                    .with_background(content_color),
+                );
+
+                let placeholder = match pane.content_type.as_str() {
+                    "code" => "fn main() {\n    println!(\"Hello\");\n}",
+                    "terminal" => "$ cargo test\n   Compiling...\n   Finished",
+                    "chat" => "AI: How can I help?\nUser: Fix the bug",
+                    "diagnostics" => "error[E0308]: mismatched types\n  --> src/main.rs:42",
+                    _ => "Content placeholder",
+                };
+                let text_run = cx.text.layout(
+                    placeholder,
+                    Point::new(bounds.origin.x + 14.0, content_y + 8.0),
+                    11.0,
+                    Hsla::new(0.0, 0.0, 0.7, alpha),
+                );
+                cx.scene.draw_text(text_run);
+            }
+        }
+
+        let log_h = 130.0;
+        let log_y = origin.y + height - 140.0;
+        let log_bounds = Bounds::new(origin.x, log_y, width, log_h);
+
+        if log_bounds.size.height > 0.0 {
+            cx.scene.draw_quad(
+                Quad::new(log_bounds).with_background(Hsla::new(0.0, 0.0, 0.05, 0.95)),
+            );
+            cx.scene.draw_quad(
+                Quad::new(Bounds::new(origin.x, log_y, width, 1.0))
+                    .with_background(theme::accent::PRIMARY.with_alpha(0.3)),
+            );
+
+            let log_title = cx.text.layout(
+                "Tool Call Log",
+                Point::new(origin.x + 15.0, log_y + 10.0),
+                12.0,
+                theme::text::PRIMARY,
+            );
+            cx.scene.draw_text(log_title);
+
+            let mut entry_y = log_y + 30.0;
+            for (time, msg) in &self.tool_log.entries {
+                let time_str = format!("[{time:.1}s]");
+                let time_run = cx.text.layout(
+                    &time_str,
+                    Point::new(origin.x + 15.0, entry_y),
+                    11.0,
+                    theme::accent::PRIMARY,
+                );
+                cx.scene.draw_text(time_run);
+
+                let msg_run = cx.text.layout(
+                    &format!("ui_pane.{}", msg),
+                    Point::new(origin.x + 70.0, entry_y),
+                    11.0,
+                    theme::text::MUTED,
+                );
+                cx.scene.draw_text(msg_run);
+
+                entry_y += 14.0;
+            }
+        }
+
+        cx.scene.pop_clip();
+    }
+
+    fn run_script(&mut self) {
+        let t = self.elapsed;
+
+        if self.scenario_index == 0 && t >= 0.5 {
+            self.create_pane("editor", "Code Editor", 50.0, 60.0, 450.0, 250.0, "code");
+            self.scenario_index = 1;
+        }
+        if self.scenario_index == 1 && t >= 1.0 {
+            self.create_pane("terminal", "Terminal", 50.0, 340.0, 450.0, 180.0, "terminal");
+            self.scenario_index = 2;
+        }
+        if self.scenario_index == 2 && t >= 1.5 {
+            self.create_pane("chat", "AI Assistant", 540.0, 60.0, 340.0, 230.0, "chat");
+            self.scenario_index = 3;
+        }
+        if self.scenario_index == 3 && t >= 2.0 {
+            self.create_pane("diagnostics", "Diagnostics", 540.0, 320.0, 340.0, 200.0, "diagnostics");
+            self.scenario_index = 4;
+        }
+
+        if self.scenario_index == 4 && t >= 3.0 {
+            self.set_priority("diagnostics", PanePriority::Urgent);
+            self.scenario_index = 5;
+        }
+        if self.scenario_index == 5 && t >= 3.3 {
+            self.focus_pane("diagnostics");
+            self.scenario_index = 6;
+        }
+        if self.scenario_index == 6 && t >= 3.6 {
+            if let Some(pane) = self.panes.get_mut("diagnostics") {
+                pane.request_attention();
+            }
+            self.tool_log.add(t, "Animate { id: \"diagnostics\", animation: \"Pulse\" }".to_string());
+            self.scenario_index = 7;
+        }
+
+        if self.scenario_index == 7 && t >= 5.0 {
+            self.set_priority("diagnostics", PanePriority::Normal);
+            self.set_glow("diagnostics", None);
+            self.scenario_index = 8;
+        }
+        if self.scenario_index == 8 && t >= 5.3 {
+            self.focus_pane("editor");
+            self.set_glow("editor", Some(Hsla::new(0.389, 1.0, 0.5, 0.8)));
+            self.scenario_index = 9;
+        }
+
+        if self.scenario_index == 9 && t >= 6.5 {
+            self.move_pane("terminal", 50.0, 330.0);
+            self.scenario_index = 10;
+        }
+        if self.scenario_index == 10 && t >= 6.8 {
+            self.resize_pane("terminal", 500.0, 270.0);
+            self.scenario_index = 11;
+        }
+        if self.scenario_index == 11 && t >= 7.1 {
+            self.set_priority("terminal", PanePriority::Elevated);
+            self.focus_pane("terminal");
+            self.scenario_index = 12;
+        }
+
+        if self.scenario_index == 12 && t >= 8.5 {
+            self.minimize_pane("terminal");
+            self.scenario_index = 13;
+        }
+        if self.scenario_index == 13 && t >= 9.0 {
+            self.request_attention("chat", "All tests passed!");
+            self.scenario_index = 14;
+        }
+
+        if self.scenario_index == 14 && t >= 11.0 {
+            self.close_pane("diagnostics");
+            self.scenario_index = 15;
+        }
+        if self.scenario_index == 15 && t >= 13.0 {
+            self.reset();
+        }
+    }
+
+    fn reset(&mut self) {
+        let (dots_anim, frame_anim) = toolcall_animations();
+        self.panes.clear();
+        self.z_counter = 0;
+        self.tool_log = ToolCallLog::new();
+        self.elapsed = 0.0;
+        self.scenario_index = 0;
+        self.dots_anim = dots_anim;
+        self.frame_anim = frame_anim;
+    }
+
+    fn create_pane(
+        &mut self,
+        id: &str,
+        title: &str,
+        x: f32,
+        y: f32,
+        w: f32,
+        h: f32,
+        content_type: &str,
+    ) {
+        let mut pane = ToolcallPane::new(id, title, x, y, w, h);
+        pane.content_type = content_type.to_string();
+
+        match content_type {
+            "code" => {
+                pane.frame_style = FrameStyle::Corners;
+                pane.frame_animation = FrameAnimation::Draw;
+                pane.draw_direction = DrawDirection::CenterOut;
+            }
+            "terminal" => {
+                pane.frame_style = FrameStyle::Lines;
+                pane.frame_animation = FrameAnimation::Draw;
+                pane.draw_direction = DrawDirection::LeftToRight;
+            }
+            "chat" => {
+                pane.frame_style = FrameStyle::Nefrex;
+                pane.frame_animation = FrameAnimation::Assemble;
+                pane.draw_direction = DrawDirection::CenterOut;
+            }
+            "diagnostics" => {
+                pane.frame_style = FrameStyle::Octagon;
+                pane.frame_animation = FrameAnimation::Flicker;
+                pane.draw_direction = DrawDirection::EdgesIn;
+            }
+            _ => {}
+        }
+
+        self.z_counter += 1;
+        pane.z_index = self.z_counter;
+        self.panes.insert(id.to_string(), pane);
+        self.tool_log.add(
+            self.elapsed,
+            format!("CreatePane {{ id: \"{}\", title: \"{}\" }}", id, title),
+        );
+    }
+
+    fn focus_pane(&mut self, id: &str) {
+        self.z_counter += 1;
+        if let Some(pane) = self.panes.get_mut(id) {
+            pane.z_index = self.z_counter;
+        }
+        self.tool_log
+            .add(self.elapsed, format!("Focus {{ id: \"{}\" }}", id));
+    }
+
+    fn set_priority(&mut self, id: &str, priority: PanePriority) {
+        if let Some(pane) = self.panes.get_mut(id) {
+            pane.set_priority(priority);
+        }
+        let p_str = match priority {
+            PanePriority::Background => "Background",
+            PanePriority::Normal => "Normal",
+            PanePriority::Elevated => "Elevated",
+            PanePriority::Urgent => "Urgent",
+            PanePriority::Critical => "Critical",
+        };
+        self.tool_log.add(
+            self.elapsed,
+            format!("SetPriority {{ id: \"{}\", priority: \"{}\" }}", id, p_str),
+        );
+    }
+
+    fn set_glow(&mut self, id: &str, color: Option<Hsla>) {
+        if let Some(pane) = self.panes.get_mut(id) {
+            pane.set_glow(color);
+        }
+        let color_str = color
+            .map(|c| format!("#{:02x}{:02x}{:02x}", (c.l * 255.0) as u8, (c.s * 255.0) as u8, (c.h as u8)))
+            .unwrap_or_else(|| "none".to_string());
+        self.tool_log.add(
+            self.elapsed,
+            format!("SetGlow {{ id: \"{}\", color: \"{}\" }}", id, color_str),
+        );
+    }
+
+    fn move_pane(&mut self, id: &str, x: f32, y: f32) {
+        if let Some(pane) = self.panes.get_mut(id) {
+            pane.move_to(x, y, true);
+        }
+        self.tool_log.add(
+            self.elapsed,
+            format!("MovePane {{ id: \"{}\", x: {}, y: {} }}", id, x, y),
+        );
+    }
+
+    fn resize_pane(&mut self, id: &str, w: f32, h: f32) {
+        if let Some(pane) = self.panes.get_mut(id) {
+            pane.resize_to(w, h, true);
+        }
+        self.tool_log.add(
+            self.elapsed,
+            format!("ResizePane {{ id: \"{}\", w: {}, h: {} }}", id, w, h),
+        );
+    }
+
+    fn request_attention(&mut self, id: &str, msg: &str) {
+        if let Some(pane) = self.panes.get_mut(id) {
+            pane.request_attention();
+            pane.set_priority(PanePriority::Urgent);
+        }
+        self.focus_pane(id);
+        self.tool_log.add(
+            self.elapsed,
+            format!("RequestAttention {{ id: \"{}\", msg: \"{}\" }}", id, msg),
+        );
+    }
+
+    fn minimize_pane(&mut self, id: &str) {
+        if let Some(pane) = self.panes.get_mut(id) {
+            pane.minimize();
+        }
+        self.tool_log.add(
+            self.elapsed,
+            format!("SetState {{ id: \"{}\", state: \"Minimized\" }}", id),
+        );
+    }
+
+    fn close_pane(&mut self, id: &str) {
+        if let Some(pane) = self.panes.get_mut(id) {
+            pane.close();
+        }
+        self.tool_log
+            .add(self.elapsed, format!("ClosePane {{ id: \"{}\" }}", id));
+    }
+}
+
 fn draw_panel(
     title: &str,
     bounds: Bounds,
@@ -2239,6 +3264,22 @@ fn panel_height(inner_height: f32) -> f32 {
     inner_height + PANEL_PADDING * 2.0 + 22.0
 }
 
+fn toolcall_animations() -> (Animation<f32>, Animation<f32>) {
+    let mut dots_anim = Animation::new(0.0_f32, 1.0, Duration::from_millis(2000))
+        .easing(Easing::Linear)
+        .iterations(0)
+        .alternate();
+    dots_anim.start();
+
+    let mut frame_anim = Animation::new(0.0_f32, 1.0, Duration::from_millis(2500))
+        .easing(Easing::EaseInOutCubic)
+        .iterations(0)
+        .alternate();
+    frame_anim.start();
+
+    (dots_anim, frame_anim)
+}
+
 fn stacked_height(panels: &[f32]) -> f32 {
     let mut height = 0.0;
     for (idx, panel) in panels.iter().enumerate() {
@@ -2259,6 +3300,42 @@ fn inset_bounds(bounds: Bounds, inset: f32) -> Bounds {
     )
 }
 
+fn draw_bitcoin_symbol(
+    scene: &mut Scene,
+    text_system: &mut TextSystem,
+    x: f32,
+    y: f32,
+    font_size: f32,
+    color: Hsla,
+) {
+    let bar_h = font_size * 0.18;
+    let bar_w = 2.0;
+    let bar_x1 = x + font_size * 0.15;
+    let bar_x2 = x + font_size * 0.38;
+
+    scene.draw_quad(Quad::new(Bounds::new(bar_x1, y - bar_h + 2.0, bar_w, bar_h)).with_background(color));
+    scene.draw_quad(Quad::new(Bounds::new(bar_x2, y - bar_h + 2.0, bar_w, bar_h)).with_background(color));
+    scene.draw_quad(Quad::new(Bounds::new(bar_x1, y + font_size - 4.0, bar_w, bar_h)).with_background(color));
+    scene.draw_quad(Quad::new(Bounds::new(bar_x2, y + font_size - 4.0, bar_w, bar_h)).with_background(color));
+
+    let b = text_system.layout("B", Point::new(x, y), font_size, color);
+    scene.draw_text(b);
+}
+
+fn frame_style_short(style: FrameStyle) -> &'static str {
+    match style {
+        FrameStyle::Corners => "Crn",
+        FrameStyle::Lines => "Lin",
+        FrameStyle::Octagon => "Oct",
+        FrameStyle::Underline => "Und",
+        FrameStyle::Nefrex => "Nef",
+        FrameStyle::Kranox => "Krn",
+        FrameStyle::Nero => "Nro",
+        FrameStyle::Header => "Hdr",
+        FrameStyle::Circle => "Cir",
+    }
+}
+
 fn frame_style_label(style: FrameStyle) -> &'static str {
     match style {
         FrameStyle::Corners => "Corners",
@@ -2270,6 +3347,27 @@ fn frame_style_label(style: FrameStyle) -> &'static str {
         FrameStyle::Nero => "Nero",
         FrameStyle::Header => "Header",
         FrameStyle::Circle => "Circle",
+    }
+}
+
+fn demo_frame(style: FrameStyle) -> Frame {
+    match style {
+        FrameStyle::Corners => Frame::corners().corner_length(18.0),
+        FrameStyle::Lines => Frame::lines(),
+        FrameStyle::Octagon => Frame::octagon().corner_length(14.0),
+        FrameStyle::Underline => Frame::underline().square_size(12.0),
+        FrameStyle::Nefrex => Frame::nefrex()
+            .corner_config(CornerConfig::diagonal())
+            .square_size(10.0)
+            .small_line_length(10.0)
+            .large_line_length(35.0),
+        FrameStyle::Kranox => Frame::kranox()
+            .square_size(10.0)
+            .small_line_length(10.0)
+            .large_line_length(35.0),
+        FrameStyle::Nero => Frame::nero().corner_length(20.0),
+        FrameStyle::Header => Frame::header().corner_length(12.0).header_bottom(true),
+        FrameStyle::Circle => Frame::circle().circle_segments(48),
     }
 }
 
@@ -2324,10 +3422,12 @@ fn line_direction_label(direction: LineDirection) -> &'static str {
 fn arwes_frames_height(bounds: Bounds) -> f32 {
     let available = (bounds.size.width - PANEL_PADDING * 2.0).max(0.0);
     let permutations = FRAME_STYLES.len() * FRAME_ANIMATIONS.len() * FRAME_DIRECTIONS.len();
+    let glow_palette = FRAME_STYLES.len() * FRAME_ANIMATIONS.len() * GLOW_PRESETS.len();
     let panels = [
         panel_height(grid_metrics(available, permutations, FRAME_TILE_W, FRAME_TILE_H, FRAME_TILE_GAP).height),
         panel_height(grid_metrics(available, FRAME_STYLES.len() * 2, FRAME_VARIANT_W, FRAME_VARIANT_H, FRAME_TILE_GAP).height),
         panel_height(grid_metrics(available, FRAME_STYLES.len() * 2, FRAME_VARIANT_W, FRAME_VARIANT_H, FRAME_TILE_GAP).height),
+        panel_height(grid_metrics(available, glow_palette, FRAME_VARIANT_W, FRAME_VARIANT_H, FRAME_TILE_GAP).height),
         panel_height(grid_metrics(available, 16, FRAME_VARIANT_W, FRAME_VARIANT_H, FRAME_TILE_GAP).height),
         panel_height(grid_metrics(available, 2, FRAME_VARIANT_W, FRAME_VARIANT_H, FRAME_TILE_GAP).height),
         panel_height(grid_metrics(available, 4, FRAME_VARIANT_W, FRAME_VARIANT_H, FRAME_TILE_GAP).height),
@@ -2365,4 +3465,16 @@ fn arwes_illuminator_height(bounds: Bounds) -> f32 {
         panel_height(grid_metrics(available, 4, ILLUMINATOR_TILE_W, ILLUMINATOR_TILE_H, ILLUMINATOR_TILE_GAP).height),
     ];
     stacked_height(&panels)
+}
+
+fn light_demo_height(_bounds: Bounds) -> f32 {
+    let panels = [
+        panel_height(LIGHT_DEMO_FRAMES_INNER_H),
+        panel_height(LIGHT_DEMO_HERO_INNER_H),
+    ];
+    stacked_height(&panels)
+}
+
+fn toolcall_demo_height(_bounds: Bounds) -> f32 {
+    panel_height(TOOLCALL_DEMO_INNER_H)
 }
