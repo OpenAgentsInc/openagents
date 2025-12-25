@@ -2160,7 +2160,7 @@ impl Drop for MetricsDb {
 
 /// Get default metrics database path
 pub fn default_db_path() -> PathBuf {
-    crate::find_workspace_root().join("autopilot-metrics.db")
+    crate::find_workspace_root().join(".openagents/autopilot-metrics.db")
 }
 
 /// Extract metrics from a Trajectory

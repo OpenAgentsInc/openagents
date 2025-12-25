@@ -2,7 +2,7 @@ use issues::{issue::{get_next_ready_issue, claim_issue}, db::init_db};
 use std::path::Path;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let conn = init_db(Path::new("autopilot.db"))?;
+    let conn = init_db(Path::new(".openagents/autopilot.db"))?;
 
     // Get next ready issue for claude agent
     if let Some(issue) = get_next_ready_issue(&conn, Some("claude"))? {

@@ -1106,5 +1106,5 @@ pub fn find_workspace_root() -> PathBuf {
 /// This ensures the database is always created in a consistent location
 /// regardless of which subdirectory the command is run from.
 pub fn default_db_path() -> PathBuf {
-    find_workspace_root().join("autopilot.db")
+    find_workspace_root().join(".openagents/autopilot.db")
 }
