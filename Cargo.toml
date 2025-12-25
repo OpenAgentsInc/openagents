@@ -58,6 +58,7 @@ claude-agent-sdk = { path = "crates/claude-agent-sdk" }
 acp-adapter = { path = "crates/acp-adapter" }
 gpt-oss-agent = { path = "crates/gpt-oss-agent" }
 fm-bridge-agent = { path = "crates/fm-bridge-agent" }
+issues = { path = "crates/issues" }
 
 # CLI
 clap = { version = "4.4", features = ["derive", "wrap_help"] }

@@ -4,6 +4,8 @@
 
 use clap::Subcommand;
 use std::path::PathBuf;
+use std::process::Command;
+use which::which;
 
 #[derive(Subcommand)]
 pub enum DaemonCommands {
@@ -39,6 +41,32 @@ pub enum DaemonCommands {
     StopWorker,
 }
 
+fn resolve_autopilotd_bin() -> Option<PathBuf> {
+    if let Ok(path) = std::env::var("OPENAGENTS_AUTOPILOTD_BIN") {
+        let candidate = PathBuf::from(path);
+        if candidate.is_file() {
+            return Some(candidate);
+        }
+    }
+
+    which("autopilotd").ok()
+}
+
+fn run_autopilotd_bin(args: &[String]) -> anyhow::Result<()> {
+    let bin = resolve_autopilotd_bin().ok_or_else(|| {
+        anyhow::anyhow!(
+            "autopilotd binary not found. Set OPENAGENTS_AUTOPILOTD_BIN or install the autopilotd binary."
+        )
+    })?;
+
+    let status = Command::new(bin).args(args).status()?;
+    if status.success() {
+        Ok(())
+    } else {
+        anyhow::bail!("autopilotd exited with status {}", status)
+    }
+}
+
 pub fn run(cmd: DaemonCommands) -> anyhow::Result<()> {
     use autopilot::daemon::config::DaemonConfig;
     use autopilot::daemon::control::ControlClient;
@@ -68,23 +96,21 @@ pub fn run(cmd: DaemonCommands) -> anyhow::Result<()> {
             model,
             max_budget,
         } => {
-            // Override with CLI args
+            let mut args = vec!["start".to_string()];
             if let Some(workdir) = workdir {
-                config.working_dir = workdir;
+                args.push("--workdir".to_string());
+                args.push(workdir.display().to_string());
             }
             if let Some(project) = project {
-                config.project = Some(project);
+                args.push("--project".to_string());
+                args.push(project);
             }
-            config.model = model;
-            config.max_budget = max_budget;
+            args.push("--model".to_string());
+            args.push(model);
+            args.push("--max-budget".to_string());
+            args.push(max_budget.to_string());
 
-            runtime.block_on(async {
-                // Daemon start requires process forking which is not yet integrated
-                anyhow::bail!("Daemon start requires the standalone daemon binary. Use: cargo run --bin daemon -- start --workdir {:?} --project {:?}",
-                    config.working_dir,
-                    config.project.as_deref().unwrap_or("(none)")
-                )
-            })
+            run_autopilotd_bin(&args)
         }
         DaemonCommands::Stop => {
             runtime.block_on(async {
