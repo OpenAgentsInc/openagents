@@ -195,10 +195,15 @@ where
         }
 
         let dropped = std::mem::take(&mut lock.dropped_subscribers);
+        let mut remaining_dropped = BTreeSet::new();
         for (dropped_emitter, dropped_id) in dropped {
-            debug_assert_eq!(*emitter, dropped_emitter);
-            subscribers.remove(&dropped_id);
+            if dropped_emitter == *emitter {
+                subscribers.remove(&dropped_id);
+            } else {
+                remaining_dropped.insert((dropped_emitter, dropped_id));
+            }
         }
+        lock.dropped_subscribers = remaining_dropped;
 
         if !subscribers.is_empty() {
             lock.subscribers.insert(emitter.clone(), Some(subscribers));
@@ -305,5 +310,32 @@ mod tests {
         }
         
         assert_eq!(*count.borrow(), 3);
+    }
+
+    #[test]
+    fn test_retain_handles_nested_drops() {
+        let set: SubscriberSet<u32, Box<dyn FnMut() -> bool>> = SubscriberSet::new();
+
+        let (sub1, activate1) = set.insert(1, Box::new(|| true));
+        let (_sub1b, activate1b) = set.insert(1, Box::new(|| true));
+        let (_sub2, activate2) = set.insert(2, Box::new(|| true));
+        activate1();
+        activate1b();
+        activate2();
+
+        let drop_target = RefCell::new(Some(sub1));
+
+        set.retain(&1, |cb| {
+            set.retain(&2, |_cb2| {
+                if let Some(sub) = drop_target.borrow_mut().take() {
+                    drop(sub);
+                }
+                true
+            });
+            cb()
+        });
+
+        let remaining: Vec<_> = set.remove(&1).into_iter().collect();
+        assert_eq!(remaining.len(), 1);
     }
 }

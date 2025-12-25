@@ -24,6 +24,7 @@
 pub mod accessibility;
 pub mod animation;
 pub mod app;
+pub mod element;
 pub mod bleeps;
 pub mod color;
 pub mod components;
@@ -86,6 +87,10 @@ pub use bleeps::{
 };
 pub use app::{
     App, AnyEntity, AnyWeakEntity, Context, Entity, EntityId, Subscription, WeakEntity,
+};
+pub use element::{
+    AnyElement, ComponentElement, Drawable, Element, ElementId, ElementPaintContext, IntoElement,
+    LayoutContext, PrepaintContext, Render, RenderOnce,
 };
 
 #[cfg(all(feature = "web", target_arch = "wasm32"))]
