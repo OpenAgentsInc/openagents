@@ -647,6 +647,7 @@ impl Component for TestHarness {
 mod tests {
     use super::*;
     use crate::testing::dsl::test;
+    use crate::{Bounds, EventContext, InputEvent, Key, Modifiers};
 
     // A minimal test component
     struct TestComponent;
@@ -696,5 +697,34 @@ mod tests {
 
         assert_eq!(component.origin.y, 0.0);
         assert_eq!(component.size.height, 600.0);
+    }
+
+    #[test]
+    fn test_control_bar_keyboard_shortcuts() {
+        let runner = test("Controls").click("#button").build();
+        let mut harness = TestHarness::new(TestComponent).with_runner(runner);
+        let bounds = Bounds::new(0.0, 0.0, 800.0, 600.0);
+        let mut cx = EventContext::new();
+
+        let play = InputEvent::KeyDown {
+            key: Key::Character("p".to_string()),
+            modifiers: Modifiers::default(),
+        };
+        harness.event(&play, bounds, &mut cx);
+        assert_eq!(harness.runner().unwrap().state(), RunnerState::Running);
+
+        let pause = InputEvent::KeyDown {
+            key: Key::Character(" ".to_string()),
+            modifiers: Modifiers::default(),
+        };
+        harness.event(&pause, bounds, &mut cx);
+        assert_eq!(harness.runner().unwrap().state(), RunnerState::Paused);
+
+        let step = InputEvent::KeyDown {
+            key: Key::Character("s".to_string()),
+            modifiers: Modifiers::default(),
+        };
+        harness.event(&step, bounds, &mut cx);
+        assert_eq!(harness.runner().unwrap().state(), RunnerState::Stepping);
     }
 }

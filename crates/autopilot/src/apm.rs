@@ -532,6 +532,15 @@ mod tests {
     }
 
     #[test]
+    fn test_apm_tier_colors() {
+        assert_eq!(APMTier::Baseline.color(), "gray");
+        assert_eq!(APMTier::Active.color(), "blue");
+        assert_eq!(APMTier::Productive.color(), "green");
+        assert_eq!(APMTier::HighPerformance.color(), "amber");
+        assert_eq!(APMTier::Elite.color(), "gold");
+    }
+
+    #[test]
     fn test_session_data_apm() {
         let start = Utc::now();
         let end = start + Duration::minutes(10);
