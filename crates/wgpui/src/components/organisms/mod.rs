@@ -8,6 +8,8 @@ mod search_tool_call;
 mod thread_entry;
 mod thread_controls;
 mod permission_dialog;
+mod receive_flow;
+mod send_flow;
 
 pub use apm_leaderboard::{ApmLeaderboard, LeaderboardEntry};
 pub use user_message::UserMessage;
@@ -19,3 +21,5 @@ pub use search_tool_call::{SearchToolCall, SearchMatch};
 pub use thread_entry::{ThreadEntry, EntryType as ThreadEntryType};
 pub use thread_controls::ThreadControls;
 pub use permission_dialog::PermissionDialog;
+pub use receive_flow::{InvoiceState, ReceiveFlow, ReceiveStep, ReceiveType};
+pub use send_flow::{SendFlow, SendFlowState, SendStep};

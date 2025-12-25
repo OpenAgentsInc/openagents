@@ -49,9 +49,10 @@ use wgpui::components::molecules::{
     PermissionDecision, PermissionScope,
     SessionCard, SessionInfo, SessionSearchBar,
     ApmSessionRow, ApmSessionData, ApmComparisonCard, ComparisonSession,
+    MnemonicDisplay, AddressCard, AddressType, TransactionRow, TransactionInfo, TransactionDirection,
 };
 use wgpui::components::atoms::{BreadcrumbItem, SessionBreadcrumb};
-use wgpui::components::organisms::{ApmLeaderboard, LeaderboardEntry};
+use wgpui::components::organisms::{ApmLeaderboard, LeaderboardEntry, SendFlow, SendStep, ReceiveFlow, ReceiveStep, ReceiveType};
 use wgpui::renderer::Renderer;
 use winit::application::ApplicationHandler;
 use winit::event::{ElementState, WindowEvent};
@@ -107,6 +108,7 @@ const SECTION_THREAD_COMPONENTS: usize = 20;
 const SECTION_SESSIONS: usize = 21;
 const SECTION_PERMISSIONS: usize = 22;
 const SECTION_APM_METRICS: usize = 23;
+const SECTION_WALLET_FLOWS: usize = 24;
 
 #[derive(Clone, Copy)]
 struct GlowPreset {
@@ -512,6 +514,7 @@ impl Storybook {
             "Sessions",
             "Permissions",
             "APM Metrics",
+            "Wallet Flows",
         ];
         let nav_len = nav_items.len();
 
@@ -622,6 +625,7 @@ impl Storybook {
             SECTION_SESSIONS => sessions_height(bounds),
             SECTION_PERMISSIONS => permissions_height(bounds),
             SECTION_APM_METRICS => apm_metrics_height(bounds),
+            SECTION_WALLET_FLOWS => wallet_flows_height(bounds),
             _ => bounds.size.height,
         }
     }
@@ -672,6 +676,7 @@ impl Storybook {
             SECTION_SESSIONS => self.paint_sessions(content_bounds, cx),
             SECTION_PERMISSIONS => self.paint_permissions(content_bounds, cx),
             SECTION_APM_METRICS => self.paint_apm_metrics(content_bounds, cx),
+            SECTION_WALLET_FLOWS => self.paint_wallet_flows(content_bounds, cx),
             _ => {}
         }
         cx.scene.pop_clip();
@@ -6551,6 +6556,122 @@ impl Storybook {
             }
         });
     }
+
+    fn paint_wallet_flows(&mut self, bounds: Bounds, cx: &mut PaintContext) {
+        let width = bounds.size.width;
+        let mut y = bounds.origin.y;
+
+        // ========== Panel 1: Mnemonic Display ==========
+        let mnemonic_height = panel_height(260.0);
+        let mnemonic_bounds = Bounds::new(bounds.origin.x, y, width, mnemonic_height);
+        draw_panel("Mnemonic Display", mnemonic_bounds, cx, |inner, cx| {
+            // Sample 12-word mnemonic
+            let words = vec![
+                "abandon".to_string(), "ability".to_string(), "able".to_string(),
+                "about".to_string(), "above".to_string(), "absent".to_string(),
+                "absorb".to_string(), "abstract".to_string(), "absurd".to_string(),
+                "abuse".to_string(), "access".to_string(), "accident".to_string(),
+            ];
+
+            let mut mnemonic = MnemonicDisplay::new(words).revealed(true);
+            mnemonic.paint(
+                Bounds::new(inner.origin.x, inner.origin.y, inner.size.width.min(500.0), 200.0),
+                cx,
+            );
+        });
+        y += mnemonic_height + SECTION_GAP;
+
+        // ========== Panel 2: Address Cards ==========
+        let address_height = panel_height(180.0);
+        let address_bounds = Bounds::new(bounds.origin.x, y, width, address_height);
+        draw_panel("Address Cards", address_bounds, cx, |inner, cx| {
+            // Bitcoin address
+            let mut btc_card = AddressCard::new(
+                "bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq",
+                AddressType::Bitcoin,
+            )
+            .label("Primary Wallet");
+            btc_card.paint(
+                Bounds::new(inner.origin.x, inner.origin.y, inner.size.width.min(400.0), 70.0),
+                cx,
+            );
+
+            // Lightning address
+            let mut ln_card = AddressCard::new(
+                "lnbc1500n1pj9nr6mpp5argz38...",
+                AddressType::Lightning,
+            )
+            .label("Lightning Invoice");
+            ln_card.paint(
+                Bounds::new(inner.origin.x, inner.origin.y + 80.0, inner.size.width.min(400.0), 70.0),
+                cx,
+            );
+        });
+        y += address_height + SECTION_GAP;
+
+        // ========== Panel 3: Transaction History ==========
+        let tx_height = panel_height(280.0);
+        let tx_bounds = Bounds::new(bounds.origin.x, y, width, tx_height);
+        draw_panel("Transaction History", tx_bounds, cx, |inner, cx| {
+            let transactions = [
+                TransactionInfo::new("tx-1", 150000, TransactionDirection::Incoming)
+                    .timestamp("2 hours ago")
+                    .description("Payment from Alice"),
+                TransactionInfo::new("tx-2", 50000, TransactionDirection::Outgoing)
+                    .timestamp("Yesterday")
+                    .description("Coffee shop")
+                    .fee(500),
+                TransactionInfo::new("tx-3", 1000000, TransactionDirection::Incoming)
+                    .timestamp("3 days ago")
+                    .description("Freelance payment"),
+                TransactionInfo::new("tx-4", 25000, TransactionDirection::Outgoing)
+                    .timestamp("1 week ago")
+                    .description("Subscription")
+                    .fee(250),
+            ];
+
+            for (i, tx) in transactions.iter().enumerate() {
+                let mut row = TransactionRow::new(tx.clone());
+                row.paint(
+                    Bounds::new(inner.origin.x, inner.origin.y + i as f32 * 60.0, inner.size.width, 56.0),
+                    cx,
+                );
+            }
+        });
+        y += tx_height + SECTION_GAP;
+
+        // ========== Panel 4: Send Flow ==========
+        let send_height = panel_height(360.0);
+        let send_bounds = Bounds::new(bounds.origin.x, y, width, send_height);
+        draw_panel("Send Flow Wizard", send_bounds, cx, |inner, cx| {
+            let mut send_flow = SendFlow::new()
+                .step(SendStep::Review)
+                .address("bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq")
+                .amount(50000)
+                .fee(500);
+            send_flow.paint(
+                Bounds::new(inner.origin.x, inner.origin.y, inner.size.width.min(500.0), 320.0),
+                cx,
+            );
+        });
+        y += send_height + SECTION_GAP;
+
+        // ========== Panel 5: Receive Flow ==========
+        let receive_height = panel_height(420.0);
+        let receive_bounds = Bounds::new(bounds.origin.x, y, width, receive_height);
+        draw_panel("Receive Flow Wizard", receive_bounds, cx, |inner, cx| {
+            let mut receive_flow = ReceiveFlow::new()
+                .step(ReceiveStep::ShowInvoice)
+                .receive_type(ReceiveType::Lightning)
+                .amount(25000)
+                .invoice("lnbc250u1pjxxx...")
+                .expires_in(3600);
+            receive_flow.paint(
+                Bounds::new(inner.origin.x, inner.origin.y, inner.size.width.min(500.0), 380.0),
+                cx,
+            );
+        });
+    }
 }
 
 struct FocusDemo {
@@ -7876,6 +7997,17 @@ fn apm_metrics_height(_bounds: Bounds) -> f32 {
         panel_height(280.0),  // Session Comparison
         panel_height(320.0),  // APM Leaderboard
         panel_height(200.0),  // APM Trends Summary
+    ];
+    stacked_height(&panels)
+}
+
+fn wallet_flows_height(_bounds: Bounds) -> f32 {
+    let panels = [
+        panel_height(260.0),  // Mnemonic Display
+        panel_height(180.0),  // Address Cards
+        panel_height(280.0),  // Transaction History
+        panel_height(360.0),  // Send Flow
+        panel_height(420.0),  // Receive Flow
     ];
     stacked_height(&panels)
 }
