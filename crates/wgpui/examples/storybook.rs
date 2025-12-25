@@ -55,6 +55,11 @@ use wgpui::components::molecules::{
     ProviderCard, ProviderInfo, ProviderSpecs, ProviderStatus,
     SkillCard, SkillInfo, SkillCategory, SkillInstallStatus,
     DatasetCard, DatasetInfo, DataFormat, DataLicense,
+    ContactCard, ContactInfo, ContactVerification,
+    DmBubble, DmMessage, DmDirection, EncryptionStatus,
+    ZapCard, ZapInfo,
+    AgentProfileCard, AgentProfileInfo,
+    SigningRequestCard, SigningRequestInfo, SigningType, SigningUrgency,
 };
 use wgpui::components::atoms::{BreadcrumbItem, SessionBreadcrumb};
 use wgpui::components::organisms::{ApmLeaderboard, LeaderboardEntry, SendFlow, SendStep, ReceiveFlow, ReceiveStep, ReceiveType};
@@ -116,6 +121,8 @@ const SECTION_APM_METRICS: usize = 23;
 const SECTION_WALLET_FLOWS: usize = 24;
 const SECTION_GITAFTER_FLOWS: usize = 25;
 const SECTION_MARKETPLACE_FLOWS: usize = 26;
+const SECTION_NOSTR_FLOWS: usize = 27;
+const SECTION_SOVEREIGN_AGENT_FLOWS: usize = 28;
 
 #[derive(Clone, Copy)]
 struct GlowPreset {
@@ -524,6 +531,8 @@ impl Storybook {
             "Wallet Flows",
             "GitAfter Flows",
             "Marketplace Flows",
+            "Nostr Flows",
+            "Agent Flows",
         ];
         let nav_len = nav_items.len();
 
@@ -637,6 +646,8 @@ impl Storybook {
             SECTION_WALLET_FLOWS => wallet_flows_height(bounds),
             SECTION_GITAFTER_FLOWS => gitafter_flows_height(bounds),
             SECTION_MARKETPLACE_FLOWS => marketplace_flows_height(bounds),
+            SECTION_NOSTR_FLOWS => nostr_flows_height(bounds),
+            SECTION_SOVEREIGN_AGENT_FLOWS => sovereign_agent_flows_height(bounds),
             _ => bounds.size.height,
         }
     }
@@ -690,6 +701,8 @@ impl Storybook {
             SECTION_WALLET_FLOWS => self.paint_wallet_flows(content_bounds, cx),
             SECTION_GITAFTER_FLOWS => self.paint_gitafter_flows(content_bounds, cx),
             SECTION_MARKETPLACE_FLOWS => self.paint_marketplace_flows(content_bounds, cx),
+            SECTION_NOSTR_FLOWS => self.paint_nostr_flows(content_bounds, cx),
+            SECTION_SOVEREIGN_AGENT_FLOWS => self.paint_sovereign_agent_flows(content_bounds, cx),
             _ => {}
         }
         cx.scene.pop_clip();
@@ -7101,6 +7114,510 @@ impl Storybook {
             }
         });
     }
+
+    fn paint_nostr_flows(&mut self, bounds: Bounds, cx: &mut PaintContext) {
+        let width = bounds.size.width;
+        let mut y = bounds.origin.y;
+
+        // ========== Panel 1: Contact Cards ==========
+        let contacts_height = panel_height(320.0);
+        let contacts_bounds = Bounds::new(bounds.origin.x, y, width, contacts_height);
+        draw_panel("Contact Management", contacts_bounds, cx, |inner, cx| {
+            let contacts = [
+                ContactInfo::new("npub1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq")
+                    .display_name("Alice Developer")
+                    .nip05("alice@openagents.com")
+                    .about("Building the future of decentralized AI")
+                    .verification(ContactVerification::Verified)
+                    .following(true)
+                    .mutual(true),
+                ContactInfo::new("npub1zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz")
+                    .display_name("Bob Builder")
+                    .nip05("bob@nostr.dev")
+                    .about("Open source contributor")
+                    .verification(ContactVerification::WebOfTrust)
+                    .following(true)
+                    .mutual(false),
+                ContactInfo::new("npub1yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy")
+                    .display_name("Anonymous")
+                    .verification(ContactVerification::Unknown)
+                    .following(false)
+                    .mutual(false),
+            ];
+
+            for (i, contact) in contacts.iter().enumerate() {
+                let mut card = ContactCard::new(contact.clone());
+                card.paint(
+                    Bounds::new(inner.origin.x, inner.origin.y + i as f32 * 95.0, inner.size.width.min(500.0), 90.0),
+                    cx,
+                );
+            }
+        });
+        y += contacts_height + SECTION_GAP;
+
+        // ========== Panel 2: DM Conversations ==========
+        let dm_height = panel_height(380.0);
+        let dm_bounds = Bounds::new(bounds.origin.x, y, width, dm_height);
+        draw_panel("Direct Messages", dm_bounds, cx, |inner, cx| {
+            let messages = [
+                DmMessage::new("m1", "Hey! Just saw your PR, looks great!", DmDirection::Incoming)
+                    .sender("Alice")
+                    .timestamp("2 min ago")
+                    .encryption(EncryptionStatus::Encrypted)
+                    .read(true),
+                DmMessage::new("m2", "Thanks! Working on the review comments now.", DmDirection::Outgoing)
+                    .timestamp("1 min ago")
+                    .encryption(EncryptionStatus::Encrypted)
+                    .read(true),
+                DmMessage::new("m3", "Let me know when you push the updates. I'll review it tonight.", DmDirection::Incoming)
+                    .sender("Alice")
+                    .timestamp("Just now")
+                    .encryption(EncryptionStatus::Encrypted)
+                    .read(false),
+                DmMessage::new("m4", "[Encrypted message - decryption failed]", DmDirection::Incoming)
+                    .sender("Unknown")
+                    .timestamp("5 min ago")
+                    .encryption(EncryptionStatus::Failed)
+                    .read(false),
+            ];
+
+            for (i, msg) in messages.iter().enumerate() {
+                let mut bubble = DmBubble::new(msg.clone());
+                bubble.paint(
+                    Bounds::new(inner.origin.x, inner.origin.y + i as f32 * 80.0, inner.size.width.min(500.0), 75.0),
+                    cx,
+                );
+            }
+        });
+        y += dm_height + SECTION_GAP;
+
+        // ========== Panel 3: Zaps & Lightning ==========
+        let zaps_height = panel_height(280.0);
+        let zaps_bounds = Bounds::new(bounds.origin.x, y, width, zaps_height);
+        draw_panel("Zaps & Lightning", zaps_bounds, cx, |inner, cx| {
+            let zaps = [
+                ZapInfo::new("z1", 21000, "npub1alice...")
+                    .sender_name("Alice")
+                    .message("Great thread!")
+                    .timestamp("5 min ago"),
+                ZapInfo::new("z2", 1000000, "npub1bob...")
+                    .sender_name("Bob")
+                    .message("Thanks for the amazing tutorial!")
+                    .timestamp("1 hour ago"),
+                ZapInfo::new("z3", 500, "npub1anon...")
+                    .timestamp("2 hours ago"),
+            ];
+
+            for (i, zap) in zaps.iter().enumerate() {
+                let mut card = ZapCard::new(zap.clone());
+                card.paint(
+                    Bounds::new(inner.origin.x, inner.origin.y + i as f32 * 85.0, inner.size.width.min(450.0), 80.0),
+                    cx,
+                );
+            }
+        });
+        y += zaps_height + SECTION_GAP;
+
+        // ========== Panel 4: Status Reference ==========
+        let ref_height = panel_height(180.0);
+        let ref_bounds = Bounds::new(bounds.origin.x, y, width, ref_height);
+        draw_panel("Nostr Status Reference", ref_bounds, cx, |inner, cx| {
+            // Verification statuses
+            let mut ver_x = inner.origin.x;
+            let verifications = [
+                ContactVerification::Verified,
+                ContactVerification::WebOfTrust,
+                ContactVerification::Unknown,
+            ];
+
+            for ver in &verifications {
+                let ver_w = (ver.label().len() as f32 * 7.0) + 16.0;
+                cx.scene.draw_quad(
+                    Quad::new(Bounds::new(ver_x, inner.origin.y, ver_w, 20.0))
+                        .with_background(ver.color().with_alpha(0.2))
+                        .with_border(ver.color(), 1.0),
+                );
+                let text = cx.text.layout(
+                    ver.label(),
+                    Point::new(ver_x + 6.0, inner.origin.y + 4.0),
+                    theme::font_size::XS,
+                    ver.color(),
+                );
+                cx.scene.draw_text(text);
+                ver_x += ver_w + 12.0;
+            }
+
+            // Encryption statuses
+            let mut enc_x = inner.origin.x;
+            let encryptions = [
+                EncryptionStatus::Encrypted,
+                EncryptionStatus::Decrypted,
+                EncryptionStatus::Failed,
+            ];
+
+            for enc in &encryptions {
+                let enc_w = 80.0;
+                cx.scene.draw_quad(
+                    Quad::new(Bounds::new(enc_x, inner.origin.y + 35.0, enc_w, 20.0))
+                        .with_background(enc.color().with_alpha(0.2))
+                        .with_border(enc.color(), 1.0),
+                );
+                let label = format!("{} {}", enc.icon(), match enc {
+                    EncryptionStatus::Encrypted => "Encrypted",
+                    EncryptionStatus::Decrypted => "Decrypted",
+                    EncryptionStatus::Failed => "Failed",
+                });
+                let text = cx.text.layout(
+                    &label,
+                    Point::new(enc_x + 6.0, inner.origin.y + 39.0),
+                    theme::font_size::XS,
+                    enc.color(),
+                );
+                cx.scene.draw_text(text);
+                enc_x += enc_w + 12.0;
+            }
+
+            // DM directions
+            let mut dir_x = inner.origin.x;
+            let directions = [
+                ("Incoming", Hsla::new(200.0, 0.6, 0.5, 1.0)),
+                ("Outgoing", theme::accent::PRIMARY),
+            ];
+
+            for (label, color) in &directions {
+                let dir_w = 80.0;
+                cx.scene.draw_quad(
+                    Quad::new(Bounds::new(dir_x, inner.origin.y + 70.0, dir_w, 20.0))
+                        .with_background(color.with_alpha(0.2))
+                        .with_border(*color, 1.0),
+                );
+                let text = cx.text.layout(
+                    label,
+                    Point::new(dir_x + 6.0, inner.origin.y + 74.0),
+                    theme::font_size::XS,
+                    *color,
+                );
+                cx.scene.draw_text(text);
+                dir_x += dir_w + 12.0;
+            }
+        });
+    }
+
+    fn paint_sovereign_agent_flows(&mut self, bounds: Bounds, cx: &mut PaintContext) {
+        let width = bounds.size.width;
+        let mut y = bounds.origin.y;
+
+        // ========== Panel 1: Agent Profiles ==========
+        let profiles_height = panel_height(340.0);
+        let profiles_bounds = Bounds::new(bounds.origin.x, y, width, profiles_height);
+        draw_panel("Sovereign Agent Profiles", profiles_bounds, cx, |inner, cx| {
+            let agents = [
+                AgentProfileInfo::new("agent-1", "CodeReviewer", AgentType::Sovereign)
+                    .status(AgentStatus::Busy)
+                    .npub("npub1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq")
+                    .description("AI-powered code review with security analysis")
+                    .capabilities(vec!["code_review".to_string(), "testing".to_string(), "security".to_string()])
+                    .created_at("2 weeks ago")
+                    .last_active("Just now"),
+                AgentProfileInfo::new("agent-2", "DataProcessor", AgentType::Custodial)
+                    .status(AgentStatus::Idle)
+                    .description("Processes and transforms data pipelines")
+                    .capabilities(vec!["data_transform".to_string(), "etl".to_string()])
+                    .created_at("1 month ago")
+                    .last_active("5 min ago"),
+                AgentProfileInfo::new("agent-3", "MarketWatch", AgentType::Sovereign)
+                    .status(AgentStatus::Online)
+                    .description("Monitors market conditions and sends alerts")
+                    .capabilities(vec!["monitoring".to_string(), "alerts".to_string()])
+                    .created_at("3 days ago"),
+            ];
+
+            for (i, agent) in agents.iter().enumerate() {
+                let mut card = AgentProfileCard::new(agent.clone());
+                card.paint(
+                    Bounds::new(inner.origin.x, inner.origin.y + i as f32 * 105.0, inner.size.width.min(520.0), 100.0),
+                    cx,
+                );
+            }
+        });
+        y += profiles_height + SECTION_GAP;
+
+        // ========== Panel 2: Signing Requests (FROSTR) ==========
+        let signing_height = panel_height(400.0);
+        let signing_bounds = Bounds::new(bounds.origin.x, y, width, signing_height);
+        draw_panel("Threshold Signing Requests", signing_bounds, cx, |inner, cx| {
+            let requests = [
+                SigningRequestInfo::new(
+                    "sr1",
+                    SigningType::Transaction,
+                    "Send 0.05 BTC to bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh",
+                    "Agent-CodeReviewer",
+                )
+                    .urgency(SigningUrgency::Urgent)
+                    .threshold(1, 2)
+                    .expires_in("5 minutes")
+                    .created_at("2 min ago"),
+                SigningRequestInfo::new(
+                    "sr2",
+                    SigningType::Event,
+                    "Publish NIP-90 job result event to nostr relays",
+                    "Agent-DataProcessor",
+                )
+                    .urgency(SigningUrgency::Normal)
+                    .threshold(0, 3)
+                    .expires_in("1 hour")
+                    .created_at("10 min ago"),
+                SigningRequestInfo::new(
+                    "sr3",
+                    SigningType::Message,
+                    "Sign DM reply to npub1alice...",
+                    "Agent-MarketWatch",
+                )
+                    .urgency(SigningUrgency::Normal)
+                    .threshold(2, 2)
+                    .created_at("1 hour ago"),
+                SigningRequestInfo::new(
+                    "sr4",
+                    SigningType::KeyRotation,
+                    "Rotate threshold key shares - quarterly rotation",
+                    "System",
+                )
+                    .urgency(SigningUrgency::Expired)
+                    .threshold(1, 3)
+                    .expires_in("expired")
+                    .created_at("2 days ago"),
+            ];
+
+            for (i, req) in requests.iter().enumerate() {
+                let mut card = SigningRequestCard::new(req.clone());
+                card.paint(
+                    Bounds::new(inner.origin.x, inner.origin.y + i as f32 * 100.0, inner.size.width.min(550.0), 95.0),
+                    cx,
+                );
+            }
+        });
+        y += signing_height + SECTION_GAP;
+
+        // ========== Panel 3: Agent Status Matrix ==========
+        let matrix_height = panel_height(280.0);
+        let matrix_bounds = Bounds::new(bounds.origin.x, y, width, matrix_height);
+        draw_panel("Agent Status Overview", matrix_bounds, cx, |inner, cx| {
+            // Status summary header
+            let statuses = [
+                (AgentStatus::Online, 3),
+                (AgentStatus::Busy, 2),
+                (AgentStatus::Idle, 5),
+                (AgentStatus::Error, 1),
+                (AgentStatus::Offline, 0),
+            ];
+
+            let mut status_x = inner.origin.x;
+            for (status, count) in &statuses {
+                let status_w = 100.0;
+                cx.scene.draw_quad(
+                    Quad::new(Bounds::new(status_x, inner.origin.y, status_w, 50.0))
+                        .with_background(status.color().with_alpha(0.1))
+                        .with_border(status.color().with_alpha(0.5), 1.0),
+                );
+                let count_run = cx.text.layout(
+                    &count.to_string(),
+                    Point::new(status_x + 40.0, inner.origin.y + 8.0),
+                    theme::font_size::LG,
+                    status.color(),
+                );
+                cx.scene.draw_text(count_run);
+                let label_run = cx.text.layout(
+                    status.label(),
+                    Point::new(status_x + 10.0, inner.origin.y + 32.0),
+                    theme::font_size::XS,
+                    status.color(),
+                );
+                cx.scene.draw_text(label_run);
+                status_x += status_w + 8.0;
+            }
+
+            // Threshold key status
+            let key_y = inner.origin.y + 70.0;
+            let key_text = cx.text.layout(
+                "Threshold Keys: 2-of-3 active",
+                Point::new(inner.origin.x, key_y),
+                theme::font_size::SM,
+                theme::text::PRIMARY,
+            );
+            cx.scene.draw_text(key_text);
+
+            // Key share indicators
+            let shares = [
+                ("Share 1", true, "Local"),
+                ("Share 2", true, "Hardware Key"),
+                ("Share 3", false, "Cloud Backup"),
+            ];
+
+            let mut share_x = inner.origin.x;
+            for (label, active, location) in &shares {
+                let share_w = 140.0;
+                let color = if *active {
+                    Hsla::new(120.0, 0.6, 0.45, 1.0)
+                } else {
+                    theme::text::MUTED
+                };
+                cx.scene.draw_quad(
+                    Quad::new(Bounds::new(share_x, key_y + 25.0, share_w, 40.0))
+                        .with_background(color.with_alpha(0.1))
+                        .with_border(color, 1.0),
+                );
+                let share_run = cx.text.layout(
+                    label,
+                    Point::new(share_x + 8.0, key_y + 30.0),
+                    theme::font_size::XS,
+                    color,
+                );
+                cx.scene.draw_text(share_run);
+                let loc_run = cx.text.layout(
+                    location,
+                    Point::new(share_x + 8.0, key_y + 46.0),
+                    10.0,
+                    theme::text::DISABLED,
+                );
+                cx.scene.draw_text(loc_run);
+                share_x += share_w + 10.0;
+            }
+
+            // Pending signatures counter
+            let pending_y = key_y + 85.0;
+            let pending_run = cx.text.layout(
+                "Pending Signatures: 4",
+                Point::new(inner.origin.x, pending_y),
+                theme::font_size::SM,
+                Hsla::new(30.0, 0.8, 0.5, 1.0),
+            );
+            cx.scene.draw_text(pending_run);
+        });
+        y += matrix_height + SECTION_GAP;
+
+        // ========== Panel 4: Type & Status Reference ==========
+        let ref_height = panel_height(180.0);
+        let ref_bounds = Bounds::new(bounds.origin.x, y, width, ref_height);
+        draw_panel("Agent Types & Statuses", ref_bounds, cx, |inner, cx| {
+            // Agent types
+            let mut type_x = inner.origin.x;
+            let types = [
+                AgentType::Human,
+                AgentType::Sovereign,
+                AgentType::Custodial,
+            ];
+
+            for agent_type in &types {
+                let type_w = (agent_type.label().len() as f32 * 7.0) + 24.0;
+                cx.scene.draw_quad(
+                    Quad::new(Bounds::new(type_x, inner.origin.y, type_w, 22.0))
+                        .with_background(agent_type.color().with_alpha(0.2))
+                        .with_border(agent_type.color(), 1.0),
+                );
+                let icon = agent_type.icon();
+                let icon_run = cx.text.layout(
+                    icon,
+                    Point::new(type_x + 4.0, inner.origin.y + 4.0),
+                    theme::font_size::XS,
+                    agent_type.color(),
+                );
+                cx.scene.draw_text(icon_run);
+                let label_run = cx.text.layout(
+                    agent_type.label(),
+                    Point::new(type_x + 18.0, inner.origin.y + 4.0),
+                    theme::font_size::XS,
+                    agent_type.color(),
+                );
+                cx.scene.draw_text(label_run);
+                type_x += type_w + 10.0;
+            }
+
+            // Agent statuses
+            let mut status_x = inner.origin.x;
+            let statuses = [
+                AgentStatus::Online,
+                AgentStatus::Busy,
+                AgentStatus::Idle,
+                AgentStatus::Error,
+                AgentStatus::Offline,
+            ];
+
+            for status in &statuses {
+                let status_w = (status.label().len() as f32 * 6.0) + 14.0;
+                cx.scene.draw_quad(
+                    Quad::new(Bounds::new(status_x, inner.origin.y + 35.0, status_w, 20.0))
+                        .with_background(status.color().with_alpha(0.2))
+                        .with_border(status.color(), 1.0),
+                );
+                let status_run = cx.text.layout(
+                    status.label(),
+                    Point::new(status_x + 6.0, inner.origin.y + 39.0),
+                    theme::font_size::XS,
+                    status.color(),
+                );
+                cx.scene.draw_text(status_run);
+                status_x += status_w + 8.0;
+            }
+
+            // Signing types
+            let mut sig_x = inner.origin.x;
+            let sig_types = [
+                SigningType::Transaction,
+                SigningType::Message,
+                SigningType::Event,
+                SigningType::KeyRotation,
+            ];
+
+            for sig_type in &sig_types {
+                let sig_w = (sig_type.label().len() as f32 * 6.0) + 22.0;
+                cx.scene.draw_quad(
+                    Quad::new(Bounds::new(sig_x, inner.origin.y + 70.0, sig_w, 20.0))
+                        .with_background(sig_type.color().with_alpha(0.2))
+                        .with_border(sig_type.color(), 1.0),
+                );
+                let icon_run = cx.text.layout(
+                    sig_type.icon(),
+                    Point::new(sig_x + 4.0, inner.origin.y + 74.0),
+                    theme::font_size::XS,
+                    sig_type.color(),
+                );
+                cx.scene.draw_text(icon_run);
+                let sig_run = cx.text.layout(
+                    sig_type.label(),
+                    Point::new(sig_x + 16.0, inner.origin.y + 74.0),
+                    theme::font_size::XS,
+                    sig_type.color(),
+                );
+                cx.scene.draw_text(sig_run);
+                sig_x += sig_w + 8.0;
+            }
+
+            // Urgency levels
+            let mut urg_x = inner.origin.x;
+            let urgencies = [
+                SigningUrgency::Normal,
+                SigningUrgency::Urgent,
+                SigningUrgency::Expired,
+            ];
+
+            for urgency in &urgencies {
+                let urg_w = (urgency.label().len() as f32 * 6.0) + 12.0;
+                cx.scene.draw_quad(
+                    Quad::new(Bounds::new(urg_x, inner.origin.y + 105.0, urg_w, 20.0))
+                        .with_background(urgency.color().with_alpha(0.2))
+                        .with_border(urgency.color(), 1.0),
+                );
+                let urg_run = cx.text.layout(
+                    urgency.label(),
+                    Point::new(urg_x + 5.0, inner.origin.y + 109.0),
+                    theme::font_size::XS,
+                    urgency.color(),
+                );
+                cx.scene.draw_text(urg_run);
+                urg_x += urg_w + 8.0;
+            }
+        });
+    }
 }
 
 struct FocusDemo {
@@ -8457,6 +8974,26 @@ fn marketplace_flows_height(_bounds: Bounds) -> f32 {
         panel_height(280.0),  // Skills Marketplace
         panel_height(280.0),  // Data Marketplace
         panel_height(180.0),  // Categories & Formats Reference
+    ];
+    stacked_height(&panels)
+}
+
+fn nostr_flows_height(_bounds: Bounds) -> f32 {
+    let panels = [
+        panel_height(320.0),  // Contact Cards
+        panel_height(380.0),  // DM Conversations
+        panel_height(280.0),  // Zaps & Lightning
+        panel_height(180.0),  // Status Reference
+    ];
+    stacked_height(&panels)
+}
+
+fn sovereign_agent_flows_height(_bounds: Bounds) -> f32 {
+    let panels = [
+        panel_height(340.0),  // Agent Profiles
+        panel_height(400.0),  // Signing Requests
+        panel_height(280.0),  // Agent Status Matrix
+        panel_height(180.0),  // Type & Status Reference
     ];
     stacked_height(&panels)
 }
