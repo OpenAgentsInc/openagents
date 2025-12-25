@@ -47,6 +47,20 @@ This section tracks which user stories have implemented tests.
 
 | Story ID | Description | Test Type | File Path |
 |----------|-------------|-----------|-----------|
+| **d-002: Nostr Protocol Implementation** ||||
+| 2.1.1 | Create and sign kind:1 text notes | Unit | `crates/nostr/core/src/tests/event_validation.rs` |
+| 2.1.2 | Create and sign kind:0 metadata events | Unit | `crates/nostr/core/src/tests/event_validation.rs` |
+| 2.1.3 | Verify event signatures | Unit | `crates/nostr/core/src/tests/event_validation.rs` |
+| 2.1.4 | Create parameterized replaceable events (kind:30000-39999) | Unit | `crates/nostr/core/src/tests/event_validation.rs` |
+| 2.1.5 | Create ephemeral events (kind:20000-29999) | Unit | `crates/nostr/core/src/tests/event_validation.rs` |
+| 2.2.1 | Connect to a Nostr relay via WebSocket | Integration | `crates/nostr/tests/integration/client_relay.rs` |
+| 2.2.2 | Publish events to multiple relays | Integration | `crates/nostr/tests/integration/pool.rs` |
+| 2.2.3 | Subscribe to events with filters | Integration | `crates/nostr/tests/integration/client_relay.rs` |
+| 2.2.4 | Receive EOSE signals | Integration | `crates/nostr/tests/integration/client_relay.rs` |
+| 2.2.5 | Handle relay reconnection | Integration | `crates/nostr/tests/integration/client_relay.rs` |
+| 2.2.6 | Manage multiple relay connections in a pool | Integration | `crates/nostr/tests/integration/pool.rs` |
+| 2.3.1 | Encrypt messages with NIP-44 | Unit | `crates/nostr/core/src/nip44.rs` |
+| 2.3.2 | Decrypt NIP-44 messages | Unit | `crates/nostr/core/src/nip44.rs` |
 | **d-009: Autopilot GUI** ||||
 | 9.1.1 | Conversation thread display | Visual E2E | `crates/wgpui/examples/chat_streaming_test.rs` |
 | 9.1.2 | Tool calls with output | Visual E2E | `crates/wgpui/examples/chat_streaming_test.rs` |
@@ -133,6 +147,10 @@ This section tracks which user stories have implemented tests.
 | `crates/autopilot/src/apm_parser.rs` | APM log parsing tests | 16.1.1-16.1.2 |
 | `crates/autopilot/src/apm_storage.rs` | APM window snapshot tests | 16.1.3 |
 | `crates/autopilot/src/apm.rs` | APM tier + stats tests | 16.2.3 |
+| `crates/nostr/core/src/tests/event_validation.rs` | NIP-01 event validation and signing tests | 2.1.1-2.1.5 |
+| `crates/nostr/core/src/nip44.rs` | NIP-44 encryption/decryption tests | 2.3.1-2.3.2 |
+| `crates/nostr/tests/integration/client_relay.rs` | Client/relay integration flows | 2.2.1, 2.2.3-2.2.5 |
+| `crates/nostr/tests/integration/pool.rs` | RelayPool multi-relay publish tests | 2.2.2, 2.2.6 |
 
 ---
 
