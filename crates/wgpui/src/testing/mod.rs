@@ -133,6 +133,9 @@ mod overlay;
 mod runner;
 mod step;
 
+#[cfg(test)]
+mod chat_tests;
+
 pub use assertion::{AssertionResult, TestAssertion};
 pub use context::{ComponentRegistry, TestContext};
 pub use dsl::{test, Test};
