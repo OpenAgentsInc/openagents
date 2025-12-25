@@ -3,6 +3,7 @@ mod context_menu;
 mod backgrounds;
 mod dots_grid;
 mod frame;
+mod frame_clips;
 mod notifications;
 mod status_bar;
 mod tooltip;
@@ -12,6 +13,10 @@ pub use command_palette::{Command, CommandPalette};
 pub use context_menu::{ContextMenu, MenuItem};
 pub use dots_grid::{DotsGrid, DotsOrigin, DotShape};
 pub use frame::{CornerConfig, DrawDirection, Frame, FrameAnimation, FrameAnimator, FrameStyle};
+pub use frame_clips::{
+    CssSize, StyleFrameClipKranoxProps, StyleFrameClipOctagonProps, style_frame_clip_kranox,
+    style_frame_clip_octagon,
+};
 pub use notifications::{Notification, NotificationLevel, NotificationPosition, Notifications};
 pub use status_bar::{
     StatusBar, StatusBarPosition, StatusItem, StatusItemAlignment, StatusItemContent,

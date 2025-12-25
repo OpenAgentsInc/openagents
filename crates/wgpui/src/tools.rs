@@ -12,9 +12,9 @@ where
 {
     values
         .into_iter()
-        .map(|value| value.as_ref().trim())
+        .map(|value| value.as_ref().trim().to_string())
         .filter(|value| !value.is_empty())
-        .collect::<Vec<&str>>()
+        .collect::<Vec<String>>()
         .join(" ")
 }
 
@@ -25,9 +25,9 @@ where
 {
     values
         .into_iter()
-        .filter_map(|value| value.map(|inner| inner.as_ref().trim()))
+        .filter_map(|value| value.map(|inner| inner.as_ref().trim().to_string()))
         .filter(|value| !value.is_empty())
-        .collect::<Vec<&str>>()
+        .collect::<Vec<String>>()
         .join(" ")
 }
 
@@ -88,6 +88,30 @@ pub fn load_image_from_bytes(bytes: &[u8]) -> Result<ImageData, ImageLoadError> 
 #[cfg(not(target_arch = "wasm32"))]
 pub fn load_image_from_path(path: impl AsRef<std::path::Path>) -> Result<ImageData, ImageLoadError> {
     let bytes = std::fs::read(path).map_err(|_| ImageLoadError::IoFailed)?;
+    load_image_from_bytes(&bytes)
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+pub fn load_image_from_url(url: &str) -> Result<ImageData, ImageLoadError> {
+    let response = reqwest::blocking::get(url).map_err(|_| ImageLoadError::IoFailed)?;
+    let bytes = response.bytes().map_err(|_| ImageLoadError::IoFailed)?;
+    load_image_from_bytes(&bytes)
+}
+
+#[cfg(all(target_arch = "wasm32", feature = "web"))]
+pub async fn load_image_from_url(url: &str) -> Result<ImageData, ImageLoadError> {
+    use wasm_bindgen::JsCast;
+    use wasm_bindgen_futures::JsFuture;
+
+    let window = web_sys::window().ok_or(ImageLoadError::IoFailed)?;
+    let response_value = JsFuture::from(window.fetch_with_str(url))
+        .await
+        .map_err(|_| ImageLoadError::IoFailed)?;
+    let response: web_sys::Response = response_value.dyn_into().map_err(|_| ImageLoadError::IoFailed)?;
+    let buffer = JsFuture::from(response.array_buffer().map_err(|_| ImageLoadError::IoFailed)?)
+        .await
+        .map_err(|_| ImageLoadError::IoFailed)?;
+    let bytes = js_sys::Uint8Array::new(&buffer).to_vec();
     load_image_from_bytes(&bytes)
 }
 

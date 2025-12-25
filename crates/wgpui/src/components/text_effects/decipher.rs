@@ -4,11 +4,13 @@ use crate::animation::AnimatorState;
 use crate::components::context::{EventContext, PaintContext};
 use crate::components::{Component, ComponentId, EventResult};
 use crate::text::FontStyle;
+use crate::tools::randomize_list;
 use crate::{Bounds, Hsla, InputEvent, Point, theme};
 
 use super::{TextEffectAnimator, TextEffectFrame, TextEffectTiming};
 
-const DEFAULT_CHARACTERS: &str = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*";
+const DEFAULT_CHARACTERS: &str =
+    "    ----____abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
 
 pub struct TextDecipher {
     id: Option<ComponentId>,
@@ -21,6 +23,7 @@ pub struct TextDecipher {
     animator: TextEffectAnimator,
     frame: TextEffectFrame,
     state: AnimatorState,
+    reveal_rank: Vec<usize>,
 }
 
 impl TextDecipher {
@@ -28,7 +31,7 @@ impl TextDecipher {
         let text = text.into();
         let mut animator = TextEffectAnimator::new();
         let frame = animator.update_with_delta(AnimatorState::Entered, text.chars().count(), Duration::ZERO);
-        Self {
+        let mut decipher = Self {
             id: None,
             text,
             font_size: theme::font_size::SM,
@@ -39,7 +42,10 @@ impl TextDecipher {
             animator,
             frame,
             state: AnimatorState::Entered,
-        }
+            reveal_rank: Vec::new(),
+        };
+        decipher.rebuild_reveal_order();
+        decipher
     }
 
     pub fn with_id(mut self, id: ComponentId) -> Self {
@@ -97,12 +103,13 @@ impl TextDecipher {
     }
 
     pub fn seed(mut self, seed: u32) -> Self {
-        self.scramble.seed = seed;
+        self.set_seed(seed);
         self
     }
 
     pub fn set_seed(&mut self, seed: u32) {
         self.scramble.seed = seed;
+        self.rebuild_reveal_order();
     }
 
     pub fn scramble_interval(mut self, interval: Duration) -> Self {
@@ -172,6 +179,7 @@ impl TextDecipher {
     pub fn set_text(&mut self, text: impl Into<String>) {
         self.text = text.into();
         self.frame = self.animator.update_with_delta(self.state, self.text_len(), Duration::ZERO);
+        self.rebuild_reveal_order();
     }
 
     pub fn text_value(&self) -> &str {
@@ -195,6 +203,9 @@ impl TextDecipher {
             return String::new();
         }
 
+        let len = self.reveal_rank.len();
+        let reveal_count = ((frame.progress() * len as f32).round() as usize).min(len);
+
         let mut display = String::with_capacity(self.text.len());
         for (index, ch) in self.text.chars().enumerate() {
             if ch.is_whitespace() {
@@ -202,13 +213,33 @@ impl TextDecipher {
                 continue;
             }
 
-            if frame.is_visible(index) {
+            if matches!(frame.state, AnimatorState::Entered)
+                || (index < len && self.reveal_rank[index] < reveal_count)
+            {
                 display.push(ch);
             } else {
                 display.push(self.scramble_char(index));
             }
         }
         display
+    }
+
+    fn rebuild_reveal_order(&mut self) {
+        let length = self.text_len();
+        if length == 0 {
+            self.reveal_rank.clear();
+            return;
+        }
+
+        let indices: Vec<usize> = (0..length).collect();
+        let shuffled = randomize_list(&indices, Some(self.scramble.seed as u64));
+        let mut rank = vec![0usize; length];
+        for (pos, index) in shuffled.iter().enumerate() {
+            if let Some(entry) = rank.get_mut(*index) {
+                *entry = pos;
+            }
+        }
+        self.reveal_rank = rank;
     }
 }
 
@@ -309,6 +340,7 @@ mod tests {
     fn test_decipher_custom_charset() {
         let mut decipher = TextDecipher::new("A B")
             .characters("01")
+            .seed(42)
             .timing(TextEffectTiming::new(Duration::from_secs(1), Duration::ZERO));
 
         let frame = decipher.update_with_delta(AnimatorState::Entering, Duration::from_millis(400));
@@ -316,8 +348,16 @@ mod tests {
         let chars: Vec<char> = display.chars().collect();
 
         assert_eq!(chars.len(), 3);
-        assert_eq!(chars[0], 'A');
         assert_eq!(chars[1], ' ');
-        assert!(chars[2] == '0' || chars[2] == '1');
+        assert!(
+            chars[0] == 'A' || chars[0] == '0' || chars[0] == '1',
+            "unexpected char: {}",
+            chars[0]
+        );
+        assert!(
+            chars[2] == 'B' || chars[2] == '0' || chars[2] == '1',
+            "unexpected char: {}",
+            chars[2]
+        );
     }
 }

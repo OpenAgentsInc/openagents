@@ -10,6 +10,7 @@ pub enum ThemeMultiplierSettings {
     Function(ThemeMultiplierFn),
 }
 
+#[derive(Clone)]
 pub struct ThemeMultiplier {
     settings: ThemeMultiplierSettings,
 }
@@ -74,6 +75,7 @@ pub enum ThemeUnitSettings {
     Function(ThemeUnitFn),
 }
 
+#[derive(Clone)]
 pub struct ThemeUnit {
     settings: ThemeUnitSettings,
 }

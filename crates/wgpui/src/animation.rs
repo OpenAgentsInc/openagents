@@ -17,8 +17,8 @@ use crate::{Hsla, Point, Size};
 use std::time::Duration;
 
 pub use animator::{
-    AnimatorId, AnimatorManagerKind, AnimatorMessage, AnimatorNode, AnimatorSettings, AnimatorState,
-    AnimatorTiming,
+    AnimatorId, AnimatorManagerKind, AnimatorMessage, AnimatorNode, AnimatorSettings,
+    AnimatorSettingsUpdate, AnimatorState, AnimatorTiming, AnimatorTimingUpdate,
 };
 pub use easing::{ease_among, ease_steps, EaseAmong, EaseSteps, EaseStepsDirection, Easing};
 pub use transitions::{draw, fade, flicker, transition, Transition, TransitionAnimation};
@@ -833,14 +833,16 @@ mod tests {
 
     #[test]
     fn test_transition_builder() {
-        let mut transition = transition(0.0_f32, 1.0, Duration::from_millis(10), Easing::Linear, None);
-        transition.entering.start();
-        let v = transition.entering.tick(Duration::from_millis(5));
+        let mut simple_transition =
+            transition(0.0_f32, 1.0, Duration::from_millis(10), Easing::Linear, None);
+        simple_transition.entering.start();
+        let v = simple_transition.entering.tick(Duration::from_millis(5));
         assert!((v - 0.5).abs() < 0.1);
 
-        let mut transition = transition(0.0_f32, 1.0, Duration::from_millis(10), Easing::Linear, Some(-1.0));
-        transition.exiting.start();
-        let v = transition.exiting.tick(Duration::from_millis(10));
+        let mut back_transition =
+            transition(0.0_f32, 1.0, Duration::from_millis(10), Easing::Linear, Some(-1.0));
+        back_transition.exiting.start();
+        let v = back_transition.exiting.tick(Duration::from_millis(10));
         assert!((v + 1.0).abs() < 0.1);
     }
 }
