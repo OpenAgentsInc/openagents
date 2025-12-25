@@ -461,6 +461,10 @@ impl Component for Notifications {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::{Bounds, EventContext, EventResult, InputEvent, MouseButton, Point};
+    use std::cell::RefCell;
+    use std::rc::Rc;
+    use std::time::Instant;
 
     #[test]
     fn test_notification_level_colors() {
@@ -577,5 +581,122 @@ mod tests {
         assert_eq!(notifs.position, NotificationPosition::BottomRight);
         assert_eq!(notifs.max_visible, 3);
         assert_eq!(notifs.notification_width, 400.0);
+    }
+
+    #[test]
+    fn test_notification_expired_logic() {
+        let mut notif = Notification::new(1, "Test").duration(Duration::from_millis(5));
+        notif.created_at = Instant::now() - Duration::from_millis(10);
+        assert!(notif.is_expired());
+    }
+
+    #[test]
+    fn test_notifications_tick_removes_expired() {
+        let dismissed = Rc::new(RefCell::new(Vec::new()));
+        let dismissed_clone = Rc::clone(&dismissed);
+
+        let mut notifs = Notifications::new().on_dismiss(move |id| {
+            dismissed_clone.borrow_mut().push(id);
+        });
+
+        let mut expired = Notification::new(1, "Expired").duration(Duration::from_millis(1));
+        expired.created_at = Instant::now() - Duration::from_millis(5);
+        let fresh = Notification::new(2, "Fresh").duration(Duration::from_secs(60));
+
+        notifs.push(expired);
+        notifs.push(fresh);
+        notifs.tick();
+
+        assert_eq!(notifs.count(), 1);
+        assert_eq!(notifs.notifications[0].id, 2);
+        assert_eq!(&*dismissed.borrow(), &[1]);
+    }
+
+    #[test]
+    fn test_notifications_bounds_positions() {
+        let bounds = Bounds::new(0.0, 0.0, 800.0, 600.0);
+        let padding = theme::spacing::MD;
+
+        let notifs = Notifications::new().position(NotificationPosition::TopLeft);
+        let tl = notifs.notification_bounds(&bounds, 0);
+        assert!((tl.origin.x - padding).abs() < 0.01);
+        assert!((tl.origin.y - padding).abs() < 0.01);
+
+        let notifs = Notifications::new().position(NotificationPosition::TopCenter);
+        let tc = notifs.notification_bounds(&bounds, 0);
+        let expected_center_x = (bounds.size.width - notifs.notification_width) / 2.0;
+        assert!((tc.origin.x - expected_center_x).abs() < 0.01);
+        assert!((tc.origin.y - padding).abs() < 0.01);
+
+        let notifs = Notifications::new().position(NotificationPosition::BottomRight);
+        let br = notifs.notification_bounds(&bounds, 0);
+        let expected_right_x = bounds.size.width - notifs.notification_width - padding;
+        let expected_bottom_y = bounds.size.height - notifs.notification_height - padding;
+        assert!((br.origin.x - expected_right_x).abs() < 0.01);
+        assert!((br.origin.y - expected_bottom_y).abs() < 0.01);
+
+        let notifs = Notifications::new().position(NotificationPosition::BottomCenter);
+        let bc = notifs.notification_bounds(&bounds, 0);
+        assert!((bc.origin.x - expected_center_x).abs() < 0.01);
+        assert!((bc.origin.y - expected_bottom_y).abs() < 0.01);
+    }
+
+    #[test]
+    fn test_notifications_event_hover_and_dismiss() {
+        let dismissed = Rc::new(RefCell::new(Vec::new()));
+        let dismissed_clone = Rc::clone(&dismissed);
+        let mut notifs = Notifications::new().on_dismiss(move |id| {
+            dismissed_clone.borrow_mut().push(id);
+        });
+
+        let id = notifs.notify("Hello");
+        let bounds = Bounds::new(0.0, 0.0, 800.0, 600.0);
+        let notif_bounds = notifs.notification_bounds(&bounds, 0);
+        let dismiss_bounds = notifs.dismiss_button_bounds(&notif_bounds);
+        let point = Point::new(
+            dismiss_bounds.origin.x + 1.0,
+            dismiss_bounds.origin.y + 1.0,
+        );
+
+        let mut cx = EventContext::new();
+        let hover = InputEvent::MouseMove { x: point.x, y: point.y };
+        let result = notifs.event(&hover, bounds, &mut cx);
+        assert_eq!(result, EventResult::Handled);
+        assert_eq!(notifs.hovered_dismiss, Some(id));
+
+        let click = InputEvent::MouseUp {
+            button: MouseButton::Left,
+            x: point.x,
+            y: point.y,
+        };
+        let result = notifs.event(&click, bounds, &mut cx);
+        assert_eq!(result, EventResult::Handled);
+        assert_eq!(notifs.count(), 0);
+        assert_eq!(&*dismissed.borrow(), &[id]);
+    }
+
+    #[test]
+    fn test_notifications_max_visible_limits_events() {
+        let mut notifs = Notifications::new().max_visible(1);
+        let _first = notifs.notify("First");
+        let _second = notifs.notify("Second");
+        let bounds = Bounds::new(0.0, 0.0, 800.0, 600.0);
+
+        let second_bounds = notifs.notification_bounds(&bounds, 1);
+        let dismiss_bounds = notifs.dismiss_button_bounds(&second_bounds);
+        let point = Point::new(
+            dismiss_bounds.origin.x + 1.0,
+            dismiss_bounds.origin.y + 1.0,
+        );
+
+        let mut cx = EventContext::new();
+        let click = InputEvent::MouseUp {
+            button: MouseButton::Left,
+            x: point.x,
+            y: point.y,
+        };
+        let result = notifs.event(&click, bounds, &mut cx);
+        assert_eq!(result, EventResult::Ignored);
+        assert_eq!(notifs.count(), 2);
     }
 }
