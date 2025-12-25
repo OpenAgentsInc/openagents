@@ -40,6 +40,10 @@ serde_json = "1"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 rusqlite = { version = "0.32", features = ["bundled"] }
+actix-web = "4"
+actix-ws = "0.3"
+futures-util = "0.3"
+maud = "0.26"
 dirs = "6.0.0"
 git2 = "0.20.3"
 html-escape = "0.2.13"
