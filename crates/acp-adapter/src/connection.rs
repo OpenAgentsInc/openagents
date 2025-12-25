@@ -11,11 +11,11 @@ use agent_client_protocol_schema as acp;
 use tokio::process::Child;
 use tokio::sync::RwLock;
 
+use crate::AgentCommand;
 use crate::error::{AcpError, Result};
 use crate::session::AcpAgentSession;
 use crate::telemetry::{ActionEvent, ApmTelemetry};
 use crate::transport::StdioTransport;
-use crate::AgentCommand;
 
 /// ACP connection to an agent subprocess
 ///
@@ -96,11 +96,9 @@ impl AcpAgentConnection {
         let init_request = acp::InitializeRequest::new(acp::ProtocolVersion::V1)
             .client_capabilities(
                 acp::ClientCapabilities::new()
-                    .fs(
-                        acp::FileSystemCapability::new()
-                            .read_text_file(true)
-                            .write_text_file(true),
-                    )
+                    .fs(acp::FileSystemCapability::new()
+                        .read_text_file(true)
+                        .write_text_file(true))
                     .terminal(true),
             )
             .client_info(acp::Implementation::new(
@@ -154,11 +152,8 @@ impl AcpAgentConnection {
             .await
             .map_err(|e| AcpError::ProtocolError(e.to_string()))?;
 
-        let session = AcpAgentSession::new(
-            response.session_id.clone(),
-            self.transport.clone(),
-            cwd,
-        );
+        let session =
+            AcpAgentSession::new(response.session_id.clone(), self.transport.clone(), cwd);
 
         // Store session
         let session_id = response.session_id.to_string();
@@ -179,7 +174,10 @@ impl AcpAgentConnection {
     pub async fn new_session_with_telemetry(
         &self,
         cwd: PathBuf,
-    ) -> Result<(AcpAgentSession, tokio::sync::mpsc::UnboundedReceiver<ActionEvent>)> {
+    ) -> Result<(
+        AcpAgentSession,
+        tokio::sync::mpsc::UnboundedReceiver<ActionEvent>,
+    )> {
         let request = acp::NewSessionRequest::new(cwd.clone());
 
         tracing::debug!(cwd = %cwd.display(), "Creating new session with telemetry");

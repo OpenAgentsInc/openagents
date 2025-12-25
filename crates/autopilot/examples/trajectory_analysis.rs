@@ -9,7 +9,7 @@
 //! cargo run --example trajectory_analysis
 //! ```
 
-use autopilot::trajectory::{StepType, Trajectory, TokenUsage, TrajectoryResult};
+use autopilot::trajectory::{StepType, TokenUsage, Trajectory, TrajectoryResult};
 use std::collections::HashMap;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -130,7 +130,10 @@ fn analyze_trajectory(trajectory: &Trajectory) {
     println!("  Prompt: {}", trajectory.prompt);
     println!("  Model: {}", trajectory.model);
     println!("  Session ID: {}", trajectory.session_id);
-    println!("  Branch: {}", trajectory.branch.as_deref().unwrap_or("unknown"));
+    println!(
+        "  Branch: {}",
+        trajectory.branch.as_deref().unwrap_or("unknown")
+    );
     println!();
 
     // Step counts by type
@@ -178,7 +181,10 @@ fn analyze_trajectory(trajectory: &Trajectory) {
     println!("  Input: {}", trajectory.usage.input_tokens);
     println!("  Output: {}", trajectory.usage.output_tokens);
     println!("  Cache reads: {}", trajectory.usage.cache_read_tokens);
-    println!("  Cache creation: {}", trajectory.usage.cache_creation_tokens);
+    println!(
+        "  Cache creation: {}",
+        trajectory.usage.cache_creation_tokens
+    );
     println!();
 
     println!("Cost Analysis:");
@@ -195,7 +201,11 @@ fn analyze_trajectory(trajectory: &Trajectory) {
     if let Some(result) = &trajectory.result {
         println!("Execution Results:");
         println!("  Success: {}", result.success);
-        println!("  Duration: {}ms ({:.1}s)", result.duration_ms, result.duration_ms as f64 / 1000.0);
+        println!(
+            "  Duration: {}ms ({:.1}s)",
+            result.duration_ms,
+            result.duration_ms as f64 / 1000.0
+        );
         println!("  Turns: {}", result.num_turns);
         println!("  Issues completed: {}", result.issues_completed);
 
@@ -223,7 +233,10 @@ fn analyze_trajectory(trajectory: &Trajectory) {
 
     if tool_calls > 0 {
         let success_rate = (tool_successes as f64 / tool_calls as f64) * 100.0;
-        println!("Tool Success Rate: {:.1}% ({}/{})", success_rate, tool_successes, tool_calls);
+        println!(
+            "Tool Success Rate: {:.1}% ({}/{})",
+            success_rate, tool_successes, tool_calls
+        );
     }
 
     println!("\n✓ Analysis complete!");

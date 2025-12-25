@@ -3,8 +3,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[derive(Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum DirectiveStatus {
     #[default]
     Active,
@@ -13,9 +12,7 @@ pub enum DirectiveStatus {
     Paused,
 }
 
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[derive(Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum DirectivePriority {
     Critical,
     High,
@@ -23,7 +20,6 @@ pub enum DirectivePriority {
     Medium,
     Low,
 }
-
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DirectiveSummary {
@@ -100,12 +96,14 @@ impl DirectiveContext {
         for entry in entries.flatten() {
             let path = entry.path();
             if path.extension().is_some_and(|ext| ext == "md")
-                && let Ok(summary) = self.parse_directive(&path).await {
-                    self.directive_map.insert(summary.id.clone(), summary.clone());
-                    if summary.status == DirectiveStatus::Active {
-                        self.active_directives.push(summary);
-                    }
+                && let Ok(summary) = self.parse_directive(&path).await
+            {
+                self.directive_map
+                    .insert(summary.id.clone(), summary.clone());
+                if summary.status == DirectiveStatus::Active {
+                    self.active_directives.push(summary);
                 }
+            }
         }
 
         self.active_directives.sort_by(|a, b| {
@@ -220,7 +218,9 @@ impl DirectiveContext {
     pub fn find_related(&self, keywords: &[&str]) -> Option<&DirectiveSummary> {
         self.active_directives.iter().find(|d| {
             let title_lower = d.title.to_lowercase();
-            keywords.iter().any(|k| title_lower.contains(&k.to_lowercase()))
+            keywords
+                .iter()
+                .any(|k| title_lower.contains(&k.to_lowercase()))
         })
     }
 
@@ -330,9 +330,27 @@ Test directive content.
         let directives_dir = temp.path().join(".openagents").join("directives");
         std::fs::create_dir_all(&directives_dir).unwrap();
 
-        create_test_directive(&directives_dir, "d-001", "First Directive", "active", "high");
-        create_test_directive(&directives_dir, "d-002", "Second Directive", "active", "medium");
-        create_test_directive(&directives_dir, "d-003", "Third Directive", "completed", "low");
+        create_test_directive(
+            &directives_dir,
+            "d-001",
+            "First Directive",
+            "active",
+            "high",
+        );
+        create_test_directive(
+            &directives_dir,
+            "d-002",
+            "Second Directive",
+            "active",
+            "medium",
+        );
+        create_test_directive(
+            &directives_dir,
+            "d-003",
+            "Third Directive",
+            "completed",
+            "low",
+        );
 
         let context = DirectiveContext::load(temp.path()).await.unwrap();
 
@@ -353,9 +371,18 @@ Test directive content.
 
         let context = DirectiveContext::load(temp.path()).await.unwrap();
 
-        assert_eq!(context.active_directives[0].priority, DirectivePriority::Critical);
-        assert_eq!(context.active_directives[1].priority, DirectivePriority::Medium);
-        assert_eq!(context.active_directives[2].priority, DirectivePriority::Low);
+        assert_eq!(
+            context.active_directives[0].priority,
+            DirectivePriority::Critical
+        );
+        assert_eq!(
+            context.active_directives[1].priority,
+            DirectivePriority::Medium
+        );
+        assert_eq!(
+            context.active_directives[2].priority,
+            DirectivePriority::Low
+        );
     }
 
     #[test]

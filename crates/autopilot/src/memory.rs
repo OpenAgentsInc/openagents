@@ -4,7 +4,7 @@
 //! and optionally kill memory-intensive processes when memory is low.
 
 use colored::*;
-use sysinfo::{System, Signal};
+use sysinfo::{Signal, System};
 
 /// Get minimum available memory threshold from environment or use default (500 MB)
 /// Note: macOS reports "available" memory conservatively - it doesn't count
@@ -62,7 +62,8 @@ pub fn check_and_kill_memory_hogs() -> u64 {
     println!();
 
     // Collect processes with memory info
-    let mut processes: Vec<_> = sys.processes()
+    let mut processes: Vec<_> = sys
+        .processes()
         .iter()
         .map(|(pid, proc)| {
             let mem = proc.memory();
@@ -76,9 +77,15 @@ pub fn check_and_kill_memory_hogs() -> u64 {
 
     println!("{} Top 15 Memory Hogs:", "PROCS:".yellow().bold());
     for (i, (pid, name, mem)) in processes.iter().take(15).enumerate() {
-        let is_claude = name.to_lowercase().contains("claude") || name.to_lowercase().contains("node");
-        let marker = if is_claude { " ← CLAUDE/NODE".red().bold().to_string() } else { String::new() };
-        println!("  {:2}. {:>10}  {:6}  {}{}",
+        let is_claude =
+            name.to_lowercase().contains("claude") || name.to_lowercase().contains("node");
+        let marker = if is_claude {
+            " ← CLAUDE/NODE".red().bold().to_string()
+        } else {
+            String::new()
+        };
+        println!(
+            "  {:2}. {:>10}  {:6}  {}{}",
             i + 1,
             format_bytes(*mem),
             pid,
@@ -89,7 +96,10 @@ pub fn check_and_kill_memory_hogs() -> u64 {
 
     // Check if memory cleanup is disabled
     if std::env::var("AUTOPILOT_NO_MEMORY_CLEANUP").is_ok() {
-        println!("{} Memory cleanup disabled via AUTOPILOT_NO_MEMORY_CLEANUP", "SKIP:".yellow().bold());
+        println!(
+            "{} Memory cleanup disabled via AUTOPILOT_NO_MEMORY_CLEANUP",
+            "SKIP:".yellow().bold()
+        );
         return available;
     }
 
@@ -107,10 +117,17 @@ pub fn check_and_kill_memory_hogs() -> u64 {
             }
 
             if let Some(proc) = sys.process(*pid) {
-                println!("{} Killing {} (PID {}, using {})",
-                    "KILL:".red().bold(), name, pid, format_bytes(*mem));
-                println!("    {} This may kill unrelated Node.js processes. Set AUTOPILOT_NO_MEMORY_CLEANUP=1 to disable.",
-                    "WARN:".yellow());
+                println!(
+                    "{} Killing {} (PID {}, using {})",
+                    "KILL:".red().bold(),
+                    name,
+                    pid,
+                    format_bytes(*mem)
+                );
+                println!(
+                    "    {} This may kill unrelated Node.js processes. Set AUTOPILOT_NO_MEMORY_CLEANUP=1 to disable.",
+                    "WARN:".yellow()
+                );
                 if proc.kill_with(Signal::Term).unwrap_or(false) {
                     killed += 1;
                 }
@@ -119,17 +136,23 @@ pub fn check_and_kill_memory_hogs() -> u64 {
     }
 
     if killed > 0 {
-        println!("{} Killed {} memory hog processes", "CLEANUP:".green().bold(), killed);
+        println!(
+            "{} Killed {} memory hog processes",
+            "CLEANUP:".green().bold(),
+            killed
+        );
         // Give processes time to die and memory to be reclaimed
         std::thread::sleep(std::time::Duration::from_secs(3));
 
         // Re-check memory after cleanup
         sys.refresh_memory();
         let new_available = sys.available_memory();
-        println!("{} Memory after cleanup: {} (was {})",
+        println!(
+            "{} Memory after cleanup: {} (was {})",
             "MEM:".green().bold(),
             format_bytes(new_available),
-            format_bytes(available));
+            format_bytes(available)
+        );
         println!("{}", "=".repeat(60).yellow());
         return new_available;
     }

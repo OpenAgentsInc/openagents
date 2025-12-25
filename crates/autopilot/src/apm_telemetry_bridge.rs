@@ -45,7 +45,10 @@ pub fn spawn_telemetry_consumer(
 
         // Ensure APM tables exist
         if let Err(e) = apm_storage::init_apm_tables(&conn) {
-            eprintln!("ERROR: Failed to initialize APM tables for telemetry: {}", e);
+            eprintln!(
+                "ERROR: Failed to initialize APM tables for telemetry: {}",
+                e
+            );
             return;
         }
 
@@ -65,12 +68,9 @@ pub fn spawn_telemetry_consumer(
             let metadata = event.metadata.map(|m| m.to_string());
 
             // Record event to database
-            if let Err(e) = apm_storage::record_event(
-                &conn,
-                &session_id,
-                event_type,
-                metadata.as_deref(),
-            ) {
+            if let Err(e) =
+                apm_storage::record_event(&conn, &session_id, event_type, metadata.as_deref())
+            {
                 eprintln!(
                     "WARNING: Failed to record APM event {}: {}",
                     event.action_type, e
@@ -137,8 +137,7 @@ mod tests {
         // Create session
         let session_id = "test-session".to_string();
         let conn = Connection::open(db_path).unwrap();
-        apm_storage::create_session(&conn, &session_id, crate::apm::APMSource::Autopilot)
-            .unwrap();
+        apm_storage::create_session(&conn, &session_id, crate::apm::APMSource::Autopilot).unwrap();
         drop(conn);
 
         // Create channel and send test events
@@ -154,12 +153,8 @@ mod tests {
         ))
         .unwrap();
 
-        tx.send(acp_adapter::ActionEvent::success(
-            &session_id,
-            "Read",
-            150,
-        ))
-        .unwrap();
+        tx.send(acp_adapter::ActionEvent::success(&session_id, "Read", 150))
+            .unwrap();
 
         tx.send(acp_adapter::ActionEvent::failure(
             &session_id,
@@ -216,12 +211,9 @@ mod tests {
 
         let (tx, rx) = mpsc::unbounded_channel();
 
-        let (session_id, task) = create_apm_session_with_consumer(
-            db_path,
-            crate::apm::APMSource::ClaudeCode,
-            rx,
-        )
-        .unwrap();
+        let (session_id, task) =
+            create_apm_session_with_consumer(db_path, crate::apm::APMSource::ClaudeCode, rx)
+                .unwrap();
 
         // Session should be created in database
         let conn = Connection::open(db_path).unwrap();

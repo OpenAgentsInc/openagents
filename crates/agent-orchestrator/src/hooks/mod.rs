@@ -13,20 +13,10 @@ use std::collections::HashMap;
 
 #[derive(Debug, Clone)]
 pub enum SessionEvent {
-    Created {
-        session_id: String,
-        agent: String,
-    },
-    Idle {
-        session_id: String,
-    },
-    Error {
-        session_id: String,
-        error: String,
-    },
-    Aborted {
-        session_id: String,
-    },
+    Created { session_id: String, agent: String },
+    Idle { session_id: String },
+    Error { session_id: String, error: String },
+    Aborted { session_id: String },
 }
 
 #[derive(Debug, Clone)]
@@ -61,7 +51,12 @@ impl ContextBuilder {
         }
     }
 
-    pub fn add_section(&mut self, name: impl Into<String>, content: impl Into<String>, priority: i32) {
+    pub fn add_section(
+        &mut self,
+        name: impl Into<String>,
+        content: impl Into<String>,
+        priority: i32,
+    ) {
         self.sections.push(ContextSection {
             name: name.into(),
             content: content.into(),
@@ -286,7 +281,12 @@ mod tests {
     #[test]
     fn hook_result_blocked() {
         assert!(!HookResult::Continue.is_blocked());
-        assert!(HookResult::Block { message: "test".to_string() }.is_blocked());
+        assert!(
+            HookResult::Block {
+                message: "test".to_string()
+            }
+            .is_blocked()
+        );
         assert!(!HookResult::Modify.is_blocked());
     }
 }

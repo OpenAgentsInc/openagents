@@ -6,7 +6,7 @@ pub use tasks::*;
 
 use anyhow::{Context, Result};
 use chrono::Utc;
-use rusqlite::{params, Connection};
+use rusqlite::{Connection, params};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -114,8 +114,7 @@ pub struct BenchmarkDatabase {
 impl BenchmarkDatabase {
     /// Open or create the benchmark database
     pub fn open(path: impl AsRef<Path>) -> Result<Self> {
-        let conn = Connection::open(path.as_ref())
-            .context("Failed to open benchmark database")?;
+        let conn = Connection::open(path.as_ref()).context("Failed to open benchmark database")?;
 
         // Create tables if they don't exist
         conn.execute(
@@ -458,10 +457,10 @@ impl BenchmarkDatabase {
 
             let avg_duration_ms = runs.iter().map(|r| r.metrics.duration_ms).sum::<u64>() as f64
                 / sample_count as f64;
-            let avg_tokens_in = runs.iter().map(|r| r.metrics.tokens_in).sum::<u64>() as i64
-                / sample_count;
-            let avg_tokens_out = runs.iter().map(|r| r.metrics.tokens_out).sum::<u64>() as i64
-                / sample_count;
+            let avg_tokens_in =
+                runs.iter().map(|r| r.metrics.tokens_in).sum::<u64>() as i64 / sample_count;
+            let avg_tokens_out =
+                runs.iter().map(|r| r.metrics.tokens_out).sum::<u64>() as i64 / sample_count;
             let avg_cost_usd =
                 runs.iter().map(|r| r.metrics.cost_usd).sum::<f64>() / sample_count as f64;
 
@@ -558,8 +557,7 @@ impl BenchmarkRunner {
         std::fs::create_dir_all(&workspace)?;
 
         // Setup
-        task.setup(&workspace)
-            .context("Benchmark setup failed")?;
+        task.setup(&workspace).context("Benchmark setup failed")?;
 
         // Execute autopilot with the task prompt
         let _start = Instant::now();
@@ -642,9 +640,9 @@ impl BenchmarkRunner {
         task: &dyn BenchmarkTask,
         workspace: &Path,
     ) -> Result<BenchmarkMetrics> {
+        use crate::TrajectoryCollector;
         use claude_agent_sdk::{QueryOptions, query};
         use futures::StreamExt;
-        use crate::TrajectoryCollector;
 
         let start = Instant::now();
 
@@ -703,12 +701,22 @@ impl BenchmarkRunner {
         let duration_ms = start.elapsed().as_millis() as u64;
         let tokens_in = trajectory.usage.input_tokens;
         let tokens_out = trajectory.usage.output_tokens;
-        let tokens_cached = trajectory.usage.cache_read_tokens + trajectory.usage.cache_creation_tokens;
-        let tool_calls = trajectory.steps.iter()
+        let tokens_cached =
+            trajectory.usage.cache_read_tokens + trajectory.usage.cache_creation_tokens;
+        let tool_calls = trajectory
+            .steps
+            .iter()
             .filter(|s| matches!(s.step_type, crate::trajectory::StepType::ToolCall { .. }))
             .count() as u64;
-        let tool_errors = trajectory.steps.iter()
-            .filter(|s| matches!(s.step_type, crate::trajectory::StepType::ToolResult { success: false, .. }))
+        let tool_errors = trajectory
+            .steps
+            .iter()
+            .filter(|s| {
+                matches!(
+                    s.step_type,
+                    crate::trajectory::StepType::ToolResult { success: false, .. }
+                )
+            })
             .count() as u64;
 
         // Use the cost from trajectory if available, otherwise estimate
@@ -716,8 +724,7 @@ impl BenchmarkRunner {
             trajectory.usage.cost_usd
         } else {
             // Rough estimate: $3/MTok input, $15/MTok output for Sonnet
-            (tokens_in as f64 * 3.0 / 1_000_000.0)
-                + (tokens_out as f64 * 15.0 / 1_000_000.0)
+            (tokens_in as f64 * 3.0 / 1_000_000.0) + (tokens_out as f64 * 15.0 / 1_000_000.0)
         };
 
         // Calculate APM (Actions Per Minute)
@@ -742,7 +749,11 @@ impl BenchmarkRunner {
     }
 
     /// Run all benchmarks in a category
-    pub async fn run_category(&mut self, category: &str, tasks: &[&dyn BenchmarkTask]) -> Result<Vec<BenchmarkResult>> {
+    pub async fn run_category(
+        &mut self,
+        category: &str,
+        tasks: &[&dyn BenchmarkTask],
+    ) -> Result<Vec<BenchmarkResult>> {
         let mut results = Vec::new();
 
         for task in tasks {
@@ -791,7 +802,8 @@ impl BenchmarkRunner {
                 }
 
                 // Compare performance (>10% threshold)
-                let duration_change = (result.metrics.duration_ms as f64 - base_metrics.avg_duration_ms)
+                let duration_change = (result.metrics.duration_ms as f64
+                    - base_metrics.avg_duration_ms)
                     / base_metrics.avg_duration_ms;
 
                 if duration_change > 0.1 {
@@ -815,7 +827,8 @@ impl BenchmarkRunner {
                 // Compare token usage
                 let tokens_total = result.metrics.tokens_in + result.metrics.tokens_out;
                 let base_tokens_total = base_metrics.avg_tokens_in + base_metrics.avg_tokens_out;
-                let token_change = (tokens_total as f64 - base_tokens_total as f64) / base_tokens_total as f64;
+                let token_change =
+                    (tokens_total as f64 - base_tokens_total as f64) / base_tokens_total as f64;
 
                 if token_change > 0.2 {
                     // 20% threshold for token usage
@@ -925,7 +938,11 @@ impl ComparisonReport {
                 } else {
                     "↑"
                 };
-                let token_icon = if comp.token_change_pct <= 0.0 { "↓" } else { "↑" };
+                let token_icon = if comp.token_change_pct <= 0.0 {
+                    "↓"
+                } else {
+                    "↑"
+                };
 
                 println!(
                     "│ {:<11} │ {} {:>5.1}% │ {} {:>6.1}% │ {} {:>6.1}% │ ${:>7.4} │",
@@ -1026,7 +1043,10 @@ mod tests {
         assert_eq!(results[0].success, true);
         assert_eq!(results[0].messages.len(), 1);
         assert_eq!(results[0].metrics.duration_ms, 1000);
-        assert_eq!(results[0].metrics.custom_metrics.get("custom_metric"), Some(&42.0));
+        assert_eq!(
+            results[0].metrics.custom_metrics.get("custom_metric"),
+            Some(&42.0)
+        );
 
         Ok(())
     }
@@ -1038,11 +1058,7 @@ mod tests {
         let workspace = temp_dir.path().join("workspace");
         let db_path = temp_dir.path().join("benchmarks.db");
 
-        let mut runner = BenchmarkRunner::new(
-            workspace.clone(),
-            db_path,
-            "v0.1.0".to_string(),
-        )?;
+        let mut runner = BenchmarkRunner::new(workspace.clone(), db_path, "v0.1.0".to_string())?;
 
         let task = MockBenchmark;
         let _result = runner.run_benchmark(&task).await?;

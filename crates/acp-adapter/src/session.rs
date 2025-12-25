@@ -7,7 +7,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use agent_client_protocol_schema as acp;
-use tokio::sync::{mpsc, RwLock};
+use tokio::sync::{RwLock, mpsc};
 
 use crate::telemetry::ApmTelemetry;
 use crate::transport::StdioTransport;
@@ -136,8 +136,7 @@ impl AcpAgentSession {
         // Update local state based on notification type
         match &notification.update {
             acp::SessionUpdate::CurrentModeUpdate(mode_update) => {
-                self.state.write().await.current_mode =
-                    Some(mode_update.current_mode_id.clone());
+                self.state.write().await.current_mode = Some(mode_update.current_mode_id.clone());
             }
             _ => {}
         }

@@ -27,8 +27,8 @@ pub mod memory;
 pub mod metrics;
 pub mod model_selection;
 pub mod nip_sa_trajectory;
-pub mod notifications;
 pub mod nostr_agent;
+pub mod notifications;
 pub mod parallel;
 pub mod planmode;
 pub mod profiling;
@@ -51,9 +51,9 @@ use chrono::Utc;
 use claude_agent_sdk::{
     SdkAssistantMessage, SdkMessage, SdkResultMessage, SdkSystemMessage, SdkUserMessage,
 };
+use rlog::RlogWriter;
 use serde_json::Value;
 use trajectory::{JsonlWriter, StepType, SubagentStatus, TokenUsage, Trajectory, TrajectoryResult};
-use rlog::RlogWriter;
 
 /// Callback invoked when session_id becomes available
 pub type SessionIdCallback = Box<dyn FnOnce(&str) + Send>;
@@ -180,7 +180,10 @@ impl TrajectoryCollector {
     }
 
     /// Enable JSONL streaming for full data capture (Claude Code compatible format)
-    pub fn enable_jsonl_streaming(&mut self, path: impl AsRef<std::path::Path>) -> std::io::Result<()> {
+    pub fn enable_jsonl_streaming(
+        &mut self,
+        path: impl AsRef<std::path::Path>,
+    ) -> std::io::Result<()> {
         let mut writer = JsonlWriter::new();
         writer.init(path, &self.trajectory.session_id)?;
         self.jsonl_writer = Some(writer);
@@ -273,7 +276,9 @@ impl TrajectoryCollector {
 
     /// Stream the last added step to rlog file (if streaming is enabled)
     fn stream_last_step(&mut self) {
-        if let (Some(writer), Some(last_step)) = (&mut self.rlog_writer, self.trajectory.steps.last()) {
+        if let (Some(writer), Some(last_step)) =
+            (&mut self.rlog_writer, self.trajectory.steps.last())
+        {
             if let Err(e) = writer.append_step(last_step) {
                 eprintln!("ERROR: Failed to append step to rlog: {}", e);
             }
@@ -473,10 +478,7 @@ impl TrajectoryCollector {
 
                 match block_type {
                     "thinking" => {
-                        let text = block
-                            .get("thinking")
-                            .and_then(|t| t.as_str())
-                            .unwrap_or("");
+                        let text = block.get("thinking").and_then(|t| t.as_str()).unwrap_or("");
                         let sig = block
                             .get("signature")
                             .and_then(|s| s.as_str())
@@ -559,10 +561,7 @@ impl TrajectoryCollector {
 
                         // Record APM event with tool name as metadata
                         let metadata = serde_json::json!({"tool": tool_name}).to_string();
-                        self.record_apm_event(
-                            apm_storage::APMEventType::ToolCall,
-                            Some(&metadata),
-                        );
+                        self.record_apm_event(apm_storage::APMEventType::ToolCall, Some(&metadata));
                     }
                     _ => {}
                 }
@@ -586,7 +585,9 @@ impl TrajectoryCollector {
             (
                 usage.get("input_tokens").and_then(|t| t.as_u64()),
                 usage.get("output_tokens").and_then(|t| t.as_u64()),
-                usage.get("cache_read_input_tokens").and_then(|t| t.as_u64()),
+                usage
+                    .get("cache_read_input_tokens")
+                    .and_then(|t| t.as_u64()),
             )
         } else {
             (None, None, None)
@@ -655,9 +656,8 @@ impl TrajectoryCollector {
                 }
                 Value::String(s) => {
                     // Plain user message
-                    self.trajectory.add_step(StepType::User {
-                        content: s.clone(),
-                    });
+                    self.trajectory
+                        .add_step(StepType::User { content: s.clone() });
                     self.stream_last_step();
 
                     // Record APM event
@@ -727,12 +727,23 @@ impl TrajectoryCollector {
         use crate::apm::calculate_apm_from_timestamps;
 
         // Count messages (user + assistant)
-        let messages = self.trajectory.steps.iter()
-            .filter(|s| matches!(&s.step_type, StepType::User { .. } | StepType::Assistant { .. }))
+        let messages = self
+            .trajectory
+            .steps
+            .iter()
+            .filter(|s| {
+                matches!(
+                    &s.step_type,
+                    StepType::User { .. } | StepType::Assistant { .. }
+                )
+            })
             .count() as u32;
 
         // Count tool calls
-        let tool_calls = self.trajectory.steps.iter()
+        let tool_calls = self
+            .trajectory
+            .steps
+            .iter()
             .filter(|s| matches!(&s.step_type, StepType::ToolCall { .. }))
             .count() as u32;
 
@@ -795,7 +806,10 @@ impl TrajectoryCollector {
                         self.stream_last_step();
 
                         // Add tool result
-                        let success = matches!(cmd.status, codex_agent_sdk::CommandExecutionStatus::Completed);
+                        let success = matches!(
+                            cmd.status,
+                            codex_agent_sdk::CommandExecutionStatus::Completed
+                        );
                         self.trajectory.add_step(StepType::ToolResult {
                             tool_id: item_event.item.id.clone(),
                             success,
@@ -808,7 +822,8 @@ impl TrajectoryCollector {
                         self.stream_last_step();
                     }
                     ThreadItemDetails::FileChange(fc) => {
-                        let changes_json = serde_json::to_value(&fc.changes).unwrap_or(serde_json::json!([]));
+                        let changes_json =
+                            serde_json::to_value(&fc.changes).unwrap_or(serde_json::json!([]));
                         self.trajectory.add_step(StepType::ToolCall {
                             tool: "Edit".to_string(),
                             tool_id: item_event.item.id.clone(),
@@ -817,7 +832,8 @@ impl TrajectoryCollector {
                         self.stream_last_step();
 
                         // Add tool result
-                        let success = matches!(fc.status, codex_agent_sdk::PatchApplyStatus::Completed);
+                        let success =
+                            matches!(fc.status, codex_agent_sdk::PatchApplyStatus::Completed);
                         self.trajectory.add_step(StepType::ToolResult {
                             tool_id: item_event.item.id.clone(),
                             success,
@@ -834,7 +850,8 @@ impl TrajectoryCollector {
                         self.stream_last_step();
 
                         // Add tool result
-                        let success = matches!(mcp.status, codex_agent_sdk::McpToolCallStatus::Completed);
+                        let success =
+                            matches!(mcp.status, codex_agent_sdk::McpToolCallStatus::Completed);
                         let output = mcp.result.as_ref().map(|r| {
                             serde_json::to_string_pretty(r).unwrap_or_else(|_| format!("{:?}", r))
                         });
@@ -862,7 +879,8 @@ impl TrajectoryCollector {
                         self.stream_last_step();
                     }
                     ThreadItemDetails::TodoList(todo) => {
-                        let items_json = serde_json::to_value(&todo.items).unwrap_or(serde_json::json!([]));
+                        let items_json =
+                            serde_json::to_value(&todo.items).unwrap_or(serde_json::json!([]));
                         self.trajectory.add_step(StepType::ToolCall {
                             tool: "TodoWrite".to_string(),
                             tool_id: item_event.item.id.clone(),

@@ -295,7 +295,9 @@ impl CostPaymentBridge {
         amount_sats: u64,
         description: &str,
     ) -> Result<String, PaymentError> {
-        self.provider.create_invoice(amount_sats, Some(description)).await
+        self.provider
+            .create_invoice(amount_sats, Some(description))
+            .await
     }
 
     pub async fn total_spent(&self) -> u64 {
@@ -345,7 +347,10 @@ mod tests {
         let provider = MockPaymentProvider::new(100);
 
         let result = provider.send_payment("dest", 1000, None).await;
-        assert!(matches!(result, Err(PaymentError::InsufficientBalance { .. })));
+        assert!(matches!(
+            result,
+            Err(PaymentError::InsufficientBalance { .. })
+        ));
     }
 
     #[tokio::test]

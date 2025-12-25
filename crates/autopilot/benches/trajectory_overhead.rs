@@ -11,7 +11,7 @@
 //! 5. Metrics extraction from large trajectory logs
 
 use autopilot::trajectory::{JsonlWriter, StepType, Trajectory};
-use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
+use criterion::{BenchmarkId, Criterion, black_box, criterion_group, criterion_main};
 use serde_json::json;
 use std::time::Duration;
 use tempfile::TempDir;
@@ -154,23 +154,19 @@ fn bench_tool_call_overhead(c: &mut Criterion) {
     let mut group = c.benchmark_group("tool_call_overhead");
 
     for tool in ["Read", "Write", "Edit", "Bash", "Glob", "Grep"].iter() {
-        group.bench_with_input(
-            BenchmarkId::from_parameter(tool),
-            tool,
-            |b, &tool_name| {
-                let mut trajectory = Trajectory::new(
-                    "Test prompt".to_string(),
-                    "sonnet-4".to_string(),
-                    "/test/cwd".to_string(),
-                    "abc123".to_string(),
-                    Some("main".to_string()),
-                );
+        group.bench_with_input(BenchmarkId::from_parameter(tool), tool, |b, &tool_name| {
+            let mut trajectory = Trajectory::new(
+                "Test prompt".to_string(),
+                "sonnet-4".to_string(),
+                "/test/cwd".to_string(),
+                "abc123".to_string(),
+                Some("main".to_string()),
+            );
 
-                b.iter(|| {
-                    trajectory.add_step(black_box(create_tool_call_step(tool_name)));
-                })
-            },
-        );
+            b.iter(|| {
+                trajectory.add_step(black_box(create_tool_call_step(tool_name)));
+            })
+        });
     }
 
     group.finish();

@@ -65,7 +65,11 @@ pub struct Notification {
 }
 
 impl Notification {
-    pub fn new(title: impl Into<String>, message: impl Into<String>, severity: impl Into<String>) -> Self {
+    pub fn new(
+        title: impl Into<String>,
+        message: impl Into<String>,
+        severity: impl Into<String>,
+    ) -> Self {
         Self {
             title: title.into(),
             message: message.into(),
@@ -182,9 +186,8 @@ impl Notification {
     /// Send notification via email
     pub async fn send_email(&self, to: &[String], smtp: &SmtpConfig) -> Result<()> {
         use lettre::{
-            message::header::ContentType,
+            Message, SmtpTransport, Transport, message::header::ContentType,
             transport::smtp::authentication::Credentials,
-            Message, SmtpTransport, Transport,
         };
 
         // Create email message
@@ -236,8 +239,8 @@ impl NotificationManager {
     pub fn from_file(path: impl AsRef<Path>) -> Result<Self> {
         let content = std::fs::read_to_string(path.as_ref())
             .context("Failed to read notification config file")?;
-        let config: NotificationConfig = toml::from_str(&content)
-            .context("Failed to parse notification config")?;
+        let config: NotificationConfig =
+            toml::from_str(&content).context("Failed to parse notification config")?;
         Ok(Self::new(config))
     }
 
@@ -316,15 +319,27 @@ mod tests {
 
         assert_eq!(notif.title, "Test Alert");
         assert_eq!(notif.severity, "error");
-        assert_eq!(notif.metadata.get("session_id"), Some(&"test-123".to_string()));
+        assert_eq!(
+            notif.metadata.get("session_id"),
+            Some(&"test-123".to_string())
+        );
     }
 
     #[test]
     fn test_slack_formatting() {
-        let notif = Notification::new("Critical Regression", "Benchmark B-001 regressed by 25%", "critical");
+        let notif = Notification::new(
+            "Critical Regression",
+            "Benchmark B-001 regressed by 25%",
+            "critical",
+        );
         let slack_payload = notif.format_slack();
 
-        assert!(slack_payload["text"].as_str().unwrap().contains("Critical Regression"));
+        assert!(
+            slack_payload["text"]
+                .as_str()
+                .unwrap()
+                .contains("Critical Regression")
+        );
         assert!(slack_payload["blocks"].is_array());
     }
 

@@ -45,7 +45,12 @@ impl TodoContinuationHook {
         self
     }
 
-    pub async fn add_todo(&self, id: impl Into<String>, content: impl Into<String>, priority: Priority) {
+    pub async fn add_todo(
+        &self,
+        id: impl Into<String>,
+        content: impl Into<String>,
+        priority: Priority,
+    ) {
         let mut todos = self.todos.write().await;
         todos.push(TodoItem {
             id: id.into(),

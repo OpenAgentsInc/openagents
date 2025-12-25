@@ -297,11 +297,7 @@ impl Hook for SkillUsageHook {
 
     async fn after_tool(&self, call: &ToolCall, output: &mut ToolOutput) -> HookResult {
         if let Some(skill_id) = self.skill_tool_mapping.get(&call.name) {
-            let pricing = self
-                .pricing
-                .get(skill_id)
-                .cloned()
-                .unwrap_or_default();
+            let pricing = self.pricing.get(skill_id).cloned().unwrap_or_default();
 
             let tokens_used = output.content.len() as u64;
             let cost = pricing.calculate_cost(0, tokens_used);
@@ -368,10 +364,7 @@ impl MarketplaceIntegration {
         self.usage_tracker.total_cost(&self.agent_pubkey)
     }
 
-    pub fn create_license_hook(
-        &self,
-        tool_skill_map: HashMap<String, String>,
-    ) -> SkillLicenseHook {
+    pub fn create_license_hook(&self, tool_skill_map: HashMap<String, String>) -> SkillLicenseHook {
         let mut hook = SkillLicenseHook::new(self.license_store.clone(), self.agent_pubkey.clone());
         for (tool, skill) in tool_skill_map {
             hook = hook.map_tool_to_skill(&tool, &skill);

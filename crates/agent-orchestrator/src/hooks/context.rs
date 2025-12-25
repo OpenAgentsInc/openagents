@@ -230,7 +230,11 @@ mod tests {
 
     fn setup_workspace() -> TempDir {
         let dir = TempDir::new().unwrap();
-        fs::write(dir.path().join("AGENTS.md"), "# Agent Instructions\n\nTest content").unwrap();
+        fs::write(
+            dir.path().join("AGENTS.md"),
+            "# Agent Instructions\n\nTest content",
+        )
+        .unwrap();
         fs::write(
             dir.path().join("README.md"),
             "# Project\n\nThis is a test project.",

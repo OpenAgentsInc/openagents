@@ -113,10 +113,7 @@ pub fn generate_compaction_prompt(
     let instructions = generate_compaction_instructions(strategy);
 
     if let Some(context) = additional_context {
-        format!(
-            "{}\n\nAdditional context:\n{}",
-            instructions, context
-        )
+        format!("{}\n\nAdditional context:\n{}", instructions, context)
     } else {
         instructions
     }
@@ -128,14 +125,16 @@ pub fn detect_strategy(session_context: &str) -> CompactionStrategy {
     if session_context.contains("plan mode")
         || session_context.contains("Phase 1:")
         || session_context.contains("## Explore")
-        || session_context.contains("## Design") {
+        || session_context.contains("## Design")
+    {
         return CompactionStrategy::Planning;
     }
 
     // Check for autonomous mode indicators
     if session_context.contains("FULL AUTO MODE")
         || session_context.contains("issue_ready")
-        || session_context.contains("autonomous_session") {
+        || session_context.contains("autonomous_session")
+    {
         return CompactionStrategy::Autonomous;
     }
 
@@ -143,7 +142,8 @@ pub fn detect_strategy(session_context: &str) -> CompactionStrategy {
     if session_context.contains("cargo test")
         || session_context.contains("impl ")
         || session_context.contains("fn ")
-        || session_context.lines().count() > 100 {
+        || session_context.lines().count() > 100
+    {
         return CompactionStrategy::Detailed;
     }
 
@@ -254,14 +254,16 @@ impl Message {
 
         match msg_type {
             "user" => {
-                let content = msg.get("message")
+                let content = msg
+                    .get("message")
                     .and_then(|m| m.get("content"))
                     .and_then(|c| c.as_str())
                     .unwrap_or("");
                 Some(Message::new("user".to_string(), content.to_string()))
             }
             "assistant" => {
-                let content = msg.get("message")
+                let content = msg
+                    .get("message")
                     .and_then(|m| serde_json::to_string(m).ok())
                     .unwrap_or_default();
                 Some(Message::new("assistant".to_string(), content))

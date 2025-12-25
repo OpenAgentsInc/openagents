@@ -289,7 +289,9 @@ fn compute_cost(trajectory: &Trajectory) -> CostMetrics {
             StepType::Subagent { .. } => "subagent",
         };
 
-        let entry = tokens_by_step_type.entry(step_name.to_string()).or_insert(0);
+        let entry = tokens_by_step_type
+            .entry(step_name.to_string())
+            .or_insert(0);
         if let Some(t) = step.tokens_out {
             *entry += t;
         }
@@ -318,7 +320,9 @@ fn compute_errors(trajectory: &Trajectory) -> ErrorMetrics {
                 total_tool_calls += 1;
                 pending_tools.insert(tool_id.clone(), tool.clone());
             }
-            StepType::ToolResult { tool_id, success, .. } => {
+            StepType::ToolResult {
+                tool_id, success, ..
+            } => {
                 if !*success {
                     failed_tool_calls += 1;
                     if let Some(tool_name) = pending_tools.get(tool_id) {
@@ -337,7 +341,11 @@ fn compute_errors(trajectory: &Trajectory) -> ErrorMetrics {
     };
 
     ErrorMetrics {
-        success: trajectory.result.as_ref().map(|r| r.success).unwrap_or(false),
+        success: trajectory
+            .result
+            .as_ref()
+            .map(|r| r.success)
+            .unwrap_or(false),
         total_tool_calls,
         failed_tool_calls,
         tool_error_rate,
@@ -399,7 +407,9 @@ fn compute_tool_usage(trajectory: &Trajectory) -> ToolUsageMetrics {
                 *calls_by_tool.entry(tool.clone()).or_insert(0) += 1;
                 pending_tools.insert(tool_id.clone(), tool.clone());
             }
-            StepType::ToolResult { tool_id, success, .. } => {
+            StepType::ToolResult {
+                tool_id, success, ..
+            } => {
                 if *success {
                     if let Some(tool_name) = pending_tools.get(tool_id) {
                         *successes_by_tool.entry(tool_name.clone()).or_insert(0) += 1;
@@ -465,10 +475,13 @@ pub fn aggregate_analyses(analyses: &[TrajectoryAnalysis]) -> AggregateAnalysis 
         .map(|(model, runs)| {
             let count = runs.len();
             let avg_cost = runs.iter().map(|r| r.cost.total_cost_usd).sum::<f64>() / count as f64;
-            let avg_duration =
-                runs.iter().map(|r| r.performance.total_duration_ms).sum::<u64>() as f64
-                    / count as f64;
-            let success_rate = runs.iter().filter(|r| r.errors.success).count() as f64 / count as f64;
+            let avg_duration = runs
+                .iter()
+                .map(|r| r.performance.total_duration_ms)
+                .sum::<u64>() as f64
+                / count as f64;
+            let success_rate =
+                runs.iter().filter(|r| r.errors.success).count() as f64 / count as f64;
             (
                 model.clone(),
                 ModelStats {
@@ -491,8 +504,11 @@ pub fn aggregate_analyses(analyses: &[TrajectoryAnalysis]) -> AggregateAnalysis 
         / trajectory_count as f64;
     let overall_success_rate =
         analyses.iter().filter(|a| a.errors.success).count() as f64 / trajectory_count as f64;
-    let avg_tool_error_rate =
-        analyses.iter().map(|a| a.errors.tool_error_rate).sum::<f64>() / trajectory_count as f64;
+    let avg_tool_error_rate = analyses
+        .iter()
+        .map(|a| a.errors.tool_error_rate)
+        .sum::<f64>()
+        / trajectory_count as f64;
     let avg_cache_hit_rate =
         analyses.iter().map(|a| a.cost.cache_hit_rate).sum::<f64>() / trajectory_count as f64;
     let total_tool_calls: u32 = analyses.iter().map(|a| a.tool_usage.total_calls).sum();
@@ -529,9 +545,12 @@ pub fn print_analysis(analysis: &TrajectoryAnalysis) {
     println!("{}", sep.bright_blue());
     println!(
         "{}",
-        format!("Trajectory Analysis: {}", &analysis.session_id[..8.min(analysis.session_id.len())])
-            .bright_white()
-            .bold()
+        format!(
+            "Trajectory Analysis: {}",
+            &analysis.session_id[..8.min(analysis.session_id.len())]
+        )
+        .bright_white()
+        .bold()
     );
     println!("{}", sep.bright_blue());
 
@@ -552,7 +571,10 @@ pub fn print_analysis(analysis: &TrajectoryAnalysis) {
         "  Parallel Batches:  {}",
         analysis.performance.parallel_tool_batches
     );
-    println!("  Total Tool Calls:  {}", analysis.performance.total_tool_calls);
+    println!(
+        "  Total Tool Calls:  {}",
+        analysis.performance.total_tool_calls
+    );
 
     // Cost
     println!("\n{}", "COST".yellow().bold());
@@ -565,7 +587,10 @@ pub fn print_analysis(analysis: &TrajectoryAnalysis) {
         "  Output Tokens:     {}",
         format_tokens(analysis.cost.output_tokens)
     );
-    println!("  Cache Hit Rate:    {:.1}%", analysis.cost.cache_hit_rate * 100.0);
+    println!(
+        "  Cache Hit Rate:    {:.1}%",
+        analysis.cost.cache_hit_rate * 100.0
+    );
 
     // Errors
     println!("\n{}", "ERRORS".yellow().bold());
@@ -610,7 +635,12 @@ pub fn print_analysis(analysis: &TrajectoryAnalysis) {
                 .get(*tool)
                 .copied()
                 .unwrap_or(0.0);
-            println!("  {:20} {} calls, {:.0}% success", tool, count, success_rate * 100.0);
+            println!(
+                "  {:20} {} calls, {:.0}% success",
+                tool,
+                count,
+                success_rate * 100.0
+            );
         }
     }
 
@@ -623,9 +653,12 @@ pub fn print_aggregate(analysis: &AggregateAnalysis) {
     println!("{}", sep.bright_blue());
     println!(
         "{}",
-        format!("Aggregate Analysis: {} trajectories", analysis.trajectory_count)
-            .bright_white()
-            .bold()
+        format!(
+            "Aggregate Analysis: {} trajectories",
+            analysis.trajectory_count
+        )
+        .bright_white()
+        .bold()
     );
     println!("{}", sep.bright_blue());
 
@@ -634,10 +667,22 @@ pub fn print_aggregate(analysis: &AggregateAnalysis) {
     println!("  Trajectories:      {}", analysis.trajectory_count);
     println!("  Total Cost:        ${:.4}", analysis.total_cost_usd);
     println!("  Avg Cost:          ${:.4}", analysis.avg_cost_usd);
-    println!("  Avg Duration:      {:.1}s", analysis.avg_duration_ms / 1000.0);
-    println!("  Success Rate:      {:.1}%", analysis.overall_success_rate * 100.0);
-    println!("  Avg Tool Errors:   {:.1}%", analysis.avg_tool_error_rate * 100.0);
-    println!("  Avg Cache Hit:     {:.1}%", analysis.avg_cache_hit_rate * 100.0);
+    println!(
+        "  Avg Duration:      {:.1}s",
+        analysis.avg_duration_ms / 1000.0
+    );
+    println!(
+        "  Success Rate:      {:.1}%",
+        analysis.overall_success_rate * 100.0
+    );
+    println!(
+        "  Avg Tool Errors:   {:.1}%",
+        analysis.avg_tool_error_rate * 100.0
+    );
+    println!(
+        "  Avg Cache Hit:     {:.1}%",
+        analysis.avg_cache_hit_rate * 100.0
+    );
     println!("  Total Tool Calls:  {}", analysis.total_tool_calls);
 
     // By Model
@@ -748,7 +793,10 @@ pub enum TimePeriod {
     Last30Days,
     LastWeek,
     ThisWeek,
-    Custom { start: DateTime<Utc>, end: DateTime<Utc> },
+    Custom {
+        start: DateTime<Utc>,
+        end: DateTime<Utc>,
+    },
 }
 
 impl TimePeriod {
@@ -798,7 +846,7 @@ fn calculate_metric_stats(dimension: &str, values: &[f64]) -> Option<MetricAggre
         return None;
     }
 
-    use statrs::statistics::{Data, Distribution, OrderStatistics, Min, Max};
+    use statrs::statistics::{Data, Distribution, Max, Min, OrderStatistics};
 
     let mut data = Data::new(values.to_vec());
     let mean = data.mean().unwrap_or(0.0);
@@ -851,7 +899,9 @@ pub fn get_sessions_between_dates(
 }
 
 /// Calculate aggregate statistics for all metrics from sessions
-pub fn calculate_aggregate_stats_from_sessions(sessions: &[SessionMetrics]) -> HashMap<String, MetricAggregateStats> {
+pub fn calculate_aggregate_stats_from_sessions(
+    sessions: &[SessionMetrics],
+) -> HashMap<String, MetricAggregateStats> {
     let mut stats_map = HashMap::new();
 
     // Tool error rate
@@ -1098,7 +1148,11 @@ pub fn store_regressions_as_anomalies(
 }
 
 /// Get top error tools from sessions
-pub fn get_top_error_tools(db: &MetricsDb, period: TimePeriod, limit: usize) -> anyhow::Result<Vec<(String, u32)>> {
+pub fn get_top_error_tools(
+    db: &MetricsDb,
+    period: TimePeriod,
+    limit: usize,
+) -> anyhow::Result<Vec<(String, u32)>> {
     let sessions = get_sessions_in_period(db, period)?;
     let mut error_counts: HashMap<String, u32> = HashMap::new();
 
@@ -1119,7 +1173,11 @@ pub fn get_top_error_tools(db: &MetricsDb, period: TimePeriod, limit: usize) -> 
 }
 
 /// Get slowest tools by average duration
-pub fn get_slowest_tools(db: &MetricsDb, period: TimePeriod, limit: usize) -> anyhow::Result<Vec<(String, f64, usize)>> {
+pub fn get_slowest_tools(
+    db: &MetricsDb,
+    period: TimePeriod,
+    limit: usize,
+) -> anyhow::Result<Vec<(String, f64, usize)>> {
     let sessions = get_sessions_in_period(db, period)?;
     let mut tool_durations: HashMap<String, Vec<i64>> = HashMap::new();
 
@@ -1212,7 +1270,7 @@ mod tests_edge_cases {
                 content: "test".to_string(),
                 signature: None,
             },
-            tokens_in: None,  // Missing token data
+            tokens_in: None, // Missing token data
             tokens_out: None,
             tokens_cached: None,
         }];
@@ -1364,7 +1422,10 @@ mod tests_edge_cases {
         let now = Utc::now();
         let intervals = vec![
             (now, now + chrono::Duration::milliseconds(100)),
-            (now + chrono::Duration::milliseconds(200), now + chrono::Duration::milliseconds(300)),
+            (
+                now + chrono::Duration::milliseconds(200),
+                now + chrono::Duration::milliseconds(300),
+            ),
         ];
 
         let batches = detect_parallel_batches(&intervals);
@@ -1378,8 +1439,14 @@ mod tests_edge_cases {
         let now = Utc::now();
         let intervals = vec![
             (now, now + chrono::Duration::milliseconds(500)),
-            (now + chrono::Duration::milliseconds(100), now + chrono::Duration::milliseconds(200)),
-            (now + chrono::Duration::milliseconds(300), now + chrono::Duration::milliseconds(400)),
+            (
+                now + chrono::Duration::milliseconds(100),
+                now + chrono::Duration::milliseconds(200),
+            ),
+            (
+                now + chrono::Duration::milliseconds(300),
+                now + chrono::Duration::milliseconds(400),
+            ),
         ];
 
         let batches = detect_parallel_batches(&intervals);
@@ -1603,8 +1670,14 @@ mod tests_edge_cases {
 
         let analysis = analyze_trajectory(&trajectory);
 
-        assert_eq!(analysis.cost.tokens_by_step_type.get("thinking"), Some(&100));
-        assert_eq!(analysis.cost.tokens_by_step_type.get("assistant"), Some(&50));
+        assert_eq!(
+            analysis.cost.tokens_by_step_type.get("thinking"),
+            Some(&100)
+        );
+        assert_eq!(
+            analysis.cost.tokens_by_step_type.get("assistant"),
+            Some(&50)
+        );
         assert_eq!(analysis.cost.tokens_by_step_type.get("user"), Some(&25));
     }
 
@@ -1671,10 +1744,12 @@ pub fn calculate_velocity(
     let mut key_metrics = Vec::new();
 
     // Key metrics to track for velocity
-    let key_metric_names = ["tool_error_rate",
+    let key_metric_names = [
+        "tool_error_rate",
         "completion_rate",
         "cost_per_issue",
-        "duration_per_issue"];
+        "duration_per_issue",
+    ];
 
     for trend in trends {
         // Only include key metrics in the snapshot

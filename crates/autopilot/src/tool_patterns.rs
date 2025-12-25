@@ -75,7 +75,7 @@ pub fn detect_tool_patterns(db: &MetricsDb, min_calls: usize) -> Result<Vec<Tool
     let rows = stmt.query_map([], |row| {
         Ok((
             row.get::<_, String>(0)?,
-            row.get::<_, i32>(1)? != 0, // success
+            row.get::<_, i32>(1)? != 0,       // success
             row.get::<_, Option<String>>(2)?, // error_type
         ))
     })?;
@@ -83,7 +83,9 @@ pub fn detect_tool_patterns(db: &MetricsDb, min_calls: usize) -> Result<Vec<Tool
     for row in rows {
         let (tool_name, success, error_type) = row?;
 
-        let entry = tool_stats.entry(tool_name.clone()).or_insert((0, 0, HashMap::new()));
+        let entry = tool_stats
+            .entry(tool_name.clone())
+            .or_insert((0, 0, HashMap::new()));
         entry.0 += 1; // total calls
 
         if !success {
@@ -119,7 +121,9 @@ pub fn detect_tool_patterns(db: &MetricsDb, min_calls: usize) -> Result<Vec<Tool
             // Determine primary error type
             let primary_error = if error_rate > 0.10 {
                 "HighErrorRate".to_string()
-            } else if let Some((err_type, _)) = error_breakdown.iter().max_by_key(|(_, count)| *count) {
+            } else if let Some((err_type, _)) =
+                error_breakdown.iter().max_by_key(|(_, count)| *count)
+            {
                 err_type.clone()
             } else {
                 "Unknown".to_string()
@@ -139,7 +143,8 @@ pub fn detect_tool_patterns(db: &MetricsDb, min_calls: usize) -> Result<Vec<Tool
 
     // Sort by severity and error rate
     patterns.sort_by(|a, b| {
-        b.severity().cmp(&a.severity())
+        b.severity()
+            .cmp(&a.severity())
             .then_with(|| b.error_rate.partial_cmp(&a.error_rate).unwrap())
     });
 
@@ -147,7 +152,10 @@ pub fn detect_tool_patterns(db: &MetricsDb, min_calls: usize) -> Result<Vec<Tool
 }
 
 /// Detect specific error type patterns (EISDIR, ENOENT, etc.)
-pub fn detect_error_type_patterns(db: &MetricsDb, min_occurrences: usize) -> Result<Vec<(String, usize, Vec<String>)>> {
+pub fn detect_error_type_patterns(
+    db: &MetricsDb,
+    min_occurrences: usize,
+) -> Result<Vec<(String, usize, Vec<String>)>> {
     let conn = get_connection(db)?;
 
     let mut stmt = conn.prepare(
@@ -166,7 +174,8 @@ pub fn detect_error_type_patterns(db: &MetricsDb, min_occurrences: usize) -> Res
             let error_type: String = row.get(0)?;
             let count: usize = row.get(1)?;
             let tools_str: String = row.get(2)?;
-            let tools: Vec<String> = tools_str.split(',')
+            let tools: Vec<String> = tools_str
+                .split(',')
                 .map(|s| s.to_string())
                 .collect::<std::collections::HashSet<_>>()
                 .into_iter()
@@ -236,7 +245,10 @@ pub fn generate_tool_pattern_description(pattern: &ToolErrorPattern) -> String {
     desc.push_str("## Statistics\n\n");
     desc.push_str(&format!("- **Total Calls**: {}\n", pattern.total_calls));
     desc.push_str(&format!("- **Failed Calls**: {}\n", pattern.failed_calls));
-    desc.push_str(&format!("- **Error Rate**: {:.1}%\n", pattern.error_rate * 100.0));
+    desc.push_str(&format!(
+        "- **Error Rate**: {:.1}%\n",
+        pattern.error_rate * 100.0
+    ));
     desc.push_str(&format!("- **Severity**: {:?}\n\n", pattern.severity()));
 
     if !pattern.error_breakdown.is_empty() {
@@ -246,7 +258,10 @@ pub fn generate_tool_pattern_description(pattern: &ToolErrorPattern) -> String {
 
         for (error_type, count) in errors {
             let percentage = (*count as f64 / pattern.failed_calls as f64) * 100.0;
-            desc.push_str(&format!("- **{}**: {} ({:.1}% of failures)\n", error_type, count, percentage));
+            desc.push_str(&format!(
+                "- **{}**: {} ({:.1}% of failures)\n",
+                error_type, count, percentage
+            ));
         }
         desc.push_str("\n");
     }
@@ -287,35 +302,39 @@ fn generate_root_cause(pattern: &ToolErrorPattern) -> String {
                 "Files are being read before they exist or with incorrect paths. This suggests:\n\
                 - Race conditions between file creation and reading\n\
                 - Incorrect path construction or resolution\n\
-                - Missing error handling for non-existent files\n".to_string()
+                - Missing error handling for non-existent files\n"
+                    .to_string()
             } else {
                 "Generic Read tool failures. Investigate specific error types.\n".to_string()
             }
         }
-        "Write" | "Edit" => {
-            "File modification failures. Common causes:\n\
+        "Write" | "Edit" => "File modification failures. Common causes:\n\
             - Permission issues\n\
             - Invalid file paths\n\
-            - Attempting to edit files that haven't been read first\n".to_string()
-        }
+            - Attempting to edit files that haven't been read first\n"
+            .to_string(),
         "Bash" => {
             if pattern.error_breakdown.contains_key("NonZeroExit") {
                 "Commands are exiting with non-zero status. This suggests:\n\
                 - Commands are failing due to invalid arguments\n\
                 - Required tools or files are missing\n\
-                - Commands need better error handling\n".to_string()
+                - Commands need better error handling\n"
+                    .to_string()
             } else {
-                "Bash command execution failures. Review command construction and validation.\n".to_string()
+                "Bash command execution failures. Review command construction and validation.\n"
+                    .to_string()
             }
         }
-        "Glob" => {
-            "File pattern matching failures. This suggests:\n\
+        "Glob" => "File pattern matching failures. This suggests:\n\
             - Invalid glob patterns\n\
             - Searching in non-existent directories\n\
-            - Pattern syntax errors\n".to_string()
-        }
+            - Pattern syntax errors\n"
+            .to_string(),
         _ => {
-            format!("High error rate for {} tool. Requires investigation.\n", pattern.tool_name)
+            format!(
+                "High error rate for {} tool. Requires investigation.\n",
+                pattern.tool_name
+            )
         }
     }
 }
@@ -332,25 +351,27 @@ fn generate_tool_fix(pattern: &ToolErrorPattern) -> String {
                    ```\n\
                 2. Update system prompt to clarify when to use Glob vs Read\n\
                 3. Add validation in Read tool implementation\n\
-                4. Consider auto-converting directory reads to `ls` commands\n".to_string()
+                4. Consider auto-converting directory reads to `ls` commands\n"
+                    .to_string()
             } else if pattern.error_breakdown.contains_key("ENOENT") {
                 "1. Add file existence check before Read calls\n\
                 2. Improve error messages to suggest using Glob first\n\
                 3. Add retry logic with delay for race conditions\n\
-                4. Update system prompt about checking file existence\n".to_string()
+                4. Update system prompt about checking file existence\n"
+                    .to_string()
             } else {
                 "1. Review Read tool error logs for patterns\n\
                 2. Add better error messages with suggested fixes\n\
-                3. Improve path validation and normalization\n".to_string()
+                3. Improve path validation and normalization\n"
+                    .to_string()
             }
         }
-        "Bash" => {
-            "1. Add command validation before execution\n\
+        "Bash" => "1. Add command validation before execution\n\
             2. Improve error messages to include command output\n\
             3. Add retry logic for transient failures\n\
             4. Update system prompt about command construction\n\
-            5. Consider adding a whitelist of safe commands\n".to_string()
-        }
+            5. Consider adding a whitelist of safe commands\n"
+            .to_string(),
         _ => {
             format!(
                 "1. Review {} tool implementation for bugs\n\
@@ -382,8 +403,7 @@ fn generate_investigation_commands(pattern: &ToolErrorPattern) -> String {
         FROM sessions s WHERE s.tool_errors > 5 \
         ORDER BY error_rate DESC LIMIT 10\"\n\
         ```\n",
-        pattern.tool_name,
-        pattern.tool_name
+        pattern.tool_name, pattern.tool_name
     )
 }
 
@@ -394,7 +414,8 @@ pub fn generate_tool_pattern_priority(pattern: &ToolErrorPattern) -> String {
         ToolErrorSeverity::High => "high",
         ToolErrorSeverity::Medium => "medium",
         ToolErrorSeverity::Low => "low",
-    }.to_string()
+    }
+    .to_string()
 }
 
 /// Get database connection (helper)
@@ -445,7 +466,11 @@ mod tests {
                 tool_name: "Read".to_string(),
                 duration_ms: 100,
                 success: i >= 5, // First 5 fail
-                error_type: if i < 5 { Some("EISDIR".to_string()) } else { None },
+                error_type: if i < 5 {
+                    Some("EISDIR".to_string())
+                } else {
+                    None
+                },
                 tokens_in: 10,
                 tokens_out: 5,
             };

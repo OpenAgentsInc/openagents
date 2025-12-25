@@ -8,11 +8,13 @@ use std::path::Path;
 
 /// Load a trajectory from a JSON file
 pub fn load_trajectory(path: &Path) -> Result<Trajectory> {
-    let content = std::fs::read_to_string(path)
-        .context(format!("Failed to read trajectory file: {}", path.display()))?;
+    let content = std::fs::read_to_string(path).context(format!(
+        "Failed to read trajectory file: {}",
+        path.display()
+    ))?;
 
-    let trajectory: Trajectory = serde_json::from_str(&content)
-        .context("Failed to parse trajectory JSON")?;
+    let trajectory: Trajectory =
+        serde_json::from_str(&content).context("Failed to parse trajectory JSON")?;
 
     Ok(trajectory)
 }
@@ -46,11 +48,16 @@ pub fn interactive_replay(trajectory: &Trajectory) -> Result<()> {
         println!("{}", "=".repeat(80).dimmed());
         println!(
             "{} {} | {} {} | {} {} | {} {} | {} {}",
-            "[n]".green().bold(), "next",
-            "[p]".yellow().bold(), "prev",
-            "[g]".blue().bold(), "goto",
-            "[f]".magenta().bold(), "filter",
-            "[q]".red().bold(), "quit"
+            "[n]".green().bold(),
+            "next",
+            "[p]".yellow().bold(),
+            "prev",
+            "[g]".blue().bold(),
+            "goto",
+            "[f]".magenta().bold(),
+            "filter",
+            "[q]".red().bold(),
+            "quit"
         );
         print!("{} ", "Command:".cyan());
         io::stdout().flush()?;
@@ -100,13 +107,21 @@ fn print_trajectory_header(trajectory: &Trajectory) {
     println!("{}", "=".repeat(80).dimmed());
     println!("{} {}", "Session:".dimmed(), trajectory.session_id);
     println!("{} {}", "Model:".dimmed(), trajectory.model);
-    println!("{} {}", "Prompt:".dimmed(), truncate(&trajectory.prompt, 100));
+    println!(
+        "{} {}",
+        "Prompt:".dimmed(),
+        truncate(&trajectory.prompt, 100)
+    );
     println!("{} {}", "CWD:".dimmed(), trajectory.cwd);
     println!("{} {}", "Commit:".dimmed(), trajectory.repo_sha);
     if let Some(ref branch) = trajectory.branch {
         println!("{} {}", "Branch:".dimmed(), branch);
     }
-    println!("{} {}", "Started:".dimmed(), trajectory.started_at.format("%Y-%m-%d %H:%M:%S UTC"));
+    println!(
+        "{} {}",
+        "Started:".dimmed(),
+        trajectory.started_at.format("%Y-%m-%d %H:%M:%S UTC")
+    );
     println!("{}", "=".repeat(80).dimmed());
 }
 
@@ -142,20 +157,41 @@ fn print_step(step: &Step, index: usize, total: usize) {
             println!();
             println!("{}", content);
         }
-        StepType::ToolCall { tool, tool_id, input } => {
-            println!("{} {} {}", "TOOL CALL".blue().bold(), "→".dimmed(), tool.bright_blue());
+        StepType::ToolCall {
+            tool,
+            tool_id,
+            input,
+        } => {
+            println!(
+                "{} {} {}",
+                "TOOL CALL".blue().bold(),
+                "→".dimmed(),
+                tool.bright_blue()
+            );
             println!("{} {}", "ID:".dimmed(), &tool_id[..tool_id.len().min(12)]);
             println!();
             println!("{}", "Input:".dimmed());
-            println!("{}", serde_json::to_string_pretty(input).unwrap_or_default());
+            println!(
+                "{}",
+                serde_json::to_string_pretty(input).unwrap_or_default()
+            );
         }
-        StepType::ToolResult { tool_id, success, output } => {
+        StepType::ToolResult {
+            tool_id,
+            success,
+            output,
+        } => {
             let status = if *success {
                 "SUCCESS".green()
             } else {
                 "FAILED".red()
             };
-            println!("{} {} {}", "TOOL RESULT".magenta().bold(), "→".dimmed(), status);
+            println!(
+                "{} {} {}",
+                "TOOL RESULT".magenta().bold(),
+                "→".dimmed(),
+                status
+            );
             println!("{} {}", "ID:".dimmed(), &tool_id[..tool_id.len().min(12)]);
             println!();
             if let Some(out) = output {
@@ -171,14 +207,25 @@ fn print_step(step: &Step, index: usize, total: usize) {
         StepType::SystemStatus { status } => {
             println!("{} {}", "SYSTEM STATUS".bright_black().bold(), status);
         }
-        StepType::Subagent { agent_id, agent_type, status, summary } => {
+        StepType::Subagent {
+            agent_id,
+            agent_type,
+            status,
+            summary,
+        } => {
             use crate::trajectory::SubagentStatus;
             let status_str = match status {
                 SubagentStatus::Started => "started".yellow(),
                 SubagentStatus::Done => "done".green(),
                 SubagentStatus::Error => "error".red(),
             };
-            println!("{} {}:{} [{}]", "SUBAGENT".bright_cyan().bold(), agent_type, agent_id, status_str);
+            println!(
+                "{} {}:{} [{}]",
+                "SUBAGENT".bright_cyan().bold(),
+                agent_type,
+                agent_id,
+                status_str
+            );
             if let Some(s) = summary {
                 println!("{}", "Summary:".dimmed());
                 println!("{}", s);
@@ -233,7 +280,9 @@ fn filter_view(trajectory: &Trajectory) -> Result<()> {
     print_trajectory_header(trajectory);
     println!();
 
-    let filtered: Vec<_> = trajectory.steps.iter()
+    let filtered: Vec<_> = trajectory
+        .steps
+        .iter()
         .enumerate()
         .filter(|(_, s)| filter(s))
         .collect();
@@ -260,21 +309,33 @@ fn print_step_compact(step: &Step, step_num: usize) {
         StepType::User { .. } => "USER".cyan(),
         StepType::Assistant { .. } => "ASST".green(),
         StepType::Thinking { .. } => "THINK".yellow(),
-        StepType::ToolCall { tool, .. } => return println!(
-            "[{}] {} {} {}",
-            step_num,
-            "TOOL".blue(),
-            "→".dimmed(),
-            tool.bright_blue()
-        ),
+        StepType::ToolCall { tool, .. } => {
+            return println!(
+                "[{}] {} {} {}",
+                step_num,
+                "TOOL".blue(),
+                "→".dimmed(),
+                tool.bright_blue()
+            );
+        }
         StepType::ToolResult { success, .. } => {
             let status = if *success { "OK".green() } else { "FAIL".red() };
             return println!("[{}] {} {}", step_num, "RESULT".magenta(), status);
         }
         StepType::SystemInit { .. } => "INIT".bright_black(),
         StepType::SystemStatus { .. } => "STATUS".bright_black(),
-        StepType::Subagent { agent_id, agent_type, .. } => {
-            return println!("[{}] {} {}:{}", step_num, "SUBAGENT".bright_cyan(), agent_type, agent_id);
+        StepType::Subagent {
+            agent_id,
+            agent_type,
+            ..
+        } => {
+            return println!(
+                "[{}] {} {}:{}",
+                step_num,
+                "SUBAGENT".bright_cyan(),
+                agent_type,
+                agent_id
+            );
         }
     };
 
@@ -289,9 +350,9 @@ fn print_step_compact(step: &Step, step_num: usize) {
 fn print_trajectory_summary(trajectory: &Trajectory) {
     println!();
     println!("{}", "Summary".cyan().bold());
-    println!("  Tokens:   {} in / {} out",
-        trajectory.usage.input_tokens,
-        trajectory.usage.output_tokens
+    println!(
+        "  Tokens:   {} in / {} out",
+        trajectory.usage.input_tokens, trajectory.usage.output_tokens
     );
     println!("  Cached:   {}", trajectory.usage.cache_read_tokens);
     println!("  Cost:     ${:.4}", trajectory.usage.cost_usd);
@@ -302,7 +363,11 @@ fn print_trajectory_summary(trajectory: &Trajectory) {
         println!("  Turns:    {}", result.num_turns);
         println!(
             "  Success:  {}",
-            if result.success { "yes".green() } else { "no".red() }
+            if result.success {
+                "yes".green()
+            } else {
+                "no".red()
+            }
         );
 
         if !result.errors.is_empty() {
@@ -355,21 +420,29 @@ pub fn compare_trajectories(path1: &Path, path2: &Path) -> Result<()> {
     println!("{}", "=".repeat(120).dimmed());
 
     // Compare metadata
-    println!("{:<50} {:<50}", "Trajectory 1".yellow().bold(), "Trajectory 2".blue().bold());
+    println!(
+        "{:<50} {:<50}",
+        "Trajectory 1".yellow().bold(),
+        "Trajectory 2".blue().bold()
+    );
     println!("{}", "-".repeat(120).dimmed());
-    println!("{:<50} {:<50}",
+    println!(
+        "{:<50} {:<50}",
         format!("Session: {}", &traj1.session_id[..20]),
         format!("Session: {}", &traj2.session_id[..20])
     );
-    println!("{:<50} {:<50}",
+    println!(
+        "{:<50} {:<50}",
         format!("Model: {}", traj1.model),
         format!("Model: {}", traj2.model)
     );
-    println!("{:<50} {:<50}",
+    println!(
+        "{:<50} {:<50}",
         format!("Prompt: {}", truncate(&traj1.prompt, 40)),
         format!("Prompt: {}", truncate(&traj2.prompt, 40))
     );
-    println!("{:<50} {:<50}",
+    println!(
+        "{:<50} {:<50}",
         format!("Started: {}", traj1.started_at.format("%Y-%m-%d %H:%M:%S")),
         format!("Started: {}", traj2.started_at.format("%Y-%m-%d %H:%M:%S"))
     );
@@ -379,40 +452,62 @@ pub fn compare_trajectories(path1: &Path, path2: &Path) -> Result<()> {
     println!("{}", "-".repeat(120).dimmed());
 
     // Compare usage
-    println!("{:<50} {:<50}",
+    println!(
+        "{:<50} {:<50}",
         format!("Input tokens: {}", traj1.usage.input_tokens),
         format!("Input tokens: {}", traj2.usage.input_tokens)
     );
-    println!("{:<50} {:<50}",
+    println!(
+        "{:<50} {:<50}",
         format!("Output tokens: {}", traj1.usage.output_tokens),
         format!("Output tokens: {}", traj2.usage.output_tokens)
     );
-    println!("{:<50} {:<50}",
+    println!(
+        "{:<50} {:<50}",
         format!("Cached tokens: {}", traj1.usage.cache_read_tokens),
         format!("Cached tokens: {}", traj2.usage.cache_read_tokens)
     );
-    println!("{:<50} {:<50}",
+    println!(
+        "{:<50} {:<50}",
         format!("Cost: ${:.4}", traj1.usage.cost_usd),
         format!("Cost: ${:.4}", traj2.usage.cost_usd)
     );
-    println!("{:<50} {:<50}",
+    println!(
+        "{:<50} {:<50}",
         format!("Total steps: {}", traj1.steps.len()),
         format!("Total steps: {}", traj2.steps.len())
     );
 
     // Compare results
     if let (Some(r1), Some(r2)) = (&traj1.result, &traj2.result) {
-        println!("{:<50} {:<50}",
+        println!(
+            "{:<50} {:<50}",
             format!("Duration: {}ms", r1.duration_ms),
             format!("Duration: {}ms", r2.duration_ms)
         );
-        println!("{:<50} {:<50}",
+        println!(
+            "{:<50} {:<50}",
             format!("Turns: {}", r1.num_turns),
             format!("Turns: {}", r2.num_turns)
         );
-        println!("{:<50} {:<50}",
-            format!("Success: {}", if r1.success { "yes".green() } else { "no".red() }),
-            format!("Success: {}", if r2.success { "yes".green() } else { "no".red() })
+        println!(
+            "{:<50} {:<50}",
+            format!(
+                "Success: {}",
+                if r1.success {
+                    "yes".green()
+                } else {
+                    "no".red()
+                }
+            ),
+            format!(
+                "Success: {}",
+                if r2.success {
+                    "yes".green()
+                } else {
+                    "no".red()
+                }
+            )
         );
     }
 
@@ -424,11 +519,17 @@ pub fn compare_trajectories(path1: &Path, path2: &Path) -> Result<()> {
     let counts1 = count_step_types(&traj1);
     let counts2 = count_step_types(&traj2);
 
-    println!("{:<30} {:<20} {:<20}", "Type", "Trajectory 1", "Trajectory 2");
+    println!(
+        "{:<30} {:<20} {:<20}",
+        "Type", "Trajectory 1", "Trajectory 2"
+    );
     println!("{:<30} {:<20} {:<20}", "Thinking", counts1.0, counts2.0);
     println!("{:<30} {:<20} {:<20}", "Tool Calls", counts1.1, counts2.1);
     println!("{:<30} {:<20} {:<20}", "Tool Results", counts1.2, counts2.2);
-    println!("{:<30} {:<20} {:<20}", "Assistant Responses", counts1.3, counts2.3);
+    println!(
+        "{:<30} {:<20} {:<20}",
+        "Assistant Responses", counts1.3, counts2.3
+    );
 
     // Show tool usage comparison
     println!();
@@ -443,7 +544,10 @@ pub fn compare_trajectories(path1: &Path, path2: &Path) -> Result<()> {
     all_tools.sort();
     all_tools.dedup();
 
-    println!("{:<30} {:<20} {:<20}", "Tool", "Trajectory 1", "Trajectory 2");
+    println!(
+        "{:<30} {:<20} {:<20}",
+        "Tool", "Trajectory 1", "Trajectory 2"
+    );
     for tool in all_tools {
         let count1 = tools1.get(tool).unwrap_or(&0);
         let count2 = tools2.get(tool).unwrap_or(&0);

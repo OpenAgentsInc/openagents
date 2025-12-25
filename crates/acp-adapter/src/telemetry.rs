@@ -108,19 +108,23 @@ impl ApmTelemetry {
 
             // Get the start time if we tracked it
             let start = self.in_flight.write().await.remove(&tool_id);
-            let duration_ms = start
-                .map(|s| s.elapsed().as_millis() as u64)
-                .unwrap_or(0);
+            let duration_ms = start.map(|s| s.elapsed().as_millis() as u64).unwrap_or(0);
 
             // Determine action type from tool title
-            let action_type = update.fields.title.clone().unwrap_or_else(|| "Unknown".to_string());
+            let action_type = update
+                .fields
+                .title
+                .clone()
+                .unwrap_or_else(|| "Unknown".to_string());
 
             // Determine success/failure from status
             let (success, error) = match update.fields.status {
                 Some(acp::ToolCallStatus::Completed) => (true, None),
                 Some(acp::ToolCallStatus::Failed) => {
                     // Error message is in raw_output when status is Failed
-                    let error_msg = update.fields.raw_output
+                    let error_msg = update
+                        .fields
+                        .raw_output
                         .as_ref()
                         .and_then(|v| v.as_str())
                         .map(String::from);
@@ -251,9 +255,9 @@ mod tests {
         let session_id = acp::SessionId::new("test-session");
         let notification = acp::SessionNotification::new(
             session_id,
-            acp::SessionUpdate::UserMessageChunk(acp::ContentChunk::new(
-                acp::ContentBlock::Text(acp::TextContent::new("Hello".to_string())),
-            )),
+            acp::SessionUpdate::UserMessageChunk(acp::ContentChunk::new(acp::ContentBlock::Text(
+                acp::TextContent::new("Hello".to_string()),
+            ))),
         );
 
         telemetry.process_notification(&notification).await;

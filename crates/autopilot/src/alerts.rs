@@ -5,7 +5,7 @@
 
 use anyhow::{Context, Result};
 use chrono::{DateTime, Utc};
-use rusqlite::{params, Connection, OptionalExtension};
+use rusqlite::{Connection, OptionalExtension, params};
 use serde::{Deserialize, Serialize};
 use std::fs::OpenOptions;
 use std::io::Write;
@@ -152,11 +152,7 @@ pub fn init_alerts_schema(conn: &Connection) -> Result<()> {
 
 /// Add default alert rules if none exist
 pub fn add_default_alerts(conn: &Connection) -> Result<()> {
-    let count: i64 = conn.query_row(
-        "SELECT COUNT(*) FROM alert_rules",
-        [],
-        |row| row.get(0),
-    )?;
+    let count: i64 = conn.query_row("SELECT COUNT(*) FROM alert_rules", [], |row| row.get(0))?;
 
     if count == 0 {
         let now = Utc::now().to_rfc3339();
@@ -467,8 +463,8 @@ pub fn get_alert_history(
 /// Log alert to stdout with color-coded severity
 pub fn log_alert_to_stdout(alert: &FiredAlert) {
     let color = match alert.severity {
-        AlertSeverity::Warning => "\x1b[33m", // Yellow
-        AlertSeverity::Error => "\x1b[31m",   // Red
+        AlertSeverity::Warning => "\x1b[33m",    // Yellow
+        AlertSeverity::Error => "\x1b[31m",      // Red
         AlertSeverity::Critical => "\x1b[1;31m", // Bold red
     };
     let reset = "\x1b[0m";
@@ -516,7 +512,8 @@ mod tests {
         conn.execute(
             "CREATE TABLE IF NOT EXISTS baselines (dimension TEXT PRIMARY KEY, mean REAL)",
             [],
-        ).unwrap();
+        )
+        .unwrap();
 
         conn
     }

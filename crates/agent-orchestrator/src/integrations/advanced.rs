@@ -93,9 +93,7 @@ impl AgentIdentity {
     }
 
     pub fn is_threshold_protected(&self) -> bool {
-        self.threshold_config
-            .as_ref()
-            .is_some_and(|c| c.is_valid())
+        self.threshold_config.as_ref().is_some_and(|c| c.is_valid())
     }
 }
 
@@ -191,8 +189,7 @@ impl MultiBackendRouter {
     }
 
     pub fn route_agent(mut self, agent_name: &str, provider: BackendProvider) -> Self {
-        self.agent_backends
-            .insert(agent_name.to_string(), provider);
+        self.agent_backends.insert(agent_name.to_string(), provider);
         self
     }
 
@@ -203,9 +200,7 @@ impl MultiBackendRouter {
             .copied()
             .unwrap_or(self.default_backend);
 
-        self.backends
-            .get(&provider)
-            .filter(|b| b.enabled)
+        self.backends.get(&provider).filter(|b| b.enabled)
     }
 
     pub fn list_enabled(&self) -> Vec<BackendProvider> {
@@ -391,7 +386,10 @@ impl Hook for CostTrackingHook {
                         message: format!("Daily budget exceeded for agent '{}'", agent),
                     };
                 }
-                BudgetStatus::Warning { session_pct, daily_pct } => {
+                BudgetStatus::Warning {
+                    session_pct,
+                    daily_pct,
+                } => {
                     tracing::warn!(
                         "Budget warning for '{}': session {}%, daily {}%",
                         agent,
@@ -631,10 +629,7 @@ mod tests {
             .map(|d| d.as_secs())
             .unwrap_or(0);
 
-        assert_eq!(
-            tracker.check_budget("test-agent", now),
-            BudgetStatus::Ok
-        );
+        assert_eq!(tracker.check_budget("test-agent", now), BudgetStatus::Ok);
 
         for i in 0..5 {
             let record = CostRecord {
@@ -670,7 +665,8 @@ mod tests {
 
     #[test]
     fn test_autonomy_requires_approval() {
-        let supervised = AgentIdentity::new("pk", "A", "m").with_autonomy(AutonomyLevel::Supervised);
+        let supervised =
+            AgentIdentity::new("pk", "A", "m").with_autonomy(AutonomyLevel::Supervised);
         let coord_s = SolverAgentCoordinator::new(supervised);
         assert!(coord_s.requires_approval("any", 1));
 

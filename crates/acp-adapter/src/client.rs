@@ -279,9 +279,9 @@ impl OpenAgentsClient {
             )));
         }
 
-        let content = tokio::fs::read_to_string(&canonical)
-            .await
-            .map_err(|e| AcpError::FileError(format!("Failed to read {}: {}", path.display(), e)))?;
+        let content = tokio::fs::read_to_string(&canonical).await.map_err(|e| {
+            AcpError::FileError(format!("Failed to read {}: {}", path.display(), e))
+        })?;
 
         Ok(acp::ReadTextFileResponse::new(content))
     }
@@ -294,9 +294,9 @@ impl OpenAgentsClient {
         let path = &request.path;
 
         // Security: Ensure path is within root_dir (for new files, check parent)
-        let parent = path.parent().ok_or_else(|| {
-            AcpError::FileError("Invalid path: no parent directory".to_string())
-        })?;
+        let parent = path
+            .parent()
+            .ok_or_else(|| AcpError::FileError("Invalid path: no parent directory".to_string()))?;
 
         let canonical_parent = parent
             .canonicalize()
@@ -311,16 +311,15 @@ impl OpenAgentsClient {
 
         tokio::fs::write(path, &request.content)
             .await
-            .map_err(|e| AcpError::FileError(format!("Failed to write {}: {}", path.display(), e)))?;
+            .map_err(|e| {
+                AcpError::FileError(format!("Failed to write {}: {}", path.display(), e))
+            })?;
 
         Ok(acp::WriteTextFileResponse::new())
     }
 
     /// Handle a session notification from the agent
-    pub async fn session_notification(
-        &self,
-        notification: acp::SessionNotification,
-    ) -> Result<()> {
+    pub async fn session_notification(&self, notification: acp::SessionNotification) -> Result<()> {
         let session_id = notification.session_id.to_string();
 
         let sessions = self.sessions.read().await;

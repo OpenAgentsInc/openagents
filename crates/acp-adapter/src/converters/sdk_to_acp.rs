@@ -26,7 +26,9 @@ pub fn sdk_message_to_notification(
                             return Some(acp::SessionNotification::new(
                                 session_id.clone(),
                                 acp::SessionUpdate::AgentMessageChunk(acp::ContentChunk::new(
-                                    acp::ContentBlock::Text(acp::TextContent::new(text.to_string())),
+                                    acp::ContentBlock::Text(acp::TextContent::new(
+                                        text.to_string(),
+                                    )),
                                 )),
                             ));
                         }
@@ -49,12 +51,13 @@ pub fn sdk_message_to_notification(
                             ));
                         }
                         Some("thinking") => {
-                            let text =
-                                block.get("thinking").and_then(|t| t.as_str()).unwrap_or("");
+                            let text = block.get("thinking").and_then(|t| t.as_str()).unwrap_or("");
                             return Some(acp::SessionNotification::new(
                                 session_id.clone(),
                                 acp::SessionUpdate::AgentThoughtChunk(acp::ContentChunk::new(
-                                    acp::ContentBlock::Text(acp::TextContent::new(text.to_string())),
+                                    acp::ContentBlock::Text(acp::TextContent::new(
+                                        text.to_string(),
+                                    )),
                                 )),
                             ));
                         }

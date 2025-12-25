@@ -2,8 +2,8 @@
 //!
 //! Run with: cargo bench -p autopilot --bench task_execution
 
-use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
-use issues::{db, issue, IssueType, Priority, Status};
+use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
+use issues::{IssueType, Priority, Status, db, issue};
 use rusqlite::Connection;
 use std::hint::black_box;
 use tempfile::TempDir;

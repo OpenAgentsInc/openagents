@@ -4,14 +4,14 @@
 //! following the ACP protocol specification.
 
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 
-use serde::{de::DeserializeOwned, Serialize};
+use serde::{Serialize, de::DeserializeOwned};
 use serde_json::Value;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::{ChildStdin, ChildStdout};
-use tokio::sync::{mpsc, oneshot, Mutex};
+use tokio::sync::{Mutex, mpsc, oneshot};
 
 use crate::error::{AcpError, Result};
 
@@ -122,7 +122,10 @@ impl StdioTransport {
                                             tracing::warn!(id = id, "Response receiver dropped");
                                         }
                                     } else {
-                                        tracing::warn!(id = id, "Received response for unknown request");
+                                        tracing::warn!(
+                                            id = id,
+                                            "Received response for unknown request"
+                                        );
                                     }
                                 } else {
                                     // This is a notification
@@ -152,7 +155,10 @@ impl StdioTransport {
             // Clean up pending requests
             let mut pending = pending.lock().await;
             for (id, sender) in pending.drain() {
-                tracing::debug!(id = id, "Cancelling pending request due to connection close");
+                tracing::debug!(
+                    id = id,
+                    "Cancelling pending request due to connection close"
+                );
                 let _ = sender.send(Err(AcpError::ConnectionClosed));
             }
         });
@@ -199,9 +205,7 @@ impl StdioTransport {
         }
 
         // Wait for response
-        let result = rx
-            .await
-            .map_err(|_| AcpError::ConnectionClosed)??;
+        let result = rx.await.map_err(|_| AcpError::ConnectionClosed)??;
 
         // Deserialize response
         serde_json::from_value(result).map_err(|e| AcpError::SerializationError(e))

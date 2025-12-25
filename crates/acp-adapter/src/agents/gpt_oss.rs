@@ -4,9 +4,9 @@
 
 use std::path::{Path, PathBuf};
 
+use crate::AgentCommand;
 use crate::connection::AcpAgentConnection;
 use crate::error::{AcpError, Result};
-use crate::AgentCommand;
 
 /// Configuration for GPT-OSS agent
 #[derive(Debug, Clone)]
@@ -109,10 +109,13 @@ impl GptOssAgentConfig {
 /// Connect to GPT-OSS agent
 ///
 /// Spawns the openagents CLI with GPT-OSS as a subprocess and establishes an ACP connection.
-pub async fn connect_gpt_oss(config: GptOssAgentConfig, root_dir: &Path) -> Result<AcpAgentConnection> {
-    let executable = config
-        .executable_path
-        .unwrap_or_else(|| find_openagents_executable().unwrap_or_else(|| PathBuf::from("openagents")));
+pub async fn connect_gpt_oss(
+    config: GptOssAgentConfig,
+    root_dir: &Path,
+) -> Result<AcpAgentConnection> {
+    let executable = config.executable_path.unwrap_or_else(|| {
+        find_openagents_executable().unwrap_or_else(|| PathBuf::from("openagents"))
+    });
 
     if !executable.exists() && which::which("openagents").is_err() {
         return Err(AcpError::AgentNotFound(

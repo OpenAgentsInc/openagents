@@ -209,8 +209,8 @@ impl Hook for DangerousToolBlockerHook {
 mod tests {
     use super::*;
     use std::collections::HashMap;
-    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
     use std::sync::Arc;
+    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
     fn make_tool_call(name: &str) -> ToolCall {
         ToolCall {

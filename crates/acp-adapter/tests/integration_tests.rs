@@ -14,8 +14,8 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 
 use acp_adapter::{
-    acp, AgentCommand, AllowAllPermissions, AcpAgentConnection, DenyAllPermissions,
-    OpenAgentsClient, PermissionHandler, RlogStreamer, StreamConfig,
+    AcpAgentConnection, AgentCommand, AllowAllPermissions, DenyAllPermissions, OpenAgentsClient,
+    PermissionHandler, RlogStreamer, StreamConfig, acp,
 };
 
 /// Mock agent that implements basic ACP protocol for testing
@@ -422,10 +422,7 @@ async fn test_permission_handler_allow_all() {
     let handler = AllowAllPermissions;
 
     // Create a minimal tool call and options for testing
-    let tool_call = acp::ToolCallUpdate::new(
-        acp::ToolCallId::new("test-call"),
-        Default::default(),
-    );
+    let tool_call = acp::ToolCallUpdate::new(acp::ToolCallId::new("test-call"), Default::default());
 
     let options = vec![acp::PermissionOption::new(
         acp::PermissionOptionId::new("allow-1"),
@@ -446,10 +443,7 @@ async fn test_permission_handler_allow_all() {
 async fn test_permission_handler_deny_all() {
     let handler = DenyAllPermissions;
 
-    let tool_call = acp::ToolCallUpdate::new(
-        acp::ToolCallId::new("test-call"),
-        Default::default(),
-    );
+    let tool_call = acp::ToolCallUpdate::new(acp::ToolCallId::new("test-call"), Default::default());
 
     let options = vec![
         acp::PermissionOption::new(
@@ -487,10 +481,8 @@ async fn test_openagents_client_file_operations() {
     std::fs::write(&test_file, "original content").unwrap();
 
     // Test read
-    let read_req = acp::ReadTextFileRequest::new(
-        acp::SessionId::new("test-session"),
-        test_file.clone(),
-    );
+    let read_req =
+        acp::ReadTextFileRequest::new(acp::SessionId::new("test-session"), test_file.clone());
 
     let read_resp = client.read_text_file(read_req).await.unwrap();
     assert_eq!(read_resp.content, "original content");
@@ -583,22 +575,23 @@ async fn test_command_builder() {
         .env("AGENT_MODE", "test");
 
     assert_eq!(cmd.path, PathBuf::from("/usr/bin/agent"));
-    assert_eq!(
-        cmd.args,
-        vec!["--model", "sonnet", "--verbose", "--debug"]
-    );
+    assert_eq!(cmd.args, vec!["--model", "sonnet", "--verbose", "--debug"]);
     assert_eq!(cmd.env.len(), 2);
-    assert!(cmd.env.contains(&("RUST_LOG".to_string(), "debug".to_string())));
-    assert!(cmd
-        .env
-        .contains(&("AGENT_MODE".to_string(), "test".to_string())));
+    assert!(
+        cmd.env
+            .contains(&("RUST_LOG".to_string(), "debug".to_string()))
+    );
+    assert!(
+        cmd.env
+            .contains(&("AGENT_MODE".to_string(), "test".to_string()))
+    );
 }
 
 #[tokio::test]
 async fn test_telemetry_end_to_end() {
     use acp_adapter::ApmTelemetry;
-    use tempfile::NamedTempFile;
     use rusqlite::Connection;
+    use tempfile::NamedTempFile;
 
     // Create temporary APM database
     let db_file = NamedTempFile::new().unwrap();
@@ -624,7 +617,8 @@ async fn test_telemetry_end_to_end() {
             FOREIGN KEY(session_id) REFERENCES apm_sessions(id)
         );
         "#,
-    ).unwrap();
+    )
+    .unwrap();
 
     // Create APM session
     let session_id = "test-telemetry-session";
@@ -688,9 +682,9 @@ async fn test_telemetry_end_to_end() {
     // 1. User message
     let user_msg = acp::SessionNotification::new(
         acp::SessionId::new(session_id),
-        acp::SessionUpdate::UserMessageChunk(acp::ContentChunk::new(
-            acp::ContentBlock::Text(acp::TextContent::new("Test message".to_string())),
-        )),
+        acp::SessionUpdate::UserMessageChunk(acp::ContentChunk::new(acp::ContentBlock::Text(
+            acp::TextContent::new("Test message".to_string()),
+        ))),
     );
     telemetry.process_notification(&user_msg).await;
 
@@ -698,10 +692,7 @@ async fn test_telemetry_end_to_end() {
     let tool_call_id = acp::ToolCallId::new("read-1");
     let read_start = acp::SessionNotification::new(
         acp::SessionId::new(session_id),
-        acp::SessionUpdate::ToolCall(acp::ToolCall::new(
-            tool_call_id.clone(),
-            "Read".to_string(),
-        )),
+        acp::SessionUpdate::ToolCall(acp::ToolCall::new(tool_call_id.clone(), "Read".to_string())),
     );
     telemetry.process_notification(&read_start).await;
 
@@ -721,10 +712,7 @@ async fn test_telemetry_end_to_end() {
     let bash_call_id = acp::ToolCallId::new("bash-1");
     let bash_start = acp::SessionNotification::new(
         acp::SessionId::new(session_id),
-        acp::SessionUpdate::ToolCall(acp::ToolCall::new(
-            bash_call_id.clone(),
-            "Bash".to_string(),
-        )),
+        acp::SessionUpdate::ToolCall(acp::ToolCall::new(bash_call_id.clone(), "Bash".to_string())),
     );
     telemetry.process_notification(&bash_start).await;
 
@@ -746,7 +734,10 @@ async fn test_telemetry_end_to_end() {
 
     // Wait for telemetry task to finish
     let event_count = telemetry_task.await.unwrap();
-    assert_eq!(event_count, 3, "Should have processed 3 events (1 message, 2 tool calls)");
+    assert_eq!(
+        event_count, 3,
+        "Should have processed 3 events (1 message, 2 tool calls)"
+    );
 
     // Verify events were recorded in APM database
     let conn = Connection::open(db_path).unwrap();

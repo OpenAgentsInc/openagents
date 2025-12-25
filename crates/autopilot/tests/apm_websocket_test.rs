@@ -12,7 +12,7 @@ use rusqlite::Connection;
 use serde_json::Value;
 use tempfile::NamedTempFile;
 use tokio::net::TcpStream;
-use tokio_tungstenite::{connect_async, tungstenite::Message, MaybeTlsStream, WebSocketStream};
+use tokio_tungstenite::{MaybeTlsStream, WebSocketStream, connect_async, tungstenite::Message};
 
 type WsStream = WebSocketStream<MaybeTlsStream<TcpStream>>;
 

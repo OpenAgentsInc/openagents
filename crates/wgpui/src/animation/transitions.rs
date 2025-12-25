@@ -94,3 +94,18 @@ pub fn draw(path_length: f32, duration: Duration, easing: Option<Easing>) -> Tra
         ),
     }
 }
+
+/// Build a basic transition between two values.
+pub fn transition<T: Animatable>(
+    from: T,
+    to: T,
+    duration: Duration,
+    easing: Easing,
+    back: Option<T>,
+) -> Transition<T> {
+    let exit_target = back.unwrap_or(from);
+    Transition {
+        entering: TransitionAnimation::Tween(Animation::new(from, to, duration).easing(easing)),
+        exiting: TransitionAnimation::Tween(Animation::new(to, exit_target, duration).easing(easing)),
+    }
+}

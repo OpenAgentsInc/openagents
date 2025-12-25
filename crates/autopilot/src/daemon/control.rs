@@ -156,7 +156,8 @@ async fn process_request(
     match request {
         ControlRequest::Status => {
             // Read from shared metrics without blocking the supervisor
-            let metrics = shared_metrics.read()
+            let metrics = shared_metrics
+                .read()
                 .map(|guard| guard.clone())
                 .unwrap_or_default();
             ControlResponse::ok_with_data(
@@ -166,10 +167,14 @@ async fn process_request(
         }
         ControlRequest::GetMetrics => {
             // Read from shared metrics without blocking the supervisor
-            let metrics = shared_metrics.read()
+            let metrics = shared_metrics
+                .read()
                 .map(|guard| guard.clone())
                 .unwrap_or_default();
-            ControlResponse::ok_with_data("Metrics retrieved", serde_json::to_value(&metrics).unwrap_or_default())
+            ControlResponse::ok_with_data(
+                "Metrics retrieved",
+                serde_json::to_value(&metrics).unwrap_or_default(),
+            )
         }
         ControlRequest::RestartWorker => {
             let mut guard = supervisor.lock().await;

@@ -120,15 +120,10 @@ pub async fn start_agents(count: usize) -> Result<Vec<AgentInfo>> {
         super::worktree::create_worktrees(&project_root, count)?;
 
         // Build services list
-        let services: Vec<String> = (1..=count)
-            .map(|i| format!("agent-{:03}", i))
-            .collect();
+        let services: Vec<String> = (1..=count).map(|i| format!("agent-{:03}", i)).collect();
 
         // Determine profiles
-        let mut args = vec![
-            "-f".to_string(),
-            compose_file.to_string_lossy().to_string(),
-        ];
+        let mut args = vec!["-f".to_string(), compose_file.to_string_lossy().to_string()];
 
         if count > 3 {
             args.extend(["--profile".to_string(), "extended".to_string()]);
@@ -149,7 +144,9 @@ pub async fn start_agents(count: usize) -> Result<Vec<AgentInfo>> {
         }
 
         Ok(())
-    }).await.context("spawn_blocking failed")??;
+    })
+    .await
+    .context("spawn_blocking failed")??;
 
     // Return agent info
     list_agents().await
@@ -179,7 +176,9 @@ pub async fn stop_agents() -> Result<()> {
         }
 
         Ok(())
-    }).await.context("spawn_blocking failed")??;
+    })
+    .await
+    .context("spawn_blocking failed")??;
 
     Ok(())
 }
@@ -279,7 +278,9 @@ pub async fn list_agents() -> Result<Vec<AgentInfo>> {
         // Sort by ID
         agents.sort_by(|a, b| a.id.cmp(&b.id));
         Ok(agents)
-    }).await.context("spawn_blocking failed")?
+    })
+    .await
+    .context("spawn_blocking failed")?
 }
 
 /// Get logs for a specific agent
@@ -309,7 +310,9 @@ pub async fn get_logs(agent_id: &str, lines: Option<usize>) -> Result<String> {
 
         // Docker logs go to stderr for container stderr
         Ok(format!("{}{}", logs, stderr))
-    }).await.context("spawn_blocking failed")?
+    })
+    .await
+    .context("spawn_blocking failed")?
 }
 
 /// Find project root by looking for Cargo.toml with [workspace]

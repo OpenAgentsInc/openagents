@@ -6,7 +6,7 @@
 
 use anyhow::{Context, Result};
 use nostr::{AgentState, AgentStateContent, KIND_AGENT_STATE};
-use nostr_client::{RelayPool, PoolConfig};
+use nostr_client::{PoolConfig, RelayPool};
 use openagents_spark as spark;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -186,15 +186,10 @@ impl StateManager {
                 if success_count > 0 {
                     eprintln!(
                         "✓ Published agent state {} to {}/{} relays",
-                        event_id,
-                        success_count,
-                        total_count
+                        event_id, success_count, total_count
                     );
                 } else {
-                    eprintln!(
-                        "⚠ Failed to publish agent state {} to any relays",
-                        event_id
-                    );
+                    eprintln!("⚠ Failed to publish agent state {} to any relays", event_id);
                 }
             }
             Err(e) => {
@@ -249,10 +244,7 @@ impl StateManager {
             .context("Failed to subscribe to state events")?;
 
         // Wait for first event with timeout
-        let event = tokio::time::timeout(
-            tokio::time::Duration::from_secs(5),
-            rx.recv()
-        ).await;
+        let event = tokio::time::timeout(tokio::time::Duration::from_secs(5), rx.recv()).await;
 
         // Disconnect from pool
         let _ = pool.disconnect_all().await;
@@ -314,19 +306,16 @@ mod tests {
         // Use a fixed deterministic keypair for testing
         // This is a valid secp256k1 private key
         let secret_key: [u8; 32] = [
-            0xaa, 0xaa, 0xaa, 0xaa, 0xaa, 0xaa, 0xaa, 0xaa,
-            0xaa, 0xaa, 0xaa, 0xaa, 0xaa, 0xaa, 0xaa, 0xaa,
-            0xaa, 0xaa, 0xaa, 0xaa, 0xaa, 0xaa, 0xaa, 0xaa,
-            0xaa, 0xaa, 0xaa, 0xaa, 0xaa, 0xaa, 0xaa, 0xaa,
+            0xaa, 0xaa, 0xaa, 0xaa, 0xaa, 0xaa, 0xaa, 0xaa, 0xaa, 0xaa, 0xaa, 0xaa, 0xaa, 0xaa,
+            0xaa, 0xaa, 0xaa, 0xaa, 0xaa, 0xaa, 0xaa, 0xaa, 0xaa, 0xaa, 0xaa, 0xaa, 0xaa, 0xaa,
+            0xaa, 0xaa, 0xaa, 0xaa,
         ];
 
         // Corresponding compressed public key (02 prefix + x-coordinate)
         let public_key: [u8; 33] = [
-            0x02, 0x50, 0x92, 0x9b, 0x74, 0xc1, 0xa0, 0x49,
-            0x54, 0xb7, 0x8b, 0x4b, 0x60, 0x35, 0xe9, 0x7a,
-            0x5e, 0x07, 0x8a, 0x5a, 0x0f, 0x28, 0xec, 0x96,
-            0xd5, 0x47, 0xbf, 0xee, 0x9a, 0xce, 0x80, 0x3a,
-            0xc0,
+            0x02, 0x50, 0x92, 0x9b, 0x74, 0xc1, 0xa0, 0x49, 0x54, 0xb7, 0x8b, 0x4b, 0x60, 0x35,
+            0xe9, 0x7a, 0x5e, 0x07, 0x8a, 0x5a, 0x0f, 0x28, 0xec, 0x96, 0xd5, 0x47, 0xbf, 0xee,
+            0x9a, 0xce, 0x80, 0x3a, 0xc0,
         ];
 
         (secret_key, public_key)
@@ -403,10 +392,12 @@ mod tests {
         // Try to decrypt with unsupported version
         let result = manager.decrypt_state(&encrypted, 999);
         assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("Failed to decrypt"));
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("Failed to decrypt")
+        );
     }
 
     #[tokio::test]
@@ -447,9 +438,7 @@ mod tests {
         let agent_pubkey = "npub1test";
 
         // Try to fetch (will timeout since no real relay)
-        let result = manager
-            .fetch_state_from_relays(&relays, agent_pubkey)
-            .await;
+        let result = manager.fetch_state_from_relays(&relays, agent_pubkey).await;
 
         // Should succeed with None (timeout)
         assert!(result.is_ok());
@@ -477,5 +466,3 @@ mod tests {
         assert_eq!(decrypted.wallet_balance_sats, 5000);
     }
 }
-
-

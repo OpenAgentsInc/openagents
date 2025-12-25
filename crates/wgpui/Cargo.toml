@@ -36,6 +36,7 @@ bytemuck = { version = "1", features = ["derive"] }
 smallvec = "1"
 slotmap = "1"
 parking_lot = "0.12"
+image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
 
 # Async
 futures = "0.3"
@@ -76,6 +77,15 @@ web-sys = { version = "0.3", optional = true, features = [
     "Performance",
     "Navigator",
     "console",
+    "AudioContext",
+    "AudioBuffer",
+    "AudioBufferSourceNode",
+    "AudioDestinationNode",
+    "AudioNode",
+    "AudioParam",
+    "GainNode",
+    "HtmlAudioElement",
+    "Response",
 ] }
 js-sys = { version = "0.3", optional = true }
 console_error_panic_hook = { version = "0.1", optional = true }
@@ -84,6 +94,10 @@ getrandom = { version = "0.3", features = ["wasm_js"] }
 # Desktop (optional)
 winit = { version = "0.30", optional = true }
 pollster = { version = "0.4", optional = true }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+rodio = "0.20"
+reqwest = { workspace = true, features = ["blocking"] }
 
 [dev-dependencies]
 criterion = "0.5"

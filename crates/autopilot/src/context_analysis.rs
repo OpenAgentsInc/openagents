@@ -141,16 +141,32 @@ impl ContextLossAnalyzer {
             instances.push(ContextLossInstance {
                 context_type: ContextType::IssueContext,
                 session_id: session_id.to_string(),
-                evidence: format!("{} issue/directive refs lost: {:?}", lost_refs.len(), lost_refs),
+                evidence: format!(
+                    "{} issue/directive refs lost: {:?}",
+                    lost_refs.len(),
+                    lost_refs
+                ),
                 impact_severity: 7,
                 caused_failure: false,
             });
         }
 
         // Analyze test result mentions
-        let test_keywords = ["test passed", "test failed", "tests passed", "tests failed", "cargo test"];
-        let tests_before = test_keywords.iter().filter(|&&kw| before_content.contains(kw)).count();
-        let tests_after = test_keywords.iter().filter(|&&kw| after_content.contains(kw)).count();
+        let test_keywords = [
+            "test passed",
+            "test failed",
+            "tests passed",
+            "tests failed",
+            "cargo test",
+        ];
+        let tests_before = test_keywords
+            .iter()
+            .filter(|&&kw| before_content.contains(kw))
+            .count();
+        let tests_after = test_keywords
+            .iter()
+            .filter(|&&kw| after_content.contains(kw))
+            .count();
 
         if tests_before > 0 && tests_after == 0 {
             instances.push(ContextLossInstance {
@@ -164,8 +180,14 @@ impl ContextLossAnalyzer {
 
         // Analyze git context
         let git_keywords = ["git checkout", "git commit", "git push", "branch"];
-        let git_before = git_keywords.iter().filter(|&&kw| before_content.contains(kw)).count();
-        let git_after = git_keywords.iter().filter(|&&kw| after_content.contains(kw)).count();
+        let git_before = git_keywords
+            .iter()
+            .filter(|&&kw| before_content.contains(kw))
+            .count();
+        let git_after = git_keywords
+            .iter()
+            .filter(|&&kw| after_content.contains(kw))
+            .count();
 
         if git_before > 0 && git_after == 0 {
             instances.push(ContextLossInstance {
@@ -193,7 +215,12 @@ impl ContextLossAnalyzer {
                 // Extract path-like strings
                 for word in line.split_whitespace() {
                     if word.contains('/') && (word.contains(".rs") || word.contains(".toml")) {
-                        paths.push(word.trim_matches(|c: char| !c.is_alphanumeric() && c != '/' && c != '.' && c != '_' && c != '-').to_string());
+                        paths.push(
+                            word.trim_matches(|c: char| {
+                                !c.is_alphanumeric() && c != '/' && c != '.' && c != '_' && c != '-'
+                            })
+                            .to_string(),
+                        );
                     }
                 }
             }
@@ -275,12 +302,9 @@ impl ContextLossAnalyzer {
 }
 
 /// Generate improved compaction instructions based on analysis
-pub fn generate_improved_compaction_instructions(
-    report: &ContextLossReport,
-) -> String {
-    let mut instructions = String::from(
-        "Create a handoff-ready summary for autonomous continuation:\n\n"
-    );
+pub fn generate_improved_compaction_instructions(report: &ContextLossReport) -> String {
+    let mut instructions =
+        String::from("Create a handoff-ready summary for autonomous continuation:\n\n");
 
     instructions.push_str("## Core Requirements\n\n");
     instructions.push_str("1. Tasks completed (mark clearly as DONE)\n");
@@ -294,10 +318,7 @@ pub fn generate_improved_compaction_instructions(
 
         for ctx_type in &report.critical_types {
             let freq = report.frequency_by_type.get(ctx_type).unwrap_or(&0);
-            let impact = report
-                .avg_impact_by_type
-                .get(ctx_type)
-                .unwrap_or(&0.0);
+            let impact = report.avg_impact_by_type.get(ctx_type).unwrap_or(&0.0);
 
             instructions.push_str(&format!(
                 "- **{}**: Lost in {} sessions with avg impact {:.1}/10\n",
@@ -311,26 +332,23 @@ pub fn generate_improved_compaction_instructions(
                     instructions.push_str("  → ALWAYS include specific file paths with line numbers (e.g., `src/main.rs:142`)\n");
                 }
                 ContextType::SymbolNames => {
-                    instructions.push_str(
-                        "  → ALWAYS preserve exact function/struct/type names\n",
-                    );
+                    instructions.push_str("  → ALWAYS preserve exact function/struct/type names\n");
                 }
                 ContextType::ErrorDetails => {
                     instructions
                         .push_str("  → ALWAYS include full error messages and stack traces\n");
                 }
                 ContextType::IssueContext => {
-                    instructions.push_str(
-                        "  → ALWAYS mention active issue numbers and directive IDs\n",
-                    );
+                    instructions
+                        .push_str("  → ALWAYS mention active issue numbers and directive IDs\n");
                 }
                 ContextType::TestResults => {
-                    instructions.push_str(
-                        "  → ALWAYS state which tests passed/failed and why\n",
-                    );
+                    instructions.push_str("  → ALWAYS state which tests passed/failed and why\n");
                 }
                 ContextType::ArchitectureDecisions => {
-                    instructions.push_str("  → ALWAYS explain why certain approaches were chosen over alternatives\n");
+                    instructions.push_str(
+                        "  → ALWAYS explain why certain approaches were chosen over alternatives\n",
+                    );
                 }
                 _ => {}
             }
@@ -344,7 +362,9 @@ pub fn generate_improved_compaction_instructions(
     instructions.push_str("- Constraints or requirements\n");
     instructions.push_str("- Recent error messages (if any)\n\n");
 
-    instructions.push_str("Format as a clear action plan that another agent can immediately pick up and continue.");
+    instructions.push_str(
+        "Format as a clear action plan that another agent can immediately pick up and continue.",
+    );
 
     instructions
 }
@@ -404,8 +424,20 @@ mod tests {
 
         let report = ContextLossAnalyzer::generate_report(instances);
         assert_eq!(report.instances.len(), 3);
-        assert_eq!(*report.frequency_by_type.get(&ContextType::FilePaths).unwrap(), 2);
-        assert_eq!(*report.frequency_by_type.get(&ContextType::ErrorDetails).unwrap(), 1);
+        assert_eq!(
+            *report
+                .frequency_by_type
+                .get(&ContextType::FilePaths)
+                .unwrap(),
+            2
+        );
+        assert_eq!(
+            *report
+                .frequency_by_type
+                .get(&ContextType::ErrorDetails)
+                .unwrap(),
+            1
+        );
     }
 
     #[test]

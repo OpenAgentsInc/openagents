@@ -5,9 +5,8 @@
 
 use crate::trajectory::{Step, StepType as AutopilotStepType, Trajectory};
 use nostr::{
-    StepType, TrajectoryEvent, TrajectoryEventContent, TrajectorySession,
-    TrajectorySessionContent, TrajectoryVisibility, KIND_TRAJECTORY_EVENT,
-    KIND_TRAJECTORY_SESSION,
+    KIND_TRAJECTORY_EVENT, KIND_TRAJECTORY_SESSION, StepType, TrajectoryEvent,
+    TrajectoryEventContent, TrajectorySession, TrajectorySessionContent, TrajectoryVisibility,
 };
 use sha2::{Digest, Sha256};
 
@@ -71,7 +70,11 @@ impl TrajectoryPublisher {
                     content = content.with_data("signature", serde_json::json!(sig));
                 }
             }
-            AutopilotStepType::ToolCall { tool, tool_id, input } => {
+            AutopilotStepType::ToolCall {
+                tool,
+                tool_id,
+                input,
+            } => {
                 content = content
                     .with_data("tool", serde_json::json!(tool))
                     .with_data("tool_id", serde_json::json!(tool_id))
@@ -95,7 +98,12 @@ impl TrajectoryPublisher {
             AutopilotStepType::SystemStatus { status } => {
                 content = content.with_data("status", serde_json::json!(status));
             }
-            AutopilotStepType::Subagent { agent_id, agent_type, status, summary } => {
+            AutopilotStepType::Subagent {
+                agent_id,
+                agent_type,
+                status,
+                summary,
+            } => {
                 content = content
                     .with_data("agent_id", serde_json::json!(agent_id))
                     .with_data("agent_type", serde_json::json!(agent_type))
@@ -251,7 +259,13 @@ mod tests {
             "Read"
         );
         assert_eq!(
-            event.content.data.get("tokens_in").unwrap().as_u64().unwrap(),
+            event
+                .content
+                .data
+                .get("tokens_in")
+                .unwrap()
+                .as_u64()
+                .unwrap(),
             100
         );
     }
@@ -275,13 +289,7 @@ mod tests {
 
         assert_eq!(event.content.step_type, StepType::Thinking);
         assert_eq!(
-            event
-                .content
-                .data
-                .get("content")
-                .unwrap()
-                .as_str()
-                .unwrap(),
+            event.content.data.get("content").unwrap().as_str().unwrap(),
             "Let me think..."
         );
         assert_eq!(

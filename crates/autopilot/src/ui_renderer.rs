@@ -7,8 +7,8 @@ use claude_agent_sdk::SdkMessage;
 use maud::Markup;
 use serde_json::Value;
 use std::collections::HashMap;
-use ui::recorder::organisms::{AgentLine, ToolLine, LifecycleEvent, lifecycle_line};
 use ui::recorder::molecules::ResultType;
+use ui::recorder::organisms::{AgentLine, LifecycleEvent, ToolLine, lifecycle_line};
 
 /// Stateful UI renderer that tracks pending tool calls for result matching.
 #[derive(Default)]
@@ -52,7 +52,10 @@ pub fn render_sdk_message(msg: &SdkMessage) -> Option<Markup> {
 
 impl UiRenderer {
     /// Render assistant messages (text blocks and tool_use).
-    fn render_assistant_message(&mut self, asst: &claude_agent_sdk::SdkAssistantMessage) -> Option<Markup> {
+    fn render_assistant_message(
+        &mut self,
+        asst: &claude_agent_sdk::SdkAssistantMessage,
+    ) -> Option<Markup> {
         // Parse content blocks
         let content = asst.message.get("content")?.as_array()?;
 
@@ -74,15 +77,13 @@ impl UiRenderer {
                     let args = format_tool_args(tool_name, input);
 
                     // Track this pending call
-                    self.pending_calls.insert(
-                        tool_id.to_string(),
-                        (tool_name.to_string(), args.clone())
-                    );
+                    self.pending_calls
+                        .insert(tool_id.to_string(), (tool_name.to_string(), args.clone()));
 
                     return Some(
                         ToolLine::new(tool_name, &args, ResultType::Pending)
                             .call_id(tool_id)
-                            .build()
+                            .build(),
                     );
                 }
                 _ => continue,
@@ -95,7 +96,10 @@ impl UiRenderer {
     /// Render user messages (tool results).
     ///
     /// Returns (html, optional_update_script) where update_script replaces the pending ToolLine.
-    fn render_user_message(&mut self, user: &claude_agent_sdk::SdkUserMessage) -> (Option<Markup>, Option<String>) {
+    fn render_user_message(
+        &mut self,
+        user: &claude_agent_sdk::SdkUserMessage,
+    ) -> (Option<Markup>, Option<String>) {
         let content = match user.message.get("content") {
             Some(c) => c,
             None => return (None, None),
@@ -110,7 +114,10 @@ impl UiRenderer {
                             Some(id) => id,
                             None => continue,
                         };
-                        let is_error = block.get("is_error").and_then(|e| e.as_bool()).unwrap_or(false);
+                        let is_error = block
+                            .get("is_error")
+                            .and_then(|e| e.as_bool())
+                            .unwrap_or(false);
 
                         let result = if is_error {
                             let error_msg = extract_error_message(block);
@@ -143,9 +150,10 @@ impl UiRenderer {
                             return (None, Some(update_script));
                         } else {
                             // No pending call found - return standalone result
-                            return (Some(
-                                ToolLine::new("(unknown)", tool_id, result).build()
-                            ), None);
+                            return (
+                                Some(ToolLine::new("(unknown)", tool_id, result).build()),
+                                None,
+                            );
                         }
                     }
                 }
@@ -226,62 +234,52 @@ fn render_result_message(result: &claude_agent_sdk::SdkResultMessage) -> Option<
 /// Format tool arguments for display.
 fn format_tool_args(tool_name: &str, input: &Value) -> String {
     match tool_name {
-        "Bash" => {
-            input
-                .get("command")
-                .and_then(|c| c.as_str())
-                .map(|c| {
-                    let truncated = if c.len() > 50 {
-                        format!("{}...", &c[..47])
-                    } else {
-                        c.to_string()
-                    };
-                    format!("cmd=\"{}\"", truncated)
-                })
-                .unwrap_or_default()
-        }
-        "Read" | "Write" | "Edit" => {
-            input
-                .get("file_path")
-                .and_then(|p| p.as_str())
-                .map(|p| format!("file_path={}", p))
-                .unwrap_or_default()
-        }
-        "Glob" => {
-            input
-                .get("pattern")
-                .and_then(|p| p.as_str())
-                .map(|p| format!("pattern=\"{}\"", p))
-                .unwrap_or_default()
-        }
-        "Grep" => {
-            input
-                .get("pattern")
-                .and_then(|p| p.as_str())
-                .map(|p| {
-                    let truncated = if p.len() > 30 {
-                        format!("{}...", &p[..27])
-                    } else {
-                        p.to_string()
-                    };
-                    format!("pattern=\"{}\"", truncated)
-                })
-                .unwrap_or_default()
-        }
-        "Task" => {
-            input
-                .get("description")
-                .and_then(|d| d.as_str())
-                .map(|d| {
-                    let truncated = if d.len() > 40 {
-                        format!("{}...", &d[..37])
-                    } else {
-                        d.to_string()
-                    };
-                    format!("desc=\"{}\"", truncated)
-                })
-                .unwrap_or_default()
-        }
+        "Bash" => input
+            .get("command")
+            .and_then(|c| c.as_str())
+            .map(|c| {
+                let truncated = if c.len() > 50 {
+                    format!("{}...", &c[..47])
+                } else {
+                    c.to_string()
+                };
+                format!("cmd=\"{}\"", truncated)
+            })
+            .unwrap_or_default(),
+        "Read" | "Write" | "Edit" => input
+            .get("file_path")
+            .and_then(|p| p.as_str())
+            .map(|p| format!("file_path={}", p))
+            .unwrap_or_default(),
+        "Glob" => input
+            .get("pattern")
+            .and_then(|p| p.as_str())
+            .map(|p| format!("pattern=\"{}\"", p))
+            .unwrap_or_default(),
+        "Grep" => input
+            .get("pattern")
+            .and_then(|p| p.as_str())
+            .map(|p| {
+                let truncated = if p.len() > 30 {
+                    format!("{}...", &p[..27])
+                } else {
+                    p.to_string()
+                };
+                format!("pattern=\"{}\"", truncated)
+            })
+            .unwrap_or_default(),
+        "Task" => input
+            .get("description")
+            .and_then(|d| d.as_str())
+            .map(|d| {
+                let truncated = if d.len() > 40 {
+                    format!("{}...", &d[..37])
+                } else {
+                    d.to_string()
+                };
+                format!("desc=\"{}\"", truncated)
+            })
+            .unwrap_or_default(),
         _ => String::new(),
     }
 }
@@ -316,8 +314,8 @@ fn extract_error_message(block: &Value) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serde_json::json;
     use claude_agent_sdk::{SdkAssistantMessage, SdkUserMessage};
+    use serde_json::json;
 
     #[test]
     fn test_format_tool_args_bash() {
@@ -328,7 +326,10 @@ mod tests {
     #[test]
     fn test_format_tool_args_read() {
         let input = json!({"file_path": "/path/to/file.rs"});
-        assert_eq!(format_tool_args("Read", &input), "file_path=/path/to/file.rs");
+        assert_eq!(
+            format_tool_args("Read", &input),
+            "file_path=/path/to/file.rs"
+        );
     }
 
     #[test]

@@ -270,8 +270,7 @@ impl<'a> ModelSelector<'a> {
                 // But if prefer_cost and Haiku performs well, suggest Haiku
                 if prefer_cost {
                     if let Some(haiku_perf) = performances.get(&Model::Haiku) {
-                        if haiku_perf.completion_rate > 0.8
-                            && haiku_perf.avg_tool_error_rate < 0.2
+                        if haiku_perf.completion_rate > 0.8 && haiku_perf.avg_tool_error_rate < 0.2
                         {
                             Model::Haiku
                         } else {
@@ -417,11 +416,7 @@ impl<'a> ModelSelector<'a> {
         parts.join(". ")
     }
 
-    fn estimate_cost(
-        &self,
-        model: &Model,
-        performances: &HashMap<Model, ModelPerformance>,
-    ) -> f64 {
+    fn estimate_cost(&self, model: &Model, performances: &HashMap<Model, ModelPerformance>) -> f64 {
         if let Some(perf) = performances.get(model) {
             perf.avg_cost_usd
         } else {
@@ -493,11 +488,8 @@ mod tests {
 
     #[test]
     fn test_complexity_simple_task() {
-        let complexity = TaskComplexity::analyze(
-            "Fix typo in README",
-            "Simple documentation typo fix",
-            None,
-        );
+        let complexity =
+            TaskComplexity::analyze("Fix typo in README", "Simple documentation typo fix", None);
 
         assert_eq!(complexity.level, ComplexityLevel::Low);
         assert!(complexity.indicators.get("simple_keywords").unwrap() > &0.0);
@@ -512,7 +504,13 @@ mod tests {
         );
 
         assert_eq!(complexity.level, ComplexityLevel::Medium);
-        assert!(complexity.indicators.get("implementation_keywords").unwrap() > &0.0);
+        assert!(
+            complexity
+                .indicators
+                .get("implementation_keywords")
+                .unwrap()
+                > &0.0
+        );
     }
 
     #[test]

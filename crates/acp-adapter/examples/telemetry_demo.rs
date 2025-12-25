@@ -58,11 +58,9 @@ async fn main() {
     telemetry
         .process_notification(&acp::SessionNotification::new(
             session_id.clone(),
-            acp::SessionUpdate::UserMessageChunk(acp::ContentChunk::new(
-                acp::ContentBlock::Text(acp::TextContent::new(
-                    "Read the README file".to_string(),
-                )),
-            )),
+            acp::SessionUpdate::UserMessageChunk(acp::ContentChunk::new(acp::ContentBlock::Text(
+                acp::TextContent::new("Read the README file".to_string()),
+            ))),
         ))
         .await;
 
@@ -124,11 +122,9 @@ async fn main() {
     telemetry
         .process_notification(&acp::SessionNotification::new(
             session_id.clone(),
-            acp::SessionUpdate::AgentMessageChunk(acp::ContentChunk::new(
-                acp::ContentBlock::Text(acp::TextContent::new(
-                    "I found the README file.".to_string(),
-                )),
-            )),
+            acp::SessionUpdate::AgentMessageChunk(acp::ContentChunk::new(acp::ContentBlock::Text(
+                acp::TextContent::new("I found the README file.".to_string()),
+            ))),
         ))
         .await;
 

@@ -2,8 +2,8 @@
 
 use crate::daemon::metrics::DaemonMetricsCollector;
 use crate::daemon::state::WorkerState;
-use actix_web::{get, web, App, HttpResponse, HttpServer, Responder};
-use maud::{html, DOCTYPE};
+use actix_web::{App, HttpResponse, HttpServer, Responder, get, web};
+use maud::{DOCTYPE, html};
 use std::sync::Arc;
 use tokio::sync::RwLock;
 

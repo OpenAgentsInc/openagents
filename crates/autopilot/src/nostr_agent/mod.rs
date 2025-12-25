@@ -4,8 +4,8 @@
 //! NIP-SA tick events (kind:38010, 38011) to track autonomous agent runs.
 
 use nostr::{
-    TickAction, TickRequest, TickResult, TickResultContent, TickStatus, TickTrigger,
-    KIND_TICK_REQUEST, KIND_TICK_RESULT,
+    KIND_TICK_REQUEST, KIND_TICK_RESULT, TickAction, TickRequest, TickResult, TickResultContent,
+    TickStatus, TickTrigger,
 };
 use std::time::SystemTime;
 
@@ -144,7 +144,10 @@ mod tests {
         assert_eq!(request.trigger, TickTrigger::Manual);
 
         let tags = request.build_tags();
-        assert!(tags.iter().any(|t| t[0] == "runner" && t[1] == "test-runner"));
+        assert!(
+            tags.iter()
+                .any(|t| t[0] == "runner" && t[1] == "test-runner")
+        );
         assert!(tags.iter().any(|t| t[0] == "trigger" && t[1] == "manual"));
     }
 
@@ -179,9 +182,10 @@ mod tests {
         assert_eq!(result.action_count, 2);
 
         let tags = result.build_tags();
-        assert!(tags
-            .iter()
-            .any(|t| t[0] == "request" && t[1] == "request-event-id"));
+        assert!(
+            tags.iter()
+                .any(|t| t[0] == "request" && t[1] == "request-event-id")
+        );
         assert!(tags.iter().any(|t| t[0] == "status" && t[1] == "success"));
         assert!(tags.iter().any(|t| t[0] == "actions" && t[1] == "2"));
     }

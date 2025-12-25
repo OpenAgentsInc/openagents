@@ -3,8 +3,8 @@
 use anyhow::{Context, Result};
 use chrono::{DateTime, Duration, Utc};
 use colored::*;
-use flate2::write::GzEncoder;
 use flate2::Compression;
+use flate2::write::GzEncoder;
 use std::fs::{self, File};
 use std::path::{Path, PathBuf};
 
@@ -114,7 +114,8 @@ pub fn archive_logs(config: &LogsConfig, dry_run: bool) -> Result<Vec<PathBuf>> 
                     archived.push(path.to_path_buf());
                 } else {
                     let archived_path = archive_file(path)?;
-                    println!("{} Archived: {} -> {}",
+                    println!(
+                        "{} Archived: {} -> {}",
                         "✓".green(),
                         path.display(),
                         archived_path.display()
@@ -131,7 +132,8 @@ pub fn archive_logs(config: &LogsConfig, dry_run: bool) -> Result<Vec<PathBuf>> 
 /// Archive a single file with gzip compression using streaming I/O
 fn archive_file(path: &Path) -> Result<PathBuf> {
     let input = File::open(path)?;
-    let archived_path = path.with_extension(format!("{}.gz",
+    let archived_path = path.with_extension(format!(
+        "{}.gz",
         path.extension().and_then(|s| s.to_str()).unwrap_or("")
     ));
 
@@ -213,14 +215,13 @@ fn get_protected_dates(db_path: &Path) -> Result<Vec<String>> {
         return Ok(Vec::new());
     }
 
-    let conn = rusqlite::Connection::open(db_path)
-        .context("Failed to open database")?;
+    let conn = rusqlite::Connection::open(db_path).context("Failed to open database")?;
 
     // Get unique dates (YYYYMMDD) from created_at timestamps of open issues
     let mut stmt = conn.prepare(
         "SELECT DISTINCT substr(created_at, 1, 10) as date
          FROM issues
-         WHERE status IN ('open', 'in_progress', 'blocked')"
+         WHERE status IN ('open', 'in_progress', 'blocked')",
     )?;
 
     let dates: Result<Vec<String>, _> = stmt
@@ -331,8 +332,8 @@ mod tests {
 
     #[test]
     fn test_archive_file_streaming() {
-        use std::io::Read;
         use flate2::read::GzDecoder;
+        use std::io::Read;
         use tempfile::NamedTempFile;
 
         // Create a temporary file with test content

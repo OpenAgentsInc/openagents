@@ -8,10 +8,10 @@
 //! - Propose hook improvements
 //! - Create issues for detected problems
 
+use crate::metrics::{MetricsDb, SessionMetrics};
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use crate::metrics::{MetricsDb, SessionMetrics};
 
 /// Type of improvement detected
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -103,7 +103,8 @@ impl<'a> InstructionAnalyzer<'a> {
                     high_error_sessions.len()
                 ),
                 evidence: high_error_sessions.iter().map(|s| s.id.clone()).collect(),
-                proposed_fix: "Add stronger emphasis to read-before-edit instruction in CLAUDE.md".to_string(),
+                proposed_fix: "Add stronger emphasis to read-before-edit instruction in CLAUDE.md"
+                    .to_string(),
                 severity: 7,
                 create_issue: true,
             });
@@ -150,7 +151,10 @@ impl<'a> InstructionAnalyzer<'a> {
         Ok(improvements)
     }
 
-    fn find_high_error_rate_sessions<'b>(&self, sessions: &'b [SessionMetrics]) -> Vec<&'b SessionMetrics> {
+    fn find_high_error_rate_sessions<'b>(
+        &self,
+        sessions: &'b [SessionMetrics],
+    ) -> Vec<&'b SessionMetrics> {
         sessions
             .iter()
             .filter(|s| {
@@ -194,7 +198,10 @@ impl<'a> InstructionAnalyzer<'a> {
         Ok(unsafe_ops)
     }
 
-    fn analyze_tool_failure_patterns(&self, session_ids: &[String]) -> Result<HashMap<String, usize>> {
+    fn analyze_tool_failure_patterns(
+        &self,
+        session_ids: &[String],
+    ) -> Result<HashMap<String, usize>> {
         let mut tool_failures: HashMap<String, usize> = HashMap::new();
 
         for session_id in session_ids {
@@ -252,7 +259,9 @@ impl<'a> InstructionAnalyzer<'a> {
                         .iter()
                         .skip(error_idx + 1)
                         .take(5)
-                        .filter(|c| c.tool_name == "Read" || c.tool_name == "Glob" || c.tool_name == "Grep")
+                        .filter(|c| {
+                            c.tool_name == "Read" || c.tool_name == "Glob" || c.tool_name == "Grep"
+                        })
                         .count();
 
                     if subsequent_searches >= 3 {
@@ -275,7 +284,10 @@ impl<'a> InstructionAnalyzer<'a> {
                     all_instances.push(ContextLossInstance {
                         context_type: ContextType::SymbolNames,
                         session_id: session_id.clone(),
-                        evidence: format!("{} Grep calls - likely forgot search results", grep_count),
+                        evidence: format!(
+                            "{} Grep calls - likely forgot search results",
+                            grep_count
+                        ),
                         impact_severity: 6,
                         caused_failure: false,
                     });
@@ -309,7 +321,8 @@ impl<'a> InstructionAnalyzer<'a> {
                         .take(5)
                         .map(|i| format!("{}: {}", i.session_id, i.evidence))
                         .collect(),
-                    proposed_fix: crate::context_analysis::generate_improved_compaction_instructions(&report),
+                    proposed_fix:
+                        crate::context_analysis::generate_improved_compaction_instructions(&report),
                     severity: 8,
                     create_issue: false, // Don't auto-create issue, just update instructions
                 });
@@ -346,8 +359,13 @@ impl PromptUpdateGenerator {
                         file_path: "CLAUDE.md".to_string(),
                         section: "Tool Usage Guidelines".to_string(),
                         current_text: None,
-                        new_text: format!("**{} Tool**: {}",
-                            improvement.description.split_whitespace().next().unwrap_or("Unknown"),
+                        new_text: format!(
+                            "**{} Tool**: {}",
+                            improvement
+                                .description
+                                .split_whitespace()
+                                .next()
+                                .unwrap_or("Unknown"),
                             improvement.proposed_fix
                         ),
                         rationale: improvement.description.clone(),
@@ -370,7 +388,10 @@ impl HookUpdateGenerator {
         let mut changes = Vec::new();
 
         for improvement in improvements {
-            if matches!(improvement.improvement_type, ImprovementType::SafetyViolation) {
+            if matches!(
+                improvement.improvement_type,
+                ImprovementType::SafetyViolation
+            ) {
                 if improvement.description.contains("sqlite3") {
                     changes.push(HookChange {
                         hook_name: "user-prompt-submit-hook".to_string(),
@@ -406,19 +427,40 @@ impl ImprovementIssueCreator {
 
         let title = match improvement.improvement_type {
             ImprovementType::InstructionFailure => {
-                format!("Fix instruction adherence: {}", improvement.description.split_whitespace().take(5).collect::<Vec<_>>().join(" "))
+                format!(
+                    "Fix instruction adherence: {}",
+                    improvement
+                        .description
+                        .split_whitespace()
+                        .take(5)
+                        .collect::<Vec<_>>()
+                        .join(" ")
+                )
             }
             ImprovementType::ToolErrorPattern => {
-                format!("Reduce {} errors", improvement.description.split_whitespace().next().unwrap_or("tool"))
+                format!(
+                    "Reduce {} errors",
+                    improvement
+                        .description
+                        .split_whitespace()
+                        .next()
+                        .unwrap_or("tool")
+                )
             }
-            ImprovementType::SafetyViolation => {
-                "Block unsafe operations in autopilot".to_string()
-            }
+            ImprovementType::SafetyViolation => "Block unsafe operations in autopilot".to_string(),
             ImprovementType::ContextLoss => {
                 "Improve context retention after compaction".to_string()
             }
             ImprovementType::Inefficiency => {
-                format!("Optimize: {}", improvement.description.split_whitespace().take(5).collect::<Vec<_>>().join(" "))
+                format!(
+                    "Optimize: {}",
+                    improvement
+                        .description
+                        .split_whitespace()
+                        .take(5)
+                        .collect::<Vec<_>>()
+                        .join(" ")
+                )
             }
         };
 
@@ -481,7 +523,7 @@ pub struct LearningReport {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::metrics::{SessionStatus};
+    use crate::metrics::SessionStatus;
     use chrono::Utc;
 
     #[test]
@@ -509,18 +551,19 @@ mod tests {
             messages: 10,
             apm: None,
             source: "autopilot".to_string(),
-                issue_numbers: None,
-                directive_id: None,
+            issue_numbers: None,
+            directive_id: None,
         };
         db.store_session(&session).unwrap();
 
         let analyzer = InstructionAnalyzer::new(&db);
         let improvements = analyzer.analyze(&[session.id]).unwrap();
 
-        assert!(improvements.iter().any(|i| matches!(
-            i.improvement_type,
-            ImprovementType::InstructionFailure
-        )));
+        assert!(
+            improvements
+                .iter()
+                .any(|i| matches!(i.improvement_type, ImprovementType::InstructionFailure))
+        );
     }
 
     #[test]

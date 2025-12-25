@@ -8,9 +8,9 @@
 //! - SQLite write commands are blocked (always, not just in plan mode)
 //! - Reads, analysis, and subagents are allowed
 
-use std::path::{Path, PathBuf, Component};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::path::{Component, Path, PathBuf};
 use std::sync::RwLock;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 /// Sanitize a slug to prevent path traversal attacks
 ///
@@ -169,7 +169,7 @@ pub fn enter_plan_mode(config: PlanModeConfig) -> Result<String, String> {
 
     // Create initial plan file template
     let template = format!(
-r#"# Plan: {}
+        r#"# Plan: {}
 
 ## Goal
 {}
@@ -202,7 +202,9 @@ r#"# Plan: {}
 ### Ready for Implementation
 [Confirm all planning is complete and ready to exit plan mode]
 "#,
-        config.plan_file.file_stem()
+        config
+            .plan_file
+            .file_stem()
             .and_then(|s| s.to_str())
             .unwrap_or("untitled"),
         config.goal
@@ -229,7 +231,6 @@ pub struct ExitPlanModeConfig {
     pub teammate_count: Option<usize>,
 }
 
-
 /// Exit plan mode
 pub fn exit_plan_mode() -> Result<String, String> {
     exit_plan_mode_with_config(Default::default())
@@ -251,7 +252,9 @@ pub fn exit_plan_mode_with_config(config: ExitPlanModeConfig) -> Result<String, 
         .map_err(|e| format!("Failed to read plan file: {}", e))?;
 
     if content.len() < 100 {
-        return Err("Plan file is too short. Please add more detail before exiting plan mode.".to_string());
+        return Err(
+            "Plan file is too short. Please add more detail before exiting plan mode.".to_string(),
+        );
     }
 
     // Clear global state
@@ -302,7 +305,11 @@ pub fn is_plan_file(path: &Path) -> bool {
 
 /// Get the current plan phase
 pub fn get_current_phase() -> PlanPhase {
-    CURRENT_PHASE.read().ok().map(|p| *p).unwrap_or(PlanPhase::Explore)
+    CURRENT_PHASE
+        .read()
+        .ok()
+        .map(|p| *p)
+        .unwrap_or(PlanPhase::Explore)
 }
 
 /// Advance to the next plan phase and return the new phase with its prompt
@@ -584,7 +591,10 @@ pub fn suggest_plan_agents(feature: &str, context: &str) -> Vec<String> {
 }
 
 /// Check if a tool should be allowed in plan mode
-pub fn is_tool_allowed_in_plan_mode(tool_name: &str, tool_input: &serde_json::Value) -> Result<(), String> {
+pub fn is_tool_allowed_in_plan_mode(
+    tool_name: &str,
+    tool_input: &serde_json::Value,
+) -> Result<(), String> {
     // Check sqlite3 write commands first (always blocked, regardless of plan mode)
     if tool_name == "Bash" {
         let command = tool_input
@@ -602,7 +612,8 @@ pub fn is_tool_allowed_in_plan_mode(tool_name: &str, tool_input: &serde_json::Va
                 || cmd_upper.contains("DROP")
                 || cmd_upper.contains("ALTER")
                 || cmd_upper.contains("CREATE TABLE")
-                || cmd_upper.contains("TRUNCATE") {
+                || cmd_upper.contains("TRUNCATE")
+            {
                 return Err("SQLite write commands are not allowed via sqlite3. Use the provided MCP APIs (issue_create, issue_update, issue_claim, issue_complete, issue_block) to maintain data consistency.".to_string());
             }
         }
@@ -641,7 +652,10 @@ pub fn is_tool_allowed_in_plan_mode(tool_name: &str, tool_input: &serde_json::Va
 
             // Block git commits and pushes
             if command.contains("git commit") || command.contains("git push") {
-                return Err("Git commits are not allowed in plan mode. Use ExitPlanMode to commit changes.".to_string());
+                return Err(
+                    "Git commits are not allowed in plan mode. Use ExitPlanMode to commit changes."
+                        .to_string(),
+                );
             }
 
             // Block file modifications
@@ -654,9 +668,10 @@ pub fn is_tool_allowed_in_plan_mode(tool_name: &str, tool_input: &serde_json::Va
         }
 
         // Block execution-related tools
-        "NotebookEdit" => {
-            Err("Notebook edits are not allowed in plan mode. Use ExitPlanMode to implement changes.".to_string())
-        }
+        "NotebookEdit" => Err(
+            "Notebook edits are not allowed in plan mode. Use ExitPlanMode to implement changes."
+                .to_string(),
+        ),
 
         // Allow all other tools (EnterPlanMode, ExitPlanMode, etc.)
         _ => Ok(()),
@@ -693,7 +708,13 @@ mod tests {
         }
 
         // Not in plan mode - all tools allowed
-        assert!(is_tool_allowed_in_plan_mode("Write", &serde_json::json!({"file_path": "/tmp/test.txt"})).is_ok());
+        assert!(
+            is_tool_allowed_in_plan_mode(
+                "Write",
+                &serde_json::json!({"file_path": "/tmp/test.txt"})
+            )
+            .is_ok()
+        );
 
         // Enter plan mode
         let config = PlanModeConfig::new("test", "Test goal").unwrap();
@@ -704,30 +725,60 @@ mod tests {
         assert!(is_tool_allowed_in_plan_mode("Grep", &serde_json::json!({})).is_ok());
 
         // Plan file writes allowed
-        assert!(is_tool_allowed_in_plan_mode("Edit", &serde_json::json!({
-            "file_path": config.plan_file.to_str().unwrap()
-        })).is_ok());
+        assert!(
+            is_tool_allowed_in_plan_mode(
+                "Edit",
+                &serde_json::json!({
+                    "file_path": config.plan_file.to_str().unwrap()
+                })
+            )
+            .is_ok()
+        );
 
         // Other file writes blocked
-        assert!(is_tool_allowed_in_plan_mode("Write", &serde_json::json!({
-            "file_path": "/tmp/other.txt"
-        })).is_err());
+        assert!(
+            is_tool_allowed_in_plan_mode(
+                "Write",
+                &serde_json::json!({
+                    "file_path": "/tmp/other.txt"
+                })
+            )
+            .is_err()
+        );
 
         // Git commits blocked
-        assert!(is_tool_allowed_in_plan_mode("Bash", &serde_json::json!({
-            "command": "git commit -m 'test'"
-        })).is_err());
+        assert!(
+            is_tool_allowed_in_plan_mode(
+                "Bash",
+                &serde_json::json!({
+                    "command": "git commit -m 'test'"
+                })
+            )
+            .is_err()
+        );
 
         // Read-only bash allowed
-        assert!(is_tool_allowed_in_plan_mode("Bash", &serde_json::json!({
-            "command": "git status"
-        })).is_ok());
+        assert!(
+            is_tool_allowed_in_plan_mode(
+                "Bash",
+                &serde_json::json!({
+                    "command": "git status"
+                })
+            )
+            .is_ok()
+        );
 
         // Exit plan mode
         exit_plan_mode().unwrap();
 
         // All tools allowed again
-        assert!(is_tool_allowed_in_plan_mode("Write", &serde_json::json!({"file_path": "/tmp/test.txt"})).is_ok());
+        assert!(
+            is_tool_allowed_in_plan_mode(
+                "Write",
+                &serde_json::json!({"file_path": "/tmp/test.txt"})
+            )
+            .is_ok()
+        );
     }
 
     #[test]
@@ -735,9 +786,15 @@ mod tests {
         // SQLite write commands blocked regardless of plan mode
 
         // INSERT blocked
-        assert!(is_tool_allowed_in_plan_mode("Bash", &serde_json::json!({
-            "command": "sqlite3 autopilot.db \"INSERT INTO issues VALUES (1, 'test')\""
-        })).is_err());
+        assert!(
+            is_tool_allowed_in_plan_mode(
+                "Bash",
+                &serde_json::json!({
+                    "command": "sqlite3 autopilot.db \"INSERT INTO issues VALUES (1, 'test')\""
+                })
+            )
+            .is_err()
+        );
 
         // UPDATE blocked
         assert!(is_tool_allowed_in_plan_mode("Bash", &serde_json::json!({
@@ -745,44 +802,92 @@ mod tests {
         })).is_err());
 
         // DELETE blocked
-        assert!(is_tool_allowed_in_plan_mode("Bash", &serde_json::json!({
-            "command": "sqlite3 autopilot.db \"DELETE FROM issues WHERE number=1\""
-        })).is_err());
+        assert!(
+            is_tool_allowed_in_plan_mode(
+                "Bash",
+                &serde_json::json!({
+                    "command": "sqlite3 autopilot.db \"DELETE FROM issues WHERE number=1\""
+                })
+            )
+            .is_err()
+        );
 
         // DROP blocked
-        assert!(is_tool_allowed_in_plan_mode("Bash", &serde_json::json!({
-            "command": "sqlite3 autopilot.db \"DROP TABLE issues\""
-        })).is_err());
+        assert!(
+            is_tool_allowed_in_plan_mode(
+                "Bash",
+                &serde_json::json!({
+                    "command": "sqlite3 autopilot.db \"DROP TABLE issues\""
+                })
+            )
+            .is_err()
+        );
 
         // ALTER blocked
-        assert!(is_tool_allowed_in_plan_mode("Bash", &serde_json::json!({
-            "command": "sqlite3 autopilot.db \"ALTER TABLE issues ADD COLUMN foo TEXT\""
-        })).is_err());
+        assert!(
+            is_tool_allowed_in_plan_mode(
+                "Bash",
+                &serde_json::json!({
+                    "command": "sqlite3 autopilot.db \"ALTER TABLE issues ADD COLUMN foo TEXT\""
+                })
+            )
+            .is_err()
+        );
 
         // CREATE TABLE blocked
-        assert!(is_tool_allowed_in_plan_mode("Bash", &serde_json::json!({
-            "command": "sqlite3 autopilot.db \"CREATE TABLE foo (id INTEGER)\""
-        })).is_err());
+        assert!(
+            is_tool_allowed_in_plan_mode(
+                "Bash",
+                &serde_json::json!({
+                    "command": "sqlite3 autopilot.db \"CREATE TABLE foo (id INTEGER)\""
+                })
+            )
+            .is_err()
+        );
 
         // TRUNCATE blocked
-        assert!(is_tool_allowed_in_plan_mode("Bash", &serde_json::json!({
-            "command": "sqlite3 autopilot.db \"TRUNCATE TABLE issues\""
-        })).is_err());
+        assert!(
+            is_tool_allowed_in_plan_mode(
+                "Bash",
+                &serde_json::json!({
+                    "command": "sqlite3 autopilot.db \"TRUNCATE TABLE issues\""
+                })
+            )
+            .is_err()
+        );
 
         // Read-only SELECT allowed
-        assert!(is_tool_allowed_in_plan_mode("Bash", &serde_json::json!({
-            "command": "sqlite3 autopilot.db \"SELECT * FROM issues\""
-        })).is_ok());
+        assert!(
+            is_tool_allowed_in_plan_mode(
+                "Bash",
+                &serde_json::json!({
+                    "command": "sqlite3 autopilot.db \"SELECT * FROM issues\""
+                })
+            )
+            .is_ok()
+        );
 
         // Case insensitive - lowercase insert blocked
-        assert!(is_tool_allowed_in_plan_mode("Bash", &serde_json::json!({
-            "command": "sqlite3 autopilot.db \"insert into issues values (1, 'test')\""
-        })).is_err());
+        assert!(
+            is_tool_allowed_in_plan_mode(
+                "Bash",
+                &serde_json::json!({
+                    "command": "sqlite3 autopilot.db \"insert into issues values (1, 'test')\""
+                })
+            )
+            .is_err()
+        );
 
         // Mixed case UPDATE blocked
-        assert!(is_tool_allowed_in_plan_mode("Bash", &serde_json::json!({
-            "command": "sqlite3 autopilot.db \"Update issues SET status='done'\""
-        })).is_err());
+        assert!(
+            is_tool_allowed_in_plan_mode(
+                "Bash",
+                &serde_json::json!({
+                    "command": "sqlite3 autopilot.db \"Update issues SET status='done'\""
+                })
+            )
+            .is_err()
+        );
     }
 
     #[test]

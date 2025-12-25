@@ -28,7 +28,8 @@ pub fn sisyphus_config() -> AgentConfig {
         model: "anthropic/claude-opus-4-5".to_string(),
         prompt: SISYPHUS_PROMPT.to_string(),
         temperature: 0.1,
-        description: "Primary orchestrator - delegates to specialists, manages workflow".to_string(),
+        description: "Primary orchestrator - delegates to specialists, manages workflow"
+            .to_string(),
         mode: AgentMode::Primary,
         color: "#FF6B6B".to_string(),
         tools: HashMap::new(),

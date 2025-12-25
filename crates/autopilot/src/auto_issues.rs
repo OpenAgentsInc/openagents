@@ -79,8 +79,8 @@ use chrono::Utc;
 
 use crate::metrics::{Anomaly, AnomalySeverity, MetricsDb};
 use crate::tool_patterns::{
-    detect_tool_patterns, generate_tool_pattern_description, generate_tool_pattern_priority,
-    generate_tool_pattern_title, ToolErrorPattern,
+    ToolErrorPattern, detect_tool_patterns, generate_tool_pattern_description,
+    generate_tool_pattern_priority, generate_tool_pattern_title,
 };
 
 /// Pattern of related anomalies
@@ -212,23 +212,25 @@ fn get_uninvestigated_anomalies(db: &MetricsDb) -> Result<Vec<Anomaly>> {
 
     let anomalies = rows
         .into_iter()
-        .map(|(session_id, dimension, expected_value, actual_value, severity_str)| {
-            let severity = match severity_str.as_str() {
-                "critical" => AnomalySeverity::Critical,
-                "error" => AnomalySeverity::Error,
-                _ => AnomalySeverity::Warning,
-            };
+        .map(
+            |(session_id, dimension, expected_value, actual_value, severity_str)| {
+                let severity = match severity_str.as_str() {
+                    "critical" => AnomalySeverity::Critical,
+                    "error" => AnomalySeverity::Error,
+                    _ => AnomalySeverity::Warning,
+                };
 
-            Anomaly {
-                session_id,
-                dimension,
-                expected_value,
-                actual_value,
-                severity,
-                investigated: false,
-                issue_number: None,
-            }
-        })
+                Anomaly {
+                    session_id,
+                    dimension,
+                    expected_value,
+                    actual_value,
+                    severity,
+                    investigated: false,
+                    issue_number: None,
+                }
+            },
+        )
         .collect();
 
     Ok(anomalies)
@@ -321,20 +323,20 @@ fn calculate_priority(pattern: &AnomalyPattern) -> String {
 
     // Frequency multiplier (more occurrences = higher priority)
     let frequency_score = if pattern.occurrence_count >= 10 {
-        2  // Very frequent
+        2 // Very frequent
     } else if pattern.occurrence_count >= 5 {
-        1  // Frequent
+        1 // Frequent
     } else {
-        0  // Occasional
+        0 // Occasional
     };
 
     // Deviation magnitude (larger deviation = higher priority)
     let deviation_score = if pattern.avg_deviation > 0.50 {
-        2  // >50% deviation is severe
+        2 // >50% deviation is severe
     } else if pattern.avg_deviation > 0.25 {
-        1  // >25% deviation is significant
+        1 // >25% deviation is significant
     } else {
-        0  // <25% deviation
+        0 // <25% deviation
     };
 
     // Combined score: 0-7
@@ -342,11 +344,12 @@ fn calculate_priority(pattern: &AnomalyPattern) -> String {
 
     // Map to priority string
     match total_score {
-        6..=7 => "urgent",     // Critical + frequent + large deviation
-        4..=5 => "high",       // Error level with high frequency or deviation
-        2..=3 => "medium",     // Warning or infrequent errors
-        _ => "low",            // Edge cases
-    }.to_string()
+        6..=7 => "urgent", // Critical + frequent + large deviation
+        4..=5 => "high",   // Error level with high frequency or deviation
+        2..=3 => "medium", // Warning or infrequent errors
+        _ => "low",        // Edge cases
+    }
+    .to_string()
 }
 
 /// Generate detailed description with evidence and proposed fix
@@ -361,9 +364,7 @@ fn generate_description(pattern: &AnomalyPattern) -> String {
     };
     desc.push_str(&format!(
         "Detected pattern of {} anomalies in **{}** across {} sessions.\n\n",
-        severity_str,
-        pattern.dimension,
-        pattern.occurrence_count
+        severity_str, pattern.dimension, pattern.occurrence_count
     ));
 
     // Evidence
@@ -372,19 +373,20 @@ fn generate_description(pattern: &AnomalyPattern) -> String {
         "- **Occurrences**: {} sessions\n",
         pattern.occurrence_count
     ));
-    desc.push_str(&format!(
-        "- **Severity**: {:?}\n",
-        pattern.severity
-    ));
+    desc.push_str(&format!("- **Severity**: {:?}\n", pattern.severity));
     desc.push_str(&format!(
         "- **Average deviation**: {:.1}%\n",
         pattern.avg_deviation * 100.0
     ));
 
     // Statistical confidence
-    let (min_dev, max_dev) = pattern.anomalies.iter()
+    let (min_dev, max_dev) = pattern
+        .anomalies
+        .iter()
         .map(|a| ((a.actual_value - a.expected_value) / a.expected_value).abs())
-        .fold((f64::MAX, f64::MIN), |(min, max), val| (min.min(val), max.max(val)));
+        .fold((f64::MAX, f64::MIN), |(min, max), val| {
+            (min.min(val), max.max(val))
+        });
     desc.push_str(&format!(
         "- **Deviation range**: {:.1}% to {:.1}%\n\n",
         min_dev * 100.0,
@@ -394,7 +396,8 @@ fn generate_description(pattern: &AnomalyPattern) -> String {
     // Sample anomalies with enhanced detail
     desc.push_str("### Affected Sessions\n\n");
     for (i, anomaly) in pattern.anomalies.iter().take(5).enumerate() {
-        let pct_change = ((anomaly.actual_value - anomaly.expected_value) / anomaly.expected_value) * 100.0;
+        let pct_change =
+            ((anomaly.actual_value - anomaly.expected_value) / anomaly.expected_value) * 100.0;
         desc.push_str(&format!(
             "{}. Session `{}...`\n   - Expected: {:.3}, Actual: {:.3} ({:+.1}%)\n",
             i + 1,
@@ -411,13 +414,13 @@ fn generate_description(pattern: &AnomalyPattern) -> String {
                     "   - View session: `cargo autopilot metrics show {}`\n",
                     anomaly.session_id
                 ));
-            },
+            }
             "tokens_per_issue" => {
                 desc.push_str("   - Investigate token usage efficiency\n");
-            },
+            }
             "cost_per_issue" => {
                 desc.push_str("   - Review cost optimization opportunities\n");
-            },
+            }
             _ => {}
         }
     }
@@ -432,7 +435,8 @@ fn generate_description(pattern: &AnomalyPattern) -> String {
     // Trajectory log excerpts (if available)
     desc.push_str("### Trajectory Evidence\n\n");
     if !pattern.anomalies.is_empty() {
-        let session_id_prefix = &pattern.anomalies[0].session_id[..8.min(pattern.anomalies[0].session_id.len())];
+        let session_id_prefix =
+            &pattern.anomalies[0].session_id[..8.min(pattern.anomalies[0].session_id.len())];
         desc.push_str(&format!(
             "Review trajectory logs for affected sessions in `docs/logs/` to identify specific:\n\
             - Tool calls that failed repeatedly\n\
@@ -444,8 +448,7 @@ fn generate_description(pattern: &AnomalyPattern) -> String {
             # Find trajectory for session\n\
             find docs/logs -name '*{}*.json' -o -name '*{}*.rlog'\n\
             ```\n\n",
-            session_id_prefix,
-            session_id_prefix
+            session_id_prefix, session_id_prefix
         ));
     } else {
         desc.push_str("No trajectory data available for this pattern.\n\n");
@@ -461,9 +464,14 @@ fn generate_description(pattern: &AnomalyPattern) -> String {
 
     // Auto-generated footer
     desc.push_str("\n---\n\n");
-    desc.push_str("*This issue was automatically generated by autopilot metrics analysis (d-004).*\n");
-    desc.push_str(&format!("*Pattern detected from {} sessions with {:.1}% average deviation.*\n",
-        pattern.occurrence_count, pattern.avg_deviation * 100.0));
+    desc.push_str(
+        "*This issue was automatically generated by autopilot metrics analysis (d-004).*\n",
+    );
+    desc.push_str(&format!(
+        "*Pattern detected from {} sessions with {:.1}% average deviation.*\n",
+        pattern.occurrence_count,
+        pattern.avg_deviation * 100.0
+    ));
 
     desc
 }
@@ -508,12 +516,18 @@ fn generate_proposed_fix(pattern: &AnomalyPattern) -> String {
             ));
         }
         "tokens_per_issue" => {
-            let avg_actual: f64 = pattern.anomalies.iter()
+            let avg_actual: f64 = pattern
+                .anomalies
+                .iter()
                 .map(|a| a.actual_value)
-                .sum::<f64>() / pattern.anomalies.len() as f64;
-            let avg_expected: f64 = pattern.anomalies.iter()
+                .sum::<f64>()
+                / pattern.anomalies.len() as f64;
+            let avg_expected: f64 = pattern
+                .anomalies
+                .iter()
                 .map(|a| a.expected_value)
-                .sum::<f64>() / pattern.anomalies.len() as f64;
+                .sum::<f64>()
+                / pattern.anomalies.len() as f64;
 
             fix.push_str(&format!(
                 "Analyze token consumption (average: {:.0} actual vs {:.0} expected):\n\n\
@@ -535,9 +549,12 @@ fn generate_proposed_fix(pattern: &AnomalyPattern) -> String {
             ));
         }
         "cost_per_issue" => {
-            let avg_actual: f64 = pattern.anomalies.iter()
+            let avg_actual: f64 = pattern
+                .anomalies
+                .iter()
                 .map(|a| a.actual_value)
-                .sum::<f64>() / pattern.anomalies.len() as f64;
+                .sum::<f64>()
+                / pattern.anomalies.len() as f64;
 
             fix.push_str(&format!(
                 "Optimize cost efficiency (average ${:.4} per issue, {:.1}% over baseline):\n\n\
@@ -555,7 +572,7 @@ fn generate_proposed_fix(pattern: &AnomalyPattern) -> String {
                 5. **Cost budgets**: Set ${:.4} target per issue\n",
                 avg_actual,
                 pattern.avg_deviation * 100.0,
-                avg_actual * 0.8  // Target 20% reduction
+                avg_actual * 0.8 // Target 20% reduction
             ));
         }
         "completion_rate" => {
@@ -597,7 +614,7 @@ fn generate_proposed_fix(pattern: &AnomalyPattern) -> String {
                    - Could batch operations reduce wall time?\n\n\
                 5. **Add stall detection**: Timeout after {}min of no progress\n",
                 pattern.occurrence_count,
-                5  // Suggested timeout
+                5 // Suggested timeout
             ));
         }
         _ => {
@@ -644,7 +661,7 @@ fn generate_investigation_steps(pattern: &AnomalyPattern) -> String {
     steps.push_str(
         "2. Query tool error breakdown:\n   ```bash\n   \
          cargo autopilot metrics analyze --period 7d\n   \
-         ```\n\n"
+         ```\n\n",
     );
 
     steps.push_str(
@@ -679,8 +696,7 @@ pub fn create_issues(
     improvement_issues: &[ImprovementIssue],
     metrics_db: &MetricsDb,
 ) -> Result<Vec<i32>> {
-    let conn = Connection::open(issues_db_path)
-        .context("Failed to open issues database")?;
+    let conn = Connection::open(issues_db_path).context("Failed to open issues database")?;
 
     let mut created_issue_numbers = Vec::new();
 
@@ -767,12 +783,12 @@ mod tests {
                 tool_calls: 100,
                 tool_errors: 25, // 25% error rate - anomalous
                 final_status: SessionStatus::Completed,
-            messages: 10,
-            apm: None,
-            source: "autopilot".to_string(),
+                messages: 10,
+                apm: None,
+                source: "autopilot".to_string(),
                 issue_numbers: None,
                 directive_id: None,
-        };
+            };
             db.store_session(&session).unwrap();
 
             // Detect and store anomalies
@@ -787,9 +803,7 @@ mod tests {
 
         // Should have at least one pattern for tool_error_rate
         assert!(!patterns.is_empty());
-        assert!(patterns
-            .iter()
-            .any(|p| p.dimension == "tool_error_rate"));
+        assert!(patterns.iter().any(|p| p.dimension == "tool_error_rate"));
     }
 
     #[test]
@@ -798,7 +812,7 @@ mod tests {
             dimension: "tool_error_rate".to_string(),
             occurrence_count: 5,
             severity: AnomalySeverity::Error,
-            avg_deviation: 0.15,  // 15% deviation
+            avg_deviation: 0.15, // 15% deviation
             anomalies: vec![],
         };
 
@@ -817,9 +831,9 @@ mod tests {
         // Test urgent priority: Critical + high frequency + high deviation
         let pattern = AnomalyPattern {
             dimension: "tool_error_rate".to_string(),
-            occurrence_count: 10,  // frequency_score = 2
-            severity: AnomalySeverity::Critical,  // severity_score = 3
-            avg_deviation: 0.60,  // 60% deviation, deviation_score = 2
+            occurrence_count: 10,                // frequency_score = 2
+            severity: AnomalySeverity::Critical, // severity_score = 3
+            avg_deviation: 0.60,                 // 60% deviation, deviation_score = 2
             anomalies: vec![],
         };
 
@@ -835,9 +849,9 @@ mod tests {
         // Test high priority: Error + moderate frequency + significant deviation
         let pattern = AnomalyPattern {
             dimension: "cost_per_issue".to_string(),
-            occurrence_count: 5,  // frequency_score = 1
-            severity: AnomalySeverity::Error,  // severity_score = 2
-            avg_deviation: 0.30,  // 30% deviation, deviation_score = 1
+            occurrence_count: 5,              // frequency_score = 1
+            severity: AnomalySeverity::Error, // severity_score = 2
+            avg_deviation: 0.30,              // 30% deviation, deviation_score = 1
             anomalies: vec![],
         };
 
@@ -850,7 +864,7 @@ mod tests {
 
     #[test]
     fn test_create_issues_end_to_end() {
-        use issues::db::{init_memory_db};
+        use issues::db::init_memory_db;
 
         // Setup metrics database with anomalies
         let metrics_db = MetricsDb::in_memory().unwrap();
@@ -896,7 +910,10 @@ mod tests {
 
         // Generate issues
         let improvement_issues = generate_issues(patterns);
-        assert!(!improvement_issues.is_empty(), "Should generate at least one issue");
+        assert!(
+            !improvement_issues.is_empty(),
+            "Should generate at least one issue"
+        );
 
         // Create a temporary file path for the issues database
         let temp_dir = std::env::temp_dir();
@@ -909,9 +926,13 @@ mod tests {
         }
 
         // Create issues using the create_issues function
-        let issue_numbers = create_issues(&issues_db_path, &improvement_issues, &metrics_db).unwrap();
+        let issue_numbers =
+            create_issues(&issues_db_path, &improvement_issues, &metrics_db).unwrap();
 
-        assert!(!issue_numbers.is_empty(), "Should create at least one issue");
+        assert!(
+            !issue_numbers.is_empty(),
+            "Should create at least one issue"
+        );
 
         // Verify issues were created with auto_created flag
         let conn = Connection::open(&issues_db_path).unwrap();
@@ -932,7 +953,11 @@ mod tests {
                     |row| row.get(0),
                 )
                 .unwrap();
-            assert_eq!(directive_id, Some("d-004".to_string()), "Issue should be linked to d-004");
+            assert_eq!(
+                directive_id,
+                Some("d-004".to_string()),
+                "Issue should be linked to d-004"
+            );
         }
 
         // Cleanup

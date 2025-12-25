@@ -214,7 +214,12 @@ pub fn parse_rlog_header(content: &str) -> Option<RlogHeader> {
 
     // Find header boundaries
     let start = lines.iter().position(|l| l.trim() == "---")?;
-    let end = lines.iter().skip(start + 1).position(|l| l.trim() == "---")? + start + 1;
+    let end = lines
+        .iter()
+        .skip(start + 1)
+        .position(|l| l.trim() == "---")?
+        + start
+        + 1;
 
     // Extract header content
     let header_content = lines[start + 1..end].join("\n");

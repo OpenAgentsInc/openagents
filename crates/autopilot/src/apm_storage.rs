@@ -5,7 +5,7 @@
 
 use crate::apm::{APMSnapshot, APMSource, APMWindow};
 use chrono::{DateTime, Utc};
-use rusqlite::{params, Connection, Result};
+use rusqlite::{Connection, Result, params};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tracing::{debug, error, info};
@@ -342,10 +342,7 @@ pub fn record_action_event(conn: &Connection, event: &ActionEvent) -> Result<Str
 }
 
 /// Get action events for a session
-pub fn get_action_events(
-    conn: &Connection,
-    session_id: &str,
-) -> Result<Vec<ActionEvent>> {
+pub fn get_action_events(conn: &Connection, session_id: &str) -> Result<Vec<ActionEvent>> {
     let mut stmt = conn.prepare(
         r#"
         SELECT id, session_id, timestamp, metadata
@@ -368,22 +365,23 @@ pub fn get_action_events(
             Ok(ActionEvent {
                 id,
                 session_id,
-                action_type: meta.get("action_type")
+                action_type: meta
+                    .get("action_type")
                     .and_then(|v| v.as_str())
                     .unwrap_or("unknown")
                     .to_string(),
                 timestamp: DateTime::parse_from_rfc3339(&timestamp)
                     .unwrap()
                     .with_timezone(&Utc),
-                duration_ms: meta.get("duration_ms")
+                duration_ms: meta
+                    .get("duration_ms")
                     .and_then(|v| v.as_u64())
                     .unwrap_or(0),
-                success: meta.get("success")
+                success: meta
+                    .get("success")
                     .and_then(|v| v.as_bool())
                     .unwrap_or(false),
-                error: meta.get("error")
-                    .and_then(|v| v.as_str())
-                    .map(String::from),
+                error: meta.get("error").and_then(|v| v.as_str()).map(String::from),
                 metadata: meta.get("metadata").cloned(),
             })
         })?
@@ -422,10 +420,7 @@ pub fn save_snapshot(conn: &Connection, snapshot: &APMSnapshot) -> Result<String
 }
 
 /// Get session event counts
-pub fn get_session_stats(
-    conn: &Connection,
-    session_id: &str,
-) -> Result<(u32, u32)> {
+pub fn get_session_stats(conn: &Connection, session_id: &str) -> Result<(u32, u32)> {
     let message_count: u32 = conn.query_row(
         "SELECT COUNT(*) FROM apm_events WHERE session_id = ? AND event_type = 'message'",
         params![session_id],
@@ -483,7 +478,7 @@ pub fn get_snapshots_filtered(
 ) -> Result<Vec<APMSnapshot>> {
     let mut query = String::from(
         "SELECT timestamp, source, window, apm, actions, duration_minutes, messages, tool_calls \
-         FROM apm_snapshots WHERE 1=1"
+         FROM apm_snapshots WHERE 1=1",
     );
     let mut params_vec: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
 
@@ -579,19 +574,17 @@ pub fn get_latest_snapshot(
 ///
 /// Calculates APM from session events and creates a snapshot.
 /// Returns None if the session is still running or has no events.
-pub fn generate_session_snapshot(conn: &Connection, session_id: &str) -> Result<Option<APMSnapshot>> {
+pub fn generate_session_snapshot(
+    conn: &Connection,
+    session_id: &str,
+) -> Result<Option<APMSnapshot>> {
     // Get session metadata
-    let session_result: std::result::Result<(String, Option<String>, String), rusqlite::Error> = conn.query_row(
-        "SELECT start_time, end_time, source FROM apm_sessions WHERE id = ?",
-        params![session_id],
-        |row| {
-            Ok((
-                row.get(0)?,
-                row.get(1)?,
-                row.get(2)?,
-            ))
-        },
-    );
+    let session_result: std::result::Result<(String, Option<String>, String), rusqlite::Error> =
+        conn.query_row(
+            "SELECT start_time, end_time, source FROM apm_sessions WHERE id = ?",
+            params![session_id],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        );
 
     let (start_time_str, end_time_str, source_str) = match session_result {
         Ok(data) => data,
@@ -636,7 +629,10 @@ pub fn generate_session_snapshot(conn: &Connection, session_id: &str) -> Result<
     let duration_minutes = duration.num_milliseconds() as f64 / 60_000.0;
 
     if duration_minutes <= 0.0 {
-        debug!("Session {} has invalid duration: {} minutes", session_id, duration_minutes);
+        debug!(
+            "Session {} has invalid duration: {} minutes",
+            session_id, duration_minutes
+        );
         return Ok(None);
     }
 
@@ -696,7 +692,10 @@ pub fn generate_window_snapshots(conn: &Connection, source: APMSource) -> Result
                 WHERE s.source = ? AND e.timestamp >= ?
             "#;
 
-            let result: std::result::Result<(u32, u32, Option<String>, Option<String>), rusqlite::Error> = conn.query_row(
+            let result: std::result::Result<
+                (u32, u32, Option<String>, Option<String>),
+                rusqlite::Error,
+            > = conn.query_row(
                 query,
                 params![source.as_str(), cutoff_time.to_rfc3339()],
                 |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
@@ -720,11 +719,12 @@ pub fn generate_window_snapshots(conn: &Connection, source: APMSource) -> Result
                 WHERE s.source = ?
             "#;
 
-            let result: std::result::Result<(u32, u32, Option<String>, Option<String>), rusqlite::Error> = conn.query_row(
-                query,
-                params![source.as_str()],
-                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
-            );
+            let result: std::result::Result<
+                (u32, u32, Option<String>, Option<String>),
+                rusqlite::Error,
+            > = conn.query_row(query, params![source.as_str()], |row| {
+                Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?))
+            });
 
             match result {
                 Ok(data) => data,
@@ -788,7 +788,7 @@ pub fn regenerate_all_snapshots(conn: &Connection) -> Result<usize> {
     // Generate session snapshots for all completed sessions
     let sessions: Vec<String> = {
         let mut stmt = conn.prepare(
-            "SELECT id FROM apm_sessions WHERE end_time IS NOT NULL ORDER BY start_time"
+            "SELECT id FROM apm_sessions WHERE end_time IS NOT NULL ORDER BY start_time",
         )?;
         let sessions = stmt
             .query_map([], |row| row.get(0))?
@@ -806,7 +806,11 @@ pub fn regenerate_all_snapshots(conn: &Connection) -> Result<usize> {
     debug!("Generated {} session snapshots", total_count);
 
     // Generate window snapshots for each source
-    for source in [APMSource::Autopilot, APMSource::ClaudeCode, APMSource::Combined] {
+    for source in [
+        APMSource::Autopilot,
+        APMSource::ClaudeCode,
+        APMSource::Combined,
+    ] {
         let window_snapshots = generate_window_snapshots(conn, source)?;
         for snapshot in window_snapshots {
             save_snapshot(conn, &snapshot)?;
@@ -1038,8 +1042,13 @@ mod tests {
         let event_id = record_event(&conn, session_id, APMEventType::Message, None).unwrap();
         assert!(!event_id.is_empty());
 
-        record_event(&conn, session_id, APMEventType::ToolCall, Some(r#"{"tool":"bash"}"#))
-            .unwrap();
+        record_event(
+            &conn,
+            session_id,
+            APMEventType::ToolCall,
+            Some(r#"{"tool":"bash"}"#),
+        )
+        .unwrap();
 
         let (messages, tool_calls) = get_session_stats(&conn, session_id).unwrap();
         assert_eq!(messages, 1);

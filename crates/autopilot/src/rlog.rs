@@ -55,18 +55,9 @@ impl RlogWriter {
         header_lines.push(format!("version: {}", env!("CARGO_PKG_VERSION")));
 
         // Token summaries (will be updated at end)
-        header_lines.push(format!(
-            "tokens_total_in: {}",
-            traj.usage.input_tokens
-        ));
-        header_lines.push(format!(
-            "tokens_total_out: {}",
-            traj.usage.output_tokens
-        ));
-        header_lines.push(format!(
-            "tokens_cached: {}",
-            traj.usage.cache_read_tokens
-        ));
+        header_lines.push(format!("tokens_total_in: {}", traj.usage.input_tokens));
+        header_lines.push(format!("tokens_total_out: {}", traj.usage.output_tokens));
+        header_lines.push(format!("tokens_cached: {}", traj.usage.cache_read_tokens));
 
         header_lines.push("---".to_string());
         header_lines.push(String::new());
@@ -95,7 +86,11 @@ impl RlogWriter {
 
     /// Update header with session ID and current token totals (rewrites the file)
     /// This is called after the SDK Init message provides the session_id
-    pub fn update_header(&mut self, path: impl AsRef<Path>, traj: &Trajectory) -> std::io::Result<()> {
+    pub fn update_header(
+        &mut self,
+        path: impl AsRef<Path>,
+        traj: &Trajectory,
+    ) -> std::io::Result<()> {
         use std::io::{BufRead, BufReader};
 
         // Read existing content after the header
@@ -211,18 +206,12 @@ impl RlogWriter {
             .push(format!("version: {}", env!("CARGO_PKG_VERSION")));
 
         // Token summaries
-        self.lines.push(format!(
-            "tokens_total_in: {}",
-            traj.usage.input_tokens
-        ));
-        self.lines.push(format!(
-            "tokens_total_out: {}",
-            traj.usage.output_tokens
-        ));
-        self.lines.push(format!(
-            "tokens_cached: {}",
-            traj.usage.cache_read_tokens
-        ));
+        self.lines
+            .push(format!("tokens_total_in: {}", traj.usage.input_tokens));
+        self.lines
+            .push(format!("tokens_total_out: {}", traj.usage.output_tokens));
+        self.lines
+            .push(format!("tokens_cached: {}", traj.usage.cache_read_tokens));
 
         self.lines.push("---".to_string());
         self.lines.push(String::new());
@@ -273,7 +262,11 @@ impl RlogWriter {
                 }
                 l
             }
-            StepType::ToolCall { tool, tool_id, input } => {
+            StepType::ToolCall {
+                tool,
+                tool_id,
+                input,
+            } => {
                 let args = format_tool_args(tool, input);
                 let id_short = if tool_id.len() > 8 {
                     &tool_id[tool_id.len() - 8..]
@@ -295,7 +288,12 @@ impl RlogWriter {
                 };
                 let content = output.as_deref().unwrap_or("");
                 let redacted = redact_secrets(content);
-                format!("o: id={} → {} {}", id_short, status, truncate(&redacted, 100))
+                format!(
+                    "o: id={} → {} {}",
+                    id_short,
+                    status,
+                    truncate(&redacted, 100)
+                )
             }
             StepType::SystemInit { model } => {
                 format!("@init model={}", model)
@@ -530,7 +528,13 @@ mod tests {
 
     #[test]
     fn test_tool_result_formatting() {
-        let mut traj = Trajectory::new("Test".to_string(), "m".to_string(), "/".to_string(), "a".to_string(), None);
+        let mut traj = Trajectory::new(
+            "Test".to_string(),
+            "m".to_string(),
+            "/".to_string(),
+            "a".to_string(),
+            None,
+        );
         traj.session_id = "t".to_string();
 
         // Success result
@@ -591,7 +595,13 @@ mod tests {
 
     #[test]
     fn test_special_characters() {
-        let mut traj = Trajectory::new("Test".to_string(), "m".to_string(), "/".to_string(), "a".to_string(), None);
+        let mut traj = Trajectory::new(
+            "Test".to_string(),
+            "m".to_string(),
+            "/".to_string(),
+            "a".to_string(),
+            None,
+        );
         traj.session_id = "t".to_string();
 
         // Add content with special characters

@@ -91,9 +91,11 @@ impl WorkerSupervisor {
                 cmd.arg("--model").arg(&self.config.model);
                 // Only pass budget if explicitly set (> 0)
                 if self.config.max_budget > 0.0 {
-                    cmd.arg("--max-budget").arg(self.config.max_budget.to_string());
+                    cmd.arg("--max-budget")
+                        .arg(self.config.max_budget.to_string());
                 }
-                cmd.arg("--max-turns").arg(self.config.max_turns.to_string());
+                cmd.arg("--max-turns")
+                    .arg(self.config.max_turns.to_string());
 
                 if let Some(project) = &self.config.project {
                     cmd.arg("--project").arg(project);
@@ -117,9 +119,11 @@ impl WorkerSupervisor {
                 cmd.arg("--model").arg(&self.config.model);
                 // Only pass budget if explicitly set (> 0)
                 if self.config.max_budget > 0.0 {
-                    cmd.arg("--max-budget").arg(self.config.max_budget.to_string());
+                    cmd.arg("--max-budget")
+                        .arg(self.config.max_budget.to_string());
                 }
-                cmd.arg("--max-turns").arg(self.config.max_turns.to_string());
+                cmd.arg("--max-turns")
+                    .arg(self.config.max_turns.to_string());
 
                 if let Some(project) = &self.config.project {
                     cmd.arg("--project").arg(project);
@@ -174,7 +178,10 @@ impl WorkerSupervisor {
                 self.config.restart.max_backoff_ms,
             );
 
-            if self.state.can_restart(self.config.restart.max_consecutive_restarts) {
+            if self
+                .state
+                .can_restart(self.config.restart.max_consecutive_restarts)
+            {
                 let backoff = self.state.current_backoff;
                 eprintln!(
                     "Worker crashed (attempt {}), restarting in {:?}",
@@ -190,7 +197,10 @@ impl WorkerSupervisor {
                     self.config.restart.max_consecutive_restarts
                 );
                 eprintln!("{}", reason);
-                self.state.status = WorkerStatus::Failed { reason, failed_at: Instant::now() };
+                self.state.status = WorkerStatus::Failed {
+                    reason,
+                    failed_at: Instant::now(),
+                };
             }
         }
     }
@@ -397,7 +407,11 @@ impl WorkerSupervisor {
     ///
     /// If `shared_metrics` is provided, it will be updated on each poll iteration
     /// so that control socket can read metrics without blocking this loop.
-    pub async fn run(&mut self, mut shutdown_rx: mpsc::Receiver<()>, shared_metrics: Option<SharedMetrics>) -> Result<()> {
+    pub async fn run(
+        &mut self,
+        mut shutdown_rx: mpsc::Receiver<()>,
+        shared_metrics: Option<SharedMetrics>,
+    ) -> Result<()> {
         let poll_interval = Duration::from_millis(self.config.memory.poll_interval_ms);
 
         // Spawn worker on start
