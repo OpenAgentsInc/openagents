@@ -1,3 +1,5 @@
+mod apm_comparison_card;
+mod apm_session_row;
 mod balance_card;
 mod checkpoint_restore;
 mod diff_header;
@@ -17,6 +19,8 @@ mod terminal_header;
 mod thinking_block;
 mod tool_header;
 
+pub use apm_comparison_card::{ApmComparisonCard, ComparisonSession};
+pub use apm_session_row::{ApmSessionData, ApmSessionRow};
 pub use balance_card::{BalanceCard, WalletBalance};
 pub use checkpoint_restore::CheckpointRestore;
 pub use diff_header::{DiffHeader, DiffType};

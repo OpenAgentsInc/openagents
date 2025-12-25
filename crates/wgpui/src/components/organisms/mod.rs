@@ -1,3 +1,4 @@
+mod apm_leaderboard;
 mod user_message;
 mod assistant_message;
 mod tool_call_card;
@@ -8,6 +9,7 @@ mod thread_entry;
 mod thread_controls;
 mod permission_dialog;
 
+pub use apm_leaderboard::{ApmLeaderboard, LeaderboardEntry};
 pub use user_message::UserMessage;
 pub use assistant_message::AssistantMessage;
 pub use tool_call_card::ToolCallCard;
