@@ -1,25 +1,39 @@
+mod agent_state_inspector;
 mod apm_leaderboard;
-mod user_message;
 mod assistant_message;
-mod tool_call_card;
-mod terminal_tool_call;
 mod diff_tool_call;
-mod search_tool_call;
-mod thread_entry;
-mod thread_controls;
+mod dm_thread;
 mod permission_dialog;
 mod receive_flow;
+mod relay_manager;
+mod search_tool_call;
 mod send_flow;
+mod terminal_tool_call;
+mod thread_controls;
+mod thread_entry;
+mod threshold_key_manager;
+mod tool_call_card;
+mod user_message;
+mod zap_flow;
 
+pub use agent_state_inspector::{
+    AgentAction, AgentGoal, AgentGoalStatus, AgentStateInspector, InspectorTab, ResourceUsage,
+};
 pub use apm_leaderboard::{ApmLeaderboard, LeaderboardEntry};
-pub use user_message::UserMessage;
 pub use assistant_message::AssistantMessage;
-pub use tool_call_card::ToolCallCard;
-pub use terminal_tool_call::TerminalToolCall;
-pub use diff_tool_call::{DiffToolCall, DiffLine, DiffLineKind};
-pub use search_tool_call::{SearchToolCall, SearchMatch};
-pub use thread_entry::{ThreadEntry, EntryType as ThreadEntryType};
-pub use thread_controls::ThreadControls;
+pub use diff_tool_call::{DiffLine, DiffLineKind, DiffToolCall};
+pub use dm_thread::DmThread;
 pub use permission_dialog::PermissionDialog;
 pub use receive_flow::{InvoiceState, ReceiveFlow, ReceiveStep, ReceiveType};
+pub use relay_manager::{RelayManager, RelayManagerState};
+pub use search_tool_call::{SearchMatch, SearchToolCall};
 pub use send_flow::{SendFlow, SendFlowState, SendStep};
+pub use terminal_tool_call::TerminalToolCall;
+pub use thread_controls::ThreadControls;
+pub use thread_entry::{EntryType as ThreadEntryType, ThreadEntry};
+pub use threshold_key_manager::{
+    KeyManagerTab, KeyShare, PeerStatus, SigningRequest, ThresholdKeyManager, ThresholdPeer,
+};
+pub use tool_call_card::ToolCallCard;
+pub use user_message::UserMessage;
+pub use zap_flow::{ZapFlow, ZapStep, ZAP_PRESETS};

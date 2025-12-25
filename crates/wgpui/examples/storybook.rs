@@ -62,7 +62,11 @@ use wgpui::components::molecules::{
     SigningRequestCard, SigningRequestInfo, SigningType, SigningUrgency,
 };
 use wgpui::components::atoms::{BreadcrumbItem, SessionBreadcrumb};
-use wgpui::components::organisms::{ApmLeaderboard, LeaderboardEntry, SendFlow, SendStep, ReceiveFlow, ReceiveStep, ReceiveType};
+use wgpui::components::organisms::{
+    AgentAction, AgentGoal, AgentGoalStatus, AgentStateInspector, ApmLeaderboard, DmThread,
+    KeyShare, LeaderboardEntry, PeerStatus, ReceiveFlow, ReceiveStep, ReceiveType, RelayManager,
+    ResourceUsage, SendFlow, SendStep, SigningRequest, ThresholdKeyManager, ThresholdPeer, ZapFlow,
+};
 use wgpui::renderer::Renderer;
 use winit::application::ApplicationHandler;
 use winit::event::{ElementState, WindowEvent};
@@ -7218,7 +7222,66 @@ impl Storybook {
         });
         y += zaps_height + SECTION_GAP;
 
-        // ========== Panel 4: Status Reference ==========
+        // ========== Panel 4: Relay Manager Organism ==========
+        let relay_mgr_height = panel_height(420.0);
+        let relay_mgr_bounds = Bounds::new(bounds.origin.x, y, width, relay_mgr_height);
+        draw_panel("Relay Manager (Organism)", relay_mgr_bounds, cx, |inner, cx| {
+            let relays = vec![
+                RelayInfo::new("wss://relay.damus.io").status(RelayStatus::Connected),
+                RelayInfo::new("wss://nos.lol").status(RelayStatus::Connecting),
+                RelayInfo::new("wss://relay.nostr.band").status(RelayStatus::Connected),
+                RelayInfo::new("wss://relay.snort.social").status(RelayStatus::Disconnected),
+            ];
+            let mut manager = RelayManager::new(relays);
+            manager.paint(
+                Bounds::new(inner.origin.x, inner.origin.y, inner.size.width.min(500.0), 380.0),
+                cx,
+            );
+        });
+        y += relay_mgr_height + SECTION_GAP;
+
+        // ========== Panel 5: DM Thread Organism ==========
+        let dm_thread_height = panel_height(450.0);
+        let dm_thread_bounds = Bounds::new(bounds.origin.x, y, width, dm_thread_height);
+        draw_panel("DM Thread (Organism)", dm_thread_bounds, cx, |inner, cx| {
+            let messages = vec![
+                DmMessage::new("m1", "Hey! Just saw your PR, looks great!", DmDirection::Incoming)
+                    .sender("Alice")
+                    .timestamp("2 min ago")
+                    .encryption(EncryptionStatus::Encrypted)
+                    .read(true),
+                DmMessage::new("m2", "Thanks! Working on the review comments now.", DmDirection::Outgoing)
+                    .timestamp("1 min ago")
+                    .encryption(EncryptionStatus::Encrypted)
+                    .read(true),
+                DmMessage::new("m3", "Let me know when you push the updates.", DmDirection::Incoming)
+                    .sender("Alice")
+                    .timestamp("Just now")
+                    .encryption(EncryptionStatus::Encrypted)
+                    .read(false),
+            ];
+            let mut thread = DmThread::new("Alice Developer", "npub1abc123xyz789")
+                .messages(messages);
+            thread.paint(
+                Bounds::new(inner.origin.x, inner.origin.y, inner.size.width.min(500.0), 400.0),
+                cx,
+            );
+        });
+        y += dm_thread_height + SECTION_GAP;
+
+        // ========== Panel 6: Zap Flow Organism ==========
+        let zap_flow_height = panel_height(420.0);
+        let zap_flow_bounds = Bounds::new(bounds.origin.x, y, width, zap_flow_height);
+        draw_panel("Zap Flow Wizard (Organism)", zap_flow_bounds, cx, |inner, cx| {
+            let mut flow = ZapFlow::new("Alice Developer", "npub1abc123xyz789...");
+            flow.paint(
+                Bounds::new(inner.origin.x, inner.origin.y, inner.size.width.min(400.0), 380.0),
+                cx,
+            );
+        });
+        y += zap_flow_height + SECTION_GAP;
+
+        // ========== Panel 7: Status Reference ==========
         let ref_height = panel_height(180.0);
         let ref_bounds = Bounds::new(bounds.origin.x, y, width, ref_height);
         draw_panel("Nostr Status Reference", ref_bounds, cx, |inner, cx| {
@@ -7495,7 +7558,83 @@ impl Storybook {
         });
         y += matrix_height + SECTION_GAP;
 
-        // ========== Panel 4: Type & Status Reference ==========
+        // ========== Panel 4: Agent State Inspector Organism ==========
+        let inspector_height = panel_height(450.0);
+        let inspector_bounds = Bounds::new(bounds.origin.x, y, width, inspector_height);
+        draw_panel("Agent State Inspector (Organism)", inspector_bounds, cx, |inner, cx| {
+            let goals = vec![
+                AgentGoal::new("g1", "Complete code review for PR #123")
+                    .progress(0.75)
+                    .status(AgentGoalStatus::Active),
+                AgentGoal::new("g2", "Run security scan on dependencies")
+                    .progress(1.0)
+                    .status(AgentGoalStatus::Completed),
+                AgentGoal::new("g3", "Waiting for API rate limit reset")
+                    .progress(0.3)
+                    .status(AgentGoalStatus::Blocked),
+            ];
+            let actions = vec![
+                AgentAction::new("Read", "Reading src/main.rs").timestamp("12:34"),
+                AgentAction::new("Edit", "Modified config.toml").timestamp("12:35"),
+                AgentAction::new("Bash", "Running tests...").timestamp("12:36").success(false),
+            ];
+            let resources = ResourceUsage {
+                tokens_used: 45000,
+                tokens_limit: 100000,
+                actions_count: 47,
+                runtime_seconds: 384,
+            };
+            let mut inspector = AgentStateInspector::new("CodeReviewer", "agent-123")
+                .goals(goals)
+                .actions(actions)
+                .memory(vec![
+                    ("current_file".to_string(), "src/main.rs".to_string()),
+                    ("branch".to_string(), "feature/auth".to_string()),
+                ])
+                .resources(resources);
+            inspector.paint(
+                Bounds::new(inner.origin.x, inner.origin.y, inner.size.width.min(500.0), 400.0),
+                cx,
+            );
+        });
+        y += inspector_height + SECTION_GAP;
+
+        // ========== Panel 5: Threshold Key Manager Organism ==========
+        let key_mgr_height = panel_height(450.0);
+        let key_mgr_bounds = Bounds::new(bounds.origin.x, y, width, key_mgr_height);
+        draw_panel("FROSTR Key Manager (Organism)", key_mgr_bounds, cx, |inner, cx| {
+            let key_share = KeyShare::new("key-001", 1, 2, 3)
+                .created_at("2024-01-15")
+                .backed_up(true);
+            let peers = vec![
+                ThresholdPeer::new("npub1alice...", "Alice (Local)", 1)
+                    .status(PeerStatus::Online)
+                    .last_seen("Now"),
+                ThresholdPeer::new("npub1bob...", "Bob (Hardware)", 2)
+                    .status(PeerStatus::Signing)
+                    .last_seen("Just now"),
+                ThresholdPeer::new("npub1carol...", "Carol (Cloud)", 3)
+                    .status(PeerStatus::Offline)
+                    .last_seen("5 min ago"),
+            ];
+            let requests = vec![
+                SigningRequest::new("req-1", "Sign Bitcoin transaction: 0.05 BTC")
+                    .requester("CodeReviewer Agent")
+                    .timestamp("2 min ago")
+                    .progress(1, 2),
+            ];
+            let mut key_manager = ThresholdKeyManager::new()
+                .key_share(key_share)
+                .peers(peers)
+                .requests(requests);
+            key_manager.paint(
+                Bounds::new(inner.origin.x, inner.origin.y, inner.size.width.min(500.0), 400.0),
+                cx,
+            );
+        });
+        y += key_mgr_height + SECTION_GAP;
+
+        // ========== Panel 6: Type & Status Reference ==========
         let ref_height = panel_height(180.0);
         let ref_bounds = Bounds::new(bounds.origin.x, y, width, ref_height);
         draw_panel("Agent Types & Statuses", ref_bounds, cx, |inner, cx| {
@@ -8983,6 +9122,9 @@ fn nostr_flows_height(_bounds: Bounds) -> f32 {
         panel_height(320.0),  // Contact Cards
         panel_height(380.0),  // DM Conversations
         panel_height(280.0),  // Zaps & Lightning
+        panel_height(420.0),  // Relay Manager Organism
+        panel_height(450.0),  // DM Thread Organism
+        panel_height(420.0),  // Zap Flow Organism
         panel_height(180.0),  // Status Reference
     ];
     stacked_height(&panels)
@@ -8993,6 +9135,8 @@ fn sovereign_agent_flows_height(_bounds: Bounds) -> f32 {
         panel_height(340.0),  // Agent Profiles
         panel_height(400.0),  // Signing Requests
         panel_height(280.0),  // Agent Status Matrix
+        panel_height(450.0),  // Agent State Inspector Organism
+        panel_height(450.0),  // Threshold Key Manager Organism
         panel_height(180.0),  // Type & Status Reference
     ];
     stacked_height(&panels)

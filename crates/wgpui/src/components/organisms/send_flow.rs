@@ -292,7 +292,7 @@ impl Component for SendFlow {
 
         // Content area
         let content_y = step_y + 56.0;
-        let content_height = bounds.size.height - header_height - 56.0 - 60.0; // Reserve footer space
+        let _content_height = bounds.size.height - header_height - 56.0 - 60.0; // Reserve footer space
 
         match self.step {
             SendStep::EnterAddress => {

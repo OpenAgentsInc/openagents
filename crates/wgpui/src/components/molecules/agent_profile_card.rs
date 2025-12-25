@@ -4,7 +4,7 @@
 
 use crate::components::context::{EventContext, PaintContext};
 use crate::components::{Component, ComponentId, EventResult};
-use crate::{Bounds, Hsla, InputEvent, MouseButton, Point, Quad, theme};
+use crate::{Bounds, InputEvent, MouseButton, Point, Quad, theme};
 use crate::components::atoms::{AgentStatus, AgentType};
 
 /// Agent profile information
