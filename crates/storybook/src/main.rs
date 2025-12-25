@@ -45,6 +45,12 @@ use stories::organisms::recorder::sections::recorder_sections_story;
 use stories::atoms::base_document::base_document_story;
 use stories::atoms::button::button_story;
 use stories::atoms::claude_status::claude_status_story;
+use stories::hud::command_palette::command_palette_story;
+use stories::hud::context_menu::context_menu_story;
+use stories::hud::index::hud_index_story;
+use stories::hud::notifications::notifications_story;
+use stories::hud::status_bar::status_bar_story;
+use stories::hud::tooltip::tooltip_story;
 // ACP stories
 use stories::acp::index::acp_index_story;
 use stories::acp::demo::acp_demo_story;
@@ -121,6 +127,13 @@ fn sidebar_nav(active_story: &str) -> Markup {
                 a href="/stories/acp/molecules/terminal-header" class=(link_class("acp/molecules/terminal-header")) { "Terminal Header" }
                 a href="/stories/acp/molecules/checkpoint-restore" class=(link_class("acp/molecules/checkpoint-restore")) { "Checkpoint Restore" }
                 a href="/stories/acp/molecules/entry-actions" class=(link_class("acp/molecules/entry-actions")) { "Entry Actions" }
+                h2 class="uppercase text-muted-foreground mb-1 mt-3 pl-1 tracking-wide text-xs" { "HUD" }
+                a href="/stories/hud" class=(link_class("hud")) { "HUD Index" }
+                a href="/stories/hud/command-palette" class=(link_class("hud/command-palette")) { "Command Palette" }
+                a href="/stories/hud/context-menu" class=(link_class("hud/context-menu")) { "Context Menu" }
+                a href="/stories/hud/notifications" class=(link_class("hud/notifications")) { "Notifications" }
+                a href="/stories/hud/status-bar" class=(link_class("hud/status-bar")) { "Status Bar" }
+                a href="/stories/hud/tooltip" class=(link_class("hud/tooltip")) { "Tooltip" }
                 // Other components
                 h2 class="uppercase text-muted-foreground mb-1 mt-4 pl-1 tracking-wide text-xs" { "Atoms" }
                 a href="/stories/base-document" class=(link_class("base-document")) { "Base Document" }
@@ -258,6 +271,54 @@ async fn button_story_page() -> impl Responder {
 async fn claude_status_story_page() -> impl Responder {
     let content = claude_status_story();
     let html = base_layout("Claude Status", "claude-status", content);
+    HttpResponse::Ok()
+        .content_type("text/html; charset=utf-8")
+        .body(html.into_string())
+}
+
+async fn hud_index_page() -> impl Responder {
+    let content = hud_index_story();
+    let html = base_layout("HUD Components", "hud", content);
+    HttpResponse::Ok()
+        .content_type("text/html; charset=utf-8")
+        .body(html.into_string())
+}
+
+async fn hud_command_palette_page() -> impl Responder {
+    let content = command_palette_story();
+    let html = base_layout("Command Palette", "hud/command-palette", content);
+    HttpResponse::Ok()
+        .content_type("text/html; charset=utf-8")
+        .body(html.into_string())
+}
+
+async fn hud_context_menu_page() -> impl Responder {
+    let content = context_menu_story();
+    let html = base_layout("Context Menu", "hud/context-menu", content);
+    HttpResponse::Ok()
+        .content_type("text/html; charset=utf-8")
+        .body(html.into_string())
+}
+
+async fn hud_notifications_page() -> impl Responder {
+    let content = notifications_story();
+    let html = base_layout("Notifications", "hud/notifications", content);
+    HttpResponse::Ok()
+        .content_type("text/html; charset=utf-8")
+        .body(html.into_string())
+}
+
+async fn hud_status_bar_page() -> impl Responder {
+    let content = status_bar_story();
+    let html = base_layout("Status Bar", "hud/status-bar", content);
+    HttpResponse::Ok()
+        .content_type("text/html; charset=utf-8")
+        .body(html.into_string())
+}
+
+async fn hud_tooltip_page() -> impl Responder {
+    let content = tooltip_story();
+    let html = base_layout("Tooltip", "hud/tooltip", content);
     HttpResponse::Ok()
         .content_type("text/html; charset=utf-8")
         .body(html.into_string())
@@ -657,6 +718,12 @@ async fn main() -> std::io::Result<()> {
             .route("/stories/base-document", web::get().to(base_document_story_page))
             .route("/stories/button", web::get().to(button_story_page))
             .route("/stories/claude-status", web::get().to(claude_status_story_page))
+            .route("/stories/hud", web::get().to(hud_index_page))
+            .route("/stories/hud/command-palette", web::get().to(hud_command_palette_page))
+            .route("/stories/hud/context-menu", web::get().to(hud_context_menu_page))
+            .route("/stories/hud/notifications", web::get().to(hud_notifications_page))
+            .route("/stories/hud/status-bar", web::get().to(hud_status_bar_page))
+            .route("/stories/hud/tooltip", web::get().to(hud_tooltip_page))
             .route("/stories/recorder", web::get().to(recorder_index_page))
             .route("/stories/recorder/molecules", web::get().to(recorder_molecules_page))
             .route("/stories/recorder/organisms", web::get().to(recorder_organisms_page))
