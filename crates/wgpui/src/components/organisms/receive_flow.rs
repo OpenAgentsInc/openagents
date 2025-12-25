@@ -196,7 +196,6 @@ impl ReceiveFlow {
     }
 
     fn copy_button_bounds(&self, bounds: &Bounds) -> Bounds {
-        let padding = 16.0;
         Bounds::new(
             bounds.origin.x + bounds.size.width / 2.0 - 40.0,
             bounds.origin.y + bounds.size.height - 120.0,

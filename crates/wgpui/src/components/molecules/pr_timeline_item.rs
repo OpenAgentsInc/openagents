@@ -2,7 +2,6 @@
 //!
 //! Shows PR events like commits, reviews, comments, and status changes.
 
-use crate::components::atoms::PrStatus;
 use crate::components::context::{EventContext, PaintContext};
 use crate::components::{Component, ComponentId, EventResult};
 use crate::{Bounds, Hsla, InputEvent, Point, Quad, theme};
