@@ -27,6 +27,11 @@ A cross-platform GPU-accelerated UI rendering library built on wgpu (WebGPU/Vulk
 
 **377 unit tests passing.**
 
+## Documentation
+
+- Phase 1 foundation system: docs/phase1-foundation.md
+- Docs index: docs/README.md
+
 ### Phase 1: Core Framework ✅
 
 | Module | Description | Status |
