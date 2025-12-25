@@ -90,6 +90,14 @@ When no ready issues are available, autopilot loads active directives and prompt
 
 Progress is automatically tracked based on completed/total linked issues.
 
+## Cross-Directive Integration Checks
+
+- **WGPUI-only UI**: All new GUI work (wallet, marketplace, autopilot) targets WGPUI and launches via `openagents`; no new Actix/Maud/HTMX routes.
+- **Shared state**: Autopilot GUI, metrics, and APM read/write the same `autopilot` metrics DB and issue DB; avoid forked storage.
+- **Local inference**: GPT-OSS and fm-bridge backends integrate through `local-inference`; ACP adapters should accept both and pass through `openagents autopilot`.
+- **Trajectories**: GitAfter and NIP-SA should consume the same trajectory/rlog formats produced by autopilot and recorder.
+- **Payments & identity**: Wallet + marketplace share Spark + NIP-SA identity; do not implement separate key derivations.
+
 ## Best Practices for Writing Directives
 
 ### Structure
@@ -217,7 +225,7 @@ Building on d-014's Bifrost/NIP-SA foundation, this directive adds end-to-end te
 
 ### d-016: Measure Actions Per Minute (APM)
 
-APM is a velocity metric inspired by StarCraft 2's competitive measurement of player speed. In OpenAgents, APM = (messages + tool_calls) / duration_minutes. This simple formula reveals a striking difference between interactive and autonomous usage: when you use Claude Code interactively, APM is ~4.5 because the AI waits for you to read, think, and type. Autopilot runs autonomously at ~19 APM — the same AI, 4x the throughput, because there's no human in the loop. This directive implements APM tracking across both usage modes. Data sources include Claude Code JSONL logs from `~/.claude/projects/` and Autopilot trajectory logs from `docs/logs/`. The system tracks APM across multiple time windows (session, 1h, 6h, 1d, 1w, 1m, lifetime) and color-codes results for quick interpretation: gray (0-5, baseline), blue (5-15, active), green (15-30, productive), amber (30-50, high performance), gold (50+, elite). APM appears in the CLI via `cargo autopilot apm`, in the web dashboard as a widget, and in the autopilot-gui as a HUD overlay. Historical data enables trend analysis and regression detection — if a change slows the agent down, APM will reveal it. The metric reinforces the core value proposition: autonomous agents are dramatically more productive than interactive assistants.
+APM is a velocity metric inspired by StarCraft 2's competitive measurement of player speed. In OpenAgents, APM = (messages + tool_calls) / duration_minutes. This simple formula reveals a striking difference between interactive and autonomous usage: when you use Claude Code interactively, APM is ~4.5 because the AI waits for you to read, think, and type. Autopilot runs autonomously at ~19 APM — the same AI, 4x the throughput, because there's no human in the loop. This directive implements APM tracking across both usage modes. Data sources include Claude Code JSONL logs from `~/.claude/projects/` and Autopilot trajectory logs from `docs/logs/`. The system tracks APM across multiple time windows (session, 1h, 6h, 1d, 1w, 1m, lifetime) and color-codes results for quick interpretation: gray (0-5, baseline), blue (5-15, active), green (15-30, productive), amber (30-50, high performance), gold (50+, elite). APM appears in the CLI via `cargo autopilot apm`, in the WGPUI dashboard pane, and in the autopilot-gui HUD overlay. Historical data enables trend analysis and regression detection — if a change slows the agent down, APM will reveal it. The metric reinforces the core value proposition: autonomous agents are dramatically more productive than interactive assistants.
 
 ### d-017: Integrate Agent Client Protocol (ACP)
 
