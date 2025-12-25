@@ -228,7 +228,11 @@ openagents/
 │   ├── nostr/core/       Nostr protocol types
 │   ├── claude-agent-sdk/ Claude Code integration
 │   ├── codex-agent-sdk/  OpenAI Codex integration
-│   └── fm-bridge/        Apple Foundation Models client
+│   ├── local-inference/  Shared local model backend trait
+│   ├── gpt-oss/          GPT-OSS local inference client
+│   ├── gpt-oss-agent/    Agent wrapper for GPT-OSS + tools
+│   ├── fm-bridge/        Apple Foundation Models client
+│   └── fm-bridge-agent/  Agent wrapper for fm-bridge + tools
 └── docs/                 Documentation
 ```
 
@@ -484,6 +488,25 @@ Supports:
 - OpenAI-compatible API
 
 [Full documentation →](crates/fm-bridge/README.md)
+
+#### `fm-bridge-agent`
+Agent wrapper around `fm-bridge` with multi-turn sessions, tool execution, and rlog recording:
+
+```rust
+use fm_bridge_agent::{FmBridgeAgent, FmBridgeAgentConfig};
+
+let agent = FmBridgeAgent::new(FmBridgeAgentConfig::default()).await?;
+let session = agent.create_session().await;
+let reply = session.send("Hello from FM").await?;
+```
+
+#### `local-infer`
+Single CLI entry for GPT-OSS or Apple FM bridge inference:
+
+```bash
+scripts/local-infer.sh --backend gpt-oss "Hello"
+scripts/local-infer.sh --backend fm-bridge --tools "Summarize this repo"
+```
 
 ## Tech Stack
 

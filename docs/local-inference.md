@@ -94,3 +94,14 @@ CUDA_VISIBLE_DEVICES="" ./llama-cli -m ~/models/gpt-oss/gpt-oss-120b-mxfp4.gguf 
 ```
 
 This drops generation from 15.9 t/s to 9.3 t/s on 120b.
+
+## OpenAgents local-infer runner
+
+If you already have a local GPT-OSS server or the Apple Foundation Models bridge running, use the unified runner:
+
+```bash
+scripts/local-infer.sh --backend gpt-oss --url http://localhost:8000 "Hello"
+scripts/local-infer.sh --backend fm-bridge --url http://localhost:3030 --tools "Summarize this repo"
+```
+
+Use `--tools` to enable local tool calls (browser, python, apply_patch, ui_pane). You can also set `FM_BRIDGE_URL` instead of passing `--url` for the FM bridge.

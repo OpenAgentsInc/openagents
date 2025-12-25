@@ -2440,6 +2440,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "fm-bridge-agent"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "fm-bridge",
+ "futures-util",
+ "gpt-oss-agent",
+ "local-inference",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.17",
+ "tokio",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
 name = "fnv"
 version = "1.0.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5302,9 +5319,11 @@ dependencies = [
  "clap",
  "claude-agent-sdk",
  "colored 2.2.0",
+ "fm-bridge-agent",
  "futures-util",
  "gitafter",
  "governor 0.10.4",
+ "gpt-oss-agent",
  "gtk",
  "marketplace",
  "once_cell",

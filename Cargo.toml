@@ -17,6 +17,7 @@ members = [
     "crates/recorder",
     "crates/testing",
     "crates/fm-bridge",
+    "crates/fm-bridge-agent",
     "crates/claude-agent-sdk",
     "crates/codex-agent-sdk",
     "crates/opencode-sdk",
@@ -55,6 +56,8 @@ autopilot-gui = { path = "crates/autopilot-gui" }
 gitafter = { path = "crates/gitafter" }
 claude-agent-sdk = { path = "crates/claude-agent-sdk" }
 acp-adapter = { path = "crates/acp-adapter" }
+gpt-oss-agent = { path = "crates/gpt-oss-agent" }
+fm-bridge-agent = { path = "crates/fm-bridge-agent" }
 
 # CLI
 clap = { version = "4.4", features = ["derive", "wrap_help"] }

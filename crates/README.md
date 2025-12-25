@@ -35,6 +35,9 @@ The config crate manages OpenAgents project configuration stored in .openagents/
 ## fm-bridge
 The fm-bridge crate is a Rust client for the Apple Foundation Models HTTP bridge that provides OpenAI-compatible chat completions and model listing. It offers typed requests, async APIs, and a CLI for quick testing while abstracting the underlying Swift bridge. This crate enables local on-device inference on macOS systems that expose the bridge.
 
+## fm-bridge-agent
+The fm-bridge-agent crate wraps fm-bridge in an agent-level interface with session tracking, tool execution, and rlog recording. It is the Foundation Models counterpart to gpt-oss-agent, letting FM-backed agents participate in OpenAgents workflows that expect tools and trajectories.
+
 ## frostr
 The frostr crate is a native Rust implementation of the FROSTR threshold Schnorr signing protocol for Nostr. It supports key generation, share management, and signing flows that allow k-of-n participants to sign without reconstructing the private key. This provides the cryptographic foundation for sovereign agent identities and distributed signing.
 
