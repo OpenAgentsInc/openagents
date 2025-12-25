@@ -102,6 +102,7 @@ Progress is automatically tracked based on completed/total linked issues.
 - **Agent backends**: ACP/OpenCode/orchestrator sessions should emit consistent rlog headers and session IDs for metrics + replay.
 - **Payments & identity**: Wallet + marketplace share Spark + NIP-SA identity; do not implement separate key derivations.
 - **Fonts**: All UI surfaces use Vera Mono from `src/gui/assets/fonts/VeraMono*.ttf`.
+- **Issue DB safety**: Use `issues` APIs/CLI for issue writes; no direct sqlite writes in any integration.
 
 ## Best Practices for Writing Directives
 
