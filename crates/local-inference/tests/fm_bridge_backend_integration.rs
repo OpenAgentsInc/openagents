@@ -192,7 +192,9 @@ async fn test_fm_bridge_complete() {
     client.initialize().await.expect("Initialization should succeed");
 
     let request = CompletionRequest::new("apple-intelligence-1", "What is Rust?");
-    let response = client.complete(request).await.expect("Completion should succeed");
+    let response = LocalModelBackend::complete(&client, request)
+        .await
+        .expect("Completion should succeed");
 
     assert_eq!(response.id, "completion-abc");
     assert_eq!(response.model, "apple-intelligence-1");
@@ -424,7 +426,7 @@ async fn test_fm_bridge_error_handling() {
     client.initialize().await.expect("Initialization should succeed");
 
     let request = CompletionRequest::new("apple-intelligence-1", "Test");
-    let result = client.complete(request).await;
+    let result = LocalModelBackend::complete(&client, request).await;
 
     assert!(result.is_err(), "Should fail with server error");
 }

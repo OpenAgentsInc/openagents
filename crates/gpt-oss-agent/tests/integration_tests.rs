@@ -11,7 +11,7 @@ use tempfile::TempDir;
 async fn test_agent_initialization() {
     let temp_dir = TempDir::new().unwrap();
     let config = GptOssAgentConfig {
-        base_url: "http://localhost:8080".to_string(),
+        base_url: "http://localhost:8000".to_string(),
         model: "gpt-oss-20b".to_string(),
         workspace_root: temp_dir.path().to_path_buf(),
         record_trajectory: false,
@@ -180,7 +180,7 @@ async fn test_multiple_sessions_have_unique_ids() {
 async fn test_agent_config_defaults() {
     let config = GptOssAgentConfig::default();
 
-    assert_eq!(config.base_url, "http://localhost:8080");
+    assert_eq!(config.base_url, "http://localhost:8000");
     assert_eq!(config.model, "gpt-oss-20b");
     assert!(!config.record_trajectory);
     assert!(config.workspace_root.exists() || config.workspace_root == PathBuf::from("."));

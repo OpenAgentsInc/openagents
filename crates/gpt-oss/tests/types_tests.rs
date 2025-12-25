@@ -1,12 +1,15 @@
 //! Tests for GPT-OSS types serialization and deserialization
 
-use gpt_oss::{GptOssRequest, GptOssResponse, GptOssStreamChunk};
-use serde_json::json;
+use gpt_oss::{
+    GptOssReasoningEffort, GptOssRequest, GptOssResponse, GptOssResponsesRequest,
+    GptOssResponsesResponse, GptOssStreamChunk, GptOssToolChoice, GptOssToolChoiceFunction,
+    GptOssToolDefinition, GptOssToolFunction,
+};
 
 #[test]
 fn test_request_serialization() {
     let request = GptOssRequest {
-        model: "gpt-4o-mini".to_string(),
+        model: "gpt-oss-20b".to_string(),
         prompt: "What is Rust?".to_string(),
         max_tokens: Some(100),
         temperature: Some(0.7),
@@ -16,7 +19,7 @@ fn test_request_serialization() {
     };
 
     let json_str = serde_json::to_string(&request).unwrap();
-    assert!(json_str.contains("gpt-4o-mini"));
+    assert!(json_str.contains("gpt-oss-20b"));
     assert!(json_str.contains("What is Rust?"));
     assert!(json_str.contains("100"));
     assert!(json_str.contains("0.7"));
@@ -25,7 +28,7 @@ fn test_request_serialization() {
 #[test]
 fn test_request_serialization_minimal() {
     let request = GptOssRequest {
-        model: "gpt-4o-mini".to_string(),
+        model: "gpt-oss-20b".to_string(),
         prompt: "Test".to_string(),
         max_tokens: None,
         temperature: None,
@@ -46,7 +49,7 @@ fn test_request_serialization_minimal() {
 #[test]
 fn test_request_deserialization() {
     let json_str = r#"{
-        "model": "gpt-4o-mini",
+        "model": "gpt-oss-20b",
         "prompt": "Test prompt",
         "max_tokens": 50,
         "temperature": 0.5,
@@ -55,7 +58,7 @@ fn test_request_deserialization() {
 
     let request: GptOssRequest = serde_json::from_str(json_str).unwrap();
 
-    assert_eq!(request.model, "gpt-4o-mini");
+    assert_eq!(request.model, "gpt-oss-20b");
     assert_eq!(request.prompt, "Test prompt");
     assert_eq!(request.max_tokens, Some(50));
     assert_eq!(request.temperature, Some(0.5));
@@ -65,13 +68,13 @@ fn test_request_deserialization() {
 #[test]
 fn test_request_deserialization_minimal() {
     let json_str = r#"{
-        "model": "gpt-4o-mini",
+        "model": "gpt-oss-20b",
         "prompt": "Test"
     }"#;
 
     let request: GptOssRequest = serde_json::from_str(json_str).unwrap();
 
-    assert_eq!(request.model, "gpt-4o-mini");
+    assert_eq!(request.model, "gpt-oss-20b");
     assert_eq!(request.prompt, "Test");
     assert_eq!(request.max_tokens, None);
     assert_eq!(request.temperature, None);
@@ -82,7 +85,7 @@ fn test_request_deserialization_minimal() {
 fn test_response_deserialization() {
     let json_str = r#"{
         "id": "resp-123",
-        "model": "gpt-4o-mini",
+        "model": "gpt-oss-20b",
         "text": "Rust is a systems programming language.",
         "finish_reason": "stop",
         "usage": {
@@ -95,7 +98,7 @@ fn test_response_deserialization() {
     let response: GptOssResponse = serde_json::from_str(json_str).unwrap();
 
     assert_eq!(response.id, "resp-123");
-    assert_eq!(response.model, "gpt-4o-mini");
+    assert_eq!(response.model, "gpt-oss-20b");
     assert!(response.text.contains("Rust"));
     assert_eq!(response.finish_reason, Some("stop".to_string()));
 
@@ -109,24 +112,24 @@ fn test_response_deserialization() {
 fn test_response_deserialization_minimal() {
     let json_str = r#"{
         "id": "resp-456",
-        "model": "gpt-4o-mini",
+        "model": "gpt-oss-20b",
         "text": "Response text"
     }"#;
 
     let response: GptOssResponse = serde_json::from_str(json_str).unwrap();
 
     assert_eq!(response.id, "resp-456");
-    assert_eq!(response.model, "gpt-4o-mini");
+    assert_eq!(response.model, "gpt-oss-20b");
     assert_eq!(response.text, "Response text");
     assert_eq!(response.finish_reason, None);
-    assert_eq!(response.usage, None);
+    assert!(response.usage.is_none());
 }
 
 #[test]
 fn test_stream_chunk_deserialization() {
     let json_str = r#"{
         "id": "chunk-789",
-        "model": "gpt-4o-mini",
+        "model": "gpt-oss-20b",
         "delta": "word",
         "finish_reason": null
     }"#;
@@ -134,7 +137,7 @@ fn test_stream_chunk_deserialization() {
     let chunk: GptOssStreamChunk = serde_json::from_str(json_str).unwrap();
 
     assert_eq!(chunk.id, "chunk-789");
-    assert_eq!(chunk.model, "gpt-4o-mini");
+    assert_eq!(chunk.model, "gpt-oss-20b");
     assert_eq!(chunk.delta, "word");
     assert_eq!(chunk.finish_reason, None);
 }
@@ -143,7 +146,7 @@ fn test_stream_chunk_deserialization() {
 fn test_stream_chunk_with_finish_reason() {
     let json_str = r#"{
         "id": "chunk-final",
-        "model": "gpt-4o-mini",
+        "model": "gpt-oss-20b",
         "delta": "",
         "finish_reason": "stop"
     }"#;
@@ -179,6 +182,75 @@ fn test_request_roundtrip() {
 }
 
 #[test]
+fn test_responses_request_serialization() {
+    let tool = GptOssToolDefinition {
+        tool_type: "function".to_string(),
+        function: GptOssToolFunction {
+            name: "browser".to_string(),
+            description: Some("Search the web".to_string()),
+            parameters: serde_json::json!({
+                "type": "object",
+                "properties": { "query": { "type": "string" } }
+            }),
+        },
+    };
+
+    let request = GptOssResponsesRequest::new("gpt-oss-20b", "Hello")
+        .with_tools(vec![tool])
+        .with_tool_choice(GptOssToolChoice::Named {
+            tool_type: "function".to_string(),
+            function: GptOssToolChoiceFunction {
+                name: "browser".to_string(),
+            },
+        })
+        .with_reasoning_effort(GptOssReasoningEffort::Low);
+
+    let json_str = serde_json::to_string(&request).unwrap();
+    assert!(json_str.contains("\"input\""));
+    assert!(json_str.contains("\"tools\""));
+    assert!(json_str.contains("\"reasoning\""));
+}
+
+#[test]
+fn test_responses_response_helpers() {
+    let json_str = r#"{
+        "id": "resp-1",
+        "model": "gpt-oss-20b",
+        "output": [
+            {
+                "type": "message",
+                "role": "assistant",
+                "content": [
+                    { "type": "output_text", "text": "Hello " },
+                    { "type": "output_text", "text": "world" }
+                ]
+            },
+            {
+                "type": "tool_call",
+                "id": "call-1",
+                "name": "browser",
+                "arguments": { "query": "openagents" }
+            }
+        ],
+        "usage": { "input_tokens": 5, "output_tokens": 7, "total_tokens": 12 }
+    }"#;
+
+    let response: GptOssResponsesResponse = serde_json::from_str(json_str).unwrap();
+    assert_eq!(response.output_text(), "Hello world");
+
+    let calls = response.tool_calls();
+    assert_eq!(calls.len(), 1);
+    assert_eq!(calls[0].name, "browser");
+    assert_eq!(
+        calls[0]
+            .arguments
+            .get("query")
+            .and_then(|v| v.as_str()),
+        Some("openagents")
+    );
+}
+
+#[test]
 fn test_response_clone() {
     let response = GptOssResponse {
         id: "test".to_string(),
@@ -202,6 +274,10 @@ fn test_types_are_send_and_sync() {
     assert_sync::<GptOssRequest>();
     assert_send::<GptOssResponse>();
     assert_sync::<GptOssResponse>();
+    assert_send::<GptOssResponsesRequest>();
+    assert_sync::<GptOssResponsesRequest>();
+    assert_send::<GptOssResponsesResponse>();
+    assert_sync::<GptOssResponsesResponse>();
     assert_send::<GptOssStreamChunk>();
     assert_sync::<GptOssStreamChunk>();
 }

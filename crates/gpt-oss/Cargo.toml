@@ -29,6 +29,9 @@ async-trait = "0.1"
 # SSE parsing
 eventsource-stream = "0.2"
 
+# Harmony prompt format
+openai-harmony = { path = "../../../harmony" }
+
 # Tracing
 tracing = "0.1"
 

@@ -1,14 +1,14 @@
 # d-019 GPT-OSS Implementation Status
 
-**Last Updated:** 2025-12-24
+**Last Updated:** 2025-12-25
 **Directive:** d-019 - GPT-OSS Local Inference Integration
-**Status:** In Progress (Phases 1-4 Complete, Phase 5-6 Incomplete)
+**Status:** In Progress (Phases 1-4 Complete; Phase 5 Incomplete; Phase 6 Mostly Complete)
 
 ## Executive Summary
 
-The GPT-OSS integration has made significant progress with core infrastructure complete. All foundational layers (trait definition, client implementation, agent wrapper, and ACP integration) are fully implemented with comprehensive test coverage. The remaining work focuses on GUI integration, documentation, and end-to-end testing.
+The GPT-OSS integration has made significant progress with core infrastructure complete. Foundational layers (trait definition, agent wrapper, ACP integration) are fully implemented with comprehensive test coverage. The remaining work focuses on GUI integration, model management UI, and tool integration tests. A unified `local-infer` runner now covers GPT-OSS and FM bridge for local usage.
 
-**Completion Estimate:** 70% complete (4 of 6 phases done)
+**Completion Estimate:** 90% complete (Phase 5 UI work still pending)
 
 ---
 
@@ -49,7 +49,7 @@ The GPT-OSS integration has made significant progress with core infrastructure c
 - ✅ Created `crates/gpt-oss/` crate
 - ✅ Implemented `GptOssClient` with builder pattern
 - ✅ Implemented `LocalModelBackend` for `GptOssClient`
-- ✅ Added Responses API compatibility (tool use, reasoning effort)
+- ✅ Responses API compatibility supports tool definitions + reasoning effort
 - ✅ Support streaming via SSE
 - ✅ Added health check and model listing
 
@@ -67,13 +67,14 @@ The GPT-OSS integration has made significant progress with core infrastructure c
 - Streaming support via Server-Sent Events
 - Comprehensive error handling with custom error types
 - HTTP client with configurable timeout (default: 120s)
+- Defaults aligned to GPT-OSS naming (`gpt-oss-20b`) and port `8000`
 
 **Test Coverage:**
 - ✅ `tests/gpt_oss_backend_integration.rs` - Integration tests
 - ✅ Builder pattern tests
 - ✅ Streaming tests
 
-**Code Quality:** Production-ready, no stubs, fully functional
+**Code Quality:** Production-ready for completions + Responses API; Harmony prompt formatting integrated
 
 ---
 
@@ -106,6 +107,7 @@ The GPT-OSS integration has made significant progress with core infrastructure c
 **Completed Items:**
 - ✅ Created `crates/gpt-oss-agent/` for agent-level abstraction
 - ✅ Implemented tool handling (browser, python, apply_patch)
+- ✅ Browser tool search now uses live DuckDuckGo HTML results (no stub)
 - ✅ Added trajectory recording support
 - ✅ Integrated with `acp-adapter` pattern
 
@@ -171,7 +173,7 @@ None - all dependencies are in place. This is pure integration work.
 
 ---
 
-### ❌ Phase 6: Documentation & Testing (v0.6) - INCOMPLETE
+### ✅ Phase 6: Documentation & Testing (v0.6) - MOSTLY COMPLETE
 
 **Completed Items:**
 - ✅ Integration tests with mock backends
@@ -179,23 +181,21 @@ None - all dependencies are in place. This is pure integration work.
 - ✅ fm-bridge integration tests
 - ✅ gpt-oss backend integration tests
 - ✅ Code-level documentation (rustdoc comments)
+- ✅ API documentation (`docs/gpt-oss/API.md`)
+- ✅ Example code in docs (`docs/gpt-oss/examples/`)
+- ✅ E2E test with real GPT-OSS server (`crates/gpt-oss/tests/real_server_e2e.rs`, ignored)
+- ✅ Benchmark harness for GPT-OSS vs FM bridge (`crates/local-inference/benches/backend_overhead.rs`)
 
 **Incomplete Items:**
-- ❌ E2E test with real GPT-OSS server (requires GPU)
-- ❌ Usage documentation (how to set up llama.cpp, download models)
-- ❌ Performance benchmarks (compare to fm-bridge, measure overhead)
-- ❌ Comprehensive API documentation
-- ❌ Example code in docs/
+- ❌ Publish rustdoc output to docs site
+- ❌ Tool integration tests (browser/python/apply_patch)
 
 **Blocking Issues:**
-None - infrastructure exists, just needs documentation writing.
+None - only rustdoc publishing and tool tests remain.
 
 **Next Steps:**
-1. Create `docs/gpt-oss/README.md` with setup instructions
-2. Add examples to `docs/gpt-oss/examples/`
-3. Write benchmark suite comparing backends
-4. Add E2E test marked as `#[ignore]` for GPU environments
-5. Generate rustdoc and publish to docs site
+1. Generate rustdoc and publish to docs site
+2. Add end-to-end tool integration tests
 
 **Estimated Effort:** 6-8 hours of focused work
 
@@ -217,13 +217,11 @@ None - infrastructure exists, just needs documentation writing.
 - ✅ Mock HTTP server tests for Responses API
 - ✅ Trait compliance across both backends
 - ✅ Streaming behavior validation
-- ❌ E2E with real llama.cpp server (not implemented)
+- ⚠️ E2E with real GPT-OSS server (ignored by default)
 
 ### Missing Tests
-1. **Performance Benchmarks** - Compare fm-bridge vs gpt-oss overhead
-2. **Real Server E2E** - Test against actual GPT-OSS server
-3. **Tool Integration** - Test browser/python/apply_patch tools end-to-end
-4. **GUI Integration** - Test agent selection in UI
+1. **Tool Integration** - Test browser/python/apply_patch tools end-to-end
+2. **GUI Integration** - Test agent selection in UI
 
 ---
 
@@ -269,21 +267,7 @@ None - infrastructure exists, just needs documentation writing.
 
 ### Technical Gaps
 
-1. **Harmony Format Integration** ❌
-   - Directive specifies using `openai-harmony` crate from `~/code/harmony/`
-   - NOT YET INTEGRATED in current implementation
-   - Current implementation uses simple text responses, not Harmony chain-of-thought format
-   - **Action Required:** Add `openai-harmony` dependency and implement proper parsing
-
-2. **Reasoning Effort Support** ⚠️
-   - `ReasoningEffort` enum exists in design but not implemented
-   - Should map to Harmony's reasoning depth control
-   - **Action Required:** Implement reasoning effort configuration
-
-3. **Tool Use Protocol** ⚠️
-   - Tools exist (browser, python, apply_patch) but need integration with Harmony format
-   - Tool calling protocol not yet implemented
-   - **Action Required:** Implement Harmony tool use format
+1. **None identified** - Core inference + Harmony tool loop are integrated
 
 ### Integration Gaps
 
@@ -293,15 +277,13 @@ None - infrastructure exists, just needs documentation writing.
 
 ### Documentation Gaps
 
-1. **No User Guide** - Setup instructions don't exist
-2. **No Examples** - Example code not written
-3. **No Benchmarks** - Performance not measured
+1. **Rustdoc Publishing** - `cargo doc --no-deps` not published to docs site
+2. **Expanded Setup Guide** - README covers quick start, but deeper setup notes could be expanded
 
 ### Testing Gaps
 
-1. **No E2E Tests** - Real server testing not implemented
-2. **No Performance Tests** - Benchmarks not written
-3. **No Tool Tests** - Browser/python tools not tested end-to-end
+1. **Tool Integration Tests** - Browser/python tools not exercised end-to-end against real services
+2. **Continuous E2E** - E2E test exists but is ignored by default (GPU required)
 
 ---
 
@@ -311,26 +293,13 @@ None - infrastructure exists, just needs documentation writing.
 
 1. ✅ **DONE** - All core implementation complete
 
-### Priority 2: Harmony Integration (Missing from Phase 2)
+### Priority 2: Harmony Integration (v0.2)
 
-1. **Add openai-harmony dependency**
-   - Add git dependency to `crates/gpt-oss/Cargo.toml`
-   - Path: `~/code/harmony/` or git URL
+1. ✅ **Add openai-harmony dependency** (`crates/gpt-oss/Cargo.toml`)
+2. ✅ **Implement Harmony encoding/decoding** (`crates/gpt-oss/src/harmony.rs`)
+3. ✅ **Wire tool calls into tool execution**
 
-2. **Implement Harmony encoding/decoding**
-   - Create `crates/gpt-oss/src/harmony.rs`
-   - Implement conversation rendering with chain-of-thought
-   - Implement response parsing
-
-3. **Add reasoning effort support**
-   - Map `ReasoningEffort` enum to Harmony's depth control
-   - Update client to send effort in requests
-
-4. **Implement tool use protocol**
-   - Parse Harmony tool calls from response
-   - Execute tools and format results back to Harmony
-
-**Estimated Effort:** 8-12 hours
+**Estimated Effort:** 0 hours
 
 ### Priority 3: GUI Integration (Phase 5)
 
@@ -352,22 +321,9 @@ None - infrastructure exists, just needs documentation writing.
 
 ### Priority 4: Documentation (Phase 6)
 
-1. **Setup guide** - `docs/gpt-oss/SETUP.md`
-   - llama.cpp installation
-   - Model downloading (GGUF from Hugging Face)
-   - Server startup commands
-   - Environment variables
-
-2. **Usage guide** - `docs/gpt-oss/USAGE.md`
-   - CLI usage with examples
-   - GUI usage walkthrough
-   - Troubleshooting common issues
-
-3. **API documentation** - `docs/gpt-oss/API.md`
-   - LocalModelBackend trait contract
-   - GptOssClient API surface
-   - Example code snippets
-
+1. ✅ **README + quick start** - `docs/gpt-oss/README.md`
+2. ✅ **API documentation** - `docs/gpt-oss/API.md`
+3. ✅ **Examples + benchmarks** - `docs/gpt-oss/examples/`, `docs/gpt-oss/BENCHMARKS.md`
 4. **Generate rustdoc**
    - Run `cargo doc --no-deps`
    - Publish to docs site
@@ -376,16 +332,8 @@ None - infrastructure exists, just needs documentation writing.
 
 ### Priority 5: Testing & Benchmarks (Phase 6)
 
-1. **E2E tests** - Real llama.cpp server
-   - Mark as `#[ignore]` (requires GPU)
-   - Add to CI as optional job
-   - Document how to run locally
-
-2. **Performance benchmarks**
-   - Compare fm-bridge vs gpt-oss latency
-   - Measure streaming overhead
-   - Document results in `docs/gpt-oss/BENCHMARKS.md`
-
+1. ✅ **E2E tests** - Real GPT-OSS server (ignored by default)
+2. ✅ **Performance benchmarks** - `crates/local-inference/benches/backend_overhead.rs`
 3. **Tool integration tests**
    - Test browser tool against real websites
    - Test python tool with Docker
@@ -403,23 +351,22 @@ None - infrastructure exists, just needs documentation writing.
 - ✅ Streaming support via SSE
 - ✅ Agent wrapper with tools
 - ✅ ACP integration complete
-- ⚠️ Harmony format NOT YET integrated (critical gap)
+- ✅ Harmony tool call wiring integrated into session loop
 - ❌ GUI integration incomplete
-- ❌ Documentation incomplete
+- ✅ Documentation in place (README, API, examples, benchmarks)
 
 ### Code Quality
 - ✅ No stubs (d-012 compliant)
 - ✅ Comprehensive error handling
 - ✅ Builder patterns for configuration
 - ✅ Unit test coverage >80%
-- ❌ E2E test coverage missing
-- ❌ Performance benchmarks missing
+- ⚠️ E2E test coverage exists but is ignored by default
+- ✅ Performance benchmarks in place
 
 ### User Experience
 - ✅ CLI usage works (`--agent gpt-oss`)
 - ❌ GUI usage not possible (no UI integration)
-- ❌ No user documentation
-- ❌ No setup guide
+- ✅ User docs available in `docs/gpt-oss/`
 
 ---
 
@@ -432,39 +379,37 @@ None - infrastructure exists, just needs documentation writing.
 | gpt-oss-003 | Add streaming support | v0.2 | ✅ COMPLETE |
 | gpt-oss-004 | Implement LocalModelBackend for GptOssClient | v0.2 | ✅ COMPLETE |
 | gpt-oss-005 | Refactor fm-bridge to use shared types | v0.3 | ✅ COMPLETE |
-| gpt-oss-006 | Add reasoning effort support | v0.2 | ⚠️ PARTIAL (enum exists, not wired up) |
+| gpt-oss-006 | Add reasoning effort support | v0.2 | ✅ COMPLETE |
 | gpt-oss-007 | Create gpt-oss-agent wrapper | v0.4 | ✅ COMPLETE |
 | gpt-oss-008 | Add browser tool support | v0.4 | ✅ COMPLETE |
 | gpt-oss-009 | Add python tool support | v0.4 | ✅ COMPLETE |
 | gpt-oss-010 | GUI agent selection | v0.5 | ❌ NOT STARTED |
 | gpt-oss-011 | Local inference config UI | v0.5 | ❌ NOT STARTED |
 | gpt-oss-012 | Autopilot CLI integration | v0.5 | ✅ COMPLETE |
-| gpt-oss-013 | Integration tests | v0.6 | ⚠️ PARTIAL (unit tests done, E2E missing) |
-| gpt-oss-014 | Documentation | v0.6 | ❌ NOT STARTED |
+| gpt-oss-013 | Integration tests | v0.6 | ✅ COMPLETE |
+| gpt-oss-014 | Documentation | v0.6 | ✅ COMPLETE |
+| gpt-oss-015 | Integrate openai-harmony crate | v0.2 | ✅ COMPLETE |
+| gpt-oss-016 | Wire Harmony tool calls into execution loop | v0.2 | ✅ COMPLETE |
 
 **Additional Issues Needed:**
-- **gpt-oss-015**: Integrate openai-harmony crate (v0.2)
-- **gpt-oss-016**: Implement Harmony tool use protocol (v0.2)
-- **gpt-oss-017**: Performance benchmarks (v0.6)
-- **gpt-oss-018**: E2E tests with real server (v0.6)
+- **gpt-oss-017**: Tool integration tests (v0.6)
+- **gpt-oss-018**: Publish rustdoc (v0.6)
 
 ---
 
 ## Critical Path to Completion
 
-1. **Harmony Integration** (12h) - Without this, GPT-OSS won't use chain-of-thought properly
-2. **GUI Integration** (8h) - Makes GPT-OSS accessible to non-CLI users
-3. **Documentation** (8h) - Users need setup/usage guides
-4. **E2E Testing** (6h) - Validate with real server
-5. **Benchmarks** (4h) - Measure performance vs fm-bridge
+1. **GUI Integration** (8h) - Makes GPT-OSS accessible to non-CLI users
+2. **Tool Integration Tests** (6h) - Validate browser/python/apply_patch in real scenarios
+3. **Rustdoc Publishing** (2h) - Publish `cargo doc` output
 
-**Total Remaining Effort:** ~38 hours (~1 week of focused work)
+**Total Remaining Effort:** ~28 hours (~3-4 days of focused work)
 
 ---
 
 ## Conclusion
 
-The d-019 GPT-OSS integration has achieved 70% completion with all foundational infrastructure in place. The implementation is production-ready for CLI usage but requires Harmony format integration (critical gap), GUI work, and documentation to reach full completion.
+The d-019 GPT-OSS integration has achieved ~90% completion with all foundational infrastructure in place. The implementation is production-ready for CLI usage but requires GUI work and tool integration tests to reach full completion.
 
 **Key Strengths:**
 - Clean trait-based architecture
@@ -473,9 +418,7 @@ The d-019 GPT-OSS integration has achieved 70% completion with all foundational 
 - Full ACP integration
 
 **Key Weaknesses:**
-- Harmony format NOT integrated (blocks chain-of-thought)
 - No GUI integration (blocks non-technical users)
-- Missing documentation (blocks adoption)
-- No E2E tests (limits confidence)
+- Tool integration tests missing (limits confidence)
 
-**Recommendation:** Prioritize Harmony integration first (critical for functionality), then GUI (user access), then documentation (adoption), then testing/benchmarks (validation).
+**Recommendation:** Prioritize GUI integration first (user access), then tool tests + rustdoc publishing (validation).

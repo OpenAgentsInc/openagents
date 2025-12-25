@@ -8,7 +8,7 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 use uuid::Uuid;
 
-use gpt_oss::{GptOssClient, GptOssRequest};
+use gpt_oss::{GptOssClient, GptOssRequest, HarmonyRenderer, HarmonyRole, HarmonyToolSpec, HarmonyTurn};
 
 use crate::error::{GptOssAgentError, Result};
 use crate::tools::{Tool, ToolRequest, ToolResult};
@@ -23,6 +23,14 @@ pub struct Message {
     pub content: String,
     /// Optional tool calls made in this turn
     pub tool_calls: Vec<ToolCall>,
+    /// Optional recipient (used for tool calls)
+    pub recipient: Option<String>,
+    /// Optional author name (used for tool responses)
+    pub name: Option<String>,
+    /// Optional channel (analysis/commentary/final)
+    pub channel: Option<String>,
+    /// Optional content type (e.g., "code")
+    pub content_type: Option<String>,
 }
 
 /// A tool call record
@@ -104,23 +112,59 @@ impl GptOssSession {
 
     /// Send a user message and get a response
     pub async fn send(&self, message: &str) -> Result<String> {
-        // Add user message to history
+        self.add_user_message(message).await?;
+        let (assistant_text, _) = self.complete_once().await?;
+        Ok(assistant_text)
+    }
+
+    /// Send a user message and execute tool calls until completion
+    pub async fn send_with_tools(
+        &self,
+        message: &str,
+        max_tool_turns: u32,
+    ) -> Result<String> {
+        self.add_user_message(message).await?;
+
+        let mut tool_turns = 0;
+        loop {
+            let (assistant_text, tool_requests) = self.complete_once().await?;
+            if tool_requests.is_empty() {
+                return Ok(assistant_text);
+            }
+
+            if tool_turns >= max_tool_turns {
+                return Ok(assistant_text);
+            }
+
+            tool_turns += 1;
+            for request in tool_requests {
+                let result = self.execute_tool(request.clone()).await?;
+                self.append_tool_result(&request.tool, &result).await?;
+            }
+        }
+    }
+
+    async fn add_user_message(&self, message: &str) -> Result<()> {
         {
             let mut history = self.history.write().await;
             history.push(Message {
                 role: "user".to_string(),
                 content: message.to_string(),
                 tool_calls: Vec::new(),
+                recipient: None,
+                name: None,
+                channel: None,
+                content_type: None,
             });
         }
 
-        // Record to trajectory if enabled
         self.record_line(&format!("u: {}", message)).await?;
+        Ok(())
+    }
 
-        // Build prompt from history
-        let prompt = self.build_prompt().await;
+    async fn complete_once(&self) -> Result<(String, Vec<ToolRequest>)> {
+        let prompt = self.build_prompt().await?;
 
-        // Make completion request
         let request = GptOssRequest {
             model: self.config.model.clone(),
             prompt,
@@ -132,27 +176,160 @@ impl GptOssSession {
         };
 
         let response = self.client.complete(request).await?;
+        let (assistant_text, parsed_messages) =
+            self.parse_completion_messages(&response.text).await?;
 
-        // Add assistant message to history
+        let tool_requests = self.extract_tool_requests(&parsed_messages)?;
+
         {
             let mut history = self.history.write().await;
-            history.push(Message {
-                role: "assistant".to_string(),
-                content: response.text.clone(),
-                tool_calls: Vec::new(),
-            });
+            if parsed_messages.is_empty() {
+                history.push(Message {
+                    role: "assistant".to_string(),
+                    content: assistant_text.clone(),
+                    tool_calls: Vec::new(),
+                    recipient: None,
+                    name: None,
+                    channel: None,
+                    content_type: None,
+                });
+            } else {
+                history.extend(parsed_messages);
+            }
         }
 
-        // Update turn counter
         {
             let mut state = self.state.write().await;
             state.turn += 1;
         }
 
-        // Record to trajectory
-        self.record_line(&format!("a: {}", response.text)).await?;
+        self.record_line(&format!("a: {}", assistant_text)).await?;
 
-        Ok(response.text)
+        Ok((assistant_text, tool_requests))
+    }
+
+    async fn parse_completion_messages(
+        &self,
+        completion: &str,
+    ) -> Result<(String, Vec<Message>)> {
+        let renderer = HarmonyRenderer::gpt_oss()?;
+        let parsed = renderer.parse_completion(completion, Some(HarmonyRole::Assistant));
+
+        let messages = match parsed {
+            Ok(messages) => messages,
+            Err(_) => {
+                return Ok((completion.to_string(), Vec::new()));
+            }
+        };
+
+        let assistant_text = {
+            let text = self.extract_assistant_text_from_harmony(&messages);
+            if text.is_empty() {
+                completion.to_string()
+            } else {
+                text
+            }
+        };
+        let internal_messages = messages
+            .iter()
+            .map(Self::map_harmony_message)
+            .collect::<Vec<_>>();
+
+        Ok((assistant_text, internal_messages))
+    }
+
+    fn extract_assistant_text_from_harmony(
+        &self,
+        messages: &[gpt_oss::harmony::HarmonyMessage],
+    ) -> String {
+        for message in messages.iter().rev() {
+            if message.author.role != HarmonyRole::Assistant {
+                continue;
+            }
+            if message.recipient.is_some() {
+                continue;
+            }
+            let content = Self::extract_text_content(message);
+            if !content.is_empty() {
+                return content;
+            }
+        }
+
+        String::new()
+    }
+
+    fn map_harmony_message(message: &gpt_oss::harmony::HarmonyMessage) -> Message {
+        Message {
+            role: message.author.role.as_str().to_string(),
+            content: Self::extract_text_content(message),
+            tool_calls: Vec::new(),
+            recipient: message.recipient.clone(),
+            name: message.author.name.clone(),
+            channel: message.channel.clone(),
+            content_type: message.content_type.clone(),
+        }
+    }
+
+    fn extract_text_content(message: &gpt_oss::harmony::HarmonyMessage) -> String {
+        let mut content = String::new();
+        for part in &message.content {
+            if let gpt_oss::harmony::HarmonyContent::Text(
+                gpt_oss::harmony::HarmonyTextContent { text },
+            ) = part
+            {
+                content.push_str(text);
+            }
+        }
+        content
+    }
+
+    fn extract_tool_requests(&self, messages: &[Message]) -> Result<Vec<ToolRequest>> {
+        let mut requests = Vec::new();
+        for message in messages {
+            if message.role != "assistant" {
+                continue;
+            }
+            let Some(tool) = message.recipient.as_ref() else {
+                continue;
+            };
+            let content = message.content.trim();
+            let parameters = if content.is_empty() {
+                serde_json::Value::Object(serde_json::Map::new())
+            } else {
+                serde_json::from_str(content).map_err(|err| {
+                    GptOssAgentError::ToolError(format!(
+                        "Failed to parse tool call payload for {}: {}",
+                        tool, err
+                    ))
+                })?
+            };
+            requests.push(ToolRequest {
+                tool: tool.clone(),
+                parameters,
+            });
+        }
+        Ok(requests)
+    }
+
+    async fn append_tool_result(&self, tool: &str, result: &ToolResult) -> Result<()> {
+        let payload = serde_json::json!({
+            "success": result.success,
+            "output": result.output,
+            "error": result.error,
+        });
+        let content = serde_json::to_string(&payload)?;
+
+        let mut history = self.history.write().await;
+        history.push(Message {
+            role: "tool".to_string(),
+            content,
+            tool_calls: Vec::new(),
+            recipient: Some("assistant".to_string()),
+            name: Some(tool.to_string()),
+            channel: Some("commentary".to_string()),
+            content_type: Some("code".to_string()),
+        });
+        Ok(())
     }
 
     /// Execute a tool and record the result
@@ -185,14 +362,19 @@ impl GptOssSession {
         // Add tool call to last assistant message
         {
             let mut history = self.history.write().await;
-            if let Some(last) = history.last_mut() {
-                if last.role == "assistant" {
-                    last.tool_calls.push(ToolCall {
-                        tool: request.tool,
-                        parameters: request.parameters,
-                        result: Some(result.clone()),
-                    });
-                }
+            let target_index = history
+                .iter()
+                .rposition(|msg| {
+                    msg.role == "assistant" && msg.recipient.as_deref() == Some(&request.tool)
+                })
+                .or_else(|| history.iter().rposition(|msg| msg.role == "assistant"));
+
+            if let Some(index) = target_index {
+                history[index].tool_calls.push(ToolCall {
+                    tool: request.tool,
+                    parameters: request.parameters,
+                    result: Some(result.clone()),
+                });
             }
         }
 
@@ -224,17 +406,53 @@ impl GptOssSession {
     }
 
     /// Build prompt from conversation history
-    async fn build_prompt(&self) -> String {
+    async fn build_prompt(&self) -> Result<String> {
         let history = self.history.read().await;
 
-        let mut prompt = String::new();
+        let mut turns = Vec::new();
         for msg in history.iter() {
-            let prefix = if msg.role == "user" { "User" } else { "Assistant" };
-            prompt.push_str(&format!("{}: {}\n", prefix, msg.content));
-        }
-        prompt.push_str("Assistant:");
+            let role = match msg.role.as_str() {
+                "user" => HarmonyRole::User,
+                "assistant" => HarmonyRole::Assistant,
+                "tool" => HarmonyRole::Tool,
+                other => {
+                    return Err(GptOssAgentError::SessionError(format!(
+                        "Unsupported role in history: {}",
+                        other
+                    )));
+                }
+            };
 
-        prompt
+            let mut turn = HarmonyTurn::new(role, msg.content.clone());
+            if let Some(recipient) = &msg.recipient {
+                turn = turn.with_recipient(recipient.clone());
+            }
+            if let Some(name) = &msg.name {
+                turn = turn.with_name(name.clone());
+            }
+            if let Some(channel) = &msg.channel {
+                turn = turn.with_channel(channel.clone());
+            }
+            if let Some(content_type) = &msg.content_type {
+                turn = turn.with_content_type(content_type.clone());
+            }
+            turns.push(turn);
+        }
+
+        let tool_specs = self
+            .tools
+            .iter()
+            .map(|tool| {
+                HarmonyToolSpec::new(
+                    tool.name(),
+                    tool.description(),
+                    Some(tool.parameter_schema()),
+                )
+            })
+            .collect::<Vec<_>>();
+
+        let renderer = HarmonyRenderer::gpt_oss()?;
+        Ok(renderer.render_prompt(&turns, &tool_specs)?)
     }
 
     /// Record a line to the trajectory file
@@ -292,7 +510,7 @@ mod tests {
     async fn test_session_creation() {
         let config = GptOssAgentConfig::default();
         let client = GptOssClient::builder()
-            .base_url("http://localhost:8080")
+            .base_url("http://localhost:8000")
             .build()
             .unwrap();
 
@@ -306,7 +524,7 @@ mod tests {
     async fn test_session_history() {
         let config = GptOssAgentConfig::default();
         let client = GptOssClient::builder()
-            .base_url("http://localhost:8080")
+            .base_url("http://localhost:8000")
             .build()
             .unwrap();
 
@@ -319,6 +537,10 @@ mod tests {
                 role: "user".to_string(),
                 content: "Hello".to_string(),
                 tool_calls: Vec::new(),
+                recipient: None,
+                name: None,
+                channel: None,
+                content_type: None,
             });
         }
 
@@ -326,5 +548,38 @@ mod tests {
         assert_eq!(history.len(), 1);
         assert_eq!(history[0].role, "user");
         assert_eq!(history[0].content, "Hello");
+    }
+
+    #[tokio::test]
+    async fn test_extract_tool_requests_from_harmony_messages() {
+        let config = GptOssAgentConfig::default();
+        let client = GptOssClient::builder()
+            .base_url("http://localhost:8000")
+            .build()
+            .unwrap();
+        let session = GptOssSession::new(Arc::new(client), config, Vec::new());
+
+        let messages = vec![Message {
+            role: "assistant".to_string(),
+            content: r#"{"path":"README.md"}"#.to_string(),
+            tool_calls: Vec::new(),
+            recipient: Some("apply_patch".to_string()),
+            name: None,
+            channel: Some("commentary".to_string()),
+            content_type: Some("code".to_string()),
+        }];
+
+        let requests = session
+            .extract_tool_requests(&messages)
+            .expect("Should parse tool requests");
+        assert_eq!(requests.len(), 1);
+        assert_eq!(requests[0].tool, "apply_patch");
+        assert_eq!(
+            requests[0]
+                .parameters
+                .get("path")
+                .and_then(|value| value.as_str()),
+            Some("README.md")
+        );
     }
 }

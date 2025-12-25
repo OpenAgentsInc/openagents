@@ -202,14 +202,12 @@ impl LocalModelBackend for MyCustomBackend {
 ### GPT-OSS Backend
 
 ```rust
-use gpt_oss::{GptOssClient, GptOssConfig};
+use gpt_oss::GptOssClient;
 
-let config = GptOssConfig {
-    server_url: "http://localhost:8080".to_string(),
-    ..Default::default()
-};
-
-let mut backend = GptOssClient::new(config);
+let mut backend = GptOssClient::builder()
+    .base_url("http://localhost:8000")
+    .default_model("gpt-oss-20b")
+    .build()?;
 backend.initialize().await?;
 
 // Now use as LocalModelBackend

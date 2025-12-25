@@ -159,7 +159,6 @@ impl LocalModelBackend for MockBackend {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tokio_stream::StreamExt;
 
     #[tokio::test]
     async fn test_initialize() {
