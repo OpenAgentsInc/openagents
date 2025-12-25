@@ -174,51 +174,6 @@ pub enum Commands {
         #[command(subcommand)]
         command: ApmCommands,
     },
-    /// Run performance benchmarks
-    Benchmark {
-        /// Specific benchmark to run (e.g., B-001)
-        benchmark_id: Option<String>,
-
-        /// Category to run (e.g., file-ops, git)
-        #[arg(short, long)]
-        category: Option<String>,
-
-        /// Compare against baseline version
-        #[arg(short, long)]
-        baseline: Option<String>,
-
-        /// Save results as baseline version
-        #[arg(short, long)]
-        save_baseline: Option<String>,
-
-        /// List all baselines
-        #[arg(long)]
-        list_baselines: bool,
-
-        /// Compare two git commits (format: commit1..commit2)
-        #[arg(long)]
-        compare_commits: Option<String>,
-
-        /// Compare two databases for regression detection
-        #[arg(long, requires = "compare_db2")]
-        compare_db1: Option<PathBuf>,
-
-        /// Second database for comparison
-        #[arg(long, requires = "compare_db1")]
-        compare_db2: Option<PathBuf>,
-
-        /// Regression threshold (default: 0.10 for 10%)
-        #[arg(long, default_value = "0.10")]
-        threshold: f64,
-
-        /// Path to benchmarks database (default: autopilot-benchmarks.db)
-        #[arg(long)]
-        db: Option<PathBuf>,
-
-        /// Workspace directory for benchmark execution
-        #[arg(short, long)]
-        workspace: Option<PathBuf>,
-    },
     /// Manage trajectory logs
     Logs {
         #[command(subcommand)]
