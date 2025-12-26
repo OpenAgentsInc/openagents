@@ -333,6 +333,7 @@ This section tracks which user stories have implemented tests.
 | **d-023: WGPUI Framework** ||||
 | 23.1.1 | Quad rendering with colors/borders | Unit | `crates/wgpui/src/testing/framework_tests.rs` |
 | 23.1.2 | Text rendering | Unit | `crates/wgpui/src/testing/framework_tests.rs` |
+| 23.1.3 | 60fps GPU-accelerated rendering | Unit | `crates/wgpui/src/testing/framework_tests.rs` |
 | 23.2.1 | Flexbox layout (bounds) | Unit | `crates/wgpui/src/testing/framework_tests.rs` |
 | 23.2.2 | Percentage-based sizing | Unit | `crates/wgpui/src/layout.rs` |
 | 23.2.3 | Margin/padding/gap | Unit | `crates/wgpui/src/testing/framework_tests.rs` |
@@ -385,7 +386,7 @@ This section tracks which user stories have implemented tests.
 | `crates/wgpui/examples/test_viewer.rs` | Visual demo of E2E test framework | 26.2.1, 26.2.2 |
 | `crates/wgpui/src/testing/chat_tests.rs` | 18 unit tests for streaming mechanics | 17.1.2 |
 | `crates/wgpui/src/testing/component_tests.rs` | 46 unit tests for component integration | 11.1.1-11.1.3, 20.1.1-5, 20.2.1-3, 24.1.1-3, 24.4.1, 25.1.2, 25.1.4 |
-| `crates/wgpui/src/testing/framework_tests.rs` | 44 unit tests for WGPUI framework | 23.1.1, 23.1.2, 23.2.1, 23.2.3, 23.3.1-4, 24.2.1-2, 24.3.1 |
+| `crates/wgpui/src/testing/framework_tests.rs` | 45 unit tests for WGPUI framework | 23.1.1-23.1.3, 23.2.1, 23.2.3, 23.3.1-4, 24.2.1-2, 24.3.1 |
 | `crates/wgpui/src/testing/snapshot_tests.rs` | Scene snapshot regression tests | 13.3.1, 13.3.3 |
 | `crates/wgpui/src/layout.rs` | Layout helpers and percent sizing tests | 23.2.2 |
 | `crates/wgpui/src/app/entity_map.rs` | Entity map reactive state tests | 25.1.1 |

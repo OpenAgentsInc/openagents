@@ -84,6 +84,22 @@ fn test_text_component_with_different_sizes() {
 }
 
 // ============================================================================
+// d-023.1.3: GPU Rendering (60fps Target via VSync)
+// ============================================================================
+
+#[test]
+fn test_surface_config_targets_vsync() {
+    let config = crate::platform::default_surface_config(
+        800,
+        600,
+        wgpu::TextureFormat::Bgra8UnormSrgb,
+    );
+
+    assert_eq!(config.present_mode, wgpu::PresentMode::AutoVsync);
+    assert_eq!(config.desired_maximum_frame_latency, 2);
+}
+
+// ============================================================================
 // d-023.2: Layout (Bounds and Spacing)
 // ============================================================================
 

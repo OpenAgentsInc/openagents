@@ -16,12 +16,12 @@
 
 ---
 
-## Outstanding User Stories (No Test Coverage Yet) — 20 total
+## Outstanding User Stories (No Test Coverage Yet) — 19 total
 
 These story IDs are defined in `.openagents/USERSTORIES.md` but are not listed in the Covered Stories table yet.
 
-Priority breakdown: P0 = 1, P1 = 13, P2 = 6.
-P0 focus IDs: 23.1.3.
+Priority breakdown: P0 = 0, P1 = 13, P2 = 6.
+P0 focus IDs: none.
 
 ### d-006: NIP-SA (Sovereign Agents Protocol) (7)
 - [ ] 6.2.3 (P1) As an agent operator, I want to inspect (but not decrypt) state metadata, so that I can monitor size/frequency.
@@ -47,8 +47,7 @@ P0 focus IDs: 23.1.3.
 - [ ] 9.3.3 (P1) As a user, I want to see cost estimate for the session, so that I can budget.
 - [ ] 9.3.4 (P2) As a user, I want to see a timeline of agent activity, so that I can visualize the flow.
 
-### d-023: WGPUI Framework (3)
-- [ ] 23.1.3 (P0) As a developer, I want GPU-accelerated rendering at 60fps, so that the UI is smooth.
+### d-023: WGPUI Framework (2)
 - [ ] 23.1.4 (P1) As a developer, I want to render on web via WebGPU, so that browser apps work.
 - [ ] 23.1.5 (P1) As a developer, I want to render on desktop via Vulkan/Metal/DX12, so that native apps work.
 

@@ -13,6 +13,23 @@ pub trait Platform {
     fn handle_resize(&mut self);
 }
 
+pub fn default_surface_config(
+    width: u32,
+    height: u32,
+    format: wgpu::TextureFormat,
+) -> wgpu::SurfaceConfiguration {
+    wgpu::SurfaceConfiguration {
+        usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+        format,
+        width,
+        height,
+        present_mode: wgpu::PresentMode::AutoVsync,
+        alpha_mode: wgpu::CompositeAlphaMode::Opaque,
+        view_formats: vec![],
+        desired_maximum_frame_latency: 2,
+    }
+}
+
 #[cfg(all(feature = "web", target_arch = "wasm32"))]
 pub mod web {
     use super::*;
@@ -94,16 +111,8 @@ pub mod web {
                 .copied()
                 .unwrap_or(surface_caps.formats[0]);
 
-            let surface_config = wgpu::SurfaceConfiguration {
-                usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
-                format: surface_format,
-                width: physical_width,
-                height: physical_height,
-                present_mode: wgpu::PresentMode::AutoVsync,
-                alpha_mode: wgpu::CompositeAlphaMode::Opaque,
-                view_formats: vec![],
-                desired_maximum_frame_latency: 2,
-            };
+            let surface_config =
+                super::default_surface_config(physical_width, physical_height, surface_format);
             surface.configure(&device, &surface_config);
 
             let renderer = Renderer::new(&device, surface_format);
