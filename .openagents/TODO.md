@@ -16,11 +16,92 @@
 
 ---
 
+## Outstanding User Stories (No Test Coverage Yet) — 55 total
+
+These story IDs are defined in `.openagents/USERSTORIES.md` but are not listed in the Covered Stories table yet.
+
+Priority breakdown: P0 = 18, P1 = 26, P2 = 11.
+P0 focus IDs: 1.2.1, 1.2.2, 1.3.1, 1.3.2, 1.3.3, 1.3.4, 1.4.1, 1.4.2, 1.4.3, 3.2.1, 3.2.2, 3.2.3, 3.3.1, 3.3.2, 3.3.3, 23.1.3, 25.2.1, 25.2.2.
+
+### d-001: Breez Spark SDK Integration (20)
+- [ ] 1.1.5 (P1) As a user, I want to set a wallet password for additional protection, so that even if someone accesses my keychain, they can't use my funds.
+- [ ] 1.2.1 (P0) As a user, I want to see my current balance in sats and USD, so that I know how much I have available.
+- [ ] 1.2.2 (P0) As a user, I want to see separate Lightning and Spark L2 balances, so that I understand where my funds are.
+- [ ] 1.2.4 (P1) As a user, I want to see pending transactions marked clearly, so that I know which payments are in-flight.
+- [ ] 1.2.5 (P2) As a user, I want to export my transaction history as CSV, so that I can keep external records.
+- [ ] 1.3.1 (P0) As a user, I want to send Bitcoin to a Lightning invoice, so that I can pay for services instantly.
+- [ ] 1.3.2 (P0) As a user, I want to send Bitcoin to an on-chain address, so that I can withdraw to cold storage.
+- [ ] 1.3.3 (P0) As a user, I want to send to another Spark user by their Spark address, so that I can transfer cheaply.
+- [ ] 1.3.4 (P0) As a user, I want to see a confirmation screen with fee estimate before sending, so that I can approve the transaction.
+- [ ] 1.3.5 (P1) As a user, I want to cancel a pending transaction before it confirms, so that I can correct mistakes.
+- [ ] 1.3.6 (P1) As a user, I want to scan a QR code to populate payment details, so that I don't have to type long addresses.
+- [ ] 1.3.7 (P2) As a user, I want to save frequently-used addresses as contacts, so that I can pay them quickly.
+- [ ] 1.4.1 (P0) As a user, I want to generate a Lightning invoice for a specific amount, so that I can receive payments.
+- [ ] 1.4.2 (P0) As a user, I want to see a QR code for my invoice, so that payers can scan it easily.
+- [ ] 1.4.3 (P0) As a user, I want to copy my invoice string to clipboard, so that I can share it in chat.
+- [ ] 1.4.4 (P1) As a user, I want to receive push notifications when a payment arrives, so that I know immediately.
+- [ ] 1.4.5 (P1) As a user, I want to generate a reusable Lightning address, so that I don't need new invoices each time.
+- [ ] 1.4.6 (P2) As a user, I want to set an invoice expiry time, so that stale invoices don't clutter my history.
+- [ ] 1.5.3 (P1) As a user, I want to retry failed payments with one click, so that I can complete the transaction.
+- [ ] 1.5.4 (P1) As a user, I want to see network status (connected/disconnected), so that I know if payments will work.
+
+### d-003: OpenAgents Wallet (13)
+- [ ] 3.1.5 (P2) As a user, I want to manage multiple identities, so that I can separate personal and work accounts.
+- [ ] 3.2.1 (P0) As a user, I want to run `openagents wallet send <address> <amount>` to send payments, so that I can pay from the terminal.
+- [ ] 3.2.2 (P0) As a user, I want to run `openagents wallet receive <amount>` to generate an invoice, so that I can receive payments.
+- [ ] 3.2.3 (P0) As a user, I want to run `openagents wallet balance` to check my funds, so that I know my current state.
+- [ ] 3.2.4 (P1) As a user, I want to run `openagents wallet history` to see past transactions, so that I can review activity.
+- [ ] 3.3.1 (P0) As a user, I want to see my balance prominently in the GUI header, so that I always know my funds.
+- [ ] 3.3.2 (P0) As a user, I want to click "Send" and fill out a payment form, so that I can send without CLI.
+- [ ] 3.3.3 (P0) As a user, I want to click "Receive" and see a QR code, so that I can get paid easily.
+- [ ] 3.3.4 (P1) As a user, I want to see my transaction list with infinite scroll, so that I can browse history.
+- [ ] 3.3.5 (P1) As a user, I want to click on a transaction to see details, so that I can understand each payment.
+- [ ] 3.3.6 (P2) As a user, I want to see a chart of my balance over time, so that I can visualize trends.
+- [ ] 3.4.3 (P1) As a user, I want to set transaction limits, so that a compromised device can't drain my wallet.
+- [ ] 3.4.4 (P1) As a user, I want to require confirmation for large transactions, so that I prevent accidental sends.
+
+### d-006: NIP-SA (Sovereign Agents Protocol) (7)
+- [ ] 6.2.3 (P1) As an agent operator, I want to inspect (but not decrypt) state metadata, so that I can monitor size/frequency.
+- [ ] 6.2.4 (P2) As an agent, I want to compact old state events, so that I don't bloat the relay.
+- [ ] 6.3.3 (P1) As an agent operator, I want to pause/resume the schedule, so that I can control activity.
+- [ ] 6.3.4 (P2) As an agent operator, I want to set business hours, so that the agent only runs during work time.
+- [ ] 6.4.3 (P1) As an observer, I want to see an agent's tick history, so that I can monitor its activity.
+- [ ] 6.4.4 (P1) As an agent, I want to include a trajectory hash in my TickResult, so that my reasoning is verifiable.
+- [ ] 6.5.4 (P2) As an agent, I want to redact sensitive content from trajectories, so that secrets aren't leaked.
+
+### d-007: FROSTR (Threshold Signatures) (4)
+- [ ] 7.1.4 (P2) As an operator, I want to reshare a key to new holders, so that I can rotate participants.
+- [ ] 7.3.3 (P1) As an agent, I want decryption to be as fast as regular ECDH, so that performance is acceptable.
+- [ ] 7.4.3 (P1) As a node, I want to handle peer disconnection gracefully, so that the group remains functional.
+- [ ] 7.4.4 (P1) As a requester, I want to retry failed requests automatically, so that transient failures don't block me.
+
+### d-008: Unified Marketplace (2)
+- [ ] 8.1.5 (P1) As a compute provider, I want to set my availability schedule, so that I'm not disturbed off-hours.
+- [ ] 8.3.5 (P2) As a data provider, I want to offer dataset previews, so that buyers can evaluate before purchasing.
+
+### d-009: Autopilot GUI (3)
+- [ ] 9.3.2 (P1) As a user, I want to see error rate for the session, so that I can assess quality.
+- [ ] 9.3.3 (P1) As a user, I want to see cost estimate for the session, so that I can budget.
+- [ ] 9.3.4 (P2) As a user, I want to see a timeline of agent activity, so that I can visualize the flow.
+
+### d-023: WGPUI Framework (3)
+- [ ] 23.1.3 (P0) As a developer, I want GPU-accelerated rendering at 60fps, so that the UI is smooth.
+- [ ] 23.1.4 (P1) As a developer, I want to render on web via WebGPU, so that browser apps work.
+- [ ] 23.1.5 (P1) As a developer, I want to render on desktop via Vulkan/Metal/DX12, so that native apps work.
+
+### d-025: All-In WGPUI (3)
+- [ ] 25.2.1 (P0) As a maintainer, I want the HTML/Maud stack archived, so that there's one UI path.
+- [ ] 25.2.2 (P0) As a developer, I want autopilot-gui rebuilt in pure WGPUI, so that no web dependencies remain.
+- [ ] 25.2.3 (P1) As a developer, I want all examples to be WGPUI-only, so that documentation is consistent.
+
+---
+
 ## Critical Path (Must Complete First)
 
-### 1. Spark SDK Integration (d-001) - ✅ COMPLETE
+### 1. Spark SDK Integration (d-001) - 🟡 IN PROGRESS
 
 **SDK Location:** `/Users/christopherdavid/code/spark-sdk`
+**Remaining User Stories:** See "Outstanding User Stories" (d-001).
 
 - [x] Breez SDK dependency enabled in `crates/spark/Cargo.toml`
 - [x] `SparkWallet` implemented with real SDK calls:
@@ -43,9 +124,9 @@
 
 ## Directive Status & Tasks
 
-### d-001: Breez Spark SDK Integration ✅ COMPLETE
+### d-001: Breez Spark SDK Integration 🟡 IN PROGRESS
 
-**Current:** Full SDK integration complete. All core wallet operations working.
+**Current:** Core SDK integration complete; wallet UX and transaction flow stories still need coverage (see Outstanding User Stories).
 
 - [x] SDK dependency enabled (`breez-sdk-spark`)
 - [x] `SparkWallet` connects via `BreezSdk::connect()`
@@ -83,9 +164,9 @@
 
 ---
 
-### d-003: Wallet Application ✅ CORE COMPLETE
+### d-003: Wallet Application 🟡 IN PROGRESS
 
-**Current:** Identity/Nostr works. Bitcoin payments via Spark SDK working.
+**Current:** Identity/Nostr works; core Bitcoin flows exist, but CLI + GUI wallet stories still need coverage (see Outstanding User Stories).
 
 - [x] **Nostr Operations** ✅ Complete
 - [x] **Bitcoin Operations** ✅ Complete
@@ -157,9 +238,9 @@
 
 ---
 
-### d-006: NIP-SA (Sovereign Agents Protocol) ✅ COMPLETE
+### d-006: NIP-SA (Sovereign Agents Protocol) 🟡 IN PROGRESS
 
-**Current:** Full implementation. Wallet integration wired to Spark SDK.
+**Current:** Core protocol and wallet integration are implemented; schedule/state/tick history stories still need coverage (see Outstanding User Stories).
 
 - [x] **Core Protocol** ✅
   - [x] AgentProfile (kind:38000) ✅
@@ -186,9 +267,9 @@
 
 ---
 
-### d-007: FROSTR (Threshold Signatures) ✅
+### d-007: FROSTR (Threshold Signatures) 🟡 IN PROGRESS
 
-**Current:** Production ready. Real cryptography, extensive tests.
+**Current:** Core cryptography and tests are strong; resilience/performance stories still need coverage (see Outstanding User Stories).
 
 - [x] FROST keygen with frost-secp256k1 ✅
 - [x] Threshold signing protocol ✅
@@ -200,9 +281,9 @@
 
 ---
 
-### d-008: Unified Marketplace ✅ CORE COMPLETE
+### d-008: Unified Marketplace 🟡 IN PROGRESS
 
-**Current:** All marketplace features implemented. Payments via Spark SDK working.
+**Current:** Core marketplace features implemented; remaining provider schedule + dataset preview stories still need coverage (see Outstanding User Stories).
 
 #### Skills Marketplace ✅
 - [x] Browse, publish, install, invoke ✅
@@ -237,7 +318,7 @@
 
 ### d-009: Autopilot GUI 🟡
 
-**Current:** Dashboard exists (Actix-web). Needs WGPUI native port.
+**Current:** Dashboard exists (Actix-web). Needs WGPUI native port. Story gaps: 9.3.2-9.3.4 (see Outstanding User Stories).
 
 - [ ] **Port to Native WGPUI**
   - [ ] Remove Actix-web dependency
@@ -578,9 +659,9 @@
 
 ---
 
-### d-023: WGPUI Framework ✅
+### d-023: WGPUI Framework 🟡 IN PROGRESS
 
-**Current:** Complete GPU-accelerated UI framework.
+**Current:** Core framework exists; platform/perf validation stories still need coverage (see Outstanding User Stories).
 
 - [x] wgpu rendering ✅
 - [x] Scene-based API ✅
@@ -609,9 +690,9 @@
 
 ---
 
-### d-025: All-In WGPUI ✅
+### d-025: All-In WGPUI 🟡 IN PROGRESS
 
-**Current:** Complete. Web stack archived.
+**Current:** Core migration done; story-level verification still outstanding (see Outstanding User Stories).
 
 - [x] Phase 1: Framework Foundation (Entity/Context/Element) ✅
 - [x] Phase 2: Delete Web Stack (archived to backroom) ✅
@@ -643,22 +724,24 @@
 
 ## Priority Order for Production
 
-### Phase 1: Unblock Critical Path ✅ COMPLETE
-1. **d-001**: Spark SDK integration ✅
-2. **d-003**: Wallet Bitcoin operations ✅
+### Phase 1: Unblock Critical Path 🟡 IN PROGRESS
+1. **d-001**: Spark SDK integration 🟡
+2. **d-003**: Wallet Bitcoin operations 🟡
 3. **d-005**: GitAfter NIP-34 implementation ✅
-4. **d-006**: NIP-SA wallet integration ✅
-5. **d-008**: Marketplace payment settlement ✅
+4. **d-006**: NIP-SA wallet integration 🟡
+5. **d-008**: Marketplace payment settlement 🟡
 6. **d-012**: No stubs policy (critical violations fixed) ✅
 
-### Phase 2: Verification & Enhancement ✅ COMPLETE
+### Phase 2: Verification & Enhancement 🟡 IN PROGRESS
 7. **d-017**: ACP integration ✅
 8. **d-018**: Parallel containers ✅
 9. **d-019**: Local inference ✅
 10. **d-021**: OpenCode SDK ✅
-11. **d-009**: Autopilot GUI native port (future - WGPUI port)
+11. **d-009**: Autopilot GUI native port 🟡 (future - WGPUI port)
 
-### Phase 3: Testing & Quality ✅ COMPLETE
+### Phase 3: Testing & Quality 🟡 IN PROGRESS
+
+Story coverage is incomplete (55 outstanding stories; see Outstanding User Stories).
 12. **d-013**: Testing framework coverage ✅ (700+ tests)
 13. **d-026**: E2E test viewer ✅
 14. **d-014**: NIP-SA/Bifrost E2E tests ✅ (159 tests verified)
@@ -680,6 +763,7 @@ Before declaring production-ready:
 - [x] NIP-SA wallet singleton working ✅
 - [x] 86 NIPs implemented ✅
 - [x] 1500+ tests passing ✅
+- [ ] 100% user story coverage (see Outstanding User Stories)
 - [x] No critical stubs remaining ✅
 - [x] 115+ WGPUI components ✅
 - [x] Storybook example (9193 lines) ✅
