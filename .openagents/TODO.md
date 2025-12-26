@@ -159,8 +159,8 @@ P0 focus IDs: none.
   - [x] `get_dependent_prs()` finds later layers
 - [x] **NIP-57 Zap Support** ✅
   - [x] `ZapRequestBuilder` for bounty payments
-- [ ] **On-Demand Trajectory Fetch** (enhancement)
-  - [ ] Wire `trajectory/fetch.rs` to NostrClient
+- [x] **On-Demand Trajectory Fetch** (enhancement) ✅
+  - [x] Wire `trajectory/fetch.rs` to NostrClient ✅
 - [ ] **WGPUI GitAfter GUI** (future)
   - [ ] Repository browser
   - [ ] Issue list with bounty display
