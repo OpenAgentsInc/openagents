@@ -57,6 +57,10 @@ keyring = "4.0.0-alpha.5"
 keyring-core = "0.7"
 wry = "0.48"
 tao = "0.30"
+wgpui = { path = "../wgpui", default-features = false, features = ["desktop"] }
+wgpu = "24.0"
+winit = "0.30"
+pollster = "0.4"
 
 [lints]
 workspace = true

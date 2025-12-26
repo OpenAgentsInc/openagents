@@ -4004,6 +4004,7 @@ dependencies = [
  "nostr 0.1.0",
  "nostr-client",
  "openagents-spark",
+ "pollster",
  "rusqlite",
  "scraper",
  "serde",
@@ -4017,6 +4018,9 @@ dependencies = [
  "tracing-subscriber",
  "urlencoding",
  "wallet",
+ "wgpu",
+ "wgpui",
+ "winit",
  "wry",
 ]
 
