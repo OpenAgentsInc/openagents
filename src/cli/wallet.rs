@@ -40,6 +40,10 @@ pub enum WalletCommands {
         #[arg(short, long)]
         amount: Option<u64>,
 
+        /// Invoice expiry in seconds from now
+        #[arg(long)]
+        expiry: Option<u64>,
+
         /// Show a QR code for the invoice or address
         #[arg(long)]
         qr: bool,
@@ -51,7 +55,7 @@ pub enum WalletCommands {
 
     /// Send payment
     Send {
-        /// Destination address (Bitcoin, Lightning, or Spark)
+        /// Destination address (Bitcoin, Lightning, or Spark). Use '-' with --qr.
         address: String,
         /// Amount in sats
         amount: u64,
@@ -59,6 +63,14 @@ pub enum WalletCommands {
         /// Skip confirmation prompt
         #[arg(long)]
         yes: bool,
+
+        /// Read destination from a QR image file
+        #[arg(long)]
+        qr: Option<PathBuf>,
+
+        /// Use a saved payee name instead of typing an address
+        #[arg(long)]
+        payee: Option<String>,
     },
 
     /// Transaction history
@@ -83,6 +95,10 @@ pub enum WalletCommands {
     /// Contact management
     #[command(subcommand)]
     Contacts(ContactsCommands),
+
+    /// Saved payee management
+    #[command(subcommand)]
+    Payee(PayeeCommands),
 
     /// Post a note to Nostr
     Post {
@@ -168,6 +184,27 @@ pub enum DmCommands {
 }
 
 #[derive(Subcommand)]
+pub enum PayeeCommands {
+    /// List saved payees
+    List,
+
+    /// Add a payee
+    Add {
+        /// Payee name
+        name: String,
+
+        /// Payment address or invoice
+        address: String,
+    },
+
+    /// Remove a payee
+    Remove {
+        /// Payee name
+        name: String,
+    },
+}
+
+#[derive(Subcommand)]
 pub enum PasswordCommands {
     /// Set or change the wallet password
     Set {
@@ -193,11 +230,11 @@ pub fn run(cmd: WalletCommands) -> anyhow::Result<()> {
         },
         WalletCommands::Whoami => wallet::cli::identity::whoami(),
         WalletCommands::Balance => wallet::cli::bitcoin::balance(),
-        WalletCommands::Receive { amount, qr, copy } => {
-            wallet::cli::bitcoin::receive(amount, qr, copy)
+        WalletCommands::Receive { amount, expiry, qr, copy } => {
+            wallet::cli::bitcoin::receive(amount, qr, copy, expiry)
         }
-        WalletCommands::Send { address, amount, yes } => {
-            wallet::cli::bitcoin::send(address, amount, yes)
+        WalletCommands::Send { address, amount, yes, qr, payee } => {
+            wallet::cli::bitcoin::send(address, amount, yes, qr, payee)
         }
         WalletCommands::History { limit, format, output } => {
             let format = wallet::cli::bitcoin::HistoryFormat::parse(&format)?;
@@ -216,6 +253,11 @@ pub fn run(cmd: WalletCommands) -> anyhow::Result<()> {
             ContactsCommands::List => wallet::cli::identity::contacts_list(),
             ContactsCommands::Add { npub, name } => wallet::cli::identity::contacts_add(npub, name),
             ContactsCommands::Remove { npub } => wallet::cli::identity::contacts_remove(npub),
+        },
+        WalletCommands::Payee(cmd) => match cmd {
+            PayeeCommands::List => wallet::cli::payee::list(),
+            PayeeCommands::Add { name, address } => wallet::cli::payee::add(name, address),
+            PayeeCommands::Remove { name } => wallet::cli::payee::remove(name),
         },
         WalletCommands::Post { content } => wallet::cli::identity::post(content),
         WalletCommands::Dm(cmd) => match cmd {

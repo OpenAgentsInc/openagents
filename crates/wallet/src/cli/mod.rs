@@ -8,6 +8,7 @@ use crate::storage::keychain::{SecureKeychain, WALLET_PASSWORD_ENV};
 pub mod bitcoin;
 pub mod frostr;
 pub mod identity;
+pub mod payee;
 pub mod password;
 pub mod settings;
 

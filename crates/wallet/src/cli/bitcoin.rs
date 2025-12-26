@@ -5,8 +5,9 @@
 use anyhow::{Context, Result};
 use chrono;
 use spark::{Network, SparkSigner, SparkWallet, WalletConfig};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use crate::cli::load_mnemonic;
+use crate::storage::address_book::AddressBook;
 
 const CLIPBOARD_FILE_ENV: &str = "OPENAGENTS_CLIPBOARD_FILE";
 
@@ -60,7 +61,11 @@ pub fn balance() -> Result<()> {
 }
 
 /// Generate a receive address or invoice
-pub fn receive(amount: Option<u64>, show_qr: bool, copy: bool) -> Result<()> {
+pub fn receive(amount: Option<u64>, show_qr: bool, copy: bool, expiry: Option<u64>) -> Result<()> {
+    if amount.is_none() && expiry.is_some() {
+        anyhow::bail!("--expiry requires --amount to create an invoice.");
+    }
+
     let rt = tokio::runtime::Runtime::new()?;
     rt.block_on(async {
         let wallet = get_wallet().await?;
@@ -68,7 +73,7 @@ pub fn receive(amount: Option<u64>, show_qr: bool, copy: bool) -> Result<()> {
         match amount {
             Some(sats) => {
                 // Create invoice for specific amount
-                let response = wallet.create_invoice(sats, None, None).await?;
+                let response = wallet.create_invoice(sats, None, expiry).await?;
                 let mut output = format_receive_invoice(sats, &response.payment_request, show_qr)?;
                 if copy {
                     copy_to_clipboard(&response.payment_request)?;
@@ -114,9 +119,9 @@ fn format_receive_invoice(amount: u64, invoice: &str, show_qr: bool) -> Result<S
 
 fn format_receive_address(address: &str, show_qr: bool) -> Result<String> {
     let mut output = String::new();
-    output.push_str("Spark Address\n");
+    output.push_str("Reusable Spark Address\n");
     output.push_str("────────────────────────────────────────\n");
-    output.push_str("Send any amount to this address:\n");
+    output.push_str("Send any amount to this reusable address:\n");
     output.push('\n');
     output.push_str(address);
     output.push('\n');
@@ -255,10 +260,18 @@ fn copy_with_command_if_exists(
 }
 
 /// Send payment to address or pay invoice
-pub fn send(destination: String, amount: u64, yes: bool) -> Result<()> {
+pub fn send(
+    destination: String,
+    amount: u64,
+    yes: bool,
+    qr: Option<PathBuf>,
+    payee: Option<String>,
+) -> Result<()> {
     let rt = tokio::runtime::Runtime::new()?;
     rt.block_on(async {
         let wallet = get_wallet().await?;
+
+        let destination = resolve_send_destination(destination, qr, payee)?;
 
         println!("Preparing Payment...");
         println!();
@@ -385,6 +398,51 @@ fn confirm_send(skip_confirm: bool) -> Result<bool> {
     io::stdin().read_line(&mut input)?;
     let trimmed = input.trim();
     Ok(trimmed.eq_ignore_ascii_case("y") || trimmed.eq_ignore_ascii_case("yes"))
+}
+
+fn resolve_send_destination(
+    destination: String,
+    qr: Option<PathBuf>,
+    payee: Option<String>,
+) -> Result<String> {
+    if qr.is_some() && payee.is_some() {
+        anyhow::bail!("Use either --qr or --payee, not both.");
+    }
+
+    if let Some(name) = payee {
+        let book = AddressBook::load()?;
+        let entry = book
+            .find(&name)
+            .with_context(|| format!("Payee '{}' not found.", name))?;
+        return Ok(entry.address.clone());
+    }
+
+    if let Some(path) = qr {
+        return decode_qr_from_path(&path);
+    }
+
+    if destination.trim() == "-" {
+        anyhow::bail!("Provide an address, --payee, or --qr.");
+    }
+
+    Ok(destination)
+}
+
+fn decode_qr_from_path(path: &Path) -> Result<String> {
+    let image = image::open(path)
+        .with_context(|| format!("Failed to open QR image {}", path.display()))?;
+    let gray = image.to_luma8();
+    let mut prepared = rqrr::PreparedImage::prepare(gray);
+    let grids = prepared.detect_grids();
+
+    for grid in grids {
+        let (_meta, content) = grid
+            .decode()
+            .context("Failed to decode QR code")?;
+        return Ok(content);
+    }
+
+    anyhow::bail!("No QR code found in {}", path.display());
 }
 
 /// Pay a Lightning invoice
@@ -621,6 +679,7 @@ fn sats_to_usd(sats: u64, usd_rate: f64) -> f64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::storage::address_book::{AddressBook, ADDRESS_BOOK_ENV};
     use spark::wallet::{
         Bolt11Invoice, Bolt11InvoiceDetails, BitcoinAddressDetails, BitcoinNetwork,
         PaymentMethod, PaymentRequestSource, PrepareSendPaymentResponse, SendOnchainFeeQuote,
@@ -629,6 +688,7 @@ mod tests {
     use std::sync::Mutex;
 
     static CLIPBOARD_ENV_LOCK: Mutex<()> = Mutex::new(());
+    static ADDRESS_BOOK_ENV_LOCK: Mutex<()> = Mutex::new(());
 
     fn sample_payment(status: spark::PaymentStatus) -> spark::Payment {
         spark::Payment {
@@ -791,7 +851,7 @@ mod tests {
     #[test]
     fn test_format_receive_address_without_qr() {
         let output = format_receive_address("spark1address", false).unwrap();
-        assert!(output.contains("Spark Address"));
+        assert!(output.contains("Reusable Spark Address"));
         assert!(output.contains("spark1address"));
         assert!(!output.contains("QR Code:"));
     }
@@ -818,6 +878,75 @@ mod tests {
         } else {
             unsafe {
                 std::env::remove_var(CLIPBOARD_FILE_ENV);
+            }
+        }
+    }
+
+    #[test]
+    fn test_decode_qr_from_path_roundtrip() {
+        let payload = "lnbc1qrtest";
+        let code = qrcode::QrCode::new(payload.as_bytes()).unwrap();
+        let width = code.width() as u32;
+        let border = 4u32;
+        let scale = 4u32;
+        let size = (width + border * 2) * scale;
+        let mut image = image::GrayImage::new(size, size);
+
+        for y in 0..(width + border * 2) {
+            for x in 0..(width + border * 2) {
+                let is_dark = if x < border || y < border || x >= width + border || y >= width + border {
+                    false
+                } else {
+                    code[(x as usize - border as usize, y as usize - border as usize)]
+                        == qrcode::types::Color::Dark
+                };
+                let pixel = if is_dark { 0 } else { 255 };
+                let start_x = x * scale;
+                let start_y = y * scale;
+                for dy in 0..scale {
+                    for dx in 0..scale {
+                        image.put_pixel(start_x + dx, start_y + dy, image::Luma([pixel]));
+                    }
+                }
+            }
+        }
+
+        let temp = tempfile::Builder::new().suffix(".png").tempfile().unwrap();
+        image.save(temp.path()).unwrap();
+
+        let decoded = decode_qr_from_path(temp.path()).unwrap();
+        assert_eq!(decoded, payload);
+    }
+
+    #[test]
+    fn test_resolve_send_destination_from_payee() {
+        let _guard = ADDRESS_BOOK_ENV_LOCK.lock().unwrap();
+        let temp = tempfile::Builder::new().suffix(".json").tempfile().unwrap();
+        let original = std::env::var(ADDRESS_BOOK_ENV).ok();
+
+        unsafe {
+            std::env::set_var(ADDRESS_BOOK_ENV, temp.path());
+        }
+
+        let mut book = AddressBook::default();
+        book.add("alice".to_string(), "lnbc1alice".to_string()).unwrap();
+        book.save().unwrap();
+
+        let destination = resolve_send_destination(
+            "-".to_string(),
+            None,
+            Some("alice".to_string()),
+        )
+        .unwrap();
+        assert_eq!(destination, "lnbc1alice");
+
+        if let Some(value) = original {
+            unsafe {
+                std::env::set_var(ADDRESS_BOOK_ENV, value);
+            }
+        } else {
+            unsafe {
+                std::env::remove_var(ADDRESS_BOOK_ENV);
             }
         }
     }
