@@ -2,6 +2,7 @@
 use crate::error::{GptOssError, Result};
 use crate::types::*;
 use reqwest::Client;
+use std::sync::{Arc, atomic::{AtomicBool, Ordering}};
 use std::time::Duration;
 use tokio_stream::Stream;
 
@@ -15,6 +16,7 @@ pub struct GptOssClient {
     base_url: String,
     http_client: Client,
     default_model: String,
+    initialized: Arc<AtomicBool>,
 }
 
 impl GptOssClient {
@@ -38,6 +40,7 @@ impl GptOssClient {
             base_url: base_url.into(),
             http_client,
             default_model: DEFAULT_MODEL.to_string(),
+            initialized: Arc::new(AtomicBool::new(false)),
         })
     }
 
@@ -210,6 +213,14 @@ impl GptOssClient {
     pub fn default_model(&self) -> &str {
         &self.default_model
     }
+
+    pub(crate) fn set_initialized(&self, ready: bool) {
+        self.initialized.store(ready, Ordering::SeqCst);
+    }
+
+    pub(crate) fn is_initialized(&self) -> bool {
+        self.initialized.load(Ordering::SeqCst)
+    }
 }
 
 fn parse_models_response(value: serde_json::Value) -> Result<Vec<GptOssModelInfo>> {
@@ -299,6 +310,7 @@ impl GptOssClientBuilder {
             base_url: self.base_url,
             http_client,
             default_model: self.default_model,
+            initialized: Arc::new(AtomicBool::new(false)),
         })
     }
 }

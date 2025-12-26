@@ -12,9 +12,18 @@ use crate::{GptOssClient, GptOssRequest};
 impl LocalModelBackend for GptOssClient {
     async fn initialize(&mut self) -> Result<()> {
         // Verify the server is reachable
-        self.health()
+        let healthy = self
+            .health()
             .await
             .map_err(|e| LocalModelError::InitializationError(e.to_string()))?;
+        if !healthy {
+            self.set_initialized(false);
+            return Err(LocalModelError::InitializationError(
+                "GPT-OSS server is not healthy".to_string(),
+            ));
+        }
+
+        self.set_initialized(true);
         Ok(())
     }
 
@@ -124,11 +133,15 @@ impl LocalModelBackend for GptOssClient {
     }
 
     async fn is_ready(&self) -> bool {
+        if !self.is_initialized() {
+            return false;
+        }
+
         self.health().await.unwrap_or(false)
     }
 
     async fn shutdown(&mut self) -> Result<()> {
-        // No cleanup needed for HTTP client
+        self.set_initialized(false);
         Ok(())
     }
 }
