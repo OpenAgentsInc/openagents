@@ -1,10 +1,13 @@
 # Dockerfile for parallel autopilot agents
 #
-# IMPORTANT: Build the binaries on the host first:
+# IMPORTANT: Build the binaries on the host first (default path):
 #   cargo build --release -p autopilot -p issues-mcp
 #   mkdir -p docker/autopilot/bin
 #   cp target/release/autopilot docker/autopilot/bin/
 #   cp target/release/issues-mcp docker/autopilot/bin/
+#
+# Optional: Enable Rust toolchain in the image for in-container builds:
+#   docker-compose -f docker/autopilot/docker-compose.yml build --build-arg INSTALL_RUST_TOOLCHAIN=true
 #
 # Then build the image:
 #   docker-compose -f docker/autopilot/docker-compose.yml build
@@ -17,8 +20,10 @@ FROM debian:trixie-slim
 
 # Install runtime dependencies (including procps for healthcheck pgrep)
 RUN apt-get update && apt-get install -y \
+    build-essential \
     git \
     curl \
+    pkg-config \
     ripgrep \
     fd-find \
     jq \
@@ -29,6 +34,7 @@ RUN apt-get update && apt-get install -y \
 
 # Create non-root user with configurable UID to match host
 ARG HOST_UID=1000
+ARG INSTALL_RUST_TOOLCHAIN=false
 RUN useradd -m -u ${HOST_UID} -s /bin/bash agent
 
 # Create /shared directory with agent ownership for database mount
@@ -48,8 +54,13 @@ WORKDIR /home/agent
 # Note: The actual installation URL should be verified
 RUN curl -fsSL https://claude.ai/install.sh | bash || true
 
-# Add Claude to PATH
-ENV PATH="/home/agent/.claude/bin:${PATH}"
+# Optional Rust toolchain (for in-container builds)
+RUN if [ "${INSTALL_RUST_TOOLCHAIN}" = "true" ]; then \
+    curl -fsSL https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain stable; \
+    fi
+
+# Add Claude + Cargo to PATH
+ENV PATH="/home/agent/.claude/bin:/home/agent/.cargo/bin:${PATH}"
 
 # Set working directory to mounted workspace
 WORKDIR /workspace
