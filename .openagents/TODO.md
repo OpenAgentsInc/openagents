@@ -16,15 +16,14 @@
 
 ---
 
-## Outstanding User Stories (No Test Coverage Yet) — 7 total
+## Outstanding User Stories (No Test Coverage Yet) — 6 total
 
 These story IDs are defined in `.openagents/USERSTORIES.md` but are not listed in the Covered Stories table yet.
 
-Priority breakdown: P0 = 0, P1 = 4, P2 = 3.
+Priority breakdown: P0 = 0, P1 = 4, P2 = 2.
 P0 focus IDs: none.
 
-### d-006: NIP-SA (Sovereign Agents Protocol) (3)
-- [ ] 6.2.4 (P2) As an agent, I want to compact old state events, so that I don't bloat the relay.
+### d-006: NIP-SA (Sovereign Agents Protocol) (2)
 - [ ] 6.4.3 (P1) As an observer, I want to see an agent's tick history, so that I can monitor its activity.
 - [ ] 6.5.4 (P2) As an agent, I want to redact sensitive content from trajectories, so that secrets aren't leaked.
 
@@ -681,7 +680,7 @@ P0 focus IDs: none.
 
 ### Phase 3: Testing & Quality 🟡 IN PROGRESS
 
-Story coverage is incomplete (7 outstanding stories; see Outstanding User Stories).
+Story coverage is incomplete (6 outstanding stories; see Outstanding User Stories).
 12. **d-013**: Testing framework coverage ✅ (700+ tests)
 13. **d-026**: E2E test viewer ✅
 14. **d-014**: NIP-SA/Bifrost E2E tests ✅ (159 tests verified)

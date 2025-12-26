@@ -69,6 +69,9 @@ pub const KIND_AGENT_STATE: u16 = 38001;
 /// Current state schema version
 pub const STATE_VERSION: u32 = 1;
 
+/// Identifier for agent state addressable events.
+pub const STATE_D_TAG: &str = "state";
+
 const STATE_METADATA_TAG: &str = "state_meta";
 const META_GOALS: &str = "goals";
 const META_MEMORY: &str = "memory";
@@ -513,7 +516,7 @@ impl AgentState {
     /// Build tags for the event
     pub fn build_tags(&self) -> Vec<Vec<String>> {
         let mut tags = vec![
-            vec!["d".to_string(), "state".to_string()],
+            vec!["d".to_string(), STATE_D_TAG.to_string()],
             vec!["encrypted".to_string()],
             vec!["state_version".to_string(), self.version.to_string()],
         ];
@@ -558,9 +561,98 @@ impl AgentState {
     }
 }
 
+/// Determine which state event IDs should be deleted to compact history.
+///
+/// Returns all but the most recent state event for the given pubkey.
+pub fn state_event_ids_for_compaction(
+    events: &[crate::Event],
+    pubkey: &str,
+) -> Vec<String> {
+    let mut state_events: Vec<&crate::Event> = events
+        .iter()
+        .filter(|event| {
+            event.kind == KIND_AGENT_STATE
+                && event.pubkey == pubkey
+                && crate::nip33::get_d_tag(event).as_deref() == Some(STATE_D_TAG)
+        })
+        .collect();
+
+    if state_events.len() <= 1 {
+        return Vec::new();
+    }
+
+    state_events.sort_by(|left, right| {
+        left.created_at
+            .cmp(&right.created_at)
+            .then_with(|| left.id.cmp(&right.id))
+    });
+
+    state_events.pop();
+    state_events
+        .into_iter()
+        .map(|event| event.id.clone())
+        .collect()
+}
+
+/// Build deletion request tags to compact old state events.
+pub fn build_state_compaction_tags(
+    events: &[crate::Event],
+    pubkey: &str,
+) -> Vec<Vec<String>> {
+    let event_ids = state_event_ids_for_compaction(events, pubkey);
+    if event_ids.is_empty() {
+        return Vec::new();
+    }
+
+    let id_refs: Vec<&str> = event_ids.iter().map(|id| id.as_str()).collect();
+    crate::nip09::create_deletion_tags(&id_refs, Some(KIND_AGENT_STATE))
+}
+
+/// Build a deletion request event template to compact old state events.
+pub fn build_state_compaction_event(
+    events: &[crate::Event],
+    pubkey: &str,
+    created_at: u64,
+    reason: Option<&str>,
+) -> Option<crate::EventTemplate> {
+    let tags = build_state_compaction_tags(events, pubkey);
+    if tags.is_empty() {
+        return None;
+    }
+
+    Some(crate::EventTemplate {
+        created_at,
+        kind: crate::nip09::DELETION_REQUEST_KIND,
+        tags,
+        content: reason.unwrap_or_default().to_string(),
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn mock_event(
+        id: &str,
+        pubkey: &str,
+        created_at: u64,
+        kind: u16,
+        d_tag: Option<&str>,
+    ) -> crate::Event {
+        let tags = d_tag
+            .map(|tag| vec![vec!["d".to_string(), tag.to_string()]])
+            .unwrap_or_default();
+
+        crate::Event {
+            id: id.to_string(),
+            pubkey: pubkey.to_string(),
+            created_at,
+            kind,
+            tags,
+            content: String::new(),
+            sig: String::new(),
+        }
+    }
 
     #[test]
     fn test_goal_creation() {
@@ -735,6 +827,50 @@ mod tests {
             metadata.content_bytes,
             state.content.to_json().unwrap().as_bytes().len() as u64
         );
+    }
+
+    #[test]
+    fn test_state_event_ids_for_compaction() {
+        let pubkey = "agent_pubkey";
+        let events = vec![
+            mock_event("id-1", pubkey, 100, KIND_AGENT_STATE, Some(STATE_D_TAG)),
+            mock_event("id-2", pubkey, 200, KIND_AGENT_STATE, Some(STATE_D_TAG)),
+            mock_event("id-3", pubkey, 150, KIND_AGENT_STATE, Some(STATE_D_TAG)),
+            mock_event("id-4", "other_pubkey", 300, KIND_AGENT_STATE, Some(STATE_D_TAG)),
+            mock_event("id-5", pubkey, 250, 1, Some(STATE_D_TAG)),
+            mock_event("id-6", pubkey, 120, KIND_AGENT_STATE, Some("not-state")),
+        ];
+
+        let ids = state_event_ids_for_compaction(&events, pubkey);
+        assert_eq!(ids.len(), 2);
+        assert!(ids.contains(&"id-1".to_string()));
+        assert!(ids.contains(&"id-3".to_string()));
+        assert!(!ids.contains(&"id-2".to_string()));
+    }
+
+    #[test]
+    fn test_state_compaction_event_template() {
+        let pubkey = "agent_pubkey";
+        let events = vec![
+            mock_event("id-1", pubkey, 100, KIND_AGENT_STATE, Some(STATE_D_TAG)),
+            mock_event("id-2", pubkey, 200, KIND_AGENT_STATE, Some(STATE_D_TAG)),
+        ];
+
+        let template =
+            build_state_compaction_event(&events, pubkey, 1703003000, Some("compact state"))
+                .expect("expected compaction event template");
+
+        assert_eq!(template.kind, crate::nip09::DELETION_REQUEST_KIND);
+        assert_eq!(template.content, "compact state");
+        assert!(template
+            .tags
+            .contains(&vec!["e".to_string(), "id-1".to_string()]));
+        assert!(!template
+            .tags
+            .contains(&vec!["e".to_string(), "id-2".to_string()]));
+        assert!(template
+            .tags
+            .contains(&vec!["k".to_string(), KIND_AGENT_STATE.to_string()]));
     }
 
     #[cfg(feature = "full")]
