@@ -143,6 +143,7 @@ This section tracks which user stories have implemented tests.
 | 6.1.4 | See agent threshold key configuration | Integration | `crates/nostr/tests/integration/nip_sa.rs` |
 | 6.2.1 | Store encrypted state (kind:38001) | Integration | `crates/nostr/tests/integration/nip_sa.rs` |
 | 6.2.2 | Retrieve encrypted state on startup | Integration | `crates/nostr/tests/integration/nip_sa.rs` |
+| 6.2.3 | Inspect (but not decrypt) state metadata | Unit | `crates/nostr/core/src/nip_sa/state.rs` |
 | 6.3.1 | Set a heartbeat interval | Integration | `crates/nostr/tests/integration/nip_sa.rs` |
 | 6.3.2 | Set event triggers for schedule | Integration | `crates/nostr/tests/integration/nip_sa.rs` |
 | 6.3.3 | Pause/resume schedule | Unit | `crates/nostr/core/src/nip_sa/schedule.rs` |
