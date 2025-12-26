@@ -4,6 +4,7 @@ use anyhow::{Context, Result};
 use colored::Colorize;
 use crate::core::identity::UnifiedIdentity;
 use crate::storage::keychain::SecureKeychain;
+use std::path::PathBuf;
 
 pub fn init(show_mnemonic: bool) -> Result<()> {
     println!("{}", "Initializing new wallet...".cyan());
@@ -377,28 +378,238 @@ pub fn profile_set(
     Ok(())
 }
 
+fn contacts_path() -> Result<PathBuf> {
+    let home = dirs::home_dir().ok_or_else(|| anyhow::anyhow!("Could not find home directory"))?;
+    Ok(home.join(".openagents").join("contacts.json"))
+}
+
+fn load_contacts() -> Result<Vec<nostr::Contact>> {
+    let path = contacts_path()?;
+    if !path.exists() {
+        return Ok(Vec::new());
+    }
+    let contents = std::fs::read_to_string(&path)?;
+    let contacts = serde_json::from_str(&contents)?;
+    Ok(contacts)
+}
+
+fn save_contacts(contacts: &[nostr::Contact]) -> Result<()> {
+    let path = contacts_path()?;
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let contents = serde_json::to_string_pretty(contacts)?;
+    std::fs::write(&path, contents)?;
+    Ok(())
+}
+
+fn parse_contact_pubkey(value: &str) -> Result<String> {
+    if value.len() == 64 && value.chars().all(|c| c.is_ascii_hexdigit()) {
+        return Ok(value.to_string());
+    }
+
+    match nostr::decode(value) {
+        Ok(nostr::Nip19Entity::Pubkey(pk)) => Ok(hex::encode(pk)),
+        Ok(nostr::Nip19Entity::Profile(profile)) => Ok(hex::encode(profile.pubkey)),
+        _ => anyhow::bail!("Invalid contact. Expected npub, nprofile, or 64-char hex pubkey."),
+    }
+}
+
+fn create_contact_list_event(
+    identity: &UnifiedIdentity,
+    contacts: &[nostr::Contact],
+) -> Result<nostr::Event> {
+    let tags = contacts.iter().map(|contact| contact.to_tag()).collect();
+    let template = nostr::EventTemplate {
+        created_at: std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)?
+            .as_secs(),
+        kind: nostr::CONTACT_LIST_KIND,
+        tags,
+        content: "".to_string(),
+    };
+
+    identity.sign_event(template)
+        .context("Failed to sign contact list event")
+}
+
 pub fn contacts_list() -> Result<()> {
-    // Contact list management requires Nostr relay integration which is not yet implemented.
-    // Per d-012 (No Stubs), we return an explicit error instead of pretending to work.
-    Err(anyhow::anyhow!(
-        "Contact list management not yet implemented. Requires Nostr relay client integration for fetching and publishing kind:3 contact list events."
-    ))
+    println!("{}", "Contacts".cyan().bold());
+
+    if !SecureKeychain::has_mnemonic() {
+        anyhow::bail!("No wallet found. Use 'wallet init' to create one.");
+    }
+
+    let contacts = load_contacts()?;
+
+    if contacts.is_empty() {
+        println!("No contacts yet. Use 'wallet contacts add <npub>' to follow someone.");
+        return Ok(());
+    }
+
+    println!("Following: {}", contacts.len());
+    println!();
+
+    for (index, contact) in contacts.iter().enumerate() {
+        if let Some(name) = &contact.petname {
+            println!(
+                "{}. {} ({})",
+                index + 1,
+                name,
+                contact.pubkey
+            );
+        } else {
+            println!("{}. {}", index + 1, contact.pubkey);
+        }
+    }
+
+    Ok(())
 }
 
-pub fn contacts_add(_npub: String, _name: Option<String>) -> Result<()> {
-    // Contact list management requires Nostr relay integration which is not yet implemented.
-    // Per d-012 (No Stubs), we return an explicit error instead of pretending to work.
-    Err(anyhow::anyhow!(
-        "Contact list management not yet implemented. Requires Nostr relay client integration for fetching and publishing kind:3 contact list events."
-    ))
+pub fn contacts_add(npub: String, name: Option<String>) -> Result<()> {
+    use bip39::Mnemonic;
+    use crate::core::client::NostrClient;
+    use crate::storage::config::WalletConfig;
+
+    println!("{}", "Adding contact...".cyan());
+
+    if !SecureKeychain::has_mnemonic() {
+        anyhow::bail!("No wallet found. Use 'wallet init' to create one.");
+    }
+
+    let pubkey_hex = parse_contact_pubkey(&npub)?;
+    let mut contacts = load_contacts()?;
+
+    if let Some(existing) = contacts.iter_mut().find(|contact| contact.pubkey == pubkey_hex) {
+        existing.petname = name.clone();
+    } else {
+        contacts.push(nostr::Contact {
+            pubkey: pubkey_hex.clone(),
+            relay_url: None,
+            petname: name.clone(),
+        });
+    }
+
+    save_contacts(&contacts)?;
+
+    let mnemonic_phrase = SecureKeychain::retrieve_mnemonic()?;
+    let mnemonic = Mnemonic::parse(&mnemonic_phrase)?;
+    let identity = UnifiedIdentity::from_mnemonic(mnemonic)?;
+    let event = create_contact_list_event(&identity, &contacts)?;
+
+    println!("{} Followed {}", "✓".green(), pubkey_hex);
+
+    let config = WalletConfig::load()?;
+
+    if config.nostr.relays.is_empty() {
+        println!();
+        println!("{}", "Note: No relays configured. Use 'wallet relays add <url>' to add relays.".yellow());
+        println!("{}: {}", "Event ID".bold(), event.id);
+        return Ok(());
+    }
+
+    println!();
+    println!("{}", "Publishing to relays...".cyan());
+
+    let client = NostrClient::new(config.nostr.relays.clone());
+    let rt = tokio::runtime::Runtime::new()?;
+    let results = rt.block_on(client.publish_event(&event))?;
+
+    let mut success_count = 0;
+    let mut fail_count = 0;
+
+    for result in results {
+        if result.is_success() {
+            println!("  {} {}", "✓".green(), result.relay_url);
+            success_count += 1;
+        } else {
+            let error = result.error_message().unwrap_or_else(|| "Unknown error".to_string());
+            println!("  {} {} - {}", "✗".red(), result.relay_url, error);
+            fail_count += 1;
+        }
+    }
+
+    println!();
+    if success_count > 0 {
+        println!("{} Published to {}/{} relay(s)", "✓".green(), success_count, success_count + fail_count);
+    }
+    if fail_count > 0 {
+        println!("{} {} relay(s) failed", "⚠".yellow(), fail_count);
+    }
+
+    Ok(())
 }
 
-pub fn contacts_remove(_npub: String) -> Result<()> {
-    // Contact list management requires Nostr relay integration which is not yet implemented.
-    // Per d-012 (No Stubs), we return an explicit error instead of pretending to work.
-    Err(anyhow::anyhow!(
-        "Contact list management not yet implemented. Requires Nostr relay client integration for fetching and publishing kind:3 contact list events."
-    ))
+pub fn contacts_remove(npub: String) -> Result<()> {
+    use bip39::Mnemonic;
+    use crate::core::client::NostrClient;
+    use crate::storage::config::WalletConfig;
+
+    println!("{}", "Removing contact...".cyan());
+
+    if !SecureKeychain::has_mnemonic() {
+        anyhow::bail!("No wallet found. Use 'wallet init' to create one.");
+    }
+
+    let pubkey_hex = parse_contact_pubkey(&npub)?;
+    let mut contacts = load_contacts()?;
+    let original_len = contacts.len();
+
+    contacts.retain(|contact| contact.pubkey != pubkey_hex);
+
+    if contacts.len() == original_len {
+        println!("Contact not found.");
+        return Ok(());
+    }
+
+    save_contacts(&contacts)?;
+
+    let mnemonic_phrase = SecureKeychain::retrieve_mnemonic()?;
+    let mnemonic = Mnemonic::parse(&mnemonic_phrase)?;
+    let identity = UnifiedIdentity::from_mnemonic(mnemonic)?;
+    let event = create_contact_list_event(&identity, &contacts)?;
+
+    println!("{} Unfollowed {}", "✓".green(), pubkey_hex);
+
+    let config = WalletConfig::load()?;
+
+    if config.nostr.relays.is_empty() {
+        println!();
+        println!("{}", "Note: No relays configured. Use 'wallet relays add <url>' to add relays.".yellow());
+        println!("{}: {}", "Event ID".bold(), event.id);
+        return Ok(());
+    }
+
+    println!();
+    println!("{}", "Publishing to relays...".cyan());
+
+    let client = NostrClient::new(config.nostr.relays.clone());
+    let rt = tokio::runtime::Runtime::new()?;
+    let results = rt.block_on(client.publish_event(&event))?;
+
+    let mut success_count = 0;
+    let mut fail_count = 0;
+
+    for result in results {
+        if result.is_success() {
+            println!("  {} {}", "✓".green(), result.relay_url);
+            success_count += 1;
+        } else {
+            let error = result.error_message().unwrap_or_else(|| "Unknown error".to_string());
+            println!("  {} {} - {}", "✗".red(), result.relay_url, error);
+            fail_count += 1;
+        }
+    }
+
+    println!();
+    if success_count > 0 {
+        println!("{} Published to {}/{} relay(s)", "✓".green(), success_count, success_count + fail_count);
+    }
+    if fail_count > 0 {
+        println!("{} {} relay(s) failed", "⚠".yellow(), fail_count);
+    }
+
+    Ok(())
 }
 
 pub fn post(content: String) -> Result<()> {

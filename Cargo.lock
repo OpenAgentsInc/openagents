@@ -6883,6 +6883,7 @@ dependencies = [
  "autopilot",
  "autopilot-gui",
  "base64 0.22.1",
+ "bip39",
  "chrono",
  "clap",
  "claude-agent-sdk",
