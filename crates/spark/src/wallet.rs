@@ -44,6 +44,7 @@ pub use breez_sdk_spark::{
     Bolt11InvoiceDetails,
     Bolt11Invoice,
     SparkInvoiceDetails,
+    SparkInvoicePaymentDetails,
     SendOnchainFeeQuote,
     SendOnchainSpeedFeeQuote,
 };

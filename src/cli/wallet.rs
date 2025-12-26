@@ -76,6 +76,21 @@ pub enum WalletCommands {
         payee: Option<String>,
     },
 
+    /// Retry a failed payment using the original invoice details
+    Retry {
+        /// Payment ID to retry (from history)
+        #[arg(value_name = "PAYMENT_ID", required_unless_present = "last")]
+        payment_id: Option<String>,
+
+        /// Retry the most recent failed outgoing payment
+        #[arg(long, conflicts_with = "payment_id")]
+        last: bool,
+
+        /// Skip confirmation prompt
+        #[arg(long)]
+        yes: bool,
+    },
+
     /// Transaction history
     History {
         /// Number of transactions to display
@@ -239,6 +254,9 @@ pub fn run(cmd: WalletCommands) -> anyhow::Result<()> {
         WalletCommands::Notify => wallet::cli::bitcoin::notify(),
         WalletCommands::Send { address, amount, yes, qr, payee } => {
             wallet::cli::bitcoin::send(address, amount, yes, qr, payee)
+        }
+        WalletCommands::Retry { payment_id, last, yes } => {
+            wallet::cli::bitcoin::retry(payment_id, last, yes)
         }
         WalletCommands::History { limit, format, output } => {
             let format = wallet::cli::bitcoin::HistoryFormat::parse(&format)?;
