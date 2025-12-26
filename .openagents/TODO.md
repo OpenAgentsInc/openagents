@@ -16,15 +16,14 @@
 
 ---
 
-## Outstanding User Stories (No Test Coverage Yet) — 34 total
+## Outstanding User Stories (No Test Coverage Yet) — 33 total
 
 These story IDs are defined in `.openagents/USERSTORIES.md` but are not listed in the Covered Stories table yet.
 
-Priority breakdown: P0 = 6, P1 = 20, P2 = 8.
+Priority breakdown: P0 = 6, P1 = 19, P2 = 8.
 P0 focus IDs: 3.3.1, 3.3.2, 3.3.3, 23.1.3, 25.2.1, 25.2.2.
 
-### d-001: Breez Spark SDK Integration (3)
-- [ ] 1.4.4 (P1) As a user, I want to receive push notifications when a payment arrives, so that I know immediately.
+### d-001: Breez Spark SDK Integration (2)
 - [ ] 1.5.3 (P1) As a user, I want to retry failed payments with one click, so that I can complete the transaction.
 - [ ] 1.5.4 (P1) As a user, I want to see network status (connected/disconnected), so that I know if payments will work.
 
@@ -720,7 +719,7 @@ P0 focus IDs: 3.3.1, 3.3.2, 3.3.3, 23.1.3, 25.2.1, 25.2.2.
 
 ### Phase 3: Testing & Quality 🟡 IN PROGRESS
 
-Story coverage is incomplete (34 outstanding stories; see Outstanding User Stories).
+Story coverage is incomplete (33 outstanding stories; see Outstanding User Stories).
 12. **d-013**: Testing framework coverage ✅ (700+ tests)
 13. **d-026**: E2E test viewer ✅
 14. **d-014**: NIP-SA/Bifrost E2E tests ✅ (159 tests verified)
