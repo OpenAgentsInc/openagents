@@ -61,6 +61,7 @@ pub enum BackendCommand {
     StopParallel,
     RunPrompt { prompt: String },
     AbortPrompt,
+    SelectSession { session_id: String },
 }
 
 #[derive(Clone, Debug)]
@@ -226,6 +227,8 @@ fn run_backend_loop(
     let mut metrics_db = None;
     let mut last_agents = Instant::now() - config.agents_interval;
     let mut last_issues = Instant::now() - config.issues_interval;
+    let mut selected_session: Option<String> = None;
+    let mut selected_log_path: Option<PathBuf> = None;
 
     let runtime = tokio::runtime::Runtime::new().ok();
     let mut full_auto: Option<FullAutoManager> = None;
@@ -244,6 +247,8 @@ fn run_backend_loop(
                 runtime.as_ref(),
                 &mut full_auto,
                 &mut prompt_runner,
+                &mut selected_session,
+                &mut selected_log_path,
             );
         }
 
@@ -279,8 +284,12 @@ fn run_backend_loop(
             let _ = tx.send(BackendEvent::Metrics { sessions, summary });
         }
 
-        let (log_path, log_session, chat_entries) =
-            load_latest_chat(&config.logs_dir, config.max_chat_entries);
+        let (log_path, log_session, chat_entries) = load_selected_chat(
+            &config.logs_dir,
+            config.max_chat_entries,
+            selected_session.as_deref(),
+            &mut selected_log_path,
+        );
         let _ = tx.send(BackendEvent::Chat {
             path: log_path,
             session_id: log_session,
@@ -344,6 +353,8 @@ fn handle_command(
     runtime: Option<&tokio::runtime::Runtime>,
     full_auto: &mut Option<FullAutoManager>,
     prompt_runner: &mut PromptRunner,
+    selected_session: &mut Option<String>,
+    selected_log_path: &mut Option<PathBuf>,
 ) {
     match cmd {
         BackendCommand::StartFullAuto => {
@@ -432,6 +443,15 @@ fn handle_command(
                     message: "Prompt aborted".to_string(),
                 });
             }
+        }
+        BackendCommand::SelectSession { session_id } => {
+            if session_id.trim().is_empty() {
+                *selected_session = None;
+                *selected_log_path = None;
+                return;
+            }
+            *selected_session = Some(session_id);
+            *selected_log_path = None;
         }
     }
 }
@@ -568,28 +588,20 @@ impl ChatAssembler {
     }
 }
 
-fn load_latest_chat(
-    logs_dir: &Path,
-    max_entries: usize,
-) -> (Option<PathBuf>, Option<String>, Vec<ChatEntry>) {
-    let path = find_latest_log(logs_dir, &["jsonl", "rlog"]);
-    let Some(path) = path else {
-        return (None, None, Vec::new());
-    };
-
-    let bytes = match std::fs::read(&path) {
+fn load_chat_from_path(path: &Path, max_entries: usize) -> (Option<String>, Vec<ChatEntry>) {
+    let bytes = match std::fs::read(path) {
         Ok(bytes) => bytes,
-        Err(_) => return (Some(path), None, Vec::new()),
+        Err(_) => return (None, Vec::new()),
     };
 
     let content = String::from_utf8_lossy(&bytes);
 
     if path.extension().map(|ext| ext == "jsonl").unwrap_or(false) {
         let (entries, session_id) = parse_jsonl_chat(&content, max_entries);
-        return (Some(path), session_id, entries);
+        return (session_id, entries);
     }
 
-    let session_id = autopilot::extract_session_id_from_rlog(&path)
+    let session_id = autopilot::extract_session_id_from_rlog(path)
         .ok()
         .and_then(|id| id);
     let mut lines: Vec<ChatEntry> = content
@@ -604,7 +616,110 @@ fn load_latest_chat(
         lines = lines.split_off(lines.len() - max_entries);
     }
 
-    (Some(path), session_id, lines)
+    (session_id, lines)
+}
+
+fn extract_session_id_from_jsonl(content: &str) -> Option<String> {
+    for line in content.lines() {
+        let line = line.trim();
+        if line.is_empty() {
+            continue;
+        }
+
+        let record: JsonlRecord = match serde_json::from_str(line) {
+            Ok(record) => record,
+            Err(_) => continue,
+        };
+
+        if let Some(session_id) = find_session_id_in_value(&record.message) {
+            return Some(session_id);
+        }
+    }
+
+    None
+}
+
+fn find_session_id_in_value(value: &Value) -> Option<String> {
+    match value {
+        Value::Object(map) => {
+            if let Some(Value::String(session_id)) = map.get("session_id") {
+                return Some(session_id.clone());
+            }
+            for value in map.values() {
+                if let Some(session_id) = find_session_id_in_value(value) {
+                    return Some(session_id);
+                }
+            }
+            None
+        }
+        Value::Array(items) => items.iter().find_map(find_session_id_in_value),
+        _ => None,
+    }
+}
+
+fn load_selected_chat(
+    logs_dir: &Path,
+    max_entries: usize,
+    selected_session: Option<&str>,
+    selected_log_path: &mut Option<PathBuf>,
+) -> (Option<PathBuf>, Option<String>, Vec<ChatEntry>) {
+    if let Some(session_id) = selected_session {
+        if let Some(path) = selected_log_path.as_ref() {
+            if path.exists() {
+                let (session_id_found, entries) = load_chat_from_path(path, max_entries);
+                if session_id_found.as_deref() == Some(session_id) {
+                    return (Some(path.clone()), session_id_found, entries);
+                }
+            }
+        }
+
+        if let Some(path) = find_log_for_session(logs_dir, session_id) {
+            *selected_log_path = Some(path.clone());
+            let (session_id_found, entries) = load_chat_from_path(&path, max_entries);
+            return (Some(path), session_id_found, entries);
+        }
+    }
+
+    *selected_log_path = None;
+    load_latest_chat(logs_dir, max_entries)
+}
+
+fn load_latest_chat(
+    logs_dir: &Path,
+    max_entries: usize,
+) -> (Option<PathBuf>, Option<String>, Vec<ChatEntry>) {
+    let path = find_latest_log(logs_dir, &["jsonl", "rlog"]);
+    let Some(path) = path else {
+        return (None, None, Vec::new());
+    };
+
+    let (session_id, entries) = load_chat_from_path(&path, max_entries);
+    (Some(path), session_id, entries)
+}
+
+fn find_log_for_session(logs_dir: &Path, session_id: &str) -> Option<PathBuf> {
+    let logs = list_log_entries(logs_dir, &["jsonl", "rlog"]);
+    for path in logs {
+        match path.extension().and_then(|ext| ext.to_str()) {
+            Some("jsonl") => {
+                if let Ok(content) = std::fs::read_to_string(&path) {
+                    if extract_session_id_from_jsonl(&content).as_deref() == Some(session_id) {
+                        return Some(path);
+                    }
+                }
+            }
+            Some("rlog") => {
+                let found = autopilot::extract_session_id_from_rlog(&path)
+                    .ok()
+                    .and_then(|id| id);
+                if found.as_deref() == Some(session_id) {
+                    return Some(path);
+                }
+            }
+            _ => {}
+        }
+    }
+    None
 }
 
 fn parse_jsonl_chat(content: &str, max_entries: usize) -> (Vec<ChatEntry>, Option<String>) {
@@ -1067,36 +1182,52 @@ fn truncate_text(text: &str, max_len: usize) -> String {
     out
 }
 
-fn find_latest_log(logs_dir: &Path, extensions: &[&str]) -> Option<PathBuf> {
-    let mut dirs: Vec<_> = std::fs::read_dir(logs_dir)
-        .ok()?
+fn list_log_entries(logs_dir: &Path, extensions: &[&str]) -> Vec<PathBuf> {
+    let read_dir = match std::fs::read_dir(logs_dir) {
+        Ok(read_dir) => read_dir,
+        Err(_) => return Vec::new(),
+    };
+
+    let mut dirs: Vec<_> = read_dir
         .filter_map(|entry| entry.ok())
         .filter(|entry| entry.path().is_dir())
         .collect();
 
     dirs.sort_by_key(|entry| std::cmp::Reverse(entry.file_name()));
-    let latest_dir = dirs.first()?.path();
 
-    let mut logs: Vec<_> = std::fs::read_dir(&latest_dir)
-        .ok()?
-        .filter_map(|entry| entry.ok())
-        .filter(|entry| {
-            entry
-                .path()
-                .extension()
-                .and_then(|ext| ext.to_str())
-                .map(|ext| extensions.contains(&ext))
-                .unwrap_or(false)
-        })
-        .collect();
+    let mut paths = Vec::new();
+    for dir in dirs {
+        let read_dir = match std::fs::read_dir(dir.path()) {
+            Ok(read_dir) => read_dir,
+            Err(_) => continue,
+        };
 
-    logs.sort_by(|a, b| {
-        let a_time = a.metadata().and_then(|m| m.modified()).ok();
-        let b_time = b.metadata().and_then(|m| m.modified()).ok();
-        b_time.cmp(&a_time)
-    });
+        let mut logs: Vec<_> = read_dir
+            .filter_map(|entry| entry.ok())
+            .filter(|entry| {
+                entry
+                    .path()
+                    .extension()
+                    .and_then(|ext| ext.to_str())
+                    .map(|ext| extensions.contains(&ext))
+                    .unwrap_or(false)
+            })
+            .collect();
 
-    logs.first().map(|entry| entry.path())
+        logs.sort_by(|a, b| {
+            let a_time = a.metadata().and_then(|m| m.modified()).ok();
+            let b_time = b.metadata().and_then(|m| m.modified()).ok();
+            b_time.cmp(&a_time)
+        });
+
+        paths.extend(logs.into_iter().map(|entry| entry.path()));
+    }
+
+    paths
+}
+
+fn find_latest_log(logs_dir: &Path, extensions: &[&str]) -> Option<PathBuf> {
+    list_log_entries(logs_dir, extensions).into_iter().next()
 }
 
 #[cfg(test)]
@@ -1313,5 +1444,38 @@ mod tests {
 
         let found = find_latest_log(logs_dir, &["jsonl"]).expect("latest log");
         assert_eq!(found, second);
+    }
+
+    #[test]
+    fn test_extract_session_id_from_jsonl_scans_for_session() {
+        let content = record("system", json!({"session_id": "session-xyz"}));
+        let session_id = extract_session_id_from_jsonl(&content);
+        assert_eq!(session_id.as_deref(), Some("session-xyz"));
+    }
+
+    #[test]
+    fn test_find_log_for_session_matches_jsonl_and_rlog() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let logs_dir = temp.path();
+        let older = logs_dir.join("20250101");
+        let newer = logs_dir.join("20250102");
+        std::fs::create_dir_all(&older).expect("older");
+        std::fs::create_dir_all(&newer).expect("newer");
+
+        let jsonl_path = newer.join("session-json.jsonl");
+        let jsonl_content = record("system", json!({"session_id": "session-json"}));
+        std::fs::write(&jsonl_path, jsonl_content).expect("jsonl file");
+
+        let rlog_path = newer.join("session-rlog.rlog");
+        let rlog_content = "---\nid: session-rlog\n---\nline1\n";
+        std::fs::write(&rlog_path, rlog_content).expect("rlog file");
+
+        let json_found =
+            find_log_for_session(logs_dir, "session-json").expect("jsonl match");
+        assert_eq!(json_found, jsonl_path);
+
+        let rlog_found =
+            find_log_for_session(logs_dir, "session-rlog").expect("rlog match");
+        assert_eq!(rlog_found, rlog_path);
     }
 }

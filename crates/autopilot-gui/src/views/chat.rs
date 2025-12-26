@@ -1,11 +1,12 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
+use autopilot::metrics::SessionMetrics;
 use wgpui::components::atoms::{Model, StreamingIndicator};
 use wgpui::components::molecules::{MessageHeader, ThinkingBlock};
 use wgpui::components::organisms::ToolCallCard;
 use wgpui::components::sections::MessageEditor;
-use wgpui::components::Component;
+use wgpui::components::{Component, Tab, Tabs};
 use wgpui::scroll::{calculate_scrollbar_thumb, ScrollContainer};
 use wgpui::{Bounds, EventContext, EventResult, InputEvent, Point, Quad, Size, Text, theme};
 
@@ -17,9 +18,17 @@ const ENTRY_GAP: f32 = 12.0;
 const HEADER_LINE_HEIGHT: f32 = 18.0;
 const THINKING_TOGGLE_HEIGHT: f32 = 24.0;
 const THINKING_MAX_COLLAPSED_LINES: usize = 3;
+const SESSION_TAB_HEIGHT: f32 = 28.0;
+const SESSION_TAB_GAP: f32 = 8.0;
+const SESSION_TAB_FONT_SIZE: f32 = theme::font_size::XS;
+const SESSION_TAB_PADDING_H: f32 = 12.0;
+const SESSION_TAB_PADDING_V: f32 = 6.0;
+const SESSION_TAB_LIMIT: usize = 6;
+const SESSION_TAB_LABEL_MAX: usize = 24;
 
 pub struct ChatView {
     state: Rc<RefCell<AppState>>,
+    command_tx: std::sync::mpsc::Sender<BackendCommand>,
     editor: MessageEditor,
     scroll: ScrollContainer,
     dragging_scrollbar: bool,
@@ -29,6 +38,9 @@ pub struct ChatView {
     layout_entries: Vec<ChatLayoutEntry>,
     content_height: f32,
     streaming_indicator: StreamingIndicator,
+    session_tabs: Tabs,
+    session_tab_ids: Vec<String>,
+    session_tab_active_id: Option<String>,
 }
 
 struct ChatLayoutEntry {
@@ -63,6 +75,7 @@ impl ChatView {
 
         Self {
             state,
+            command_tx,
             editor,
             scroll: ScrollContainer::vertical(Bounds::ZERO),
             dragging_scrollbar: false,
@@ -72,6 +85,9 @@ impl ChatView {
             layout_entries: Vec::new(),
             content_height: 0.0,
             streaming_indicator: StreamingIndicator::new(),
+            session_tabs: Tabs::new(Vec::new()),
+            session_tab_ids: Vec::new(),
+            session_tab_active_id: None,
         }
     }
 
@@ -83,6 +99,79 @@ impl ChatView {
         {
             self.streaming_indicator.tick();
         }
+    }
+
+    fn refresh_session_tabs(&mut self) {
+        let state = self.state.borrow();
+        let tab_sessions = session_tabs_for_state(&state);
+        let mut session_ids = Vec::with_capacity(tab_sessions.len());
+        let tabs: Vec<Tab> = tab_sessions
+            .iter()
+            .map(|session| {
+                session_ids.push(session.id.clone());
+                Tab::new(session_tab_label(session))
+            })
+            .collect();
+
+        let active_id = state.log_session_id.clone();
+        if session_ids == self.session_tab_ids && active_id == self.session_tab_active_id {
+            return;
+        }
+
+        let active_index = active_id
+            .as_ref()
+            .and_then(|id| session_ids.iter().position(|tab_id| tab_id == id))
+            .unwrap_or(0);
+
+        let tx = self.command_tx.clone();
+        let ids_for_callback = session_ids.clone();
+        let tabs = Tabs::new(tabs)
+            .active(active_index)
+            .tab_height(SESSION_TAB_HEIGHT)
+            .tab_padding(SESSION_TAB_PADDING_H, SESSION_TAB_PADDING_V)
+            .font_size(SESSION_TAB_FONT_SIZE)
+            .on_change(move |index| {
+                if let Some(session_id) = ids_for_callback.get(index) {
+                    let _ = tx.send(BackendCommand::SelectSession {
+                        session_id: session_id.clone(),
+                    });
+                }
+            });
+
+        self.session_tabs = tabs;
+        self.session_tab_ids = session_ids;
+        self.session_tab_active_id = active_id;
+    }
+
+    fn header_layout(&self, bounds: Bounds) -> (Bounds, Option<Bounds>, f32) {
+        let padding = theme::spacing::SM;
+        let has_tabs = self.session_tabs.tab_count() > 0;
+        let tabs_height = if has_tabs { SESSION_TAB_HEIGHT } else { 0.0 };
+        let tabs_gap = if has_tabs { SESSION_TAB_GAP } else { 0.0 };
+        let header_height = padding * 2.0 + tabs_height + tabs_gap + HEADER_LINE_HEIGHT * 2.0;
+        let header_bounds = Bounds::new(
+            bounds.origin.x,
+            bounds.origin.y,
+            bounds.size.width,
+            header_height,
+        );
+        let tabs_bounds = if has_tabs {
+            Some(Bounds::new(
+                bounds.origin.x,
+                bounds.origin.y + padding,
+                bounds.size.width,
+                tabs_height,
+            ))
+        } else {
+            None
+        };
+        let info_origin_y = if let Some(tabs_bounds) = tabs_bounds {
+            tabs_bounds.origin.y + tabs_bounds.size.height + tabs_gap
+        } else {
+            bounds.origin.y + padding
+        };
+
+        (header_bounds, tabs_bounds, info_origin_y)
     }
 
     fn rebuild_layout(&mut self, bounds: Bounds, cx: &mut wgpui::PaintContext) {
@@ -165,10 +254,15 @@ impl ChatView {
         }
     }
 
-    fn paint_header(&mut self, bounds: Bounds, cx: &mut wgpui::PaintContext) {
+    fn paint_header(
+        &mut self,
+        bounds: Bounds,
+        info_origin_y: f32,
+        cx: &mut wgpui::PaintContext,
+    ) {
         let state = self.state.borrow();
         let padding = theme::spacing::SM;
-        let mut y = bounds.origin.y + padding;
+        let mut y = info_origin_y;
 
         let session = state
             .log_session_id
@@ -247,17 +341,14 @@ impl ChatView {
 
 impl Component for ChatView {
     fn paint(&mut self, bounds: Bounds, cx: &mut wgpui::PaintContext) {
-        let padding = theme::spacing::SM;
-        let header_height = HEADER_LINE_HEIGHT * 2.0 + padding * 2.0;
+        self.refresh_session_tabs();
+        let (header_bounds, tabs_bounds, info_origin_y) = self.header_layout(bounds);
         let editor_height = self.editor.size_hint().1.unwrap_or(64.0);
 
-        let header_bounds = Bounds::new(
-            bounds.origin.x,
-            bounds.origin.y,
-            bounds.size.width,
-            header_height,
-        );
-        self.paint_header(header_bounds, cx);
+        if let Some(tabs_bounds) = tabs_bounds {
+            self.session_tabs.paint(tabs_bounds, cx);
+        }
+        self.paint_header(header_bounds, info_origin_y, cx);
 
         let editor_bounds = Bounds::new(
             bounds.origin.x,
@@ -314,8 +405,8 @@ impl Component for ChatView {
     }
 
     fn event(&mut self, event: &InputEvent, bounds: Bounds, cx: &mut EventContext) -> EventResult {
-        let padding = theme::spacing::SM;
-        let header_height = HEADER_LINE_HEIGHT * 2.0 + padding * 2.0;
+        self.refresh_session_tabs();
+        let (header_bounds, tabs_bounds, _) = self.header_layout(bounds);
         let editor_height = self.editor.size_hint().1.unwrap_or(64.0);
 
         let editor_bounds = Bounds::new(
@@ -326,10 +417,17 @@ impl Component for ChatView {
         );
         let list_bounds = Bounds::new(
             bounds.origin.x,
-            bounds.origin.y + header_height,
+            header_bounds.origin.y + header_bounds.size.height,
             bounds.size.width,
-            (editor_bounds.origin.y - bounds.origin.y - header_height).max(0.0),
+            (editor_bounds.origin.y - header_bounds.origin.y - header_bounds.size.height).max(0.0),
         );
+
+        if let Some(tabs_bounds) = tabs_bounds {
+            let result = self.session_tabs.event(event, tabs_bounds, cx);
+            if result == EventResult::Handled {
+                return result;
+            }
+        }
 
         match event {
             InputEvent::Scroll { dx, dy } => {
@@ -390,6 +488,50 @@ impl Component for ChatView {
 
         EventResult::Ignored
     }
+}
+
+fn session_tabs_for_state(state: &AppState) -> Vec<&SessionMetrics> {
+    if state.sessions.is_empty() {
+        return Vec::new();
+    }
+
+    let mut sessions: Vec<&SessionMetrics> =
+        state.sessions.iter().take(SESSION_TAB_LIMIT).collect();
+
+    if let Some(active_id) = state.log_session_id.as_ref() {
+        let has_active = sessions.iter().any(|session| &session.id == active_id);
+        if !has_active {
+            if let Some(active) = state.sessions.iter().find(|session| &session.id == active_id) {
+                sessions.push(active);
+            }
+        }
+    }
+
+    sessions
+}
+
+fn session_tab_label(session: &SessionMetrics) -> String {
+    let id = session.id.chars().take(8).collect::<String>();
+    let prompt = session.prompt.replace('\n', " ");
+    let prompt = prompt.trim();
+    if prompt.is_empty() {
+        return id;
+    }
+
+    let label = format!("{} {}", id, prompt);
+    truncate_label(&label, SESSION_TAB_LABEL_MAX)
+}
+
+fn truncate_label(text: &str, max_chars: usize) -> String {
+    if text.chars().count() <= max_chars {
+        return text.to_string();
+    }
+    let ellipsis = "...";
+    if max_chars <= ellipsis.len() {
+        return ellipsis.chars().take(max_chars).collect();
+    }
+    let trimmed: String = text.chars().take(max_chars - ellipsis.len()).collect();
+    format!("{}{}", trimmed, ellipsis)
 }
 
 fn paint_entry(
@@ -796,11 +938,37 @@ impl MessageHeaderExt for MessageHeader {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use autopilot::metrics::{SessionMetrics, SessionStatus};
+    use chrono::Utc;
     use std::sync::mpsc;
-    use wgpui::{EventContext, Modifiers, NamedKey, Scene, TextSystem};
+    use wgpui::{EventContext, Modifiers, MouseButton, NamedKey, Scene, TextSystem};
 
     fn make_context(scale: f32) -> (Scene, TextSystem) {
         (Scene::new(), TextSystem::new(scale))
+    }
+
+    fn make_session(id: &str, prompt: &str) -> SessionMetrics {
+        SessionMetrics {
+            id: id.to_string(),
+            timestamp: Utc::now(),
+            model: "sonnet".to_string(),
+            prompt: prompt.to_string(),
+            duration_seconds: 60.0,
+            tokens_in: 0,
+            tokens_out: 0,
+            tokens_cached: 0,
+            cost_usd: 0.0,
+            issues_claimed: 0,
+            issues_completed: 0,
+            tool_calls: 0,
+            tool_errors: 0,
+            final_status: SessionStatus::Completed,
+            messages: 0,
+            apm: None,
+            source: "autopilot".to_string(),
+            issue_numbers: None,
+            directive_id: None,
+        }
     }
 
     #[test]
@@ -851,6 +1019,44 @@ mod tests {
 
         let cmd = rx.try_recv().expect("command");
         assert!(matches!(cmd, BackendCommand::RunPrompt { ref prompt } if prompt == "Ship it"));
+    }
+
+    #[test]
+    fn test_chat_view_selects_session_tab() {
+        let session_one = make_session("session-one", "First run");
+        let session_two = make_session("session-two", "Second run");
+        let state = Rc::new(RefCell::new(AppState::new()));
+        {
+            let mut state = state.borrow_mut();
+            state.sessions = vec![session_one.clone(), session_two.clone()];
+            state.log_session_id = Some(session_one.id.clone());
+        }
+
+        let (tx, rx) = mpsc::channel();
+        let mut view = ChatView::new(state, tx);
+        let bounds = Bounds::new(0.0, 0.0, 720.0, 480.0);
+        let (mut scene, mut text) = make_context(1.0);
+        let mut cx = wgpui::PaintContext::new(&mut scene, &mut text, 1.0);
+
+        view.paint(bounds, &mut cx);
+
+        let first_label = session_tab_label(&session_one);
+        let first_width = first_label.chars().count() as f32 * SESSION_TAB_FONT_SIZE * 0.6
+            + SESSION_TAB_PADDING_H * 2.0;
+        let tab_x = theme::spacing::SM + first_width + 2.0;
+        let tab_y = theme::spacing::SM + 2.0;
+
+        let mut event_cx = EventContext::new();
+        let event = InputEvent::MouseDown {
+            button: MouseButton::Left,
+            x: tab_x,
+            y: tab_y,
+        };
+        let result = view.event(&event, bounds, &mut event_cx);
+        assert!(matches!(result, EventResult::Handled));
+
+        let cmd = rx.try_recv().expect("command");
+        assert!(matches!(cmd, BackendCommand::SelectSession { ref session_id } if session_id == "session-two"));
     }
 
     #[test]

@@ -267,7 +267,7 @@ P0 focus IDs: none.
   - [x] Tool execution timeline
   - [x] Thinking block toggle
   - [x] Session browser with search ✅
-  - [ ] Multi-session tabs
+  - [x] Multi-session tabs ✅
 
 **Files:**
 - `crates/autopilot/src/dashboard.rs` (current Actix)
