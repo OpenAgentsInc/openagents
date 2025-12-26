@@ -266,7 +266,7 @@ P0 focus IDs: none.
   - [x] Token usage visualization ✅
   - [x] Tool execution timeline
   - [x] Thinking block toggle
-  - [ ] Session browser with search
+  - [x] Session browser with search ✅
   - [ ] Multi-session tabs
 
 **Files:**
