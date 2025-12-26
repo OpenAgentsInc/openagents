@@ -185,9 +185,9 @@ This section tracks which user stories have implemented tests.
 | 4.2.3 | Learn from successful runs | Integration | `crates/autopilot/tests/d004_story_tests.rs` |
 | 4.2.4 | Weekly improvement report | Integration | `crates/autopilot/tests/d004_story_tests.rs` |
 | 4.3.1 | Start an autopilot run with a prompt | Integration | `tests/cli_integration.rs` |
-| 4.3.2 | Stop a running autopilot session | Unit | `crates/autopilot/src/goals.rs` |
-| 4.3.3 | Resume a paused session | Unit | `crates/autopilot/src/goals.rs` |
-| 4.3.4 | Replay a past session | Unit | `crates/acp-adapter/src/replay.rs` |
+| 4.3.2 | Stop a running autopilot session | Integration | `crates/autopilot/tests/daemon_control_tests.rs` |
+| 4.3.3 | Resume a paused session | Integration | `tests/cli_integration.rs` |
+| 4.3.4 | Replay a past session | Integration | `tests/cli_integration.rs` |
 | **d-010: Unified Binary** ||||
 | 10.1.1 | Launch GUI when running `openagents` with no args | Integration | `tests/cli_integration.rs` |
 | 10.1.2 | Run `openagents wallet init` to initialize wallet | Integration | `tests/cli_integration.rs` |
@@ -251,10 +251,17 @@ This section tracks which user stories have implemented tests.
 | **d-022: Agent Orchestration** ||||
 | 22.1.1 | Spawn specialized sub-agents | Unit | `crates/agent-orchestrator/src/background.rs` |
 | 22.1.2 | Collect results from sub-agents | Unit | `crates/agent-orchestrator/src/background.rs` |
+| 22.1.3 | Timeout slow agents | Unit | `crates/agent-orchestrator/src/background.rs` |
+| 22.1.4 | Retry failed agents | Unit | `crates/agent-orchestrator/src/hooks/session.rs` |
+| 22.2.1 | Session start hooks | Unit | `crates/agent-orchestrator/src/hooks/mod.rs` |
+| 22.2.2 | Session end hooks | Unit | `crates/agent-orchestrator/src/hooks/mod.rs` |
+| 22.2.3 | Message hooks | Unit | `crates/agent-orchestrator/src/hooks/tool.rs` |
+| 22.2.4 | Error hooks | Unit | `crates/agent-orchestrator/src/hooks/session.rs` |
 | **d-023: WGPUI Framework** ||||
 | 23.1.1 | Quad rendering with colors/borders | Unit | `crates/wgpui/src/testing/framework_tests.rs` |
 | 23.1.2 | Text rendering | Unit | `crates/wgpui/src/testing/framework_tests.rs` |
 | 23.2.1 | Flexbox layout (bounds) | Unit | `crates/wgpui/src/testing/framework_tests.rs` |
+| 23.2.2 | Percentage-based sizing | Unit | `crates/wgpui/src/layout.rs` |
 | 23.2.3 | Margin/padding/gap | Unit | `crates/wgpui/src/testing/framework_tests.rs` |
 | 23.3.1 | Mouse click handling | Unit | `crates/wgpui/src/testing/framework_tests.rs` |
 | 23.3.2 | Keyboard input handling | Unit | `crates/wgpui/src/testing/framework_tests.rs` |
@@ -300,6 +307,7 @@ This section tracks which user stories have implemented tests.
 | `crates/wgpui/src/testing/chat_tests.rs` | 18 unit tests for streaming mechanics | 17.1.2 |
 | `crates/wgpui/src/testing/component_tests.rs` | 46 unit tests for component integration | 20.1.1-5, 20.2.1-3, 24.1.1-3, 24.4.1, 25.1.2, 25.1.4 |
 | `crates/wgpui/src/testing/framework_tests.rs` | 44 unit tests for WGPUI framework | 23.1.1, 23.1.2, 23.2.1, 23.2.3, 23.3.1-4, 24.2.1-2, 24.3.1 |
+| `crates/wgpui/src/layout.rs` | Layout helpers and percent sizing tests | 23.2.2 |
 | `crates/wgpui/src/testing/mod.rs` | Testing framework module exports | 26.1.1 |
 | `crates/wgpui/src/testing/dsl.rs` | Fluent test builder API | 26.1.1, 26.1.3-26.1.5 |
 | `crates/wgpui/src/testing/step.rs` | TestStep, ElementSelector types | 26.1.2 |
@@ -307,13 +315,16 @@ This section tracks which user stories have implemented tests.
 | `crates/wgpui/src/testing/injection.rs` | EventSequence for synthetic events | 26.3.2 |
 | `crates/wgpui/src/testing/overlay.rs` | InputOverlay for click ripples | 26.2.2, 26.2.3 |
 | `crates/wgpui/src/testing/runner.rs` | TestRunner playback + step control | 26.2.4, 26.2.5 |
-| `tests/cli_integration.rs` | Unified CLI headless launch, wallet init, and delegation coverage | 1.1.1, 1.1.3, 4.3.1, 10.1.1-10.1.6, 16.2.1 |
+| `tests/cli_integration.rs` | Unified CLI headless launch, wallet init, and delegation coverage | 1.1.1, 1.1.3, 4.3.1, 4.3.3-4.3.4, 10.1.1-10.1.6, 16.2.1 |
 | `tests/wallet_cli_integration.rs` | Wallet identity, profile, contacts, post, DM, and export flows | 1.1.2, 3.1.1-3.1.4, 3.2.5-3.2.6, 3.4.2 |
 | `tests/legacy_binaries.rs` | Legacy binary deprecation warnings + symlink installer coverage | 10.2.1-10.2.2 |
 | `tests/no_stubs.rs` | Stub pattern scanning + exceptions documentation checks | 12.1.1-12.1.4 |
 | `crates/opencode-sdk/tests/opencode_sdk_integration.rs` | OpenCode SDK mock server + SSE integration tests | 21.1.1-21.2.2 |
 | `crates/testing/src/test_app.rs` | TestApp isolation and harness tests | 13.2.3 |
-| `crates/agent-orchestrator/src/background.rs` | Background task manager lifecycle tests | 22.1.1-22.1.2 |
+| `crates/agent-orchestrator/src/background.rs` | Background task manager lifecycle tests | 22.1.1-22.1.3 |
+| `crates/agent-orchestrator/src/hooks/mod.rs` | HookManager session dispatch tests | 22.2.1-22.2.2 |
+| `crates/agent-orchestrator/src/hooks/session.rs` | Session recovery and error hook tests | 22.1.4, 22.2.4 |
+| `crates/agent-orchestrator/src/hooks/tool.rs` | Tool hook callback and blocker tests | 22.2.3 |
 | `crates/gitafter/tests/e2e_issue_flow.rs` | GitAfter issue to PR and bounty claim flow | 5.1.1, 5.2.1, 5.2.3-5.2.5 |
 | `crates/gitafter/tests/clone_integration_test.rs` | Git clone validation + local clone coverage | 5.1.2 |
 | `crates/gitafter/src/git/remote.rs` | Git remote push and fetch tests | 5.1.3 |
@@ -345,6 +356,7 @@ This section tracks which user stories have implemented tests.
 | `crates/autopilot/tests/parallel_worktree.rs` | Parallel agent worktree isolation | 18.1.2 |
 | `crates/autopilot/tests/parallel_compose_test.rs` | Parallel compose shared DB + resource overrides | 18.1.3, 18.2.1, 18.2.3 |
 | `crates/autopilot/tests/d004_story_tests.rs` | Autopilot metrics analysis, alerts, learning, and reports | 4.1.1-4.2.4 |
+| `crates/autopilot/tests/daemon_control_tests.rs` | Autopilot daemon control socket stop worker coverage | 4.3.2 |
 | `crates/nostr/core/src/tests/event_validation.rs` | NIP-01 event validation and signing tests | 2.1.1-2.1.5 |
 | `crates/nostr/core/src/nip17.rs` | NIP-17 DM creation and gift wrap tests | 2.3.3-2.3.4 |
 | `crates/nostr/core/src/nip44.rs` | NIP-44 encryption/decryption tests | 2.3.1-2.3.2 |
@@ -366,8 +378,6 @@ This section tracks which user stories have implemented tests.
 | `crates/marketplace/tests/trajectory_e2e.rs` | Trajectory contribution/redaction/hash verification E2E tests | 8.4.1-8.4.4 |
 | `crates/marketplace/tests/agent_commerce_e2e.rs` | Agent-to-agent transactions and budget constraint tests | 15.3.1-15.3.2 |
 | `crates/marketplace/tests/discovery.rs` | Provider discovery and rating tests | 8.1.4 |
-| `crates/autopilot/src/goals.rs` | Goal pause/resume/cancel lifecycle tests | 4.3.2-4.3.3 |
-| `crates/acp-adapter/src/replay.rs` | Session replay parsing and stats tests | 4.3.4 |
 
 ---
 

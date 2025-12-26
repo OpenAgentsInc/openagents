@@ -250,6 +250,25 @@ impl BackgroundTaskManager {
         }
     }
 
+    /// Get the output of a background task, but stop waiting after a timeout.
+    ///
+    /// Returns:
+    /// - `Ok(Some(result))` if task completed successfully before the timeout
+    /// - `Ok(None)` if the timeout elapsed before the task completed
+    /// - `Err(Error::TaskNotFound)` if task doesn't exist
+    /// - `Err(Error::TaskFailed)` if task failed with an error
+    /// - `Err(Error::TaskCancelled)` if task was cancelled
+    pub async fn get_output_with_timeout(
+        &self,
+        task_id: &TaskId,
+        timeout: std::time::Duration,
+    ) -> Result<Option<String>> {
+        match tokio::time::timeout(timeout, self.wait_for_completion(task_id)).await {
+            Ok(result) => result,
+            Err(_) => Ok(None),
+        }
+    }
+
     /// Try to get task output without blocking.
     async fn try_get_output(&self, task_id: &TaskId) -> Result<Option<String>> {
         let tasks = self.tasks.read().await;
@@ -568,6 +587,45 @@ mod tests {
         });
 
         let result = manager.get_output(&task_id, true).await.unwrap();
+        assert_eq!(result, Some("done".to_string()));
+    }
+
+    #[tokio::test]
+    async fn manager_get_output_times_out() {
+        let manager = BackgroundTaskManager::new();
+        let task_id = manager
+            .spawn("parent", "agent", "prompt", "desc")
+            .await
+            .unwrap();
+
+        manager.mark_running(&task_id).await.unwrap();
+        let result = manager
+            .get_output_with_timeout(&task_id, Duration::from_millis(20))
+            .await
+            .unwrap();
+        assert!(result.is_none());
+    }
+
+    #[tokio::test]
+    async fn manager_get_output_completes_before_timeout() {
+        let manager = BackgroundTaskManager::new();
+        let task_id = manager
+            .spawn("parent", "agent", "prompt", "desc")
+            .await
+            .unwrap();
+
+        let manager_clone = manager.clone();
+        let task_id_clone = task_id.clone();
+        tokio::spawn(async move {
+            manager_clone.mark_running(&task_id_clone).await.unwrap();
+            tokio::time::sleep(Duration::from_millis(20)).await;
+            manager_clone.complete(&task_id_clone, "done").await.unwrap();
+        });
+
+        let result = manager
+            .get_output_with_timeout(&task_id, Duration::from_millis(200))
+            .await
+            .unwrap();
         assert_eq!(result, Some("done".to_string()));
     }
 

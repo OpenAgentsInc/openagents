@@ -9,6 +9,7 @@
 use assert_cmd::Command;
 use autopilot::apm::{APMSnapshot, APMSource, APMWindow};
 use autopilot::apm_storage;
+use autopilot::trajectory::Trajectory;
 use chrono::Utc;
 use predicates::prelude::*;
 use std::fs;
@@ -332,6 +333,73 @@ fn test_autopilot_run_delegates_to_autopilot_bin() {
     let output = fs::read_to_string(&log_path).expect("read stub log");
     assert!(output.contains("run"), "expected run arg");
     assert!(output.contains("ship-it"), "expected prompt arg");
+
+    fs::remove_dir_all(&workspace).expect("cleanup workspace");
+}
+
+#[test]
+#[cfg(unix)]
+fn test_autopilot_resume_delegates_to_autopilot_bin() {
+    let workspace = create_temp_workspace();
+    let log_path = workspace.join("autopilot-resume.log");
+    let stub = write_stub_script(&workspace, "autopilot-stub.sh");
+    let trajectory = workspace.join("trajectory.json");
+
+    fs::write(&trajectory, "{}").expect("write trajectory placeholder");
+
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("openagents"));
+    cmd.current_dir(&workspace)
+        .env("OPENAGENTS_AUTOPILOT_BIN", &stub)
+        .env("LOG_PATH", &log_path)
+        .arg("autopilot")
+        .arg("resume")
+        .arg(&trajectory)
+        .arg("--continue-last")
+        .arg("--prompt")
+        .arg("pick-up");
+
+    cmd.assert().success();
+
+    let output = fs::read_to_string(&log_path).expect("read stub log");
+    let trajectory_arg = trajectory.display().to_string();
+    assert!(output.contains("resume"), "expected resume arg");
+    assert!(output.contains(&trajectory_arg), "expected trajectory arg");
+    assert!(
+        output.contains("--continue-last"),
+        "expected continue flag"
+    );
+    assert!(output.contains("--prompt"), "expected prompt flag");
+    assert!(output.contains("pick-up"), "expected prompt text");
+
+    fs::remove_dir_all(&workspace).expect("cleanup workspace");
+}
+
+#[test]
+fn test_autopilot_replay_trajectory() {
+    let workspace = create_temp_workspace();
+    let trajectory_path = workspace.join("trajectory.json");
+
+    let mut trajectory = Trajectory::new(
+        "Replay test".to_string(),
+        "sonnet".to_string(),
+        workspace.display().to_string(),
+        "abc123".to_string(),
+        Some("main".to_string()),
+    );
+    trajectory.session_id = "session-1".to_string();
+    fs::write(&trajectory_path, trajectory.to_json()).expect("write trajectory");
+
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("openagents"));
+    cmd.current_dir(&workspace)
+        .env("NO_COLOR", "1")
+        .arg("autopilot")
+        .arg("replay")
+        .arg(&trajectory_path)
+        .write_stdin("q\n");
+
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("Trajectory Replay"));
 
     fs::remove_dir_all(&workspace).expect("cleanup workspace");
 }
