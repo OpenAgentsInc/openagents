@@ -11573,6 +11573,7 @@ dependencies = [
  "argon2",
  "async-trait",
  "base64 0.22.1",
+ "bech32",
  "bip39",
  "bitcoin",
  "breez-sdk-spark",

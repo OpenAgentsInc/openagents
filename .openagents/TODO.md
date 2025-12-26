@@ -111,7 +111,7 @@ P0 focus IDs: none.
   - [x] OS keychain protection (macOS Keychain, Linux Secret Service, Windows Credential Manager) (story 3.4.1)
   - [x] Seed phrase backup via `openagents wallet export`
 - [x] **NIP-47 Wallet Connect** (future) — `crates/wallet/src/core/nwc.rs`
-- [ ] **NIP-57 Zap Support** (future)
+- [x] **NIP-57 Zap Support** ✅
 - [ ] **WGPUI Wallet GUI** (future)
 
 **Files:**

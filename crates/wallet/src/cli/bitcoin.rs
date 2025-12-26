@@ -4,10 +4,20 @@
 
 use anyhow::{Context, Result};
 use async_trait::async_trait;
+use bech32::{Bech32, Hrp};
+use bip39::Mnemonic;
 use chrono;
+use nostr::{Event, EventTemplate, ZapReceipt, ZAP_RECEIPT_KIND, ZAP_REQUEST_KIND};
+use nostr::nip19::{decode as decode_nip19, Nip19Entity};
+use reqwest::{Client, Url};
+use serde::Deserialize;
 use spark::{EventListener, Network, SdkEvent, SparkSigner, SparkWallet, WalletConfig};
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use crate::cli::load_mnemonic;
+use crate::core::client::NostrClient;
+use crate::core::identity::UnifiedIdentity;
 use crate::core::nwc::{build_connection, publish_info_event, NwcService};
 use crate::storage::address_book::AddressBook;
 use crate::storage::config::WalletConfig as LocalWalletConfig;
@@ -1558,28 +1568,797 @@ mod tests {
             }
         }
     }
+
+    #[test]
+    fn test_parse_note_reference_hex() {
+        let note_id = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+        let note = parse_note_reference(note_id).unwrap();
+        assert_eq!(note.event_id, note_id);
+        assert!(note.relays.is_empty());
+    }
+
+    #[test]
+    fn test_parse_note_reference_note() {
+        let bytes = [7u8; 32];
+        let note = nostr::nip19::encode_note(&bytes).unwrap();
+        let reference = parse_note_reference(&note).unwrap();
+        assert_eq!(reference.event_id, hex::encode(bytes));
+    }
+
+    #[test]
+    fn test_extract_zap_targets_defaults_to_author() {
+        let event = Event {
+            id: "event".to_string(),
+            pubkey: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb".to_string(),
+            created_at: 0,
+            kind: 1,
+            tags: Vec::new(),
+            content: String::new(),
+            sig: "sig".to_string(),
+        };
+        let targets = extract_zap_targets(&event);
+        assert_eq!(targets.len(), 1);
+        assert_eq!(targets[0].pubkey, event.pubkey);
+    }
+
+    #[test]
+    fn test_extract_zap_targets_parse() {
+        let event = Event {
+            id: "event".to_string(),
+            pubkey: "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc".to_string(),
+            created_at: 0,
+            kind: 1,
+            tags: vec![vec![
+                "zap".to_string(),
+                "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd".to_string(),
+                "wss://relay.example.com".to_string(),
+                "2".to_string(),
+            ]],
+            content: String::new(),
+            sig: "sig".to_string(),
+        };
+        let targets = extract_zap_targets(&event);
+        assert_eq!(targets.len(), 1);
+        assert_eq!(
+            targets[0].pubkey,
+            "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+        );
+        assert_eq!(targets[0].relay_hint, Some("wss://relay.example.com".to_string()));
+        assert_eq!(targets[0].weight, Some(2));
+    }
+
+    #[test]
+    fn test_compute_zap_splits_equal() {
+        let targets = vec![
+            ZapTarget {
+                pubkey: "aa".to_string(),
+                relay_hint: None,
+                weight: None,
+            },
+            ZapTarget {
+                pubkey: "bb".to_string(),
+                relay_hint: None,
+                weight: None,
+            },
+        ];
+        let splits = compute_zap_splits(&targets, 10_000).unwrap();
+        assert_eq!(splits.len(), 2);
+        assert_eq!(splits[0].amount_msats, 5_000);
+        assert_eq!(splits[1].amount_msats, 5_000);
+    }
+
+    #[test]
+    fn test_compute_zap_splits_weighted() {
+        let targets = vec![
+            ZapTarget {
+                pubkey: "aa".to_string(),
+                relay_hint: None,
+                weight: Some(1),
+            },
+            ZapTarget {
+                pubkey: "bb".to_string(),
+                relay_hint: None,
+                weight: Some(3),
+            },
+        ];
+        let splits = compute_zap_splits(&targets, 4_000).unwrap();
+        assert_eq!(splits[0].amount_msats, 1_000);
+        assert_eq!(splits[1].amount_msats, 3_000);
+    }
+
+    #[test]
+    fn test_lnurl_encode_decode_roundtrip() {
+        let url = "https://example.com/.well-known/lnurlp/alice";
+        let lnurl = encode_lnurl(url).unwrap();
+        let decoded = decode_lnurl(&lnurl).unwrap();
+        assert_eq!(decoded, url);
+    }
+
+    #[test]
+    fn test_lnurl_from_profile_prefers_lud16() {
+        let profile = Event {
+            id: "event".to_string(),
+            pubkey: "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee".to_string(),
+            created_at: 0,
+            kind: 0,
+            tags: Vec::new(),
+            content: r#"{"lud16":"alice@example.com","lud06":"lnurl1dp68gurn8ghj7"}"#.to_string(),
+            sig: "sig".to_string(),
+        };
+        let source = lnurl_from_profile(&profile).unwrap();
+        let decoded = decode_lnurl(&source.lnurl).unwrap();
+        assert_eq!(decoded, "https://example.com/.well-known/lnurlp/alice");
+    }
+}
+
+#[derive(Debug, Clone)]
+struct NoteReference {
+    event_id: String,
+    relays: Vec<String>,
+    kind: Option<u16>,
+}
+
+#[derive(Debug, Clone)]
+struct ZapTarget {
+    pubkey: String,
+    relay_hint: Option<String>,
+    weight: Option<u64>,
+}
+
+#[derive(Debug, Clone)]
+struct ZapSplit {
+    target: ZapTarget,
+    amount_msats: u64,
+}
+
+#[derive(Debug, Clone)]
+struct LnurlSource {
+    lnurl: String,
+    url: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct LnurlPayResponse {
+    callback: String,
+    min_sendable: u64,
+    max_sendable: u64,
+    allows_nostr: Option<bool>,
+    nostr_pubkey: Option<String>,
+    tag: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+struct LnurlPayInfo {
+    lnurl: String,
+    lnurl_url: String,
+    callback: String,
+    min_sendable: u64,
+    max_sendable: u64,
+    nostr_pubkey: String,
+}
+
+fn parse_note_reference(note_id: &str) -> Result<NoteReference> {
+    if note_id.starts_with("note") || note_id.starts_with("nevent") {
+        let entity = decode_nip19(note_id)
+            .with_context(|| format!("Failed to decode note reference '{}'", note_id))?;
+        match entity {
+            Nip19Entity::Note(id) => Ok(NoteReference {
+                event_id: hex::encode(id),
+                relays: Vec::new(),
+                kind: None,
+            }),
+            Nip19Entity::Event(pointer) => Ok(NoteReference {
+                event_id: hex::encode(pointer.id),
+                relays: pointer.relays,
+                kind: pointer.kind.and_then(|kind| u16::try_from(kind).ok()),
+            }),
+            _ => anyhow::bail!("Unsupported note reference: {}", note_id),
+        }
+    } else {
+        let cleaned = note_id.trim();
+        if cleaned.len() != 64 || hex::decode(cleaned).is_err() {
+            anyhow::bail!("Invalid note id '{}'. Expect 64-char hex or note/nevent.", note_id);
+        }
+        Ok(NoteReference {
+            event_id: cleaned.to_lowercase(),
+            relays: Vec::new(),
+            kind: None,
+        })
+    }
+}
+
+fn is_hex_32_bytes(value: &str) -> bool {
+    value.len() == 64 && value.chars().all(|c| c.is_ascii_hexdigit())
+}
+
+fn merge_relays(base: &[String], extras: &[String]) -> Vec<String> {
+    let mut merged = Vec::new();
+    let mut seen = HashSet::new();
+
+    for relay in base.iter().chain(extras.iter()) {
+        if seen.insert(relay.as_str()) {
+            merged.push(relay.clone());
+        }
+    }
+
+    merged
+}
+
+fn extract_zap_targets(event: &Event) -> Vec<ZapTarget> {
+    let mut targets = Vec::new();
+
+    for tag in &event.tags {
+        if tag.first().map(String::as_str) != Some("zap") {
+            continue;
+        }
+
+        if tag.len() < 2 {
+            continue;
+        }
+
+        let pubkey = tag[1].clone();
+        if !is_hex_32_bytes(&pubkey) {
+            continue;
+        }
+
+        let relay_hint = tag.get(2).cloned().filter(|value| !value.is_empty());
+        let weight = tag
+            .get(3)
+            .and_then(|value| value.parse::<u64>().ok());
+
+        targets.push(ZapTarget {
+            pubkey,
+            relay_hint,
+            weight,
+        });
+    }
+
+    if targets.is_empty() && is_hex_32_bytes(&event.pubkey) {
+        targets.push(ZapTarget {
+            pubkey: event.pubkey.clone(),
+            relay_hint: None,
+            weight: None,
+        });
+    }
+
+    targets
+}
+
+fn compute_zap_splits(targets: &[ZapTarget], total_msats: u64) -> Result<Vec<ZapSplit>> {
+    if targets.is_empty() {
+        anyhow::bail!("No zap targets found for this note.");
+    }
+
+    if total_msats == 0 {
+        anyhow::bail!("Zap amount must be greater than zero.");
+    }
+
+    let has_weights = targets.iter().any(|target| target.weight.is_some());
+    let weights: Vec<u64> = targets
+        .iter()
+        .map(|target| {
+            if has_weights {
+                target.weight.unwrap_or(0)
+            } else {
+                1
+            }
+        })
+        .collect();
+
+    let total_weight: u64 = weights.iter().sum();
+    if total_weight == 0 {
+        anyhow::bail!("Zap weights sum to zero.");
+    }
+
+    let mut splits = Vec::new();
+    let mut remainder = total_msats;
+    for (target, weight) in targets.iter().cloned().zip(weights.iter().copied()) {
+        let share = ((total_msats as u128) * (weight as u128) / (total_weight as u128)) as u64;
+        splits.push(ZapSplit {
+            target,
+            amount_msats: share,
+        });
+        remainder = remainder.saturating_sub(share);
+    }
+
+    if remainder > 0 {
+        for split in splits.iter_mut().filter(|split| split.amount_msats > 0) {
+            if remainder == 0 {
+                break;
+            }
+            split.amount_msats += 1;
+            remainder -= 1;
+        }
+    }
+
+    splits.retain(|split| split.amount_msats > 0);
+    if splits.is_empty() {
+        anyhow::bail!("Zap amount too small for selected recipients.");
+    }
+
+    Ok(splits)
+}
+
+fn encode_lnurl(url: &str) -> Result<String> {
+    let hrp = Hrp::parse("lnurl").context("Failed to build LNURL hrp")?;
+    let encoded = bech32::encode::<Bech32>(hrp, url.as_bytes())
+        .context("Failed to encode LNURL")?;
+    Ok(encoded)
+}
+
+fn decode_lnurl(lnurl: &str) -> Result<String> {
+    let (hrp, data) = bech32::decode(&lnurl.to_lowercase())
+        .context("Failed to decode LNURL")?;
+    if hrp.to_string() != "lnurl" {
+        anyhow::bail!("Invalid LNURL prefix: {}", hrp);
+    }
+    let url = String::from_utf8(data).context("LNURL payload is not valid UTF-8")?;
+    Ok(url)
+}
+
+fn lnurl_from_lud16(address: &str) -> Result<LnurlSource> {
+    let mut parts = address.split('@');
+    let name = parts.next().unwrap_or_default();
+    let domain = parts.next().unwrap_or_default();
+    if name.is_empty() || domain.is_empty() || parts.next().is_some() {
+        anyhow::bail!("Invalid lightning address '{}'", address);
+    }
+
+    let url = format!("https://{}/.well-known/lnurlp/{}", domain, name);
+    let lnurl = encode_lnurl(&url)?;
+
+    Ok(LnurlSource { lnurl, url })
+}
+
+fn lnurl_from_lud06(lnurl: &str) -> Result<LnurlSource> {
+    let url = decode_lnurl(lnurl)?;
+    Ok(LnurlSource {
+        lnurl: lnurl.to_lowercase(),
+        url,
+    })
+}
+
+fn lnurl_from_profile(profile: &Event) -> Result<LnurlSource> {
+    let payload: serde_json::Value = serde_json::from_str(&profile.content)
+        .context("Failed to parse profile metadata")?;
+
+    if let Some(lud16) = payload.get("lud16").and_then(|value| value.as_str()) {
+        return lnurl_from_lud16(lud16);
+    }
+
+    if let Some(lud06) = payload.get("lud06").and_then(|value| value.as_str()) {
+        return lnurl_from_lud06(lud06);
+    }
+
+    anyhow::bail!("Profile does not include a lightning address (lud16/lud06).");
+}
+
+async fn fetch_lnurl_pay_info(http: &Client, source: &LnurlSource) -> Result<LnurlPayInfo> {
+    let response = http
+        .get(&source.url)
+        .header("Accept", "application/json")
+        .send()
+        .await
+        .with_context(|| format!("Failed to fetch LNURL pay info from {}", source.url))?;
+
+    if !response.status().is_success() {
+        anyhow::bail!(
+            "LNURL pay request failed with status {}",
+            response.status()
+        );
+    }
+
+    let payload: serde_json::Value = response
+        .json()
+        .await
+        .context("Failed to parse LNURL pay response")?;
+
+    if let Some(status) = payload.get("status").and_then(|value| value.as_str()) {
+        if status.eq_ignore_ascii_case("ERROR") {
+            let reason = payload
+                .get("reason")
+                .and_then(|value| value.as_str())
+                .unwrap_or("Unknown LNURL error");
+            anyhow::bail!("LNURL error: {}", reason);
+        }
+    }
+
+    let info: LnurlPayResponse = serde_json::from_value(payload)?;
+    if info.tag.as_deref() != Some("payRequest") {
+        anyhow::bail!("LNURL response missing payRequest tag.");
+    }
+
+    if !info.allows_nostr.unwrap_or(false) {
+        anyhow::bail!("Recipient LNURL endpoint does not support Nostr zaps.");
+    }
+
+    let nostr_pubkey = info
+        .nostr_pubkey
+        .ok_or_else(|| anyhow::anyhow!("LNURL response missing nostrPubkey"))?;
+    if !is_hex_32_bytes(&nostr_pubkey) {
+        anyhow::bail!("LNURL nostrPubkey is not valid hex.");
+    }
+
+    Ok(LnurlPayInfo {
+        lnurl: source.lnurl.clone(),
+        lnurl_url: source.url.clone(),
+        callback: info.callback,
+        min_sendable: info.min_sendable,
+        max_sendable: info.max_sendable,
+        nostr_pubkey,
+    })
+}
+
+async fn request_zap_invoice(
+    http: &Client,
+    callback: &str,
+    amount_msats: u64,
+    zap_request: &Event,
+    lnurl: &str,
+) -> Result<String> {
+    let mut url = Url::parse(callback)
+        .with_context(|| format!("Invalid LNURL callback '{}'", callback))?;
+    let zap_json = serde_json::to_string(zap_request).context("Failed to encode zap request")?;
+
+    url.query_pairs_mut()
+        .append_pair("amount", &amount_msats.to_string())
+        .append_pair("nostr", &zap_json)
+        .append_pair("lnurl", lnurl);
+
+    let response = http
+        .get(url)
+        .header("Accept", "application/json")
+        .send()
+        .await
+        .context("Failed to fetch zap invoice")?;
+
+    if !response.status().is_success() {
+        anyhow::bail!("Zap invoice request failed with status {}", response.status());
+    }
+
+    let payload: serde_json::Value = response
+        .json()
+        .await
+        .context("Failed to parse zap invoice response")?;
+
+    if let Some(status) = payload.get("status").and_then(|value| value.as_str()) {
+        if status.eq_ignore_ascii_case("ERROR") {
+            let reason = payload
+                .get("reason")
+                .and_then(|value| value.as_str())
+                .unwrap_or("Unknown LNURL error");
+            anyhow::bail!("LNURL error: {}", reason);
+        }
+    }
+
+    let invoice = payload
+        .get("pr")
+        .and_then(|value| value.as_str())
+        .ok_or_else(|| anyhow::anyhow!("LNURL response missing invoice (pr)"))?;
+
+    Ok(invoice.to_string())
+}
+
+async fn fetch_event_by_id(client: &NostrClient, event_id: &str) -> Result<Event> {
+    let filter = serde_json::json!({
+        "ids": [event_id],
+        "limit": 1
+    });
+    let mut events = client.fetch_events(vec![filter]).await?;
+    events
+        .pop()
+        .ok_or_else(|| anyhow::anyhow!("Note {} not found on configured relays.", event_id))
+}
+
+async fn fetch_profile(client: &NostrClient, pubkey: &str) -> Result<Event> {
+    client
+        .fetch_profile(pubkey)
+        .await?
+        .ok_or_else(|| anyhow::anyhow!("No profile found for {}", pubkey))
+}
+
+fn build_zap_request_event(
+    identity: &UnifiedIdentity,
+    note: &Event,
+    recipient_pubkey: &str,
+    amount_msats: u64,
+    lnurl: &str,
+    relays: &[String],
+) -> Result<Event> {
+    if relays.is_empty() {
+        anyhow::bail!("No relays configured for zap receipts.");
+    }
+
+    let mut tags = Vec::new();
+    let mut relay_tag = Vec::with_capacity(relays.len() + 1);
+    relay_tag.push("relays".to_string());
+    relay_tag.extend(relays.iter().cloned());
+    tags.push(relay_tag);
+    tags.push(vec!["amount".to_string(), amount_msats.to_string()]);
+    tags.push(vec!["lnurl".to_string(), lnurl.to_string()]);
+    tags.push(vec!["p".to_string(), recipient_pubkey.to_string()]);
+    tags.push(vec!["e".to_string(), note.id.clone()]);
+    tags.push(vec!["k".to_string(), note.kind.to_string()]);
+
+    let template = EventTemplate {
+        created_at: SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .context("System time error")?
+            .as_secs(),
+        kind: ZAP_REQUEST_KIND,
+        tags,
+        content: String::new(),
+    };
+
+    identity
+        .sign_event(template)
+        .context("Failed to sign zap request")
+}
+
+async fn parse_invoice_amount_msats(invoice: &str) -> Option<u64> {
+    if let Ok(input) = breez_sdk_spark::parse_input(invoice, None).await {
+        match input {
+            breez_sdk_spark::InputType::Bolt11Invoice(details) => return details.amount_msat,
+            breez_sdk_spark::InputType::SparkInvoice(details) => {
+                return details
+                    .amount
+                    .and_then(|value| value.checked_mul(1000))
+                    .and_then(|value| u64::try_from(value).ok());
+            }
+            _ => {}
+        }
+    }
+
+    None
+}
+
+fn short_pubkey(pubkey: &str) -> String {
+    if pubkey.len() <= 12 {
+        pubkey.to_string()
+    } else {
+        format!("{}...{}", &pubkey[..8], &pubkey[pubkey.len() - 4..])
+    }
 }
 
 /// Send a zap to a Nostr note
 pub fn zap(note_id: String, amount: u64) -> Result<()> {
-    // Zaps require looking up LNURL from note's author profile
-    // This needs NIP-57 implementation
-    anyhow::bail!(
-        "Zap payments require NIP-57 implementation.\n\
-        Note ID: {}\n\
-        Amount: {} sats\n\n\
-        To zap manually, use 'openagents wallet pay <invoice>' with the zap invoice.",
-        note_id, amount
-    )
+    let rt = tokio::runtime::Runtime::new()?;
+    rt.block_on(async {
+        let config = LocalWalletConfig::load()?;
+        let note_ref = parse_note_reference(&note_id)?;
+        let relays = merge_relays(&config.nostr.relays, &note_ref.relays);
+        let client = NostrClient::new(relays.clone());
+        let note = fetch_event_by_id(&client, &note_ref.event_id).await?;
+
+        let targets = extract_zap_targets(&note);
+        let amount_msats = amount
+            .checked_mul(1000)
+            .ok_or_else(|| anyhow::anyhow!("Amount too large"))?;
+        let splits = compute_zap_splits(&targets, amount_msats)?;
+
+        let mnemonic = load_mnemonic()?;
+        let identity = UnifiedIdentity::from_mnemonic(Mnemonic::parse(mnemonic)?)?;
+
+        let http = Client::builder()
+            .timeout(Duration::from_secs(10))
+            .build()
+            .context("Failed to build HTTP client")?;
+
+        let wallet = get_wallet().await?;
+
+        println!("Preparing zap for {} sats to {} recipient(s).", amount, splits.len());
+        for split in &splits {
+            println!(
+                "  {} sats -> {}",
+                split.amount_msats / 1000,
+                short_pubkey(&split.target.pubkey)
+            );
+        }
+
+        for split in splits {
+            let mut profile_relays = relays.clone();
+            if let Some(relay) = &split.target.relay_hint {
+                profile_relays = merge_relays(&profile_relays, &[relay.clone()]);
+            }
+            let profile_client = NostrClient::new(profile_relays);
+            let profile = fetch_profile(&profile_client, &split.target.pubkey).await?;
+            let lnurl_source = lnurl_from_profile(&profile)?;
+            let lnurl_info = fetch_lnurl_pay_info(&http, &lnurl_source).await?;
+
+            if split.amount_msats < lnurl_info.min_sendable
+                || split.amount_msats > lnurl_info.max_sendable
+            {
+                anyhow::bail!(
+                    "Zap amount {} msats outside LNURL limits ({}-{} msats).",
+                    split.amount_msats,
+                    lnurl_info.min_sendable,
+                    lnurl_info.max_sendable
+                );
+            }
+
+            let zap_request = build_zap_request_event(
+                &identity,
+                &note,
+                &split.target.pubkey,
+                split.amount_msats,
+                &lnurl_info.lnurl,
+                &relays,
+            )?;
+
+            let invoice = request_zap_invoice(
+                &http,
+                &lnurl_info.callback,
+                split.amount_msats,
+                &zap_request,
+                &lnurl_info.lnurl,
+            )
+            .await?;
+
+            println!(
+                "Paying {} sats zap invoice for {}...",
+                split.amount_msats / 1000,
+                short_pubkey(&split.target.pubkey)
+            );
+
+            match wallet.send_payment_simple(&invoice, None).await {
+                Ok(response) => {
+                    println!("✓ Zap paid. Payment ID: {}", response.payment.id);
+                }
+                Err(err) => {
+                    eprintln!("✗ Zap payment failed: {}", err.user_friendly_message());
+                    if err.balance_unaffected() {
+                        eprintln!("ℹ️  Your balance was NOT deducted.");
+                    }
+                    return Err(err.into());
+                }
+            }
+        }
+
+        Ok(())
+    })
 }
 
 /// Query zaps on a Nostr note
 pub fn zaps(note_id: String) -> Result<()> {
-    anyhow::bail!(
-        "Zap queries require Nostr relay integration (d-002).\n\
-        Note ID: {}",
-        note_id
-    )
+    let rt = tokio::runtime::Runtime::new()?;
+    rt.block_on(async {
+        let config = LocalWalletConfig::load()?;
+        let note_ref = parse_note_reference(&note_id)?;
+        let relays = merge_relays(&config.nostr.relays, &note_ref.relays);
+        let client = NostrClient::new(relays.clone());
+
+        let filter = serde_json::json!({
+            "kinds": [ZAP_RECEIPT_KIND],
+            "#e": [note_ref.event_id],
+        });
+        let events = client.fetch_events(vec![filter]).await?;
+
+        if events.is_empty() {
+            println!("No zap receipts found for {}.", note_id);
+            return Ok(());
+        }
+
+        let http = Client::builder()
+            .timeout(Duration::from_secs(10))
+            .build()
+            .context("Failed to build HTTP client")?;
+
+        let mut lnurl_cache: HashMap<String, LnurlPayInfo> = HashMap::new();
+        let mut total_msats = 0u64;
+        let mut valid_count = 0usize;
+
+        println!("Zap receipts for {}", note_id);
+        println!("────────────────────────────────────────");
+
+        for event in events {
+            let receipt = match ZapReceipt::from_event(event) {
+                Ok(receipt) => receipt,
+                Err(err) => {
+                    println!("✗ Invalid zap receipt: {}", err);
+                    continue;
+                }
+            };
+
+            let zap_request = receipt.get_zap_request();
+            let amount_msats = zap_request
+                .as_ref()
+                .ok()
+                .and_then(|request| request.amount_msats);
+            let sender_pubkey = zap_request
+                .as_ref()
+                .ok()
+                .map(|request| request.event.pubkey.clone())
+                .or(receipt.sender_pubkey.clone());
+
+            let amount_display = amount_msats
+                .map(|value| format!("{} sats", value / 1000))
+                .unwrap_or_else(|| "unknown sats".to_string());
+
+            let sender_display = sender_pubkey
+                .map(|value| short_pubkey(&value))
+                .unwrap_or_else(|| "unknown sender".to_string());
+
+            let info = if let Some(info) = lnurl_cache.get(&receipt.recipient_pubkey) {
+                info.clone()
+            } else {
+                let profile = match fetch_profile(&client, &receipt.recipient_pubkey).await {
+                    Ok(profile) => profile,
+                    Err(err) => {
+                        println!(
+                            "✗ {} from {} (lnurl lookup failed: {})",
+                            amount_display, sender_display, err
+                        );
+                        continue;
+                    }
+                };
+                let lnurl_source = match lnurl_from_profile(&profile) {
+                    Ok(source) => source,
+                    Err(err) => {
+                        println!(
+                            "✗ {} from {} (lnurl lookup failed: {})",
+                            amount_display, sender_display, err
+                        );
+                        continue;
+                    }
+                };
+                let info = match fetch_lnurl_pay_info(&http, &lnurl_source).await {
+                    Ok(info) => info,
+                    Err(err) => {
+                        println!(
+                            "✗ {} from {} (lnurl lookup failed: {})",
+                            amount_display, sender_display, err
+                        );
+                        continue;
+                    }
+                };
+                lnurl_cache.insert(receipt.recipient_pubkey.clone(), info.clone());
+                info
+            };
+
+            let invoice_msats = parse_invoice_amount_msats(&receipt.bolt11).await;
+            let mut valid = receipt
+                .validate(&info.nostr_pubkey, invoice_msats, Some(&info.lnurl))
+                .is_ok();
+
+            let amount_display = amount_msats
+                .or(invoice_msats)
+                .map(|value| format!("{} sats", value / 1000))
+                .unwrap_or_else(|| "unknown sats".to_string());
+
+            let comment = zap_request
+                .as_ref()
+                .ok()
+                .map(|request| request.content.trim().to_string())
+                .filter(|value| !value.is_empty());
+
+            let status = if valid { "✓" } else { "✗" };
+            if valid {
+                valid_count += 1;
+                if let Some(amount) = amount_msats.or(invoice_msats) {
+                    total_msats = total_msats.saturating_add(amount);
+                }
+            }
+
+            if let Some(comment) = comment {
+                println!(
+                    "{} {} from {} - {}",
+                    status, amount_display, sender_display, comment
+                );
+            } else {
+                println!("{} {} from {}", status, amount_display, sender_display);
+            }
+        }
+
+        println!("────────────────────────────────────────");
+        println!(
+            "Valid zaps: {} (total {} sats)",
+            valid_count,
+            total_msats / 1000
+        );
+
+        Ok(())
+    })
 }
 
 /// Create a Nostr Wallet Connect connection
