@@ -71,6 +71,17 @@ This section tracks which user stories have implemented tests.
 | 2.5.2 | Receive zaps on content | Unit | `crates/nostr/core/src/nip57.rs` |
 | 2.6.1 | Connect a signer app via NIP-46 | Unit | `crates/nostr/core/src/nip46.rs` |
 | 2.6.2 | Approve or deny signing requests | Unit | `crates/nostr/core/src/nip46.rs` |
+| **d-005: GitAfter (Nostr GitHub Alternative)** ||||
+| 5.1.1 | Create a repository on GitAfter | Integration | `crates/gitafter/tests/e2e_issue_flow.rs` |
+| 5.2.1 | Create issues with titles and descriptions | Integration | `crates/gitafter/tests/e2e_issue_flow.rs` |
+| 5.2.2 | View open issues | Integration | `crates/gitafter/tests/issue_listing_test.rs` |
+| 5.2.3 | Attach bounties to issues | Integration | `crates/gitafter/tests/e2e_issue_flow.rs` |
+| 5.2.4 | Claim an issue | Integration | `crates/gitafter/tests/e2e_issue_flow.rs` |
+| 5.2.5 | Comment on issues | Integration | `crates/gitafter/tests/e2e_issue_flow.rs` |
+| 5.3.1 | Create a pull request from a branch | Integration | `crates/gitafter/tests/pr_creation_test.rs` |
+| 5.3.2 | See the diff of a pull request | Integration | `crates/gitafter/tests/diff_viewer_test.rs` |
+| 5.3.4 | Merge an approved PR | Integration | `crates/gitafter/tests/pr_creation_test.rs` |
+| 5.3.5 | See the agent's trajectory linked to the PR | Integration | `crates/gitafter/tests/pr_creation_test.rs` |
 | **d-006: NIP-SA (Sovereign Agents Protocol)** ||||
 | 6.1.1 | Publish an AgentProfile (kind:38000) | Integration | `crates/nostr/tests/integration/nip_sa.rs` |
 | 6.1.2 | View an agent profile | Integration | `crates/nostr/tests/integration/nip_sa.rs` |
@@ -192,6 +203,10 @@ This section tracks which user stories have implemented tests.
 | `crates/wgpui/src/testing/injection.rs` | EventSequence for synthetic events | 26.3.2 |
 | `crates/wgpui/src/testing/overlay.rs` | InputOverlay for click ripples | 26.2.2, 26.2.3 |
 | `crates/wgpui/src/testing/runner.rs` | TestRunner playback + step control | 26.2.4, 26.2.5 |
+| `crates/gitafter/tests/e2e_issue_flow.rs` | GitAfter issue to PR and bounty claim flow | 5.1.1, 5.2.1, 5.2.3-5.2.5 |
+| `crates/gitafter/tests/issue_listing_test.rs` | Issue listing by repository cache | 5.2.2 |
+| `crates/gitafter/tests/pr_creation_test.rs` | PR creation, status transitions, trajectory tags | 5.3.1, 5.3.4-5.3.5 |
+| `crates/gitafter/tests/diff_viewer_test.rs` | Diff rendering and inline comments | 5.3.2 |
 | `crates/acp-adapter/tests/integration_tests.rs` | ACP session lifecycle, permissions, and file operations | 17.1.1, 17.1.3, 17.2.1-17.2.2 |
 | `crates/acp-adapter/src/converters/rlog.rs` | ACP to rlog conversion tests | 17.1.4 |
 | `crates/acp-adapter/src/replay.rs` | Rlog replay tests | 17.2.3 |
