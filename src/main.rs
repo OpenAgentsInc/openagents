@@ -46,6 +46,10 @@ enum Commands {
     /// Daemon commands (background supervisor)
     #[command(subcommand)]
     Daemon(cli::daemon::DaemonCommands),
+
+    /// Auth commands (import credentials)
+    #[command(subcommand)]
+    Auth(cli::auth::AuthCommands),
 }
 
 fn main() {
@@ -78,6 +82,7 @@ fn main() {
         Some(Commands::Autopilot(cmd)) => cli::autopilot::run(cmd),
         Some(Commands::Gitafter(cmd)) => cli::gitafter::run(cmd),
         Some(Commands::Daemon(cmd)) => cli::daemon::run(cmd),
+        Some(Commands::Auth(cmd)) => cli::auth::run(cmd),
     };
 
     if let Err(e) = result {

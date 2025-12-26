@@ -7051,6 +7051,7 @@ dependencies = [
  "issues",
  "marketplace",
  "once_cell",
+ "pollster",
  "predicates",
  "reqwest",
  "rusqlite",
@@ -7063,7 +7064,10 @@ dependencies = [
  "tracing-subscriber",
  "uuid",
  "wallet",
+ "wgpu",
+ "wgpui",
  "which 8.0.0",
+ "winit",
 ]
 
 [[package]]
@@ -10696,8 +10700,10 @@ dependencies = [
  "bitcoin",
  "fake",
  "futures-util",
+ "glob",
  "nostr 0.1.0",
  "rand 0.8.5",
+ "regex",
  "reqwest",
  "rusqlite",
  "serde",
@@ -10706,6 +10712,7 @@ dependencies = [
  "tokio",
  "tokio-tungstenite 0.24.0",
  "uuid",
+ "walkdir",
  "warp 0.4.2",
 ]
 
@@ -11744,6 +11751,7 @@ dependencies = [
  "serde_json",
  "shellexpand 3.1.1",
  "tempfile",
+ "testing",
  "thiserror 2.0.17",
  "tokio",
  "toml",
