@@ -66,6 +66,18 @@ hmac = ["dep:hmac"]
 scrypt = ["dep:scrypt"]
 chacha20poly1305 = ["dep:chacha20poly1305"]
 unicode-normalization = ["dep:unicode-normalization"]
+# Spark wallet integration for NIP-SA
+spark-integration = ["dep:spark", "dep:tokio"]
+
+[dependencies.spark]
+package = "openagents-spark"
+path = "../../spark"
+optional = true
+
+[dependencies.tokio]
+version = "1"
+features = ["sync"]
+optional = true
 
 [dev-dependencies]
 criterion = "0.8.1"

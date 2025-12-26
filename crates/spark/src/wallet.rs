@@ -14,42 +14,27 @@
 //! ```
 
 use crate::{SparkSigner, SparkError};
-// TEMP: Commented out until spark-sdk is available
-// use breez_sdk_spark::{
-//     BreezSdk, ConnectRequest, Network as SdkNetwork, PrepareSendPaymentRequest,
-//     PrepareSendPaymentResponse, ReceivePaymentMethod, ReceivePaymentRequest,
-//     ReceivePaymentResponse, SendPaymentRequest, SendPaymentResponse, Seed,
-// };
+use breez_sdk_spark::{
+    BreezSdk, connect, default_config,
+    ConnectRequest, Network as SdkNetwork, Seed,
+    GetInfoRequest,
+    PrepareSendPaymentRequest, SendPaymentRequest,
+    ReceivePaymentRequest, ReceivePaymentMethod,
+};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
-// TEMP: Stub types until spark-sdk is available
-#[allow(dead_code)]
-pub(crate) struct BreezSdk;
-#[derive(Debug)]
-pub struct PrepareSendPaymentResponse;
-/// Status of a payment
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum PaymentStatus {
-    /// Payment is pending confirmation
-    Pending,
-    /// Payment completed successfully
-    Complete,
-    /// Payment failed
-    Failed,
-}
-
-#[derive(Debug)]
-pub struct SendPaymentResponse { pub payment: Payment }
-#[derive(Debug)]
-pub struct Payment {
-    pub id: String,
-    pub status: PaymentStatus,
-}
-#[derive(Debug)]
-pub struct ReceivePaymentResponse { pub payment_request: String }
-#[allow(dead_code)]
-enum SdkNetwork { Mainnet, Regtest }
+// Re-export SDK types that consumers need
+pub use breez_sdk_spark::{
+    PrepareSendPaymentResponse,
+    SendPaymentResponse,
+    ReceivePaymentResponse,
+    Payment,
+    PaymentStatus,
+    PaymentType,
+    PaymentMethod,
+    PaymentDetails,
+};
 
 /// Bitcoin network to use for Spark wallet
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
@@ -65,13 +50,13 @@ pub enum Network {
     Regtest,
 }
 
-impl From<Network> for SdkNetwork {
-    fn from(network: Network) -> Self {
-        match network {
+impl Network {
+    /// Convert to SDK network type
+    pub fn to_sdk_network(self) -> SdkNetwork {
+        match self {
             Network::Mainnet => SdkNetwork::Mainnet,
             // The Breez SDK only supports Mainnet and Regtest.
             // All test networks (Testnet, Signet, Regtest) map to SdkNetwork::Regtest.
-            // This is intentional - Regtest is used for all non-mainnet testing.
             Network::Testnet | Network::Signet | Network::Regtest => SdkNetwork::Regtest,
         }
     }
@@ -149,17 +134,22 @@ pub struct WalletInfo {
 
 /// Configuration for initializing a Spark wallet
 ///
+/// # API Key Requirements
+///
+/// - **Mainnet**: API key is **required** (get from Breez)
+/// - **Regtest/Testnet**: API key is **optional** (for local testing)
+///
 /// # Examples
 ///
 /// ```
 /// use openagents_spark::{WalletConfig, Network};
 /// use std::path::PathBuf;
 ///
-/// // Use default configuration (testnet, default storage)
+/// // Default: Testnet, no API key needed
 /// let config = WalletConfig::default();
 /// assert_eq!(config.network, Network::Testnet);
 ///
-/// // Custom configuration for production
+/// // Production: Mainnet requires API key
 /// let config = WalletConfig {
 ///     network: Network::Mainnet,
 ///     api_key: Some("your-breez-api-key".to_string()),
@@ -170,7 +160,7 @@ pub struct WalletInfo {
 pub struct WalletConfig {
     /// Network to operate on
     pub network: Network,
-    /// Optional Breez API key (required for production)
+    /// Breez API key (required for Mainnet, optional for Regtest)
     pub api_key: Option<String>,
     /// Storage directory for wallet data
     pub storage_dir: std::path::PathBuf,
@@ -260,11 +250,30 @@ impl SparkWallet {
     /// };
     /// let wallet = SparkWallet::new(signer, config).await?;
     /// ```
-    pub async fn new(_signer: SparkSigner, _config: WalletConfig) -> Result<Self, SparkError> {
-        // TEMP: Stubbed until spark-sdk is available
-        Err(SparkError::InitializationFailed(
-            "Spark SDK not available - awaiting spark-sdk integration".to_string()
-        ))
+    pub async fn new(signer: SparkSigner, config: WalletConfig) -> Result<Self, SparkError> {
+        // Create SDK config for the target network
+        let sdk_config = default_config(config.network.to_sdk_network());
+
+        // Build connect request with mnemonic seed
+        let connect_request = ConnectRequest {
+            config: sdk_config,
+            seed: Seed::Mnemonic {
+                mnemonic: signer.mnemonic().to_string(),
+                passphrase: None,
+            },
+            storage_dir: config.storage_dir.to_string_lossy().to_string(),
+        };
+
+        // Connect to the Breez SDK
+        let sdk = connect(connect_request)
+            .await
+            .map_err(|e| SparkError::InitializationFailed(e.to_string()))?;
+
+        Ok(Self {
+            signer,
+            config,
+            sdk: Arc::new(sdk),
+        })
     }
 
     /// Get the wallet's Spark address for receiving payments
@@ -272,8 +281,15 @@ impl SparkWallet {
     /// This calls the Breez SDK's receive_payment API with SparkAddress method
     /// to get a properly formatted Spark address string.
     pub async fn get_spark_address(&self) -> Result<String, SparkError> {
-        // TEMP: Stubbed until spark-sdk is available
-        Err(SparkError::GetAddressFailed("Spark SDK not available".to_string()))
+        let request = ReceivePaymentRequest {
+            payment_method: ReceivePaymentMethod::SparkAddress,
+        };
+
+        let response = self.sdk.receive_payment(request)
+            .await
+            .map_err(|e| SparkError::GetAddressFailed(e.to_string()))?;
+
+        Ok(response.payment_request)
     }
 
     /// Get the underlying signer
@@ -306,8 +322,19 @@ impl SparkWallet {
     /// println!("Total: {} sats", balance.total_sats());
     /// ```
     pub async fn get_balance(&self) -> Result<Balance, SparkError> {
-        // TEMP: Stubbed until spark-sdk is available
-        Err(SparkError::BalanceQueryFailed("Spark SDK not available".to_string()))
+        let request = GetInfoRequest {
+            ensure_synced: Some(true),
+        };
+
+        let info = self.sdk.get_info(request)
+            .await
+            .map_err(|e| SparkError::BalanceQueryFailed(e.to_string()))?;
+
+        Ok(Balance {
+            spark_sats: info.balance_sats,
+            lightning_sats: 0, // Spark SDK handles Lightning internally
+            onchain_sats: 0,   // On-chain shown separately via deposits
+        })
     }
 
     /// Prepare a payment by validating the payment request and calculating fees
@@ -331,11 +358,18 @@ impl SparkWallet {
     /// ```
     pub async fn prepare_send_payment(
         &self,
-        _payment_request: &str,
-        _amount: Option<u64>,
+        payment_request: &str,
+        amount: Option<u64>,
     ) -> Result<PrepareSendPaymentResponse, SparkError> {
-        // TEMP: Stubbed until spark-sdk is available
-        Err(SparkError::PaymentFailed("Spark SDK not available".to_string()))
+        let request = PrepareSendPaymentRequest {
+            payment_request: payment_request.to_string(),
+            amount: amount.map(|a| a as u128),
+            token_identifier: None,
+        };
+
+        self.sdk.prepare_send_payment(request)
+            .await
+            .map_err(|e| SparkError::PaymentFailed(e.to_string()))
     }
 
     /// Send a payment using Lightning or Spark
@@ -358,11 +392,18 @@ impl SparkWallet {
     /// ```
     pub async fn send_payment(
         &self,
-        _prepare_response: PrepareSendPaymentResponse,
-        _idempotency_key: Option<String>,
+        prepare_response: PrepareSendPaymentResponse,
+        idempotency_key: Option<String>,
     ) -> Result<SendPaymentResponse, SparkError> {
-        // TEMP: Stubbed until spark-sdk is available
-        Err(SparkError::PaymentFailed("Spark SDK not available".to_string()))
+        let request = SendPaymentRequest {
+            prepare_response,
+            options: None,
+            idempotency_key,
+        };
+
+        self.sdk.send_payment(request)
+            .await
+            .map_err(|e| SparkError::PaymentFailed(e.to_string()))
     }
 
     /// Send a payment in one step (prepare + send)
@@ -406,8 +447,13 @@ impl SparkWallet {
     /// println!("Send to: {}", response.payment_request);
     /// ```
     pub async fn get_receive_address(&self) -> Result<ReceivePaymentResponse, SparkError> {
-        // TEMP: Stubbed until spark-sdk is available
-        Err(SparkError::Wallet("Spark SDK not available".to_string()))
+        let request = ReceivePaymentRequest {
+            payment_method: ReceivePaymentMethod::SparkAddress,
+        };
+
+        self.sdk.receive_payment(request)
+            .await
+            .map_err(|e| SparkError::Wallet(e.to_string()))
     }
 
     /// Create a Spark invoice for receiving a specific amount
@@ -432,12 +478,20 @@ impl SparkWallet {
     /// ```
     pub async fn create_invoice(
         &self,
-        _amount_sats: u64,
-        _description: Option<String>,
+        amount_sats: u64,
+        description: Option<String>,
         _expiry_seconds: Option<u64>,
     ) -> Result<ReceivePaymentResponse, SparkError> {
-        // TEMP: Stubbed until spark-sdk is available
-        Err(SparkError::Wallet("Spark SDK not available".to_string()))
+        let request = ReceivePaymentRequest {
+            payment_method: ReceivePaymentMethod::Bolt11Invoice {
+                description: description.unwrap_or_default(),
+                amount_sats: Some(amount_sats),
+            },
+        };
+
+        self.sdk.receive_payment(request)
+            .await
+            .map_err(|e| SparkError::Wallet(e.to_string()))
     }
 
     /// Create a Lightning invoice for receiving a specific amount
@@ -464,7 +518,7 @@ mod tests {
     use super::*;
 
     #[tokio::test]
-    #[ignore] // TEMP: Ignored until spark-sdk is available
+    #[ignore] // Requires network connection and API key
     async fn test_wallet_creation() {
         let mnemonic = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
         let signer = SparkSigner::from_mnemonic(mnemonic, "").expect("should create signer");

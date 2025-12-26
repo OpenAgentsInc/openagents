@@ -446,6 +446,7 @@ impl Clone for BackgroundTaskManager {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::time::Duration;
 
     #[test]
     fn task_id_new() {
@@ -534,6 +535,40 @@ mod tests {
         let task = manager.get(&task_id).await.unwrap();
         assert_eq!(task.parent_session_id, "parent-123");
         assert_eq!(task.status, TaskStatus::Pending);
+    }
+
+    #[tokio::test]
+    async fn manager_spawn_records_agent_details() {
+        let manager = BackgroundTaskManager::new();
+        let task_id = manager
+            .spawn("parent-xyz", "oracle", "Review architecture", "Design review")
+            .await
+            .unwrap();
+
+        let task = manager.get(&task_id).await.expect("task exists");
+        assert_eq!(task.agent, "oracle");
+        assert_eq!(task.prompt, "Review architecture");
+        assert_eq!(task.description, "Design review");
+    }
+
+    #[tokio::test]
+    async fn manager_get_output_blocks_until_complete() {
+        let manager = BackgroundTaskManager::new();
+        let task_id = manager
+            .spawn("parent", "agent", "prompt", "desc")
+            .await
+            .unwrap();
+
+        let manager_clone = manager.clone();
+        let task_id_clone = task_id.clone();
+        tokio::spawn(async move {
+            manager_clone.mark_running(&task_id_clone).await.unwrap();
+            tokio::time::sleep(Duration::from_millis(50)).await;
+            manager_clone.complete(&task_id_clone, "done").await.unwrap();
+        });
+
+        let result = manager.get_output(&task_id, true).await.unwrap();
+        assert_eq!(result, Some("done".to_string()));
     }
 
     #[tokio::test]
