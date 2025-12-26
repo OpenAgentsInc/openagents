@@ -3,6 +3,7 @@
 //! Provides wallet commands for balance, send, receive using the Breez Spark SDK.
 
 use anyhow::{Context, Result};
+use chrono;
 use spark::{SparkSigner, SparkWallet, WalletConfig, Network};
 use crate::storage::keychain::SecureKeychain;
 
@@ -98,13 +99,24 @@ pub fn send(destination: String, amount: u64) -> Result<()> {
         println!();
 
         // Prepare and send payment
-        let response = wallet.send_payment_simple(&destination, Some(amount)).await?;
-
-        println!("Payment Sent!");
-        println!("────────────────────────────────────────");
-        println!("  Payment ID: {}", response.payment.id);
-
-        Ok(())
+        match wallet.send_payment_simple(&destination, Some(amount)).await {
+            Ok(response) => {
+                println!("✓ Payment Sent!");
+                println!("────────────────────────────────────────");
+                println!("  Payment ID: {}", response.payment.id);
+                Ok(())
+            }
+            Err(e) => {
+                eprintln!("✗ Payment Failed");
+                eprintln!("────────────────────────────────────────");
+                eprintln!("{}", e.user_friendly_message());
+                if e.balance_unaffected() {
+                    eprintln!();
+                    eprintln!("ℹ️  Your balance was NOT deducted.");
+                }
+                Err(e.into())
+            }
+        }
     })
 }
 
@@ -117,27 +129,90 @@ pub fn pay(invoice_str: String) -> Result<()> {
         println!("Paying Invoice...");
 
         // Pay the invoice (amount is encoded in invoice)
-        let response = wallet.send_payment_simple(&invoice_str, None).await?;
-
-        println!("Payment Sent!");
-        println!("────────────────────────────────────────");
-        println!("  Payment ID: {}", response.payment.id);
-
-        Ok(())
+        match wallet.send_payment_simple(&invoice_str, None).await {
+            Ok(response) => {
+                println!("✓ Payment Sent!");
+                println!("────────────────────────────────────────");
+                println!("  Payment ID: {}", response.payment.id);
+                Ok(())
+            }
+            Err(e) => {
+                eprintln!("✗ Payment Failed");
+                eprintln!("────────────────────────────────────────");
+                eprintln!("{}", e.user_friendly_message());
+                if e.balance_unaffected() {
+                    eprintln!();
+                    eprintln!("ℹ️  Your balance was NOT deducted.");
+                }
+                Err(e.into())
+            }
+        }
     })
 }
 
 /// Show transaction history
-pub fn history(_limit: usize) -> Result<()> {
+pub fn history(limit: usize) -> Result<()> {
     let rt = tokio::runtime::Runtime::new()?;
     rt.block_on(async {
-        let _wallet = get_wallet().await?;
+        let wallet = get_wallet().await?;
 
         println!("Transaction History");
-        println!("════════════════════════════════════════");
+        println!("════════════════════════════════════════════════════════════════════════");
         println!();
-        // TODO: List transactions requires list_payments() call
-        println!("  (Transaction listing coming soon)");
+
+        let payments = wallet.list_payments(Some(limit as u32), None).await?;
+
+        if payments.is_empty() {
+            println!("  No transactions yet.");
+            return Ok(());
+        }
+
+        // Table header
+        println!(
+            "  {:<8} {:<10} {:>12} {:>10} {:<19}",
+            "Type", "Status", "Amount", "Fee", "Date"
+        );
+        println!("  {}", "─".repeat(68));
+
+        for payment in &payments {
+            // Format payment type
+            let type_str = match payment.payment_type {
+                spark::PaymentType::Send => "SENT",
+                spark::PaymentType::Receive => "RECV",
+            };
+
+            // Format status with color hints
+            let status_str = match payment.status {
+                spark::PaymentStatus::Completed => "✓ Done",
+                spark::PaymentStatus::Pending => "⏳ Pending",
+                spark::PaymentStatus::Failed => "✗ Failed",
+            };
+
+            // Format amount (u128 to u64 for display, show in sats)
+            let amount_sats = payment.amount as u64;
+            let amount_str = format!("{} sats", amount_sats);
+
+            // Format fee
+            let fee_sats = payment.fees as u64;
+            let fee_str = if fee_sats > 0 {
+                format!("{} sats", fee_sats)
+            } else {
+                "-".to_string()
+            };
+
+            // Format timestamp (Unix timestamp to readable date)
+            let datetime = chrono::DateTime::from_timestamp(payment.timestamp as i64, 0)
+                .map(|dt| dt.format("%Y-%m-%d %H:%M").to_string())
+                .unwrap_or_else(|| "Unknown".to_string());
+
+            println!(
+                "  {:<8} {:<10} {:>12} {:>10} {:<19}",
+                type_str, status_str, amount_str, fee_str, datetime
+            );
+        }
+
+        println!();
+        println!("  Showing {} most recent transaction(s)", payments.len());
 
         Ok(())
     })
