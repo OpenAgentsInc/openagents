@@ -199,9 +199,10 @@ impl TextSystem {
                 let cache_key = GlyphCacheKey {
                     cache_key: physical_glyph.cache_key,
                 };
-                // Use cosmic_text's calculated glyph position instead of hardcoded ratio
+                // Scale both x and y consistently - cosmic_text returns logical coords
                 let glyph_x = glyph.x * self.scale_factor;
-                glyph_data.push((cache_key, glyph_x, run.line_y, glyph.glyph_id as u16));
+                let line_y = run.line_y * self.scale_factor;
+                glyph_data.push((cache_key, glyph_x, line_y, glyph.glyph_id as u16));
             }
         }
 

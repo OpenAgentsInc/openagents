@@ -378,8 +378,8 @@ P0 focus IDs: none.
 - [x] **Protocol Tests** ✅
   - [x] `crates/testing/src/mock_relay.rs` - Mock Nostr relay
   - [x] Bifrost threshold tests in frostr
-- [ ] **Coverage Measurement** (enhancement)
-  - [ ] Run `cargo tarpaulin` to measure exact %
+- [x] **Coverage Measurement** (enhancement)
+  - [x] Run `cargo tarpaulin --workspace --lib` (45.48% coverage, 32871/72282 lines)
 
 **Files:** `crates/testing/src/` ✅
 
@@ -504,8 +504,8 @@ P0 focus IDs: none.
 - [x] **Docker Infrastructure Files** ✅
   - [x] Dockerfile with Rust toolchain ✅
   - [x] docker-compose.yml for N-agent orchestration ✅
-- [ ] **GUI Integration** (future)
-  - [ ] "Parallel Agents" page
+- [x] **GUI Integration** ✅
+  - [x] "Parallel Agents" page (ParallelView pane in autopilot GUI)
 
 **Files:** `crates/autopilot/src/parallel/` ✅
 
@@ -738,8 +738,8 @@ Story coverage is complete (see Covered Stories in `.openagents/USERSTORIES.md`)
   - [ ] Spark payments on testnet
   - [ ] Marketplace flow with real payments
   - [ ] GitAfter bounty claim → payout
-- [ ] **Coverage measurement** (optional)
-  - [ ] Run `cargo tarpaulin` for exact %
+- [x] **Coverage measurement** (optional)
+  - [x] Run `cargo tarpaulin --workspace --lib` (45.48% coverage, 32871/72282 lines)
 
 ---
 
