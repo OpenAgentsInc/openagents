@@ -42,13 +42,15 @@ pub fn balance() -> Result<()> {
         let wallet = get_wallet().await?;
         let balance = wallet.get_balance().await?;
 
-        println!("Wallet Balance");
-        println!("────────────────────────────");
-        println!("  Spark:     {} sats", balance.spark_sats);
-        println!("  Lightning: {} sats", balance.lightning_sats);
-        println!("  On-chain:  {} sats", balance.onchain_sats);
-        println!("────────────────────────────");
-        println!("  Total:     {} sats", balance.total_sats());
+        let usd_rate = match fetch_btc_usd_rate().await {
+            Ok(rate) => rate,
+            Err(err) => {
+                eprintln!("Warning: USD pricing unavailable: {}", err);
+                None
+            }
+        };
+        let output = format_balance_display(&balance, usd_rate);
+        print!("{}", output);
 
         Ok(())
     })
@@ -215,6 +217,97 @@ pub fn history(limit: usize) -> Result<()> {
 
         Ok(())
     })
+}
+
+async fn fetch_btc_usd_rate() -> Result<Option<f64>> {
+    if let Ok(value) = std::env::var("OPENAGENTS_BTC_USD") {
+        let rate = value
+            .parse::<f64>()
+            .context("Invalid OPENAGENTS_BTC_USD value")?;
+        return Ok(Some(rate));
+    }
+
+    let response = reqwest::Client::new()
+        .get("https://api.coinbase.com/v2/prices/BTC-USD/spot")
+        .send()
+        .await
+        .context("Failed to fetch BTC/USD price")?;
+
+    if !response.status().is_success() {
+        anyhow::bail!("BTC/USD price request failed with status {}", response.status());
+    }
+
+    let payload: serde_json::Value = response
+        .json()
+        .await
+        .context("Failed to parse BTC/USD price response")?;
+
+    let amount = payload["data"]["amount"]
+        .as_str()
+        .context("BTC/USD price missing from response")?;
+    let rate = amount
+        .parse::<f64>()
+        .context("BTC/USD price is not a number")?;
+
+    Ok(Some(rate))
+}
+
+fn format_balance_display(balance: &spark::Balance, usd_rate: Option<f64>) -> String {
+    let mut output = String::new();
+    output.push_str("Wallet Balance\n");
+    output.push_str("────────────────────────────\n");
+    output.push_str(&format!("  Spark:     {} sats\n", balance.spark_sats));
+    output.push_str(&format!("  Lightning: {} sats\n", balance.lightning_sats));
+    output.push_str(&format!("  On-chain:  {} sats\n", balance.onchain_sats));
+    output.push_str("────────────────────────────\n");
+    output.push_str(&format!("  Total:     {} sats", balance.total_sats()));
+
+    if let Some(rate) = usd_rate {
+        if rate.is_finite() && rate > 0.0 {
+            let usd_total = sats_to_usd(balance.total_sats(), rate);
+            output.push_str(&format!(" (${:.2})", usd_total));
+        }
+    }
+
+    output.push('\n');
+    output
+}
+
+fn sats_to_usd(sats: u64, usd_rate: f64) -> f64 {
+    let btc = sats as f64 / 100_000_000.0;
+    btc * usd_rate
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_format_balance_includes_layer_breakdown() {
+        let balance = spark::Balance {
+            spark_sats: 10,
+            lightning_sats: 20,
+            onchain_sats: 30,
+        };
+        let output = format_balance_display(&balance, None);
+
+        assert!(output.contains("Spark:     10 sats"));
+        assert!(output.contains("Lightning: 20 sats"));
+        assert!(output.contains("On-chain:  30 sats"));
+        assert!(output.contains("Total:     60 sats"));
+    }
+
+    #[test]
+    fn test_format_balance_includes_usd_total() {
+        let balance = spark::Balance {
+            spark_sats: 100_000_000,
+            lightning_sats: 0,
+            onchain_sats: 0,
+        };
+        let output = format_balance_display(&balance, Some(25_000.0));
+        assert!(output.contains("Total:     100000000 sats"));
+        assert!(output.contains("$25000.00"));
+    }
 }
 
 /// Send a zap to a Nostr note
