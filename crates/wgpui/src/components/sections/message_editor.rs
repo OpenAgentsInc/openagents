@@ -284,6 +284,9 @@ impl Component for MessageEditor {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::Modifiers;
+    use std::cell::RefCell;
+    use std::rc::Rc;
 
     #[test]
     fn test_message_editor_new() {
@@ -339,5 +342,30 @@ mod tests {
         let (w, h) = editor.size_hint();
         assert!(w.is_none());
         assert_eq!(h, Some(64.0));
+    }
+
+    #[test]
+    fn test_message_editor_send_on_enter() {
+        let sent = Rc::new(RefCell::new(None));
+        let sent_clone = sent.clone();
+        let mut editor = MessageEditor::new().on_send(move |value| {
+            *sent_clone.borrow_mut() = Some(value);
+        });
+
+        editor.set_value("Hello");
+        editor.focus();
+
+        let mut cx = EventContext::new();
+        let event = InputEvent::KeyDown {
+            key: Key::Named(NamedKey::Enter),
+            modifiers: Modifiers::default(),
+        };
+        let bounds = Bounds::new(0.0, 0.0, 400.0, 64.0);
+
+        let result = editor.event(&event, bounds, &mut cx);
+
+        assert_eq!(result, EventResult::Handled);
+        assert_eq!(sent.borrow().as_deref(), Some("Hello"));
+        assert_eq!(editor.value(), "");
     }
 }

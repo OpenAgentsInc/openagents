@@ -668,7 +668,8 @@ pub use nip56::{
 
 // NIP-57: Lightning Zaps
 pub use nip57::{
-    Nip57Error, ZapReceipt, ZapRequest, ZAP_RECEIPT_KIND, ZAP_REQUEST_KIND,
+    count_zaps_for_event, Nip57Error, ZapReceipt, ZapRequest, ZapSettings, ZAP_RECEIPT_KIND,
+    ZAP_REQUEST_KIND,
 };
 
 // NIP-58: Badges

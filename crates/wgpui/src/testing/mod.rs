@@ -130,6 +130,7 @@ mod dsl;
 mod harness;
 mod injection;
 mod overlay;
+mod recorder;
 mod runner;
 mod step;
 
@@ -142,11 +143,15 @@ mod component_tests;
 #[cfg(test)]
 mod framework_tests;
 
+#[cfg(test)]
+mod snapshot_tests;
+
 pub use assertion::{AssertionResult, TestAssertion};
 pub use context::{ComponentRegistry, TestContext};
 pub use dsl::{test, Test};
 pub use harness::TestHarness;
 pub use injection::{EventPlayer, EventSequence, TimedEvent, generate_step_events};
 pub use overlay::{ClickRipple, InputOverlay, KeyDisplay, KeyDisplayPosition};
+pub use recorder::TestRecorder;
 pub use runner::{PlaybackSpeed, RunnerState, StepResult, TestRunner};
 pub use step::{ClickTarget, ElementSelector, TestStep};

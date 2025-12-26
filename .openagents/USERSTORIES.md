@@ -74,10 +74,14 @@ This section tracks which user stories have implemented tests.
 | 2.4.2 | Subscribe to job requests for supported kinds | Integration | `crates/nostr/tests/integration/subscriptions.rs` |
 | 2.4.3 | Publish job results (kind:6000-6999) | Unit | `crates/nostr/core/src/tests/nip90_integration.rs` |
 | 2.4.4 | Leave feedback on job quality | Unit | `crates/nostr/core/src/nip90.rs` |
+| 2.4.5 | See provider pricing before accepting a bid | Unit | `crates/nostr/core/src/nip90.rs` |
 | 2.5.1 | Send a zap to a note or profile | Unit | `crates/nostr/core/src/nip57.rs` |
 | 2.5.2 | Receive zaps on content | Unit | `crates/nostr/core/src/nip57.rs` |
+| 2.5.3 | See zap count on notes | Unit | `crates/nostr/core/src/nip57.rs` |
+| 2.5.4 | Set default zap amount | Unit | `crates/nostr/core/src/nip57.rs` |
 | 2.6.1 | Connect a signer app via NIP-46 | Unit | `crates/nostr/core/src/nip46.rs` |
 | 2.6.2 | Approve or deny signing requests | Unit | `crates/nostr/core/src/nip46.rs` |
+| 2.6.3 | See what I'm signing before approving | Unit | `crates/nostr/core/src/nip46.rs` |
 | **d-005: GitAfter (Nostr GitHub Alternative)** ||||
 | 5.1.1 | Create a repository on GitAfter | Integration | `crates/gitafter/tests/e2e_issue_flow.rs` |
 | 5.1.2 | Clone a repository from GitAfter | Integration | `crates/gitafter/tests/clone_integration_test.rs` |
@@ -113,6 +117,7 @@ This section tracks which user stories have implemented tests.
 | 6.4.2 | Publish TickResult (kind:38011) | Integration | `crates/nostr/tests/integration/nip_sa.rs` |
 | 6.5.1 | Publish TrajectorySession (kind:38030) | Integration | `crates/nostr/tests/integration/nip_sa.rs` |
 | 6.5.2 | Publish TrajectoryEvents (kind:38031) | Integration | `crates/nostr/tests/integration/nip_sa.rs` |
+| 6.5.3 | Fetch and verify an agent's trajectory | Unit | `crates/nostr/core/src/nip_sa/trajectory.rs` |
 | **d-007: FROSTR (Threshold Signatures)** ||||
 | 7.1.1 | Generate a 2-of-3 threshold keypair | Unit | `crates/frostr/src/keygen.rs` |
 | 7.1.2 | Distribute shares to designated holders | Unit | `crates/frostr/src/credential.rs` |
@@ -120,7 +125,9 @@ This section tracks which user stories have implemented tests.
 | 7.2.1 | Participate in a signing round | Integration | `crates/frostr/tests/bifrost_e2e.rs` |
 | 7.2.2 | Initiate a signing request via Bifrost | Integration | `crates/frostr/tests/bifrost_e2e.rs` |
 | 7.2.3 | Validate threshold signature as a normal Schnorr signature | Integration | `crates/frostr/tests/bifrost_e2e.rs` |
+| 7.2.4 | See what I'm signing before contributing | Unit | `crates/frostr/src/bifrost/messages.rs` |
 | 7.2.5 | Signing completes within a timeout | Integration | `crates/frostr/tests/bifrost_e2e.rs` |
+| 7.3.1 | Decrypt NIP-44 messages using threshold ECDH | Unit | `crates/frostr/src/ecdh.rs` |
 | 7.3.2 | Contribute ECDH share for decryption | Unit | `crates/frostr/src/ecdh.rs` |
 | 7.4.1 | Discover Bifrost peers on Nostr relays | Integration | `crates/frostr/tests/bifrost_e2e.rs` |
 | 7.4.2 | Send and receive Bifrost messages | Integration | `crates/frostr/tests/bifrost_e2e.rs` |
@@ -134,6 +141,7 @@ This section tracks which user stories have implemented tests.
 | 8.2.3 | Purchase a skill license | Integration | `crates/marketplace/tests/skill_e2e.rs` |
 | 8.2.4 | See sales and revenue | Integration | `crates/marketplace/tests/skill_e2e.rs` |
 | 8.2.5 | Rate skills used | Integration | `crates/marketplace/tests/compute_e2e.rs` |
+| 8.2.6 | Set usage-based pricing | Unit | `crates/marketplace/src/types.rs` |
 | 8.3.1 | Publish a dataset with metadata and price | Integration | `crates/marketplace/tests/data_e2e.rs` |
 | 8.3.2 | Search for datasets by topic/format | Integration | `crates/marketplace/tests/data_e2e.rs` |
 | 8.3.3 | Purchase and download a dataset | Integration | `crates/marketplace/tests/data_e2e.rs` |
@@ -143,7 +151,16 @@ This section tracks which user stories have implemented tests.
 | 8.4.3 | Set redaction rules for contributions | Integration | `crates/marketplace/tests/trajectory_e2e.rs` |
 | 8.4.4 | Purchase trajectory datasets | Integration | `crates/marketplace/tests/trajectory_e2e.rs` |
 | **d-013: Testing Framework** ||||
+| 13.1.1 | Run cargo test for unit tests | Unit | `crates/testing/src/lib.rs` |
+| 13.1.2 | Tests run in parallel | Unit | `crates/testing/src/lib.rs` |
+| 13.1.3 | Code coverage reports | Integration | `tests/testing_framework.rs` |
+| 13.1.4 | Property-based tests for encoders/validators | Unit | `crates/nostr/core/src/nip06.rs` |
+| 13.2.1 | Integration tests use in-memory DB | Integration | `crates/testing/src/test_app.rs` |
+| 13.2.2 | Integration tests run offline | Integration | `crates/testing/src/mock_relay.rs` |
 | 13.2.3 | TestApp pattern for setting up test contexts | Unit | `crates/testing/src/test_app.rs` |
+| 13.3.1 | Snapshot tests for WGPUI scenes | Unit | `crates/wgpui/src/testing/snapshot_tests.rs` |
+| 13.3.2 | Update snapshots with a single command | Integration | `tests/testing_framework.rs` |
+| 13.3.3 | Snapshot diffs in CI | Unit | `crates/wgpui/src/testing/snapshot_tests.rs` |
 | **d-014: NIP-SA/Bifrost Integration Tests** ||||
 | 14.1.1 | E2E tests for 2-of-3 threshold signing | Integration | `crates/frostr/tests/bifrost_e2e.rs` |
 | 14.1.2 | E2E tests for threshold ECDH decryption | Integration | `crates/frostr/tests/bifrost_e2e.rs` |
@@ -165,6 +182,15 @@ This section tracks which user stories have implemented tests.
 | **d-009: Autopilot GUI** ||||
 | 9.1.1 | Conversation thread display | Visual E2E | `crates/wgpui/examples/chat_streaming_test.rs` |
 | 9.1.2 | Tool calls with output | Visual E2E | `crates/wgpui/examples/chat_streaming_test.rs` |
+| 9.1.3 | Type and send prompts | Unit | `crates/wgpui/src/components/sections/message_editor.rs` |
+| 9.1.4 | Expand/collapse thinking blocks | Unit | `crates/wgpui/src/components/molecules/thinking_block.rs` |
+| 9.1.5 | Token usage gauge | Unit | `crates/wgpui/src/components/organisms/agent_state_inspector.rs` |
+| 9.2.1 | Start a new session | Unit | `crates/wgpui/src/components/organisms/thread_controls.rs` |
+| 9.2.2 | Stop a running session | Unit | `crates/wgpui/src/components/organisms/thread_controls.rs` |
+| 9.2.3 | Switch between active sessions | Unit | `crates/wgpui/src/components/atoms/session_breadcrumb.rs` |
+| 9.2.4 | Session history list | Unit | `crates/wgpui/src/components/molecules/session_card.rs` |
+| 9.2.5 | Export session transcript | Unit | `crates/wgpui/src/components/molecules/entry_actions.rs` |
+| 9.3.1 | See current APM in the GUI | Unit | `crates/wgpui/src/components/atoms/apm_gauge.rs` |
 | **d-003: OpenAgents Wallet** ||||
 | 3.1.1 | Show identity via `openagents wallet whoami` | Integration | `tests/wallet_cli_integration.rs` |
 | 3.1.2 | Update Nostr profile fields | Integration | `tests/wallet_cli_integration.rs` |
@@ -197,6 +223,15 @@ This section tracks which user stories have implemented tests.
 | 10.1.6 | Show subcommand help output | Integration | `tests/cli_integration.rs` |
 | 10.2.1 | Deprecation warnings for legacy binary names | Integration | `tests/legacy_binaries.rs` |
 | 10.2.2 | Symlinks keep legacy binaries working | Integration | `tests/legacy_binaries.rs` |
+| **d-011: Storybook Coverage** ||||
+| 11.1.1 | Button stories with all variants | Unit | `crates/wgpui/src/testing/component_tests.rs` |
+| 11.1.2 | TextInput stories with different states | Unit | `crates/wgpui/src/testing/component_tests.rs` |
+| 11.1.3 | Atom component gallery | Unit | `crates/wgpui/src/testing/component_tests.rs` |
+| 11.1.4 | Copy-pasteable code snippets | Unit | `crates/wgpui/src/components/molecules/entry_actions.rs` |
+| 11.1.5 | Interactive controls to tweak props | Unit | `crates/wgpui/src/components/molecules/mode_selector.rs` |
+| 11.2.1 | Hierarchical navigation (atoms/molecules/organisms) | Unit | `crates/wgpui/src/components/atoms/session_breadcrumb.rs` |
+| 11.2.2 | Search stories by name | Unit | `crates/wgpui/src/components/molecules/session_search_bar.rs` |
+| 11.2.3 | Bookmark frequently used stories | Unit | `crates/wgpui/src/components/molecules/checkpoint_restore.rs` |
 | **d-012: No Stubs Policy** ||||
 | 12.1.1 | Pre-commit rejects `todo!()` stubs | Integration | `tests/no_stubs.rs` |
 | 12.1.2 | Pre-commit rejects `unimplemented!()` stubs | Integration | `tests/no_stubs.rs` |
@@ -207,7 +242,9 @@ This section tracks which user stories have implemented tests.
 | 16.1.2 | APM calculated from autopilot trajectory logs | Unit | `crates/autopilot/src/apm_parser.rs` |
 | 16.1.3 | APM tracked across multiple time windows | Unit | `crates/autopilot/src/apm_storage.rs` |
 | 16.2.1 | See current APM in the CLI | Integration | `tests/cli_integration.rs` |
+| 16.2.2 | See APM in the GUI dashboard | Unit | `crates/wgpui/src/components/atoms/apm_gauge.rs` |
 | 16.2.3 | APM color-coded by tier | Unit | `crates/autopilot/src/apm.rs` |
+| 16.2.4 | APM history charts | Unit | `crates/wgpui/src/components/molecules/apm_session_row.rs` |
 | **d-017: ACP Integration** ||||
 | 17.1.1 | Send ACP messages to Claude Code | Integration | `crates/acp-adapter/tests/integration_tests.rs` |
 | 17.1.2 | ACP event streaming | Unit + Visual | `crates/wgpui/src/testing/chat_tests.rs` |
@@ -230,6 +267,8 @@ This section tracks which user stories have implemented tests.
 | 19.1.2 | Run inference with gpt-oss-20b | Integration | `crates/local-inference/tests/gpt_oss_backend_integration.rs` |
 | 19.1.3 | Check if GPT-OSS is available locally | Integration | `crates/local-inference/tests/gpt_oss_backend_integration.rs` |
 | 19.1.4 | Stream responses | Integration | `crates/local-inference/tests/gpt_oss_backend_integration.rs` |
+| 19.2.1 | Run autopilot with GPT-OSS backend | Integration | `tests/cli_integration.rs` |
+| 19.2.2 | Select GPT-OSS from model dropdown | Unit | `crates/wgpui/src/components/molecules/model_selector.rs` |
 | 19.2.3 | GPT-OSS supports tool calls | Unit | `crates/gpt-oss-agent/tests/tool_tests.rs` |
 | **d-020: WGPUI Component Integration** ||||
 | 20.1.1 | Button components with all variants | Unit | `crates/wgpui/src/testing/component_tests.rs` |
@@ -281,8 +320,11 @@ This section tracks which user stories have implemented tests.
 | 24.4.3 | MovingLines background | Unit | `crates/wgpui/src/components/hud/backgrounds/moving_lines.rs` |
 | 24.4.4 | Puffs background | Unit | `crates/wgpui/src/components/hud/backgrounds/puffs.rs` |
 | **d-025: All-In WGPUI** ||||
+| 25.1.1 | Entity system for reactive state | Unit | `crates/wgpui/src/app/entity_map.rs` |
 | 25.1.2 | Element lifecycle | Unit | `crates/wgpui/src/testing/component_tests.rs` |
+| 25.1.3 | Window abstraction | Unit | `crates/wgpui/src/window/window.rs` |
 | 25.1.4 | Styled trait for fluent builder DSL | Unit | `crates/wgpui/src/testing/component_tests.rs` |
+| 25.1.5 | Async support via cx.spawn() | Unit | `crates/wgpui/src/async/executor.rs` |
 | **d-026: E2E Test Live Viewer** ||||
 | 26.1.1 | Fluent DSL for tests | Unit | `crates/wgpui/src/testing/dsl.rs` (module tests) |
 | 26.1.2 | Click elements by selector | Unit | `crates/wgpui/src/testing/step.rs` |
@@ -297,6 +339,7 @@ This section tracks which user stories have implemented tests.
 | 26.3.1 | Component test harness | Unit | `crates/wgpui/src/testing/harness.rs` |
 | 26.3.2 | Synthetic event injection | Unit | `crates/wgpui/src/testing/injection.rs` |
 | 26.3.3 | Control bar with play/pause/step | Unit | `crates/wgpui/src/testing/harness.rs` |
+| 26.3.4 | Record tests by performing actions | Unit | `crates/wgpui/src/testing/recorder.rs` |
 
 ### Test Files Summary
 
@@ -305,22 +348,30 @@ This section tracks which user stories have implemented tests.
 | `crates/wgpui/examples/chat_streaming_test.rs` | Visual demo of ACP chat streaming with assertions | 9.1.1, 9.1.2, 17.1.2 |
 | `crates/wgpui/examples/test_viewer.rs` | Visual demo of E2E test framework | 26.2.1, 26.2.2 |
 | `crates/wgpui/src/testing/chat_tests.rs` | 18 unit tests for streaming mechanics | 17.1.2 |
-| `crates/wgpui/src/testing/component_tests.rs` | 46 unit tests for component integration | 20.1.1-5, 20.2.1-3, 24.1.1-3, 24.4.1, 25.1.2, 25.1.4 |
+| `crates/wgpui/src/testing/component_tests.rs` | 46 unit tests for component integration | 11.1.1-11.1.3, 20.1.1-5, 20.2.1-3, 24.1.1-3, 24.4.1, 25.1.2, 25.1.4 |
 | `crates/wgpui/src/testing/framework_tests.rs` | 44 unit tests for WGPUI framework | 23.1.1, 23.1.2, 23.2.1, 23.2.3, 23.3.1-4, 24.2.1-2, 24.3.1 |
+| `crates/wgpui/src/testing/snapshot_tests.rs` | Scene snapshot regression tests | 13.3.1, 13.3.3 |
 | `crates/wgpui/src/layout.rs` | Layout helpers and percent sizing tests | 23.2.2 |
+| `crates/wgpui/src/app/entity_map.rs` | Entity map reactive state tests | 25.1.1 |
+| `crates/wgpui/src/async/executor.rs` | Foreground/background executor spawn tests | 25.1.5 |
+| `crates/wgpui/src/window/window.rs` | Window render, hit testing, and focus tests | 25.1.3 |
 | `crates/wgpui/src/testing/mod.rs` | Testing framework module exports | 26.1.1 |
 | `crates/wgpui/src/testing/dsl.rs` | Fluent test builder API | 26.1.1, 26.1.3-26.1.5 |
 | `crates/wgpui/src/testing/step.rs` | TestStep, ElementSelector types | 26.1.2 |
 | `crates/wgpui/src/testing/harness.rs` | TestHarness wrapper component | 26.3.1, 26.3.3 |
 | `crates/wgpui/src/testing/injection.rs` | EventSequence for synthetic events | 26.3.2 |
+| `crates/wgpui/src/testing/recorder.rs` | TestRecorder input capture | 26.3.4 |
 | `crates/wgpui/src/testing/overlay.rs` | InputOverlay for click ripples | 26.2.2, 26.2.3 |
 | `crates/wgpui/src/testing/runner.rs` | TestRunner playback + step control | 26.2.4, 26.2.5 |
-| `tests/cli_integration.rs` | Unified CLI headless launch, wallet init, and delegation coverage | 1.1.1, 1.1.3, 4.3.1, 4.3.3-4.3.4, 10.1.1-10.1.6, 16.2.1 |
+| `tests/cli_integration.rs` | Unified CLI headless launch, wallet init, and delegation coverage | 1.1.1, 1.1.3, 4.3.1, 4.3.3-4.3.4, 10.1.1-10.1.6, 16.2.1, 19.2.1 |
 | `tests/wallet_cli_integration.rs` | Wallet identity, profile, contacts, post, DM, and export flows | 1.1.2, 3.1.1-3.1.4, 3.2.5-3.2.6, 3.4.2 |
 | `tests/legacy_binaries.rs` | Legacy binary deprecation warnings + symlink installer coverage | 10.2.1-10.2.2 |
 | `tests/no_stubs.rs` | Stub pattern scanning + exceptions documentation checks | 12.1.1-12.1.4 |
+| `tests/testing_framework.rs` | Snapshot + coverage documentation checks | 13.1.3, 13.3.2 |
 | `crates/opencode-sdk/tests/opencode_sdk_integration.rs` | OpenCode SDK mock server + SSE integration tests | 21.1.1-21.2.2 |
-| `crates/testing/src/test_app.rs` | TestApp isolation and harness tests | 13.2.3 |
+| `crates/testing/src/lib.rs` | Testing crate smoke and parallel task tests | 13.1.1-13.1.2 |
+| `crates/testing/src/mock_relay.rs` | Mock relay loopback storage tests | 13.2.2 |
+| `crates/testing/src/test_app.rs` | TestApp in-memory isolation tests | 13.2.1, 13.2.3 |
 | `crates/agent-orchestrator/src/background.rs` | Background task manager lifecycle tests | 22.1.1-22.1.3 |
 | `crates/agent-orchestrator/src/hooks/mod.rs` | HookManager session dispatch tests | 22.2.1-22.2.2 |
 | `crates/agent-orchestrator/src/hooks/session.rs` | Session recovery and error hook tests | 22.1.4, 22.2.4 |
@@ -348,6 +399,20 @@ This section tracks which user stories have implemented tests.
 | `crates/wgpui/src/components/hud/backgrounds/puffs.rs` | Puffs background tests | 24.4.4 |
 | `crates/wgpui/src/components/hud/status_bar.rs` | StatusBar HUD tests | 20.2.4 |
 | `crates/wgpui/src/components/hud/notifications.rs` | Notifications HUD tests | 20.2.4 |
+| `crates/wgpui/src/components/atoms/model_badge.rs` | Model label + color tests | 19.2.2 |
+| `crates/wgpui/src/components/molecules/model_selector.rs` | Model dropdown selection tests | 19.2.2 |
+| `crates/wgpui/src/components/molecules/mode_selector.rs` | Mode selector builder and selection tests | 11.1.5 |
+| `crates/wgpui/src/components/molecules/entry_actions.rs` | Entry action copy tests | 9.2.5, 11.1.4 |
+| `crates/wgpui/src/components/sections/message_editor.rs` | Prompt editor send and focus tests | 9.1.3 |
+| `crates/wgpui/src/components/molecules/thinking_block.rs` | Thinking block toggle tests | 9.1.4 |
+| `crates/wgpui/src/components/organisms/agent_state_inspector.rs` | Agent state + token usage inspector tests | 9.1.5 |
+| `crates/wgpui/src/components/organisms/thread_controls.rs` | Thread controls run/stop callback tests | 9.2.1-9.2.2 |
+| `crates/wgpui/src/components/atoms/session_breadcrumb.rs` | Session breadcrumb navigation tests | 9.2.3, 11.2.1 |
+| `crates/wgpui/src/components/molecules/session_card.rs` | Session card status and metadata tests | 9.2.4 |
+| `crates/wgpui/src/components/molecules/session_search_bar.rs` | Session search filter tests | 11.2.2 |
+| `crates/wgpui/src/components/molecules/checkpoint_restore.rs` | Checkpoint restore selection tests | 11.2.3 |
+| `crates/wgpui/src/components/molecules/apm_session_row.rs` | APM session row formatting tests | 16.2.4 |
+| `crates/wgpui/src/components/atoms/apm_gauge.rs` | APM gauge tier and bar rendering tests | 9.3.1, 16.2.2 |
 | `crates/autopilot/src/apm_parser.rs` | APM log parsing tests | 16.1.1-16.1.2 |
 | `crates/autopilot/src/apm_storage.rs` | APM window snapshot tests | 16.1.3 |
 | `crates/autopilot/src/apm.rs` | APM tier + stats tests | 16.2.3 |
@@ -357,13 +422,15 @@ This section tracks which user stories have implemented tests.
 | `crates/autopilot/tests/parallel_compose_test.rs` | Parallel compose shared DB + resource overrides | 18.1.3, 18.2.1, 18.2.3 |
 | `crates/autopilot/tests/d004_story_tests.rs` | Autopilot metrics analysis, alerts, learning, and reports | 4.1.1-4.2.4 |
 | `crates/autopilot/tests/daemon_control_tests.rs` | Autopilot daemon control socket stop worker coverage | 4.3.2 |
+| `crates/nostr/core/src/nip06.rs` | NIP-06 mnemonic and bech32 property tests | 13.1.4 |
 | `crates/nostr/core/src/tests/event_validation.rs` | NIP-01 event validation and signing tests | 2.1.1-2.1.5 |
 | `crates/nostr/core/src/nip17.rs` | NIP-17 DM creation and gift wrap tests | 2.3.3-2.3.4 |
 | `crates/nostr/core/src/nip44.rs` | NIP-44 encryption/decryption tests | 2.3.1-2.3.2 |
 | `crates/nostr/core/src/tests/nip90_integration.rs` | NIP-90 job request/result lifecycle tests | 2.4.1, 2.4.3 |
-| `crates/nostr/core/src/nip90.rs` | NIP-90 feedback and kind validation tests | 2.4.4 |
+| `crates/nostr/core/src/nip90.rs` | NIP-90 feedback and kind validation tests | 2.4.4-2.4.5 |
 | `crates/nostr/core/src/nip57.rs` | NIP-57 zap request/receipt tests | 2.5.1-2.5.2 |
-| `crates/nostr/core/src/nip46.rs` | NIP-46 connect request/response tests | 2.6.1-2.6.2 |
+| `crates/nostr/core/src/nip46.rs` | NIP-46 connect request/response tests | 2.6.1-2.6.3 |
+| `crates/nostr/core/src/nip_sa/trajectory.rs` | NIP-SA trajectory hashing + verification tests | 6.5.3 |
 | `crates/nostr/tests/integration/client_relay.rs` | Client/relay integration flows | 2.2.1, 2.2.3-2.2.5 |
 | `crates/nostr/tests/integration/pool.rs` | RelayPool multi-relay publish tests | 2.2.2, 2.2.6 |
 | `crates/nostr/tests/integration/subscriptions.rs` | Subscription behavior across kinds and filters | 2.4.2 |
@@ -371,13 +438,15 @@ This section tracks which user stories have implemented tests.
 | `crates/frostr/tests/bifrost_e2e.rs` | Bifrost signing/ECDH/peer/timeout relay flows | 7.2.1-7.2.3, 7.2.5, 7.4.1-7.4.2, 14.1.1-14.1.4 |
 | `crates/frostr/src/keygen.rs` | Shamir + FROST key generation tests | 7.1.1, 7.1.3 |
 | `crates/frostr/src/credential.rs` | Group/share credential encoding tests | 7.1.2 |
-| `crates/frostr/src/ecdh.rs` | Threshold ECDH share/determinism tests | 7.3.2 |
+| `crates/frostr/src/bifrost/messages.rs` | Bifrost message serialization for signing context | 7.2.4 |
+| `crates/frostr/src/ecdh.rs` | Threshold ECDH share/determinism tests | 7.3.1-7.3.2 |
 | `crates/marketplace/tests/compute_e2e.rs` | NIP-90 job request/result/feedback E2E tests | 8.1.1-8.1.3, 8.2.5, 15.1.1-15.1.3 |
 | `crates/marketplace/tests/skill_e2e.rs` | Skill browse/license/delivery/versioning E2E tests | 8.2.1-8.2.4, 15.2.1-15.2.3 |
 | `crates/marketplace/tests/data_e2e.rs` | Data marketplace discovery/publish/purchase E2E tests | 8.3.1-8.3.4 |
 | `crates/marketplace/tests/trajectory_e2e.rs` | Trajectory contribution/redaction/hash verification E2E tests | 8.4.1-8.4.4 |
 | `crates/marketplace/tests/agent_commerce_e2e.rs` | Agent-to-agent transactions and budget constraint tests | 15.3.1-15.3.2 |
 | `crates/marketplace/tests/discovery.rs` | Provider discovery and rating tests | 8.1.4 |
+| `crates/marketplace/src/types.rs` | Skill pricing calculations and revenue split tests | 8.2.6 |
 
 ---
 

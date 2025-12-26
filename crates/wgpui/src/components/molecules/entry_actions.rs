@@ -247,6 +247,8 @@ impl Component for EntryActions {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::cell::Cell;
+    use std::rc::Rc;
 
     #[test]
     fn test_entry_actions_new() {
@@ -267,5 +269,35 @@ mod tests {
         assert!(!actions.show_feedback);
         assert!(actions.show_retry);
         assert!(actions.show_delete);
+    }
+
+    #[test]
+    fn test_entry_actions_copy_callback() {
+        let called = Rc::new(Cell::new(false));
+        let called_clone = called.clone();
+        let mut actions = EntryActions::new()
+            .show_feedback(false)
+            .on_action(move |action| {
+                if action == EntryAction::Copy {
+                    called_clone.set(true);
+                }
+            });
+
+        let bounds = Bounds::new(0.0, 0.0, 200.0, 24.0);
+        let font_size = theme::font_size::XS;
+        let width = "Copy".len() as f32 * font_size * 0.6;
+        let x = bounds.origin.x + width / 2.0;
+        let y = bounds.origin.y + bounds.size.height / 2.0;
+
+        let event = InputEvent::MouseDown {
+            button: MouseButton::Left,
+            x,
+            y,
+        };
+        let mut cx = EventContext::new();
+        let result = actions.event(&event, bounds, &mut cx);
+
+        assert_eq!(result, EventResult::Handled);
+        assert!(called.get());
     }
 }

@@ -339,6 +339,36 @@ fn test_autopilot_run_delegates_to_autopilot_bin() {
 
 #[test]
 #[cfg(unix)]
+fn test_autopilot_run_delegates_gpt_oss_agent() {
+    let workspace = create_temp_workspace();
+    let log_path = workspace.join("autopilot-gpt-oss.log");
+    let stub = write_stub_script(&workspace, "autopilot-stub.sh");
+
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("openagents"));
+    cmd.current_dir(&workspace)
+        .env("OPENAGENTS_AUTOPILOT_BIN", &stub)
+        .env("LOG_PATH", &log_path)
+        .arg("autopilot")
+        .arg("run")
+        .arg("local-run")
+        .arg("--agent")
+        .arg("gpt-oss")
+        .arg("--model")
+        .arg("gpt-oss-20b");
+
+    cmd.assert().success();
+
+    let output = fs::read_to_string(&log_path).expect("read stub log");
+    assert!(output.contains("--agent"), "expected agent flag");
+    assert!(output.contains("gpt-oss"), "expected gpt-oss agent");
+    assert!(output.contains("--model"), "expected model flag");
+    assert!(output.contains("gpt-oss-20b"), "expected gpt-oss model");
+
+    fs::remove_dir_all(&workspace).expect("cleanup workspace");
+}
+
+#[test]
+#[cfg(unix)]
 fn test_autopilot_resume_delegates_to_autopilot_bin() {
     let workspace = create_temp_workspace();
     let log_path = workspace.join("autopilot-resume.log");

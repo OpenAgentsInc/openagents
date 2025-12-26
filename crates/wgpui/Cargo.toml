@@ -108,6 +108,7 @@ reqwest = { workspace = true, features = ["blocking"] }
 
 [dev-dependencies]
 criterion = "0.5"
+insta = { workspace = true }
 
 [[example]]
 name = "first_light"

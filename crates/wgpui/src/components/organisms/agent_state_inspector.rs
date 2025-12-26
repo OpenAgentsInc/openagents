@@ -635,4 +635,21 @@ mod tests {
         assert_eq!(goal.progress, 0.75);
         assert_eq!(goal.status, AgentGoalStatus::Completed);
     }
+
+    #[test]
+    fn test_agent_state_resource_usage() {
+        let usage = ResourceUsage {
+            tokens_used: 1200,
+            tokens_limit: 4096,
+            actions_count: 7,
+            runtime_seconds: 3600,
+        };
+
+        let inspector = AgentStateInspector::new("Test Agent", "agent-123").resources(usage);
+
+        assert_eq!(inspector.resource_usage.tokens_used, 1200);
+        assert_eq!(inspector.resource_usage.tokens_limit, 4096);
+        assert_eq!(inspector.resource_usage.actions_count, 7);
+        assert_eq!(inspector.resource_usage.runtime_seconds, 3600);
+    }
 }
