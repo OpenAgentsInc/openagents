@@ -36,6 +36,7 @@ Stories are prioritized: **P0** (critical), **P1** (high), **P2** (medium), **P3
 24. [d-024: Arwes Parity](#d-024-arwes-parity)
 25. [d-025: All-In WGPUI](#d-025-all-in-wgpui)
 26. [d-026: E2E Test Live Viewer](#d-026-e2e-test-live-viewer)
+27. [d-027: Autopilot Demo + Dogfooding Funnel](#d-027-autopilot-demo--dogfooding-funnel-launch-priority)
 
 ---
 
@@ -704,6 +705,15 @@ This section tracks which user stories have implemented tests.
 | 3.4.3 | P1 | As a user, I want to set transaction limits, so that a compromised device can't drain my wallet. |
 | 3.4.4 | P1 | As a user, I want to require confirmation for large transactions, so that I prevent accidental sends. |
 
+### Compute Pool Accounting (Launch Priority)
+
+| ID | Priority | User Story |
+|----|----------|------------|
+| 3.5.1 | P0 | As an Autopilot user, I want my compute purchases automatically deducted from my wallet, so that I don't have to manually fund each job. |
+| 3.5.2 | P0 | As an Autopilot user, I want to see my compute spend separately from other wallet transactions, so that I can track costs. |
+| 3.5.3 | P0 | As an Autopilot user, I want to set a compute budget cap, so that I don't overspend on automated runs. |
+| 3.5.4 | P1 | As an Autopilot user, I want to receive warnings when my compute budget is running low, so that I can top up. |
+
 ---
 
 ## d-004: Autopilot Improvement
@@ -735,6 +745,57 @@ This section tracks which user stories have implemented tests.
 | 4.3.2 | P0 | As an operator, I want to stop a running autopilot session, so that I can interrupt bad runs. |
 | 4.3.3 | P1 | As an operator, I want to resume a paused session, so that I can continue interrupted work. |
 | 4.3.4 | P1 | As an operator, I want to replay a past session, so that I can understand what happened. |
+
+### Repo Onboarding (Launch Priority)
+
+| ID | Priority | User Story |
+|----|----------|------------|
+| 4.4.1 | P0 | As a user, I want to connect my GitHub repository to Autopilot, so that it can work on my codebase. |
+| 4.4.2 | P0 | As a user, I want Autopilot to validate it has the required permissions (read code, write PRs), so that runs don't fail due to access issues. |
+| 4.4.3 | P0 | As a user, I want Autopilot to auto-detect my project's language and tooling, so that it knows how to run tests. |
+| 4.4.4 | P0 | As a user, I want Autopilot to run a health check on first connection, so that I know the setup is correct. |
+| 4.4.5 | P1 | As a user, I want to see which repos I have connected to Autopilot, so that I can manage my setup. |
+| 4.4.6 | P1 | As a user, I want to disconnect a repo from Autopilot, so that I can revoke access. |
+
+### GitHub Issue → PR Flow (Launch Priority)
+
+| ID | Priority | User Story |
+|----|----------|------------|
+| 4.5.1 | P0 | As an agent, I want to detect issues labeled for autopilot (e.g., `autopilot`), so that I know which to work on. |
+| 4.5.2 | P0 | As an agent, I want to post a "claiming" comment when I start an issue, so that humans know I'm working on it. |
+| 4.5.3 | P0 | As an agent, I want to create a feature branch for each issue, so that work is isolated. |
+| 4.5.4 | P0 | As an agent, I want to open a PR with a structured template when work is complete, so that humans can review. |
+| 4.5.5 | P0 | As an agent, I want to link the PR to the original issue, so that GitHub closes it on merge. |
+| 4.5.6 | P0 | As an agent, I want to include a replay link in my PR description, so that reviewers can see my reasoning. |
+| 4.5.7 | P1 | As an agent, I want to handle review feedback by re-running and updating the PR, so that issues get resolved. |
+
+### CI Integration (Launch Priority)
+
+| ID | Priority | User Story |
+|----|----------|------------|
+| 4.6.1 | P0 | As an agent, I want to run the local test suite before opening a PR, so that I don't submit broken code. |
+| 4.6.2 | P0 | As an agent, I want to detect when CI fails after opening a PR, so that I can attempt to fix it. |
+| 4.6.3 | P0 | As an agent, I want to auto-fix CI failures up to N attempts, so that PRs are more likely to pass. |
+| 4.6.4 | P1 | As an agent, I want to escalate to a human after repeated CI failures, so that I don't spin forever. |
+| 4.6.5 | P1 | As an agent, I want to include CI status in my receipts, so that outcomes are verifiable. |
+
+### Replay Artifacts (Launch Priority)
+
+| ID | Priority | User Story |
+|----|----------|------------|
+| 4.7.1 | P0 | As an operator, I want Autopilot to produce a Run Bundle (rlog + metadata + diffs) on completion, so that I have a record. |
+| 4.7.2 | P0 | As an operator, I want the Run Bundle to include a deterministic timeline, so that replays can be scrubbed. |
+| 4.7.3 | P0 | As an operator, I want the Run Bundle to include receipts (test results, CI status), so that outcomes are verifiable. |
+| 4.7.4 | P0 | As an operator, I want secrets redacted from Run Bundles before external publish, so that nothing sensitive leaks. |
+| 4.7.5 | P1 | As an operator, I want to export a Run Bundle to share or archive, so that I can demo or review later. |
+
+### Notifications & Escalation (Launch Priority)
+
+| ID | Priority | User Story |
+|----|----------|------------|
+| 4.8.1 | P0 | As a user, I want desktop notifications when Autopilot completes a run, so that I know to review. |
+| 4.8.2 | P1 | As a user, I want email summaries for overnight runs, so that I wake up to a clear status. |
+| 4.8.3 | P1 | As a user, I want Autopilot to escalate repeated failures to me via notification, so that I can intervene. |
 
 ---
 
@@ -931,6 +992,24 @@ This section tracks which user stories have implemented tests.
 | 8.5.2 | P0 | As a skill creator, I want to receive my split automatically when skills are purchased, so that I don't have to claim manually. |
 | 8.5.3 | P1 | As a compute provider, I want to see my pending and paid revenue shares, so that I can track earnings. |
 
+### Autopilot as Compute Buyer (Launch Priority)
+
+| ID | Priority | User Story |
+|----|----------|------------|
+| 8.6.1 | P0 | As Autopilot, I want to post SandboxRun job requests to run tests against a repo, so that I can verify my changes. |
+| 8.6.2 | P0 | As Autopilot, I want to select a provider based on price, latency, and reputation, so that I get good value. |
+| 8.6.3 | P0 | As Autopilot, I want to verify job results before releasing payment, so that I don't pay for bad work. |
+| 8.6.4 | P0 | As Autopilot, I want to fall back to the reserve pool if no providers bid, so that jobs always run. |
+| 8.6.5 | P1 | As Autopilot, I want to post RepoIndex jobs to generate embeddings, so that I can search code semantically. |
+
+### Provider Onboarding (Launch Priority)
+
+| ID | Priority | User Story |
+|----|----------|------------|
+| 8.7.1 | P0 | As a new provider, I want to pass a qualification suite, so that I can start accepting jobs. |
+| 8.7.2 | P0 | As a provider, I want to see my tier and quota, so that I know my limits. |
+| 8.7.3 | P1 | As a provider, I want to be promoted to higher tiers based on success rate, so that I can handle more jobs. |
+
 ---
 
 ## d-009: Autopilot GUI
@@ -964,6 +1043,25 @@ This section tracks which user stories have implemented tests.
 | 9.3.3 | P1 | As a user, I want to see cost estimate for the session, so that I can budget. |
 | 9.3.4 | P2 | As a user, I want to see a timeline of agent activity, so that I can visualize the flow. |
 
+### Replay Viewer (Launch Priority)
+
+| ID | Priority | User Story |
+|----|----------|------------|
+| 9.4.1 | P0 | As a user, I want to scrub through a completed run's timeline, so that I can review what happened. |
+| 9.4.2 | P0 | As a user, I want to see diffs inline during replay, so that I understand the changes made. |
+| 9.4.3 | P0 | As a user, I want to see receipts (tests run, CI status) during replay, so that I can verify outcomes. |
+| 9.4.4 | P0 | As a user, I want a "skip to outcomes" button, so that I can jump to the final PR/result. |
+| 9.4.5 | P1 | As a user, I want to share a replay link, so that others can view the run. |
+| 9.4.6 | P1 | As a user, I want to download the replay bundle, so that I can archive or demo it. |
+
+### Approval UX (Launch Priority)
+
+| ID | Priority | User Story |
+|----|----------|------------|
+| 9.5.1 | P0 | As a user, I want to see pending approvals in the GUI, so that I can respond to Autopilot requests. |
+| 9.5.2 | P0 | As a user, I want to approve/deny actions with context visible (file, command), so that I make informed decisions. |
+| 9.5.3 | P0 | As a user, I want approval options (once / repo / always), so that I can set my preference level. |
+
 ---
 
 ## d-010: Unified Binary
@@ -985,6 +1083,14 @@ This section tracks which user stories have implemented tests.
 |----|----------|------------|
 | 10.2.1 | P1 | As a user with legacy scripts, I want deprecation warnings when using old binary names, so that I can migrate. |
 | 10.2.2 | P2 | As a user, I want symlinks for old binary names to keep working temporarily, so that scripts don't break. |
+
+### Install & Connect CLI (Launch Priority)
+
+| ID | Priority | User Story |
+|----|----------|------------|
+| 10.3.1 | P0 | As a new user, I want to run a simple install command (e.g., `curl | sh`), so that I can get started quickly. |
+| 10.3.2 | P0 | As a user, I want to run `openagents connect <repo>` to link my GitHub repo, so that Autopilot can work on it. |
+| 10.3.3 | P1 | As a user, I want to run `openagents status` to see my connected repos and Autopilot state, so that I know my setup. |
 
 ---
 
@@ -1049,6 +1155,15 @@ This section tracks which user stories have implemented tests.
 | 13.3.1 | P0 | As a developer, I want snapshot tests for WGPUI scenes, so that visual regressions are caught. |
 | 13.3.2 | P1 | As a developer, I want to update snapshots with a single command, so that intentional changes are easy. |
 | 13.3.3 | P1 | As a developer, I want snapshot diffs in CI, so that I can review changes in PRs. |
+
+### Demo Testing (Launch Priority)
+
+| ID | Priority | User Story |
+|----|----------|------------|
+| 13.4.1 | P0 | As a developer, I want CI to render the demo replay headlessly, so that I know it still works. |
+| 13.4.2 | P0 | As a developer, I want demo regression tests to catch breaks before deploy, so that the homepage stays functional. |
+| 13.4.3 | P1 | As a developer, I want performance tests for demo loading (<3 seconds), so that user experience is fast. |
+| 13.4.4 | P1 | As a developer, I want accessibility tests for the demo (captions, keyboard nav), so that it's inclusive. |
 
 ---
 
@@ -1120,6 +1235,14 @@ This section tracks which user stories have implemented tests.
 | 16.2.3 | P1 | As a user, I want APM color-coded by tier, so that I quickly understand performance level. |
 | 16.2.4 | P2 | As a user, I want to see APM history charts, so that I can analyze trends. |
 
+### APM as Marketing KPI (Launch Priority)
+
+| ID | Priority | User Story |
+|----|----------|------------|
+| 16.3.1 | P0 | As a marketing lead, I want to show Autopilot's APM in demos, so that prospects see agent velocity. |
+| 16.3.2 | P0 | As a marketing lead, I want APM visible in replay bundles, so that demo viewers see the metric. |
+| 16.3.3 | P1 | As a marketing lead, I want APM leaderboards for public Autopilot runs, so that performance is visible. |
+
 ---
 
 ## d-017: ACP Integration
@@ -1162,6 +1285,14 @@ This section tracks which user stories have implemented tests.
 | 18.2.1 | P0 | As an operator, I want agents to respect memory limits, so that the host isn't overwhelmed. |
 | 18.2.2 | P1 | As an operator, I want platform-aware defaults (10 agents on Linux, 5 on macOS), so that resources are tuned. |
 | 18.2.3 | P2 | As an operator, I want to customize resource limits per agent, so that I can tune performance. |
+
+### Fleet on One Repo (Launch Priority)
+
+| ID | Priority | User Story |
+|----|----------|------------|
+| 18.3.1 | P0 | As an operator, I want to run a fleet of Autopilot agents on the OpenAgents repo, so that we dogfood the product. |
+| 18.3.2 | P0 | As an operator, I want fleet runs to generate demo-worthy trajectories, so that we have marketing content. |
+| 18.3.3 | P1 | As an operator, I want to select the best fleet runs for public demos, so that we showcase quality work. |
 
 ---
 
@@ -1373,28 +1504,85 @@ This section tracks which user stories have implemented tests.
 
 ---
 
+## d-027: Autopilot Demo + Dogfooding Funnel (Launch Priority)
+
+### Public Demo
+
+| ID | Priority | User Story |
+|----|----------|------------|
+| 27.1.1 | P0 | As a visitor, I want to see a real Autopilot replay on the homepage, so that I understand what the product does. |
+| 27.1.2 | P0 | As a visitor, I want the demo to show issue→PR flow in 90-120 seconds, so that I don't lose interest. |
+| 27.1.3 | P0 | As a visitor, I want to see receipts (tests passed, CI green), so that I trust the outcome is real. |
+| 27.1.4 | P0 | As a visitor, I want a clear CTA ("Try It On Your Repo") after the demo, so that I can try it myself. |
+| 27.1.5 | P1 | As a visitor, I want to scrub/replay the demo, so that I can examine details. |
+
+### Free Repo Connection
+
+| ID | Priority | User Story |
+|----|----------|------------|
+| 27.2.1 | P0 | As a visitor, I want to connect my GitHub repo without paying first, so that I can see value before committing. |
+| 27.2.2 | P0 | As a visitor, I want GitHub OAuth to be fast and simple, so that I don't drop off. |
+| 27.2.3 | P0 | As a new user, I want to select which repo to connect, so that I try Autopilot on my real code. |
+
+### Free First Analysis
+
+| ID | Priority | User Story |
+|----|----------|------------|
+| 27.3.1 | P0 | As a new user, I want Autopilot to scan my repo and show what it found, so that I see immediate value. |
+| 27.3.2 | P0 | As a new user, I want to see which issues Autopilot can handle, so that I understand its capabilities. |
+| 27.3.3 | P0 | As a new user, I want to see "this would take X hours manually", so that I understand the value proposition. |
+| 27.3.4 | P1 | As a new user, I want suggested first actions, so that I know where to start. |
+
+### Free Trial Run
+
+| ID | Priority | User Story |
+|----|----------|------------|
+| 27.4.1 | P0 | As a new user, I want 1 free Autopilot run, so that I experience the product before paying. |
+| 27.4.2 | P0 | As a new user, I want to see real results (PR created, tests run), so that I trust the product works. |
+| 27.4.3 | P1 | As a new user, I want to pick which issue to run on, so that I try it on something relevant. |
+
+### Upgrade to Paid
+
+| ID | Priority | User Story |
+|----|----------|------------|
+| 27.5.1 | P0 | As a trial user, I want to see what I got for free vs what paid unlocks, so that I understand the upgrade value. |
+| 27.5.2 | P0 | As a trial user, I want to pay with Stripe, so that I can use a credit card. |
+| 27.5.3 | P0 | As a trial user, I want to pay with Lightning, so that I can use Bitcoin. |
+| 27.5.4 | P0 | As a trial user, I want immediate access after payment, so that I can continue working. |
+
+### Replay Publishing Pipeline
+
+| ID | Priority | User Story |
+|----|----------|------------|
+| 27.6.1 | P0 | As an operator, I want to promote a run to public demo status, so that visitors can see it. |
+| 27.6.2 | P0 | As an operator, I want secrets automatically redacted before publish, so that nothing sensitive leaks. |
+| 27.6.3 | P0 | As an operator, I want replay bundles hosted on CDN, so that they load quickly. |
+| 27.6.4 | P1 | As an operator, I want to rotate demos without breaking old links, so that versioning works. |
+
+---
+
 ## Summary Statistics
 
 | Directive | User Stories | P0 | P1 | P2 |
 |-----------|-------------|----|----|-----|
 | d-001 | 27 | 17 | 9 | 1 |
 | d-002 | 22 | 14 | 7 | 1 |
-| d-003 | 20 | 11 | 7 | 2 |
-| d-004 | 12 | 5 | 5 | 2 |
+| d-003 | 24 | 14 | 8 | 2 |
+| d-004 | 38 | 23 | 13 | 2 |
 | d-005 | 22 | 12 | 8 | 2 |
 | d-006 | 16 | 9 | 6 | 1 |
 | d-007 | 14 | 8 | 5 | 1 |
-| d-008 | 21 | 12 | 8 | 1 |
-| d-009 | 13 | 6 | 5 | 2 |
-| d-010 | 7 | 5 | 2 | 0 |
+| d-008 | 29 | 18 | 10 | 1 |
+| d-009 | 22 | 13 | 7 | 2 |
+| d-010 | 10 | 7 | 3 | 0 |
 | d-011 | 8 | 3 | 3 | 2 |
 | d-012 | 4 | 2 | 2 | 0 |
-| d-013 | 10 | 5 | 4 | 1 |
+| d-013 | 14 | 7 | 6 | 1 |
 | d-014 | 8 | 5 | 3 | 0 |
 | d-015 | 6 | 4 | 2 | 0 |
-| d-016 | 7 | 3 | 3 | 1 |
+| d-016 | 10 | 5 | 4 | 1 |
 | d-017 | 7 | 4 | 3 | 0 |
-| d-018 | 8 | 4 | 3 | 1 |
+| d-018 | 11 | 6 | 4 | 1 |
 | d-019 | 7 | 4 | 3 | 0 |
 | d-020 | 9 | 7 | 2 | 0 |
 | d-021 | 6 | 4 | 2 | 0 |
@@ -1403,7 +1591,8 @@ This section tracks which user stories have implemented tests.
 | d-024 | 11 | 4 | 6 | 1 |
 | d-025 | 8 | 4 | 3 | 1 |
 | d-026 | 13 | 7 | 5 | 1 |
-| **TOTAL** | **306** | **179** | **115** | **22** |
+| d-027 | 23 | 19 | 4 | 0 |
+| **TOTAL** | **389** | **241** | **138** | **22** |
 
 ---
 
