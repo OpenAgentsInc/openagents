@@ -16,18 +16,16 @@
 
 ---
 
-## Outstanding User Stories (No Test Coverage Yet) — 11 total
+## Outstanding User Stories (No Test Coverage Yet) — 9 total
 
 These story IDs are defined in `.openagents/USERSTORIES.md` but are not listed in the Covered Stories table yet.
 
-Priority breakdown: P0 = 0, P1 = 7, P2 = 4.
+Priority breakdown: P0 = 0, P1 = 6, P2 = 3.
 P0 focus IDs: none.
 
-### d-006: NIP-SA (Sovereign Agents Protocol) (7)
+### d-006: NIP-SA (Sovereign Agents Protocol) (5)
 - [ ] 6.2.3 (P1) As an agent operator, I want to inspect (but not decrypt) state metadata, so that I can monitor size/frequency.
 - [ ] 6.2.4 (P2) As an agent, I want to compact old state events, so that I don't bloat the relay.
-- [ ] 6.3.3 (P1) As an agent operator, I want to pause/resume the schedule, so that I can control activity.
-- [ ] 6.3.4 (P2) As an agent operator, I want to set business hours, so that the agent only runs during work time.
 - [ ] 6.4.3 (P1) As an observer, I want to see an agent's tick history, so that I can monitor its activity.
 - [ ] 6.4.4 (P1) As an agent, I want to include a trajectory hash in my TickResult, so that my reasoning is verifiable.
 - [ ] 6.5.4 (P2) As an agent, I want to redact sensitive content from trajectories, so that secrets aren't leaked.
@@ -685,7 +683,7 @@ P0 focus IDs: none.
 
 ### Phase 3: Testing & Quality 🟡 IN PROGRESS
 
-Story coverage is incomplete (11 outstanding stories; see Outstanding User Stories).
+Story coverage is incomplete (9 outstanding stories; see Outstanding User Stories).
 12. **d-013**: Testing framework coverage ✅ (700+ tests)
 13. **d-026**: E2E test viewer ✅
 14. **d-014**: NIP-SA/Bifrost E2E tests ✅ (159 tests verified)
