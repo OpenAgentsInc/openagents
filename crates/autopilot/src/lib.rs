@@ -6,6 +6,7 @@
 use std::path::PathBuf;
 
 pub mod alerts;
+pub mod analysis;
 pub mod analyze;
 pub mod apm;
 pub mod apm_parser;
@@ -14,6 +15,7 @@ pub mod apm_telemetry_bridge;
 pub mod auto_issues;
 pub mod cli;
 pub mod compaction;
+pub mod compute;
 pub mod context_analysis;
 pub mod deprecation;
 pub mod daemon;
@@ -32,6 +34,7 @@ pub mod notifications;
 pub mod parallel;
 pub mod planmode;
 pub mod profiling;
+pub mod publish;
 pub mod redact;
 pub mod replay;
 pub mod reports;

@@ -33,6 +33,7 @@ acp-adapter = { path = "../acp-adapter" }
 issues.workspace = true
 nostr.workspace = true
 nostr-client = { path = "../nostr/client" }
+compute = { path = "../compute" }
 wallet = { path = "../wallet" }
 
 # CLI
@@ -61,6 +62,7 @@ chrono-tz = "0.10"
 
 # Error handling
 anyhow.workspace = true
+thiserror.workspace = true
 
 # Logging
 tracing.workspace = true
