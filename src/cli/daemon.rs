@@ -19,6 +19,10 @@ pub enum DaemonCommands {
         #[arg(short, long)]
         project: Option<String>,
 
+        /// Agent to use (claude, codex, gpt-oss, fm-bridge)
+        #[arg(long, default_value = "claude")]
+        agent: String,
+
         /// Model to use (sonnet, opus, haiku)
         #[arg(long, default_value = "sonnet")]
         model: String,
@@ -93,6 +97,7 @@ pub fn run(cmd: DaemonCommands) -> anyhow::Result<()> {
         DaemonCommands::Start {
             workdir,
             project,
+            agent,
             model,
             max_budget,
         } => {
@@ -105,6 +110,8 @@ pub fn run(cmd: DaemonCommands) -> anyhow::Result<()> {
                 args.push("--project".to_string());
                 args.push(project);
             }
+            args.push("--agent".to_string());
+            args.push(agent);
             args.push("--model".to_string());
             args.push(model);
             args.push("--max-budget".to_string());

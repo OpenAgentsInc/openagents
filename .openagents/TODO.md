@@ -532,8 +532,8 @@ P0 focus IDs: none.
   - [x] Tool handling (`tools/` module)
   - [x] Session management
   - [x] Python, browser, UI pane tools
-- [ ] **FM-Bridge Backend** (future - Apple Silicon)
-  - [ ] macOS 15.1+ Foundation Models integration
+- [x] **FM-Bridge Backend** ✅
+  - [x] macOS 15.1+ Foundation Models integration (autopilot + daemon + ACP)
 - [ ] **GUI Integration** (future)
   - [ ] Agent dropdown with gpt-oss option
 

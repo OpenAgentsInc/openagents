@@ -28,7 +28,7 @@ pub enum Commands {
         #[arg(short, long)]
         cwd: Option<PathBuf>,
 
-        /// Agent to use (claude, codex, or gpt-oss)
+        /// Agent to use (claude, codex, gpt-oss, or fm-bridge)
         #[arg(long, default_value = "claude")]
         agent: String,
 

@@ -909,6 +909,7 @@ dependencies = [
  "criterion 0.5.1",
  "dirs 5.0.1",
  "flate2",
+ "fm-bridge-agent",
  "futures",
  "futures-util",
  "gpt-oss-agent",

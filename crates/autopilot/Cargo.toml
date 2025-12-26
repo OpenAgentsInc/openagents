@@ -28,6 +28,7 @@ legacy-web = []
 claude-agent-sdk.workspace = true
 codex-agent-sdk.workspace = true
 gpt-oss-agent = { path = "../gpt-oss-agent" }
+fm-bridge-agent = { path = "../fm-bridge-agent" }
 acp-adapter = { path = "../acp-adapter" }
 issues.workspace = true
 nostr.workspace = true

@@ -89,6 +89,7 @@ impl WorkerSupervisor {
                 cmd.arg("run");
                 cmd.arg("--full-auto");
                 cmd.arg("--with-issues");
+                cmd.arg("--agent").arg(&self.config.agent);
                 cmd.arg("--model").arg(&self.config.model);
                 // Only pass budget if explicitly set (> 0)
                 if self.config.max_budget > 0.0 {
@@ -122,6 +123,7 @@ impl WorkerSupervisor {
                 }
                 cmd.arg("--full-auto");
                 cmd.arg("--with-issues");
+                cmd.arg("--agent").arg(&self.config.agent);
                 cmd.arg("--model").arg(&self.config.model);
                 // Only pass budget if explicitly set (> 0)
                 if self.config.max_budget > 0.0 {
@@ -570,6 +572,7 @@ mod tests {
                 .map(String::as_str)
                 .eq(["run", "--bin", "openagents", "--", "autopilot", "run"])
         );
+        assert!(args.contains(&"--agent".to_string()));
     }
 
     #[test]
@@ -588,6 +591,7 @@ mod tests {
                 .map(String::as_str)
                 .eq(["autopilot", "run"])
         );
+        assert!(args.contains(&"--agent".to_string()));
     }
 
     #[test]

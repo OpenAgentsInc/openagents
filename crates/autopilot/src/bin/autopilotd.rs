@@ -48,6 +48,10 @@ struct Cli {
     #[arg(short, long)]
     project: Option<String>,
 
+    /// Agent to use (claude, codex, gpt-oss, fm-bridge)
+    #[arg(long, default_value = "claude")]
+    agent: String,
+
     /// Model to use (sonnet, opus, haiku)
     #[arg(long, default_value = "sonnet")]
     model: String,
@@ -105,6 +109,7 @@ async fn main() -> Result<()> {
     if let Some(project) = cli.project {
         config.project = Some(project);
     }
+    config.agent = cli.agent;
     config.model = cli.model;
     config.max_budget = cli.max_budget;
     config.max_turns = cli.max_turns;
@@ -149,6 +154,7 @@ async fn run_daemon(config: DaemonConfig) -> Result<()> {
     eprintln!("Starting autopilotd...");
     eprintln!("  Working dir: {:?}", config.working_dir);
     eprintln!("  Project: {:?}", config.project);
+    eprintln!("  Agent: {}", config.agent);
     eprintln!("  Model: {}", config.model);
     if config.max_budget > 0.0 {
         eprintln!("  Max budget: ${:.2}", config.max_budget);
