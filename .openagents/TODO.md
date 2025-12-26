@@ -1,6 +1,6 @@
 # OpenAgents Production Readiness TODO
 
-**Generated:** 2025-12-26 (Updated: 2025-12-26 11:24)
+**Generated:** 2025-12-26 (Updated: 2025-12-26 11:05)
 **Goal:** Bring all 26 directives to full production readiness with WGPUI, real integrations, and comprehensive testing.
 
 ---
@@ -736,7 +736,7 @@ Story coverage is complete (see Covered Stories in `.openagents/USERSTORIES.md`)
 - [x] Marketplace payment flows complete ✅
 - [ ] **E2E with real sats** (optional - can use regtest)
   - [ ] ⚠️ Spark payments on testnet (test added: `crates/spark/tests/integration.rs::test_real_testnet_payment_flow`)
-    - Blocked: missing `SPARK_E2E_SENDER_MNEMONIC` / `SPARK_E2E_RECEIVER_MNEMONIC` (test skipped when run)
+    - Blocked: missing `SPARK_E2E_SENDER_MNEMONIC` / `SPARK_E2E_RECEIVER_MNEMONIC` (last checked 2025-12-26 11:05)
     - Requires `SPARK_E2E_SENDER_MNEMONIC`, `SPARK_E2E_RECEIVER_MNEMONIC`, optional `SPARK_E2E_AMOUNT_SATS`, `SPARK_E2E_NETWORK`, `SPARK_E2E_API_KEY`
   - [ ] Marketplace flow with real payments (test added: `crates/marketplace/tests/real_payments_e2e.rs::test_marketplace_payment_flow_real_sats`)
     - Requires `MARKETPLACE_E2E_SENDER_MNEMONIC` / `MARKETPLACE_E2E_RECEIVER_MNEMONIC` (or SPARK equivalents), optional `MARKETPLACE_E2E_AMOUNT_SATS`, `MARKETPLACE_E2E_NETWORK`, `MARKETPLACE_E2E_API_KEY`
