@@ -172,6 +172,8 @@ This section tracks which user stories have implemented tests.
 | 7.3.3 | Decrypt as fast as regular ECDH | Unit | `crates/frostr/src/ecdh.rs` |
 | 7.4.1 | Discover Bifrost peers on Nostr relays | Integration | `crates/frostr/tests/bifrost_e2e.rs` |
 | 7.4.2 | Send and receive Bifrost messages | Integration | `crates/frostr/tests/bifrost_e2e.rs` |
+| 7.4.3 | Handle peer disconnection gracefully | Unit | `crates/frostr/src/bifrost/node.rs` |
+| 7.4.4 | Retry failed requests automatically | Unit | `crates/frostr/src/bifrost/node.rs` |
 | **d-008: Unified Marketplace** ||||
 | 8.1.1 | Browse available compute providers | Integration | `crates/marketplace/tests/compute_e2e.rs` |
 | 8.1.2 | Submit a job and receive a result | Integration | `crates/marketplace/tests/compute_e2e.rs` |

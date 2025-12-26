@@ -16,16 +16,15 @@
 
 ---
 
-## Outstanding User Stories (No Test Coverage Yet) — 2 total
+## Outstanding User Stories (No Test Coverage Yet) — 0 total
 
 These story IDs are defined in `.openagents/USERSTORIES.md` but are not listed in the Covered Stories table yet.
 
-Priority breakdown: P0 = 0, P1 = 2, P2 = 0.
+Priority breakdown: P0 = 0, P1 = 0, P2 = 0.
 P0 focus IDs: none.
 
-### d-007: FROSTR (Threshold Signatures) (2)
-- [ ] 7.4.3 (P1) As a node, I want to handle peer disconnection gracefully, so that the group remains functional.
-- [ ] 7.4.4 (P1) As a requester, I want to retry failed requests automatically, so that transient failures don't block me.
+### d-007: FROSTR (Threshold Signatures) (0)
+- None 🎉
 
 ---
 
