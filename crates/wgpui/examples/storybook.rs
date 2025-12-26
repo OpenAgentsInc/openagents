@@ -42,6 +42,7 @@ use wgpui::components::organisms::{
 };
 use wgpui::components::sections::{
     FeedbackRating, MessageEditor, ThreadFeedback, ThreadHeader, ThreadView,
+    TrajectoryEntry, TrajectoryView,
 };
 use wgpui::components::molecules::{EntryActions, TerminalHeader};
 use wgpui::components::molecules::{
@@ -5909,6 +5910,37 @@ impl Storybook {
                 .mode(Mode::Normal)
                 .placeholder("Continue the conversation...");
             editor.paint(Bounds::new(inner.origin.x, editor_y, inner.size.width, 64.0), cx);
+        });
+        y += layout_height + SECTION_GAP;
+
+        // ========== Panel 7: Trajectory View ==========
+        let trajectory_height = panel_height(220.0);
+        let trajectory_bounds = Bounds::new(bounds.origin.x, y, width, trajectory_height);
+        draw_panel("Trajectory View", trajectory_bounds, cx, |inner, cx| {
+            let entries = vec![
+                TrajectoryEntry::new("Load workspace")
+                    .detail("Open repository state")
+                    .timestamp("00:12")
+                    .status(TrajectoryStatus::Verified),
+                TrajectoryEntry::new("Analyze failing tests")
+                    .detail("Unit tests: 3 failed")
+                    .timestamp("00:32")
+                    .status(TrajectoryStatus::Partial),
+                TrajectoryEntry::new("Apply fix")
+                    .detail("Update parser edge cases")
+                    .timestamp("01:05")
+                    .status(TrajectoryStatus::Verified),
+                TrajectoryEntry::new("Re-run suite")
+                    .detail("All green")
+                    .timestamp("01:42")
+                    .status(TrajectoryStatus::Verified),
+            ];
+
+            let mut view = TrajectoryView::new().entries(entries);
+            view.paint(
+                Bounds::new(inner.origin.x, inner.origin.y, inner.size.width, inner.size.height),
+                cx,
+            );
         });
     }
 

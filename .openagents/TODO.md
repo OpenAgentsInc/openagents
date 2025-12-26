@@ -298,7 +298,7 @@ P0 focus IDs: none.
   - [x] 43 atoms (exceeded 37 target)
   - [x] 35 molecules (exceeded 25 target)
   - [x] 20 organisms (matches target)
-  - [x] 4 sections (ThreadView, ThreadHeader, MessageEditor, ThreadFeedback)
+  - [x] 5 sections (ThreadView, ThreadHeader, MessageEditor, ThreadFeedback, TrajectoryView)
   - [x] 12 HUD frames (exceeded 9 target)
 - [x] **Storybook example** ✅
   - [x] `examples/storybook.rs` - 9193 lines
@@ -524,13 +524,13 @@ P0 focus IDs: none.
 - [x] 43 atoms (target: 12-13) ✅
 - [x] 35 molecules (target: 10) ✅
 - [x] 20 organisms (target: 10) ✅
-- [x] 4 sections (target: 5) - ThreadView, ThreadHeader, MessageEditor, ThreadFeedback
+- [x] 5 sections (target: 5) - ThreadView, ThreadHeader, MessageEditor, ThreadFeedback, TrajectoryView
 - [x] 12 HUD components ✅
 - [x] Markdown/streaming ✅
 - [x] Theme alignment ✅
 
 **Optional Enhancements:**
-- [ ] Add 5th section (TrajectoryView or similar)
+- [x] Add 5th section (TrajectoryView) ✅
 - [x] Verify Vera Mono font usage across all components ✅
 
 **Files:** `crates/wgpui/src/` ✅
