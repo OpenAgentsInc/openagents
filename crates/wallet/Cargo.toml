@@ -68,6 +68,7 @@ reqwest = { workspace = true, features = ["json", "blocking"] }
 argon2 = "0.5"
 chacha20poly1305 = "0.10"
 rpassword = "7"
+qrcode = "0.14"
 
 [dev-dependencies]
 reqwest = { workspace = true, features = ["blocking"] }

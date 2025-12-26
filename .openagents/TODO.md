@@ -16,20 +16,17 @@
 
 ---
 
-## Outstanding User Stories (No Test Coverage Yet) — 46 total
+## Outstanding User Stories (No Test Coverage Yet) — 43 total
 
 These story IDs are defined in `.openagents/USERSTORIES.md` but are not listed in the Covered Stories table yet.
 
-Priority breakdown: P0 = 12, P1 = 24, P2 = 10.
-P0 focus IDs: 1.4.1, 1.4.2, 1.4.3, 3.2.1, 3.2.2, 3.2.3, 3.3.1, 3.3.2, 3.3.3, 23.1.3, 25.2.1, 25.2.2.
+Priority breakdown: P0 = 9, P1 = 24, P2 = 10.
+P0 focus IDs: 3.2.1, 3.2.2, 3.2.3, 3.3.1, 3.3.2, 3.3.3, 23.1.3, 25.2.1, 25.2.2.
 
-### d-001: Breez Spark SDK Integration (11)
+### d-001: Breez Spark SDK Integration (8)
 - [ ] 1.3.5 (P1) As a user, I want to cancel a pending transaction before it confirms, so that I can correct mistakes.
 - [ ] 1.3.6 (P1) As a user, I want to scan a QR code to populate payment details, so that I don't have to type long addresses.
 - [ ] 1.3.7 (P2) As a user, I want to save frequently-used addresses as contacts, so that I can pay them quickly.
-- [ ] 1.4.1 (P0) As a user, I want to generate a Lightning invoice for a specific amount, so that I can receive payments.
-- [ ] 1.4.2 (P0) As a user, I want to see a QR code for my invoice, so that payers can scan it easily.
-- [ ] 1.4.3 (P0) As a user, I want to copy my invoice string to clipboard, so that I can share it in chat.
 - [ ] 1.4.4 (P1) As a user, I want to receive push notifications when a payment arrives, so that I know immediately.
 - [ ] 1.4.5 (P1) As a user, I want to generate a reusable Lightning address, so that I don't need new invoices each time.
 - [ ] 1.4.6 (P2) As a user, I want to set an invoice expiry time, so that stale invoices don't clutter my history.
@@ -732,7 +729,7 @@ P0 focus IDs: 1.4.1, 1.4.2, 1.4.3, 3.2.1, 3.2.2, 3.2.3, 3.3.1, 3.3.2, 3.3.3, 23.
 
 ### Phase 3: Testing & Quality 🟡 IN PROGRESS
 
-Story coverage is incomplete (46 outstanding stories; see Outstanding User Stories).
+Story coverage is incomplete (43 outstanding stories; see Outstanding User Stories).
 12. **d-013**: Testing framework coverage ✅ (700+ tests)
 13. **d-026**: E2E test viewer ✅
 14. **d-014**: NIP-SA/Bifrost E2E tests ✅ (159 tests verified)

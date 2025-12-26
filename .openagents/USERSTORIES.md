@@ -62,6 +62,9 @@ This section tracks which user stories have implemented tests.
 | 1.3.2 | Send Bitcoin to an on-chain address | Unit | `crates/wallet/src/cli/bitcoin.rs` |
 | 1.3.3 | Send to a Spark address | Unit | `crates/wallet/src/cli/bitcoin.rs` |
 | 1.3.4 | Show confirmation with fee estimate before sending | Unit | `crates/wallet/src/cli/bitcoin.rs` |
+| 1.4.1 | Generate a Lightning invoice for a specific amount | Unit | `crates/wallet/src/cli/bitcoin.rs` |
+| 1.4.2 | Show a QR code for invoices | Unit | `crates/wallet/src/cli/bitcoin.rs` |
+| 1.4.3 | Copy invoice string to clipboard | Unit | `crates/wallet/src/cli/bitcoin.rs` |
 | 1.5.1 | Clear error messages when payment fails | Unit | `crates/spark/src/error.rs` |
 | 1.5.2 | Failed transactions don't deduct balance | Unit | `crates/spark/src/error.rs` |
 | **d-002: Nostr Protocol Implementation** ||||
@@ -375,7 +378,7 @@ This section tracks which user stories have implemented tests.
 | `crates/wgpui/src/testing/runner.rs` | TestRunner playback + step control | 26.2.4, 26.2.5 |
 | `tests/cli_integration.rs` | Unified CLI headless launch, wallet init, and delegation coverage | 1.1.1, 1.1.3, 4.3.1, 4.3.3-4.3.4, 10.1.1-10.1.6, 16.2.1, 19.2.1 |
 | `tests/wallet_cli_integration.rs` | Wallet identity, profile, contacts, post, DM, and export flows | 1.1.2, 1.1.4-1.1.5, 3.1.1-3.1.4, 3.2.5-3.2.6, 3.4.2 |
-| `crates/wallet/src/cli/bitcoin.rs` | Wallet balance/send/history formatting | 1.2.1-1.2.2, 1.2.4-1.2.5, 1.3.1-1.3.4 |
+| `crates/wallet/src/cli/bitcoin.rs` | Wallet balance/send/receive/history formatting | 1.2.1-1.2.2, 1.2.4-1.2.5, 1.3.1-1.3.4, 1.4.1-1.4.3 |
 | `tests/legacy_binaries.rs` | Legacy binary deprecation warnings + symlink installer coverage | 10.2.1-10.2.2 |
 | `tests/no_stubs.rs` | Stub pattern scanning + exceptions documentation checks | 12.1.1-12.1.4 |
 | `tests/testing_framework.rs` | Snapshot + coverage documentation checks | 13.1.3, 13.3.2 |

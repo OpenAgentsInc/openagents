@@ -8,6 +8,8 @@ use spark::{Network, SparkSigner, SparkWallet, WalletConfig};
 use std::path::PathBuf;
 use crate::cli::load_mnemonic;
 
+const CLIPBOARD_FILE_ENV: &str = "OPENAGENTS_CLIPBOARD_FILE";
+
 /// Get or create the SparkWallet from keychain mnemonic
 async fn get_wallet() -> Result<SparkWallet> {
     // Get mnemonic from keychain
@@ -58,7 +60,7 @@ pub fn balance() -> Result<()> {
 }
 
 /// Generate a receive address or invoice
-pub fn receive(amount: Option<u64>) -> Result<()> {
+pub fn receive(amount: Option<u64>, show_qr: bool, copy: bool) -> Result<()> {
     let rt = tokio::runtime::Runtime::new()?;
     rt.block_on(async {
         let wallet = get_wallet().await?;
@@ -67,26 +69,189 @@ pub fn receive(amount: Option<u64>) -> Result<()> {
             Some(sats) => {
                 // Create invoice for specific amount
                 let response = wallet.create_invoice(sats, None, None).await?;
-                println!("Lightning Invoice Created");
-                println!("────────────────────────────────────────");
-                println!("Amount: {} sats", sats);
-                println!();
-                println!("Invoice:");
-                println!("{}", response.payment_request);
+                let mut output = format_receive_invoice(sats, &response.payment_request, show_qr)?;
+                if copy {
+                    copy_to_clipboard(&response.payment_request)?;
+                    output.push_str("Copied invoice to clipboard.\n");
+                }
+                print!("{}", output);
             }
             None => {
                 // Get static Spark address
                 let address = wallet.get_spark_address().await?;
-                println!("Spark Address");
-                println!("────────────────────────────────────────");
-                println!("Send any amount to this address:");
-                println!();
-                println!("{}", address);
+                let mut output = format_receive_address(&address, show_qr)?;
+                if copy {
+                    copy_to_clipboard(&address)?;
+                    output.push_str("Copied address to clipboard.\n");
+                }
+                print!("{}", output);
             }
         }
 
         Ok(())
     })
+}
+
+fn format_receive_invoice(amount: u64, invoice: &str, show_qr: bool) -> Result<String> {
+    let mut output = String::new();
+    output.push_str("Lightning Invoice Created\n");
+    output.push_str("────────────────────────────────────────\n");
+    output.push_str(&format!("Amount: {} sats\n", amount));
+    output.push('\n');
+    output.push_str("Invoice:\n");
+    output.push_str(invoice);
+    output.push('\n');
+
+    if show_qr {
+        output.push('\n');
+        output.push_str("QR Code:\n");
+        output.push_str(&generate_qr_ascii(invoice)?);
+        output.push('\n');
+    }
+
+    Ok(output)
+}
+
+fn format_receive_address(address: &str, show_qr: bool) -> Result<String> {
+    let mut output = String::new();
+    output.push_str("Spark Address\n");
+    output.push_str("────────────────────────────────────────\n");
+    output.push_str("Send any amount to this address:\n");
+    output.push('\n');
+    output.push_str(address);
+    output.push('\n');
+
+    if show_qr {
+        output.push('\n');
+        output.push_str("QR Code:\n");
+        output.push_str(&generate_qr_ascii(address)?);
+        output.push('\n');
+    }
+
+    Ok(output)
+}
+
+fn generate_qr_ascii(payload: &str) -> Result<String> {
+    let code = qrcode::QrCode::new(payload.as_bytes())
+        .context("Failed to generate QR code")?;
+    let width = code.width();
+    let border = 2usize;
+    let mut output = String::new();
+
+    for y in 0..(width + border * 2) {
+        for x in 0..(width + border * 2) {
+            let module_is_dark = if x < border || y < border || x >= width + border || y >= width + border {
+                false
+            } else {
+                code[(x - border, y - border)] == qrcode::types::Color::Dark
+            };
+            if module_is_dark {
+                output.push_str("##");
+            } else {
+                output.push_str("  ");
+            }
+        }
+        output.push('\n');
+    }
+
+    Ok(output)
+}
+
+fn copy_to_clipboard(contents: &str) -> Result<()> {
+    if let Ok(path) = std::env::var(CLIPBOARD_FILE_ENV) {
+        std::fs::write(&path, contents)
+            .with_context(|| format!("Failed to write clipboard contents to {}", path))?;
+        return Ok(());
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        return copy_with_command("pbcopy", &[], contents);
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        if copy_with_command_if_exists("wl-copy", &[], contents)? {
+            return Ok(());
+        }
+        if copy_with_command_if_exists("xclip", &["-selection", "clipboard"], contents)? {
+            return Ok(());
+        }
+        if copy_with_command_if_exists("xsel", &["--clipboard", "--input"], contents)? {
+            return Ok(());
+        }
+
+        anyhow::bail!("Clipboard copy failed. Install wl-copy or xclip.");
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        return copy_with_command("cmd", &["/C", "clip"], contents);
+    }
+
+    #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
+    {
+        anyhow::bail!("Clipboard copy is not supported on this platform.");
+    }
+}
+
+fn copy_with_command(command: &str, args: &[&str], contents: &str) -> Result<()> {
+    use std::io::Write;
+    use std::process::{Command, Stdio};
+
+    let mut child = Command::new(command)
+        .args(args)
+        .stdin(Stdio::piped())
+        .spawn()
+        .with_context(|| format!("Failed to start {}", command))?;
+
+    let Some(stdin) = child.stdin.as_mut() else {
+        anyhow::bail!("Failed to open stdin for {}", command);
+    };
+    stdin
+        .write_all(contents.as_bytes())
+        .with_context(|| format!("Failed to write to {}", command))?;
+
+    let status = child
+        .wait()
+        .with_context(|| format!("Failed to wait for {}", command))?;
+    if !status.success() {
+        anyhow::bail!("{} exited with {}", command, status);
+    }
+
+    Ok(())
+}
+
+#[cfg(target_os = "linux")]
+fn copy_with_command_if_exists(
+    command: &str,
+    args: &[&str],
+    contents: &str,
+) -> Result<bool> {
+    use std::io::{ErrorKind, Write};
+    use std::process::{Command, Stdio};
+
+    let mut child = match Command::new(command).args(args).stdin(Stdio::piped()).spawn() {
+        Ok(child) => child,
+        Err(err) if err.kind() == ErrorKind::NotFound => return Ok(false),
+        Err(err) => return Err(err.into()),
+    };
+
+    let Some(stdin) = child.stdin.as_mut() else {
+        anyhow::bail!("Failed to open stdin for {}", command);
+    };
+    stdin
+        .write_all(contents.as_bytes())
+        .with_context(|| format!("Failed to write to {}", command))?;
+
+    let status = child
+        .wait()
+        .with_context(|| format!("Failed to wait for {}", command))?;
+    if !status.success() {
+        anyhow::bail!("{} exited with {}", command, status);
+    }
+
+    Ok(true)
 }
 
 /// Send payment to address or pay invoice
@@ -461,6 +626,9 @@ mod tests {
         PaymentMethod, PaymentRequestSource, PrepareSendPaymentResponse, SendOnchainFeeQuote,
         SendOnchainSpeedFeeQuote, SendPaymentMethod,
     };
+    use std::sync::Mutex;
+
+    static CLIPBOARD_ENV_LOCK: Mutex<()> = Mutex::new(());
 
     fn sample_payment(status: spark::PaymentStatus) -> spark::Payment {
         spark::Payment {
@@ -608,6 +776,50 @@ mod tests {
         let output = format_send_preview(&preview);
         assert!(output.contains("Spark Address"));
         assert!(output.contains("Spark: 9 sats"));
+    }
+
+    #[test]
+    fn test_format_receive_invoice_with_qr() {
+        let output = format_receive_invoice(1500, "lnbc1invoice", true).unwrap();
+        assert!(output.contains("Lightning Invoice Created"));
+        assert!(output.contains("Amount: 1500 sats"));
+        assert!(output.contains("lnbc1invoice"));
+        assert!(output.contains("QR Code:"));
+        assert!(output.contains("##"));
+    }
+
+    #[test]
+    fn test_format_receive_address_without_qr() {
+        let output = format_receive_address("spark1address", false).unwrap();
+        assert!(output.contains("Spark Address"));
+        assert!(output.contains("spark1address"));
+        assert!(!output.contains("QR Code:"));
+    }
+
+    #[test]
+    fn test_copy_to_clipboard_file_env() {
+        let _guard = CLIPBOARD_ENV_LOCK.lock().unwrap();
+        let temp = tempfile::NamedTempFile::new().unwrap();
+        let path = temp.path().to_path_buf();
+        let original = std::env::var(CLIPBOARD_FILE_ENV).ok();
+
+        unsafe {
+            std::env::set_var(CLIPBOARD_FILE_ENV, &path);
+        }
+        copy_to_clipboard("clipboard-test").unwrap();
+
+        let contents = std::fs::read_to_string(&path).unwrap();
+        assert_eq!(contents, "clipboard-test");
+
+        if let Some(value) = original {
+            unsafe {
+                std::env::set_var(CLIPBOARD_FILE_ENV, value);
+            }
+        } else {
+            unsafe {
+                std::env::remove_var(CLIPBOARD_FILE_ENV);
+            }
+        }
     }
 }
 

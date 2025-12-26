@@ -39,6 +39,14 @@ pub enum WalletCommands {
         /// Amount to request (optional)
         #[arg(short, long)]
         amount: Option<u64>,
+
+        /// Show a QR code for the invoice or address
+        #[arg(long)]
+        qr: bool,
+
+        /// Copy the invoice or address to clipboard
+        #[arg(long)]
+        copy: bool,
     },
 
     /// Send payment
@@ -185,7 +193,9 @@ pub fn run(cmd: WalletCommands) -> anyhow::Result<()> {
         },
         WalletCommands::Whoami => wallet::cli::identity::whoami(),
         WalletCommands::Balance => wallet::cli::bitcoin::balance(),
-        WalletCommands::Receive { amount } => wallet::cli::bitcoin::receive(amount),
+        WalletCommands::Receive { amount, qr, copy } => {
+            wallet::cli::bitcoin::receive(amount, qr, copy)
+        }
         WalletCommands::Send { address, amount, yes } => {
             wallet::cli::bitcoin::send(address, amount, yes)
         }
