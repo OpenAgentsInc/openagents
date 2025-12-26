@@ -61,6 +61,7 @@ pub enum BackendCommand {
     StopParallel,
     RunPrompt { prompt: String },
     AbortPrompt,
+    SetAgent { agent: String },
     SelectSession { session_id: String },
 }
 
@@ -222,7 +223,7 @@ impl PromptRunner {
 }
 
 fn run_backend_loop(
-    config: BackendConfig,
+    mut config: BackendConfig,
     tx: mpsc::Sender<BackendEvent>,
     cmd_rx: mpsc::Receiver<BackendCommand>,
 ) {
@@ -244,7 +245,7 @@ fn run_backend_loop(
         while let Ok(cmd) = cmd_rx.try_recv() {
             handle_command(
                 cmd,
-                &config,
+                &mut config,
                 &tx,
                 runtime.as_ref(),
                 &mut full_auto,
@@ -350,7 +351,7 @@ fn run_backend_loop(
 
 fn handle_command(
     cmd: BackendCommand,
-    config: &BackendConfig,
+    config: &mut BackendConfig,
     tx: &Sender<BackendEvent>,
     runtime: Option<&tokio::runtime::Runtime>,
     full_auto: &mut Option<FullAutoManager>,
@@ -444,6 +445,14 @@ fn handle_command(
             } else {
                 let _ = tx.send(BackendEvent::Status {
                     message: "Prompt aborted".to_string(),
+                });
+            }
+        }
+        BackendCommand::SetAgent { agent } => {
+            if config.agent != agent {
+                config.agent = agent.clone();
+                let _ = tx.send(BackendEvent::Status {
+                    message: format!("Agent set to {}", agent),
                 });
             }
         }

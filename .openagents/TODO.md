@@ -534,8 +534,8 @@ P0 focus IDs: none.
   - [x] Python, browser, UI pane tools
 - [x] **FM-Bridge Backend** ✅
   - [x] macOS 15.1+ Foundation Models integration (autopilot + daemon + ACP)
-- [ ] **GUI Integration** (future)
-  - [ ] Agent dropdown with gpt-oss option
+- [x] **GUI Integration** ✅
+  - [x] Agent dropdown with gpt-oss option
 
 **Files:**
 - `crates/gpt-oss/src/` ✅
