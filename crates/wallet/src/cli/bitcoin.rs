@@ -5,13 +5,12 @@
 use anyhow::{Context, Result};
 use chrono;
 use spark::{SparkSigner, SparkWallet, WalletConfig, Network};
-use crate::storage::keychain::SecureKeychain;
+use crate::cli::load_mnemonic;
 
 /// Get or create the SparkWallet from keychain mnemonic
 async fn get_wallet() -> Result<SparkWallet> {
     // Get mnemonic from keychain
-    let mnemonic = SecureKeychain::retrieve_mnemonic()
-        .context("No wallet found. Run 'openagents wallet init' first to create a wallet.")?;
+    let mnemonic = load_mnemonic()?;
 
     // Create signer from mnemonic
     let signer = SparkSigner::from_mnemonic(&mnemonic, "")

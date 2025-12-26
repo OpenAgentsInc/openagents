@@ -61,6 +61,10 @@ enum Commands {
     /// Export wallet mnemonic (requires confirmation)
     Export,
 
+    /// Wallet password management
+    #[command(subcommand)]
+    Password(PasswordCommands),
+
     /// Display wallet information (npub, balances, profile)
     Whoami,
 
@@ -314,6 +318,20 @@ enum SettingsCommands {
 }
 
 #[derive(Subcommand)]
+enum PasswordCommands {
+    /// Set or change the wallet password
+    Set {
+        /// New password (will prompt if not provided)
+        #[arg(long)]
+        password: Option<String>,
+
+        /// Current password (required if already protected)
+        #[arg(long)]
+        current_password: Option<String>,
+    },
+}
+
+#[derive(Subcommand)]
 enum FrostrCommands {
     /// Generate threshold key shares
     Keygen {
@@ -410,6 +428,11 @@ fn run(command: Commands) -> anyhow::Result<()> {
         Commands::Export => {
             cli::identity::export()
         }
+        Commands::Password(cmd) => match cmd {
+            PasswordCommands::Set { password, current_password } => {
+                cli::password::set(password, current_password)
+            }
+        },
         Commands::Whoami => {
             cli::identity::whoami()
         }

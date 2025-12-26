@@ -16,15 +16,14 @@
 
 ---
 
-## Outstanding User Stories (No Test Coverage Yet) — 55 total
+## Outstanding User Stories (No Test Coverage Yet) — 54 total
 
 These story IDs are defined in `.openagents/USERSTORIES.md` but are not listed in the Covered Stories table yet.
 
-Priority breakdown: P0 = 18, P1 = 26, P2 = 11.
+Priority breakdown: P0 = 18, P1 = 25, P2 = 11.
 P0 focus IDs: 1.2.1, 1.2.2, 1.3.1, 1.3.2, 1.3.3, 1.3.4, 1.4.1, 1.4.2, 1.4.3, 3.2.1, 3.2.2, 3.2.3, 3.3.1, 3.3.2, 3.3.3, 23.1.3, 25.2.1, 25.2.2.
 
-### d-001: Breez Spark SDK Integration (20)
-- [ ] 1.1.5 (P1) As a user, I want to set a wallet password for additional protection, so that even if someone accesses my keychain, they can't use my funds.
+### d-001: Breez Spark SDK Integration (19)
 - [ ] 1.2.1 (P0) As a user, I want to see my current balance in sats and USD, so that I know how much I have available.
 - [ ] 1.2.2 (P0) As a user, I want to see separate Lightning and Spark L2 balances, so that I understand where my funds are.
 - [ ] 1.2.4 (P1) As a user, I want to see pending transactions marked clearly, so that I know which payments are in-flight.
@@ -741,7 +740,7 @@ P0 focus IDs: 1.2.1, 1.2.2, 1.3.1, 1.3.2, 1.3.3, 1.3.4, 1.4.1, 1.4.2, 1.4.3, 3.2
 
 ### Phase 3: Testing & Quality 🟡 IN PROGRESS
 
-Story coverage is incomplete (55 outstanding stories; see Outstanding User Stories).
+Story coverage is incomplete (54 outstanding stories; see Outstanding User Stories).
 12. **d-013**: Testing framework coverage ✅ (700+ tests)
 13. **d-026**: E2E test viewer ✅
 14. **d-014**: NIP-SA/Bifrost E2E tests ✅ (159 tests verified)

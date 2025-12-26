@@ -2,6 +2,7 @@
 
 use anyhow::{Context, Result};
 use colored::Colorize;
+use crate::cli::load_mnemonic;
 use crate::core::identity::UnifiedIdentity;
 use spark::{Network, SparkSigner, SparkWallet, WalletConfig as SparkWalletConfig};
 use crate::storage::keychain::SecureKeychain;
@@ -144,8 +145,7 @@ pub fn export() -> Result<()> {
     println!();
 
     // Retrieve from keychain
-    let mnemonic_phrase = SecureKeychain::retrieve_mnemonic()
-        .context("Failed to retrieve mnemonic from keychain")?;
+    let mnemonic_phrase = load_mnemonic()?;
 
     // Display mnemonic
     println!("{}", "Your recovery phrase:".bold());
@@ -173,8 +173,7 @@ pub fn whoami() -> Result<()> {
     }
 
     // Retrieve mnemonic
-    let mnemonic_phrase = SecureKeychain::retrieve_mnemonic()
-        .context("Failed to retrieve mnemonic from keychain")?;
+    let mnemonic_phrase = load_mnemonic()?;
 
     // Parse mnemonic
     let mnemonic = Mnemonic::parse(&mnemonic_phrase)
@@ -249,7 +248,7 @@ pub fn profile_show() -> Result<()> {
     }
 
     // Load identity for pubkey
-    let mnemonic_phrase = SecureKeychain::retrieve_mnemonic()?;
+    let mnemonic_phrase = load_mnemonic()?;
     let mnemonic = Mnemonic::parse(&mnemonic_phrase)?;
     let identity = UnifiedIdentity::from_mnemonic(mnemonic)?;
 
@@ -311,7 +310,7 @@ pub fn profile_set(
     }
 
     // Load identity
-    let mnemonic_phrase = SecureKeychain::retrieve_mnemonic()?;
+    let mnemonic_phrase = load_mnemonic()?;
     let mnemonic = Mnemonic::parse(&mnemonic_phrase)?;
     let identity = UnifiedIdentity::from_mnemonic(mnemonic)?;
 
@@ -518,7 +517,7 @@ pub fn contacts_add(npub: String, name: Option<String>) -> Result<()> {
 
     save_contacts(&contacts)?;
 
-    let mnemonic_phrase = SecureKeychain::retrieve_mnemonic()?;
+    let mnemonic_phrase = load_mnemonic()?;
     let mnemonic = Mnemonic::parse(&mnemonic_phrase)?;
     let identity = UnifiedIdentity::from_mnemonic(mnemonic)?;
     let event = create_contact_list_event(&identity, &contacts)?;
@@ -590,7 +589,7 @@ pub fn contacts_remove(npub: String) -> Result<()> {
 
     save_contacts(&contacts)?;
 
-    let mnemonic_phrase = SecureKeychain::retrieve_mnemonic()?;
+    let mnemonic_phrase = load_mnemonic()?;
     let mnemonic = Mnemonic::parse(&mnemonic_phrase)?;
     let identity = UnifiedIdentity::from_mnemonic(mnemonic)?;
     let event = create_contact_list_event(&identity, &contacts)?;
@@ -652,7 +651,7 @@ pub fn post(content: String) -> Result<()> {
     }
 
     // Load identity
-    let mnemonic_phrase = SecureKeychain::retrieve_mnemonic()?;
+    let mnemonic_phrase = load_mnemonic()?;
     let mnemonic = Mnemonic::parse(&mnemonic_phrase)?;
     let identity = UnifiedIdentity::from_mnemonic(mnemonic)?;
 
@@ -725,7 +724,7 @@ pub fn dm_send(recipient: String, message: String) -> Result<()> {
     };
 
     // Load identity
-    let mnemonic_str = SecureKeychain::retrieve_mnemonic()?;
+    let mnemonic_str = load_mnemonic()?;
     let mnemonic = Mnemonic::parse(&mnemonic_str)?;
     let identity = UnifiedIdentity::from_mnemonic(mnemonic)?;
 
@@ -819,7 +818,7 @@ pub fn dm_list(limit: usize) -> Result<()> {
     }
 
     // Load identity
-    let mnemonic_str = SecureKeychain::retrieve_mnemonic()?;
+    let mnemonic_str = load_mnemonic()?;
     let mnemonic = Mnemonic::parse(&mnemonic_str)?;
     let identity = UnifiedIdentity::from_mnemonic(mnemonic)?;
 
@@ -917,7 +916,7 @@ pub fn dm_read(event_id: String) -> Result<()> {
     }
 
     // Load identity
-    let mnemonic_str = SecureKeychain::retrieve_mnemonic()?;
+    let mnemonic_str = load_mnemonic()?;
     let mnemonic = Mnemonic::parse(&mnemonic_str)?;
     let identity = UnifiedIdentity::from_mnemonic(mnemonic)?;
 
