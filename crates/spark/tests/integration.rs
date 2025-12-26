@@ -177,6 +177,69 @@ mod config_tests {
 
 mod wallet_tests {
     use super::*;
+    use openagents_spark::{Payment, PaymentStatus, PaymentType, SparkError};
+    use tokio::time::{sleep, Duration, Instant};
+
+    async fn wait_for_payment_by_id(
+        wallet: &SparkWallet,
+        payment_id: &str,
+        timeout: Duration,
+    ) -> Result<Payment, SparkError> {
+        let deadline = Instant::now() + timeout;
+
+        loop {
+            let payments = wallet.list_payments(Some(50), Some(0)).await?;
+            if let Some(payment) = payments.into_iter().find(|p| p.id == payment_id) {
+                if payment.status == PaymentStatus::Completed {
+                    return Ok(payment);
+                }
+                if payment.status == PaymentStatus::Failed {
+                    return Err(SparkError::Wallet(format!(
+                        "payment {} failed",
+                        payment_id
+                    )));
+                }
+            }
+
+            if Instant::now() >= deadline {
+                return Err(SparkError::Wallet(format!(
+                    "timed out waiting for payment {}",
+                    payment_id
+                )));
+            }
+
+            sleep(Duration::from_secs(2)).await;
+        }
+    }
+
+    async fn wait_for_receive_amount(
+        wallet: &SparkWallet,
+        amount_sats: u64,
+        timeout: Duration,
+    ) -> Result<Payment, SparkError> {
+        let deadline = Instant::now() + timeout;
+        let amount = amount_sats as u128;
+
+        loop {
+            let payments = wallet.list_payments(Some(50), Some(0)).await?;
+            if let Some(payment) = payments.into_iter().find(|p| {
+                p.payment_type == PaymentType::Receive
+                    && p.amount == amount
+                    && p.status == PaymentStatus::Completed
+            }) {
+                return Ok(payment);
+            }
+
+            if Instant::now() >= deadline {
+                return Err(SparkError::Wallet(format!(
+                    "timed out waiting for receive payment of {} sats",
+                    amount_sats
+                )));
+            }
+
+            sleep(Duration::from_secs(2)).await;
+        }
+    }
 
     #[tokio::test]
     #[ignore = "Requires Breez SDK network connection"]
@@ -318,6 +381,23 @@ mod wallet_tests {
             .expect("should send payment");
 
         println!("Payment sent: {:?}", payment.payment.status);
+
+        let payment_id = payment.payment.id.clone();
+        let _sent_payment = wait_for_payment_by_id(
+            &wallet1,
+            &payment_id,
+            Duration::from_secs(60),
+        )
+        .await
+        .expect("payment should complete");
+
+        let _received_payment = wait_for_receive_amount(
+            &wallet2,
+            100,
+            Duration::from_secs(60),
+        )
+        .await
+        .expect("receiver should see completed payment");
 
         // Verify balances changed
         let balance1_after = wallet1.get_balance().await.expect("should get balance 1");
