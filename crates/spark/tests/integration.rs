@@ -13,6 +13,13 @@
 //!
 //! # Run ignored tests that require network
 //! cargo test -p openagents-spark --test integration -- --ignored
+//!
+//! # Run real testnet E2E (requires funded wallets)
+//! SPARK_E2E_SENDER_MNEMONIC="..." \
+//! SPARK_E2E_RECEIVER_MNEMONIC="..." \
+//! SPARK_E2E_AMOUNT_SATS=100 \
+//! SPARK_E2E_NETWORK=testnet \
+//! cargo test -p openagents-spark --test integration -- --ignored
 //! ```
 
 use openagents_spark::{SparkSigner, SparkWallet, WalletConfig, Network, Balance};
@@ -178,6 +185,8 @@ mod config_tests {
 mod wallet_tests {
     use super::*;
     use openagents_spark::{Payment, PaymentStatus, PaymentType, SparkError};
+    use std::fs;
+    use std::time::{SystemTime, UNIX_EPOCH};
     use tokio::time::{sleep, Duration, Instant};
 
     async fn wait_for_payment_by_id(
@@ -239,6 +248,73 @@ mod wallet_tests {
 
             sleep(Duration::from_secs(2)).await;
         }
+    }
+
+    struct RealE2eConfig {
+        sender_mnemonic: String,
+        receiver_mnemonic: String,
+        amount_sats: u64,
+        network: Network,
+        api_key: Option<String>,
+        timeout: Duration,
+    }
+
+    fn parse_network(value: &str) -> Option<Network> {
+        match value.to_ascii_lowercase().as_str() {
+            "mainnet" => Some(Network::Mainnet),
+            "testnet" => Some(Network::Testnet),
+            "signet" => Some(Network::Signet),
+            "regtest" => Some(Network::Regtest),
+            _ => None,
+        }
+    }
+
+    fn real_e2e_config() -> Option<RealE2eConfig> {
+        let sender_mnemonic = env::var("SPARK_E2E_SENDER_MNEMONIC").ok()?;
+        let receiver_mnemonic = env::var("SPARK_E2E_RECEIVER_MNEMONIC").ok()?;
+
+        let amount_sats = env::var("SPARK_E2E_AMOUNT_SATS")
+            .ok()
+            .and_then(|value| value.parse().ok())
+            .unwrap_or(100);
+
+        let timeout = env::var("SPARK_E2E_TIMEOUT_SECS")
+            .ok()
+            .and_then(|value| value.parse().ok())
+            .map(Duration::from_secs)
+            .unwrap_or_else(|| Duration::from_secs(180));
+
+        let network = env::var("SPARK_E2E_NETWORK")
+            .ok()
+            .and_then(|value| parse_network(&value))
+            .unwrap_or(Network::Testnet);
+
+        if network == Network::Mainnet && env::var("SPARK_E2E_ALLOW_MAINNET").is_err() {
+            println!("Skipping mainnet E2E test - set SPARK_E2E_ALLOW_MAINNET=1 to enable");
+            return None;
+        }
+
+        let api_key = env::var("SPARK_E2E_API_KEY").ok().or_else(|| env::var("BREEZ_API_KEY").ok());
+
+        Some(RealE2eConfig {
+            sender_mnemonic,
+            receiver_mnemonic,
+            amount_sats,
+            network,
+            api_key,
+            timeout,
+        })
+    }
+
+    fn unique_storage_dir(label: &str) -> std::path::PathBuf {
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos();
+        let dir = std::env::temp_dir()
+            .join(format!("openagents-spark-e2e-{}-{}-{}", label, std::process::id(), now));
+        fs::create_dir_all(&dir).expect("should create spark e2e storage dir");
+        dir
     }
 
     #[tokio::test]
@@ -410,6 +486,77 @@ mod wallet_tests {
             "sender balance should decrease");
         assert!(balance2_after.total_sats() > balance2_before.total_sats(),
             "receiver balance should increase");
+    }
+
+    #[tokio::test]
+    #[ignore = "Requires funded Spark testnet wallets"]
+    async fn test_real_testnet_payment_flow() {
+        let Some(config) = real_e2e_config() else {
+            println!("Skipping real Spark E2E test - set SPARK_E2E_SENDER_MNEMONIC and SPARK_E2E_RECEIVER_MNEMONIC");
+            return;
+        };
+
+        if config.amount_sats == 0 {
+            println!("Skipping real Spark E2E test - SPARK_E2E_AMOUNT_SATS must be > 0");
+            return;
+        }
+
+        let sender_signer = SparkSigner::from_mnemonic(&config.sender_mnemonic, "")
+            .expect("should create sender signer");
+        let receiver_signer = SparkSigner::from_mnemonic(&config.receiver_mnemonic, "")
+            .expect("should create receiver signer");
+
+        let sender_wallet = SparkWallet::new(
+            sender_signer,
+            WalletConfig {
+                network: config.network,
+                api_key: config.api_key.clone(),
+                storage_dir: unique_storage_dir("sender"),
+            },
+        )
+        .await
+        .expect("should create sender wallet");
+
+        let receiver_wallet = SparkWallet::new(
+            receiver_signer,
+            WalletConfig {
+                network: config.network,
+                api_key: config.api_key.clone(),
+                storage_dir: unique_storage_dir("receiver"),
+            },
+        )
+        .await
+        .expect("should create receiver wallet");
+
+        let sender_balance_before = sender_wallet.get_balance().await.expect("should get sender balance");
+
+        if sender_balance_before.total_sats() < config.amount_sats {
+            println!("Sender wallet requires funding before running this test");
+            return;
+        }
+
+        let invoice = receiver_wallet
+            .create_invoice(
+                config.amount_sats,
+                Some("OpenAgents real testnet payment".to_string()),
+                Some(3600),
+            )
+            .await
+            .expect("should create invoice");
+
+        let payment = sender_wallet
+            .send_payment_simple(&invoice.payment_request, None)
+            .await
+            .expect("should send payment");
+
+        let payment_id = payment.payment.id.clone();
+        wait_for_payment_by_id(&sender_wallet, &payment_id, config.timeout)
+            .await
+            .expect("sender payment should complete");
+
+        wait_for_receive_amount(&receiver_wallet, config.amount_sats, config.timeout)
+            .await
+            .expect("receiver should see completed payment");
     }
 }
 

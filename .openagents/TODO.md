@@ -1,6 +1,6 @@
 # OpenAgents Production Readiness TODO
 
-**Generated:** 2025-12-26 (Updated: 2025-12-26 09:00)
+**Generated:** 2025-12-26 (Updated: 2025-12-26 10:38)
 **Goal:** Bring all 26 directives to full production readiness with WGPUI, real integrations, and comprehensive testing.
 
 ---
@@ -735,7 +735,8 @@ Story coverage is complete (see Covered Stories in `.openagents/USERSTORIES.md`)
 - [x] FROSTR key reshare support ✅
 - [x] Marketplace payment flows complete ✅
 - [ ] **E2E with real sats** (optional - can use regtest)
-  - [ ] Spark payments on testnet
+  - [ ] Spark payments on testnet (test added: `crates/spark/tests/integration.rs::test_real_testnet_payment_flow`)
+    - Requires `SPARK_E2E_SENDER_MNEMONIC`, `SPARK_E2E_RECEIVER_MNEMONIC`, optional `SPARK_E2E_AMOUNT_SATS`, `SPARK_E2E_NETWORK`, `SPARK_E2E_API_KEY`
   - [ ] Marketplace flow with real payments
   - [ ] GitAfter bounty claim → payout
 - [x] **Coverage measurement** (optional)
