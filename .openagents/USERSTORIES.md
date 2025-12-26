@@ -62,11 +62,19 @@ This section tracks which user stories have implemented tests.
 | 1.3.2 | Send Bitcoin to an on-chain address | Unit | `crates/wallet/src/cli/bitcoin.rs` |
 | 1.3.3 | Send to a Spark address | Unit | `crates/wallet/src/cli/bitcoin.rs` |
 | 1.3.4 | Show confirmation with fee estimate before sending | Unit | `crates/wallet/src/cli/bitcoin.rs` |
+| 1.3.6 | Scan a QR code to populate payment details | Unit | `crates/wallet/src/cli/bitcoin.rs` |
+| 1.3.7 | Save frequently-used addresses as contacts | Unit | `crates/wallet/src/storage/address_book.rs` |
 | 1.4.1 | Generate a Lightning invoice for a specific amount | Unit | `crates/wallet/src/cli/bitcoin.rs` |
 | 1.4.2 | Show a QR code for invoices | Unit | `crates/wallet/src/cli/bitcoin.rs` |
 | 1.4.3 | Copy invoice string to clipboard | Unit | `crates/wallet/src/cli/bitcoin.rs` |
+| 1.4.5 | Generate a reusable Lightning address | Unit | `crates/wallet/src/cli/bitcoin.rs` |
+| 1.4.6 | Set an invoice expiry time | Unit | `crates/spark/src/wallet.rs` |
 | 1.5.1 | Clear error messages when payment fails | Unit | `crates/spark/src/error.rs` |
 | 1.5.2 | Failed transactions don't deduct balance | Unit | `crates/spark/src/error.rs` |
+| 3.2.1 | Run `openagents wallet send <address> <amount>` | Integration | `tests/cli_integration.rs` |
+| 3.2.2 | Run `openagents wallet receive <amount>` | Integration | `tests/cli_integration.rs` |
+| 3.2.3 | Run `openagents wallet balance` | Integration | `tests/cli_integration.rs` |
+| 3.2.4 | Run `openagents wallet history` | Integration | `tests/cli_integration.rs` |
 | **d-002: Nostr Protocol Implementation** ||||
 | 2.1.1 | Create and sign kind:1 text notes | Unit | `crates/nostr/core/src/tests/event_validation.rs` |
 | 2.1.2 | Create and sign kind:0 metadata events | Unit | `crates/nostr/core/src/tests/event_validation.rs` |
@@ -376,9 +384,11 @@ This section tracks which user stories have implemented tests.
 | `crates/wgpui/src/testing/recorder.rs` | TestRecorder input capture | 26.3.4 |
 | `crates/wgpui/src/testing/overlay.rs` | InputOverlay for click ripples | 26.2.2, 26.2.3 |
 | `crates/wgpui/src/testing/runner.rs` | TestRunner playback + step control | 26.2.4, 26.2.5 |
-| `tests/cli_integration.rs` | Unified CLI headless launch, wallet init, and delegation coverage | 1.1.1, 1.1.3, 4.3.1, 4.3.3-4.3.4, 10.1.1-10.1.6, 16.2.1, 19.2.1 |
+| `tests/cli_integration.rs` | Unified CLI headless launch, wallet init, and delegation coverage | 1.1.1, 1.1.3, 3.2.1-3.2.4, 4.3.1, 4.3.3-4.3.4, 10.1.1-10.1.6, 16.2.1, 19.2.1 |
 | `tests/wallet_cli_integration.rs` | Wallet identity, profile, contacts, post, DM, and export flows | 1.1.2, 1.1.4-1.1.5, 3.1.1-3.1.4, 3.2.5-3.2.6, 3.4.2 |
-| `crates/wallet/src/cli/bitcoin.rs` | Wallet balance/send/receive/history formatting | 1.2.1-1.2.2, 1.2.4-1.2.5, 1.3.1-1.3.4, 1.4.1-1.4.3 |
+| `crates/spark/src/wallet.rs` | Spark invoice request helpers and expiry tests | 1.2.3, 1.4.6 |
+| `crates/wallet/src/cli/bitcoin.rs` | Wallet balance/send/receive/history formatting | 1.2.1-1.2.2, 1.2.4-1.2.5, 1.3.1-1.3.4, 1.3.6, 1.4.1-1.4.3, 1.4.5 |
+| `crates/wallet/src/storage/address_book.rs` | Payee address book persistence tests | 1.3.7 |
 | `tests/legacy_binaries.rs` | Legacy binary deprecation warnings + symlink installer coverage | 10.2.1-10.2.2 |
 | `tests/no_stubs.rs` | Stub pattern scanning + exceptions documentation checks | 12.1.1-12.1.4 |
 | `tests/testing_framework.rs` | Snapshot + coverage documentation checks | 13.1.3, 13.3.2 |

@@ -24,6 +24,7 @@ use breez_sdk_spark::{
 };
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 // Re-export SDK types that consumers need
 pub use breez_sdk_spark::{
@@ -473,7 +474,7 @@ impl SparkWallet {
     /// # Arguments
     /// * `amount_sats` - Amount to receive in satoshis
     /// * `description` - Optional description to embed in the invoice
-    /// * `expiry_seconds` - Optional expiry time in seconds (default: 3600)
+    /// * `expiry_seconds` - Optional expiry time in seconds from now
     ///
     /// # Returns
     /// A `ReceivePaymentResponse` containing the Spark invoice
@@ -490,14 +491,10 @@ impl SparkWallet {
         &self,
         amount_sats: u64,
         description: Option<String>,
-        _expiry_seconds: Option<u64>,
+        expiry_seconds: Option<u64>,
     ) -> Result<ReceivePaymentResponse, SparkError> {
-        let request = ReceivePaymentRequest {
-            payment_method: ReceivePaymentMethod::Bolt11Invoice {
-                description: description.unwrap_or_default(),
-                amount_sats: Some(amount_sats),
-            },
-        };
+        let request = build_receive_request(amount_sats, description, expiry_seconds)
+            .map_err(|e| SparkError::Wallet(e.to_string()))?;
 
         self.sdk.receive_payment(request)
             .await
@@ -560,9 +557,92 @@ impl SparkWallet {
     }
 }
 
+fn build_receive_request(
+    amount_sats: u64,
+    description: Option<String>,
+    expiry_seconds: Option<u64>,
+) -> Result<ReceivePaymentRequest, String> {
+    let expiry_time = match expiry_seconds {
+        Some(seconds) => Some(compute_expiry_time(seconds)?),
+        None => None,
+    };
+
+    Ok(ReceivePaymentRequest {
+        payment_method: ReceivePaymentMethod::SparkInvoice {
+            amount: Some(amount_sats as u128),
+            token_identifier: None,
+            expiry_time,
+            description,
+            sender_public_key: None,
+        },
+    })
+}
+
+fn compute_expiry_time(expiry_seconds: u64) -> Result<u64, String> {
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|e| format!("System time error: {}", e))?;
+    now.as_secs()
+        .checked_add(expiry_seconds)
+        .ok_or_else(|| "Invoice expiry time overflowed".to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_build_receive_request_with_expiry() {
+        let description = Some("Coffee".to_string());
+        let before = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("time")
+            .as_secs();
+        let request = build_receive_request(4_200, description.clone(), Some(60))
+            .expect("build request");
+        let after = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("time")
+            .as_secs();
+
+        match request.payment_method {
+            ReceivePaymentMethod::SparkInvoice {
+                amount,
+                token_identifier,
+                expiry_time,
+                description: request_description,
+                sender_public_key,
+            } => {
+                assert_eq!(amount, Some(4_200u128));
+                assert_eq!(token_identifier, None);
+                assert_eq!(request_description, description);
+                assert_eq!(sender_public_key, None);
+
+                let expiry_time = expiry_time.expect("expiry time");
+                assert!(expiry_time >= before + 60);
+                assert!(expiry_time <= after + 60);
+            }
+            _ => panic!("expected SparkInvoice request"),
+        }
+    }
+
+    #[test]
+    fn test_build_receive_request_without_expiry() {
+        let request = build_receive_request(1, None, None).expect("build request");
+        match request.payment_method {
+            ReceivePaymentMethod::SparkInvoice {
+                amount,
+                expiry_time,
+                description,
+                ..
+            } => {
+                assert_eq!(amount, Some(1u128));
+                assert!(expiry_time.is_none());
+                assert!(description.is_none());
+            }
+            _ => panic!("expected SparkInvoice request"),
+        }
+    }
 
     #[tokio::test]
     #[ignore] // Requires network connection and API key

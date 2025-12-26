@@ -107,6 +107,15 @@ fn test_wallet_help() {
 }
 
 #[test]
+fn test_wallet_receive_help_lists_expiry() {
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("openagents"));
+    cmd.arg("wallet").arg("receive").arg("--help");
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("--expiry"));
+}
+
+#[test]
 fn test_wallet_whoami_no_wallet() {
     let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("openagents"));
     cmd.arg("wallet").arg("whoami");
@@ -288,7 +297,11 @@ fn test_wallet_subcommands_listed() {
         .success()
         .stdout(predicate::str::contains("init"))
         .stdout(predicate::str::contains("whoami"))
-        .stdout(predicate::str::contains("balance"));
+        .stdout(predicate::str::contains("balance"))
+        .stdout(predicate::str::contains("send"))
+        .stdout(predicate::str::contains("receive"))
+        .stdout(predicate::str::contains("history"))
+        .stdout(predicate::str::contains("payee"));
 }
 
 #[test]
