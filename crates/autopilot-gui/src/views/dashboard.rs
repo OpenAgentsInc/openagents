@@ -211,6 +211,91 @@ impl Component for DashboardView {
             y += line_height;
         }
 
+        // Token usage visualization
+        let (tokens_in, tokens_out, tokens_cached) = state
+            .active_session()
+            .map(|session| {
+                (
+                    session.tokens_in.max(0),
+                    session.tokens_out.max(0),
+                    session.tokens_cached.max(0),
+                )
+            })
+            .unwrap_or((0, 0, 0));
+        let total_tokens = tokens_in + tokens_out + tokens_cached;
+
+        let token_header = fit_text(cx, "Token usage (session)", theme::font_size::XS, available_width);
+        let mut token_header_text = Text::new(token_header)
+            .font_size(theme::font_size::XS)
+            .color(theme::text::MUTED);
+        token_header_text.paint(
+            Bounds::new(
+                bounds.origin.x + padding,
+                y,
+                bounds.size.width - padding * 2.0,
+                line_height,
+            ),
+            cx,
+        );
+        y += line_height * 0.85;
+
+        let bar_width = available_width.min(240.0);
+        let bar_height = 10.0;
+        let bar_x = bounds.origin.x + padding;
+        let bar_y = y;
+
+        cx.scene.draw_quad(
+            Quad::new(Bounds::new(bar_x, bar_y, bar_width, bar_height))
+                .with_background(theme::border::DEFAULT),
+        );
+
+        if total_tokens > 0 {
+            let total_tokens_f = total_tokens as f32;
+            let mut seg_x = bar_x;
+            for (value, color) in [
+                (tokens_in, theme::accent::BLUE),
+                (tokens_out, theme::accent::GREEN),
+                (tokens_cached, theme::accent::PRIMARY),
+            ] {
+                if value <= 0 {
+                    continue;
+                }
+                let width = bar_width * (value as f32 / total_tokens_f);
+                cx.scene.draw_quad(
+                    Quad::new(Bounds::new(seg_x, bar_y, width.max(1.0), bar_height))
+                        .with_background(color),
+                );
+                seg_x += width;
+            }
+        }
+
+        y += bar_height + theme::spacing::XS;
+
+        let token_line = if total_tokens > 0 {
+            format!(
+                "IN {}  OUT {}  CACHE {}",
+                tokens_in,
+                tokens_out,
+                tokens_cached
+            )
+        } else {
+            "IN -  OUT -  CACHE -".to_string()
+        };
+        let token_line = fit_text(cx, &token_line, theme::font_size::XS, available_width);
+        let mut token_text = Text::new(token_line)
+            .font_size(theme::font_size::XS)
+            .color(theme::text::MUTED);
+        token_text.paint(
+            Bounds::new(
+                bounds.origin.x + padding,
+                y,
+                bounds.size.width - padding * 2.0,
+                line_height,
+            ),
+            cx,
+        );
+        y += line_height;
+
         y += theme::spacing::SM;
         let header_line = format!("Recent sessions: {}", state.sessions.len());
         let header_line = fit_text(cx, &header_line, theme::font_size::XS, available_width);
