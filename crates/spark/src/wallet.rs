@@ -23,6 +23,7 @@ use breez_sdk_spark::{
     ListPaymentsRequest,
     SyncWalletRequest,
     EventListener,
+    ClaimHtlcPaymentRequest,
 };
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -33,6 +34,7 @@ pub use breez_sdk_spark::{
     PrepareSendPaymentResponse,
     SendPaymentMethod,
     SendPaymentResponse,
+    SendPaymentOptions,
     ReceivePaymentResponse,
     Payment,
     PaymentStatus,
@@ -46,6 +48,10 @@ pub use breez_sdk_spark::{
     Bolt11Invoice,
     SparkInvoiceDetails,
     SparkInvoicePaymentDetails,
+    SparkHtlcDetails,
+    SparkHtlcStatus,
+    SparkHtlcOptions,
+    ClaimHtlcPaymentResponse,
     SendOnchainFeeQuote,
     SendOnchainSpeedFeeQuote,
 };
@@ -485,6 +491,24 @@ impl SparkWallet {
             .map_err(|e| SparkError::PaymentFailed(e.to_string()))
     }
 
+    /// Send a payment with explicit options (Spark HTLC, Spark address, etc.)
+    pub async fn send_payment_with_options(
+        &self,
+        prepare_response: PrepareSendPaymentResponse,
+        options: SendPaymentOptions,
+        idempotency_key: Option<String>,
+    ) -> Result<SendPaymentResponse, SparkError> {
+        let request = SendPaymentRequest {
+            prepare_response,
+            options: Some(options),
+            idempotency_key,
+        };
+
+        self.sdk.send_payment(request)
+            .await
+            .map_err(|e| SparkError::PaymentFailed(e.to_string()))
+    }
+
     /// Send a payment in one step (prepare + send)
     ///
     /// This is a convenience method that combines `prepare_send_payment` and `send_payment`.
@@ -510,6 +534,46 @@ impl SparkWallet {
     ) -> Result<SendPaymentResponse, SparkError> {
         let prepare_response = self.prepare_send_payment(payment_request, amount).await?;
         self.send_payment(prepare_response, None).await
+    }
+
+    /// Send a Spark HTLC transfer for escrow-style payments.
+    ///
+    /// The receiver must provide the preimage before expiry to claim the funds.
+    pub async fn send_htlc_payment(
+        &self,
+        payment_request: &str,
+        amount_sats: u64,
+        payment_hash: &str,
+        expiry_duration_secs: u64,
+        idempotency_key: Option<String>,
+    ) -> Result<SendPaymentResponse, SparkError> {
+        let prepare_response = self
+            .prepare_send_payment(payment_request, Some(amount_sats))
+            .await?;
+
+        let options = SendPaymentOptions::SparkAddress {
+            htlc_options: Some(SparkHtlcOptions {
+                payment_hash: payment_hash.to_string(),
+                expiry_duration_secs,
+            }),
+        };
+
+        self.send_payment_with_options(prepare_response, options, idempotency_key)
+            .await
+    }
+
+    /// Claim an HTLC transfer by providing the preimage.
+    pub async fn claim_htlc_payment(
+        &self,
+        preimage: &str,
+    ) -> Result<ClaimHtlcPaymentResponse, SparkError> {
+        let request = ClaimHtlcPaymentRequest {
+            preimage: preimage.to_string(),
+        };
+
+        self.sdk.claim_htlc_payment(request)
+            .await
+            .map_err(|e| SparkError::PaymentFailed(e.to_string()))
     }
 
     /// Get the wallet's Spark address for receiving payments
@@ -620,6 +684,35 @@ impl SparkWallet {
         let response = self.sdk.list_payments(request)
             .await
             .map_err(|e| SparkError::Wallet(format!("Failed to list payments: {}", e)))?;
+
+        Ok(response.payments)
+    }
+
+    /// List Spark HTLC payments with optional status filtering.
+    pub async fn list_htlc_payments(
+        &self,
+        status_filter: Option<Vec<SparkHtlcStatus>>,
+        limit: Option<u32>,
+        offset: Option<u32>,
+    ) -> Result<Vec<Payment>, SparkError> {
+        let filter = status_filter.unwrap_or_else(|| {
+            vec![
+                SparkHtlcStatus::WaitingForPreimage,
+                SparkHtlcStatus::PreimageShared,
+                SparkHtlcStatus::Returned,
+            ]
+        });
+        let request = ListPaymentsRequest {
+            spark_htlc_status_filter: Some(filter),
+            limit,
+            offset,
+            sort_ascending: Some(false),
+            ..Default::default()
+        };
+
+        let response = self.sdk.list_payments(request)
+            .await
+            .map_err(|e| SparkError::Wallet(format!("Failed to list HTLC payments: {}", e)))?;
 
         Ok(response.payments)
     }

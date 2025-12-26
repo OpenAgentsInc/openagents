@@ -25,7 +25,7 @@ use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use sha2::{Sha256, Digest};
 use std::sync::Arc;
-use openagents_spark::SparkWallet;
+use openagents_spark::{PaymentDetails, SparkHtlcStatus, SparkWallet};
 
 /// Payment status for tracking
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -191,6 +191,7 @@ impl PaymentManager {
         let amount = amount_msats.unwrap_or_else(|| {
             Self::parse_invoice_amount(invoice).unwrap_or(0)
         });
+        let send_amount = amount_msats.map(msats_to_sats).transpose()?;
 
         let mut payment = PaymentRecord::new(
             PaymentType::Compute,
@@ -201,7 +202,7 @@ impl PaymentManager {
 
         // Send payment via Spark wallet
         let response = wallet
-            .send_payment_simple(invoice, amount_msats)
+            .send_payment_simple(invoice, send_amount)
             .await
             .map_err(|e| anyhow::anyhow!("Failed to send Lightning payment: {}", e))?;
 
@@ -210,9 +211,9 @@ impl PaymentManager {
         // Check payment status
         // Note: In production, this should poll until completion or timeout
         if response.payment.status == openagents_spark::PaymentStatus::Completed {
-            // In real Spark SDK, preimage would be in the response
-            // For now, use payment ID as a placeholder
-            payment.mark_completed(response.payment.id);
+            let preimage = payment_preimage(&response.payment)
+                .unwrap_or_else(|| response.payment.id.clone());
+            payment.mark_completed(preimage);
         } else {
             payment.mark_failed();
         }
@@ -246,15 +247,18 @@ impl PaymentManager {
             invoice.to_string(),
         );
 
+        let send_amount = msats_to_sats(amount_msats)?;
         let response = wallet
-            .send_payment_simple(invoice, Some(amount_msats))
+            .send_payment_simple(invoice, Some(send_amount))
             .await
             .map_err(|e| anyhow::anyhow!("Failed to send skill license payment: {}", e))?;
 
         payment.mark_in_flight(response.payment.id.clone());
 
         if response.payment.status == openagents_spark::PaymentStatus::Completed {
-            payment.mark_completed(response.payment.id);
+            let preimage = payment_preimage(&response.payment)
+                .unwrap_or_else(|| response.payment.id.clone());
+            payment.mark_completed(preimage);
         } else {
             payment.mark_failed();
         }
@@ -288,15 +292,18 @@ impl PaymentManager {
             invoice.to_string(),
         );
 
+        let send_amount = msats_to_sats(amount_msats)?;
         let response = wallet
-            .send_payment_simple(invoice, Some(amount_msats))
+            .send_payment_simple(invoice, Some(send_amount))
             .await
             .map_err(|e| anyhow::anyhow!("Failed to send data access payment: {}", e))?;
 
         payment.mark_in_flight(response.payment.id.clone());
 
         if response.payment.status == openagents_spark::PaymentStatus::Completed {
-            payment.mark_completed(response.payment.id);
+            let preimage = payment_preimage(&response.payment)
+                .unwrap_or_else(|| response.payment.id.clone());
+            payment.mark_completed(preimage);
         } else {
             payment.mark_failed();
         }
@@ -324,8 +331,9 @@ impl PaymentManager {
             anyhow::anyhow!("Spark wallet not configured. See d-001 directive.")
         })?;
 
+        let amount_sats = msats_to_sats(amount_msats)?;
         let response = wallet
-            .create_invoice(amount_msats, Some(description.to_string()), None)
+            .create_invoice(amount_sats, Some(description.to_string()), None)
             .await
             .map_err(|e| anyhow::anyhow!("Failed to create Lightning invoice: {}", e))?;
 
@@ -429,8 +437,8 @@ impl PaymentManager {
 
     /// Create an invoice for compute job payment
     ///
-    /// For escrow-style payments, use HTLC transfers via the Spark SDK instead.
-    /// The SDK supports HTLC with `send_payment()` + `htlc_options` and `claim_htlc_payment()`.
+    /// For escrow-style payments, this returns the Spark address used for HTLC transfers.
+    /// The sender should use `send_htlc_payment()` with the provided payment hash.
     ///
     /// # Arguments
     /// * `amount_msats` - Amount to receive in millisatoshis
@@ -443,19 +451,69 @@ impl PaymentManager {
         &self,
         amount_msats: u64,
         description: &str,
-        _payment_hash: &str,
+        payment_hash: &str,
     ) -> Result<String> {
         let wallet = self.wallet.as_ref().ok_or_else(|| {
             anyhow::anyhow!("Spark wallet not configured. See d-001 directive.")
         })?;
 
-        // Create standard invoice - for escrow use HTLC via SDK directly
-        let response = wallet
-            .create_invoice(amount_msats, Some(description.to_string()), None)
+        validate_payment_hash(payment_hash)?;
+        let _ = msats_to_sats(amount_msats)?;
+        let _ = description;
+        let address = wallet
+            .get_spark_address()
             .await
-            .map_err(|e| anyhow::anyhow!("Failed to create invoice: {}", e))?;
+            .map_err(|e| anyhow::anyhow!("Failed to fetch Spark address: {}", e))?;
 
-        Ok(response.payment_request)
+        Ok(address)
+    }
+
+    /// Send an escrow-style HTLC payment.
+    ///
+    /// The receiver must claim with the preimage before expiry.
+    pub async fn send_htlc_payment(
+        &self,
+        payment_type: PaymentType,
+        item_id: &str,
+        spark_address: &str,
+        amount_msats: u64,
+        payment_hash: &str,
+        expiry_duration_secs: u64,
+    ) -> Result<PaymentRecord> {
+        let wallet = self.wallet.as_ref().ok_or_else(|| {
+            anyhow::anyhow!("Spark wallet not configured. See d-001 directive.")
+        })?;
+
+        validate_payment_hash(payment_hash)?;
+        let amount_sats = msats_to_sats(amount_msats)?;
+
+        let mut payment = PaymentRecord::new(
+            payment_type,
+            item_id.to_string(),
+            amount_msats,
+            spark_address.to_string(),
+        );
+
+        let response = wallet
+            .send_htlc_payment(
+                spark_address,
+                amount_sats,
+                payment_hash,
+                expiry_duration_secs,
+                None,
+            )
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to send HTLC payment: {}", e))?;
+
+        payment.mark_in_flight(payment_hash.to_string());
+
+        if response.payment.status == openagents_spark::PaymentStatus::Completed {
+            if let Some(preimage) = payment_preimage(&response.payment) {
+                payment.mark_completed(preimage);
+            }
+        }
+
+        Ok(payment)
     }
 
     /// Settle payment by verifying preimage
@@ -474,16 +532,30 @@ impl PaymentManager {
         payment_hash: &str,
         preimage: &str,
     ) -> Result<bool> {
-        let _wallet = self.wallet.as_ref().ok_or_else(|| {
+        let wallet = self.wallet.as_ref().ok_or_else(|| {
             anyhow::anyhow!("Spark wallet not configured. See d-001 directive.")
         })?;
+
+        validate_payment_hash(payment_hash)?;
 
         // Verify preimage matches hash
         if !self.verify_preimage(payment_hash, preimage) {
             return Err(anyhow::anyhow!("Preimage does not match payment hash"));
         }
 
-        // Preimage valid - caller should use SDK's claim_htlc_payment() for actual HTLC claims
+        let response = wallet
+            .claim_htlc_payment(preimage)
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to claim HTLC payment: {}", e))?;
+
+        if let Some(claimed_hash) = payment_hash_for_payment(&response.payment) {
+            if !claimed_hash.eq_ignore_ascii_case(payment_hash) {
+                return Err(anyhow::anyhow!(
+                    "Claimed HTLC does not match expected payment hash"
+                ));
+            }
+        }
+
         Ok(true)
     }
 
@@ -498,12 +570,80 @@ impl PaymentManager {
     /// # Returns
     /// true (HTLC auto-expires, no explicit cancel needed)
     pub async fn cancel_hold_invoice(&self, payment_hash: &str) -> Result<bool> {
-        let _wallet = self.wallet.as_ref().ok_or_else(|| {
+        let wallet = self.wallet.as_ref().ok_or_else(|| {
             anyhow::anyhow!("Spark wallet not configured. See d-001 directive.")
         })?;
 
-        tracing::info!("Payment marked cancelled: hash={}", payment_hash);
-        Ok(true)
+        validate_payment_hash(payment_hash)?;
+
+        let payments = wallet
+            .list_htlc_payments(None, Some(200), None)
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to list HTLC payments: {}", e))?;
+
+        let status = payments
+            .iter()
+            .filter_map(|payment| htlc_details(payment))
+            .find(|details| details.payment_hash.eq_ignore_ascii_case(payment_hash))
+            .map(|details| details.status);
+
+        match status {
+            Some(SparkHtlcStatus::Returned) => Ok(true),
+            Some(_) => Ok(false),
+            None => Ok(false),
+        }
+    }
+}
+
+fn msats_to_sats(amount_msats: u64) -> Result<u64> {
+    if amount_msats % 1000 != 0 {
+        return Err(anyhow::anyhow!(
+            "amount_msats must be divisible by 1000 to represent whole sats"
+        ));
+    }
+    Ok(amount_msats / 1000)
+}
+
+fn validate_payment_hash(payment_hash: &str) -> Result<()> {
+    let bytes = hex::decode(payment_hash)
+        .map_err(|_| anyhow::anyhow!("Payment hash must be hex-encoded"))?;
+    if bytes.len() != 32 {
+        return Err(anyhow::anyhow!(
+            "Payment hash must be 32 bytes (64 hex chars)"
+        ));
+    }
+    Ok(())
+}
+
+fn htlc_details(payment: &openagents_spark::Payment) -> Option<&openagents_spark::SparkHtlcDetails> {
+    match &payment.details {
+        Some(PaymentDetails::Spark {
+            htlc_details: Some(details),
+            ..
+        }) => Some(details),
+        _ => None,
+    }
+}
+
+fn payment_hash_for_payment(payment: &openagents_spark::Payment) -> Option<String> {
+    match &payment.details {
+        Some(PaymentDetails::Lightning { payment_hash, .. }) => Some(payment_hash.clone()),
+        Some(PaymentDetails::Spark {
+            htlc_details: Some(details),
+            ..
+        }) => Some(details.payment_hash.clone()),
+        _ => None,
+    }
+}
+
+fn payment_preimage(payment: &openagents_spark::Payment) -> Option<String> {
+    match &payment.details {
+        Some(PaymentDetails::Lightning { preimage, .. }) => preimage.clone(),
+        Some(PaymentDetails::Spark {
+            htlc_details: Some(details),
+            ..
+        }) => details.preimage.clone(),
+        _ => None,
     }
 }
 
@@ -657,6 +797,42 @@ mod tests {
         assert!(result.unwrap_err().to_string().contains("Spark wallet not configured"));
     }
 
+    #[tokio::test]
+    async fn test_payment_manager_without_wallet_htlc() {
+        let manager = PaymentManager::new(None);
+        let payment_hash =
+            "0000000000000000000000000000000000000000000000000000000000000000";
+
+        let result = manager
+            .create_hold_invoice(1000, "escrow", payment_hash)
+            .await;
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("Spark wallet not configured"));
+
+        let result = manager
+            .send_htlc_payment(
+                PaymentType::Compute,
+                "job-1",
+                "spark:address",
+                1000,
+                payment_hash,
+                60,
+            )
+            .await;
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("Spark wallet not configured"));
+
+        let result = manager
+            .settle_hold_invoice(payment_hash, "deadbeef")
+            .await;
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("Spark wallet not configured"));
+
+        let result = manager.cancel_hold_invoice(payment_hash).await;
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("Spark wallet not configured"));
+    }
+
     #[test]
     fn test_parse_invoice_amount_micro_bitcoin() {
         // lnbc2500u = 2500 micro-bitcoin = 250,000 sats = 250,000,000 msats
@@ -726,5 +902,19 @@ mod tests {
         // Invalid hex strings
         assert!(!manager.verify_preimage("invalid", "also-invalid"));
         assert!(!manager.verify_preimage("valid66687aadf862bd", "not-hex"));
+    }
+
+    #[test]
+    fn test_msats_to_sats_requires_whole_sats() {
+        assert_eq!(msats_to_sats(2000).unwrap(), 2);
+        assert!(msats_to_sats(1500).is_err());
+    }
+
+    #[test]
+    fn test_validate_payment_hash_length() {
+        let valid =
+            "0000000000000000000000000000000000000000000000000000000000000000";
+        assert!(validate_payment_hash(valid).is_ok());
+        assert!(validate_payment_hash("1234").is_err());
     }
 }
