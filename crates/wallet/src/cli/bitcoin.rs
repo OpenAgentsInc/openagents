@@ -1579,7 +1579,7 @@ mod tests {
     #[test]
     fn test_parse_note_reference_note() {
         let bytes = [7u8; 32];
-        let note = nostr::nip19::encode_note(&bytes).unwrap();
+        let note = nostr::encode_note(&bytes).unwrap();
         let reference = parse_note_reference(&note).unwrap();
         assert_eq!(reference.event_id, hex::encode(bytes));
     }
