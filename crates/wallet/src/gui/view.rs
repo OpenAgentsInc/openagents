@@ -26,6 +26,7 @@ const QR_QUIET_ZONE: usize = 4;
 const HISTORY_ROW_HEIGHT: f32 = 52.0;
 const HISTORY_HEADER_HEIGHT: f32 = 24.0;
 const HISTORY_DETAILS_HEIGHT: f32 = 160.0;
+const HISTORY_CHART_HEIGHT: f32 = 140.0;
 const HISTORY_LOAD_THRESHOLD: f32 = 120.0;
 const HISTORY_OVERSCAN: usize = 3;
 const HISTORY_PAGE_SIZE: u32 = 25;
@@ -117,8 +118,15 @@ struct ReceiveLayout {
 
 struct HistoryLayout {
     header: Bounds,
+    chart: Bounds,
     list: Bounds,
     details: Bounds,
+}
+
+#[derive(Debug, Clone)]
+struct BalancePoint {
+    timestamp: u64,
+    balance: u128,
 }
 
 pub struct WalletView {
@@ -136,6 +144,7 @@ pub struct WalletView {
     qr_matrix: Option<QrMatrix>,
     history_scroll: ScrollContainer,
     history_items: Vec<Payment>,
+    history_chart: Vec<BalancePoint>,
     history_loading: bool,
     history_has_more: bool,
     history_page_size: u32,
@@ -203,6 +212,7 @@ impl WalletView {
             qr_matrix: None,
             history_scroll: ScrollContainer::vertical(Bounds::ZERO),
             history_items: Vec::new(),
+            history_chart: Vec::new(),
             history_loading: true,
             history_has_more: true,
             history_page_size,
@@ -217,6 +227,7 @@ impl WalletView {
             WalletUpdate::Balance(balance) => {
                 self.balance = balance;
                 self.balance_loaded = true;
+                self.update_history_chart();
             }
             WalletUpdate::ReceiveReady { payload, amount } => {
                 self.receive_payload = Some(payload.clone());
@@ -251,6 +262,7 @@ impl WalletView {
                 }
                 self.history_has_more = has_more;
                 self.history_loading = false;
+                self.update_history_chart();
             }
             WalletUpdate::Error { message } => {
                 self.notice = Some(Notice {
@@ -272,6 +284,16 @@ impl WalletView {
             offset,
             limit: self.history_page_size,
         });
+    }
+
+    fn update_history_chart(&mut self) {
+        let current_total = if self.balance_loaded {
+            Some(self.balance.total_sats() as u128)
+        } else {
+            None
+        };
+        let points = compute_balance_series(&self.history_items, current_total);
+        self.history_chart = downsample_points(&points, 60);
     }
 
     fn sync_history_scroll(&mut self, list_bounds: Bounds) {
@@ -419,17 +441,32 @@ impl WalletView {
             content.size.width - PADDING * 2.0,
             HISTORY_HEADER_HEIGHT,
         );
-        let history_list_y = history_header.origin.y + HISTORY_HEADER_HEIGHT + GAP;
+
         let reserved_details = HISTORY_DETAILS_HEIGHT
-            .min(
-                content.size.height - PADDING * 2.0 - HISTORY_HEADER_HEIGHT - GAP,
-            )
+            .min(content.size.height - PADDING * 2.0 - HISTORY_HEADER_HEIGHT - GAP)
             .max(0.0);
         let min_list_height = HISTORY_ROW_HEIGHT * 3.0;
+        let available_for_chart =
+            (content.size.height - PADDING * 2.0 - HISTORY_HEADER_HEIGHT - GAP - reserved_details)
+                .max(0.0);
+        let chart_height = HISTORY_CHART_HEIGHT
+            .min((available_for_chart - min_list_height).max(0.0));
+        let chart_gap = if chart_height > 0.0 { GAP } else { 0.0 };
+
+        let history_chart = Bounds::new(
+            content.origin.x + PADDING,
+            history_header.origin.y + HISTORY_HEADER_HEIGHT + GAP,
+            content.size.width - PADDING * 2.0,
+            chart_height,
+        );
+
+        let history_list_y = history_chart.origin.y + chart_height + chart_gap;
         let history_list_height = (content.size.height
             - PADDING * 2.0
             - HISTORY_HEADER_HEIGHT
             - GAP
+            - chart_height
+            - chart_gap
             - reserved_details)
             .max(min_list_height);
         let history_list = Bounds::new(
@@ -470,6 +507,7 @@ impl WalletView {
             },
             history: HistoryLayout {
                 header: history_header,
+                chart: history_chart,
                 list: history_list,
                 details: history_details,
             },
@@ -647,6 +685,8 @@ impl WalletView {
             cx.scene,
         );
 
+        self.draw_history_chart(layout.chart, cx);
+
         if self.history_items.is_empty() {
             let message = if self.history_loading {
                 "Loading transactions..."
@@ -680,6 +720,100 @@ impl WalletView {
         }
 
         self.draw_history_details(layout.details, cx);
+    }
+
+    fn draw_history_chart(&self, bounds: Bounds, cx: &mut wgpui::PaintContext) {
+        if bounds.size.height <= 0.0 {
+            return;
+        }
+
+        cx.scene.draw_quad(
+            Quad::new(bounds)
+                .with_background(theme::bg::APP)
+                .with_border(theme::border::SUBTLE, 1.0),
+        );
+
+        let title_size = theme::font_size::XS;
+        self.draw_text(
+            "BALANCE TREND",
+            bounds.origin.x + GAP,
+            bounds.origin.y + GAP * 0.6,
+            title_size,
+            theme::text::MUTED,
+            cx.text,
+            cx.scene,
+        );
+
+        let chart_bounds = Bounds::new(
+            bounds.origin.x + GAP,
+            bounds.origin.y + GAP * 1.6 + title_size,
+            bounds.size.width - GAP * 2.0,
+            bounds.size.height - GAP * 2.4 - title_size,
+        );
+        if chart_bounds.size.width <= 0.0 || chart_bounds.size.height <= 0.0 {
+            return;
+        }
+
+        if self.history_chart.is_empty() {
+            self.draw_text(
+                "No balance history yet.",
+                chart_bounds.origin.x,
+                chart_bounds.origin.y + chart_bounds.size.height / 2.0,
+                theme::font_size::SM,
+                theme::text::MUTED,
+                cx.text,
+                cx.scene,
+            );
+            return;
+        }
+
+        let (min_balance, max_balance) = min_max_balance(&self.history_chart);
+        let span = (max_balance - min_balance).max(1);
+        let span_f = span as f32;
+
+        let points = &self.history_chart;
+        let count = points.len().max(1) as f32;
+        let bar_width = (chart_bounds.size.width / count).max(2.0);
+        let bar_color = theme::accent::PRIMARY.with_alpha(0.25);
+        let line_color = theme::accent::PRIMARY;
+
+        let baseline = chart_bounds.origin.y + chart_bounds.size.height;
+
+        for (index, point) in points.iter().enumerate() {
+            let x = chart_bounds.origin.x + index as f32 * (chart_bounds.size.width / count);
+            let ratio = (point.balance - min_balance) as f32 / span_f;
+            let height = ratio * chart_bounds.size.height;
+            let y = baseline - height;
+
+            let bar_bounds = Bounds::new(x, y, bar_width, height.max(1.0));
+            cx.scene.draw_quad(Quad::new(bar_bounds).with_background(bar_color));
+
+            let dot_bounds = Bounds::new(x, y - 1.0, bar_width.max(2.0), 2.0);
+            cx.scene.draw_quad(Quad::new(dot_bounds).with_background(line_color));
+        }
+
+        let min_label = format_sats_u128(min_balance);
+        let max_label = format_sats_u128(max_balance);
+        let label_size = theme::font_size::XS;
+        self.draw_text(
+            &format!("min {} sats", min_label),
+            chart_bounds.origin.x,
+            chart_bounds.origin.y + chart_bounds.size.height - label_size - 2.0,
+            label_size,
+            theme::text::MUTED,
+            cx.text,
+            cx.scene,
+        );
+        let max_width = text_width(&format!("max {} sats", max_label), label_size);
+        self.draw_text(
+            &format!("max {} sats", max_label),
+            chart_bounds.origin.x + chart_bounds.size.width - max_width,
+            chart_bounds.origin.y,
+            label_size,
+            theme::text::MUTED,
+            cx.text,
+            cx.scene,
+        );
     }
 
     fn draw_history_rows(&self, list_bounds: Bounds, cx: &mut wgpui::PaintContext) {
@@ -1198,6 +1332,75 @@ fn truncate_middle(value: &str, head: usize, tail: usize) -> String {
     format!("{}...{}", head_part, tail_part)
 }
 
+fn compute_balance_series(payments: &[Payment], current_total: Option<u128>) -> Vec<BalancePoint> {
+    let Some(current_total) = current_total else {
+        return Vec::new();
+    };
+
+    if payments.is_empty() {
+        return vec![BalancePoint {
+            timestamp: 0,
+            balance: current_total,
+        }];
+    }
+
+    let mut sorted = payments.to_vec();
+    sorted.sort_by_key(|payment| std::cmp::Reverse(payment.timestamp));
+
+    let mut balance = current_total as i128;
+    let mut points = Vec::with_capacity(sorted.len());
+
+    for payment in &sorted {
+        points.push(BalancePoint {
+            timestamp: payment.timestamp,
+            balance: balance.max(0) as u128,
+        });
+
+        let amount = payment.amount as i128;
+        let fees = payment.fees as i128;
+        match payment.payment_type {
+            PaymentType::Send => {
+                balance = balance.saturating_add(amount + fees);
+            }
+            PaymentType::Receive => {
+                balance = balance.saturating_sub(amount);
+            }
+        }
+    }
+
+    points.reverse();
+    points
+}
+
+fn downsample_points(points: &[BalancePoint], max_points: usize) -> Vec<BalancePoint> {
+    if points.len() <= max_points {
+        return points.to_vec();
+    }
+
+    let step = (points.len() as f32 / max_points as f32).ceil() as usize;
+    let mut sampled = points.iter().step_by(step).cloned().collect::<Vec<_>>();
+    if let Some(last) = points.last() {
+        if sampled.last().map(|p| p.timestamp) != Some(last.timestamp) {
+            sampled.push(last.clone());
+        }
+    }
+    sampled
+}
+
+fn min_max_balance(points: &[BalancePoint]) -> (u128, u128) {
+    let mut min = u128::MAX;
+    let mut max = 0u128;
+    for point in points {
+        min = min.min(point.balance);
+        max = max.max(point.balance);
+    }
+    if min == u128::MAX {
+        (0, 0)
+    } else {
+        (min, max)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1367,5 +1570,45 @@ mod tests {
             layout.history.list.origin.y + 5.0,
         );
         assert_eq!(view.selected_history, Some(0));
+    }
+
+    #[test]
+    fn test_history_chart_builds_from_balance_and_payments() {
+        let mut view = WalletView::new();
+        view.drain_commands();
+        view.apply_update(WalletUpdate::Balance(Balance {
+            spark_sats: 800,
+            lightning_sats: 200,
+            onchain_sats: 0,
+        }));
+
+        let payments = vec![
+            sample_payment("send-1", PaymentType::Send, 30),
+            sample_payment("recv-1", PaymentType::Receive, 10),
+        ];
+        view.apply_update(WalletUpdate::PaymentsLoaded {
+            payments,
+            offset: 0,
+            has_more: false,
+        });
+
+        assert_eq!(view.history_chart.len(), 2);
+        assert_eq!(view.history_chart[0].timestamp, 10);
+        assert_eq!(view.history_chart[0].balance, 13_357);
+        assert_eq!(view.history_chart[1].timestamp, 30);
+        assert_eq!(view.history_chart[1].balance, 1_000);
+    }
+
+    #[test]
+    fn test_downsample_points_keeps_last_point() {
+        let points = (0..120)
+            .map(|i| BalancePoint {
+                timestamp: i,
+                balance: i as u128,
+            })
+            .collect::<Vec<_>>();
+        let sampled = downsample_points(&points, 50);
+        assert!(sampled.len() <= 50 + 1);
+        assert_eq!(sampled.last().map(|p| p.timestamp), Some(119));
     }
 }
