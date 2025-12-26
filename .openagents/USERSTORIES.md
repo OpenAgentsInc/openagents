@@ -334,6 +334,8 @@ This section tracks which user stories have implemented tests.
 | 23.1.1 | Quad rendering with colors/borders | Unit | `crates/wgpui/src/testing/framework_tests.rs` |
 | 23.1.2 | Text rendering | Unit | `crates/wgpui/src/testing/framework_tests.rs` |
 | 23.1.3 | 60fps GPU-accelerated rendering | Unit | `crates/wgpui/src/testing/framework_tests.rs` |
+| 23.1.4 | Web rendering via WebGPU | Integration | `tests/wgpui_platform_support.rs` |
+| 23.1.5 | Desktop rendering via Vulkan/Metal/DX12 | Integration | `tests/wgpui_platform_support.rs` |
 | 23.2.1 | Flexbox layout (bounds) | Unit | `crates/wgpui/src/testing/framework_tests.rs` |
 | 23.2.2 | Percentage-based sizing | Unit | `crates/wgpui/src/layout.rs` |
 | 23.2.3 | Margin/padding/gap | Unit | `crates/wgpui/src/testing/framework_tests.rs` |
@@ -410,6 +412,7 @@ This section tracks which user stories have implemented tests.
 | `tests/testing_framework.rs` | Snapshot + coverage documentation checks | 13.1.3, 13.3.2 |
 | `tests/gui_archive.rs` | HTML/Maud archive verification | 25.2.1 |
 | `tests/autopilot_gui_stack.rs` | Autopilot GUI WGPUI-only dependency checks | 25.2.2 |
+| `tests/wgpui_platform_support.rs` | WGPUI web/desktop backend feature checks | 23.1.4-23.1.5 |
 | `crates/opencode-sdk/tests/opencode_sdk_integration.rs` | OpenCode SDK mock server + SSE integration tests | 21.1.1-21.2.2 |
 | `crates/testing/src/lib.rs` | Testing crate smoke and parallel task tests | 13.1.1-13.1.2 |
 | `crates/testing/src/mock_relay.rs` | Mock relay loopback storage tests | 13.2.2 |
