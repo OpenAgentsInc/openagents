@@ -239,7 +239,7 @@ P0 focus IDs: none.
 - [x] Standard Lightning payments via Spark SDK
 - [x] Invoice creation for receiving payments
 - [x] Preimage verification for settlement
-- [ ] HTLC escrow flows (available via SDK, not yet integrated)
+- [x] HTLC escrow flows (Spark HTLC send/claim wired) ✅
 - [ ] Revenue split distribution (future)
 
 **Files:**
