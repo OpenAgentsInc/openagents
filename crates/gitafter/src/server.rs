@@ -4411,7 +4411,7 @@ mod tests {
     use std::sync::Arc;
     use std::time::{Duration, SystemTime, UNIX_EPOCH};
     use tempfile::TempDir;
-    use testing::MockRelay;
+    use testing::{MockRelay, RegtestFaucet};
 
     #[tokio::test]
     async fn test_pr_review_submit_publishes_review_event() {
@@ -4543,6 +4543,10 @@ mod tests {
         assert_eq!(repos[0].id, "repo-3");
     }
 
+    const FAUCET_SENDER_MNEMONIC: &str =
+        "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
+    const FAUCET_RECEIVER_MNEMONIC: &str = "zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo wrong";
+
     struct RealE2eConfig {
         sender_mnemonic: String,
         receiver_mnemonic: String,
@@ -4550,6 +4554,7 @@ mod tests {
         network: Network,
         api_key: Option<String>,
         timeout: Duration,
+        use_faucet: bool,
     }
 
     fn env_any(keys: &[&str]) -> Option<String> {
@@ -4567,16 +4572,30 @@ mod tests {
     }
 
     fn real_e2e_config() -> Option<RealE2eConfig> {
-        let sender_mnemonic = env_any(&[
+        let use_faucet = env_any(&[
+            "GITAFTER_E2E_USE_FAUCET",
+            "MARKETPLACE_E2E_USE_FAUCET",
+            "SPARK_E2E_USE_FAUCET",
+        ])
+        .is_some();
+        let sender_env = env_any(&[
             "GITAFTER_E2E_SENDER_MNEMONIC",
             "MARKETPLACE_E2E_SENDER_MNEMONIC",
             "SPARK_E2E_SENDER_MNEMONIC",
-        ])?;
-        let receiver_mnemonic = env_any(&[
+        ]);
+        let receiver_env = env_any(&[
             "GITAFTER_E2E_RECEIVER_MNEMONIC",
             "MARKETPLACE_E2E_RECEIVER_MNEMONIC",
             "SPARK_E2E_RECEIVER_MNEMONIC",
-        ])?;
+        ]);
+        let (sender_mnemonic, receiver_mnemonic) = match (sender_env, receiver_env) {
+            (Some(sender), Some(receiver)) => (sender, receiver),
+            _ if use_faucet => (
+                FAUCET_SENDER_MNEMONIC.to_string(),
+                FAUCET_RECEIVER_MNEMONIC.to_string(),
+            ),
+            _ => return None,
+        };
 
         let amount_sats = env_any(&[
             "GITAFTER_E2E_AMOUNT_SATS",
@@ -4607,6 +4626,10 @@ mod tests {
             println!("Skipping mainnet GitAfter E2E test - set GITAFTER_E2E_ALLOW_MAINNET=1 to enable");
             return None;
         }
+        if network == Network::Mainnet && use_faucet {
+            println!("Skipping mainnet GitAfter E2E test - faucet funding only supported on regtest");
+            return None;
+        }
 
         let api_key = env_any(&[
             "GITAFTER_E2E_API_KEY",
@@ -4622,6 +4645,7 @@ mod tests {
             network,
             api_key,
             timeout,
+            use_faucet,
         })
     }
 
@@ -4634,6 +4658,51 @@ mod tests {
             .join(format!("openagents-gitafter-e2e-{}-{}-{}", label, std::process::id(), now));
         std::fs::create_dir_all(&dir).expect("should create gitafter e2e storage dir");
         dir
+    }
+
+    async fn wait_for_min_balance(
+        wallet: &SparkWallet,
+        min_sats: u64,
+        timeout: Duration,
+    ) -> Result<(), anyhow::Error> {
+        let deadline = tokio::time::Instant::now() + timeout;
+
+        loop {
+            let balance = wallet.get_balance().await?;
+            if balance.total_sats() >= min_sats {
+                return Ok(());
+            }
+
+            if tokio::time::Instant::now() >= deadline {
+                return Err(anyhow::anyhow!(
+                    "timed out waiting for balance >= {} sats",
+                    min_sats
+                ));
+            }
+
+            tokio::time::sleep(Duration::from_secs(2)).await;
+        }
+    }
+
+    async fn ensure_funded(
+        wallet: &SparkWallet,
+        min_balance: u64,
+        timeout: Duration,
+    ) -> Result<(), anyhow::Error> {
+        let balance = wallet.get_balance().await?;
+        if balance.total_sats() >= min_balance {
+            return Ok(());
+        }
+
+        let needed = min_balance.saturating_sub(balance.total_sats());
+        let request_amount = needed.clamp(10_000, 50_000);
+        let deposit_address = wallet.get_bitcoin_address().await?;
+
+        let faucet = RegtestFaucet::new()?;
+        faucet.fund_address(&deposit_address, request_amount).await?;
+        wait_for_min_balance(wallet, balance.total_sats().saturating_add(1), timeout).await?;
+
+        Ok(())
     }
 
     async fn wait_for_payment_amount(
@@ -4671,7 +4740,7 @@ mod tests {
     #[ignore = "Requires funded Spark testnet wallets"]
     async fn test_bounty_claim_payout_real_sats() {
         let Some(config) = real_e2e_config() else {
-            println!("Skipping GitAfter E2E test - set GITAFTER_E2E_SENDER_MNEMONIC and GITAFTER_E2E_RECEIVER_MNEMONIC");
+            println!("Skipping GitAfter E2E test - set GITAFTER_E2E_SENDER_MNEMONIC/GITAFTER_E2E_RECEIVER_MNEMONIC or GITAFTER_E2E_USE_FAUCET=1");
             return;
         };
 
@@ -4720,14 +4789,20 @@ mod tests {
         .await
         .expect("receiver wallet"));
 
-        let sender_balance_before = sender_wallet
-            .get_balance()
-            .await
-            .expect("sender balance");
-
-        if sender_balance_before.total_sats() < config.amount_sats {
-            println!("Sender wallet requires funding before running this test");
-            return;
+        if config.use_faucet {
+            if let Err(error) = ensure_funded(&sender_wallet, config.amount_sats, config.timeout).await {
+                println!("Skipping GitAfter E2E test - faucet funding failed: {}", error);
+                return;
+            }
+        } else {
+            let sender_balance_before = sender_wallet
+                .get_balance()
+                .await
+                .expect("sender balance");
+            if sender_balance_before.total_sats() < config.amount_sats {
+                println!("Sender wallet requires funding before running this test");
+                return;
+            }
         }
 
         let invoice = receiver_wallet

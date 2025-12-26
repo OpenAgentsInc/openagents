@@ -351,6 +351,22 @@ impl SparkWallet {
         Ok(response.payment_request)
     }
 
+    /// Get a Bitcoin on-chain deposit address for funding the wallet
+    ///
+    /// This requests a static deposit address from the SDK. Use this when
+    /// funding wallets via regtest faucets or on-chain deposits.
+    pub async fn get_bitcoin_address(&self) -> Result<String, SparkError> {
+        let request = ReceivePaymentRequest {
+            payment_method: ReceivePaymentMethod::BitcoinAddress,
+        };
+
+        let response = self.sdk.receive_payment(request)
+            .await
+            .map_err(|e| SparkError::GetAddressFailed(e.to_string()))?;
+
+        Ok(response.payment_request)
+    }
+
     /// Get the underlying signer
     pub fn signer(&self) -> &SparkSigner {
         &self.signer

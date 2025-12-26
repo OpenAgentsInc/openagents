@@ -10,12 +10,14 @@
 //! - Mock Nostr relay for protocol testing
 
 pub mod fixtures;
+pub mod faucet;
 pub mod mocks;
 pub mod mock_relay;
 pub mod test_app;
 
 // Re-export commonly used testing utilities
 pub use fixtures::*;
+pub use faucet::*;
 pub use mocks::*;
 pub use mock_relay::*;
 pub use test_app::*;

@@ -5937,6 +5937,7 @@ dependencies = [
  "serde_yaml",
  "sha2",
  "tempfile",
+ "testing",
  "thiserror 2.0.17",
  "tokio",
  "toml",
@@ -7007,6 +7008,7 @@ dependencies = [
  "hex",
  "serde",
  "serde_json",
+ "testing",
  "thiserror 2.0.17",
  "tokio",
 ]

@@ -40,3 +40,4 @@ breez-sdk-spark = { path = "../../../spark-sdk/crates/breez-sdk/core" }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt"] }
+testing = { path = "../testing" }
