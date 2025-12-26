@@ -9,12 +9,11 @@
 //!
 //! ## Discovering compute providers
 //!
-//! ```no_run
+//! ```
 //! use marketplace::core::discovery::{ProviderDiscovery, ProviderQuery, SortBy};
 //!
-//! # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-//! // Create discovery client
-//! let discovery = ProviderDiscovery::new(&["wss://relay.damus.io"]).await?;
+//! // Create discovery manager
+//! let discovery = ProviderDiscovery::new();
 //!
 //! // Query for providers with specific model
 //! let query = ProviderQuery::new()
@@ -23,7 +22,7 @@
 //!     .with_min_trust_score(0.7)
 //!     .sort_by(SortBy::TrustScore);
 //!
-//! let providers = discovery.query(&query)?;
+//! let providers = discovery.query(&query);
 //! for provider in providers {
 //!     println!("{}: {} (trust: {})",
 //!         provider.metadata.name,
@@ -31,8 +30,6 @@
 //!         provider.trust_score
 //!     );
 //! }
-//! # Ok(())
-//! # }
 //! ```
 //!
 //! ## Building provider query with filters
