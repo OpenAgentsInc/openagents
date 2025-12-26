@@ -25,7 +25,7 @@ pub enum AutopilotCommands {
         #[arg(short, long)]
         cwd: Option<PathBuf>,
 
-        /// Agent to use (claude, codex, gpt-oss)
+        /// Agent to use (claude, codex, gpt-oss, fm-bridge)
         #[arg(long, default_value = "claude")]
         agent: String,
 

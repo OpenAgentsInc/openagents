@@ -160,6 +160,13 @@ fn resolve_gpt_oss_model(model: &str) -> String {
     }
 }
 
+fn resolve_fm_bridge_model(model: &str) -> String {
+    match model.to_lowercase().as_str() {
+        "sonnet" | "opus" | "haiku" => fm_bridge_agent::FmBridgeAgentConfig::default().model,
+        _ => model.to_string(),
+    }
+}
+
 /// Compaction hook to provide custom instructions
 struct CompactionHook;
 
@@ -979,6 +986,47 @@ fn parse_gpt_oss_tool_result(raw: &str) -> (bool, Option<String>) {
     }
 }
 
+const TOOL_CALL_OPEN: &str = "<tool_call>";
+const TOOL_CALL_CLOSE: &str = "</tool_call>";
+const TOOL_RESULT_OPEN: &str = "<tool_result>";
+const TOOL_RESULT_CLOSE: &str = "</tool_result>";
+const FM_BRIDGE_TOOL_NAMES: [&str; 4] = ["browser", "python", "apply_patch", "ui_pane"];
+
+fn build_fm_bridge_tool_prompt(tool_schemas: &[(String, serde_json::Value)]) -> String {
+    let mut lines = Vec::new();
+    lines.push("You are running on backend: fm-bridge.".to_string());
+    lines.push("Tool calls are allowed. To call a tool, respond ONLY with:".to_string());
+    lines.push(format!(
+        "{TOOL_CALL_OPEN}{{\"tool\":\"name\",\"parameters\":{{}}}}{TOOL_CALL_CLOSE}"
+    ));
+    lines.push("Available tools:".to_string());
+
+    for (name, schema) in tool_schemas {
+        let schema_text =
+            serde_json::to_string_pretty(schema).unwrap_or_else(|_| "{}".to_string());
+        lines.push(format!("- {name}: {schema_text}"));
+    }
+
+    lines.join("\n")
+}
+
+fn extract_fm_bridge_tool_call(text: &str) -> Option<gpt_oss_agent::tools::ToolRequest> {
+    let trimmed = text.trim();
+    if let Some(start) = trimmed.find(TOOL_CALL_OPEN) {
+        let rest = &trimmed[start + TOOL_CALL_OPEN.len()..];
+        if let Some(end) = rest.find(TOOL_CALL_CLOSE) {
+            let json_str = rest[..end].trim();
+            return serde_json::from_str::<gpt_oss_agent::tools::ToolRequest>(json_str).ok();
+        }
+    }
+
+    if trimmed.starts_with('{') && trimmed.ends_with('}') {
+        return serde_json::from_str::<gpt_oss_agent::tools::ToolRequest>(trimmed).ok();
+    }
+
+    None
+}
+
 /// Run GPT-OSS agent with the given prompt
 async fn run_gpt_oss_agent(
     prompt: &str,
@@ -1093,6 +1141,132 @@ async fn run_gpt_oss_agent(
         duration_ms,
         num_turns: state.turn,
         result_text: Some(response),
+        errors: Vec::new(),
+        issues_completed: 0,
+        apm: None,
+    });
+
+    Ok(())
+}
+
+/// Run FM-Bridge agent with the given prompt
+async fn run_fm_bridge_agent(
+    prompt: &str,
+    cwd: &PathBuf,
+    model: &str,
+    max_turns: u32,
+    _max_budget: f64,
+    collector: &mut TrajectoryCollector,
+    verbose: bool,
+) -> Result<()> {
+    use fm_bridge_agent::{FmBridgeAgent, FmBridgeAgentConfig};
+
+    let mut config = FmBridgeAgentConfig::default();
+    config.model = model.to_string();
+    config.workspace_root = cwd.clone();
+    config.record_trajectory = false;
+    let base_url = config.base_url.clone();
+
+    let agent = FmBridgeAgent::new(config).await?;
+    if !agent.is_ready().await {
+        anyhow::bail!("FM bridge at {} is not responding", base_url);
+    }
+
+    let session = agent.create_session().await;
+    collector.set_session_id(session.session_id().to_string());
+    collector.add_step(StepType::SystemInit {
+        model: model.to_string(),
+    });
+    collector.add_step(StepType::User {
+        content: prompt.to_string(),
+    });
+
+    let mut tool_schemas = Vec::new();
+    for name in FM_BRIDGE_TOOL_NAMES {
+        let schema = agent
+            .get_tool_schema(name)
+            .await
+            .unwrap_or(serde_json::Value::Null);
+        tool_schemas.push((name.to_string(), schema));
+    }
+
+    let mut tool_turns: u32 = 0;
+    let mut tool_counter: u64 = 0;
+    let tool_prompt = build_fm_bridge_tool_prompt(&tool_schemas);
+    let mut message = format!("{tool_prompt}\n\nUser: {prompt}");
+    let mut last_response = String::new();
+
+    loop {
+        let response = session.send(&message).await?;
+        last_response = response.clone();
+
+        if let Some(request) = extract_fm_bridge_tool_call(&response) {
+            if max_turns > 0 && tool_turns >= max_turns {
+                collector.add_step(StepType::Assistant {
+                    content: response.clone(),
+                });
+                break;
+            }
+
+            tool_turns += 1;
+            tool_counter += 1;
+            let tool_id = format!("fm-bridge-tool-{}", tool_counter);
+            collector.add_step(StepType::ToolCall {
+                tool: request.tool.clone(),
+                tool_id: tool_id.clone(),
+                input: request.parameters.clone(),
+            });
+
+            let result = session.execute_tool(request.clone()).await?;
+            let output = if result.success {
+                Some(result.output.clone())
+            } else {
+                result
+                    .error
+                    .clone()
+                    .or_else(|| (!result.output.trim().is_empty()).then(|| result.output.clone()))
+            };
+            collector.add_step(StepType::ToolResult {
+                tool_id,
+                success: result.success,
+                output,
+            });
+
+            let result_payload = serde_json::json!({
+                "tool": request.tool,
+                "success": result.success,
+                "output": result.output,
+                "error": result.error,
+            });
+            message = format!(
+                "Tool result:\n{TOOL_RESULT_OPEN}{}{TOOL_RESULT_CLOSE}",
+                serde_json::to_string_pretty(&result_payload)?
+            );
+            continue;
+        }
+
+        collector.add_step(StepType::Assistant {
+            content: response.clone(),
+        });
+        break;
+    }
+
+    if verbose {
+        println!("{} {}", "FM-Bridge:".cyan().bold(), last_response);
+    } else {
+        println!("{}", last_response);
+    }
+
+    let state = session.state().await;
+    let duration_ms = (chrono::Utc::now() - collector.trajectory().started_at)
+        .num_milliseconds()
+        .max(0) as u64;
+
+    collector.set_result(TrajectoryResult {
+        success: true,
+        duration_ms,
+        num_turns: state.turn,
+        result_text: Some(last_response),
         errors: Vec::new(),
         issues_completed: 0,
         apm: None,
@@ -1361,10 +1535,10 @@ async fn run_task(
     check_and_handle_stale_lockfile(&cwd).await?;
 
     // Resolve friendly model names to full model IDs
-    let model = if agent == "gpt-oss" {
-        resolve_gpt_oss_model(&model)
-    } else {
-        resolve_model(&model)
+    let model = match agent.as_str() {
+        "gpt-oss" => resolve_gpt_oss_model(&model),
+        "fm-bridge" => resolve_fm_bridge_model(&model),
+        _ => resolve_model(&model),
     };
 
     // Get git info
@@ -1611,9 +1785,21 @@ async fn run_task(
                 )
                 .await?;
             }
+            "fm-bridge" => {
+                run_fm_bridge_agent(
+                    &prompt,
+                    &cwd,
+                    &model,
+                    max_turns,
+                    max_budget,
+                    &mut collector,
+                    verbose,
+                )
+                .await?;
+            }
             _ => {
                 anyhow::bail!(
-                    "Unknown agent: {}. Use 'claude', 'codex', or 'gpt-oss'",
+                    "Unknown agent: {}. Use 'claude', 'codex', 'gpt-oss', or 'fm-bridge'",
                     agent
                 );
             }

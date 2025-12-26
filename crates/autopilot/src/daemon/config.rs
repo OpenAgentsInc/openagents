@@ -205,6 +205,10 @@ pub struct DaemonConfig {
     /// PID file path
     pub pid_file: PathBuf,
 
+    /// Agent to use (claude, codex, gpt-oss, fm-bridge)
+    #[serde(default = "default_agent")]
+    pub agent: String,
+
     /// Model to use (sonnet, opus, haiku)
     pub model: String,
 
@@ -213,6 +217,10 @@ pub struct DaemonConfig {
 
     /// Maximum turns
     pub max_turns: u32,
+}
+
+fn default_agent() -> String {
+    "claude".to_string()
 }
 
 impl Default for DaemonConfig {
@@ -229,6 +237,7 @@ impl Default for DaemonConfig {
             nostr: NostrConfig::default(),
             socket_path: autopilot_dir.join("autopilotd.sock"),
             pid_file: autopilot_dir.join("autopilotd.pid"),
+            agent: "claude".to_string(),
             model: "sonnet".to_string(),
             max_budget: 0.0, // 0 = no constraint
             max_turns: 99999,

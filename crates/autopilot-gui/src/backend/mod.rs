@@ -75,6 +75,7 @@ pub struct BackendConfig {
     pub max_chat_entries: usize,
     pub workdir: PathBuf,
     pub project: Option<String>,
+    pub agent: String,
     pub model: String,
     pub worker_command: WorkerCommand,
 }
@@ -96,6 +97,7 @@ impl Default for BackendConfig {
             max_chat_entries: 240,
             workdir,
             project: None,
+            agent: "claude".to_string(),
             model: "sonnet".to_string(),
             worker_command: WorkerCommand::default(),
         }
@@ -371,6 +373,7 @@ fn handle_command(
             daemon_config.worker_command = config.worker_command.clone();
             daemon_config.working_dir = config.workdir.clone();
             daemon_config.project = config.project.clone();
+            daemon_config.agent = config.agent.clone();
             daemon_config.model = config.model.clone();
             let manager = FullAutoManager::start(runtime, daemon_config);
             *full_auto = Some(manager);
@@ -480,6 +483,7 @@ fn build_prompt_command(
             cmd.arg("--");
             cmd.arg("autopilot");
             cmd.arg("run");
+            cmd.arg("--agent").arg(&config.agent);
             cmd.arg("--model").arg(&config.model);
             if let Some(project) = &config.project {
                 cmd.arg("--project").arg(project);
@@ -498,6 +502,7 @@ fn build_prompt_command(
             } else {
                 cmd.arg("run");
             }
+            cmd.arg("--agent").arg(&config.agent);
             cmd.arg("--model").arg(&config.model);
             if let Some(project) = &config.project {
                 cmd.arg("--project").arg(project);
@@ -1373,6 +1378,8 @@ mod tests {
                 .map(String::as_str)
                 .eq(["run", "--bin", "openagents", "--", "autopilot", "run"])
         );
+        assert!(args.contains(&"--agent".to_string()));
+        assert!(args.contains(&config.agent));
         assert!(args.contains(&"do the thing".to_string()));
     }
 
@@ -1398,6 +1405,8 @@ mod tests {
                 .map(String::as_str)
                 .eq(["autopilot", "run"])
         );
+        assert!(args.contains(&"--agent".to_string()));
+        assert!(args.contains(&config.agent));
     }
 
     #[test]

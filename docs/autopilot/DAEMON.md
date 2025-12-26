@@ -158,6 +158,9 @@ working_dir = "/home/user/code/myproject"
 # Project name
 project = "myproject"
 
+# Agent to use
+agent = "claude"
+
 # Model to use
 model = "sonnet"
 
@@ -192,6 +195,7 @@ Options:
   -c, --config <FILE>      Config file [default: ~/.autopilot/daemon.toml]
   -w, --workdir <PATH>     Working directory for worker
   -p, --project <NAME>     Project name
+      --agent <AGENT>      Agent to use [default: claude]
       --model <MODEL>      Model to use [default: sonnet]
       --max-budget <USD>   Maximum budget [default: 0]
       --max-turns <N>      Maximum turns [default: 99999]
