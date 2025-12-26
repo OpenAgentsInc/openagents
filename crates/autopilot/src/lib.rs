@@ -18,6 +18,7 @@ pub mod context_analysis;
 pub mod deprecation;
 pub mod daemon;
 pub mod error_recovery;
+pub mod github;
 pub mod goals;
 pub mod learning;
 pub mod lockfile;

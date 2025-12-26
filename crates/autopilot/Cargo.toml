@@ -89,6 +89,10 @@ shellexpand = "3.1"
 # Database
 rusqlite = { version = "0.32", features = ["bundled"] }
 
+# GitHub API
+octocrab = "0.41"
+urlencoding = "2.1"
+
 # Statistics
 statrs = "0.17"
 walkdir.workspace = true

@@ -448,6 +448,10 @@ impl MetricsDb {
             self.migrate_v5()?;
         }
 
+        if version < 6 {
+            self.migrate_v6()?;
+        }
+
         Ok(())
     }
 
@@ -772,6 +776,34 @@ impl MetricsDb {
         )?;
 
         self.set_schema_version(5)?;
+        Ok(())
+    }
+
+    fn migrate_v6(&self) -> Result<()> {
+        // Add connected_repos table for GitHub repo integration
+        self.conn.execute_batch(
+            r#"
+            CREATE TABLE IF NOT EXISTS connected_repos (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                owner TEXT NOT NULL,
+                repo TEXT NOT NULL,
+                full_name TEXT NOT NULL UNIQUE,
+                access_token TEXT NOT NULL,
+                refresh_token TEXT,
+                token_expires_at TEXT,
+                default_branch TEXT NOT NULL DEFAULT 'main',
+                languages TEXT,
+                connected_at TEXT NOT NULL DEFAULT (datetime('now')),
+                last_sync_at TEXT,
+                settings TEXT
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_connected_repos_full_name ON connected_repos(full_name);
+            CREATE INDEX IF NOT EXISTS idx_connected_repos_owner ON connected_repos(owner);
+            "#
+        )?;
+
+        self.set_schema_version(6)?;
         Ok(())
     }
 

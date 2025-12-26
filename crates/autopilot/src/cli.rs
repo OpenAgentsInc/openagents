@@ -205,6 +205,11 @@ pub enum Commands {
         #[arg(long)]
         metadata: Vec<String>,
     },
+    /// Manage GitHub repository connections
+    Github {
+        #[command(subcommand)]
+        command: GithubCommands,
+    },
 }
 
 #[derive(Subcommand)]
@@ -1074,6 +1079,46 @@ pub enum LogsCommands {
         /// Dry run (show what would be deleted)
         #[arg(long)]
         dry_run: bool,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum GithubCommands {
+    /// Connect a GitHub repository
+    Connect {
+        /// Repository URL or owner/repo format
+        #[arg(required = true)]
+        repo: String,
+
+        /// Path to metrics database (for storing connection)
+        #[arg(long)]
+        db: Option<PathBuf>,
+    },
+    /// List connected repositories
+    List {
+        /// Path to metrics database
+        #[arg(long)]
+        db: Option<PathBuf>,
+    },
+    /// Disconnect a repository
+    Disconnect {
+        /// Repository full name (owner/repo)
+        #[arg(required = true)]
+        repo: String,
+
+        /// Path to metrics database
+        #[arg(long)]
+        db: Option<PathBuf>,
+    },
+    /// Show repository status
+    Status {
+        /// Repository full name (owner/repo)
+        #[arg(required = true)]
+        repo: String,
+
+        /// Path to metrics database
+        #[arg(long)]
+        db: Option<PathBuf>,
     },
 }
 
