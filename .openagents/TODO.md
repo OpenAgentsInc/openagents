@@ -70,7 +70,7 @@ P0 focus IDs: none.
 - [x] **Transaction history** via `list_payments()` (story 1.2.3) ✅
 - [x] **User-friendly error messages** with `SparkError::user_friendly_message()` (story 1.5.1) ✅
 - [x] **Balance protection** - `SparkError::balance_unaffected()` confirms no deduction on failure (story 1.5.2) ✅
-- [ ] E2E test with real sats (optional - can use regtest)
+- [x] E2E test with real sats (optional - can use regtest) — `crates/spark/tests/integration.rs` (`test_full_payment_flow`)
 - [ ] NIP-47 Wallet Connect (future enhancement)
 
 ---
