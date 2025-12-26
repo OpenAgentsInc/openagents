@@ -11,7 +11,7 @@ use bip39::Mnemonic;
 
 use super::server::start_server;
 use crate::core::identity::UnifiedIdentity;
-use crate::storage::keychain::SecureKeychain;
+use crate::storage::keychain::{SecureKeychain, WALLET_PASSWORD_ENV};
 
 /// Run the wallet GUI application
 pub fn run_gui() -> Result<()> {
@@ -19,7 +19,22 @@ pub fn run_gui() -> Result<()> {
 
     // Load identity from keychain
     let identity = if SecureKeychain::has_mnemonic() {
-        match SecureKeychain::retrieve_mnemonic() {
+        let mnemonic_result = if SecureKeychain::is_password_protected() {
+            match std::env::var(WALLET_PASSWORD_ENV) {
+                Ok(password) => SecureKeychain::retrieve_mnemonic_with_password(&password),
+                Err(_) => {
+                    tracing::warn!(
+                        "Wallet is password protected. Set {} to unlock.",
+                        WALLET_PASSWORD_ENV
+                    );
+                    Err(anyhow::anyhow!("Wallet is password protected"))
+                }
+            }
+        } else {
+            SecureKeychain::retrieve_mnemonic()
+        };
+
+        match mnemonic_result {
             Ok(mnemonic_str) => {
                 match Mnemonic::parse(&mnemonic_str) {
                     Ok(mnemonic) => {

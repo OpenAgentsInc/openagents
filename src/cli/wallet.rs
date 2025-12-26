@@ -23,6 +23,10 @@ pub enum WalletCommands {
     /// Export wallet mnemonic (requires confirmation)
     Export,
 
+    /// Wallet password management
+    #[command(subcommand)]
+    Password(PasswordCommands),
+
     /// Display wallet information (npub, balances, profile)
     Whoami,
 
@@ -142,11 +146,30 @@ pub enum DmCommands {
     },
 }
 
+#[derive(Subcommand)]
+pub enum PasswordCommands {
+    /// Set or change the wallet password
+    Set {
+        /// New password (will prompt if not provided)
+        #[arg(long)]
+        password: Option<String>,
+
+        /// Current password (required if already protected)
+        #[arg(long)]
+        current_password: Option<String>,
+    },
+}
+
 pub fn run(cmd: WalletCommands) -> anyhow::Result<()> {
     match cmd {
         WalletCommands::Init { show_mnemonic } => wallet::cli::identity::init(show_mnemonic),
         WalletCommands::Import { mnemonic } => wallet::cli::identity::import(mnemonic),
         WalletCommands::Export => wallet::cli::identity::export(),
+        WalletCommands::Password(cmd) => match cmd {
+            PasswordCommands::Set { password, current_password } => {
+                wallet::cli::password::set(password, current_password)
+            }
+        },
         WalletCommands::Whoami => wallet::cli::identity::whoami(),
         WalletCommands::Balance => wallet::cli::bitcoin::balance(),
         WalletCommands::Receive { amount } => wallet::cli::bitcoin::receive(amount),

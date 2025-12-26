@@ -1113,7 +1113,7 @@ async fn publish_trajectory_to_nostr(
     use std::sync::Arc;
     use wallet::core::UnifiedIdentity;
     use wallet::storage::config::WalletConfig;
-    use wallet::storage::keychain::SecureKeychain;
+    use wallet::storage::keychain::{SecureKeychain, WALLET_PASSWORD_ENV};
 
     // Load wallet config to get relay URLs
     let config = WalletConfig::load()?;
@@ -1124,7 +1124,14 @@ async fn publish_trajectory_to_nostr(
 
     // Try to load identity from keychain
     let identity = if SecureKeychain::has_mnemonic() {
-        let mnemonic_str = SecureKeychain::retrieve_mnemonic()?;
+        let mnemonic_str = if SecureKeychain::is_password_protected() {
+            let password = std::env::var(WALLET_PASSWORD_ENV).context(
+                "Wallet is password protected. Set OPENAGENTS_WALLET_PASSWORD to unlock.",
+            )?;
+            SecureKeychain::retrieve_mnemonic_with_password(&password)?
+        } else {
+            SecureKeychain::retrieve_mnemonic()?
+        };
         let mnemonic = Mnemonic::from_str(&mnemonic_str)?;
         Arc::new(UnifiedIdentity::from_mnemonic(mnemonic)?)
     } else {

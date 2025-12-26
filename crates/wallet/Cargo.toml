@@ -65,6 +65,9 @@ hex = "0.4"
 chrono.workspace = true
 spark = { package = "openagents-spark", path = "../spark" }
 reqwest = { workspace = true, features = ["json", "blocking"] }
+argon2 = "0.5"
+chacha20poly1305 = "0.10"
+rpassword = "7"
 
 [dev-dependencies]
 reqwest = { workspace = true, features = ["blocking"] }

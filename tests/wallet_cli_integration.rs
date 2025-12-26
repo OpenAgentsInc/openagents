@@ -98,6 +98,47 @@ fn test_wallet_whoami_shows_identity() {
 }
 
 #[test]
+fn test_wallet_password_set_requires_unlock() {
+    let workspace = create_temp_workspace();
+    let keychain = keychain_path(&workspace);
+
+    init_wallet(&workspace, &keychain);
+
+    let original = fs::read_to_string(&keychain).expect("read keychain file");
+
+    let mut cmd = openagents_cmd(&workspace, &keychain);
+    cmd.arg("wallet")
+        .arg("password")
+        .arg("set")
+        .arg("--password")
+        .arg("hunter2");
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("Wallet password set"));
+
+    let encrypted = fs::read_to_string(&keychain).expect("read keychain file");
+    assert_ne!(encrypted.trim(), original.trim());
+    assert!(encrypted.contains("\"ciphertext\""));
+
+    let mut locked_cmd = openagents_cmd(&workspace, &keychain);
+    locked_cmd.arg("wallet").arg("whoami");
+    locked_cmd.assert()
+        .failure()
+        .stderr(predicate::str::contains("password protected"));
+
+    let mut unlocked_cmd = openagents_cmd(&workspace, &keychain);
+    unlocked_cmd
+        .env("OPENAGENTS_WALLET_PASSWORD", "hunter2")
+        .arg("wallet")
+        .arg("whoami");
+    unlocked_cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("Wallet Information"));
+
+    fs::remove_dir_all(&workspace).expect("cleanup workspace");
+}
+
+#[test]
 fn test_wallet_profile_set_and_show() {
     let workspace = create_temp_workspace();
     let keychain = keychain_path(&workspace);
