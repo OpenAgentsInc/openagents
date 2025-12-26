@@ -82,6 +82,40 @@ pub enum PaymentType {
     Trajectory,
 }
 
+/// Revenue split payout recipient
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum RevenueRecipient {
+    Creator,
+    Compute,
+    Platform,
+    Referrer,
+}
+
+/// Invoices used for revenue split distribution
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RevenueSplitInvoices {
+    pub creator_invoice: String,
+    pub compute_invoice: String,
+    pub platform_invoice: Option<String>,
+    pub referrer_invoice: Option<String>,
+}
+
+/// Distribution record for a revenue split payment
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RevenueSplitPayment {
+    pub recipient: RevenueRecipient,
+    pub payment: PaymentRecord,
+}
+
+/// Revenue split distribution outcome
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RevenueDistributionResult {
+    pub split: super::revenue::RevenueSplit,
+    pub payments: Vec<RevenueSplitPayment>,
+    pub retained_platform_sats: u64,
+}
+
 impl PaymentRecord {
     /// Create a new payment record
     pub fn new(
@@ -338,6 +372,98 @@ impl PaymentManager {
             .map_err(|e| anyhow::anyhow!("Failed to create Lightning invoice: {}", e))?;
 
         Ok(response.payment_request)
+    }
+
+    /// Distribute revenue split payments to recipients.
+    pub async fn distribute_revenue(
+        &self,
+        payment_type: PaymentType,
+        item_id: &str,
+        split: super::revenue::RevenueSplit,
+        invoices: RevenueSplitInvoices,
+    ) -> Result<RevenueDistributionResult> {
+        split.verify()?;
+        validate_split_invoices(&split, &invoices)?;
+
+        let wallet = self.wallet.as_ref().ok_or_else(|| {
+            anyhow::anyhow!("Spark wallet not configured. See d-001 directive.")
+        })?;
+
+        let mut payments = Vec::new();
+
+        if split.creator_sats > 0 {
+            let payment = send_split_payment(
+                wallet,
+                payment_type.clone(),
+                item_id,
+                &invoices.creator_invoice,
+                split.creator_sats,
+            )
+            .await?;
+            payments.push(RevenueSplitPayment {
+                recipient: RevenueRecipient::Creator,
+                payment,
+            });
+        }
+
+        if split.compute_sats > 0 {
+            let payment = send_split_payment(
+                wallet,
+                payment_type.clone(),
+                item_id,
+                &invoices.compute_invoice,
+                split.compute_sats,
+            )
+            .await?;
+            payments.push(RevenueSplitPayment {
+                recipient: RevenueRecipient::Compute,
+                payment,
+            });
+        }
+
+        let mut retained_platform_sats = split.platform_sats;
+        if split.platform_sats > 0 {
+            if let Some(platform_invoice) = invoices.platform_invoice.as_deref() {
+                let payment = send_split_payment(
+                    wallet,
+                    payment_type.clone(),
+                    item_id,
+                    platform_invoice,
+                    split.platform_sats,
+                )
+                .await?;
+                payments.push(RevenueSplitPayment {
+                    recipient: RevenueRecipient::Platform,
+                    payment,
+                });
+                retained_platform_sats = 0;
+            }
+        }
+
+        if split.referrer_sats > 0 {
+            let referrer_invoice = invoices
+                .referrer_invoice
+                .as_deref()
+                .ok_or_else(|| anyhow::anyhow!("Referrer invoice required for split payout"))?;
+            let payment = send_split_payment(
+                wallet,
+                payment_type.clone(),
+                item_id,
+                referrer_invoice,
+                split.referrer_sats,
+            )
+            .await?;
+            payments.push(RevenueSplitPayment {
+                recipient: RevenueRecipient::Referrer,
+                payment,
+            });
+        }
+
+        Ok(RevenueDistributionResult {
+            split,
+            payments,
+            retained_platform_sats,
+        })
     }
 
     /// Verify a payment preimage matches the payment hash
@@ -647,6 +773,88 @@ fn payment_preimage(payment: &openagents_spark::Payment) -> Option<String> {
     }
 }
 
+fn validate_split_invoices(
+    split: &super::revenue::RevenueSplit,
+    invoices: &RevenueSplitInvoices,
+) -> Result<()> {
+    if split.creator_sats > 0 && invoices.creator_invoice.trim().is_empty() {
+        return Err(anyhow::anyhow!("Creator invoice required for split payout"));
+    }
+    if split.compute_sats > 0 && invoices.compute_invoice.trim().is_empty() {
+        return Err(anyhow::anyhow!("Compute invoice required for split payout"));
+    }
+    if split.referrer_sats > 0 {
+        let referrer_invoice = invoices
+            .referrer_invoice
+            .as_deref()
+            .unwrap_or("")
+            .trim();
+        if referrer_invoice.is_empty() {
+            return Err(anyhow::anyhow!("Referrer invoice required for split payout"));
+        }
+    }
+    if let Some(platform_invoice) = invoices.platform_invoice.as_deref() {
+        if platform_invoice.trim().is_empty() {
+            return Err(anyhow::anyhow!("Platform invoice must not be empty"));
+        }
+    }
+    Ok(())
+}
+
+async fn send_split_payment(
+    wallet: &SparkWallet,
+    payment_type: PaymentType,
+    item_id: &str,
+    invoice: &str,
+    amount_sats: u64,
+) -> Result<PaymentRecord> {
+    let amount_msats = sats_to_msats(amount_sats)?;
+    let invoice_msats = PaymentManager::parse_invoice_amount(invoice);
+    let send_amount = match invoice_msats {
+        Some(msats) => {
+            if msats != amount_msats {
+                return Err(anyhow::anyhow!(
+                    "Invoice amount {} msats does not match expected {} msats",
+                    msats,
+                    amount_msats
+                ));
+            }
+            None
+        }
+        None => Some(amount_sats),
+    };
+
+    let mut payment = PaymentRecord::new(
+        payment_type,
+        item_id.to_string(),
+        amount_msats,
+        invoice.to_string(),
+    );
+
+    let response = wallet
+        .send_payment_simple(invoice, send_amount)
+        .await
+        .map_err(|e| anyhow::anyhow!("Failed to send split payment: {}", e))?;
+
+    payment.mark_in_flight(response.payment.id.clone());
+
+    if response.payment.status == openagents_spark::PaymentStatus::Completed {
+        let preimage = payment_preimage(&response.payment)
+            .unwrap_or_else(|| response.payment.id.clone());
+        payment.mark_completed(preimage);
+    } else {
+        payment.mark_failed();
+    }
+
+    Ok(payment)
+}
+
+fn sats_to_msats(amount_sats: u64) -> Result<u64> {
+    amount_sats
+        .checked_mul(1000)
+        .ok_or_else(|| anyhow::anyhow!("Amount exceeds msat range"))
+}
+
 /// Mock payment service for testing without Breez/Spark SDK
 /// 
 /// Simulates Lightning payment flows for E2E tests:
@@ -728,6 +936,7 @@ impl MockPaymentService {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::core::revenue::{RevenueSplit, RevenueSplitConfig};
 
     #[test]
     fn test_payment_record_creation() {
@@ -916,5 +1125,61 @@ mod tests {
             "0000000000000000000000000000000000000000000000000000000000000000";
         assert!(validate_payment_hash(valid).is_ok());
         assert!(validate_payment_hash("1234").is_err());
+    }
+
+    #[test]
+    fn test_validate_split_invoices_requires_referrer() {
+        let config = RevenueSplitConfig::default();
+        let split = RevenueSplit::calculate(100_000, &config, true);
+        let invoices = RevenueSplitInvoices {
+            creator_invoice: "lnbc1creator".to_string(),
+            compute_invoice: "lnbc1compute".to_string(),
+            platform_invoice: None,
+            referrer_invoice: None,
+        };
+
+        let err = validate_split_invoices(&split, &invoices).unwrap_err();
+        assert!(err.to_string().contains("Referrer invoice required"));
+    }
+
+    #[test]
+    fn test_validate_split_invoices_allows_missing_referrer() {
+        let config = RevenueSplitConfig::default();
+        let split = RevenueSplit::calculate(100_000, &config, false);
+        let invoices = RevenueSplitInvoices {
+            creator_invoice: "lnbc1creator".to_string(),
+            compute_invoice: "lnbc1compute".to_string(),
+            platform_invoice: None,
+            referrer_invoice: None,
+        };
+
+        assert!(validate_split_invoices(&split, &invoices).is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_distribute_revenue_requires_wallet() {
+        let manager = PaymentManager::new(None);
+        let config = RevenueSplitConfig::default();
+        let split = RevenueSplit::calculate(100_000, &config, false);
+        let invoices = RevenueSplitInvoices {
+            creator_invoice: "lnbc1creator".to_string(),
+            compute_invoice: "lnbc1compute".to_string(),
+            platform_invoice: None,
+            referrer_invoice: None,
+        };
+
+        let result = manager
+            .distribute_revenue(PaymentType::Skill, "skill-1", split, invoices)
+            .await;
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("Spark wallet not configured"));
+    }
+
+    #[test]
+    fn test_sats_to_msats_conversion() {
+        assert_eq!(sats_to_msats(2).unwrap(), 2000);
     }
 }

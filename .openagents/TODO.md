@@ -240,7 +240,7 @@ P0 focus IDs: none.
 - [x] Invoice creation for receiving payments
 - [x] Preimage verification for settlement
 - [x] HTLC escrow flows (Spark HTLC send/claim wired) ✅
-- [ ] Revenue split distribution (future)
+- [x] Revenue split distribution (split invoices + payout wiring) ✅
 
 **Files:**
 - `crates/marketplace/src/` ✅
