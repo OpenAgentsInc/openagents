@@ -525,26 +525,38 @@
 
 ---
 
-### d-021: OpenCode SDK 🟡
+### d-021: OpenCode SDK ✅ COMPLETE
 
-**Current:** Needs verification.
+**Current:** Full REST + SSE client implementation with progenitor codegen.
 
-- [ ] **SDK Generation**
-  - [ ] Generate from OpenAPI spec
-  - [ ] Type-safe Rust clients
-- [ ] **OpencodeClient**
-  - [ ] Session operations
-  - [ ] Provider operations
-- [ ] **OpencodeServer**
-  - [ ] Process spawning
-  - [ ] Management API
-- [ ] **EventStream**
-  - [ ] SSE consumption
-  - [ ] Event parsing
-- [ ] **ACP Integration**
-  - [ ] Adapter for protocol unification
+- [x] **SDK Generation** ✅
+  - [x] Generate from OpenAPI spec (progenitor)
+  - [x] Type-safe Rust clients
+- [x] **OpencodeClient** ✅
+  - [x] Session operations (create, list, get, delete, fork)
+  - [x] Prompt handling (sync, async)
+  - [x] Message history, todos, children
+  - [x] Permission responses
+  - [x] Summarize, revert, unrevert
+  - [x] Share and diff
+- [x] **Provider operations** ✅
+  - [x] Provider list, auth
+  - [x] Agent list, MCP list
+  - [x] Config get/update
+- [x] **File operations** ✅
+  - [x] File list, content, status
+  - [x] Find text, file, symbol
+  - [x] VCS status
+- [x] **OpencodeServer** ✅
+  - [x] ServerOptions builder
+  - [x] Port, hostname, timeout, directory config
+- [x] **EventStream** ✅
+  - [x] SSE consumption via reqwest-eventsource
+  - [x] Event parsing
+- [x] **ACP Integration** ✅
+  - [x] `acp-adapter/agents/opencode.rs` adapter
 
-**Files:** `crates/opencode-sdk/` (if exists)
+**Files:** `crates/opencode-sdk/src/` ✅
 
 ---
 
@@ -640,12 +652,12 @@
 5. **d-008**: Marketplace payment settlement ✅
 6. **d-012**: No stubs policy (critical violations fixed) ✅
 
-### Phase 2: Verification & Enhancement 🟡 IN PROGRESS
+### Phase 2: Verification & Enhancement ✅ COMPLETE
 7. **d-017**: ACP integration ✅
 8. **d-018**: Parallel containers ✅
 9. **d-019**: Local inference ✅
-10. **d-009**: Autopilot GUI native port (remaining work)
-11. **d-021**: OpenCode SDK verification
+10. **d-021**: OpenCode SDK ✅
+11. **d-009**: Autopilot GUI native port (future - WGPUI port)
 
 ### Phase 3: Testing & Quality
 12. **d-013**: Testing framework coverage
