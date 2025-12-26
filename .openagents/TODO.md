@@ -475,9 +475,9 @@ P0 focus IDs: none.
   - [x] SQLite with WAL mode for concurrent access
 - [x] **Docker Support** ✅
   - [x] `parallel/docker.rs` - Container orchestration
-- [ ] **Docker Infrastructure Files** (optional enhancement)
-  - [ ] Dockerfile with Rust toolchain
-  - [ ] docker-compose.yml for N-agent orchestration
+- [x] **Docker Infrastructure Files** ✅
+  - [x] Dockerfile with Rust toolchain ✅
+  - [x] docker-compose.yml for N-agent orchestration ✅
 - [ ] **GUI Integration** (future)
   - [ ] "Parallel Agents" page
 
