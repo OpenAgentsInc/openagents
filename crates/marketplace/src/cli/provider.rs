@@ -4,6 +4,8 @@ use crate::compute::provider::{Provider, ProviderConfig, ProviderState};
 use clap::Subcommand;
 use std::path::PathBuf;
 
+const CONFIG_DIR_ENV: &str = "OPENAGENTS_CONFIG_DIR";
+
 #[derive(Debug, Subcommand)]
 pub enum ProviderCommands {
     /// Go online and start accepting compute jobs
@@ -310,9 +312,16 @@ impl ProviderCommands {
 
 /// Get the config directory path
 fn get_config_dir() -> anyhow::Result<PathBuf> {
-    let home = std::env::var("HOME")
-        .map_err(|_| anyhow::anyhow!("HOME environment variable not set"))?;
-    let config_dir = PathBuf::from(home).join(".openagents");
+    let config_dir = if let Ok(custom) = std::env::var(CONFIG_DIR_ENV) {
+        if custom.trim().is_empty() {
+            anyhow::bail!("OPENAGENTS_CONFIG_DIR is set but empty");
+        }
+        PathBuf::from(custom)
+    } else {
+        let home = std::env::var("HOME")
+            .map_err(|_| anyhow::anyhow!("HOME environment variable not set"))?;
+        PathBuf::from(home).join(".openagents")
+    };
 
     // Create directory if it doesn't exist
     if !config_dir.exists() {
@@ -388,6 +397,35 @@ fn save_provider_state(provider: &Provider) -> anyhow::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::{Mutex, OnceLock};
+
+    fn test_lock() -> std::sync::MutexGuard<'static, ()> {
+        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        LOCK.get_or_init(|| Mutex::new(())).lock().expect("lock test env")
+    }
+
+    fn with_temp_config_dir<F>(f: F)
+    where
+        F: FnOnce() -> anyhow::Result<()>,
+    {
+        let _guard = test_lock();
+        let temp_dir = tempfile::tempdir().expect("create temp config dir");
+        let original = std::env::var(CONFIG_DIR_ENV).ok();
+        unsafe {
+            std::env::set_var(CONFIG_DIR_ENV, temp_dir.path());
+        }
+        let result = f();
+        if let Some(value) = original {
+            unsafe {
+                std::env::set_var(CONFIG_DIR_ENV, value);
+            }
+        } else {
+            unsafe {
+                std::env::remove_var(CONFIG_DIR_ENV);
+            }
+        }
+        result.expect("provider command should succeed");
+    }
 
     #[test]
     fn test_provider_commands_variants_exist() {
@@ -416,58 +454,56 @@ mod tests {
 
     #[test]
     fn test_config_command_with_all_params() {
-        let cmd = ProviderCommands::Config {
-            name: Some("Test Provider".to_string()),
-            description: Some("A test provider".to_string()),
-            website: Some("https://test.com".to_string()),
-            icon: Some("https://test.com/icon.png".to_string()),
-            region: Some("us-west".to_string()),
-            schedule: Some("always".to_string()),
-            capabilities: vec!["llama3".to_string(), "mistral".to_string()],
-            price_input: Some(10),
-            price_output: Some(20),
-            relays: vec!["wss://relay1.com".to_string()],
-            readvertise_interval: Some(7200),
-            json: false,
-        };
+        with_temp_config_dir(|| {
+            let cmd = ProviderCommands::Config {
+                name: Some("Test Provider".to_string()),
+                description: Some("A test provider".to_string()),
+                website: Some("https://test.com".to_string()),
+                icon: Some("https://test.com/icon.png".to_string()),
+                region: Some("us-west".to_string()),
+                schedule: Some("always".to_string()),
+                capabilities: vec!["llama3".to_string(), "mistral".to_string()],
+                price_input: Some(10),
+                price_output: Some(20),
+                relays: vec!["wss://relay1.com".to_string()],
+                readvertise_interval: Some(7200),
+                json: false,
+            };
 
-        // Should execute without error
-        let result = cmd.execute();
-        assert!(result.is_ok());
+            cmd.execute()
+        });
     }
 
     #[test]
     fn test_status_command() {
-        let cmd = ProviderCommands::Status { json: false };
-
-        // Should execute without error
-        let result = cmd.execute();
-        assert!(result.is_ok());
+        with_temp_config_dir(|| {
+            let cmd = ProviderCommands::Status { json: false };
+            cmd.execute()
+        });
     }
 
     #[test]
     fn test_earnings_command_periods() {
-        for period in &["day", "week", "month", "all"] {
-            let cmd = ProviderCommands::Earnings {
-                json: false,
-                period: period.to_string(),
-            };
-
-            let result = cmd.execute();
-            assert!(result.is_ok());
-        }
+        with_temp_config_dir(|| {
+            for period in &["day", "week", "month", "all"] {
+                let cmd = ProviderCommands::Earnings {
+                    json: false,
+                    period: period.to_string(),
+                };
+                cmd.execute()?;
+            }
+            Ok(())
+        });
     }
 
     #[test]
     fn test_online_offline_cycle() {
-        // Go online
-        let online_cmd = ProviderCommands::Online { json: true };
-        let result = online_cmd.execute();
-        assert!(result.is_ok());
+        with_temp_config_dir(|| {
+            let online_cmd = ProviderCommands::Online { json: true };
+            online_cmd.execute()?;
 
-        // Go offline
-        let offline_cmd = ProviderCommands::Offline { json: true };
-        let result = offline_cmd.execute();
-        assert!(result.is_ok());
+            let offline_cmd = ProviderCommands::Offline { json: true };
+            offline_cmd.execute()
+        });
     }
 }

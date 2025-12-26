@@ -194,15 +194,14 @@ impl TextSystem {
         let mut glyph_data: Vec<(GlyphCacheKey, f32, f32, u16)> = Vec::new();
 
         for run in buffer.layout_runs() {
-            let mut current_x = 0.0f32;
             for glyph in run.glyphs.iter() {
                 let physical_glyph = glyph.physical((0.0, 0.0), self.scale_factor);
                 let cache_key = GlyphCacheKey {
                     cache_key: physical_glyph.cache_key,
                 };
-                glyph_data.push((cache_key, current_x, run.line_y, glyph.glyph_id as u16));
-                let advance = physical_font_size * Self::CHAR_WIDTH_RATIO;
-                current_x += advance;
+                // Use cosmic_text's calculated glyph position instead of hardcoded ratio
+                let glyph_x = glyph.x * self.scale_factor;
+                glyph_data.push((cache_key, glyph_x, run.line_y, glyph.glyph_id as u16));
             }
         }
 
