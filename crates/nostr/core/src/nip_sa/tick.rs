@@ -38,6 +38,7 @@
 //! ```
 
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use thiserror::Error;
 
 /// Kind for tick request event
@@ -75,6 +76,19 @@ pub enum TickTrigger {
     Manual,
 }
 
+impl TickTrigger {
+    pub fn from_tag_value(value: &str) -> Option<Self> {
+        match value {
+            "heartbeat" => Some(TickTrigger::Heartbeat),
+            "mention" => Some(TickTrigger::Mention),
+            "dm" => Some(TickTrigger::Dm),
+            "zap" => Some(TickTrigger::Zap),
+            "manual" => Some(TickTrigger::Manual),
+            _ => None,
+        }
+    }
+}
+
 /// Tick outcome status
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -85,6 +99,17 @@ pub enum TickStatus {
     Failure,
     /// Tick exceeded time limit
     Timeout,
+}
+
+impl TickStatus {
+    pub fn from_tag_value(value: &str) -> Option<Self> {
+        match value {
+            "success" => Some(TickStatus::Success),
+            "failure" => Some(TickStatus::Failure),
+            "timeout" => Some(TickStatus::Timeout),
+            _ => None,
+        }
+    }
 }
 
 /// Action taken during a tick
@@ -302,9 +327,133 @@ impl TickResult {
     }
 }
 
+/// Combined view of tick request and result for history inspection.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TickHistoryEntry {
+    pub request_id: String,
+    pub runner: String,
+    pub trigger: Option<TickTrigger>,
+    pub request_created_at: Option<u64>,
+    pub result_id: Option<String>,
+    pub result_created_at: Option<u64>,
+    pub status: Option<TickStatus>,
+    pub duration_ms: Option<u64>,
+    pub action_count: Option<u32>,
+    pub trajectory_hash: Option<String>,
+}
+
+impl TickHistoryEntry {
+    fn new(request_id: impl Into<String>, runner: impl Into<String>) -> Self {
+        Self {
+            request_id: request_id.into(),
+            runner: runner.into(),
+            trigger: None,
+            request_created_at: None,
+            result_id: None,
+            result_created_at: None,
+            status: None,
+            duration_ms: None,
+            action_count: None,
+            trajectory_hash: None,
+        }
+    }
+
+    fn sort_timestamp(&self) -> u64 {
+        self.request_created_at
+            .or(self.result_created_at)
+            .unwrap_or(0)
+    }
+}
+
+/// Build tick history entries from a mixed list of tick request/result events.
+pub fn build_tick_history(events: &[crate::Event]) -> Vec<TickHistoryEntry> {
+    let mut entries: HashMap<String, TickHistoryEntry> = HashMap::new();
+
+    for event in events {
+        match event.kind {
+            KIND_TICK_REQUEST => {
+                let runner = get_tag_value(&event.tags, "runner")
+                    .unwrap_or(&event.pubkey)
+                    .to_string();
+                let trigger = get_tag_value(&event.tags, "trigger")
+                    .and_then(TickTrigger::from_tag_value);
+                let entry = entries
+                    .entry(event.id.clone())
+                    .or_insert_with(|| TickHistoryEntry::new(&event.id, &runner));
+
+                entry.runner = runner;
+                entry.trigger = trigger;
+                entry.request_created_at = Some(event.created_at);
+            }
+            KIND_TICK_RESULT => {
+                let request_id = match get_tag_value(&event.tags, "request") {
+                    Some(value) => value.to_string(),
+                    None => continue,
+                };
+                let runner = get_tag_value(&event.tags, "runner")
+                    .unwrap_or(&event.pubkey)
+                    .to_string();
+                let status = get_tag_value(&event.tags, "status")
+                    .and_then(TickStatus::from_tag_value);
+                let duration_ms = get_tag_value(&event.tags, "duration_ms")
+                    .and_then(|value| value.parse::<u64>().ok());
+                let action_count = get_tag_value(&event.tags, "actions")
+                    .and_then(|value| value.parse::<u32>().ok());
+                let trajectory_hash =
+                    get_tag_value(&event.tags, "trajectory_hash").map(|value| value.to_string());
+
+                let entry = entries
+                    .entry(request_id.clone())
+                    .or_insert_with(|| TickHistoryEntry::new(&request_id, &runner));
+
+                entry.runner = runner;
+                entry.result_id = Some(event.id.clone());
+                entry.result_created_at = Some(event.created_at);
+                entry.status = status;
+                entry.duration_ms = duration_ms;
+                entry.action_count = action_count;
+                entry.trajectory_hash = trajectory_hash;
+            }
+            _ => {}
+        }
+    }
+
+    let mut history: Vec<TickHistoryEntry> = entries.into_values().collect();
+    history.sort_by_key(|entry| std::cmp::Reverse(entry.sort_timestamp()));
+    history
+}
+
+fn get_tag_value<'a>(tags: &'a [Vec<String>], key: &str) -> Option<&'a str> {
+    tags.iter().find_map(|tag| {
+        if tag.get(0).map(|value| value.as_str()) == Some(key) {
+            tag.get(1).map(|value| value.as_str())
+        } else {
+            None
+        }
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn mock_event(
+        id: &str,
+        pubkey: &str,
+        created_at: u64,
+        kind: u16,
+        tags: Vec<Vec<String>>,
+    ) -> crate::Event {
+        crate::Event {
+            id: id.to_string(),
+            pubkey: pubkey.to_string(),
+            created_at,
+            kind,
+            tags,
+            content: String::new(),
+            sig: String::new(),
+        }
+    }
 
     #[test]
     fn test_tick_request_creation() {
@@ -466,5 +615,71 @@ mod tests {
         let timeout = TickStatus::Timeout;
         let json = serde_json::to_string(&timeout).unwrap();
         assert_eq!(json, "\"timeout\"");
+    }
+
+    #[test]
+    fn test_build_tick_history() {
+        let request_event = mock_event(
+            "req-1",
+            "runner_pubkey",
+            100,
+            KIND_TICK_REQUEST,
+            vec![
+                vec!["runner".to_string(), "runner_pubkey".to_string()],
+                vec!["trigger".to_string(), "heartbeat".to_string()],
+            ],
+        );
+        let result_event = mock_event(
+            "res-1",
+            "runner_pubkey",
+            120,
+            KIND_TICK_RESULT,
+            vec![
+                vec!["request".to_string(), "req-1".to_string()],
+                vec!["runner".to_string(), "runner_pubkey".to_string()],
+                vec!["status".to_string(), "success".to_string()],
+                vec!["duration_ms".to_string(), "500".to_string()],
+                vec!["actions".to_string(), "2".to_string()],
+                vec!["trajectory_hash".to_string(), "hash123".to_string()],
+            ],
+        );
+
+        let history = build_tick_history(&[result_event, request_event]);
+        assert_eq!(history.len(), 1);
+
+        let entry = &history[0];
+        assert_eq!(entry.request_id, "req-1");
+        assert_eq!(entry.runner, "runner_pubkey");
+        assert_eq!(entry.trigger, Some(TickTrigger::Heartbeat));
+        assert_eq!(entry.request_created_at, Some(100));
+        assert_eq!(entry.result_id.as_deref(), Some("res-1"));
+        assert_eq!(entry.result_created_at, Some(120));
+        assert_eq!(entry.status, Some(TickStatus::Success));
+        assert_eq!(entry.duration_ms, Some(500));
+        assert_eq!(entry.action_count, Some(2));
+        assert_eq!(entry.trajectory_hash.as_deref(), Some("hash123"));
+    }
+
+    #[test]
+    fn test_build_tick_history_orders_by_latest() {
+        let first = mock_event(
+            "req-1",
+            "runner_pubkey",
+            100,
+            KIND_TICK_REQUEST,
+            vec![vec!["trigger".to_string(), "heartbeat".to_string()]],
+        );
+        let second = mock_event(
+            "req-2",
+            "runner_pubkey",
+            200,
+            KIND_TICK_REQUEST,
+            vec![vec!["trigger".to_string(), "mention".to_string()]],
+        );
+
+        let history = build_tick_history(&[first, second]);
+        assert_eq!(history.len(), 2);
+        assert_eq!(history[0].request_id, "req-2");
+        assert_eq!(history[1].request_id, "req-1");
     }
 }
