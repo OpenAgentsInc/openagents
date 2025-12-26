@@ -42,6 +42,10 @@ pub enum ProviderCommands {
         #[arg(long)]
         region: Option<String>,
 
+        /// Availability schedule (e.g., "always", "weekdays 9-17")
+        #[arg(long)]
+        schedule: Option<String>,
+
         /// Add a capability/model (can be used multiple times)
         #[arg(long = "capability")]
         capabilities: Vec<String>,
@@ -97,6 +101,7 @@ impl ProviderCommands {
                 website,
                 icon,
                 region,
+                schedule,
                 capabilities,
                 price_input,
                 price_output,
@@ -109,6 +114,7 @@ impl ProviderCommands {
                 website.as_deref(),
                 icon.as_deref(),
                 region.as_deref(),
+                schedule.as_deref(),
                 capabilities,
                 *price_input,
                 *price_output,
@@ -168,6 +174,7 @@ impl ProviderCommands {
         website: Option<&str>,
         icon: Option<&str>,
         region: Option<&str>,
+        schedule: Option<&str>,
         capabilities: &[String],
         price_input: Option<u64>,
         price_output: Option<u64>,
@@ -193,6 +200,9 @@ impl ProviderCommands {
         }
         if let Some(region) = region {
             config.region = Some(region.to_string());
+        }
+        if let Some(schedule) = schedule {
+            config.schedule = schedule.to_string();
         }
         if !capabilities.is_empty() {
             config.capabilities = capabilities.to_vec();
@@ -227,6 +237,7 @@ impl ProviderCommands {
             if let Some(ref region) = config.region {
                 println!("Region: {}", region);
             }
+            println!("Schedule: {}", config.schedule);
             println!("\nCapabilities:");
             for cap in &config.capabilities {
                 println!("  - {}", cap);
@@ -253,6 +264,7 @@ impl ProviderCommands {
             let status_json = serde_json::json!({
                 "state": format!("{:?}", provider.state()),
                 "name": config.name,
+                "schedule": config.schedule,
                 "capabilities": config.capabilities,
                 "relays": config.relays,
                 "needs_readvertisement": provider.needs_readvertisement(),
@@ -263,6 +275,7 @@ impl ProviderCommands {
             println!("===============\n");
             println!("State: {:?}", provider.state());
             println!("Name: {}", config.name);
+            println!("Schedule: {}", config.schedule);
             println!("\nCapabilities: {}", config.capabilities.join(", "));
             println!("Relays: {}", config.relays.len());
 
@@ -386,6 +399,7 @@ mod tests {
             website: None,
             icon: None,
             region: None,
+            schedule: None,
             capabilities: vec![],
             price_input: None,
             price_output: None,
@@ -408,6 +422,7 @@ mod tests {
             website: Some("https://test.com".to_string()),
             icon: Some("https://test.com/icon.png".to_string()),
             region: Some("us-west".to_string()),
+            schedule: Some("always".to_string()),
             capabilities: vec!["llama3".to_string(), "mistral".to_string()],
             price_input: Some(10),
             price_output: Some(20),

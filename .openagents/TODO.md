@@ -16,11 +16,11 @@
 
 ---
 
-## Outstanding User Stories (No Test Coverage Yet) — 12 total
+## Outstanding User Stories (No Test Coverage Yet) — 11 total
 
 These story IDs are defined in `.openagents/USERSTORIES.md` but are not listed in the Covered Stories table yet.
 
-Priority breakdown: P0 = 0, P1 = 8, P2 = 4.
+Priority breakdown: P0 = 0, P1 = 7, P2 = 4.
 P0 focus IDs: none.
 
 ### d-006: NIP-SA (Sovereign Agents Protocol) (7)
@@ -37,9 +37,6 @@ P0 focus IDs: none.
 - [ ] 7.3.3 (P1) As an agent, I want decryption to be as fast as regular ECDH, so that performance is acceptable.
 - [ ] 7.4.3 (P1) As a node, I want to handle peer disconnection gracefully, so that the group remains functional.
 - [ ] 7.4.4 (P1) As a requester, I want to retry failed requests automatically, so that transient failures don't block me.
-
-### d-008: Unified Marketplace (1)
-- [ ] 8.1.5 (P1) As a compute provider, I want to set my availability schedule, so that I'm not disturbed off-hours.
 
 ---
 
@@ -688,7 +685,7 @@ P0 focus IDs: none.
 
 ### Phase 3: Testing & Quality 🟡 IN PROGRESS
 
-Story coverage is incomplete (12 outstanding stories; see Outstanding User Stories).
+Story coverage is incomplete (11 outstanding stories; see Outstanding User Stories).
 12. **d-013**: Testing framework coverage ✅ (700+ tests)
 13. **d-026**: E2E test viewer ✅
 14. **d-014**: NIP-SA/Bifrost E2E tests ✅ (159 tests verified)
