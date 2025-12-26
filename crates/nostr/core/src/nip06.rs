@@ -230,6 +230,7 @@ fn decode_bech32(expected_hrp: &str, encoded: &str) -> Result<[u8; 32], Nip06Err
 #[cfg(test)]
 mod tests {
     use super::*;
+    use proptest::prelude::*;
 
     /// NIP-06 Test Vector 1
     /// mnemonic: leader monkey parrot ring guide accident before fence cannon height naive bean
@@ -416,6 +417,22 @@ mod tests {
         let debug_output = format!("{:?}", keypair);
         assert!(debug_output.contains("[redacted]"));
         assert!(!debug_output.contains(&keypair.private_key_hex()));
+    }
+
+    proptest! {
+        #[test]
+        fn prop_nsec_roundtrip(private_key in prop::array::uniform32(any::<u8>())) {
+            let nsec = private_key_to_nsec(&private_key).expect("encode nsec");
+            let decoded = nsec_to_private_key(&nsec).expect("decode nsec");
+            prop_assert_eq!(decoded, private_key);
+        }
+
+        #[test]
+        fn prop_npub_roundtrip(public_key in prop::array::uniform32(any::<u8>())) {
+            let npub = public_key_to_npub(&public_key).expect("encode npub");
+            let decoded = npub_to_public_key(&npub).expect("decode npub");
+            prop_assert_eq!(decoded, public_key);
+        }
     }
 
     #[test]

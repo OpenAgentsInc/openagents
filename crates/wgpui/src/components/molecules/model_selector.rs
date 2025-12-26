@@ -22,6 +22,7 @@ impl ModelSelector {
                 Model::ClaudeOpus,
                 Model::ClaudeHaiku,
                 Model::Gpt4o,
+                Model::GptOss,
                 Model::Gemini,
             ],
             expanded: false,
@@ -217,6 +218,12 @@ mod tests {
 
         assert_eq!(selector.id, Some(1));
         assert_eq!(selector.available_models.len(), 2);
+    }
+
+    #[test]
+    fn test_model_selector_includes_gpt_oss() {
+        let selector = ModelSelector::new(Model::ClaudeSonnet);
+        assert!(selector.available_models.contains(&Model::GptOss));
     }
 
     #[test]

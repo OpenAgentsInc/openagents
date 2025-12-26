@@ -270,8 +270,8 @@ mod tests {
         };
         let event = finalize_event(&template, &sk).unwrap();
 
-        // Store directly
-        relay.state.events.write().await.insert(event.id.clone(), event.clone());
+        // Store using relay helper
+        relay.store_event(event.clone()).await;
 
         // Verify
         assert_eq!(relay.event_count().await, 1);

@@ -83,6 +83,8 @@ crates/ui/
 
 The pre-commit hook will block commits with pending snapshot changes. You must review and accept/reject them first.
 
+CI runs `cargo insta test` and surfaces snapshot diffs in job output when snapshots change.
+
 ## Code Coverage
 
 We use `cargo-llvm-cov` to track code coverage. Minimum requirement: **70%**

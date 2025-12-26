@@ -372,6 +372,35 @@ impl ZapReceipt {
     }
 }
 
+/// User-configurable zap defaults.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ZapSettings {
+    /// Default zap amount in millisats.
+    pub default_amount_msats: u64,
+}
+
+impl ZapSettings {
+    /// Create new zap settings with a default amount.
+    pub fn new(default_amount_msats: u64) -> Self {
+        Self {
+            default_amount_msats,
+        }
+    }
+
+    /// Resolve the zap amount using an override when provided.
+    pub fn resolve_amount_msats(&self, override_amount_msats: Option<u64>) -> u64 {
+        override_amount_msats.unwrap_or(self.default_amount_msats)
+    }
+}
+
+/// Count zap receipts for a specific event ID.
+pub fn count_zaps_for_event(receipts: &[ZapReceipt], event_id: &str) -> usize {
+    receipts
+        .iter()
+        .filter(|receipt| receipt.zapped_event.as_deref() == Some(event_id))
+        .count()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -406,6 +435,33 @@ mod tests {
             created_at: 1679673265,
             id: "30efed56a035b2549fcaeec0bf2c1595f9a9b3bb4b1a38abaf8ee9041c4b7d93".to_string(),
             sig: "f2cb581a84ed10e4dc84937bd98e27acac71ab057255f6aa8dfa561808c981fe8870f4a03c1e3666784d82a9c802d3704e174371aa13d63e2aeaf24ff5374d9d".to_string(),
+        }
+    }
+
+    fn zap_receipt_event(zapped_event_id: &str, receipt_id: &str) -> Event {
+        let description = serde_json::to_string(&example_zap_request()).unwrap();
+
+        Event {
+            id: receipt_id.to_string(),
+            pubkey: "9630f464cca6a5147aa8a35f0bcdd3ce485324e732fd39e09233b1d848238f31".to_string(),
+            created_at: 1674164545,
+            kind: 9735,
+            tags: vec![
+                vec![
+                    "p".to_string(),
+                    "32e1827635450ebb3c5a7d12c1f8e7b2b514439ac10a67eef3d9fd9c5c68e245".to_string(),
+                ],
+                vec![
+                    "P".to_string(),
+                    "97c70a44366a6535c145b333f973ea86dfdc2d7a99da618c40c64705ad98e322".to_string(),
+                ],
+                vec!["e".to_string(), zapped_event_id.to_string()],
+                vec!["k".to_string(), "1".to_string()],
+                vec!["bolt11".to_string(), "lnbc10u1test".to_string()],
+                vec!["description".to_string(), description],
+            ],
+            content: "".to_string(),
+            sig: "...".to_string(),
         }
     }
 
@@ -464,6 +520,31 @@ mod tests {
 
         let result = ZapRequest::from_event(event);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_zap_settings_resolve_amount() {
+        let settings = ZapSettings::new(21000);
+
+        assert_eq!(settings.resolve_amount_msats(None), 21000);
+        assert_eq!(settings.resolve_amount_msats(Some(5000)), 5000);
+    }
+
+    #[test]
+    fn test_count_zaps_for_event() {
+        let target_event = "9ae37aa68f48645127299e9453eb5d908a0cbb6058ff340d528ed4d37c8994fb";
+        let other_event = "0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f";
+
+        let receipt_target = ZapReceipt::from_event(zap_receipt_event(target_event, "receipt1"))
+            .expect("should parse receipt");
+        let receipt_other = ZapReceipt::from_event(zap_receipt_event(other_event, "receipt2"))
+            .expect("should parse receipt");
+
+        let receipts = vec![receipt_target, receipt_other];
+
+        assert_eq!(count_zaps_for_event(&receipts, target_event), 1);
+        assert_eq!(count_zaps_for_event(&receipts, other_event), 1);
+        assert_eq!(count_zaps_for_event(&receipts, "missing"), 0);
     }
 
     #[test]

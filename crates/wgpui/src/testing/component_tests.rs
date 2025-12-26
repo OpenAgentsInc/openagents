@@ -29,7 +29,7 @@ use crate::components::{
 use crate::components::{molecules, organisms};
 use crate::components::hud::{Frame, FrameAnimation, DotsGrid, DotShape};
 use crate::components::atoms::{
-    StatusDot, Status, ModeBadge, Mode, ToolStatusBadge, ToolStatus,
+    self, StatusDot, Status, ModeBadge, Mode, ToolStatusBadge, ToolStatus,
     StreamingIndicator,
 };
 use crate::{Size, theme, Hsla};
@@ -163,6 +163,54 @@ fn test_scroll_view_scroll_operations() {
 // ============================================================================
 
 fn assert_component<T: Component>() {}
+
+#[test]
+fn test_acp_atoms_are_components() {
+    // 20.2.1: ACP atoms ported to WGPUI
+    assert_component::<atoms::AgentScheduleBadge>();
+    assert_component::<atoms::AgentStatusBadge>();
+    assert_component::<atoms::ApmGauge>();
+    assert_component::<atoms::Bech32Entity>();
+    assert_component::<atoms::BitcoinAmount>();
+    assert_component::<atoms::BountyBadge>();
+    assert_component::<atoms::CheckpointBadge>();
+    assert_component::<atoms::ContentTypeIcon>();
+    assert_component::<atoms::DaemonStatusBadge>();
+    assert_component::<atoms::EarningsBadge>();
+    assert_component::<atoms::EntryMarker>();
+    assert_component::<atoms::EventKindBadge>();
+    assert_component::<atoms::FeedbackButton>();
+    assert_component::<atoms::GoalProgressBadge>();
+    assert_component::<atoms::IssueStatusBadge>();
+    assert_component::<atoms::JobStatusBadge>();
+    assert_component::<atoms::KeybindingHint>();
+    assert_component::<atoms::MarketTypeBadge>();
+    assert_component::<atoms::ModeBadge>();
+    assert_component::<atoms::ModelBadge>();
+    assert_component::<atoms::NetworkBadge>();
+    assert_component::<atoms::ParallelAgentBadge>();
+    assert_component::<atoms::PaymentMethodIcon>();
+    assert_component::<atoms::PaymentStatusBadge>();
+    assert_component::<atoms::PermissionButton>();
+    assert_component::<atoms::PrStatusBadge>();
+    assert_component::<atoms::RelayStatusBadge>();
+    assert_component::<atoms::RelayStatusDot>();
+    assert_component::<atoms::ReputationBadge>();
+    assert_component::<atoms::ResourceUsageBar>();
+    assert_component::<atoms::SessionBreadcrumb>();
+    assert_component::<atoms::SessionStatusBadge>();
+    assert_component::<atoms::SkillLicenseBadge>();
+    assert_component::<atoms::StackLayerBadge>();
+    assert_component::<atoms::StatusDot>();
+    assert_component::<atoms::StreamingIndicator>();
+    assert_component::<atoms::ThinkingToggle>();
+    assert_component::<atoms::ThresholdKeyBadge>();
+    assert_component::<atoms::TickEventBadge>();
+    assert_component::<atoms::ToolIcon>();
+    assert_component::<atoms::ToolStatusBadge>();
+    assert_component::<atoms::TrajectorySourceBadge>();
+    assert_component::<atoms::TrajectoryStatusBadge>();
+}
 
 #[test]
 fn test_acp_molecules_are_components() {

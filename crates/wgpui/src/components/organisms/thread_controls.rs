@@ -13,6 +13,7 @@ pub struct ThreadControls {
     model_selector: ModelSelector,
     on_mode_change: Option<Box<dyn FnMut(Mode)>>,
     on_model_change: Option<Box<dyn FnMut(Model)>>,
+    on_run: Option<Box<dyn FnMut()>>,
     on_stop: Option<Box<dyn FnMut()>>,
     is_running: bool,
 }
@@ -27,6 +28,7 @@ impl ThreadControls {
             model_selector: ModelSelector::new(Model::ClaudeSonnet),
             on_mode_change: None,
             on_model_change: None,
+            on_run: None,
             on_stop: None,
             is_running: false,
         }
@@ -67,6 +69,14 @@ impl ThreadControls {
         F: FnMut(Model) + 'static,
     {
         self.on_model_change = Some(Box::new(f));
+        self
+    }
+
+    pub fn on_run<F>(mut self, f: F) -> Self
+    where
+        F: FnMut() + 'static,
+    {
+        self.on_run = Some(Box::new(f));
         self
     }
 
@@ -144,6 +154,19 @@ impl Component for ThreadControls {
                 ),
                 cx,
             );
+        } else {
+            let btn_width = 60.0;
+            let btn_height = 28.0;
+            let mut run_btn = Button::new("Run").variant(ButtonVariant::Primary);
+            run_btn.paint(
+                Bounds::new(
+                    bounds.origin.x + bounds.size.width - padding - btn_width,
+                    bounds.origin.y + (bounds.size.height - btn_height) / 2.0,
+                    btn_width,
+                    btn_height,
+                ),
+                cx,
+            );
         }
     }
 
@@ -209,6 +232,24 @@ impl Component for ThreadControls {
                     return EventResult::Handled;
                 }
             }
+        } else {
+            let btn_width = 60.0;
+            let btn_height = 28.0;
+            let run_bounds = Bounds::new(
+                bounds.origin.x + bounds.size.width - padding - btn_width,
+                bounds.origin.y + (bounds.size.height - btn_height) / 2.0,
+                btn_width,
+                btn_height,
+            );
+
+            if let InputEvent::MouseUp { x, y, .. } = event {
+                if run_bounds.contains(Point::new(*x, *y)) {
+                    if let Some(callback) = &mut self.on_run {
+                        callback();
+                    }
+                    return EventResult::Handled;
+                }
+            }
         }
 
         EventResult::Ignored
@@ -226,6 +267,9 @@ impl Component for ThreadControls {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::MouseButton;
+    use std::cell::Cell;
+    use std::rc::Rc;
 
     #[test]
     fn test_thread_controls_new() {
@@ -247,5 +291,65 @@ mod tests {
         assert_eq!(controls.current_mode(), Mode::Plan);
         assert_eq!(controls.current_model(), Model::ClaudeOpus);
         assert!(controls.is_running());
+    }
+
+    #[test]
+    fn test_thread_controls_stop_callback() {
+        let called = Rc::new(Cell::new(false));
+        let called_clone = called.clone();
+
+        let mut controls = ThreadControls::new()
+            .running(true)
+            .on_stop(move || {
+                called_clone.set(true);
+            });
+
+        let bounds = Bounds::new(0.0, 0.0, 300.0, 44.0);
+        let padding = theme::spacing::SM;
+        let btn_width = 60.0;
+        let btn_height = 28.0;
+        let x = bounds.origin.x + bounds.size.width - padding - btn_width + btn_width / 2.0;
+        let y = bounds.origin.y + (bounds.size.height - btn_height) / 2.0 + btn_height / 2.0;
+
+        let event = InputEvent::MouseUp {
+            button: MouseButton::Left,
+            x,
+            y,
+        };
+        let mut cx = EventContext::new();
+        let result = controls.event(&event, bounds, &mut cx);
+
+        assert_eq!(result, EventResult::Handled);
+        assert!(called.get());
+    }
+
+    #[test]
+    fn test_thread_controls_run_callback() {
+        let called = Rc::new(Cell::new(false));
+        let called_clone = called.clone();
+
+        let mut controls = ThreadControls::new()
+            .running(false)
+            .on_run(move || {
+                called_clone.set(true);
+            });
+
+        let bounds = Bounds::new(0.0, 0.0, 300.0, 44.0);
+        let padding = theme::spacing::SM;
+        let btn_width = 60.0;
+        let btn_height = 28.0;
+        let x = bounds.origin.x + bounds.size.width - padding - btn_width + btn_width / 2.0;
+        let y = bounds.origin.y + (bounds.size.height - btn_height) / 2.0 + btn_height / 2.0;
+
+        let event = InputEvent::MouseUp {
+            button: MouseButton::Left,
+            x,
+            y,
+        };
+        let mut cx = EventContext::new();
+        let result = controls.event(&event, bounds, &mut cx);
+
+        assert_eq!(result, EventResult::Handled);
+        assert!(called.get());
     }
 }

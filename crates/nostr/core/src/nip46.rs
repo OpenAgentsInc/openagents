@@ -548,9 +548,11 @@ mod tests {
         assert!(req.params.is_empty());
         assert!(!req.id.is_empty());
 
-        let req = NostrConnectRequest::sign_event(r#"{"kind":1,"content":"test"}"#);
+        let event_json = r#"{"kind":1,"content":"test"}"#;
+        let req = NostrConnectRequest::sign_event(event_json);
         assert_eq!(req.method, "sign_event");
         assert_eq!(req.params.len(), 1);
+        assert_eq!(req.params[0], event_json);
     }
 
     #[test]

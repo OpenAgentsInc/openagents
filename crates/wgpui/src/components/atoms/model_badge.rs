@@ -11,6 +11,7 @@ pub enum Model {
     ClaudeHaiku,
     Gpt4,
     Gpt4o,
+    GptOss,
     Gemini,
     Local,
     Unknown,
@@ -25,6 +26,7 @@ impl Model {
             Model::ClaudeHaiku => "Haiku",
             Model::Gpt4 => "GPT-4",
             Model::Gpt4o => "GPT-4o",
+            Model::GptOss => "GPT-OSS",
             Model::Gemini => "Gemini",
             Model::Local => "Local",
             Model::Unknown => "Unknown",
@@ -36,7 +38,7 @@ impl Model {
             Model::Claude | Model::ClaudeSonnet | Model::ClaudeOpus | Model::ClaudeHaiku => {
                 Hsla::new(25.0, 0.8, 0.55, 1.0)
             }
-            Model::Gpt4 | Model::Gpt4o => Hsla::new(160.0, 0.7, 0.45, 1.0),
+            Model::Gpt4 | Model::Gpt4o | Model::GptOss => Hsla::new(160.0, 0.7, 0.45, 1.0),
             Model::Gemini => Hsla::new(220.0, 0.7, 0.55, 1.0),
             Model::Local => theme::text::MUTED,
             Model::Unknown => theme::text::MUTED,
@@ -160,6 +162,7 @@ mod tests {
     fn test_model_labels() {
         assert_eq!(Model::ClaudeSonnet.label(), "Sonnet");
         assert_eq!(Model::Gpt4o.label(), "GPT-4o");
+        assert_eq!(Model::GptOss.label(), "GPT-OSS");
     }
 
     #[test]

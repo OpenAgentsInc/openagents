@@ -10,7 +10,7 @@ use tempfile::TempDir;
 /// Test application for integration testing
 ///
 /// Provides an isolated instance with:
-/// - Temporary database
+/// - In-memory database
 /// - HTTP client for testing routes
 /// - Clean state per test
 #[allow(clippy::arc_with_non_send_sync)]
@@ -28,12 +28,10 @@ pub struct TestApp {
 }
 
 impl TestApp {
-    /// Create a new test application with temporary database
+    /// Create a new test application with in-memory database
     pub async fn new() -> Self {
         let temp_dir = tempfile::tempdir().expect("Failed to create temp dir");
-        let db_path = temp_dir.path().join("test.db");
-
-        let db = Connection::open(&db_path).expect("Failed to open test database");
+        let db = Connection::open_in_memory().expect("Failed to open in-memory test database");
 
         // Initialize schema would go here
         // init_schema(&db).expect("Failed to init schema");
@@ -113,12 +111,20 @@ mod tests {
     use super::*;
 
     #[tokio::test]
-    async fn test_app_creates_with_temp_db() {
+    async fn test_app_creates_with_in_memory_db() {
         let app = TestApp::new().await;
         // Test that database connection works
         let result: Result<i32, _> = app.db.query_row("SELECT 1", [], |row| row.get(0));
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), 1);
+
+        let file: Option<String> = app
+            .db
+            .query_row("PRAGMA database_list", [], |row| row.get(2))
+            .expect("database_list");
+        assert!(
+            file.as_deref().is_none() || file.as_deref() == Some("") || file.as_deref() == Some(":memory:")
+        );
     }
 
     #[tokio::test]
@@ -154,26 +160,24 @@ mod tests {
         let app_one = TestApp::new().await;
         let app_two = TestApp::new().await;
 
-        let path_one: String = app_one
+        app_one
+            .db()
+            .execute("CREATE TABLE test_isolation (id INTEGER PRIMARY KEY)", [])
+            .expect("create table");
+        app_one
+            .db()
+            .execute("INSERT INTO test_isolation (id) VALUES (1)", [])
+            .expect("insert row");
+
+        let count_two: i64 = app_two
             .db()
             .query_row(
-                "SELECT file FROM pragma_database_list WHERE name = 'main'",
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='test_isolation'",
                 [],
                 |row| row.get(0),
             )
-            .expect("database path");
+            .expect("schema count");
 
-        let path_two: String = app_two
-            .db()
-            .query_row(
-                "SELECT file FROM pragma_database_list WHERE name = 'main'",
-                [],
-                |row| row.get(0),
-            )
-            .expect("database path");
-
-        assert!(!path_one.is_empty());
-        assert!(!path_two.is_empty());
-        assert_ne!(path_one, path_two);
+        assert_eq!(count_two, 0);
     }
 }
