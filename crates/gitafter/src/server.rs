@@ -4407,8 +4407,10 @@ async fn pr_checklist_toggle(
 mod tests {
     use super::*;
     use bip39::Mnemonic;
+    use openagents_spark::{Network, PaymentStatus as SparkStatus, PaymentType as SparkType, SparkSigner, SparkWallet, WalletConfig};
     use std::sync::Arc;
-    use std::time::{SystemTime, UNIX_EPOCH};
+    use std::time::{Duration, SystemTime, UNIX_EPOCH};
+    use tempfile::TempDir;
     use testing::MockRelay;
 
     #[tokio::test]
@@ -4539,5 +4541,268 @@ mod tests {
         filter_repositories_by_query(&mut repos, &query);
         assert_eq!(repos.len(), 1);
         assert_eq!(repos[0].id, "repo-3");
+    }
+
+    struct RealE2eConfig {
+        sender_mnemonic: String,
+        receiver_mnemonic: String,
+        amount_sats: u64,
+        network: Network,
+        api_key: Option<String>,
+        timeout: Duration,
+    }
+
+    fn env_any(keys: &[&str]) -> Option<String> {
+        keys.iter().find_map(|key| std::env::var(key).ok())
+    }
+
+    fn parse_network(value: &str) -> Option<Network> {
+        match value.to_ascii_lowercase().as_str() {
+            "mainnet" => Some(Network::Mainnet),
+            "testnet" => Some(Network::Testnet),
+            "signet" => Some(Network::Signet),
+            "regtest" => Some(Network::Regtest),
+            _ => None,
+        }
+    }
+
+    fn real_e2e_config() -> Option<RealE2eConfig> {
+        let sender_mnemonic = env_any(&[
+            "GITAFTER_E2E_SENDER_MNEMONIC",
+            "MARKETPLACE_E2E_SENDER_MNEMONIC",
+            "SPARK_E2E_SENDER_MNEMONIC",
+        ])?;
+        let receiver_mnemonic = env_any(&[
+            "GITAFTER_E2E_RECEIVER_MNEMONIC",
+            "MARKETPLACE_E2E_RECEIVER_MNEMONIC",
+            "SPARK_E2E_RECEIVER_MNEMONIC",
+        ])?;
+
+        let amount_sats = env_any(&[
+            "GITAFTER_E2E_AMOUNT_SATS",
+            "MARKETPLACE_E2E_AMOUNT_SATS",
+            "SPARK_E2E_AMOUNT_SATS",
+        ])
+        .and_then(|value| value.parse().ok())
+        .unwrap_or(100);
+
+        let timeout = env_any(&[
+            "GITAFTER_E2E_TIMEOUT_SECS",
+            "MARKETPLACE_E2E_TIMEOUT_SECS",
+            "SPARK_E2E_TIMEOUT_SECS",
+        ])
+        .and_then(|value| value.parse().ok())
+        .map(Duration::from_secs)
+        .unwrap_or_else(|| Duration::from_secs(180));
+
+        let network = env_any(&[
+            "GITAFTER_E2E_NETWORK",
+            "MARKETPLACE_E2E_NETWORK",
+            "SPARK_E2E_NETWORK",
+        ])
+        .and_then(|value| parse_network(&value))
+        .unwrap_or(Network::Testnet);
+
+        if network == Network::Mainnet && std::env::var("GITAFTER_E2E_ALLOW_MAINNET").is_err() {
+            println!("Skipping mainnet GitAfter E2E test - set GITAFTER_E2E_ALLOW_MAINNET=1 to enable");
+            return None;
+        }
+
+        let api_key = env_any(&[
+            "GITAFTER_E2E_API_KEY",
+            "MARKETPLACE_E2E_API_KEY",
+            "SPARK_E2E_API_KEY",
+            "BREEZ_API_KEY",
+        ]);
+
+        Some(RealE2eConfig {
+            sender_mnemonic,
+            receiver_mnemonic,
+            amount_sats,
+            network,
+            api_key,
+            timeout,
+        })
+    }
+
+    fn unique_storage_dir(label: &str) -> std::path::PathBuf {
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos();
+        let dir = std::env::temp_dir()
+            .join(format!("openagents-gitafter-e2e-{}-{}-{}", label, std::process::id(), now));
+        std::fs::create_dir_all(&dir).expect("should create gitafter e2e storage dir");
+        dir
+    }
+
+    async fn wait_for_payment_amount(
+        wallet: &SparkWallet,
+        payment_type: SparkType,
+        amount_sats: u64,
+        timeout: Duration,
+    ) -> Result<openagents_spark::Payment, anyhow::Error> {
+        let deadline = tokio::time::Instant::now() + timeout;
+        let amount = amount_sats as u128;
+
+        loop {
+            let payments = wallet.list_payments(Some(50), Some(0)).await?;
+            if let Some(payment) = payments.into_iter().find(|p| {
+                p.payment_type == payment_type
+                    && p.amount == amount
+                    && p.status == SparkStatus::Completed
+            }) {
+                return Ok(payment);
+            }
+
+            if tokio::time::Instant::now() >= deadline {
+                return Err(anyhow::anyhow!(
+                    "timed out waiting for {:?} payment of {} sats",
+                    payment_type,
+                    amount_sats
+                ));
+            }
+
+            tokio::time::sleep(Duration::from_secs(2)).await;
+        }
+    }
+
+    #[tokio::test]
+    #[ignore = "Requires funded Spark testnet wallets"]
+    async fn test_bounty_claim_payout_real_sats() {
+        let Some(config) = real_e2e_config() else {
+            println!("Skipping GitAfter E2E test - set GITAFTER_E2E_SENDER_MNEMONIC and GITAFTER_E2E_RECEIVER_MNEMONIC");
+            return;
+        };
+
+        if config.amount_sats == 0 {
+            println!("Skipping GitAfter E2E test - amount must be > 0");
+            return;
+        }
+
+        let temp_dir = TempDir::new().expect("temp dir");
+        unsafe {
+            std::env::set_var("XDG_DATA_HOME", temp_dir.path());
+            std::env::set_var("HOME", temp_dir.path());
+        }
+
+        let broadcaster = Arc::new(WsBroadcaster::new(64));
+        let nostr_client = Arc::new(NostrClient::new(vec![], broadcaster.clone()).expect("nostr client"));
+
+        let identity_mnemonic = Mnemonic::parse("abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about")
+            .expect("identity mnemonic");
+        let identity = Arc::new(UnifiedIdentity::from_mnemonic(identity_mnemonic).expect("identity"));
+
+        let sender_signer = SparkSigner::from_mnemonic(&config.sender_mnemonic, "")
+            .expect("sender signer");
+        let receiver_signer = SparkSigner::from_mnemonic(&config.receiver_mnemonic, "")
+            .expect("receiver signer");
+
+        let sender_wallet = Arc::new(SparkWallet::new(
+            sender_signer,
+            WalletConfig {
+                network: config.network,
+                api_key: config.api_key.clone(),
+                storage_dir: unique_storage_dir("sender"),
+            },
+        )
+        .await
+        .expect("sender wallet"));
+
+        let receiver_wallet = Arc::new(SparkWallet::new(
+            receiver_signer,
+            WalletConfig {
+                network: config.network,
+                api_key: config.api_key.clone(),
+                storage_dir: unique_storage_dir("receiver"),
+            },
+        )
+        .await
+        .expect("receiver wallet"));
+
+        let sender_balance_before = sender_wallet
+            .get_balance()
+            .await
+            .expect("sender balance");
+
+        if sender_balance_before.total_sats() < config.amount_sats {
+            println!("Sender wallet requires funding before running this test");
+            return;
+        }
+
+        let invoice = receiver_wallet
+            .create_invoice(
+                config.amount_sats,
+                Some("GitAfter bounty payout".to_string()),
+                Some(3600),
+            )
+            .await
+            .expect("invoice");
+
+        let repo_address = format!("30617:{}:test-repo", identity.nostr_public_key());
+        let issue_template = EventTemplate {
+            kind: KIND_ISSUE,
+            tags: vec![
+                vec!["a".to_string(), repo_address.clone()],
+                vec!["subject".to_string(), "Test issue".to_string()],
+            ],
+            content: "Issue used for bounty payout test".to_string(),
+            created_at: SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_secs(),
+        };
+        let issue_event = identity.sign_event(issue_template).expect("issue event");
+        nostr_client.publish_event_no_retry(issue_event.clone()).await.expect("cache issue");
+
+        let bounty_offer_template = BountyOfferBuilder::new(
+            issue_event.id.clone(),
+            repo_address.clone(),
+            config.amount_sats,
+        )
+        .build();
+        let bounty_offer_event = identity.sign_event(bounty_offer_template).expect("bounty offer");
+        nostr_client.publish_event_no_retry(bounty_offer_event.clone()).await.expect("cache bounty");
+
+        let bounty_claim_template = BountyClaimBuilder::new(
+            bounty_offer_event.id.clone(),
+            "merged-pr-event-id",
+            repo_address.clone(),
+            "trajectory-session-id",
+            "trajectory-hash",
+        )
+        .lightning_address("agent@example.com")
+        .invoice(invoice.payment_request.clone())
+        .build();
+        let bounty_claim_event = identity.sign_event(bounty_claim_template).expect("bounty claim");
+        nostr_client.publish_event_no_retry(bounty_claim_event.clone()).await.expect("cache claim");
+
+        let state = web::Data::new(AppState {
+            broadcaster,
+            nostr_client,
+            identity: Some(identity),
+            wallet: Some(sender_wallet.clone()),
+        });
+
+        let response = bounty_payment(state, web::Path::from(bounty_claim_event.id.clone())).await;
+        assert_eq!(response.status(), actix_web::http::StatusCode::OK);
+
+        wait_for_payment_amount(
+            &sender_wallet,
+            SparkType::Send,
+            config.amount_sats,
+            config.timeout,
+        )
+        .await
+        .expect("sender payment should complete");
+
+        wait_for_payment_amount(
+            &receiver_wallet,
+            SparkType::Receive,
+            config.amount_sats,
+            config.timeout,
+        )
+        .await
+        .expect("receiver payment should complete");
     }
 }

@@ -479,6 +479,7 @@ pub struct BountyClaimBuilder {
     trajectory_session_id: String,
     trajectory_hash: String,
     lightning_address: Option<String>,
+    invoice: Option<String>,
     relay_hint: Option<String>,
 }
 
@@ -506,6 +507,7 @@ impl BountyClaimBuilder {
             trajectory_session_id: trajectory_session_id.into(),
             trajectory_hash: trajectory_hash.into(),
             lightning_address: None,
+            invoice: None,
             relay_hint: None,
         }
     }
@@ -513,6 +515,12 @@ impl BountyClaimBuilder {
     /// Set the Lightning address (lud16) for payment
     pub fn lightning_address(mut self, address: impl Into<String>) -> Self {
         self.lightning_address = Some(address.into());
+        self
+    }
+
+    /// Set a BOLT11 invoice for direct payout
+    pub fn invoice(mut self, invoice: impl Into<String>) -> Self {
+        self.invoice = Some(invoice.into());
         self
     }
 
@@ -546,6 +554,10 @@ impl BountyClaimBuilder {
         // Add optional lightning address
         if let Some(lud16) = self.lightning_address {
             tags.push(vec!["lud16".to_string(), lud16]);
+        }
+
+        if let Some(invoice) = self.invoice {
+            tags.push(vec!["invoice".to_string(), invoice]);
         }
 
         EventTemplate {
