@@ -28,6 +28,10 @@ pub enum WalletCommands {
     #[command(subcommand)]
     Password(PasswordCommands),
 
+    /// Identity management
+    #[command(subcommand)]
+    Identity(IdentityCommands),
+
     /// Display wallet information (npub, balances, profile)
     Whoami,
 
@@ -239,6 +243,51 @@ pub enum PasswordCommands {
     },
 }
 
+#[derive(Subcommand)]
+pub enum IdentityCommands {
+    /// List available identities
+    List,
+
+    /// Show the active identity
+    Current,
+
+    /// Create a new identity
+    Create {
+        /// Identity name (letters, numbers, '-' or '_')
+        name: String,
+
+        /// Display the mnemonic (WARNING: insecure)
+        #[arg(long)]
+        show_mnemonic: bool,
+    },
+
+    /// Import an identity from mnemonic
+    Import {
+        /// Identity name (letters, numbers, '-' or '_')
+        name: String,
+
+        /// Mnemonic phrase (will prompt if not provided)
+        #[arg(long)]
+        mnemonic: Option<String>,
+    },
+
+    /// Switch the active identity
+    Use {
+        /// Identity name to activate
+        name: String,
+    },
+
+    /// Remove an identity
+    Remove {
+        /// Identity name to remove
+        name: String,
+
+        /// Skip confirmation prompt
+        #[arg(long)]
+        yes: bool,
+    },
+}
+
 pub fn run(cmd: WalletCommands) -> anyhow::Result<()> {
     match cmd {
         WalletCommands::Init { show_mnemonic } => wallet::cli::identity::init(show_mnemonic),
@@ -248,6 +297,18 @@ pub fn run(cmd: WalletCommands) -> anyhow::Result<()> {
             PasswordCommands::Set { password, current_password } => {
                 wallet::cli::password::set(password, current_password)
             }
+        },
+        WalletCommands::Identity(cmd) => match cmd {
+            IdentityCommands::List => wallet::cli::identity::identities_list(),
+            IdentityCommands::Current => wallet::cli::identity::identity_current(),
+            IdentityCommands::Create { name, show_mnemonic } => {
+                wallet::cli::identity::identity_create(name, show_mnemonic)
+            }
+            IdentityCommands::Import { name, mnemonic } => {
+                wallet::cli::identity::identity_import(name, mnemonic)
+            }
+            IdentityCommands::Use { name } => wallet::cli::identity::identity_use(name),
+            IdentityCommands::Remove { name, yes } => wallet::cli::identity::identity_remove(name, yes),
         },
         WalletCommands::Whoami => wallet::cli::identity::whoami(),
         WalletCommands::Balance => wallet::cli::bitcoin::balance(),

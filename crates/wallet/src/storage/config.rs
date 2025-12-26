@@ -4,6 +4,7 @@ use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
+use crate::storage::identities::{current_identity, DEFAULT_IDENTITY_NAME};
 
 /// Wallet configuration
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -61,7 +62,8 @@ impl WalletConfig {
     /// Get profile path
     pub fn profile_path(&self) -> Result<PathBuf> {
         let home = dirs::home_dir().ok_or_else(|| anyhow::anyhow!("Could not find home directory"))?;
-        Ok(home.join(".openagents").join("profile.json"))
+        let identity = current_identity().unwrap_or_else(|_| DEFAULT_IDENTITY_NAME.to_string());
+        Ok(home.join(".openagents").join("profiles").join(format!("{}.json", identity)))
     }
 }
 
