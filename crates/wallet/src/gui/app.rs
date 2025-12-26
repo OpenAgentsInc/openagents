@@ -11,6 +11,7 @@ use bip39::Mnemonic;
 
 use super::server::start_server;
 use crate::core::identity::UnifiedIdentity;
+use crate::storage::identities::{current_identity, DEFAULT_IDENTITY_NAME};
 use crate::storage::keychain::{SecureKeychain, WALLET_PASSWORD_ENV};
 
 /// Run the wallet GUI application
@@ -18,10 +19,13 @@ pub fn run_gui() -> Result<()> {
     tracing::info!("Starting Wallet GUI...");
 
     // Load identity from keychain
-    let identity = if SecureKeychain::has_mnemonic() {
-        let mnemonic_result = if SecureKeychain::is_password_protected() {
+    let identity_name = current_identity().unwrap_or_else(|_| DEFAULT_IDENTITY_NAME.to_string());
+    let identity = if SecureKeychain::has_mnemonic_for(&identity_name) {
+        let mnemonic_result = if SecureKeychain::is_password_protected_for(&identity_name) {
             match std::env::var(WALLET_PASSWORD_ENV) {
-                Ok(password) => SecureKeychain::retrieve_mnemonic_with_password(&password),
+                Ok(password) => {
+                    SecureKeychain::retrieve_mnemonic_with_password_for(&identity_name, &password)
+                }
                 Err(_) => {
                     tracing::warn!(
                         "Wallet is password protected. Set {} to unlock.",
@@ -31,7 +35,7 @@ pub fn run_gui() -> Result<()> {
                 }
             }
         } else {
-            SecureKeychain::retrieve_mnemonic()
+            SecureKeychain::retrieve_mnemonic_for(&identity_name)
         };
 
         match mnemonic_result {
@@ -58,7 +62,10 @@ pub fn run_gui() -> Result<()> {
             }
         }
     } else {
-        tracing::warn!("No wallet found in keychain - please run 'cargo wallet init' first");
+        tracing::warn!(
+            "No wallet found for identity '{}' - please run 'openagents wallet init' first",
+            identity_name
+        );
         None
     };
 

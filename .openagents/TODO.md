@@ -16,15 +16,14 @@
 
 ---
 
-## Outstanding User Stories (No Test Coverage Yet) — 31 total
+## Outstanding User Stories (No Test Coverage Yet) — 30 total
 
 These story IDs are defined in `.openagents/USERSTORIES.md` but are not listed in the Covered Stories table yet.
 
-Priority breakdown: P0 = 6, P1 = 17, P2 = 8.
+Priority breakdown: P0 = 6, P1 = 17, P2 = 7.
 P0 focus IDs: 3.3.1, 3.3.2, 3.3.3, 23.1.3, 25.2.1, 25.2.2.
 
 ### d-003: OpenAgents Wallet (9)
-- [ ] 3.1.5 (P2) As a user, I want to manage multiple identities, so that I can separate personal and work accounts.
 - [ ] 3.3.1 (P0) As a user, I want to see my balance prominently in the GUI header, so that I always know my funds.
 - [ ] 3.3.2 (P0) As a user, I want to click "Send" and fill out a payment form, so that I can send without CLI.
 - [ ] 3.3.3 (P0) As a user, I want to click "Receive" and see a QR code, so that I can get paid easily.
@@ -715,7 +714,7 @@ P0 focus IDs: 3.3.1, 3.3.2, 3.3.3, 23.1.3, 25.2.1, 25.2.2.
 
 ### Phase 3: Testing & Quality 🟡 IN PROGRESS
 
-Story coverage is incomplete (31 outstanding stories; see Outstanding User Stories).
+Story coverage is incomplete (30 outstanding stories; see Outstanding User Stories).
 12. **d-013**: Testing framework coverage ✅ (700+ tests)
 13. **d-026**: E2E test viewer ✅
 14. **d-014**: NIP-SA/Bifrost E2E tests ✅ (159 tests verified)

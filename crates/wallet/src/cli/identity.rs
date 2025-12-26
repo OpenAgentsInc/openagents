@@ -5,7 +5,12 @@ use colored::Colorize;
 use crate::cli::load_mnemonic;
 use crate::core::identity::UnifiedIdentity;
 use spark::{Network, SparkSigner, SparkWallet, WalletConfig as SparkWalletConfig};
+use crate::storage::identities::{
+    current_identity, register_identity, remove_identity as unregister_identity,
+    set_current_identity, IdentityRegistry, DEFAULT_IDENTITY_NAME,
+};
 use crate::storage::keychain::SecureKeychain;
+use std::io::IsTerminal;
 use std::path::PathBuf;
 
 fn spark_address_from_mnemonic(mnemonic: &str) -> Option<String> {
@@ -27,11 +32,24 @@ fn spark_address_from_mnemonic(mnemonic: &str) -> Option<String> {
     })
 }
 
+fn validate_identity_name(name: &str) -> Result<()> {
+    if name.trim().is_empty() {
+        anyhow::bail!("Identity name cannot be empty.");
+    }
+    if !name
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+    {
+        anyhow::bail!("Identity name must be ASCII letters, numbers, '-' or '_'.");
+    }
+    Ok(())
+}
+
 pub fn init(show_mnemonic: bool) -> Result<()> {
     println!("{}", "Initializing new wallet...".cyan());
 
     // Check if wallet already exists
-    if SecureKeychain::has_mnemonic() {
+    if SecureKeychain::has_mnemonic_for(DEFAULT_IDENTITY_NAME) {
         anyhow::bail!("Wallet already exists! Use 'wallet import' to replace or 'wallet export' to view.");
     }
 
@@ -45,6 +63,8 @@ pub fn init(show_mnemonic: bool) -> Result<()> {
     // Store in keychain
     SecureKeychain::store_mnemonic(&mnemonic_phrase)
         .context("Failed to store mnemonic in keychain")?;
+    register_identity(DEFAULT_IDENTITY_NAME, true)
+        .context("Failed to register default identity")?;
 
     println!("{}", "✓ Wallet initialized".green());
     println!();
@@ -93,7 +113,7 @@ pub fn import(mnemonic: Option<String>) -> Result<()> {
         .context("Failed to derive identity from mnemonic")?;
 
     // Check if wallet already exists
-    if SecureKeychain::has_mnemonic() {
+    if SecureKeychain::has_mnemonic_for(DEFAULT_IDENTITY_NAME) {
         println!("{}", "WARNING: This will replace your existing wallet!".red().bold());
         print!("Type 'yes' to confirm: ");
         io::stdout().flush()?;
@@ -104,12 +124,14 @@ pub fn import(mnemonic: Option<String>) -> Result<()> {
             return Ok(());
         }
         // Delete existing mnemonic
-        SecureKeychain::delete_mnemonic()?;
+        SecureKeychain::delete_mnemonic_for(DEFAULT_IDENTITY_NAME)?;
     }
 
     // Store in keychain
     SecureKeychain::store_mnemonic(&mnemonic_phrase)
         .context("Failed to store mnemonic in keychain")?;
+    register_identity(DEFAULT_IDENTITY_NAME, true)
+        .context("Failed to register default identity")?;
 
     println!("{}", "✓ Wallet imported".green());
     println!();
@@ -118,16 +140,148 @@ pub fn import(mnemonic: Option<String>) -> Result<()> {
     Ok(())
 }
 
+pub fn identities_list() -> Result<()> {
+    let registry = IdentityRegistry::load()?;
+    println!("{}", "Identities".cyan().bold());
+    println!();
+
+    if registry.identities().is_empty() {
+        println!("  No identities configured.");
+        println!("  Use 'openagents wallet identity create <name>' to add one.");
+        return Ok(());
+    }
+
+    for name in registry.identities() {
+        if name == registry.current() {
+            println!("* {}", name);
+        } else {
+            println!("  {}", name);
+        }
+    }
+
+    Ok(())
+}
+
+pub fn identity_current() -> Result<()> {
+    let current = current_identity()?;
+    println!("Current identity: {}", current);
+    Ok(())
+}
+
+pub fn identity_create(name: String, show_mnemonic: bool) -> Result<()> {
+    validate_identity_name(&name)?;
+
+    let mut registry = IdentityRegistry::load()?;
+    if registry.contains(&name) {
+        anyhow::bail!("Identity '{}' already exists.", name);
+    }
+
+    println!("{}", format!("Creating identity '{}'...", name).cyan());
+
+    let identity = UnifiedIdentity::generate()
+        .context("Failed to generate identity")?;
+    let mnemonic_phrase = identity.mnemonic().to_string();
+
+    SecureKeychain::store_mnemonic_for(&name, &mnemonic_phrase)
+        .context("Failed to store mnemonic in keychain")?;
+    registry.add_identity(&name)?;
+    registry.set_current(&name)?;
+    registry.save()?;
+
+    println!("{}", "✓ Identity created".green());
+    println!("{}", format!("Active identity: {}", name).cyan());
+    println!();
+    println!("{}: {}", "Nostr Public Key".bold(), identity.nostr_public_key());
+
+    if show_mnemonic {
+        println!();
+        println!("{}", "WARNING: Anyone with this phrase can access your wallet!".red().bold());
+        println!("{}", "Your recovery phrase:".bold());
+        println!("{}", mnemonic_phrase.yellow());
+    }
+
+    Ok(())
+}
+
+pub fn identity_import(name: String, mnemonic: Option<String>) -> Result<()> {
+    use bip39::Mnemonic;
+    use std::io::{self, Write};
+
+    validate_identity_name(&name)?;
+    let mut registry = IdentityRegistry::load()?;
+    if registry.contains(&name) {
+        anyhow::bail!("Identity '{}' already exists.", name);
+    }
+
+    println!("{}", format!("Importing identity '{}'...", name).cyan());
+    println!();
+
+    let mnemonic_phrase = if let Some(phrase) = mnemonic {
+        phrase
+    } else {
+        print!("Enter your 12 or 24 word recovery phrase: ");
+        io::stdout().flush()?;
+        let mut input = String::new();
+        io::stdin().read_line(&mut input)?;
+        input.trim().to_string()
+    };
+
+    let mnemonic = Mnemonic::parse(&mnemonic_phrase)
+        .context("Invalid mnemonic phrase")?;
+    let identity = UnifiedIdentity::from_mnemonic(mnemonic)
+        .context("Failed to derive identity from mnemonic")?;
+
+    SecureKeychain::store_mnemonic_for(&name, &mnemonic_phrase)
+        .context("Failed to store mnemonic in keychain")?;
+    registry.add_identity(&name)?;
+    registry.set_current(&name)?;
+    registry.save()?;
+
+    println!("{}", "✓ Identity imported".green());
+    println!("{}", format!("Active identity: {}", name).cyan());
+    println!("{}: {}", "Nostr Public Key".bold(), identity.nostr_public_key());
+
+    Ok(())
+}
+
+pub fn identity_use(name: String) -> Result<()> {
+    validate_identity_name(&name)?;
+    set_current_identity(&name)?;
+    println!("{}", format!("Active identity set to '{}'.", name).green());
+    Ok(())
+}
+
+pub fn identity_remove(name: String, yes: bool) -> Result<()> {
+    use std::io::{self, Write};
+
+    validate_identity_name(&name)?;
+
+    if !yes {
+        if std::io::stdin().is_terminal() {
+            print!("Type 'yes' to remove identity '{}': ", name);
+            io::stdout().flush()?;
+            let mut confirm = String::new();
+            io::stdin().read_line(&mut confirm)?;
+            if confirm.trim().to_lowercase() != "yes" {
+                println!("Remove cancelled.");
+                return Ok(());
+            }
+        } else {
+            anyhow::bail!("Non-interactive removal requires --yes.");
+        }
+    }
+
+    unregister_identity(&name)?;
+    SecureKeychain::delete_mnemonic_for(&name)?;
+    println!("{}", format!("Identity '{}' removed.", name).green());
+    Ok(())
+}
+
 pub fn export() -> Result<()> {
     use std::io::{self, Write};
 
     println!("{}", "Exporting wallet mnemonic...".cyan());
     println!();
-
-    // Check if wallet exists
-    if !SecureKeychain::has_mnemonic() {
-        anyhow::bail!("No wallet found. Use 'wallet init' to create one.");
-    }
 
     // Require confirmation
     println!("{}", "WARNING: This will display your recovery phrase on screen!".yellow().bold());
@@ -167,11 +321,6 @@ pub fn whoami() -> Result<()> {
     println!("{}", "Wallet Information".cyan().bold());
     println!();
 
-    // Check if wallet exists
-    if !SecureKeychain::has_mnemonic() {
-        anyhow::bail!("No wallet found. Use 'wallet init' to create one.");
-    }
-
     // Retrieve mnemonic
     let mnemonic_phrase = load_mnemonic()?;
 
@@ -198,6 +347,8 @@ pub fn whoami() -> Result<()> {
 
     // Display information
     println!("{}", "Identity".bold());
+    let identity_name = current_identity().unwrap_or_else(|_| DEFAULT_IDENTITY_NAME.to_string());
+    println!("  {}: {}", "Active Identity".bold(), identity_name);
     println!("  {}: {}", "Nostr npub".bold(), npub);
     println!("  {}: {}", "Nostr Public Key".bold(), identity.nostr_public_key());
     let spark_address = spark_address_from_mnemonic(&mnemonic_phrase)
@@ -241,11 +392,6 @@ pub fn profile_show() -> Result<()> {
 
     println!("{}", "Profile Information".cyan().bold());
     println!();
-
-    // Check if wallet exists
-    if !SecureKeychain::has_mnemonic() {
-        anyhow::bail!("No wallet found. Use 'wallet init' to create one.");
-    }
 
     // Load identity for pubkey
     let mnemonic_phrase = load_mnemonic()?;
@@ -303,11 +449,6 @@ pub fn profile_set(
     use crate::storage::config::WalletConfig;
 
     println!("{}", "Updating profile...".cyan());
-
-    // Check if wallet exists
-    if !SecureKeychain::has_mnemonic() {
-        anyhow::bail!("No wallet found. Use 'wallet init' to create one.");
-    }
 
     // Load identity
     let mnemonic_phrase = load_mnemonic()?;
@@ -405,7 +546,8 @@ pub fn profile_set(
 
 fn contacts_path() -> Result<PathBuf> {
     let home = dirs::home_dir().ok_or_else(|| anyhow::anyhow!("Could not find home directory"))?;
-    Ok(home.join(".openagents").join("contacts.json"))
+    let identity = current_identity().unwrap_or_else(|_| DEFAULT_IDENTITY_NAME.to_string());
+    Ok(home.join(".openagents").join("contacts").join(format!("{}.json", identity)))
 }
 
 fn load_contacts() -> Result<Vec<nostr::Contact>> {
@@ -461,10 +603,6 @@ fn create_contact_list_event(
 pub fn contacts_list() -> Result<()> {
     println!("{}", "Contacts".cyan().bold());
 
-    if !SecureKeychain::has_mnemonic() {
-        anyhow::bail!("No wallet found. Use 'wallet init' to create one.");
-    }
-
     let contacts = load_contacts()?;
 
     if contacts.is_empty() {
@@ -497,10 +635,6 @@ pub fn contacts_add(npub: String, name: Option<String>) -> Result<()> {
     use crate::storage::config::WalletConfig;
 
     println!("{}", "Adding contact...".cyan());
-
-    if !SecureKeychain::has_mnemonic() {
-        anyhow::bail!("No wallet found. Use 'wallet init' to create one.");
-    }
 
     let pubkey_hex = parse_contact_pubkey(&npub)?;
     let mut contacts = load_contacts()?;
@@ -572,10 +706,6 @@ pub fn contacts_remove(npub: String) -> Result<()> {
 
     println!("{}", "Removing contact...".cyan());
 
-    if !SecureKeychain::has_mnemonic() {
-        anyhow::bail!("No wallet found. Use 'wallet init' to create one.");
-    }
-
     let pubkey_hex = parse_contact_pubkey(&npub)?;
     let mut contacts = load_contacts()?;
     let original_len = contacts.len();
@@ -645,11 +775,6 @@ pub fn post(content: String) -> Result<()> {
 
     println!("{}", "Publishing note...".cyan());
 
-    // Check if wallet exists
-    if !SecureKeychain::has_mnemonic() {
-        anyhow::bail!("No wallet found. Use 'wallet init' to create one.");
-    }
-
     // Load identity
     let mnemonic_phrase = load_mnemonic()?;
     let mnemonic = Mnemonic::parse(&mnemonic_phrase)?;
@@ -710,11 +835,6 @@ pub fn dm_send(recipient: String, message: String) -> Result<()> {
     use crate::storage::config::WalletConfig;
 
     println!("{}", "Sending encrypted DM (NIP-04)...".cyan());
-
-    // Check if wallet exists
-    if !SecureKeychain::has_mnemonic() {
-        anyhow::bail!("No wallet found. Use 'wallet init' to create one.");
-    }
 
     // Parse recipient npub
     let recipient_pubkey = match nostr::decode(&recipient) {
@@ -812,11 +932,6 @@ pub fn dm_list(limit: usize) -> Result<()> {
     println!("{}", "Direct Messages".cyan().bold());
     println!();
 
-    // Check if wallet exists
-    if !SecureKeychain::has_mnemonic() {
-        anyhow::bail!("No wallet found. Use 'wallet init' to create one.");
-    }
-
     // Load identity
     let mnemonic_str = load_mnemonic()?;
     let mnemonic = Mnemonic::parse(&mnemonic_str)?;
@@ -909,11 +1024,6 @@ pub fn dm_read(event_id: String) -> Result<()> {
 
     println!("{}", "Reading Direct Message".cyan().bold());
     println!();
-
-    // Check if wallet exists
-    if !SecureKeychain::has_mnemonic() {
-        anyhow::bail!("No wallet found. Use 'wallet init' to create one.");
-    }
 
     // Load identity
     let mnemonic_str = load_mnemonic()?;

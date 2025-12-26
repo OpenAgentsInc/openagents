@@ -75,6 +75,7 @@ This section tracks which user stories have implemented tests.
 | 1.5.2 | Failed transactions don't deduct balance | Unit | `crates/spark/src/error.rs` |
 | 1.5.3 | Retry failed payments with one click | Unit | `crates/wallet/src/cli/bitcoin.rs` |
 | 1.5.4 | See network status (connected/disconnected) | Unit | `crates/wallet/src/cli/bitcoin.rs` |
+| 3.1.5 | Manage multiple identities | Unit | `crates/wallet/src/storage/identities.rs` |
 | 3.2.1 | Run `openagents wallet send <address> <amount>` | Integration | `tests/cli_integration.rs` |
 | 3.2.2 | Run `openagents wallet receive <amount>` | Integration | `tests/cli_integration.rs` |
 | 3.2.3 | Run `openagents wallet balance` | Integration | `tests/cli_integration.rs` |

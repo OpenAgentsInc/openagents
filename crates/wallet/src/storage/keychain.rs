@@ -22,6 +22,7 @@ const SERVICE_NAME: &str = "openagents-wallet";
 const MNEMONIC_KEY: &str = "mnemonic";
 const KEYCHAIN_FILE_ENV: &str = "OPENAGENTS_KEYCHAIN_FILE";
 pub const WALLET_PASSWORD_ENV: &str = "OPENAGENTS_WALLET_PASSWORD";
+pub const DEFAULT_IDENTITY_NAME: &str = "default";
 
 #[derive(Debug, Serialize, Deserialize)]
 struct EncryptedMnemonic {
@@ -99,37 +100,70 @@ fn derive_key(password: &str, salt: &[u8]) -> Result<[u8; 32]> {
     Ok(key)
 }
 
-fn file_override_path() -> Option<PathBuf> {
-    std::env::var_os(KEYCHAIN_FILE_ENV).map(PathBuf::from)
+fn file_override_path(identity: &str) -> Option<PathBuf> {
+    let base = PathBuf::from(std::env::var_os(KEYCHAIN_FILE_ENV)?);
+    if base.is_dir() {
+        return Some(base.join(format!("{}.txt", identity)));
+    }
+
+    if identity == DEFAULT_IDENTITY_NAME {
+        return Some(base);
+    }
+
+    let file_name = base
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or(MNEMONIC_KEY);
+    let mut with_identity = base.clone();
+    with_identity.set_file_name(format!("{}.{}", file_name, identity));
+    Some(with_identity)
 }
 
 fn ensure_parent(path: &PathBuf) -> Result<()> {
+    if path.is_dir() {
+        std::fs::create_dir_all(path).context("Failed to create keychain override directory")?;
+        return Ok(());
+    }
+
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent).context("Failed to create keychain override directory")?;
     }
     Ok(())
 }
 
-fn write_raw_mnemonic(value: &str) -> Result<()> {
-    if let Some(path) = file_override_path() {
+fn keychain_key(identity: &str) -> String {
+    if identity == DEFAULT_IDENTITY_NAME {
+        MNEMONIC_KEY.to_string()
+    } else {
+        format!("{}:{}", MNEMONIC_KEY, identity)
+    }
+}
+
+fn keychain_entry(identity: &str) -> Result<Entry> {
+    let key = keychain_key(identity);
+    Ok(Entry::new(SERVICE_NAME, &key)?)
+}
+
+fn write_raw_mnemonic_for(identity: &str, value: &str) -> Result<()> {
+    if let Some(path) = file_override_path(identity) {
         ensure_parent(&path)?;
         std::fs::write(&path, value).context("Failed to write keychain override file")?;
         return Ok(());
     }
 
-    let entry = Entry::new(SERVICE_NAME, MNEMONIC_KEY)?;
+    let entry = keychain_entry(identity)?;
     entry.set_password(value)?;
     Ok(())
 }
 
-fn read_raw_mnemonic() -> Result<String> {
-    if let Some(path) = file_override_path() {
+fn read_raw_mnemonic_for(identity: &str) -> Result<String> {
+    if let Some(path) = file_override_path(identity) {
         let mnemonic = std::fs::read_to_string(&path)
             .context("Failed to read keychain override file")?;
         return Ok(mnemonic);
     }
 
-    let entry = Entry::new(SERVICE_NAME, MNEMONIC_KEY)?;
+    let entry = keychain_entry(identity)?;
     let mnemonic = entry.get_password()?;
     Ok(mnemonic)
 }
@@ -140,20 +174,41 @@ pub struct SecureKeychain;
 impl SecureKeychain {
     /// Store mnemonic in OS keychain
     pub fn store_mnemonic(mnemonic: &str) -> Result<()> {
-        write_raw_mnemonic(mnemonic)
+        Self::store_mnemonic_for(DEFAULT_IDENTITY_NAME, mnemonic)
     }
 
     /// Store mnemonic encrypted with a wallet password
     pub fn store_mnemonic_encrypted(mnemonic: &str, password: &str) -> Result<()> {
+        Self::store_mnemonic_encrypted_for(DEFAULT_IDENTITY_NAME, mnemonic, password)
+    }
+
+    pub fn store_mnemonic_for(identity: &str, mnemonic: &str) -> Result<()> {
+        write_raw_mnemonic_for(identity, mnemonic)
+    }
+
+    pub fn store_mnemonic_encrypted_for(
+        identity: &str,
+        mnemonic: &str,
+        password: &str,
+    ) -> Result<()> {
         let encrypted = EncryptedMnemonic::encrypt(mnemonic, password)?;
         let payload = serde_json::to_string(&encrypted)
             .context("Failed to serialize encrypted wallet data")?;
-        write_raw_mnemonic(&payload)
+        write_raw_mnemonic_for(identity, &payload)
     }
 
     /// Retrieve mnemonic from OS keychain
     pub fn retrieve_mnemonic() -> Result<String> {
-        let raw = read_raw_mnemonic()?;
+        Self::retrieve_mnemonic_for(DEFAULT_IDENTITY_NAME)
+    }
+
+    /// Retrieve mnemonic using a wallet password
+    pub fn retrieve_mnemonic_with_password(password: &str) -> Result<String> {
+        Self::retrieve_mnemonic_with_password_for(DEFAULT_IDENTITY_NAME, password)
+    }
+
+    pub fn retrieve_mnemonic_for(identity: &str) -> Result<String> {
+        let raw = read_raw_mnemonic_for(identity)?;
         if EncryptedMnemonic::parse(&raw).is_some() {
             anyhow::bail!(
                 "Wallet is password protected. Set {} to unlock.",
@@ -163,9 +218,11 @@ impl SecureKeychain {
         Ok(raw)
     }
 
-    /// Retrieve mnemonic using a wallet password
-    pub fn retrieve_mnemonic_with_password(password: &str) -> Result<String> {
-        let raw = read_raw_mnemonic()?;
+    pub fn retrieve_mnemonic_with_password_for(
+        identity: &str,
+        password: &str,
+    ) -> Result<String> {
+        let raw = read_raw_mnemonic_for(identity)?;
         if let Some(encrypted) = EncryptedMnemonic::parse(&raw) {
             return encrypted.decrypt(password);
         }
@@ -174,7 +231,11 @@ impl SecureKeychain {
 
     /// Delete mnemonic from OS keychain
     pub fn delete_mnemonic() -> Result<()> {
-        if let Some(path) = file_override_path() {
+        Self::delete_mnemonic_for(DEFAULT_IDENTITY_NAME)
+    }
+
+    pub fn delete_mnemonic_for(identity: &str) -> Result<()> {
+        if let Some(path) = file_override_path(identity) {
             if path.exists() {
                 std::fs::remove_file(&path)
                     .context("Failed to delete keychain override file")?;
@@ -182,25 +243,34 @@ impl SecureKeychain {
             return Ok(());
         }
 
-        let entry = Entry::new(SERVICE_NAME, MNEMONIC_KEY)?;
+        let entry = keychain_entry(identity)?;
         entry.delete_credential()?;
         Ok(())
     }
 
     /// Check if mnemonic exists in keychain
     pub fn has_mnemonic() -> bool {
-        if let Some(path) = file_override_path() {
-            return path.is_file();
-        }
-
-        Entry::new(SERVICE_NAME, MNEMONIC_KEY)
-            .and_then(|e| e.get_password())
-            .is_ok()
+        Self::has_mnemonic_for(DEFAULT_IDENTITY_NAME)
     }
 
     /// Check if the mnemonic is protected by a password
     pub fn is_password_protected() -> bool {
-        read_raw_mnemonic()
+        Self::is_password_protected_for(DEFAULT_IDENTITY_NAME)
+    }
+
+    pub fn has_mnemonic_for(identity: &str) -> bool {
+        if let Some(path) = file_override_path(identity) {
+            return path.is_file();
+        }
+
+        match keychain_entry(identity) {
+            Ok(entry) => entry.get_password().is_ok(),
+            Err(_) => false,
+        }
+    }
+
+    pub fn is_password_protected_for(identity: &str) -> bool {
+        read_raw_mnemonic_for(identity)
             .ok()
             .and_then(|raw| EncryptedMnemonic::parse(&raw))
             .is_some()

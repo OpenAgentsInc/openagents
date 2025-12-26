@@ -303,6 +303,7 @@ fn test_wallet_subcommands_listed() {
         .stdout(predicate::str::contains("receive"))
         .stdout(predicate::str::contains("notify"))
         .stdout(predicate::str::contains("history"))
+        .stdout(predicate::str::contains("identity"))
         .stdout(predicate::str::contains("payee"));
 }
 
