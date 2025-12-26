@@ -50,6 +50,96 @@ pub enum WalletCommands {
         #[arg(short, long, default_value = "20")]
         limit: usize,
     },
+
+    /// Nostr profile commands
+    #[command(subcommand)]
+    Profile(ProfileCommands),
+
+    /// Contact management
+    #[command(subcommand)]
+    Contacts(ContactsCommands),
+
+    /// Post a note to Nostr
+    Post {
+        /// Content to post
+        content: String,
+    },
+
+    /// Direct message commands
+    #[command(subcommand)]
+    Dm(DmCommands),
+}
+
+#[derive(Subcommand)]
+pub enum ProfileCommands {
+    /// Show profile information
+    Show,
+
+    /// Set profile fields
+    Set {
+        /// Display name
+        #[arg(long)]
+        name: Option<String>,
+
+        /// About/bio
+        #[arg(long)]
+        about: Option<String>,
+
+        /// Profile picture URL
+        #[arg(long)]
+        picture: Option<String>,
+
+        /// NIP-05 identifier (name@domain.com)
+        #[arg(long)]
+        nip05: Option<String>,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum ContactsCommands {
+    /// List contacts
+    List,
+
+    /// Add a contact
+    Add {
+        /// Contact npub
+        npub: String,
+
+        /// Petname (optional)
+        #[arg(short, long)]
+        name: Option<String>,
+    },
+
+    /// Remove a contact
+    Remove {
+        /// Contact npub
+        npub: String,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum DmCommands {
+    /// Send an encrypted DM
+    Send {
+        /// Recipient npub or nprofile
+        recipient: String,
+
+        /// Message content
+        message: String,
+    },
+
+    /// List received DMs
+    List {
+        /// Number of messages to display
+        #[arg(short, long, default_value = "20")]
+        limit: usize,
+    },
+
+    /// Read a specific DM by event ID
+    Read {
+        /// Event ID of the message
+        event_id: String,
+    },
 }
 
 pub fn run(cmd: WalletCommands) -> anyhow::Result<()> {
@@ -62,5 +152,27 @@ pub fn run(cmd: WalletCommands) -> anyhow::Result<()> {
         WalletCommands::Receive { amount } => wallet::cli::bitcoin::receive(amount),
         WalletCommands::Send { address, amount } => wallet::cli::bitcoin::send(address, amount),
         WalletCommands::History { limit } => wallet::cli::bitcoin::history(limit),
+        WalletCommands::Profile(cmd) => match cmd {
+            ProfileCommands::Show => wallet::cli::identity::profile_show(),
+            ProfileCommands::Set {
+                name,
+                about,
+                picture,
+                nip05,
+            } => wallet::cli::identity::profile_set(name, about, picture, nip05),
+        },
+        WalletCommands::Contacts(cmd) => match cmd {
+            ContactsCommands::List => wallet::cli::identity::contacts_list(),
+            ContactsCommands::Add { npub, name } => wallet::cli::identity::contacts_add(npub, name),
+            ContactsCommands::Remove { npub } => wallet::cli::identity::contacts_remove(npub),
+        },
+        WalletCommands::Post { content } => wallet::cli::identity::post(content),
+        WalletCommands::Dm(cmd) => match cmd {
+            DmCommands::Send { recipient, message } => {
+                wallet::cli::identity::dm_send(recipient, message)
+            }
+            DmCommands::List { limit } => wallet::cli::identity::dm_list(limit),
+            DmCommands::Read { event_id } => wallet::cli::identity::dm_read(event_id),
+        },
     }
 }

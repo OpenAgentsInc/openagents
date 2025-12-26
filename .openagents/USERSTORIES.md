@@ -47,6 +47,10 @@ This section tracks which user stories have implemented tests.
 
 | Story ID | Description | Test Type | File Path |
 |----------|-------------|-----------|-----------|
+| **d-001: Breez Spark SDK Integration** ||||
+| 1.1.1 | Generate mnemonic on wallet init | Integration | `tests/cli_integration.rs` |
+| 1.1.2 | Restore wallet from mnemonic | Integration | `tests/wallet_cli_integration.rs` |
+| 1.1.3 | Store mnemonic in secure keychain | Integration | `tests/cli_integration.rs` |
 | **d-002: Nostr Protocol Implementation** ||||
 | 2.1.1 | Create and sign kind:1 text notes | Unit | `crates/nostr/core/src/tests/event_validation.rs` |
 | 2.1.2 | Create and sign kind:0 metadata events | Unit | `crates/nostr/core/src/tests/event_validation.rs` |
@@ -131,6 +135,14 @@ This section tracks which user stories have implemented tests.
 | **d-009: Autopilot GUI** ||||
 | 9.1.1 | Conversation thread display | Visual E2E | `crates/wgpui/examples/chat_streaming_test.rs` |
 | 9.1.2 | Tool calls with output | Visual E2E | `crates/wgpui/examples/chat_streaming_test.rs` |
+| **d-003: OpenAgents Wallet** ||||
+| 3.1.1 | Show identity via `openagents wallet whoami` | Integration | `tests/wallet_cli_integration.rs` |
+| 3.1.2 | Update Nostr profile fields | Integration | `tests/wallet_cli_integration.rs` |
+| 3.1.3 | Follow/unfollow contacts | Integration | `tests/wallet_cli_integration.rs` |
+| 3.1.4 | See follower count and list | Integration | `tests/wallet_cli_integration.rs` |
+| 3.2.5 | Post a Nostr note from CLI | Integration | `tests/wallet_cli_integration.rs` |
+| 3.2.6 | Send encrypted DMs from CLI | Integration | `tests/wallet_cli_integration.rs` |
+| 3.4.2 | Back up seed phrase | Integration | `tests/wallet_cli_integration.rs` |
 | **d-010: Unified Binary** ||||
 | 10.1.1 | Launch GUI when running `openagents` with no args | Integration | `tests/cli_integration.rs` |
 | 10.1.2 | Run `openagents wallet init` to initialize wallet | Integration | `tests/cli_integration.rs` |
@@ -250,7 +262,8 @@ This section tracks which user stories have implemented tests.
 | `crates/wgpui/src/testing/injection.rs` | EventSequence for synthetic events | 26.3.2 |
 | `crates/wgpui/src/testing/overlay.rs` | InputOverlay for click ripples | 26.2.2, 26.2.3 |
 | `crates/wgpui/src/testing/runner.rs` | TestRunner playback + step control | 26.2.4, 26.2.5 |
-| `tests/cli_integration.rs` | Unified CLI headless launch, wallet init, and delegation coverage | 10.1.1-10.1.6, 16.2.1 |
+| `tests/cli_integration.rs` | Unified CLI headless launch, wallet init, and delegation coverage | 1.1.1, 1.1.3, 10.1.1-10.1.6, 16.2.1 |
+| `tests/wallet_cli_integration.rs` | Wallet identity, profile, contacts, post, DM, and export flows | 1.1.2, 3.1.1-3.1.4, 3.2.5-3.2.6, 3.4.2 |
 | `tests/legacy_binaries.rs` | Legacy binary deprecation warnings + symlink installer coverage | 10.2.1-10.2.2 |
 | `tests/no_stubs.rs` | Stub pattern scanning + exceptions documentation checks | 12.1.1-12.1.4 |
 | `crates/opencode-sdk/tests/opencode_sdk_integration.rs` | OpenCode SDK mock server + SSE integration tests | 21.1.1-21.2.2 |

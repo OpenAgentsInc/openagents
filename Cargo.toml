@@ -99,6 +99,7 @@ gtk = { version = "0.18.2", features = ["v3_24"] }
 [dev-dependencies]
 assert_cmd = "2.0"
 predicates = "3.0"
+bip39 = "2"
 
 [workspace.lints.rust]
 missing_docs = "allow"
