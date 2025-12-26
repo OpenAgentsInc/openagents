@@ -108,7 +108,7 @@
 mod docker;
 mod worktree;
 
-pub use docker::{AgentInfo, AgentStatus, get_logs, list_agents, start_agents, stop_agents};
+pub use docker::{AgentInfo, AgentStatus, get_logs, list_agents, start_agents, stop_agent, stop_agents};
 pub use worktree::{create_worktrees, list_worktrees, remove_worktrees};
 
 use serde::{Deserialize, Serialize};

@@ -4,7 +4,7 @@
 #
 # Usage:
 #   parallel-autopilot.sh start [N]  - Start N agents (default: 3)
-#   parallel-autopilot.sh stop       - Stop all agents
+#   parallel-autopilot.sh stop [N]   - Stop all agents or a single agent
 #   parallel-autopilot.sh status     - Show running agents and issues
 #   parallel-autopilot.sh logs [N]   - Tail logs (all or specific agent)
 #   parallel-autopilot.sh cleanup    - Remove worktrees and branches
@@ -45,6 +45,16 @@ detect_platform() {
     export AGENT_MEMORY="${AGENT_MEMORY:-$DEFAULT_MEMORY}"
     export AGENT_CPUS="${AGENT_CPUS:-$DEFAULT_CPUS}"
     export HOST_UID="$(id -u)"
+
+    # Per-agent overrides (fallback to global defaults)
+    for i in $(seq 1 "$MAX_AGENTS"); do
+        local id
+        id=$(printf "%03d" "$i")
+        local mem_var="AGENT_MEMORY_${id}"
+        local cpu_var="AGENT_CPUS_${id}"
+        export "${mem_var}=${!mem_var:-$AGENT_MEMORY}"
+        export "${cpu_var}=${!cpu_var:-$AGENT_CPUS}"
+    done
 }
 
 # Create git worktrees for N agents
@@ -119,10 +129,29 @@ cmd_start() {
 
 # Stop all agents
 cmd_stop() {
-    echo -e "${BLUE}Stopping all agents...${NC}"
+    local agent_id="$1"
     cd "$PROJECT_ROOT"
-    docker-compose -f "$COMPOSE_FILE" --profile extended --profile linux-full down
-    echo -e "${GREEN}All agents stopped${NC}"
+
+    if [ -n "$agent_id" ]; then
+        local raw="$agent_id"
+        raw="${raw#agent-}"
+        raw="${raw#autopilot-}"
+        if ! [[ "$raw" =~ ^[0-9]+$ ]]; then
+            echo -e "${RED}Invalid agent id: $agent_id${NC}"
+            exit 1
+        fi
+        local padded
+        padded=$(printf "%03d" "$raw")
+        local service="agent-$padded"
+
+        echo -e "${BLUE}Stopping agent $service...${NC}"
+        docker-compose -f "$COMPOSE_FILE" --profile extended --profile linux-full stop "$service"
+        echo -e "${GREEN}Agent $service stopped${NC}"
+    else
+        echo -e "${BLUE}Stopping all agents...${NC}"
+        docker-compose -f "$COMPOSE_FILE" --profile extended --profile linux-full down
+        echo -e "${GREEN}All agents stopped${NC}"
+    fi
 }
 
 # Show status

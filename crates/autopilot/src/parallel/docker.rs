@@ -101,6 +101,46 @@ pub struct AgentInfo {
     pub uptime_seconds: Option<u64>,
 }
 
+fn agent_service_names(count: usize) -> Vec<String> {
+    (1..=count).map(|i| format!("agent-{:03}", i)).collect()
+}
+
+fn normalize_agent_id(agent_id: &str) -> Result<String> {
+    let trimmed = agent_id.trim();
+    let numeric = trimmed
+        .strip_prefix("agent-")
+        .or_else(|| trimmed.strip_prefix("autopilot-"))
+        .unwrap_or(trimmed);
+
+    if numeric.is_empty() {
+        anyhow::bail!("Agent ID cannot be empty");
+    }
+
+    let id: u16 = numeric
+        .parse()
+        .map_err(|_| anyhow::anyhow!("Invalid agent id '{}'", agent_id))?;
+
+    if id == 0 {
+        anyhow::bail!("Agent ID must be >= 1");
+    }
+
+    Ok(format!("{:03}", id))
+}
+
+fn agent_service_name(agent_id: &str) -> Result<String> {
+    Ok(format!("agent-{}", normalize_agent_id(agent_id)?))
+}
+
+fn stop_agent_args(agent_id: &str, compose_file: &std::path::Path) -> Result<Vec<String>> {
+    let service = agent_service_name(agent_id)?;
+    Ok(vec![
+        "-f".to_string(),
+        compose_file.to_string_lossy().to_string(),
+        "stop".to_string(),
+        service,
+    ])
+}
+
 /// Start N agents using docker-compose
 ///
 /// This will:
@@ -120,7 +160,7 @@ pub async fn start_agents(count: usize) -> Result<Vec<AgentInfo>> {
         super::worktree::create_worktrees(&project_root, count)?;
 
         // Build services list
-        let services: Vec<String> = (1..=count).map(|i| format!("agent-{:03}", i)).collect();
+        let services = agent_service_names(count);
 
         // Determine profiles
         let mut args = vec!["-f".to_string(), compose_file.to_string_lossy().to_string()];
@@ -183,6 +223,31 @@ pub async fn stop_agents() -> Result<()> {
     Ok(())
 }
 
+/// Stop a single agent by ID
+pub async fn stop_agent(agent_id: &str) -> Result<()> {
+    let agent_id = agent_id.to_string();
+
+    tokio::task::spawn_blocking(move || -> Result<()> {
+        let project_root = find_project_root()?;
+        let compose_file = project_root.join("docker/autopilot/docker-compose.yml");
+
+        let args = stop_agent_args(&agent_id, &compose_file)?;
+
+        let output = get_compose_command().run(&args, &project_root)?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            anyhow::bail!("docker compose stop failed: {}", stderr);
+        }
+
+        Ok(())
+    })
+    .await
+    .context("spawn_blocking failed")??;
+
+    Ok(())
+}
+
 /// Query current issue for a given agent/container from database
 fn query_current_issue(container_name: &str) -> Option<i32> {
     let db_path = find_project_root().ok()?.join(".openagents/autopilot.db");
@@ -228,6 +293,53 @@ fn parse_uptime_seconds(status_str: &str) -> Option<u64> {
     Some(seconds)
 }
 
+fn parse_agent_ps_output_with_lookup<F>(output: &str, lookup: F) -> Vec<AgentInfo>
+where
+    F: Fn(&str) -> Option<i32>,
+{
+    let mut agents = Vec::new();
+
+    for line in output.lines() {
+        let parts: Vec<&str> = line.split('\t').collect();
+        if parts.len() < 2 {
+            continue;
+        }
+
+        let name = parts[0];
+        let status_str = parts[1];
+
+        if !name.starts_with("autopilot-") {
+            continue;
+        }
+
+        let id = name.strip_prefix("autopilot-").unwrap_or(name);
+        let status = if status_str.contains("Up") {
+            AgentStatus::Running
+        } else if status_str.contains("Exited") {
+            AgentStatus::Stopped
+        } else if status_str.contains("Starting") {
+            AgentStatus::Starting
+        } else {
+            AgentStatus::Error
+        };
+
+        agents.push(AgentInfo {
+            id: id.to_string(),
+            container_name: name.to_string(),
+            status,
+            current_issue: lookup(name),
+            uptime_seconds: parse_uptime_seconds(status_str),
+        });
+    }
+
+    agents.sort_by(|a, b| a.id.cmp(&b.id));
+    agents
+}
+
+fn parse_agent_ps_output(output: &str) -> Vec<AgentInfo> {
+    parse_agent_ps_output_with_lookup(output, query_current_issue)
+}
+
 /// List all agents and their status
 pub async fn list_agents() -> Result<Vec<AgentInfo>> {
     tokio::task::spawn_blocking(move || -> Result<Vec<AgentInfo>> {
@@ -237,47 +349,7 @@ pub async fn list_agents() -> Result<Vec<AgentInfo>> {
             .context("Failed to run docker ps")?;
 
         let stdout = String::from_utf8_lossy(&output.stdout);
-        let mut agents = Vec::new();
-
-        for line in stdout.lines() {
-            let parts: Vec<&str> = line.split('\t').collect();
-            if parts.len() >= 2 {
-                let name = parts[0];
-                let status_str = parts[1];
-
-                // Only include autopilot containers
-                if name.starts_with("autopilot-") {
-                    let id = name.strip_prefix("autopilot-").unwrap_or(name);
-                    let status = if status_str.contains("Up") {
-                        AgentStatus::Running
-                    } else if status_str.contains("Exited") {
-                        AgentStatus::Stopped
-                    } else if status_str.contains("Starting") {
-                        AgentStatus::Starting
-                    } else {
-                        AgentStatus::Error
-                    };
-
-                    // Query database for current issue
-                    let current_issue = query_current_issue(name);
-
-                    // Parse uptime from status string
-                    let uptime_seconds = parse_uptime_seconds(status_str);
-
-                    agents.push(AgentInfo {
-                        id: id.to_string(),
-                        container_name: name.to_string(),
-                        status,
-                        current_issue,
-                        uptime_seconds,
-                    });
-                }
-            }
-        }
-
-        // Sort by ID
-        agents.sort_by(|a, b| a.id.cmp(&b.id));
-        Ok(agents)
+        Ok(parse_agent_ps_output(&stdout))
     })
     .await
     .context("spawn_blocking failed")?
@@ -379,5 +451,61 @@ mod tests {
         assert_eq!(parse_uptime_seconds("Created"), None);
         assert_eq!(parse_uptime_seconds("Up"), None);
         assert_eq!(parse_uptime_seconds(""), None);
+    }
+
+    #[test]
+    fn test_agent_service_names() {
+        let names = agent_service_names(3);
+        assert_eq!(
+            names,
+            vec![
+                "agent-001".to_string(),
+                "agent-002".to_string(),
+                "agent-003".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn test_agent_service_name_parsing() {
+        assert_eq!(agent_service_name("1").unwrap(), "agent-001");
+        assert_eq!(agent_service_name("001").unwrap(), "agent-001");
+        assert_eq!(agent_service_name("agent-010").unwrap(), "agent-010");
+        assert_eq!(agent_service_name("autopilot-007").unwrap(), "agent-007");
+        assert!(agent_service_name("0").is_err());
+        assert!(agent_service_name("agent-abc").is_err());
+    }
+
+    #[test]
+    fn test_stop_agent_args() {
+        let args = stop_agent_args("2", std::path::Path::new("/tmp/compose.yml")).unwrap();
+        assert_eq!(
+            args,
+            vec![
+                "-f".to_string(),
+                "/tmp/compose.yml".to_string(),
+                "stop".to_string(),
+                "agent-002".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn test_parse_agent_ps_output() {
+        let output = "\
+autopilot-002\tExited (0) 5 minutes ago\n\
+autopilot-001\tUp 2 minutes\n\
+random\tUp 1 hour\n\
+autopilot-003\tStarting 10 seconds\n";
+
+        let agents = parse_agent_ps_output_with_lookup(output, |_| None);
+
+        assert_eq!(agents.len(), 3);
+        assert_eq!(agents[0].id, "001");
+        assert_eq!(agents[0].status, AgentStatus::Running);
+        assert_eq!(agents[1].id, "002");
+        assert_eq!(agents[1].status, AgentStatus::Stopped);
+        assert_eq!(agents[2].id, "003");
+        assert_eq!(agents[2].status, AgentStatus::Starting);
     }
 }
