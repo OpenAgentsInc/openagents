@@ -352,6 +352,13 @@ impl PeerManager {
         }
     }
 
+    /// Mark peer as unresponsive/offline
+    pub fn mark_peer_unresponsive(&mut self, pubkey: &[u8; 32]) {
+        if let Some(peer) = self.peers.get_mut(pubkey) {
+            peer.mark_offline();
+        }
+    }
+
     /// Get peer latency in milliseconds
     pub fn get_peer_latency(&self, pubkey: &[u8; 32]) -> Option<u64> {
         self.peers.get(pubkey).and_then(|p| p.latency())
@@ -421,6 +428,19 @@ mod tests {
 
         peer.mark_offline();
         assert_eq!(peer.failed_attempts, 2);
+    }
+
+    #[test]
+    fn test_mark_peer_unresponsive() {
+        let mut manager = PeerManager::new(300);
+        let pubkey = [0x42; 32];
+
+        manager.add_peer(pubkey);
+        manager.mark_peer_unresponsive(&pubkey);
+
+        let peer = manager.get_peer(&pubkey).unwrap();
+        assert_eq!(peer.status, PeerStatus::Offline);
+        assert_eq!(peer.failed_attempts, 1);
     }
 
     #[test]

@@ -1,7 +1,7 @@
 //! Bifrost node implementation
 
 use crate::bifrost::aggregator::EcdhAggregator;
-use crate::bifrost::peer::PeerManager;
+use crate::bifrost::peer::{PeerManager, PeerStatus};
 use crate::bifrost::serialization::{serialize_commitments, deserialize_commitments, serialize_sig_share};
 use crate::bifrost::transport::{NostrTransport, TransportConfig};
 use crate::bifrost::{
@@ -13,7 +13,8 @@ use crate::keygen::FrostShare;
 use crate::signing::{round1_commit, round2_sign};
 use crate::Result;
 use frost_secp256k1::{round1::SigningNonces, Identifier, SigningPackage};
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, HashSet};
+use std::future::Future;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
@@ -176,7 +177,10 @@ impl BifrostNode {
 
     /// Create a new Bifrost node with custom configuration
     pub fn with_config(config: BifrostConfig) -> Result<Self> {
-        let peer_manager = PeerManager::new(config.peer_timeout);
+        let mut peer_manager = PeerManager::new(config.peer_timeout);
+        for pubkey in &config.peer_pubkeys {
+            peer_manager.add_peer(*pubkey);
+        }
 
         // Create transport if secret key is provided
         let transport = if let Some(secret_key) = config.secret_key {
@@ -399,6 +403,7 @@ impl BifrostNode {
         }
 
         // No valid pong received
+        self.peer_manager.mark_peer_unresponsive(pubkey);
         Ok(false)
     }
 
@@ -418,6 +423,34 @@ impl BifrostNode {
             * self.config.retries.multiplier.powi(attempt as i32);
         let delay_ms = delay_ms.min(self.config.retries.max_delay_ms as f64) as u64;
         tokio::time::Duration::from_millis(delay_ms)
+    }
+
+    fn is_retryable_error(&self, error: &crate::Error) -> bool {
+        matches!(error, crate::Error::Timeout | crate::Error::Transport(_))
+    }
+
+    async fn retry_with_backoff<F, Fut, T>(&self, mut operation: F) -> Result<T>
+    where
+        F: FnMut(u32) -> Fut,
+        Fut: Future<Output = Result<T>>,
+    {
+        let max_attempts = self.config.retries.max_retries.saturating_add(1).max(1);
+        let mut last_err = None;
+
+        for attempt in 0..max_attempts {
+            match operation(attempt).await {
+                Ok(value) => return Ok(value),
+                Err(err) => {
+                    if !self.is_retryable_error(&err) || attempt + 1 >= max_attempts {
+                        return Err(err);
+                    }
+                    last_err = Some(err);
+                    tokio::time::sleep(self.calculate_retry_delay(attempt)).await;
+                }
+            }
+        }
+
+        Err(last_err.unwrap_or(crate::Error::Timeout))
     }
 
     /// Get timeout for a specific operation type
@@ -474,8 +507,26 @@ impl BifrostNode {
     ) -> Result<[u8; 64]> {
         let threshold = frost_share.threshold as usize;
         let initiator_id = frost_share.participant_id;
+        self.retry_with_backoff(|attempt| async move {
+            let participants =
+                self.select_participants(threshold, initiator_id, attempt as usize)?;
+            self.sign_two_phase_once(event_hash, transport, frost_share, participants)
+                .await
+        })
+        .await
+    }
+
+    async fn sign_two_phase_once(
+        &self,
+        event_hash: &[u8; 32],
+        transport: &NostrTransport,
+        frost_share: &FrostShare,
+        participants: Vec<u8>,
+    ) -> Result<[u8; 64]> {
+        let initiator_id = frost_share.participant_id;
+        let required_responses = participants.len().saturating_sub(1);
+        let participant_set: HashSet<u8> = participants.iter().copied().collect();
         let session_id = self.generate_session_id();
-        let participants = self.select_participants(threshold)?;
 
         // ========== ROUND 1: Collect commitments ==========
 
@@ -483,21 +534,40 @@ impl BifrostNode {
         let (nonces, our_commitments) = round1_commit(frost_share);
         let our_commitment_bytes = serialize_commitments(&our_commitments);
 
-        // Send CommitmentRequest to all participants
-        let commitment_request = CommitmentRequest {
-            event_hash: *event_hash,
-            session_id: session_id.clone(),
-            participants: participants.clone(),
-            initiator_id,
+        let commitment_responses = if required_responses > 0 {
+            let commitment_request = CommitmentRequest {
+                event_hash: *event_hash,
+                session_id: session_id.clone(),
+                participants: participants.clone(),
+                initiator_id,
+            };
+
+            let request_message = BifrostMessage::CommitmentRequest(commitment_request);
+            let raw_responses = transport
+                .publish_and_wait(&request_message, required_responses)
+                .await?;
+
+            let mut seen = HashSet::new();
+            let mut filtered = Vec::new();
+            for response in raw_responses {
+                if let BifrostMessage::CommitmentResponse(cr) = response {
+                    if cr.participant_id != initiator_id
+                        && participant_set.contains(&cr.participant_id)
+                        && seen.insert(cr.participant_id)
+                    {
+                        filtered.push(cr);
+                    }
+                }
+            }
+
+            if filtered.len() < required_responses {
+                return Err(crate::Error::Timeout);
+            }
+
+            filtered
+        } else {
+            Vec::new()
         };
-
-        let request_message = BifrostMessage::CommitmentRequest(commitment_request);
-
-        // Wait for (k-1) commitment responses
-        let required_responses = threshold.saturating_sub(1);
-        let commitment_responses = transport
-            .publish_and_wait(&request_message, required_responses)
-            .await?;
 
         // Collect all commitments (ours + peers)
         let mut all_commitments: Vec<ParticipantCommitment> = vec![
@@ -508,12 +578,10 @@ impl BifrostNode {
         ];
 
         for response in &commitment_responses {
-            if let BifrostMessage::CommitmentResponse(cr) = response {
-                all_commitments.push(ParticipantCommitment {
-                    participant_id: cr.participant_id,
-                    commitment: cr.nonce_commitment,
-                });
-            }
+            all_commitments.push(ParticipantCommitment {
+                participant_id: response.participant_id,
+                commitment: response.nonce_commitment,
+            });
         }
 
         // ========== ROUND 2: Distribute SigningPackage and collect signatures ==========
@@ -528,20 +596,40 @@ impl BifrostNode {
         }
         let signing_package = SigningPackage::new(signing_commitments, event_hash);
 
-        // Send SigningPackageMessage to all participants
-        let package_message = SigningPackageMessage {
-            event_hash: *event_hash,
-            session_id: session_id.clone(),
-            commitments: all_commitments.clone(),
-            participants: participants.clone(),
+        let signature_responses = if required_responses > 0 {
+            let package_message = SigningPackageMessage {
+                event_hash: *event_hash,
+                session_id: session_id.clone(),
+                commitments: all_commitments.clone(),
+                participants: participants.clone(),
+            };
+
+            let package_msg = BifrostMessage::SigningPackage(package_message);
+            let raw_responses = transport
+                .publish_and_wait(&package_msg, required_responses)
+                .await?;
+
+            let mut seen = HashSet::new();
+            let mut filtered = Vec::new();
+            for response in raw_responses {
+                if let BifrostMessage::PartialSignature(ps) = response {
+                    if ps.participant_id != initiator_id
+                        && participant_set.contains(&ps.participant_id)
+                        && seen.insert(ps.participant_id)
+                    {
+                        filtered.push(ps);
+                    }
+                }
+            }
+
+            if filtered.len() < required_responses {
+                return Err(crate::Error::Timeout);
+            }
+
+            filtered
+        } else {
+            Vec::new()
         };
-
-        let package_msg = BifrostMessage::SigningPackage(package_message);
-
-        // Wait for (k-1) partial signatures
-        let signature_responses = transport
-            .publish_and_wait(&package_msg, required_responses)
-            .await?;
 
         // ========== AGGREGATION ==========
 
@@ -560,12 +648,10 @@ impl BifrostNode {
 
         // Add peer signatures
         for response in signature_responses {
-            if let BifrostMessage::PartialSignature(ps) = response {
-                let id = Identifier::try_from(ps.participant_id as u16)
-                    .map_err(|e| crate::Error::Protocol(format!("Invalid participant ID: {:?}", e)))?;
-                let sig = crate::bifrost::serialization::deserialize_sig_share(&ps.partial_sig)?;
-                signature_shares.insert(id, sig);
-            }
+            let id = Identifier::try_from(response.participant_id as u16)
+                .map_err(|e| crate::Error::Protocol(format!("Invalid participant ID: {:?}", e)))?;
+            let sig = crate::bifrost::serialization::deserialize_sig_share(&response.partial_sig)?;
+            signature_shares.insert(id, sig);
         }
 
         // Aggregate signatures using frost-secp256k1
@@ -602,15 +688,80 @@ impl BifrostNode {
         format!("{:032x}", u128::from_be_bytes(bytes))
     }
 
-    /// Select participants for signing
-    fn select_participants(&self, threshold: usize) -> Result<Vec<u8>> {
-        // In a real implementation, this would:
-        // 1. Query online peers from peer_manager
-        // 2. Select k peers based on availability and policy
-        // 3. Return their participant IDs
-        //
-        // For now, return a simple sequence
-        Ok((1..=threshold as u8).collect())
+    /// Select participants for signing or ECDH
+    fn select_participants(
+        &self,
+        threshold: usize,
+        initiator_id: u8,
+        rotation: usize,
+    ) -> Result<Vec<u8>> {
+        if threshold == 0 {
+            return Err(crate::Error::Protocol(
+                "Threshold must be at least 1".into()
+            ));
+        }
+
+        let needed = threshold.saturating_sub(1);
+        if needed == 0 {
+            return Ok(vec![initiator_id]);
+        }
+
+        let mut online = Vec::new();
+        let mut unknown = Vec::new();
+
+        for (idx, pubkey) in self.config.peer_pubkeys.iter().enumerate() {
+            let participant_id = (idx + 1) as u8;
+            if participant_id == initiator_id {
+                continue;
+            }
+
+            let peer = self.peer_manager.get_peer(pubkey);
+            match peer {
+                Some(peer) => {
+                    if peer.status == PeerStatus::Offline {
+                        continue;
+                    }
+                    if peer.status == PeerStatus::Online
+                        && peer.is_recently_seen(self.config.peer_timeout)
+                    {
+                        online.push(participant_id);
+                    } else {
+                        unknown.push(participant_id);
+                    }
+                }
+                None => unknown.push(participant_id),
+            }
+        }
+
+        let mut selected = Vec::with_capacity(threshold);
+        selected.push(initiator_id);
+
+        let rotate = |candidates: &mut Vec<u8>| {
+            if !candidates.is_empty() {
+                let offset = rotation % candidates.len();
+                candidates.rotate_left(offset);
+            }
+        };
+
+        if online.len() >= needed {
+            rotate(&mut online);
+            selected.extend(online.into_iter().take(needed));
+        } else {
+            selected.extend(online);
+            let remaining = needed.saturating_sub(selected.len().saturating_sub(1));
+            rotate(&mut unknown);
+            selected.extend(unknown.into_iter().take(remaining));
+        }
+
+        if selected.len() < threshold {
+            return Err(crate::Error::Protocol(format!(
+                "Not enough available participants: need {}, have {}",
+                threshold,
+                selected.len()
+            )));
+        }
+
+        Ok(selected)
     }
 
 
@@ -766,9 +917,30 @@ impl BifrostNode {
 
         // Get threshold requirement
         let threshold = frost_share.threshold as usize;
+        let initiator_id = frost_share.participant_id;
 
-        // Step 1: Select participants and compute member list for Lagrange coefficients
-        let participants = self.select_participants(threshold)?;
+        self.retry_with_backoff(|attempt| async move {
+            let participants =
+                self.select_participants(threshold, initiator_id, attempt as usize)?;
+            self.ecdh_with_participants(peer_pubkey, transport, frost_share, participants)
+                .await
+        })
+        .await
+    }
+
+    async fn ecdh_with_participants(
+        &self,
+        peer_pubkey: &[u8; 32],
+        transport: &NostrTransport,
+        frost_share: &FrostShare,
+        participants: Vec<u8>,
+    ) -> Result<[u8; 32]> {
+        let threshold = frost_share.threshold as usize;
+        let initiator_id = frost_share.participant_id;
+        let required_responses = participants.len().saturating_sub(1);
+        let participant_set: HashSet<u8> = participants.iter().copied().collect();
+
+        // Step 1: Compute member list for Lagrange coefficients
         let members: Vec<u16> = participants.iter().map(|&p| p as u16).collect();
 
         // Step 2: Compute our own partial ECDH share
@@ -786,10 +958,13 @@ impl BifrostNode {
         let message = BifrostMessage::EcdhRequest(request);
 
         // Step 4: Broadcast and wait for (k-1) responses (we are one of the k participants)
-        let required_responses = threshold.saturating_sub(1);
-        let responses = transport
-            .publish_and_wait(&message, required_responses)
-            .await?;
+        let responses = if required_responses > 0 {
+            transport
+                .publish_and_wait(&message, required_responses)
+                .await?
+        } else {
+            Vec::new()
+        };
 
         // Step 5: Collect and aggregate responses
         let mut aggregator = EcdhAggregator::new(threshold, session_id);
@@ -797,10 +972,27 @@ impl BifrostNode {
         // Add our own share first
         aggregator.add_response(frost_share.participant_id, our_ecdh_share.partial_point)?;
 
-        // Add responses from peers
-        for response in responses {
-            if let BifrostMessage::EcdhResponse(ecdh_response) = response {
-                aggregator.add_response(ecdh_response.participant_id, ecdh_response.partial_ecdh)?;
+        if required_responses > 0 {
+            let mut seen = HashSet::new();
+            let mut filtered = Vec::new();
+            for response in responses {
+                if let BifrostMessage::EcdhResponse(ecdh_response) = response {
+                    if ecdh_response.participant_id != initiator_id
+                        && participant_set.contains(&ecdh_response.participant_id)
+                        && seen.insert(ecdh_response.participant_id)
+                    {
+                        filtered.push(ecdh_response);
+                    }
+                }
+            }
+
+            if filtered.len() < required_responses {
+                return Err(crate::Error::Timeout);
+            }
+
+            // Add responses from peers
+            for response in filtered {
+                aggregator.add_response(response.participant_id, response.partial_ecdh)?;
             }
         }
 
@@ -1065,6 +1257,35 @@ mod tests {
         assert_eq!(delay.as_millis(), 5000);
     }
 
+    #[tokio::test]
+    async fn test_retry_with_backoff_succeeds_after_timeouts() {
+        let mut config = BifrostConfig::default();
+        config.retries.max_retries = 2;
+        config.retries.initial_delay_ms = 1;
+        config.retries.max_delay_ms = 1;
+
+        let node = BifrostNode::with_config(config).unwrap();
+        let attempts = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let attempts_clone = Arc::clone(&attempts);
+
+        let result = node
+            .retry_with_backoff(|_| {
+                let attempts = Arc::clone(&attempts_clone);
+                async move {
+                    let current = attempts.fetch_add(1, Ordering::SeqCst);
+                    if current < 2 {
+                        Err(crate::Error::Timeout)
+                    } else {
+                        Ok(current)
+                    }
+                }
+            })
+            .await;
+
+        assert_eq!(result.unwrap(), 2);
+        assert_eq!(attempts.load(Ordering::SeqCst), 3);
+    }
+
     #[test]
     fn test_node_without_transport() {
         let node = BifrostNode::new().unwrap();
@@ -1249,8 +1470,7 @@ mod tests {
         // Should fail at aggregation step (not fully implemented)
         let result = node.sign(&event_hash).await;
         assert!(result.is_err());
-        // This will fail because publish_and_wait will timeout
-        // (no actual relay connections in test)
+        // This will fail because no relay connections are configured in test.
     }
 
     #[test]
@@ -1268,16 +1488,30 @@ mod tests {
     }
 
     #[test]
-    fn test_select_participants() {
-        let node = BifrostNode::new().unwrap();
+    fn test_select_participants_skips_offline_peers() {
+        let mut config = BifrostConfig::default();
+        config.peer_pubkeys = vec![[0x01; 32], [0x02; 32], [0x03; 32]];
+        let mut node = BifrostNode::with_config(config).unwrap();
 
-        let participants = node.select_participants(2).unwrap();
+        node.peer_manager_mut().mark_peer_unresponsive(&[0x02; 32]);
+        node.peer_manager_mut()
+            .mark_peer_responsive(&[0x03; 32], None);
+
+        let participants = node.select_participants(2, 1, 0).unwrap();
         assert_eq!(participants.len(), 2);
-        assert_eq!(participants, vec![1, 2]);
+        assert_eq!(participants, vec![1, 3]);
+    }
 
-        let participants = node.select_participants(3).unwrap();
-        assert_eq!(participants.len(), 3);
-        assert_eq!(participants, vec![1, 2, 3]);
+    #[test]
+    fn test_select_participants_rotation_changes_selection() {
+        let mut config = BifrostConfig::default();
+        config.peer_pubkeys = vec![[0x01; 32], [0x02; 32], [0x03; 32], [0x04; 32]];
+        let node = BifrostNode::with_config(config).unwrap();
+
+        let participants_a = node.select_participants(2, 1, 0).unwrap();
+        let participants_b = node.select_participants(2, 1, 1).unwrap();
+
+        assert_ne!(participants_a, participants_b);
     }
 
     #[test]
