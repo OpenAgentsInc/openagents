@@ -54,6 +54,9 @@
 - [x] Create invoices via `receive_payment()`
 - [x] Get Spark addresses
 - [x] CLI commands wired
+- [x] **Transaction history** via `list_payments()` (story 1.2.3) ✅
+- [x] **User-friendly error messages** with `SparkError::user_friendly_message()` (story 1.5.1) ✅
+- [x] **Balance protection** - `SparkError::balance_unaffected()` confirms no deduction on failure (story 1.5.2) ✅
 - [ ] E2E test with real sats (optional - can use regtest)
 - [ ] NIP-47 Wallet Connect (future enhancement)
 
@@ -90,6 +93,10 @@
   - [x] `openagents wallet send` - sends to invoice/address
   - [x] `openagents wallet receive` - creates invoice or shows address
   - [x] `openagents wallet pay` - pays Lightning invoice
+  - [x] `openagents wallet history` - shows transaction history
+- [x] **Wallet Security** ✅ Complete
+  - [x] OS keychain protection (macOS Keychain, Linux Secret Service, Windows Credential Manager) (story 3.4.1)
+  - [x] Seed phrase backup via `openagents wallet export`
 - [ ] **NIP-47 Wallet Connect** (future)
 - [ ] **NIP-57 Zap Support** (future)
 - [ ] **WGPUI Wallet GUI** (future)
