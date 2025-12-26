@@ -232,6 +232,8 @@ This section tracks which user stories have implemented tests.
 | 3.2.6 | Send encrypted DMs from CLI | Integration | `tests/wallet_cli_integration.rs` |
 | 3.4.1 | Lock wallet with OS keychain protection | Unit | `crates/wallet/src/storage/keychain.rs` |
 | 3.4.2 | Back up seed phrase | Integration | `tests/wallet_cli_integration.rs` |
+| 3.4.3 | Set transaction limits | Unit | `crates/wallet/src/cli/bitcoin.rs` |
+| 3.4.4 | Require confirmation for large transactions | Unit | `crates/wallet/src/cli/bitcoin.rs` |
 | **d-004: Autopilot Improvement** ||||
 | 4.1.1 | See metrics for each autopilot run | Integration | `crates/autopilot/tests/d004_story_tests.rs` |
 | 4.1.2 | Compare runs against baselines | Integration | `crates/autopilot/tests/d004_story_tests.rs` |

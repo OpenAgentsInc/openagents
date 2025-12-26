@@ -8,10 +8,12 @@ use crate::storage::identities::{current_identity, DEFAULT_IDENTITY_NAME};
 
 /// Wallet configuration
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
 pub struct WalletConfig {
     pub network: NetworkConfig,
     pub nostr: NostrConfig,
     pub storage: StorageConfig,
+    pub security: SecurityConfig,
 }
 
 impl WalletConfig {
@@ -122,6 +124,24 @@ impl Default for StorageConfig {
     }
 }
 
+/// Security configuration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SecurityConfig {
+    /// Max sats allowed per outgoing payment (None disables limit)
+    pub max_send_sats: Option<u64>,
+    /// Require confirmation prompt for payments >= this amount (None disables)
+    pub confirm_large_sats: Option<u64>,
+}
+
+impl Default for SecurityConfig {
+    fn default() -> Self {
+        Self {
+            max_send_sats: None,
+            confirm_large_sats: None,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -131,6 +151,8 @@ mod tests {
         let config = WalletConfig::default();
         assert_eq!(config.network.bitcoin, "mainnet");
         assert!(!config.nostr.relays.is_empty());
+        assert!(config.security.max_send_sats.is_none());
+        assert!(config.security.confirm_large_sats.is_none());
     }
 
     #[test]
@@ -139,5 +161,6 @@ mod tests {
         let toml_str = toml::to_string(&config).unwrap();
         assert!(toml_str.contains("bitcoin"));
         assert!(toml_str.contains("relays"));
+        assert!(toml_str.contains("security"));
     }
 }
