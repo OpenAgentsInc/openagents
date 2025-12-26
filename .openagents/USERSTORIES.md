@@ -178,6 +178,7 @@ This section tracks which user stories have implemented tests.
 | 8.3.2 | Search for datasets by topic/format | Integration | `crates/marketplace/tests/data_e2e.rs` |
 | 8.3.3 | Purchase and download a dataset | Integration | `crates/marketplace/tests/data_e2e.rs` |
 | 8.3.4 | See download statistics | Integration | `crates/marketplace/tests/data_e2e.rs` |
+| 8.3.5 | Offer dataset previews | Unit | `crates/marketplace/src/data/discover.rs` |
 | 8.4.1 | Contribute anonymized coding trajectories | Integration | `crates/marketplace/tests/trajectory_e2e.rs` |
 | 8.4.2 | See contributed trajectories | Integration | `crates/marketplace/tests/trajectory_e2e.rs` |
 | 8.4.3 | Set redaction rules for contributions | Integration | `crates/marketplace/tests/trajectory_e2e.rs` |
@@ -419,6 +420,7 @@ This section tracks which user stories have implemented tests.
 | `tests/wgpui_platform_support.rs` | WGPUI web/desktop backend feature checks | 23.1.4-23.1.5 |
 | `tests/wgpui_examples_only.rs` | Example files guard against legacy web stack | 25.2.3 |
 | `crates/autopilot-gui/src/state/mod.rs` | Autopilot GUI session stats + timeline helpers | 9.3.2-9.3.4 |
+| `crates/marketplace/src/data/discover.rs` | Dataset discovery listing + preview mapping | 8.3.5 |
 | `crates/opencode-sdk/tests/opencode_sdk_integration.rs` | OpenCode SDK mock server + SSE integration tests | 21.1.1-21.2.2 |
 | `crates/testing/src/lib.rs` | Testing crate smoke and parallel task tests | 13.1.1-13.1.2 |
 | `crates/testing/src/mock_relay.rs` | Mock relay loopback storage tests | 13.2.2 |

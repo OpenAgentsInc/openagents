@@ -478,6 +478,30 @@ mod tests {
         assert_eq!(dataset.format_size(), "Unknown");
     }
 
+    #[test]
+    fn test_dataset_listing_includes_preview_and_summary() {
+        let metadata = FileMetadata::new(
+            "https://example.com/data.json".to_string(),
+            "application/json".to_string(),
+            "abc123".to_string(),
+        )
+        .with_content("Dataset description".to_string())
+        .with_thumbnail("https://example.com/preview.png".to_string(), None)
+        .with_summary("Preview excerpt".to_string());
+
+        let listing = DatasetListing::from_file_metadata(
+            metadata,
+            "dataset-1".to_string(),
+            "creator".to_string(),
+        );
+
+        assert_eq!(
+            listing.preview_url.as_deref(),
+            Some("https://example.com/preview.png")
+        );
+        assert_eq!(listing.summary.as_deref(), Some("Preview excerpt"));
+    }
+
     #[tokio::test]
     async fn test_dataset_browser_empty() {
         let browser = DatasetBrowser::new();
