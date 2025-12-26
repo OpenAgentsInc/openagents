@@ -6,7 +6,7 @@ use wgpui::components::atoms::{Model, StreamingIndicator};
 use wgpui::components::molecules::{MessageHeader, ThinkingBlock};
 use wgpui::components::organisms::ToolCallCard;
 use wgpui::components::sections::MessageEditor;
-use wgpui::components::{Component, Tab, Tabs};
+use wgpui::components::{Component, Dropdown, DropdownOption, Tab, Tabs};
 use wgpui::scroll::{calculate_scrollbar_thumb, ScrollContainer};
 use wgpui::{Bounds, EventContext, EventResult, InputEvent, Point, Quad, Size, Text, theme};
 
@@ -25,6 +25,9 @@ const SESSION_TAB_PADDING_H: f32 = 12.0;
 const SESSION_TAB_PADDING_V: f32 = 6.0;
 const SESSION_TAB_LIMIT: usize = 6;
 const SESSION_TAB_LABEL_MAX: usize = 24;
+const AGENT_LABEL: &str = "Agent";
+const AGENT_LABEL_WIDTH: f32 = 60.0;
+const AGENT_ROW_GAP: f32 = 8.0;
 
 pub struct ChatView {
     state: Rc<RefCell<AppState>>,
@@ -41,6 +44,8 @@ pub struct ChatView {
     session_tabs: Tabs,
     session_tab_ids: Vec<String>,
     session_tab_active_id: Option<String>,
+    agent_dropdown: Dropdown,
+    agent_values: Vec<String>,
 }
 
 struct ChatLayoutEntry {
@@ -51,6 +56,12 @@ struct ChatLayoutEntry {
     index: usize,
     thinking_block: Option<ThinkingBlock>,
     thinking_height: f32,
+}
+
+struct AgentLayout {
+    row: Bounds,
+    label: Bounds,
+    dropdown: Bounds,
 }
 
 impl ChatView {
@@ -73,6 +84,34 @@ impl ChatView {
                 }
             });
 
+        let agent_values = vec![
+            "claude".to_string(),
+            "codex".to_string(),
+            "gpt-oss".to_string(),
+            "fm-bridge".to_string(),
+        ];
+        let agent_options = vec![
+            DropdownOption::new("Claude", "claude"),
+            DropdownOption::new("Codex", "codex"),
+            DropdownOption::new("GPT-OSS", "gpt-oss"),
+            DropdownOption::new("FM-Bridge", "fm-bridge"),
+        ];
+        let selected_index = agent_values
+            .iter()
+            .position(|value| value == &state.borrow().agent)
+            .unwrap_or(0);
+        let agent_state = state.clone();
+        let agent_tx = command_tx.clone();
+        let agent_dropdown = Dropdown::new(agent_options)
+            .selected(selected_index)
+            .font_size(theme::font_size::XS)
+            .padding(theme::spacing::SM, theme::spacing::XS)
+            .on_change(move |_index, value| {
+                let agent = value.to_string();
+                agent_state.borrow_mut().agent = agent.clone();
+                let _ = agent_tx.send(BackendCommand::SetAgent { agent });
+            });
+
         Self {
             state,
             command_tx,
@@ -88,6 +127,8 @@ impl ChatView {
             session_tabs: Tabs::new(Vec::new()),
             session_tab_ids: Vec::new(),
             session_tab_active_id: None,
+            agent_dropdown,
+            agent_values,
         }
     }
 
@@ -141,6 +182,41 @@ impl ChatView {
         self.session_tabs = tabs;
         self.session_tab_ids = session_ids;
         self.session_tab_active_id = active_id;
+    }
+
+    fn sync_agent_dropdown(&mut self) {
+        let agent = self.state.borrow().agent.clone();
+        if self.agent_dropdown.selected_value() == Some(agent.as_str()) {
+            return;
+        }
+        let index = self.agent_values.iter().position(|value| value == &agent);
+        self.agent_dropdown.set_selected(index);
+    }
+
+    fn agent_layout(&self, bounds: Bounds, editor_height: f32) -> AgentLayout {
+        let padding = theme::spacing::MD;
+        let dropdown_height = self
+            .agent_dropdown
+            .size_hint()
+            .1
+            .unwrap_or(theme::font_size::XS * 1.4 + theme::spacing::XS * 2.0);
+        let row_y = bounds.origin.y + bounds.size.height - editor_height - dropdown_height - AGENT_ROW_GAP;
+        let row = Bounds::new(bounds.origin.x, row_y, bounds.size.width, dropdown_height);
+
+        let label_width = AGENT_LABEL_WIDTH.min(row.size.width - padding * 2.0).max(0.0);
+        let label = Bounds::new(
+            row.origin.x + padding,
+            row.origin.y,
+            label_width,
+            row.size.height,
+        );
+
+        let dropdown_x = label.origin.x + label_width + theme::spacing::SM;
+        let dropdown_width = (row.size.width - padding * 2.0 - label_width - theme::spacing::SM)
+            .max(0.0);
+        let dropdown = Bounds::new(dropdown_x, row.origin.y, dropdown_width, row.size.height);
+
+        AgentLayout { row, label, dropdown }
     }
 
     fn header_layout(&self, bounds: Bounds) -> (Bounds, Option<Bounds>, f32) {
@@ -342,6 +418,7 @@ impl ChatView {
 impl Component for ChatView {
     fn paint(&mut self, bounds: Bounds, cx: &mut wgpui::PaintContext) {
         self.refresh_session_tabs();
+        self.sync_agent_dropdown();
         let (header_bounds, tabs_bounds, info_origin_y) = self.header_layout(bounds);
         let editor_height = self.editor.size_hint().1.unwrap_or(64.0);
 
@@ -356,12 +433,14 @@ impl Component for ChatView {
             bounds.size.width,
             editor_height,
         );
+        let agent_layout = self.agent_layout(bounds, editor_height);
 
         let list_bounds = Bounds::new(
             bounds.origin.x,
             header_bounds.origin.y + header_bounds.size.height,
             bounds.size.width,
-            (editor_bounds.origin.y - header_bounds.origin.y - header_bounds.size.height).max(0.0),
+            (agent_layout.row.origin.y - header_bounds.origin.y - header_bounds.size.height)
+                .max(0.0),
         );
 
         let revision = self.state.borrow().chat_revision;
@@ -399,6 +478,25 @@ impl Component for ChatView {
             paint_scrollbar(&self.scroll, list_bounds, cx);
         }
 
+        if agent_layout.dropdown.size.width > 1.0 && agent_layout.dropdown.size.height > 1.0 {
+            let label_height = theme::font_size::XS * 1.2;
+            let label_y =
+                agent_layout.label.origin.y + (agent_layout.label.size.height - label_height) * 0.5;
+            let mut label_text = Text::new(AGENT_LABEL)
+                .font_size(theme::font_size::XS)
+                .color(theme::text::MUTED);
+            label_text.paint(
+                Bounds::new(
+                    agent_layout.label.origin.x,
+                    label_y,
+                    agent_layout.label.size.width,
+                    label_height,
+                ),
+                cx,
+            );
+            self.agent_dropdown.paint(agent_layout.dropdown, cx);
+        }
+
         let prompt_running = self.state.borrow().prompt_running;
         self.editor.set_streaming(prompt_running);
         self.editor.paint(editor_bounds, cx);
@@ -406,6 +504,7 @@ impl Component for ChatView {
 
     fn event(&mut self, event: &InputEvent, bounds: Bounds, cx: &mut EventContext) -> EventResult {
         self.refresh_session_tabs();
+        self.sync_agent_dropdown();
         let (header_bounds, tabs_bounds, _) = self.header_layout(bounds);
         let editor_height = self.editor.size_hint().1.unwrap_or(64.0);
 
@@ -415,11 +514,13 @@ impl Component for ChatView {
             bounds.size.width,
             editor_height,
         );
+        let agent_layout = self.agent_layout(bounds, editor_height);
         let list_bounds = Bounds::new(
             bounds.origin.x,
             header_bounds.origin.y + header_bounds.size.height,
             bounds.size.width,
-            (editor_bounds.origin.y - header_bounds.origin.y - header_bounds.size.height).max(0.0),
+            (agent_layout.row.origin.y - header_bounds.origin.y - header_bounds.size.height)
+                .max(0.0),
         );
 
         if let Some(tabs_bounds) = tabs_bounds {
@@ -427,6 +528,11 @@ impl Component for ChatView {
             if result == EventResult::Handled {
                 return result;
             }
+        }
+
+        let result = self.agent_dropdown.event(event, agent_layout.dropdown, cx);
+        if result == EventResult::Handled {
+            return result;
         }
 
         match event {
@@ -1019,6 +1125,39 @@ mod tests {
 
         let cmd = rx.try_recv().expect("command");
         assert!(matches!(cmd, BackendCommand::RunPrompt { ref prompt } if prompt == "Ship it"));
+    }
+
+    #[test]
+    fn test_chat_view_agent_dropdown_updates_backend() {
+        let state = Rc::new(RefCell::new(AppState::new()));
+        let (tx, rx) = mpsc::channel();
+        let mut view = ChatView::new(state.clone(), tx);
+        let bounds = Bounds::new(0.0, 0.0, 640.0, 360.0);
+        let editor_height = view.editor.size_hint().1.unwrap_or(64.0);
+        let layout = view.agent_layout(bounds, editor_height);
+        let dropdown_height = view.agent_dropdown.size_hint().1.unwrap_or(24.0);
+
+        let mut event_cx = EventContext::new();
+        let open = InputEvent::MouseDown {
+            button: MouseButton::Left,
+            x: layout.dropdown.origin.x + 2.0,
+            y: layout.dropdown.origin.y + 2.0,
+        };
+        let _ = view.event(&open, bounds, &mut event_cx);
+
+        let gpt_oss_index = 2;
+        let dropdown_top = layout.dropdown.origin.y + layout.dropdown.size.height;
+        let select = InputEvent::MouseDown {
+            button: MouseButton::Left,
+            x: layout.dropdown.origin.x + 4.0,
+            y: dropdown_top + dropdown_height * (gpt_oss_index as f32 + 0.5),
+        };
+        let result = view.event(&select, bounds, &mut event_cx);
+        assert!(matches!(result, EventResult::Handled));
+
+        let cmd = rx.try_recv().expect("command");
+        assert!(matches!(cmd, BackendCommand::SetAgent { ref agent } if agent == "gpt-oss"));
+        assert_eq!(state.borrow().agent, "gpt-oss");
     }
 
     #[test]
