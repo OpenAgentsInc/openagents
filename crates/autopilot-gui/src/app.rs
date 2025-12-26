@@ -385,6 +385,8 @@ impl AutopilotUi {
         let mut state = self.state.borrow_mut();
         match event {
             BackendEvent::Metrics { sessions, summary } => {
+                // Get current APM from most recent session with APM data
+                state.current_apm = sessions.iter().find_map(|s| s.apm);
                 state.sessions = sessions;
                 state.summary = summary;
             }
