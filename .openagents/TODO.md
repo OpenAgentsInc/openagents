@@ -131,7 +131,7 @@ P0 focus IDs: none.
   - [x] Memory management ✅
   - [x] Dashboard with WebSocket ✅
 - [x] **Minor TODO:** `autopilot/src/memory.rs` line 48 - Make memory hog killing opt-in (non-blocking) ✅
-- [ ] **Enhancement:** Add automatic issue creation from failure patterns
+- [x] **Enhancement:** Add automatic issue creation from failure patterns ✅
 
 **Files:** `crates/autopilot/src/` ✅
 
