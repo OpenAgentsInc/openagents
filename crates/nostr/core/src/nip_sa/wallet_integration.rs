@@ -5,6 +5,27 @@
 
 use super::state::AgentStateContent;
 
+#[cfg(feature = "spark-integration")]
+use std::sync::Arc;
+
+#[cfg(feature = "spark-integration")]
+use tokio::sync::OnceCell;
+
+#[cfg(feature = "spark-integration")]
+use spark::{SparkWallet, SparkSigner, WalletConfig, Network};
+
+/// Global wallet instance (initialized once at startup)
+#[cfg(feature = "spark-integration")]
+static WALLET_INSTANCE: OnceCell<Arc<SparkWallet>> = OnceCell::const_new();
+
+/// Error type for wallet integration operations
+#[cfg(feature = "spark-integration")]
+#[derive(Debug, thiserror::Error)]
+pub enum WalletIntegrationError {
+    #[error("Wallet error: {0}")]
+    WalletError(String),
+}
+
 /// Wallet balance breakdown
 #[derive(Debug, Clone)]
 pub struct WalletBalance {
@@ -23,6 +44,44 @@ impl WalletBalance {
             .saturating_add(self.lightning_sats)
             .saturating_add(self.onchain_sats)
     }
+}
+
+/// Initialize the global wallet instance
+///
+/// This must be called once at application startup before any wallet operations.
+/// The wallet is initialized with the provided mnemonic and configuration.
+///
+/// # Arguments
+/// * `mnemonic` - BIP39 mnemonic phrase
+/// * `network` - Network to connect to (Mainnet or Regtest)
+///
+/// # Example
+/// ```ignore
+/// use nostr::nip_sa::wallet_integration::init_wallet;
+/// use spark::Network;
+///
+/// init_wallet("abandon abandon ... about", Network::Regtest).await?;
+/// ```
+#[cfg(feature = "spark-integration")]
+pub async fn init_wallet(mnemonic: &str, network: Network) -> Result<(), WalletIntegrationError> {
+    let signer = SparkSigner::from_mnemonic(mnemonic, "")
+        .map_err(|e| WalletIntegrationError::WalletError(format!("Failed to create signer: {}", e)))?;
+
+    let config = WalletConfig {
+        network,
+        api_key: std::env::var("BREEZ_API_KEY").ok(),
+        ..Default::default()
+    };
+
+    let wallet = SparkWallet::new(signer, config)
+        .await
+        .map_err(|e| WalletIntegrationError::WalletError(format!("Failed to connect wallet: {}", e)))?;
+
+    WALLET_INSTANCE
+        .set(Arc::new(wallet))
+        .map_err(|_| WalletIntegrationError::WalletError("Wallet already initialized".to_string()))?;
+
+    Ok(())
 }
 
 /// Query wallet balance from Spark SDK and update agent state
@@ -47,20 +106,15 @@ impl WalletBalance {
 #[cfg(feature = "spark-integration")]
 pub async fn update_wallet_balance(
     state: &mut AgentStateContent,
-) -> Result<WalletBalance, StateError> {
-    use openagents_spark::SparkWallet;
-
-    // Get wallet instance (assumes wallet is already initialized)
-    // In practice, this would be passed as a parameter or retrieved from a context
-    let wallet = get_wallet_instance()
-        .await
-        .map_err(|e| StateError::MissingField(format!("wallet instance: {}", e)))?;
+) -> Result<WalletBalance, WalletIntegrationError> {
+    // Get wallet instance
+    let wallet = get_wallet_instance()?;
 
     // Query balance from Spark SDK
     let balance = wallet
         .get_balance()
         .await
-        .map_err(|e| StateError::MissingField(format!("balance query failed: {}", e)))?;
+        .map_err(|e| WalletIntegrationError::WalletError(format!("balance query failed: {}", e)))?;
 
     // Update state with total balance
     state.update_balance(balance.total_sats());
@@ -80,17 +134,13 @@ pub async fn update_wallet_balance(
 /// # Returns
 /// The current wallet balance
 #[cfg(feature = "spark-integration")]
-pub async fn query_wallet_balance() -> Result<WalletBalance, StateError> {
-    use openagents_spark::SparkWallet;
-
-    let wallet = get_wallet_instance()
-        .await
-        .map_err(|e| StateError::MissingField(format!("wallet instance: {}", e)))?;
+pub async fn query_wallet_balance() -> Result<WalletBalance, WalletIntegrationError> {
+    let wallet = get_wallet_instance()?;
 
     let balance = wallet
         .get_balance()
         .await
-        .map_err(|e| StateError::MissingField(format!("balance query failed: {}", e)))?;
+        .map_err(|e| WalletIntegrationError::WalletError(format!("balance query failed: {}", e)))?;
 
     Ok(WalletBalance {
         spark_sats: balance.spark_sats,
@@ -99,18 +149,16 @@ pub async fn query_wallet_balance() -> Result<WalletBalance, StateError> {
     })
 }
 
-/// Get or initialize the wallet instance
+/// Get the initialized wallet instance
 ///
-/// This is a placeholder that should be replaced with actual wallet initialization logic.
-/// In practice, the wallet should be:
-/// 1. Initialized once at agent startup
-/// 2. Stored in a thread-safe singleton or passed via context
-/// 3. Reused across all balance queries
+/// Returns the global wallet singleton. The wallet must be initialized
+/// by calling `init_wallet()` before this function is used.
 #[cfg(feature = "spark-integration")]
-async fn get_wallet_instance() -> Result<std::sync::Arc<openagents_spark::SparkWallet>, String> {
-    // TODO: Replace with actual wallet singleton/context retrieval
-    // For now, return error indicating wallet needs to be initialized
-    Err("Wallet not initialized - call init_wallet() first".to_string())
+fn get_wallet_instance() -> Result<Arc<SparkWallet>, WalletIntegrationError> {
+    WALLET_INSTANCE
+        .get()
+        .cloned()
+        .ok_or_else(|| WalletIntegrationError::WalletError("Wallet not initialized - call init_wallet() first".to_string()))
 }
 
 /// Update wallet balance with manual balance value

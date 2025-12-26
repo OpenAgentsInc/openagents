@@ -148,4 +148,32 @@ mod tests {
         // After app is dropped, temp directory should be cleaned up
         assert!(!temp_path.exists());
     }
+
+    #[tokio::test]
+    async fn test_app_instances_use_isolated_databases() {
+        let app_one = TestApp::new().await;
+        let app_two = TestApp::new().await;
+
+        let path_one: String = app_one
+            .db()
+            .query_row(
+                "SELECT file FROM pragma_database_list WHERE name = 'main'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("database path");
+
+        let path_two: String = app_two
+            .db()
+            .query_row(
+                "SELECT file FROM pragma_database_list WHERE name = 'main'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("database path");
+
+        assert!(!path_one.is_empty());
+        assert!(!path_two.is_empty());
+        assert_ne!(path_one, path_two);
+    }
 }

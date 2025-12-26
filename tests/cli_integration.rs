@@ -7,7 +7,36 @@
 //! so we only test --help for those commands.
 
 use assert_cmd::Command;
+use autopilot::apm::{APMSnapshot, APMSource, APMWindow};
+use autopilot::apm_storage;
+use chrono::Utc;
 use predicates::prelude::*;
+use std::fs;
+use std::path::{Path, PathBuf};
+use uuid::Uuid;
+
+fn create_temp_workspace() -> PathBuf {
+    let root = std::env::temp_dir().join(format!("openagents-test-{}", Uuid::new_v4()));
+    fs::create_dir_all(root.join(".openagents")).expect("create .openagents");
+    fs::write(root.join("Cargo.toml"), "[workspace]\n").expect("write Cargo.toml");
+    root
+}
+
+fn seed_apm_snapshot(db_path: &Path) {
+    let conn = rusqlite::Connection::open(db_path).expect("open apm db");
+    apm_storage::init_apm_tables(&conn).expect("init apm tables");
+    let snapshot = APMSnapshot {
+        timestamp: Utc::now(),
+        source: APMSource::Autopilot,
+        window: APMWindow::Lifetime,
+        apm: 12.5,
+        actions: 50,
+        duration_minutes: 4.0,
+        messages: 20,
+        tool_calls: 30,
+    };
+    apm_storage::save_snapshot(&conn, &snapshot).expect("save snapshot");
+}
 
 /// Test that the binary exists and shows help
 #[test]
@@ -234,4 +263,27 @@ fn test_daemon_subcommands_listed() {
         .stdout(predicate::str::contains("start"))
         .stdout(predicate::str::contains("stop"))
         .stdout(predicate::str::contains("status"));
+}
+
+#[test]
+fn test_autopilot_apm_stats_shows_current_apm() {
+    let workspace = create_temp_workspace();
+    let db_path = workspace.join(".openagents").join("autopilot.db");
+    seed_apm_snapshot(&db_path);
+
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("openagents"));
+    cmd.current_dir(&workspace)
+        .arg("autopilot")
+        .arg("apm")
+        .arg("stats")
+        .arg("--source")
+        .arg("autopilot");
+
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("APM Statistics"))
+        .stdout(predicate::str::contains("Autopilot"))
+        .stdout(predicate::str::contains("12.5"));
+
+    fs::remove_dir_all(&workspace).expect("cleanup workspace");
 }

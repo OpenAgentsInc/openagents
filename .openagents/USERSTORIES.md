@@ -117,6 +117,8 @@ This section tracks which user stories have implemented tests.
 | 7.3.2 | Contribute ECDH share for decryption | Unit | `crates/frostr/src/ecdh.rs` |
 | 7.4.1 | Discover Bifrost peers on Nostr relays | Integration | `crates/frostr/tests/bifrost_e2e.rs` |
 | 7.4.2 | Send and receive Bifrost messages | Integration | `crates/frostr/tests/bifrost_e2e.rs` |
+| **d-013: Testing Framework** ||||
+| 13.2.3 | TestApp pattern for setting up test contexts | Unit | `crates/testing/src/test_app.rs` |
 | **d-014: NIP-SA/Bifrost Integration Tests** ||||
 | 14.1.1 | E2E tests for 2-of-3 threshold signing | Integration | `crates/frostr/tests/bifrost_e2e.rs` |
 | 14.1.2 | E2E tests for threshold ECDH decryption | Integration | `crates/frostr/tests/bifrost_e2e.rs` |
@@ -136,6 +138,7 @@ This section tracks which user stories have implemented tests.
 | 16.1.1 | APM calculated from Claude Code JSONL logs | Unit | `crates/autopilot/src/apm_parser.rs` |
 | 16.1.2 | APM calculated from autopilot trajectory logs | Unit | `crates/autopilot/src/apm_parser.rs` |
 | 16.1.3 | APM tracked across multiple time windows | Unit | `crates/autopilot/src/apm_storage.rs` |
+| 16.2.1 | See current APM in the CLI | Integration | `tests/cli_integration.rs` |
 | 16.2.3 | APM color-coded by tier | Unit | `crates/autopilot/src/apm.rs` |
 | **d-017: ACP Integration** ||||
 | 17.1.1 | Send ACP messages to Claude Code | Integration | `crates/acp-adapter/tests/integration_tests.rs` |
@@ -170,6 +173,16 @@ This section tracks which user stories have implemented tests.
 | 20.2.2 | ACP molecules ported to WGPUI | Unit | `crates/wgpui/src/testing/component_tests.rs` |
 | 20.2.3 | ACP organisms ported to WGPUI | Unit | `crates/wgpui/src/testing/component_tests.rs` |
 | 20.2.4 | HUD components (StatusBar, Notifications) | Unit | `crates/wgpui/src/components/hud/status_bar.rs`, `crates/wgpui/src/components/hud/notifications.rs` |
+| **d-021: OpenCode SDK** ||||
+| 21.1.1 | Connect to an OpenCode server | Integration | `crates/opencode-sdk/tests/opencode_sdk_integration.rs` |
+| 21.1.2 | Send messages and receive responses | Integration | `crates/opencode-sdk/tests/opencode_sdk_integration.rs` |
+| 21.1.3 | Receive SSE events | Integration | `crates/opencode-sdk/tests/opencode_sdk_integration.rs` |
+| 21.1.4 | List available providers | Integration | `crates/opencode-sdk/tests/opencode_sdk_integration.rs` |
+| 21.2.1 | Spawn an OpenCode server process | Integration | `crates/opencode-sdk/tests/opencode_sdk_integration.rs` |
+| 21.2.2 | Stop the server gracefully | Integration | `crates/opencode-sdk/tests/opencode_sdk_integration.rs` |
+| **d-022: Agent Orchestration** ||||
+| 22.1.1 | Spawn specialized sub-agents | Unit | `crates/agent-orchestrator/src/background.rs` |
+| 22.1.2 | Collect results from sub-agents | Unit | `crates/agent-orchestrator/src/background.rs` |
 | **d-023: WGPUI Framework** ||||
 | 23.1.1 | Quad rendering with colors/borders | Unit | `crates/wgpui/src/testing/framework_tests.rs` |
 | 23.1.2 | Text rendering | Unit | `crates/wgpui/src/testing/framework_tests.rs` |
@@ -226,7 +239,10 @@ This section tracks which user stories have implemented tests.
 | `crates/wgpui/src/testing/injection.rs` | EventSequence for synthetic events | 26.3.2 |
 | `crates/wgpui/src/testing/overlay.rs` | InputOverlay for click ripples | 26.2.2, 26.2.3 |
 | `crates/wgpui/src/testing/runner.rs` | TestRunner playback + step control | 26.2.4, 26.2.5 |
-| `tests/cli_integration.rs` | Unified CLI help and command listing coverage | 10.1.5-10.1.6 |
+| `tests/cli_integration.rs` | Unified CLI help and command listing coverage | 10.1.5-10.1.6, 16.2.1 |
+| `crates/opencode-sdk/tests/opencode_sdk_integration.rs` | OpenCode SDK mock server + SSE integration tests | 21.1.1-21.2.2 |
+| `crates/testing/src/test_app.rs` | TestApp isolation and harness tests | 13.2.3 |
+| `crates/agent-orchestrator/src/background.rs` | Background task manager lifecycle tests | 22.1.1-22.1.2 |
 | `crates/gitafter/tests/e2e_issue_flow.rs` | GitAfter issue to PR and bounty claim flow | 5.1.1, 5.2.1, 5.2.3-5.2.5 |
 | `crates/gitafter/tests/clone_integration_test.rs` | Git clone validation + local clone coverage | 5.1.2 |
 | `crates/gitafter/src/git/remote.rs` | Git remote push and fetch tests | 5.1.3 |
