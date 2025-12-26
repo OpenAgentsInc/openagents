@@ -71,6 +71,17 @@ This section tracks which user stories have implemented tests.
 | 2.5.2 | Receive zaps on content | Unit | `crates/nostr/core/src/nip57.rs` |
 | 2.6.1 | Connect a signer app via NIP-46 | Unit | `crates/nostr/core/src/nip46.rs` |
 | 2.6.2 | Approve or deny signing requests | Unit | `crates/nostr/core/src/nip46.rs` |
+| **d-006: NIP-SA (Sovereign Agents Protocol)** ||||
+| 6.1.1 | Publish an AgentProfile (kind:38000) | Integration | `crates/nostr/tests/integration/nip_sa.rs` |
+| 6.1.2 | View an agent profile | Integration | `crates/nostr/tests/integration/nip_sa.rs` |
+| 6.1.3 | Update the agent profile | Integration | `crates/nostr/tests/integration/nip_sa.rs` |
+| 6.1.4 | See agent threshold key configuration | Integration | `crates/nostr/tests/integration/nip_sa.rs` |
+| 6.2.1 | Store encrypted state (kind:38001) | Integration | `crates/nostr/tests/integration/nip_sa.rs` |
+| 6.2.2 | Retrieve encrypted state on startup | Integration | `crates/nostr/tests/integration/nip_sa.rs` |
+| 6.4.1 | Publish TickRequest (kind:38010) | Integration | `crates/nostr/tests/integration/nip_sa.rs` |
+| 6.4.2 | Publish TickResult (kind:38011) | Integration | `crates/nostr/tests/integration/nip_sa.rs` |
+| 6.5.1 | Publish TrajectorySession (kind:38030) | Integration | `crates/nostr/tests/integration/nip_sa.rs` |
+| 6.5.2 | Publish TrajectoryEvents (kind:38031) | Integration | `crates/nostr/tests/integration/nip_sa.rs` |
 | **d-009: Autopilot GUI** ||||
 | 9.1.1 | Conversation thread display | Visual E2E | `crates/wgpui/examples/chat_streaming_test.rs` |
 | 9.1.2 | Tool calls with output | Visual E2E | `crates/wgpui/examples/chat_streaming_test.rs` |
@@ -167,6 +178,7 @@ This section tracks which user stories have implemented tests.
 | `crates/nostr/tests/integration/client_relay.rs` | Client/relay integration flows | 2.2.1, 2.2.3-2.2.5 |
 | `crates/nostr/tests/integration/pool.rs` | RelayPool multi-relay publish tests | 2.2.2, 2.2.6 |
 | `crates/nostr/tests/integration/subscriptions.rs` | Subscription behavior across kinds and filters | 2.4.2 |
+| `crates/nostr/tests/integration/nip_sa.rs` | NIP-SA profile/state/tick/trajectory relay flows | 6.1.1-6.5.2 |
 
 ---
 
