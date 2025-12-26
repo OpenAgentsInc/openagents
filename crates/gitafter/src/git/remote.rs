@@ -1,7 +1,7 @@
 //! Git remote operations
 
 use anyhow::{anyhow, Result};
-use git2::{PushOptions, RemoteCallbacks, Repository};
+use git2::{CredentialType, PushOptions, RemoteCallbacks, Repository};
 use std::path::Path;
 
 /// Push a branch to a remote
@@ -20,8 +20,20 @@ pub fn push_branch(
 
     // Set up callbacks for authentication
     let mut callbacks = RemoteCallbacks::new();
-    callbacks.credentials(|_url, username_from_url, _allowed_types| {
-        git2::Cred::ssh_key_from_agent(username_from_url.unwrap_or("git"))
+    callbacks.credentials(|url, username_from_url, allowed_types| {
+        if url.starts_with("file://") || url.starts_with('/') {
+            return git2::Cred::default();
+        }
+
+        if allowed_types.contains(CredentialType::SSH_KEY) {
+            return git2::Cred::ssh_key_from_agent(username_from_url.unwrap_or("git"));
+        }
+
+        if allowed_types.contains(CredentialType::DEFAULT) {
+            return git2::Cred::default();
+        }
+
+        Err(git2::Error::from_str("No supported credential type"))
     });
 
     // Push
@@ -42,8 +54,20 @@ pub fn fetch_remote(repo_path: &Path, remote_name: &str) -> Result<()> {
 
     // Set up callbacks for authentication
     let mut callbacks = RemoteCallbacks::new();
-    callbacks.credentials(|_url, username_from_url, _allowed_types| {
-        git2::Cred::ssh_key_from_agent(username_from_url.unwrap_or("git"))
+    callbacks.credentials(|url, username_from_url, allowed_types| {
+        if url.starts_with("file://") || url.starts_with('/') {
+            return git2::Cred::default();
+        }
+
+        if allowed_types.contains(CredentialType::SSH_KEY) {
+            return git2::Cred::ssh_key_from_agent(username_from_url.unwrap_or("git"));
+        }
+
+        if allowed_types.contains(CredentialType::DEFAULT) {
+            return git2::Cred::default();
+        }
+
+        Err(git2::Error::from_str("No supported credential type"))
     });
 
     // Fetch
@@ -89,7 +113,8 @@ pub fn get_remote_url(repo_path: &Path, remote_name: &str) -> Result<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use git2::Repository;
+    use git2::{Repository, Signature};
+    use std::path::Path;
     use tempfile::TempDir;
 
     fn create_test_repo() -> (TempDir, Repository) {
@@ -102,6 +127,20 @@ mod tests {
         config.set_str("user.email", "test@example.com").unwrap();
 
         (dir, repo)
+    }
+
+    fn commit_file(repo: &Repository, file_name: &str, contents: &str) -> git2::Oid {
+        let workdir = repo.workdir().expect("repo should have workdir");
+        std::fs::write(workdir.join(file_name), contents).unwrap();
+
+        let mut index = repo.index().unwrap();
+        index.add_path(Path::new(file_name)).unwrap();
+        let tree_id = index.write_tree().unwrap();
+        let tree = repo.find_tree(tree_id).unwrap();
+
+        let signature = Signature::now("Test User", "test@example.com").unwrap();
+        repo.commit(Some("HEAD"), &signature, &signature, "initial", &tree, &[])
+            .unwrap()
     }
 
     #[test]
@@ -136,5 +175,39 @@ mod tests {
         assert_eq!(remotes.len(), 2);
         assert!(remotes.contains(&"origin".to_string()));
         assert!(remotes.contains(&"upstream".to_string()));
+    }
+
+    #[test]
+    fn test_push_branch_to_bare_remote() {
+        let (local_dir, local_repo) = create_test_repo();
+        let commit_id = commit_file(&local_repo, "README.md", "hello push");
+
+        let remote_dir = TempDir::new().unwrap();
+        Repository::init_bare(remote_dir.path()).unwrap();
+
+        add_remote(
+            local_repo.path(),
+            "origin",
+            remote_dir.path().to_str().unwrap(),
+        )
+        .unwrap();
+
+        let branch = local_repo
+            .head()
+            .unwrap()
+            .shorthand()
+            .unwrap()
+            .to_string();
+
+        push_branch(local_repo.path(), "origin", &branch).unwrap();
+
+        let remote_repo = Repository::open_bare(remote_dir.path()).unwrap();
+        let remote_ref = remote_repo
+            .find_reference(&format!("refs/heads/{}", branch))
+            .unwrap();
+
+        assert_eq!(remote_ref.target().unwrap(), commit_id);
+
+        drop(local_dir);
     }
 }

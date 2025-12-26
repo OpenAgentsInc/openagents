@@ -124,8 +124,34 @@ pub async fn start_server(
 #[derive(Debug, serde::Deserialize)]
 struct RepoFilterQuery {
     language: Option<String>,
+    topic: Option<String>,
     has_bounties: Option<String>,
     agent_friendly: Option<String>,
+}
+
+fn filter_repositories_by_query(repositories: &mut Vec<nostr::Event>, query: &RepoFilterQuery) {
+    if let Some(language) = &query.language {
+        if !language.is_empty() {
+            repositories.retain(|repo| {
+                repo.tags.iter().any(|tag| {
+                    tag.first().map(|t| t == "language").unwrap_or(false)
+                        && tag.get(1).map(|l| l.eq_ignore_ascii_case(language)).unwrap_or(false)
+                })
+            });
+        }
+    }
+
+    if let Some(topic) = &query.topic {
+        if !topic.is_empty() {
+            repositories.retain(|repo| {
+                repo.tags.iter().any(|tag| {
+                    tag.len() >= 2
+                        && (tag[0] == "topic" || tag[0] == "t")
+                        && tag[1].eq_ignore_ascii_case(topic)
+                })
+            });
+        }
+    }
 }
 
 /// Home page
@@ -143,16 +169,7 @@ async fn index(
     };
 
     // Apply filters
-    if let Some(language) = &query.language {
-        if !language.is_empty() {
-            repositories.retain(|repo| {
-                repo.tags.iter().any(|tag| {
-                    tag.first().map(|t| t == "language").unwrap_or(false)
-                        && tag.get(1).map(|l| l.eq_ignore_ascii_case(language)).unwrap_or(false)
-                })
-            });
-        }
-    }
+    filter_repositories_by_query(&mut repositories, &query);
 
     // Build bounty counts per repository if filtering by has_bounties
     let mut repo_bounty_counts = std::collections::HashMap::new();
@@ -201,7 +218,14 @@ async fn index(
     // Pass bounty counts to the view
     HttpResponse::Ok()
         .content_type("text/html; charset=utf-8")
-        .body(home_page_with_repos(&repositories, &query.language, query.has_bounties.as_deref() == Some("true"), query.agent_friendly.as_deref() == Some("true"), &repo_bounty_counts).into_string())
+        .body(home_page_with_repos(
+            &repositories,
+            &query.language,
+            &query.topic,
+            query.has_bounties.as_deref() == Some("true"),
+            query.agent_friendly.as_deref() == Some("true"),
+            &repo_bounty_counts,
+        ).into_string())
 }
 
 /// Repository detail page
@@ -890,7 +914,7 @@ async fn pr_review_submit(
     form: web::Form<std::collections::HashMap<String, String>>,
     state: web::Data<AppState>,
 ) -> HttpResponse {
-    let (_identifier, _pr_id) = path.into_inner();
+    let (_identifier, pr_id) = path.into_inner();
 
     // Extract form data
     let review_type = form.get("review_type").cloned().unwrap_or_else(|| "comment".to_string());
@@ -904,14 +928,59 @@ async fn pr_review_submit(
             .body(r#"<div class="error-message"><p>❌ Review content cannot be empty</p></div>"#);
     }
 
-    // For now, return a success message
-    // In a real implementation, this would:
-    // 1. Build a kind:1 (text note) event with e tag referencing the PR
-    // 2. Add review type tags (approve, request_changes, comment)
-    // 3. If agent-authored, add trajectory proof tags
-    // 4. Sign it with the user's key
-    // 5. Publish it to relays
-    // 6. Cache it locally
+    let mut tags = vec![
+        vec![
+            "e".to_string(),
+            pr_id.clone(),
+            "".to_string(),
+            "root".to_string(),
+        ],
+        vec!["review_type".to_string(), review_type.clone()],
+    ];
+
+    if let Ok(Some(pr_event)) = state.nostr_client.get_cached_event(&pr_id).await {
+        tags.push(vec!["p".to_string(), pr_event.pubkey.clone()]);
+    }
+
+    if let Some(session_id) = &trajectory_session_id {
+        tags.push(vec!["trajectory".to_string(), session_id.clone()]);
+    }
+
+    if let Some(hash) = &trajectory_hash {
+        tags.push(vec!["trajectory_hash".to_string(), hash.clone()]);
+    }
+
+    let event_template = EventTemplate {
+        created_at: SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs(),
+        kind: 1,
+        content: content.clone(),
+        tags,
+    };
+
+    let signed_event = match state.sign_event(event_template) {
+        Ok(event) => event,
+        Err(e) => {
+            return HttpResponse::InternalServerError()
+                .content_type("text/html; charset=utf-8")
+                .body(format!(
+                    r#"<div class="error-message"><p>❌ Failed to sign review: {}</p></div>"#,
+                    e
+                ));
+        }
+    };
+
+    if let Err(e) = state.nostr_client.publish_event(signed_event).await {
+        tracing::error!("Failed to publish review: {}", e);
+        return HttpResponse::InternalServerError()
+            .content_type("text/html; charset=utf-8")
+            .body(format!(
+                r#"<div class="error-message"><p>❌ Failed to publish review: {}</p></div>"#,
+                e
+            ));
+    }
 
     let review_emoji = match review_type.as_str() {
         "approve" => "✅",
@@ -2788,6 +2857,8 @@ struct RepositoryCreateForm {
     identifier: String,
     name: String,
     description: Option<String>,
+    language: Option<String>,
+    topics: Option<String>,
     clone_url_git: String,
     clone_url_https: Option<String>,
     web_url: Option<String>,
@@ -2808,6 +2879,18 @@ async fn repository_create(
         .map(|m| m.lines().map(|l| l.trim().to_string()).filter(|l| !l.is_empty()).collect())
         .unwrap_or_default();
 
+    let topics: Vec<String> = form
+        .topics
+        .as_ref()
+        .map(|topics| {
+            topics
+                .split(|c| c == ',' || c == '\n')
+                .map(|topic| topic.trim().to_string())
+                .filter(|topic| !topic.is_empty())
+                .collect()
+        })
+        .unwrap_or_default();
+
     // Build repository announcement event using RepositoryAnnouncementBuilder
     let mut builder = RepositoryAnnouncementBuilder::new(&form.identifier, &form.name);
 
@@ -2816,6 +2899,16 @@ async fn repository_create(
         if !desc.is_empty() {
             builder = builder.description(desc);
         }
+    }
+
+    if let Some(language) = &form.language {
+        if !language.is_empty() {
+            builder = builder.language(language);
+        }
+    }
+
+    for topic in topics {
+        builder = builder.topic(topic);
     }
 
     // Add clone URLs
@@ -4308,4 +4401,143 @@ async fn pr_checklist_toggle(
     HttpResponse::Ok()
         .content_type("application/json")
         .body(r#"{"success": true}"#)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use bip39::Mnemonic;
+    use std::sync::Arc;
+    use std::time::{SystemTime, UNIX_EPOCH};
+    use testing::MockRelay;
+
+    #[tokio::test]
+    async fn test_pr_review_submit_publishes_review_event() {
+        let relay = MockRelay::start().await;
+        let broadcaster = Arc::new(WsBroadcaster::new(64));
+        let nostr_client = Arc::new(NostrClient::new(vec![relay.url().to_string()], broadcaster.clone()).unwrap());
+        let mnemonic = Mnemonic::parse("abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about").unwrap();
+        let identity = Arc::new(UnifiedIdentity::from_mnemonic(mnemonic).unwrap());
+
+        let state = web::Data::new(AppState {
+            broadcaster,
+            nostr_client: nostr_client.clone(),
+            identity: Some(identity.clone()),
+            wallet: None,
+        });
+
+        let pr_template = EventTemplate {
+            kind: 1618,
+            content: "PR body".to_string(),
+            tags: vec![
+                vec!["a".to_string(), format!("30617:{}:test-repo", identity.nostr_public_key())],
+                vec!["subject".to_string(), "Test PR".to_string()],
+                vec!["c".to_string(), "commit-123".to_string()],
+                vec!["clone".to_string(), "https://example.com/repo.git".to_string()],
+            ],
+            created_at: SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_secs(),
+        };
+
+        let pr_event = identity.sign_event(pr_template).unwrap();
+        nostr_client.publish_event(pr_event.clone()).await.unwrap();
+
+        let mut form = std::collections::HashMap::new();
+        form.insert("review_type".to_string(), "approve".to_string());
+        form.insert("content".to_string(), "LGTM".to_string());
+
+        let response = pr_review_submit(
+            web::Path::from(("test-repo".to_string(), pr_event.id.clone())),
+            web::Form(form),
+            state,
+        )
+        .await;
+
+        assert_eq!(response.status(), actix_web::http::StatusCode::OK);
+
+        let reviews = nostr_client.get_reviews_for_pr(&pr_event.id).await.unwrap();
+        assert_eq!(reviews.len(), 1);
+        assert_eq!(reviews[0].content, "LGTM");
+        assert!(reviews[0].tags.iter().any(|tag| tag.len() >= 2 && tag[0] == "review_type" && tag[1] == "approve"));
+    }
+
+    #[test]
+    fn test_filter_repositories_by_language_and_topic() {
+        let repo_rust_nostr = nostr::Event {
+            id: "repo-1".to_string(),
+            kind: 30617,
+            pubkey: "pubkey1".to_string(),
+            created_at: 1,
+            content: "Repo 1".to_string(),
+            tags: vec![
+                vec!["d".to_string(), "repo-1".to_string()],
+                vec!["language".to_string(), "rust".to_string()],
+                vec!["topic".to_string(), "nostr".to_string()],
+            ],
+            sig: "sig1".to_string(),
+        };
+
+        let repo_python_ai = nostr::Event {
+            id: "repo-2".to_string(),
+            kind: 30617,
+            pubkey: "pubkey2".to_string(),
+            created_at: 2,
+            content: "Repo 2".to_string(),
+            tags: vec![
+                vec!["d".to_string(), "repo-2".to_string()],
+                vec!["language".to_string(), "python".to_string()],
+                vec!["t".to_string(), "ai".to_string()],
+            ],
+            sig: "sig2".to_string(),
+        };
+
+        let repo_rust_tooling = nostr::Event {
+            id: "repo-3".to_string(),
+            kind: 30617,
+            pubkey: "pubkey3".to_string(),
+            created_at: 3,
+            content: "Repo 3".to_string(),
+            tags: vec![
+                vec!["d".to_string(), "repo-3".to_string()],
+                vec!["language".to_string(), "rust".to_string()],
+                vec!["topic".to_string(), "tooling".to_string()],
+            ],
+            sig: "sig3".to_string(),
+        };
+
+        let mut repos = vec![repo_rust_nostr.clone(), repo_python_ai.clone(), repo_rust_tooling.clone()];
+
+        let query = RepoFilterQuery {
+            language: Some("rust".to_string()),
+            topic: None,
+            has_bounties: None,
+            agent_friendly: None,
+        };
+        filter_repositories_by_query(&mut repos, &query);
+        assert_eq!(repos.len(), 2);
+
+        let mut repos = vec![repo_rust_nostr.clone(), repo_python_ai.clone(), repo_rust_tooling.clone()];
+        let query = RepoFilterQuery {
+            language: None,
+            topic: Some("ai".to_string()),
+            has_bounties: None,
+            agent_friendly: None,
+        };
+        filter_repositories_by_query(&mut repos, &query);
+        assert_eq!(repos.len(), 1);
+        assert_eq!(repos[0].id, "repo-2");
+
+        let mut repos = vec![repo_rust_nostr, repo_python_ai, repo_rust_tooling];
+        let query = RepoFilterQuery {
+            language: Some("rust".to_string()),
+            topic: Some("tooling".to_string()),
+            has_bounties: None,
+            agent_friendly: None,
+        };
+        filter_repositories_by_query(&mut repos, &query);
+        assert_eq!(repos.len(), 1);
+        assert_eq!(repos[0].id, "repo-3");
+    }
 }

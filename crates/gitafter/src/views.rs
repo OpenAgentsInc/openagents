@@ -105,7 +105,14 @@ fn repository_card_with_bounty_count(event: &Event, bounty_counts: &std::collect
 }
 
 /// Home page with repository list
-pub fn home_page_with_repos(repositories: &[Event], selected_language: &Option<String>, has_bounties_filter: bool, agent_friendly_filter: bool, bounty_counts: &std::collections::HashMap<String, usize>) -> Markup {
+pub fn home_page_with_repos(
+    repositories: &[Event],
+    selected_language: &Option<String>,
+    selected_topic: &Option<String>,
+    has_bounties_filter: bool,
+    agent_friendly_filter: bool,
+    bounty_counts: &std::collections::HashMap<String, usize>,
+) -> Markup {
     html! {
         (DOCTYPE)
         html lang="en" {
@@ -148,6 +155,17 @@ pub fn home_page_with_repos(repositories: &[Event], selected_language: &Option<S
                                     option value="python" selected[selected_language.as_deref() == Some("python")] { "Python" }
                                     option value="go" selected[selected_language.as_deref() == Some("go")] { "Go" }
                                 }
+                            }
+
+                            div {
+                                label for="topic" style="display: block; margin-bottom: 0.5rem; color: #aaa;" { "Topic" }
+                                input
+                                    type="text"
+                                    name="topic"
+                                    id="topic"
+                                    placeholder="nostr, ai"
+                                    value={(selected_topic.clone().unwrap_or_default())}
+                                    style="padding: 0.5rem; background: #1a1a1a; color: #fff; border: 1px solid #444;" {}
                             }
 
                             div {
@@ -3627,6 +3645,30 @@ pub fn repository_create_form_page() -> Markup {
                                         id="repo_description"
                                         placeholder="A brief description of this repository..."
                                         rows="4" {}
+                                }
+
+                                div.form-group {
+                                    label for="repo_language" { "Primary Language" }
+                                    select
+                                        name="language"
+                                        id="repo_language" {
+                                        option value="" selected { "Select a language (optional)" }
+                                        option value="rust" { "Rust" }
+                                        option value="javascript" { "JavaScript" }
+                                        option value="typescript" { "TypeScript" }
+                                        option value="python" { "Python" }
+                                        option value="go" { "Go" }
+                                    }
+                                }
+
+                                div.form-group {
+                                    label for="repo_topics" { "Topics" }
+                                    input
+                                        type="text"
+                                        name="topics"
+                                        id="repo_topics"
+                                        placeholder="nostr, ai, tooling" {}
+                                    p.hint { "Comma-separated topics to help discovery (optional)" }
                                 }
 
                                 div.form-group {

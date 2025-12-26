@@ -86,6 +86,7 @@ impl CloneProgress {
 /// - `https://` - HTTPS clone (no auth)
 /// - `ssh://` or `git@` - SSH clone with SSH agent authentication
 /// - `git://` - Git protocol (no auth, deprecated)
+/// - `file://` - Local filesystem clone
 ///
 /// # Arguments
 /// * `url` - The Git URL to clone from
@@ -214,12 +215,13 @@ fn validate_clone_url(url: &str) -> Result<()> {
     if url.starts_with("https://")
         || url.starts_with("ssh://")
         || url.starts_with("git://")
+        || url.starts_with("file://")
     {
         return Ok(());
     }
 
     anyhow::bail!(
-        "Unsupported URL scheme. Supported: https://, ssh://, git://, or git@host:path"
+        "Unsupported URL scheme. Supported: https://, ssh://, git://, file://, or git@host:path"
     );
 }
 
@@ -320,6 +322,11 @@ mod tests {
     #[test]
     fn test_validate_git_protocol() {
         assert!(validate_clone_url("git://github.com/user/repo.git").is_ok());
+    }
+
+    #[test]
+    fn test_validate_file_url() {
+        assert!(validate_clone_url("file:///tmp/repo").is_ok());
     }
 
     #[test]

@@ -48,3 +48,30 @@ fn test_get_issues_by_repo_filters_and_sorts() -> Result<()> {
 
     Ok(())
 }
+
+#[test]
+fn test_search_issues_matches_labels() -> Result<()> {
+    let cache = EventCache::new_in_memory()?;
+
+    let issue = Event {
+        id: "issue-labeled".to_string(),
+        kind: 1621,
+        pubkey: "test_pubkey".to_string(),
+        created_at: 123,
+        content: "Fix the rendering bug".to_string(),
+        tags: vec![
+            vec!["a".to_string(), "30617:test_pubkey:test-repo".to_string()],
+            vec!["subject".to_string(), "Rendering glitch".to_string()],
+            vec!["t".to_string(), "bug".to_string()],
+        ],
+        sig: "test_signature".to_string(),
+    };
+
+    cache.insert_event(&issue)?;
+
+    let results = cache.search_issues("bug", 10)?;
+    assert_eq!(results.len(), 1);
+    assert_eq!(results[0].id, "issue-labeled");
+
+    Ok(())
+}
