@@ -16,12 +16,12 @@
 
 ---
 
-## Outstanding User Stories (No Test Coverage Yet) — 21 total
+## Outstanding User Stories (No Test Coverage Yet) — 20 total
 
 These story IDs are defined in `.openagents/USERSTORIES.md` but are not listed in the Covered Stories table yet.
 
-Priority breakdown: P0 = 2, P1 = 13, P2 = 6.
-P0 focus IDs: 23.1.3, 25.2.2.
+Priority breakdown: P0 = 1, P1 = 13, P2 = 6.
+P0 focus IDs: 23.1.3.
 
 ### d-006: NIP-SA (Sovereign Agents Protocol) (7)
 - [ ] 6.2.3 (P1) As an agent operator, I want to inspect (but not decrypt) state metadata, so that I can monitor size/frequency.
@@ -52,8 +52,7 @@ P0 focus IDs: 23.1.3, 25.2.2.
 - [ ] 23.1.4 (P1) As a developer, I want to render on web via WebGPU, so that browser apps work.
 - [ ] 23.1.5 (P1) As a developer, I want to render on desktop via Vulkan/Metal/DX12, so that native apps work.
 
-### d-025: All-In WGPUI (2)
-- [ ] 25.2.2 (P0) As a developer, I want autopilot-gui rebuilt in pure WGPUI, so that no web dependencies remain.
+### d-025: All-In WGPUI (1)
 - [ ] 25.2.3 (P1) As a developer, I want all examples to be WGPUI-only, so that documentation is consistent.
 
 ---

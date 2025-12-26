@@ -360,6 +360,7 @@ This section tracks which user stories have implemented tests.
 | 25.1.4 | Styled trait for fluent builder DSL | Unit | `crates/wgpui/src/testing/component_tests.rs` |
 | 25.1.5 | Async support via cx.spawn() | Unit | `crates/wgpui/src/async/executor.rs` |
 | 25.2.1 | Archive HTML/Maud stack | Integration | `tests/gui_archive.rs` |
+| 25.2.2 | Autopilot-GUI is WGPUI-only | Integration | `tests/autopilot_gui_stack.rs` |
 | **d-026: E2E Test Live Viewer** ||||
 | 26.1.1 | Fluent DSL for tests | Unit | `crates/wgpui/src/testing/dsl.rs` (module tests) |
 | 26.1.2 | Click elements by selector | Unit | `crates/wgpui/src/testing/step.rs` |
@@ -407,6 +408,7 @@ This section tracks which user stories have implemented tests.
 | `tests/no_stubs.rs` | Stub pattern scanning + exceptions documentation checks | 12.1.1-12.1.4 |
 | `tests/testing_framework.rs` | Snapshot + coverage documentation checks | 13.1.3, 13.3.2 |
 | `tests/gui_archive.rs` | HTML/Maud archive verification | 25.2.1 |
+| `tests/autopilot_gui_stack.rs` | Autopilot GUI WGPUI-only dependency checks | 25.2.2 |
 | `crates/opencode-sdk/tests/opencode_sdk_integration.rs` | OpenCode SDK mock server + SSE integration tests | 21.1.1-21.2.2 |
 | `crates/testing/src/lib.rs` | Testing crate smoke and parallel task tests | 13.1.1-13.1.2 |
 | `crates/testing/src/mock_relay.rs` | Mock relay loopback storage tests | 13.2.2 |
