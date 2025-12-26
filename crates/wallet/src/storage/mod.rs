@@ -6,3 +6,4 @@ pub mod config;
 pub mod address_book;
 pub mod keychain;
 pub mod identities;
+pub mod nwc;

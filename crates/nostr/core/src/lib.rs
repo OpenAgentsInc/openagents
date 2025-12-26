@@ -594,7 +594,7 @@ pub use nip47::{
     BalanceResult, ErrorCode, ErrorResponse, GetBalanceParams, GetInfoParams, InfoResult,
     Invoice, InvoiceState, ListTransactionsParams, ListTransactionsResult, LookupInvoiceParams,
     MakeInvoiceParams, Method, MultiPayInvoiceItem, MultiPayInvoiceParams, MultiPayKeysendItem,
-    MultiPayKeysendParams, Network, Nip47Error, Notification, NotificationType,
+    MultiPayKeysendParams, Network, Nip47Error, NostrWalletConnectUrl, Notification, NotificationType,
     PayInvoiceParams, PayInvoiceResult, PayKeysendParams, Request, RequestParams, Response,
     ResponseResult, TlvRecord, Transaction, TransactionType, INFO_EVENT_KIND,
     NOTIFICATION_KIND_NIP04, NOTIFICATION_KIND_NIP44, REQUEST_KIND, RESPONSE_KIND,

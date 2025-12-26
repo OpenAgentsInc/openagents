@@ -65,6 +65,7 @@ shellexpand = "3"
 hex = "0.4"
 chrono.workspace = true
 spark = { package = "openagents-spark", path = "../spark" }
+breez-sdk-spark = { path = "../../../spark-sdk/crates/breez-sdk/core" }
 reqwest = { workspace = true, features = ["json", "blocking"] }
 argon2 = "0.5"
 chacha20poly1305 = "0.10"

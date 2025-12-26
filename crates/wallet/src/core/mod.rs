@@ -9,6 +9,7 @@ pub mod client;
 pub mod identity;
 pub mod nip05;
 pub mod nostr;
+pub mod nwc;
 
 // Re-export UnifiedIdentity for easier access by other crates
 #[allow(unused_imports)]
