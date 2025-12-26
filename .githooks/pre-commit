@@ -4,6 +4,13 @@
 
 echo "🔍 Running pre-commit checks..."
 
+# Check for stub patterns (d-012)
+echo "Checking for stub patterns..."
+if ! scripts/check-stubs.sh --staged; then
+    echo "❌ Stub patterns detected. Fix before committing."
+    exit 1
+fi
+
 # Check if commit message references issues
 COMMIT_MSG_FILE="$1"
 if [ -f "$COMMIT_MSG_FILE" ]; then

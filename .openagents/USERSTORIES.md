@@ -132,8 +132,19 @@ This section tracks which user stories have implemented tests.
 | 9.1.1 | Conversation thread display | Visual E2E | `crates/wgpui/examples/chat_streaming_test.rs` |
 | 9.1.2 | Tool calls with output | Visual E2E | `crates/wgpui/examples/chat_streaming_test.rs` |
 | **d-010: Unified Binary** ||||
+| 10.1.1 | Launch GUI when running `openagents` with no args | Integration | `tests/cli_integration.rs` |
+| 10.1.2 | Run `openagents wallet init` to initialize wallet | Integration | `tests/cli_integration.rs` |
+| 10.1.3 | Run `openagents autopilot run "task"` to start autonomous run | Integration | `tests/cli_integration.rs` |
+| 10.1.4 | Run `openagents daemon start` to launch daemon | Integration | `tests/cli_integration.rs` |
 | 10.1.5 | Show all available commands with --help | Integration | `tests/cli_integration.rs` |
 | 10.1.6 | Show subcommand help output | Integration | `tests/cli_integration.rs` |
+| 10.2.1 | Deprecation warnings for legacy binary names | Integration | `tests/legacy_binaries.rs` |
+| 10.2.2 | Symlinks keep legacy binaries working | Integration | `tests/legacy_binaries.rs` |
+| **d-012: No Stubs Policy** ||||
+| 12.1.1 | Pre-commit rejects `todo!()` stubs | Integration | `tests/no_stubs.rs` |
+| 12.1.2 | Pre-commit rejects `unimplemented!()` stubs | Integration | `tests/no_stubs.rs` |
+| 12.1.3 | CI scans for stub patterns | Integration | `tests/no_stubs.rs` |
+| 12.1.4 | Allowed exceptions list with justification | Integration | `tests/no_stubs.rs` |
 | **d-016: APM Metrics** ||||
 | 16.1.1 | APM calculated from Claude Code JSONL logs | Unit | `crates/autopilot/src/apm_parser.rs` |
 | 16.1.2 | APM calculated from autopilot trajectory logs | Unit | `crates/autopilot/src/apm_parser.rs` |
@@ -239,7 +250,9 @@ This section tracks which user stories have implemented tests.
 | `crates/wgpui/src/testing/injection.rs` | EventSequence for synthetic events | 26.3.2 |
 | `crates/wgpui/src/testing/overlay.rs` | InputOverlay for click ripples | 26.2.2, 26.2.3 |
 | `crates/wgpui/src/testing/runner.rs` | TestRunner playback + step control | 26.2.4, 26.2.5 |
-| `tests/cli_integration.rs` | Unified CLI help and command listing coverage | 10.1.5-10.1.6, 16.2.1 |
+| `tests/cli_integration.rs` | Unified CLI headless launch, wallet init, and delegation coverage | 10.1.1-10.1.6, 16.2.1 |
+| `tests/legacy_binaries.rs` | Legacy binary deprecation warnings + symlink installer coverage | 10.2.1-10.2.2 |
+| `tests/no_stubs.rs` | Stub pattern scanning + exceptions documentation checks | 12.1.1-12.1.4 |
 | `crates/opencode-sdk/tests/opencode_sdk_integration.rs` | OpenCode SDK mock server + SSE integration tests | 21.1.1-21.2.2 |
 | `crates/testing/src/test_app.rs` | TestApp isolation and harness tests | 13.2.3 |
 | `crates/agent-orchestrator/src/background.rs` | Background task manager lifecycle tests | 22.1.1-22.1.2 |

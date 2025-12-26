@@ -15,6 +15,9 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use uuid::Uuid;
 
+#[cfg(unix)]
+use std::os::unix::fs::PermissionsExt;
+
 fn create_temp_workspace() -> PathBuf {
     let root = std::env::temp_dir().join(format!("openagents-test-{}", Uuid::new_v4()));
     fs::create_dir_all(root.join(".openagents")).expect("create .openagents");
@@ -36,6 +39,25 @@ fn seed_apm_snapshot(db_path: &Path) {
         tool_calls: 30,
     };
     apm_storage::save_snapshot(&conn, &snapshot).expect("save snapshot");
+}
+
+#[cfg(unix)]
+fn write_stub_script(dir: &Path, name: &str) -> PathBuf {
+    let script_path = dir.join(name);
+    let script = r#"#!/bin/sh
+if [ -z "$LOG_PATH" ]; then
+  echo "LOG_PATH not set" >&2
+  exit 1
+fi
+printf '%s\n' "$@" > "$LOG_PATH"
+"#;
+    fs::write(&script_path, script).expect("write stub script");
+    let mut perms = fs::metadata(&script_path)
+        .expect("stub metadata")
+        .permissions();
+    perms.set_mode(0o755);
+    fs::set_permissions(&script_path, perms).expect("chmod stub");
+    script_path
 }
 
 /// Test that the binary exists and shows help
@@ -63,6 +85,15 @@ fn test_version() {
         .stdout(predicate::str::contains("openagents"));
 }
 
+#[test]
+fn test_openagents_no_args_headless() {
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("openagents"));
+    cmd.env("OPENAGENTS_HEADLESS", "1");
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("OpenAgents GUI disabled"));
+}
+
 // Wallet commands
 
 #[test]
@@ -88,6 +119,33 @@ fn test_wallet_balance_no_wallet() {
     cmd.arg("wallet").arg("balance");
     // Should fail gracefully if no wallet exists
     cmd.assert().failure();
+}
+
+#[test]
+fn test_wallet_init_creates_mnemonic() {
+    let workspace = create_temp_workspace();
+    let keychain_path = workspace.join("keychain.txt");
+
+    if keychain_path.exists() {
+        fs::remove_file(&keychain_path).expect("clean keychain file");
+    }
+
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("openagents"));
+    cmd.current_dir(&workspace)
+        .env("OPENAGENTS_KEYCHAIN_FILE", &keychain_path)
+        .arg("wallet")
+        .arg("init")
+        .arg("--show-mnemonic");
+
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("Wallet initialized"));
+
+    let mnemonic = fs::read_to_string(&keychain_path).expect("read keychain file");
+    let word_count = mnemonic.split_whitespace().count();
+    assert!(word_count == 12 || word_count == 24, "unexpected word count");
+
+    fs::remove_dir_all(&workspace).expect("cleanup workspace");
 }
 
 // Marketplace commands
@@ -255,6 +313,30 @@ fn test_autopilot_subcommands_listed() {
 }
 
 #[test]
+#[cfg(unix)]
+fn test_autopilot_run_delegates_to_autopilot_bin() {
+    let workspace = create_temp_workspace();
+    let log_path = workspace.join("autopilot.log");
+    let stub = write_stub_script(&workspace, "autopilot-stub.sh");
+
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("openagents"));
+    cmd.current_dir(&workspace)
+        .env("OPENAGENTS_AUTOPILOT_BIN", &stub)
+        .env("LOG_PATH", &log_path)
+        .arg("autopilot")
+        .arg("run")
+        .arg("ship-it");
+
+    cmd.assert().success();
+
+    let output = fs::read_to_string(&log_path).expect("read stub log");
+    assert!(output.contains("run"), "expected run arg");
+    assert!(output.contains("ship-it"), "expected prompt arg");
+
+    fs::remove_dir_all(&workspace).expect("cleanup workspace");
+}
+
+#[test]
 fn test_daemon_subcommands_listed() {
     let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("openagents"));
     cmd.arg("daemon").arg("--help");
@@ -263,6 +345,31 @@ fn test_daemon_subcommands_listed() {
         .stdout(predicate::str::contains("start"))
         .stdout(predicate::str::contains("stop"))
         .stdout(predicate::str::contains("status"));
+}
+
+#[test]
+#[cfg(unix)]
+fn test_daemon_start_delegates_to_autopilotd_bin() {
+    let workspace = create_temp_workspace();
+    let log_path = workspace.join("autopilotd.log");
+    let stub = write_stub_script(&workspace, "autopilotd-stub.sh");
+
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("openagents"));
+    cmd.current_dir(&workspace)
+        .env("OPENAGENTS_AUTOPILOTD_BIN", &stub)
+        .env("LOG_PATH", &log_path)
+        .arg("daemon")
+        .arg("start")
+        .arg("--workdir")
+        .arg(&workspace);
+
+    cmd.assert().success();
+
+    let output = fs::read_to_string(&log_path).expect("read stub log");
+    assert!(output.contains("start"), "expected start arg");
+    assert!(output.contains("--workdir"), "expected workdir flag");
+
+    fs::remove_dir_all(&workspace).expect("cleanup workspace");
 }
 
 #[test]

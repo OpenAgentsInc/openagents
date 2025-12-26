@@ -28,6 +28,7 @@ use autopilot::cli::{
     AlertCommands, ApmCommands, BaselineCommands, Cli, Commands, DirectiveCommands, IssueCommands,
     LogsCommands, MetricsCommands, ProjectCommands, SessionCommands,
 };
+use autopilot::deprecation;
 use autopilot::lockfile::{
     MCP_JSON_PATH, check_and_handle_stale_lockfile, cleanup_lockfile, cleanup_mcp_json,
     setup_cleanup_handlers, write_lockfile,
@@ -45,6 +46,8 @@ use autopilot::{extract_session_id_from_json, extract_session_id_from_rlog};
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    eprintln!("{}", deprecation::autopilot_warning());
+
     // Setup cleanup handlers for signals and panics
     setup_cleanup_handlers();
 

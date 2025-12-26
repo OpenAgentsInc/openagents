@@ -9,7 +9,7 @@
 //!   - `openagents daemon ...`
 
 use clap::{Parser, Subcommand};
-use std::process;
+use std::{env, process};
 
 mod cli;
 
@@ -63,10 +63,15 @@ fn main() {
     // Run command
     let result = match cli.command {
         None => {
-            if let Err(err) = autopilot_gui::run() {
-                exit_with_error(err);
+            if env::var_os("OPENAGENTS_HEADLESS").is_some() {
+                println!("OpenAgents GUI disabled (OPENAGENTS_HEADLESS=1)");
+                Ok(())
+            } else {
+                if let Err(err) = autopilot_gui::run() {
+                    exit_with_error(err);
+                }
+                Ok(())
             }
-            Ok(())
         }
         Some(Commands::Wallet(cmd)) => cli::wallet::run(cmd),
         Some(Commands::Marketplace(cmd)) => cli::marketplace::run(cmd),

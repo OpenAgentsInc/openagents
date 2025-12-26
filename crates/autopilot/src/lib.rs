@@ -15,6 +15,7 @@ pub mod auto_issues;
 pub mod cli;
 pub mod compaction;
 pub mod context_analysis;
+pub mod deprecation;
 pub mod daemon;
 pub mod error_recovery;
 pub mod goals;
