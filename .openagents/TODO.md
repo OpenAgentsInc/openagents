@@ -130,7 +130,7 @@ P0 focus IDs: none.
   - [x] Learning system (instruction adherence) ✅
   - [x] Memory management ✅
   - [x] Dashboard with WebSocket ✅
-- [ ] **Minor TODO:** `autopilot/src/memory.rs` line 48 - Make memory hog killing opt-in (non-blocking)
+- [x] **Minor TODO:** `autopilot/src/memory.rs` line 48 - Make memory hog killing opt-in (non-blocking) ✅
 - [ ] **Enhancement:** Add automatic issue creation from failure patterns
 
 **Files:** `crates/autopilot/src/` ✅
@@ -320,7 +320,7 @@ P0 focus IDs: none.
 - [x] `crates/nostr/core/src/nip_sa/wallet_integration.rs` - Real wallet singleton ✅
 
 #### Non-Blocking TODOs (Enhancements)
-- [ ] `crates/autopilot/src/memory.rs:48` - Make memory hog killing opt-in (config)
+- [x] `crates/autopilot/src/memory.rs:48` - Make memory hog killing opt-in (config) ✅
 - [ ] `crates/autopilot/src/daemon/nostr_trigger.rs` - NIP-SA fetch (optional feature)
 
 #### Acceptable (Error Variants, Not Stubs)

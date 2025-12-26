@@ -11,7 +11,8 @@ use nostr::{
 };
 use nostr_client::{PoolConfig, RelayPool};
 use serde_json::json;
-use spark::{Payment, PaymentDetails, PaymentStatus, PaymentType, SparkError, SparkWallet};
+use spark::{Payment, PaymentStatus, PaymentType, SparkError, SparkWallet};
+use spark::wallet::PaymentDetails;
 use std::collections::HashSet;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tracing::{debug, warn};
@@ -243,7 +244,7 @@ impl NwcService {
         };
 
         let response_event = build_response_event(&response, scheme, connection, &event)?;
-        self.pool.publish_event(&response_event).await?;
+        self.pool.publish(&response_event).await?;
 
         Ok(())
     }
@@ -932,18 +933,18 @@ async fn list_transactions(
             break;
         }
 
-        for payment in payments {
+        for payment in &payments {
             if payment.timestamp < from || payment.timestamp > until {
                 continue;
             }
 
-            if let Some(transaction_type) = params.transaction_type {
-                if transaction_type == TransactionType::Incoming
+            if let Some(transaction_type) = params.transaction_type.as_ref() {
+                if *transaction_type == TransactionType::Incoming
                     && payment.payment_type != PaymentType::Receive
                 {
                     continue;
                 }
-                if transaction_type == TransactionType::Outgoing
+                if *transaction_type == TransactionType::Outgoing
                     && payment.payment_type != PaymentType::Send
                 {
                     continue;
@@ -957,7 +958,7 @@ async fn list_transactions(
                 continue;
             }
 
-            let Some(transaction) = payment_to_transaction(&payment)? else {
+            let Some(transaction) = payment_to_transaction(payment)? else {
                 continue;
             };
 
@@ -994,16 +995,16 @@ async fn find_payment(wallet: &SparkWallet, params: &LookupInvoiceParams) -> Res
             break;
         }
 
-        for payment in payments {
+        for payment in &payments {
             if let Some(invoice) = params.invoice.as_ref() {
-                if extract_invoice(&payment).as_deref() == Some(invoice.as_str()) {
-                    return Ok(Some(payment));
+                if extract_invoice(payment).as_deref() == Some(invoice.as_str()) {
+                    return Ok(Some(payment.clone()));
                 }
             }
 
             if let Some(hash) = params.payment_hash.as_ref() {
-                if payment_hash_for(&payment) == *hash {
-                    return Ok(Some(payment));
+                if payment_hash_for(payment) == *hash {
+                    return Ok(Some(payment.clone()));
                 }
             }
         }
