@@ -3,6 +3,8 @@
 //! Tests cloning from different URL schemes with real repositories.
 
 use gitafter::git::{clone_repository, get_workspace_path};
+use git2::{Repository, Signature};
+use std::path::Path;
 use tempfile::TempDir;
 
 #[test]
@@ -34,6 +36,32 @@ fn test_clone_invalid_url_scheme() {
     assert!(result.is_err());
     let err_msg = format!("{:?}", result.err().unwrap());
     assert!(err_msg.contains("Unsupported URL scheme"));
+}
+
+#[test]
+fn test_clone_local_repo_via_file_url() {
+    let source_dir = TempDir::new().unwrap();
+    let source_repo = Repository::init(source_dir.path()).unwrap();
+
+    std::fs::write(source_dir.path().join("README.md"), "hello clone").unwrap();
+
+    let mut index = source_repo.index().unwrap();
+    index.add_path(Path::new("README.md")).unwrap();
+    let tree_id = index.write_tree().unwrap();
+    let tree = source_repo.find_tree(tree_id).unwrap();
+    let signature = Signature::now("GitAfter Test", "test@example.com").unwrap();
+    source_repo
+        .commit(Some("HEAD"), &signature, &signature, "initial", &tree, &[])
+        .unwrap();
+
+    let temp_dir = TempDir::new().unwrap();
+    let dest_path = temp_dir.path().join("cloned-repo");
+    let url = format!("file://{}", source_dir.path().display());
+
+    let result = clone_repository(&url, &dest_path, None);
+
+    assert!(result.is_ok(), "Local file clone should succeed");
+    assert!(dest_path.join(".git").exists());
 }
 
 #[test]
@@ -75,6 +103,7 @@ fn test_clone_url_validation() {
         ("git@github.com:user/repo.git", false),     // Would require SSH agent
         ("ssh://git@github.com/user/repo.git", false), // Would require SSH agent
         ("git://github.com/user/repo.git", false),   // Would require network
+        ("file:///tmp/local-repo", false),           // Should pass validation
         ("http://example.com/repo.git", true),       // Should fail validation
         ("ftp://example.com/repo.git", true),        // Should fail validation
         ("invalid-url", true),                       // Should fail validation

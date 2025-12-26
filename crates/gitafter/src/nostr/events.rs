@@ -1167,6 +1167,8 @@ mod tests {
 /// - `p`: Maintainer pubkeys (can have multiple)
 /// - `r`: Earliest unique commit for fork tracking
 /// - `default_branch`: Default branch name
+/// - `language`: Primary language tag
+/// - `topic`: Repository topics (can have multiple)
 pub struct RepositoryAnnouncementBuilder {
     identifier: String,
     name: String,
@@ -1176,6 +1178,8 @@ pub struct RepositoryAnnouncementBuilder {
     maintainers: Vec<String>,
     earliest_commit: Option<String>,
     default_branch: Option<String>,
+    language: Option<String>,
+    topics: Vec<String>,
 }
 
 #[allow(dead_code)]
@@ -1209,6 +1213,8 @@ impl RepositoryAnnouncementBuilder {
             maintainers: Vec::new(),
             earliest_commit: None,
             default_branch: None,
+            language: None,
+            topics: Vec::new(),
         }
     }
 
@@ -1257,6 +1263,18 @@ impl RepositoryAnnouncementBuilder {
         self
     }
 
+    /// Set the primary repository language
+    pub fn language(mut self, language: impl Into<String>) -> Self {
+        self.language = Some(language.into());
+        self
+    }
+
+    /// Add a topic tag (can be called multiple times)
+    pub fn topic(mut self, topic: impl Into<String>) -> Self {
+        self.topics.push(topic.into());
+        self
+    }
+
     /// Build the repository announcement event template
     ///
     /// Returns an [`EventTemplate`] with kind:30617 that must be signed before publishing.
@@ -1288,6 +1306,14 @@ impl RepositoryAnnouncementBuilder {
 
         if let Some(branch) = &self.default_branch {
             tags.push(vec!["default_branch".to_string(), branch.clone()]);
+        }
+
+        if let Some(language) = &self.language {
+            tags.push(vec!["language".to_string(), language.clone()]);
+        }
+
+        for topic in &self.topics {
+            tags.push(vec!["topic".to_string(), topic.clone()]);
         }
 
         EventTemplate {
@@ -1327,6 +1353,9 @@ mod repository_announcement_tests {
             .maintainer("npub1bob")
             .earliest_commit("abc123def456")
             .default_branch("main")
+            .language("rust")
+            .topic("nostr")
+            .topic("git")
             .build();
 
         assert_eq!(template.kind, 30617);
@@ -1345,6 +1374,9 @@ mod repository_announcement_tests {
         assert!(template.tags.contains(&vec!["p".to_string(), "npub1bob".to_string()]));
         assert!(template.tags.contains(&vec!["r".to_string(), "abc123def456".to_string()]));
         assert!(template.tags.contains(&vec!["default_branch".to_string(), "main".to_string()]));
+        assert!(template.tags.contains(&vec!["language".to_string(), "rust".to_string()]));
+        assert!(template.tags.contains(&vec!["topic".to_string(), "nostr".to_string()]));
+        assert!(template.tags.contains(&vec!["topic".to_string(), "git".to_string()]));
     }
 
     #[test]
