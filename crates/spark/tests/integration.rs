@@ -20,6 +20,10 @@
 //! SPARK_E2E_AMOUNT_SATS=100 \
 //! SPARK_E2E_NETWORK=testnet \
 //! cargo test -p openagents-spark --test integration -- --ignored
+//!
+//! # Run real testnet E2E via regtest faucet
+//! SPARK_E2E_USE_FAUCET=1 \
+//! cargo test -p openagents-spark --test integration -- --ignored test_real_testnet_payment_flow
 //! ```
 
 use openagents_spark::{SparkSigner, SparkWallet, WalletConfig, Network, Balance};
@@ -187,6 +191,7 @@ mod wallet_tests {
     use openagents_spark::{Payment, PaymentStatus, PaymentType, SparkError};
     use std::fs;
     use std::time::{SystemTime, UNIX_EPOCH};
+    use testing::RegtestFaucet;
     use tokio::time::{sleep, Duration, Instant};
 
     async fn wait_for_payment_by_id(
@@ -250,6 +255,61 @@ mod wallet_tests {
         }
     }
 
+    async fn wait_for_min_balance(
+        wallet: &SparkWallet,
+        min_sats: u64,
+        timeout: Duration,
+    ) -> Result<(), SparkError> {
+        let deadline = Instant::now() + timeout;
+
+        loop {
+            let balance = wallet.get_balance().await?;
+            if balance.total_sats() >= min_sats {
+                return Ok(());
+            }
+
+            if Instant::now() >= deadline {
+                return Err(SparkError::Wallet(format!(
+                    "timed out waiting for balance >= {} sats",
+                    min_sats
+                )));
+            }
+
+            sleep(Duration::from_secs(2)).await;
+        }
+    }
+
+    async fn ensure_funded(
+        wallet: &SparkWallet,
+        min_balance: u64,
+        timeout: Duration,
+    ) -> Result<(), SparkError> {
+        let balance = wallet.get_balance().await?;
+        if balance.total_sats() >= min_balance {
+            return Ok(());
+        }
+
+        let needed = min_balance.saturating_sub(balance.total_sats());
+        let request_amount = needed.clamp(10_000, 50_000);
+        let deposit_address = wallet.get_bitcoin_address().await?;
+
+        let faucet = RegtestFaucet::new()
+            .map_err(|e| SparkError::Wallet(e.to_string()))?;
+        faucet
+            .fund_address(&deposit_address, request_amount)
+            .await
+            .map_err(|e| SparkError::Wallet(e.to_string()))?;
+
+        wait_for_min_balance(
+            wallet,
+            balance.total_sats().saturating_add(1),
+            timeout,
+        )
+        .await?;
+
+        Ok(())
+    }
+
     struct RealE2eConfig {
         sender_mnemonic: String,
         receiver_mnemonic: String,
@@ -257,6 +317,7 @@ mod wallet_tests {
         network: Network,
         api_key: Option<String>,
         timeout: Duration,
+        use_faucet: bool,
     }
 
     fn parse_network(value: &str) -> Option<Network> {
@@ -270,8 +331,14 @@ mod wallet_tests {
     }
 
     fn real_e2e_config() -> Option<RealE2eConfig> {
-        let sender_mnemonic = env::var("SPARK_E2E_SENDER_MNEMONIC").ok()?;
-        let receiver_mnemonic = env::var("SPARK_E2E_RECEIVER_MNEMONIC").ok()?;
+        let use_faucet = env::var("SPARK_E2E_USE_FAUCET").is_ok();
+        let sender_env = env::var("SPARK_E2E_SENDER_MNEMONIC").ok();
+        let receiver_env = env::var("SPARK_E2E_RECEIVER_MNEMONIC").ok();
+        let (sender_mnemonic, receiver_mnemonic) = match (sender_env, receiver_env) {
+            (Some(sender), Some(receiver)) => (sender, receiver),
+            _ if use_faucet => (TEST_MNEMONIC.to_string(), TEST_MNEMONIC_2.to_string()),
+            _ => return None,
+        };
 
         let amount_sats = env::var("SPARK_E2E_AMOUNT_SATS")
             .ok()
@@ -293,6 +360,10 @@ mod wallet_tests {
             println!("Skipping mainnet E2E test - set SPARK_E2E_ALLOW_MAINNET=1 to enable");
             return None;
         }
+        if network == Network::Mainnet && use_faucet {
+            println!("Skipping mainnet E2E test - faucet funding only supported on regtest");
+            return None;
+        }
 
         let api_key = env::var("SPARK_E2E_API_KEY").ok().or_else(|| env::var("BREEZ_API_KEY").ok());
 
@@ -303,6 +374,7 @@ mod wallet_tests {
             network,
             api_key,
             timeout,
+            use_faucet,
         })
     }
 
@@ -492,7 +564,9 @@ mod wallet_tests {
     #[ignore = "Requires funded Spark testnet wallets"]
     async fn test_real_testnet_payment_flow() {
         let Some(config) = real_e2e_config() else {
-            println!("Skipping real Spark E2E test - set SPARK_E2E_SENDER_MNEMONIC and SPARK_E2E_RECEIVER_MNEMONIC");
+            println!(
+                "Skipping real Spark E2E test - set SPARK_E2E_SENDER_MNEMONIC/SPARK_E2E_RECEIVER_MNEMONIC or SPARK_E2E_USE_FAUCET=1"
+            );
             return;
         };
 
@@ -528,11 +602,17 @@ mod wallet_tests {
         .await
         .expect("should create receiver wallet");
 
-        let sender_balance_before = sender_wallet.get_balance().await.expect("should get sender balance");
-
-        if sender_balance_before.total_sats() < config.amount_sats {
-            println!("Sender wallet requires funding before running this test");
-            return;
+        if config.use_faucet {
+            if let Err(error) = ensure_funded(&sender_wallet, config.amount_sats, config.timeout).await {
+                println!("Skipping real Spark E2E test - faucet funding failed: {}", error);
+                return;
+            }
+        } else {
+            let sender_balance_before = sender_wallet.get_balance().await.expect("should get sender balance");
+            if sender_balance_before.total_sats() < config.amount_sats {
+                println!("Sender wallet requires funding before running this test");
+                return;
+            }
         }
 
         let invoice = receiver_wallet

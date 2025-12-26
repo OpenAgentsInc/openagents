@@ -1,6 +1,6 @@
 # OpenAgents Production Readiness TODO
 
-**Generated:** 2025-12-26 (Updated: 2025-12-26 11:26)
+**Generated:** 2025-12-26 (Updated: 2025-12-26 11:50)
 **Goal:** Bring all 26 directives to full production readiness with WGPUI, real integrations, and comprehensive testing.
 
 ---
@@ -734,16 +734,16 @@ Story coverage is complete (see Covered Stories in `.openagents/USERSTORIES.md`)
 - [x] Legacy HTML stack archived ✅
 - [x] FROSTR key reshare support ✅
 - [x] Marketplace payment flows complete ✅
-- [ ] **E2E with real sats** (optional - can use regtest)
-  - [ ] ⚠️ Spark payments on testnet (test added: `crates/spark/tests/integration.rs::test_real_testnet_payment_flow`)
-    - Blocked: missing `SPARK_E2E_SENDER_MNEMONIC` / `SPARK_E2E_RECEIVER_MNEMONIC` (last checked 2025-12-26 11:22)
-    - Requires `SPARK_E2E_SENDER_MNEMONIC`, `SPARK_E2E_RECEIVER_MNEMONIC`, optional `SPARK_E2E_AMOUNT_SATS`, `SPARK_E2E_NETWORK`, `SPARK_E2E_API_KEY`
-  - [ ] ⚠️ Marketplace flow with real payments (test added: `crates/marketplace/tests/real_payments_e2e.rs::test_marketplace_payment_flow_real_sats`)
-    - Blocked: missing `MARKETPLACE_E2E_SENDER_MNEMONIC` / `MARKETPLACE_E2E_RECEIVER_MNEMONIC` (last checked 2025-12-26 11:24)
-    - Requires `MARKETPLACE_E2E_SENDER_MNEMONIC` / `MARKETPLACE_E2E_RECEIVER_MNEMONIC` (or SPARK equivalents), optional `MARKETPLACE_E2E_AMOUNT_SATS`, `MARKETPLACE_E2E_NETWORK`, `MARKETPLACE_E2E_API_KEY`
-  - [ ] ⚠️ GitAfter bounty claim → payout (test added: `crates/gitafter/src/server.rs::test_bounty_claim_payout_real_sats`)
-    - Blocked: missing `GITAFTER_E2E_SENDER_MNEMONIC` / `GITAFTER_E2E_RECEIVER_MNEMONIC` (last checked 2025-12-26 11:26)
-    - Requires `GITAFTER_E2E_SENDER_MNEMONIC` / `GITAFTER_E2E_RECEIVER_MNEMONIC` (or SPARK/Marketplace equivalents), optional `GITAFTER_E2E_AMOUNT_SATS`, `GITAFTER_E2E_NETWORK`, `GITAFTER_E2E_API_KEY`
+- [x] **E2E with real sats** (optional - verified via regtest faucet)
+  - [x] ✅ Spark payments on testnet (test: `crates/spark/tests/integration.rs::test_real_testnet_payment_flow`)
+    - Verified with regtest faucet (`SPARK_E2E_USE_FAUCET=1`, 2025-12-26 11:50)
+    - Optional manual envs: `SPARK_E2E_SENDER_MNEMONIC`, `SPARK_E2E_RECEIVER_MNEMONIC`, `SPARK_E2E_AMOUNT_SATS`, `SPARK_E2E_NETWORK`, `SPARK_E2E_API_KEY`
+  - [x] ✅ Marketplace flow with real payments (test: `crates/marketplace/tests/real_payments_e2e.rs::test_marketplace_payment_flow_real_sats`)
+    - Verified with regtest faucet (`SPARK_E2E_USE_FAUCET=1`, 2025-12-26 11:50)
+    - Optional manual envs: `MARKETPLACE_E2E_SENDER_MNEMONIC`, `MARKETPLACE_E2E_RECEIVER_MNEMONIC` (or SPARK equivalents), `MARKETPLACE_E2E_AMOUNT_SATS`, `MARKETPLACE_E2E_NETWORK`, `MARKETPLACE_E2E_API_KEY`
+  - [x] ✅ GitAfter bounty claim → payout (test: `crates/gitafter/src/server.rs::test_bounty_claim_payout_real_sats`)
+    - Verified with regtest faucet (`SPARK_E2E_USE_FAUCET=1`, 2025-12-26 11:50)
+    - Optional manual envs: `GITAFTER_E2E_SENDER_MNEMONIC`, `GITAFTER_E2E_RECEIVER_MNEMONIC` (or SPARK/Marketplace equivalents), `GITAFTER_E2E_AMOUNT_SATS`, `GITAFTER_E2E_NETWORK`, `GITAFTER_E2E_API_KEY`
 - [x] **Coverage measurement** (optional)
   - [x] Run `cargo tarpaulin --workspace --lib` (45.48% coverage, 32871/72282 lines)
 
