@@ -151,6 +151,7 @@ This section tracks which user stories have implemented tests.
 | 6.3.4 | Set business hours | Unit | `crates/nostr/core/src/nip_sa/schedule.rs` |
 | 6.4.1 | Publish TickRequest (kind:38010) | Integration | `crates/nostr/tests/integration/nip_sa.rs` |
 | 6.4.2 | Publish TickResult (kind:38011) | Integration | `crates/nostr/tests/integration/nip_sa.rs` |
+| 6.4.3 | View an agent's tick history | Unit | `crates/nostr/core/src/nip_sa/tick.rs` |
 | 6.4.4 | Include trajectory hash in TickResult | Unit | `crates/nostr/core/src/nip_sa/tick.rs` |
 | 6.5.1 | Publish TrajectorySession (kind:38030) | Integration | `crates/nostr/tests/integration/nip_sa.rs` |
 | 6.5.2 | Publish TrajectoryEvents (kind:38031) | Integration | `crates/nostr/tests/integration/nip_sa.rs` |
