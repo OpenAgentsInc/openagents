@@ -9,14 +9,15 @@
 //! When a trigger fires, it signals the daemon supervisor to spawn a worker.
 
 use anyhow::{Context, Result};
-use nostr::{AgentSchedule, Event, TriggerType, npub_to_public_key};
+use nostr::{AgentSchedule, Event, TriggerType, KIND_AGENT_SCHEDULE, npub_to_public_key};
+use nostr::nip_sa::{BusinessHours, BusinessTime, Weekday};
 use nostr_client::{PoolConfig, RelayPool};
 use serde_json::json;
 use std::collections::HashSet;
 use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tokio::sync::mpsc;
-use tokio::time::sleep;
+use tokio::time::{sleep, timeout};
 
 /// Nostr event kinds for triggers
 const KIND_TEXT_NOTE: u16 = 1;
@@ -117,28 +118,28 @@ impl NostrTrigger {
 
     /// Fetch and update agent schedule from relays
     pub async fn update_schedule(&mut self) -> Result<()> {
-        // TODO: Fetch kind:38002 event for this agent from relays
-        // For now, use default schedule
-        let default_schedule = AgentSchedule {
-            heartbeat_seconds: Some(900), // 15 minutes
-            triggers: vec![TriggerType::Mention, TriggerType::Dm, TriggerType::Zap],
-            active: true,
-            business_hours: None,
+        let schedule = match self.fetch_schedule_from_relays().await {
+            Ok(Some(schedule)) => schedule,
+            Ok(None) => Self::default_schedule(),
+            Err(err) => {
+                eprintln!("NostrTrigger: Failed to fetch schedule: {}", err);
+                Self::default_schedule()
+            }
         };
 
-        self.enabled_triggers = default_schedule.triggers.iter().cloned().collect();
-        self.schedule = Some(default_schedule);
+        self.enabled_triggers = schedule.triggers.iter().cloned().collect();
+        self.schedule = Some(schedule);
 
         Ok(())
     }
 
     /// Start watching for triggers and send to channel
     pub async fn watch(mut self, tx: mpsc::UnboundedSender<TriggerEvent>) -> Result<()> {
-        // Update schedule on startup
-        self.update_schedule().await?;
-
         // Initialize relay pool
         self.init_relay_pool().await?;
+
+        // Update schedule on startup
+        self.update_schedule().await?;
 
         eprintln!("NostrTrigger: Watching for agent activation events");
         eprintln!("  Agent pubkey: {}", self.agent_pubkey);
@@ -242,6 +243,146 @@ impl NostrTrigger {
         eprintln!("NostrTrigger: Subscribed with {} filters", filters.len());
 
         Ok(rx)
+    }
+
+    fn default_schedule() -> AgentSchedule {
+        AgentSchedule {
+            heartbeat_seconds: Some(900),
+            triggers: vec![TriggerType::Mention, TriggerType::Dm, TriggerType::Zap],
+            active: true,
+            business_hours: None,
+        }
+    }
+
+    async fn fetch_schedule_from_relays(&self) -> Result<Option<AgentSchedule>> {
+        let pool = match self.relay_pool.as_ref() {
+            Some(pool) => pool,
+            None => return Ok(None),
+        };
+
+        let subscription_id = format!("agent-schedule-{}", uuid::Uuid::new_v4());
+        let filter = json!({
+            "kinds": [KIND_AGENT_SCHEDULE],
+            "authors": [self.agent_pubkey],
+            "limit": 1
+        });
+
+        let mut rx = pool.subscribe(&subscription_id, &[filter]).await?;
+        let event = match timeout(Duration::from_secs(3), rx.recv()).await {
+            Ok(Some(event)) => Some(event),
+            _ => None,
+        };
+
+        if let Err(err) = pool.unsubscribe(&subscription_id).await {
+            eprintln!(
+                "NostrTrigger: Failed to unsubscribe from schedule fetch: {}",
+                err
+            );
+        }
+
+        Ok(event.and_then(|event| Self::schedule_from_event(&event)))
+    }
+
+    fn schedule_from_event(event: &Event) -> Option<AgentSchedule> {
+        if !event.content.trim().is_empty() {
+            if let Ok(schedule) = serde_json::from_str::<AgentSchedule>(&event.content) {
+                return Some(schedule);
+            }
+        }
+
+        Self::schedule_from_tags(&event.tags)
+    }
+
+    fn schedule_from_tags(tags: &[Vec<String>]) -> Option<AgentSchedule> {
+        let mut schedule = AgentSchedule::new();
+        let mut found = false;
+
+        for tag in tags {
+            let tag_name = match tag.get(0) {
+                Some(name) => name.as_str(),
+                None => continue,
+            };
+
+            match tag_name {
+                "heartbeat" => {
+                    if let Some(value) = tag.get(1) {
+                        if let Ok(seconds) = value.parse::<u64>() {
+                            if seconds > 0 {
+                                schedule.heartbeat_seconds = Some(seconds);
+                                found = true;
+                            }
+                        }
+                    }
+                }
+                "trigger" => {
+                    if let Some(value) = tag.get(1) {
+                        if let Some(trigger) = TriggerType::from_tag_value(value) {
+                            schedule = schedule.add_trigger(trigger);
+                            found = true;
+                        }
+                    }
+                }
+                "active" => {
+                    if let Some(value) = tag.get(1) {
+                        let active = matches!(
+                            value.as_str(),
+                            "true" | "1" | "yes" | "enabled"
+                        );
+                        schedule = schedule.with_active(active);
+                        found = true;
+                    }
+                }
+                "business_hours" => {
+                    if let Some(value) = tag.get(1) {
+                        if let Some(hours) = Self::parse_business_hours(value) {
+                            schedule = schedule.with_business_hours(hours);
+                            found = true;
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        if found { Some(schedule) } else { None }
+    }
+
+    fn parse_business_hours(value: &str) -> Option<BusinessHours> {
+        let (days_part, hours_part) = value.split_once(' ')?;
+        let (start_str, end_str) = hours_part.split_once('-')?;
+
+        let days = days_part
+            .split(',')
+            .filter_map(Self::parse_weekday)
+            .collect::<Vec<_>>();
+        if days.is_empty() {
+            return None;
+        }
+
+        let start = Self::parse_time(start_str)?;
+        let end = Self::parse_time(end_str)?;
+
+        BusinessHours::new(days, start, end).ok()
+    }
+
+    fn parse_weekday(value: &str) -> Option<Weekday> {
+        match value {
+            "mon" => Some(Weekday::Mon),
+            "tue" => Some(Weekday::Tue),
+            "wed" => Some(Weekday::Wed),
+            "thu" => Some(Weekday::Thu),
+            "fri" => Some(Weekday::Fri),
+            "sat" => Some(Weekday::Sat),
+            "sun" => Some(Weekday::Sun),
+            _ => None,
+        }
+    }
+
+    fn parse_time(value: &str) -> Option<BusinessTime> {
+        let (hour_str, minute_str) = value.split_once(':')?;
+        let hour = hour_str.parse::<u8>().ok()?;
+        let minute = minute_str.parse::<u8>().ok()?;
+        BusinessTime::new(hour, minute).ok()
     }
 
     /// Handle incoming events from subscription
@@ -362,5 +503,53 @@ mod tests {
         let schedule = trigger.schedule.unwrap();
         assert_eq!(schedule.heartbeat_seconds, Some(900));
         assert_eq!(schedule.triggers.len(), 3);
+    }
+
+    #[test]
+    fn test_schedule_from_tags() {
+        let tags = vec![
+            vec!["d".to_string(), "schedule".to_string()],
+            vec!["heartbeat".to_string(), "120".to_string()],
+            vec!["trigger".to_string(), "mention".to_string()],
+            vec!["trigger".to_string(), "dm".to_string()],
+            vec!["active".to_string(), "false".to_string()],
+            vec![
+                "business_hours".to_string(),
+                "mon,tue 09:00-17:00".to_string(),
+            ],
+        ];
+
+        let schedule = NostrTrigger::schedule_from_tags(&tags).expect("schedule");
+        assert_eq!(schedule.heartbeat_seconds, Some(120));
+        assert_eq!(schedule.triggers.len(), 2);
+        assert!(!schedule.active);
+
+        let hours = schedule.business_hours.expect("hours");
+        assert_eq!(hours.days.len(), 2);
+        assert_eq!(hours.start.hour, 9);
+        assert_eq!(hours.end.hour, 17);
+    }
+
+    #[test]
+    fn test_schedule_from_event_content() {
+        let schedule = AgentSchedule::new()
+            .with_heartbeat(600)
+            .unwrap()
+            .add_trigger(TriggerType::Zap);
+        let content = serde_json::to_string(&schedule).expect("serialize schedule");
+
+        let event = Event {
+            id: "event-id".to_string(),
+            pubkey: "pubkey".to_string(),
+            created_at: 0,
+            kind: KIND_AGENT_SCHEDULE,
+            tags: vec![vec!["heartbeat".to_string(), "120".to_string()]],
+            content,
+            sig: "sig".to_string(),
+        };
+
+        let parsed = NostrTrigger::schedule_from_event(&event).expect("parse schedule");
+        assert_eq!(parsed.heartbeat_seconds, Some(600));
+        assert_eq!(parsed.triggers.len(), 1);
     }
 }
