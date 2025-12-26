@@ -3,8 +3,28 @@
 use anyhow::{Context, Result};
 use colored::Colorize;
 use crate::core::identity::UnifiedIdentity;
+use spark::{Network, SparkSigner, SparkWallet, WalletConfig as SparkWalletConfig};
 use crate::storage::keychain::SecureKeychain;
 use std::path::PathBuf;
+
+fn spark_address_from_mnemonic(mnemonic: &str) -> Option<String> {
+    let signer = SparkSigner::from_mnemonic(mnemonic, "").ok()?;
+    let network = if std::env::var("MAINNET").is_ok() {
+        Network::Mainnet
+    } else {
+        Network::Regtest
+    };
+    let config = SparkWalletConfig {
+        network,
+        api_key: std::env::var("BREEZ_API_KEY").ok(),
+        ..Default::default()
+    };
+    let runtime = tokio::runtime::Runtime::new().ok()?;
+    runtime.block_on(async {
+        let wallet = SparkWallet::new(signer, config).await.ok()?;
+        wallet.get_spark_address().await.ok()
+    })
+}
 
 pub fn init(show_mnemonic: bool) -> Result<()> {
     println!("{}", "Initializing new wallet...".cyan());
@@ -164,6 +184,8 @@ pub fn whoami() -> Result<()> {
     let identity = UnifiedIdentity::from_mnemonic(mnemonic)
         .context("Failed to derive identity")?;
 
+    let npub = identity.npub().context("Failed to encode npub")?;
+
     // Try to load profile
     let config = WalletConfig::load()?;
     let profile_path = config.profile_path()?;
@@ -177,7 +199,11 @@ pub fn whoami() -> Result<()> {
 
     // Display information
     println!("{}", "Identity".bold());
+    println!("  {}: {}", "Nostr npub".bold(), npub);
     println!("  {}: {}", "Nostr Public Key".bold(), identity.nostr_public_key());
+    let spark_address = spark_address_from_mnemonic(&mnemonic_phrase)
+        .unwrap_or_else(|| "unavailable".to_string());
+    println!("  {}: {}", "Spark Address (Lightning)".bold(), spark_address);
     println!();
     println!("{}", "Balance".bold());
     println!("  {}: {} sats", "Total".bold(), 0);

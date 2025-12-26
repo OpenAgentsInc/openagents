@@ -83,14 +83,16 @@ fn test_wallet_whoami_shows_identity() {
     let mnemonic = fs::read_to_string(&keychain).expect("read keychain file");
     let parsed = Mnemonic::parse(mnemonic.trim()).expect("parse mnemonic");
     let identity = UnifiedIdentity::from_mnemonic(parsed).expect("derive identity");
-    let pubkey = identity.nostr_public_key().to_string();
+    let npub = identity.npub().expect("encode npub");
 
     let mut cmd = openagents_cmd(&workspace, &keychain);
     cmd.arg("wallet").arg("whoami");
     cmd.assert()
         .success()
         .stdout(predicate::str::contains("Wallet Information"))
-        .stdout(predicate::str::contains(&pubkey));
+        .stdout(predicate::str::contains("Nostr npub"))
+        .stdout(predicate::str::contains(&npub))
+        .stdout(predicate::str::contains("Spark Address"));
 
     fs::remove_dir_all(&workspace).expect("cleanup workspace");
 }
