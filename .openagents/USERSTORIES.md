@@ -143,6 +143,17 @@ This section tracks which user stories have implemented tests.
 | 3.2.5 | Post a Nostr note from CLI | Integration | `tests/wallet_cli_integration.rs` |
 | 3.2.6 | Send encrypted DMs from CLI | Integration | `tests/wallet_cli_integration.rs` |
 | 3.4.2 | Back up seed phrase | Integration | `tests/wallet_cli_integration.rs` |
+| **d-004: Autopilot Improvement** ||||
+| 4.1.1 | See metrics for each autopilot run | Integration | `crates/autopilot/tests/d004_story_tests.rs` |
+| 4.1.2 | Compare runs against baselines | Integration | `crates/autopilot/tests/d004_story_tests.rs` |
+| 4.1.3 | Identify common tool errors | Integration | `crates/autopilot/tests/d004_story_tests.rs` |
+| 4.1.4 | See success vs failure patterns | Integration | `crates/autopilot/tests/d004_story_tests.rs` |
+| 4.1.5 | Receive anomaly detection alerts | Integration | `crates/autopilot/tests/d004_story_tests.rs` |
+| 4.2.1 | Auto-create issues for detected problems | Integration | `crates/autopilot/tests/d004_story_tests.rs` |
+| 4.2.2 | Suggest hook improvements | Integration | `crates/autopilot/tests/d004_story_tests.rs` |
+| 4.2.3 | Learn from successful runs | Integration | `crates/autopilot/tests/d004_story_tests.rs` |
+| 4.2.4 | Weekly improvement report | Integration | `crates/autopilot/tests/d004_story_tests.rs` |
+| 4.3.1 | Start an autopilot run with a prompt | Integration | `tests/cli_integration.rs` |
 | **d-010: Unified Binary** ||||
 | 10.1.1 | Launch GUI when running `openagents` with no args | Integration | `tests/cli_integration.rs` |
 | 10.1.2 | Run `openagents wallet init` to initialize wallet | Integration | `tests/cli_integration.rs` |
@@ -262,7 +273,7 @@ This section tracks which user stories have implemented tests.
 | `crates/wgpui/src/testing/injection.rs` | EventSequence for synthetic events | 26.3.2 |
 | `crates/wgpui/src/testing/overlay.rs` | InputOverlay for click ripples | 26.2.2, 26.2.3 |
 | `crates/wgpui/src/testing/runner.rs` | TestRunner playback + step control | 26.2.4, 26.2.5 |
-| `tests/cli_integration.rs` | Unified CLI headless launch, wallet init, and delegation coverage | 1.1.1, 1.1.3, 10.1.1-10.1.6, 16.2.1 |
+| `tests/cli_integration.rs` | Unified CLI headless launch, wallet init, and delegation coverage | 1.1.1, 1.1.3, 4.3.1, 10.1.1-10.1.6, 16.2.1 |
 | `tests/wallet_cli_integration.rs` | Wallet identity, profile, contacts, post, DM, and export flows | 1.1.2, 3.1.1-3.1.4, 3.2.5-3.2.6, 3.4.2 |
 | `tests/legacy_binaries.rs` | Legacy binary deprecation warnings + symlink installer coverage | 10.2.1-10.2.2 |
 | `tests/no_stubs.rs` | Stub pattern scanning + exceptions documentation checks | 12.1.1-12.1.4 |
@@ -299,6 +310,7 @@ This section tracks which user stories have implemented tests.
 | `crates/autopilot/src/parallel/docker.rs` | Parallel agent service naming + status parsing | 18.1.1, 18.1.4-18.1.5 |
 | `crates/autopilot/tests/parallel_worktree.rs` | Parallel agent worktree isolation | 18.1.2 |
 | `crates/autopilot/tests/parallel_compose_test.rs` | Parallel compose shared DB + resource overrides | 18.1.3, 18.2.1, 18.2.3 |
+| `crates/autopilot/tests/d004_story_tests.rs` | Autopilot metrics analysis, alerts, learning, and reports | 4.1.1-4.2.4 |
 | `crates/nostr/core/src/tests/event_validation.rs` | NIP-01 event validation and signing tests | 2.1.1-2.1.5 |
 | `crates/nostr/core/src/nip17.rs` | NIP-17 DM creation and gift wrap tests | 2.3.3-2.3.4 |
 | `crates/nostr/core/src/nip44.rs` | NIP-44 encryption/decryption tests | 2.3.1-2.3.2 |
