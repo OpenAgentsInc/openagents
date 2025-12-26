@@ -16,15 +16,12 @@
 
 ---
 
-## Outstanding User Stories (No Test Coverage Yet) — 5 total
+## Outstanding User Stories (No Test Coverage Yet) — 4 total
 
 These story IDs are defined in `.openagents/USERSTORIES.md` but are not listed in the Covered Stories table yet.
 
-Priority breakdown: P0 = 0, P1 = 3, P2 = 2.
+Priority breakdown: P0 = 0, P1 = 3, P2 = 1.
 P0 focus IDs: none.
-
-### d-006: NIP-SA (Sovereign Agents Protocol) (1)
-- [ ] 6.5.4 (P2) As an agent, I want to redact sensitive content from trajectories, so that secrets aren't leaked.
 
 ### d-007: FROSTR (Threshold Signatures) (4)
 - [ ] 7.1.4 (P2) As an operator, I want to reshare a key to new holders, so that I can rotate participants.
@@ -679,7 +676,7 @@ P0 focus IDs: none.
 
 ### Phase 3: Testing & Quality 🟡 IN PROGRESS
 
-Story coverage is incomplete (5 outstanding stories; see Outstanding User Stories).
+Story coverage is incomplete (4 outstanding stories; see Outstanding User Stories).
 12. **d-013**: Testing framework coverage ✅ (700+ tests)
 13. **d-026**: E2E test viewer ✅
 14. **d-014**: NIP-SA/Bifrost E2E tests ✅ (159 tests verified)

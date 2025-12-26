@@ -67,7 +67,9 @@
 //! }
 //! ```
 
+use regex::Regex;
 use serde::{Deserialize, Serialize};
+use std::sync::OnceLock;
 use thiserror::Error;
 
 /// Kind for trajectory session event
@@ -249,6 +251,52 @@ impl TrajectoryEventContent {
     pub fn from_json(json: &str) -> Result<Self, TrajectoryError> {
         serde_json::from_str(json).map_err(|e| TrajectoryError::Deserialization(e.to_string()))
     }
+
+    /// Redact sensitive fields from trajectory content.
+    pub fn redact_sensitive(&self) -> Self {
+        let mut redacted = serde_json::Map::new();
+        let mut thinking_hash = None;
+
+        for (key, value) in &self.data {
+            if self.step_type == StepType::Thinking && key == "content" {
+                if let serde_json::Value::String(content) = value {
+                    thinking_hash = Some(hash_text(content.as_str()));
+                }
+                redacted.insert(
+                    key.clone(),
+                    serde_json::Value::String(REDACTED_THINKING_CONTENT.to_string()),
+                );
+                continue;
+            }
+
+            if self.step_type == StepType::Thinking && key == "hash" {
+                continue;
+            }
+
+            if is_sensitive_key(key) {
+                redacted.insert(
+                    key.clone(),
+                    serde_json::Value::String(REDACTED_PLACEHOLDER.to_string()),
+                );
+                continue;
+            }
+
+            redacted.insert(key.clone(), redact_json_value(value));
+        }
+
+        if self.step_type == StepType::Thinking {
+            if let Some(hash) = thinking_hash {
+                redacted.insert("hash".to_string(), serde_json::Value::String(hash));
+            } else if let Some(existing_hash) = self.data.get("hash") {
+                redacted.insert("hash".to_string(), redact_json_value(existing_hash));
+            }
+        }
+
+        Self {
+            step_type: self.step_type.clone(),
+            data: redacted,
+        }
+    }
 }
 
 /// Trajectory session event wrapper
@@ -351,6 +399,96 @@ impl TrajectoryEvent {
             StepType::Thinking => "Thinking".to_string(),
         }
     }
+}
+
+const REDACTED_PLACEHOLDER: &str = "[REDACTED]";
+const REDACTED_THINKING_CONTENT: &str = "<redacted>";
+
+static SECRET_PATTERNS: OnceLock<Vec<Regex>> = OnceLock::new();
+
+fn secret_patterns() -> &'static [Regex] {
+    SECRET_PATTERNS.get_or_init(|| {
+        vec![
+            Regex::new(r"sk-ant-[a-zA-Z0-9_-]{20,}").unwrap(),
+            Regex::new(r"sk-[a-zA-Z0-9]{20,}").unwrap(),
+            Regex::new(r"gh[pousr]_[a-zA-Z0-9]{36,}").unwrap(),
+            Regex::new(r"AKIA[0-9A-Z]{16}").unwrap(),
+            Regex::new(r"xox[baprs]-[0-9]+-[0-9]+-[a-zA-Z0-9]+").unwrap(),
+            Regex::new(r"eyJ[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+").unwrap(),
+            Regex::new(r"nsec1[0-9a-z]{20,}").unwrap(),
+            Regex::new(r"-----BEGIN [A-Z ]+ PRIVATE KEY-----").unwrap(),
+            Regex::new(r"(?i)bearer\s+[a-z0-9_.-]+").unwrap(),
+        ]
+    })
+}
+
+fn redact_text(text: &str) -> String {
+    let mut redacted = text.to_string();
+    for pattern in secret_patterns() {
+        redacted = pattern
+            .replace_all(&redacted, REDACTED_PLACEHOLDER)
+            .to_string();
+    }
+    redacted
+}
+
+fn redact_json_value(value: &serde_json::Value) -> serde_json::Value {
+    use serde_json::Value;
+
+    match value {
+        Value::String(s) => Value::String(redact_text(s)),
+        Value::Array(values) => Value::Array(values.iter().map(redact_json_value).collect()),
+        Value::Object(map) => {
+            let mut redacted = serde_json::Map::new();
+            for (key, value) in map {
+                let new_value = if is_sensitive_key(key) {
+                    Value::String(REDACTED_PLACEHOLDER.to_string())
+                } else {
+                    redact_json_value(value)
+                };
+                redacted.insert(key.clone(), new_value);
+            }
+            Value::Object(redacted)
+        }
+        other => other.clone(),
+    }
+}
+
+fn is_sensitive_key(key: &str) -> bool {
+    let key = key.to_lowercase();
+    let sensitive = [
+        "password",
+        "passwd",
+        "pwd",
+        "secret",
+        "token",
+        "apikey",
+        "api_key",
+        "api-key",
+        "auth",
+        "credential",
+        "private_key",
+        "private-key",
+        "privatekey",
+        "access_key",
+        "access-key",
+        "accesskey",
+        "secret_key",
+        "secret-key",
+        "secretkey",
+        "seed",
+        "mnemonic",
+    ];
+
+    sensitive.iter().any(|pattern| key.contains(pattern))
+}
+
+fn hash_text(text: &str) -> String {
+    use sha2::{Digest, Sha256};
+
+    let mut hasher = Sha256::new();
+    hasher.update(text.as_bytes());
+    hex::encode(hasher.finalize())
 }
 
 #[cfg(test)]
@@ -508,6 +646,69 @@ mod tests {
         let private = TrajectoryVisibility::Private;
         let json = serde_json::to_string(&private).unwrap();
         assert_eq!(json, "\"private\"");
+    }
+
+    #[test]
+    fn test_redact_thinking_content() {
+        use sha2::{Digest, Sha256};
+
+        let content = "Sensitive reasoning with sk-ant-12345678901234567890";
+        let event = TrajectoryEventContent::new(StepType::Thinking)
+            .with_data("content", serde_json::Value::String(content.to_string()));
+
+        let redacted = event.redact_sensitive();
+        let redacted_content = redacted
+            .data
+            .get("content")
+            .and_then(|value| value.as_str())
+            .unwrap();
+
+        assert_eq!(redacted_content, "<redacted>");
+
+        let mut hasher = Sha256::new();
+        hasher.update(content.as_bytes());
+        let expected_hash = hex::encode(hasher.finalize());
+
+        let hash_value = redacted
+            .data
+            .get("hash")
+            .and_then(|value| value.as_str())
+            .unwrap();
+        assert_eq!(hash_value, expected_hash);
+    }
+
+    #[test]
+    fn test_redact_sensitive_keys() {
+        let event = TrajectoryEventContent::new(StepType::ToolUse)
+            .with_data("api_key", serde_json::Value::String("sk-test".to_string()))
+            .with_data("note", serde_json::Value::String("safe".to_string()));
+
+        let redacted = event.redact_sensitive();
+        assert_eq!(
+            redacted.data.get("api_key"),
+            Some(&serde_json::Value::String("[REDACTED]".to_string()))
+        );
+        assert_eq!(
+            redacted.data.get("note"),
+            Some(&serde_json::Value::String("safe".to_string()))
+        );
+    }
+
+    #[test]
+    fn test_redact_embedded_secrets() {
+        let message = "token sk-ant-12345678901234567890 should be hidden";
+        let event = TrajectoryEventContent::new(StepType::Message)
+            .with_data("content", serde_json::Value::String(message.to_string()));
+
+        let redacted = event.redact_sensitive();
+        let redacted_content = redacted
+            .data
+            .get("content")
+            .and_then(|value| value.as_str())
+            .unwrap();
+
+        assert!(redacted_content.contains("[REDACTED]"));
+        assert!(!redacted_content.contains("sk-ant-"));
     }
 
     #[test]
