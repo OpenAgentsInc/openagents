@@ -20,6 +20,7 @@ use breez_sdk_spark::{
     GetInfoRequest,
     PrepareSendPaymentRequest, SendPaymentRequest,
     ReceivePaymentRequest, ReceivePaymentMethod,
+    ListPaymentsRequest,
 };
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -510,6 +511,43 @@ impl SparkWallet {
         description: Option<String>,
     ) -> Result<ReceivePaymentResponse, SparkError> {
         self.create_invoice(amount_sats, description, None).await
+    }
+
+    /// List payment history
+    ///
+    /// Returns a list of payments with optional filtering and pagination.
+    ///
+    /// # Arguments
+    /// * `limit` - Maximum number of payments to return
+    /// * `offset` - Number of payments to skip (for pagination)
+    ///
+    /// # Returns
+    /// A vector of `Payment` objects
+    ///
+    /// # Example
+    /// ```rust,ignore
+    /// let payments = wallet.list_payments(20, 0).await?;
+    /// for payment in payments {
+    ///     println!("{}: {} sats", payment.id, payment.amount_sat);
+    /// }
+    /// ```
+    pub async fn list_payments(
+        &self,
+        limit: Option<u32>,
+        offset: Option<u32>,
+    ) -> Result<Vec<Payment>, SparkError> {
+        let request = ListPaymentsRequest {
+            limit,
+            offset,
+            sort_ascending: Some(false), // newest first
+            ..Default::default()
+        };
+
+        let response = self.sdk.list_payments(request)
+            .await
+            .map_err(|e| SparkError::Wallet(format!("Failed to list payments: {}", e)))?;
+
+        Ok(response.payments)
     }
 }
 

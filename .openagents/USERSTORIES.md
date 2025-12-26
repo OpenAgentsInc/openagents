@@ -51,6 +51,9 @@ This section tracks which user stories have implemented tests.
 | 1.1.1 | Generate mnemonic on wallet init | Integration | `tests/cli_integration.rs` |
 | 1.1.2 | Restore wallet from mnemonic | Integration | `tests/wallet_cli_integration.rs` |
 | 1.1.3 | Store mnemonic in secure keychain | Integration | `tests/cli_integration.rs` |
+| 1.2.3 | View transaction history with timestamps | Unit | `crates/spark/src/wallet.rs` |
+| 1.5.1 | Clear error messages when payment fails | Unit | `crates/spark/src/error.rs` |
+| 1.5.2 | Failed transactions don't deduct balance | Unit | `crates/spark/src/error.rs` |
 | **d-002: Nostr Protocol Implementation** ||||
 | 2.1.1 | Create and sign kind:1 text notes | Unit | `crates/nostr/core/src/tests/event_validation.rs` |
 | 2.1.2 | Create and sign kind:0 metadata events | Unit | `crates/nostr/core/src/tests/event_validation.rs` |
@@ -169,6 +172,7 @@ This section tracks which user stories have implemented tests.
 | 3.1.4 | See follower count and list | Integration | `tests/wallet_cli_integration.rs` |
 | 3.2.5 | Post a Nostr note from CLI | Integration | `tests/wallet_cli_integration.rs` |
 | 3.2.6 | Send encrypted DMs from CLI | Integration | `tests/wallet_cli_integration.rs` |
+| 3.4.1 | Lock wallet with OS keychain protection | Unit | `crates/wallet/src/storage/keychain.rs` |
 | 3.4.2 | Back up seed phrase | Integration | `tests/wallet_cli_integration.rs` |
 | **d-004: Autopilot Improvement** ||||
 | 4.1.1 | See metrics for each autopilot run | Integration | `crates/autopilot/tests/d004_story_tests.rs` |
