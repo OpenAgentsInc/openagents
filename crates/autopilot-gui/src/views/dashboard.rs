@@ -173,10 +173,22 @@ impl Component for DashboardView {
             })
             .unwrap_or_else(|| "Memory: -".to_string());
 
+        let error_rate_line = state
+            .session_error_rate()
+            .map(|rate| format!("Error rate: {:.1}%", rate * 100.0))
+            .unwrap_or_else(|| "Error rate: -".to_string());
+
+        let session_cost_line = state
+            .session_cost_usd()
+            .map(|cost| format!("Session est: ${:.2}", cost))
+            .unwrap_or_else(|| "Session est: -".to_string());
+
         let summary_lines = [
             format!("Sessions: {}", state.summary.total_sessions),
             format!("Issues: {}", state.summary.total_issues_completed),
             format!("Cost: ${:.2}", state.summary.total_cost_usd),
+            error_rate_line,
+            session_cost_line,
             format!("Rate: {:.0}%", state.summary.completion_rate * 100.0),
             full_auto_line,
             memory_line,

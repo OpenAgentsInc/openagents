@@ -16,11 +16,11 @@
 
 ---
 
-## Outstanding User Stories (No Test Coverage Yet) — 16 total
+## Outstanding User Stories (No Test Coverage Yet) — 13 total
 
 These story IDs are defined in `.openagents/USERSTORIES.md` but are not listed in the Covered Stories table yet.
 
-Priority breakdown: P0 = 0, P1 = 10, P2 = 6.
+Priority breakdown: P0 = 0, P1 = 8, P2 = 5.
 P0 focus IDs: none.
 
 ### d-006: NIP-SA (Sovereign Agents Protocol) (7)
@@ -41,11 +41,6 @@ P0 focus IDs: none.
 ### d-008: Unified Marketplace (2)
 - [ ] 8.1.5 (P1) As a compute provider, I want to set my availability schedule, so that I'm not disturbed off-hours.
 - [ ] 8.3.5 (P2) As a data provider, I want to offer dataset previews, so that buyers can evaluate before purchasing.
-
-### d-009: Autopilot GUI (3)
-- [ ] 9.3.2 (P1) As a user, I want to see error rate for the session, so that I can assess quality.
-- [ ] 9.3.3 (P1) As a user, I want to see cost estimate for the session, so that I can budget.
-- [ ] 9.3.4 (P2) As a user, I want to see a timeline of agent activity, so that I can visualize the flow.
 
 ---
 
@@ -271,22 +266,22 @@ P0 focus IDs: none.
 
 ### d-009: Autopilot GUI 🟡
 
-**Current:** Dashboard exists (Actix-web). Needs WGPUI native port. Story gaps: 9.3.2-9.3.4 (see Outstanding User Stories).
+**Current:** WGPUI autopilot-gui is live (Dashboard/Chat/Context/Parallel) with error rate, cost estimate, and activity timeline.
 
-- [ ] **Port to Native WGPUI**
-  - [ ] Remove Actix-web dependency
-  - [ ] winit/wgpu event loop
-  - [ ] In-process backend channels
-- [ ] **Core Panes**
-  - [ ] Dashboard pane (APM, metrics)
-  - [ ] Chat pane (agent conversation)
-  - [ ] Context pane (token usage, tools)
-  - [ ] Parallel agents pane
+- [x] **Port to Native WGPUI**
+  - [x] Remove Actix-web dependency
+  - [x] winit/wgpu event loop
+  - [x] In-process backend channels
+- [x] **Core Panes**
+  - [x] Dashboard pane (APM, metrics)
+  - [x] Chat pane (agent conversation)
+  - [x] Context pane (session info + timeline)
+  - [x] Parallel agents pane
 - [ ] **Features**
-  - [ ] Real-time APM gauge
+  - [x] Real-time APM gauge
   - [ ] Token usage visualization
-  - [ ] Tool execution timeline
-  - [ ] Thinking block toggle
+  - [x] Tool execution timeline
+  - [x] Thinking block toggle
   - [ ] Session browser with search
   - [ ] Multi-session tabs
 
@@ -690,11 +685,11 @@ P0 focus IDs: none.
 8. **d-018**: Parallel containers ✅
 9. **d-019**: Local inference ✅
 10. **d-021**: OpenCode SDK ✅
-11. **d-009**: Autopilot GUI native port 🟡 (future - WGPUI port)
+11. **d-009**: Autopilot GUI native port 🟡 (WGPUI port done; UX polish pending)
 
 ### Phase 3: Testing & Quality 🟡 IN PROGRESS
 
-Story coverage is incomplete (22 outstanding stories; see Outstanding User Stories).
+Story coverage is incomplete (13 outstanding stories; see Outstanding User Stories).
 12. **d-013**: Testing framework coverage ✅ (700+ tests)
 13. **d-026**: E2E test viewer ✅
 14. **d-014**: NIP-SA/Bifrost E2E tests ✅ (159 tests verified)

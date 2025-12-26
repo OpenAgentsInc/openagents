@@ -950,6 +950,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "autopilot",
+ "chrono",
  "claude-agent-sdk",
  "issues",
  "pollster",

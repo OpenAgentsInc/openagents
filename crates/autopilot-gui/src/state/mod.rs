@@ -49,6 +49,12 @@ pub struct ParallelPlatformInfo {
     pub cpu_limit: String,
 }
 
+#[derive(Clone, Debug, PartialEq)]
+pub struct TimelineEntry {
+    pub label: String,
+    pub timestamp: Option<String>,
+}
+
 /// APM tier classification for color-coded display
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum ApmTier {
@@ -140,6 +146,42 @@ impl AppState {
     pub fn is_thinking_expanded(&self, index: usize) -> bool {
         self.thinking_expanded.contains(&index)
     }
+
+    pub fn active_session(&self) -> Option<&SessionMetrics> {
+        if let Some(id) = self.log_session_id.as_ref() {
+            if let Some(session) = self.sessions.iter().find(|session| &session.id == id) {
+                return Some(session);
+            }
+        }
+        self.sessions.first()
+    }
+
+    pub fn session_error_rate(&self) -> Option<f64> {
+        let session = self.active_session()?;
+        if session.tool_calls <= 0 {
+            return None;
+        }
+        Some(session.tool_errors as f64 / session.tool_calls as f64)
+    }
+
+    pub fn session_cost_usd(&self) -> Option<f64> {
+        self.active_session().map(|session| session.cost_usd)
+    }
+
+    pub fn timeline_entries(&self, limit: usize) -> Vec<TimelineEntry> {
+        if limit == 0 || self.chat_entries.is_empty() {
+            return Vec::new();
+        }
+
+        let start = self.chat_entries.len().saturating_sub(limit);
+        self.chat_entries[start..]
+            .iter()
+            .map(|entry| TimelineEntry {
+                label: timeline_label(entry),
+                timestamp: chat_entry_timestamp(entry).cloned(),
+            })
+            .collect()
+    }
 }
 
 impl Default for AppState {
@@ -169,9 +211,71 @@ impl Default for AppState {
     }
 }
 
+fn chat_entry_timestamp(entry: &ChatEntry) -> Option<&String> {
+    match entry {
+        ChatEntry::User { timestamp, .. } => timestamp.as_ref(),
+        ChatEntry::Assistant { timestamp, .. } => timestamp.as_ref(),
+        ChatEntry::System { timestamp, .. } => timestamp.as_ref(),
+        ChatEntry::ToolCall(_) => None,
+    }
+}
+
+fn tool_status_label(status: ToolStatus) -> &'static str {
+    match status {
+        ToolStatus::Pending => "pending",
+        ToolStatus::Running => "running",
+        ToolStatus::Success => "success",
+        ToolStatus::Error => "error",
+        ToolStatus::Cancelled => "cancelled",
+    }
+}
+
+fn timeline_label(entry: &ChatEntry) -> String {
+    match entry {
+        ChatEntry::User { .. } => "User prompt".to_string(),
+        ChatEntry::Assistant { streaming, .. } => {
+            if *streaming {
+                "Assistant (streaming)".to_string()
+            } else {
+                "Assistant response".to_string()
+            }
+        }
+        ChatEntry::System { .. } => "System message".to_string(),
+        ChatEntry::ToolCall(tool) => {
+            format!("Tool {} ({})", tool.name, tool_status_label(tool.status))
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use autopilot::metrics::SessionStatus;
+    use chrono::Utc;
+
+    fn make_session(id: &str, tool_calls: i32, tool_errors: i32, cost: f64) -> SessionMetrics {
+        SessionMetrics {
+            id: id.to_string(),
+            timestamp: Utc::now(),
+            model: "sonnet".to_string(),
+            prompt: "test".to_string(),
+            duration_seconds: 60.0,
+            tokens_in: 0,
+            tokens_out: 0,
+            tokens_cached: 0,
+            cost_usd: cost,
+            issues_claimed: 0,
+            issues_completed: 0,
+            tool_calls,
+            tool_errors,
+            final_status: SessionStatus::Completed,
+            messages: 0,
+            apm: None,
+            source: "autopilot".to_string(),
+            issue_numbers: None,
+            directive_id: None,
+        }
+    }
 
     #[test]
     fn test_apm_tier_baseline() {
@@ -212,5 +316,68 @@ mod tests {
     fn test_app_state_default_has_no_apm() {
         let state = AppState::default();
         assert!(state.current_apm.is_none());
+    }
+
+    #[test]
+    fn test_active_session_prefers_log_session_id() {
+        let mut state = AppState::default();
+        state.sessions = vec![make_session("first", 0, 0, 0.0), make_session("second", 3, 1, 1.5)];
+        state.log_session_id = Some("second".to_string());
+
+        let session = state.active_session().expect("active session");
+        assert_eq!(session.id, "second");
+    }
+
+    #[test]
+    fn test_session_error_rate_handles_zero_calls() {
+        let mut state = AppState::default();
+        state.sessions = vec![make_session("session", 0, 0, 0.0)];
+        assert_eq!(state.session_error_rate(), None);
+    }
+
+    #[test]
+    fn test_session_error_rate_calculates_ratio() {
+        let mut state = AppState::default();
+        state.sessions = vec![make_session("session", 10, 2, 0.0)];
+        let rate = state.session_error_rate().expect("rate");
+        assert!((rate - 0.2).abs() < 1e-6);
+    }
+
+    #[test]
+    fn test_session_cost_usd_uses_active_session() {
+        let mut state = AppState::default();
+        state.sessions = vec![make_session("session", 1, 0, 4.25)];
+        assert_eq!(state.session_cost_usd(), Some(4.25));
+    }
+
+    #[test]
+    fn test_timeline_entries_use_recent_activity() {
+        let mut state = AppState::default();
+        state.chat_entries = vec![
+            ChatEntry::User {
+                text: "hello".to_string(),
+                timestamp: Some("t1".to_string()),
+            },
+            ChatEntry::ToolCall(ToolCallData {
+                id: "tool-1".to_string(),
+                name: "Read".to_string(),
+                tool_type: ToolType::Read,
+                status: ToolStatus::Success,
+                input: None,
+                output: None,
+            }),
+            ChatEntry::Assistant {
+                text: "done".to_string(),
+                timestamp: Some("t2".to_string()),
+                streaming: false,
+            },
+        ];
+
+        let entries = state.timeline_entries(2);
+        assert_eq!(entries.len(), 2);
+        assert_eq!(entries[0].label, "Tool Read (success)");
+        assert_eq!(entries[0].timestamp, None);
+        assert_eq!(entries[1].label, "Assistant response");
+        assert_eq!(entries[1].timestamp.as_deref(), Some("t2"));
     }
 }

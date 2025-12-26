@@ -21,6 +21,7 @@ impl Component for ContextView {
         let state = self.state.borrow();
         let padding = theme::spacing::MD;
         let line_height = theme::font_size::SM * 1.5;
+        let line_height_xs = theme::font_size::XS * 1.5;
         let mut y = bounds.origin.y + padding;
         let available_width = (bounds.size.width - padding * 2.0).max(0.0);
 
@@ -55,15 +56,62 @@ impl Component for ContextView {
         let mut path_text = Text::new(path_line)
             .font_size(theme::font_size::XS)
             .color(theme::text::MUTED);
+        let path_y = y + theme::spacing::SM;
         path_text.paint(
             Bounds::new(
                 bounds.origin.x + padding,
-                y + theme::spacing::SM,
+                path_y,
                 bounds.size.width - padding * 2.0,
-                line_height,
+                line_height_xs,
             ),
             cx,
         );
+
+        y = path_y + line_height_xs + theme::spacing::MD;
+        let max_y = bounds.origin.y + bounds.size.height - padding;
+
+        let timeline_entries = state.timeline_entries(6);
+        let header_line = if timeline_entries.is_empty() {
+            "Recent activity: none".to_string()
+        } else {
+            "Recent activity".to_string()
+        };
+        let header_line = fit_text(cx, &header_line, theme::font_size::XS, available_width);
+        let mut header_text = Text::new(header_line)
+            .font_size(theme::font_size::XS)
+            .color(theme::text::MUTED);
+        header_text.paint(
+            Bounds::new(
+                bounds.origin.x + padding,
+                y,
+                bounds.size.width - padding * 2.0,
+                line_height_xs,
+            ),
+            cx,
+        );
+        y += line_height_xs;
+
+        for entry in timeline_entries {
+            if y + line_height_xs > max_y {
+                break;
+            }
+            let time = entry.timestamp.as_deref().unwrap_or("-");
+            let line = format!("{}  {}", time, entry.label);
+            let line = fit_text(cx, &line, theme::font_size::XS, available_width);
+            let mut text = Text::new(line)
+                .font_size(theme::font_size::XS)
+                .color(theme::text::PRIMARY);
+            text.paint(
+                Bounds::new(
+                    bounds.origin.x + padding,
+                    y,
+                    bounds.size.width - padding * 2.0,
+                    line_height_xs,
+                ),
+                cx,
+            );
+            y += line_height_xs;
+        }
     }
 
     fn event(
