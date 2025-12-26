@@ -223,6 +223,9 @@ This section tracks which user stories have implemented tests.
 | 9.2.4 | Session history list | Unit | `crates/wgpui/src/components/molecules/session_card.rs` |
 | 9.2.5 | Export session transcript | Unit | `crates/wgpui/src/components/molecules/entry_actions.rs` |
 | 9.3.1 | See current APM in the GUI | Unit | `crates/wgpui/src/components/atoms/apm_gauge.rs` |
+| 9.3.2 | See session error rate in the GUI | Unit | `crates/autopilot-gui/src/state/mod.rs` |
+| 9.3.3 | See session cost estimate in the GUI | Unit | `crates/autopilot-gui/src/state/mod.rs` |
+| 9.3.4 | See timeline of agent activity | Unit | `crates/autopilot-gui/src/state/mod.rs` |
 | **d-003: OpenAgents Wallet** ||||
 | 3.1.1 | Show identity via `openagents wallet whoami` | Integration | `tests/wallet_cli_integration.rs` |
 | 3.1.2 | Update Nostr profile fields | Integration | `tests/wallet_cli_integration.rs` |
@@ -415,6 +418,7 @@ This section tracks which user stories have implemented tests.
 | `tests/autopilot_gui_stack.rs` | Autopilot GUI WGPUI-only dependency checks | 25.2.2 |
 | `tests/wgpui_platform_support.rs` | WGPUI web/desktop backend feature checks | 23.1.4-23.1.5 |
 | `tests/wgpui_examples_only.rs` | Example files guard against legacy web stack | 25.2.3 |
+| `crates/autopilot-gui/src/state/mod.rs` | Autopilot GUI session stats + timeline helpers | 9.3.2-9.3.4 |
 | `crates/opencode-sdk/tests/opencode_sdk_integration.rs` | OpenCode SDK mock server + SSE integration tests | 21.1.1-21.2.2 |
 | `crates/testing/src/lib.rs` | Testing crate smoke and parallel task tests | 13.1.1-13.1.2 |
 | `crates/testing/src/mock_relay.rs` | Mock relay loopback storage tests | 13.2.2 |

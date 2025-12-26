@@ -33,4 +33,5 @@ pollster = { version = "0.4" }
 tokio = { workspace = true }
 
 [dev-dependencies]
+chrono = { workspace = true }
 tempfile = "3.10"
