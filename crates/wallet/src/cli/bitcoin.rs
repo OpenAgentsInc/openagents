@@ -14,6 +14,7 @@ const CLIPBOARD_FILE_ENV: &str = "OPENAGENTS_CLIPBOARD_FILE";
 const NOTIFICATION_FILE_ENV: &str = "OPENAGENTS_NOTIFICATION_FILE";
 const RETRY_PAGE_SIZE: u32 = 50;
 const RETRY_MAX_PAGES: u32 = 20;
+const NETWORK_STATUS_TIMEOUT_SECS: u64 = 5;
 
 /// Get or create the SparkWallet from keychain mnemonic
 async fn get_wallet() -> Result<SparkWallet> {
@@ -60,6 +61,20 @@ pub fn balance() -> Result<()> {
         let output = format_balance_display(&balance, usd_rate);
         print!("{}", output);
 
+        Ok(())
+    })
+}
+
+/// Show Spark network connectivity status
+pub fn status() -> Result<()> {
+    let rt = tokio::runtime::Runtime::new()?;
+    rt.block_on(async {
+        let wallet = get_wallet().await?;
+        let report = wallet
+            .network_status(std::time::Duration::from_secs(NETWORK_STATUS_TIMEOUT_SECS))
+            .await;
+        let output = format_network_status(report, wallet.config().network);
+        print!("{}", output);
         Ok(())
     })
 }
@@ -186,6 +201,19 @@ fn format_receive_address(address: &str, show_qr: bool) -> Result<String> {
     }
 
     Ok(output)
+}
+
+fn format_network_status(report: spark::NetworkStatusReport, network: spark::Network) -> String {
+    let mut output = String::new();
+    output.push_str("Wallet Network Status\n");
+    output.push_str("────────────────────────────\n");
+    output.push_str(&format!("  Status:  {}\n", report.status.as_str()));
+    output.push_str(&format!("  Network: {:?}\n", network));
+    if let Some(detail) = report.detail {
+        output.push_str(&format!("  Reason:  {}\n", detail));
+    }
+    output.push('\n');
+    output
 }
 
 fn payment_notification_message(payment: &spark::Payment) -> Option<String> {
@@ -1170,6 +1198,23 @@ mod tests {
         let output = format_balance_display(&balance, Some(25_000.0));
         assert!(output.contains("Total:     100000000 sats"));
         assert!(output.contains("$25000.00"));
+    }
+
+    #[test]
+    fn test_format_network_status_connected() {
+        let report = spark::NetworkStatusReport::connected();
+        let output = format_network_status(report, spark::Network::Regtest);
+        assert!(output.contains("Status:  Connected"));
+        assert!(output.contains("Network: Regtest"));
+        assert!(!output.contains("Reason:"));
+    }
+
+    #[test]
+    fn test_format_network_status_disconnected_includes_reason() {
+        let report = spark::NetworkStatusReport::disconnected(Some("offline".to_string()));
+        let output = format_network_status(report, spark::Network::Mainnet);
+        assert!(output.contains("Status:  Disconnected"));
+        assert!(output.contains("Reason:  offline"));
     }
 
     #[test]

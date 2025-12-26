@@ -34,6 +34,9 @@ pub enum WalletCommands {
     /// Show wallet balance
     Balance,
 
+    /// Show Spark network status
+    Status,
+
     /// Generate receiving address
     Receive {
         /// Amount to request (optional)
@@ -248,6 +251,7 @@ pub fn run(cmd: WalletCommands) -> anyhow::Result<()> {
         },
         WalletCommands::Whoami => wallet::cli::identity::whoami(),
         WalletCommands::Balance => wallet::cli::bitcoin::balance(),
+        WalletCommands::Status => wallet::cli::bitcoin::status(),
         WalletCommands::Receive { amount, expiry, qr, copy } => {
             wallet::cli::bitcoin::receive(amount, qr, copy, expiry)
         }

@@ -21,11 +21,12 @@ use breez_sdk_spark::{
     PrepareSendPaymentRequest, SendPaymentRequest,
     ReceivePaymentRequest, ReceivePaymentMethod,
     ListPaymentsRequest,
+    SyncWalletRequest,
     EventListener,
 };
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 // Re-export SDK types that consumers need
 pub use breez_sdk_spark::{
@@ -143,6 +144,45 @@ pub struct WalletInfo {
     pub synced: bool,
     /// Number of pending operations
     pub pending_ops: u32,
+}
+
+/// Network connectivity status for the Spark wallet
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum NetworkStatus {
+    Connected,
+    Disconnected,
+}
+
+impl NetworkStatus {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            NetworkStatus::Connected => "Connected",
+            NetworkStatus::Disconnected => "Disconnected",
+        }
+    }
+}
+
+/// Network status result with optional detail
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NetworkStatusReport {
+    pub status: NetworkStatus,
+    pub detail: Option<String>,
+}
+
+impl NetworkStatusReport {
+    pub fn connected() -> Self {
+        Self {
+            status: NetworkStatus::Connected,
+            detail: None,
+        }
+    }
+
+    pub fn disconnected(detail: Option<String>) -> Self {
+        Self {
+            status: NetworkStatus::Disconnected,
+            detail,
+        }
+    }
 }
 
 /// Configuration for initializing a Spark wallet
@@ -361,6 +401,19 @@ impl SparkWallet {
             lightning_sats: 0, // Spark SDK handles Lightning internally
             onchain_sats: 0,   // On-chain shown separately via deposits
         })
+    }
+
+    /// Check network connectivity by forcing a sync with a timeout
+    pub async fn network_status(&self, timeout: Duration) -> NetworkStatusReport {
+        let request = SyncWalletRequest {};
+        match tokio::time::timeout(timeout, self.sdk.sync_wallet(request)).await {
+            Ok(Ok(_)) => NetworkStatusReport::connected(),
+            Ok(Err(err)) => NetworkStatusReport::disconnected(Some(err.to_string())),
+            Err(_) => NetworkStatusReport::disconnected(Some(format!(
+                "Timed out after {} seconds",
+                timeout.as_secs()
+            ))),
+        }
     }
 
     /// Prepare a payment by validating the payment request and calculating fees
