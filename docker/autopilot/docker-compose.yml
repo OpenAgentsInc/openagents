@@ -26,11 +26,6 @@ x-agent-common: &agent-common
     - AUTOPILOT_FULL_AUTO=true
     - RUST_LOG=${RUST_LOG:-info}
   restart: unless-stopped
-  deploy:
-    resources:
-      limits:
-        memory: ${AGENT_MEMORY:-12G}
-        cpus: "${AGENT_CPUS:-4}"
   networks:
     - autopilot-net
 
@@ -40,6 +35,11 @@ services:
     <<: *agent-common
     container_name: autopilot-001
     hostname: agent-001
+    deploy:
+      resources:
+        limits:
+          memory: ${AGENT_MEMORY_001:-12G}
+          cpus: "${AGENT_CPUS_001:-4}"
     volumes:
       # Workspace (git worktree)
       - ../../.worktrees/agent-001:/workspace:rw
@@ -63,6 +63,11 @@ services:
     <<: *agent-common
     container_name: autopilot-002
     hostname: agent-002
+    deploy:
+      resources:
+        limits:
+          memory: ${AGENT_MEMORY_002:-12G}
+          cpus: "${AGENT_CPUS_002:-4}"
     volumes:
       - ../../.worktrees/agent-002:/workspace:rw
       - ../../autopilot.db:/shared/autopilot.db:rw
@@ -80,6 +85,11 @@ services:
     <<: *agent-common
     container_name: autopilot-003
     hostname: agent-003
+    deploy:
+      resources:
+        limits:
+          memory: ${AGENT_MEMORY_003:-12G}
+          cpus: "${AGENT_CPUS_003:-4}"
     volumes:
       - ../../.worktrees/agent-003:/workspace:rw
       - ../../autopilot.db:/shared/autopilot.db:rw
@@ -99,6 +109,11 @@ services:
     hostname: agent-004
     profiles:
       - extended
+    deploy:
+      resources:
+        limits:
+          memory: ${AGENT_MEMORY_004:-12G}
+          cpus: "${AGENT_CPUS_004:-4}"
     volumes:
       - ../../.worktrees/agent-004:/workspace:rw
       - ../../autopilot.db:/shared/autopilot.db:rw
@@ -118,6 +133,11 @@ services:
     hostname: agent-005
     profiles:
       - extended
+    deploy:
+      resources:
+        limits:
+          memory: ${AGENT_MEMORY_005:-12G}
+          cpus: "${AGENT_CPUS_005:-4}"
     volumes:
       - ../../.worktrees/agent-005:/workspace:rw
       - ../../autopilot.db:/shared/autopilot.db:rw
@@ -137,6 +157,11 @@ services:
     hostname: agent-006
     profiles:
       - linux-full
+    deploy:
+      resources:
+        limits:
+          memory: ${AGENT_MEMORY_006:-12G}
+          cpus: "${AGENT_CPUS_006:-4}"
     volumes:
       - ../../.worktrees/agent-006:/workspace:rw
       - ../../autopilot.db:/shared/autopilot.db:rw
@@ -155,6 +180,11 @@ services:
     hostname: agent-007
     profiles:
       - linux-full
+    deploy:
+      resources:
+        limits:
+          memory: ${AGENT_MEMORY_007:-12G}
+          cpus: "${AGENT_CPUS_007:-4}"
     volumes:
       - ../../.worktrees/agent-007:/workspace:rw
       - ../../autopilot.db:/shared/autopilot.db:rw
@@ -173,6 +203,11 @@ services:
     hostname: agent-008
     profiles:
       - linux-full
+    deploy:
+      resources:
+        limits:
+          memory: ${AGENT_MEMORY_008:-12G}
+          cpus: "${AGENT_CPUS_008:-4}"
     volumes:
       - ../../.worktrees/agent-008:/workspace:rw
       - ../../autopilot.db:/shared/autopilot.db:rw
@@ -191,6 +226,11 @@ services:
     hostname: agent-009
     profiles:
       - linux-full
+    deploy:
+      resources:
+        limits:
+          memory: ${AGENT_MEMORY_009:-12G}
+          cpus: "${AGENT_CPUS_009:-4}"
     volumes:
       - ../../.worktrees/agent-009:/workspace:rw
       - ../../autopilot.db:/shared/autopilot.db:rw
@@ -209,6 +249,11 @@ services:
     hostname: agent-010
     profiles:
       - linux-full
+    deploy:
+      resources:
+        limits:
+          memory: ${AGENT_MEMORY_010:-12G}
+          cpus: "${AGENT_CPUS_010:-4}"
     volumes:
       - ../../.worktrees/agent-010:/workspace:rw
       - ../../autopilot.db:/shared/autopilot.db:rw

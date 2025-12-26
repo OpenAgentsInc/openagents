@@ -129,6 +129,9 @@ This section tracks which user stories have implemented tests.
 | **d-009: Autopilot GUI** ||||
 | 9.1.1 | Conversation thread display | Visual E2E | `crates/wgpui/examples/chat_streaming_test.rs` |
 | 9.1.2 | Tool calls with output | Visual E2E | `crates/wgpui/examples/chat_streaming_test.rs` |
+| **d-010: Unified Binary** ||||
+| 10.1.5 | Show all available commands with --help | Integration | `tests/cli_integration.rs` |
+| 10.1.6 | Show subcommand help output | Integration | `tests/cli_integration.rs` |
 | **d-016: APM Metrics** ||||
 | 16.1.1 | APM calculated from Claude Code JSONL logs | Unit | `crates/autopilot/src/apm_parser.rs` |
 | 16.1.2 | APM calculated from autopilot trajectory logs | Unit | `crates/autopilot/src/apm_parser.rs` |
@@ -142,6 +145,15 @@ This section tracks which user stories have implemented tests.
 | 17.2.1 | Start an ACP session | Integration | `crates/acp-adapter/tests/integration_tests.rs` |
 | 17.2.2 | Send messages and receive responses | Integration | `crates/acp-adapter/tests/integration_tests.rs` |
 | 17.2.3 | Replay old sessions from rlog files | Unit | `crates/acp-adapter/src/replay.rs` |
+| **d-018: Parallel Container Isolation** ||||
+| 18.1.1 | Start N autopilot containers in parallel | Unit | `crates/autopilot/src/parallel/docker.rs` |
+| 18.1.2 | Each container uses its own git worktree | Integration | `crates/autopilot/tests/parallel_worktree.rs` |
+| 18.1.3 | Containers share the issue database | Integration | `crates/autopilot/tests/parallel_compose_test.rs` |
+| 18.1.4 | See status of all running agents | Unit | `crates/autopilot/src/parallel/docker.rs` |
+| 18.1.5 | Stop individual agents | Unit | `crates/autopilot/src/parallel/docker.rs` |
+| 18.2.1 | Agents respect memory limits | Integration | `crates/autopilot/tests/parallel_compose_test.rs` |
+| 18.2.2 | Platform-aware defaults for agent counts | Unit | `crates/autopilot/src/parallel/mod.rs` |
+| 18.2.3 | Customize resource limits per agent | Integration | `crates/autopilot/tests/parallel_compose_test.rs` |
 | **d-019: GPT-OSS Local Inference** ||||
 | 19.1.1 | Run inference with gpt-oss-120b | Integration | `crates/local-inference/tests/gpt_oss_backend_integration.rs` |
 | 19.1.2 | Run inference with gpt-oss-20b | Integration | `crates/local-inference/tests/gpt_oss_backend_integration.rs` |
@@ -214,6 +226,7 @@ This section tracks which user stories have implemented tests.
 | `crates/wgpui/src/testing/injection.rs` | EventSequence for synthetic events | 26.3.2 |
 | `crates/wgpui/src/testing/overlay.rs` | InputOverlay for click ripples | 26.2.2, 26.2.3 |
 | `crates/wgpui/src/testing/runner.rs` | TestRunner playback + step control | 26.2.4, 26.2.5 |
+| `tests/cli_integration.rs` | Unified CLI help and command listing coverage | 10.1.5-10.1.6 |
 | `crates/gitafter/tests/e2e_issue_flow.rs` | GitAfter issue to PR and bounty claim flow | 5.1.1, 5.2.1, 5.2.3-5.2.5 |
 | `crates/gitafter/tests/clone_integration_test.rs` | Git clone validation + local clone coverage | 5.1.2 |
 | `crates/gitafter/src/git/remote.rs` | Git remote push and fetch tests | 5.1.3 |
@@ -240,6 +253,10 @@ This section tracks which user stories have implemented tests.
 | `crates/autopilot/src/apm_parser.rs` | APM log parsing tests | 16.1.1-16.1.2 |
 | `crates/autopilot/src/apm_storage.rs` | APM window snapshot tests | 16.1.3 |
 | `crates/autopilot/src/apm.rs` | APM tier + stats tests | 16.2.3 |
+| `crates/autopilot/src/parallel/mod.rs` | Parallel config + platform defaults tests | 18.2.2 |
+| `crates/autopilot/src/parallel/docker.rs` | Parallel agent service naming + status parsing | 18.1.1, 18.1.4-18.1.5 |
+| `crates/autopilot/tests/parallel_worktree.rs` | Parallel agent worktree isolation | 18.1.2 |
+| `crates/autopilot/tests/parallel_compose_test.rs` | Parallel compose shared DB + resource overrides | 18.1.3, 18.2.1, 18.2.3 |
 | `crates/nostr/core/src/tests/event_validation.rs` | NIP-01 event validation and signing tests | 2.1.1-2.1.5 |
 | `crates/nostr/core/src/nip17.rs` | NIP-17 DM creation and gift wrap tests | 2.3.3-2.3.4 |
 | `crates/nostr/core/src/nip44.rs` | NIP-44 encryption/decryption tests | 2.3.1-2.3.2 |
