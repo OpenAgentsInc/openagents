@@ -13,47 +13,38 @@ GitAfter is a desktop application that reimagines git collaboration for an agent
 
 ## Architecture
 
+GitAfter now defaults to a native WGPUI renderer. The legacy web stack
+(wry + Actix + Maud/HTMX) is still available behind
+`OPENAGENTS_GITAFTER_LEGACY_WEB=1` for reference/testing.
+
 ```
 ┌─────────────────────────────────────────────────────────┐
 │                    GITAFTER DESKTOP                      │
-├─────────────────────────────────────────────────────────┤
-│                                                          │
-│  ┌─────────────┐    ┌─────────────┐    ┌───────────┐  │
-│  │   wry/tao   │    │   Actix     │    │   Nostr   │  │
-│  │   WebView   │◄──►│   Server    │◄──►│   Client  │  │
-│  └─────────────┘    └─────────────┘    └───────────┘  │
-│        ▲                   │                  │        │
-│        │                   ▼                  ▼        │
-│  ┌─────────────┐    ┌─────────────┐    ┌───────────┐  │
-│  │    Maud     │    │    Git      │    │  Relays   │  │
-│  │   + HTMX    │    │   Libgit2   │    │           │  │
-│  └─────────────┘    └─────────────┘    └───────────┘  │
-│                                                          │
+├──────────────────────────┬──────────────────────────────┤
+│      WGPUI Renderer      │        Nostr Client          │
+├──────────────────────────┴──────────────────────────────┤
+│                 Git Operations (libgit2)                │
 └─────────────────────────────────────────────────────────┘
 ```
 
 ### Technology Stack
 
-- **Desktop Shell**: wry + tao (native webview)
-- **Web Server**: Actix-web (local HTTP server)
-- **UI Rendering**: Maud templates + HTMX
-- **Nostr Integration**: Custom client implementation
+- **Desktop UI**: WGPUI (winit + wgpu)
+- **Nostr Integration**: Custom client + event cache
 - **Git Operations**: libgit2 via git2-rs
+- **Legacy UI Stack (optional)**: wry + tao + Actix + Maud/HTMX
 
 ## Features
 
 ### Current Features (v0.1)
 
-- Browse NIP-34 repositories from Nostr relays
-- View repository details, issues, patches, and pull requests
-- Search repositories and issues (NIP-50)
-- Watch/subscribe to repositories for updates
-- View agent profiles and contribution history
-- Display trajectory sessions for agent-created PRs
-- Create issues, PRs, and patches (UI complete)
-- Stacked diffs support (dependency tracking via `depends_on` tag)
-- Real-time updates via WebSocket
+- Native WGPUI UI: repository browser, issue list (with bounties), PR review
+- PR diff rendering with stacked diff metadata (`depends_on`, `stack`, `layer`)
+- NIP-34 event ingestion with cache-backed browsing
+- Trajectory session links on PRs
+- Lightning bounty metadata (NIP-57) on issues
 - Clone repositories locally
+- Legacy web UI (optional): search, creation flows, WebSocket updates
 
 ### Planned Features
 
@@ -119,18 +110,21 @@ Tags used:
 ## Running Locally
 
 ```bash
-# Build and run
+# Build and run (WGPUI)
 cargo run -p gitafter
 
-# Or use the workspace alias
-cargo gitafter
+# Or via the unified binary
+cargo run --bin openagents -- gitafter repos
+
+# Legacy web UI (optional)
+OPENAGENTS_GITAFTER_LEGACY_WEB=1 cargo run -p gitafter
 ```
 
 The app will:
-1. Start Actix server on random port
-2. Connect to Nostr relays
-3. Subscribe to NIP-34 git events
-4. Open native window with webview
+1. Connect to Nostr relays
+2. Subscribe to NIP-34 git events
+3. Open a native WGPUI window
+4. (Legacy) Start Actix + WebView when enabled
 
 Default relays:
 - `wss://relay.damus.io`
@@ -142,10 +136,11 @@ Default relays:
 ```
 crates/gitafter/
 ├── src/
-│   ├── main.rs           # Entry point, wry/tao window
-│   ├── server.rs         # Actix routes and handlers
-│   ├── views.rs          # Maud templates
-│   ├── ws.rs             # WebSocket broadcaster
+│   ├── main.rs           # Entry point (delegates to WGPUI or legacy)
+│   ├── gui/              # WGPUI renderer (default)
+│   ├── server.rs         # Actix routes (legacy web UI)
+│   ├── views.rs          # Maud templates (legacy web UI)
+│   ├── ws.rs             # WebSocket broadcaster (legacy web UI)
 │   ├── git/              # Git operations
 │   │   ├── clone.rs      # Repository cloning
 │   │   └── mod.rs

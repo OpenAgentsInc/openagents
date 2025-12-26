@@ -137,7 +137,7 @@ P0 focus IDs: none.
 
 ---
 
-### d-005: GitAfter (Nostr GitHub Alternative) ✅ CORE COMPLETE
+### d-005: GitAfter (Nostr GitHub Alternative) ✅ COMPLETE
 
 **Current:** Full NIP-34 implementation. Event builders, caching, relay client working.
 
@@ -161,10 +161,10 @@ P0 focus IDs: none.
   - [x] `ZapRequestBuilder` for bounty payments
 - [x] **On-Demand Trajectory Fetch** (enhancement) ✅
   - [x] Wire `trajectory/fetch.rs` to NostrClient ✅
-- [ ] **WGPUI GitAfter GUI** (future)
-  - [ ] Repository browser
-  - [ ] Issue list with bounty display
-  - [ ] PR review interface
+- [x] **WGPUI GitAfter GUI** ✅
+  - [x] Repository browser
+  - [x] Issue list with bounty display
+  - [x] PR review interface
 
 **Files:** `crates/gitafter/src/`
 

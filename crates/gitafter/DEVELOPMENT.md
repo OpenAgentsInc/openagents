@@ -1,6 +1,8 @@
 # GitAfter Development Guide
 
 This guide helps contributors understand the GitAfter codebase and make changes effectively.
+GitAfter now defaults to the native WGPUI renderer; the legacy web UI is
+still available behind `OPENAGENTS_GITAFTER_LEGACY_WEB=1`.
 
 ## Quick Start
 
@@ -9,14 +11,26 @@ This guide helps contributors understand the GitAfter codebase and make changes 
 git clone https://github.com/OpenAgentsInc/openagents.git
 cd openagents
 
-# Run GitAfter
+# Run GitAfter (WGPUI)
 cargo run -p gitafter
 
-# Or use the alias
-cargo gitafter
+# Or via the unified binary
+cargo run --bin openagents -- gitafter repos
+
+# Legacy web UI (optional)
+OPENAGENTS_GITAFTER_LEGACY_WEB=1 cargo run -p gitafter
 ```
 
-## Architecture Overview
+## Native WGPUI Overview
+
+The WGPUI renderer lives in `src/gui/` and uses a winit + wgpu event loop.
+Start with:
+
+- `src/gui/app.rs` for the app runner and event loop integration
+- `src/gui/view.rs` for view composition and layout
+- `src/gui/backend.rs` for Nostr/event cache data loading
+
+## Legacy Web UI Architecture Overview
 
 GitAfter is a desktop application with three main components:
 
