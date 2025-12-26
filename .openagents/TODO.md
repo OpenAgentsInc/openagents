@@ -321,7 +321,7 @@ P0 focus IDs: none.
 
 #### Non-Blocking TODOs (Enhancements)
 - [x] `crates/autopilot/src/memory.rs:48` - Make memory hog killing opt-in (config) ✅
-- [ ] `crates/autopilot/src/daemon/nostr_trigger.rs` - NIP-SA fetch (optional feature)
+- [x] `crates/autopilot/src/daemon/nostr_trigger.rs` - NIP-SA fetch ✅
 
 #### Acceptable (Error Variants, Not Stubs)
 - [x] `gitafter/src/review/checklist.rs` - NotImplemented is error type ✅
