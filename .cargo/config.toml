@@ -1,5 +1,6 @@
 [alias]
 openagents = "run --bin openagents --"
+commander = "run --bin commander --"
 autopilot = "run -p autopilot --bin autopilot --"
 autopilotd = "run -p autopilot --bin autopilotd --"
 daemon = "run -p autopilot --bin autopilotd --"

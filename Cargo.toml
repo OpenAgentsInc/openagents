@@ -43,9 +43,17 @@ license.workspace = true
 publish.workspace = true
 description = "OpenAgents - Unified desktop application and CLI"
 
+[lib]
+name = "openagents"
+path = "src/lib.rs"
+
 [[bin]]
 name = "openagents"
 path = "src/main.rs"
+
+[[bin]]
+name = "commander"
+path = "src/bin/commander.rs"
 
 [dependencies]
 # OpenAgents crates
@@ -59,6 +67,12 @@ acp-adapter = { path = "crates/acp-adapter" }
 gpt-oss-agent = { path = "crates/gpt-oss-agent" }
 fm-bridge-agent = { path = "crates/fm-bridge-agent" }
 issues = { path = "crates/issues" }
+
+# WGPUI for commander
+wgpui = { path = "crates/wgpui", default-features = false, features = ["desktop"] }
+wgpu = "24.0"
+winit = "0.30"
+pollster = "0.4"
 
 # CLI
 clap = { version = "4.4", features = ["derive", "wrap_help"] }
