@@ -12,6 +12,8 @@ use crate::storage::address_book::AddressBook;
 
 const CLIPBOARD_FILE_ENV: &str = "OPENAGENTS_CLIPBOARD_FILE";
 const NOTIFICATION_FILE_ENV: &str = "OPENAGENTS_NOTIFICATION_FILE";
+const RETRY_PAGE_SIZE: u32 = 50;
+const RETRY_MAX_PAGES: u32 = 20;
 
 /// Get or create the SparkWallet from keychain mnemonic
 async fn get_wallet() -> Result<SparkWallet> {
@@ -451,11 +453,78 @@ pub fn send(
     })
 }
 
+/// Retry a failed payment using the original invoice details
+pub fn retry(payment_id: Option<String>, last: bool, yes: bool) -> Result<()> {
+    let rt = tokio::runtime::Runtime::new()?;
+    rt.block_on(async {
+        let wallet = get_wallet().await?;
+        let context = if last {
+            find_last_retryable_payment(&wallet).await?
+        } else {
+            let payment_id = payment_id.context("Provide a payment ID or use --last.")?;
+            find_retry_context_by_id(&wallet, &payment_id).await?
+        };
+
+        println!("Preparing Retry...");
+        println!();
+
+        let prepare_response = wallet
+            .prepare_send_payment(
+                &context.request.payment_request,
+                context.request.amount_sats,
+            )
+            .await?;
+        let preview = build_send_preview(&context.request.payment_request, &prepare_response);
+        let preview_text = format_retry_preview(&context.payment, &preview);
+        print!("{}", preview_text);
+
+        if !confirm_send(yes)? {
+            println!("Retry cancelled.");
+            return Ok(());
+        }
+
+        println!();
+        println!("Sending Payment...");
+        println!();
+
+        match wallet.send_payment(prepare_response, None).await {
+            Ok(response) => {
+                println!("✓ Payment Sent!");
+                println!("────────────────────────────────────────");
+                println!("  Original Payment ID: {}", context.payment.id);
+                println!("  New Payment ID:      {}", response.payment.id);
+                Ok(())
+            }
+            Err(e) => {
+                eprintln!("✗ Payment Failed");
+                eprintln!("────────────────────────────────────────");
+                eprintln!("{}", e.user_friendly_message());
+                if e.balance_unaffected() {
+                    eprintln!();
+                    eprintln!("ℹ️  Your balance was NOT deducted.");
+                }
+                Err(e.into())
+            }
+        }
+    })
+}
+
 struct SendPreview {
     destination: String,
     payment_kind: &'static str,
     amount_sats: u128,
     fee_lines: Vec<String>,
+}
+
+#[derive(Debug)]
+struct RetryRequest {
+    payment_request: String,
+    amount_sats: Option<u64>,
+}
+
+struct RetryContext {
+    payment: spark::Payment,
+    request: RetryRequest,
 }
 
 fn build_send_preview(destination: &str, prepare: &spark::wallet::PrepareSendPaymentResponse) -> SendPreview {
@@ -496,9 +565,28 @@ fn build_send_preview(destination: &str, prepare: &spark::wallet::PrepareSendPay
 }
 
 fn format_send_preview(preview: &SendPreview) -> String {
+    format_preview("Send Payment Confirmation", None, preview)
+}
+
+fn format_retry_preview(payment: &spark::Payment, preview: &SendPreview) -> String {
+    let extra = format!("  Original ID: {}\n", payment.id);
+    format_preview("Retry Payment Confirmation", Some(extra.as_str()), preview)
+}
+
+fn format_preview(title: &str, extra_header: Option<&str>, preview: &SendPreview) -> String {
     let mut output = String::new();
-    output.push_str("Send Payment Confirmation\n");
+    output.push_str(title);
+    output.push('\n');
     output.push_str("────────────────────────────\n");
+    if let Some(extra_header) = extra_header {
+        output.push_str(extra_header);
+    }
+    output.push_str(&format_send_preview_body(preview));
+    output
+}
+
+fn format_send_preview_body(preview: &SendPreview) -> String {
+    let mut output = String::new();
     output.push_str(&format!("  To:     {}\n", preview.destination));
     output.push_str(&format!("  Type:   {}\n", preview.payment_kind));
     output.push_str(&format!("  Amount: {} sats\n", preview.amount_sats));
@@ -516,6 +604,111 @@ fn format_send_preview(preview: &SendPreview) -> String {
 
     output.push('\n');
     output
+}
+
+async fn find_retry_context_by_id(wallet: &SparkWallet, payment_id: &str) -> Result<RetryContext> {
+    let payment = find_payment_by_id(wallet, payment_id).await?;
+    let request = retry_request_from_payment(&payment)?;
+    Ok(RetryContext { payment, request })
+}
+
+async fn find_last_retryable_payment(wallet: &SparkWallet) -> Result<RetryContext> {
+    let mut offset = 0u32;
+    for _ in 0..RETRY_MAX_PAGES {
+        let payments = wallet.list_payments(Some(RETRY_PAGE_SIZE), Some(offset)).await?;
+        if payments.is_empty() {
+            break;
+        }
+
+        for payment in &payments {
+            if payment.payment_type != spark::PaymentType::Send
+                || payment.status != spark::PaymentStatus::Failed
+            {
+                continue;
+            }
+
+            if let Ok(request) = retry_request_from_payment(&payment) {
+                return Ok(RetryContext {
+                    payment: payment.clone(),
+                    request,
+                });
+            }
+        }
+
+        if payments.len() < RETRY_PAGE_SIZE as usize {
+            break;
+        }
+        offset = offset.saturating_add(RETRY_PAGE_SIZE);
+    }
+
+    anyhow::bail!("No failed payments available to retry.");
+}
+
+async fn find_payment_by_id(wallet: &SparkWallet, payment_id: &str) -> Result<spark::Payment> {
+    let mut offset = 0u32;
+    for _ in 0..RETRY_MAX_PAGES {
+        let payments = wallet.list_payments(Some(RETRY_PAGE_SIZE), Some(offset)).await?;
+        if payments.is_empty() {
+            break;
+        }
+
+        if let Some(payment) = payments.iter().find(|payment| payment.id == payment_id) {
+            return Ok(payment.clone());
+        }
+
+        if payments.len() < RETRY_PAGE_SIZE as usize {
+            break;
+        }
+        offset = offset.saturating_add(RETRY_PAGE_SIZE);
+    }
+
+    anyhow::bail!("Payment ID '{}' not found in recent history.", payment_id);
+}
+
+fn retry_request_from_payment(payment: &spark::Payment) -> Result<RetryRequest> {
+    if payment.payment_type != spark::PaymentType::Send {
+        anyhow::bail!("Only outgoing payments can be retried.");
+    }
+
+    if payment.status != spark::PaymentStatus::Failed {
+        anyhow::bail!("Only failed payments can be retried.");
+    }
+
+    let amount_sats = payment_amount_sats(payment)?;
+    let details = payment
+        .details
+        .as_ref()
+        .context("Payment does not include invoice details required to retry.")?;
+
+    let payment_request = match details {
+        spark::wallet::PaymentDetails::Lightning { invoice, .. } => invoice.clone(),
+        spark::wallet::PaymentDetails::Spark {
+            invoice_details: Some(details),
+            ..
+        } => details.invoice.clone(),
+        _ => {
+            anyhow::bail!("Payment does not include a retryable invoice.");
+        }
+    };
+
+    if payment_request.trim().is_empty() {
+        anyhow::bail!("Payment invoice is empty; cannot retry.");
+    }
+
+    Ok(RetryRequest {
+        payment_request,
+        amount_sats,
+    })
+}
+
+fn payment_amount_sats(payment: &spark::Payment) -> Result<Option<u64>> {
+    if payment.amount == 0 {
+        return Ok(None);
+    }
+
+    let amount = u64::try_from(payment.amount)
+        .context("Payment amount exceeds supported range.")?;
+    Ok(Some(amount))
 }
 
 fn confirm_send(skip_confirm: bool) -> Result<bool> {
@@ -833,8 +1026,9 @@ mod tests {
     use crate::storage::address_book::{AddressBook, ADDRESS_BOOK_ENV};
     use spark::wallet::{
         Bolt11Invoice, Bolt11InvoiceDetails, BitcoinAddressDetails, BitcoinNetwork,
-        PaymentMethod, PaymentRequestSource, PrepareSendPaymentResponse, SendOnchainFeeQuote,
-        SendOnchainSpeedFeeQuote, SendPaymentMethod,
+        PaymentDetails, PaymentMethod, PaymentRequestSource, PrepareSendPaymentResponse,
+        SendOnchainFeeQuote, SendOnchainSpeedFeeQuote, SendPaymentMethod,
+        SparkInvoicePaymentDetails,
     };
     use std::sync::Mutex;
 
@@ -865,6 +1059,42 @@ mod tests {
             timestamp: 1_700_000_000,
             method: PaymentMethod::Spark,
             details: None,
+        }
+    }
+
+    fn sample_failed_payment(method: PaymentMethod, details: PaymentDetails) -> spark::Payment {
+        spark::Payment {
+            id: "fail-1".to_string(),
+            payment_type: spark::PaymentType::Send,
+            status: spark::PaymentStatus::Failed,
+            amount: 42,
+            fees: 1,
+            timestamp: 1_700_000_000,
+            method,
+            details: Some(details),
+        }
+    }
+
+    fn lightning_details(invoice: &str) -> PaymentDetails {
+        PaymentDetails::Lightning {
+            description: Some("Retry me".to_string()),
+            preimage: None,
+            invoice: invoice.to_string(),
+            payment_hash: "hash".to_string(),
+            destination_pubkey: "02deadbeef".to_string(),
+            lnurl_pay_info: None,
+            lnurl_withdraw_info: None,
+            lnurl_receive_metadata: None,
+        }
+    }
+
+    fn spark_invoice_details(invoice: &str) -> PaymentDetails {
+        PaymentDetails::Spark {
+            invoice_details: Some(SparkInvoicePaymentDetails {
+                description: None,
+                invoice: invoice.to_string(),
+            }),
+            htlc_details: None,
         }
     }
 
@@ -1050,6 +1280,49 @@ mod tests {
         let output = format_send_preview(&preview);
         assert!(output.contains("Spark Address"));
         assert!(output.contains("Spark: 9 sats"));
+    }
+
+    #[test]
+    fn test_retry_request_from_lightning_details() {
+        let payment = sample_failed_payment(
+            PaymentMethod::Lightning,
+            lightning_details("lnbc1retry"),
+        );
+        let retry = retry_request_from_payment(&payment).unwrap();
+        assert_eq!(retry.payment_request, "lnbc1retry");
+        assert_eq!(retry.amount_sats, Some(42));
+    }
+
+    #[test]
+    fn test_retry_request_from_spark_invoice_details() {
+        let payment = sample_failed_payment(
+            PaymentMethod::Spark,
+            spark_invoice_details("spark1retry"),
+        );
+        let retry = retry_request_from_payment(&payment).unwrap();
+        assert_eq!(retry.payment_request, "spark1retry");
+        assert_eq!(retry.amount_sats, Some(42));
+    }
+
+    #[test]
+    fn test_retry_request_rejects_non_failed_or_missing_invoice() {
+        let mut completed = sample_failed_payment(
+            PaymentMethod::Lightning,
+            lightning_details("lnbc1retry"),
+        );
+        completed.status = spark::PaymentStatus::Completed;
+        let err = retry_request_from_payment(&completed).unwrap_err();
+        assert!(err.to_string().contains("Only failed payments"));
+
+        let missing_invoice = sample_failed_payment(
+            PaymentMethod::Spark,
+            PaymentDetails::Spark {
+                invoice_details: None,
+                htlc_details: None,
+            },
+        );
+        let err = retry_request_from_payment(&missing_invoice).unwrap_err();
+        assert!(err.to_string().contains("retryable invoice"));
     }
 
     #[test]
