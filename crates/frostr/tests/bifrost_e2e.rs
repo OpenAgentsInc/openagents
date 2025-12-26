@@ -13,6 +13,8 @@
 use frostr::bifrost::{BifrostConfig, BifrostNode, TimeoutConfig};
 use frostr::ecdh::threshold_ecdh;
 use frostr::keygen::generate_key_shares;
+use frostr::signing::verify_signature;
+use frost_secp256k1::Signature as FrostSignature;
 use nostr::{decrypt_v2, encrypt_v2, generate_secret_key, get_public_key};
 use nostr_relay::{Database, DatabaseConfig, RelayConfig, RelayServer};
 use std::sync::Arc;
@@ -105,7 +107,7 @@ async fn test_bifrost_signing_2_of_3_over_relay() {
     // 2. Generate 2-of-3 FROST shares
     let shares = generate_key_shares(2, 3).expect("failed to generate shares");
     assert_eq!(shares.len(), 3);
-    let _group_pk = shares[0].public_key_package.verifying_key();
+    let group_pk = shares[0].public_key_package.verifying_key();
 
     // 3. Create BifrostNode instances for 2 peers pointing at test relay
     // Each peer needs unique secret key for Nostr identity
@@ -177,11 +179,104 @@ async fn test_bifrost_signing_2_of_3_over_relay() {
     let signature = result.expect("signing should succeed");
     assert_eq!(signature.len(), 64, "signature should be 64 bytes");
 
-    // TODO: Verify signature against group public key when signature format is finalized
-    // The signature is in BIP-340 format (R.x || s)
-    // frostr::signing::verify_signature requires frost_secp256k1::Signature which is different
+    // Verify signature against group public key using FROST schnorr verification
+    let mut signature_bytes = [0u8; 65];
+    signature_bytes[1..33].copy_from_slice(&signature[..32]);
+    signature_bytes[33..65].copy_from_slice(&signature[32..]);
+
+    let mut verified = false;
+    for prefix in [0x02u8, 0x03u8] {
+        signature_bytes[0] = prefix;
+        if let Ok(frost_signature) = FrostSignature::deserialize(&signature_bytes) {
+            if verify_signature(&event_hash, &frost_signature, &group_pk).is_ok() {
+                verified = true;
+                break;
+            }
+        }
+    }
+
+    assert!(verified, "signature should verify against group public key");
 
     // 5. Clean up
+    node_1.stop().await.ok();
+    node_2.stop().await.ok();
+}
+
+#[tokio::test]
+async fn test_bifrost_peer_ping_over_relay() {
+    // 1. Start test relay
+    let port = 19004;
+    let (_server, _temp_dir) = start_test_relay(port).await;
+    let relay_url = test_relay_url(port);
+
+    // 2. Generate 2-of-3 FROST shares
+    let shares = generate_key_shares(2, 3).expect("failed to generate shares");
+    assert_eq!(shares.len(), 3);
+
+    // 3. Create Bifrost nodes with peer pubkeys configured
+    let secret_key_1: [u8; 32] = {
+        let mut k = [0u8; 32];
+        k[31] = 0x01;
+        k
+    };
+    let secret_key_2: [u8; 32] = {
+        let mut k = [0u8; 32];
+        k[31] = 0x02;
+        k
+    };
+
+    let peer_pubkey_1 = get_public_key(&secret_key_1)
+        .expect("failed to derive pubkey 1");
+    let peer_pubkey_2 = get_public_key(&secret_key_2)
+        .expect("failed to derive pubkey 2");
+
+    let config_1 = BifrostConfig {
+        default_relays: vec![relay_url.clone()],
+        secret_key: Some(secret_key_1),
+        peer_pubkeys: vec![peer_pubkey_2],
+        timeouts: TimeoutConfig {
+            default_timeout_ms: 5000,
+            ..Default::default()
+        },
+        ..Default::default()
+    };
+
+    let config_2 = BifrostConfig {
+        default_relays: vec![relay_url],
+        secret_key: Some(secret_key_2),
+        peer_pubkeys: vec![peer_pubkey_1],
+        timeouts: TimeoutConfig {
+            default_timeout_ms: 5000,
+            ..Default::default()
+        },
+        ..Default::default()
+    };
+
+    let mut node_1 = BifrostNode::with_config(config_1).expect("failed to create node 1");
+    let mut node_2 = BifrostNode::with_config(config_2).expect("failed to create node 2");
+
+    node_1.set_frost_share(shares[0].clone());
+    node_2.set_frost_share(shares[1].clone());
+
+    node_1.add_peer(peer_pubkey_2);
+    node_2.add_peer(peer_pubkey_1);
+
+    node_1.start().await.expect("failed to start node 1");
+    node_2.start().await.expect("failed to start node 2");
+
+    sleep(Duration::from_millis(500)).await;
+
+    let pong = node_1
+        .ping(&peer_pubkey_2)
+        .await
+        .expect("ping should succeed");
+    assert!(pong, "peer should respond to ping");
+
+    assert!(
+        node_1.get_peer_latency(&peer_pubkey_2).is_some(),
+        "peer latency should be recorded after ping"
+    );
+
     node_1.stop().await.ok();
     node_2.stop().await.ok();
 }
