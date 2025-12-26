@@ -3,10 +3,7 @@
 //! Standardized protocol for Nostr clients to interact with remote Lightning wallets
 //! through encrypted direct messages over Nostr relays.
 //!
-//! **Phase 1 Implementation**: This module provides core types and API surface for NWC.
-//! Actual payment execution and encryption are deferred to future phases.
-//!
-//! See: <https://github.com/nostr-protocol/nips/blob/master/47.md>
+//! Core types and connection URL helpers for Nostr Wallet Connect.
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -57,6 +54,9 @@ pub enum Nip47Error {
     #[error("unsupported encryption: {0}")]
     UnsupportedEncryption(String),
 
+    #[error("not found: {0}")]
+    NotFound(String),
+
     #[error("other error: {0}")]
     Other(String),
 
@@ -80,6 +80,7 @@ pub enum ErrorCode {
     Internal,
     PaymentFailed,
     UnsupportedEncryption,
+    NotFound,
     Other,
 }
 
@@ -95,6 +96,7 @@ impl ErrorCode {
             ErrorCode::Internal => "INTERNAL",
             ErrorCode::PaymentFailed => "PAYMENT_FAILED",
             ErrorCode::UnsupportedEncryption => "UNSUPPORTED_ENCRYPTION",
+            ErrorCode::NotFound => "NOT_FOUND",
             ErrorCode::Other => "OTHER",
         }
     }
@@ -105,6 +107,118 @@ impl ErrorCode {
 pub struct ErrorResponse {
     pub code: ErrorCode,
     pub message: String,
+}
+
+/// Nostr Wallet Connect URI.
+///
+/// Format: `nostr+walletconnect://<wallet-pubkey>?relay=<wss://relay>&secret=<secret>&lud16=<addr>`
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NostrWalletConnectUrl {
+    /// Wallet service public key (hex)
+    pub wallet_pubkey: String,
+    /// Relay URLs
+    pub relays: Vec<String>,
+    /// Client secret (hex)
+    pub secret: String,
+    /// Optional lightning address
+    pub lud16: Option<String>,
+}
+
+impl NostrWalletConnectUrl {
+    /// Create a new Nostr Wallet Connect URL.
+    pub fn new(
+        wallet_pubkey: impl Into<String>,
+        relays: Vec<String>,
+        secret: impl Into<String>,
+    ) -> Self {
+        Self {
+            wallet_pubkey: wallet_pubkey.into(),
+            relays,
+            secret: secret.into(),
+            lud16: None,
+        }
+    }
+
+    /// Set optional lightning address.
+    pub fn with_lud16(mut self, lud16: impl Into<String>) -> Self {
+        self.lud16 = Some(lud16.into());
+        self
+    }
+
+    /// Parse a nostr+walletconnect:// URL.
+    pub fn parse(url: &str) -> Result<Self, Nip47Error> {
+        const PREFIX: &str = "nostr+walletconnect://";
+        if !url.starts_with(PREFIX) {
+            return Err(Nip47Error::Parse(
+                "URL must start with nostr+walletconnect://".to_string(),
+            ));
+        }
+
+        let url = &url[PREFIX.len()..];
+        let parts: Vec<&str> = url.splitn(2, '?').collect();
+        let wallet_pubkey = parts[0].to_string();
+        if wallet_pubkey.is_empty() {
+            return Err(Nip47Error::Parse("Missing wallet pubkey".to_string()));
+        }
+
+        let mut relays = Vec::new();
+        let mut secret = None;
+        let mut lud16 = None;
+
+        if parts.len() > 1 {
+            for param in parts[1].split('&') {
+                let kv: Vec<&str> = param.splitn(2, '=').collect();
+                if kv.len() == 2 {
+                    let key = kv[0];
+                    let value = urlencoding::decode(kv[1])
+                        .map_err(|e| Nip47Error::Parse(e.to_string()))?
+                        .to_string();
+
+                    match key {
+                        "relay" => relays.push(value),
+                        "secret" => secret = Some(value),
+                        "lud16" => lud16 = Some(value),
+                        _ => {}
+                    }
+                }
+            }
+        }
+
+        let secret = secret.ok_or_else(|| {
+            Nip47Error::Parse("Missing required secret parameter".to_string())
+        })?;
+
+        if relays.is_empty() {
+            return Err(Nip47Error::Parse(
+                "At least one relay is required".to_string(),
+            ));
+        }
+
+        Ok(Self {
+            wallet_pubkey,
+            relays,
+            secret,
+            lud16,
+        })
+    }
+
+    /// Convert to nostr+walletconnect:// URL string.
+    pub fn to_string(&self) -> String {
+        let mut url = format!("nostr+walletconnect://{}", self.wallet_pubkey);
+
+        let mut params = Vec::new();
+        for relay in &self.relays {
+            params.push(format!("relay={}", urlencoding::encode(relay)));
+        }
+        params.push(format!("secret={}", urlencoding::encode(&self.secret)));
+        if let Some(lud16) = &self.lud16 {
+            params.push(format!("lud16={}", urlencoding::encode(lud16)));
+        }
+
+        url.push('?');
+        url.push_str(&params.join("&"));
+        url
+    }
 }
 
 /// NWC command methods
@@ -282,7 +396,28 @@ pub enum TransactionType {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Response {
     pub result_type: String,
-    pub result: ResponseResult,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<ErrorResponse>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub result: Option<ResponseResult>,
+}
+
+impl Response {
+    pub fn success(result_type: impl Into<String>, result: ResponseResult) -> Self {
+        Self {
+            result_type: result_type.into(),
+            error: None,
+            result: Some(result),
+        }
+    }
+
+    pub fn error(result_type: impl Into<String>, error: ErrorResponse) -> Self {
+        Self {
+            result_type: result_type.into(),
+            error: Some(error),
+            result: None,
+        }
+    }
 }
 
 /// Response results for different methods
@@ -465,13 +600,13 @@ mod tests {
 
     #[test]
     fn test_pay_invoice_response() {
-        let response = Response {
-            result_type: "pay_invoice".to_string(),
-            result: ResponseResult::PayInvoice(PayInvoiceResult {
+        let response = Response::success(
+            "pay_invoice",
+            ResponseResult::PayInvoice(PayInvoiceResult {
                 preimage: "abc123".to_string(),
                 fees_paid: Some(100),
             }),
-        };
+        );
         let json = serde_json::to_string(&response).unwrap();
         assert!(json.contains("abc123"));
     }
@@ -488,21 +623,19 @@ mod tests {
 
     #[test]
     fn test_get_balance_response() {
-        let response = Response {
-            result_type: "get_balance".to_string(),
-            result: ResponseResult::GetBalance(BalanceResult {
-                balance: 10000,
-            }),
-        };
+        let response = Response::success(
+            "get_balance",
+            ResponseResult::GetBalance(BalanceResult { balance: 10000 }),
+        );
         let json = serde_json::to_string(&response).unwrap();
         assert!(json.contains("10000"));
     }
 
     #[test]
     fn test_get_info_response() {
-        let response = Response {
-            result_type: "get_info".to_string(),
-            result: ResponseResult::GetInfo(InfoResult {
+        let response = Response::success(
+            "get_info",
+            ResponseResult::GetInfo(InfoResult {
                 network: Network::Mainnet,
                 block_height: 800000,
                 block_hash: "000000000000000000012345".to_string(),
@@ -512,10 +645,55 @@ mod tests {
                 color: None,
                 pubkey: Some("03abc...".to_string()),
             }),
-        };
+        );
         let json = serde_json::to_string(&response).unwrap();
         assert!(json.contains("mainnet"));
         assert!(json.contains("800000"));
+    }
+
+    #[test]
+    fn test_error_response_serialization() {
+        let response = Response::error(
+            "get_balance",
+            ErrorResponse {
+                code: ErrorCode::Unauthorized,
+                message: "No wallet connected".to_string(),
+            },
+        );
+        let json = serde_json::to_string(&response).unwrap();
+        assert!(json.contains("UNAUTHORIZED"));
+        assert!(json.contains("No wallet connected"));
+    }
+
+    #[test]
+    fn test_nwc_url_roundtrip() {
+        let url = NostrWalletConnectUrl::new(
+            "pubkey123",
+            vec!["wss://relay.example.com".to_string()],
+            "secret123",
+        )
+        .with_lud16("alice@example.com");
+
+        let encoded = url.to_string();
+        assert!(encoded.starts_with("nostr+walletconnect://pubkey123?"));
+        assert!(encoded.contains("relay=wss%3A%2F%2Frelay.example.com"));
+        assert!(encoded.contains("secret=secret123"));
+        assert!(encoded.contains("lud16=alice%40example.com"));
+
+        let decoded = NostrWalletConnectUrl::parse(&encoded).unwrap();
+        assert_eq!(decoded.wallet_pubkey, "pubkey123");
+        assert_eq!(decoded.secret, "secret123");
+        assert_eq!(decoded.lud16, Some("alice@example.com".to_string()));
+    }
+
+    #[test]
+    fn test_nwc_url_requires_relay_and_secret() {
+        let missing_secret =
+            "nostr+walletconnect://pubkey?relay=wss%3A%2F%2Frelay.example.com";
+        assert!(NostrWalletConnectUrl::parse(missing_secret).is_err());
+
+        let missing_relay = "nostr+walletconnect://pubkey?secret=abc123";
+        assert!(NostrWalletConnectUrl::parse(missing_relay).is_err());
     }
 
     #[test]

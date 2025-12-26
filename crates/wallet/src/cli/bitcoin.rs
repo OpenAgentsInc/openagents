@@ -8,8 +8,10 @@ use chrono;
 use spark::{EventListener, Network, SdkEvent, SparkSigner, SparkWallet, WalletConfig};
 use std::path::{Path, PathBuf};
 use crate::cli::load_mnemonic;
+use crate::core::nwc::{build_connection, publish_info_event, NwcService};
 use crate::storage::address_book::AddressBook;
 use crate::storage::config::WalletConfig as LocalWalletConfig;
+use crate::storage::nwc::NwcConnectionStore;
 
 const CLIPBOARD_FILE_ENV: &str = "OPENAGENTS_CLIPBOARD_FILE";
 const NOTIFICATION_FILE_ENV: &str = "OPENAGENTS_NOTIFICATION_FILE";
@@ -1582,25 +1584,75 @@ pub fn zaps(note_id: String) -> Result<()> {
 
 /// Create a Nostr Wallet Connect connection
 pub fn nwc_create(name: Option<String>) -> Result<()> {
-    let connection_name = name.unwrap_or_else(|| "default".to_string());
-    anyhow::bail!(
-        "NIP-47 Nostr Wallet Connect requires additional implementation.\n\
-        Connection name: {}\n\n\
-        NWC allows external apps to request payments through your wallet.",
-        connection_name
-    )
+    let config = LocalWalletConfig::load()?;
+    let relays = config.nostr.relays.clone();
+
+    let output = build_connection(name, relays)?;
+    let mut store = NwcConnectionStore::load()?;
+    store.add(output.connection.clone())?;
+    store.save()?;
+
+    let rt = tokio::runtime::Runtime::new()?;
+    if let Err(err) = rt.block_on(async { publish_info_event(&output.connection).await }) {
+        eprintln!("Warning: failed to publish NWC info event: {}", err);
+    }
+
+    println!("NWC connection created:");
+    println!("  ID:     {}", output.connection.id);
+    if let Some(name) = &output.connection.name {
+        println!("  Name:   {}", name);
+    }
+    println!("  Relays: {}", output.connection.relays.join(", "));
+    println!();
+    println!("Connection URI (keep this secret):");
+    println!("{}", output.uri);
+
+    Ok(())
 }
 
 /// List Nostr Wallet Connect connections
 pub fn nwc_list() -> Result<()> {
-    anyhow::bail!("NIP-47 Nostr Wallet Connect requires additional implementation.")
+    let store = NwcConnectionStore::load()?;
+
+    if store.connections.is_empty() {
+        println!("No NWC connections found. Create one with `openagents wallet nwc create`.");
+        return Ok(());
+    }
+
+    println!("NWC connections:");
+    for connection in store.connections {
+        println!("- ID: {}", connection.id);
+        if let Some(name) = &connection.name {
+            println!("  Name:   {}", name);
+        }
+        println!("  Wallet pubkey: {}", connection.wallet_pubkey);
+        println!("  Client pubkey: {}", connection.client_pubkey);
+        println!("  Relays: {}", connection.relays.join(", "));
+        println!("  Created: {}", connection.created_at);
+    }
+    Ok(())
+}
+
+/// Listen for Nostr Wallet Connect requests
+pub fn nwc_listen() -> Result<()> {
+    let rt = tokio::runtime::Runtime::new()?;
+    rt.block_on(async {
+        let wallet = get_wallet().await?;
+        let config = LocalWalletConfig::load()?;
+        let store = NwcConnectionStore::load()?;
+        let service = NwcService::new(wallet, config, store.connections).await?;
+
+        println!("Listening for NWC requests...");
+        service.run().await
+    })
 }
 
 /// Revoke a Nostr Wallet Connect connection
 pub fn nwc_revoke(id: String) -> Result<()> {
-    anyhow::bail!(
-        "NIP-47 Nostr Wallet Connect requires additional implementation.\n\
-        Connection ID to revoke: {}",
-        id
-    )
+    let mut store = NwcConnectionStore::load()?;
+    let removed = store.remove(&id)?;
+    store.save()?;
+
+    println!("Revoked NWC connection {}", removed.id);
+    Ok(())
 }

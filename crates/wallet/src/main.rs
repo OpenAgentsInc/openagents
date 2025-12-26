@@ -273,6 +273,9 @@ enum NwcCommands {
     /// List active NWC connections
     List,
 
+    /// Listen for NWC requests
+    Listen,
+
     /// Revoke a connection
     Revoke {
         /// Connection ID
@@ -538,6 +541,7 @@ fn run(command: Commands) -> anyhow::Result<()> {
         Commands::Nwc(cmd) => match cmd {
             NwcCommands::Create { name } => cli::bitcoin::nwc_create(name),
             NwcCommands::List => cli::bitcoin::nwc_list(),
+            NwcCommands::Listen => cli::bitcoin::nwc_listen(),
             NwcCommands::Revoke { id } => cli::bitcoin::nwc_revoke(id),
         },
         Commands::Relays(cmd) => match cmd {

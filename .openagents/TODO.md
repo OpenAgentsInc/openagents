@@ -71,7 +71,7 @@ P0 focus IDs: none.
 - [x] **User-friendly error messages** with `SparkError::user_friendly_message()` (story 1.5.1) ✅
 - [x] **Balance protection** - `SparkError::balance_unaffected()` confirms no deduction on failure (story 1.5.2) ✅
 - [x] E2E test with real sats (optional - can use regtest) — `crates/spark/tests/integration.rs` (`test_full_payment_flow`)
-- [ ] NIP-47 Wallet Connect (future enhancement)
+- [x] NIP-47 Wallet Connect (future enhancement) — `crates/wallet/src/core/nwc.rs`
 
 ---
 
@@ -110,7 +110,7 @@ P0 focus IDs: none.
 - [x] **Wallet Security** ✅ Complete
   - [x] OS keychain protection (macOS Keychain, Linux Secret Service, Windows Credential Manager) (story 3.4.1)
   - [x] Seed phrase backup via `openagents wallet export`
-- [ ] **NIP-47 Wallet Connect** (future)
+- [x] **NIP-47 Wallet Connect** (future) — `crates/wallet/src/core/nwc.rs`
 - [ ] **NIP-57 Zap Support** (future)
 - [ ] **WGPUI Wallet GUI** (future)
 
