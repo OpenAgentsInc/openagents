@@ -214,6 +214,8 @@ impl Default for HookManager {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Arc;
+    use tokio::sync::Mutex;
 
     struct TestHook {
         name: String,
@@ -228,6 +230,24 @@ mod tests {
 
         fn priority(&self) -> i32 {
             self.priority
+        }
+    }
+
+    struct RecordingHook {
+        name: String,
+        events: Arc<Mutex<Vec<SessionEvent>>>,
+    }
+
+    #[async_trait]
+    impl Hook for RecordingHook {
+        fn name(&self) -> &str {
+            &self.name
+        }
+
+        async fn on_session(&self, event: &SessionEvent) -> HookResult {
+            let mut events = self.events.lock().await;
+            events.push(event.clone());
+            HookResult::Continue
         }
     }
 
@@ -267,6 +287,43 @@ mod tests {
         let list = manager.list();
         assert_eq!(list[0], "high");
         assert_eq!(list[1], "low");
+    }
+
+    #[tokio::test]
+    async fn hook_manager_dispatches_session_created_and_aborted() {
+        let events = Arc::new(Mutex::new(Vec::new()));
+        let mut manager = HookManager::new();
+        manager.register(RecordingHook {
+            name: "record".to_string(),
+            events: events.clone(),
+        });
+
+        let created = SessionEvent::Created {
+            session_id: "session-1".to_string(),
+            agent: "oracle".to_string(),
+        };
+        let aborted = SessionEvent::Aborted {
+            session_id: "session-1".to_string(),
+        };
+
+        manager.dispatch_session(&created).await;
+        manager.dispatch_session(&aborted).await;
+
+        let recorded = events.lock().await;
+        assert_eq!(recorded.len(), 2);
+        match &recorded[0] {
+            SessionEvent::Created { session_id, agent } => {
+                assert_eq!(session_id, "session-1");
+                assert_eq!(agent, "oracle");
+            }
+            _ => panic!("expected created event"),
+        }
+        match &recorded[1] {
+            SessionEvent::Aborted { session_id } => {
+                assert_eq!(session_id, "session-1");
+            }
+            _ => panic!("expected aborted event"),
+        }
     }
 
     #[test]
