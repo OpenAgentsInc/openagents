@@ -21,6 +21,8 @@ pub struct ProviderConfig {
     pub icon_url: Option<String>,
     /// Provider region/location
     pub region: Option<String>,
+    /// Availability schedule (e.g., "always", "weekdays 9-17")
+    pub schedule: String,
     /// Supported models/capabilities
     pub capabilities: Vec<String>,
     /// Pricing per 1k input tokens (in millisats)
@@ -41,6 +43,7 @@ impl Default for ProviderConfig {
             website: None,
             icon_url: None,
             region: None,
+            schedule: "always".to_string(),
             capabilities: vec!["llama3".to_string(), "mistral".to_string()],
             price_per_1k_input: 10,
             price_per_1k_output: 20,
@@ -78,6 +81,12 @@ impl ProviderConfig {
     /// Set region
     pub fn with_region(mut self, region: impl Into<String>) -> Self {
         self.region = Some(region.into());
+        self
+    }
+
+    /// Set availability schedule
+    pub fn with_schedule(mut self, schedule: impl Into<String>) -> Self {
+        self.schedule = schedule.into();
         self
     }
 
@@ -144,6 +153,10 @@ impl ProviderConfig {
         // Add region as custom tag if present
         if let Some(ref region) = self.region {
             info = info.add_custom_tag("region", region);
+        }
+
+        if !self.schedule.is_empty() {
+            info = info.add_custom_tag("schedule", &self.schedule);
         }
 
         info
@@ -353,6 +366,7 @@ mod tests {
     fn test_provider_config_default() {
         let config = ProviderConfig::default();
         assert_eq!(config.name, "OpenAgents Compute Provider");
+        assert_eq!(config.schedule, "always");
         assert!(!config.capabilities.is_empty());
         assert!(!config.relays.is_empty());
     }
@@ -363,6 +377,7 @@ mod tests {
             .with_website("https://example.com")
             .with_icon("https://example.com/icon.png")
             .with_region("us-west")
+            .with_schedule("weekdays 9-17")
             .add_capability("gpt-4")
             .with_pricing(15, 30)
             .add_relay("wss://custom.relay");
@@ -371,6 +386,7 @@ mod tests {
         assert_eq!(config.description, "A test provider");
         assert_eq!(config.website, Some("https://example.com".to_string()));
         assert_eq!(config.region, Some("us-west".to_string()));
+        assert_eq!(config.schedule, "weekdays 9-17");
         assert!(config.capabilities.contains(&"gpt-4".to_string()));
         assert_eq!(config.price_per_1k_input, 15);
         assert_eq!(config.price_per_1k_output, 30);
@@ -390,6 +406,10 @@ mod tests {
         assert_eq!(info.metadata.name, "Test Provider");
         assert!(info.capabilities.contains(&"llama3".to_string()));
         assert!(info.pricing.is_some());
+        assert!(info
+            .custom_tags
+            .iter()
+            .any(|(key, value)| key == "schedule" && value == "always"));
     }
 
     #[test]

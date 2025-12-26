@@ -168,6 +168,7 @@ This section tracks which user stories have implemented tests.
 | 8.1.2 | Submit a job and receive a result | Integration | `crates/marketplace/tests/compute_e2e.rs` |
 | 8.1.3 | Register capabilities and pricing | Integration | `crates/marketplace/tests/compute_e2e.rs` |
 | 8.1.4 | See provider ratings | Integration | `crates/marketplace/tests/discovery.rs` |
+| 8.1.5 | Set provider availability schedule | Unit | `crates/marketplace/src/compute/provider.rs` |
 | 8.2.1 | Publish a skill with description and pricing | Integration | `crates/marketplace/tests/skill_e2e.rs` |
 | 8.2.2 | Browse and search available skills | Integration | `crates/marketplace/tests/skill_e2e.rs` |
 | 8.2.3 | Purchase a skill license | Integration | `crates/marketplace/tests/skill_e2e.rs` |
@@ -421,6 +422,7 @@ This section tracks which user stories have implemented tests.
 | `tests/wgpui_examples_only.rs` | Example files guard against legacy web stack | 25.2.3 |
 | `crates/autopilot-gui/src/state/mod.rs` | Autopilot GUI session stats + timeline helpers | 9.3.2-9.3.4 |
 | `crates/marketplace/src/data/discover.rs` | Dataset discovery listing + preview mapping | 8.3.5 |
+| `crates/marketplace/src/compute/provider.rs` | Provider schedule + handler info tags | 8.1.5 |
 | `crates/opencode-sdk/tests/opencode_sdk_integration.rs` | OpenCode SDK mock server + SSE integration tests | 21.1.1-21.2.2 |
 | `crates/testing/src/lib.rs` | Testing crate smoke and parallel task tests | 13.1.1-13.1.2 |
 | `crates/testing/src/mock_relay.rs` | Mock relay loopback storage tests | 13.2.2 |
