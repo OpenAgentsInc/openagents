@@ -12,6 +12,8 @@ pub use earnings::EarningsTracker;
 pub use events::DomainEvent;
 pub use identity::UnifiedIdentity;
 pub use job::{Job, JobStatus};
-pub use pricing::{PriceBook, Quote, RepoIndexPricing, SandboxRunPricing};
+pub use pricing::{
+    quote_repo_index, quote_sandbox_run, PriceBook, Quote, RepoIndexPricing, SandboxRunPricing,
+};
 pub use repo_index::{IndexData, IndexType, RepoIndexRequest, RepoIndexResult, Symbol};
 pub use sandbox_run::{ResourceLimits, SandboxRunRequest, SandboxRunResult};
