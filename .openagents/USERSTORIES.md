@@ -75,6 +75,9 @@ This section tracks which user stories have implemented tests.
 | 1.5.2 | Failed transactions don't deduct balance | Unit | `crates/spark/src/error.rs` |
 | 1.5.3 | Retry failed payments with one click | Unit | `crates/wallet/src/cli/bitcoin.rs` |
 | 1.5.4 | See network status (connected/disconnected) | Unit | `crates/wallet/src/cli/bitcoin.rs` |
+| 1.6.1 | Send HTLC escrow payment | Unit | `crates/spark/src/htlc.rs` |
+| 1.6.2 | Claim HTLC payment with preimage | Unit | `crates/spark/src/htlc.rs` |
+| 1.6.3 | HTLC timeout refund | Unit | `crates/spark/src/htlc.rs` |
 | 3.1.5 | Manage multiple identities | Unit | `crates/wallet/src/storage/identities.rs` |
 | 3.2.1 | Run `openagents wallet send <address> <amount>` | Integration | `tests/cli_integration.rs` |
 | 3.2.2 | Run `openagents wallet receive <amount>` | Integration | `tests/cli_integration.rs` |
@@ -136,6 +139,10 @@ This section tracks which user stories have implemented tests.
 | 5.4.2 | Receive payment to a Lightning address | Integration | `crates/gitafter/tests/full_workflow_test.rs` |
 | 5.4.3 | Split a bounty between multiple contributors | Integration | `crates/gitafter/tests/bounty_workflow_test.rs` |
 | 5.4.4 | Set bounty tiers based on issue complexity | Integration | `crates/gitafter/tests/per_layer_bounties.rs` |
+| 5.5.1 | Browse repositories in WGPUI interface | Unit | `crates/gitafter/src/gui/mod.rs` |
+| 5.5.2 | View issues and bounties in GUI | Unit | `crates/gitafter/src/gui/mod.rs` |
+| 5.5.3 | Review PRs with trajectory links in GUI | Unit | `crates/gitafter/src/gui/mod.rs` |
+| 5.5.4 | Navigate with keyboard shortcuts | Unit | `crates/gitafter/src/gui/mod.rs` |
 | **d-006: NIP-SA (Sovereign Agents Protocol)** ||||
 | 6.1.1 | Publish an AgentProfile (kind:38000) | Integration | `crates/nostr/tests/integration/nip_sa.rs` |
 | 6.1.2 | View an agent profile | Integration | `crates/nostr/tests/integration/nip_sa.rs` |
@@ -195,6 +202,9 @@ This section tracks which user stories have implemented tests.
 | 8.4.2 | See contributed trajectories | Integration | `crates/marketplace/tests/trajectory_e2e.rs` |
 | 8.4.3 | Set redaction rules for contributions | Integration | `crates/marketplace/tests/trajectory_e2e.rs` |
 | 8.4.4 | Purchase trajectory datasets | Integration | `crates/marketplace/tests/trajectory_e2e.rs` |
+| 8.5.1 | Configure revenue splits | Unit | `crates/marketplace/src/core/payments.rs` |
+| 8.5.2 | Receive split automatically on purchase | Unit | `crates/marketplace/src/core/payments.rs` |
+| 8.5.3 | See pending and paid revenue shares | Unit | `crates/marketplace/src/core/payments.rs` |
 | **d-013: Testing Framework** ||||
 | 13.1.1 | Run cargo test for unit tests | Unit | `crates/testing/src/lib.rs` |
 | 13.1.2 | Tests run in parallel | Unit | `crates/testing/src/lib.rs` |
@@ -515,6 +525,14 @@ This section tracks which user stories have implemented tests.
 | `crates/marketplace/tests/agent_commerce_e2e.rs` | Agent-to-agent transactions and budget constraint tests | 15.3.1-15.3.2 |
 | `crates/marketplace/tests/discovery.rs` | Provider discovery and rating tests | 8.1.4 |
 | `crates/marketplace/src/types.rs` | Skill pricing calculations and revenue split tests | 8.2.6 |
+| `crates/spark/src/htlc.rs` | HTLC escrow payment creation and claiming tests | 1.6.1-1.6.3 |
+| `crates/marketplace/src/core/payments.rs` | Revenue split distribution and payout tests | 8.5.1-8.5.3 |
+| `crates/frostr/src/keygen.rs` | Key reshare protocol tests | 7.1.4 |
+| `crates/nostr/core/src/nip_sa/state.rs` | State compaction and metadata tests | 6.2.3-6.2.4 |
+| `crates/nostr/core/src/nip_sa/tick.rs` | Tick history and trajectory hash tests | 6.4.3-6.4.4 |
+| `crates/nostr/core/src/nip_sa/trajectory.rs` | Trajectory redaction and verification tests | 6.5.3-6.5.4 |
+| `crates/gitafter/src/gui/mod.rs` | GitAfter WGPUI GUI component tests | 5.5.1-5.5.4 |
+| `crates/wallet/src/gui/view.rs` | Wallet WGPUI GUI component tests | 3.3.1-3.3.6 |
 
 ---
 
@@ -571,6 +589,14 @@ This section tracks which user stories have implemented tests.
 | 1.5.2 | P0 | As a user, I want failed transactions to not deduct my balance, so that I don't lose funds. |
 | 1.5.3 | P1 | As a user, I want to retry failed payments with one click, so that I can complete the transaction. |
 | 1.5.4 | P1 | As a user, I want to see network status (connected/disconnected), so that I know if payments will work. |
+
+### HTLC Escrow Payments
+
+| ID | Priority | User Story |
+|----|----------|------------|
+| 1.6.1 | P0 | As a marketplace buyer, I want to send an HTLC escrow payment, so that funds are locked until service is delivered. |
+| 1.6.2 | P0 | As a marketplace seller, I want to claim an HTLC payment with a preimage, so that I receive funds after delivery. |
+| 1.6.3 | P1 | As a buyer, I want HTLC payments to automatically refund after timeout, so that I'm protected from non-delivery. |
 
 ---
 
@@ -755,6 +781,15 @@ This section tracks which user stories have implemented tests.
 | 5.4.3 | P1 | As a maintainer, I want to split a bounty between multiple contributors, so that everyone gets credit. |
 | 5.4.4 | P2 | As a maintainer, I want to set bounty tiers based on issue complexity, so that pricing is fair. |
 
+### GitAfter GUI
+
+| ID | Priority | User Story |
+|----|----------|------------|
+| 5.5.1 | P0 | As a user, I want to browse repositories in a native WGPUI interface, so that I have a fast desktop experience. |
+| 5.5.2 | P0 | As a user, I want to view issues and their bounties in the GUI, so that I can find work visually. |
+| 5.5.3 | P1 | As a user, I want to review PRs with trajectory links in the GUI, so that I can audit agent work. |
+| 5.5.4 | P1 | As a user, I want to navigate between repos, issues, and PRs with keyboard shortcuts, so that I work efficiently. |
+
 ---
 
 ## d-006: NIP-SA (Sovereign Agents Protocol)
@@ -887,6 +922,14 @@ This section tracks which user stories have implemented tests.
 | 8.4.2 | P0 | As a developer, I want to see which trajectories I've contributed, so that I track my contributions. |
 | 8.4.3 | P1 | As a developer, I want to set redaction rules for my contributions, so that secrets are protected. |
 | 8.4.4 | P1 | As a researcher, I want to purchase trajectory datasets, so that I can train models. |
+
+### Revenue Split Distribution
+
+| ID | Priority | User Story |
+|----|----------|------------|
+| 8.5.1 | P0 | As a platform operator, I want to configure revenue splits between creators and providers, so that earnings are fairly distributed. |
+| 8.5.2 | P0 | As a skill creator, I want to receive my split automatically when skills are purchased, so that I don't have to claim manually. |
+| 8.5.3 | P1 | As a compute provider, I want to see my pending and paid revenue shares, so that I can track earnings. |
 
 ---
 
@@ -1334,14 +1377,14 @@ This section tracks which user stories have implemented tests.
 
 | Directive | User Stories | P0 | P1 | P2 |
 |-----------|-------------|----|----|-----|
-| d-001 | 24 | 15 | 8 | 1 |
+| d-001 | 27 | 17 | 9 | 1 |
 | d-002 | 22 | 14 | 7 | 1 |
 | d-003 | 20 | 11 | 7 | 2 |
 | d-004 | 12 | 5 | 5 | 2 |
-| d-005 | 18 | 10 | 6 | 2 |
+| d-005 | 22 | 12 | 8 | 2 |
 | d-006 | 16 | 9 | 6 | 1 |
 | d-007 | 14 | 8 | 5 | 1 |
-| d-008 | 18 | 10 | 7 | 1 |
+| d-008 | 21 | 12 | 8 | 1 |
 | d-009 | 13 | 6 | 5 | 2 |
 | d-010 | 7 | 5 | 2 | 0 |
 | d-011 | 8 | 3 | 3 | 2 |
@@ -1360,7 +1403,7 @@ This section tracks which user stories have implemented tests.
 | d-024 | 11 | 4 | 6 | 1 |
 | d-025 | 8 | 4 | 3 | 1 |
 | d-026 | 13 | 7 | 5 | 1 |
-| **TOTAL** | **296** | **173** | **111** | **22** |
+| **TOTAL** | **306** | **179** | **115** | **22** |
 
 ---
 
@@ -1408,4 +1451,4 @@ test("Send to Lightning Invoice")
 
 ---
 
-*Last updated: 2024-12*
+*Last updated: 2025-12-26*
