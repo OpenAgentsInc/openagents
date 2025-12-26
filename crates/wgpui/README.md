@@ -14,7 +14,7 @@ A cross-platform GPU-accelerated UI rendering library built on wgpu (WebGPU/Vulk
 | **Phase 4** | Molecules (10 components) | ✅ Complete |
 | **Phase 5** | Organisms (9 components) | ✅ Complete |
 | **Phase 6** | Markdown & Streaming | ✅ Complete |
-| **Phase 7** | Sections (4 components) | ✅ Complete |
+| **Phase 7** | Sections (5 components) | ✅ Complete |
 | **Phase 8** | HUD Components (5 components) | ✅ Complete |
 | **Phase 9** | Integration | ✅ Complete |
 | **Phase 10** | Testing & Docs | ✅ Complete |
@@ -373,7 +373,7 @@ src/
 │   ├── atoms/          # 13 atomic components
 │   ├── molecules/      # 10 molecular components
 │   ├── organisms/      # 9 organism components
-│   ├── sections/       # 4 section components
+│   ├── sections/       # 5 section components
 │   └── hud/            # 5 HUD components (incl. Tooltip, ContextMenu)
 ├── platform/
 │   ├── web.rs          # WASM platform
@@ -427,11 +427,12 @@ wgpui includes a full component library following Atomic Design principles:
 - `ThreadControls` - Thread-level controls
 - `PermissionDialog` - Permission request dialog
 
-### Sections (4 components)
+### Sections (5 components)
 - `ThreadHeader` - Title bar with back/menu buttons
 - `ThreadView` - Scrollable conversation with virtual scrolling
 - `MessageEditor` - Input composer with mode badge
 - `ThreadFeedback` - Feedback collection UI
+- `TrajectoryView` - Timeline view for trajectory steps
 
 ### HUD Components (5 components)
 - `CommandPalette` - Fuzzy search popup (Cmd+K style)

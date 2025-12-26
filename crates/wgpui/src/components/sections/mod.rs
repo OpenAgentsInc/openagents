@@ -2,11 +2,13 @@ mod message_editor;
 mod thread_feedback;
 mod thread_header;
 mod thread_view;
+mod trajectory_view;
 
 pub use message_editor::MessageEditor;
 pub use thread_feedback::{FeedbackRating, ThreadFeedback};
 pub use thread_header::ThreadHeader;
 pub use thread_view::ThreadView;
+pub use trajectory_view::{TrajectoryEntry, TrajectoryView};
 
 #[cfg(test)]
 mod tests {
@@ -21,6 +23,7 @@ mod tests {
         let _view = ThreadView::new();
         let _editor = MessageEditor::new();
         let _feedback = ThreadFeedback::new();
+        let _trajectory = TrajectoryView::new();
     }
 
     #[test]
