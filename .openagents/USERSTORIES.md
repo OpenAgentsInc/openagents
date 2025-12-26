@@ -78,13 +78,23 @@ This section tracks which user stories have implemented tests.
 | 6.1.4 | See agent threshold key configuration | Integration | `crates/nostr/tests/integration/nip_sa.rs` |
 | 6.2.1 | Store encrypted state (kind:38001) | Integration | `crates/nostr/tests/integration/nip_sa.rs` |
 | 6.2.2 | Retrieve encrypted state on startup | Integration | `crates/nostr/tests/integration/nip_sa.rs` |
+| 6.3.1 | Set a heartbeat interval | Integration | `crates/nostr/tests/integration/nip_sa.rs` |
+| 6.3.2 | Set event triggers for schedule | Integration | `crates/nostr/tests/integration/nip_sa.rs` |
 | 6.4.1 | Publish TickRequest (kind:38010) | Integration | `crates/nostr/tests/integration/nip_sa.rs` |
 | 6.4.2 | Publish TickResult (kind:38011) | Integration | `crates/nostr/tests/integration/nip_sa.rs` |
 | 6.5.1 | Publish TrajectorySession (kind:38030) | Integration | `crates/nostr/tests/integration/nip_sa.rs` |
 | 6.5.2 | Publish TrajectoryEvents (kind:38031) | Integration | `crates/nostr/tests/integration/nip_sa.rs` |
 | **d-007: FROSTR (Threshold Signatures)** ||||
+| 7.1.1 | Generate a 2-of-3 threshold keypair | Unit | `crates/frostr/src/keygen.rs` |
+| 7.1.2 | Distribute shares to designated holders | Unit | `crates/frostr/src/credential.rs` |
+| 7.1.3 | Generate 3-of-5 (or other) configurations | Unit | `crates/frostr/src/keygen.rs` |
+| 7.2.1 | Participate in a signing round | Integration | `crates/frostr/tests/bifrost_e2e.rs` |
+| 7.2.2 | Initiate a signing request via Bifrost | Integration | `crates/frostr/tests/bifrost_e2e.rs` |
 | 7.2.3 | Validate threshold signature as a normal Schnorr signature | Integration | `crates/frostr/tests/bifrost_e2e.rs` |
+| 7.2.5 | Signing completes within a timeout | Integration | `crates/frostr/tests/bifrost_e2e.rs` |
+| 7.3.2 | Contribute ECDH share for decryption | Unit | `crates/frostr/src/ecdh.rs` |
 | 7.4.1 | Discover Bifrost peers on Nostr relays | Integration | `crates/frostr/tests/bifrost_e2e.rs` |
+| 7.4.2 | Send and receive Bifrost messages | Integration | `crates/frostr/tests/bifrost_e2e.rs` |
 | **d-014: NIP-SA/Bifrost Integration Tests** ||||
 | 14.1.1 | E2E tests for 2-of-3 threshold signing | Integration | `crates/frostr/tests/bifrost_e2e.rs` |
 | 14.1.2 | E2E tests for threshold ECDH decryption | Integration | `crates/frostr/tests/bifrost_e2e.rs` |
@@ -103,7 +113,19 @@ This section tracks which user stories have implemented tests.
 | 16.1.3 | APM tracked across multiple time windows | Unit | `crates/autopilot/src/apm_storage.rs` |
 | 16.2.3 | APM color-coded by tier | Unit | `crates/autopilot/src/apm.rs` |
 | **d-017: ACP Integration** ||||
+| 17.1.1 | Send ACP messages to Claude Code | Integration | `crates/acp-adapter/tests/integration_tests.rs` |
 | 17.1.2 | ACP event streaming | Unit + Visual | `crates/wgpui/src/testing/chat_tests.rs` |
+| 17.1.3 | Switch between Claude/Codex backends | Integration | `crates/acp-adapter/tests/integration_tests.rs` |
+| 17.1.4 | Convert ACP events to rlog format | Unit | `crates/acp-adapter/src/converters/rlog.rs` |
+| 17.2.1 | Start an ACP session | Integration | `crates/acp-adapter/tests/integration_tests.rs` |
+| 17.2.2 | Send messages and receive responses | Integration | `crates/acp-adapter/tests/integration_tests.rs` |
+| 17.2.3 | Replay old sessions from rlog files | Unit | `crates/acp-adapter/src/replay.rs` |
+| **d-019: GPT-OSS Local Inference** ||||
+| 19.1.1 | Run inference with gpt-oss-120b | Integration | `crates/local-inference/tests/gpt_oss_backend_integration.rs` |
+| 19.1.2 | Run inference with gpt-oss-20b | Integration | `crates/local-inference/tests/gpt_oss_backend_integration.rs` |
+| 19.1.3 | Check if GPT-OSS is available locally | Integration | `crates/local-inference/tests/gpt_oss_backend_integration.rs` |
+| 19.1.4 | Stream responses | Integration | `crates/local-inference/tests/gpt_oss_backend_integration.rs` |
+| 19.2.3 | GPT-OSS supports tool calls | Unit | `crates/gpt-oss-agent/tests/tool_tests.rs` |
 | **d-020: WGPUI Component Integration** ||||
 | 20.1.1 | Button components with all variants | Unit | `crates/wgpui/src/testing/component_tests.rs` |
 | 20.1.2 | TextInput components | Unit | `crates/wgpui/src/testing/component_tests.rs` |
@@ -170,6 +192,11 @@ This section tracks which user stories have implemented tests.
 | `crates/wgpui/src/testing/injection.rs` | EventSequence for synthetic events | 26.3.2 |
 | `crates/wgpui/src/testing/overlay.rs` | InputOverlay for click ripples | 26.2.2, 26.2.3 |
 | `crates/wgpui/src/testing/runner.rs` | TestRunner playback + step control | 26.2.4, 26.2.5 |
+| `crates/acp-adapter/tests/integration_tests.rs` | ACP session lifecycle, permissions, and file operations | 17.1.1, 17.1.3, 17.2.1-17.2.2 |
+| `crates/acp-adapter/src/converters/rlog.rs` | ACP to rlog conversion tests | 17.1.4 |
+| `crates/acp-adapter/src/replay.rs` | Rlog replay tests | 17.2.3 |
+| `crates/local-inference/tests/gpt_oss_backend_integration.rs` | GPT-OSS LocalModelBackend mock server tests | 19.1.1-19.1.4 |
+| `crates/gpt-oss-agent/tests/tool_tests.rs` | GPT-OSS agent tool schema + validation tests | 19.2.3 |
 | `crates/wgpui/src/components/text_effects/decipher.rs` | Decipher text effect tests | 24.3.2 |
 | `crates/wgpui/src/components/text_effects/mod.rs` | Cursor blink timing tests | 24.3.3 |
 | `crates/wgpui/src/components/hud/backgrounds/grid_lines.rs` | GridLines background tests | 24.4.2 |
@@ -191,7 +218,10 @@ This section tracks which user stories have implemented tests.
 | `crates/nostr/tests/integration/pool.rs` | RelayPool multi-relay publish tests | 2.2.2, 2.2.6 |
 | `crates/nostr/tests/integration/subscriptions.rs` | Subscription behavior across kinds and filters | 2.4.2 |
 | `crates/nostr/tests/integration/nip_sa.rs` | NIP-SA profile/state/tick/trajectory relay flows | 6.1.1-6.5.2, 14.2.1-14.2.4 |
-| `crates/frostr/tests/bifrost_e2e.rs` | Bifrost signing/ECDH/peer/timeout relay flows | 7.2.3, 7.4.1, 14.1.1-14.1.4 |
+| `crates/frostr/tests/bifrost_e2e.rs` | Bifrost signing/ECDH/peer/timeout relay flows | 7.2.1-7.2.3, 7.2.5, 7.4.1-7.4.2, 14.1.1-14.1.4 |
+| `crates/frostr/src/keygen.rs` | Shamir + FROST key generation tests | 7.1.1, 7.1.3 |
+| `crates/frostr/src/credential.rs` | Group/share credential encoding tests | 7.1.2 |
+| `crates/frostr/src/ecdh.rs` | Threshold ECDH share/determinism tests | 7.3.2 |
 
 ---
 

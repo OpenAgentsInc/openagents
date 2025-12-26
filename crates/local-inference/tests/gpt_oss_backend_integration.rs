@@ -206,6 +206,59 @@ async fn test_gpt_oss_complete() {
 }
 
 #[tokio::test]
+async fn test_gpt_oss_complete_120b() {
+    let mock_server = MockServer::start().await;
+
+    // Mock the /health endpoint
+    Mock::given(method("GET"))
+        .and(path("/health"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "status": "ok"
+        })))
+        .mount(&mock_server)
+        .await;
+
+    // Mock the /v1/completions endpoint
+    Mock::given(method("POST"))
+        .and(path("/v1/completions"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "id": "completion-120b",
+            "model": "gpt-oss-120b",
+            "text": "This is a test response from GPT-OSS 120B.",
+            "finish_reason": "stop",
+            "usage": {
+                "prompt_tokens": 7,
+                "completion_tokens": 12,
+                "total_tokens": 19
+            }
+        })))
+        .mount(&mock_server)
+        .await;
+
+    let mut client = GptOssClient::builder()
+        .base_url(&mock_server.uri())
+        .build()
+        .expect("Failed to build client");
+
+    client.initialize().await.expect("Initialization should succeed");
+
+    let request = CompletionRequest::new("gpt-oss-120b", "Explain FROST signatures.");
+    let response = LocalModelBackend::complete(&client, request)
+        .await
+        .expect("Completion should succeed");
+
+    assert_eq!(response.id, "completion-120b");
+    assert_eq!(response.model, "gpt-oss-120b");
+    assert_eq!(response.text, "This is a test response from GPT-OSS 120B.");
+    assert_eq!(response.finish_reason, Some("stop".to_string()));
+
+    let usage = response.usage.expect("Should have usage info");
+    assert_eq!(usage.prompt_tokens, 7);
+    assert_eq!(usage.completion_tokens, 12);
+    assert_eq!(usage.total_tokens, 19);
+}
+
+#[tokio::test]
 async fn test_gpt_oss_complete_simple() {
     let mock_server = MockServer::start().await;
 
