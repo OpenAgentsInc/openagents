@@ -122,6 +122,8 @@ impl NostrTrigger {
         let default_schedule = AgentSchedule {
             heartbeat_seconds: Some(900), // 15 minutes
             triggers: vec![TriggerType::Mention, TriggerType::Dm, TriggerType::Zap],
+            active: true,
+            business_hours: None,
         };
 
         self.enabled_triggers = default_schedule.triggers.iter().cloned().collect();

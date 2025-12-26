@@ -25,6 +25,16 @@ pub fn memory_cleanup_threshold_bytes() -> u64 {
         .unwrap_or(1536 * 1024 * 1024)
 }
 
+fn memory_cleanup_enabled() -> bool {
+    match std::env::var("AUTOPILOT_ENABLE_MEMORY_CLEANUP") {
+        Ok(value) => matches!(
+            value.trim().to_lowercase().as_str(),
+            "1" | "true" | "yes" | "on"
+        ),
+        Err(_) => false,
+    }
+}
+
 /// Check if system has enough available memory
 /// Returns (available_bytes, needs_cleanup, is_critical)
 pub fn check_memory() -> (u64, bool, bool) {
@@ -44,8 +54,6 @@ pub fn check_memory() -> (u64, bool, bool) {
 /// WARNING: This function kills ANY process with "node" in the name that uses >500MB.
 /// This is a fallback for non-daemon mode. The daemon supervisor has more precise
 /// tracking of worker PIDs and only kills untracked processes.
-///
-/// TODO: Make this opt-in via environment variable or command flag
 pub fn check_and_kill_memory_hogs() -> u64 {
     let mut sys = System::new_all();
     sys.refresh_all();
@@ -94,7 +102,15 @@ pub fn check_and_kill_memory_hogs() -> u64 {
         );
     }
 
-    // Check if memory cleanup is disabled
+    // Cleanup is opt-in to avoid killing unrelated Node.js processes.
+    if !memory_cleanup_enabled() {
+        println!(
+            "{} Memory cleanup disabled. Set AUTOPILOT_ENABLE_MEMORY_CLEANUP=1 to enable.",
+            "SKIP:".yellow().bold()
+        );
+        return available;
+    }
+
     if std::env::var("AUTOPILOT_NO_MEMORY_CLEANUP").is_ok() {
         println!(
             "{} Memory cleanup disabled via AUTOPILOT_NO_MEMORY_CLEANUP",
@@ -125,7 +141,7 @@ pub fn check_and_kill_memory_hogs() -> u64 {
                     format_bytes(*mem)
                 );
                 println!(
-                    "    {} This may kill unrelated Node.js processes. Set AUTOPILOT_NO_MEMORY_CLEANUP=1 to disable.",
+                    "    {} This may kill unrelated Node.js processes. Set AUTOPILOT_ENABLE_MEMORY_CLEANUP=1 to enable.",
                     "WARN:".yellow()
                 );
                 if proc.kill_with(Signal::Term).unwrap_or(false) {
@@ -170,5 +186,52 @@ pub fn format_bytes(bytes: u64) -> String {
         format!("{:.1} MB", bytes as f64 / (1024.0 * 1024.0))
     } else {
         format!("{:.1} KB", bytes as f64 / 1024.0)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::Mutex;
+
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
+
+    fn with_env(value: Option<&str>, f: impl FnOnce()) {
+        let _guard = ENV_LOCK.lock().unwrap();
+        let original = std::env::var("AUTOPILOT_ENABLE_MEMORY_CLEANUP").ok();
+
+        unsafe {
+            if let Some(val) = value {
+                std::env::set_var("AUTOPILOT_ENABLE_MEMORY_CLEANUP", val);
+            } else {
+                std::env::remove_var("AUTOPILOT_ENABLE_MEMORY_CLEANUP");
+            }
+        }
+
+        f();
+
+        unsafe {
+            if let Some(val) = original {
+                std::env::set_var("AUTOPILOT_ENABLE_MEMORY_CLEANUP", val);
+            } else {
+                std::env::remove_var("AUTOPILOT_ENABLE_MEMORY_CLEANUP");
+            }
+        }
+    }
+
+    #[test]
+    fn test_memory_cleanup_enabled_default_false() {
+        with_env(None, || {
+            assert!(!memory_cleanup_enabled());
+        });
+    }
+
+    #[test]
+    fn test_memory_cleanup_enabled_truthy_values() {
+        for value in ["1", "true", "yes", "on"] {
+            with_env(Some(value), || {
+                assert!(memory_cleanup_enabled());
+            });
+        }
     }
 }
