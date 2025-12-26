@@ -34,6 +34,7 @@ serde_json.workspace = true
 
 # SHA256 hashing (for event id)
 sha2 = { workspace = true }
+regex = "1"
 
 # Random number generation (for key generation)
 rand = { workspace = true, optional = true }

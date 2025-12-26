@@ -6396,6 +6396,7 @@ dependencies = [
  "proptest",
  "quickcheck",
  "rand 0.9.2",
+ "regex",
  "scrypt",
  "serde",
  "serde_json",

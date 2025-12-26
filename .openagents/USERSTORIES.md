@@ -156,6 +156,7 @@ This section tracks which user stories have implemented tests.
 | 6.5.1 | Publish TrajectorySession (kind:38030) | Integration | `crates/nostr/tests/integration/nip_sa.rs` |
 | 6.5.2 | Publish TrajectoryEvents (kind:38031) | Integration | `crates/nostr/tests/integration/nip_sa.rs` |
 | 6.5.3 | Fetch and verify an agent's trajectory | Unit | `crates/nostr/core/src/nip_sa/trajectory.rs` |
+| 6.5.4 | Redact sensitive content from trajectories | Unit | `crates/nostr/core/src/nip_sa/trajectory.rs` |
 | **d-007: FROSTR (Threshold Signatures)** ||||
 | 7.1.1 | Generate a 2-of-3 threshold keypair | Unit | `crates/frostr/src/keygen.rs` |
 | 7.1.2 | Distribute shares to designated holders | Unit | `crates/frostr/src/credential.rs` |
