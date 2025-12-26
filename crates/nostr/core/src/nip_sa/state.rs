@@ -14,6 +14,13 @@
 //! - `["d", "state"]` - Addressable event marker
 //! - `["encrypted"]` - Indicates encrypted content
 //! - `["state_version", "1"]` - State schema version for migration
+//! - `["state_meta", "goals", "<count>"]` - Goal count
+//! - `["state_meta", "memory", "<count>"]` - Memory entry count
+//! - `["state_meta", "pending_tasks", "<count>"]` - Pending task count
+//! - `["state_meta", "beliefs", "<count>"]` - Belief count
+//! - `["state_meta", "tick_count", "<count>"]` - Total tick count
+//! - `["state_meta", "last_tick", "<unix>"]` - Last tick timestamp
+//! - `["state_meta", "content_bytes", "<bytes>"]` - Encrypted content size estimate
 //!
 //! ## Encrypted Content
 //!
@@ -61,6 +68,15 @@ pub const KIND_AGENT_STATE: u16 = 38001;
 
 /// Current state schema version
 pub const STATE_VERSION: u32 = 1;
+
+const STATE_METADATA_TAG: &str = "state_meta";
+const META_GOALS: &str = "goals";
+const META_MEMORY: &str = "memory";
+const META_PENDING_TASKS: &str = "pending_tasks";
+const META_BELIEFS: &str = "beliefs";
+const META_TICK_COUNT: &str = "tick_count";
+const META_LAST_TICK: &str = "last_tick";
+const META_CONTENT_BYTES: &str = "content_bytes";
 
 /// Errors that can occur during NIP-SA state operations
 #[derive(Debug, Error)]
@@ -296,6 +312,113 @@ impl Default for AgentStateContent {
     }
 }
 
+/// Metadata that can be inspected without decrypting state content.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StateMetadata {
+    pub goal_count: u64,
+    pub memory_count: u64,
+    pub pending_task_count: u64,
+    pub belief_count: u64,
+    pub tick_count: u64,
+    pub last_tick: u64,
+    pub content_bytes: u64,
+}
+
+impl StateMetadata {
+    pub fn from_content(content: &AgentStateContent) -> Result<Self, StateError> {
+        let json = content.to_json()?;
+        Ok(Self {
+            goal_count: content.goals.len() as u64,
+            memory_count: content.memory.len() as u64,
+            pending_task_count: content.pending_tasks.len() as u64,
+            belief_count: content.beliefs.len() as u64,
+            tick_count: content.tick_count,
+            last_tick: content.last_tick,
+            content_bytes: json.as_bytes().len() as u64,
+        })
+    }
+
+    pub fn build_tags(&self) -> Vec<Vec<String>> {
+        vec![
+            vec![
+                STATE_METADATA_TAG.to_string(),
+                META_GOALS.to_string(),
+                self.goal_count.to_string(),
+            ],
+            vec![
+                STATE_METADATA_TAG.to_string(),
+                META_MEMORY.to_string(),
+                self.memory_count.to_string(),
+            ],
+            vec![
+                STATE_METADATA_TAG.to_string(),
+                META_PENDING_TASKS.to_string(),
+                self.pending_task_count.to_string(),
+            ],
+            vec![
+                STATE_METADATA_TAG.to_string(),
+                META_BELIEFS.to_string(),
+                self.belief_count.to_string(),
+            ],
+            vec![
+                STATE_METADATA_TAG.to_string(),
+                META_TICK_COUNT.to_string(),
+                self.tick_count.to_string(),
+            ],
+            vec![
+                STATE_METADATA_TAG.to_string(),
+                META_LAST_TICK.to_string(),
+                self.last_tick.to_string(),
+            ],
+            vec![
+                STATE_METADATA_TAG.to_string(),
+                META_CONTENT_BYTES.to_string(),
+                self.content_bytes.to_string(),
+            ],
+        ]
+    }
+
+    pub fn from_tags(tags: &[Vec<String>]) -> Option<Self> {
+        let mut goal_count = None;
+        let mut memory_count = None;
+        let mut pending_task_count = None;
+        let mut belief_count = None;
+        let mut tick_count = None;
+        let mut last_tick = None;
+        let mut content_bytes = None;
+
+        for tag in tags {
+            if tag.len() < 3 || tag[0] != STATE_METADATA_TAG {
+                continue;
+            }
+            let value = match tag[2].parse::<u64>() {
+                Ok(value) => value,
+                Err(_) => continue,
+            };
+            match tag[1].as_str() {
+                META_GOALS => goal_count = Some(value),
+                META_MEMORY => memory_count = Some(value),
+                META_PENDING_TASKS => pending_task_count = Some(value),
+                META_BELIEFS => belief_count = Some(value),
+                META_TICK_COUNT => tick_count = Some(value),
+                META_LAST_TICK => last_tick = Some(value),
+                META_CONTENT_BYTES => content_bytes = Some(value),
+                _ => {}
+            }
+        }
+
+        Some(Self {
+            goal_count: goal_count?,
+            memory_count: memory_count?,
+            pending_task_count: pending_task_count?,
+            belief_count: belief_count?,
+            tick_count: tick_count?,
+            last_tick: last_tick?,
+            content_bytes: content_bytes?,
+        })
+    }
+}
+
 impl Goal {
     /// Create a new goal
     pub fn new(id: impl Into<String>, description: impl Into<String>, priority: u32) -> Self {
@@ -389,11 +512,17 @@ impl AgentState {
 
     /// Build tags for the event
     pub fn build_tags(&self) -> Vec<Vec<String>> {
-        vec![
+        let mut tags = vec![
             vec!["d".to_string(), "state".to_string()],
             vec!["encrypted".to_string()],
             vec!["state_version".to_string(), self.version.to_string()],
-        ]
+        ];
+
+        if let Ok(metadata) = StateMetadata::from_content(&self.content) {
+            tags.extend(metadata.build_tags());
+        }
+
+        tags
     }
 
     /// Encrypt state content using NIP-44
@@ -529,13 +658,83 @@ mod tests {
     }
 
     #[test]
+    fn test_state_metadata_from_content() {
+        let mut state = AgentStateContent::new();
+        state.add_goal(Goal::new("goal-1", "Test goal", 1));
+        state.add_goal(Goal::new("goal-2", "Another goal", 2));
+        state.add_memory(MemoryEntry::with_timestamp(
+            "observation",
+            "Test memory",
+            1703000000,
+        ));
+        state.pending_tasks.push("task-1".to_string());
+        state.pending_tasks.push("task-2".to_string());
+        state
+            .beliefs
+            .insert("theme".to_string(), serde_json::Value::String("nostr".to_string()));
+        state.tick_count = 7;
+        state.last_tick = 1703002000;
+
+        let metadata = StateMetadata::from_content(&state).unwrap();
+        assert_eq!(metadata.goal_count, 2);
+        assert_eq!(metadata.memory_count, 1);
+        assert_eq!(metadata.pending_task_count, 2);
+        assert_eq!(metadata.belief_count, 1);
+        assert_eq!(metadata.tick_count, 7);
+        assert_eq!(metadata.last_tick, 1703002000);
+
+        let content_bytes = state.to_json().unwrap().as_bytes().len() as u64;
+        assert_eq!(metadata.content_bytes, content_bytes);
+    }
+
+    #[test]
+    fn test_state_metadata_tags_roundtrip() {
+        let mut state = AgentStateContent::new();
+        state.add_goal(Goal::new("goal-1", "Test goal", 1));
+        state.add_memory(MemoryEntry::new("observation", "Test memory"));
+        state.pending_tasks.push("task-1".to_string());
+        state
+            .beliefs
+            .insert("market".to_string(), serde_json::Value::String("bull".to_string()));
+        state.tick_count = 3;
+        state.last_tick = 1703002000;
+
+        let metadata = StateMetadata::from_content(&state).unwrap();
+        let tags = metadata.build_tags();
+        let parsed = StateMetadata::from_tags(&tags).unwrap();
+
+        assert_eq!(parsed, metadata);
+    }
+
+    #[test]
     fn test_agent_state_tags() {
-        let state = AgentState::new(AgentStateContent::new());
+        let mut content = AgentStateContent::new();
+        content.add_goal(Goal::new("goal-1", "Test goal", 1));
+        content.add_memory(MemoryEntry::new("observation", "Test memory"));
+        content.pending_tasks.push("task-1".to_string());
+        content
+            .beliefs
+            .insert("theme".to_string(), serde_json::Value::String("nostr".to_string()));
+        content.tick_count = 3;
+        content.last_tick = 1703002000;
+        let state = AgentState::new(content);
         let tags = state.build_tags();
 
         assert_eq!(tags[0], vec!["d", "state"]);
         assert_eq!(tags[1], vec!["encrypted"]);
         assert_eq!(tags[2], vec!["state_version", "1"]);
+
+        let metadata = StateMetadata::from_tags(&tags).expect("metadata tags missing");
+        assert_eq!(metadata.goal_count, 1);
+        assert_eq!(metadata.memory_count, 1);
+        assert_eq!(metadata.pending_task_count, 1);
+        assert_eq!(metadata.belief_count, 1);
+        assert_eq!(metadata.tick_count, 3);
+        assert_eq!(metadata.last_tick, 1703002000);
+        assert_eq!(
+            metadata.content_bytes,
+            state.content.to_json().unwrap().as_bytes().len() as u64
+        );
     }
 
     #[cfg(feature = "full")]
