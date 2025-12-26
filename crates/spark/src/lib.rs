@@ -84,6 +84,6 @@ pub use error::SparkError;
 pub use signer::SparkSigner;
 pub use wallet::{
     Balance, Network, Payment, PaymentMethod, PaymentStatus, PaymentType, SparkWallet, WalletConfig,
-    WalletInfo,
+    WalletInfo, NetworkStatus, NetworkStatusReport,
 };
 pub use breez_sdk_spark::{EventListener, SdkEvent};

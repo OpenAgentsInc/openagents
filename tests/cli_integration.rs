@@ -298,6 +298,7 @@ fn test_wallet_subcommands_listed() {
         .stdout(predicate::str::contains("init"))
         .stdout(predicate::str::contains("whoami"))
         .stdout(predicate::str::contains("balance"))
+        .stdout(predicate::str::contains("status"))
         .stdout(predicate::str::contains("send"))
         .stdout(predicate::str::contains("receive"))
         .stdout(predicate::str::contains("notify"))
