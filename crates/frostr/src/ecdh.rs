@@ -30,6 +30,7 @@ use crate::{keygen::FrostShare, Error, Result};
 use k256::elliptic_curve::group::ff::PrimeField;
 use k256::elliptic_curve::sec1::ToEncodedPoint;
 use k256::{ProjectivePoint, PublicKey, Scalar};
+use std::collections::HashMap;
 
 /// A partial ECDH share from one participant
 #[derive(Debug, Clone)]
@@ -75,30 +76,21 @@ fn compute_lagrange_coefficient(my_idx: u16, members: &[u16]) -> Result<Scalar> 
     Ok(numerator * denom_inv)
 }
 
-/// Create an ECDH share for this participant
-///
-/// Given our FROST share and the list of participating member indices,
-/// compute our partial ECDH contribution.
-///
-/// # Arguments
-/// * `frost_share` - Our FROST key share
-/// * `members` - All participant indices in this ECDH session (including ourselves)
-/// * `peer_pubkey` - The public key to compute ECDH with (32-byte x-only)
-///
-/// # Returns
-/// Our partial ECDH share that can be combined with others
-pub fn create_ecdh_share(
+fn compute_lagrange_coefficients(members: &[u16]) -> Result<HashMap<u16, Scalar>> {
+    let mut coefficients = HashMap::with_capacity(members.len());
+    for &member in members {
+        let lambda = compute_lagrange_coefficient(member, members)?;
+        coefficients.insert(member, lambda);
+    }
+    Ok(coefficients)
+}
+
+fn create_ecdh_share_with_lambda(
     frost_share: &FrostShare,
-    members: &[u16],
+    my_idx: u16,
+    lambda: &Scalar,
     peer_pubkey: &[u8; 32],
 ) -> Result<EcdhShare> {
-    // Get our identifier/index from the FROST key package
-    let id_bytes = frost_share.key_package.identifier().serialize();
-    let my_idx = u16::from_be_bytes([id_bytes[id_bytes.len() - 2], id_bytes[id_bytes.len() - 1]]);
-
-    // Compute Lagrange coefficient
-    let lambda = compute_lagrange_coefficient(my_idx, members)?;
-
     // Get our secret share from the FROST key package
     let signing_share = frost_share.key_package.signing_share();
     let share_vec = signing_share.serialize();
@@ -115,7 +107,7 @@ pub fn create_ecdh_share(
         .ok_or_else(|| Error::Crypto("Invalid share scalar".into()))?;
 
     // Compute weighted = lambda * share
-    let weighted = lambda * share_scalar;
+    let weighted = *lambda * share_scalar;
 
     // Parse peer public key (x-only to full public key, assume even y)
     let mut full_pubkey_bytes = [0u8; 33];
@@ -141,6 +133,66 @@ pub fn create_ecdh_share(
         index: my_idx,
         partial_point: partial_bytes,
     })
+}
+
+/// Create an ECDH share for this participant
+///
+/// Given our FROST share and the list of participating member indices,
+/// compute our partial ECDH contribution.
+///
+/// # Arguments
+/// * `frost_share` - Our FROST key share
+/// * `members` - All participant indices in this ECDH session (including ourselves)
+/// * `peer_pubkey` - The public key to compute ECDH with (32-byte x-only)
+///
+/// # Returns
+/// Our partial ECDH share that can be combined with others
+pub fn create_ecdh_share(
+    frost_share: &FrostShare,
+    members: &[u16],
+    peer_pubkey: &[u8; 32],
+) -> Result<EcdhShare> {
+    // Get our identifier/index from the FROST key package
+    let id_bytes = frost_share.key_package.identifier().serialize();
+    let my_idx = u16::from_be_bytes([id_bytes[id_bytes.len() - 2], id_bytes[id_bytes.len() - 1]]);
+
+    // Compute Lagrange coefficient
+    let lambda = compute_lagrange_coefficient(my_idx, members)?;
+
+    create_ecdh_share_with_lambda(frost_share, my_idx, &lambda, peer_pubkey)
+}
+
+/// Create ECDH shares with precomputed Lagrange coefficients.
+pub fn create_ecdh_shares(
+    shares: &[FrostShare],
+    peer_pubkey: &[u8; 32],
+) -> Result<Vec<EcdhShare>> {
+    if shares.is_empty() {
+        return Err(Error::InvalidShareCount { need: 1, got: 0 });
+    }
+
+    let members: Vec<u16> = shares
+        .iter()
+        .map(|share| {
+            let id_bytes = share.key_package.identifier().serialize();
+            u16::from_be_bytes([id_bytes[id_bytes.len() - 2], id_bytes[id_bytes.len() - 1]])
+        })
+        .collect();
+
+    let coefficients = compute_lagrange_coefficients(&members)?;
+
+    shares
+        .iter()
+        .map(|share| {
+            let id_bytes = share.key_package.identifier().serialize();
+            let my_idx =
+                u16::from_be_bytes([id_bytes[id_bytes.len() - 2], id_bytes[id_bytes.len() - 1]]);
+            let lambda = coefficients
+                .get(&my_idx)
+                .ok_or_else(|| Error::Crypto("Missing Lagrange coefficient".into()))?;
+            create_ecdh_share_with_lambda(share, my_idx, lambda, peer_pubkey)
+        })
+        .collect()
 }
 
 /// Combine ECDH shares from threshold participants to derive the shared secret
@@ -190,20 +242,7 @@ pub fn threshold_ecdh(shares: &[FrostShare], peer_pubkey: &[u8; 32]) -> Result<[
         return Err(Error::InvalidShareCount { need: 1, got: 0 });
     }
 
-    // Collect member indices
-    let members: Vec<u16> = shares
-        .iter()
-        .map(|s| {
-            let id_bytes = s.key_package.identifier().serialize();
-            u16::from_be_bytes([id_bytes[id_bytes.len() - 2], id_bytes[id_bytes.len() - 1]])
-        })
-        .collect();
-
-    // Create ECDH shares from each participant
-    let ecdh_shares: Vec<EcdhShare> = shares
-        .iter()
-        .map(|frost_share| create_ecdh_share(frost_share, &members, peer_pubkey))
-        .collect::<Result<Vec<_>>>()?;
+    let ecdh_shares = create_ecdh_shares(shares, peer_pubkey)?;
 
     // Combine shares to get shared secret
     combine_ecdh_shares(&ecdh_shares)
@@ -322,5 +361,35 @@ mod tests {
         let members = vec![1u16, 2u16];
         let ecdh_share = create_ecdh_share(&shares[0], &members, &peer_pubkey_bytes);
         assert!(ecdh_share.is_ok());
+    }
+
+    #[test]
+    fn test_threshold_ecdh_matches_regular_ecdh() {
+        let shares = generate_key_shares(2, 3).expect("keygen should succeed");
+
+        let peer_secret = [0x24u8; 32];
+        let peer_pubkey_bytes = pubkey_from_scalar(&peer_secret);
+
+        let key_packages: Vec<frost_secp256k1::keys::KeyPackage> = shares[0..2]
+            .iter()
+            .map(|share| share.key_package.clone())
+            .collect();
+        let signing_key = frost_secp256k1::keys::reconstruct(&key_packages)
+            .expect("should reconstruct signing key");
+        let secret_scalar = signing_key.to_scalar();
+
+        let mut full_pubkey_bytes = [0u8; 33];
+        full_pubkey_bytes[0] = 0x02;
+        full_pubkey_bytes[1..33].copy_from_slice(&peer_pubkey_bytes);
+        let peer_point = PublicKey::from_sec1_bytes(&full_pubkey_bytes).unwrap();
+        let shared_point = ProjectivePoint::from(*peer_point.as_affine()) * secret_scalar;
+        let encoded = shared_point.to_affine().to_encoded_point(false);
+        let x_bytes = encoded.x().expect("x coordinate");
+        let mut expected = [0u8; 32];
+        expected.copy_from_slice(x_bytes);
+
+        let threshold = threshold_ecdh(&shares[0..2], &peer_pubkey_bytes)
+            .expect("threshold ECDH should work");
+        assert_eq!(threshold, expected);
     }
 }

@@ -169,6 +169,7 @@ This section tracks which user stories have implemented tests.
 | 7.2.5 | Signing completes within a timeout | Integration | `crates/frostr/tests/bifrost_e2e.rs` |
 | 7.3.1 | Decrypt NIP-44 messages using threshold ECDH | Unit | `crates/frostr/src/ecdh.rs` |
 | 7.3.2 | Contribute ECDH share for decryption | Unit | `crates/frostr/src/ecdh.rs` |
+| 7.3.3 | Decrypt as fast as regular ECDH | Unit | `crates/frostr/src/ecdh.rs` |
 | 7.4.1 | Discover Bifrost peers on Nostr relays | Integration | `crates/frostr/tests/bifrost_e2e.rs` |
 | 7.4.2 | Send and receive Bifrost messages | Integration | `crates/frostr/tests/bifrost_e2e.rs` |
 | **d-008: Unified Marketplace** ||||
