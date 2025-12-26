@@ -3,6 +3,7 @@
 //! Wraps wallet crate CLI functions for unified binary.
 
 use clap::Subcommand;
+use std::path::PathBuf;
 
 #[derive(Subcommand)]
 pub enum WalletCommands {
@@ -46,6 +47,10 @@ pub enum WalletCommands {
         address: String,
         /// Amount in sats
         amount: u64,
+
+        /// Skip confirmation prompt
+        #[arg(long)]
+        yes: bool,
     },
 
     /// Transaction history
@@ -53,6 +58,14 @@ pub enum WalletCommands {
         /// Number of transactions to display
         #[arg(short, long, default_value = "20")]
         limit: usize,
+
+        /// Output format (table or csv)
+        #[arg(long, default_value = "table")]
+        format: String,
+
+        /// Optional output file (CSV only)
+        #[arg(long)]
+        output: Option<PathBuf>,
     },
 
     /// Nostr profile commands
@@ -173,8 +186,13 @@ pub fn run(cmd: WalletCommands) -> anyhow::Result<()> {
         WalletCommands::Whoami => wallet::cli::identity::whoami(),
         WalletCommands::Balance => wallet::cli::bitcoin::balance(),
         WalletCommands::Receive { amount } => wallet::cli::bitcoin::receive(amount),
-        WalletCommands::Send { address, amount } => wallet::cli::bitcoin::send(address, amount),
-        WalletCommands::History { limit } => wallet::cli::bitcoin::history(limit),
+        WalletCommands::Send { address, amount, yes } => {
+            wallet::cli::bitcoin::send(address, amount, yes)
+        }
+        WalletCommands::History { limit, format, output } => {
+            let format = wallet::cli::bitcoin::HistoryFormat::parse(&format)?;
+            wallet::cli::bitcoin::history(limit, format, output)
+        }
         WalletCommands::Profile(cmd) => match cmd {
             ProfileCommands::Show => wallet::cli::identity::profile_show(),
             ProfileCommands::Set {

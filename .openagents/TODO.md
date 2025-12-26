@@ -16,20 +16,14 @@
 
 ---
 
-## Outstanding User Stories (No Test Coverage Yet) — 52 total
+## Outstanding User Stories (No Test Coverage Yet) — 46 total
 
 These story IDs are defined in `.openagents/USERSTORIES.md` but are not listed in the Covered Stories table yet.
 
-Priority breakdown: P0 = 16, P1 = 25, P2 = 11.
-P0 focus IDs: 1.3.1, 1.3.2, 1.3.3, 1.3.4, 1.4.1, 1.4.2, 1.4.3, 3.2.1, 3.2.2, 3.2.3, 3.3.1, 3.3.2, 3.3.3, 23.1.3, 25.2.1, 25.2.2.
+Priority breakdown: P0 = 12, P1 = 24, P2 = 10.
+P0 focus IDs: 1.4.1, 1.4.2, 1.4.3, 3.2.1, 3.2.2, 3.2.3, 3.3.1, 3.3.2, 3.3.3, 23.1.3, 25.2.1, 25.2.2.
 
-### d-001: Breez Spark SDK Integration (17)
-- [ ] 1.2.4 (P1) As a user, I want to see pending transactions marked clearly, so that I know which payments are in-flight.
-- [ ] 1.2.5 (P2) As a user, I want to export my transaction history as CSV, so that I can keep external records.
-- [ ] 1.3.1 (P0) As a user, I want to send Bitcoin to a Lightning invoice, so that I can pay for services instantly.
-- [ ] 1.3.2 (P0) As a user, I want to send Bitcoin to an on-chain address, so that I can withdraw to cold storage.
-- [ ] 1.3.3 (P0) As a user, I want to send to another Spark user by their Spark address, so that I can transfer cheaply.
-- [ ] 1.3.4 (P0) As a user, I want to see a confirmation screen with fee estimate before sending, so that I can approve the transaction.
+### d-001: Breez Spark SDK Integration (11)
 - [ ] 1.3.5 (P1) As a user, I want to cancel a pending transaction before it confirms, so that I can correct mistakes.
 - [ ] 1.3.6 (P1) As a user, I want to scan a QR code to populate payment details, so that I don't have to type long addresses.
 - [ ] 1.3.7 (P2) As a user, I want to save frequently-used addresses as contacts, so that I can pay them quickly.
@@ -738,7 +732,7 @@ P0 focus IDs: 1.3.1, 1.3.2, 1.3.3, 1.3.4, 1.4.1, 1.4.2, 1.4.3, 3.2.1, 3.2.2, 3.2
 
 ### Phase 3: Testing & Quality 🟡 IN PROGRESS
 
-Story coverage is incomplete (52 outstanding stories; see Outstanding User Stories).
+Story coverage is incomplete (46 outstanding stories; see Outstanding User Stories).
 12. **d-013**: Testing framework coverage ✅ (700+ tests)
 13. **d-026**: E2E test viewer ✅
 14. **d-014**: NIP-SA/Bifrost E2E tests ✅ (159 tests verified)

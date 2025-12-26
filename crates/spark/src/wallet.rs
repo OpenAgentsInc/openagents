@@ -28,6 +28,7 @@ use std::sync::Arc;
 // Re-export SDK types that consumers need
 pub use breez_sdk_spark::{
     PrepareSendPaymentResponse,
+    SendPaymentMethod,
     SendPaymentResponse,
     ReceivePaymentResponse,
     Payment,
@@ -35,6 +36,14 @@ pub use breez_sdk_spark::{
     PaymentType,
     PaymentMethod,
     PaymentDetails,
+    BitcoinAddressDetails,
+    BitcoinNetwork,
+    PaymentRequestSource,
+    Bolt11InvoiceDetails,
+    Bolt11Invoice,
+    SparkInvoiceDetails,
+    SendOnchainFeeQuote,
+    SendOnchainSpeedFeeQuote,
 };
 
 /// Bitcoin network to use for Spark wallet
