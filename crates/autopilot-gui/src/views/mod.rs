@@ -1,12 +1,20 @@
 pub mod chat;
 pub mod context;
 pub mod dashboard;
+pub mod diff_view;
 pub mod parallel;
+pub mod receipts;
+pub mod replay;
+pub mod timeline;
 
 pub use chat::ChatView;
 pub use context::ContextView;
 pub use dashboard::DashboardView;
+pub use diff_view::DiffView;
 pub use parallel::ParallelView;
+pub use receipts::ReceiptsPanel;
+pub use replay::ReplayView;
+pub use timeline::{TimelineScrubber, TimelineState};
 
 use wgpui::PaintContext;
 
