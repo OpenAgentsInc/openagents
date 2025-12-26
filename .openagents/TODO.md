@@ -124,7 +124,7 @@ P0 focus IDs: none.
 
 **Current:** Production ready. APM, trajectory, learning system complete.
 
-- [ ] **Verify all subsystems:**
+- [x] **Verify all subsystems:** ✅
   - [x] APM tracking with database ✅
   - [x] Trajectory collection (JSONL/rlog) ✅
   - [x] Learning system (instruction adherence) ✅
@@ -170,9 +170,9 @@ P0 focus IDs: none.
 
 ---
 
-### d-006: NIP-SA (Sovereign Agents Protocol) 🟡 IN PROGRESS
+### d-006: NIP-SA (Sovereign Agents Protocol) ✅ COMPLETE
 
-**Current:** Core protocol and wallet integration are implemented; schedule/state/tick history stories still need coverage (see Outstanding User Stories).
+**Current:** Core protocol, wallet integration, and E2E lifecycle coverage are complete.
 
 - [x] **Core Protocol** ✅
   - [x] AgentProfile (kind:38000) ✅
@@ -187,11 +187,11 @@ P0 focus IDs: none.
   - [x] Real SparkWallet initialization via `init_wallet()`
   - [x] Global wallet singleton with OnceCell
   - [x] Budget enforcement queries real Spark balance
-- [ ] **E2E Agent Lifecycle Test**
-  - [ ] Generate threshold identity
-  - [ ] Publish agent profile
-  - [ ] Execute tick with trajectory
-  - [ ] Verify trajectory hash
+- [x] **E2E Agent Lifecycle Test** ✅
+  - [x] Generate threshold identity
+  - [x] Publish agent profile
+  - [x] Execute tick with trajectory
+  - [x] Verify trajectory hash
 
 **Files:**
 - `crates/nostr/core/src/nip_sa/` ✅
