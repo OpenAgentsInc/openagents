@@ -85,6 +85,7 @@ This section tracks which user stories have implemented tests.
 | 3.3.3 | Display receive QR code in GUI | Unit | `crates/wallet/src/gui/view.rs` |
 | 3.3.4 | Transaction list with infinite scroll | Unit | `crates/wallet/src/gui/view.rs` |
 | 3.3.5 | Click transaction to see details | Unit | `crates/wallet/src/gui/view.rs` |
+| 3.3.6 | Balance chart over time | Unit | `crates/wallet/src/gui/view.rs` |
 | **d-002: Nostr Protocol Implementation** ||||
 | 2.1.1 | Create and sign kind:1 text notes | Unit | `crates/nostr/core/src/tests/event_validation.rs` |
 | 2.1.2 | Create and sign kind:0 metadata events | Unit | `crates/nostr/core/src/tests/event_validation.rs` |
