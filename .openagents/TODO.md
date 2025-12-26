@@ -88,9 +88,9 @@ P0 focus IDs: none.
   - [x] NIP-57: Zaps with Spark ✅
   - [x] NIP-90: DVMs ✅
 - [x] **NIP-52 "placeholders"** - Intentional empty strings per spec ✅
-- [ ] **Relay client testing** (optional enhancement)
-  - [ ] Test against public relays (damus.io, nos.lol)
-  - [ ] Verify subscription handling
+- [x] **Relay client testing** (optional enhancement)
+  - [x] Test against public relays (damus.io, nos.lol) — `crates/nostr/tests/integration/public_relays.rs`
+  - [x] Verify subscription handling — `crates/nostr/tests/integration/public_relays.rs`
 
 **Files:** `crates/nostr/core/src/nip*.rs` (86 files)
 
