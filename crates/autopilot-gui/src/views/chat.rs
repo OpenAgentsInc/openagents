@@ -2,14 +2,12 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use wgpui::components::atoms::{Model, StreamingIndicator};
-use wgpui::components::molecules::MessageHeader;
+use wgpui::components::molecules::{MessageHeader, ThinkingBlock};
 use wgpui::components::organisms::ToolCallCard;
 use wgpui::components::sections::MessageEditor;
 use wgpui::components::Component;
 use wgpui::scroll::{calculate_scrollbar_thumb, ScrollContainer};
-use wgpui::{
-    Bounds, EventContext, EventResult, InputEvent, Point, Quad, Size, Text, theme,
-};
+use wgpui::{Bounds, EventContext, EventResult, InputEvent, Point, Quad, Size, Text, theme};
 
 use crate::backend::BackendCommand;
 use crate::state::{AppState, ChatEntry, ToolCallData};
@@ -17,6 +15,8 @@ use crate::views::fit_text;
 
 const ENTRY_GAP: f32 = 12.0;
 const HEADER_LINE_HEIGHT: f32 = 18.0;
+const THINKING_TOGGLE_HEIGHT: f32 = 24.0;
+const THINKING_MAX_COLLAPSED_LINES: usize = 3;
 
 pub struct ChatView {
     state: Rc<RefCell<AppState>>,
@@ -35,6 +35,10 @@ struct ChatLayoutEntry {
     entry: ChatEntry,
     lines: Vec<String>,
     height: f32,
+    /// Index in the original chat entries list (for thinking toggle state)
+    index: usize,
+    thinking_block: Option<ThinkingBlock>,
+    thinking_height: f32,
 }
 
 impl ChatView {
@@ -89,26 +93,58 @@ impl ChatView {
         self.layout_entries.clear();
         self.content_height = 0.0;
 
-        for entry in &state.chat_entries {
-            let (lines, height) = match entry {
+        for (index, entry) in state.chat_entries.iter().enumerate() {
+            let (lines, height, thinking_block, thinking_height) = match entry {
                 ChatEntry::User { text, .. } => {
                     let lines = wrap_lines(cx, text, theme::font_size::BASE, available_width);
                     let height = text_entry_height(&lines, true, false);
-                    (lines, height)
+                    (lines, height, None, 0.0)
                 }
                 ChatEntry::Assistant { text, streaming, .. } => {
-                    let lines = wrap_lines(cx, text, theme::font_size::BASE, available_width);
-                    let height = text_entry_height(&lines, true, *streaming);
-                    (lines, height)
+                    let (thinking_content, visible_text) = parse_thinking_block(text);
+                    let lines = if visible_text.trim().is_empty() {
+                        Vec::new()
+                    } else {
+                        wrap_lines(cx, &visible_text, theme::font_size::BASE, available_width)
+                    };
+
+                    let thinking_expanded = state.is_thinking_expanded(index);
+                    let (thinking_block, thinking_height) = if let Some(thinking_content) =
+                        thinking_content
+                    {
+                        let trimmed = thinking_content.trim();
+                        if trimmed.is_empty() {
+                            (None, 0.0)
+                        } else {
+                            let thinking_lines = wrap_lines(
+                                cx,
+                                trimmed,
+                                theme::font_size::SM,
+                                available_width,
+                            );
+                            let thinking_text = thinking_lines.join("\n");
+                            let thinking_block = ThinkingBlock::new(thinking_text)
+                                .expanded(thinking_expanded)
+                                .max_collapsed_lines(THINKING_MAX_COLLAPSED_LINES);
+                            let thinking_height =
+                                thinking_block_height(thinking_lines.len(), thinking_expanded);
+                            (Some(thinking_block), thinking_height)
+                        }
+                    } else {
+                        (None, 0.0)
+                    };
+
+                    let height = assistant_entry_height(lines.len(), thinking_height, *streaming);
+                    (lines, height, thinking_block, thinking_height)
                 }
                 ChatEntry::System { text, .. } => {
                     let lines = wrap_lines(cx, text, theme::font_size::SM, available_width);
                     let height = system_entry_height(&lines);
-                    (lines, height)
+                    (lines, height, None, 0.0)
                 }
                 ChatEntry::ToolCall(tool) => {
                     let height = tool_entry_height(tool);
-                    (Vec::new(), height)
+                    (Vec::new(), height, None, 0.0)
                 }
             };
 
@@ -116,6 +152,9 @@ impl ChatView {
                 entry: entry.clone(),
                 lines,
                 height,
+                index,
+                thinking_block,
+                thinking_height,
             });
 
             self.content_height += height + ENTRY_GAP;
@@ -169,6 +208,41 @@ impl ChatView {
         }
     }
 
+    fn handle_thinking_event(
+        &mut self,
+        event: &InputEvent,
+        list_bounds: Bounds,
+        cx: &mut EventContext,
+    ) -> EventResult {
+        let scroll_offset = self.scroll.scroll_offset.y;
+        let mut y = list_bounds.origin.y - scroll_offset;
+
+        for entry in &mut self.layout_entries {
+            let entry_bounds =
+                Bounds::new(list_bounds.origin.x, y, list_bounds.size.width, entry.height);
+            if entry_bounds.origin.y + entry_bounds.size.height >= list_bounds.origin.y
+                && entry_bounds.origin.y <= list_bounds.origin.y + list_bounds.size.height
+            {
+                if let Some(thinking_bounds) = thinking_block_bounds(entry, entry_bounds) {
+                    if let Some(block) = entry.thinking_block.as_mut() {
+                        let before = block.is_expanded();
+                        let result = block.event(event, thinking_bounds, cx);
+                        if result == EventResult::Handled {
+                            let after = block.is_expanded();
+                            if before != after {
+                                let mut state = self.state.borrow_mut();
+                                state.set_thinking_expanded(entry.index, after);
+                            }
+                            return EventResult::Handled;
+                        }
+                    }
+                }
+            }
+            y += entry.height + ENTRY_GAP;
+        }
+
+        EventResult::Ignored
+    }
 }
 
 impl Component for ChatView {
@@ -218,7 +292,7 @@ impl Component for ChatView {
         let scroll_offset = self.scroll.scroll_offset.y;
         let mut y = list_bounds.origin.y - scroll_offset;
         let indicator = &mut self.streaming_indicator;
-        for entry in &self.layout_entries {
+        for entry in &mut self.layout_entries {
             let entry_bounds = Bounds::new(list_bounds.origin.x, y, list_bounds.size.width, entry.height);
             if entry_bounds.origin.y + entry_bounds.size.height >= list_bounds.origin.y
                 && entry_bounds.origin.y <= list_bounds.origin.y + list_bounds.size.height
@@ -304,13 +378,22 @@ impl Component for ChatView {
             return self.editor.event(event, editor_bounds, cx);
         }
 
-        let _ = list_bounds;
+        if matches!(
+            event,
+            InputEvent::MouseMove { .. } | InputEvent::MouseDown { .. } | InputEvent::MouseUp { .. }
+        ) {
+            let result = self.handle_thinking_event(event, list_bounds, cx);
+            if result == EventResult::Handled {
+                return result;
+            }
+        }
+
         EventResult::Ignored
     }
 }
 
 fn paint_entry(
-    layout: &ChatLayoutEntry,
+    layout: &mut ChatLayoutEntry,
     bounds: Bounds,
     cx: &mut wgpui::PaintContext,
     indicator: &mut StreamingIndicator,
@@ -334,14 +417,11 @@ fn paint_entry(
             streaming,
             ..
         } => {
-            let indicator = if *streaming { Some(indicator) } else { None };
-            paint_text_entry(
+            paint_assistant_entry(
+                layout,
                 bounds,
                 cx,
                 MessageHeader::assistant(Model::ClaudeSonnet).timestamp_opt(timestamp.clone()),
-                &layout.lines,
-                theme::bg::SURFACE,
-                theme::text::PRIMARY,
                 *streaming,
                 indicator,
             );
@@ -388,6 +468,41 @@ fn wrap_lines(
     lines
 }
 
+fn parse_thinking_block(text: &str) -> (Option<String>, String) {
+    const THINKING_START: &str = "<thinking>";
+    const THINKING_END: &str = "</thinking>";
+
+    let mut thinking_parts = Vec::new();
+    let mut visible = String::new();
+    let mut remaining = text;
+
+    loop {
+        let Some(start) = remaining.find(THINKING_START) else {
+            visible.push_str(remaining);
+            break;
+        };
+        let (before, after_start) = remaining.split_at(start);
+        visible.push_str(before);
+        let after_start = &after_start[THINKING_START.len()..];
+        let Some(end) = after_start.find(THINKING_END) else {
+            return (None, text.to_string());
+        };
+        let (thinking, after) = after_start.split_at(end);
+        if !thinking.trim().is_empty() {
+            thinking_parts.push(thinking.trim().to_string());
+        }
+        remaining = &after[THINKING_END.len()..];
+    }
+
+    let visible = visible.trim().to_string();
+    let thinking = if thinking_parts.is_empty() {
+        None
+    } else {
+        Some(thinking_parts.join("\n\n"))
+    };
+    (thinking, visible)
+}
+
 fn text_entry_height(lines: &[String], with_header: bool, streaming: bool) -> f32 {
     let padding = theme::spacing::MD;
     let header_height = if with_header { 24.0 } else { 0.0 };
@@ -398,6 +513,36 @@ fn text_entry_height(lines: &[String], with_header: bool, streaming: bool) -> f3
         height += 16.0;
     }
     height + theme::spacing::SM
+}
+
+fn assistant_entry_height(line_count: usize, thinking_height: f32, streaming: bool) -> f32 {
+    let padding = theme::spacing::MD;
+    let header_height = 24.0;
+    let header_gap = theme::spacing::SM;
+    let line_height = theme::font_size::BASE * 1.5;
+    let mut height =
+        padding * 2.0 + header_height + header_gap + line_count as f32 * line_height;
+    if thinking_height > 0.0 {
+        height += theme::spacing::SM + thinking_height;
+    }
+    if streaming {
+        height += 16.0;
+    }
+    height
+}
+
+fn thinking_block_height(line_count: usize, expanded: bool) -> f32 {
+    let padding = theme::spacing::SM;
+    let line_height = theme::font_size::SM * 1.4;
+    let collapsed = line_count.min(THINKING_MAX_COLLAPSED_LINES);
+    let visible_lines = if expanded {
+        line_count
+    } else if line_count > THINKING_MAX_COLLAPSED_LINES {
+        collapsed + 1
+    } else {
+        collapsed
+    };
+    padding * 2.0 + THINKING_TOGGLE_HEIGHT + theme::spacing::XS + visible_lines as f32 * line_height
 }
 
 fn system_entry_height(lines: &[String]) -> f32 {
@@ -472,6 +617,90 @@ fn paint_text_entry(
             );
         }
     }
+}
+
+fn paint_assistant_entry(
+    layout: &mut ChatLayoutEntry,
+    bounds: Bounds,
+    cx: &mut wgpui::PaintContext,
+    mut header: MessageHeader,
+    streaming: bool,
+    indicator: &mut StreamingIndicator,
+) {
+    let padding = theme::spacing::MD;
+
+    cx.scene.draw_quad(
+        Quad::new(bounds)
+            .with_background(theme::bg::SURFACE)
+            .with_border(theme::border::DEFAULT, 1.0),
+    );
+
+    let header_height = 24.0;
+    header.paint(
+        Bounds::new(
+            bounds.origin.x + padding,
+            bounds.origin.y + padding,
+            bounds.size.width - padding * 2.0,
+            header_height,
+        ),
+        cx,
+    );
+
+    let mut y = bounds.origin.y + padding + header_height + theme::spacing::SM;
+    let line_height = theme::font_size::BASE * 1.5;
+    for line in &layout.lines {
+        let mut text = Text::new(line)
+            .font_size(theme::font_size::BASE)
+            .color(theme::text::PRIMARY);
+        text.paint(
+            Bounds::new(
+                bounds.origin.x + padding,
+                y,
+                bounds.size.width - padding * 2.0,
+                line_height,
+            ),
+            cx,
+        );
+        y += line_height;
+    }
+
+    if let Some(thinking_bounds) = thinking_block_bounds(layout, bounds) {
+        if let Some(block) = layout.thinking_block.as_mut() {
+            block.paint(thinking_bounds, cx);
+        }
+    }
+
+    if streaming {
+        indicator.paint(
+            Bounds::new(
+                bounds.origin.x + padding,
+                bounds.origin.y + bounds.size.height - padding - 16.0,
+                100.0,
+                16.0,
+            ),
+            cx,
+        );
+    }
+}
+
+fn thinking_block_bounds(layout: &ChatLayoutEntry, bounds: Bounds) -> Option<Bounds> {
+    if layout.thinking_height <= 0.0 {
+        return None;
+    }
+
+    let padding = theme::spacing::MD;
+    let header_height = 24.0;
+    let line_height = theme::font_size::BASE * 1.5;
+    let mut y = bounds.origin.y + padding + header_height + theme::spacing::SM;
+    y += layout.lines.len() as f32 * line_height;
+    y += theme::spacing::SM;
+
+    Some(Bounds::new(
+        bounds.origin.x + padding,
+        y,
+        bounds.size.width - padding * 2.0,
+        layout.thinking_height,
+    ))
 }
 
 fn paint_system_entry(bounds: Bounds, cx: &mut wgpui::PaintContext, lines: &[String]) {
@@ -622,5 +851,13 @@ mod tests {
 
         let cmd = rx.try_recv().expect("command");
         assert!(matches!(cmd, BackendCommand::RunPrompt { ref prompt } if prompt == "Ship it"));
+    }
+
+    #[test]
+    fn test_parse_thinking_block_extracts_content() {
+        let text = "Answer line 1.\n<thinking>\nReason A\nReason B\n</thinking>\nAnswer line 2.";
+        let (thinking, visible) = parse_thinking_block(text);
+        assert_eq!(thinking.as_deref(), Some("Reason A\nReason B"));
+        assert_eq!(visible, "Answer line 1.\n\nAnswer line 2.");
     }
 }

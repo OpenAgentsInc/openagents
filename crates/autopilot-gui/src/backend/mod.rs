@@ -684,6 +684,11 @@ fn parse_assistant_message(
                         text_blocks.push(text.to_string());
                     }
                 }
+                "thinking" => {
+                    if let Some(thinking) = block.get("thinking").and_then(|t| t.as_str()) {
+                        text_blocks.push(format!("<thinking>\n{}\n</thinking>", thinking));
+                    }
+                }
                 "tool_use" => {
                     let tool_id = block
                         .get("id")
@@ -1152,6 +1157,7 @@ mod tests {
         let assistant_message = json!({
             "role": "assistant",
             "content": [
+                { "type": "thinking", "thinking": "Plan it out" },
                 { "type": "text", "text": "Working..." },
                 { "type": "tool_use", "id": "toolu_1", "name": "Bash", "input": { "command": "ls -la" } }
             ]
@@ -1195,6 +1201,8 @@ mod tests {
             _ => None,
         });
         let (assistant_text, streaming) = assistant.expect("assistant entry");
+        assert!(assistant_text.contains("<thinking>"));
+        assert!(assistant_text.contains("Plan it out"));
         assert!(assistant_text.contains("Working..."));
         assert!(!*streaming);
 
