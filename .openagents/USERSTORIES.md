@@ -161,6 +161,7 @@ This section tracks which user stories have implemented tests.
 | 7.1.1 | Generate a 2-of-3 threshold keypair | Unit | `crates/frostr/src/keygen.rs` |
 | 7.1.2 | Distribute shares to designated holders | Unit | `crates/frostr/src/credential.rs` |
 | 7.1.3 | Generate 3-of-5 (or other) configurations | Unit | `crates/frostr/src/keygen.rs` |
+| 7.1.4 | Reshare a key to new holders | Unit | `crates/frostr/src/keygen.rs` |
 | 7.2.1 | Participate in a signing round | Integration | `crates/frostr/tests/bifrost_e2e.rs` |
 | 7.2.2 | Initiate a signing request via Bifrost | Integration | `crates/frostr/tests/bifrost_e2e.rs` |
 | 7.2.3 | Validate threshold signature as a normal Schnorr signature | Integration | `crates/frostr/tests/bifrost_e2e.rs` |

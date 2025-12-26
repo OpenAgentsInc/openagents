@@ -16,15 +16,14 @@
 
 ---
 
-## Outstanding User Stories (No Test Coverage Yet) — 4 total
+## Outstanding User Stories (No Test Coverage Yet) — 3 total
 
 These story IDs are defined in `.openagents/USERSTORIES.md` but are not listed in the Covered Stories table yet.
 
-Priority breakdown: P0 = 0, P1 = 3, P2 = 1.
+Priority breakdown: P0 = 0, P1 = 3, P2 = 0.
 P0 focus IDs: none.
 
-### d-007: FROSTR (Threshold Signatures) (4)
-- [ ] 7.1.4 (P2) As an operator, I want to reshare a key to new holders, so that I can rotate participants.
+### d-007: FROSTR (Threshold Signatures) (3)
 - [ ] 7.3.3 (P1) As an agent, I want decryption to be as fast as regular ECDH, so that performance is acceptable.
 - [ ] 7.4.3 (P1) As a node, I want to handle peer disconnection gracefully, so that the group remains functional.
 - [ ] 7.4.4 (P1) As a requester, I want to retry failed requests automatically, so that transient failures don't block me.
@@ -676,7 +675,7 @@ P0 focus IDs: none.
 
 ### Phase 3: Testing & Quality 🟡 IN PROGRESS
 
-Story coverage is incomplete (4 outstanding stories; see Outstanding User Stories).
+Story coverage is incomplete (3 outstanding stories; see Outstanding User Stories).
 12. **d-013**: Testing framework coverage ✅ (700+ tests)
 13. **d-026**: E2E test viewer ✅
 14. **d-014**: NIP-SA/Bifrost E2E tests ✅ (159 tests verified)

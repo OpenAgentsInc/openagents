@@ -373,6 +373,78 @@ pub fn generate_key_shares(threshold: u32, total: u32) -> Result<Vec<FrostShare>
     Ok(frost_shares)
 }
 
+/// Reshare an existing group key to a new participant set.
+///
+/// Uses FROST's `reconstruct` + `split` to rotate holders while keeping
+/// the same group public key.
+pub fn reshare_frost_shares(
+    existing_shares: &[FrostShare],
+    new_threshold: u32,
+    new_total: u32,
+) -> Result<Vec<FrostShare>> {
+    if existing_shares.is_empty() {
+        return Err(Error::InvalidShareCount { need: 1, got: 0 });
+    }
+    if new_threshold == 0 || new_total == 0 || new_threshold > new_total {
+        return Err(Error::InvalidThreshold(new_threshold, new_total));
+    }
+    if new_threshold > u16::MAX as u32 || new_total > u16::MAX as u32 {
+        return Err(Error::InvalidThreshold(new_threshold, new_total));
+    }
+
+    let required = existing_shares[0].threshold as u32;
+    if existing_shares.len() < required as usize {
+        return Err(Error::InvalidShareCount {
+            need: required,
+            got: existing_shares.len() as u32,
+        });
+    }
+
+    let key_packages: Vec<KeyPackage> = existing_shares
+        .iter()
+        .map(|share| share.key_package.clone())
+        .collect();
+
+    let signing_key = frost_secp256k1::keys::reconstruct(&key_packages)
+        .map_err(|e| Error::FrostError(format!("FROST reconstruct failed: {:?}", e)))?;
+
+    let mut rng = rand::thread_rng();
+    let identifiers: Vec<_> = (1..=new_total)
+        .map(|i| {
+            frost_secp256k1::Identifier::try_from(i as u16)
+                .expect("Identifier creation should succeed for valid indices")
+        })
+        .collect();
+
+    let (secret_shares, public_key_package) = frost_secp256k1::keys::split(
+        &signing_key,
+        new_total as u16,
+        new_threshold as u16,
+        frost_secp256k1::keys::IdentifierList::Custom(&identifiers),
+        &mut rng,
+    )
+    .map_err(|e| Error::FrostError(format!("FROST reshare failed: {:?}", e)))?;
+
+    let frost_shares: Vec<FrostShare> = secret_shares
+        .into_iter()
+        .enumerate()
+        .map(|(idx, (_identifier, secret_share))| {
+            let key_package: KeyPackage = secret_share.try_into().expect("Valid secret share");
+            let participant_id = (idx + 1) as u8;
+
+            FrostShare {
+                key_package,
+                public_key_package: public_key_package.clone(),
+                threshold: new_threshold as u16,
+                total: new_total as u16,
+                participant_id,
+            }
+        })
+        .collect();
+
+    Ok(frost_shares)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -647,5 +719,27 @@ mod tests {
         let result = reconstruct_secret(&duplicate_shares);
         assert!(result.is_err());
         assert!(format!("{:?}", result).contains("Duplicate share index"));
+    }
+
+    #[test]
+    fn test_reshare_frost_shares_rotates_participants() {
+        let shares = generate_key_shares(2, 3).unwrap();
+        let group_pk = shares[0].public_key_package.verifying_key();
+
+        let reshared = reshare_frost_shares(&shares[..2], 2, 4).unwrap();
+        assert_eq!(reshared.len(), 4);
+        assert_eq!(reshared[0].threshold, 2);
+        assert_eq!(reshared[0].total, 4);
+
+        for share in &reshared {
+            assert_eq!(share.public_key_package.verifying_key(), group_pk);
+        }
+    }
+
+    #[test]
+    fn test_reshare_requires_threshold_shares() {
+        let shares = generate_key_shares(3, 5).unwrap();
+        let result = reshare_frost_shares(&shares[..2], 2, 4);
+        assert!(result.is_err());
     }
 }
