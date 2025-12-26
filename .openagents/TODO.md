@@ -96,9 +96,9 @@ P0 focus IDs: none.
 
 ---
 
-### d-003: Wallet Application 🟡 IN PROGRESS
+### d-003: Wallet Application ✅ COMPLETE
 
-**Current:** Identity/Nostr works; core Bitcoin flows exist, but CLI + GUI wallet stories still need coverage (see Outstanding User Stories).
+**Current:** Wallet CLI + WGPUI GUI are wired to Spark and fully covered by tests.
 
 - [x] **Nostr Operations** ✅ Complete
 - [x] **Bitcoin Operations** ✅ Complete
@@ -110,9 +110,9 @@ P0 focus IDs: none.
 - [x] **Wallet Security** ✅ Complete
   - [x] OS keychain protection (macOS Keychain, Linux Secret Service, Windows Credential Manager) (story 3.4.1)
   - [x] Seed phrase backup via `openagents wallet export`
-- [x] **NIP-47 Wallet Connect** (future) — `crates/wallet/src/core/nwc.rs`
+- [x] **NIP-47 Wallet Connect** (optional) — `crates/wallet/src/core/nwc.rs`
 - [x] **NIP-57 Zap Support** ✅
-- [ ] **WGPUI Wallet GUI** (future)
+- [x] **WGPUI Wallet GUI** ✅ (`cargo test -p wallet gui`)
 
 **Files:**
 - `crates/wallet/src/cli/bitcoin.rs` ✅ Wired to SparkWallet
@@ -658,7 +658,7 @@ P0 focus IDs: none.
 
 ### Phase 1: Unblock Critical Path 🟡 IN PROGRESS
 1. **d-001**: Spark SDK integration 🟡
-2. **d-003**: Wallet Bitcoin operations 🟡
+2. **d-003**: Wallet Bitcoin operations ✅
 3. **d-005**: GitAfter NIP-34 implementation ✅
 4. **d-006**: NIP-SA wallet integration 🟡
 5. **d-008**: Marketplace payment settlement 🟡
@@ -673,7 +673,7 @@ P0 focus IDs: none.
 
 ### Phase 3: Testing & Quality 🟡 IN PROGRESS
 
-Story coverage is incomplete (2 outstanding stories; see Outstanding User Stories).
+Story coverage is complete (see Covered Stories in `.openagents/USERSTORIES.md`).
 12. **d-013**: Testing framework coverage ✅ (700+ tests)
 13. **d-026**: E2E test viewer ✅
 14. **d-014**: NIP-SA/Bifrost E2E tests ✅ (159 tests verified)
@@ -695,7 +695,7 @@ Before declaring production-ready:
 - [x] NIP-SA wallet singleton working ✅
 - [x] 86 NIPs implemented ✅
 - [x] 1500+ tests passing ✅
-- [ ] 100% user story coverage (see Outstanding User Stories)
+- [x] 100% user story coverage (see Covered Stories)
 - [x] No critical stubs remaining ✅
 - [x] 115+ WGPUI components ✅
 - [x] Storybook example (9193 lines) ✅

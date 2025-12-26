@@ -1,107 +1,71 @@
 # Wallet GUI
 
-The wallet now includes a native desktop GUI built with wry/tao + Actix + Maud/HTMX.
+The wallet includes a native WGPUI desktop GUI backed by a winit + wgpu event
+loop. It runs in-process (no local web server).
 
 ## Launch
 
 ```bash
-# Start the GUI
-cargo wallet gui
+openagents wallet gui
 ```
 
 ## Requirements
 
-You must first initialize a wallet:
+Initialize a wallet first:
 
 ```bash
-cargo wallet init
+openagents wallet init
 ```
-
-This stores the mnemonic securely in your OS keychain.
 
 ## Features
 
-### Dashboard
-- View your Nostr identity (npub)
-- Display name and profile info
-- Total balance across all payment methods
-  - Spark L2 balance
-  - Lightning balance
-  - On-chain balance
+### Header
+- Balance summary across Spark L2, Lightning, and on-chain sats
 
-### Send Payment
-- Send to Bitcoin address, Lightning invoice, or Spark address
-- Specify amount in sats
-- Form validation
+### Send
+- Send to Lightning invoice, Spark address, or on-chain address
+- Transaction limit enforcement and large-send confirmation
+- Inline success/error notices
 
-### Receive Payment
-- Display your Spark address for receiving
-- Generate Lightning invoices with custom amounts
-- Optional description field
+### Receive
+- Generate a receive payload for a specific amount
+- QR code rendering for quick scanning
+- Copyable payload string
 
-### Transaction History
-- View all past transactions
-- Filter by type, date, status
-- Shows amounts, timestamps, and status
-
-### Settings
-- Manage Nostr relay connections
-- Add/remove relays
-- View current network configuration
+### History
+- Infinite scroll transaction list
+- Click-to-select detail panel
+- Balance trend chart derived from history
 
 ## Architecture
 
 ```
 ┌─────────────────────────────────────┐
-│        wry/tao Window               │
-│    (Native Desktop Window)          │
+│       winit + wgpu Window           │
 ├─────────────────────────────────────┤
-│                                     │
-│      WebView (localhost:PORT)       │
-│                                     │
-│  ┌───────────────────────────────┐  │
-│  │   Actix Web Server            │  │
-│  │   (Rust Backend)              │  │
-│  ├───────────────────────────────┤  │
-│  │   Maud Templates + HTMX       │  │
-│  │   (Server-Rendered HTML)      │  │
-│  └───────────────────────────────┘  │
-│                                     │
+│             WGPUI Scene             │
+│  (WalletView layout + components)   │
 └─────────────────────────────────────┘
            │
-           ├─ UnifiedIdentity (Nostr + Bitcoin)
-           ├─ SecureKeychain (OS native)
-           └─ NostrClient (relay communication)
+           ├─ Wallet backend (async worker)
+           ├─ SparkWallet (Breez SDK)
+           └─ Wallet config + storage
 ```
 
 ## UI Conventions
 
-Following OpenAgents desktop UI standards:
-
-- **Inline-first CSS** with CSS custom properties
-- **No border radius** (sharp corners everywhere)
-- **Server-rendered** (no SPA, minimal JS)
-- **HTMX** for dynamic updates
-- **Dark theme** by default
-- **Monospace fonts** for code/addresses
+- WGPUI-only rendering, no web stack
+- Vera Mono embedded via WGPUI TextSystem
+- Sharp corners (no border radius)
+- Inline-first layout styling
 
 ## Implementation
 
-- `crates/wallet/src/gui/mod.rs` - Module exports
-- `crates/wallet/src/gui/app.rs` - Window and lifecycle management
-- `crates/wallet/src/gui/server.rs` - Actix web server and routes
-- `crates/wallet/src/gui/views.rs` - Maud templates for all pages
+- `crates/wallet/src/gui/app.rs` - Window, renderer, event loop
+- `crates/wallet/src/gui/backend.rs` - Async backend worker + channels
+- `crates/wallet/src/gui/view.rs` - Layout, rendering, input handling
+- `crates/wallet/src/gui/types.rs` - Commands/updates shared types
 
-## TODO
+## Tests
 
-- [ ] Integrate actual Spark wallet operations
-- [ ] Add WebSocket for real-time balance updates
-- [ ] Fetch and display actual transaction history
-- [ ] Implement profile fetching from Nostr relays
-- [ ] Add QR code generation for receiving addresses
-- [ ] Add invoice parsing and validation
-- [ ] Implement relay configuration persistence
-- [ ] Add NIP-05 verification display
-- [ ] Contact list integration
-- [ ] Zap functionality from GUI
-- [ ] Multi-account support
+- `crates/wallet/src/gui/view.rs` - GUI interaction + layout unit tests
