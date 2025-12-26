@@ -4,6 +4,8 @@
 //! Enables agents as first-class contributors with trajectory proof and bounty payments.
 
 fn main() {
+    eprintln!("{}", gitafter::deprecation::legacy_warning());
+
     if let Err(err) = gitafter::run() {
         eprintln!("GitAfter error: {err}");
     }

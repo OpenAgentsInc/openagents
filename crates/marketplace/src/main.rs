@@ -6,6 +6,7 @@ use marketplace::cli::skills::SkillsCommands;
 use marketplace::cli::data::DataCommands;
 use marketplace::cli::trajectories::TrajectoriesCommands;
 use marketplace::cli::earnings::EarningsCommands;
+use marketplace::deprecation;
 
 #[derive(Parser)]
 #[command(name = "marketplace")]
@@ -42,6 +43,8 @@ enum Commands {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    eprintln!("{}", deprecation::legacy_warning());
+
     let cli = Cli::parse();
 
     match cli.command {

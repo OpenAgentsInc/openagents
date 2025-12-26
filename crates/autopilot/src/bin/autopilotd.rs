@@ -9,6 +9,7 @@ use autopilot::daemon::{
     control::{ControlClient, ControlServer},
     supervisor::{DaemonMetrics, SharedMetrics, WorkerSupervisor},
 };
+use autopilot::deprecation;
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -76,6 +77,8 @@ enum Commands {
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    eprintln!("{}", deprecation::autopilotd_warning());
+
     let cli = Cli::parse();
 
     // Expand ~ in config path

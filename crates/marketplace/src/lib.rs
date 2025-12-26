@@ -9,6 +9,7 @@ pub mod compute;
 pub mod data;
 pub mod trajectories;
 pub mod cli;
+pub mod deprecation;
 pub mod views;
 pub mod relay;
 

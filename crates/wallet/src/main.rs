@@ -24,6 +24,7 @@
 use clap::{Parser, Subcommand};
 use colored::Colorize;
 use std::process;
+use wallet::deprecation;
 
 mod cli;
 mod core;
@@ -378,6 +379,8 @@ enum PeersCommands {
 }
 
 fn main() {
+    eprintln!("{}", deprecation::legacy_warning());
+
     let cli = Cli::parse();
 
     // Initialize logging

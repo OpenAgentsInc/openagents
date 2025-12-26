@@ -2,6 +2,7 @@
 
 pub mod git;
 pub mod app;
+pub mod deprecation;
 pub mod middleware;
 pub mod nostr;
 pub mod notifications;
