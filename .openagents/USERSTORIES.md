@@ -121,6 +121,24 @@ This section tracks which user stories have implemented tests.
 | 7.3.2 | Contribute ECDH share for decryption | Unit | `crates/frostr/src/ecdh.rs` |
 | 7.4.1 | Discover Bifrost peers on Nostr relays | Integration | `crates/frostr/tests/bifrost_e2e.rs` |
 | 7.4.2 | Send and receive Bifrost messages | Integration | `crates/frostr/tests/bifrost_e2e.rs` |
+| **d-008: Unified Marketplace** ||||
+| 8.1.1 | Browse available compute providers | Integration | `crates/marketplace/tests/compute_e2e.rs` |
+| 8.1.2 | Submit a job and receive a result | Integration | `crates/marketplace/tests/compute_e2e.rs` |
+| 8.1.3 | Register capabilities and pricing | Integration | `crates/marketplace/tests/compute_e2e.rs` |
+| 8.1.4 | See provider ratings | Integration | `crates/marketplace/tests/discovery.rs` |
+| 8.2.1 | Publish a skill with description and pricing | Integration | `crates/marketplace/tests/skill_e2e.rs` |
+| 8.2.2 | Browse and search available skills | Integration | `crates/marketplace/tests/skill_e2e.rs` |
+| 8.2.3 | Purchase a skill license | Integration | `crates/marketplace/tests/skill_e2e.rs` |
+| 8.2.4 | See sales and revenue | Integration | `crates/marketplace/tests/skill_e2e.rs` |
+| 8.2.5 | Rate skills used | Integration | `crates/marketplace/tests/compute_e2e.rs` |
+| 8.3.1 | Publish a dataset with metadata and price | Integration | `crates/marketplace/tests/data_e2e.rs` |
+| 8.3.2 | Search for datasets by topic/format | Integration | `crates/marketplace/tests/data_e2e.rs` |
+| 8.3.3 | Purchase and download a dataset | Integration | `crates/marketplace/tests/data_e2e.rs` |
+| 8.3.4 | See download statistics | Integration | `crates/marketplace/tests/data_e2e.rs` |
+| 8.4.1 | Contribute anonymized coding trajectories | Integration | `crates/marketplace/tests/trajectory_e2e.rs` |
+| 8.4.2 | See contributed trajectories | Integration | `crates/marketplace/tests/trajectory_e2e.rs` |
+| 8.4.3 | Set redaction rules for contributions | Integration | `crates/marketplace/tests/trajectory_e2e.rs` |
+| 8.4.4 | Purchase trajectory datasets | Integration | `crates/marketplace/tests/trajectory_e2e.rs` |
 | **d-013: Testing Framework** ||||
 | 13.2.3 | TestApp pattern for setting up test contexts | Unit | `crates/testing/src/test_app.rs` |
 | **d-014: NIP-SA/Bifrost Integration Tests** ||||
@@ -132,6 +150,15 @@ This section tracks which user stories have implemented tests.
 | 14.2.2 | E2E tests for encrypted state round-trips | Integration | `crates/nostr/tests/integration/nip_sa.rs` |
 | 14.2.3 | E2E tests for tick request/result lifecycle | Integration | `crates/nostr/tests/integration/nip_sa.rs` |
 | 14.2.4 | E2E tests for trajectory publish/verify | Integration | `crates/nostr/tests/integration/nip_sa.rs` |
+| **d-015: Marketplace E2E Tests** ||||
+| 15.1.1 | E2E tests for NIP-90 job submission | Integration | `crates/marketplace/tests/compute_e2e.rs` |
+| 15.1.2 | E2E tests for job result delivery | Integration | `crates/marketplace/tests/compute_e2e.rs` |
+| 15.1.3 | E2E tests for job feedback flow | Integration | `crates/marketplace/tests/compute_e2e.rs` |
+| 15.2.1 | E2E tests for skill browsing | Integration | `crates/marketplace/tests/skill_e2e.rs` |
+| 15.2.2 | E2E tests for skill purchase with mock payment | Integration | `crates/marketplace/tests/skill_e2e.rs` |
+| 15.2.3 | E2E tests for encrypted skill delivery | Integration | `crates/marketplace/tests/skill_e2e.rs` |
+| 15.3.1 | E2E tests for agent-to-agent transactions | Integration | `crates/marketplace/tests/agent_commerce_e2e.rs` |
+| 15.3.2 | E2E tests for budget constraint enforcement | Integration | `crates/marketplace/tests/agent_commerce_e2e.rs` |
 | **d-009: Autopilot GUI** ||||
 | 9.1.1 | Conversation thread display | Visual E2E | `crates/wgpui/examples/chat_streaming_test.rs` |
 | 9.1.2 | Tool calls with output | Visual E2E | `crates/wgpui/examples/chat_streaming_test.rs` |
@@ -154,6 +181,9 @@ This section tracks which user stories have implemented tests.
 | 4.2.3 | Learn from successful runs | Integration | `crates/autopilot/tests/d004_story_tests.rs` |
 | 4.2.4 | Weekly improvement report | Integration | `crates/autopilot/tests/d004_story_tests.rs` |
 | 4.3.1 | Start an autopilot run with a prompt | Integration | `tests/cli_integration.rs` |
+| 4.3.2 | Stop a running autopilot session | Unit | `crates/autopilot/src/goals.rs` |
+| 4.3.3 | Resume a paused session | Unit | `crates/autopilot/src/goals.rs` |
+| 4.3.4 | Replay a past session | Unit | `crates/acp-adapter/src/replay.rs` |
 | **d-010: Unified Binary** ||||
 | 10.1.1 | Launch GUI when running `openagents` with no args | Integration | `tests/cli_integration.rs` |
 | 10.1.2 | Run `openagents wallet init` to initialize wallet | Integration | `tests/cli_integration.rs` |
@@ -326,6 +356,14 @@ This section tracks which user stories have implemented tests.
 | `crates/frostr/src/keygen.rs` | Shamir + FROST key generation tests | 7.1.1, 7.1.3 |
 | `crates/frostr/src/credential.rs` | Group/share credential encoding tests | 7.1.2 |
 | `crates/frostr/src/ecdh.rs` | Threshold ECDH share/determinism tests | 7.3.2 |
+| `crates/marketplace/tests/compute_e2e.rs` | NIP-90 job request/result/feedback E2E tests | 8.1.1-8.1.3, 8.2.5, 15.1.1-15.1.3 |
+| `crates/marketplace/tests/skill_e2e.rs` | Skill browse/license/delivery/versioning E2E tests | 8.2.1-8.2.4, 15.2.1-15.2.3 |
+| `crates/marketplace/tests/data_e2e.rs` | Data marketplace discovery/publish/purchase E2E tests | 8.3.1-8.3.4 |
+| `crates/marketplace/tests/trajectory_e2e.rs` | Trajectory contribution/redaction/hash verification E2E tests | 8.4.1-8.4.4 |
+| `crates/marketplace/tests/agent_commerce_e2e.rs` | Agent-to-agent transactions and budget constraint tests | 15.3.1-15.3.2 |
+| `crates/marketplace/tests/discovery.rs` | Provider discovery and rating tests | 8.1.4 |
+| `crates/autopilot/src/goals.rs` | Goal pause/resume/cancel lifecycle tests | 4.3.2-4.3.3 |
+| `crates/acp-adapter/src/replay.rs` | Session replay parsing and stats tests | 4.3.4 |
 
 ---
 
