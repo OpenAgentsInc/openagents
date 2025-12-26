@@ -16,17 +16,14 @@
 
 ---
 
-## Outstanding User Stories (No Test Coverage Yet) — 30 total
+## Outstanding User Stories (No Test Coverage Yet) — 27 total
 
 These story IDs are defined in `.openagents/USERSTORIES.md` but are not listed in the Covered Stories table yet.
 
-Priority breakdown: P0 = 6, P1 = 17, P2 = 7.
-P0 focus IDs: 3.3.1, 3.3.2, 3.3.3, 23.1.3, 25.2.1, 25.2.2.
+Priority breakdown: P0 = 3, P1 = 17, P2 = 7.
+P0 focus IDs: 23.1.3, 25.2.1, 25.2.2.
 
-### d-003: OpenAgents Wallet (9)
-- [ ] 3.3.1 (P0) As a user, I want to see my balance prominently in the GUI header, so that I always know my funds.
-- [ ] 3.3.2 (P0) As a user, I want to click "Send" and fill out a payment form, so that I can send without CLI.
-- [ ] 3.3.3 (P0) As a user, I want to click "Receive" and see a QR code, so that I can get paid easily.
+### d-003: OpenAgents Wallet (5)
 - [ ] 3.3.4 (P1) As a user, I want to see my transaction list with infinite scroll, so that I can browse history.
 - [ ] 3.3.5 (P1) As a user, I want to click on a transaction to see details, so that I can understand each payment.
 - [ ] 3.3.6 (P2) As a user, I want to see a chart of my balance over time, so that I can visualize trends.

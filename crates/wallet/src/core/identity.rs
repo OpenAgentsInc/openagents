@@ -14,7 +14,7 @@
 //! let identity = UnifiedIdentity::generate().expect("keygen failed");
 //!
 //! // Access Nostr public key
-//! let npub = identity.nostr_pubkey();
+//! let npub = identity.nostr_public_key();
 //! println!("Nostr pubkey: {}", npub);
 //! ```
 //!
@@ -32,7 +32,7 @@
 //!     .expect("import failed");
 //!
 //! // Same mnemonic always produces same keys
-//! assert_eq!(identity.nostr_pubkey().len(), 64); // hex pubkey
+//! assert_eq!(identity.nostr_public_key().len(), 64); // hex pubkey
 //! ```
 
 use anyhow::Result;

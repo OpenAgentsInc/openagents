@@ -103,7 +103,8 @@ fn test_wallet_help() {
     cmd.arg("wallet").arg("--help");
     cmd.assert()
         .success()
-        .stdout(predicate::str::contains("Wallet commands"));
+        .stdout(predicate::str::contains("Wallet commands"))
+        .stdout(predicate::str::contains("gui"));
 }
 
 #[test]
