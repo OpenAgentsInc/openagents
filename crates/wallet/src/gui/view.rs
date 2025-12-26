@@ -11,6 +11,7 @@ use wgpui::{
     Bounds, EventContext, InputEvent, MouseButton, Point, Quad, Scene, Size, TextSystem,
     ScrollContainer, Hsla, theme,
 };
+use crate::storage::config::WalletConfig as LocalWalletConfig;
 
 use super::types::{WalletCommand, WalletTab, WalletUpdate};
 
@@ -129,6 +130,12 @@ struct BalancePoint {
     balance: u128,
 }
 
+#[derive(Debug, Clone)]
+struct PendingSend {
+    destination: String,
+    amount: u64,
+}
+
 pub struct WalletView {
     tab: WalletTab,
     hovered_tab: Option<WalletTab>,
@@ -149,6 +156,9 @@ pub struct WalletView {
     history_has_more: bool,
     history_page_size: u32,
     selected_history: Option<usize>,
+    send_limit: Option<u64>,
+    large_send_confirm: Option<u64>,
+    pending_large_send: Option<PendingSend>,
     commands: Vec<WalletCommand>,
     ui_events: Rc<RefCell<Vec<WalletUiEvent>>>,
 }
@@ -176,6 +186,7 @@ impl WalletView {
             });
 
         let history_page_size = HISTORY_PAGE_SIZE;
+        let (send_limit, large_send_confirm) = load_security_limits();
 
         let mut commands = Vec::new();
         commands.push(WalletCommand::RefreshBalance);
@@ -217,6 +228,9 @@ impl WalletView {
             history_has_more: true,
             history_page_size,
             selected_history: None,
+            send_limit,
+            large_send_confirm,
+            pending_large_send: None,
             commands,
             ui_events,
         }
@@ -247,6 +261,7 @@ impl WalletView {
                 });
                 self.send_destination.set_value("");
                 self.send_amount.set_value("");
+                self.pending_large_send = None;
             }
             WalletUpdate::PaymentsLoaded {
                 payments,
@@ -270,6 +285,7 @@ impl WalletView {
                     message,
                 });
                 self.history_loading = false;
+                self.pending_large_send = None;
             }
         }
     }
@@ -1004,6 +1020,59 @@ impl WalletView {
             }
         };
 
+        if let Some(limit) = self.send_limit {
+            match amount {
+                Some(sats) if sats > limit => {
+                    self.notice = Some(Notice {
+                        kind: NoticeKind::Error,
+                        message: format!(
+                            "Amount exceeds configured limit ({} sats).",
+                            format_sats(limit)
+                        ),
+                    });
+                    return;
+                }
+                None => {
+                    self.notice = Some(Notice {
+                        kind: NoticeKind::Error,
+                        message: "Amount required when a send limit is set.".to_string(),
+                    });
+                    return;
+                }
+                _ => {}
+            }
+        }
+
+        if let Some(threshold) = self.large_send_confirm {
+            if let Some(sats) = amount {
+                if sats >= threshold {
+                    if let Some(pending) = &self.pending_large_send {
+                        if pending.amount == sats && pending.destination == destination {
+                            self.pending_large_send = None;
+                        } else {
+                            self.pending_large_send = Some(PendingSend { destination, amount: sats });
+                            self.notice = Some(Notice {
+                                kind: NoticeKind::Info,
+                                message: "Large payment detected. Click Send again to confirm.".to_string(),
+                            });
+                            return;
+                        }
+                    } else {
+                        self.pending_large_send = Some(PendingSend { destination, amount: sats });
+                        self.notice = Some(Notice {
+                            kind: NoticeKind::Info,
+                            message: "Large payment detected. Click Send again to confirm.".to_string(),
+                        });
+                        return;
+                    }
+                } else {
+                    self.pending_large_send = None;
+                }
+            } else {
+                self.pending_large_send = None;
+            }
+        }
+
         self.notice = Some(Notice {
             kind: NoticeKind::Info,
             message: "Sending payment...".to_string(),
@@ -1277,6 +1346,19 @@ fn format_sats(value: u64) -> String {
         out.push(ch);
     }
     out.chars().rev().collect()
+}
+
+fn load_security_limits() -> (Option<u64>, Option<u64>) {
+    if cfg!(test) {
+        return (None, None);
+    }
+    match LocalWalletConfig::load() {
+        Ok(config) => (
+            config.security.max_send_sats,
+            config.security.confirm_large_sats,
+        ),
+        Err(_) => (None, None),
+    }
 }
 
 fn format_sats_u128(value: u128) -> String {
@@ -1610,5 +1692,35 @@ mod tests {
         let sampled = downsample_points(&points, 50);
         assert!(sampled.len() <= 50 + 1);
         assert_eq!(sampled.last().map(|p| p.timestamp), Some(119));
+    }
+
+    #[test]
+    fn test_send_limit_blocks_gui_payment() {
+        let mut view = WalletView::new();
+        view.drain_commands();
+        view.send_limit = Some(1_000);
+        view.send_destination.set_value("lnbc1limit");
+        view.send_amount.set_value("2000");
+        view.submit_send();
+
+        assert!(matches!(view.notice, Some(Notice { kind: NoticeKind::Error, .. })));
+        assert!(view.drain_commands().is_empty());
+    }
+
+    #[test]
+    fn test_large_send_requires_second_confirm() {
+        let mut view = WalletView::new();
+        view.drain_commands();
+        view.large_send_confirm = Some(1_000);
+        view.send_destination.set_value("lnbc1large");
+        view.send_amount.set_value("2000");
+
+        view.submit_send();
+        assert!(view.pending_large_send.is_some());
+        assert!(view.drain_commands().is_empty());
+
+        view.submit_send();
+        let commands = view.drain_commands();
+        assert_eq!(commands.len(), 1);
     }
 }

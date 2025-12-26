@@ -23,12 +23,38 @@ pub fn show() -> Result<()> {
     println!("[storage]");
     println!("  db_path = \"{}\"", config.storage.db_path);
     println!("  backup_enabled = {}", config.storage.backup_enabled);
+    println!();
+    println!("[security]");
+    println!("  max_send_sats = {}", format_optional_sats(config.security.max_send_sats));
+    println!(
+        "  confirm_large_sats = {}",
+        format_optional_sats(config.security.confirm_large_sats)
+    );
 
     Ok(())
 }
 
-pub fn set(_key: String, _value: String) -> Result<()> {
-    anyhow::bail!("Generic setting updates are not yet implemented. Use specific commands like 'wallet relays add/remove' to modify configuration.")
+pub fn set(key: String, value: String) -> Result<()> {
+    let mut config = WalletConfig::load()?;
+
+    match key.as_str() {
+        "security.max_send_sats" | "max_send_sats" => {
+            config.security.max_send_sats = parse_optional_sats(&value)?;
+        }
+        "security.confirm_large_sats" | "confirm_large_sats" => {
+            config.security.confirm_large_sats = parse_optional_sats(&value)?;
+        }
+        _ => {
+            anyhow::bail!(
+                "Unknown setting '{}'. Supported keys: security.max_send_sats, security.confirm_large_sats.",
+                key
+            );
+        }
+    }
+
+    config.save()?;
+    println!("{}", "✓ Setting updated".green());
+    Ok(())
 }
 
 pub fn relays_list() -> Result<()> {
@@ -96,4 +122,27 @@ pub fn relays_remove(url: String) -> Result<()> {
     println!("{}", "✓ Relay removed".green());
 
     Ok(())
+}
+
+fn parse_optional_sats(value: &str) -> Result<Option<u64>> {
+    let trimmed = value.trim().to_lowercase();
+    if trimmed.is_empty() || trimmed == "none" || trimmed == "off" || trimmed == "null" {
+        return Ok(None);
+    }
+
+    let cleaned = trimmed.replace('_', "").replace(',', "");
+    let sats: u64 = cleaned
+        .parse()
+        .map_err(|_| anyhow::anyhow!("Invalid sats value: {}", value))?;
+    if sats == 0 {
+        anyhow::bail!("Value must be greater than zero or 'none'.");
+    }
+    Ok(Some(sats))
+}
+
+fn format_optional_sats(value: Option<u64>) -> String {
+    match value {
+        Some(sats) => sats.to_string(),
+        None => "none".to_string(),
+    }
 }

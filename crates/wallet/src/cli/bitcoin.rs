@@ -9,6 +9,7 @@ use spark::{EventListener, Network, SdkEvent, SparkSigner, SparkWallet, WalletCo
 use std::path::{Path, PathBuf};
 use crate::cli::load_mnemonic;
 use crate::storage::address_book::AddressBook;
+use crate::storage::config::WalletConfig as LocalWalletConfig;
 
 const CLIPBOARD_FILE_ENV: &str = "OPENAGENTS_CLIPBOARD_FILE";
 const NOTIFICATION_FILE_ENV: &str = "OPENAGENTS_NOTIFICATION_FILE";
@@ -439,6 +440,7 @@ pub fn send(
     let rt = tokio::runtime::Runtime::new()?;
     rt.block_on(async {
         let wallet = get_wallet().await?;
+        let config = LocalWalletConfig::load()?;
 
         let destination = resolve_send_destination(destination, qr, payee)?;
 
@@ -446,11 +448,13 @@ pub fn send(
         println!();
 
         let prepare_response = wallet.prepare_send_payment(&destination, Some(amount)).await?;
+        let amount_sats = amount_from_prepare(&prepare_response)?;
+        enforce_transaction_limit(amount_sats, &config)?;
         let preview = build_send_preview(&destination, &prepare_response);
         let preview_text = format_send_preview(&preview);
         print!("{}", preview_text);
 
-        if !confirm_send(yes)? {
+        if !confirm_send_for_amount(yes, amount_sats, &config)? {
             println!("Payment cancelled.");
             return Ok(());
         }
@@ -486,6 +490,7 @@ pub fn retry(payment_id: Option<String>, last: bool, yes: bool) -> Result<()> {
     let rt = tokio::runtime::Runtime::new()?;
     rt.block_on(async {
         let wallet = get_wallet().await?;
+        let config = LocalWalletConfig::load()?;
         let context = if last {
             find_last_retryable_payment(&wallet).await?
         } else {
@@ -502,11 +507,13 @@ pub fn retry(payment_id: Option<String>, last: bool, yes: bool) -> Result<()> {
                 context.request.amount_sats,
             )
             .await?;
+        let amount_sats = amount_from_prepare(&prepare_response)?;
+        enforce_transaction_limit(amount_sats, &config)?;
         let preview = build_send_preview(&context.request.payment_request, &prepare_response);
         let preview_text = format_retry_preview(&context.payment, &preview);
         print!("{}", preview_text);
 
-        if !confirm_send(yes)? {
+        if !confirm_send_for_amount(yes, amount_sats, &config)? {
             println!("Retry cancelled.");
             return Ok(());
         }
@@ -745,13 +752,14 @@ fn confirm_send(skip_confirm: bool) -> Result<bool> {
     let is_terminal = io::stdin().is_terminal();
     let mut stdin = io::stdin();
     let mut reader = io::BufReader::new(&mut stdin);
-    confirm_send_with_reader(skip_confirm, is_terminal, &mut reader)
+    confirm_send_with_reader(skip_confirm, is_terminal, &mut reader, "Confirm payment? [y/N]: ")
 }
 
 fn confirm_send_with_reader<R: std::io::BufRead>(
     skip_confirm: bool,
     is_terminal: bool,
     reader: &mut R,
+    prompt: &str,
 ) -> Result<bool> {
     use std::io::{self, Write};
 
@@ -763,13 +771,55 @@ fn confirm_send_with_reader<R: std::io::BufRead>(
         anyhow::bail!("Non-interactive send requires --yes to confirm.");
     }
 
-    print!("Confirm payment? [y/N]: ");
+    print!("{}", prompt);
     io::stdout().flush()?;
 
     let mut input = String::new();
     reader.read_line(&mut input)?;
     let trimmed = input.trim();
     Ok(trimmed.eq_ignore_ascii_case("y") || trimmed.eq_ignore_ascii_case("yes"))
+}
+
+fn confirm_send_for_amount(
+    skip_confirm: bool,
+    amount: u64,
+    config: &LocalWalletConfig,
+) -> Result<bool> {
+    let prompt = confirmation_prompt(amount, config);
+    use std::io::{self, IsTerminal};
+    let is_terminal = io::stdin().is_terminal();
+    let mut stdin = io::stdin();
+    let mut reader = io::BufReader::new(&mut stdin);
+    confirm_send_with_reader(skip_confirm, is_terminal, &mut reader, &prompt)
+}
+
+fn confirmation_prompt(amount: u64, config: &LocalWalletConfig) -> String {
+    if let Some(threshold) = config.security.confirm_large_sats {
+        if amount >= threshold {
+            return format!(
+                "Confirm large payment of {} sats? [y/N]: ",
+                amount
+            );
+        }
+    }
+    "Confirm payment? [y/N]: ".to_string()
+}
+
+fn enforce_transaction_limit(amount: u64, config: &LocalWalletConfig) -> Result<()> {
+    if let Some(limit) = config.security.max_send_sats {
+        if amount > limit {
+            anyhow::bail!(
+                "Payment amount {} sats exceeds configured limit {} sats. Update with `openagents wallet settings set security.max_send_sats <amount>`.",
+                amount,
+                limit
+            );
+        }
+    }
+    Ok(())
+}
+
+fn amount_from_prepare(prepare: &spark::wallet::PrepareSendPaymentResponse) -> Result<u64> {
+    u64::try_from(prepare.amount).context("Payment amount exceeds supported range.")
 }
 
 fn resolve_send_destination(
@@ -1220,8 +1270,32 @@ mod tests {
     #[test]
     fn test_confirm_send_declines_on_no() {
         let mut input = std::io::Cursor::new("n\n");
-        let confirmed = confirm_send_with_reader(false, true, &mut input).unwrap();
+        let confirmed = confirm_send_with_reader(
+            false,
+            true,
+            &mut input,
+            "Confirm payment? [y/N]: ",
+        )
+        .unwrap();
         assert!(!confirmed);
+    }
+
+    #[test]
+    fn test_confirmation_prompt_for_large_amount() {
+        let mut config = LocalWalletConfig::default();
+        config.security.confirm_large_sats = Some(5_000);
+        let prompt = confirmation_prompt(10_000, &config);
+        assert!(prompt.contains("large payment"));
+        assert!(prompt.contains("10000"));
+    }
+
+    #[test]
+    fn test_enforce_transaction_limit_blocks_amount() {
+        let mut config = LocalWalletConfig::default();
+        config.security.max_send_sats = Some(1_000);
+        let err = enforce_transaction_limit(2_000, &config).unwrap_err();
+        assert!(err.to_string().contains("exceeds configured limit"));
+        enforce_transaction_limit(500, &config).unwrap();
     }
 
     #[test]
