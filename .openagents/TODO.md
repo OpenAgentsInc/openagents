@@ -263,7 +263,7 @@ P0 focus IDs: none.
   - [x] Parallel agents pane
 - [ ] **Features**
   - [x] Real-time APM gauge
-  - [ ] Token usage visualization
+  - [x] Token usage visualization ✅
   - [x] Tool execution timeline
   - [x] Thinking block toggle
   - [ ] Session browser with search
