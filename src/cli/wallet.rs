@@ -53,6 +53,9 @@ pub enum WalletCommands {
         copy: bool,
     },
 
+    /// Listen for incoming payments and show notifications
+    Notify,
+
     /// Send payment
     Send {
         /// Destination address (Bitcoin, Lightning, or Spark). Use '-' with --qr.
@@ -233,6 +236,7 @@ pub fn run(cmd: WalletCommands) -> anyhow::Result<()> {
         WalletCommands::Receive { amount, expiry, qr, copy } => {
             wallet::cli::bitcoin::receive(amount, qr, copy, expiry)
         }
+        WalletCommands::Notify => wallet::cli::bitcoin::notify(),
         WalletCommands::Send { address, amount, yes, qr, payee } => {
             wallet::cli::bitcoin::send(address, amount, yes, qr, payee)
         }

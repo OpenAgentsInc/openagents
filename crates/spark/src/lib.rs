@@ -82,4 +82,8 @@ pub mod wallet;
 
 pub use error::SparkError;
 pub use signer::SparkSigner;
-pub use wallet::{Balance, Network, Payment, PaymentStatus, PaymentType, SparkWallet, WalletConfig, WalletInfo};
+pub use wallet::{
+    Balance, Network, Payment, PaymentMethod, PaymentStatus, PaymentType, SparkWallet, WalletConfig,
+    WalletInfo,
+};
+pub use breez_sdk_spark::{EventListener, SdkEvent};

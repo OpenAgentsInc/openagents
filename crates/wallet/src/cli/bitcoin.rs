@@ -3,13 +3,15 @@
 //! Provides wallet commands for balance, send, receive using the Breez Spark SDK.
 
 use anyhow::{Context, Result};
+use async_trait::async_trait;
 use chrono;
-use spark::{Network, SparkSigner, SparkWallet, WalletConfig};
+use spark::{EventListener, Network, SdkEvent, SparkSigner, SparkWallet, WalletConfig};
 use std::path::{Path, PathBuf};
 use crate::cli::load_mnemonic;
 use crate::storage::address_book::AddressBook;
 
 const CLIPBOARD_FILE_ENV: &str = "OPENAGENTS_CLIPBOARD_FILE";
+const NOTIFICATION_FILE_ENV: &str = "OPENAGENTS_NOTIFICATION_FILE";
 
 /// Get or create the SparkWallet from keychain mnemonic
 async fn get_wallet() -> Result<SparkWallet> {
@@ -97,6 +99,54 @@ pub fn receive(amount: Option<u64>, show_qr: bool, copy: bool, expiry: Option<u6
     })
 }
 
+/// Listen for incoming payments and show notifications
+pub fn notify() -> Result<()> {
+    let rt = tokio::runtime::Runtime::new()?;
+    rt.block_on(async {
+        let wallet = get_wallet().await?;
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+        let listener_id = wallet
+            .add_event_listener(Box::new(PaymentNotificationListener { sender: tx }))
+            .await?;
+
+        println!("Listening for incoming payments. Press Ctrl+C to stop.");
+
+        loop {
+            tokio::select! {
+                _ = tokio::signal::ctrl_c() => {
+                    println!("Stopping payment notifications.");
+                    break;
+                }
+                maybe_payment = rx.recv() => {
+                    let Some(payment) = maybe_payment else {
+                        break;
+                    };
+                    if let Some(message) = payment_notification_message(&payment) {
+                        println!("{}", message);
+                        let _ = send_notification("Payment received", &message)?;
+                    }
+                }
+            }
+        }
+
+        let _ = wallet.remove_event_listener(&listener_id).await?;
+        Ok(())
+    })
+}
+
+struct PaymentNotificationListener {
+    sender: tokio::sync::mpsc::UnboundedSender<spark::Payment>,
+}
+
+#[async_trait]
+impl EventListener for PaymentNotificationListener {
+    async fn on_event(&self, event: SdkEvent) {
+        if let SdkEvent::PaymentSucceeded { payment } = event {
+            let _ = self.sender.send(payment);
+        }
+    }
+}
+
 fn format_receive_invoice(amount: u64, invoice: &str, show_qr: bool) -> Result<String> {
     let mut output = String::new();
     output.push_str("Lightning Invoice Created\n");
@@ -134,6 +184,31 @@ fn format_receive_address(address: &str, show_qr: bool) -> Result<String> {
     }
 
     Ok(output)
+}
+
+fn payment_notification_message(payment: &spark::Payment) -> Option<String> {
+    if payment.payment_type != spark::PaymentType::Receive
+        || payment.status != spark::PaymentStatus::Completed
+    {
+        return None;
+    }
+
+    let method = format_payment_method(payment.method);
+    Some(format!(
+        "Received {} sats via {}",
+        payment.amount, method
+    ))
+}
+
+fn format_payment_method(method: spark::PaymentMethod) -> &'static str {
+    match method {
+        spark::PaymentMethod::Lightning => "Lightning",
+        spark::PaymentMethod::Spark => "Spark",
+        spark::PaymentMethod::Token => "Token",
+        spark::PaymentMethod::Deposit => "Deposit",
+        spark::PaymentMethod::Withdraw => "Withdraw",
+        spark::PaymentMethod::Unknown => "Unknown",
+    }
 }
 
 fn generate_qr_ascii(payload: &str) -> Result<String> {
@@ -257,6 +332,70 @@ fn copy_with_command_if_exists(
     }
 
     Ok(true)
+}
+
+fn send_notification(title: &str, message: &str) -> Result<bool> {
+    if let Ok(path) = std::env::var(NOTIFICATION_FILE_ENV) {
+        let mut file = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&path)
+            .with_context(|| format!("Failed to open notification log {}", path))?;
+        use std::io::Write;
+        writeln!(file, "{}\t{}", title, message)
+            .with_context(|| format!("Failed to write notification log {}", path))?;
+        return Ok(true);
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        let script = format!(
+            "display notification \"{}\" with title \"{}\"",
+            escape_osascript(message),
+            escape_osascript(title),
+        );
+        return notify_with_command_if_exists("osascript", &["-e", &script]);
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        return notify_with_command_if_exists("notify-send", &[title, message]);
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        return Ok(false);
+    }
+
+    #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
+    {
+        Ok(false)
+    }
+}
+
+fn notify_with_command_if_exists(command: &str, args: &[&str]) -> Result<bool> {
+    use std::io::ErrorKind;
+    use std::process::Command;
+
+    let status = match Command::new(command).args(args).status() {
+        Ok(status) => status,
+        Err(err) if err.kind() == ErrorKind::NotFound => return Ok(false),
+        Err(err) => return Err(err.into()),
+    };
+
+    if status.success() {
+        Ok(true)
+    } else {
+        anyhow::bail!("{} exited with {}", command, status);
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn escape_osascript(input: &str) -> String {
+    input
+        .replace('\\', "\\\\")
+        .replace('"', "\\\"")
+        .replace('\n', "\\n")
 }
 
 /// Send payment to address or pay invoice
@@ -701,6 +840,7 @@ mod tests {
 
     static CLIPBOARD_ENV_LOCK: Mutex<()> = Mutex::new(());
     static ADDRESS_BOOK_ENV_LOCK: Mutex<()> = Mutex::new(());
+    static NOTIFICATION_ENV_LOCK: Mutex<()> = Mutex::new(());
 
     fn sample_payment(status: spark::PaymentStatus) -> spark::Payment {
         spark::Payment {
@@ -711,6 +851,19 @@ mod tests {
             fees: 3,
             timestamp: 1_700_000_000,
             method: PaymentMethod::Lightning,
+            details: None,
+        }
+    }
+
+    fn sample_receive_payment(status: spark::PaymentStatus) -> spark::Payment {
+        spark::Payment {
+            id: "recv-1".to_string(),
+            payment_type: spark::PaymentType::Receive,
+            status,
+            amount: 84,
+            fees: 0,
+            timestamp: 1_700_000_000,
+            method: PaymentMethod::Spark,
             details: None,
         }
     }
@@ -794,6 +947,48 @@ mod tests {
         let mut input = std::io::Cursor::new("n\n");
         let confirmed = confirm_send_with_reader(false, true, &mut input).unwrap();
         assert!(!confirmed);
+    }
+
+    #[test]
+    fn test_payment_notification_message_for_receive_completed() {
+        let payment = sample_receive_payment(spark::PaymentStatus::Completed);
+        let message = payment_notification_message(&payment).unwrap();
+        assert!(message.contains("Received 84"));
+        assert!(message.contains("Spark"));
+
+        let pending = sample_receive_payment(spark::PaymentStatus::Pending);
+        assert!(payment_notification_message(&pending).is_none());
+
+        let sent = sample_payment(spark::PaymentStatus::Completed);
+        assert!(payment_notification_message(&sent).is_none());
+    }
+
+    #[test]
+    fn test_send_notification_file_env() {
+        let _guard = NOTIFICATION_ENV_LOCK.lock().unwrap();
+        let temp = tempfile::NamedTempFile::new().unwrap();
+        let path = temp.path().to_path_buf();
+        let original = std::env::var(NOTIFICATION_FILE_ENV).ok();
+
+        unsafe {
+            std::env::set_var(NOTIFICATION_FILE_ENV, &path);
+        }
+
+        let delivered = send_notification("Payment received", "100 sats").unwrap();
+        assert!(delivered);
+
+        let contents = std::fs::read_to_string(&path).unwrap();
+        assert!(contents.contains("Payment received\t100 sats"));
+
+        if let Some(value) = original {
+            unsafe {
+                std::env::set_var(NOTIFICATION_FILE_ENV, value);
+            }
+        } else {
+            unsafe {
+                std::env::remove_var(NOTIFICATION_FILE_ENV);
+            }
+        }
     }
 
     #[test]

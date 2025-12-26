@@ -21,6 +21,7 @@ use breez_sdk_spark::{
     PrepareSendPaymentRequest, SendPaymentRequest,
     ReceivePaymentRequest, ReceivePaymentMethod,
     ListPaymentsRequest,
+    EventListener,
 };
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -319,6 +320,19 @@ impl SparkWallet {
     #[allow(dead_code)]
     pub(crate) fn sdk(&self) -> &Arc<BreezSdk> {
         &self.sdk
+    }
+
+    /// Register an SDK event listener
+    pub async fn add_event_listener(
+        &self,
+        listener: Box<dyn EventListener>,
+    ) -> Result<String, SparkError> {
+        Ok(self.sdk.add_event_listener(listener).await)
+    }
+
+    /// Remove a previously registered event listener
+    pub async fn remove_event_listener(&self, id: &str) -> Result<bool, SparkError> {
+        Ok(self.sdk.remove_event_listener(id).await)
     }
 
     /// Get the current wallet balance
