@@ -20,6 +20,9 @@ web = [
     "console_error_panic_hook",
 ]
 desktop = ["winit", "pollster"]
+# Optional features - not included in production builds by default
+testing = []  # E2E testing framework (~6,850 lines)
+audio = []    # Bleeps audio system (~1,163 lines)
 
 [dependencies]
 # GPU
@@ -128,7 +131,7 @@ required-features = ["desktop"]
 
 [[example]]
 name = "test_viewer"
-required-features = ["desktop"]
+required-features = ["desktop", "testing"]
 
 [[example]]
 name = "chat_streaming_test"

@@ -26,6 +26,7 @@ pub mod r#async;
 pub mod animation;
 pub mod app;
 pub mod element;
+#[cfg(feature = "audio")]
 pub mod bleeps;
 pub mod color;
 pub mod components;
@@ -42,6 +43,7 @@ pub mod renderer;
 pub mod scene;
 pub mod scroll;
 pub mod styled;
+#[cfg(any(test, feature = "testing"))]
 pub mod testing;
 pub mod text;
 pub mod theme;
@@ -88,6 +90,7 @@ pub use components::hud::{
     ContextMenu, CssSize, MenuItem, StyleFrameClipKranoxProps, StyleFrameClipOctagonProps,
     Tooltip, TooltipPosition, style_frame_clip_kranox, style_frame_clip_octagon,
 };
+#[cfg(feature = "audio")]
 pub use bleeps::{
     Bleep, BleepCategory, BleepGeneralProps, BleepMasterProps, BleepProps, BleepsManager,
     BleepsManagerProps, BleepsManagerUpdate, BleepSource, BleepUpdate,
