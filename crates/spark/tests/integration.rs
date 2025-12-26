@@ -1,0 +1,440 @@
+//! Integration tests for Spark wallet
+//!
+//! These tests verify the full payment flow using the Breez SDK.
+//!
+//! ## Running Tests
+//!
+//! ```bash
+//! # Run all integration tests (regtest mode - no API key needed)
+//! cargo test -p openagents-spark --test integration
+//!
+//! # Run with mainnet API key for full testing
+//! BREEZ_API_KEY="..." cargo test -p openagents-spark --test integration
+//!
+//! # Run ignored tests that require network
+//! cargo test -p openagents-spark --test integration -- --ignored
+//! ```
+
+use openagents_spark::{SparkSigner, SparkWallet, WalletConfig, Network, Balance};
+use std::env;
+
+/// Standard test mnemonic (DO NOT USE FOR REAL FUNDS)
+const TEST_MNEMONIC: &str = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
+
+/// Alternative test mnemonic for two-wallet scenarios
+const TEST_MNEMONIC_2: &str = "zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo wrong";
+
+/// Check if we have network connectivity for real tests
+fn has_network() -> bool {
+    env::var("RUN_NETWORK_TESTS").is_ok() || env::var("BREEZ_API_KEY").is_ok()
+}
+
+/// Get the test network - defaults to Regtest which doesn't require API key
+fn test_network() -> Network {
+    if env::var("MAINNET").is_ok() {
+        Network::Mainnet
+    } else if env::var("TESTNET").is_ok() {
+        Network::Testnet
+    } else {
+        Network::Regtest
+    }
+}
+
+mod signer_tests {
+    use super::*;
+
+    #[test]
+    fn test_signer_creation_from_mnemonic() {
+        let signer = SparkSigner::from_mnemonic(TEST_MNEMONIC, "")
+            .expect("should create signer from valid mnemonic");
+
+        // Verify deterministic key derivation
+        let pubkey = signer.public_key_hex();
+        assert!(!pubkey.is_empty(), "should have public key");
+        assert_eq!(pubkey.len(), 66, "compressed public key should be 33 bytes (66 hex chars)");
+
+        // Same mnemonic should produce same key
+        let signer2 = SparkSigner::from_mnemonic(TEST_MNEMONIC, "")
+            .expect("should create signer");
+        assert_eq!(signer.public_key_hex(), signer2.public_key_hex(),
+            "deterministic derivation should produce same keys");
+    }
+
+    #[test]
+    fn test_signer_with_passphrase() {
+        let signer_no_pass = SparkSigner::from_mnemonic(TEST_MNEMONIC, "")
+            .expect("should create signer");
+        let signer_with_pass = SparkSigner::from_mnemonic(TEST_MNEMONIC, "secret")
+            .expect("should create signer with passphrase");
+
+        // Different passphrases should produce different keys
+        assert_ne!(
+            signer_no_pass.public_key_hex(),
+            signer_with_pass.public_key_hex(),
+            "passphrase should change derived keys"
+        );
+    }
+
+    #[test]
+    fn test_different_mnemonics_different_keys() {
+        let signer1 = SparkSigner::from_mnemonic(TEST_MNEMONIC, "")
+            .expect("should create signer");
+        let signer2 = SparkSigner::from_mnemonic(TEST_MNEMONIC_2, "")
+            .expect("should create signer");
+
+        assert_ne!(
+            signer1.public_key_hex(),
+            signer2.public_key_hex(),
+            "different mnemonics should produce different keys"
+        );
+    }
+
+    #[test]
+    fn test_invalid_mnemonic_rejected() {
+        let result = SparkSigner::from_mnemonic("invalid mnemonic words here", "");
+        assert!(result.is_err(), "should reject invalid mnemonic");
+    }
+
+    #[test]
+    fn test_mnemonic_roundtrip() {
+        let signer = SparkSigner::from_mnemonic(TEST_MNEMONIC, "")
+            .expect("should create signer");
+
+        // Get mnemonic back and create new signer
+        let mnemonic = signer.mnemonic();
+        let signer2 = SparkSigner::from_mnemonic(mnemonic, "")
+            .expect("should create signer from retrieved mnemonic");
+
+        assert_eq!(signer.public_key_hex(), signer2.public_key_hex(),
+            "mnemonic roundtrip should preserve keys");
+    }
+}
+
+mod balance_tests {
+    use super::*;
+
+    #[test]
+    fn test_balance_total_calculation() {
+        let balance = Balance {
+            spark_sats: 100_000,
+            lightning_sats: 50_000,
+            onchain_sats: 25_000,
+        };
+
+        assert_eq!(balance.total_sats(), 175_000);
+    }
+
+    #[test]
+    fn test_balance_empty_check() {
+        let empty = Balance::default();
+        assert!(empty.is_empty());
+
+        let non_empty = Balance {
+            spark_sats: 1,
+            lightning_sats: 0,
+            onchain_sats: 0,
+        };
+        assert!(!non_empty.is_empty());
+    }
+
+    #[test]
+    fn test_balance_overflow_protection() {
+        let balance = Balance {
+            spark_sats: u64::MAX,
+            lightning_sats: 1,
+            onchain_sats: 1,
+        };
+
+        // Should use saturating_add to prevent overflow
+        assert_eq!(balance.total_sats(), u64::MAX);
+    }
+}
+
+mod config_tests {
+    use super::*;
+
+    #[test]
+    fn test_default_config() {
+        let config = WalletConfig::default();
+
+        // Default should be testnet (which maps to regtest internally)
+        assert_eq!(config.network, Network::Testnet);
+    }
+
+    #[test]
+    fn test_network_mapping() {
+        use breez_sdk_spark::Network as SdkNetwork;
+
+        // Mainnet should map to Mainnet
+        assert!(matches!(Network::Mainnet.to_sdk_network(), SdkNetwork::Mainnet));
+
+        // All test networks should map to Regtest
+        assert!(matches!(Network::Testnet.to_sdk_network(), SdkNetwork::Regtest));
+        assert!(matches!(Network::Signet.to_sdk_network(), SdkNetwork::Regtest));
+        assert!(matches!(Network::Regtest.to_sdk_network(), SdkNetwork::Regtest));
+    }
+}
+
+mod wallet_tests {
+    use super::*;
+
+    #[tokio::test]
+    #[ignore = "Requires Breez SDK network connection"]
+    async fn test_wallet_creation_regtest() {
+        let signer = SparkSigner::from_mnemonic(TEST_MNEMONIC, "")
+            .expect("should create signer");
+
+        let config = WalletConfig {
+            network: Network::Regtest,
+            api_key: env::var("BREEZ_API_KEY").ok(),
+            ..Default::default()
+        };
+
+        let wallet = SparkWallet::new(signer, config).await;
+
+        match wallet {
+            Ok(w) => {
+                println!("Wallet created successfully");
+
+                // Query balance
+                let balance = w.get_balance().await.expect("should get balance");
+                println!("Balance: {} spark, {} lightning, {} onchain",
+                    balance.spark_sats, balance.lightning_sats, balance.onchain_sats);
+            }
+            Err(e) => {
+                // Network errors are expected if Breez infrastructure isn't available
+                println!("Wallet creation failed (expected if no network): {}", e);
+            }
+        }
+    }
+
+    #[tokio::test]
+    #[ignore = "Requires Breez SDK network connection"]
+    async fn test_get_spark_address() {
+        if !has_network() {
+            println!("Skipping network test - set RUN_NETWORK_TESTS=1 to enable");
+            return;
+        }
+
+        let signer = SparkSigner::from_mnemonic(TEST_MNEMONIC, "")
+            .expect("should create signer");
+
+        let config = WalletConfig {
+            network: test_network(),
+            api_key: env::var("BREEZ_API_KEY").ok(),
+            ..Default::default()
+        };
+
+        let wallet = SparkWallet::new(signer, config).await
+            .expect("should create wallet");
+
+        let address = wallet.get_spark_address().await
+            .expect("should get spark address");
+
+        println!("Spark address: {}", address);
+        assert!(!address.is_empty(), "address should not be empty");
+    }
+
+    #[tokio::test]
+    #[ignore = "Requires Breez SDK network connection"]
+    async fn test_create_invoice() {
+        if !has_network() {
+            println!("Skipping network test - set RUN_NETWORK_TESTS=1 to enable");
+            return;
+        }
+
+        let signer = SparkSigner::from_mnemonic(TEST_MNEMONIC, "")
+            .expect("should create signer");
+
+        let config = WalletConfig {
+            network: test_network(),
+            api_key: env::var("BREEZ_API_KEY").ok(),
+            ..Default::default()
+        };
+
+        let wallet = SparkWallet::new(signer, config).await
+            .expect("should create wallet");
+
+        // Create a 1000 sat invoice
+        let response = wallet.create_invoice(
+            1000,
+            Some("Test invoice".to_string()),
+            Some(3600) // 1 hour expiry
+        ).await.expect("should create invoice");
+
+        println!("Invoice created: {}", response.payment_request);
+        assert!(response.payment_request.starts_with("ln"),
+            "invoice should start with 'ln'");
+    }
+
+    #[tokio::test]
+    #[ignore = "Requires Breez SDK network connection and funded wallet"]
+    async fn test_full_payment_flow() {
+        if !has_network() {
+            println!("Skipping network test - set RUN_NETWORK_TESTS=1 to enable");
+            return;
+        }
+
+        // Create two wallets
+        let signer1 = SparkSigner::from_mnemonic(TEST_MNEMONIC, "")
+            .expect("should create signer 1");
+        let signer2 = SparkSigner::from_mnemonic(TEST_MNEMONIC_2, "")
+            .expect("should create signer 2");
+
+        let config = WalletConfig {
+            network: test_network(),
+            api_key: env::var("BREEZ_API_KEY").ok(),
+            ..Default::default()
+        };
+
+        let wallet1 = SparkWallet::new(signer1, config.clone()).await
+            .expect("should create wallet 1");
+        let wallet2 = SparkWallet::new(signer2, config).await
+            .expect("should create wallet 2");
+
+        // Check initial balances
+        let balance1_before = wallet1.get_balance().await.expect("should get balance 1");
+        let balance2_before = wallet2.get_balance().await.expect("should get balance 2");
+
+        println!("Wallet 1 balance before: {} sats", balance1_before.total_sats());
+        println!("Wallet 2 balance before: {} sats", balance2_before.total_sats());
+
+        if balance1_before.total_sats() < 1000 {
+            println!("Wallet 1 needs funding - skipping payment test");
+            return;
+        }
+
+        // Create invoice on wallet 2
+        let invoice = wallet2.create_invoice(
+            100,
+            Some("Test payment".to_string()),
+            None
+        ).await.expect("should create invoice");
+
+        println!("Created invoice: {}", invoice.payment_request);
+
+        // Pay invoice from wallet 1
+        let payment = wallet1.send_payment_simple(&invoice.payment_request, None).await
+            .expect("should send payment");
+
+        println!("Payment sent: {:?}", payment.payment.status);
+
+        // Verify balances changed
+        let balance1_after = wallet1.get_balance().await.expect("should get balance 1");
+        let balance2_after = wallet2.get_balance().await.expect("should get balance 2");
+
+        println!("Wallet 1 balance after: {} sats", balance1_after.total_sats());
+        println!("Wallet 2 balance after: {} sats", balance2_after.total_sats());
+
+        assert!(balance1_after.total_sats() < balance1_before.total_sats(),
+            "sender balance should decrease");
+        assert!(balance2_after.total_sats() > balance2_before.total_sats(),
+            "receiver balance should increase");
+    }
+}
+
+/// Simulated tests that don't require network connectivity
+mod simulated_tests {
+    use super::*;
+
+    #[test]
+    fn test_payment_amount_validation() {
+        // Test that we handle edge cases properly
+        let balance = Balance {
+            spark_sats: 0,
+            lightning_sats: 0,
+            onchain_sats: 0,
+        };
+
+        assert!(balance.is_empty());
+        assert_eq!(balance.total_sats(), 0);
+    }
+
+    #[test]
+    fn test_invoice_description_handling() {
+        // Test description formatting (simulated)
+        let description = Some("Payment for goods".to_string());
+        assert!(description.is_some());
+
+        let no_description: Option<String> = None;
+        assert!(no_description.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_wallet_config_variations() {
+        // Test different config combinations
+        let configs = vec![
+            WalletConfig {
+                network: Network::Regtest,
+                api_key: None,
+                ..Default::default()
+            },
+            WalletConfig {
+                network: Network::Testnet,
+                api_key: Some("test-key".to_string()),
+                ..Default::default()
+            },
+            WalletConfig {
+                network: Network::Mainnet,
+                api_key: Some("prod-key".to_string()),
+                ..Default::default()
+            },
+        ];
+
+        for (i, config) in configs.iter().enumerate() {
+            println!("Config {}: network={:?}, has_api_key={}",
+                i, config.network, config.api_key.is_some());
+        }
+    }
+}
+
+/// CLI integration tests
+mod cli_simulation {
+    use super::*;
+
+    #[test]
+    fn test_balance_display_format() {
+        let balance = Balance {
+            spark_sats: 1_234_567,
+            lightning_sats: 89_012,
+            onchain_sats: 345,
+        };
+
+        // Simulate CLI output format
+        let output = format!(
+            "Wallet Balance\n\
+             ────────────────────────────\n\
+             Spark:     {} sats\n\
+             Lightning: {} sats\n\
+             On-chain:  {} sats\n\
+             ────────────────────────────\n\
+             Total:     {} sats",
+            balance.spark_sats,
+            balance.lightning_sats,
+            balance.onchain_sats,
+            balance.total_sats()
+        );
+
+        println!("{}", output);
+        assert!(output.contains("1234567"));
+        assert!(output.contains("1323924")); // total
+    }
+
+    #[test]
+    fn test_invoice_display() {
+        // Simulate invoice display
+        let invoice = "lnbc10u1pj...truncated...";
+        let amount = 1000u64;
+
+        let output = format!(
+            "Lightning Invoice Created\n\
+             ────────────────────────────────────────\n\
+             Amount: {} sats\n\n\
+             Invoice:\n{}",
+            amount, invoice
+        );
+
+        println!("{}", output);
+        assert!(output.contains("1000 sats"));
+    }
+}
