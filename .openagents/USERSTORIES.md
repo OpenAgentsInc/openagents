@@ -82,6 +82,18 @@ This section tracks which user stories have implemented tests.
 | 6.4.2 | Publish TickResult (kind:38011) | Integration | `crates/nostr/tests/integration/nip_sa.rs` |
 | 6.5.1 | Publish TrajectorySession (kind:38030) | Integration | `crates/nostr/tests/integration/nip_sa.rs` |
 | 6.5.2 | Publish TrajectoryEvents (kind:38031) | Integration | `crates/nostr/tests/integration/nip_sa.rs` |
+| **d-007: FROSTR (Threshold Signatures)** ||||
+| 7.2.3 | Validate threshold signature as a normal Schnorr signature | Integration | `crates/frostr/tests/bifrost_e2e.rs` |
+| 7.4.1 | Discover Bifrost peers on Nostr relays | Integration | `crates/frostr/tests/bifrost_e2e.rs` |
+| **d-014: NIP-SA/Bifrost Integration Tests** ||||
+| 14.1.1 | E2E tests for 2-of-3 threshold signing | Integration | `crates/frostr/tests/bifrost_e2e.rs` |
+| 14.1.2 | E2E tests for threshold ECDH decryption | Integration | `crates/frostr/tests/bifrost_e2e.rs` |
+| 14.1.3 | Tests for peer discovery over test relays | Integration | `crates/frostr/tests/bifrost_e2e.rs` |
+| 14.1.4 | Tests for timeout handling when peers are offline | Integration | `crates/frostr/tests/bifrost_e2e.rs` |
+| 14.2.1 | E2E tests for agent profile publish/fetch | Integration | `crates/nostr/tests/integration/nip_sa.rs` |
+| 14.2.2 | E2E tests for encrypted state round-trips | Integration | `crates/nostr/tests/integration/nip_sa.rs` |
+| 14.2.3 | E2E tests for tick request/result lifecycle | Integration | `crates/nostr/tests/integration/nip_sa.rs` |
+| 14.2.4 | E2E tests for trajectory publish/verify | Integration | `crates/nostr/tests/integration/nip_sa.rs` |
 | **d-009: Autopilot GUI** ||||
 | 9.1.1 | Conversation thread display | Visual E2E | `crates/wgpui/examples/chat_streaming_test.rs` |
 | 9.1.2 | Tool calls with output | Visual E2E | `crates/wgpui/examples/chat_streaming_test.rs` |
@@ -178,7 +190,8 @@ This section tracks which user stories have implemented tests.
 | `crates/nostr/tests/integration/client_relay.rs` | Client/relay integration flows | 2.2.1, 2.2.3-2.2.5 |
 | `crates/nostr/tests/integration/pool.rs` | RelayPool multi-relay publish tests | 2.2.2, 2.2.6 |
 | `crates/nostr/tests/integration/subscriptions.rs` | Subscription behavior across kinds and filters | 2.4.2 |
-| `crates/nostr/tests/integration/nip_sa.rs` | NIP-SA profile/state/tick/trajectory relay flows | 6.1.1-6.5.2 |
+| `crates/nostr/tests/integration/nip_sa.rs` | NIP-SA profile/state/tick/trajectory relay flows | 6.1.1-6.5.2, 14.2.1-14.2.4 |
+| `crates/frostr/tests/bifrost_e2e.rs` | Bifrost signing/ECDH/peer/timeout relay flows | 7.2.3, 7.4.1, 14.1.1-14.1.4 |
 
 ---
 
