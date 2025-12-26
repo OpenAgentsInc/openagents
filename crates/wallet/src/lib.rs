@@ -6,4 +6,5 @@
 pub mod cli;
 pub mod core;
 pub mod deprecation;
+pub mod gui;
 pub mod storage;

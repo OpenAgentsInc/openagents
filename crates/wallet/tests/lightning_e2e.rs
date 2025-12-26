@@ -49,8 +49,8 @@ async fn test_lightning_payment_flow_e2e() -> Result<()> {
     println!("✓ Receiver wallet connected");
 
     // Step 3: Display wallet info
-    println!("Sender address: {}", sender_wallet.get_spark_address());
-    println!("Receiver address: {}", receiver_wallet.get_spark_address());
+    println!("Sender address: {}", sender_wallet.get_spark_address().await?);
+    println!("Receiver address: {}", receiver_wallet.get_spark_address().await?);
 
     // Step 4: Receiver generates invoice
     let invoice = receiver_wallet

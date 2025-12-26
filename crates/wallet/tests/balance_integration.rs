@@ -29,7 +29,7 @@ async fn test_wallet_initialization_and_connection() -> Result<()> {
     let wallet = SparkWallet::new(signer, config).await?;
 
     // Verify we can get the Spark address
-    let address = wallet.get_spark_address();
+    let address = wallet.get_spark_address().await?;
     assert!(!address.is_empty(), "Wallet should have a valid address");
     println!("✓ Wallet connected with address: {}", address);
 
@@ -53,7 +53,7 @@ async fn test_balance_retrieval() -> Result<()> {
     // The important thing is that the SDK methods are callable and don't crash
 
     println!("✓ Wallet initialized successfully");
-    println!("  Address: {}", wallet.get_spark_address());
+    println!("  Address: {}", wallet.get_spark_address().await?);
     println!("  Network: {:?}", wallet.config().network);
 
     // Test that we can create an invoice (which doesn't require balance)
@@ -90,8 +90,8 @@ async fn test_wallet_address_derivation() -> Result<()> {
     };
     let wallet2 = SparkWallet::new(signer2, config2).await?;
 
-    let address1 = wallet1.get_spark_address();
-    let address2 = wallet2.get_spark_address();
+    let address1 = wallet1.get_spark_address().await?;
+    let address2 = wallet2.get_spark_address().await?;
 
     assert_ne!(
         address1, address2,
@@ -119,7 +119,7 @@ async fn test_wallet_deterministic_address() -> Result<()> {
         ..Default::default()
     };
     let wallet1 = SparkWallet::new(signer1, config1).await?;
-    let address1 = wallet1.get_spark_address();
+    let address1 = wallet1.get_spark_address().await?;
 
     // Create wallet instance 2 from same mnemonic
     let signer2 = SparkSigner::from_mnemonic(mnemonic, "")?;
@@ -129,7 +129,7 @@ async fn test_wallet_deterministic_address() -> Result<()> {
         ..Default::default()
     };
     let wallet2 = SparkWallet::new(signer2, config2).await?;
-    let address2 = wallet2.get_spark_address();
+    let address2 = wallet2.get_spark_address().await?;
 
     assert_eq!(
         address1, address2,

@@ -80,6 +80,9 @@ This section tracks which user stories have implemented tests.
 | 3.2.2 | Run `openagents wallet receive <amount>` | Integration | `tests/cli_integration.rs` |
 | 3.2.3 | Run `openagents wallet balance` | Integration | `tests/cli_integration.rs` |
 | 3.2.4 | Run `openagents wallet history` | Integration | `tests/cli_integration.rs` |
+| 3.3.1 | Show balance in GUI header | Unit | `crates/wallet/src/gui/view.rs` |
+| 3.3.2 | Send payments via GUI form | Unit | `crates/wallet/src/gui/view.rs` |
+| 3.3.3 | Display receive QR code in GUI | Unit | `crates/wallet/src/gui/view.rs` |
 | **d-002: Nostr Protocol Implementation** ||||
 | 2.1.1 | Create and sign kind:1 text notes | Unit | `crates/nostr/core/src/tests/event_validation.rs` |
 | 2.1.2 | Create and sign kind:0 metadata events | Unit | `crates/nostr/core/src/tests/event_validation.rs` |

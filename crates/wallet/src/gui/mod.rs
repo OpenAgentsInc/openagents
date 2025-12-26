@@ -1,9 +1,10 @@
-//! GUI module for wallet application
+//! GUI module for wallet application.
 //!
-//! Provides a native desktop interface with wry/tao + Actix server + Maud/HTMX.
+//! Native WGPUI interface for balance, send, and receive flows.
 
 mod app;
-pub mod server;
-mod views;
+mod backend;
+mod types;
+mod view;
 
 pub use app::run_gui;
