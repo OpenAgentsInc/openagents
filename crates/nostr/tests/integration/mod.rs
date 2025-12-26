@@ -10,6 +10,7 @@ pub mod nip01_protocol_messages;
 pub mod pool;
 pub mod stress;
 pub mod nip_sa;
+pub mod public_relays;
 
 use nostr_relay::{Database, DatabaseConfig, RelayConfig, RelayServer};
 use std::net::SocketAddr;
