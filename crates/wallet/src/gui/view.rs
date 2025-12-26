@@ -1,13 +1,15 @@
 //! WGPUI wallet view.
 
 use std::cell::RefCell;
+use std::ops::Range;
 use std::rc::Rc;
 
 use qrcode::QrCode;
-use spark::Balance;
+use spark::{Balance, Payment, PaymentMethod, PaymentStatus, PaymentType};
 use wgpui::components::{Button, Component, EventResult, TextInput};
 use wgpui::{
-    Bounds, EventContext, InputEvent, MouseButton, Point, Quad, Scene, TextSystem, Hsla, theme,
+    Bounds, EventContext, InputEvent, MouseButton, Point, Quad, Scene, Size, TextSystem,
+    ScrollContainer, Hsla, theme,
 };
 
 use super::types::{WalletCommand, WalletTab, WalletUpdate};
@@ -21,6 +23,12 @@ const BUTTON_HEIGHT: f32 = 36.0;
 const TAB_WIDTH: f32 = 120.0;
 const TAB_HEIGHT: f32 = 30.0;
 const QR_QUIET_ZONE: usize = 4;
+const HISTORY_ROW_HEIGHT: f32 = 52.0;
+const HISTORY_HEADER_HEIGHT: f32 = 24.0;
+const HISTORY_DETAILS_HEIGHT: f32 = 160.0;
+const HISTORY_LOAD_THRESHOLD: f32 = 120.0;
+const HISTORY_OVERSCAN: usize = 3;
+const HISTORY_PAGE_SIZE: u32 = 25;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum WalletUiEvent {
@@ -86,8 +94,10 @@ struct WalletLayout {
     content: Bounds,
     send_tab: Bounds,
     receive_tab: Bounds,
+    history_tab: Bounds,
     send: SendLayout,
     receive: ReceiveLayout,
+    history: HistoryLayout,
 }
 
 struct SendLayout {
@@ -105,6 +115,12 @@ struct ReceiveLayout {
     notice: Bounds,
 }
 
+struct HistoryLayout {
+    header: Bounds,
+    list: Bounds,
+    details: Bounds,
+}
+
 pub struct WalletView {
     tab: WalletTab,
     hovered_tab: Option<WalletTab>,
@@ -118,6 +134,12 @@ pub struct WalletView {
     receive_button: Button,
     receive_payload: Option<String>,
     qr_matrix: Option<QrMatrix>,
+    history_scroll: ScrollContainer,
+    history_items: Vec<Payment>,
+    history_loading: bool,
+    history_has_more: bool,
+    history_page_size: u32,
+    selected_history: Option<usize>,
     commands: Vec<WalletCommand>,
     ui_events: Rc<RefCell<Vec<WalletUiEvent>>>,
 }
@@ -144,9 +166,15 @@ impl WalletView {
                     .push(WalletUiEvent::GenerateReceive);
             });
 
+        let history_page_size = HISTORY_PAGE_SIZE;
+
         let mut commands = Vec::new();
         commands.push(WalletCommand::RefreshBalance);
         commands.push(WalletCommand::RequestReceive { amount: None });
+        commands.push(WalletCommand::LoadPayments {
+            offset: 0,
+            limit: history_page_size,
+        });
 
         Self {
             tab: WalletTab::Send,
@@ -173,6 +201,12 @@ impl WalletView {
             receive_button,
             receive_payload: None,
             qr_matrix: None,
+            history_scroll: ScrollContainer::vertical(Bounds::ZERO),
+            history_items: Vec::new(),
+            history_loading: true,
+            history_has_more: true,
+            history_page_size,
+            selected_history: None,
             commands,
             ui_events,
         }
@@ -203,17 +237,85 @@ impl WalletView {
                 self.send_destination.set_value("");
                 self.send_amount.set_value("");
             }
+            WalletUpdate::PaymentsLoaded {
+                payments,
+                offset,
+                has_more,
+            } => {
+                if offset == 0 {
+                    self.history_items = payments;
+                    self.selected_history = None;
+                    self.history_scroll.scroll_to(Point::ZERO);
+                } else {
+                    self.history_items.extend(payments);
+                }
+                self.history_has_more = has_more;
+                self.history_loading = false;
+            }
             WalletUpdate::Error { message } => {
                 self.notice = Some(Notice {
                     kind: NoticeKind::Error,
                     message,
                 });
+                self.history_loading = false;
             }
         }
     }
 
     pub fn drain_commands(&mut self) -> Vec<WalletCommand> {
         std::mem::take(&mut self.commands)
+    }
+
+    fn request_history_page(&mut self, offset: u32) {
+        self.history_loading = true;
+        self.commands.push(WalletCommand::LoadPayments {
+            offset,
+            limit: self.history_page_size,
+        });
+    }
+
+    fn sync_history_scroll(&mut self, list_bounds: Bounds) {
+        let content_height = self.history_items.len() as f32 * HISTORY_ROW_HEIGHT;
+        self.history_scroll.set_viewport(list_bounds);
+        self.history_scroll
+            .set_content_size(Size::new(list_bounds.size.width, content_height));
+    }
+
+    fn maybe_request_more_history(&mut self, list_bounds: Bounds) {
+        if self.history_loading {
+            return;
+        }
+        if self.history_items.is_empty() {
+            if self.history_has_more {
+                self.request_history_page(0);
+            }
+            return;
+        }
+        if !self.history_has_more {
+            return;
+        }
+
+        let visible_end =
+            self.history_scroll.scroll_offset.y + list_bounds.size.height + HISTORY_LOAD_THRESHOLD;
+        if visible_end >= self.history_scroll.content_size.height {
+            let offset = self.history_items.len() as u32;
+            self.request_history_page(offset);
+        }
+    }
+
+    fn history_visible_range(&self, viewport_height: f32, scroll_offset: f32) -> Range<usize> {
+        let item_count = self.history_items.len();
+        if item_count == 0 {
+            return 0..0;
+        }
+
+        let first_visible = (scroll_offset / HISTORY_ROW_HEIGHT).floor() as usize;
+        let visible_count = (viewport_height / HISTORY_ROW_HEIGHT).ceil() as usize + 1;
+
+        let start = first_visible.saturating_sub(HISTORY_OVERSCAN);
+        let end = (first_visible + visible_count + HISTORY_OVERSCAN).min(item_count);
+
+        start..end
     }
 
     fn layout(&self, bounds: Bounds) -> WalletLayout {
@@ -235,6 +337,12 @@ impl WalletView {
         let send_tab = Bounds::new(tabs.origin.x + PADDING, tab_y, TAB_WIDTH, TAB_HEIGHT);
         let receive_tab = Bounds::new(
             send_tab.origin.x + TAB_WIDTH + GAP,
+            tab_y,
+            TAB_WIDTH,
+            TAB_HEIGHT,
+        );
+        let history_tab = Bounds::new(
+            receive_tab.origin.x + TAB_WIDTH + GAP,
             tab_y,
             TAB_WIDTH,
             TAB_HEIGHT,
@@ -305,12 +413,48 @@ impl WalletView {
             INPUT_HEIGHT,
         );
 
+        let history_header = Bounds::new(
+            content.origin.x + PADDING,
+            content.origin.y + PADDING,
+            content.size.width - PADDING * 2.0,
+            HISTORY_HEADER_HEIGHT,
+        );
+        let history_list_y = history_header.origin.y + HISTORY_HEADER_HEIGHT + GAP;
+        let reserved_details = HISTORY_DETAILS_HEIGHT
+            .min(
+                content.size.height - PADDING * 2.0 - HISTORY_HEADER_HEIGHT - GAP,
+            )
+            .max(0.0);
+        let min_list_height = HISTORY_ROW_HEIGHT * 3.0;
+        let history_list_height = (content.size.height
+            - PADDING * 2.0
+            - HISTORY_HEADER_HEIGHT
+            - GAP
+            - reserved_details)
+            .max(min_list_height);
+        let history_list = Bounds::new(
+            content.origin.x + PADDING,
+            history_list_y,
+            content.size.width - PADDING * 2.0,
+            history_list_height,
+        );
+        let history_details_y = history_list.origin.y + history_list.size.height + GAP;
+        let history_details_height =
+            (content.origin.y + content.size.height - PADDING - history_details_y).max(0.0);
+        let history_details = Bounds::new(
+            content.origin.x + PADDING,
+            history_details_y,
+            content.size.width - PADDING * 2.0,
+            history_details_height,
+        );
+
         WalletLayout {
             header,
             tabs,
             content,
             send_tab,
             receive_tab,
+            history_tab,
             send: SendLayout {
                 destination_input,
                 amount_input,
@@ -323,6 +467,11 @@ impl WalletView {
                 qr,
                 payload,
                 notice: receive_notice,
+            },
+            history: HistoryLayout {
+                header: history_header,
+                list: history_list,
+                details: history_details,
             },
         }
     }
@@ -450,6 +599,229 @@ impl WalletView {
         }
     }
 
+    fn history_row_summary(&self, payment: &Payment) -> String {
+        format!(
+            "{} | {} | {}",
+            format_timestamp_display(payment.timestamp),
+            format_payment_type(payment.payment_type),
+            format_payment_status(payment.status)
+        )
+    }
+
+    fn history_row_amount(&self, payment: &Payment) -> String {
+        let prefix = match payment.payment_type {
+            PaymentType::Send => "-",
+            PaymentType::Receive => "+",
+        };
+        format!("{}{} sats", prefix, format_sats_u128(payment.amount))
+    }
+
+    fn history_row_amount_color(&self, payment: &Payment) -> Hsla {
+        match payment.payment_type {
+            PaymentType::Send => theme::text::SECONDARY,
+            PaymentType::Receive => theme::accent::PRIMARY,
+        }
+    }
+
+    fn draw_history(&mut self, layout: &HistoryLayout, cx: &mut wgpui::PaintContext) {
+        self.sync_history_scroll(layout.list);
+
+        cx.scene.draw_quad(
+            Quad::new(layout.list)
+                .with_background(theme::bg::SURFACE)
+                .with_border(theme::border::SUBTLE, 1.0),
+        );
+        cx.scene.draw_quad(
+            Quad::new(layout.details)
+                .with_background(theme::bg::SURFACE)
+                .with_border(theme::border::SUBTLE, 1.0),
+        );
+
+        self.draw_text(
+            "TRANSACTIONS",
+            layout.header.origin.x,
+            layout.header.origin.y,
+            theme::font_size::SM,
+            theme::text::MUTED,
+            cx.text,
+            cx.scene,
+        );
+
+        if self.history_items.is_empty() {
+            let message = if self.history_loading {
+                "Loading transactions..."
+            } else {
+                "No transactions yet."
+            };
+            self.draw_text(
+                message,
+                layout.list.origin.x + GAP,
+                layout.list.origin.y + GAP,
+                theme::font_size::SM,
+                theme::text::MUTED,
+                cx.text,
+                cx.scene,
+            );
+        } else {
+            self.draw_history_rows(layout.list, cx);
+
+            if self.history_loading {
+                let font_size = theme::font_size::XS;
+                self.draw_text(
+                    "Loading more...",
+                    layout.list.origin.x + GAP,
+                    layout.list.origin.y + layout.list.size.height - font_size - 6.0,
+                    font_size,
+                    theme::text::MUTED,
+                    cx.text,
+                    cx.scene,
+                );
+            }
+        }
+
+        self.draw_history_details(layout.details, cx);
+    }
+
+    fn draw_history_rows(&self, list_bounds: Bounds, cx: &mut wgpui::PaintContext) {
+        let scroll_offset = self.history_scroll.scroll_offset.y;
+        let visible_range = self.history_visible_range(list_bounds.size.height, scroll_offset);
+
+        cx.scene.push_clip(list_bounds);
+
+        for index in visible_range {
+            let Some(payment) = self.history_items.get(index) else {
+                continue;
+            };
+            let row_y =
+                list_bounds.origin.y + index as f32 * HISTORY_ROW_HEIGHT - scroll_offset;
+            let row_bounds = Bounds::new(
+                list_bounds.origin.x,
+                row_y,
+                list_bounds.size.width,
+                HISTORY_ROW_HEIGHT,
+            );
+
+            if row_bounds.origin.y + row_bounds.size.height < list_bounds.origin.y
+                || row_bounds.origin.y > list_bounds.origin.y + list_bounds.size.height
+            {
+                continue;
+            }
+
+            let selected = self.selected_history == Some(index);
+            let background = if selected {
+                theme::bg::SELECTED
+            } else if index % 2 == 0 {
+                theme::bg::APP
+            } else {
+                theme::bg::SURFACE
+            };
+
+            cx.scene
+                .draw_quad(Quad::new(row_bounds).with_background(background));
+
+            let divider = Bounds::new(
+                row_bounds.origin.x,
+                row_bounds.origin.y + row_bounds.size.height - 1.0,
+                row_bounds.size.width,
+                1.0,
+            );
+            cx.scene
+                .draw_quad(Quad::new(divider).with_background(theme::border::SUBTLE));
+
+            let font_size = theme::font_size::SM;
+            let text_y = row_bounds.origin.y + (row_bounds.size.height - font_size) / 2.0;
+            let summary = self.history_row_summary(payment);
+            self.draw_text(
+                &summary,
+                row_bounds.origin.x + GAP,
+                text_y,
+                font_size,
+                theme::text::PRIMARY,
+                cx.text,
+                cx.scene,
+            );
+
+            let amount = self.history_row_amount(payment);
+            let amount_width = text_width(&amount, font_size);
+            let amount_x = row_bounds.origin.x + row_bounds.size.width - GAP - amount_width;
+            self.draw_text(
+                &amount,
+                amount_x,
+                text_y,
+                font_size,
+                self.history_row_amount_color(payment),
+                cx.text,
+                cx.scene,
+            );
+        }
+
+        cx.scene.pop_clip();
+    }
+
+    fn draw_history_details(&self, bounds: Bounds, cx: &mut wgpui::PaintContext) {
+        if bounds.size.height <= 0.0 {
+            return;
+        }
+
+        let padding = GAP;
+        let mut y = bounds.origin.y + padding;
+        let title_size = theme::font_size::SM;
+
+        self.draw_text(
+            "Transaction Details",
+            bounds.origin.x + padding,
+            y,
+            title_size,
+            theme::text::MUTED,
+            cx.text,
+            cx.scene,
+        );
+        y += title_size + 8.0;
+
+        let Some(selected) = self.selected_history else {
+            self.draw_text(
+                "Select a transaction to see details.",
+                bounds.origin.x + padding,
+                y,
+                theme::font_size::SM,
+                theme::text::PRIMARY,
+                cx.text,
+                cx.scene,
+            );
+            return;
+        };
+
+        let Some(payment) = self.history_items.get(selected) else {
+            return;
+        };
+
+        let detail_lines = [
+            format!("ID: {}", truncate_middle(&payment.id, 12, 8)),
+            format!("Type: {}", format_payment_type(payment.payment_type)),
+            format!("Status: {}", format_payment_status(payment.status)),
+            format!("Method: {}", format_payment_method(payment.method)),
+            format!("Amount: {} sats", format_sats_u128(payment.amount)),
+            format!("Fees: {} sats", format_sats_u128(payment.fees)),
+            format!("Time: {}", format_timestamp_display(payment.timestamp)),
+        ];
+
+        for line in detail_lines {
+            self.draw_text(
+                &line,
+                bounds.origin.x + padding,
+                y,
+                theme::font_size::SM,
+                theme::text::PRIMARY,
+                cx.text,
+                cx.scene,
+            );
+            y += theme::font_size::SM + 6.0;
+            if y > bounds.origin.y + bounds.size.height - padding {
+                break;
+            }
+        }
+    }
+
     fn handle_ui_events(&mut self) -> bool {
         let mut changed = false;
         let events: Vec<WalletUiEvent> = self.ui_events.borrow_mut().drain(..).collect();
@@ -459,6 +831,12 @@ impl WalletView {
                 WalletUiEvent::SelectTab(tab) => {
                     self.tab = tab;
                     self.notice = None;
+                    if tab == WalletTab::History
+                        && self.history_items.is_empty()
+                        && !self.history_loading
+                    {
+                        self.request_history_page(0);
+                    }
                 }
                 WalletUiEvent::SubmitSend => {
                     self.submit_send();
@@ -579,6 +957,13 @@ impl Component for WalletView {
 
         self.draw_tab("Send", WalletTab::Send, layout.send_tab, cx.text, cx.scene);
         self.draw_tab("Receive", WalletTab::Receive, layout.receive_tab, cx.text, cx.scene);
+        self.draw_tab(
+            "History",
+            WalletTab::History,
+            layout.history_tab,
+            cx.text,
+            cx.scene,
+        );
 
         match self.tab {
             WalletTab::Send => {
@@ -631,12 +1016,16 @@ impl Component for WalletView {
                     );
                 }
             }
+            WalletTab::History => {
+                self.draw_history(&layout.history, cx);
+            }
         }
 
         if let Some(notice) = &self.notice {
             let notice_bounds = match self.tab {
                 WalletTab::Send => layout.send.notice,
                 WalletTab::Receive => layout.receive.notice,
+                WalletTab::History => layout.history.details,
             };
             self.draw_notice(notice, notice_bounds, cx.text, cx.scene);
         }
@@ -653,6 +1042,8 @@ impl Component for WalletView {
                     Some(WalletTab::Send)
                 } else if layout.receive_tab.contains(point) {
                     Some(WalletTab::Receive)
+                } else if layout.history_tab.contains(point) {
+                    Some(WalletTab::History)
                 } else {
                     None
                 };
@@ -672,7 +1063,30 @@ impl Component for WalletView {
                             .borrow_mut()
                             .push(WalletUiEvent::SelectTab(WalletTab::Receive));
                         result = EventResult::Handled;
+                    } else if layout.history_tab.contains(point) {
+                        self.ui_events
+                            .borrow_mut()
+                            .push(WalletUiEvent::SelectTab(WalletTab::History));
+                        result = EventResult::Handled;
+                    } else if self.tab == WalletTab::History && layout.history.list.contains(point)
+                    {
+                        self.sync_history_scroll(layout.history.list);
+                        let relative_y = point.y - layout.history.list.origin.y
+                            + self.history_scroll.scroll_offset.y;
+                        let index = (relative_y / HISTORY_ROW_HEIGHT).floor() as usize;
+                        if index < self.history_items.len() {
+                            self.selected_history = Some(index);
+                            result = EventResult::Handled;
+                        }
                     }
+                }
+            }
+            InputEvent::Scroll { dx, dy } => {
+                if self.tab == WalletTab::History {
+                    self.sync_history_scroll(layout.history.list);
+                    self.history_scroll.scroll_by(Point::new(*dx, *dy));
+                    self.maybe_request_more_history(layout.history.list);
+                    result = EventResult::Handled;
                 }
             }
             _ => {}
@@ -688,6 +1102,7 @@ impl Component for WalletView {
                 result = result.or(self.receive_amount.event(event, layout.receive.amount_input, cx));
                 result = result.or(self.receive_button.event(event, layout.receive.generate_button, cx));
             }
+            WalletTab::History => {}
         }
 
         if self.handle_ui_events() {
@@ -730,9 +1145,63 @@ fn format_sats(value: u64) -> String {
     out.chars().rev().collect()
 }
 
+fn format_sats_u128(value: u128) -> String {
+    let digits = value.to_string();
+    let mut out = String::new();
+    for (idx, ch) in digits.chars().rev().enumerate() {
+        if idx != 0 && idx % 3 == 0 {
+            out.push(',');
+        }
+        out.push(ch);
+    }
+    out.chars().rev().collect()
+}
+
+fn format_payment_status(status: PaymentStatus) -> &'static str {
+    match status {
+        PaymentStatus::Completed => "Done",
+        PaymentStatus::Pending => "Pending",
+        PaymentStatus::Failed => "Failed",
+    }
+}
+
+fn format_payment_type(payment_type: PaymentType) -> &'static str {
+    match payment_type {
+        PaymentType::Send => "Sent",
+        PaymentType::Receive => "Received",
+    }
+}
+
+fn format_payment_method(method: PaymentMethod) -> &'static str {
+    match method {
+        PaymentMethod::Lightning => "Lightning",
+        PaymentMethod::Spark => "Spark",
+        PaymentMethod::Token => "Token",
+        PaymentMethod::Deposit => "Deposit",
+        PaymentMethod::Withdraw => "Withdraw",
+        PaymentMethod::Unknown => "Unknown",
+    }
+}
+
+fn format_timestamp_display(timestamp: u64) -> String {
+    chrono::DateTime::from_timestamp(timestamp as i64, 0)
+        .map(|dt| dt.format("%Y-%m-%d %H:%M").to_string())
+        .unwrap_or_else(|| "Unknown".to_string())
+}
+
+fn truncate_middle(value: &str, head: usize, tail: usize) -> String {
+    if value.len() <= head + tail + 3 {
+        return value.to_string();
+    }
+    let head_part = &value[..head];
+    let tail_part = &value[value.len() - tail..];
+    format!("{}...{}", head_part, tail_part)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use spark::{Payment, PaymentMethod, PaymentStatus, PaymentType};
     use wgpui::InputEvent;
 
     fn click_at(view: &mut WalletView, bounds: Bounds, x: f32, y: f32) {
@@ -749,6 +1218,19 @@ mod tests {
         };
         view.event(&down, bounds, &mut cx);
         view.event(&up, bounds, &mut cx);
+    }
+
+    fn sample_payment(id: &str, payment_type: PaymentType, timestamp: u64) -> Payment {
+        Payment {
+            id: id.to_string(),
+            payment_type,
+            status: PaymentStatus::Completed,
+            amount: 12_345,
+            fees: 12,
+            timestamp,
+            method: PaymentMethod::Lightning,
+            details: None,
+        }
     }
 
     #[test]
@@ -816,5 +1298,74 @@ mod tests {
         });
         assert_eq!(view.receive_payload.as_deref(), Some("spark1receive"));
         assert!(view.qr_matrix.is_some());
+    }
+
+    #[test]
+    fn test_history_scroll_requests_more() {
+        let mut view = WalletView::new();
+        view.drain_commands();
+        let bounds = Bounds::new(0.0, 0.0, 900.0, 720.0);
+        let layout = view.layout(bounds);
+        click_at(
+            &mut view,
+            bounds,
+            layout.history_tab.origin.x + 5.0,
+            layout.history_tab.origin.y + 5.0,
+        );
+
+        let payments: Vec<Payment> = (0..HISTORY_PAGE_SIZE as usize)
+            .map(|i| sample_payment(&format!("pay-{}", i), PaymentType::Receive, 1_700_000_000))
+            .collect();
+        view.apply_update(WalletUpdate::PaymentsLoaded {
+            payments,
+            offset: 0,
+            has_more: true,
+        });
+
+        let mut cx = EventContext::new();
+        let scroll = InputEvent::Scroll { dx: 0.0, dy: 10_000.0 };
+        view.event(&scroll, bounds, &mut cx);
+
+        let commands = view.drain_commands();
+        assert!(commands.iter().any(|cmd| matches!(
+            cmd,
+            WalletCommand::LoadPayments {
+                offset,
+                limit
+            } if *offset == HISTORY_PAGE_SIZE && *limit == HISTORY_PAGE_SIZE
+        )));
+    }
+
+    #[test]
+    fn test_history_click_selects_payment() {
+        let mut view = WalletView::new();
+        view.drain_commands();
+        let bounds = Bounds::new(0.0, 0.0, 900.0, 720.0);
+        let layout = view.layout(bounds);
+        click_at(
+            &mut view,
+            bounds,
+            layout.history_tab.origin.x + 5.0,
+            layout.history_tab.origin.y + 5.0,
+        );
+
+        let payments = vec![
+            sample_payment("pay-1", PaymentType::Send, 1_700_000_000),
+            sample_payment("pay-2", PaymentType::Receive, 1_700_000_100),
+        ];
+        view.apply_update(WalletUpdate::PaymentsLoaded {
+            payments,
+            offset: 0,
+            has_more: false,
+        });
+
+        let layout = view.layout(bounds);
+        click_at(
+            &mut view,
+            bounds,
+            layout.history.list.origin.x + 5.0,
+            layout.history.list.origin.y + 5.0,
+        );
+        assert_eq!(view.selected_history, Some(0));
     }
 }

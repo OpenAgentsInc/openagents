@@ -136,6 +136,23 @@ async fn run_backend(
                     }
                 }
             }
+            WalletCommand::LoadPayments { offset, limit } => {
+                match wallet_ref.list_payments(Some(limit), Some(offset)).await {
+                    Ok(payments) => {
+                        let has_more = payments.len() as u32 == limit;
+                        let _ = update_tx.send(WalletUpdate::PaymentsLoaded {
+                            payments,
+                            offset,
+                            has_more,
+                        });
+                    }
+                    Err(err) => {
+                        let _ = update_tx.send(WalletUpdate::Error {
+                            message: err.to_string(),
+                        });
+                    }
+                }
+            }
         }
     }
 
