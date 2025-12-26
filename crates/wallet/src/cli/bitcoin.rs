@@ -380,14 +380,26 @@ fn format_send_preview(preview: &SendPreview) -> String {
 }
 
 fn confirm_send(skip_confirm: bool) -> Result<bool> {
+    use std::io::{self, IsTerminal};
+
+    let is_terminal = io::stdin().is_terminal();
+    let mut stdin = io::stdin();
+    let mut reader = io::BufReader::new(&mut stdin);
+    confirm_send_with_reader(skip_confirm, is_terminal, &mut reader)
+}
+
+fn confirm_send_with_reader<R: std::io::BufRead>(
+    skip_confirm: bool,
+    is_terminal: bool,
+    reader: &mut R,
+) -> Result<bool> {
     use std::io::{self, Write};
-    use std::io::IsTerminal;
 
     if skip_confirm {
         return Ok(true);
     }
 
-    if !io::stdin().is_terminal() {
+    if !is_terminal {
         anyhow::bail!("Non-interactive send requires --yes to confirm.");
     }
 
@@ -395,7 +407,7 @@ fn confirm_send(skip_confirm: bool) -> Result<bool> {
     io::stdout().flush()?;
 
     let mut input = String::new();
-    io::stdin().read_line(&mut input)?;
+    reader.read_line(&mut input)?;
     let trimmed = input.trim();
     Ok(trimmed.eq_ignore_ascii_case("y") || trimmed.eq_ignore_ascii_case("yes"))
 }
@@ -775,6 +787,13 @@ mod tests {
         let output = format_balance_display(&balance, Some(25_000.0));
         assert!(output.contains("Total:     100000000 sats"));
         assert!(output.contains("$25000.00"));
+    }
+
+    #[test]
+    fn test_confirm_send_declines_on_no() {
+        let mut input = std::io::Cursor::new("n\n");
+        let confirmed = confirm_send_with_reader(false, true, &mut input).unwrap();
+        assert!(!confirmed);
     }
 
     #[test]
