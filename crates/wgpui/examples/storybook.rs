@@ -130,6 +130,7 @@ const SECTION_GITAFTER_FLOWS: usize = 25;
 const SECTION_MARKETPLACE_FLOWS: usize = 26;
 const SECTION_NOSTR_FLOWS: usize = 27;
 const SECTION_SOVEREIGN_AGENT_FLOWS: usize = 28;
+const HOT_RELOAD_POLL_MS: u64 = 500;
 
 #[derive(Clone, Copy)]
 struct GlowPreset {
@@ -190,9 +191,50 @@ const LINE_DIRECTIONS: [LineDirection; 4] = [
 ];
 
 fn main() {
+    let args: Vec<String> = std::env::args().collect();
+    if hot_reload_requested(&args) {
+        start_hot_reload_watcher(args);
+    }
+
     let event_loop = EventLoop::new().expect("Failed to create event loop");
     let mut app = App::default();
     event_loop.run_app(&mut app).expect("Event loop failed");
+}
+
+fn hot_reload_requested(args: &[String]) -> bool {
+    args.iter()
+        .any(|arg| arg == "--hot" || arg == "--hot-reload")
+}
+
+// Restart the storybook process when the compiled binary changes.
+fn start_hot_reload_watcher(args: Vec<String>) {
+    let exe = match std::env::current_exe() {
+        Ok(exe) => exe,
+        Err(_) => return,
+    };
+    let last_modified = match std::fs::metadata(&exe).and_then(|meta| meta.modified()) {
+        Ok(time) => time,
+        Err(_) => return,
+    };
+
+    std::thread::spawn(move || {
+        let mut last_modified = last_modified;
+        loop {
+            std::thread::sleep(Duration::from_millis(HOT_RELOAD_POLL_MS));
+            let Ok(meta) = std::fs::metadata(&exe) else {
+                continue;
+            };
+            let Ok(modified) = meta.modified() else {
+                continue;
+            };
+            if modified > last_modified {
+                let _ = std::process::Command::new(&exe)
+                    .args(args.iter().skip(1))
+                    .spawn();
+                std::process::exit(0);
+            }
+        }
+    });
 }
 
 #[derive(Default)]

@@ -4,6 +4,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use anyhow::Result;
+use wgpui::components::atoms::ApmGauge;
 use wgpui::components::hud::{
     DotsGrid, DotsOrigin, DotShape, DrawDirection, Frame, FrameAnimation, FrameStyle,
 };
@@ -443,6 +444,13 @@ const MARGIN: f32 = 24.0;
 const GAP: f32 = 18.0;
 const PANE_PADDING: f32 = 16.0;
 const PANE_TITLE_HEIGHT: f32 = 22.0;
+const HUD_WIDTH: f32 = 280.0;
+const HUD_HEIGHT: f32 = 92.0;
+const HUD_PADDING: f32 = 10.0;
+const HUD_ROW_HEIGHT: f32 = 18.0;
+const HUD_ROW_GAP: f32 = 6.0;
+const HUD_GAUGE_WIDTH: f32 = 110.0;
+const HUD_GAUGE_HEIGHT: f32 = 22.0;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum PaneKind {
@@ -710,6 +718,134 @@ impl Shell {
         self.pane_view_mut(layout.kind)
             .paint(layout.content, cx);
     }
+
+    fn paint_hud(&mut self, bounds: Bounds, cx: &mut PaintContext) {
+        let available_width = (bounds.size.width - MARGIN * 2.0).max(0.0);
+        let available_height = (bounds.size.height - MARGIN * 2.0).max(0.0);
+        let hud_width = HUD_WIDTH.min(available_width);
+        let hud_height = HUD_HEIGHT.min(available_height);
+
+        if hud_width <= 0.0 || hud_height <= 0.0 {
+            return;
+        }
+
+        let hud_bounds = Bounds::new(
+            bounds.origin.x + bounds.size.width - hud_width - MARGIN,
+            bounds.origin.y + MARGIN * 0.6,
+            hud_width,
+            hud_height,
+        );
+
+        let frame_progress = self.frame_anim.current_value();
+        let glow = theme::accent::PRIMARY.with_alpha(0.45 * self.glow_anim.current_value());
+        let mut frame = Frame::new()
+            .style(FrameStyle::Header)
+            .line_color(theme::accent::PRIMARY.with_alpha(0.7))
+            .bg_color(theme::bg::ELEVATED.with_alpha(0.94))
+            .stroke_width(1.5)
+            .animation_mode(FrameAnimation::Fade)
+            .draw_direction(DrawDirection::LeftToRight)
+            .animation_progress(frame_progress)
+            .glow_color(glow);
+        frame.paint(hud_bounds, cx);
+
+        let content_bounds = Bounds::new(
+            hud_bounds.origin.x + HUD_PADDING,
+            hud_bounds.origin.y + HUD_PADDING,
+            (hud_bounds.size.width - HUD_PADDING * 2.0).max(0.0),
+            (hud_bounds.size.height - HUD_PADDING * 2.0).max(0.0),
+        );
+
+        if content_bounds.size.width <= 0.0 || content_bounds.size.height <= 0.0 {
+            return;
+        }
+
+        let row1_y = content_bounds.origin.y;
+        let row2_y = row1_y + HUD_ROW_HEIGHT + HUD_ROW_GAP;
+        let row3_y = row2_y + HUD_ROW_HEIGHT + HUD_ROW_GAP;
+
+        let state = self.state.borrow();
+        let session_label = Self::format_session_label(state.log_session_id.as_deref());
+        let gauge_width = HUD_GAUGE_WIDTH.min(content_bounds.size.width);
+        let session_width = (content_bounds.size.width - gauge_width - HUD_ROW_GAP).max(0.0);
+
+        let mut session_text = Text::new(format!("Session: {}", session_label))
+            .font_size(theme::font_size::XS)
+            .color(theme::text::MUTED);
+        session_text.paint(
+            Bounds::new(
+                content_bounds.origin.x,
+                row1_y,
+                session_width,
+                HUD_ROW_HEIGHT,
+            ),
+            cx,
+        );
+
+        let apm_value = state.current_apm.unwrap_or(0.0).max(0.0) as f32;
+        let gauge_x = content_bounds.origin.x + content_bounds.size.width - gauge_width;
+        let gauge_bounds = Bounds::new(
+            gauge_x,
+            row1_y - 2.0,
+            gauge_width,
+            HUD_GAUGE_HEIGHT,
+        );
+        let mut gauge = ApmGauge::new(apm_value).compact(true);
+        gauge.paint(gauge_bounds, cx);
+
+        let status_label = if state.prompt_running { "RUNNING" } else { "IDLE" };
+        let status_color = if state.prompt_running {
+            theme::status::SUCCESS
+        } else {
+            theme::text::MUTED
+        };
+        let mut status_text = Text::new(format!("Status: {}", status_label))
+            .font_size(theme::font_size::XS)
+            .color(status_color);
+        status_text.paint(
+            Bounds::new(
+                content_bounds.origin.x,
+                row2_y,
+                content_bounds.size.width,
+                HUD_ROW_HEIGHT,
+            ),
+            cx,
+        );
+
+        let error_rate = state
+            .session_error_rate()
+            .map(|rate| format!("{:.0}%", rate * 100.0))
+            .unwrap_or_else(|| "--".to_string());
+        let cost = state
+            .session_cost_usd()
+            .map(|cost| format!("${:.2}", cost))
+            .unwrap_or_else(|| "--".to_string());
+        let detail = format!("Err {}  Cost {}", error_rate, cost);
+        let mut detail_text = Text::new(detail)
+            .font_size(theme::font_size::XS)
+            .color(theme::text::MUTED);
+        detail_text.paint(
+            Bounds::new(
+                content_bounds.origin.x,
+                row3_y,
+                content_bounds.size.width,
+                HUD_ROW_HEIGHT,
+            ),
+            cx,
+        );
+    }
+
+    fn format_session_label(session_id: Option<&str>) -> String {
+        let Some(id) = session_id.filter(|id| !id.is_empty()) else {
+            return "none".to_string();
+        };
+        const MAX: usize = 12;
+        if id.len() <= MAX {
+            id.to_string()
+        } else {
+            format!("{}...", &id[..MAX])
+        }
+    }
 }
 
 impl Component for Shell {
@@ -752,6 +888,8 @@ impl Component for Shell {
         for layout in self.pane_layouts(bounds) {
             self.paint_pane(layout, cx);
         }
+
+        self.paint_hud(bounds, cx);
 
         let footer = "Permissions: auto-approved";
         let mut footer_text = Text::new(footer)
@@ -901,5 +1039,16 @@ mod tests {
         assert!(state.prompt_running);
         assert_eq!(state.prompt_last.as_deref(), Some("do it"));
         assert_eq!(state.chat_entries.len(), 1);
+    }
+
+    #[test]
+    fn test_format_session_label() {
+        assert_eq!(Shell::format_session_label(None), "none");
+        assert_eq!(Shell::format_session_label(Some("")), "none");
+        assert_eq!(Shell::format_session_label(Some("session-1234")), "session-1234");
+        assert_eq!(
+            Shell::format_session_label(Some("session-1234567890")),
+            "session-1234..."
+        );
     }
 }
