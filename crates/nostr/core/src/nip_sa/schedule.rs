@@ -44,6 +44,12 @@ pub enum ScheduleError {
     #[error("invalid heartbeat: {0}")]
     InvalidHeartbeat(String),
 
+    #[error("invalid business time: {0}")]
+    InvalidBusinessTime(String),
+
+    #[error("invalid business hours: {0}")]
+    InvalidBusinessHours(String),
+
     #[error("serialization error: {0}")]
     Serialization(String),
 }
@@ -89,6 +95,126 @@ impl TriggerType {
     }
 }
 
+/// Day of week for business hours
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Weekday {
+    Mon,
+    Tue,
+    Wed,
+    Thu,
+    Fri,
+    Sat,
+    Sun,
+}
+
+impl Weekday {
+    pub fn to_tag_value(&self) -> &'static str {
+        match self {
+            Weekday::Mon => "mon",
+            Weekday::Tue => "tue",
+            Weekday::Wed => "wed",
+            Weekday::Thu => "thu",
+            Weekday::Fri => "fri",
+            Weekday::Sat => "sat",
+            Weekday::Sun => "sun",
+        }
+    }
+}
+
+/// Time-of-day for business hours (24h clock)
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BusinessTime {
+    pub hour: u8,
+    pub minute: u8,
+}
+
+impl BusinessTime {
+    pub fn new(hour: u8, minute: u8) -> Result<Self, ScheduleError> {
+        if hour > 23 || minute > 59 {
+            return Err(ScheduleError::InvalidBusinessTime(format!(
+                "invalid time {:02}:{:02}",
+                hour, minute
+            )));
+        }
+        Ok(Self { hour, minute })
+    }
+
+    pub fn total_minutes(&self) -> u16 {
+        self.hour as u16 * 60 + self.minute as u16
+    }
+
+    pub fn validate(&self) -> Result<(), ScheduleError> {
+        if self.hour > 23 || self.minute > 59 {
+            return Err(ScheduleError::InvalidBusinessTime(format!(
+                "invalid time {:02}:{:02}",
+                self.hour, self.minute
+            )));
+        }
+        Ok(())
+    }
+}
+
+impl std::fmt::Display for BusinessTime {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:02}:{:02}", self.hour, self.minute)
+    }
+}
+
+/// Business hours configuration
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BusinessHours {
+    pub days: Vec<Weekday>,
+    pub start: BusinessTime,
+    pub end: BusinessTime,
+}
+
+impl BusinessHours {
+    pub fn new(
+        days: Vec<Weekday>,
+        start: BusinessTime,
+        end: BusinessTime,
+    ) -> Result<Self, ScheduleError> {
+        let hours = Self { days, start, end };
+        hours.validate()?;
+        Ok(hours)
+    }
+
+    pub fn validate(&self) -> Result<(), ScheduleError> {
+        if self.days.is_empty() {
+            return Err(ScheduleError::InvalidBusinessHours(
+                "business hours require at least one day".to_string(),
+            ));
+        }
+        self.start.validate()?;
+        self.end.validate()?;
+        if self.start.total_minutes() >= self.end.total_minutes() {
+            return Err(ScheduleError::InvalidBusinessHours(
+                "start time must be before end time".to_string(),
+            ));
+        }
+        Ok(())
+    }
+
+    pub fn allows(&self, day: Weekday, time: BusinessTime) -> bool {
+        if !self.days.contains(&day) {
+            return false;
+        }
+        let minutes = time.total_minutes();
+        minutes >= self.start.total_minutes() && minutes < self.end.total_minutes()
+    }
+
+    pub fn to_tag_value(&self) -> String {
+        let days = self
+            .days
+            .iter()
+            .map(Weekday::to_tag_value)
+            .collect::<Vec<_>>()
+            .join(",");
+        format!("{} {}-{}", days, self.start, self.end)
+    }
+}
+
 /// Agent schedule
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AgentSchedule {
@@ -96,6 +222,10 @@ pub struct AgentSchedule {
     pub heartbeat_seconds: Option<u64>,
     /// Event triggers
     pub triggers: Vec<TriggerType>,
+    /// Whether schedule is active
+    pub active: bool,
+    /// Optional business hours restriction
+    pub business_hours: Option<BusinessHours>,
 }
 
 impl AgentSchedule {
@@ -104,6 +234,8 @@ impl AgentSchedule {
         Self {
             heartbeat_seconds: None,
             triggers: Vec::new(),
+            active: true,
+            business_hours: None,
         }
     }
 
@@ -130,9 +262,51 @@ impl AgentSchedule {
         self
     }
 
+    /// Set schedule active state
+    pub fn with_active(mut self, active: bool) -> Self {
+        self.active = active;
+        self
+    }
+
+    /// Pause schedule
+    pub fn pause(&mut self) {
+        self.active = false;
+    }
+
+    /// Resume schedule
+    pub fn resume(&mut self) {
+        self.active = true;
+    }
+
+    /// Set business hours
+    pub fn with_business_hours(mut self, hours: BusinessHours) -> Self {
+        self.business_hours = Some(hours);
+        self
+    }
+
+    /// Check if schedule is active
+    pub fn is_active(&self) -> bool {
+        self.active
+    }
+
+    /// Check whether a given time is allowed by schedule
+    pub fn allows_time(&self, day: Weekday, time: BusinessTime) -> bool {
+        if !self.active {
+            return false;
+        }
+        match &self.business_hours {
+            Some(hours) => hours.allows(day, time),
+            None => true,
+        }
+    }
+
     /// Build tags for the event
     pub fn build_tags(&self) -> Vec<Vec<String>> {
         let mut tags = vec![vec!["d".to_string(), "schedule".to_string()]];
+        tags.push(vec![
+            "active".to_string(),
+            self.active.to_string(),
+        ]);
 
         // Add heartbeat tag if present
         if let Some(seconds) = self.heartbeat_seconds {
@@ -142,6 +316,13 @@ impl AgentSchedule {
         // Add trigger tags
         for trigger in &self.triggers {
             tags.push(vec!["trigger".to_string(), trigger.to_tag_value()]);
+        }
+
+        if let Some(hours) = &self.business_hours {
+            tags.push(vec![
+                "business_hours".to_string(),
+                hours.to_tag_value(),
+            ]);
         }
 
         tags
@@ -155,6 +336,9 @@ impl AgentSchedule {
                     "heartbeat must be > 0".to_string(),
                 ));
             }
+        }
+        if let Some(hours) = &self.business_hours {
+            hours.validate()?;
         }
         Ok(())
     }
@@ -216,6 +400,82 @@ mod tests {
     }
 
     #[test]
+    fn test_schedule_pause_resume() {
+        let mut schedule = AgentSchedule::new();
+        assert!(schedule.is_active());
+        schedule.pause();
+        assert!(!schedule.is_active());
+        schedule.resume();
+        assert!(schedule.is_active());
+    }
+
+    #[test]
+    fn test_business_hours_allows_time() {
+        let hours = BusinessHours::new(
+            vec![Weekday::Mon, Weekday::Tue],
+            BusinessTime::new(9, 0).unwrap(),
+            BusinessTime::new(17, 0).unwrap(),
+        )
+        .unwrap();
+
+        assert!(hours.allows(Weekday::Mon, BusinessTime::new(10, 0).unwrap()));
+        assert!(!hours.allows(Weekday::Sun, BusinessTime::new(10, 0).unwrap()));
+        assert!(!hours.allows(Weekday::Mon, BusinessTime::new(18, 0).unwrap()));
+    }
+
+    #[test]
+    fn test_schedule_with_business_hours_tags() {
+        let hours = BusinessHours::new(
+            vec![Weekday::Mon, Weekday::Tue],
+            BusinessTime::new(9, 0).unwrap(),
+            BusinessTime::new(17, 0).unwrap(),
+        )
+        .unwrap();
+
+        let schedule = AgentSchedule::new().with_business_hours(hours);
+        let tags = schedule.build_tags();
+
+        assert!(tags.iter().any(|t| {
+            t[0] == "business_hours" && t[1] == "mon,tue 09:00-17:00"
+        }));
+    }
+
+    #[test]
+    fn test_schedule_allows_time_respects_pause() {
+        let hours = BusinessHours::new(
+            vec![Weekday::Mon],
+            BusinessTime::new(9, 0).unwrap(),
+            BusinessTime::new(17, 0).unwrap(),
+        )
+        .unwrap();
+
+        let mut schedule = AgentSchedule::new().with_business_hours(hours);
+        assert!(schedule.allows_time(Weekday::Mon, BusinessTime::new(10, 0).unwrap()));
+
+        schedule.pause();
+        assert!(!schedule.allows_time(Weekday::Mon, BusinessTime::new(10, 0).unwrap()));
+    }
+
+    #[test]
+    fn test_business_hours_validation() {
+        assert!(BusinessTime::new(24, 0).is_err());
+
+        let invalid = BusinessHours::new(
+            vec![],
+            BusinessTime::new(9, 0).unwrap(),
+            BusinessTime::new(17, 0).unwrap(),
+        );
+        assert!(invalid.is_err());
+
+        let invalid_range = BusinessHours::new(
+            vec![Weekday::Mon],
+            BusinessTime::new(17, 0).unwrap(),
+            BusinessTime::new(9, 0).unwrap(),
+        );
+        assert!(invalid_range.is_err());
+    }
+
+    #[test]
     fn test_schedule_tags() {
         let schedule = AgentSchedule::new()
             .with_heartbeat(900)
@@ -226,9 +486,10 @@ mod tests {
         let tags = schedule.build_tags();
 
         assert_eq!(tags[0], vec!["d", "schedule"]);
-        assert_eq!(tags[1], vec!["heartbeat", "900"]);
-        assert_eq!(tags[2], vec!["trigger", "mention"]);
-        assert_eq!(tags[3], vec!["trigger", "dm"]);
+        assert!(tags.iter().any(|t| t[0] == "active" && t[1] == "true"));
+        assert!(tags.iter().any(|t| t[0] == "heartbeat" && t[1] == "900"));
+        assert!(tags.iter().any(|t| t[0] == "trigger" && t[1] == "mention"));
+        assert!(tags.iter().any(|t| t[0] == "trigger" && t[1] == "dm"));
     }
 
     #[test]
@@ -240,8 +501,9 @@ mod tests {
         let tags = schedule.build_tags();
 
         assert_eq!(tags[0], vec!["d", "schedule"]);
-        assert_eq!(tags[1], vec!["trigger", "mention"]);
-        assert_eq!(tags[2], vec!["trigger", "zap"]);
+        assert!(tags.iter().any(|t| t[0] == "active" && t[1] == "true"));
+        assert!(tags.iter().any(|t| t[0] == "trigger" && t[1] == "mention"));
+        assert!(tags.iter().any(|t| t[0] == "trigger" && t[1] == "zap"));
     }
 
     #[test]
