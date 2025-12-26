@@ -1,6 +1,6 @@
 //! Autopilot CLI - Run autonomous tasks with Claude and log trajectories
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use async_trait::async_trait;
 use clap::Parser;
 use claude_agent_sdk::{
@@ -25,8 +25,12 @@ use autopilot::TrajectoryCollector;
 use autopilot::analyze;
 use autopilot::apm::APMTier;
 use autopilot::cli::{
-    AlertCommands, ApmCommands, BaselineCommands, Cli, Commands, DirectiveCommands, IssueCommands,
-    LogsCommands, MetricsCommands, ProjectCommands, SessionCommands,
+    AlertCommands, ApmCommands, BaselineCommands, Cli, Commands, DirectiveCommands, GithubCommands,
+    IssueCommands, LogsCommands, MetricsCommands, ProjectCommands, SessionCommands,
+};
+use autopilot::github::{
+    delete_connected_repo, get_connected_repo, get_repo_token, list_connected_repos,
+    store_connected_repo, GitHubClient, GitHubOAuth, TokenInfo,
 };
 use autopilot::deprecation;
 use autopilot::lockfile::{
@@ -137,6 +141,7 @@ async fn main() -> Result<()> {
             config,
             metadata,
         } => handle_notify_command(title, message, severity, webhook, config, metadata).await,
+        Commands::Github { command } => handle_github_command(command).await,
     }
 }
 
@@ -6545,5 +6550,208 @@ async fn handle_notify_command(
     }
 
     println!("{} Notification sent successfully", "✓".green());
+    Ok(())
+}
+
+async fn handle_github_command(command: GithubCommands) -> Result<()> {
+    use autopilot::metrics::MetricsDb;
+
+    fn get_db_path(db: Option<PathBuf>) -> PathBuf {
+        db.unwrap_or_else(|| autopilot::find_workspace_root().join(".openagents/autopilot.db"))
+    }
+
+    match command {
+        GithubCommands::Connect { repo, db } => {
+            let db_path = get_db_path(db);
+
+            // Parse repo URL
+            let (owner, repo_name) =
+                GitHubClient::parse_repo_url(&repo).context("Invalid repository URL")?;
+            let full_name = format!("{}/{}", owner, repo_name);
+
+            println!("Connecting repository: {}", full_name.cyan());
+
+            // Check if OAuth credentials are configured
+            let oauth = GitHubOAuth::from_env();
+            if oauth.is_err() {
+                println!(
+                    "\n{} GitHub OAuth not configured.",
+                    "!".yellow()
+                );
+                println!("To enable OAuth flow, set these environment variables:");
+                println!("  GITHUB_CLIENT_ID=<your-app-client-id>");
+                println!("  GITHUB_CLIENT_SECRET=<your-app-client-secret>");
+                println!("\nAlternatively, you can provide a personal access token:");
+                print!("Enter GitHub token (or press Enter to skip): ");
+                std::io::Write::flush(&mut std::io::stdout())?;
+
+                let mut token_input = String::new();
+                std::io::stdin().read_line(&mut token_input)?;
+                let token = token_input.trim();
+
+                if token.is_empty() {
+                    anyhow::bail!("No token provided");
+                }
+
+                // Validate token by fetching repo info
+                println!("Validating token...");
+                let client = GitHubClient::new(token, &owner, &repo_name)?;
+                let repo_info = client.get_repo_info().await?;
+                let languages = client.detect_languages().await?;
+                let language_names: Vec<String> =
+                    languages.iter().map(|l| l.name.clone()).collect();
+
+                // Store in database
+                let metrics_db = MetricsDb::open(&db_path)?;
+                let token_info = TokenInfo {
+                    access_token: token.to_string(),
+                    token_type: "bearer".to_string(),
+                    scope: "repo".to_string(),
+                    refresh_token: None,
+                    expires_at: None,
+                };
+
+                store_connected_repo(
+                    metrics_db.connection(),
+                    &owner,
+                    &repo_name,
+                    &token_info,
+                    &repo_info.default_branch,
+                    &language_names,
+                )?;
+
+                println!(
+                    "\n{} Connected {} ({})",
+                    "✓".green(),
+                    full_name.cyan(),
+                    repo_info.default_branch
+                );
+                println!(
+                    "Languages: {}",
+                    language_names.join(", ").bright_black()
+                );
+            } else {
+                let oauth = oauth.unwrap();
+                let (auth_url, state) = oauth.start_auth_flow();
+
+                println!("\nOpen this URL in your browser to authorize:");
+                println!("{}", auth_url.cyan());
+                println!("\nAfter authorization, you'll be redirected.");
+                println!("Enter the code from the redirect URL:");
+                print!("Code: ");
+                std::io::Write::flush(&mut std::io::stdout())?;
+
+                let mut code_input = String::new();
+                std::io::stdin().read_line(&mut code_input)?;
+                let code = code_input.trim();
+
+                print!("State: ");
+                std::io::Write::flush(&mut std::io::stdout())?;
+
+                let mut state_input = String::new();
+                std::io::stdin().read_line(&mut state_input)?;
+                let state_str = state_input.trim();
+
+                let token_info = oauth.exchange_code(code, state_str, &state).await?;
+
+                // Validate token by fetching repo info
+                let client = GitHubClient::new(&token_info.access_token, &owner, &repo_name)?;
+                let repo_info = client.get_repo_info().await?;
+                let languages = client.detect_languages().await?;
+                let language_names: Vec<String> =
+                    languages.iter().map(|l| l.name.clone()).collect();
+
+                // Store in database
+                let metrics_db = MetricsDb::open(&db_path)?;
+                store_connected_repo(
+                    metrics_db.connection(),
+                    &owner,
+                    &repo_name,
+                    &token_info,
+                    &repo_info.default_branch,
+                    &language_names,
+                )?;
+
+                println!(
+                    "\n{} Connected {} ({})",
+                    "✓".green(),
+                    full_name.cyan(),
+                    repo_info.default_branch
+                );
+            }
+        }
+        GithubCommands::List { db } => {
+            let db_path = get_db_path(db);
+            let metrics_db = MetricsDb::open(&db_path)?;
+            let repos = list_connected_repos(metrics_db.connection())?;
+
+            if repos.is_empty() {
+                println!("No connected repositories.");
+                println!("Use {} to connect a repository.", "autopilot github connect <repo>".cyan());
+            } else {
+                println!("{}", "Connected Repositories".bold());
+                println!("{}", "=".repeat(50));
+                for repo in repos {
+                    println!(
+                        "  {} ({}) - connected {}",
+                        repo.full_name.cyan(),
+                        repo.default_branch,
+                        repo.connected_at.format("%Y-%m-%d %H:%M").to_string().bright_black()
+                    );
+                    if !repo.languages.is_empty() {
+                        println!("    Languages: {}", repo.languages.join(", ").bright_black());
+                    }
+                }
+            }
+        }
+        GithubCommands::Disconnect { repo, db } => {
+            let db_path = get_db_path(db);
+            let metrics_db = MetricsDb::open(&db_path)?;
+
+            if delete_connected_repo(metrics_db.connection(), &repo)? {
+                println!("{} Disconnected {}", "✓".green(), repo.cyan());
+            } else {
+                println!("{} Repository {} not found", "!".yellow(), repo);
+            }
+        }
+        GithubCommands::Status { repo, db } => {
+            let db_path = get_db_path(db);
+            let metrics_db = MetricsDb::open(&db_path)?;
+
+            if let Some(connected) = get_connected_repo(metrics_db.connection(), &repo)? {
+                println!("{}", "Repository Status".bold());
+                println!("{}", "=".repeat(40));
+                println!("  Name: {}", connected.full_name.cyan());
+                println!("  Default Branch: {}", connected.default_branch);
+                println!("  Languages: {}", connected.languages.join(", "));
+                println!(
+                    "  Connected: {}",
+                    connected.connected_at.format("%Y-%m-%d %H:%M:%S")
+                );
+
+                // Try to fetch current status
+                if let Some(token) = get_repo_token(metrics_db.connection(), &repo)? {
+                    let client =
+                        GitHubClient::from_full_name(&token, &repo)?;
+                    match client.get_repo_info().await {
+                        Ok(info) => {
+                            println!("  Status: {} Connected", "●".green());
+                            if info.private {
+                                println!("  Visibility: Private");
+                            } else {
+                                println!("  Visibility: Public");
+                            }
+                        }
+                        Err(e) => {
+                            println!("  Status: {} Error - {}", "●".red(), e);
+                        }
+                    }
+                }
+            } else {
+                println!("{} Repository {} not found", "!".yellow(), repo);
+            }
+        }
+    }
+
     Ok(())
 }
