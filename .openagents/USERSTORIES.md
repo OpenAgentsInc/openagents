@@ -149,6 +149,7 @@ This section tracks which user stories have implemented tests.
 | 6.3.4 | Set business hours | Unit | `crates/nostr/core/src/nip_sa/schedule.rs` |
 | 6.4.1 | Publish TickRequest (kind:38010) | Integration | `crates/nostr/tests/integration/nip_sa.rs` |
 | 6.4.2 | Publish TickResult (kind:38011) | Integration | `crates/nostr/tests/integration/nip_sa.rs` |
+| 6.4.4 | Include trajectory hash in TickResult | Unit | `crates/nostr/core/src/nip_sa/tick.rs` |
 | 6.5.1 | Publish TrajectorySession (kind:38030) | Integration | `crates/nostr/tests/integration/nip_sa.rs` |
 | 6.5.2 | Publish TrajectoryEvents (kind:38031) | Integration | `crates/nostr/tests/integration/nip_sa.rs` |
 | 6.5.3 | Fetch and verify an agent's trajectory | Unit | `crates/nostr/core/src/nip_sa/trajectory.rs` |
@@ -489,6 +490,7 @@ This section tracks which user stories have implemented tests.
 | `crates/nostr/core/src/nip46.rs` | NIP-46 connect request/response tests | 2.6.1-2.6.3 |
 | `crates/nostr/core/src/nip_sa/trajectory.rs` | NIP-SA trajectory hashing + verification tests | 6.5.3 |
 | `crates/nostr/core/src/nip_sa/schedule.rs` | NIP-SA schedule active + business hours tests | 6.3.3-6.3.4 |
+| `crates/nostr/core/src/nip_sa/tick.rs` | NIP-SA tick result trajectory hash tests | 6.4.4 |
 | `crates/nostr/tests/integration/client_relay.rs` | Client/relay integration flows | 2.2.1, 2.2.3-2.2.5 |
 | `crates/nostr/tests/integration/pool.rs` | RelayPool multi-relay publish tests | 2.2.2, 2.2.6 |
 | `crates/nostr/tests/integration/subscriptions.rs` | Subscription behavior across kinds and filters | 2.4.2 |

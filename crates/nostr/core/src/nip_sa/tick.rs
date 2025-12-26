@@ -233,6 +233,8 @@ pub struct TickResult {
     pub duration_ms: u64,
     /// Number of actions taken
     pub action_count: u32,
+    /// Optional trajectory hash for verification
+    pub trajectory_hash: Option<String>,
     /// Result content (metrics)
     pub content: TickResultContent,
 }
@@ -253,19 +255,32 @@ impl TickResult {
             status,
             duration_ms,
             action_count,
+            trajectory_hash: None,
             content,
         }
     }
 
+    /// Attach trajectory hash for verification
+    pub fn with_trajectory_hash(mut self, hash: impl Into<String>) -> Self {
+        self.trajectory_hash = Some(hash.into());
+        self
+    }
+
     /// Build tags for the event
     pub fn build_tags(&self) -> Vec<Vec<String>> {
-        vec![
+        let mut tags = vec![
             vec!["request".to_string(), self.request_id.clone()],
             vec!["runner".to_string(), self.runner.clone()],
             vec!["status".to_string(), self.status_to_string()],
             vec!["duration_ms".to_string(), self.duration_ms.to_string()],
             vec!["actions".to_string(), self.action_count.to_string()],
-        ]
+        ];
+
+        if let Some(hash) = &self.trajectory_hash {
+            tags.push(vec!["trajectory_hash".to_string(), hash.clone()]);
+        }
+
+        tags
     }
 
     fn status_to_string(&self) -> String {
@@ -363,6 +378,7 @@ mod tests {
         assert_eq!(result.status, TickStatus::Success);
         assert_eq!(result.duration_ms, 1234);
         assert_eq!(result.action_count, 0);
+        assert!(result.trajectory_hash.is_none());
     }
 
     #[test]
@@ -378,7 +394,8 @@ mod tests {
             TickStatus::Success,
             1234,
             content,
-        );
+        )
+        .with_trajectory_hash("hash123");
 
         let tags = result.build_tags();
 
@@ -387,6 +404,7 @@ mod tests {
         assert_eq!(tags[2], vec!["status", "success"]);
         assert_eq!(tags[3], vec!["duration_ms", "1234"]);
         assert_eq!(tags[4], vec!["actions", "3"]);
+        assert_eq!(tags[5], vec!["trajectory_hash", "hash123"]);
     }
 
     #[test]
