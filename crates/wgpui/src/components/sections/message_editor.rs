@@ -241,12 +241,11 @@ impl Component for MessageEditor {
                 }
             }
             InputEvent::KeyDown { key, .. } => {
-                if let Key::Named(NamedKey::Enter) = key {
-                    if self.input.is_focused() && !self.is_streaming {
+                if let Key::Named(NamedKey::Enter) = key
+                    && self.input.is_focused() && !self.is_streaming {
                         self.trigger_send();
                         return EventResult::Handled;
                     }
-                }
             }
             _ => {}
         }

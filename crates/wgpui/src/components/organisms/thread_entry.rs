@@ -122,15 +122,12 @@ impl Component for ThreadEntry {
     }
 
     fn event(&mut self, event: &InputEvent, bounds: Bounds, cx: &mut EventContext) -> EventResult {
-        match event {
-            InputEvent::MouseMove { x, y } => {
-                let was_hovered = self.hovered;
-                self.hovered = bounds.contains(Point::new(*x, *y));
-                if was_hovered != self.hovered {
-                    return EventResult::Handled;
-                }
+        if let InputEvent::MouseMove { x, y } = event {
+            let was_hovered = self.hovered;
+            self.hovered = bounds.contains(Point::new(*x, *y));
+            if was_hovered != self.hovered {
+                return EventResult::Handled;
             }
-            _ => {}
         }
 
         let padding = theme::spacing::SM;

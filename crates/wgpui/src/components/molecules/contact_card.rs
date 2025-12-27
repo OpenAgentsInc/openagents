@@ -266,8 +266,7 @@ impl Component for ContactCard {
         y += 18.0;
 
         // NIP-05 or npub
-        let identifier = self.contact.nip05.as_ref()
-            .map(|n| n.clone())
+        let identifier = self.contact.nip05.clone()
             .unwrap_or_else(|| self.contact.short_npub());
         let id_run = cx.text.layout(
             &identifier,

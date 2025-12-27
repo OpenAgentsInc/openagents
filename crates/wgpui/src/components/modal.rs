@@ -221,12 +221,11 @@ impl Component for Modal {
 
         match event {
             InputEvent::KeyDown { key, .. } => {
-                if let Key::Named(NamedKey::Escape) = key {
-                    if self.close_on_escape {
+                if let Key::Named(NamedKey::Escape) = key
+                    && self.close_on_escape {
                         self.close();
                         return EventResult::Handled;
                     }
-                }
             }
 
             InputEvent::MouseDown { button, x, y } => {

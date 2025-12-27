@@ -252,7 +252,7 @@ fn draw_dashed(
     while pos < length {
         let segment = dash[index % dash.len()];
         let next = (pos + segment).min(length);
-        if index % 2 == 0 {
+        if index.is_multiple_of(2) {
             if horizontal {
                 cx.scene.draw_quad(
                     Quad::new(Bounds::new(x + pos, y, next - pos, thickness))

@@ -224,14 +224,13 @@ impl Component for ThreadControls {
                 btn_height,
             );
 
-            if let InputEvent::MouseUp { x, y, .. } = event {
-                if stop_bounds.contains(Point::new(*x, *y)) {
+            if let InputEvent::MouseUp { x, y, .. } = event
+                && stop_bounds.contains(Point::new(*x, *y)) {
                     if let Some(callback) = &mut self.on_stop {
                         callback();
                     }
                     return EventResult::Handled;
                 }
-            }
         } else {
             let btn_width = 60.0;
             let btn_height = 28.0;
@@ -242,14 +241,13 @@ impl Component for ThreadControls {
                 btn_height,
             );
 
-            if let InputEvent::MouseUp { x, y, .. } = event {
-                if run_bounds.contains(Point::new(*x, *y)) {
+            if let InputEvent::MouseUp { x, y, .. } = event
+                && run_bounds.contains(Point::new(*x, *y)) {
                     if let Some(callback) = &mut self.on_run {
                         callback();
                     }
                     return EventResult::Handled;
                 }
-            }
         }
 
         EventResult::Ignored

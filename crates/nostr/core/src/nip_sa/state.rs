@@ -337,7 +337,7 @@ impl StateMetadata {
             belief_count: content.beliefs.len() as u64,
             tick_count: content.tick_count,
             last_tick: content.last_tick,
-            content_bytes: json.as_bytes().len() as u64,
+            content_bytes: json.len() as u64,
         })
     }
 

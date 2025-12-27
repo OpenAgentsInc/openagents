@@ -342,11 +342,10 @@ impl ThemeBreakpoints {
         match key {
             BreakpointKey::Name(name) => {
                 for item in &self.settings {
-                    if let ThemeBreakpointSetting::KeyValue { key, value } = item {
-                        if key == &name {
+                    if let ThemeBreakpointSetting::KeyValue { key, value } = item
+                        && key == &name {
                             return value.clone();
                         }
-                    }
                 }
                 name
             }

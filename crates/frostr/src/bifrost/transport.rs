@@ -269,8 +269,8 @@ impl NostrTransport {
             | BifrostMessage::Pong(_)
         );
 
-        if is_response {
-            if let Some(session_id) = session_id {
+        if is_response
+            && let Some(session_id) = session_id {
                 // Try to route to pending request
                 let pending_guard = pending.write().await;
                 if let Some(pending_req) = pending_guard.get(&session_id) {
@@ -281,7 +281,6 @@ impl NostrTransport {
                     }
                 }
             }
-        }
 
         // Forward to incoming channel for responder processing
         incoming_tx.send(message).await

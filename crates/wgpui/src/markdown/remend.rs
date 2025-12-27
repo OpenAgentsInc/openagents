@@ -22,14 +22,13 @@ fn complete_bold(text: &str) -> String {
 
     let pair_count = count_double_asterisks(text);
 
-    if pair_count % 2 == 1 {
-        if let Some(last_pos) = text.rfind("**") {
+    if pair_count % 2 == 1
+        && let Some(last_pos) = text.rfind("**") {
             let after = &text[last_pos + 2..];
             if !after.is_empty() && !is_escaped(text, last_pos) && has_content(after) {
                 return format!("{}**", text);
             }
         }
-    }
 
     text.to_string()
 }
@@ -41,14 +40,13 @@ fn complete_strikethrough(text: &str) -> String {
 
     let pair_count = count_double_tildes(text);
 
-    if pair_count % 2 == 1 {
-        if let Some(last_pos) = text.rfind("~~") {
+    if pair_count % 2 == 1
+        && let Some(last_pos) = text.rfind("~~") {
             let after = &text[last_pos + 2..];
             if !after.is_empty() && !is_escaped(text, last_pos) && has_content(after) {
                 return format!("{}~~", text);
             }
         }
-    }
 
     text.to_string()
 }
@@ -60,8 +58,8 @@ fn complete_italic(text: &str) -> String {
 
     let single_count = count_single_asterisks(text);
 
-    if single_count % 2 == 1 {
-        if let Some(last_pos) = find_last_single_asterisk(text) {
+    if single_count % 2 == 1
+        && let Some(last_pos) = find_last_single_asterisk(text) {
             let after = &text[last_pos + 1..];
 
             if is_list_marker(text, last_pos) {
@@ -72,7 +70,6 @@ fn complete_italic(text: &str) -> String {
                 return format!("{}*", text);
             }
         }
-    }
 
     text.to_string()
 }
@@ -84,14 +81,13 @@ fn complete_inline_code(text: &str) -> String {
 
     let backtick_count = count_inline_backticks(text);
 
-    if backtick_count % 2 == 1 {
-        if let Some(last_pos) = find_last_inline_backtick(text) {
+    if backtick_count % 2 == 1
+        && let Some(last_pos) = find_last_inline_backtick(text) {
             let after = &text[last_pos + 1..];
             if !after.is_empty() && !is_escaped(text, last_pos) {
                 return format!("{}`", text);
             }
         }
-    }
 
     text.to_string()
 }

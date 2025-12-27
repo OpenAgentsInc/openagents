@@ -217,8 +217,8 @@ impl Component for TransactionRow {
         cx.scene.draw_text(amount_run);
 
         // Fee (if outgoing and has fee)
-        if self.transaction.direction == TransactionDirection::Outgoing {
-            if let Some(fee) = self.transaction.fee_sats {
+        if self.transaction.direction == TransactionDirection::Outgoing
+            && let Some(fee) = self.transaction.fee_sats {
                 let fee_text = format!("Fee: {} sats", fee);
                 let fee_run = cx.text.layout(
                     &fee_text,
@@ -228,7 +228,6 @@ impl Component for TransactionRow {
                 );
                 cx.scene.draw_text(fee_run);
             }
-        }
     }
 
     fn event(&mut self, event: &InputEvent, bounds: Bounds, _cx: &mut EventContext) -> EventResult {

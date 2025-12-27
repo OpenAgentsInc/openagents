@@ -193,7 +193,7 @@ impl<C: Component + 'static> Element for ComponentElement<C> {
         _request_layout: &mut Self::RequestLayoutState,
         _cx: &mut PrepaintContext,
     ) -> Self::PrepaintState {
-        ()
+        
     }
 
     fn paint(

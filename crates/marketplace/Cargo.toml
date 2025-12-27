@@ -68,3 +68,4 @@ nostr-relay = { path = "../nostr/relay" }
 frostr = { path = "../frostr" }
 hex.workspace = true
 testing = { path = "../testing" }
+serial_test = "3.2.0"

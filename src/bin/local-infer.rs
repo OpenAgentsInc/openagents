@@ -178,8 +178,8 @@ where
     loop {
         let response = send_message(message).await.map_err(anyhow::Error::msg)?;
 
-        if enable_tools {
-            if let Some(request) = extract_tool_call(&response) {
+        if enable_tools
+            && let Some(request) = extract_tool_call(&response) {
                 if tool_turns >= max_tool_turns {
                     println!("Max tool turns reached, returning last response.");
                     println!("{}", response.trim());
@@ -204,7 +204,6 @@ where
                 message = result_block;
                 continue;
             }
-        }
 
         println!("{}", response.trim());
         break;

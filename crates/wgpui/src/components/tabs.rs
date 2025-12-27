@@ -223,11 +223,10 @@ impl Component for Tabs {
             bounds.size.height - self.tab_height,
         );
 
-        if let Some(tab) = self.tabs.get_mut(self.active_index) {
-            if let Some(content) = &mut tab.content {
+        if let Some(tab) = self.tabs.get_mut(self.active_index)
+            && let Some(content) = &mut tab.content {
                 content.paint(content_bounds, cx);
             }
-        }
     }
 
     fn event(
@@ -257,12 +256,11 @@ impl Component for Tabs {
             InputEvent::MouseDown { button, x, y } => {
                 if *button == MouseButton::Left {
                     let point = Point::new(*x, *y);
-                    if tab_bar_bounds.contains(point) {
-                        if let Some(index) = self.tab_at_x(*x, bounds.origin.x) {
+                    if tab_bar_bounds.contains(point)
+                        && let Some(index) = self.tab_at_x(*x, bounds.origin.x) {
                             self.set_active(index);
                             return EventResult::Handled;
                         }
-                    }
                 }
             }
 
@@ -276,11 +274,10 @@ impl Component for Tabs {
             bounds.size.height - self.tab_height,
         );
 
-        if let Some(tab) = self.tabs.get_mut(self.active_index) {
-            if let Some(content) = &mut tab.content {
+        if let Some(tab) = self.tabs.get_mut(self.active_index)
+            && let Some(content) = &mut tab.content {
                 return content.event(event, content_bounds, cx);
             }
-        }
 
         EventResult::Ignored
     }

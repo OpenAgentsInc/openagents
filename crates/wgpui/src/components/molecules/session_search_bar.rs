@@ -258,11 +258,10 @@ impl Component for SessionSearchBar {
         let result = self.input.event(event, input_bounds, cx);
 
         // Trigger search on input change
-        if result == EventResult::Handled {
-            if let Some(callback) = &mut self.on_search {
+        if result == EventResult::Handled
+            && let Some(callback) = &mut self.on_search {
                 callback(self.input.get_value().to_string());
             }
-        }
 
         result
     }

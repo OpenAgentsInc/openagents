@@ -1,6 +1,7 @@
 pub mod auth;
 pub mod ci;
 pub mod claude;
+pub mod deprecation;
 pub mod github;
 pub mod logger;
 pub mod preflight;

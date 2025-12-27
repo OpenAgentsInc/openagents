@@ -17,8 +17,10 @@ pub type AccessibleId = u64;
 
 /// Role of an accessible element (similar to ARIA roles)
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Default)]
 pub enum Role {
     /// Generic container
+    #[default]
     Group,
     /// Main content region
     Main,
@@ -112,11 +114,6 @@ pub enum Role {
     None,
 }
 
-impl Default for Role {
-    fn default() -> Self {
-        Role::Group
-    }
-}
 
 /// State of an accessible element
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -454,11 +451,10 @@ impl AccessibilityTree {
     pub fn remove_node(&mut self, id: AccessibleId) {
         if let Some(node) = self.nodes.remove(&id) {
             // Remove from parent's children
-            if let Some(parent_id) = node.parent {
-                if let Some(parent) = self.nodes.get_mut(&parent_id) {
+            if let Some(parent_id) = node.parent
+                && let Some(parent) = self.nodes.get_mut(&parent_id) {
                     parent.children.retain(|&child_id| child_id != id);
                 }
-            }
             // Remove children
             for child_id in node.children {
                 self.remove_node(child_id);
@@ -479,11 +475,10 @@ impl AccessibilityTree {
 
     /// Add a child to a parent node
     pub fn add_child(&mut self, parent_id: AccessibleId, child_id: AccessibleId) {
-        if let Some(parent) = self.nodes.get_mut(&parent_id) {
-            if !parent.children.contains(&child_id) {
+        if let Some(parent) = self.nodes.get_mut(&parent_id)
+            && !parent.children.contains(&child_id) {
                 parent.children.push(child_id);
             }
-        }
         if let Some(child) = self.nodes.get_mut(&child_id) {
             child.parent = Some(parent_id);
         }
@@ -502,34 +497,30 @@ impl AccessibilityTree {
 
     /// Set focus to a node
     pub fn set_focus(&mut self, id: AccessibleId) -> bool {
-        if let Some(node) = self.nodes.get(&id) {
-            if node.is_focusable() {
+        if let Some(node) = self.nodes.get(&id)
+            && node.is_focusable() {
                 // Remove focus from previous
-                if let Some(prev_id) = self.focused {
-                    if let Some(prev) = self.nodes.get_mut(&prev_id) {
+                if let Some(prev_id) = self.focused
+                    && let Some(prev) = self.nodes.get_mut(&prev_id) {
                         prev.states.retain(|&s| s != State::Focused);
                     }
-                }
                 // Set focus on new
-                if let Some(new) = self.nodes.get_mut(&id) {
-                    if !new.states.contains(&State::Focused) {
+                if let Some(new) = self.nodes.get_mut(&id)
+                    && !new.states.contains(&State::Focused) {
                         new.states.push(State::Focused);
                     }
-                }
                 self.focused = Some(id);
                 return true;
             }
-        }
         false
     }
 
     /// Clear focus
     pub fn clear_focus(&mut self) {
-        if let Some(id) = self.focused {
-            if let Some(node) = self.nodes.get_mut(&id) {
+        if let Some(id) = self.focused
+            && let Some(node) = self.nodes.get_mut(&id) {
                 node.states.retain(|&s| s != State::Focused);
             }
-        }
         self.focused = None;
     }
 

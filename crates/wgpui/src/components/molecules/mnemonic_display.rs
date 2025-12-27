@@ -69,7 +69,7 @@ impl MnemonicDisplay {
         let padding = 12.0;
         let header_height = 40.0;
         let cols = 4;
-        let _rows = (self.words.len() + cols - 1) / cols;
+        let _rows = self.words.len().div_ceil(cols);
 
         let word_w = (bounds.size.width - padding * 2.0 - 12.0 * (cols as f32 - 1.0)) / cols as f32;
         let word_h = 32.0;
@@ -230,7 +230,7 @@ impl Component for MnemonicDisplay {
 
         // Word count indicator
         let cols = 4;
-        let rows = (self.words.len() + cols - 1) / cols;
+        let rows = self.words.len().div_ceil(cols);
         let word_h = 32.0;
         let gap = 8.0;
         let footer_y = bounds.origin.y + header_height + rows as f32 * (word_h + gap) + 8.0;
@@ -307,7 +307,7 @@ impl Component for MnemonicDisplay {
     fn size_hint(&self) -> (Option<f32>, Option<f32>) {
         let header_height = 40.0;
         let cols = 4;
-        let rows = (self.words.len() + cols - 1) / cols;
+        let rows = self.words.len().div_ceil(cols);
         let word_h = 32.0;
         let gap = 8.0;
         let footer = 32.0;

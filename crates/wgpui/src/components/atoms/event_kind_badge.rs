@@ -8,10 +8,12 @@ use crate::{Bounds, Hsla, InputEvent, Point, Quad, theme};
 
 /// Common Nostr event kinds
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Default)]
 pub enum EventKind {
     /// kind:0 - User metadata
     Metadata,
     /// kind:1 - Short text note
+    #[default]
     TextNote,
     /// kind:2 - Recommend relay
     RecommendRelay,
@@ -212,11 +214,6 @@ impl EventKind {
     }
 }
 
-impl Default for EventKind {
-    fn default() -> Self {
-        EventKind::TextNote
-    }
-}
 
 /// Badge displaying event kind
 pub struct EventKindBadge {

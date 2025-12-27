@@ -242,11 +242,10 @@ impl Component for Button {
                 if *button == MouseButton::Left && self.pressed {
                     self.pressed = false;
 
-                    if bounds.contains(Point::new(*x, *y)) {
-                        if let Some(on_click) = &mut self.on_click {
+                    if bounds.contains(Point::new(*x, *y))
+                        && let Some(on_click) = &mut self.on_click {
                             on_click();
                         }
-                    }
 
                     return EventResult::Handled;
                 }

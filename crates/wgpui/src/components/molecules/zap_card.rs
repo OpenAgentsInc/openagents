@@ -151,8 +151,7 @@ impl Component for ZapCard {
         y += 20.0;
 
         // Sender
-        let sender = self.zap.sender_name.as_ref()
-            .map(|n| n.clone())
+        let sender = self.zap.sender_name.clone()
             .unwrap_or_else(|| self.zap.short_npub());
         let from_text = format!("from {}", sender);
         let from_run = cx.text.layout(

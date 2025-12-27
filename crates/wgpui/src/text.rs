@@ -197,7 +197,7 @@ impl TextSystem {
                 // Scale both x and y consistently - cosmic_text returns logical coords
                 let glyph_x = glyph.x * self.scale_factor;
                 let line_y = run.line_y * self.scale_factor;
-                glyph_data.push((cache_key, glyph_x, line_y, glyph.glyph_id as u16));
+                glyph_data.push((cache_key, glyph_x, line_y, glyph.glyph_id));
             }
         }
 
@@ -260,8 +260,8 @@ impl TextSystem {
         content: SwashContent,
         glyph_data: &[u8],
     ) -> GlyphEntry {
-        let width = placement.width as u32;
-        let height = placement.height as u32;
+        let width = placement.width;
+        let height = placement.height;
 
         let data: &[u8] = match content {
             SwashContent::Mask => glyph_data,

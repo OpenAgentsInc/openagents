@@ -550,14 +550,13 @@ impl BifrostNode {
             let mut seen = HashSet::new();
             let mut filtered = Vec::new();
             for response in raw_responses {
-                if let BifrostMessage::CommitmentResponse(cr) = response {
-                    if cr.participant_id != initiator_id
+                if let BifrostMessage::CommitmentResponse(cr) = response
+                    && cr.participant_id != initiator_id
                         && participant_set.contains(&cr.participant_id)
                         && seen.insert(cr.participant_id)
                     {
                         filtered.push(cr);
                     }
-                }
             }
 
             if filtered.len() < required_responses {
@@ -612,14 +611,13 @@ impl BifrostNode {
             let mut seen = HashSet::new();
             let mut filtered = Vec::new();
             for response in raw_responses {
-                if let BifrostMessage::PartialSignature(ps) = response {
-                    if ps.participant_id != initiator_id
+                if let BifrostMessage::PartialSignature(ps) = response
+                    && ps.participant_id != initiator_id
                         && participant_set.contains(&ps.participant_id)
                         && seen.insert(ps.participant_id)
                     {
                         filtered.push(ps);
                     }
-                }
             }
 
             if filtered.len() < required_responses {
@@ -976,14 +974,13 @@ impl BifrostNode {
             let mut seen = HashSet::new();
             let mut filtered = Vec::new();
             for response in responses {
-                if let BifrostMessage::EcdhResponse(ecdh_response) = response {
-                    if ecdh_response.participant_id != initiator_id
+                if let BifrostMessage::EcdhResponse(ecdh_response) = response
+                    && ecdh_response.participant_id != initiator_id
                         && participant_set.contains(&ecdh_response.participant_id)
                         && seen.insert(ecdh_response.participant_id)
                     {
                         filtered.push(ecdh_response);
                     }
-                }
             }
 
             if filtered.len() < required_responses {
