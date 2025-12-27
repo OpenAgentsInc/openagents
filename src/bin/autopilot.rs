@@ -14,7 +14,7 @@ use winit::event_loop::{ActiveEventLoop, EventLoop};
 use winit::keyboard::{KeyCode, PhysicalKey};
 use winit::window::{Window, WindowId};
 
-use autopilot::{StartupState, LogStatus, wrap_text};
+use autopilot::{StartupState, LogStatus, ClaudeModel, wrap_text};
 
 fn main() {
     tracing_subscriber::fmt()
@@ -120,6 +120,11 @@ impl ApplicationHandler for App {
             let scale_factor = window.scale_factor() as f32;
             let text_system = TextSystem::new(scale_factor);
 
+            let model = match std::env::var("AUTOPILOT_MODEL").as_deref() {
+                Ok("opus") | Ok("Opus") | Ok("OPUS") => ClaudeModel::Opus,
+                _ => ClaudeModel::Sonnet,
+            };
+            
             RenderState {
                 window,
                 surface,
@@ -129,7 +134,7 @@ impl ApplicationHandler for App {
                 renderer,
                 text_system,
                 start_time: Instant::now(),
-                startup_state: StartupState::new(),
+                startup_state: StartupState::with_model(model),
                 scroll_offset: 0.0,
                 auto_scroll: true,
             }

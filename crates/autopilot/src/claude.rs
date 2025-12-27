@@ -1,6 +1,8 @@
 use std::path::Path;
 use std::sync::mpsc;
 
+use crate::startup::ClaudeModel;
+
 #[derive(Clone)]
 pub enum ClaudeToken {
     Chunk(String),
@@ -16,7 +18,7 @@ pub enum ClaudeEvent {
     Tool { name: String, params: String, done: bool },
 }
 
-pub fn run_claude_planning(_cwd: &Path, _issue_summary: &str, _assessment: &str, tx: mpsc::Sender<ClaudeToken>) {
+pub fn run_claude_planning(_cwd: &Path, _issue_summary: &str, _assessment: &str, model: ClaudeModel, tx: mpsc::Sender<ClaudeToken>) {
     use futures_util::StreamExt;
     
     let prompt = r#"You are an expert software architect and project planner for the OpenAgents project.
@@ -57,10 +59,11 @@ Focus on being actionable and specific. This plan will guide what an autonomous 
         use claude_agent_sdk::{query, QueryOptions, SdkMessage, PermissionMode};
         
         eprintln!("[CLAUDE] Starting query with prompt length: {} chars", prompt.len());
-        eprintln!("[CLAUDE] Options: cwd={:?}, permission_mode=Plan, max_turns=50", cwd_clone);
+        eprintln!("[CLAUDE] Options: cwd={:?}, model={}, permission_mode=Plan, max_turns=50", cwd_clone, model.as_str());
         
         let options = QueryOptions::new()
             .cwd(cwd_clone)
+            .model(model.as_str())
             .permission_mode(PermissionMode::Plan)
             .max_turns(50);
         
@@ -152,6 +155,112 @@ Focus on being actionable and specific. This plan will guide what an autonomous 
         eprintln!("[CLAUDE] Done. Total response length: {} chars, {} lines", 
             full_response.len(), 
             full_response.lines().count());
+        let _ = tx.send(ClaudeToken::Done(full_response));
+    });
+}
+
+pub fn run_claude_execution(plan: &str, model: ClaudeModel, tx: mpsc::Sender<ClaudeToken>) {
+    use futures_util::StreamExt;
+    
+    let prompt = format!(r#"You are an autonomous software engineer executing a plan for the OpenAgents project.
+
+## The Plan
+
+{}
+
+## Your Task
+
+Execute this plan step by step. For each recommended action:
+1. Implement the changes using the available tools (Read, Edit, Write, Bash, etc.)
+2. Verify your changes work (run tests, check compilation)
+3. Commit completed work with clear commit messages
+
+Work autonomously. Make real changes to the codebase. If you encounter blockers, note them and move to the next actionable item.
+
+Start now."#, plan);
+
+    let cwd_clone = std::env::current_dir().unwrap_or_default();
+    
+    let rt = match tokio::runtime::Runtime::new() {
+        Ok(rt) => rt,
+        Err(e) => {
+            let _ = tx.send(ClaudeToken::Error(format!("Failed to create runtime: {}", e)));
+            return;
+        }
+    };
+
+    rt.block_on(async {
+        use claude_agent_sdk::{query, QueryOptions, SdkMessage, PermissionMode};
+        
+        eprintln!("[CLAUDE-EXEC] Starting execution with plan length: {} chars", plan.len());
+        eprintln!("[CLAUDE-EXEC] Options: cwd={:?}, model={}, permission_mode=BypassPermissions, max_turns=100", cwd_clone, model.as_str());
+        
+        let options = QueryOptions::new()
+            .cwd(cwd_clone)
+            .model(model.as_str())
+            .permission_mode(PermissionMode::BypassPermissions)
+            .max_turns(100);
+        
+        let mut stream = match query(&prompt, options).await {
+            Ok(s) => {
+                eprintln!("[CLAUDE-EXEC] Stream started successfully");
+                s
+            }
+            Err(e) => {
+                eprintln!("[CLAUDE-EXEC] Failed to start: {}", e);
+                let _ = tx.send(ClaudeToken::Error(format!("Failed to start Claude: {}", e)));
+                return;
+            }
+        };
+
+        let mut full_response = String::new();
+        let mut last_tool_name = String::new();
+        
+        while let Some(msg) = stream.next().await {
+            match msg {
+                Ok(SdkMessage::Assistant(assistant_msg)) => {
+                    if let Some(content) = assistant_msg.message.get("content") {
+                        if let Some(blocks) = content.as_array() {
+                            for block in blocks {
+                                if let Some(text) = block.get("text").and_then(|t| t.as_str()) {
+                                    full_response.push_str(text);
+                                    let _ = tx.send(ClaudeToken::Chunk(text.to_string()));
+                                }
+                                if let Some(tool_name) = block.get("name").and_then(|n| n.as_str()) {
+                                    let input = block.get("input");
+                                    let params = extract_tool_params(tool_name, input);
+                                    last_tool_name = tool_name.to_string();
+                                    let _ = tx.send(ClaudeToken::ToolUse { 
+                                        name: tool_name.to_string(), 
+                                        params 
+                                    });
+                                }
+                            }
+                        }
+                    }
+                }
+                Ok(SdkMessage::User(user_msg)) => {
+                    if let Some(tool_result) = &user_msg.tool_use_result {
+                        let tool_name = tool_result.get("name")
+                            .and_then(|n| n.as_str())
+                            .or_else(|| tool_result.get("tool_name").and_then(|n| n.as_str()))
+                            .unwrap_or(&last_tool_name)
+                            .to_string();
+                        let _ = tx.send(ClaudeToken::ToolDone { name: tool_name });
+                    }
+                }
+                Ok(SdkMessage::Result(_)) => {
+                    break;
+                }
+                Err(e) => {
+                    let _ = tx.send(ClaudeToken::Error(format!("Stream error: {}", e)));
+                    return;
+                }
+                _ => {}
+            }
+        }
+        
+        eprintln!("[CLAUDE-EXEC] Done. Total response length: {} chars", full_response.len());
         let _ = tx.send(ClaudeToken::Done(full_response));
     });
 }

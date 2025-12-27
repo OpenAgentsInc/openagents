@@ -1,5 +1,6 @@
 pub mod auth;
 pub mod claude;
+pub mod github;
 pub mod preflight;
 pub mod startup;
 pub mod streaming;
@@ -12,7 +13,14 @@ pub use auth::{
     openagents_auth_path, opencode_auth_path,
 };
 
-pub use claude::{ClaudeToken, ClaudeEvent, run_claude_planning};
+pub use claude::{ClaudeToken, ClaudeEvent, run_claude_planning, run_claude_execution};
+
+pub use github::{
+    GitHubClient, GitHubToken, GitHubOAuthConfig,
+    ConnectedRepo, RepoPermissions,
+    load_github_token, save_github_token, check_github_auth,
+    branch_name_for_issue, github_token_path,
+};
 
 pub use preflight::{
     PreflightConfig, GitInfo, AuthInfo, ProjectInfo, InferenceInfo,
@@ -20,7 +28,7 @@ pub use preflight::{
     run_preflight,
 };
 
-pub use startup::{StartupState, StartupPhase, LogLine, LogStatus};
+pub use startup::{StartupState, StartupPhase, LogLine, LogStatus, ClaudeModel};
 
 pub use streaming::{
     StreamToken, HarmonySegment,
