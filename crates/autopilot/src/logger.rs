@@ -3,10 +3,10 @@ use std::io::{BufWriter, Write};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use chrono::Local;
-use serde::Serialize;
+use serde::{Serialize, Deserialize};
 use serde_json::Value;
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LogEntry {
     pub timestamp: String,
     pub session_id: String,
