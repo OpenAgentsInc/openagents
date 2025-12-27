@@ -1,6 +1,8 @@
 pub mod auth;
+pub mod ci;
 pub mod claude;
 pub mod github;
+pub mod logger;
 pub mod preflight;
 pub mod startup;
 pub mod streaming;
@@ -14,7 +16,14 @@ pub use auth::{
     openagents_auth_path, opencode_auth_path,
 };
 
-pub use claude::{ClaudeToken, ClaudeEvent, run_claude_planning, run_claude_execution};
+pub use ci::{
+    CIClient, CISystem, CIStatus, CICheckResult, CheckDetail,
+    detect_test_command,
+};
+
+pub use claude::{ClaudeToken, ClaudeEvent, run_claude_planning, run_claude_execution, run_claude_review};
+
+pub use logger::{SessionLogger, LogEntry, generate_session_id};
 
 pub use github::{
     GitHubClient, GitHubToken, GitHubOAuthConfig,

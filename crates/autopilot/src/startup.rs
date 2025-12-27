@@ -430,7 +430,7 @@ impl StartupState {
                     self.claude_receiver = Some(rx);
 
                     std::thread::spawn(move || {
-                        run_claude_planning(&cwd, &issue_summary, &assessment, model, tx);
+                        run_claude_planning(&cwd, &issue_summary, &assessment, model, tx, None);
                     });
 
                     self.phase = StartupPhase::StreamingClaudePlan;
@@ -555,7 +555,7 @@ impl StartupState {
                     self.exec_receiver = Some(rx);
                     
                     std::thread::spawn(move || {
-                        run_claude_execution(&plan, model, tx);
+                        run_claude_execution(&plan, model, tx, None);
                     });
                     
                     self.phase = StartupPhase::StreamingExecution;
