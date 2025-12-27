@@ -1,6 +1,10 @@
 //! Commander - OpenAgents startup with auth checking
 
+use std::path::Path;
+use std::process::{Command, Stdio};
+use std::sync::mpsc::{self, Receiver};
 use std::sync::Arc;
+use std::thread;
 use std::time::Instant;
 use wgpui::{
     Bounds, Component, Easing, Hsla, PaintContext, Point, Quad, Scene, Size, TextSystem,
@@ -17,6 +21,17 @@ use winit::window::{Window, WindowId};
 
 // Import auth from openagents crate
 use openagents::auth;
+
+/// Shorten a path by replacing home directory with ~
+fn shorten_path(path: &Path) -> String {
+    let path_str = path.display().to_string();
+    if let Ok(home) = std::env::var("HOME") {
+        if path_str.starts_with(&home) {
+            return path_str.replacen(&home, "~", 1);
+        }
+    }
+    path_str
+}
 
 fn main() {
     let event_loop = EventLoop::new().expect("Failed to create event loop");
@@ -53,6 +68,8 @@ enum AuthPhase {
     CheckingOpenCode,
     CheckingOpenAgents,
     CopyingAuth,
+    AuthComplete,
+    RunningDemo,
     Complete,
 }
 
@@ -95,7 +112,7 @@ impl AuthState {
                     match status {
                         auth::AuthStatus::Found { ref providers } => {
                             self.add_line(
-                                &format!("  Found at {}", opencode_path.display()),
+                                &format!("  Found at {}", shorten_path(&opencode_path)),
                                 LogStatus::Success,
                                 elapsed,
                             );
@@ -107,7 +124,7 @@ impl AuthState {
                         }
                         auth::AuthStatus::NotFound => {
                             self.add_line(
-                                &format!("  Not found at {}", opencode_path.display()),
+                                &format!("  Not found at {}", shorten_path(&opencode_path)),
                                 LogStatus::Error,
                                 elapsed,
                             );
@@ -146,7 +163,7 @@ impl AuthState {
                     match status {
                         auth::AuthStatus::Found { ref providers } => {
                             self.add_line(
-                                &format!("  Found at {}", openagents_path.display()),
+                                &format!("  Found at {}", shorten_path(&openagents_path)),
                                 LogStatus::Success,
                                 elapsed,
                             );
@@ -155,7 +172,7 @@ impl AuthState {
                                 LogStatus::Success,
                                 elapsed,
                             );
-                            self.phase = AuthPhase::Complete;
+                            self.phase = AuthPhase::AuthComplete;
                             self.phase_started = elapsed;
                         }
                         auth::AuthStatus::NotFound => {
@@ -199,7 +216,7 @@ impl AuthState {
                                 elapsed,
                             );
                             self.add_line(
-                                &format!("  Saved to {}", auth::openagents_auth_path().display()),
+                                &format!("  Saved to {}", shorten_path(&auth::openagents_auth_path())),
                                 LogStatus::Success,
                                 elapsed,
                             );
@@ -213,22 +230,34 @@ impl AuthState {
                         }
                     }
 
-                    self.phase = AuthPhase::Complete;
+                    self.phase = AuthPhase::AuthComplete;
                     self.phase_started = elapsed;
                 }
             }
 
-            AuthPhase::Complete => {
+            AuthPhase::AuthComplete => {
                 if phase_time > 0.3 && !self.lines.iter().any(|l| l.text.contains("Ready")) {
                     if auth::has_anthropic_auth() {
                         self.add_line("", LogStatus::Info, elapsed);
-                        self.add_line("Ready.", LogStatus::Success, elapsed);
+                        self.add_line("Auth ready.", LogStatus::Success, elapsed);
+                        self.phase = AuthPhase::RunningDemo;
+                        self.phase_started = elapsed;
                     } else {
                         self.add_line("", LogStatus::Info, elapsed);
                         self.add_line("Anthropic auth not configured.", LogStatus::Error, elapsed);
                         self.add_line("Run: opencode auth login", LogStatus::Info, elapsed);
+                        self.phase = AuthPhase::Complete;
+                        self.phase_started = elapsed;
                     }
                 }
+            }
+
+            AuthPhase::RunningDemo => {
+                // Demo phase handled externally via channel
+            }
+
+            AuthPhase::Complete => {
+                // Final state - nothing more to do
             }
         }
     }
@@ -249,6 +278,51 @@ struct RenderState {
     text_system: TextSystem,
     start_time: Instant,
     auth_state: AuthState,
+    demo_rx: Option<Receiver<String>>,
+    demo_started: bool,
+}
+
+/// Spawn the demo task in a background thread
+fn spawn_demo_task() -> Receiver<String> {
+    let (tx, rx) = mpsc::channel();
+
+    thread::spawn(move || {
+        // Send start message
+        let _ = tx.send("DEMO_START".to_string());
+        let _ = tx.send("".to_string());
+        let _ = tx.send("Running demo: ls -la".to_string());
+        let _ = tx.send("".to_string());
+
+        // Run ls -la command
+        let output = Command::new("ls")
+            .args(["-la"])
+            .current_dir(".")
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .output();
+
+        match output {
+            Ok(output) => {
+                // Send stdout lines
+                let stdout = String::from_utf8_lossy(&output.stdout);
+                for line in stdout.lines().take(15) {
+                    let _ = tx.send(format!("  {}", line));
+                }
+                if stdout.lines().count() > 15 {
+                    let _ = tx.send(format!("  ... ({} more lines)", stdout.lines().count() - 15));
+                }
+
+                let _ = tx.send("".to_string());
+                let _ = tx.send("DEMO_DONE".to_string());
+            }
+            Err(e) => {
+                let _ = tx.send(format!("Error: {}", e));
+                let _ = tx.send("DEMO_DONE".to_string());
+            }
+        }
+    });
+
+    rx
 }
 
 impl ApplicationHandler for App {
@@ -326,6 +400,8 @@ impl ApplicationHandler for App {
                 text_system,
                 start_time: Instant::now(),
                 auth_state: AuthState::new(),
+                demo_rx: None,
+                demo_started: false,
             }
         });
 
@@ -365,6 +441,35 @@ impl ApplicationHandler for App {
                     let auth_elapsed = elapsed - 1.8; // Start auth checks after frame is mostly in
                     if auth_elapsed > 0.0 {
                         state.auth_state.tick(auth_elapsed);
+                    }
+                }
+
+                // Start demo task when entering RunningDemo phase
+                if state.auth_state.phase == AuthPhase::RunningDemo && !state.demo_started {
+                    state.demo_rx = Some(spawn_demo_task());
+                    state.demo_started = true;
+                }
+
+                // Process demo output
+                if let Some(ref rx) = state.demo_rx {
+                    // Non-blocking receive
+                    while let Ok(line) = rx.try_recv() {
+                        if line == "DEMO_START" {
+                            // Just a marker, skip
+                        } else if line == "DEMO_DONE" {
+                            state.auth_state.add_line("", LogStatus::Info, elapsed);
+                            state.auth_state.add_line("Demo complete.", LogStatus::Success, elapsed);
+                            state.auth_state.phase = AuthPhase::Complete;
+                        } else {
+                            let status = if line.starts_with("Error") {
+                                LogStatus::Error
+                            } else if line.starts_with("Running demo") {
+                                LogStatus::Pending
+                            } else {
+                                LogStatus::Info
+                            };
+                            state.auth_state.add_line(&line, status, elapsed);
+                        }
                     }
                 }
 
@@ -455,9 +560,9 @@ fn render(
 
     dots_grid.paint(Bounds::new(0.0, 0.0, width, height), &mut cx);
 
-    // Center frame (800x600)
+    // Center frame (1000x600)
     if frame_progress > 0.0 {
-        let frame_w = 800.0;
+        let frame_w = 1000.0;
         let frame_h = 600.0;
         let frame_x = (width - frame_w) / 2.0;
         let frame_y = (height - frame_h) / 2.0;
@@ -484,23 +589,37 @@ fn render(
         // Terminal log lines inside frame
         if frame_progress > 0.5 {
             let text_alpha = ((frame_progress - 0.5) * 2.0).min(1.0);
-            let line_height = 18.0;
-            let start_x = frame_x + 20.0;
-            let start_y = frame_y + 24.0;
+            let line_height = 26.0;
+            let font_size = 13.0;
+            let padding = 20.0;
+            let text_area_x = frame_x + padding;
+            let text_area_y = frame_y + padding;
+            let text_area_w = frame_w - padding * 2.0;
+            let text_area_h = frame_h - padding * 2.0;
 
-            for (i, log_line) in auth_state.lines.iter().enumerate() {
-                let y = start_y + (i as f32 * line_height);
+            // Clip to text area bounds
+            let clip_bounds = Bounds::new(text_area_x, text_area_y, text_area_w, text_area_h);
+            cx.scene.push_clip(clip_bounds);
 
-                // Skip if outside frame
-                if y > frame_y + frame_h - 30.0 {
-                    break;
-                }
+            // Calculate how many lines fit
+            let max_lines = (text_area_h / line_height) as usize;
+
+            // Auto-scroll: show the last N lines that fit
+            let total_lines = auth_state.lines.len();
+            let start_idx = if total_lines > max_lines {
+                total_lines - max_lines
+            } else {
+                0
+            };
+
+            for (i, log_line) in auth_state.lines.iter().skip(start_idx).enumerate() {
+                let y = text_area_y + (i as f32 * line_height);
 
                 let color = match log_line.status {
-                    LogStatus::Pending => Hsla::new(45.0, 0.8, 0.6, text_alpha * 0.8), // Yellow
-                    LogStatus::Success => Hsla::new(120.0, 0.5, 0.5, text_alpha), // Green
-                    LogStatus::Error => Hsla::new(0.0, 0.6, 0.5, text_alpha),     // Red
-                    LogStatus::Info => Hsla::new(0.0, 0.0, 0.5, text_alpha),      // Gray
+                    LogStatus::Pending => Hsla::new(45.0, 0.9, 0.65, text_alpha),  // Yellow
+                    LogStatus::Success => Hsla::new(120.0, 0.7, 0.6, text_alpha),  // Green
+                    LogStatus::Error => Hsla::new(0.0, 0.8, 0.6, text_alpha),      // Red
+                    LogStatus::Info => Hsla::new(0.0, 0.0, 0.7, text_alpha),       // Light gray
                 };
 
                 let prefix = match log_line.status {
@@ -511,9 +630,11 @@ fn render(
                 };
 
                 let text = format!("{}{}", prefix, log_line.text);
-                let text_run = cx.text.layout(&text, Point::new(start_x, y), 13.0, color);
+                let text_run = cx.text.layout(&text, Point::new(text_area_x, y), font_size, color);
                 cx.scene.draw_text(text_run);
             }
+
+            cx.scene.pop_clip();
         }
     }
 }

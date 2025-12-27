@@ -82,3 +82,4 @@ pollster = "0.4"
 [dev-dependencies]
 reqwest = { workspace = true, features = ["blocking"] }
 tempfile = "3"
+testing = { path = "../testing" }
