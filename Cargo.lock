@@ -889,6 +889,8 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "claude-agent-sdk",
+ "futures-util",
+ "reqwest",
  "serde",
  "serde_json",
  "tokio",
@@ -6878,7 +6880,9 @@ dependencies = [
 
 [[package]]
 name = "openai-harmony"
-version = "0.0.4"
+version = "0.0.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e77e82af451fc95deeb728a40b84db8ee82d341e136c268de415123a560b9b72"
 dependencies = [
  "anyhow",
  "base64 0.22.1",

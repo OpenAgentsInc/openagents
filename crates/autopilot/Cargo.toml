@@ -11,22 +11,19 @@ description = "Autopilot - autonomous agent runtime"
 name = "autopilot"
 path = "src/lib.rs"
 
+[[example]]
+name = "preflight_demo"
+path = "examples/preflight_demo.rs"
+
 [dependencies]
-# Claude Agent SDK for in-process agent execution
 claude-agent-sdk = { path = "../claude-agent-sdk" }
-
-# Async runtime
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "sync"] }
-
-# Serialization
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-
-# Error handling
 anyhow = "1"
-
-# Logging
 tracing = "0.1"
+reqwest = { version = "0.12", features = ["json", "stream"] }
+futures-util = "0.3"
 
 [lints]
 workspace = true
