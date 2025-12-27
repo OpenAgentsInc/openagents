@@ -934,13 +934,18 @@ fn ease_out_cubic(t: f32) -> f32 {
 }
 
 fn sanitize_text(text: &str) -> String {
-    text.replace('—', "-")
-        .replace('–', "-")
-        .replace('\u{2018}', "'")
-        .replace('\u{2019}', "'")
-        .replace('\u{201C}', "\"")
-        .replace('\u{201D}', "\"")
-        .replace('…', "...")
+    text.chars()
+        .filter_map(|c| match c {
+            '—' | '–' => Some('-'),
+            '\u{2018}' | '\u{2019}' => Some('\''),
+            '\u{201C}' | '\u{201D}' => Some('"'),
+            '…' => None,
+            '\u{200B}' | '\u{200C}' | '\u{200D}' | '\u{FEFF}' => None,
+            c if c.is_ascii() || c == ' ' => Some(c),
+            _ => Some('?'),
+        })
+        .collect::<String>()
+        .replace("???", "...")
 }
 
 fn wrap_text(text: &str, max_chars: usize) -> Vec<String> {
