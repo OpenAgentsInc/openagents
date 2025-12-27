@@ -598,8 +598,14 @@ impl StartupState {
             }
 
             StartupPhase::ExecutingPlan => {
-                if !self.lines.iter().any(|l| l.text.contains("Executing plan")) {
-                    let iteration = self.iteration;
+                // Check for this specific iteration to allow multiple iterations
+                let iteration = self.iteration;
+                let exec_marker = if iteration == 1 {
+                    "Executing plan with Claude...".to_string()
+                } else {
+                    format!("Executing plan (iteration {})", iteration)
+                };
+                if !self.lines.iter().any(|l| l.text.contains(&exec_marker)) {
                     if iteration == 1 {
                         self.add_line("Executing plan with Claude...", LogStatus::Pending, elapsed);
                     } else {
@@ -686,7 +692,8 @@ impl StartupState {
             }
 
             StartupPhase::ReviewingWork => {
-                if !self.lines.iter().any(|l| l.text.contains("Reviewing work")) {
+                let review_marker = format!("Reviewing work (iteration {})", self.iteration);
+                if !self.lines.iter().any(|l| l.text.contains(&review_marker)) {
                     self.add_line("", LogStatus::Info, elapsed);
                     self.add_line(&format!("Reviewing work (iteration {})...", self.iteration), LogStatus::Pending, elapsed);
                     
@@ -803,6 +810,7 @@ impl StartupState {
                     clippy_clean: crate::verification::CheckResult::pass(""),
                     tests_passing: crate::verification::CheckResult::pass(""),
                     coverage_adequate: crate::verification::CheckResult::pass(""),
+                    no_stubs: crate::verification::CheckResult::pass(""),
                     todos_complete: crate::verification::CheckResult::pass(""),
                     user_stories_complete: crate::verification::CheckResult::pass(""),
                     issues_complete: crate::verification::CheckResult::pass(""),
@@ -874,6 +882,7 @@ impl StartupState {
                         clippy_clean: crate::verification::CheckResult::fail("", ""),
                         tests_passing: crate::verification::CheckResult::fail("", ""),
                         coverage_adequate: crate::verification::CheckResult::fail("", ""),
+                        no_stubs: crate::verification::CheckResult::fail("", ""),
                         todos_complete: crate::verification::CheckResult::fail("", ""),
                         user_stories_complete: crate::verification::CheckResult::fail("", ""),
                         issues_complete: crate::verification::CheckResult::fail("", ""),
@@ -983,6 +992,7 @@ impl StartupState {
                         clippy_clean: crate::verification::CheckResult::pass("Not checked"),
                         tests_passing: crate::verification::CheckResult::pass("Not checked"),
                         coverage_adequate: crate::verification::CheckResult::pass("Not checked"),
+                        no_stubs: crate::verification::CheckResult::pass("Not checked"),
                         todos_complete: crate::verification::CheckResult::pass("Not checked"),
                         user_stories_complete: crate::verification::CheckResult::pass("Not checked"),
                         issues_complete: crate::verification::CheckResult::pass("Not checked"),

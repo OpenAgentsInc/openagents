@@ -14,6 +14,7 @@ pub struct TerminationChecklist {
     pub clippy_clean: CheckResult,
     pub tests_passing: CheckResult,
     pub coverage_adequate: CheckResult,
+    pub no_stubs: CheckResult,
     pub todos_complete: CheckResult,
     pub user_stories_complete: CheckResult,
     pub issues_complete: CheckResult,
@@ -52,6 +53,7 @@ impl TerminationChecklist {
             && self.clippy_clean.passed
             && self.tests_passing.passed
             && self.coverage_adequate.passed
+            && self.no_stubs.passed
             && self.todos_complete.passed
             && self.user_stories_complete.passed
             && self.issues_complete.passed
@@ -72,6 +74,9 @@ impl TerminationChecklist {
         }
         if !self.coverage_adequate.passed {
             failures.push(("coverage", &self.coverage_adequate));
+        }
+        if !self.no_stubs.passed {
+            failures.push(("no_stubs", &self.no_stubs));
         }
         if !self.todos_complete.passed {
             failures.push(("todos", &self.todos_complete));
@@ -97,6 +102,7 @@ impl TerminationChecklist {
             self.clippy_clean.passed,
             self.tests_passing.passed,
             self.coverage_adequate.passed,
+            self.no_stubs.passed,
             self.todos_complete.passed,
             self.user_stories_complete.passed,
             self.issues_complete.passed,
@@ -107,7 +113,7 @@ impl TerminationChecklist {
         .filter(|&&p| p)
         .count();
 
-        format!("{}/9 checks passed", passed)
+        format!("{}/10 checks passed", passed)
     }
 }
 
@@ -157,6 +163,7 @@ impl VerificationRunner {
             clippy_clean: self.check_clippy(),
             tests_passing: self.check_tests(),
             coverage_adequate: self.check_coverage(),
+            no_stubs: self.check_stubs(),
             todos_complete: self.check_todos(),
             user_stories_complete: self.check_user_stories(),
             issues_complete: self.check_issues(),
@@ -259,6 +266,32 @@ impl VerificationRunner {
                 }
             }
             Err(_) => CheckResult::pass("Coverage tool not available (skipped)"),
+        }
+    }
+
+    fn check_stubs(&self) -> CheckResult {
+        let script_path = self.workdir.join("scripts/check-stubs.sh");
+        if !script_path.exists() {
+            return CheckResult::pass("Stub check script not found (skipped)");
+        }
+
+        let output = Command::new(&script_path)
+            .current_dir(&self.workdir)
+            .output();
+
+        match output {
+            Ok(o) if o.status.success() => CheckResult::pass("No stub patterns found"),
+            Ok(o) => {
+                let stderr = String::from_utf8_lossy(&o.stderr);
+                let stub_count = stderr.matches("todo!").count()
+                    + stderr.matches("unimplemented!").count()
+                    + stderr.matches("not implemented").count();
+                CheckResult::fail(
+                    format!("{} stub patterns found (d-012)", stub_count.max(1)),
+                    stderr.to_string(),
+                )
+            }
+            Err(e) => CheckResult::fail("Stub check failed", e.to_string()),
         }
     }
 
