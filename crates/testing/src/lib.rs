@@ -9,17 +9,21 @@
 //! - Assertion helpers
 //! - Mock Nostr relay for protocol testing
 
-pub mod fixtures;
+pub mod cli_harness;
+pub mod e2e_env;
 pub mod faucet;
-pub mod mocks;
+pub mod fixtures;
 pub mod mock_relay;
+pub mod mocks;
 pub mod test_app;
 
 // Re-export commonly used testing utilities
-pub use fixtures::*;
+pub use cli_harness::*;
+pub use e2e_env::*;
 pub use faucet::*;
-pub use mocks::*;
+pub use fixtures::*;
 pub use mock_relay::*;
+pub use mocks::*;
 pub use test_app::*;
 
 #[cfg(test)]
