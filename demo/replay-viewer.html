@@ -417,13 +417,66 @@
             const reader = new FileReader();
             reader.onload = (e) => {
                 try {
-                    replayData = JSON.parse(e.target.result);
+                    const data = JSON.parse(e.target.result);
+
+                    // Validate required fields
+                    if (!validateReplayBundle(data)) {
+                        throw new Error('Invalid replay bundle format. Missing required fields.');
+                    }
+
+                    replayData = data;
                     loadReplay(replayData);
                 } catch (err) {
-                    alert('Error parsing JSON file: ' + err.message);
+                    showError('Error loading replay: ' + err.message);
                 }
             };
+            reader.onerror = () => {
+                showError('Failed to read file');
+            };
             reader.readAsText(file);
+        }
+
+        function validateReplayBundle(data) {
+            // Check required top-level fields
+            if (!data.version || !data.metadata || !data.timeline || !data.receipts) {
+                return false;
+            }
+
+            // Check metadata
+            if (!data.metadata.model || data.metadata.duration_seconds === undefined) {
+                return false;
+            }
+
+            // Check timeline is array
+            if (!Array.isArray(data.timeline)) {
+                return false;
+            }
+
+            return true;
+        }
+
+        function showError(message) {
+            const errorDiv = document.createElement('div');
+            errorDiv.style.cssText = `
+                position: fixed;
+                top: 20px;
+                left: 50%;
+                transform: translateX(-50%);
+                background: #3d0a0a;
+                color: #ff5555;
+                padding: 15px 25px;
+                border: 1px solid #ff5555;
+                font-family: 'Vera Mono', monospace;
+                font-size: 14px;
+                z-index: 1000;
+                max-width: 80%;
+            `;
+            errorDiv.textContent = message;
+            document.body.appendChild(errorDiv);
+
+            setTimeout(() => {
+                errorDiv.remove();
+            }, 5000);
         }
 
         function loadReplay(data) {
@@ -748,20 +801,47 @@
         }
 
         function loadFromUrl(url) {
+            // Show loading indicator
+            const loadingDiv = document.createElement('div');
+            loadingDiv.id = 'loading-indicator';
+            loadingDiv.style.cssText = `
+                position: fixed;
+                top: 50%;
+                left: 50%;
+                transform: translate(-50%, -50%);
+                background: #111;
+                color: #00ff9d;
+                padding: 20px 40px;
+                border: 1px solid #00ff9d;
+                font-family: 'Vera Mono', monospace;
+                z-index: 1000;
+            `;
+            loadingDiv.textContent = 'Loading replay...';
+            document.body.appendChild(loadingDiv);
+
             fetch(url)
                 .then(response => {
                     if (!response.ok) {
-                        throw new Error(`HTTP error! status: ${response.status}`);
+                        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
                     }
                     return response.json();
                 })
                 .then(data => {
+                    // Validate data
+                    if (!validateReplayBundle(data)) {
+                        throw new Error('Invalid replay bundle format');
+                    }
+
                     replayData = data;
                     loadReplay(data);
+
+                    // Remove loading indicator
+                    document.getElementById('loading-indicator')?.remove();
                 })
                 .catch(error => {
                     console.error('Error loading replay:', error);
-                    alert('Failed to load replay: ' + error.message);
+                    document.getElementById('loading-indicator')?.remove();
+                    showError('Failed to load replay: ' + error.message);
                 });
         }
     </script>
