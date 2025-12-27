@@ -98,6 +98,25 @@
             cursor: not-allowed;
         }
 
+        .speed-btn {
+            padding: 6px 12px;
+            font-size: 12px;
+            background: #1a1a1a;
+            color: #888;
+            border: 1px solid #333;
+        }
+
+        .speed-btn:hover {
+            background: #2a2a2a;
+            color: #e0e0e0;
+        }
+
+        .speed-btn.active {
+            background: #00ff9d;
+            color: #0a0a0a;
+            border-color: #00ff9d;
+        }
+
         .timeline-slider {
             flex: 1;
             height: 4px;
@@ -332,6 +351,13 @@
                     <button id="play-btn">▶ Play</button>
                     <button id="pause-btn" style="display: none;">⏸ Pause</button>
                     <button id="restart-btn">↺ Restart</button>
+                    <div style="display: flex; align-items: center; gap: 5px; margin-left: 10px;">
+                        <span style="font-size: 12px; color: #888;">Speed:</span>
+                        <button id="speed-0.5x" class="speed-btn" data-speed="0.5">0.5x</button>
+                        <button id="speed-1x" class="speed-btn active" data-speed="1">1x</button>
+                        <button id="speed-2x" class="speed-btn" data-speed="2">2x</button>
+                        <button id="speed-5x" class="speed-btn" data-speed="5">5x</button>
+                    </div>
                     <div class="timeline-slider" id="timeline-slider">
                         <div class="timeline-progress" id="timeline-progress"></div>
                         <div class="timeline-scrubber" id="timeline-scrubber"></div>
@@ -351,7 +377,7 @@
         let replayData = null;
         let currentTime = 0;
         let isPlaying = false;
-        let playbackSpeed = 1.0;
+        let playbackSpeed = parseFloat(localStorage.getItem('replaySpeed')) || 1.0;
         let maxTime = 0;
         let animationFrame = null;
         let lastFrameTime = 0;
@@ -374,6 +400,13 @@
         timelineSlider.addEventListener('click', handleTimelineClick);
         timelineScrubber.addEventListener('mousedown', handleScrubberDrag);
         document.addEventListener('keydown', handleKeyboard);
+
+        // Speed control buttons
+        document.querySelectorAll('.speed-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                setPlaybackSpeed(parseFloat(btn.dataset.speed));
+            });
+        });
 
         // Auto-load from URL parameters
         window.addEventListener('DOMContentLoaded', checkAutoLoad);
@@ -406,6 +439,26 @@
                     event.preventDefault();
                     currentTime = maxTime;
                     updateTimeline();
+                    break;
+                case 'Equal':
+                case 'NumpadAdd':
+                    // + key: increase speed
+                    event.preventDefault();
+                    cycleSpeed(true);
+                    break;
+                case 'Minus':
+                case 'NumpadSubtract':
+                    // - key: decrease speed
+                    event.preventDefault();
+                    cycleSpeed(false);
+                    break;
+                case 'Digit1':
+                    event.preventDefault();
+                    setPlaybackSpeed(1.0);
+                    break;
+                case 'Digit2':
+                    event.preventDefault();
+                    setPlaybackSpeed(2.0);
                     break;
             }
         }
@@ -491,7 +544,14 @@
                 ? data.timeline[data.timeline.length - 1].t
                 : 0;
 
-            playbackSpeed = data.metadata.playback_speed || 1.0;
+            // Prefer saved speed, fallback to metadata or default
+            const savedSpeed = localStorage.getItem('replaySpeed');
+            if (!savedSpeed) {
+                playbackSpeed = data.metadata.playback_speed || 1.0;
+            }
+
+            // Initialize speed button states
+            setPlaybackSpeed(playbackSpeed);
             updateTimeline();
         }
 
@@ -695,6 +755,39 @@
             if (isPlaying) {
                 pause();
             }
+        }
+
+        function setPlaybackSpeed(speed) {
+            playbackSpeed = speed;
+            localStorage.setItem('replaySpeed', speed);
+
+            // Update button states
+            document.querySelectorAll('.speed-btn').forEach(btn => {
+                if (parseFloat(btn.dataset.speed) === speed) {
+                    btn.classList.add('active');
+                } else {
+                    btn.classList.remove('active');
+                }
+            });
+        }
+
+        function cycleSpeed(increase) {
+            const speeds = [0.5, 1.0, 2.0, 5.0];
+            const currentIndex = speeds.indexOf(playbackSpeed);
+
+            if (currentIndex === -1) {
+                setPlaybackSpeed(1.0);
+                return;
+            }
+
+            let newIndex;
+            if (increase) {
+                newIndex = Math.min(speeds.length - 1, currentIndex + 1);
+            } else {
+                newIndex = Math.max(0, currentIndex - 1);
+            }
+
+            setPlaybackSpeed(speeds[newIndex]);
         }
 
         function tick(timestamp) {
