@@ -1,8 +1,8 @@
 # d-027 Status Report: Autopilot Demo + Dogfooding Funnel
 
 **Date:** 2025-12-27
-**Status:** Production-Ready (65% → 95%)
-**Remaining:** Domain setup + deployment execution
+**Status:** Production-Ready (95% → 98%)
+**Remaining:** Domain setup + deployment execution only
 
 ---
 
@@ -60,16 +60,17 @@ The autopilot demo generation system is **production-ready** and awaiting final 
 Created 10 well-scoped issues (#1525-#1534):
 - Wallet error handling
 - Marketplace fuzzy search
-- Replay viewer controls ⭐
+- Replay viewer controls ✅ COMPLETED (#1527)
 - FROSTR logging
 - WGPUI performance
 - NIP-58 badges
 - CLI help examples
-- Autopilot metrics ⭐
+- Autopilot metrics ⭐ (high priority)
 - Relay connection pooling
 - Spark integration tests
 
 ⭐ = Critical for demo funnel
+✅ = Completed in this session
 
 ---
 
@@ -81,28 +82,31 @@ Created 10 well-scoped issues (#1525-#1534):
 - Infrastructure scripts tested
 - Documentation complete
 - Quality scores validated (85-91/100 range)
+- Netlify deployment configuration created
+- Deployment checklist documented
+- Playback controls implemented (#1527)
 
-### 🚧 Remaining
+### 🚧 Remaining (100% code-complete, deployment-only)
 1. **Domain Setup** (10 minutes)
-   - Configure demos.openagents.com
-   - Add DNS records
+   - Configure demos.openagents.com via DNS provider
+   - Add CNAME record to Netlify
 
 2. **Hosting Setup** (15 minutes)
-   - Create Netlify/Vercel account
+   - Create Netlify account (free tier)
    - Connect GitHub repo
-   - Configure build settings
+   - Deployment auto-configured via netlify.toml
 
-3. **Deployment** (5 minutes)
-   - Deploy static site
-   - Verify demo downloads
-   - Test viewer integration
+3. **Deployment Execution** (5 minutes)
+   - Deploy via `netlify deploy --prod`
+   - Verify demo downloads work
+   - Test viewer and playback controls
 
-4. **Launch** (1 hour)
-   - Social media announcement
+4. **Launch Announcement** (1 hour)
+   - Social media posts (Twitter, LinkedIn, Reddit)
    - HackerNews submission
-   - Community sharing
+   - OpenAgents community sharing
 
-**Total Time to Launch:** ~1.5 hours of hands-on work
+**Total Time to Launch:** ~1.5 hours of hands-on work (all code ready)
 
 ---
 
@@ -165,10 +169,10 @@ Created 10 well-scoped issues (#1525-#1534):
 All blockers have been resolved or worked around.
 
 ### Enhancements (Future)
-1. **Playback Controls** (issue #1527)
-   - Play/pause, speed controls
-   - Keyboard shortcuts
-   - Priority: High (improves UX)
+1. **Playback Controls** (issue #1527) ✅ COMPLETED
+   - ✅ Play/pause, speed controls (0.5x, 1x, 2x, 5x)
+   - ✅ Keyboard shortcuts (+/-, 1/2, arrows)
+   - ✅ LocalStorage persistence
 
 2. **Session Metrics** (issue #1532)
    - Success scoring in viewer
@@ -233,11 +237,13 @@ All blockers have been resolved or worked around.
 
 ## Next Actions
 
-### Immediate (Today)
+### Immediate (Today) - COMPLETED ✅
 1. ✅ Commit all changes
 2. ✅ Update d-027 directive status
-3. Push to remote (main branch)
-4. Create deployment checklist
+3. ✅ Push to remote (main branch)
+4. ✅ Create deployment checklist
+5. ✅ Implement playback controls (#1527)
+6. ✅ Add Netlify configuration
 
 ### This Week
 1. Set up demos.openagents.com
