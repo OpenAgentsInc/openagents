@@ -1,13 +1,17 @@
 use std::path::PathBuf;
 use std::sync::mpsc;
+use std::time::Instant;
 use chrono::Local;
 use tracing::{info, warn, debug};
 
 use crate::auth;
-use crate::claude::{ClaudeToken, ClaudeEvent, run_claude_planning, run_claude_execution};
+use crate::claude::{ClaudeToken, ClaudeEvent, run_claude_planning, run_claude_execution, run_claude_review};
+use crate::logger::{SessionLogger, generate_session_id};
 use crate::preflight::PreflightConfig;
+use crate::report::{AfterActionReport, collect_session_stats, generate_suggested_next_steps, generate_questions_for_user};
 use crate::streaming::{StreamToken, query_issue_summary, stream_gpt_oss_analysis, parse_harmony_stream, extract_final_content};
 use crate::utils::shorten_path;
+use crate::verification::{TerminationChecklist, VerificationRunner, generate_fix_prompt, should_force_stop};
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub enum ClaudeModel {
@@ -73,6 +77,12 @@ pub enum StartupPhase {
     WritingPlan,
     ExecutingPlan,
     StreamingExecution,
+    ReviewingWork,
+    StreamingReview,
+    VerifyingCompletion,
+    FixingVerificationFailures,
+    StreamingFix,
+    GeneratingReport,
     Complete,
 }
 
@@ -93,6 +103,22 @@ pub struct StartupState {
     exec_receiver: Option<mpsc::Receiver<ClaudeToken>>,
     pub exec_events: Vec<ClaudeEvent>,
     pub exec_full_text: String,
+    review_receiver: Option<mpsc::Receiver<ClaudeToken>>,
+    pub review_events: Vec<ClaudeEvent>,
+    pub review_full_text: String,
+    pub iteration: u32,
+    pub session_logger: Option<SessionLogger>,
+    pub session_id: String,
+    pub start_time: chrono::DateTime<Local>,
+    pub start_instant: Instant,
+    verification_runner: Option<VerificationRunner>,
+    pub last_checklist: Option<TerminationChecklist>,
+    fix_receiver: Option<mpsc::Receiver<ClaudeToken>>,
+    pub fix_events: Vec<ClaudeEvent>,
+    pub fix_full_text: String,
+    pub force_stopped: bool,
+    pub force_stop_reason: Option<String>,
+    pub report_path: Option<PathBuf>,
 }
 
 impl StartupState {
@@ -101,6 +127,11 @@ impl StartupState {
     }
     
     pub fn with_model(model: ClaudeModel) -> Self {
+        let session_id = generate_session_id();
+        let session_logger = SessionLogger::new(&session_id).ok();
+        let start_time = Local::now();
+        let start_instant = Instant::now();
+        
         Self {
             lines: vec![],
             phase: StartupPhase::CheckingOpenCode,
@@ -118,6 +149,22 @@ impl StartupState {
             exec_receiver: None,
             exec_events: Vec::new(),
             exec_full_text: String::new(),
+            review_receiver: None,
+            review_events: Vec::new(),
+            review_full_text: String::new(),
+            iteration: 1,
+            session_logger,
+            session_id,
+            start_time,
+            start_instant,
+            verification_runner: None,
+            last_checklist: None,
+            fix_receiver: None,
+            fix_events: Vec::new(),
+            fix_full_text: String::new(),
+            force_stopped: false,
+            force_stop_reason: None,
+            report_path: None,
         }
     }
 
@@ -419,18 +466,24 @@ impl StartupState {
             StartupPhase::PlanningWithClaude => {
                 if !self.lines.iter().any(|l| l.text.contains("Creating plan with Claude")) {
                     self.add_line("", LogStatus::Info, elapsed);
-                    self.add_line("Creating plan with Claude...", LogStatus::Pending, elapsed);
+                    let iteration = self.iteration;
+                    if iteration == 1 {
+                        self.add_line("Creating plan with Claude...", LogStatus::Pending, elapsed);
+                    } else {
+                        self.add_line(&format!("Creating plan (iteration {}) with Claude...", iteration), LogStatus::Pending, elapsed);
+                    }
 
                     let assessment = self.gpt_oss_assessment.clone().unwrap_or_default();
                     let issue_summary = self.issue_summary.clone().unwrap_or_default();
                     let cwd = std::env::current_dir().unwrap_or_default();
                     let model = self.model;
+                    let logger = self.session_logger.clone();
                     
                     let (tx, rx) = mpsc::channel();
                     self.claude_receiver = Some(rx);
 
                     std::thread::spawn(move || {
-                        run_claude_planning(&cwd, &issue_summary, &assessment, model, tx, None);
+                        run_claude_planning(&cwd, &issue_summary, &assessment, model, tx, logger);
                     });
 
                     self.phase = StartupPhase::StreamingClaudePlan;
@@ -546,16 +599,22 @@ impl StartupState {
 
             StartupPhase::ExecutingPlan => {
                 if !self.lines.iter().any(|l| l.text.contains("Executing plan")) {
-                    self.add_line("Executing plan with Claude...", LogStatus::Pending, elapsed);
+                    let iteration = self.iteration;
+                    if iteration == 1 {
+                        self.add_line("Executing plan with Claude...", LogStatus::Pending, elapsed);
+                    } else {
+                        self.add_line(&format!("Executing plan (iteration {}) with Claude...", iteration), LogStatus::Pending, elapsed);
+                    }
                     
                     let plan = self.claude_full_text.clone();
                     let model = self.model;
+                    let logger = self.session_logger.clone();
                     
                     let (tx, rx) = mpsc::channel();
                     self.exec_receiver = Some(rx);
                     
                     std::thread::spawn(move || {
-                        run_claude_execution(&plan, model, tx, None);
+                        run_claude_execution(&plan, model, tx, logger);
                     });
                     
                     self.phase = StartupPhase::StreamingExecution;
@@ -608,8 +667,8 @@ impl StartupState {
                             }
                             
                             self.add_line("", LogStatus::Info, elapsed);
-                            self.add_line("Execution complete.", LogStatus::Success, elapsed);
-                            self.phase = StartupPhase::Complete;
+                            self.add_line(&format!("Execution complete (iteration {}).", self.iteration), LogStatus::Success, elapsed);
+                            self.phase = StartupPhase::ReviewingWork;
                             self.phase_started = elapsed;
                             return;
                         }
@@ -623,6 +682,364 @@ impl StartupState {
                             return;
                         }
                     }
+                }
+            }
+
+            StartupPhase::ReviewingWork => {
+                if !self.lines.iter().any(|l| l.text.contains("Reviewing work")) {
+                    self.add_line("", LogStatus::Info, elapsed);
+                    self.add_line(&format!("Reviewing work (iteration {})...", self.iteration), LogStatus::Pending, elapsed);
+                    
+                    let plan = self.claude_full_text.clone();
+                    let exec_result = self.exec_full_text.clone();
+                    let iteration = self.iteration;
+                    let model = self.model;
+                    let logger = self.session_logger.clone();
+                    
+                    let (tx, rx) = mpsc::channel();
+                    self.review_receiver = Some(rx);
+                    
+                    std::thread::spawn(move || {
+                        run_claude_review(&plan, &exec_result, iteration, model, tx, logger);
+                    });
+                    
+                    self.phase = StartupPhase::StreamingReview;
+                    self.phase_started = elapsed;
+                }
+            }
+
+            StartupPhase::StreamingReview => {
+                let mut tokens = Vec::new();
+                if let Some(ref rx) = self.review_receiver {
+                    while let Ok(token) = rx.try_recv() {
+                        tokens.push(token);
+                    }
+                }
+
+                for token in tokens {
+                    match token {
+                        ClaudeToken::Chunk(text) => {
+                            self.review_full_text.push_str(&text);
+                            if let Some(ClaudeEvent::Text(s)) = self.review_events.last_mut() {
+                                s.push_str(&text);
+                            } else {
+                                self.review_events.push(ClaudeEvent::Text(text));
+                            }
+                            self.update_review_streaming_line(elapsed);
+                        }
+                        ClaudeToken::ToolUse { name, params } => {
+                            self.review_events.push(ClaudeEvent::Tool {
+                                name: name.clone(),
+                                params,
+                                done: false,
+                            });
+                            self.update_review_streaming_line(elapsed);
+                        }
+                        ClaudeToken::ToolDone { name } => {
+                            for event in self.review_events.iter_mut().rev() {
+                                if let ClaudeEvent::Tool { name: n, done, .. } = event {
+                                    if n == &name && !*done {
+                                        *done = true;
+                                        break;
+                                    }
+                                }
+                            }
+                            self.update_review_streaming_line(elapsed);
+                        }
+                        ClaudeToken::Done(review_result) => {
+                            self.review_receiver = None;
+                            if let Some(line) = self.lines.iter_mut().find(|l| l.text.contains("Reviewing work")) {
+                                line.status = LogStatus::Success;
+                            }
+                            
+                            if review_result.contains("CYCLE COMPLETE") {
+                                self.add_line("", LogStatus::Info, elapsed);
+                                self.add_line("Review says work complete. Running verification...", LogStatus::Info, elapsed);
+                                self.phase = StartupPhase::VerifyingCompletion;
+                                self.phase_started = elapsed;
+                            } else {
+                                self.add_line("", LogStatus::Info, elapsed);
+                                self.add_line("Review complete. Starting next iteration...", LogStatus::Info, elapsed);
+                                
+                                self.iteration += 1;
+                                self.claude_full_text = review_result;
+                                self.claude_events.clear();
+                                self.exec_events.clear();
+                                self.exec_full_text.clear();
+                                self.review_events.clear();
+                                self.review_full_text.clear();
+                                
+                                self.phase = StartupPhase::WritingPlan;
+                                self.phase_started = elapsed;
+                            }
+                            return;
+                        }
+                        ClaudeToken::Error(e) => {
+                            self.add_line(&format!("  Review error: {}", e), LogStatus::Error, elapsed);
+                            self.review_receiver = None;
+                            self.add_line("", LogStatus::Info, elapsed);
+                            self.add_line("Review failed. Stopping.", LogStatus::Error, elapsed);
+                            self.phase = StartupPhase::Complete;
+                            self.phase_started = elapsed;
+                            return;
+                        }
+                    }
+                }
+            }
+
+            StartupPhase::VerifyingCompletion => {
+                if self.verification_runner.is_none() {
+                    self.add_line("", LogStatus::Info, elapsed);
+                    self.add_line("Running verification checks...", LogStatus::Pending, elapsed);
+                    
+                    let cwd = std::env::current_dir().unwrap_or_default();
+                    self.verification_runner = Some(VerificationRunner::new(&cwd));
+                }
+                
+                let mut runner = self.verification_runner.take().unwrap();
+                
+                let default_checklist = TerminationChecklist {
+                    build_clean: crate::verification::CheckResult::pass(""),
+                    clippy_clean: crate::verification::CheckResult::pass(""),
+                    tests_passing: crate::verification::CheckResult::pass(""),
+                    coverage_adequate: crate::verification::CheckResult::pass(""),
+                    todos_complete: crate::verification::CheckResult::pass(""),
+                    user_stories_complete: crate::verification::CheckResult::pass(""),
+                    issues_complete: crate::verification::CheckResult::pass(""),
+                    git_clean: crate::verification::CheckResult::pass(""),
+                    git_pushed: crate::verification::CheckResult::pass(""),
+                };
+                
+                if let Some(reason) = should_force_stop(
+                    self.last_checklist.as_ref().unwrap_or(&default_checklist),
+                    &runner,
+                ) {
+                    self.force_stopped = true;
+                    self.force_stop_reason = Some(reason.clone());
+                    self.add_line(&format!("  {}", reason), LogStatus::Error, elapsed);
+                    self.verification_runner = Some(runner);
+                    self.phase = StartupPhase::GeneratingReport;
+                    self.phase_started = elapsed;
+                    return;
+                }
+                
+                let checklist = runner.run_all_checks();
+                self.last_checklist = Some(checklist.clone());
+                
+                if let Some(line) = self.lines.iter_mut().find(|l| l.text.contains("Running verification")) {
+                    line.status = LogStatus::Success;
+                }
+                
+                self.add_line(&format!("  {}", checklist.summary()), LogStatus::Info, elapsed);
+                
+                if checklist.all_passed() {
+                    self.add_line("  All checks passed!", LogStatus::Success, elapsed);
+                    self.verification_runner = Some(runner);
+                    self.phase = StartupPhase::GeneratingReport;
+                    self.phase_started = elapsed;
+                } else {
+                    let failures = checklist.failing_checks();
+                    for (name, result) in &failures {
+                        self.add_line(&format!("  FAIL {}: {}", name, result.message), LogStatus::Error, elapsed);
+                    }
+                    
+                    let first_failure = failures.first().map(|(n, _)| *n).unwrap_or("unknown");
+                    if runner.track_failure(first_failure) {
+                        self.force_stopped = true;
+                        self.force_stop_reason = Some(format!(
+                            "Stuck on '{}' check for 6 iterations",
+                            first_failure
+                        ));
+                        self.add_line("", LogStatus::Info, elapsed);
+                        self.add_line("Stuck on same failure. Generating report...", LogStatus::Error, elapsed);
+                        self.verification_runner = Some(runner);
+                        self.phase = StartupPhase::GeneratingReport;
+                        self.phase_started = elapsed;
+                    } else {
+                        self.add_line("", LogStatus::Info, elapsed);
+                        self.add_line("Generating fix plan...", LogStatus::Info, elapsed);
+                        self.verification_runner = Some(runner);
+                        self.phase = StartupPhase::FixingVerificationFailures;
+                        self.phase_started = elapsed;
+                    }
+                }
+            }
+
+            StartupPhase::FixingVerificationFailures => {
+                if !self.lines.iter().any(|l| l.text.contains("Fixing verification failures")) {
+                    self.add_line(&format!("Fixing verification failures (iteration {})...", self.iteration), LogStatus::Pending, elapsed);
+                    
+                    let checklist = self.last_checklist.clone().unwrap_or_else(|| TerminationChecklist {
+                        build_clean: crate::verification::CheckResult::fail("", ""),
+                        clippy_clean: crate::verification::CheckResult::fail("", ""),
+                        tests_passing: crate::verification::CheckResult::fail("", ""),
+                        coverage_adequate: crate::verification::CheckResult::fail("", ""),
+                        todos_complete: crate::verification::CheckResult::fail("", ""),
+                        user_stories_complete: crate::verification::CheckResult::fail("", ""),
+                        issues_complete: crate::verification::CheckResult::fail("", ""),
+                        git_clean: crate::verification::CheckResult::fail("", ""),
+                        git_pushed: crate::verification::CheckResult::fail("", ""),
+                    });
+                    
+                    let fix_prompt = generate_fix_prompt(&checklist, self.iteration);
+                    let model = self.model;
+                    let logger = self.session_logger.clone();
+                    
+                    let (tx, rx) = mpsc::channel();
+                    self.fix_receiver = Some(rx);
+                    
+                    std::thread::spawn(move || {
+                        run_claude_execution(&fix_prompt, model, tx, logger);
+                    });
+                    
+                    self.phase = StartupPhase::StreamingFix;
+                    self.phase_started = elapsed;
+                }
+            }
+
+            StartupPhase::StreamingFix => {
+                let mut tokens = Vec::new();
+                if let Some(ref rx) = self.fix_receiver {
+                    while let Ok(token) = rx.try_recv() {
+                        tokens.push(token);
+                    }
+                }
+
+                for token in tokens {
+                    match token {
+                        ClaudeToken::Chunk(text) => {
+                            self.fix_full_text.push_str(&text);
+                            if let Some(ClaudeEvent::Text(s)) = self.fix_events.last_mut() {
+                                s.push_str(&text);
+                            } else {
+                                self.fix_events.push(ClaudeEvent::Text(text));
+                            }
+                            self.update_fix_streaming_line(elapsed);
+                        }
+                        ClaudeToken::ToolUse { name, params } => {
+                            self.fix_events.push(ClaudeEvent::Tool {
+                                name: name.clone(),
+                                params,
+                                done: false,
+                            });
+                            self.update_fix_streaming_line(elapsed);
+                        }
+                        ClaudeToken::ToolDone { name } => {
+                            for event in self.fix_events.iter_mut().rev() {
+                                if let ClaudeEvent::Tool { name: n, done, .. } = event {
+                                    if n == &name && !*done {
+                                        *done = true;
+                                        break;
+                                    }
+                                }
+                            }
+                            self.update_fix_streaming_line(elapsed);
+                        }
+                        ClaudeToken::Done(_result) => {
+                            self.fix_receiver = None;
+                            if let Some(line) = self.lines.iter_mut().find(|l| l.text.contains("Fixing verification")) {
+                                line.status = LogStatus::Success;
+                            }
+                            
+                            self.add_line("", LogStatus::Info, elapsed);
+                            self.add_line("Fix attempt complete. Re-verifying...", LogStatus::Info, elapsed);
+                            
+                            self.iteration += 1;
+                            self.fix_events.clear();
+                            self.fix_full_text.clear();
+                            
+                            self.phase = StartupPhase::VerifyingCompletion;
+                            self.phase_started = elapsed;
+                            return;
+                        }
+                        ClaudeToken::Error(e) => {
+                            self.add_line(&format!("  Fix error: {}", e), LogStatus::Error, elapsed);
+                            self.fix_receiver = None;
+                            self.force_stopped = true;
+                            self.force_stop_reason = Some(format!("Fix attempt failed: {}", e));
+                            self.phase = StartupPhase::GeneratingReport;
+                            self.phase_started = elapsed;
+                            return;
+                        }
+                    }
+                }
+            }
+
+            StartupPhase::GeneratingReport => {
+                if self.report_path.is_none() {
+                    self.add_line("", LogStatus::Info, elapsed);
+                    self.add_line("Generating after-action report...", LogStatus::Pending, elapsed);
+                    
+                    let cwd = std::env::current_dir().unwrap_or_default();
+                    let stats = collect_session_stats(
+                        &cwd,
+                        &self.session_id,
+                        self.start_time,
+                        self.iteration,
+                    );
+                    
+                    let checklist = self.last_checklist.clone().unwrap_or_else(|| TerminationChecklist {
+                        build_clean: crate::verification::CheckResult::pass("Not checked"),
+                        clippy_clean: crate::verification::CheckResult::pass("Not checked"),
+                        tests_passing: crate::verification::CheckResult::pass("Not checked"),
+                        coverage_adequate: crate::verification::CheckResult::pass("Not checked"),
+                        todos_complete: crate::verification::CheckResult::pass("Not checked"),
+                        user_stories_complete: crate::verification::CheckResult::pass("Not checked"),
+                        issues_complete: crate::verification::CheckResult::pass("Not checked"),
+                        git_clean: crate::verification::CheckResult::pass("Not checked"),
+                        git_pushed: crate::verification::CheckResult::pass("Not checked"),
+                    });
+                    
+                    let suggested_next_steps = generate_suggested_next_steps(&checklist);
+                    let questions_for_user = generate_questions_for_user(
+                        &checklist,
+                        self.force_stopped,
+                        &self.force_stop_reason,
+                    );
+                    
+                    let log_path = self.session_logger
+                        .as_ref()
+                        .map(|l| l.log_path.clone())
+                        .unwrap_or_else(|| PathBuf::from("unknown"));
+                    
+                    let report = AfterActionReport {
+                        stats,
+                        checklist,
+                        force_stopped: self.force_stopped,
+                        force_stop_reason: self.force_stop_reason.clone(),
+                        suggested_next_steps,
+                        questions_for_user,
+                        log_path,
+                    };
+                    
+                    match report.save(&cwd) {
+                        Ok(path) => {
+                            self.report_path = Some(path.clone());
+                            if let Some(line) = self.lines.iter_mut().find(|l| l.text.contains("Generating after-action")) {
+                                line.status = LogStatus::Success;
+                            }
+                            self.add_line(&format!("  Report saved: {}", shorten_path(&path)), LogStatus::Success, elapsed);
+                        }
+                        Err(e) => {
+                            self.add_line(&format!("  Failed to save report: {}", e), LogStatus::Error, elapsed);
+                        }
+                    }
+                    
+                    self.add_line("", LogStatus::Info, elapsed);
+                    if self.force_stopped {
+                        self.add_line("Session stopped (see report for details).", LogStatus::Error, elapsed);
+                    } else {
+                        self.add_line("Session complete!", LogStatus::Success, elapsed);
+                    }
+                    self.add_line(&format!("Total iterations: {}", self.iteration), LogStatus::Info, elapsed);
+                    self.add_line(&format!("Runtime: {:.1} hours", self.start_instant.elapsed().as_secs_f32() / 3600.0), LogStatus::Info, elapsed);
+                    
+                    if let Some(ref logger) = self.session_logger {
+                        self.add_line(&format!("Session log: {}", shorten_path(&logger.log_path)), LogStatus::Info, elapsed);
+                    }
+                    
+                    self.phase = StartupPhase::Complete;
+                    self.phase_started = elapsed;
                 }
             }
 
@@ -717,6 +1134,78 @@ impl StartupState {
         }
         
         let events = self.exec_events.clone();
+        let start = if events.len() > 12 { events.len() - 12 } else { 0 };
+        
+        for event in &events[start..] {
+            match event {
+                ClaudeEvent::Text(text) => {
+                    let lines: Vec<&str> = text.lines().filter(|l| !l.trim().is_empty()).collect();
+                    let line_start = if lines.len() > 10 { lines.len() - 10 } else { 0 };
+                    for line in &lines[line_start..] {
+                        self.add_line(&format!("  > {}", line), LogStatus::Thinking, elapsed);
+                    }
+                }
+                ClaudeEvent::Tool { name, params, done } => {
+                    let status = if *done { "done" } else { "..." };
+                    let params_display = extract_tool_display(name, params);
+                    self.add_line(&format!("  [{}] {} {}", name, params_display, status), LogStatus::Info, elapsed);
+                }
+            }
+        }
+    }
+
+    pub fn update_review_streaming_line(&mut self, elapsed: f32) {
+        let start_idx = self.lines.iter().position(|l| l.text.contains("Reviewing work"))
+            .map(|i| i + 1)
+            .unwrap_or(self.lines.len());
+        
+        self.lines.truncate(start_idx);
+        
+        let tool_count = self.review_events.iter().filter(|e| matches!(e, ClaudeEvent::Tool { .. })).count();
+        let done_count = self.review_events.iter().filter(|e| matches!(e, ClaudeEvent::Tool { done: true, .. })).count();
+        let text_count = self.review_full_text.lines().filter(|l| !l.trim().is_empty()).count();
+        
+        if tool_count > 0 || text_count > 0 {
+            self.add_line(&format!("  {} tools ({} done), {} lines output", tool_count, done_count, text_count), LogStatus::Thinking, elapsed);
+        }
+        
+        let events = self.review_events.clone();
+        let start = if events.len() > 12 { events.len() - 12 } else { 0 };
+        
+        for event in &events[start..] {
+            match event {
+                ClaudeEvent::Text(text) => {
+                    let lines: Vec<&str> = text.lines().filter(|l| !l.trim().is_empty()).collect();
+                    let line_start = if lines.len() > 10 { lines.len() - 10 } else { 0 };
+                    for line in &lines[line_start..] {
+                        self.add_line(&format!("  > {}", line), LogStatus::Thinking, elapsed);
+                    }
+                }
+                ClaudeEvent::Tool { name, params, done } => {
+                    let status = if *done { "done" } else { "..." };
+                    let params_display = extract_tool_display(name, params);
+                    self.add_line(&format!("  [{}] {} {}", name, params_display, status), LogStatus::Info, elapsed);
+                }
+            }
+        }
+    }
+
+    pub fn update_fix_streaming_line(&mut self, elapsed: f32) {
+        let start_idx = self.lines.iter().position(|l| l.text.contains("Fixing verification"))
+            .map(|i| i + 1)
+            .unwrap_or(self.lines.len());
+        
+        self.lines.truncate(start_idx);
+        
+        let tool_count = self.fix_events.iter().filter(|e| matches!(e, ClaudeEvent::Tool { .. })).count();
+        let done_count = self.fix_events.iter().filter(|e| matches!(e, ClaudeEvent::Tool { done: true, .. })).count();
+        let text_count = self.fix_full_text.lines().filter(|l| !l.trim().is_empty()).count();
+        
+        if tool_count > 0 || text_count > 0 {
+            self.add_line(&format!("  {} tools ({} done), {} lines output", tool_count, done_count, text_count), LogStatus::Thinking, elapsed);
+        }
+        
+        let events = self.fix_events.clone();
         let start = if events.len() > 12 { events.len() - 12 } else { 0 };
         
         for event in &events[start..] {
