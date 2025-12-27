@@ -46,6 +46,7 @@ enum EncryptionScheme {
 }
 
 impl EncryptionScheme {
+    #[allow(dead_code)]
     fn as_tag_value(self) -> &'static str {
         match self {
             EncryptionScheme::Nip44 => ENCRYPTION_NIP44,

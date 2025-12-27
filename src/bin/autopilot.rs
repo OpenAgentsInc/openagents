@@ -1,9 +1,10 @@
 //! Autopilot - OpenAgents autonomous agent with auth and preflight checking
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, mpsc};
 use std::time::Instant;
 use std::io::{BufRead, BufReader};
+use chrono::Local;
 use tracing::{info, warn, debug};
 use wgpui::{
     Bounds, Component, Easing, Hsla, PaintContext, Point, Quad, Scene, Size, TextSystem,
@@ -56,6 +57,7 @@ fn main() {
 #[derive(Clone)]
 struct LogLine {
     text: String,
+    #[allow(dead_code)]
     timestamp: f32,
     status: LogStatus,
 }
@@ -77,6 +79,11 @@ struct StartupState {
     stream_receiver: Option<mpsc::Receiver<StreamToken>>,
     gpt_oss_buffer: String,
     issue_summary: Option<String>,
+    gpt_oss_assessment: Option<String>,
+    claude_receiver: Option<mpsc::Receiver<ClaudeToken>>,
+    claude_plan_buffer: String,
+    claude_tool_activity: Vec<String>,
+    plan_path: Option<PathBuf>,
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -89,12 +96,23 @@ enum StartupPhase {
     PreflightComplete,
     AnalyzingIssues,
     StreamingAnalysis,
+    PlanningWithClaude,
+    StreamingClaudePlan,
+    WritingPlan,
     Complete,
 }
 
 enum StreamToken {
     Chunk(String),
     Done,
+    Error(String),
+}
+
+enum ClaudeToken {
+    Chunk(String),
+    ToolUse { name: String, description: String },
+    ToolResult { name: String },
+    Done(String),
     Error(String),
 }
 
@@ -108,6 +126,11 @@ impl StartupState {
             stream_receiver: None,
             gpt_oss_buffer: String::new(),
             issue_summary: None,
+            gpt_oss_assessment: None,
+            claude_receiver: None,
+            claude_plan_buffer: String::new(),
+            claude_tool_activity: Vec::new(),
+            plan_path: None,
         }
     }
 
@@ -377,9 +400,19 @@ impl StartupState {
                         StreamToken::Done => {
                             self.finalize_streaming();
                             self.stream_receiver = None;
-                            self.add_line("", LogStatus::Info, elapsed);
-                            self.add_line("Ready for tasks.", LogStatus::Success, elapsed);
-                            self.phase = StartupPhase::Complete;
+                            
+                            let assessment = extract_final_content(&self.gpt_oss_buffer);
+                            self.gpt_oss_assessment = Some(assessment);
+                            
+                            if auth::has_anthropic_auth() {
+                                self.phase = StartupPhase::PlanningWithClaude;
+                            } else {
+                                self.add_line("", LogStatus::Info, elapsed);
+                                self.add_line("Claude auth not available - skipping planning.", LogStatus::Info, elapsed);
+                                self.add_line("", LogStatus::Info, elapsed);
+                                self.add_line("Ready for tasks.", LogStatus::Success, elapsed);
+                                self.phase = StartupPhase::Complete;
+                            }
                             self.phase_started = elapsed;
                             done = true;
                             break;
@@ -397,6 +430,118 @@ impl StartupState {
                     }
                 }
                 if done { return; }
+            }
+
+            StartupPhase::PlanningWithClaude => {
+                if !self.lines.iter().any(|l| l.text.contains("Creating plan with Claude")) {
+                    self.add_line("", LogStatus::Info, elapsed);
+                    self.add_line("Creating plan with Claude...", LogStatus::Pending, elapsed);
+
+                    let assessment = self.gpt_oss_assessment.clone().unwrap_or_default();
+                    let issue_summary = self.issue_summary.clone().unwrap_or_default();
+                    let cwd = std::env::current_dir().unwrap_or_default();
+                    
+                    let (tx, rx) = mpsc::channel();
+                    self.claude_receiver = Some(rx);
+
+                    std::thread::spawn(move || {
+                        run_claude_planning(&cwd, &issue_summary, &assessment, tx);
+                    });
+
+                    self.phase = StartupPhase::StreamingClaudePlan;
+                    self.phase_started = elapsed;
+                }
+            }
+
+            StartupPhase::StreamingClaudePlan => {
+                let mut tokens = Vec::new();
+                if let Some(ref rx) = self.claude_receiver {
+                    while let Ok(token) = rx.try_recv() {
+                        tokens.push(token);
+                    }
+                }
+
+                for token in tokens {
+                    match token {
+                        ClaudeToken::Chunk(text) => {
+                            self.claude_plan_buffer.push_str(&text);
+                            self.update_claude_streaming_line(elapsed);
+                        }
+                        ClaudeToken::ToolUse { name, description } => {
+                            self.claude_tool_activity.push(format!("[{}] {}", name, description));
+                            self.update_claude_streaming_line(elapsed);
+                        }
+                        ClaudeToken::ToolResult { name } => {
+                            self.claude_tool_activity.push(format!("[{}] completed", name));
+                            self.update_claude_streaming_line(elapsed);
+                        }
+                        ClaudeToken::Done(plan) => {
+                            self.claude_receiver = None;
+                            if let Some(line) = self.lines.iter_mut().find(|l| l.text.contains("Creating plan with Claude")) {
+                                line.status = LogStatus::Success;
+                            }
+                            
+                            let now = Local::now();
+                            let date_dir = now.format("%Y%m%d").to_string();
+                            let time_slug = now.format("%H%M%S").to_string();
+                            
+                            let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
+                            let plans_dir = PathBuf::from(&home).join(".openagents/plans").join(&date_dir);
+                            
+                            if let Err(e) = std::fs::create_dir_all(&plans_dir) {
+                                self.add_line(&format!("  Error creating dir: {}", e), LogStatus::Error, elapsed);
+                                self.phase = StartupPhase::Complete;
+                                self.phase_started = elapsed;
+                                return;
+                            }
+                            
+                            let plan_file = plans_dir.join(format!("{}-autopilot-plan.md", time_slug));
+                            self.plan_path = Some(plan_file.clone());
+                            
+                            if let Err(e) = std::fs::write(&plan_file, &plan) {
+                                self.add_line(&format!("  Error writing plan: {}", e), LogStatus::Error, elapsed);
+                            } else {
+                                self.add_line(&format!("  Plan saved: {}", shorten_path(&plan_file)), LogStatus::Success, elapsed);
+                            }
+                            
+                            self.phase = StartupPhase::WritingPlan;
+                            self.phase_started = elapsed;
+                            return;
+                        }
+                        ClaudeToken::Error(e) => {
+                            self.add_line(&format!("  Claude error: {}", e), LogStatus::Error, elapsed);
+                            self.claude_receiver = None;
+                            self.add_line("", LogStatus::Info, elapsed);
+                            self.add_line("Ready for tasks.", LogStatus::Success, elapsed);
+                            self.phase = StartupPhase::Complete;
+                            self.phase_started = elapsed;
+                            return;
+                        }
+                    }
+                }
+            }
+
+            StartupPhase::WritingPlan => {
+                self.add_line("", LogStatus::Info, elapsed);
+                
+                let summary_lines: Vec<String> = self.claude_plan_buffer
+                    .lines()
+                    .filter(|l| l.starts_with("##") || l.starts_with("- ") || l.starts_with("1."))
+                    .take(8)
+                    .map(|s| s.to_string())
+                    .collect();
+                
+                if !summary_lines.is_empty() {
+                    self.add_line("Plan summary:", LogStatus::Info, elapsed);
+                    for line in summary_lines {
+                        self.add_line(&format!("  {}", line), LogStatus::Info, elapsed);
+                    }
+                }
+                
+                self.add_line("", LogStatus::Info, elapsed);
+                self.add_line("Planning complete. Review plan and run autopilot to execute.", LogStatus::Success, elapsed);
+                self.phase = StartupPhase::Complete;
+                self.phase_started = elapsed;
             }
 
             StartupPhase::Complete => {}
@@ -435,6 +580,41 @@ impl StartupState {
     fn finalize_streaming(&mut self) {
         if let Some(line) = self.lines.iter_mut().find(|l| l.text.contains("Analyzing issues")) {
             line.status = LogStatus::Success;
+        }
+    }
+
+    fn update_claude_streaming_line(&mut self, elapsed: f32) {
+        let start_idx = self.lines.iter().position(|l| l.text.contains("Creating plan with Claude"))
+            .map(|i| i + 1)
+            .unwrap_or(self.lines.len());
+        
+        self.lines.truncate(start_idx);
+        
+        let tool_count = self.claude_tool_activity.len();
+        let text_lines: Vec<String> = self.claude_plan_buffer.lines().map(|s| s.to_string()).collect();
+        let text_count = text_lines.len();
+        
+        if tool_count > 0 || text_count > 0 {
+            self.add_line(&format!("  {} tool calls, {} lines generated", tool_count, text_count), LogStatus::Thinking, elapsed);
+        }
+        
+        let tool_activity = self.claude_tool_activity.clone();
+        let start = if tool_activity.len() > 8 { tool_activity.len() - 8 } else { 0 };
+        for activity in &tool_activity[start..] {
+            self.add_line(&format!("  {}", activity), LogStatus::Info, elapsed);
+        }
+        
+        if text_count > 0 {
+            let start = if text_count > 3 { text_count - 3 } else { 0 };
+            let tail_lines: Vec<String> = text_lines[start..].iter()
+                .filter(|l| !l.trim().is_empty())
+                .cloned()
+                .collect();
+            
+            for line in tail_lines {
+                let display = if line.len() > 80 { format!("{}...", &line[..77]) } else { line };
+                self.add_line(&format!("  > {}", display), LogStatus::Thinking, elapsed);
+            }
         }
     }
 
@@ -506,6 +686,173 @@ impl StartupState {
             self.add_line(&format!("  [OK] opencode: {}", shorten_path(&opencode.path)), LogStatus::Success, elapsed);
         }
     }
+}
+
+fn extract_final_content(harmony_buffer: &str) -> String {
+    let segments = parse_harmony_stream(harmony_buffer);
+    
+    for segment in segments.iter().rev() {
+        if segment.channel == "final" || segment.channel == "response" {
+            return segment.content.clone();
+        }
+    }
+    
+    for segment in segments.iter().rev() {
+        if segment.channel != "analysis" && segment.channel != "commentary" && !segment.content.is_empty() {
+            return segment.content.clone();
+        }
+    }
+    
+    harmony_buffer.to_string()
+}
+
+fn run_claude_planning(cwd: &Path, issue_summary: &str, assessment: &str, tx: mpsc::Sender<ClaudeToken>) {
+    use futures_util::StreamExt;
+    
+    let prompt = format!(
+        r#"You are an expert software architect and project planner. Based on the following project assessment, create a comprehensive plan to address the issues.
+
+## Current Issue Summary
+{}
+
+## GPT-OSS Assessment
+{}
+
+## Your Task
+Create a detailed, actionable plan in Markdown format. The plan should include:
+
+1. **Executive Summary** - Brief overview of the situation and recommended approach
+2. **Priority Matrix** - Categorize issues by urgency and importance
+3. **Recommended Sequence** - Specific order to tackle issues with rationale
+4. **For Each Priority Issue**:
+   - Clear objective
+   - Key technical considerations
+   - Estimated complexity (low/medium/high)
+   - Dependencies on other issues
+   - Suggested approach
+5. **Risk Mitigation** - Potential blockers and how to handle them
+6. **Success Criteria** - How to know when each item is complete
+
+Focus on being actionable and specific. This plan will be executed by an autonomous agent."#,
+        issue_summary,
+        assessment
+    );
+
+    let cwd_clone = cwd.to_path_buf();
+    
+    let rt = match tokio::runtime::Runtime::new() {
+        Ok(rt) => rt,
+        Err(e) => {
+            let _ = tx.send(ClaudeToken::Error(format!("Failed to create runtime: {}", e)));
+            return;
+        }
+    };
+
+    rt.block_on(async {
+        use claude_agent_sdk::{query, QueryOptions, SdkMessage, PermissionMode};
+        
+        eprintln!("[CLAUDE] Starting query with prompt length: {} chars", prompt.len());
+        eprintln!("[CLAUDE] Options: cwd={:?}, permission_mode=Plan, max_turns=1", cwd_clone);
+        
+        let options = QueryOptions::new()
+            .cwd(cwd_clone)
+            .permission_mode(PermissionMode::Plan)
+            .max_turns(1);
+        
+        let mut stream = match query(&prompt, options).await {
+            Ok(s) => {
+                eprintln!("[CLAUDE] Stream started successfully");
+                s
+            }
+            Err(e) => {
+                eprintln!("[CLAUDE] Failed to start: {}", e);
+                let _ = tx.send(ClaudeToken::Error(format!("Failed to start Claude: {}", e)));
+                return;
+            }
+        };
+
+        let mut full_response = String::new();
+        
+        while let Some(msg) = stream.next().await {
+            match msg {
+                Ok(SdkMessage::Assistant(assistant_msg)) => {
+                    eprintln!("[CLAUDE][ASSISTANT] uuid={}", assistant_msg.uuid);
+                    eprintln!("[CLAUDE][ASSISTANT] message={}", serde_json::to_string_pretty(&assistant_msg.message).unwrap_or_default());
+                    if let Some(content) = assistant_msg.message.get("content") {
+                        if let Some(blocks) = content.as_array() {
+                            for block in blocks {
+                                if let Some(block_type) = block.get("type").and_then(|t| t.as_str()) {
+                                    eprintln!("[CLAUDE][BLOCK] type={}", block_type);
+                                }
+                                if let Some(text) = block.get("text").and_then(|t| t.as_str()) {
+                                    eprintln!("[CLAUDE][TEXT] {}", text);
+                                    full_response.push_str(text);
+                                    let _ = tx.send(ClaudeToken::Chunk(text.to_string()));
+                                }
+                                if let Some(tool_name) = block.get("name").and_then(|n| n.as_str()) {
+                                    eprintln!("[CLAUDE][TOOL_USE] name={}", tool_name);
+                                    let description = block.get("input")
+                                        .and_then(|i| i.get("description"))
+                                        .and_then(|d| d.as_str())
+                                        .or_else(|| block.get("input")
+                                            .and_then(|i| i.get("prompt"))
+                                            .and_then(|p| p.as_str())
+                                            .map(|s| if s.len() > 60 { &s[..60] } else { s }))
+                                        .unwrap_or("running...")
+                                        .to_string();
+                                    let _ = tx.send(ClaudeToken::ToolUse { 
+                                        name: tool_name.to_string(), 
+                                        description 
+                                    });
+                                    if let Some(input) = block.get("input") {
+                                        eprintln!("[CLAUDE][TOOL_USE] input={}", serde_json::to_string_pretty(input).unwrap_or_default());
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                Ok(SdkMessage::User(user_msg)) => {
+                    eprintln!("[CLAUDE][USER] session_id={}", user_msg.session_id);
+                    eprintln!("[CLAUDE][USER] message={}", serde_json::to_string_pretty(&user_msg.message).unwrap_or_default());
+                    if let Some(tool_result) = &user_msg.tool_use_result {
+                        let tool_name = tool_result.get("type")
+                            .and_then(|t| t.as_str())
+                            .unwrap_or("tool")
+                            .to_string();
+                        let _ = tx.send(ClaudeToken::ToolResult { name: tool_name });
+                        eprintln!("[CLAUDE][TOOL_RESULT] {}", serde_json::to_string_pretty(tool_result).unwrap_or_default());
+                    }
+                }
+                Ok(SdkMessage::System(sys_msg)) => {
+                    eprintln!("[CLAUDE][SYSTEM] {:?}", sys_msg);
+                }
+                Ok(SdkMessage::StreamEvent(event)) => {
+                    eprintln!("[CLAUDE][STREAM] {:?}", event);
+                }
+                Ok(SdkMessage::ToolProgress(progress)) => {
+                    eprintln!("[CLAUDE][TOOL_PROGRESS] tool={} elapsed={}s", progress.tool_name, progress.elapsed_time_seconds);
+                }
+                Ok(SdkMessage::AuthStatus(auth)) => {
+                    eprintln!("[CLAUDE][AUTH] is_authenticating={}", auth.is_authenticating);
+                }
+                Ok(SdkMessage::Result(result)) => {
+                    eprintln!("[CLAUDE][RESULT] {:?}", result);
+                    break;
+                }
+                Err(e) => {
+                    eprintln!("[CLAUDE][ERROR] Stream error: {}", e);
+                    let _ = tx.send(ClaudeToken::Error(format!("Stream error: {}", e)));
+                    return;
+                }
+            }
+        }
+        
+        eprintln!("[CLAUDE] Done. Total response length: {} chars, {} lines", 
+            full_response.len(), 
+            full_response.lines().count());
+        let _ = tx.send(ClaudeToken::Done(full_response));
+    });
 }
 
 fn query_issue_summary(cwd: &Path) -> Option<String> {

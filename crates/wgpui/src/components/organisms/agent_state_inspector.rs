@@ -90,6 +90,7 @@ pub enum InspectorTab {
 pub struct AgentStateInspector {
     id: Option<ComponentId>,
     agent_name: String,
+    #[allow(dead_code)]
     agent_id: String,
     active_tab: InspectorTab,
     goals: Vec<AgentGoal>,

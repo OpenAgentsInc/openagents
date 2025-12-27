@@ -160,6 +160,7 @@ pub enum ConfigSection {
 pub struct ScheduleConfig {
     id: Option<ComponentId>,
     config: ScheduleData,
+    #[allow(dead_code)]
     active_section: ConfigSection,
     hovered_type: Option<ScheduleType>,
     save_button_hovered: bool,
