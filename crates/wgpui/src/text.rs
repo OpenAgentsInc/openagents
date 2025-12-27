@@ -79,24 +79,17 @@ pub struct TextSystem {
 
 impl TextSystem {
     pub fn new(scale_factor: f32) -> Self {
-        let font_system = {
-            use cosmic_text::fontdb;
-            let mut db = fontdb::Database::new();
+        let mut font_system = FontSystem::new();
 
-            let regular = include_bytes!("../../../src/gui/assets/fonts/VeraMono.ttf");
-            let bold = include_bytes!("../../../src/gui/assets/fonts/VeraMono-Bold.ttf");
-            let italic = include_bytes!("../../../src/gui/assets/fonts/VeraMono-Italic.ttf");
-            let bold_italic = include_bytes!("../../../src/gui/assets/fonts/VeraMono-Bold-Italic.ttf");
+        let regular = include_bytes!("../../../src/gui/assets/fonts/VeraMono.ttf");
+        let bold = include_bytes!("../../../src/gui/assets/fonts/VeraMono-Bold.ttf");
+        let italic = include_bytes!("../../../src/gui/assets/fonts/VeraMono-Italic.ttf");
+        let bold_italic = include_bytes!("../../../src/gui/assets/fonts/VeraMono-Bold-Italic.ttf");
 
-            db.load_font_data(regular.to_vec());
-            db.load_font_data(bold.to_vec());
-            db.load_font_data(italic.to_vec());
-            db.load_font_data(bold_italic.to_vec());
-
-            db.load_system_fonts();
-
-            FontSystem::new_with_locale_and_db("en-US".to_string(), db)
-        };
+        font_system.db_mut().load_font_data(regular.to_vec());
+        font_system.db_mut().load_font_data(bold.to_vec());
+        font_system.db_mut().load_font_data(italic.to_vec());
+        font_system.db_mut().load_font_data(bold_italic.to_vec());
 
         Self {
             font_system,
