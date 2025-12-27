@@ -2,6 +2,8 @@
 //!
 //! Provides wallet commands for balance, send, receive using the Breez Spark SDK.
 
+#![allow(dead_code)]
+
 use anyhow::{Context, Result};
 use async_trait::async_trait;
 use bech32::{Bech32, Hrp};
@@ -317,6 +319,7 @@ fn copy_to_clipboard(contents: &str) -> Result<()> {
     }
 }
 
+#[allow(dead_code)]
 fn copy_with_command(command: &str, args: &[&str], contents: &str) -> Result<()> {
     use std::io::Write;
     use std::process::{Command, Stdio};
@@ -757,6 +760,7 @@ fn payment_amount_sats(payment: &spark::Payment) -> Result<Option<u64>> {
     Ok(Some(amount))
 }
 
+#[allow(dead_code)]
 fn confirm_send(skip_confirm: bool) -> Result<bool> {
     use std::io::{self, IsTerminal};
 
@@ -1691,6 +1695,7 @@ mod tests {
 }
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 struct NoteReference {
     event_id: String,
     relays: Vec<String>,
@@ -1728,6 +1733,7 @@ struct LnurlPayResponse {
 }
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 struct LnurlPayInfo {
     lnurl: String,
     lnurl_url: String,
@@ -2316,7 +2322,7 @@ pub fn zaps(note_id: String) -> Result<()> {
             };
 
             let invoice_msats = parse_invoice_amount_msats(&receipt.bolt11).await;
-            let mut valid = receipt
+            let valid = receipt
                 .validate(&info.nostr_pubkey, invoice_msats, Some(&info.lnurl))
                 .is_ok();
 

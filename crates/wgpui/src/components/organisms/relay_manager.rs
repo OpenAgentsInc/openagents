@@ -21,6 +21,7 @@ pub struct RelayManager {
     id: Option<ComponentId>,
     relays: Vec<RelayInfo>,
     state: RelayManagerState,
+    #[allow(dead_code)]
     add_url: String,
     hovered_relay: Option<usize>,
     add_button_hovered: bool,
