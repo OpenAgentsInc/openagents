@@ -888,6 +888,7 @@ name = "autopilot"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "chrono",
  "claude-agent-sdk",
  "futures-util",
  "reqwest",

@@ -1,10 +1,9 @@
-//! Autopilot - autonomous agent runtime
-//!
-//! Provides authentication management, preflight configuration, and in-process
-//! agent execution using the Claude Agent SDK.
-
 pub mod auth;
+pub mod claude;
 pub mod preflight;
+pub mod startup;
+pub mod streaming;
+pub mod utils;
 
 pub use auth::{
     AuthEntry, AuthStatus, AuthStore,
@@ -13,8 +12,20 @@ pub use auth::{
     openagents_auth_path, opencode_auth_path,
 };
 
+pub use claude::{ClaudeToken, ClaudeEvent, run_claude_planning};
+
 pub use preflight::{
     PreflightConfig, GitInfo, AuthInfo, ProjectInfo, InferenceInfo,
     ToolsInfo, ToolInfo, LocalBackend, ProviderAuth,
     run_preflight,
 };
+
+pub use startup::{StartupState, StartupPhase, LogLine, LogStatus};
+
+pub use streaming::{
+    StreamToken, HarmonySegment,
+    query_issue_summary, stream_gpt_oss_analysis,
+    parse_harmony_stream, extract_final_content,
+};
+
+pub use utils::{shorten_path, sanitize_text, wrap_text};

@@ -24,6 +24,7 @@ anyhow = "1"
 tracing = "0.1"
 reqwest = { version = "0.12", features = ["json", "stream"] }
 futures-util = "0.3"
+chrono = "0.4"
 
 [lints]
 workspace = true
