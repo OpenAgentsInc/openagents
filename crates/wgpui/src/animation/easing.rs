@@ -2,6 +2,7 @@ use std::f32::consts::PI;
 
 /// Animation easing function.
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Default)]
 pub enum Easing {
     /// Linear interpolation (constant speed).
     Linear,
@@ -10,6 +11,7 @@ pub enum Easing {
     /// Fast start, slow end.
     EaseOut,
     /// Slow start, fast middle, slow end.
+    #[default]
     EaseInOut,
     /// Quadratic ease-in.
     EaseInQuad,
@@ -229,11 +231,6 @@ impl Easing {
     }
 }
 
-impl Default for Easing {
-    fn default() -> Self {
-        Easing::EaseInOut
-    }
-}
 
 /// Sample cubic bezier curve at time t.
 fn cubic_bezier_sample(t: f32, x1: f32, y1: f32, x2: f32, y2: f32) -> f32 {

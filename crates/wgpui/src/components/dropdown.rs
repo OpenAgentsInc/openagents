@@ -307,12 +307,11 @@ impl Component for Dropdown {
                             self.dropdown_height(),
                         );
 
-                        if dropdown_bounds.contains(point) {
-                            if let Some(index) = self.option_at_y(*y, dropdown_bounds.origin.y) {
+                        if dropdown_bounds.contains(point)
+                            && let Some(index) = self.option_at_y(*y, dropdown_bounds.origin.y) {
                                 self.select(index);
                                 return EventResult::Handled;
                             }
-                        }
 
                         self.close();
                         return EventResult::Handled;

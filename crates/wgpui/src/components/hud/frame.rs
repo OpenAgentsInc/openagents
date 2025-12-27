@@ -6,7 +6,9 @@ use std::time::Duration;
 
 /// Frame style variants inspired by Arwes sci-fi UI framework
 #[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Default)]
 pub enum FrameStyle {
+    #[default]
     Corners,
     Lines,
     Octagon,
@@ -18,25 +20,17 @@ pub enum FrameStyle {
     Circle,
 }
 
-impl Default for FrameStyle {
-    fn default() -> Self {
-        Self::Corners
-    }
-}
 
 #[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Default)]
 pub enum FrameAnimation {
+    #[default]
     Fade,
     Draw,
     Flicker,
     Assemble,
 }
 
-impl Default for FrameAnimation {
-    fn default() -> Self {
-        Self::Fade
-    }
-}
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum DrawDirection {
@@ -265,11 +259,9 @@ impl Frame {
                     if p < 0.33 { 1.0 - p * 3.0 }
                     else if p < 0.66 { 0.5 }
                     else { 0.5 - (p - 0.66) * 1.5 }
-                } else {
-                    if p < 0.33 { p * 3.0 }
-                    else if p < 0.66 { 1.0 - (p - 0.33) * 1.5 }
-                    else { 0.5 + (p - 0.66) * 1.5 }
-                }
+                } else if p < 0.33 { p * 3.0 }
+                else if p < 0.66 { 1.0 - (p - 0.33) * 1.5 }
+                else { 0.5 + (p - 0.66) * 1.5 }
             }
             FrameAnimation::Draw | FrameAnimation::Assemble => 1.0,
         }
@@ -863,6 +855,12 @@ pub struct FrameAnimator {
     state: AnimatorState,
     animation: Option<Animation<f32>>,
     progress: f32,
+}
+
+impl Default for FrameAnimator {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl FrameAnimator {

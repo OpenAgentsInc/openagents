@@ -125,11 +125,10 @@ impl GptOssResponsesResponse {
         for output in &self.output {
             if let Some(content) = &output.content {
                 for part in content {
-                    if matches!(part.content_type.as_str(), "output_text" | "text") {
-                        if let Some(chunk) = &part.text {
+                    if matches!(part.content_type.as_str(), "output_text" | "text")
+                        && let Some(chunk) = &part.text {
                             text.push_str(chunk);
                         }
-                    }
                 }
             }
         }
@@ -139,8 +138,8 @@ impl GptOssResponsesResponse {
     pub fn tool_calls(&self) -> Vec<GptOssToolCall> {
         let mut calls = Vec::new();
         for output in &self.output {
-            if output.output_type == "tool_call" {
-                if let Some(name) = output.name.clone() {
+            if output.output_type == "tool_call"
+                && let Some(name) = output.name.clone() {
                     calls.push(GptOssToolCall {
                         id: output.id.clone(),
                         name,
@@ -150,12 +149,11 @@ impl GptOssResponsesResponse {
                             .unwrap_or_else(|| serde_json::Value::Null),
                     });
                 }
-            }
 
             if let Some(content) = &output.content {
                 for part in content {
-                    if part.content_type == "tool_call" {
-                        if let Some(name) = part.name.clone() {
+                    if part.content_type == "tool_call"
+                        && let Some(name) = part.name.clone() {
                             calls.push(GptOssToolCall {
                                 id: output.id.clone(),
                                 name,
@@ -165,7 +163,6 @@ impl GptOssResponsesResponse {
                                     .unwrap_or_else(|| serde_json::Value::Null),
                             });
                         }
-                    }
                 }
             }
         }

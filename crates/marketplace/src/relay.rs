@@ -256,6 +256,7 @@ impl Default for MarketplaceRelay {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serial_test::serial;
 
     #[test]
     fn test_new_marketplace_relay() {
@@ -271,6 +272,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_get_marketplace_relays_default() {
         unsafe {
             std::env::remove_var("MARKETPLACE_RELAYS");
@@ -281,6 +283,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_get_marketplace_relays_from_env() {
         unsafe {
             std::env::set_var("MARKETPLACE_RELAYS", "wss://custom1.com,wss://custom2.com");
@@ -295,6 +298,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_get_marketplace_relays_env_with_spaces() {
         unsafe {
             std::env::set_var("MARKETPLACE_RELAYS", " wss://relay1.com , wss://relay2.com ");
@@ -309,6 +313,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_get_marketplace_relays_empty_env_uses_default() {
         unsafe {
             std::env::set_var("MARKETPLACE_RELAYS", "");

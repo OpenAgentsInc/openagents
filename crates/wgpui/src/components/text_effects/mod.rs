@@ -119,6 +119,12 @@ pub struct TextEffectAnimator {
     last_delta: Duration,
 }
 
+impl Default for TextEffectAnimator {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl TextEffectAnimator {
     pub fn new() -> Self {
         Self {

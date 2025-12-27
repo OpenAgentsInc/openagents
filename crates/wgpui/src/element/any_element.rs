@@ -53,7 +53,7 @@ impl Element for AnyElement {
         cx: &mut PrepaintContext,
     ) -> Self::PrepaintState {
         self.prepaint(bounds, cx);
-        ()
+        
     }
 
     fn paint(

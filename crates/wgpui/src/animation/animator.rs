@@ -25,18 +25,15 @@ impl AnimatorId {
 
 /// Animator lifecycle state.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Default)]
 pub enum AnimatorState {
     Entered,
     Entering,
     Exiting,
+    #[default]
     Exited,
 }
 
-impl Default for AnimatorState {
-    fn default() -> Self {
-        AnimatorState::Exited
-    }
-}
 
 pub type AnimatorConditionFn = Arc<dyn Fn(AnimatorId) -> bool + Send + Sync>;
 pub type AnimatorTransitionFn = Arc<dyn Fn(AnimatorId, AnimatorState) + Send + Sync>;
@@ -77,7 +74,9 @@ pub struct AnimatorSubscription(usize);
 
 /// Orchestration strategy for child nodes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Default)]
 pub enum AnimatorManagerKind {
+    #[default]
     Parallel,
     Stagger,
     StaggerReverse,
@@ -86,11 +85,6 @@ pub enum AnimatorManagerKind {
     Switch,
 }
 
-impl Default for AnimatorManagerKind {
-    fn default() -> Self {
-        AnimatorManagerKind::Parallel
-    }
-}
 
 /// Timing configuration for a single node.
 #[derive(Debug, Clone, Copy)]
@@ -456,14 +450,13 @@ impl AnimatorNode {
             refresh_needed = true;
         }
 
-        if let Some(manager) = update.manager {
-            if self.manager != manager {
+        if let Some(manager) = update.manager
+            && self.manager != manager {
                 self.manager = manager;
                 self.switch_active = None;
                 self.switch_pending = None;
                 refresh_needed = true;
             }
-        }
 
         if notify_parent {
             self.notify_parent_settings();
@@ -644,11 +637,10 @@ impl AnimatorNode {
         }
 
         self.switch_pending = Some(id);
-        if let Some(active) = self.switch_active {
-            if active != id {
+        if let Some(active) = self.switch_active
+            && active != id {
                 self.schedule_child_action(active, now, AnimatorCommand::Exit);
             }
-        }
         self.exit_other_children(id, now);
     }
 
@@ -872,7 +864,7 @@ impl AnimatorNode {
                 ScheduledActionKind::ChildAction {
                     id: child_id,
                     ..
-                } if id.map_or(true, |target| target == child_id)
+                } if id.is_none_or(|target| target == child_id)
             )
         });
     }
@@ -915,19 +907,17 @@ impl AnimatorNode {
         &mut self,
         children: &[AnimatorChildSnapshot],
     ) -> Option<AnimatorChildSnapshot> {
-        if let Some(pending) = self.switch_pending {
-            if let Some(child) = children.iter().find(|child| child.id == pending).copied() {
+        if let Some(pending) = self.switch_pending
+            && let Some(child) = children.iter().find(|child| child.id == pending).copied() {
                 self.switch_pending = None;
                 self.switch_active = Some(child.id);
                 return Some(child);
             }
-        }
 
-        if let Some(active) = self.switch_active {
-            if let Some(child) = children.iter().find(|child| child.id == active).copied() {
+        if let Some(active) = self.switch_active
+            && let Some(child) = children.iter().find(|child| child.id == active).copied() {
                 return Some(child);
             }
-        }
 
         let child = children.first().copied();
         if let Some(child) = child {
@@ -965,8 +955,8 @@ impl AnimatorNode {
                 let mut max = Duration::ZERO;
                 for (index, child) in ordered.iter().enumerate() {
                     let mut stagger_offset = scaled_duration(self.settings.stagger, index);
-                    if let Some(limit) = self.settings.limit {
-                        if limit > 0.0 {
+                    if let Some(limit) = self.settings.limit
+                        && limit > 0.0 {
                             let limit_duration = Duration::from_secs_f32(
                                 self.settings.stagger.as_secs_f32() * limit,
                             );
@@ -974,7 +964,6 @@ impl AnimatorNode {
                                 stagger_offset = limit_duration;
                             }
                         }
-                    }
                     let total = stagger_offset
                         + child.timing.delay
                         + child.timing.offset
@@ -1066,8 +1055,8 @@ impl AnimatorNode {
                 }
                 for (index, child) in ordered.iter().enumerate() {
                     let mut stagger_offset = scaled_duration(self.settings.stagger, index);
-                    if let Some(limit) = self.settings.limit {
-                        if limit > 0.0 {
+                    if let Some(limit) = self.settings.limit
+                        && limit > 0.0 {
                             let limit_duration = Duration::from_secs_f32(
                                 self.settings.stagger.as_secs_f32() * limit,
                             );
@@ -1075,7 +1064,6 @@ impl AnimatorNode {
                                 stagger_offset = limit_duration;
                             }
                         }
-                    }
                     let due = now + stagger_offset + child.timing.delay + child.timing.offset;
                     self.schedule_child_action(child.id, due, AnimatorCommand::Enter);
                 }

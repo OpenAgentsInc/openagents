@@ -6,21 +6,19 @@ use crate::{Bounds, Hsla, InputEvent, Quad};
 use super::backgrounds::BackgroundAnimator;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Default)]
 pub enum DotShape {
+    #[default]
     Box,
     Circle,
     Cross,
 }
 
-impl Default for DotShape {
-    fn default() -> Self {
-        Self::Box
-    }
-}
 
 /// Origin point for animation reveal effect.
 /// Dots animate outward from this point.
 #[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Default)]
 pub enum DotsOrigin {
     /// Animate from left edge
     Left,
@@ -31,16 +29,12 @@ pub enum DotsOrigin {
     /// Animate from bottom edge
     Bottom,
     /// Animate from center
+    #[default]
     Center,
     /// Animate from custom point (x%, y%) where 0.0-1.0
     Point(f32, f32),
 }
 
-impl Default for DotsOrigin {
-    fn default() -> Self {
-        Self::Center
-    }
-}
 
 pub struct DotsGrid {
     id: Option<ComponentId>,

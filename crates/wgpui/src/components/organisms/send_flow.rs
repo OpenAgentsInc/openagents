@@ -40,6 +40,7 @@ impl SendStep {
 
 /// Send flow state
 #[derive(Debug, Clone)]
+#[derive(Default)]
 pub struct SendFlowState {
     pub address: String,
     pub amount_sats: u64,
@@ -48,17 +49,6 @@ pub struct SendFlowState {
     pub is_lightning: bool,
 }
 
-impl Default for SendFlowState {
-    fn default() -> Self {
-        Self {
-            address: String::new(),
-            amount_sats: 0,
-            fee_sats: 0,
-            memo: String::new(),
-            is_lightning: false,
-        }
-    }
-}
 
 /// Send flow wizard organism
 pub struct SendFlow {

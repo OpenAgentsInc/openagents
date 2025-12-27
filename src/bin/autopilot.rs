@@ -151,11 +151,10 @@ impl ApplicationHandler for App {
         match event {
             WindowEvent::CloseRequested => event_loop.exit(),
             WindowEvent::KeyboardInput { event, .. } => {
-                if event.state.is_pressed() {
-                    if let PhysicalKey::Code(KeyCode::Escape) = event.physical_key {
+                if event.state.is_pressed()
+                    && let PhysicalKey::Code(KeyCode::Escape) = event.physical_key {
                         event_loop.exit();
                     }
-                }
             }
             WindowEvent::Resized(new_size) => {
                 state.config.width = new_size.width.max(1);

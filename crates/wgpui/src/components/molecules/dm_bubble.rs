@@ -150,8 +150,8 @@ impl Component for DmBubble {
         let mut y = bubble_bounds.origin.y + 8.0;
 
         // Sender name (for incoming only)
-        if !is_outgoing {
-            if let Some(sender) = &self.message.sender_name {
+        if !is_outgoing
+            && let Some(sender) = &self.message.sender_name {
                 let sender_run = cx.text.layout(
                     sender,
                     Point::new(bubble_bounds.origin.x + padding, y),
@@ -161,7 +161,6 @@ impl Component for DmBubble {
                 cx.scene.draw_text(sender_run);
                 y += 16.0;
             }
-        }
 
         // Content
         let content = if self.message.content.len() > 100 {
@@ -211,15 +210,12 @@ impl Component for DmBubble {
     }
 
     fn event(&mut self, event: &InputEvent, bounds: Bounds, _cx: &mut EventContext) -> EventResult {
-        match event {
-            InputEvent::MouseMove { x, y } => {
-                let was_hovered = self.hovered;
-                self.hovered = bounds.contains(Point::new(*x, *y));
-                if was_hovered != self.hovered {
-                    return EventResult::Handled;
-                }
+        if let InputEvent::MouseMove { x, y } = event {
+            let was_hovered = self.hovered;
+            self.hovered = bounds.contains(Point::new(*x, *y));
+            if was_hovered != self.hovered {
+                return EventResult::Handled;
             }
-            _ => {}
         }
         EventResult::Ignored
     }

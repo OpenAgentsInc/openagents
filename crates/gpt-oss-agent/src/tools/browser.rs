@@ -225,8 +225,8 @@ fn parse_duckduckgo_html(html: &str) -> Vec<SearchResult> {
         }
     }
 
-    if results.is_empty() {
-        if let Some(link_selector) = link_selector.as_ref() {
+    if results.is_empty()
+        && let Some(link_selector) = link_selector.as_ref() {
             for link in document.select(link_selector).take(MAX_SEARCH_RESULTS) {
                 let title = link.text().collect::<Vec<_>>().join("").trim().to_string();
                 let url = link.value().attr("href").unwrap_or("").to_string();
@@ -240,7 +240,6 @@ fn parse_duckduckgo_html(html: &str) -> Vec<SearchResult> {
                 });
             }
         }
-    }
 
     results
 }

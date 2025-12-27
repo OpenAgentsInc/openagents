@@ -754,14 +754,13 @@ impl Component for ThresholdKeyManager {
                     }
 
                     // Backup button
-                    if self.active_tab == KeyManagerTab::Backup {
-                        if self.backup_button_bounds(&bounds).contains(point) {
+                    if self.active_tab == KeyManagerTab::Backup
+                        && self.backup_button_bounds(&bounds).contains(point) {
                             if let Some(callback) = &mut self.on_backup {
                                 callback();
                             }
                             return EventResult::Handled;
                         }
-                    }
                 }
             }
             InputEvent::Scroll { dy, .. } => {

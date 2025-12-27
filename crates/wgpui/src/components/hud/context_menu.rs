@@ -251,9 +251,9 @@ impl ContextMenu {
 
     /// Confirm selection
     pub fn confirm(&mut self) -> Option<String> {
-        if let Some(idx) = self.selected {
-            if let Some(item) = self.items.get(idx) {
-                if !item.disabled && !item.is_separator {
+        if let Some(idx) = self.selected
+            && let Some(item) = self.items.get(idx)
+                && !item.disabled && !item.is_separator {
                     if item.has_submenu() {
                         self.open_submenu = Some(idx);
                         return None;
@@ -263,8 +263,6 @@ impl ContextMenu {
                     self.close();
                     return Some(id);
                 }
-            }
-        }
         None
     }
 
@@ -311,11 +309,10 @@ impl ContextMenu {
         let mut y = menu_bounds.origin.y + self.padding;
         for (i, item) in self.items.iter().enumerate() {
             let height = if item.is_separator { self.separator_height } else { self.item_height };
-            if point.y >= y && point.y < y + height {
-                if !item.is_separator {
+            if point.y >= y && point.y < y + height
+                && !item.is_separator {
                     return Some(i);
                 }
-            }
             y += height;
         }
         None
@@ -463,12 +460,11 @@ impl Component for ContextMenu {
                     return EventResult::Handled;
                 }
 
-                if *button == MouseButton::Left {
-                    if let Some(idx) = self.item_at_point(position, menu_bounds) {
+                if *button == MouseButton::Left
+                    && let Some(idx) = self.item_at_point(position, menu_bounds) {
                         self.selected = Some(idx);
                         self.confirm();
                     }
-                }
                 EventResult::Handled
             }
             InputEvent::KeyDown { key, .. } => {
@@ -491,11 +487,10 @@ impl Component for ContextMenu {
                     }
                     Key::Named(crate::NamedKey::ArrowRight) => {
                         // Open submenu
-                        if let Some(idx) = self.selected {
-                            if self.items.get(idx).map(|i| i.has_submenu()).unwrap_or(false) {
+                        if let Some(idx) = self.selected
+                            && self.items.get(idx).map(|i| i.has_submenu()).unwrap_or(false) {
                                 self.open_submenu = Some(idx);
                             }
-                        }
                         EventResult::Handled
                     }
                     Key::Named(crate::NamedKey::ArrowLeft) => {

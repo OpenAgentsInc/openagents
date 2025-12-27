@@ -330,8 +330,8 @@ impl LayoutEngine {
 
     /// Get the computed bounds for a layout node.
     pub fn layout(&self, id: LayoutId) -> Bounds {
-        if let Some(&node_id) = self.nodes.get(id) {
-            if let Ok(layout) = self.taffy.layout(node_id) {
+        if let Some(&node_id) = self.nodes.get(id)
+            && let Ok(layout) = self.taffy.layout(node_id) {
                 return Bounds::new(
                     layout.location.x,
                     layout.location.y,
@@ -339,7 +339,6 @@ impl LayoutEngine {
                     layout.size.height,
                 );
             }
-        }
         Bounds::ZERO
     }
 

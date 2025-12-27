@@ -6,7 +6,7 @@ use wgpui::{
     Animation, Easing, SpringAnimation, Animatable,
     Tooltip, TooltipPosition, ContextMenu, MenuItem,
 };
-use wgpui::components::atoms::{Mode, Model, Status, StatusDot, ModeBadge, ModelBadge, StreamingIndicator};
+use wgpui::components::atoms::{Mode, Model, Status, StatusDot, ModeBadge, ModelBadge, StreamingIndicator, EntryType};
 use wgpui::components::molecules::{MessageHeader, ModeSelector, ModelSelector};
 use wgpui::components::hud::{CommandPalette, Command, StatusBar, StatusItem, Notifications};
 use wgpui::renderer::Renderer;
@@ -572,7 +572,7 @@ fn draw_selectors_section(
 
     draw_section_title(scene, text_system, x, y, "Message Header");
 
-    MessageHeader::new("Claude", "Just now")
+    MessageHeader::new(EntryType::Assistant)
         .model(Model::Claude)
         .paint(Bounds::new(x, *y, width, 40.0), &mut cx);
 

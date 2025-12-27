@@ -134,6 +134,12 @@ mod scheduler {
         ledger: Arc<Mutex<HashMap<TOSchedulerId, Arc<AtomicBool>>>>,
     }
 
+    impl Default for TOScheduler {
+        fn default() -> Self {
+            Self::new()
+        }
+    }
+
     impl TOScheduler {
         pub fn new() -> Self {
             Self {
@@ -148,11 +154,10 @@ mod scheduler {
 
         pub fn stop(&self, id: Option<&str>) {
             let id = id.unwrap_or(DEFAULT_ID);
-            if let Ok(mut ledger) = self.ledger.lock() {
-                if let Some(flag) = ledger.remove(id) {
+            if let Ok(mut ledger) = self.ledger.lock()
+                && let Some(flag) = ledger.remove(id) {
                     flag.store(true, Ordering::SeqCst);
                 }
-            }
         }
 
         pub fn stop_all(&self) {

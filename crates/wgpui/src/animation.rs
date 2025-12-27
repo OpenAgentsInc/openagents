@@ -223,7 +223,7 @@ impl<T: Animatable> Animation<T> {
             self.current_iteration += 1;
             if self.iterations > 0 && self.current_iteration >= self.iterations {
                 self.state = AnimationState::Finished;
-                return if self.alternate && self.iterations % 2 == 0 {
+                return if self.alternate && self.iterations.is_multiple_of(2) {
                     self.from
                 } else {
                     self.to

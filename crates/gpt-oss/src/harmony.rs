@@ -111,11 +111,10 @@ impl HarmonyRenderer {
         let mut messages = Vec::new();
 
         let mut system = SystemContent::new();
-        if let Some(cfg) = config {
-            if let Some(effort) = cfg.reasoning_effort.clone() {
+        if let Some(cfg) = config
+            && let Some(effort) = cfg.reasoning_effort.clone() {
                 system = system.with_reasoning_effort(map_reasoning_effort(effort));
             }
-        }
 
         messages.push(Message::from_role_and_content(Role::System, system));
 

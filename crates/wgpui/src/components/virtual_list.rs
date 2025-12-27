@@ -125,12 +125,9 @@ impl<T: 'static> Component for VirtualList<T> {
         _bounds: Bounds,
         _cx: &mut EventContext,
     ) -> EventResult {
-        match event {
-            InputEvent::Scroll { dx, dy } => {
-                self.scroll.scroll_by(Point::new(*dx, *dy));
-                return EventResult::Handled;
-            }
-            _ => {}
+        if let InputEvent::Scroll { dx, dy } = event {
+            self.scroll.scroll_by(Point::new(*dx, *dy));
+            return EventResult::Handled;
         }
 
         EventResult::Ignored

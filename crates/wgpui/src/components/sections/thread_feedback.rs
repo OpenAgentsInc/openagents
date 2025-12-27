@@ -3,17 +3,14 @@ use crate::components::{Component, ComponentId, EventResult, TextInput};
 use crate::{Bounds, InputEvent, Point, Quad, theme};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Default)]
 pub enum FeedbackRating {
+    #[default]
     None,
     Positive,
     Negative,
 }
 
-impl Default for FeedbackRating {
-    fn default() -> Self {
-        Self::None
-    }
-}
 
 pub struct ThreadFeedback {
     id: Option<ComponentId>,

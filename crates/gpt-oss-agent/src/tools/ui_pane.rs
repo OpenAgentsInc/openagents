@@ -40,7 +40,9 @@ pub enum PaneState {
 
 /// Frame style for the pane border
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
+#[derive(Default)]
 pub enum FrameStyle {
+    #[default]
     Corners,
     Lines,
     Octagon,
@@ -49,27 +51,19 @@ pub enum FrameStyle {
     Kranox,
 }
 
-impl Default for FrameStyle {
-    fn default() -> Self {
-        Self::Corners
-    }
-}
 
 /// Priority level for pane attention
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Default)]
 pub enum Priority {
     Background = 0,
+    #[default]
     Normal = 1,
     Elevated = 2,
     Urgent = 3,
     Critical = 4,
 }
 
-impl Default for Priority {
-    fn default() -> Self {
-        Self::Normal
-    }
-}
 
 /// Animation type
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

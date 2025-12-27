@@ -180,15 +180,14 @@ impl FmBridgeSession {
 
         {
             let mut history = self.history.write().await;
-            if let Some(last) = history.last_mut() {
-                if last.role == "assistant" {
+            if let Some(last) = history.last_mut()
+                && last.role == "assistant" {
                     last.tool_calls.push(ToolCall {
                         tool: request.tool,
                         parameters: request.parameters,
                         result: Some(result.clone()),
                     });
                 }
-            }
         }
 
         Ok(result)
