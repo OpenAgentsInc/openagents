@@ -235,6 +235,7 @@ Start now."#, plan);
             .cwd(cwd_clone)
             .model(model.as_str())
             .permission_mode(PermissionMode::BypassPermissions)
+            .dangerously_skip_permissions(true)
             .max_turns(100);
         
         let mut stream = match query(&prompt, options).await {
@@ -375,12 +376,13 @@ Otherwise, provide a detailed plan for the next iteration in the same format as 
         use claude_agent_sdk::{query, QueryOptions, SdkMessage, PermissionMode};
         
         eprintln!("[CLAUDE-REVIEW] Starting review iteration {}", iteration);
-        eprintln!("[CLAUDE-REVIEW] Options: cwd={:?}, model={}, permission_mode=Plan, max_turns=30", cwd_clone, model.as_str());
+        eprintln!("[CLAUDE-REVIEW] Options: cwd={:?}, model={}, permission_mode=BypassPermissions, max_turns=30", cwd_clone, model.as_str());
         
         let options = QueryOptions::new()
             .cwd(cwd_clone)
             .model(model.as_str())
-            .permission_mode(PermissionMode::Plan)
+            .permission_mode(PermissionMode::BypassPermissions)
+            .dangerously_skip_permissions(true)
             .max_turns(30);
         
         let mut stream = match query(&prompt, options).await {
