@@ -4,10 +4,41 @@ use chrono::Local;
 use tracing::{info, warn, debug};
 
 use crate::auth;
-use crate::claude::{ClaudeToken, ClaudeEvent, run_claude_planning};
+use crate::claude::{ClaudeToken, ClaudeEvent, run_claude_planning, run_claude_execution};
 use crate::preflight::PreflightConfig;
 use crate::streaming::{StreamToken, query_issue_summary, stream_gpt_oss_analysis, parse_harmony_stream, extract_final_content};
 use crate::utils::shorten_path;
+
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub enum ClaudeModel {
+    #[default]
+    Sonnet,
+    Opus,
+}
+
+impl ClaudeModel {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            ClaudeModel::Sonnet => "claude-sonnet-4-5-20250929",
+            ClaudeModel::Opus => "claude-opus-4-5-20250929",
+        }
+    }
+}
+
+fn extract_tool_display(name: &str, params: &str) -> String {
+    let truncated = if params.len() > 60 {
+        format!("{}...", &params[..57])
+    } else {
+        params.to_string()
+    };
+    
+    match name {
+        "Read" | "read" | "Edit" | "edit" | "Write" | "write" => {
+            shorten_path(&PathBuf::from(&truncated))
+        }
+        _ => truncated,
+    }
+}
 
 #[derive(Clone)]
 pub struct LogLine {
@@ -40,6 +71,8 @@ pub enum StartupPhase {
     PlanningWithClaude,
     StreamingClaudePlan,
     WritingPlan,
+    ExecutingPlan,
+    StreamingExecution,
     Complete,
 }
 
@@ -48,6 +81,7 @@ pub struct StartupState {
     pub phase: StartupPhase,
     pub phase_started: f32,
     pub preflight_config: Option<PreflightConfig>,
+    pub model: ClaudeModel,
     stream_receiver: Option<mpsc::Receiver<StreamToken>>,
     gpt_oss_buffer: String,
     issue_summary: Option<String>,
@@ -56,15 +90,23 @@ pub struct StartupState {
     pub claude_events: Vec<ClaudeEvent>,
     pub claude_full_text: String,
     pub plan_path: Option<PathBuf>,
+    exec_receiver: Option<mpsc::Receiver<ClaudeToken>>,
+    pub exec_events: Vec<ClaudeEvent>,
+    pub exec_full_text: String,
 }
 
 impl StartupState {
     pub fn new() -> Self {
+        Self::with_model(ClaudeModel::default())
+    }
+    
+    pub fn with_model(model: ClaudeModel) -> Self {
         Self {
             lines: vec![],
             phase: StartupPhase::CheckingOpenCode,
             phase_started: 0.0,
             preflight_config: None,
+            model,
             stream_receiver: None,
             gpt_oss_buffer: String::new(),
             issue_summary: None,
@@ -73,6 +115,9 @@ impl StartupState {
             claude_events: Vec::new(),
             claude_full_text: String::new(),
             plan_path: None,
+            exec_receiver: None,
+            exec_events: Vec::new(),
+            exec_full_text: String::new(),
         }
     }
 
@@ -379,12 +424,13 @@ impl StartupState {
                     let assessment = self.gpt_oss_assessment.clone().unwrap_or_default();
                     let issue_summary = self.issue_summary.clone().unwrap_or_default();
                     let cwd = std::env::current_dir().unwrap_or_default();
+                    let model = self.model;
                     
                     let (tx, rx) = mpsc::channel();
                     self.claude_receiver = Some(rx);
 
                     std::thread::spawn(move || {
-                        run_claude_planning(&cwd, &issue_summary, &assessment, tx);
+                        run_claude_planning(&cwd, &issue_summary, &assessment, model, tx);
                     });
 
                     self.phase = StartupPhase::StreamingClaudePlan;
@@ -494,9 +540,90 @@ impl StartupState {
                 }
                 
                 self.add_line("", LogStatus::Info, elapsed);
-                self.add_line("Planning complete. Review plan and run autopilot to execute.", LogStatus::Success, elapsed);
-                self.phase = StartupPhase::Complete;
+                self.phase = StartupPhase::ExecutingPlan;
                 self.phase_started = elapsed;
+            }
+
+            StartupPhase::ExecutingPlan => {
+                if !self.lines.iter().any(|l| l.text.contains("Executing plan")) {
+                    self.add_line("Executing plan with Claude...", LogStatus::Pending, elapsed);
+                    
+                    let plan = self.claude_full_text.clone();
+                    let model = self.model;
+                    
+                    let (tx, rx) = mpsc::channel();
+                    self.exec_receiver = Some(rx);
+                    
+                    std::thread::spawn(move || {
+                        run_claude_execution(&plan, model, tx);
+                    });
+                    
+                    self.phase = StartupPhase::StreamingExecution;
+                    self.phase_started = elapsed;
+                }
+            }
+
+            StartupPhase::StreamingExecution => {
+                let mut tokens = Vec::new();
+                if let Some(ref rx) = self.exec_receiver {
+                    while let Ok(token) = rx.try_recv() {
+                        tokens.push(token);
+                    }
+                }
+
+                for token in tokens {
+                    match token {
+                        ClaudeToken::Chunk(text) => {
+                            self.exec_full_text.push_str(&text);
+                            if let Some(ClaudeEvent::Text(s)) = self.exec_events.last_mut() {
+                                s.push_str(&text);
+                            } else {
+                                self.exec_events.push(ClaudeEvent::Text(text));
+                            }
+                            self.update_exec_streaming_line(elapsed);
+                        }
+                        ClaudeToken::ToolUse { name, params } => {
+                            self.exec_events.push(ClaudeEvent::Tool {
+                                name: name.clone(),
+                                params,
+                                done: false,
+                            });
+                            self.update_exec_streaming_line(elapsed);
+                        }
+                        ClaudeToken::ToolDone { name } => {
+                            for event in self.exec_events.iter_mut().rev() {
+                                if let ClaudeEvent::Tool { name: n, done, .. } = event {
+                                    if n == &name && !*done {
+                                        *done = true;
+                                        break;
+                                    }
+                                }
+                            }
+                            self.update_exec_streaming_line(elapsed);
+                        }
+                        ClaudeToken::Done(_result) => {
+                            self.exec_receiver = None;
+                            if let Some(line) = self.lines.iter_mut().find(|l| l.text.contains("Executing plan")) {
+                                line.status = LogStatus::Success;
+                            }
+                            
+                            self.add_line("", LogStatus::Info, elapsed);
+                            self.add_line("Execution complete.", LogStatus::Success, elapsed);
+                            self.phase = StartupPhase::Complete;
+                            self.phase_started = elapsed;
+                            return;
+                        }
+                        ClaudeToken::Error(e) => {
+                            self.add_line(&format!("  Execution error: {}", e), LogStatus::Error, elapsed);
+                            self.exec_receiver = None;
+                            self.add_line("", LogStatus::Info, elapsed);
+                            self.add_line("Execution failed.", LogStatus::Error, elapsed);
+                            self.phase = StartupPhase::Complete;
+                            self.phase_started = elapsed;
+                            return;
+                        }
+                    }
+                }
             }
 
             StartupPhase::Complete => {}
@@ -567,11 +694,43 @@ impl StartupState {
                 }
                 ClaudeEvent::Tool { name, params, done } => {
                     let status = if *done { "done" } else { "..." };
-                    let params_display = if params.len() > 42 { 
-                        format!("{}...", &params[..39]) 
-                    } else { 
-                        params.clone() 
-                    };
+                    let params_display = extract_tool_display(name, params);
+                    self.add_line(&format!("  [{}] {} {}", name, params_display, status), LogStatus::Info, elapsed);
+                }
+            }
+        }
+    }
+
+    pub fn update_exec_streaming_line(&mut self, elapsed: f32) {
+        let start_idx = self.lines.iter().position(|l| l.text.contains("Executing plan"))
+            .map(|i| i + 1)
+            .unwrap_or(self.lines.len());
+        
+        self.lines.truncate(start_idx);
+        
+        let tool_count = self.exec_events.iter().filter(|e| matches!(e, ClaudeEvent::Tool { .. })).count();
+        let done_count = self.exec_events.iter().filter(|e| matches!(e, ClaudeEvent::Tool { done: true, .. })).count();
+        let text_count = self.exec_full_text.lines().filter(|l| !l.trim().is_empty()).count();
+        
+        if tool_count > 0 || text_count > 0 {
+            self.add_line(&format!("  {} tools ({} done), {} lines output", tool_count, done_count, text_count), LogStatus::Thinking, elapsed);
+        }
+        
+        let events = self.exec_events.clone();
+        let start = if events.len() > 12 { events.len() - 12 } else { 0 };
+        
+        for event in &events[start..] {
+            match event {
+                ClaudeEvent::Text(text) => {
+                    let lines: Vec<&str> = text.lines().filter(|l| !l.trim().is_empty()).collect();
+                    let line_start = if lines.len() > 10 { lines.len() - 10 } else { 0 };
+                    for line in &lines[line_start..] {
+                        self.add_line(&format!("  > {}", line), LogStatus::Thinking, elapsed);
+                    }
+                }
+                ClaudeEvent::Tool { name, params, done } => {
+                    let status = if *done { "done" } else { "..." };
+                    let params_display = extract_tool_display(name, params);
                     self.add_line(&format!("  [{}] {} {}", name, params_display, status), LogStatus::Info, elapsed);
                 }
             }
