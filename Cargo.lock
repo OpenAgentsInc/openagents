@@ -884,6 +884,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c08606f8c3cbf4ce6ec8e28fb0014a2c086708fe954eaa885384a6165172e7e8"
 
 [[package]]
+name = "autopilot"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "claude-agent-sdk",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "av-scenechange"
 version = "0.14.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6813,6 +6825,7 @@ dependencies = [
  "acp-adapter",
  "anyhow",
  "assert_cmd",
+ "autopilot",
  "base64 0.22.1",
  "bip39",
  "chrono",

@@ -1,0 +1,32 @@
+[package]
+name = "autopilot"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "Autopilot - autonomous agent runtime"
+
+[lib]
+name = "autopilot"
+path = "src/lib.rs"
+
+[dependencies]
+# Claude Agent SDK for in-process agent execution
+claude-agent-sdk = { path = "../claude-agent-sdk" }
+
+# Async runtime
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "sync"] }
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Error handling
+anyhow = "1"
+
+# Logging
+tracing = "0.1"
+
+[lints]
+workspace = true
