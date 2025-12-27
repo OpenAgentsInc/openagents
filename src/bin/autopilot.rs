@@ -3,8 +3,7 @@
 use std::path::Path;
 use std::sync::Arc;
 use std::time::Instant;
-use tracing::{debug, info, warn, error, Level};
-use tracing_subscriber::FmtSubscriber;
+use tracing::{info, warn};
 use wgpui::{
     Bounds, Component, Easing, Hsla, PaintContext, Point, Quad, Scene, Size, TextSystem,
 };
@@ -33,13 +32,17 @@ fn shorten_path(path: &Path) -> String {
 }
 
 fn main() {
-    // Initialize logging
-    let subscriber = FmtSubscriber::builder()
-        .with_max_level(Level::DEBUG)
+    // Initialize logging with filter to suppress noisy external crates
+    tracing_subscriber::fmt()
+        .with_env_filter(
+            tracing_subscriber::EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| {
+                    tracing_subscriber::EnvFilter::new(
+                        "autopilot=debug,openagents=debug,wgpui=info,cosmic_text=warn,wgpu=warn,info"
+                    )
+                })
+        )
         .with_target(true)
-        .with_thread_ids(false)
-        .with_file(false)
-        .with_line_number(false)
         .init();
 
     info!("Starting Autopilot");
