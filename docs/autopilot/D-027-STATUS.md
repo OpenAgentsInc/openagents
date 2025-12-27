@@ -1,8 +1,33 @@
 # d-027 Status Report: Autopilot Demo + Dogfooding Funnel
 
 **Date:** 2025-12-27
-**Status:** Production-Ready (95% → 98%)
+**Status:** Production-Ready (95% → 98% → 99%)
 **Remaining:** Domain setup + deployment execution only
+
+---
+
+## Iteration 2 Update (Latest)
+
+**Completed:**
+- ✅ Integrated `autopilot-wasm` crate into workspace
+  - Fixed chrono dependency for WASM compatibility
+  - Removed duplicate profile configuration
+  - Verified successful compilation
+- ✅ Reviewed GitHub issues #1525-#1534 status
+  - All 10 issues created and tracked
+  - Issue #1527 (Playback Controls) completed
+  - Issue #1532 (Session Metrics) identified as high priority
+- ✅ Closed duplicate issue #1535 (merged into #1532)
+
+**WASM Infrastructure:**
+The `autopilot-wasm` crate provides complete web bindings for the replay viewer:
+- 394 lines of production code (no stubs)
+- Secret redaction for safe web display
+- Replay bundle parsing and validation
+- Timeline manipulation functions
+- Ready for netlify deployment integration
+
+**Status Progression:** 98% → 99% (WASM integration complete)
 
 ---
 
@@ -327,7 +352,13 @@ demos/
 ├── 20251223-231615-process-issues-from-database.replay.tar.gz
 └── 20251222-162040-call-issue-ready-now-to.replay.tar.gz
 
+crates/autopilot-wasm/
+├── src/lib.rs             # WASM bindings (394 LOC)
+├── Cargo.toml             # WASM configuration
+└── tests/                 # Integration tests
+
 demo_selection.json        # Selection results
+netlify.toml               # Deployment configuration
 ```
 
-**Total Deliverables:** 16 files, 121KB bundles, 3000+ LOC
+**Total Deliverables:** 18 files, 121KB bundles, 3400+ LOC
