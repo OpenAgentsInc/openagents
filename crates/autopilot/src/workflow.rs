@@ -1,5 +1,5 @@
-use anyhow::{Context, Result};
-use tracing::{debug, info};
+use anyhow::Result;
+use tracing::info;
 
 use crate::github::{GitHubClient, branch_name_for_issue};
 
@@ -26,7 +26,7 @@ impl GitHubWorkflow {
         repo: &str,
         issue_number: u64,
         issue_title: &str,
-        base_branch: &str,
+        _base_branch: &str,
         base_sha: &str,
     ) -> Result<IssueWorkflowResult> {
         info!(
