@@ -87,6 +87,7 @@ struct StartupState {
 }
 
 #[derive(Clone, Copy, PartialEq)]
+#[allow(dead_code)]
 enum StartupPhase {
     CheckingOpenCode,
     CheckingOpenAgents,
@@ -336,15 +337,12 @@ impl StartupState {
 
             StartupPhase::PreflightComplete => {
                 if phase_time > 0.3 {
-                    let gpt_oss_available = self.preflight_config.as_ref()
-                        .map(|c| c.inference.local_backends.iter().any(|b| b.name == "gpt-oss" && b.available))
-                        .unwrap_or(false);
-
-                    if gpt_oss_available && self.issue_summary.is_none() {
-                        self.phase = StartupPhase::AnalyzingIssues;
+                    if auth::has_anthropic_auth() {
+                        self.phase = StartupPhase::PlanningWithClaude;
                         self.phase_started = elapsed;
                     } else {
                         self.add_line("", LogStatus::Info, elapsed);
+                        self.add_line("Claude auth not available.", LogStatus::Info, elapsed);
                         self.add_line("Ready for tasks.", LogStatus::Success, elapsed);
                         self.phase = StartupPhase::Complete;
                         self.phase_started = elapsed;
@@ -706,39 +704,35 @@ fn extract_final_content(harmony_buffer: &str) -> String {
     harmony_buffer.to_string()
 }
 
-fn run_claude_planning(cwd: &Path, issue_summary: &str, assessment: &str, tx: mpsc::Sender<ClaudeToken>) {
+#[allow(dead_code)]
+fn run_claude_planning(_cwd: &Path, _issue_summary: &str, _assessment: &str, tx: mpsc::Sender<ClaudeToken>) {
     use futures_util::StreamExt;
     
-    let prompt = format!(
-        r#"You are an expert software architect and project planner. Based on the following project assessment, create a comprehensive plan to address the issues.
-
-## Current Issue Summary
-{}
-
-## GPT-OSS Assessment
-{}
+    let prompt = r#"You are an expert software architect and project planner for the OpenAgents project.
 
 ## Your Task
-Create a detailed, actionable plan in Markdown format. The plan should include:
 
-1. **Executive Summary** - Brief overview of the situation and recommended approach
-2. **Priority Matrix** - Categorize issues by urgency and importance
-3. **Recommended Sequence** - Specific order to tackle issues with rationale
-4. **For Each Priority Issue**:
-   - Clear objective
-   - Key technical considerations
-   - Estimated complexity (low/medium/high)
-   - Dependencies on other issues
-   - Suggested approach
-5. **Risk Mitigation** - Potential blockers and how to handle them
-6. **Success Criteria** - How to know when each item is complete
+1. First, gather context about this repository:
+   - Run `git log --oneline -10` to see recent commits
+   - Run `git branch --show-current` to see current branch
+   - Run `git status --short` to see any uncommitted changes
 
-Focus on being actionable and specific. This plan will be executed by an autonomous agent."#,
-        issue_summary,
-        assessment
-    );
+2. Read the key project files:
+   - Read README.md in the root directory
+   - Read SYNTHESIS.md in the root directory (this is the comprehensive vision document)
+   - Read all files in the .openagents/ directory (use Glob to find them, then Read each one)
+     - This includes directives, issues, TODO.md, etc.
 
-    let cwd_clone = cwd.to_path_buf();
+3. Based on what you learn, create a comprehensive plan in Markdown format:
+   - **Current State** - What's the project about, what has been built
+   - **Recent Activity** - What was worked on recently based on commits
+   - **Open Work** - What issues/directives are pending
+   - **Recommended Next Steps** - Prioritized list of what to work on next
+   - **Technical Considerations** - Any blockers, dependencies, or architectural notes
+
+Focus on being actionable and specific. This plan will guide what an autonomous agent works on next."#.to_string();
+
+    let cwd_clone = std::env::current_dir().unwrap_or_default();
     
     let rt = match tokio::runtime::Runtime::new() {
         Ok(rt) => rt,
@@ -752,12 +746,12 @@ Focus on being actionable and specific. This plan will be executed by an autonom
         use claude_agent_sdk::{query, QueryOptions, SdkMessage, PermissionMode};
         
         eprintln!("[CLAUDE] Starting query with prompt length: {} chars", prompt.len());
-        eprintln!("[CLAUDE] Options: cwd={:?}, permission_mode=Plan, max_turns=1", cwd_clone);
+        eprintln!("[CLAUDE] Options: cwd={:?}, permission_mode=Plan, max_turns=50", cwd_clone);
         
         let options = QueryOptions::new()
             .cwd(cwd_clone)
             .permission_mode(PermissionMode::Plan)
-            .max_turns(1);
+            .max_turns(50);
         
         let mut stream = match query(&prompt, options).await {
             Ok(s) => {
