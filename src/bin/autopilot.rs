@@ -81,8 +81,8 @@ struct StartupState {
     issue_summary: Option<String>,
     gpt_oss_assessment: Option<String>,
     claude_receiver: Option<mpsc::Receiver<ClaudeToken>>,
-    claude_plan_buffer: String,
-    claude_tool_calls: Vec<ToolCall>,
+    claude_events: Vec<ClaudeEvent>,
+    claude_full_text: String,
     plan_path: Option<PathBuf>,
 }
 
@@ -118,10 +118,9 @@ enum ClaudeToken {
 }
 
 #[derive(Clone)]
-struct ToolCall {
-    name: String,
-    params: String,
-    done: bool,
+enum ClaudeEvent {
+    Text(String),
+    Tool { name: String, params: String, done: bool },
 }
 
 impl StartupState {
@@ -136,8 +135,8 @@ impl StartupState {
             issue_summary: None,
             gpt_oss_assessment: None,
             claude_receiver: None,
-            claude_plan_buffer: String::new(),
-            claude_tool_calls: Vec::new(),
+            claude_events: Vec::new(),
+            claude_full_text: String::new(),
             plan_path: None,
         }
     }
@@ -469,11 +468,16 @@ impl StartupState {
                 for token in tokens {
                     match token {
                         ClaudeToken::Chunk(text) => {
-                            self.claude_plan_buffer.push_str(&text);
+                            self.claude_full_text.push_str(&text);
+                            if let Some(ClaudeEvent::Text(s)) = self.claude_events.last_mut() {
+                                s.push_str(&text);
+                            } else {
+                                self.claude_events.push(ClaudeEvent::Text(text));
+                            }
                             self.update_claude_streaming_line(elapsed);
                         }
                         ClaudeToken::ToolUse { name, params } => {
-                            self.claude_tool_calls.push(ToolCall {
+                            self.claude_events.push(ClaudeEvent::Tool {
                                 name: name.clone(),
                                 params,
                                 done: false,
@@ -481,8 +485,13 @@ impl StartupState {
                             self.update_claude_streaming_line(elapsed);
                         }
                         ClaudeToken::ToolDone { name } => {
-                            if let Some(call) = self.claude_tool_calls.iter_mut().rev().find(|c| c.name == name && !c.done) {
-                                call.done = true;
+                            for event in self.claude_events.iter_mut().rev() {
+                                if let ClaudeEvent::Tool { name: n, done, .. } = event {
+                                    if n == &name && !*done {
+                                        *done = true;
+                                        break;
+                                    }
+                                }
                             }
                             self.update_claude_streaming_line(elapsed);
                         }
@@ -535,7 +544,7 @@ impl StartupState {
             StartupPhase::WritingPlan => {
                 self.add_line("", LogStatus::Info, elapsed);
                 
-                let summary_lines: Vec<String> = self.claude_plan_buffer
+                let summary_lines: Vec<String> = self.claude_full_text
                     .lines()
                     .filter(|l| l.starts_with("##") || l.starts_with("- ") || l.starts_with("1."))
                     .take(8)
@@ -601,37 +610,36 @@ impl StartupState {
         
         self.lines.truncate(start_idx);
         
-        let tool_count = self.claude_tool_calls.len();
-        let done_count = self.claude_tool_calls.iter().filter(|c| c.done).count();
-        let text_lines: Vec<String> = self.claude_plan_buffer
-            .lines()
-            .filter(|l| !l.trim().is_empty())
-            .map(|s| s.to_string())
-            .collect();
-        let text_count = text_lines.len();
+        let tool_count = self.claude_events.iter().filter(|e| matches!(e, ClaudeEvent::Tool { .. })).count();
+        let done_count = self.claude_events.iter().filter(|e| matches!(e, ClaudeEvent::Tool { done: true, .. })).count();
+        let text_count = self.claude_full_text.lines().filter(|l| !l.trim().is_empty()).count();
         
         if tool_count > 0 || text_count > 0 {
             self.add_line(&format!("  {} tools ({} done), {} lines output", tool_count, done_count, text_count), LogStatus::Thinking, elapsed);
         }
         
-        let tool_calls = self.claude_tool_calls.clone();
-        let tool_start = if tool_calls.len() > 4 { tool_calls.len() - 4 } else { 0 };
-        for call in &tool_calls[tool_start..] {
-            let status = if call.done { "done" } else { "..." };
-            let params_display = if call.params.len() > 45 { 
-                format!("{}...", &call.params[..42]) 
-            } else { 
-                call.params.clone() 
-            };
-            self.add_line(&format!("  [{}] {} {}", call.name, params_display, status), LogStatus::Info, elapsed);
-        }
+        let events = self.claude_events.clone();
+        let start = if events.len() > 12 { events.len() - 12 } else { 0 };
         
-        if text_count > 0 {
-            self.add_line("", LogStatus::Info, elapsed);
-            let text_start = if text_count > 8 { text_count - 8 } else { 0 };
-            for line in &text_lines[text_start..] {
-                let display = if line.len() > 75 { format!("{}...", &line[..72]) } else { line.clone() };
-                self.add_line(&format!("  > {}", display), LogStatus::Thinking, elapsed);
+        for event in &events[start..] {
+            match event {
+                ClaudeEvent::Text(text) => {
+                    let lines: Vec<&str> = text.lines().filter(|l| !l.trim().is_empty()).collect();
+                    let line_start = if lines.len() > 3 { lines.len() - 3 } else { 0 };
+                    for line in &lines[line_start..] {
+                        let display = if line.len() > 72 { format!("{}...", &line[..69]) } else { (*line).to_string() };
+                        self.add_line(&format!("  > {}", display), LogStatus::Thinking, elapsed);
+                    }
+                }
+                ClaudeEvent::Tool { name, params, done } => {
+                    let status = if *done { "done" } else { "..." };
+                    let params_display = if params.len() > 42 { 
+                        format!("{}...", &params[..39]) 
+                    } else { 
+                        params.clone() 
+                    };
+                    self.add_line(&format!("  [{}] {} {}", name, params_display, status), LogStatus::Info, elapsed);
+                }
             }
         }
     }
