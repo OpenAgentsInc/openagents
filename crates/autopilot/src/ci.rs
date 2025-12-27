@@ -294,7 +294,6 @@ pub fn detect_test_command(repo_path: &std::path::Path) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::path::PathBuf;
 
     #[test]
     fn test_ci_status_display() {

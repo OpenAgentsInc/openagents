@@ -4,6 +4,7 @@ pub mod claude;
 pub mod github;
 pub mod logger;
 pub mod preflight;
+pub mod replay;
 pub mod report;
 pub mod startup;
 pub mod streaming;
@@ -57,6 +58,11 @@ pub use workflow::{
 pub use verification::{
     TerminationChecklist, CheckResult, VerificationRunner,
     generate_fix_prompt, should_force_stop,
+};
+
+pub use replay::{
+    ReplayBundle, ReplayMetadata, TimelineEvent, ReplayReceipts,
+    redact_replay,
 };
 
 pub use report::{

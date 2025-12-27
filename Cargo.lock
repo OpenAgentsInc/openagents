@@ -901,6 +901,7 @@ dependencies = [
  "claude-agent-sdk",
  "futures-util",
  "octocrab",
+ "regex",
  "reqwest",
  "serde",
  "serde_json",
