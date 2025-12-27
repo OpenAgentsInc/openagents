@@ -603,36 +603,36 @@ impl StartupState {
         
         let tool_count = self.claude_tool_calls.len();
         let done_count = self.claude_tool_calls.iter().filter(|c| c.done).count();
-        let text_lines: Vec<String> = self.claude_plan_buffer.lines().map(|s| s.to_string()).collect();
+        let text_lines: Vec<String> = self.claude_plan_buffer
+            .lines()
+            .filter(|l| !l.trim().is_empty())
+            .map(|s| s.to_string())
+            .collect();
         let text_count = text_lines.len();
         
         if tool_count > 0 || text_count > 0 {
-            self.add_line(&format!("  {} tools ({} done), {} lines", tool_count, done_count, text_count), LogStatus::Thinking, elapsed);
-        }
-        
-        if text_count > 0 {
-            let start = if text_count > 3 { text_count - 3 } else { 0 };
-            let tail_lines: Vec<String> = text_lines[start..].iter()
-                .filter(|l| !l.trim().is_empty())
-                .cloned()
-                .collect();
-            
-            for line in tail_lines {
-                let display = if line.len() > 70 { format!("{}...", &line[..67]) } else { line };
-                self.add_line(&format!("  > {}", display), LogStatus::Thinking, elapsed);
-            }
+            self.add_line(&format!("  {} tools ({} done), {} lines output", tool_count, done_count, text_count), LogStatus::Thinking, elapsed);
         }
         
         let tool_calls = self.claude_tool_calls.clone();
-        let start = if tool_calls.len() > 6 { tool_calls.len() - 6 } else { 0 };
-        for call in &tool_calls[start..] {
+        let tool_start = if tool_calls.len() > 4 { tool_calls.len() - 4 } else { 0 };
+        for call in &tool_calls[tool_start..] {
             let status = if call.done { "done" } else { "..." };
-            let params_display = if call.params.len() > 50 { 
-                format!("{}...", &call.params[..47]) 
+            let params_display = if call.params.len() > 45 { 
+                format!("{}...", &call.params[..42]) 
             } else { 
                 call.params.clone() 
             };
             self.add_line(&format!("  [{}] {} {}", call.name, params_display, status), LogStatus::Info, elapsed);
+        }
+        
+        if text_count > 0 {
+            self.add_line("", LogStatus::Info, elapsed);
+            let text_start = if text_count > 8 { text_count - 8 } else { 0 };
+            for line in &text_lines[text_start..] {
+                let display = if line.len() > 75 { format!("{}...", &line[..72]) } else { line.clone() };
+                self.add_line(&format!("  > {}", display), LogStatus::Thinking, elapsed);
+            }
         }
     }
 
