@@ -933,7 +933,18 @@ fn ease_out_cubic(t: f32) -> f32 {
     1.0 - (1.0 - t).powi(3)
 }
 
+fn sanitize_text(text: &str) -> String {
+    text.replace('—', "-")
+        .replace('–', "-")
+        .replace('\u{2018}', "'")
+        .replace('\u{2019}', "'")
+        .replace('\u{201C}', "\"")
+        .replace('\u{201D}', "\"")
+        .replace('…', "...")
+}
+
 fn wrap_text(text: &str, max_chars: usize) -> Vec<String> {
+    let text = sanitize_text(text);
     if text.chars().count() <= max_chars {
         return vec![text.to_string()];
     }
