@@ -1,0 +1,554 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OpenAgents Autopilot Replay Viewer</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Vera Mono', 'Monaco', 'Courier New', monospace;
+            background: #0a0a0a;
+            color: #e0e0e0;
+            line-height: 1.6;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        header {
+            border-bottom: 2px solid #333;
+            padding-bottom: 20px;
+            margin-bottom: 30px;
+        }
+
+        h1 {
+            font-size: 24px;
+            color: #00ff9d;
+            margin-bottom: 10px;
+        }
+
+        .metadata {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 30px;
+            padding: 20px;
+            background: #111;
+            border: 1px solid #333;
+        }
+
+        .metadata-item {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .metadata-label {
+            font-size: 11px;
+            text-transform: uppercase;
+            color: #888;
+            margin-bottom: 5px;
+        }
+
+        .metadata-value {
+            font-size: 16px;
+            color: #e0e0e0;
+        }
+
+        .timeline {
+            margin-bottom: 30px;
+        }
+
+        .timeline-controls {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            margin-bottom: 20px;
+            padding: 15px;
+            background: #111;
+            border: 1px solid #333;
+        }
+
+        button {
+            background: #00ff9d;
+            color: #0a0a0a;
+            border: none;
+            padding: 8px 16px;
+            font-family: inherit;
+            font-size: 14px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+
+        button:hover {
+            background: #00cc7d;
+        }
+
+        button:disabled {
+            background: #333;
+            color: #666;
+            cursor: not-allowed;
+        }
+
+        .timeline-slider {
+            flex: 1;
+            height: 4px;
+            background: #333;
+            position: relative;
+            cursor: pointer;
+        }
+
+        .timeline-progress {
+            height: 100%;
+            background: #00ff9d;
+            position: absolute;
+            left: 0;
+            top: 0;
+        }
+
+        .timeline-scrubber {
+            width: 16px;
+            height: 16px;
+            background: #00ff9d;
+            position: absolute;
+            top: -6px;
+            margin-left: -8px;
+            cursor: grab;
+        }
+
+        .timeline-scrubber:active {
+            cursor: grabbing;
+        }
+
+        .time-display {
+            min-width: 100px;
+            text-align: right;
+            font-size: 14px;
+            color: #888;
+        }
+
+        .events {
+            max-height: 600px;
+            overflow-y: auto;
+            border: 1px solid #333;
+            background: #111;
+        }
+
+        .event {
+            padding: 15px;
+            border-bottom: 1px solid #222;
+            opacity: 0.3;
+            transition: opacity 0.2s;
+        }
+
+        .event.visible {
+            opacity: 1;
+        }
+
+        .event.current {
+            background: #1a1a1a;
+            border-left: 3px solid #00ff9d;
+            padding-left: 12px;
+        }
+
+        .event-header {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 8px;
+        }
+
+        .event-type {
+            font-size: 12px;
+            text-transform: uppercase;
+            font-weight: bold;
+        }
+
+        .event-type.tool_call {
+            color: #00a8ff;
+        }
+
+        .event-type.tool_result {
+            color: #a8ff00;
+        }
+
+        .event-type.phase_start {
+            color: #ff00a8;
+        }
+
+        .event-type.phase_end {
+            color: #ffa800;
+        }
+
+        .event-timestamp {
+            font-size: 11px;
+            color: #666;
+        }
+
+        .event-data {
+            font-size: 13px;
+            color: #ccc;
+            font-family: 'Courier New', monospace;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+
+        .receipts {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 15px;
+            padding: 20px;
+            background: #111;
+            border: 1px solid #333;
+        }
+
+        .receipt-item {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .receipt-label {
+            font-size: 11px;
+            text-transform: uppercase;
+            color: #888;
+            margin-bottom: 5px;
+        }
+
+        .receipt-value {
+            font-size: 18px;
+            color: #00ff9d;
+            font-weight: bold;
+        }
+
+        .receipt-value.success {
+            color: #00ff9d;
+        }
+
+        .receipt-value.failure {
+            color: #ff5555;
+        }
+
+        .load-demo {
+            text-align: center;
+            padding: 40px;
+        }
+
+        .file-input {
+            display: none;
+        }
+
+        .file-label {
+            display: inline-block;
+            background: #00ff9d;
+            color: #0a0a0a;
+            padding: 12px 24px;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 16px;
+        }
+
+        .file-label:hover {
+            background: #00cc7d;
+        }
+
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: #0a0a0a;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #333;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: #555;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🤖 Autopilot Replay Viewer</h1>
+        </header>
+
+        <div id="load-section" class="load-demo">
+            <p style="margin-bottom: 20px; color: #888;">Load a replay bundle JSON file to view the autopilot session</p>
+            <input type="file" id="file-input" class="file-input" accept=".json">
+            <label for="file-input" class="file-label">Choose Replay Bundle</label>
+        </div>
+
+        <div id="viewer-section" style="display: none;">
+            <div class="metadata" id="metadata"></div>
+
+            <div class="timeline">
+                <div class="timeline-controls">
+                    <button id="play-btn">▶ Play</button>
+                    <button id="pause-btn" style="display: none;">⏸ Pause</button>
+                    <button id="restart-btn">↺ Restart</button>
+                    <div class="timeline-slider" id="timeline-slider">
+                        <div class="timeline-progress" id="timeline-progress"></div>
+                        <div class="timeline-scrubber" id="timeline-scrubber"></div>
+                    </div>
+                    <div class="time-display" id="time-display">0:00 / 0:00</div>
+                </div>
+
+                <div class="events" id="events"></div>
+            </div>
+
+            <h2 style="margin: 30px 0 15px; color: #00ff9d; font-size: 18px;">📋 Session Receipts</h2>
+            <div class="receipts" id="receipts"></div>
+        </div>
+    </div>
+
+    <script>
+        let replayData = null;
+        let currentTime = 0;
+        let isPlaying = false;
+        let playbackSpeed = 1.0;
+        let maxTime = 0;
+        let animationFrame = null;
+        let lastFrameTime = 0;
+
+        const fileInput = document.getElementById('file-input');
+        const loadSection = document.getElementById('load-section');
+        const viewerSection = document.getElementById('viewer-section');
+        const playBtn = document.getElementById('play-btn');
+        const pauseBtn = document.getElementById('pause-btn');
+        const restartBtn = document.getElementById('restart-btn');
+        const timelineSlider = document.getElementById('timeline-slider');
+        const timelineProgress = document.getElementById('timeline-progress');
+        const timelineScrubber = document.getElementById('timeline-scrubber');
+        const timeDisplay = document.getElementById('time-display');
+
+        fileInput.addEventListener('change', handleFileSelect);
+        playBtn.addEventListener('click', play);
+        pauseBtn.addEventListener('click', pause);
+        restartBtn.addEventListener('click', restart);
+        timelineSlider.addEventListener('click', handleTimelineClick);
+        timelineScrubber.addEventListener('mousedown', handleScrubberDrag);
+
+        function handleFileSelect(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                try {
+                    replayData = JSON.parse(e.target.result);
+                    loadReplay(replayData);
+                } catch (err) {
+                    alert('Error parsing JSON file: ' + err.message);
+                }
+            };
+            reader.readAsText(file);
+        }
+
+        function loadReplay(data) {
+            loadSection.style.display = 'none';
+            viewerSection.style.display = 'block';
+
+            renderMetadata(data.metadata);
+            renderEvents(data.timeline);
+            renderReceipts(data.receipts);
+
+            maxTime = data.timeline.length > 0
+                ? data.timeline[data.timeline.length - 1].t
+                : 0;
+
+            playbackSpeed = data.metadata.playback_speed || 1.0;
+            updateTimeline();
+        }
+
+        function renderMetadata(metadata) {
+            const html = `
+                <div class="metadata-item">
+                    <div class="metadata-label">Model</div>
+                    <div class="metadata-value">${metadata.model}</div>
+                </div>
+                <div class="metadata-item">
+                    <div class="metadata-label">Duration</div>
+                    <div class="metadata-value">${metadata.duration_seconds}s</div>
+                </div>
+                <div class="metadata-item">
+                    <div class="metadata-label">Playback Speed</div>
+                    <div class="metadata-value">${metadata.playback_speed}x</div>
+                </div>
+                <div class="metadata-item">
+                    <div class="metadata-label">Demo Length</div>
+                    <div class="metadata-value">${metadata.demo_duration_seconds}s</div>
+                </div>
+                ${metadata.cost_usd ? `
+                <div class="metadata-item">
+                    <div class="metadata-label">Cost</div>
+                    <div class="metadata-value">$${metadata.cost_usd.toFixed(4)}</div>
+                </div>
+                ` : ''}
+            `;
+            document.getElementById('metadata').innerHTML = html;
+        }
+
+        function renderEvents(timeline) {
+            const html = timeline.map((event, idx) => {
+                const toolName = event.tool ? ` [${event.tool}]` : '';
+                const dataStr = JSON.stringify(event.data, null, 2);
+
+                return `
+                    <div class="event" data-time="${event.t}" data-index="${idx}">
+                        <div class="event-header">
+                            <span class="event-type ${event.type}">${event.type}${toolName}</span>
+                            <span class="event-timestamp">${formatTime(event.t)}</span>
+                        </div>
+                        <div class="event-data">${dataStr}</div>
+                    </div>
+                `;
+            }).join('');
+            document.getElementById('events').innerHTML = html;
+        }
+
+        function renderReceipts(receipts) {
+            const html = `
+                ${receipts.tests_run ? `
+                <div class="receipt-item">
+                    <div class="receipt-label">Tests Run</div>
+                    <div class="receipt-value success">${receipts.tests_passed}/${receipts.tests_run}</div>
+                </div>
+                ` : ''}
+                ${receipts.ci_status ? `
+                <div class="receipt-item">
+                    <div class="receipt-label">CI Status</div>
+                    <div class="receipt-value ${receipts.ci_status === 'success' ? 'success' : 'failure'}">
+                        ${receipts.ci_status}
+                    </div>
+                </div>
+                ` : ''}
+                <div class="receipt-item">
+                    <div class="receipt-label">Files Changed</div>
+                    <div class="receipt-value">${receipts.files_changed}</div>
+                </div>
+                <div class="receipt-item">
+                    <div class="receipt-label">Lines Added</div>
+                    <div class="receipt-value">${receipts.lines_added}</div>
+                </div>
+            `;
+            document.getElementById('receipts').innerHTML = html;
+        }
+
+        function play() {
+            if (!replayData) return;
+            isPlaying = true;
+            playBtn.style.display = 'none';
+            pauseBtn.style.display = 'inline-block';
+            lastFrameTime = performance.now();
+            animationFrame = requestAnimationFrame(tick);
+        }
+
+        function pause() {
+            isPlaying = false;
+            playBtn.style.display = 'inline-block';
+            pauseBtn.style.display = 'none';
+            if (animationFrame) {
+                cancelAnimationFrame(animationFrame);
+            }
+        }
+
+        function restart() {
+            currentTime = 0;
+            updateTimeline();
+            if (isPlaying) {
+                pause();
+            }
+        }
+
+        function tick(timestamp) {
+            if (!isPlaying) return;
+
+            const delta = timestamp - lastFrameTime;
+            lastFrameTime = timestamp;
+
+            currentTime += delta * playbackSpeed;
+            if (currentTime > maxTime) {
+                currentTime = maxTime;
+                pause();
+            }
+
+            updateTimeline();
+            animationFrame = requestAnimationFrame(tick);
+        }
+
+        function updateTimeline() {
+            const progress = maxTime > 0 ? (currentTime / maxTime) * 100 : 0;
+            timelineProgress.style.width = progress + '%';
+            timelineScrubber.style.left = progress + '%';
+            timeDisplay.textContent = `${formatTime(currentTime)} / ${formatTime(maxTime)}`;
+
+            updateEventVisibility();
+        }
+
+        function updateEventVisibility() {
+            const events = document.querySelectorAll('.event');
+            let currentEvent = null;
+
+            events.forEach(event => {
+                const eventTime = parseInt(event.dataset.time);
+                if (eventTime <= currentTime) {
+                    event.classList.add('visible');
+                    currentEvent = event;
+                } else {
+                    event.classList.remove('visible');
+                }
+                event.classList.remove('current');
+            });
+
+            if (currentEvent) {
+                currentEvent.classList.add('current');
+                currentEvent.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            }
+        }
+
+        function handleTimelineClick(e) {
+            const rect = timelineSlider.getBoundingClientRect();
+            const clickX = e.clientX - rect.left;
+            const percentage = clickX / rect.width;
+            currentTime = percentage * maxTime;
+            updateTimeline();
+        }
+
+        function handleScrubberDrag(e) {
+            e.preventDefault();
+            const rect = timelineSlider.getBoundingClientRect();
+
+            function onMouseMove(e) {
+                const x = e.clientX - rect.left;
+                const percentage = Math.max(0, Math.min(1, x / rect.width));
+                currentTime = percentage * maxTime;
+                updateTimeline();
+            }
+
+            function onMouseUp() {
+                document.removeEventListener('mousemove', onMouseMove);
+                document.removeEventListener('mouseup', onMouseUp);
+            }
+
+            document.addEventListener('mousemove', onMouseMove);
+            document.addEventListener('mouseup', onMouseUp);
+        }
+
+        function formatTime(ms) {
+            const seconds = Math.floor(ms / 1000);
+            const minutes = Math.floor(seconds / 60);
+            const secs = seconds % 60;
+            return `${minutes}:${secs.toString().padStart(2, '0')}`;
+        }
+    </script>
+</body>
+</html>
