@@ -4,6 +4,7 @@ members = [
     "crates/acp-adapter",
     "crates/agent-orchestrator",
     "crates/autopilot",
+    "crates/autopilot-wasm",
     "crates/gitafter",
     "crates/frostr",
     "crates/gpt-oss",
