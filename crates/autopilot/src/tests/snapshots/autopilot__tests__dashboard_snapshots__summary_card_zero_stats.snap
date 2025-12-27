@@ -1,6 +1,0 @@
----
-source: crates/autopilot/src/tests/dashboard_snapshots.rs
-assertion_line: 120
-expression: html
----
-<div class="summary-card"><h2>Summary Statistics</h2><div class="stats-grid"><div class="stat"><span class="stat-label">Total Sessions</span><span class="stat-value">0</span></div><div class="stat"><span class="stat-label">Issues Completed</span><span class="stat-value">0</span></div><div class="stat"><span class="stat-label">Total Cost</span><span class="stat-value">$0.00</span></div><div class="stat"><span class="stat-label">Avg Duration</span><span class="stat-value">0s</span></div><div class="stat"><span class="stat-label">Avg Tokens</span><span class="stat-value">0</span></div><div class="stat"><span class="stat-label">Completion Rate</span><span class="stat-value">0.0%</span></div></div></div>

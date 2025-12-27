@@ -4,12 +4,12 @@
 //! - CLI subcommands for all functionality
 //!   - `openagents wallet ...`
 //!   - `openagents marketplace ...`
-//!   - `openagents autopilot ...`
 //!   - `openagents gitafter ...`
-//!   - `openagents daemon ...`
+//!
+//! Note: For the Autopilot GUI, use `cargo autopilot` which runs src/bin/autopilot.rs
 
 use clap::{Parser, Subcommand};
-use std::{env, process};
+use std::process;
 
 mod cli;
 
@@ -35,17 +35,9 @@ enum Commands {
     #[command(subcommand)]
     Marketplace(cli::marketplace::MarketplaceCommands),
 
-    /// Autopilot commands (autonomous task runner)
-    #[command(subcommand)]
-    Autopilot(cli::autopilot::AutopilotCommands),
-
     /// GitAfter commands (Nostr-native git)
     #[command(subcommand)]
     Gitafter(cli::gitafter::GitafterCommands),
-
-    /// Daemon commands (background supervisor)
-    #[command(subcommand)]
-    Daemon(cli::daemon::DaemonCommands),
 
     /// Auth commands (import credentials)
     #[command(subcommand)]
@@ -67,21 +59,14 @@ fn main() {
     // Run command
     let result = match cli.command {
         None => {
-            if env::var_os("OPENAGENTS_HEADLESS").is_some() {
-                println!("OpenAgents GUI disabled (OPENAGENTS_HEADLESS=1)");
-                Ok(())
-            } else {
-                if let Err(err) = autopilot_gui::run() {
-                    exit_with_error(err);
-                }
-                Ok(())
-            }
+            println!("OpenAgents CLI");
+            println!("Run 'openagents --help' to see available commands");
+            println!("Run 'cargo autopilot' to launch the Autopilot GUI");
+            Ok(())
         }
         Some(Commands::Wallet(cmd)) => cli::wallet::run(cmd),
         Some(Commands::Marketplace(cmd)) => cli::marketplace::run(cmd),
-        Some(Commands::Autopilot(cmd)) => cli::autopilot::run(cmd),
         Some(Commands::Gitafter(cmd)) => cli::gitafter::run(cmd),
-        Some(Commands::Daemon(cmd)) => cli::daemon::run(cmd),
         Some(Commands::Auth(cmd)) => cli::auth::run(cmd),
     };
 

@@ -1,9 +1,5 @@
 [alias]
 openagents = "run --bin openagents --"
-commander = "run --bin commander --"
-autopilot = "run -p autopilot --bin autopilot --"
-autopilotd = "run -p autopilot --bin autopilotd --"
-daemon = "run -p autopilot --bin autopilotd --"
-fullauto = ["run", "-p", "autopilot", "--bin", "autopilot", "--", "run", "--with-issues", "--full-auto", "--max-turns", "99999", "Begin autonomous work. Call issue_ready to get the first issue, or if none exist, review the active directives and create issues to advance them."]
+autopilot = "run --bin autopilot --"
 desktop = "run -p desktop"
 storybook = "run -p wgpui --example storybook --features desktop"

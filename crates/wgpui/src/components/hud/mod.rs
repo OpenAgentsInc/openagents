@@ -5,6 +5,7 @@ mod dots_grid;
 mod frame;
 mod frame_clips;
 mod notifications;
+mod resizable_pane;
 mod reticle;
 mod scanlines;
 mod signal_meter;
@@ -21,6 +22,7 @@ pub use frame_clips::{
     style_frame_clip_octagon,
 };
 pub use notifications::{Notification, NotificationLevel, NotificationPosition, Notifications};
+pub use resizable_pane::{ResizablePane, ResizeEdge};
 pub use reticle::Reticle;
 pub use scanlines::Scanlines;
 pub use signal_meter::SignalMeter;
@@ -49,6 +51,26 @@ mod tests {
         let _scanlines = Scanlines::new();
         let _meter = SignalMeter::new();
         let _reticle = Reticle::new();
+        let _resizable = ResizablePane::new();
+    }
+
+    #[test]
+    fn test_resizable_pane_workflow() {
+        let pane = ResizablePane::new()
+            .resizable(true)
+            .show_handles(true)
+            .min_size(100.0, 100.0)
+            .max_size(800.0, 600.0)
+            .size(400.0, 300.0);
+
+        assert!(pane.current_size().is_some());
+        let size = pane.current_size().unwrap();
+        assert_eq!(size.width, 400.0);
+        assert_eq!(size.height, 300.0);
+
+        // Test non-resizable mode
+        let fixed = ResizablePane::new().resizable(false);
+        assert_eq!(fixed.hovered_edge(), ResizeEdge::None);
     }
 
     #[test]

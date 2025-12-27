@@ -333,7 +333,7 @@ pub fn matching_issue_notification(issue_title: &str, repo_name: &str, event_id:
 /// # Example
 /// ```no_run
 /// use gitafter::notifications::send_pr_status_email;
-/// use autopilot::notifications::SmtpConfig;
+/// use gitafter::smtp_notifications::SmtpConfig;
 ///
 /// # tokio_test::block_on(async {
 /// let smtp = SmtpConfig {
@@ -358,7 +358,7 @@ pub async fn send_pr_status_email(
     old_status: &str,
     new_status: &str,
     to_email: &str,
-    smtp_config: &autopilot::notifications::SmtpConfig,
+    smtp_config: &crate::smtp_notifications::SmtpConfig,
 ) -> Result<()> {
     let status_emoji = match new_status {
         "Open" => "🟢",
@@ -368,7 +368,7 @@ pub async fn send_pr_status_email(
         _ => "🔄",
     };
 
-    let notification = autopilot::notifications::Notification::new(
+    let notification = crate::smtp_notifications::Notification::new(
         format!("{} PR Status Changed: {}", status_emoji, pr_title),
         format!(
             "Your pull request \"{}\" has been updated.\n\n\

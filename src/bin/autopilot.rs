@@ -1,4 +1,4 @@
-//! Commander - OpenAgents startup with auth checking
+//! Autopilot - OpenAgents autonomous agent with auth checking
 
 use std::path::Path;
 use std::process::{Command, Stdio};
@@ -280,46 +280,62 @@ struct RenderState {
     auth_state: AuthState,
     demo_rx: Option<Receiver<String>>,
     demo_started: bool,
+    scroll_offset: f32,
+    auto_scroll: bool,
 }
 
-/// Spawn the demo task in a background thread
+/// Spawn autopilot demo task in a background thread
 fn spawn_demo_task() -> Receiver<String> {
     let (tx, rx) = mpsc::channel();
 
     thread::spawn(move || {
-        // Send start message
         let _ = tx.send("DEMO_START".to_string());
         let _ = tx.send("".to_string());
-        let _ = tx.send("Running demo: ls -la".to_string());
+        let _ = tx.send("Delegating to Claude via autopilot...".to_string());
+        let _ = tx.send("Task: List files in current directory".to_string());
         let _ = tx.send("".to_string());
 
-        // Run ls -la command
-        let output = Command::new("ls")
-            .args(["-la"])
+        // Run autopilot with a simple task
+        let mut child = match Command::new("cargo")
+            .args([
+                "run", "-p", "autopilot", "--bin", "autopilot", "--",
+                "run", "List the files in the current directory. Just use ls, don't explain.",
+                "--dry-run", "--max-turns", "3"
+            ])
             .current_dir(".")
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
-            .output();
-
-        match output {
-            Ok(output) => {
-                // Send stdout lines
-                let stdout = String::from_utf8_lossy(&output.stdout);
-                for line in stdout.lines().take(15) {
-                    let _ = tx.send(format!("  {}", line));
-                }
-                if stdout.lines().count() > 15 {
-                    let _ = tx.send(format!("  ... ({} more lines)", stdout.lines().count() - 15));
-                }
-
-                let _ = tx.send("".to_string());
-                let _ = tx.send("DEMO_DONE".to_string());
-            }
+            .spawn()
+        {
+            Ok(child) => child,
             Err(e) => {
-                let _ = tx.send(format!("Error: {}", e));
+                let _ = tx.send(format!("Failed to start autopilot: {}", e));
                 let _ = tx.send("DEMO_DONE".to_string());
+                return;
+            }
+        };
+
+        // Stream stdout
+        if let Some(stdout) = child.stdout.take() {
+            use std::io::{BufRead, BufReader};
+            let reader = BufReader::new(stdout);
+            for line in reader.lines() {
+                match line {
+                    Ok(line) => {
+                        // Filter out noisy lines
+                        if !line.contains("Compiling") && !line.contains("Finished")
+                           && !line.contains("Running") && !line.trim().is_empty() {
+                            let _ = tx.send(format!("  {}", line));
+                        }
+                    }
+                    Err(_) => break,
+                }
             }
         }
+
+        let _ = child.wait();
+        let _ = tx.send("".to_string());
+        let _ = tx.send("DEMO_DONE".to_string());
     });
 
     rx
@@ -332,7 +348,7 @@ impl ApplicationHandler for App {
         }
 
         let window_attrs = Window::default_attributes()
-            .with_title("Commander")
+            .with_title("Autopilot")
             .with_inner_size(winit::dpi::LogicalSize::new(1600, 1000));
 
         let window = Arc::new(
@@ -402,6 +418,8 @@ impl ApplicationHandler for App {
                 auth_state: AuthState::new(),
                 demo_rx: None,
                 demo_started: false,
+                scroll_offset: 0.0,
+                auto_scroll: true,
             }
         });
 
@@ -426,6 +444,22 @@ impl ApplicationHandler for App {
                 state.config.width = new_size.width.max(1);
                 state.config.height = new_size.height.max(1);
                 state.surface.configure(&state.device, &state.config);
+                state.window.request_redraw();
+            }
+            WindowEvent::MouseWheel { delta, .. } => {
+                // Handle scroll wheel
+                let scroll_amount = match delta {
+                    winit::event::MouseScrollDelta::LineDelta(_, y) => y * 40.0,
+                    winit::event::MouseScrollDelta::PixelDelta(pos) => pos.y as f32,
+                };
+
+                // User is scrolling - disable auto-scroll
+                if scroll_amount.abs() > 0.1 {
+                    state.auto_scroll = false;
+                }
+
+                // Update scroll offset (inverted for natural scrolling)
+                state.scroll_offset = (state.scroll_offset - scroll_amount).max(0.0);
                 state.window.request_redraw();
             }
             WindowEvent::RedrawRequested => {
@@ -474,7 +508,7 @@ impl ApplicationHandler for App {
                 }
 
                 let mut scene = Scene::new();
-                render(
+                let (max_scroll, _) = render(
                     &mut scene,
                     &mut state.text_system,
                     width,
@@ -482,7 +516,17 @@ impl ApplicationHandler for App {
                     dots_progress,
                     frame_progress,
                     &state.auth_state,
+                    state.scroll_offset,
+                    state.auto_scroll,
                 );
+
+                // Clamp scroll offset to valid range
+                state.scroll_offset = state.scroll_offset.min(max_scroll).max(0.0);
+
+                // Re-enable auto-scroll if we're at the bottom
+                if state.scroll_offset >= max_scroll - 1.0 {
+                    state.auto_scroll = true;
+                }
 
                 let output = state
                     .surface
@@ -531,6 +575,7 @@ fn ease_out_cubic(t: f32) -> f32 {
     1.0 - (1.0 - t).powi(3)
 }
 
+/// Render the scene. Returns (max_scroll, content_height) for scroll clamping.
 fn render(
     scene: &mut Scene,
     text_system: &mut TextSystem,
@@ -539,7 +584,9 @@ fn render(
     dots_progress: f32,
     frame_progress: f32,
     auth_state: &AuthState,
-) {
+    scroll_offset: f32,
+    auto_scroll: bool,
+) -> (f32, f32) {
     // Black background
     scene.draw_quad(
         Quad::new(Bounds::new(0.0, 0.0, width, height))
@@ -589,31 +636,47 @@ fn render(
         // Terminal log lines inside frame
         if frame_progress > 0.5 {
             let text_alpha = ((frame_progress - 0.5) * 2.0).min(1.0);
-            let line_height = 26.0;
-            let font_size = 13.0;
-            let padding = 20.0;
+            let line_height = 22.0;
+            let font_size = 12.0;
+            let padding = 16.0;
             let text_area_x = frame_x + padding;
             let text_area_y = frame_y + padding;
             let text_area_w = frame_w - padding * 2.0;
             let text_area_h = frame_h - padding * 2.0;
 
-            // Clip to text area bounds
-            let clip_bounds = Bounds::new(text_area_x, text_area_y, text_area_w, text_area_h);
-            cx.scene.push_clip(clip_bounds);
+            // Calculate max chars per line (~7px per char at 12px font for monospace)
+            let char_width = 7.2;
+            let max_chars = (text_area_w / char_width) as usize;
 
             // Calculate how many lines fit
             let max_lines = (text_area_h / line_height) as usize;
-
-            // Auto-scroll: show the last N lines that fit
             let total_lines = auth_state.lines.len();
-            let start_idx = if total_lines > max_lines {
-                total_lines - max_lines
+
+            // Calculate total content height and max scroll
+            let content_height = total_lines as f32 * line_height;
+            let max_scroll = (content_height - text_area_h).max(0.0);
+
+            // Calculate which line to start from based on scroll offset
+            let start_idx = if auto_scroll {
+                // Auto-scroll: show the last N lines that fit
+                if total_lines > max_lines {
+                    total_lines - max_lines
+                } else {
+                    0
+                }
             } else {
-                0
+                // Manual scroll: use scroll_offset to determine start line
+                let scroll_lines = (scroll_offset / line_height) as usize;
+                scroll_lines.min(total_lines.saturating_sub(max_lines))
             };
 
-            for (i, log_line) in auth_state.lines.iter().skip(start_idx).enumerate() {
+            for (i, log_line) in auth_state.lines.iter().skip(start_idx).take(max_lines + 1).enumerate() {
                 let y = text_area_y + (i as f32 * line_height);
+
+                // Don't render if outside frame
+                if y > frame_y + frame_h - padding {
+                    break;
+                }
 
                 let color = match log_line.status {
                     LogStatus::Pending => Hsla::new(45.0, 0.9, 0.65, text_alpha),  // Yellow
@@ -629,12 +692,22 @@ fn render(
                     LogStatus::Info => "  ",
                 };
 
-                let text = format!("{}{}", prefix, log_line.text);
+                // Truncate text to fit within frame
+                let full_text = format!("{}{}", prefix, log_line.text);
+                let text = if full_text.chars().count() > max_chars {
+                    let truncated: String = full_text.chars().take(max_chars - 1).collect();
+                    format!("{}…", truncated)
+                } else {
+                    full_text
+                };
+
                 let text_run = cx.text.layout(&text, Point::new(text_area_x, y), font_size, color);
                 cx.scene.draw_text(text_run);
             }
 
-            cx.scene.pop_clip();
+            return (max_scroll, content_height);
         }
     }
+
+    (0.0, 0.0)
 }
