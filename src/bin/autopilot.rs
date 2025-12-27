@@ -1,11 +1,10 @@
 //! Autopilot - OpenAgents autonomous agent with auth checking
 
 use std::path::Path;
-use std::process::{Command, Stdio};
-use std::sync::mpsc::{self, Receiver};
 use std::sync::Arc;
-use std::thread;
 use std::time::Instant;
+use tracing::{debug, info, warn, error, Level};
+use tracing_subscriber::FmtSubscriber;
 use wgpui::{
     Bounds, Component, Easing, Hsla, PaintContext, Point, Quad, Scene, Size, TextSystem,
 };
@@ -19,8 +18,8 @@ use winit::event_loop::{ActiveEventLoop, EventLoop};
 use winit::keyboard::{KeyCode, PhysicalKey};
 use winit::window::{Window, WindowId};
 
-// Import auth from openagents crate
-use openagents::auth;
+// Import auth from autopilot crate
+use autopilot::auth;
 
 /// Shorten a path by replacing home directory with ~
 fn shorten_path(path: &Path) -> String {
@@ -34,6 +33,17 @@ fn shorten_path(path: &Path) -> String {
 }
 
 fn main() {
+    // Initialize logging
+    let subscriber = FmtSubscriber::builder()
+        .with_max_level(Level::DEBUG)
+        .with_target(true)
+        .with_thread_ids(false)
+        .with_file(false)
+        .with_line_number(false)
+        .init();
+
+    info!("Starting Autopilot");
+
     let event_loop = EventLoop::new().expect("Failed to create event loop");
     let mut app = App::default();
     event_loop.run_app(&mut app).expect("Event loop failed");
@@ -69,7 +79,6 @@ enum AuthPhase {
     CheckingOpenAgents,
     CopyingAuth,
     AuthComplete,
-    RunningDemo,
     Complete,
 }
 
@@ -238,11 +247,13 @@ impl AuthState {
             AuthPhase::AuthComplete => {
                 if phase_time > 0.3 && !self.lines.iter().any(|l| l.text.contains("Ready")) {
                     if auth::has_anthropic_auth() {
+                        info!("Anthropic auth is ready");
                         self.add_line("", LogStatus::Info, elapsed);
-                        self.add_line("Auth ready.", LogStatus::Success, elapsed);
-                        self.phase = AuthPhase::RunningDemo;
+                        self.add_line("Auth ready. Awaiting task...", LogStatus::Success, elapsed);
+                        self.phase = AuthPhase::Complete;
                         self.phase_started = elapsed;
                     } else {
+                        warn!("Anthropic auth not configured");
                         self.add_line("", LogStatus::Info, elapsed);
                         self.add_line("Anthropic auth not configured.", LogStatus::Error, elapsed);
                         self.add_line("Run: opencode auth login", LogStatus::Info, elapsed);
@@ -252,12 +263,8 @@ impl AuthState {
                 }
             }
 
-            AuthPhase::RunningDemo => {
-                // Demo phase handled externally via channel
-            }
-
             AuthPhase::Complete => {
-                // Final state - nothing more to do
+                // Final state - ready for task
             }
         }
     }
@@ -278,67 +285,8 @@ struct RenderState {
     text_system: TextSystem,
     start_time: Instant,
     auth_state: AuthState,
-    demo_rx: Option<Receiver<String>>,
-    demo_started: bool,
     scroll_offset: f32,
     auto_scroll: bool,
-}
-
-/// Spawn autopilot demo task in a background thread
-fn spawn_demo_task() -> Receiver<String> {
-    let (tx, rx) = mpsc::channel();
-
-    thread::spawn(move || {
-        let _ = tx.send("DEMO_START".to_string());
-        let _ = tx.send("".to_string());
-        let _ = tx.send("Delegating to Claude via autopilot...".to_string());
-        let _ = tx.send("Task: List files in current directory".to_string());
-        let _ = tx.send("".to_string());
-
-        // Run autopilot with a simple task
-        let mut child = match Command::new("cargo")
-            .args([
-                "run", "-p", "autopilot", "--bin", "autopilot", "--",
-                "run", "List the files in the current directory. Just use ls, don't explain.",
-                "--dry-run", "--max-turns", "3"
-            ])
-            .current_dir(".")
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
-        {
-            Ok(child) => child,
-            Err(e) => {
-                let _ = tx.send(format!("Failed to start autopilot: {}", e));
-                let _ = tx.send("DEMO_DONE".to_string());
-                return;
-            }
-        };
-
-        // Stream stdout
-        if let Some(stdout) = child.stdout.take() {
-            use std::io::{BufRead, BufReader};
-            let reader = BufReader::new(stdout);
-            for line in reader.lines() {
-                match line {
-                    Ok(line) => {
-                        // Filter out noisy lines
-                        if !line.contains("Compiling") && !line.contains("Finished")
-                           && !line.contains("Running") && !line.trim().is_empty() {
-                            let _ = tx.send(format!("  {}", line));
-                        }
-                    }
-                    Err(_) => break,
-                }
-            }
-        }
-
-        let _ = child.wait();
-        let _ = tx.send("".to_string());
-        let _ = tx.send("DEMO_DONE".to_string());
-    });
-
-    rx
 }
 
 impl ApplicationHandler for App {
@@ -416,8 +364,6 @@ impl ApplicationHandler for App {
                 text_system,
                 start_time: Instant::now(),
                 auth_state: AuthState::new(),
-                demo_rx: None,
-                demo_started: false,
                 scroll_offset: 0.0,
                 auto_scroll: true,
             }
@@ -475,35 +421,6 @@ impl ApplicationHandler for App {
                     let auth_elapsed = elapsed - 1.8; // Start auth checks after frame is mostly in
                     if auth_elapsed > 0.0 {
                         state.auth_state.tick(auth_elapsed);
-                    }
-                }
-
-                // Start demo task when entering RunningDemo phase
-                if state.auth_state.phase == AuthPhase::RunningDemo && !state.demo_started {
-                    state.demo_rx = Some(spawn_demo_task());
-                    state.demo_started = true;
-                }
-
-                // Process demo output
-                if let Some(ref rx) = state.demo_rx {
-                    // Non-blocking receive
-                    while let Ok(line) = rx.try_recv() {
-                        if line == "DEMO_START" {
-                            // Just a marker, skip
-                        } else if line == "DEMO_DONE" {
-                            state.auth_state.add_line("", LogStatus::Info, elapsed);
-                            state.auth_state.add_line("Demo complete.", LogStatus::Success, elapsed);
-                            state.auth_state.phase = AuthPhase::Complete;
-                        } else {
-                            let status = if line.starts_with("Error") {
-                                LogStatus::Error
-                            } else if line.starts_with("Running demo") {
-                                LogStatus::Pending
-                            } else {
-                                LogStatus::Info
-                            };
-                            state.auth_state.add_line(&line, status, elapsed);
-                        }
                     }
                 }
 

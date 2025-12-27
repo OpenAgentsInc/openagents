@@ -3,6 +3,7 @@ resolver = "2"
 members = [
     "crates/acp-adapter",
     "crates/agent-orchestrator",
+    "crates/autopilot",
     "crates/gitafter",
     "crates/frostr",
     "crates/gpt-oss",
@@ -54,6 +55,7 @@ path = "src/bin/autopilot.rs"
 
 [dependencies]
 # OpenAgents crates
+autopilot = { path = "crates/autopilot" }
 wallet = { path = "crates/wallet" }
 marketplace = { path = "crates/marketplace" }
 gitafter = { path = "crates/gitafter" }
