@@ -146,11 +146,18 @@ python3 -m http.server 8000
 
 ## Keyboard Shortcuts
 
+### Playback Control
 - **Space:** Play/Pause
 - **Left Arrow:** Rewind 5 seconds
 - **Right Arrow:** Fast-forward 5 seconds
 - **Home:** Jump to start
 - **End:** Jump to end
+
+### Speed Control
+- **+ / =:** Increase playback speed (0.5x → 1x → 2x → 5x)
+- **- / _:** Decrease playback speed (5x → 2x → 1x → 0.5x)
+- **1:** Set speed to 1.0x
+- **2:** Set speed to 2.0x
 
 ## Browser Compatibility
 
@@ -163,6 +170,8 @@ python3 -m http.server 8000
 
 - [x] Add keyboard shortcuts
 - [x] Implement diff view for file changes
+- [x] Add playback speed controls (issue #1527) ✅
+- [x] Persist speed preference to localStorage ✅
 - [ ] Add search/filter for events
 - [ ] Export as video/GIF
 - [ ] Dark/light theme toggle
