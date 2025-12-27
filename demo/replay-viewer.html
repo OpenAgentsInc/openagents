@@ -200,6 +200,43 @@
             word-wrap: break-word;
         }
 
+        .diff-view {
+            background: #0d0d0d;
+            border: 1px solid #222;
+            margin-top: 10px;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+
+        .diff-line {
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            padding: 2px 8px;
+            line-height: 1.4;
+        }
+
+        .diff-line.added {
+            background: #0a3d0a;
+            color: #00ff9d;
+        }
+
+        .diff-line.removed {
+            background: #3d0a0a;
+            color: #ff5555;
+        }
+
+        .diff-line.context {
+            color: #666;
+        }
+
+        .diff-header {
+            font-size: 11px;
+            color: #888;
+            padding: 8px;
+            border-bottom: 1px solid #222;
+            background: #0a0a0a;
+        }
+
         .receipts {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
@@ -336,6 +373,42 @@
         restartBtn.addEventListener('click', restart);
         timelineSlider.addEventListener('click', handleTimelineClick);
         timelineScrubber.addEventListener('mousedown', handleScrubberDrag);
+        document.addEventListener('keydown', handleKeyboard);
+
+        // Auto-load from URL parameters
+        window.addEventListener('DOMContentLoaded', checkAutoLoad);
+
+        function handleKeyboard(event) {
+            if (!replayData) return;
+
+            switch(event.code) {
+                case 'Space':
+                    event.preventDefault();
+                    if (isPlaying) pause();
+                    else play();
+                    break;
+                case 'ArrowLeft':
+                    event.preventDefault();
+                    currentTime = Math.max(0, currentTime - 5000);
+                    updateTimeline();
+                    break;
+                case 'ArrowRight':
+                    event.preventDefault();
+                    currentTime = Math.min(maxTime, currentTime + 5000);
+                    updateTimeline();
+                    break;
+                case 'Home':
+                    event.preventDefault();
+                    currentTime = 0;
+                    updateTimeline();
+                    break;
+                case 'End':
+                    event.preventDefault();
+                    currentTime = maxTime;
+                    updateTimeline();
+                    break;
+            }
+        }
 
         function handleFileSelect(event) {
             const file = event.target.files[0];
@@ -400,7 +473,19 @@
         function renderEvents(timeline) {
             const html = timeline.map((event, idx) => {
                 const toolName = event.tool ? ` [${event.tool}]` : '';
-                const dataStr = JSON.stringify(event.data, null, 2);
+
+                // Check if this is an Edit tool with diff capability
+                let contentHtml = '';
+                if (event.tool === 'Edit' && event.data.input) {
+                    const input = event.data.input;
+                    if (input.old_string && input.new_string) {
+                        contentHtml = renderDiff(input.file_path, input.old_string, input.new_string);
+                    } else {
+                        contentHtml = `<div class="event-data">${JSON.stringify(event.data, null, 2)}</div>`;
+                    }
+                } else {
+                    contentHtml = `<div class="event-data">${JSON.stringify(event.data, null, 2)}</div>`;
+                }
 
                 return `
                     <div class="event" data-time="${event.t}" data-index="${idx}">
@@ -408,11 +493,101 @@
                             <span class="event-type ${event.type}">${event.type}${toolName}</span>
                             <span class="event-timestamp">${formatTime(event.t)}</span>
                         </div>
-                        <div class="event-data">${dataStr}</div>
+                        ${contentHtml}
                     </div>
                 `;
             }).join('');
             document.getElementById('events').innerHTML = html;
+        }
+
+        function renderDiff(filePath, oldStr, newStr) {
+            const oldLines = oldStr.split('\n');
+            const newLines = newStr.split('\n');
+
+            // Simple LCS-based diff
+            const diff = computeDiff(oldLines, newLines);
+
+            let diffHtml = `<div class="diff-header">File: ${escapeHtml(filePath)}</div>`;
+            diffHtml += '<div class="diff-view">';
+
+            diff.forEach(line => {
+                if (line.type === 'added') {
+                    diffHtml += `<div class="diff-line added">+ ${escapeHtml(line.content)}</div>`;
+                } else if (line.type === 'removed') {
+                    diffHtml += `<div class="diff-line removed">- ${escapeHtml(line.content)}</div>`;
+                } else {
+                    diffHtml += `<div class="diff-line context">  ${escapeHtml(line.content)}</div>`;
+                }
+            });
+
+            diffHtml += '</div>';
+            return diffHtml;
+        }
+
+        function computeDiff(oldLines, newLines) {
+            // Myers diff algorithm (simplified version)
+            const result = [];
+            let i = 0, j = 0;
+
+            while (i < oldLines.length || j < newLines.length) {
+                if (i < oldLines.length && j < newLines.length && oldLines[i] === newLines[j]) {
+                    // Context line (unchanged)
+                    result.push({ type: 'context', content: oldLines[i] });
+                    i++;
+                    j++;
+                } else if (i < oldLines.length && j < newLines.length && oldLines[i] !== newLines[j]) {
+                    // Look ahead to find if this is a modification or separate add/remove
+                    let oldIdx = i;
+                    let newIdx = j;
+                    let foundMatch = false;
+
+                    // Look ahead a few lines to find matching content
+                    for (let lookAhead = 1; lookAhead <= 3; lookAhead++) {
+                        if (i + lookAhead < oldLines.length && oldLines[i + lookAhead] === newLines[j]) {
+                            // Found match in old, so current old lines are removed
+                            for (let k = 0; k < lookAhead; k++) {
+                                result.push({ type: 'removed', content: oldLines[i + k] });
+                            }
+                            i += lookAhead;
+                            foundMatch = true;
+                            break;
+                        }
+                        if (j + lookAhead < newLines.length && oldLines[i] === newLines[j + lookAhead]) {
+                            // Found match in new, so current new lines are added
+                            for (let k = 0; k < lookAhead; k++) {
+                                result.push({ type: 'added', content: newLines[j + k] });
+                            }
+                            j += lookAhead;
+                            foundMatch = true;
+                            break;
+                        }
+                    }
+
+                    if (!foundMatch) {
+                        // No match found, treat as replacement
+                        result.push({ type: 'removed', content: oldLines[i] });
+                        result.push({ type: 'added', content: newLines[j] });
+                        i++;
+                        j++;
+                    }
+                } else if (i < oldLines.length) {
+                    // Removed lines at the end
+                    result.push({ type: 'removed', content: oldLines[i] });
+                    i++;
+                } else {
+                    // Added lines at the end
+                    result.push({ type: 'added', content: newLines[j] });
+                    j++;
+                }
+            }
+
+            return result;
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
         }
 
         function renderReceipts(receipts) {
@@ -548,6 +723,46 @@
             const minutes = Math.floor(seconds / 60);
             const secs = seconds % 60;
             return `${minutes}:${secs.toString().padStart(2, '0')}`;
+        }
+
+        function checkAutoLoad() {
+            const params = new URLSearchParams(window.location.search);
+
+            // Check for demo parameter
+            if (params.has('demo')) {
+                const demoFile = params.get('demo');
+                loadFromUrl(demoFile);
+                return;
+            }
+
+            // Check for uploaded file in sessionStorage
+            if (params.get('upload') === 'true') {
+                const blobUrl = sessionStorage.getItem('uploadedReplayBlob');
+                if (blobUrl) {
+                    loadFromUrl(blobUrl);
+                    // Clear the stored blob URL after loading
+                    sessionStorage.removeItem('uploadedReplayBlob');
+                    sessionStorage.removeItem('uploadedReplayName');
+                }
+            }
+        }
+
+        function loadFromUrl(url) {
+            fetch(url)
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    replayData = data;
+                    loadReplay(data);
+                })
+                .catch(error => {
+                    console.error('Error loading replay:', error);
+                    alert('Failed to load replay: ' + error.message);
+                });
         }
     </script>
 </body>

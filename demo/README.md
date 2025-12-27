@@ -90,11 +90,59 @@ python3 -m http.server 8000
 
 ### Publish a Demo
 
-1. Review replay for quality (no crashes, tests passed)
-2. Ensure secrets are redacted
-3. Upload bundle JSON to CDN
-4. Embed viewer on website
-5. Link to bundle in viewer
+**Step-by-step publishing workflow:**
+
+1. **Run Autopilot Session**
+   ```bash
+   # Start autopilot on an issue
+   cargo run -p autopilot -- run "implement feature X"
+
+   # Session log will be saved to:
+   # ~/.openagents/sessions/YYYYMMDD/HHMMSS-sessionid.jsonl
+   ```
+
+2. **Convert to Replay Bundle**
+   ```bash
+   # Find your session log
+   SESSION_LOG=$(ls -t ~/.openagents/sessions/*/*.jsonl | head -1)
+
+   # Convert to replay bundle (with automatic redaction)
+   cargo run -p autopilot --example replay_demo $SESSION_LOG demo/my-demo.json
+   ```
+
+3. **Review Quality**
+   - Open `demo/index.html` in browser
+   - Upload `my-demo.json` to test the replay
+   - Verify: No crashes, tests passed, good narrative
+   - Check: Secrets properly redacted
+
+4. **Add to Demo Gallery**
+   - Edit `demo/index.html`
+   - Add entry to `demos` array with metadata
+   - Update status from `'coming-soon'` to `'live'`
+   - Set bundle path to your JSON file
+
+5. **Publish**
+   - Commit demo JSON to repository
+   - Push to GitHub
+   - Optionally: Upload to CDN for faster loading
+   - Share the demo link: `https://your-site.com/demo/index.html`
+
+**Example demo entry:**
+```javascript
+{
+    id: 'my-feature',
+    title: 'Implement Feature X',
+    description: 'Full implementation of feature X including tests',
+    duration: '12m 30s',
+    model: 'sonnet-4.5',
+    files_changed: 7,
+    tests_passed: '89/89',
+    tags: ['rust', 'feature', 'testing'],
+    status: 'live',
+    bundle: 'my-demo.json'
+}
+```
 
 ## Keyboard Shortcuts
 
@@ -113,8 +161,8 @@ python3 -m http.server 8000
 
 ## Next Steps
 
-- [ ] Add keyboard shortcuts
-- [ ] Implement diff view for file changes
+- [x] Add keyboard shortcuts
+- [x] Implement diff view for file changes
 - [ ] Add search/filter for events
 - [ ] Export as video/GIF
 - [ ] Dark/light theme toggle

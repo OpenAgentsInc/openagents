@@ -3,8 +3,8 @@
 ## Overview
 
 **Directive:** Autopilot Demo + Dogfooding Funnel
-**Status:** In Progress (MVP Phase)
-**Last Updated:** 2025-12-26
+**Status:** In Progress (MVP Phase - Web Viewer Complete)
+**Last Updated:** 2025-12-27
 
 ## Completed Infrastructure
 
@@ -35,18 +35,20 @@
 
 ## Implementation Status by Phase
 
-### Phase 1: Demo Replay Component ⚠️ Partial
+### Phase 1: Demo Replay Component ✅ Complete (Web Version)
 - [x] Replay bundle format specification
 - [x] Timeline event structure
 - [x] Tool call visualization data
 - [x] Receipts panel data
 - [x] Cost + duration + APM metadata
-- [ ] **MISSING:** WGPUI replay viewer component
-- [ ] **MISSING:** Scrub-able timeline UI
-- [ ] **MISSING:** Inline diff display
-- [ ] **MISSING:** Playback controls
+- [x] Web-based replay viewer (demo/replay-viewer.html)
+- [x] Scrub-able timeline UI with drag controls
+- [x] Inline diff display for Edit tool calls
+- [x] Playback controls (play/pause/restart)
+- [x] Keyboard shortcuts (Space, Arrow keys, Home/End)
+- [ ] WGPUI desktop viewer (deferred)
 
-**Status:** Data format complete, UI rendering not started
+**Status:** Web viewer complete and functional, desktop viewer deferred
 
 ### Phase 2: Replay Publishing Pipeline ✅ Complete
 - [x] Replay bundle format (ReplayBundle struct)
@@ -58,15 +60,18 @@
 
 **Status:** Core pipeline functional, distribution not configured
 
-### Phase 3: Homepage Integration ❌ Not Started
-- [ ] Homepage website existence
-- [ ] Replay viewer embed
-- [ ] Auto-play on scroll
-- [ ] Mobile-responsive layout
-- [ ] Loading states and error handling
-- [ ] A/B testing infrastructure
+### Phase 3: Homepage Integration ✅ MVP Complete
+- [x] Demo gallery page (demo/index.html)
+- [x] Replay viewer embed via query params
+- [x] Upload functionality for custom replays
+- [x] Demo catalog with metadata
+- [x] Real demo content (keyboard shortcuts session)
+- [x] Loading states and error handling
+- [ ] Auto-play on scroll (deferred)
+- [ ] Mobile-responsive layout (deferred)
+- [ ] A/B testing infrastructure (deferred)
 
-**Status:** Requires web frontend (not in codebase)
+**Status:** MVP functional with demo gallery and working viewer
 
 ### Phase 4: Repo Connection (FREE) ✅ Complete
 - [x] GitHub OAuth flow (github.rs)
@@ -259,16 +264,34 @@ Latest: `c4f2bb48d` - Add replay bundle format and publishing pipeline for d-027
 
 ## Conclusion
 
-**d-027 Progress:** ~40% complete
+**d-027 Progress:** ~65% complete
 
-**MVP Blockers:**
-1. Replay viewer UI (critical)
-2. Homepage/landing page (critical)
-3. Demo selection workflow (important)
+**Recently Completed (2025-12-27):**
+1. ✅ Web-based replay viewer with full timeline controls
+2. ✅ Inline diff display for Edit tool calls
+3. ✅ Keyboard shortcuts for playback control
+4. ✅ Demo gallery page with real demo content
+5. ✅ End-to-end demo publishing pipeline tested
+
+**MVP Status:**
+- **Replay viewer UI:** ✅ COMPLETE (web version)
+- **Homepage/landing page:** ✅ COMPLETE (demo gallery)
+- **Demo selection workflow:** ⚠️ PARTIAL (manual publish works)
+
+**Remaining for Full Launch:**
+1. Deployment to openagents.com (infrastructure)
+2. Auto-promote workflow for high-quality sessions
+3. Free trial enforcement (Phase 6)
+4. Payment integration (Phase 7)
 
 **Recommendation:**
-Proceed with **Option C (Hybrid approach)** - build simple web replay viewer using JavaScript/HTML, reuse existing replay bundle format, launch minimal demo page, then iterate.
+Ready to deploy MVP demo gallery. Next steps:
+1. Deploy demo/ directory to public hosting
+2. Create 5-10 additional demo sessions via dogfooding
+3. Gather early user feedback on demo quality
+4. Implement payment only after validating demand
 
-**Estimated time to MVP demo:** 2-4 days with focused effort on web viewer.
+**Estimated time to public demo:** 1-2 hours (deploy + DNS)
+**Estimated time to payment-ready:** 1-2 weeks (after user validation)
 
-**Next autonomous task:** Implement basic web-based replay viewer in HTML/JS that consumes the replay bundle format.
+**Next autonomous task:** Generate 5 more high-quality demo sessions by running autopilot on real OpenAgents issues.
