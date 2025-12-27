@@ -5,6 +5,7 @@ pub mod preflight;
 pub mod startup;
 pub mod streaming;
 pub mod utils;
+pub mod workflow;
 
 pub use auth::{
     AuthEntry, AuthStatus, AuthStore,
@@ -37,3 +38,7 @@ pub use streaming::{
 };
 
 pub use utils::{shorten_path, sanitize_text, wrap_text};
+
+pub use workflow::{
+    GitHubWorkflow, IssueWorkflowResult, WorkflowReceipt,
+};
