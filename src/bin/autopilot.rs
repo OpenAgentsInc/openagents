@@ -82,7 +82,7 @@ struct StartupState {
     gpt_oss_assessment: Option<String>,
     claude_receiver: Option<mpsc::Receiver<ClaudeToken>>,
     claude_plan_buffer: String,
-    claude_tool_activity: Vec<String>,
+    claude_tool_calls: Vec<ToolCall>,
     plan_path: Option<PathBuf>,
 }
 
@@ -111,10 +111,17 @@ enum StreamToken {
 
 enum ClaudeToken {
     Chunk(String),
-    ToolUse { name: String, description: String },
-    ToolResult { name: String },
+    ToolUse { name: String, params: String },
+    ToolDone { name: String },
     Done(String),
     Error(String),
+}
+
+#[derive(Clone)]
+struct ToolCall {
+    name: String,
+    params: String,
+    done: bool,
 }
 
 impl StartupState {
@@ -130,7 +137,7 @@ impl StartupState {
             gpt_oss_assessment: None,
             claude_receiver: None,
             claude_plan_buffer: String::new(),
-            claude_tool_activity: Vec::new(),
+            claude_tool_calls: Vec::new(),
             plan_path: None,
         }
     }
@@ -465,12 +472,18 @@ impl StartupState {
                             self.claude_plan_buffer.push_str(&text);
                             self.update_claude_streaming_line(elapsed);
                         }
-                        ClaudeToken::ToolUse { name, description } => {
-                            self.claude_tool_activity.push(format!("[{}] {}", name, description));
+                        ClaudeToken::ToolUse { name, params } => {
+                            self.claude_tool_calls.push(ToolCall {
+                                name: name.clone(),
+                                params,
+                                done: false,
+                            });
                             self.update_claude_streaming_line(elapsed);
                         }
-                        ClaudeToken::ToolResult { name } => {
-                            self.claude_tool_activity.push(format!("[{}] completed", name));
+                        ClaudeToken::ToolDone { name } => {
+                            if let Some(call) = self.claude_tool_calls.iter_mut().rev().find(|c| c.name == name && !c.done) {
+                                call.done = true;
+                            }
                             self.update_claude_streaming_line(elapsed);
                         }
                         ClaudeToken::Done(plan) => {
@@ -588,18 +601,13 @@ impl StartupState {
         
         self.lines.truncate(start_idx);
         
-        let tool_count = self.claude_tool_activity.len();
+        let tool_count = self.claude_tool_calls.len();
+        let done_count = self.claude_tool_calls.iter().filter(|c| c.done).count();
         let text_lines: Vec<String> = self.claude_plan_buffer.lines().map(|s| s.to_string()).collect();
         let text_count = text_lines.len();
         
         if tool_count > 0 || text_count > 0 {
-            self.add_line(&format!("  {} tool calls, {} lines generated", tool_count, text_count), LogStatus::Thinking, elapsed);
-        }
-        
-        let tool_activity = self.claude_tool_activity.clone();
-        let start = if tool_activity.len() > 8 { tool_activity.len() - 8 } else { 0 };
-        for activity in &tool_activity[start..] {
-            self.add_line(&format!("  {}", activity), LogStatus::Info, elapsed);
+            self.add_line(&format!("  {} tools ({} done), {} lines", tool_count, done_count, text_count), LogStatus::Thinking, elapsed);
         }
         
         if text_count > 0 {
@@ -610,9 +618,21 @@ impl StartupState {
                 .collect();
             
             for line in tail_lines {
-                let display = if line.len() > 80 { format!("{}...", &line[..77]) } else { line };
+                let display = if line.len() > 70 { format!("{}...", &line[..67]) } else { line };
                 self.add_line(&format!("  > {}", display), LogStatus::Thinking, elapsed);
             }
+        }
+        
+        let tool_calls = self.claude_tool_calls.clone();
+        let start = if tool_calls.len() > 6 { tool_calls.len() - 6 } else { 0 };
+        for call in &tool_calls[start..] {
+            let status = if call.done { "done" } else { "..." };
+            let params_display = if call.params.len() > 50 { 
+                format!("{}...", &call.params[..47]) 
+            } else { 
+                call.params.clone() 
+            };
+            self.add_line(&format!("  [{}] {} {}", call.name, params_display, status), LogStatus::Info, elapsed);
         }
     }
 
@@ -766,6 +786,7 @@ Focus on being actionable and specific. This plan will guide what an autonomous 
         };
 
         let mut full_response = String::new();
+        let mut last_tool_name = String::new();
         
         while let Some(msg) = stream.next().await {
             match msg {
@@ -785,21 +806,52 @@ Focus on being actionable and specific. This plan will guide what an autonomous 
                                 }
                                 if let Some(tool_name) = block.get("name").and_then(|n| n.as_str()) {
                                     eprintln!("[CLAUDE][TOOL_USE] name={}", tool_name);
-                                    let description = block.get("input")
-                                        .and_then(|i| i.get("description"))
-                                        .and_then(|d| d.as_str())
-                                        .or_else(|| block.get("input")
-                                            .and_then(|i| i.get("prompt"))
+                                    let input = block.get("input");
+                                    let params = match tool_name {
+                                        "Read" | "read" => input
+                                            .and_then(|i| i.get("filePath"))
                                             .and_then(|p| p.as_str())
-                                            .map(|s| if s.len() > 60 { &s[..60] } else { s }))
-                                        .unwrap_or("running...")
-                                        .to_string();
+                                            .unwrap_or("")
+                                            .to_string(),
+                                        "Bash" | "bash" => input
+                                            .and_then(|i| i.get("command"))
+                                            .and_then(|c| c.as_str())
+                                            .unwrap_or("")
+                                            .to_string(),
+                                        "Glob" | "glob" => input
+                                            .and_then(|i| i.get("pattern"))
+                                            .and_then(|p| p.as_str())
+                                            .unwrap_or("")
+                                            .to_string(),
+                                        "Grep" | "grep" => input
+                                            .and_then(|i| i.get("pattern"))
+                                            .and_then(|p| p.as_str())
+                                            .unwrap_or("")
+                                            .to_string(),
+                                        "Edit" | "edit" | "Write" | "write" => input
+                                            .and_then(|i| i.get("filePath"))
+                                            .and_then(|p| p.as_str())
+                                            .unwrap_or("")
+                                            .to_string(),
+                                        "Task" | "task" => input
+                                            .and_then(|i| i.get("description"))
+                                            .and_then(|d| d.as_str())
+                                            .unwrap_or("")
+                                            .to_string(),
+                                        _ => input
+                                            .and_then(|i| i.get("description"))
+                                            .and_then(|d| d.as_str())
+                                            .or_else(|| input.and_then(|i| i.get("prompt")).and_then(|p| p.as_str()))
+                                            .unwrap_or("")
+                                            .to_string(),
+                                    };
+                                    last_tool_name = tool_name.to_string();
                                     let _ = tx.send(ClaudeToken::ToolUse { 
                                         name: tool_name.to_string(), 
-                                        description 
+                                        params 
                                     });
-                                    if let Some(input) = block.get("input") {
-                                        eprintln!("[CLAUDE][TOOL_USE] input={}", serde_json::to_string_pretty(input).unwrap_or_default());
+                                    if let Some(inp) = input {
+                                        eprintln!("[CLAUDE][TOOL_USE] input={}", serde_json::to_string_pretty(inp).unwrap_or_default());
                                     }
                                 }
                             }
@@ -810,11 +862,12 @@ Focus on being actionable and specific. This plan will guide what an autonomous 
                     eprintln!("[CLAUDE][USER] session_id={}", user_msg.session_id);
                     eprintln!("[CLAUDE][USER] message={}", serde_json::to_string_pretty(&user_msg.message).unwrap_or_default());
                     if let Some(tool_result) = &user_msg.tool_use_result {
-                        let tool_name = tool_result.get("type")
-                            .and_then(|t| t.as_str())
-                            .unwrap_or("tool")
+                        let tool_name = tool_result.get("name")
+                            .and_then(|n| n.as_str())
+                            .or_else(|| tool_result.get("tool_name").and_then(|n| n.as_str()))
+                            .unwrap_or(&last_tool_name)
                             .to_string();
-                        let _ = tx.send(ClaudeToken::ToolResult { name: tool_name });
+                        let _ = tx.send(ClaudeToken::ToolDone { name: tool_name });
                         eprintln!("[CLAUDE][TOOL_RESULT] {}", serde_json::to_string_pretty(tool_result).unwrap_or_default());
                     }
                 }
