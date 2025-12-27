@@ -4,9 +4,11 @@ pub mod claude;
 pub mod github;
 pub mod logger;
 pub mod preflight;
+pub mod report;
 pub mod startup;
 pub mod streaming;
 pub mod utils;
+pub mod verification;
 pub mod workflow;
 
 pub use auth::{
@@ -50,4 +52,14 @@ pub use utils::{shorten_path, sanitize_text, wrap_text};
 
 pub use workflow::{
     GitHubWorkflow, IssueWorkflowResult, WorkflowReceipt,
+};
+
+pub use verification::{
+    TerminationChecklist, CheckResult, VerificationRunner,
+    generate_fix_prompt, should_force_stop,
+};
+
+pub use report::{
+    AfterActionReport, SessionStats,
+    collect_session_stats, generate_suggested_next_steps, generate_questions_for_user,
 };
