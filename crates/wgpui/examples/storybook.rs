@@ -27,8 +27,8 @@ use wgpui::components::hud::{
     Command, CommandPalette, ContextMenu, CornerConfig, DotsGrid, DotsOrigin, DotShape, DrawDirection,
     Frame, FrameAnimation, FrameStyle, GridLinesBackground, LineDirection, MenuItem,
     MovingLinesBackground, Notification, NotificationLevel, NotificationPosition, Notifications,
-    PuffsBackground, Reticle, Scanlines, SignalMeter, StatusBar, StatusBarPosition, StatusItem,
-    StatusItemAlignment, Tooltip, TooltipPosition,
+    PuffsBackground, ResizablePane, ResizeEdge, Reticle, Scanlines, SignalMeter, StatusBar,
+    StatusBarPosition, StatusItem, StatusItemAlignment, Tooltip, TooltipPosition,
 };
 use wgpui::components::molecules::{
     BalanceCard, CheckpointRestore, DiffHeader, DiffType, InvoiceDisplay, InvoiceInfo, InvoiceType,
@@ -2691,6 +2691,61 @@ impl Storybook {
                         .tick_length(*tick)
                         .color(Hsla::new(*hue, 0.6, 0.6, 0.85));
                     reticle.paint(inset_bounds(inner, 6.0), cx);
+                });
+            }
+        });
+        y += reticle_height + SECTION_GAP;
+
+        // Resizable pane demos
+        let resizable_presets: [(&str, bool, bool, f32); 6] = [
+            ("Default", true, false, 8.0),
+            ("Visible", true, true, 8.0),
+            ("Large", true, true, 12.0),
+            ("Small", true, true, 4.0),
+            ("Disabled", false, false, 8.0),
+            ("Styled", true, true, 10.0),
+        ];
+
+        let resizable_grid = grid_metrics(available, resizable_presets.len(), BG_TILE_W, BG_TILE_H, BG_TILE_GAP);
+        let resizable_height = panel_height(resizable_grid.height);
+        let resizable_bounds = Bounds::new(bounds.origin.x, y, width, resizable_height);
+        draw_panel("Resizable panes", resizable_bounds, cx, |inner, cx| {
+            let grid = grid_metrics(inner.size.width, resizable_presets.len(), BG_TILE_W, BG_TILE_H, BG_TILE_GAP);
+            for (idx, (label, resizable, show_handles, handle_size)) in resizable_presets.iter().enumerate() {
+                let row = idx / grid.cols;
+                let col = idx % grid.cols;
+                let tile_bounds = Bounds::new(
+                    inner.origin.x + col as f32 * (BG_TILE_W + BG_TILE_GAP),
+                    inner.origin.y + row as f32 * (BG_TILE_H + BG_TILE_GAP),
+                    BG_TILE_W,
+                    BG_TILE_H,
+                );
+                draw_tile(tile_bounds, label, cx, |inner, cx| {
+                    let (handle_color, handle_hover_color, bg, border) = if *label == "Styled" {
+                        (
+                            Hsla::new(180.0, 0.6, 0.4, 0.4),
+                            Hsla::new(180.0, 0.8, 0.6, 0.8),
+                            Hsla::new(180.0, 0.2, 0.1, 0.6),
+                            Hsla::new(180.0, 0.6, 0.5, 0.8),
+                        )
+                    } else {
+                        (
+                            Hsla::new(0.0, 0.0, 0.5, 0.3),
+                            Hsla::new(180.0, 0.6, 0.5, 0.6),
+                            Hsla::new(0.0, 0.0, 0.15, 0.5),
+                            Hsla::new(0.0, 0.0, 0.4, 0.6),
+                        )
+                    };
+                    let mut pane = ResizablePane::new()
+                        .resizable(*resizable)
+                        .show_handles(*show_handles)
+                        .handle_size(*handle_size)
+                        .handle_color(handle_color)
+                        .handle_hover_color(handle_hover_color)
+                        .background(bg)
+                        .border_color(border)
+                        .border_width(1.0);
+                    pane.paint(inset_bounds(inner, 4.0), cx);
                 });
             }
         });
@@ -9046,9 +9101,10 @@ fn arwes_illuminator_height(bounds: Bounds) -> f32 {
 fn hud_widgets_height(bounds: Bounds) -> f32 {
     let available = (bounds.size.width - PANEL_PADDING * 2.0).max(0.0);
     let panels = [
-        panel_height(grid_metrics(available, 6, BG_TILE_W, BG_TILE_H, BG_TILE_GAP).height),
-        panel_height(grid_metrics(available, 6, BG_TILE_W, BG_TILE_H, BG_TILE_GAP).height),
-        panel_height(grid_metrics(available, 6, BG_TILE_W, BG_TILE_H, BG_TILE_GAP).height),
+        panel_height(grid_metrics(available, 6, BG_TILE_W, BG_TILE_H, BG_TILE_GAP).height), // Scanlines
+        panel_height(grid_metrics(available, 6, BG_TILE_W, BG_TILE_H, BG_TILE_GAP).height), // Signal meters
+        panel_height(grid_metrics(available, 6, BG_TILE_W, BG_TILE_H, BG_TILE_GAP).height), // Reticles
+        panel_height(grid_metrics(available, 6, BG_TILE_W, BG_TILE_H, BG_TILE_GAP).height), // Resizable panes
     ];
     stacked_height(&panels)
 }

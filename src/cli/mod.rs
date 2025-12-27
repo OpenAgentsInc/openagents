@@ -4,7 +4,5 @@
 
 pub mod auth;
 pub mod gitafter;
-pub mod autopilot;
-pub mod daemon;
 pub mod marketplace;
 pub mod wallet;

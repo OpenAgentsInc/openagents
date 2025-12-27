@@ -8,6 +8,7 @@ pub mod middleware;
 pub mod nostr;
 pub mod notifications;
 pub mod reputation;
+pub mod smtp_notifications;
 pub mod review;
 pub mod server;
 pub mod secure_storage;
