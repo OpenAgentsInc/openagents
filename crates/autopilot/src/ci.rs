@@ -147,7 +147,7 @@ impl CIClient {
         for run in check_runs.check_runs {
             checks_total += 1;
 
-            let run_conclusion = run.conclusion.as_ref().map(|c| c.as_str());
+            let run_conclusion = run.conclusion.as_deref();
             let status = match run_conclusion {
                 Some("success") | Some("neutral") => {
                     checks_passed += 1;
@@ -176,7 +176,7 @@ impl CIClient {
                 name: run.name,
                 status: status.clone(),
                 conclusion: run.conclusion.as_ref().map(|c| c.as_str().to_string()),
-                details_url: run.details_url.map(|u| u.to_string()),
+                details_url: run.details_url,
             });
         }
 
