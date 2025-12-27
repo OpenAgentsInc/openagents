@@ -936,16 +936,17 @@ fn ease_out_cubic(t: f32) -> f32 {
 fn sanitize_text(text: &str) -> String {
     text.chars()
         .filter_map(|c| match c {
-            '—' | '–' => Some('-'),
-            '\u{2018}' | '\u{2019}' => Some('\''),
-            '\u{201C}' | '\u{201D}' => Some('"'),
-            '…' => None,
-            '\u{200B}' | '\u{200C}' | '\u{200D}' | '\u{FEFF}' => None,
-            c if c.is_ascii() || c == ' ' => Some(c),
-            _ => Some('?'),
+            '—' | '–' | '\u{2012}' | '\u{2013}' | '\u{2014}' | '\u{2015}' => Some('-'),
+            '\u{2018}' | '\u{2019}' | '\u{201A}' | '\u{201B}' => Some('\''),
+            '\u{201C}' | '\u{201D}' | '\u{201E}' | '\u{201F}' => Some('"'),
+            '…' | '\u{2026}' => Some('.'),
+            '\u{200B}' | '\u{200C}' | '\u{200D}' | '\u{FEFF}' | '\u{00AD}' => None,
+            '\u{2022}' | '\u{2023}' | '\u{2043}' => Some('-'),
+            '\u{00A0}' => Some(' '),
+            c if c.is_ascii() => Some(c),
+            _ => None,
         })
-        .collect::<String>()
-        .replace("???", "...")
+        .collect()
 }
 
 fn wrap_text(text: &str, max_chars: usize) -> Vec<String> {

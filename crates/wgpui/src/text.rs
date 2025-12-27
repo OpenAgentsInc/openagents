@@ -93,6 +93,8 @@ impl TextSystem {
             db.load_font_data(italic.to_vec());
             db.load_font_data(bold_italic.to_vec());
 
+            db.load_system_fonts();
+
             FontSystem::new_with_locale_and_db("en-US".to_string(), db)
         };
 
