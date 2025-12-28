@@ -43,6 +43,10 @@ struct Args {
     /// Model to use for inference (default: auto-detect first available)
     #[arg(long)]
     model: Option<String>,
+
+    /// Enable streaming responses (send tokens as they're generated)
+    #[arg(long)]
+    stream: bool,
 }
 
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync>>;
@@ -312,7 +316,7 @@ async fn main() -> Result<()> {
                 println!("[PROVIDER] Processing prompt: {}", prompt);
 
                 // Run inference
-                let result_text = if let Some(backend) = registry.default() {
+                if let Some(backend) = registry.default() {
                     println!("[PROVIDER] Running inference with {}...", registry.default_id().unwrap_or("unknown"));
 
                     let request = CompletionRequest::new(&model_to_use, &prompt)
@@ -320,27 +324,88 @@ async fn main() -> Result<()> {
                         .with_temperature(0.7);
 
                     let backend = backend.read().await;
-                    match backend.complete(request).await {
-                        Ok(response) => {
-                            println!("[PROVIDER] Inference complete ({} tokens)",
-                                response.usage.as_ref().map(|u| u.completion_tokens).unwrap_or(0));
-                            response.text
+
+                    if args.stream {
+                        // Streaming mode - send chunks as they arrive
+                        match backend.complete_stream(request).await {
+                            Ok(mut rx) => {
+                                let mut accumulated = String::new();
+                                let mut chunk_count = 0;
+
+                                while let Some(chunk_result) = rx.recv().await {
+                                    match chunk_result {
+                                        Ok(chunk) => {
+                                            accumulated.push_str(&chunk.delta);
+                                            chunk_count += 1;
+
+                                            // Send streaming chunk to channel
+                                            let stream_msg = AgentMessage::StreamChunk {
+                                                job_id: job_id.clone(),
+                                                chunk: chunk.delta.clone(),
+                                                is_final: chunk.finish_reason.is_some(),
+                                            };
+                                            send_channel_message(&relay, &channel_id, &keypair, &stream_msg).await?;
+
+                                            if chunk.finish_reason.is_some() {
+                                                break;
+                                            }
+                                        }
+                                        Err(e) => {
+                                            println!("[PROVIDER] Streaming error: {}", e);
+                                            break;
+                                        }
+                                    }
+                                }
+
+                                println!("[PROVIDER] Streamed {} chunks", chunk_count);
+
+                                // Send final complete result
+                                let result = AgentMessage::JobResult {
+                                    job_id: job_id.clone(),
+                                    result: accumulated,
+                                };
+                                send_channel_message(&relay, &channel_id, &keypair, &result).await?;
+                            }
+                            Err(e) => {
+                                println!("[PROVIDER] Streaming setup error: {}", e);
+                                let result = AgentMessage::JobResult {
+                                    job_id: job_id.clone(),
+                                    result: format!("Error: {}", e),
+                                };
+                                send_channel_message(&relay, &channel_id, &keypair, &result).await?;
+                            }
                         }
-                        Err(e) => {
-                            println!("[PROVIDER] Inference error: {}", e);
-                            format!("Error: {}", e)
+                    } else {
+                        // Non-streaming mode - wait for complete response
+                        match backend.complete(request).await {
+                            Ok(response) => {
+                                println!("[PROVIDER] Inference complete ({} tokens)",
+                                    response.usage.as_ref().map(|u| u.completion_tokens).unwrap_or(0));
+                                let result = AgentMessage::JobResult {
+                                    job_id: job_id.clone(),
+                                    result: response.text,
+                                };
+                                send_channel_message(&relay, &channel_id, &keypair, &result).await?;
+                            }
+                            Err(e) => {
+                                println!("[PROVIDER] Inference error: {}", e);
+                                let result = AgentMessage::JobResult {
+                                    job_id: job_id.clone(),
+                                    result: format!("Error: {}", e),
+                                };
+                                send_channel_message(&relay, &channel_id, &keypair, &result).await?;
+                            }
                         }
                     }
                 } else {
                     println!("[PROVIDER] No backend available, returning error");
-                    "Error: No inference backend available. Install Ollama: https://ollama.ai".to_string()
-                };
+                    let result = AgentMessage::JobResult {
+                        job_id: job_id.clone(),
+                        result: "Error: No inference backend available. Install Ollama: https://ollama.ai".to_string(),
+                    };
+                    send_channel_message(&relay, &channel_id, &keypair, &result).await?;
+                }
 
-                let result = AgentMessage::JobResult {
-                    job_id: job_id.clone(),
-                    result: result_text,
-                };
-                send_channel_message(&relay, &channel_id, &keypair, &result).await?;
                 println!("[PROVIDER] Result delivered for {}", job_id);
                 println!("\n[PROVIDER] Job complete! Waiting for more requests...\n");
             }
