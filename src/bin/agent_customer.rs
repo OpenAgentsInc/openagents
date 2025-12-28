@@ -166,6 +166,7 @@ async fn main() -> Result<()> {
                         kind: KIND_JOB_TEXT_GENERATION,
                         prompt: prompt.clone(),
                         max_tokens: 100,
+                        target_provider: None,
                     };
                     send_channel_message(&relay, &args.channel, &keypair, &request).await?;
                     println!("[CUSTOMER] Job requested: {}", prompt);
@@ -197,12 +198,24 @@ async fn main() -> Result<()> {
                 price_msats,
                 spark_address,
                 network,
+                provider_pubkey,
+                models,
+                capabilities,
             } => {
                 println!("[CUSTOMER] Found provider:");
                 println!("           Kind: {}", kind);
                 println!("           Price: {} msats", price_msats);
                 println!("           Spark: {}", spark_address);
                 println!("           Network: {}", network);
+                if let Some(ref pubkey) = provider_pubkey {
+                    println!("           Pubkey: {}...", &pubkey[..16.min(pubkey.len())]);
+                }
+                if !models.is_empty() {
+                    println!("           Models: {:?}", models);
+                }
+                if !capabilities.is_empty() {
+                    println!("           Capabilities: {:?}", capabilities);
+                }
 
                 // Validate network matches our expectation (regtest)
                 if network != AgentNetwork::Regtest {
@@ -212,11 +225,12 @@ async fn main() -> Result<()> {
                 }
 
                 if !job_requested {
-                    // Request a job
+                    // Request a job (target this specific provider if pubkey is available)
                     let request = AgentMessage::JobRequest {
                         kind: KIND_JOB_TEXT_GENERATION,
                         prompt: prompt.clone(),
                         max_tokens: 100,
+                        target_provider: provider_pubkey.clone(),
                     };
                     send_channel_message(&relay, &args.channel, &keypair, &request).await?;
                     println!("[CUSTOMER] Job requested: {}", prompt);
@@ -227,6 +241,7 @@ async fn main() -> Result<()> {
                 bolt11,
                 job_id,
                 amount_msats,
+                payment_hash,
             } => {
                 // Skip invoices for other customers' jobs
                 if our_job_id.is_some() && our_job_id.as_ref() != Some(&job_id) {
@@ -236,6 +251,9 @@ async fn main() -> Result<()> {
                 println!("[CUSTOMER] Got invoice:");
                 println!("           Job ID: {}", job_id);
                 println!("           Amount: {} msats", amount_msats);
+                if let Some(ref hash) = payment_hash {
+                    println!("           Payment Hash: {}...", &hash[..16.min(hash.len())]);
+                }
 
                 // Track this as our job
                 our_job_id = Some(job_id.clone());
@@ -286,6 +304,17 @@ async fn main() -> Result<()> {
             }
             AgentMessage::PaymentSent { .. } => {
                 // Ignore (we send these)
+            }
+            AgentMessage::StreamChunk { job_id, chunk, is_final } => {
+                // Only process chunks for our job
+                if our_job_id.as_ref() == Some(&job_id) {
+                    print!("{}", chunk);
+                    use std::io::Write;
+                    std::io::stdout().flush().ok();
+                    if is_final {
+                        println!();  // Newline after streaming
+                    }
+                }
             }
         }
     }
