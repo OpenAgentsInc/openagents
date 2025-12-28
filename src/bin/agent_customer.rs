@@ -11,8 +11,8 @@ use nostr::{
     KIND_CHANNEL_MESSAGE, KIND_JOB_TEXT_GENERATION,
 };
 use nostr_client::RelayConnection;
-use openagents::agents::{now, parse_agent_message, AgentMessage, CUSTOMER_MNEMONIC, DEFAULT_RELAY};
-use openagents_spark::{Network, SparkSigner, SparkWallet, WalletConfig};
+use openagents::agents::{now, parse_agent_message, AgentMessage, Network as AgentNetwork, CUSTOMER_MNEMONIC, DEFAULT_RELAY};
+use openagents_spark::{Network as SparkNetwork, SparkSigner, SparkWallet, WalletConfig};
 use std::env::temp_dir;
 use std::time::Duration;
 use tokio::sync::mpsc;
@@ -97,7 +97,7 @@ async fn main() -> Result<()> {
         println!("[CUSTOMER] Connecting to Spark wallet...");
         let signer = SparkSigner::from_mnemonic(CUSTOMER_MNEMONIC, "")?;
         let config = WalletConfig {
-            network: Network::Regtest,
+            network: SparkNetwork::Regtest,
             api_key: None,
             storage_dir: temp_dir().join("agent_customer_wallet"),
         };
@@ -187,11 +187,20 @@ async fn main() -> Result<()> {
                 kind,
                 price_msats,
                 spark_address,
+                network,
             } => {
                 println!("[CUSTOMER] Found provider:");
                 println!("           Kind: {}", kind);
                 println!("           Price: {} msats", price_msats);
                 println!("           Spark: {}", spark_address);
+                println!("           Network: {}", network);
+
+                // Validate network matches our expectation (regtest)
+                if network != AgentNetwork::Regtest {
+                    println!("[CUSTOMER] WARNING: Provider is on {} but we expect regtest!", network);
+                    println!("[CUSTOMER] Skipping this provider...");
+                    continue;
+                }
 
                 if !job_requested {
                     // Request a job
