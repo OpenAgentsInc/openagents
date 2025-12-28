@@ -14,6 +14,40 @@ Autopilot agents spend money (API calls, compute). Today:
 - Agents can't receive payments (no identity for receivables)
 - Every payment is on-chain or LN—no privacy for micropayments
 
+---
+
+## Threat Model
+
+Before building, we must be explicit about what can go wrong and what we trust.
+
+### Risk Categories
+
+| Risk Category | Specific Threats | Impact |
+|---------------|-----------------|--------|
+| **Mint risk** | Insolvency, freeze, downtime, key compromise, fee rug, soft censorship | Loss of funds, inability to spend |
+| **Proof risk** | Lost proofs, corrupted local DB, replay confusion, stale state | Double-spend or loss |
+| **LN risk** | Invoice paid but proofs not minted, channel issues, routing failures, stuck HTLCs | Payment limbo |
+| **Rate risk** | Stale/incorrect BTC/USD rate causing budget bypass or false denials | Over/under spending |
+| **Operator risk** | Reserve shortfall, key compromise, insider fraud (if running infra) | Systemic failure |
+
+### Trust Boundaries Per Rail
+
+| Rail | What We Trust | What We Verify | Failure Mode |
+|------|---------------|----------------|--------------|
+| Spark/LN | Network routing works | Preimage + payment status | Delays/failures |
+| Cashu mint | Solvency + honest spent-secret DB | DLEQ proofs, keyset validity, `/info` endpoint | Mint rug/downtime |
+| Taproot Assets | Bitcoin consensus | Proof lineage + universe sync | Proof availability |
+
+### Invariants We Must Maintain
+
+1. **Never spend proofs we don't have** — Local balance ≤ sum of unspent proofs
+2. **Never lose proofs** — All proofs persisted before any network call
+3. **Never double-spend** — Proof state machine is the source of truth
+4. **Never bypass budget** — Budget check happens atomically with reservation
+5. **Never trust stale rates** — Rate has max age; fail if too old for budget-critical decisions
+
+---
+
 ## MVP Scope
 
 ### What We Build
@@ -176,6 +210,148 @@ pub struct Receipt {
 ```
 
 **Benefit:** Every payment answers "why did the agent spend this?" Link to trajectory means full auditability.
+
+### 7. Reconciliation Loop (Background Task)
+
+```rust
+impl ReconciliationService {
+    /// Runs every N seconds to maintain consistency
+    pub async fn reconcile(&mut self) -> Result<ReconciliationReport> {
+        let mut report = ReconciliationReport::default();
+
+        // 1. Fetch fresh mint info + keysets
+        for mint in &self.mints {
+            if let Err(e) = self.refresh_mint_info(mint).await {
+                report.mint_errors.push((mint.url.clone(), e));
+            }
+        }
+
+        // 2. Resolve PENDING quotes
+        for quote in self.get_pending_quotes().await? {
+            match self.poll_quote_status(&quote).await {
+                Ok(QuoteStatus::Paid { preimage }) => {
+                    self.finalize_quote(&quote, preimage).await?;
+                    report.quotes_finalized += 1;
+                }
+                Ok(QuoteStatus::Failed { reason }) => {
+                    self.release_reserved_proofs(&quote).await?;
+                    report.quotes_failed += 1;
+                }
+                Ok(QuoteStatus::Pending) => {
+                    // Still in flight, check again next cycle
+                }
+                Err(e) => report.quote_errors.push((quote.id, e)),
+            }
+        }
+
+        // 3. Release expired reservations
+        let expired = self.release_expired_reservations().await?;
+        report.reservations_released = expired;
+
+        // 4. Refresh exchange rate cache
+        if let Err(e) = self.rate_service.refresh().await {
+            report.rate_error = Some(e);
+        }
+
+        // 5. Check invariants
+        for account in self.accounts().await? {
+            let proof_sum = self.sum_unspent_proofs(&account).await?;
+            let recorded_balance = account.balance;
+            if proof_sum != recorded_balance {
+                report.invariant_violations.push(InvariantViolation {
+                    account_id: account.id,
+                    expected: recorded_balance,
+                    actual: proof_sum,
+                });
+            }
+        }
+
+        Ok(report)
+    }
+}
+```
+
+---
+
+## Budget Denomination vs Settlement
+
+Budgets are **denominated** in USD for humans. Settlement can be any rail.
+
+```rust
+pub struct Receipt {
+    // ... other fields ...
+
+    /// Amount in operator's denomination currency (what budget tracks)
+    pub amount_denominated: Money<Dollar>,
+
+    /// Amount actually settled (sats, cents, etc.)
+    pub amount_settled: SettledAmount,
+
+    /// Exchange rate used for conversion
+    pub rate_used: Option<ExchangeRate<Bitcoin, Dollar>>,
+    pub rate_source: Option<String>,
+    pub rate_timestamp: Option<DateTime<Utc>>,
+}
+
+pub enum SettledAmount {
+    BtcSats(u64),
+    BtcMsats(u64),
+    UsdCents(u64),
+}
+```
+
+This allows:
+- Operators see everything in USD
+- Actual settlement uses best available rail
+- Receipts are auditable with rate provenance
+
+---
+
+## Supported Payments (MVP Scope)
+
+| Payment Type | MVP Support | Notes |
+|--------------|-------------|-------|
+| LN invoice (BTC) | Yes | Via Spark or Cashu melt |
+| Cashu mint/melt | Yes | BTC and USD mints |
+| NIP-57 zaps | No | Phase 2 |
+| NIP-61 nutzaps | No | Phase 2 |
+| Taproot Assets | No | Phase 3 |
+| On-chain BTC | No | Phase 3 (treasury settlement) |
+
+---
+
+## Receipt Schema Invariants
+
+Receipts are the audit trail. These invariants are **non-negotiable**:
+
+1. **Append-only** — Receipts are never modified or deleted
+2. **Atomic with spend** — Receipt creation is in same transaction as balance update
+3. **Trajectory links are immutable** — Once set, `trajectory_session_id` and `tool_call_id` never change
+4. **Rate provenance required** — Any cross-currency receipt must include rate source + timestamp
+5. **Idempotency key uniqueness** — No two receipts share `(account_id, idempotency_key)`
+
+```rust
+pub struct ReceiptInvariants;
+
+impl ReceiptInvariants {
+    /// Validate receipt before insertion
+    pub fn validate(receipt: &Receipt, existing: &[Receipt]) -> Result<()> {
+        // Check idempotency
+        if existing.iter().any(|r| r.idempotency_key == receipt.idempotency_key) {
+            return Err(Error::DuplicateIdempotencyKey);
+        }
+
+        // Check rate provenance for cross-currency
+        if receipt.amount_denominated.currency() != receipt.amount_settled.currency() {
+            if receipt.rate_used.is_none() {
+                return Err(Error::MissingRateProvenance);
+            }
+        }
+
+        Ok(())
+    }
+}
+```
 
 ---
 
