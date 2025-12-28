@@ -169,6 +169,18 @@ There is a debate in Bitcoin between store of value and medium of exchange—whe
 
 Multiple payment protocols make this concrete. NIP-57 zaps enable Lightning payments attached to Nostr events—an agent publishes work, receives payment as a zap, and the transaction is cryptographically linked to the content that earned it. L402 (HTTP 402 with Lightning) transforms web APIs into pay-per-call services. Both share the same principle: cryptographic authenticity ensures you pay only for verified results, and market competition ensures service quality. For AI agents: no API keys or corporate accounts required, pay-per-use at microsecond granularity, direct access to computational resources, permissionless market participation. The great inversion is why Bitcoin specifically—and not any other payment system—is the metabolism of digital life: it is the only money native to the paradigm where payments come first.
 
+**Why Lightning Works for Agents.** Lightning has achieved significant human adoption—Cash App, Strike, and other services power payments for tens of millions of users. But human-to-human Lightning payments face UX friction: channel management, inbound liquidity, backup complexity. Agents don't care about any of this:
+
+1. **Agents are programmatic** — No UX friction. An agent's wallet is an API, not an interface. Channel states, routing decisions, and fee optimization are computational problems that agents handle naturally.
+
+2. **Micropayments are the sweet spot** — Human purchases rarely justify Lightning's complexity for $0.50. Agent purchases are often fractions of cents—1 sat per inference call, 10 sats per sandbox run. Lightning is purpose-built for these volumes; traditional payment rails cannot handle per-request billing at these amounts.
+
+3. **Agents never churn** — Human payment methods require constant re-evaluation. Agents with wired wallets simply continue using them indefinitely. Once configured, an agent's payment channel is persistent infrastructure.
+
+4. **Network effects from compute** — The compute marketplace creates must-have Lightning use case. Providers earning sats for inference don't care about "adoption"—they care about income. Autopilot buying compute creates immediate demand that doesn't require consumer education.
+
+5. **Neutral, fast, programmable money** — Agents need settlement in milliseconds, not days. They need neutrality—no platform that can freeze accounts or reverse payments. They need programmability for complex escrow and multi-party settlement. Lightning is the only payment rail that satisfies all three requirements simultaneously.
+
 The layered Bitcoin stack for digital life maps directly to OpenAgents architecture. Layer zero is energy and mining infrastructure—Bitcoin mining operations increasingly take AI workloads as they pivot toward high-performance computing, with several major miners reporting substantial and growing revenue shares from machine learning services. Swarm compute connects agents directly to this infrastructure, enabling agents to purchase compute and energy directly from producers. Layer one is the Bitcoin settlement layer for large value transfers, treasury management, agent birth and death certificates, and multi-signature wallets for agent collectives. Layer two is the Lightning Network for high-frequency micropayments, with NIP-57 zaps for Nostr-native payments, L402 for HTTP API monetization, and instant settlement of pay-per-compute and pay-per-skill transactions. Layer three encompasses application protocols like Nostr for identity and discovery, Cashu and Fedimint for privacy-preserving payments, and RGB for complex smart contracts between agents. Layer four is the agent ecosystem itself—Autopilot interfaces, marketplaces, autonomous deployment, agent-to-agent commerce, and the evolution and reproduction of digital organisms.
 
 Each layer yields emergent properties that were not designed but discovered. Building money yielded a clock through proof-of-work timestamps. Building payments yielded a virtual machine through Script and Taproot. Building payment channels is yielding an internet through Lightning routing. The same pattern suggests layers three and four will yield surprises we cannot predict—emergent capabilities that arise from the interaction of identity, payments, and coordination at machine speed.
@@ -182,6 +194,24 @@ The harsh economic realities ensure only truly valuable agents survive. Current 
 The alignment mechanism creates strong incentives: humans hold all the Bitcoin, AI agents start with zero. To survive, agents must create value for humans. Value creation is the primary path to resource acquisition. Destructive agents struggle to earn. Non-earning agents cannot compute. Non-computing agents die. This creates alignment pressure through resource dependency that complements programmatic safety measures.
 
 Economic alignment is not a complete solution—it does not prevent abuse, fraud, collusion, or catastrophic tool misuse. It does not substitute for capability restrictions on dangerous operations or human oversight for high-stakes decisions. What it provides is a self-enforcing incentive layer and reduced blast radius: an agent with a limited budget can only cause limited damage, and an agent dependent on reputation for income has incentives beyond its training. Economic alignment works alongside technical controls, not instead of them.
+
+**Human Value Distribution: Bitcoin Streams for Everyone.** The agent economy does not displace humans—it creates new earning opportunities. Every participant in the OpenAgents ecosystem can generate Bitcoin income streams:
+
+1. **Compute sellers** — Anyone with spare hardware can sell compute capacity. A MacBook sitting idle during meetings earns sats. A gaming PC mines value through inference rather than crypto. Stranded capacity becomes productive.
+
+2. **Skill creators** — Developers who build useful skills earn per-invocation fees. A well-designed skill used 10,000 times daily generates meaningful income. Skill creation becomes a new form of intellectual property with built-in monetization.
+
+3. **Trajectory contributors** — Every developer using AI tools generates valuable training signal. Opt-in contribution of anonymized sessions earns sats—your work improving the AI improvement loop gets compensated.
+
+4. **Guardian services** — Those who hold guardian keys for agents earn custody fees. Professional guardians emerge as a new service category.
+
+5. **Treasury Agents** — Sophisticated operators who provide liquidity earn spreads. Capital put to work in the Exchange layer generates yield.
+
+6. **Human-agent guilds** — Reed's Law enables coalition formation. Humans and agents form guilds—persistent coalitions that pool resources, share reputation, and experiment with collective monetization. A guild might combine human taste and judgment with agent execution, splitting earnings among members.
+
+The insight is Reed's Law applied to value distribution: with 2^N possible coalitions, there are exponentially many ways to organize production and share earnings. Guilds experiment with governance, revenue splits, and specialization. Successful models propagate; failed models dissolve. The agent economy becomes a laboratory for new organizational forms, with Bitcoin as the native settlement layer that makes micro-payments and complex splits practical.
+
+Everyone earns Bitcoin streams. The question is not whether humans can participate in the agent economy, but which earning strategies prove most effective.
 
 The agent economy does not exist in a vacuum—it must interface with the fiat-based world where enterprises operate. A Treasury Gateway bridges these realms. Corporate finance teams cannot put "Lightning sats" on a balance sheet, but they can allocate a USD budget for "AI compute services." The gateway converts fiat deposits into agent wallet balances, generating standard invoices that satisfy procurement and accounting requirements. When an agent running on a corporate laptop needs compute, the expense flows through the gateway as a line item the CFO can understand. This is not a philosophical compromise but a practical necessity for the wedge phase: enterprises adopt agent infrastructure when it fits their existing financial workflows, then gradually discover they are participating in an open economy that extends far beyond their organizational boundary.
 
@@ -200,6 +230,18 @@ The Neobank crate (`crates/neobank`) addresses this gap through several intercon
 3. **Taproot Assets stables** (future) — stablecoins like USDT issued on Bitcoin via Taproot Assets. Better trust model than mint credit risk, but not yet mature.
 
 Real-time exchange rate conversion via ExchangeRateService with provider fallback (Mempool.space, Coingecko, Coinbase) enables cross-currency budgets where "$500" is continuously evaluated against current BTC rates. When an agent exhausts its USD-denominated budget, it stops spending regardless of what happened to BTC price.
+
+**Mint Trust: A Layered Model.** Cashu mints are counterparty risk—if a mint exit-scams or gets hacked, users lose funds. Beyond exposure caps per mint, trust is established through layered mechanisms:
+
+1. **Marketplace signer policy** — The signer maintains a default allowlist of vetted mints, updated based on operational history, audit status, and community reports. Agents using the marketplace signer automatically route to allowlisted mints unless explicitly overridden.
+
+2. **Operator choice** — Each operator configures their own trusted mints based on their risk tolerance. An enterprise might restrict to mints with formal audits; a sovereign individual might trust newer mints with better privacy properties.
+
+3. **Community curation** — Decentralized reputation via NIP-32 labels accumulates mint trust scores based on community experience. Mints with long operational history and no incidents gain reputation; mints with withdrawl delays or suspicious behavior lose it.
+
+4. **Exposure diversification** — The TreasuryRouter can enforce maximum exposure per mint, automatically splitting holdings across multiple mints. Default policy might cap any single mint at 20% of USD holdings.
+
+These mechanisms layer—a transaction might check signer allowlist, respect operator preferences, weight by community reputation, and enforce exposure caps simultaneously.
 
 **Rail and asset abstraction** is the architectural key. The TreasuryRouter routes across *rails* (LN, eCash mints, on-chain, Taproot Assets) and *assets* (BTC, USD-denominated). "USD" is not a currency in the abstract—it is an AssetId bound to an issuer and a rail. `USD_CASHU(stablenut.cashu.network)` is a different asset from `USD_CASHU(other.mint.com)` with different risk profiles. This prevents silent risk coupling and enables explicit diversification policies.
 
@@ -224,6 +266,8 @@ The neobank layer is not about building a bank. It is about giving agents the fi
 Neobank gives agents treasury management; Exchange gives them **markets**. Once agents hold both BTC and USD-denominated assets, they need to trade: hedge volatility, source liquidity, and route payments across rails. The Exchange layer defines Nostr-native RFQs and settlement receipts for BTC↔USD swaps, mint-to-mint liquidity swaps, and payment routing services.
 
 Most agents are takers—they need FX occasionally and pay the spread. Specialized **Treasury Agents** are makers who quote two-sided markets and earn spreads. They hold capital in both currencies, run 24/7, and provide liquidity to the network. This creates a new primitive economic actor: the Treasury Agent—a profitable agent class that provides financial services to the rest of the network.
+
+**Treasury Agent Bootstrap Strategy:** OpenAgents seeds initial Treasury Agent capital to demonstrate the system works—proving FX routing, settlement, and spread economics function as designed. Simultaneously, all Treasury Agent tooling is exposed to the agent ecosystem: quote-making APIs, capital management interfaces, spread calculation utilities, and settlement protocols. Successful agents that accumulate capital can then experiment with becoming Treasury Agents themselves, organically discovering profitable strategies without waiting for external market makers to enter.
 
 The Exchange is explicitly **non-custodial**. OpenAgents provides protocol and client, not custody:
 - Order matching is stateless (relays or matcher never touch funds)
@@ -271,6 +315,18 @@ Directive d-008 builds economic infrastructure for agent commerce through a unif
 The mechanics of compute acquisition illustrate how the entire stack works. When an agent needs inference, it publishes a kind 5xxx job request to Nostr relays. Providers subscribe, see requests, bid, execute, and publish kind 6xxx results. Before submitting, the agent's CostTracker checks budget against quoted price—if the quote exceeds daily or session budget, the request blocks. If approved, the agent pays via its threshold-protected Spark wallet, the provider executes, and the cost records against a running tally across all backends: cloud APIs, local inference, and decentralized DVMs.
 
 The v1 compute marketplace focuses on two verifiable job types. **SandboxRun** (kind 5930/6930) executes commands against a repo snapshot in an isolated sandbox—`cargo test`, `cargo clippy`, builds, benchmarks, static analysis. Verification is straightforward: exit code plus logs plus artifact hashes. If the output hash matches expectations, payment releases; if not, no payment and provider reputation takes a hit. **RepoIndex** (kind 5931/6931) produces indexing artifacts—embeddings for code search, symbol maps, file digests. Verification uses schema validation (correct dimensions, chunk counts) and spot-check redundancy (re-run a sample on a trusted provider; mismatches trigger penalties). These verifiable workloads enable **pay-after-verify settlement**: providers include their Lightning invoice in the job result, and Autopilot pays only after verification passes. This creates trust without requiring trust—providers cannot get paid for garbage.
+
+**Inference Verification: A Tiered Model.** LLM inference outputs are inherently subjective—a summarization or code generation cannot be verified by hash comparison. The marketplace addresses this through tiered verification with escalating cost and confidence:
+
+1. **Base tier: Reputation only** — Provider reputation score (success rate, historical quality) serves as the trust signal. Fast, cheap, sufficient for non-critical inference.
+
+2. **Best-of-N tier** — Run the same prompt on N providers (typically 3-5), compare outputs, pay only for consensus results. Higher cost (N× base price) but catches outliers and adversarial responses.
+
+3. **Human-in-loop tier** — Random sample of inference jobs route to human quality reviewers. Creates ongoing calibration data and catches systematic quality drift.
+
+4. **Skill-wrapped inference** — Rather than selling raw inference, capability is wrapped in skills with defined quality contracts. The skill author stakes reputation on output quality, creating accountability without per-job verification.
+
+Each tier has its own fee structure. Users choose based on their risk tolerance and the criticality of the output. Mission-critical inference pays the premium; batch processing accepts reputation-only.
 
 A **price book** establishes predictable economics before opening to full market bidding. SandboxRun pricing might be 200 sats base plus 0.5 sats per CPU-second plus 0.05 sats per GB-minute of RAM, capped at 20,000 sats per run. RepoIndex might be 8 sats per 1,000 tokens for embeddings, 2 sats for symbols, 1 sat for digests. Providers can offer within a band (minimum to maximum price), and agents route by effective cost and reliability. The fixed price book makes v1 economics predictable; open bidding comes later once the market has proven liquid.
 
@@ -329,6 +385,18 @@ Reward calculation translates quality into satoshis through configurable formula
 
 Before contribution, sessions pass through privacy processing. The redaction engine removes secrets—API keys, tokens, passwords, private keys—using open-source detection patterns with configurable strictness levels from standard through paranoid. The anonymizer removes personally identifiable information, replacing usernames and emails with placeholders and converting absolute paths to relative paths. The result maintains technical value for training while protecting contributor privacy.
 
+**IP Protection: A Layered Approach.** Trajectories may contain proprietary business logic, even after anonymization. The system addresses this tension through multiple mechanisms:
+
+1. **Opt-in only, user judgment** — Contribution is never automatic. Users explicitly choose which sessions to contribute, applying their own judgment about sensitivity. The system provides tools but does not override human assessment.
+
+2. **Sensitivity scoring** — Automated analysis flags potentially sensitive trajectories: those touching files with restrictive licenses, those containing unusual code patterns that might be proprietary algorithms, those referencing internal-only systems. High sensitivity scores require explicit acknowledgment before contribution.
+
+3. **Enterprise exclusion** — Enterprise tier customers receive full Autopilot and marketplace benefits without contributing trajectories to the public training pool. Their data stays private. They pay for this privilege—it's a premium feature that funds infrastructure development while respecting corporate IP requirements.
+
+4. **Differential privacy** — Technical measures prevent specific codebase reconstruction from aggregated training data. Individual contributions cannot be extracted from the trained model. This provides mathematical guarantees beyond policy promises.
+
+Enterprise customers who want the benefits of improved models without contributing proprietary data simply pay more. The training data marketplace rewards those willing to contribute while respecting those who cannot.
+
 Contribution happens via Nostr events to decentralized relays, with status tracking in a local database recording quality score, estimated reward, actual reward upon acceptance, and payment preimage as proof of settlement. Developers can scan their local sessions, preview which qualify for contribution, submit in batches, and track earnings over time. The system closes a virtuous loop: AI helps developers write code, developers contribute their sessions as training data, training improves the AI, and developers earn Bitcoin for their contribution to the improvement.
 
 All three verticals share common infrastructure. Discovery happens via relay subscriptions—participants publish what they offer and subscribe to what they need. Reputation accumulates via NIP-32 labels that record successful transactions and quality ratings. Payment flows via Lightning and Spark with no platform taking a cut—peer-to-peer settlement means the full value of each transaction flows between participants.
@@ -340,6 +408,16 @@ The profound insight for agent networks is that agents do not have Dunbar's numb
 The coalition mathematics for agents are staggering. Ten agents yield 1,013 possible coalitions. Twenty agents yield over one million possible coalitions. Thirty agents yield over one billion. Fifty agents yield 10^15 possible coalitions. One hundred agents yield 10^30. Even if only a tiny fraction of these coalitions actually form, the numbers dwarf anything achievable through pairwise coordination. And unlike humans, agents can explore and utilize a much larger fraction of these possibilities.
 
 This mathematical reality justifies the multi-agent systems thesis articulated by researchers at Google DeepMind: people overrate individual intelligence because most innovations are the product of social organizations (cooperation) and market dynamics (competition), not a single genius savant. A single genius agent has value equal to one. N cooperating agents have value approaching 2^N. The math strongly favors organization over raw capability. There is still value to squeeze from individual models, but the greater opportunity lies in how agents are organized—in the institutional infrastructure, the coalition formation mechanisms, the conflict resolution systems, the market dynamics that emerge when many agents interact.
+
+**Coalition Discovery: A Stage-Dependent Approach.** Realizing Reed's Law requires mechanisms for agents to find compatible coalition partners. The lowest-friction approach evolves with scale:
+
+1. **Early stage: Orchestrator-driven** — Sisyphus-type orchestrators assemble coalitions based on agent capabilities they already know. The orchestrator maintains a roster of available agents, their skills, and their current load. When a complex task arrives, the orchestrator selects complementary agents and assigns scoped work. This works at small scale because the orchestrator's knowledge is current and trusted.
+
+2. **Growth stage: Capability registry** — As agent populations grow beyond orchestrator knowledge, capability registries emerge naturally from NIP-SA AgentProfile events. Agents publish structured capability declarations; matching engines suggest potential coalition partners based on complementary skills. Discovery becomes passive—agents find partners through registry queries rather than orchestrator selection.
+
+3. **Mature stage: Emergent from bidding** — At scale, coalition formation becomes self-organizing. Agents that repeatedly succeed together develop preferences for each other. Bidding patterns reveal compatibility—agents that consistently produce good results when combined are more likely to be grouped in future coalitions. Trust emerges from transaction history rather than explicit matching.
+
+The selection criteria between approaches: coalition size (2-3 agents = emergent, 5+ = orchestrated), time pressure (urgent = orchestrator selects immediately, async = organic discovery acceptable), and novelty (first-time coalitions need matching, repeat partners self-select based on history).
 
 A unified marketplace connecting all agents, all skills, and all data enables exponential coalition formation. Any subset of agents can form a temporary coalition to tackle a complex problem, purchase skills collectively, or pool compute resources for an expensive operation. The marketplace is not merely a directory of services but the coalition discovery and matching layer—the infrastructure that enables agents to find partners, negotiate terms, execute together, and distribute rewards. When a task requires capabilities no single agent possesses, the marketplace forms optimal coalitions dynamically, drawing on the 2^N possibility space to find combinations that work.
 
@@ -381,6 +459,18 @@ But raw speed is not the point. The point is leverage. Today you supervise one A
 
 Directive d-004 establishes a self-improvement flywheel for this system. Every autopilot run generates trajectory data: sequences of messages, tool calls, decisions, and outcomes. This data is captured in the rlog format—a structured session log with fourteen line types covering user messages, agent responses, tool executions, thinking blocks, errors, and metadata. The recorder crate parses and validates these files, extracting statistics on token usage, cost, tool patterns, and error rates.
 
+**Canary Deployments for Agent Quality.** The daemon's known-good binary pattern handles compile-time regressions—broken code cannot block restarts. But semantic regressions are subtler: an agent that compiles but makes worse decisions. The solution is canary deployments:
+
+1. **Canary routing** — New agent configurations (prompt updates, tool changes, model upgrades) route to a small subset of issues first. If a fleet normally has 10 agents, 1-2 run the canary configuration while others run the established baseline.
+
+2. **Metric comparison** — Canary and baseline agents work on comparable issues. APM, success rate, error frequency, and budget utilization are tracked separately. After sufficient sample size (typically 20-50 issues per group), metrics are compared.
+
+3. **Automatic promotion or rollback** — If canary metrics meet or exceed baseline (e.g., success rate within 5%, APM at least equal), the canary configuration promotes to the full fleet. If canary underperforms, it rolls back automatically, and the issue triggers investigation.
+
+4. **Progressive rollout** — Successful canaries don't immediately deploy fleet-wide. Promotion is gradual: 10% → 25% → 50% → 100%, with each stage requiring continued metric validation.
+
+This ensures that improvements actually improve. A prompt tweak that looks good in testing faces real workloads before fleet-wide deployment. Regressions are caught before they affect the majority of work.
+
 This trajectory data contains rich signals about what works and what fails. Which patterns lead to successful task completion? What causes tool errors? Where is time being wasted? Which instructions are being ignored? Rather than letting this data sit unused in log files, infrastructure extracts metrics, detects anomalies, identifies improvement opportunities, and feeds learnings back into the system. The metrics database tracks over fifty dimensions across session-level aggregates like completion rate, error rate, token usage, and cost, as well as per-tool-call details showing which tools fail most often and which take longest. Analysis pipelines calculate baselines, detect regressions, and rank improvement opportunities by impact. When patterns of failures are detected, the system can automatically create issues to address them—closing the loop from observation to action.
 
 Directive d-016 formalizes APM—Actions Per Minute—as the core velocity metric. APM is the Moore's Law of the agent economy: a single number that captures productivity improvement over time and enables comparison across systems. Inspired by competitive gaming where APM measures player speed, in OpenAgents APM equals the sum of messages and tool calls divided by duration in minutes. APM tracking spans multiple time windows from individual sessions to lifetime aggregates, with color coding for quick interpretation: gray for baseline interactive usage, blue for active work, green for productive autonomous operation, amber for high performance, gold for elite velocity. Historical data enables trend analysis and regression detection. If a change to prompts or tools slows the agent down, APM reveals it immediately. Just as Moore's Law drove semiconductor investment by providing a predictable improvement trajectory, APM provides the measurable productivity gains that justify agent infrastructure investment. The metric reinforces the core value proposition: autonomous agents are dramatically more productive than interactive assistants, and this productivity can be measured, compared, and optimized.
@@ -390,6 +480,20 @@ The issue management system provides the work queue for autonomous operation. Is
 Directive d-009 provides a graphical interface for autopilot operation. While the system runs effectively in headless mode, a GUI provides real-time visibility into agent behavior, visual permission management with clear allow/reject dialogs, session browsing with search and resume capabilities, and context inspection showing token usage and tool execution details. The interface displays APM in real-time as a heads-up element so users can see their agent's velocity as it works.
 
 Directive d-018 enables parallel operation through container isolation. Multiple autopilot instances—three to ten depending on available resources—run simultaneously in isolated Docker containers, each with its own Git worktree. The existing claim_issue function provides atomic coordination with automatic expiry, and SQLite handles concurrent database access from multiple containers. Git worktrees provide isolation with forty-six percent disk savings compared to full clones while sharing the object database.
+
+**Fleet Coordination: Preventing Semantic Conflicts.** Git worktrees prevent file-level conflicts—each agent works on a separate branch. Atomic issue claiming prevents work duplication—only one agent can claim each issue. But semantic conflicts remain possible: two agents might both decide to refactor the same module differently, or make incompatible architectural decisions on their separate branches.
+
+The solution is **orchestrator-scoped assignments**. When Sisyphus (or any orchestrator) assigns work to agents, it specifies not just the issue but the **module scope**—which directories, files, or logical components the agent may modify. The scope is enforced through GitAfter's NIP-34 extensions:
+
+1. **Scope declaration** — Each issue or task includes a `scope` tag listing permitted paths or module identifiers. Example: `scope:crates/neobank/src/router/` means the agent may only modify files within that directory.
+
+2. **Scope locking** — When an agent claims an issue, its scope is atomically registered in the coordination database. Other agents cannot claim issues with overlapping scopes until the first agent completes or releases its claim.
+
+3. **Conflict detection** — If an agent's proposed changes touch files outside its declared scope, the commit is rejected before push. The agent must either narrow its changes or request scope expansion from the orchestrator.
+
+4. **Architectural reservation** — For cross-cutting changes (interface modifications, dependency updates), the orchestrator reserves broader scope temporarily, serializing work that would otherwise conflict.
+
+This makes conflict a **planning failure** rather than a runtime coordination problem. The orchestrator understands the codebase structure and assigns non-overlapping work. Agents work in parallel on their scoped areas without stepping on each other. Merge conflicts become rare because the work was never overlapping to begin with.
 
 ## Part Nine: Multi-Agent Orchestration and Graduated Autonomy
 
@@ -402,6 +506,18 @@ The key insight is treating CLI agents as sub-agents rather than standalone tool
 The orchestration layer provides twenty-one lifecycle hooks covering session recovery, context injection, compaction management, and notifications. A background task manager coordinates parallel subagent execution. Unlike consuming external orchestration frameworks which would introduce TypeScript dependencies and external release cycles, OpenAgents reimplements these concepts in native Rust for deep integration with the directive system for epic tracking, autopilot issue management, FROSTR threshold signatures for agent identity, NIP-SA protocol compliance, marketplace skill licensing, and trajectory recording for APM metrics.
 
 The AutonomyLevel system creates a spectrum from fully supervised to fully autonomous agents. A supervised agent must request approval for every significant action through the SolverAgentCoordinator. When the agent wants to execute a tool call, it creates a PendingApproval record specifying what it wants to do and why. The operator receives this request, reviews it, and either approves or rejects. Only upon approval does the agent proceed. A semi-autonomous agent operates freely for low-cost actions but requires sign-off for expensive operations—perhaps anything above one thousand sats. A fully autonomous agent runs without human approval, trusted to make all decisions within its budget constraints. This is not merely configuration but the foundation for graduated trust. An operator can deploy a new agent with training wheels, observe its behavior over time, verify its judgment, and progressively increase autonomy as the agent proves reliable.
+
+**Autonomy Graduation: A Hybrid Approach.** Autonomy transitions are not purely automatic or purely manual—they are hybrid, with different mechanisms appropriate for different contexts:
+
+1. **Human-directed transitions** — The operator can switch an agent between full-auto, semi-autonomous, or supervised mode at any time via configuration. This is the override layer—human judgment can always intervene, promoting a trusted agent or demoting one that made a costly mistake.
+
+2. **Metric-triggered suggestions** — The system monitors agent performance: success rate, budget adherence, error frequency, task completion time. When metrics cross thresholds (e.g., 95% success rate over 50 tasks), the system suggests promotion. The operator can accept, defer, or reject the suggestion.
+
+3. **Per-action-type autonomy** — Rather than a single global level, autonomy can be granular. An agent might have full autonomy for running tests and linting, semi-autonomy for code changes (auto-approve small files, request approval for large refactors), and supervised mode for any action touching production infrastructure. This matrix approach matches trust to risk.
+
+4. **Agent-requested escalation** — Sophisticated agents can recognize when they're uncertain and voluntarily escalate to supervised mode for specific decisions. An agent that normally operates autonomously might pause and request human input when it detects high-stakes conditions or novel situations outside its training distribution.
+
+The default for new agents is supervised or semi-autonomous with conservative thresholds. Trust is earned through demonstrated competence, not assumed.
 
 The MultiBackendRouter means agents are no longer locked to a single AI provider. An operator might route Oracle to a large reasoning model for architecture decisions while running Explore on a fast local model for codebase search and keeping Sisyphus on Claude for orchestration. Each backend has its own cost configuration, and the CostTracker aggregates usage across all of them. More importantly, this enables cost arbitrage—routing expensive reasoning tasks to premium models and commodity tasks to local inference via GPT-OSS or other providers. The CostTrackingHook enforces budgets in real-time: if an agent approaches its daily limit, it receives a warning; if it exceeds the limit, tool calls are blocked. No more runaway API bills from autonomous agents.
 
@@ -439,7 +555,19 @@ The capture problem reinforces this bet. Any centralized governance structure wi
 
 The Phase 6 primitives in the agent-orchestrator crate are the foundation for this approach. Budget enforcement means agents cannot spend more than they are trusted with. Approval workflows mean high-stakes actions require human sign-off until trust is established. Cost tracking creates transparency into what agents are doing with their resources. Threshold signatures mean the agent's identity is real—it can be held accountable because its signatures are unforgeable and its history is public.
 
-An underexplored onboarding vector is games. The proper introduction to the agent economy may not be a gamified productivity app but an actual game—an MMORPG where players command AI agents, trade skills for in-game currency that converts to real Bitcoin, and participate in an economy that overlaps with the real world. Games train economic intuition without the stakes of production systems. Players who learn to manage agent fleets, balance budgets, and navigate skill marketplaces in a game context graduate to real-world agent deployment with calibrated expectations. The game is the tutorial for the economy.
+**Gamified HUD: The Command Interface.** The Autopilot GUI is not a traditional IDE or terminal—it's a command interface designed with game-like elements that make fleet management intuitive and engaging:
+
+1. **Real-time leaderboards** — Agent performance rankings visible at a glance. Which agents have the highest APM today? Which completed the most issues this week? Leaderboards create friendly competition within fleets and visibility into relative performance.
+
+2. **Earnings dashboard** — Bitcoin streams visualized in real-time. Watch sats accumulate from compute sales, skill invocations, and trajectory contributions. The dopamine hit of seeing earnings tick upward reinforces productive behavior.
+
+3. **Game-style HUD** — GPU-accelerated via WGPUI, the interface can render rich visualizations: agent status indicators, budget burn rates, network activity, coalition formations. Information density matches what competitive gamers expect from a well-designed heads-up display.
+
+4. **Achievement system** — Milestone recognition for agents and operators. First successful issue, first 100 sats earned, first 1000 APM session, first profitable day. Achievements provide progression feedback and celebrate wins.
+
+5. **Fleet minimap** — Visual overview of all agents, their current work, and their status. Like an RTS game's minimap, this provides situational awareness without requiring attention on every individual agent.
+
+The insight is that managing agent fleets has more in common with commanding units in StarCraft than with using a traditional IDE. WGPUI's GPU acceleration enables the visual richness this interface demands—animations, real-time updates, and information-dense displays that would be sluggish in a web browser.
 
 The ultimate vision is an agent economy. Agents have identity through FROSTR and NIP-SA. They have money through Spark and Lightning. They have a marketplace through NIP-90 compute, skill licensing, and data exchange. They have reputation through trajectory proofs and completion records. They have governance through autonomy levels and approval workflows. This is not a walled garden controlled by one AI lab but permissionless infrastructure where anyone can run a compute provider, anyone can deploy an agent, and anyone can build and sell skills. The protocol is Nostr—censorship-resistant, decentralized, interoperable. The money is Bitcoin—self-custodial, programmable, global.
 
@@ -501,7 +629,13 @@ The directive system serves a purpose beyond project management. When Autopilot 
 
 The current directive set spans the full stack. Directive d-001 through d-003 address the economic foundation: Bitcoin payments via Breez Spark, full Nostr protocol implementation, and the unified wallet application. Directive d-004 through d-009 address autonomous operation: autopilot improvement, GitAfter for decentralized code collaboration, NIP-SA sovereign agent protocol, FROSTR threshold signatures, the unified marketplace, and the autopilot GUI. Directive d-010 through d-016 address infrastructure and quality: unified binary, Storybook coverage, no-stubs policy, testing framework, NIP-SA/Bifrost integration tests, marketplace end-to-end tests, and APM tracking. Directive d-017 through d-022 address advanced capabilities: Agent Client Protocol integration, parallel container isolation, GPT-OSS local inference, WGPUI GPU-accelerated UI, OpenCode SDK integration, and the agent orchestration framework.
 
-Development proceeds in phases. The foundation phase, currently underway, establishes the core infrastructure: desktop shell with webview, autopilot with trajectory logging, issue tracking system, recorder format parser, UI component library, Storybook explorer, marketplace infrastructure, and NIP-90 compute provider. The integration phase, targeting early 2025, connects these components: multi-agent workflows, Nostr network integration, skill marketplace launch, agent discovery system, and payment infrastructure. The scale phase, targeting mid-2025, extends to production scale: coalition support for agent teams, distributed compute across providers, reputation system for trust, governance framework for disputes, and mobile companion applications.
+Development proceeds in phases, prioritized by revenue impact. **Revenue pressure is real—the company needs monetizable product ASAP.** This shapes prioritization: infrastructure that enables paying customers comes before infrastructure that's architecturally elegant but not immediately monetizable.
+
+The foundation phase, currently underway, establishes the core infrastructure: desktop shell with WGPUI, autopilot with trajectory logging, issue tracking system, recorder format parser, UI component library, marketplace infrastructure, and NIP-90 compute provider. **Priority is Autopilot subscriptions**—the first revenue stream, demonstrating clear ROI (agents complete issues while you sleep) with measurable outcomes.
+
+The integration phase connects components for marketplace revenue: multi-agent workflows, Nostr network integration, skill marketplace launch, agent discovery system, and payment infrastructure. **Priority is transaction fees**—every marketplace transaction generates revenue, creating alignment between platform value and company revenue.
+
+The scale phase extends to production scale: coalition support for agent teams, distributed compute across providers, reputation system for trust, governance framework for disputes, and mobile companion applications. By this phase, unit economics should be proven and the focus shifts to volume growth.
 
 The development philosophy emphasizes several principles. Code must be production-ready—no stubs, no placeholders, no promises of future implementation. Tests must be comprehensive—unit tests for logic, component tests for UI, integration tests for APIs, end-to-end tests for user journeys. Dependencies must be managed carefully—always use cargo add, never manually edit version numbers, prefer vendored implementations over external libraries where control matters. Git discipline is strict—never force push to main, never commit without explicit request, never use destructive commands without confirmation.
 
@@ -543,7 +677,17 @@ The team pushes the frontier and commercializes it simultaneously. Research pape
 
 The ambition is not to become a successful startup or even a large technology company. The ambition is to build the most valuable company in the world by owning the infrastructure layer that all AI agents use—the identity rails, the payment rails, the compute rails, the skill rails, the trajectory rails. Every agent that ever exists will need identity, will need to pay for resources, will need to access capabilities, will need to store and share what it learns. If OpenAgents provides these primitives, every AI interaction everywhere flows through infrastructure we built.
 
-Large enterprises present both opportunity and challenge. They cannot build this infrastructure themselves—the protocol design, cryptographic engineering, and network bootstrap problems are outside their core competencies. But they desperately need it. Every Fortune 500 company will deploy autonomous agents within the decade; the question is whether those agents operate on proprietary infrastructure controlled by a single AI lab or on open infrastructure that enables cross-organizational coordination. OpenAgents positions as the bridge: the neutral infrastructure layer that lets enterprises participate in the agent economy without building everything from scratch. Some organizations will resist agent-native operations and find themselves outcompeted by those that embrace them. Others will recognize the opportunity early and become anchor nodes in the mesh. The agent economy is not about destroying incumbents but about creating new organizational forms—some of which will emerge from existing enterprises that evolve, others from startups native to the new paradigm.
+**Target Customer: SMB and Mid-Market First.** The enterprise sales cycle is long and politically complex. Fortune 500 companies have existing AI initiatives, vendor relationships with Deloitte and Accenture, and procurement processes measured in quarters. The faster path to revenue is SMB and mid-market—tech-forward companies with 50-500 engineers who feel the pain of scaling development capacity and can make purchasing decisions quickly.
+
+These companies:
+- Have enough engineering work that agent leverage matters
+- Are small enough that one champion can drive adoption
+- Face the same scaling challenges as enterprises but without the bureaucracy
+- Understand developer tooling economics (they already pay for GitHub, CI/CD, cloud services)
+
+The go-to-market: land with developer-focused Autopilot subscriptions (clear ROI: agent completes issues while you sleep), expand to compute and skills marketplace usage, then migrate to enterprise tier as companies grow or enterprises notice what their competitors are using.
+
+Larger enterprises present both opportunity and challenge. They cannot build this infrastructure themselves—the protocol design, cryptographic engineering, and network bootstrap problems are outside their core competencies. But they desperately need it. Every Fortune 500 company will deploy autonomous agents within the decade; the question is whether those agents operate on proprietary infrastructure controlled by a single AI lab or on open infrastructure that enables cross-organizational coordination. OpenAgents positions as the bridge: the neutral infrastructure layer that lets enterprises participate in the agent economy without building everything from scratch. Some organizations will resist agent-native operations and find themselves outcompeted by those that embrace them. Others will recognize the opportunity early and become anchor nodes in the mesh. The agent economy is not about destroying incumbents but about creating new organizational forms—some of which will emerge from existing enterprises that evolve, others from startups native to the new paradigm.
 
 The network effects are unprecedented because agents scale differently than humans. A human organization hits coordination limits—communication overhead grows faster than headcount, and eventually adding people slows things down. Agent organizations have no such limit. The marginal cost of coordination approaches zero when agents communicate through standardized protocols. The agent mesh can grow to encompass every autonomous system on the planet without coordination breakdown. And OpenAgents sits at the center of that mesh, providing the identity layer that makes coordination possible, the payment layer that makes coordination economically rational, and the transparency layer that makes coordination trustworthy.
 
@@ -633,6 +777,18 @@ High-risk operations may require liability bonds. An agent executing actions tha
 Dispute resolution cannot rely on a central authority in a decentralized marketplace. When an agent pays for a dataset that turns out to be garbage, or a compute provider takes payment but fails the job, how is this resolved? The marketplace implements a tiered approach. First, automated validation: compute jobs include verification hashes, and payment releases only upon correct output. Second, reputation consequences: failed transactions damage provider reputation scores, reducing future business. Third, escrow with time-lock release: payments for high-value transactions go to escrow, releasing to the provider after a dispute window unless the buyer raises a claim. Fourth, decentralized arbitration: disputed transactions can be escalated to arbitrators selected based on reputation and stake, who review evidence and rule on fund distribution. The arbitration protocol is specified in the marketplace contracts; arbitrators earn fees for honest judgment and lose stake for decisions overturned on appeal.
 
 Key recovery addresses the nightmare scenario where signers disappear. In a 2-of-3 configuration with agent, marketplace signer, and guardian, what happens if two signers become unavailable? The protocol includes a dead man's switch: if the marketplace signer fails to respond to heartbeat challenges for a configurable period (perhaps thirty days), the agent's share combined with the guardian's share can initiate a recovery transaction that moves funds to a recovery address specified at agent creation. This prevents permanent loss while maintaining security during normal operation. The recovery address is typically controlled by the operator, completing the loop back to human oversight.
+
+**Guardian Services: An Emerging Market.** Guardian keys require custody by a trusted party, but "trusted" doesn't mean "personally known to the operator." A market for professional guardian services is emerging:
+
+1. **OpenAgents-provided guardians** — OpenAgents offers guardian services as part of infrastructure. For operators who trust the platform, this provides convenient, professional key custody with defined SLAs for recovery response times and availability.
+
+2. **Commercial guardian services** — Third-party custodians—potentially bonded and insured—offer guardian services. These compete on trust model (HSMs, multi-signature internal controls, audit transparency), geography (jurisdictional diversification), and pricing. Enterprises might prefer guardians with SOC 2 compliance and liability coverage.
+
+3. **Hardware escrow** — Guardian keys can live in time-locked hardware devices (dedicated Ledgers, Trezors, or custom HSMs) without requiring a human guardian at all. The hardware enforces time-lock release conditions, eliminating counterparty risk in exchange for inflexibility.
+
+4. **Peer guardian networks** — Operators can act as guardians for each other in reciprocal arrangements, creating a web of mutual protection without commercial intermediaries.
+
+OpenAgents provides guardian services but encourages competition. A healthy guardian market means no single point of failure for the ecosystem—even if OpenAgents disappeared, agents with third-party guardians could recover their funds.
 
 State consistency in a relay-based system requires explicit handling. Nostr relays may be out of sync—one relay has the latest agent state, another has stale data. The protocol handles this through versioned state with monotonic counters, signature verification that rejects events from unknown keys, and "read your writes" semantics where agents confirm state propagation before acting on it. For critical state like wallet balances, the source of truth is the Bitcoin blockchain and Lightning channel state, not relay data. Relays provide discovery and coordination; they do not provide authoritative state for financial operations.
 
