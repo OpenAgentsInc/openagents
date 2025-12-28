@@ -435,6 +435,69 @@ The tests use fixed mnemonics for reproducibility:
 
 **Note:** These are TEST mnemonics on regtest. Never use them for real funds.
 
+### Stress Tests & Throughput Benchmarks
+
+The compute crate includes stress tests to measure maximum throughput:
+
+```bash
+# Quick benchmark (1000 jobs, ~10 seconds)
+cargo test -p compute --test payment_stress quick_throughput_benchmark -- --ignored --nocapture
+
+# Full stress test with concurrency sweep
+cargo test -p compute --test payment_stress stress_test_job_throughput_no_payment -- --ignored --nocapture
+
+# Payment throughput (requires funded wallets)
+cargo test -p compute --test payment_stress stress_test_payment_throughput -- --ignored --nocapture
+
+# Full E2E with payments
+cargo test -p compute --test payment_stress stress_test_full_e2e_throughput -- --ignored --nocapture
+```
+
+#### Benchmark Results
+
+| Metric | Value |
+|--------|-------|
+| **Job Processing (no payment)** | **~15,000 jobs/sec** |
+| **Avg job latency** | 76µs |
+| **Full E2E (with payment)** | **~0.3 jobs/sec** |
+| **E2E latency** | ~3,500ms/job |
+
+#### Concurrency Scaling
+
+| Concurrency | Throughput (jobs/sec) |
+|-------------|----------------------|
+| 1 worker | 14,783 |
+| 10 workers | 14,743 |
+| 50 workers | 14,287 |
+| 100 workers | 14,805 |
+| 500 workers | 14,866 |
+
+Throughput is flat regardless of concurrency because the bottleneck is the RwLock on DvmService.
+
+#### Where Time Goes (E2E with Payment)
+
+| Phase | Time |
+|-------|------|
+| Invoice creation | ~500ms |
+| Payment round-trip | ~2,500ms |
+| Job processing | <1ms |
+| Confirmation | ~500ms |
+
+Lightning network latency dominates. Optimizations:
+- Pre-generated invoice pools
+- Parallel payment channels
+- Payment batching
+- Async confirmation
+
+#### Theoretical Max Throughput
+
+| Scenario | Throughput |
+|----------|------------|
+| Unpaid jobs | ~15,000/sec |
+| Paid jobs (single channel) | ~0.3/sec |
+| Paid jobs (10 parallel channels) | ~3/sec |
+| Paid jobs (batched invoices) | TBD |
+
 ### Mock Testing
 
 Backend trait abstraction enables testing with mock implementations:
