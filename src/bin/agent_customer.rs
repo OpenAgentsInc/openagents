@@ -13,9 +13,22 @@ use nostr::{
 use nostr_client::RelayConnection;
 use openagents::agents::{now, parse_agent_message, AgentMessage, Network as AgentNetwork, CUSTOMER_MNEMONIC, DEFAULT_RELAY};
 use openagents_spark::{Network as SparkNetwork, SparkSigner, SparkWallet, WalletConfig};
+use std::collections::HashMap;
 use std::env::temp_dir;
 use std::time::Duration;
 use tokio::sync::mpsc;
+
+/// Provider info collected from ServiceAnnouncement
+#[derive(Debug, Clone)]
+struct ProviderInfo {
+    pubkey: String,
+    kind: u16,
+    price_msats: u64,
+    spark_address: String,
+    network: AgentNetwork,
+    models: Vec<String>,
+    capabilities: Vec<String>,
+}
 
 #[derive(Parser)]
 #[command(name = "agent-customer")]
@@ -36,6 +49,14 @@ struct Args {
     /// Skip wallet initialization (for testing without Spark)
     #[arg(long)]
     no_wallet: bool,
+
+    /// Time to wait for provider discovery (seconds)
+    #[arg(long, default_value = "3")]
+    discovery_time: u64,
+
+    /// Select provider by: cheapest, first, or specific pubkey
+    #[arg(long, default_value = "first")]
+    select: String,
 }
 
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync>>;
@@ -133,50 +154,22 @@ async fn main() -> Result<()> {
     // Record start time to filter old messages
     let start_time = now();
 
-    // Wait briefly for subscription to establish and receive service announcement
-    println!("[CUSTOMER] Waiting for provider service announcement...");
+    // ============================================
+    // PHASE 1: Provider Discovery
+    // ============================================
+    println!("[CUSTOMER] Discovering providers for {} seconds...", args.discovery_time);
+    let mut providers: HashMap<String, ProviderInfo> = HashMap::new();
+    let discovery_deadline = std::time::Instant::now() + Duration::from_secs(args.discovery_time);
 
-    // Flag to track if we've sent our job request
-    let mut job_requested = false;
-    let mut our_job_id: Option<String> = None;
-    let prompt = args.prompt.clone();
-
-    // Event loop with timeout
-    let timeout = Duration::from_secs(120);
-    let start = std::time::Instant::now();
-
-    loop {
-        if start.elapsed() > timeout {
-            println!("\n[CUSTOMER] Timeout waiting for response");
-            break;
-        }
-
-        let event = match tokio::time::timeout(Duration::from_secs(5), rx.recv()).await {
+    while std::time::Instant::now() < discovery_deadline {
+        let remaining = discovery_deadline.saturating_duration_since(std::time::Instant::now());
+        let event = match tokio::time::timeout(remaining.max(Duration::from_millis(100)), rx.recv()).await {
             Ok(Some(e)) => e,
-            Ok(None) => {
-                println!("[CUSTOMER] Channel closed");
-                break;
-            }
-            Err(_) => {
-                // Timeout on recv - if we haven't sent job yet and no announcement received,
-                // send the job request anyway (provider may have already announced)
-                if !job_requested {
-                    println!("[CUSTOMER] No announcement received, sending job request anyway...");
-                    let request = AgentMessage::JobRequest {
-                        kind: KIND_JOB_TEXT_GENERATION,
-                        prompt: prompt.clone(),
-                        max_tokens: 100,
-                        target_provider: None,
-                    };
-                    send_channel_message(&relay, &args.channel, &keypair, &request).await?;
-                    println!("[CUSTOMER] Job requested: {}", prompt);
-                    job_requested = true;
-                }
-                continue;
-            }
+            Ok(None) => break,
+            Err(_) => break, // Discovery timeout reached
         };
 
-        // Skip old messages from before we started
+        // Skip old messages
         if event.created_at < start_time {
             continue;
         }
@@ -186,56 +179,135 @@ async fn main() -> Result<()> {
             continue;
         }
 
-        // Parse message
+        if let Some(AgentMessage::ServiceAnnouncement {
+            kind,
+            price_msats,
+            spark_address,
+            network,
+            provider_pubkey,
+            models,
+            capabilities,
+        }) = parse_agent_message(&event.content) {
+            // Use provider_pubkey or event.pubkey as key
+            let pubkey = provider_pubkey.clone().unwrap_or_else(|| event.pubkey.clone());
+
+            // Skip wrong network
+            if network != AgentNetwork::Regtest {
+                println!("[CUSTOMER] Skipping provider on {} (we need regtest)", network);
+                continue;
+            }
+
+            providers.insert(pubkey.clone(), ProviderInfo {
+                pubkey,
+                kind,
+                price_msats,
+                spark_address,
+                network,
+                models,
+                capabilities,
+            });
+        }
+    }
+
+    // ============================================
+    // PHASE 2: Provider Selection
+    // ============================================
+    if providers.is_empty() {
+        println!("[CUSTOMER] No providers found! Make sure a provider is running.");
+        println!("[CUSTOMER] Disconnecting...");
+        relay.disconnect().await.ok();
+        return Ok(());
+    }
+
+    println!("\n[CUSTOMER] Found {} provider(s):", providers.len());
+    for (i, (pubkey, info)) in providers.iter().enumerate() {
+        println!("  [{}] {}...", i, &pubkey[..16.min(pubkey.len())]);
+        println!("      Price: {} msats", info.price_msats);
+        println!("      Models: {:?}", info.models);
+        println!("      Capabilities: {:?}", info.capabilities);
+    }
+
+    // Select provider based on --select flag
+    let selected = match args.select.as_str() {
+        "cheapest" => {
+            providers.values().min_by_key(|p| p.price_msats).cloned()
+        }
+        "first" => {
+            providers.values().next().cloned()
+        }
+        pubkey => {
+            // Try to find by pubkey prefix
+            providers.values()
+                .find(|p| p.pubkey.starts_with(pubkey))
+                .cloned()
+                .or_else(|| providers.values().next().cloned())
+        }
+    };
+
+    let selected = match selected {
+        Some(p) => p,
+        None => {
+            println!("[CUSTOMER] Failed to select provider");
+            return Ok(());
+        }
+    };
+
+    println!("\n[CUSTOMER] Selected provider: {}...", &selected.pubkey[..16.min(selected.pubkey.len())]);
+    println!("           Price: {} msats", selected.price_msats);
+
+    // ============================================
+    // PHASE 3: Job Request
+    // ============================================
+    let prompt = args.prompt.clone();
+    let request = AgentMessage::JobRequest {
+        kind: KIND_JOB_TEXT_GENERATION,
+        prompt: prompt.clone(),
+        max_tokens: 100,
+        target_provider: Some(selected.pubkey.clone()),
+    };
+    send_channel_message(&relay, &args.channel, &keypair, &request).await?;
+    println!("[CUSTOMER] Job requested: {}", prompt);
+
+    // ============================================
+    // PHASE 4: Wait for Invoice and Result
+    // ============================================
+    let mut our_job_id: Option<String> = None;
+    let timeout = Duration::from_secs(120);
+    let job_start = std::time::Instant::now();
+
+    loop {
+        if job_start.elapsed() > timeout {
+            println!("\n[CUSTOMER] Timeout waiting for response");
+            break;
+        }
+
+        let event = match tokio::time::timeout(Duration::from_secs(10), rx.recv()).await {
+            Ok(Some(e)) => e,
+            Ok(None) => {
+                println!("[CUSTOMER] Channel closed");
+                break;
+            }
+            Err(_) => continue,
+        };
+
+        // Skip old messages
+        if event.created_at < start_time {
+            continue;
+        }
+
+        // Skip our own messages
+        if event.pubkey == hex::encode(keypair.public_key) {
+            continue;
+        }
+
         let msg = match parse_agent_message(&event.content) {
             Some(m) => m,
             None => continue,
         };
 
         match msg {
-            AgentMessage::ServiceAnnouncement {
-                kind,
-                price_msats,
-                spark_address,
-                network,
-                provider_pubkey,
-                models,
-                capabilities,
-            } => {
-                println!("[CUSTOMER] Found provider:");
-                println!("           Kind: {}", kind);
-                println!("           Price: {} msats", price_msats);
-                println!("           Spark: {}", spark_address);
-                println!("           Network: {}", network);
-                if let Some(ref pubkey) = provider_pubkey {
-                    println!("           Pubkey: {}...", &pubkey[..16.min(pubkey.len())]);
-                }
-                if !models.is_empty() {
-                    println!("           Models: {:?}", models);
-                }
-                if !capabilities.is_empty() {
-                    println!("           Capabilities: {:?}", capabilities);
-                }
-
-                // Validate network matches our expectation (regtest)
-                if network != AgentNetwork::Regtest {
-                    println!("[CUSTOMER] WARNING: Provider is on {} but we expect regtest!", network);
-                    println!("[CUSTOMER] Skipping this provider...");
-                    continue;
-                }
-
-                if !job_requested {
-                    // Request a job (target this specific provider if pubkey is available)
-                    let request = AgentMessage::JobRequest {
-                        kind: KIND_JOB_TEXT_GENERATION,
-                        prompt: prompt.clone(),
-                        max_tokens: 100,
-                        target_provider: provider_pubkey.clone(),
-                    };
-                    send_channel_message(&relay, &args.channel, &keypair, &request).await?;
-                    println!("[CUSTOMER] Job requested: {}", prompt);
-                    job_requested = true;
-                }
+            AgentMessage::ServiceAnnouncement { .. } => {
+                // Already handled in discovery phase
             }
             AgentMessage::Invoice {
                 bolt11,
