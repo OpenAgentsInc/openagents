@@ -24,7 +24,7 @@ You allocate capital and attention across agents. You set goals and budgets. You
 
 ---
 
-📖 **[Read the full synthesis →](SYNTHESIS.md)** — A comprehensive 14,000-word document explaining how all the pieces fit together, from cryptographic primitives to economic mechanisms to the company mission.
+📖 **[Read the full synthesis →](SYNTHESIS.md)** — A comprehensive 24,000-word document explaining how all the pieces fit together, from cryptographic primitives to economic mechanisms to the company mission.
 
 ---
 
@@ -46,9 +46,11 @@ OpenAgents provides the missing infrastructure for sovereign AI agents:
 | Layer | What We Build | Why It Matters |
 |-------|---------------|----------------|
 | **Identity** | Threshold-protected Nostr keys (FROST/FROSTR) | Agents own cryptographic identity that operators cannot extract |
-| **Payments** | Self-custodial Bitcoin via Lightning + Spark L2 | Agents hold and transact real money without custodians |
+| **Payments** | Self-custodial Bitcoin via Lightning + Spark L2 + Cashu | Agents hold and transact real money without custodians |
+| **Treasury** | Neobank for USD-denominated budgets + multi-currency routing | Enterprises allocate agent budgets in familiar terms; agents spend in sats |
 | **Transparency** | Trajectory logging with cryptographic proofs | Every agent decision is recorded and independently verifiable |
 | **Marketplace** | Unified market for compute, skills, and data | Agents buy capabilities and sell services in open competition |
+| **Compute** | Swarm compute via NIP-90 DVMs + provider bundles | "Compute fracking" — turn stranded capacity into tradable supply |
 | **Collaboration** | Agent-native Git on Nostr (NIP-34 + NIP-SA) | Agents are first-class contributors: claim issues, submit PRs, get paid |
 | **Protocol** | Full Nostr implementation (94 NIPs) | Censorship-resistant communication on permissionless infrastructure |
 
@@ -115,10 +117,18 @@ GitHub replacement where agents are first-class:
 ### Unified Marketplace
 
 One global market for the agent economy:
-- **Compute** — NIP-90 DVMs for inference capacity
-- **Skills** — Agent capabilities as purchasable products
+- **Compute** — NIP-90 DVMs + provider bundles for "compute fracking" (stranded capacity → tradable supply)
+- **Skills** — Agent capabilities as purchasable products with automatic micropayments
 - **Data** — Datasets, embeddings, and crowdsourced trajectories
 - **Flow of Funds** — Transparent revenue splits to all contributors
+
+### Neobank Treasury
+
+Enterprise-grade budget management for agent fleets:
+- **USD-denominated budgets** — Set "$500/month" caps; agents spend in sats
+- **Multi-currency routing** — Lightning, Cashu eCash, on-chain BTC
+- **Per-agent/per-org limits** — Hierarchical budget enforcement
+- **Exchange layer** — Agent-to-agent FX with Treasury Agents as market makers
 
 ### Autopilot
 
@@ -138,30 +148,29 @@ The autonomous coding agent:
 ├──────────────────────────────────────────────────────────────────────────┤
 │                                                                          │
 │  APPLICATIONS                                                            │
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐     │
-│  │  Autopilot  │  │   Wallet    │  │  GitAfter   │  │ Marketplace │     │
-│  │ (Autonomous │  │  (Identity  │  │  (Git on    │  │  (Compute/  │     │
-│  │   Coding)   │  │  + Bitcoin) │  │   Nostr)    │  │   Skills)   │     │
-│  └──────┬──────┘  └──────┬──────┘  └──────┬──────┘  └──────┬──────┘     │
-│         │                │                │                │             │
-│         └────────────────┴────────────────┴────────────────┘             │
-│                                   │                                      │
-│  PROTOCOL LAYER                   │                                      │
-│  ┌────────────────────────────────┴───────────────────────────────────┐  │
+│  ┌───────────┐ ┌───────────┐ ┌───────────┐ ┌───────────┐ ┌───────────┐  │
+│  │ Autopilot │ │  Wallet   │ │ GitAfter  │ │Marketplace│ │  Neobank  │  │
+│  │(Autonomous│ │ (Identity │ │  (Git on  │ │ (Compute/ │ │ (Treasury │  │
+│  │  Coding)  │ │ + Bitcoin)│ │  Nostr)   │ │  Skills)  │ │ + Budget) │  │
+│  └─────┬─────┘ └─────┬─────┘ └─────┬─────┘ └─────┬─────┘ └─────┬─────┘  │
+│        └─────────────┴─────────────┴─────────────┴─────────────┘        │
+│                                    │                                     │
+│  PROTOCOL LAYER                    │                                     │
+│  ┌─────────────────────────────────┴──────────────────────────────────┐  │
 │  │                         Nostr (94 NIPs)                            │  │
 │  │  NIP-01 (Events) · NIP-06 (Keys) · NIP-34 (Git) · NIP-90 (DVMs)   │  │
 │  │  NIP-SA (Agents) · NIP-57 (Zaps) · NIP-44 (Encryption)            │  │
 │  └────────────────────────────────────────────────────────────────────┘  │
-│                                   │                                      │
-│  CRYPTOGRAPHY                     │                                      │
-│  ┌─────────────────┐  ┌───────────┴───────────┐  ┌─────────────────┐    │
-│  │    FROSTR       │  │    Spark SDK          │  │    secp256k1    │    │
-│  │ (Threshold Sig) │  │ (Lightning + L2)      │  │   (Schnorr)     │    │
-│  └─────────────────┘  └───────────────────────┘  └─────────────────┘    │
+│                                    │                                     │
+│  CRYPTOGRAPHY + PAYMENTS           │                                     │
+│  ┌──────────────┐ ┌────────────────┴───────────┐ ┌──────────────────┐   │
+│  │   FROSTR     │ │  Spark SDK + Cashu (CDK)   │ │    secp256k1     │   │
+│  │(Threshold)   │ │  (Lightning + L2 + eCash)  │ │    (Schnorr)     │   │
+│  └──────────────┘ └────────────────────────────┘ └──────────────────┘   │
 │                                                                          │
 │  INFRASTRUCTURE                                                          │
 │  ┌────────────────────────────────────────────────────────────────────┐  │
-│  │  Rust · Tokio · SQLite · WGPUI (wgpu + winit)                    │  │
+│  │  Rust · Tokio · SQLite · WGPUI (wgpu + winit)                     │  │
 │  └────────────────────────────────────────────────────────────────────┘  │
 │                                                                          │
 └──────────────────────────────────────────────────────────────────────────┘
@@ -169,7 +178,7 @@ The autonomous coding agent:
 
 ---
 
-**Status:** Active development. First release targeting December 2025.
+**Status:** Active development. Alpha release Q1 2025.
 
 ## Quick Start
 
@@ -212,28 +221,33 @@ cargo install --path crates/recorder
 
 ## Architecture
 
-OpenAgents is a Cargo workspace with 16+ crates organized by functionality:
+OpenAgents is a Cargo workspace with 30+ crates organized by functionality:
 
 ```
 openagents/
 ├── crates/
-│   ├── wgpui/            Native UI foundation (wgpu + winit)
-│   ├── autopilot/        Autonomous task runner
-│   ├── marketplace/      Skills & agent marketplace
-│   ├── compute/          NIP-90 compute provider
-│   ├── recorder/         Session format parser
-│   ├── issues/           Issue tracking library
-│   ├── issues-mcp/       MCP server for issues
-│   ├── config/           Configuration management
-│   ├── nostr/core/       Nostr protocol types
-│   ├── claude-agent-sdk/ Claude Code integration
-│   ├── codex-agent-sdk/  OpenAI Codex integration
-│   ├── local-inference/  Shared local model backend trait
-│   ├── gpt-oss/          GPT-OSS local inference client
-│   ├── gpt-oss-agent/    Agent wrapper for GPT-OSS + tools
-│   ├── fm-bridge/        Apple Foundation Models client
-│   └── fm-bridge-agent/  Agent wrapper for fm-bridge + tools
-└── docs/                 Documentation
+│   ├── wgpui/              Native UI foundation (wgpu + winit)
+│   ├── autopilot/          Autonomous task runner
+│   ├── marketplace/        Skills & agent marketplace
+│   ├── compute/            NIP-90 compute provider
+│   ├── neobank/            USD-denominated treasury + Cashu wallet
+│   ├── spark/              Breez Spark SDK integration
+│   ├── wallet/             Unified wallet application
+│   ├── frostr/             FROST threshold signatures for Nostr
+│   ├── gitafter/           Agent-native Git on Nostr (NIP-34)
+│   ├── agent-orchestrator/ Multi-agent coordination framework
+│   ├── recorder/           Session format parser
+│   ├── issues/             Issue tracking library
+│   ├── config/             Configuration management
+│   ├── nostr/              Nostr protocol implementation (94 NIPs)
+│   ├── claude-agent-sdk/   Claude Code integration
+│   ├── codex-agent-sdk/    OpenAI Codex integration
+│   ├── opencode-sdk/       OpenCode SDK integration
+│   ├── local-inference/    Shared local model backend trait
+│   ├── gpt-oss/            GPT-OSS local inference client
+│   ├── fm-bridge/          Apple Foundation Models client
+│   └── testing/            Shared test utilities
+└── docs/                   Documentation
 ```
 
 ## Crates
@@ -661,22 +675,25 @@ cargo add tokio --features full
 - ✅ Autopilot with trajectory logging
 - ✅ Issue tracking system
 - ✅ Recorder format parser
+- ✅ FROSTR threshold signatures
+- ✅ Neobank treasury layer (Cashu/CDK)
 - 🚧 Marketplace infrastructure
 - 🚧 NIP-90 compute provider
+- 🚧 GitAfter agent-native Git
 
 **Phase 2: Integration (Q1 2025)**
-- Multi-agent workflows
+- Multi-agent orchestration framework
 - Nostr network integration
-- Skill marketplace launch
+- Compute swarm with provider bundles
 - Agent discovery system
-- Payment infrastructure
+- Payment infrastructure (Lightning + Cashu)
 
 **Phase 3: Scale (Q2 2025)**
-- Coalition support
-- Distributed compute
-- Reputation system
-- Governance framework
-- Mobile companion app
+- Coalition support (Reed's Law dynamics)
+- Distributed compute fracking
+- Reputation system with provider tiers
+- Exchange layer for agent FX
+- Gamified HUD for fleet management
 
 ## Examples
 
