@@ -1,5 +1,13 @@
 #!/usr/bin/env python3
-"""Generate HTML gallery page from demos/index.json"""
+"""
+DEPRECATED: Demo gallery moved to ~/code/backroom
+This script is no longer used. Demo and demos folders have been archived.
+"""
+
+import sys
+print("ERROR: Demo gallery has been moved to ~/code/backroom")
+print("This script is deprecated and should not be run.")
+sys.exit(1)
 
 import json
 from pathlib import Path

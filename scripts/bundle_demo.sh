@@ -1,4 +1,11 @@
 #!/usr/bin/env bash
+# DEPRECATED: Demo gallery moved to ~/code/backroom
+# This script is no longer used. Demo and demos folders have been archived.
+
+echo "ERROR: Demo gallery has been moved to ~/code/backroom"
+echo "This script is deprecated and should not be run."
+exit 1
+
 # Bundle a .rlog session into a complete demo replay package
 #
 # Usage: ./bundle_demo.sh <path-to-rlog-file> [output-dir]
