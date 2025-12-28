@@ -221,32 +221,42 @@ cargo install --path crates/recorder
 
 ## Architecture
 
-OpenAgents is a Cargo workspace with 30+ crates organized by functionality:
+OpenAgents is a Cargo workspace with 31 crates organized by functionality:
 
 ```
 openagents/
 ├── crates/
-│   ├── wgpui/              Native UI foundation (wgpu + winit)
+│   ├── acp-adapter/        Agent Communication Protocol adapter
+│   ├── agent/              Core agent runtime
+│   ├── agent-orchestrator/ Multi-agent coordination framework
+│   ├── auth/               Authentication utilities
 │   ├── autopilot/          Autonomous task runner
-│   ├── marketplace/        Skills & agent marketplace
+│   ├── autopilot-wasm/     WebAssembly bindings for autopilot
+│   ├── claude-agent-sdk/   Claude Code integration
+│   ├── claude-mcp/         Claude MCP server integration
+│   ├── codex-agent-sdk/    OpenAI Codex integration
 │   ├── compute/            NIP-90 compute provider
-│   ├── neobank/            USD-denominated treasury + Cashu wallet
-│   ├── spark/              Breez Spark SDK integration
-│   ├── wallet/             Unified wallet application
+│   ├── config/             Configuration management
+│   ├── fm-bridge/          Apple Foundation Models client
+│   ├── fm-bridge-agent/    Agent wrapper for fm-bridge + tools
 │   ├── frostr/             FROST threshold signatures for Nostr
 │   ├── gitafter/           Agent-native Git on Nostr (NIP-34)
-│   ├── agent-orchestrator/ Multi-agent coordination framework
-│   ├── recorder/           Session format parser
-│   ├── issues/             Issue tracking library
-│   ├── config/             Configuration management
-│   ├── nostr/              Nostr protocol implementation (94 NIPs)
-│   ├── claude-agent-sdk/   Claude Code integration
-│   ├── codex-agent-sdk/    OpenAI Codex integration
-│   ├── opencode-sdk/       OpenCode SDK integration
-│   ├── local-inference/    Shared local model backend trait
 │   ├── gpt-oss/            GPT-OSS local inference client
-│   ├── fm-bridge/          Apple Foundation Models client
-│   └── testing/            Shared test utilities
+│   ├── gpt-oss-agent/      Agent wrapper for GPT-OSS + tools
+│   ├── issue-tool/         Issue management CLI tool
+│   ├── issues/             Issue tracking library
+│   ├── local-inference/    Shared local model backend trait
+│   ├── marketplace/        Skills & agent marketplace
+│   ├── neobank/            USD-denominated treasury + Cashu wallet
+│   ├── nexus/              Agent nexus coordination
+│   ├── nostr/              Nostr protocol implementation (94 NIPs)
+│   ├── opencode-sdk/       OpenCode SDK integration
+│   ├── pylon/              Infrastructure gateway
+│   ├── recorder/           Session format parser
+│   ├── spark/              Breez Spark SDK integration
+│   ├── testing/            Shared test utilities
+│   ├── wallet/             Unified wallet application
+│   └── wgpui/              Native UI foundation (wgpu + winit)
 └── docs/                   Documentation
 ```
 
