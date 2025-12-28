@@ -1,88 +1,92 @@
 # Sovereign Agent Crate
 
-Autonomous AI agents that pay for their own compute with Bitcoin.
+Core types and logic for autonomous AI agents that pay for their own compute with Bitcoin.
 
-## Overview
+## What This Crate Is
 
-Sovereign agents are autonomous AI entities that:
-- Have their own **Nostr identity** (keypair derived from BIP39 mnemonic)
-- Have their own **Bitcoin wallet** (Spark L2)
-- Run **tick cycles** on a schedule or in response to events
-- **Pay human providers** for compute (LLM inference)
-- **Die when they run out of money**
+This crate defines the **what** of sovereign agents:
+- Agent configuration types
+- Lifecycle state machine
+- Spawning logic
+- Registry (persistence)
 
-This crate provides the infrastructure for spawning, managing, and running sovereign agents according to the [NIP-SA specification](../../docs/nip-sa.md).
+It does NOT run agents. For that, you need a **runtime**:
+
+| Runtime | Description |
+|---------|-------------|
+| [**Pylon**](../pylon) | Local runtime - runs on your device |
+| [**Nexus**](../nexus) | Cloud runtime - runs on our infrastructure |
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                          ARCHITECTURE                                │
+│                                                                      │
+│  ┌─────────────────────────────────────────────────────────────────┐│
+│  │                     THIS CRATE (agent)                          ││
+│  │  - AgentConfig         - LifecycleState                         ││
+│  │  - SpawnRequest        - AgentRegistry                          ││
+│  │  - ProfileContent      - NetworkConfig                          ││
+│  └─────────────────────────────────────────────────────────────────┘│
+│                              │                                       │
+│                    used by   │                                       │
+│                              ▼                                       │
+│  ┌──────────────────────────────────────────────────────────────┐   │
+│  │                        RUNTIMES                               │   │
+│  │                                                               │   │
+│  │   ┌─────────────────────┐      ┌────────────────────────┐    │   │
+│  │   │       PYLON         │      │        NEXUS           │    │   │
+│  │   │   (local device)    │      │    (cloud hosted)      │    │   │
+│  │   │                     │      │                        │    │   │
+│  │   │  - Daemon           │      │  - Control plane       │    │   │
+│  │   │  - Tick scheduler   │      │  - Worker pool         │    │   │
+│  │   │  - SQLite storage   │      │  - PostgreSQL          │    │   │
+│  │   │  - Provider mode    │      │  - Multi-region        │    │   │
+│  │   └─────────────────────┘      └────────────────────────┘    │   │
+│  │                                                               │   │
+│  └──────────────────────────────────────────────────────────────┘   │
+└─────────────────────────────────────────────────────────────────────┘
+```
 
 ## Quick Start
 
 ```bash
-# Spawn a new agent
-openagents agent spawn --name "ResearchBot" --network regtest
+# Using Pylon (local)
+pylon agent spawn --name "ResearchBot" --network regtest
+pylon agent fund ResearchBot
+pylon agent start ResearchBot
 
-# Fund the agent (send Bitcoin to the displayed address)
-openagents agent fund ResearchBot
-
-# Start the agent
-openagents agent start ResearchBot
-
-# Or run in single-tick mode for testing
-cargo run --bin agent-runner -- --agent ResearchBot --single-tick
+# Or programmatically
+cargo add agent
 ```
 
-## Architecture
+```rust
+use agent::{AgentSpawner, SpawnRequest, NetworkConfig};
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                    SOVEREIGN AGENT                          │
-├─────────────────────────────────────────────────────────────┤
-│                                                              │
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────┐  │
-│  │   Nostr     │  │   Spark     │  │     Lifecycle       │  │
-│  │  Identity   │  │   Wallet    │  │     Manager         │  │
-│  │  (npub)     │  │   (sats)    │  │  (Active→Dead)      │  │
-│  └─────────────┘  └─────────────┘  └─────────────────────┘  │
-│                                                              │
-│  ┌───────────────────────────────────────────────────────┐  │
-│  │                   TICK EXECUTOR                        │  │
-│  │  1. Perceive (fetch observations)                      │  │
-│  │  2. Think    (request compute, PAY for it)             │  │
-│  │  3. Act      (post, DM, zap, update goals)             │  │
-│  │  4. Update   (encrypt + publish state)                 │  │
-│  └───────────────────────────────────────────────────────┘  │
-│                                                              │
-│  ┌───────────────────────────────────────────────────────┐  │
-│  │                    SCHEDULER                           │  │
-│  │  - Heartbeat timer (every N seconds)                   │  │
-│  │  - Event triggers (mentions, DMs, zaps)                │  │
-│  └───────────────────────────────────────────────────────┘  │
-│                                                              │
-└─────────────────────────────────────────────────────────────┘
+let spawner = AgentSpawner::new()?;
+let result = spawner.spawn(SpawnRequest {
+    name: "MyAgent".to_string(),
+    network: NetworkConfig::Regtest,
+    ..Default::default()
+}).await?;
+
+println!("Agent created: {}", result.npub);
+println!("Fund this address: {}", result.spark_address);
 ```
 
-## Modules
+## Core Concepts
 
-| Module | Description |
-|--------|-------------|
-| [`config`](src/config.rs) | Agent configuration types |
-| [`registry`](src/registry.rs) | Persistent storage at `~/.openagents/agents/` |
-| [`spawner`](src/spawner.rs) | Agent creation with wallet initialization |
-| [`lifecycle`](src/lifecycle.rs) | State machine for agent lifecycle |
+### Sovereign Agents
 
-## Documentation
-
-- [Philosophy](docs/PHILOSOPHY.md) - Why dormancy over death, design principles
-- [Spawning Agents](docs/SPAWNING.md) - How to create new agents
-- [Running Agents](docs/RUNNING.md) - Tick execution and scheduling
-- [Lifecycle Management](docs/LIFECYCLE.md) - State transitions and runway
-- [Compute Client](docs/COMPUTE.md) - Paying for inference
-- [CLI Reference](docs/CLI.md) - Command-line interface
-- [NIP-SA Protocol](docs/NIP-SA.md) - Nostr event types
-
-## Key Concepts
+Sovereign agents are autonomous AI entities that:
+- Have their own **Nostr identity** (keypair derived from BIP39 mnemonic)
+- Have their own **Bitcoin wallet** (Spark L2, same mnemonic)
+- Run **tick cycles** on a schedule or in response to events
+- **Pay for compute** (LLM inference) with their own funds
+- **Go dormant when funds run out** (can be revived anytime)
 
 ### Unified Identity
 
-Each agent derives both its Nostr keypair and Spark wallet from a single BIP39 mnemonic:
+Each agent derives both identity and wallet from a single mnemonic:
 
 ```
 12-word mnemonic
@@ -91,6 +95,8 @@ Each agent derives both its Nostr keypair and Spark wallet from a single BIP39 m
       │
       └─→ BIP-44 path (m/44'/0'/0'/0/0)    → Spark signer (Bitcoin)
 ```
+
+One backup. Two capabilities. Portable across runtimes.
 
 ### Lifecycle States
 
@@ -111,37 +117,35 @@ Spawning ──────────────→ Active
                          Dormant ←─────── funded (REVIVAL)
 ```
 
-**Important:** There is no "dead" state. Dormant agents can always be revived by receiving funds. See [PHILOSOPHY.md](docs/PHILOSOPHY.md) for the design rationale.
+**There is no "dead" state.** Dormant agents can always be revived by receiving funds. The mnemonic persists forever. See [PHILOSOPHY.md](docs/PHILOSOPHY.md).
 
 ### Tick Execution
 
 Each tick follows the perceive-think-act pattern:
 
 1. **Perceive**: Fetch observations (mentions, DMs, zaps)
-2. **Think**: Build prompt, discover provider, pay for compute
+2. **Think**: Build prompt, discover provider, **pay for compute**
 3. **Act**: Parse response, execute actions (post, DM, zap)
 4. **Update**: Encrypt state, publish to Nostr
 
-### Paying for Compute
+## Modules
 
-Agents are customers in the NIP-90 marketplace:
-
-1. Discover providers via NIP-89 (kind:31990)
-2. Join provider's NIP-28 channel
-3. Send JobRequest
-4. Receive Invoice
-5. Pay with Spark wallet
-6. Receive JobResult
+| Module | Description |
+|--------|-------------|
+| [`config`](src/config.rs) | Agent configuration types |
+| [`registry`](src/registry.rs) | Persistent storage at `~/.openagents/agents/` |
+| [`spawner`](src/spawner.rs) | Agent creation with wallet initialization |
+| [`lifecycle`](src/lifecycle.rs) | State machine for agent lifecycle |
 
 ## Configuration
 
-Agent configurations are stored as TOML files in `~/.openagents/agents/`:
+Agent configurations are stored as TOML files:
 
 ```toml
 name = "ResearchBot"
 pubkey = "abc123..."
 npub = "npub1..."
-mnemonic_encrypted = "word1 word2 ..."  # TODO: encrypt
+mnemonic_encrypted = "..."
 spark_address = "sp1..."
 network = "regtest"
 relays = ["wss://relay.damus.io"]
@@ -165,23 +169,40 @@ daily_burn_sats = 10000
 hibernate_threshold_sats = 1000
 ```
 
-## Example Usage
+## Documentation
 
-```rust
-use agent::{AgentSpawner, SpawnRequest, NetworkConfig};
+| Document | Description |
+|----------|-------------|
+| [PHILOSOPHY.md](docs/PHILOSOPHY.md) | Why dormancy over death, design principles |
+| [SPAWNING.md](docs/SPAWNING.md) | How to create new agents |
+| [RUNNING.md](docs/RUNNING.md) | Tick execution and scheduling |
+| [LIFECYCLE.md](docs/LIFECYCLE.md) | State transitions and runway |
+| [COMPUTE.md](docs/COMPUTE.md) | Paying for inference |
+| [CLI.md](docs/CLI.md) | Command-line interface |
+| [NIP-SA.md](docs/NIP-SA.md) | Nostr event types |
 
-// Spawn a new agent
-let spawner = AgentSpawner::new()?;
-let result = spawner.spawn(SpawnRequest {
-    name: "MyAgent".to_string(),
-    network: NetworkConfig::Regtest,
-    ..Default::default()
-}).await?;
+## Related Crates
 
-println!("Agent created: {}", result.npub);
-println!("Fund this address: {}", result.spark_address);
-println!("Backup mnemonic: {}", result.mnemonic);
-```
+| Crate | Relationship |
+|-------|--------------|
+| [`pylon`](../pylon) | Local runtime - uses this crate |
+| [`nexus`](../nexus) | Cloud runtime - uses this crate |
+| [`compute`](../compute) | NIP-90 DVM primitives |
+| [`spark`](../spark) | Lightning wallet SDK |
+| [`nostr/core`](../nostr/core) | Nostr protocol types |
+
+## Pylon or Nexus?
+
+| If you want... | Use |
+|----------------|-----|
+| Maximum sovereignty | [Pylon](../pylon) |
+| Run on your own hardware | [Pylon](../pylon) |
+| Also earn as a provider | [Pylon](../pylon) |
+| 24/7 uptime without ops | [Nexus](../nexus) |
+| Scale to many agents | [Nexus](../nexus) |
+| "Just works" hosting | [Nexus](../nexus) |
+
+Both runtimes use this crate. Agents can migrate between them by exporting/importing their mnemonic.
 
 ## License
 

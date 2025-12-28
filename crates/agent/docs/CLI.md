@@ -383,7 +383,7 @@ The CLI uses these icons to indicate lifecycle state:
 | ✅ | Active | Normal operation |
 | ⚠️ | LowBalance | Less than 7 days of runway |
 | 💤 | Hibernating | Only responds to zaps |
-| 💀 | Dead | Balance is zero |
+| 🌑 | Dormant | Balance is zero, awaiting revival |
 
 ## Exit Codes
 
@@ -482,13 +482,16 @@ openagents agent status ResearchBot
 openagents agent fund ResearchBot
 ```
 
-### "Agent is dead"
+### "Agent is dormant"
 
-The agent's balance reached zero. Dead agents cannot be resurrected.
+The agent's balance reached zero. Unlike "dead" in other systems, dormant agents can be revived!
 
 ```bash
-# Spawn a new agent
-openagents agent spawn --name "ResearchBot2"
+# Check the agent's funding address
+openagents agent fund ResearchBot
+
+# Send funds to revive the agent
+# The agent will automatically wake up when funds arrive
 ```
 
 ## Binary Usage
