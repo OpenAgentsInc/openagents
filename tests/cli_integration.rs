@@ -12,36 +12,11 @@ use std::fs;
 use std::path::PathBuf;
 use uuid::Uuid;
 
-#[cfg(unix)]
-use std::os::unix::fs::PermissionsExt;
-
 fn create_temp_workspace() -> PathBuf {
     let root = std::env::temp_dir().join(format!("openagents-test-{}", Uuid::new_v4()));
     fs::create_dir_all(root.join(".openagents")).expect("create .openagents");
     fs::write(root.join("Cargo.toml"), "[workspace]\n").expect("write Cargo.toml");
     root
-}
-
-#[cfg(unix)]
-use std::path::Path;
-
-#[cfg(unix)]
-fn write_stub_script(dir: &Path, name: &str) -> PathBuf {
-    let script_path = dir.join(name);
-    let script = r#"#!/bin/sh
-if [ -z "$LOG_PATH" ]; then
-  echo "LOG_PATH not set" >&2
-  exit 1
-fi
-printf '%s\n' "$@" > "$LOG_PATH"
-"#;
-    fs::write(&script_path, script).expect("write stub script");
-    let mut perms = fs::metadata(&script_path)
-        .expect("stub metadata")
-        .permissions();
-    perms.set_mode(0o755);
-    fs::set_permissions(&script_path, perms).expect("chmod stub");
-    script_path
 }
 
 /// Test that the binary exists and shows help
@@ -54,9 +29,10 @@ fn test_help() {
         .stdout(predicate::str::contains("OpenAgents"))
         .stdout(predicate::str::contains("wallet"))
         .stdout(predicate::str::contains("marketplace"))
-        .stdout(predicate::str::contains("autopilot"))
+        .stdout(predicate::str::contains("agent"))
         .stdout(predicate::str::contains("gitafter"))
-        .stdout(predicate::str::contains("daemon"));
+        .stdout(predicate::str::contains("pylon"))
+        .stdout(predicate::str::contains("auth"));
 }
 
 /// Test version flag
@@ -75,7 +51,7 @@ fn test_openagents_no_args_headless() {
     cmd.env("OPENAGENTS_HEADLESS", "1");
     cmd.assert()
         .success()
-        .stdout(predicate::str::contains("OpenAgents GUI disabled"));
+        .stdout(predicate::str::contains("OpenAgents CLI"));
 }
 
 // Wallet commands
@@ -174,31 +150,6 @@ fn test_marketplace_data_help() {
     cmd.assert().success();
 }
 
-// Autopilot commands
-
-#[test]
-fn test_autopilot_help() {
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("openagents"));
-    cmd.arg("autopilot").arg("--help");
-    cmd.assert()
-        .success()
-        .stdout(predicate::str::contains("Autopilot commands"));
-}
-
-#[test]
-fn test_autopilot_run_help() {
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("openagents"));
-    cmd.arg("autopilot").arg("run").arg("--help");
-    cmd.assert().success();
-}
-
-#[test]
-fn test_autopilot_metrics_help() {
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("openagents"));
-    cmd.arg("autopilot").arg("metrics").arg("--help");
-    cmd.assert().success();
-}
-
 // GitAfter commands
 
 #[test]
@@ -214,31 +165,6 @@ fn test_gitafter_help() {
 fn test_gitafter_repos_help() {
     let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("openagents"));
     cmd.arg("gitafter").arg("repos").arg("--help");
-    cmd.assert().success();
-}
-
-// Daemon commands
-
-#[test]
-fn test_daemon_help() {
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("openagents"));
-    cmd.arg("daemon").arg("--help");
-    cmd.assert()
-        .success()
-        .stdout(predicate::str::contains("Daemon commands"));
-}
-
-#[test]
-fn test_daemon_status_help() {
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("openagents"));
-    cmd.arg("daemon").arg("status").arg("--help");
-    cmd.assert().success();
-}
-
-#[test]
-fn test_daemon_start_help() {
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("openagents"));
-    cmd.arg("daemon").arg("start").arg("--help");
     cmd.assert().success();
 }
 
@@ -301,175 +227,3 @@ fn test_marketplace_subcommands_listed() {
         .stdout(predicate::str::contains("skills"))
         .stdout(predicate::str::contains("data"));
 }
-
-#[test]
-fn test_autopilot_subcommands_listed() {
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("openagents"));
-    cmd.arg("autopilot").arg("--help");
-    cmd.assert()
-        .success()
-        .stdout(predicate::str::contains("run"))
-        .stdout(predicate::str::contains("resume"))
-        .stdout(predicate::str::contains("metrics"));
-}
-
-#[test]
-#[cfg(unix)]
-fn test_autopilot_run_delegates_to_autopilot_bin() {
-    let workspace = create_temp_workspace();
-    let log_path = workspace.join("autopilot.log");
-    let stub = write_stub_script(&workspace, "autopilot-stub.sh");
-
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("openagents"));
-    cmd.current_dir(&workspace)
-        .env("OPENAGENTS_AUTOPILOT_BIN", &stub)
-        .env("LOG_PATH", &log_path)
-        .arg("autopilot")
-        .arg("run")
-        .arg("ship-it");
-
-    cmd.assert().success();
-
-    let output = fs::read_to_string(&log_path).expect("read stub log");
-    assert!(output.contains("run"), "expected run arg");
-    assert!(output.contains("ship-it"), "expected prompt arg");
-
-    fs::remove_dir_all(&workspace).expect("cleanup workspace");
-}
-
-#[test]
-#[cfg(unix)]
-fn test_autopilot_run_delegates_gpt_oss_agent() {
-    let workspace = create_temp_workspace();
-    let log_path = workspace.join("autopilot-gpt-oss.log");
-    let stub = write_stub_script(&workspace, "autopilot-stub.sh");
-
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("openagents"));
-    cmd.current_dir(&workspace)
-        .env("OPENAGENTS_AUTOPILOT_BIN", &stub)
-        .env("LOG_PATH", &log_path)
-        .arg("autopilot")
-        .arg("run")
-        .arg("local-run")
-        .arg("--agent")
-        .arg("gpt-oss")
-        .arg("--model")
-        .arg("gpt-oss-20b");
-
-    cmd.assert().success();
-
-    let output = fs::read_to_string(&log_path).expect("read stub log");
-    assert!(output.contains("--agent"), "expected agent flag");
-    assert!(output.contains("gpt-oss"), "expected gpt-oss agent");
-    assert!(output.contains("--model"), "expected model flag");
-    assert!(output.contains("gpt-oss-20b"), "expected gpt-oss model");
-
-    fs::remove_dir_all(&workspace).expect("cleanup workspace");
-}
-
-#[test]
-#[cfg(unix)]
-fn test_autopilot_run_delegates_fm_bridge_agent() {
-    let workspace = create_temp_workspace();
-    let log_path = workspace.join("autopilot-fm-bridge.log");
-    let stub = write_stub_script(&workspace, "autopilot-stub.sh");
-
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("openagents"));
-    cmd.current_dir(&workspace)
-        .env("OPENAGENTS_AUTOPILOT_BIN", &stub)
-        .env("LOG_PATH", &log_path)
-        .arg("autopilot")
-        .arg("run")
-        .arg("local-run")
-        .arg("--agent")
-        .arg("fm-bridge")
-        .arg("--model")
-        .arg("gpt-4o-mini-2024-07-18");
-
-    cmd.assert().success();
-
-    let output = fs::read_to_string(&log_path).expect("read stub log");
-    assert!(output.contains("--agent"), "expected agent flag");
-    assert!(output.contains("fm-bridge"), "expected fm-bridge agent");
-    assert!(output.contains("--model"), "expected model flag");
-    assert!(output.contains("gpt-4o-mini-2024-07-18"), "expected fm-bridge model");
-
-    fs::remove_dir_all(&workspace).expect("cleanup workspace");
-}
-
-#[test]
-#[cfg(unix)]
-fn test_autopilot_resume_delegates_to_autopilot_bin() {
-    let workspace = create_temp_workspace();
-    let log_path = workspace.join("autopilot-resume.log");
-    let stub = write_stub_script(&workspace, "autopilot-stub.sh");
-    let trajectory = workspace.join("trajectory.json");
-
-    fs::write(&trajectory, "{}").expect("write trajectory placeholder");
-
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("openagents"));
-    cmd.current_dir(&workspace)
-        .env("OPENAGENTS_AUTOPILOT_BIN", &stub)
-        .env("LOG_PATH", &log_path)
-        .arg("autopilot")
-        .arg("resume")
-        .arg(&trajectory)
-        .arg("--continue-last")
-        .arg("--prompt")
-        .arg("pick-up");
-
-    cmd.assert().success();
-
-    let output = fs::read_to_string(&log_path).expect("read stub log");
-    let trajectory_arg = trajectory.display().to_string();
-    assert!(output.contains("resume"), "expected resume arg");
-    assert!(output.contains(&trajectory_arg), "expected trajectory arg");
-    assert!(
-        output.contains("--continue-last"),
-        "expected continue flag"
-    );
-    assert!(output.contains("--prompt"), "expected prompt flag");
-    assert!(output.contains("pick-up"), "expected prompt text");
-
-    fs::remove_dir_all(&workspace).expect("cleanup workspace");
-}
-
-// TODO: test_autopilot_replay_trajectory removed - Trajectory type was refactored
-
-#[test]
-fn test_daemon_subcommands_listed() {
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("openagents"));
-    cmd.arg("daemon").arg("--help");
-    cmd.assert()
-        .success()
-        .stdout(predicate::str::contains("start"))
-        .stdout(predicate::str::contains("stop"))
-        .stdout(predicate::str::contains("status"));
-}
-
-#[test]
-#[cfg(unix)]
-fn test_daemon_start_delegates_to_autopilotd_bin() {
-    let workspace = create_temp_workspace();
-    let log_path = workspace.join("autopilotd.log");
-    let stub = write_stub_script(&workspace, "autopilotd-stub.sh");
-
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("openagents"));
-    cmd.current_dir(&workspace)
-        .env("OPENAGENTS_AUTOPILOTD_BIN", &stub)
-        .env("LOG_PATH", &log_path)
-        .arg("daemon")
-        .arg("start")
-        .arg("--workdir")
-        .arg(&workspace);
-
-    cmd.assert().success();
-
-    let output = fs::read_to_string(&log_path).expect("read stub log");
-    assert!(output.contains("start"), "expected start arg");
-    assert!(output.contains("--workdir"), "expected workdir flag");
-
-    fs::remove_dir_all(&workspace).expect("cleanup workspace");
-}
-
-// TODO: test_autopilot_apm_stats_shows_current_apm removed - APM types were refactored
