@@ -1852,22 +1852,27 @@ version = "0.1.0"
 dependencies = [
  "aes-gcm",
  "argon2",
+ "async-trait",
  "bip39",
  "chrono",
  "dirs 5.0.1",
  "env_logger 0.11.8",
+ "eventsource-stream",
  "log",
  "nostr 0.1.0",
  "nostr-client",
  "openagents-spark",
  "rand 0.8.5",
+ "reqwest",
  "rpassword",
  "serde",
  "serde_json",
  "tempfile",
  "thiserror 2.0.17",
  "tokio",
+ "tokio-stream",
  "tracing",
+ "uuid",
 ]
 
 [[package]]
@@ -7042,6 +7047,7 @@ dependencies = [
  "once_cell",
  "pollster",
  "predicates",
+ "pylon",
  "reqwest",
  "rusqlite",
  "serde",
@@ -8160,6 +8166,30 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7186d3822593aa4393561d186d1393b3923e9d6163d3fbfd6e825e3e6cf3e6a8"
 dependencies = [
  "num-traits",
+]
+
+[[package]]
+name = "pylon"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "chrono",
+ "clap",
+ "compute",
+ "dirs 5.0.1",
+ "nostr 0.1.0",
+ "nostr-client",
+ "openagents-spark",
+ "rpassword",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.17",
+ "tokio",
+ "toml",
+ "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]

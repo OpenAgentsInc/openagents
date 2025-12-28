@@ -42,6 +42,10 @@ enum Commands {
     /// Auth commands (import credentials)
     #[command(subcommand)]
     Auth(cli::auth::AuthCommands),
+
+    /// Pylon commands (NIP-90 compute provider)
+    #[command(subcommand)]
+    Pylon(cli::pylon::PylonCommands),
 }
 
 fn main() {
@@ -68,6 +72,7 @@ fn main() {
         Some(Commands::Marketplace(cmd)) => cli::marketplace::run(cmd),
         Some(Commands::Gitafter(cmd)) => cli::gitafter::run(cmd),
         Some(Commands::Auth(cmd)) => cli::auth::run(cmd),
+        Some(Commands::Pylon(cmd)) => cli::pylon::run(cmd),
     };
 
     if let Err(e) = result {

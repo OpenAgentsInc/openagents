@@ -94,18 +94,26 @@ pub enum DomainEvent {
         timestamp: DateTime<Utc>,
     },
 
-    // Model events
-    /// Available models were refreshed from Ollama
+    // Backend events
+    /// A backend became available
+    BackendAvailable {
+        backend_id: String,
+        timestamp: DateTime<Utc>,
+    },
+    /// A backend became unavailable
+    BackendUnavailable {
+        backend_id: String,
+        timestamp: DateTime<Utc>,
+    },
+    /// Backends were registered after detection
+    BackendsRegistered {
+        backend_ids: Vec<String>,
+        timestamp: DateTime<Utc>,
+    },
+    /// Available models were refreshed from backends
     ModelsRefreshed {
+        backend_id: String,
         models: Vec<String>,
-        timestamp: DateTime<Utc>,
-    },
-    /// Ollama became available
-    OllamaAvailable {
-        timestamp: DateTime<Utc>,
-    },
-    /// Ollama became unavailable
-    OllamaUnavailable {
         timestamp: DateTime<Utc>,
     },
 
@@ -134,9 +142,10 @@ impl DomainEvent {
             DomainEvent::InvoiceCreated { timestamp, .. } => *timestamp,
             DomainEvent::RelayConnected { timestamp, .. } => *timestamp,
             DomainEvent::RelayDisconnected { timestamp, .. } => *timestamp,
+            DomainEvent::BackendAvailable { timestamp, .. } => *timestamp,
+            DomainEvent::BackendUnavailable { timestamp, .. } => *timestamp,
+            DomainEvent::BackendsRegistered { timestamp, .. } => *timestamp,
             DomainEvent::ModelsRefreshed { timestamp, .. } => *timestamp,
-            DomainEvent::OllamaAvailable { timestamp, .. } => *timestamp,
-            DomainEvent::OllamaUnavailable { timestamp, .. } => *timestamp,
             DomainEvent::BalanceUpdated { timestamp, .. } => *timestamp,
         }
     }
@@ -178,14 +187,29 @@ impl DomainEvent {
             }
             DomainEvent::RelayConnected { url, .. } => format!("Relay connected: {}", url),
             DomainEvent::RelayDisconnected { url, reason, .. } => {
-                let r = reason.as_ref().map(|s| format!(" ({})", s)).unwrap_or_default();
+                let r = reason
+                    .as_ref()
+                    .map(|s| format!(" ({})", s))
+                    .unwrap_or_default();
                 format!("Relay disconnected: {}{}", url, r)
             }
-            DomainEvent::ModelsRefreshed { models, .. } => {
-                format!("Models refreshed: {} available", models.len())
+            DomainEvent::BackendAvailable { backend_id, .. } => {
+                format!("Backend available: {}", backend_id)
             }
-            DomainEvent::OllamaAvailable { .. } => "Ollama available".to_string(),
-            DomainEvent::OllamaUnavailable { .. } => "Ollama unavailable".to_string(),
+            DomainEvent::BackendUnavailable { backend_id, .. } => {
+                format!("Backend unavailable: {}", backend_id)
+            }
+            DomainEvent::BackendsRegistered { backend_ids, .. } => {
+                format!("Backends registered: {}", backend_ids.join(", "))
+            }
+            DomainEvent::ModelsRefreshed {
+                backend_id, models, ..
+            } => {
+                format!(
+                    "Models refreshed ({backend_id}): {} available",
+                    models.len()
+                )
+            }
             DomainEvent::BalanceUpdated { balance_sats, .. } => {
                 format!("Balance: {} sats", balance_sats)
             }

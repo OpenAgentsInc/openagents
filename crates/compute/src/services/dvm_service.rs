@@ -1,14 +1,17 @@
 //! NIP-90 Data Vending Machine service
 //!
-//! Handles job requests from Nostr relays and processes them using Ollama.
+//! Handles job requests from Nostr relays and processes them using available backends.
+//! Supports optional Spark wallet integration for paid jobs.
 
+use crate::backends::{BackendRegistry, CompletionRequest};
 use crate::domain::{DomainEvent, Job, UnifiedIdentity};
-use crate::services::{OllamaService, RelayService};
+use crate::services::RelayService;
 use chrono::Utc;
 use nostr::{
     finalize_event, EventTemplate, HandlerInfo, HandlerMetadata, HandlerType, JobInput,
     JobResult, PricingInfo, KIND_HANDLER_INFO, KIND_JOB_TEXT_GENERATION,
 };
+use spark::{SparkWallet, PaymentStatus};
 use std::collections::HashMap;
 use std::sync::Arc;
 use thiserror::Error;
@@ -39,6 +42,18 @@ pub enum DvmError {
 
     #[error("NIP-89 handler publishing failed: {0}")]
     HandlerPublishFailed(String),
+
+    #[error("payment required but no wallet configured")]
+    NoWalletConfigured,
+
+    #[error("payment error: {0}")]
+    PaymentError(String),
+
+    #[error("job not found: {0}")]
+    JobNotFound(String),
+
+    #[error("payment not received for job: {0}")]
+    PaymentNotReceived(String),
 }
 
 /// Configuration for the DVM service
@@ -68,14 +83,18 @@ pub struct DvmService {
     identity: Arc<RwLock<Option<Arc<UnifiedIdentity>>>>,
     /// Relay service for Nostr communication
     relay_service: Arc<RelayService>,
-    /// Ollama service for inference
-    ollama_service: Arc<OllamaService>,
+    /// Backend registry for inference (Ollama, Apple FM, Llama.cpp)
+    backend_registry: Arc<RwLock<BackendRegistry>>,
+    /// Optional Spark wallet for payments
+    wallet: Arc<RwLock<Option<Arc<SparkWallet>>>>,
     /// Service configuration
     config: DvmConfig,
     /// Event broadcaster for domain events
     event_tx: broadcast::Sender<DomainEvent>,
     /// Active jobs being processed
     active_jobs: Arc<RwLock<HashMap<String, Job>>>,
+    /// Pending invoices: job_id -> (bolt11, amount_msats)
+    pending_invoices: Arc<RwLock<HashMap<String, (String, u64)>>>,
     /// Whether the service is running
     running: Arc<RwLock<bool>>,
 }
@@ -84,18 +103,55 @@ impl DvmService {
     /// Create a new DVM service
     pub fn new(
         relay_service: Arc<RelayService>,
-        ollama_service: Arc<OllamaService>,
+        backend_registry: Arc<RwLock<BackendRegistry>>,
         event_tx: broadcast::Sender<DomainEvent>,
     ) -> Self {
         Self {
             identity: Arc::new(RwLock::new(None)),
             relay_service,
-            ollama_service,
+            backend_registry,
+            wallet: Arc::new(RwLock::new(None)),
             config: DvmConfig::default(),
             event_tx,
             active_jobs: Arc::new(RwLock::new(HashMap::new())),
+            pending_invoices: Arc::new(RwLock::new(HashMap::new())),
             running: Arc::new(RwLock::new(false)),
         }
+    }
+
+    /// Set the Spark wallet for payment processing
+    pub async fn set_wallet(&self, wallet: Arc<SparkWallet>) {
+        *self.wallet.write().await = Some(wallet);
+    }
+
+    /// Check if a wallet is configured
+    pub async fn has_wallet(&self) -> bool {
+        self.wallet.read().await.is_some()
+    }
+
+    /// Create a DVM service with auto-detected backends
+    pub async fn with_auto_detect(
+        relay_service: Arc<RelayService>,
+        event_tx: broadcast::Sender<DomainEvent>,
+    ) -> Self {
+        let registry = BackendRegistry::detect().await;
+        Self::new(relay_service, Arc::new(RwLock::new(registry)), event_tx)
+    }
+
+    /// Get the backend registry
+    pub fn backend_registry(&self) -> Arc<RwLock<BackendRegistry>> {
+        self.backend_registry.clone()
+    }
+
+    /// Get available backend IDs
+    pub async fn available_backends(&self) -> Vec<String> {
+        self.backend_registry
+            .read()
+            .await
+            .available_backends()
+            .into_iter()
+            .map(String::from)
+            .collect()
     }
 
     /// Set the identity for signing events
@@ -171,6 +227,10 @@ impl DvmService {
     }
 
     /// Process a job request
+    ///
+    /// If `require_payment` is enabled in config and a wallet is configured,
+    /// creates an invoice and returns the bolt11 string. The job won't be processed
+    /// until `confirm_payment` is called.
     pub async fn handle_job_request(
         &self,
         event_id: &str,
@@ -186,7 +246,7 @@ impl DvmService {
 
         // Create job
         let job_id = format!("job_{}", &event_id[..16.min(event_id.len())]);
-        let job = Job::new(
+        let mut job = Job::new(
             job_id.clone(),
             event_id.to_string(),
             kind,
@@ -203,11 +263,142 @@ impl DvmService {
             timestamp: Utc::now(),
         });
 
-        // Store job
+        // Check if payment is required
+        if self.config.require_payment {
+            let wallet_guard = self.wallet.read().await;
+            if let Some(wallet) = wallet_guard.as_ref() {
+                // Create invoice for the job
+                let amount_sats = self.config.min_price_msats / 1000;
+                let description = format!("NIP-90 job {}", job_id);
+
+                match wallet.create_invoice(amount_sats, Some(description), Some(3600)).await {
+                    Ok(invoice_response) => {
+                        let bolt11 = invoice_response.payment_request.clone();
+                        let amount_msats = self.config.min_price_msats;
+
+                        // Update job status to require payment
+                        job.require_payment(amount_msats, bolt11.clone());
+
+                        // Store job and pending invoice
+                        self.active_jobs.write().await.insert(job_id.clone(), job);
+                        self.pending_invoices.write().await.insert(
+                            job_id.clone(),
+                            (bolt11.clone(), amount_msats),
+                        );
+
+                        // Emit invoice created event
+                        let _ = self.event_tx.send(DomainEvent::InvoiceCreated {
+                            job_id: job_id.clone(),
+                            bolt11,
+                            amount_msats,
+                            timestamp: Utc::now(),
+                        });
+
+                        return Ok(());
+                    }
+                    Err(e) => {
+                        return Err(DvmError::PaymentError(format!("Failed to create invoice: {}", e)));
+                    }
+                }
+            } else {
+                return Err(DvmError::NoWalletConfigured);
+            }
+        }
+
+        // Store job (no payment required)
         self.active_jobs.write().await.insert(job_id.clone(), job);
 
-        // Process the job
+        // Process the job immediately
         self.process_job(&job_id).await
+    }
+
+    /// Get the invoice for a pending job
+    pub async fn get_job_invoice(&self, job_id: &str) -> Option<(String, u64)> {
+        self.pending_invoices.read().await.get(job_id).cloned()
+    }
+
+    /// Confirm payment received and process the job
+    ///
+    /// Call this after verifying payment was received for a job.
+    pub async fn confirm_payment(&self, job_id: &str) -> Result<(), DvmError> {
+        // Get job
+        let job = {
+            let jobs = self.active_jobs.read().await;
+            jobs.get(job_id).cloned()
+        };
+
+        let mut job = job.ok_or_else(|| DvmError::JobNotFound(job_id.to_string()))?;
+
+        // Verify job was waiting for payment
+        let amount_msats = match &job.status {
+            crate::domain::job::JobStatus::PaymentRequired { amount_msats, .. } => *amount_msats,
+            _ => {
+                return Err(DvmError::PaymentError(format!(
+                    "Job {} not waiting for payment",
+                    job_id
+                )))
+            }
+        };
+
+        // Remove from pending invoices
+        self.pending_invoices.write().await.remove(job_id);
+
+        // Emit payment received event
+        let _ = self.event_tx.send(DomainEvent::PaymentReceived {
+            job_id: job_id.to_string(),
+            amount_msats,
+            timestamp: Utc::now(),
+        });
+
+        // Update job with payment info
+        job.amount_msats = Some(amount_msats);
+        job.status = crate::domain::job::JobStatus::Pending;
+        self.active_jobs.write().await.insert(job_id.to_string(), job);
+
+        // Now process the job
+        self.process_job(job_id).await
+    }
+
+    /// Check if a job's invoice has been paid by polling the wallet
+    ///
+    /// Returns true if the payment was received and the job is now processing.
+    /// Note: For production use, consider using SDK event listeners instead of polling.
+    pub async fn check_payment_status(&self, job_id: &str) -> Result<bool, DvmError> {
+        let wallet_guard = self.wallet.read().await;
+        let wallet = wallet_guard.as_ref().ok_or(DvmError::NoWalletConfigured)?;
+
+        // Get the invoice for this job
+        let (_bolt11, amount_msats) = self
+            .pending_invoices
+            .read()
+            .await
+            .get(job_id)
+            .cloned()
+            .ok_or_else(|| DvmError::JobNotFound(job_id.to_string()))?;
+
+        // Check payment history for recent incoming payments matching our amount
+        // In production, you'd use event listeners for real-time notification
+        let payments = wallet
+            .list_payments(Some(50), None)
+            .await
+            .map_err(|e| DvmError::PaymentError(e.to_string()))?;
+
+        let amount_sats = amount_msats / 1000;
+
+        for payment in payments {
+            // Check if this payment matches our amount and is completed
+            // Note: This is a simplified check. Production code should match by invoice/payment_hash.
+            if payment.status == PaymentStatus::Completed
+                && payment.amount as u64 == amount_sats
+            {
+                // Payment received! Confirm and process
+                drop(wallet_guard); // Release lock before calling confirm_payment
+                self.confirm_payment(job_id).await?;
+                return Ok(true);
+            }
+        }
+
+        Ok(false)
     }
 
     /// Process a job
@@ -231,7 +422,10 @@ impl DvmService {
         // Update job status
         job.set_processing();
         job.model = Some(model.clone());
-        self.active_jobs.write().await.insert(job_id.to_string(), job.clone());
+        self.active_jobs
+            .write()
+            .await
+            .insert(job_id.to_string(), job.clone());
 
         let _ = self.event_tx.send(DomainEvent::JobStarted {
             job_id: job_id.to_string(),
@@ -244,7 +438,10 @@ impl DvmService {
             Some(text) => text.to_string(),
             None => {
                 job.set_failed("No text input provided".to_string());
-                self.active_jobs.write().await.insert(job_id.to_string(), job.clone());
+                self.active_jobs
+                    .write()
+                    .await
+                    .insert(job_id.to_string(), job.clone());
 
                 let _ = self.event_tx.send(DomainEvent::JobFailed {
                     job_id: job_id.to_string(),
@@ -256,16 +453,53 @@ impl DvmService {
             }
         };
 
-        // Run inference
+        // Get backend from registry (use default or job-specified backend)
+        let backend_id = job.params.get("backend").cloned();
+        let backend = {
+            let registry = self.backend_registry.read().await;
+            if let Some(ref id) = backend_id {
+                registry.get(id)
+            } else {
+                registry.default()
+            }
+        };
+
+        let backend = match backend {
+            Some(b) => b,
+            None => {
+                let error = "No inference backend available".to_string();
+                job.set_failed(error.clone());
+                self.active_jobs
+                    .write()
+                    .await
+                    .insert(job_id.to_string(), job.clone());
+
+                let _ = self.event_tx.send(DomainEvent::JobFailed {
+                    job_id: job_id.to_string(),
+                    error,
+                    timestamp: Utc::now(),
+                });
+
+                return Err(DvmError::InferenceFailed(
+                    "No inference backend available".to_string(),
+                ));
+            }
+        };
+
+        // Run inference using the backend
         let start_time = std::time::Instant::now();
-        let result = self.ollama_service.generate(&model, &prompt).await;
+        let request = CompletionRequest::new(&model, &prompt);
+        let result = backend.read().await.complete(request).await;
 
         match result {
-            Ok(output) => {
+            Ok(response) => {
                 let duration_ms = start_time.elapsed().as_millis() as u64;
 
-                job.set_completed(output);
-                self.active_jobs.write().await.insert(job_id.to_string(), job.clone());
+                job.set_completed(response.text);
+                self.active_jobs
+                    .write()
+                    .await
+                    .insert(job_id.to_string(), job.clone());
 
                 let _ = self.event_tx.send(DomainEvent::JobCompleted {
                     job_id: job_id.to_string(),
@@ -290,7 +524,10 @@ impl DvmService {
             Err(e) => {
                 let error = e.to_string();
                 job.set_failed(error.clone());
-                self.active_jobs.write().await.insert(job_id.to_string(), job.clone());
+                self.active_jobs
+                    .write()
+                    .await
+                    .insert(job_id.to_string(), job.clone());
 
                 let _ = self.event_tx.send(DomainEvent::JobFailed {
                     job_id: job_id.to_string(),
@@ -322,10 +559,21 @@ impl DvmService {
             .clone()
             .ok_or(DvmError::NotInitialized)?;
 
+        // Get available backends
+        let backends = self.available_backends().await;
+        let backend_desc = if backends.is_empty() {
+            "No backends available".to_string()
+        } else {
+            format!("Backends: {}", backends.join(", "))
+        };
+
         // Create handler metadata
         let metadata = HandlerMetadata::new(
             "OpenAgents Compute Provider",
-            "AI inference provider using Ollama for NIP-90 data vending machine jobs"
+            &format!(
+                "AI inference provider for NIP-90 data vending machine jobs. {}",
+                backend_desc
+            ),
         )
         .with_website("https://openagents.com");
 
@@ -349,8 +597,9 @@ impl DvmService {
         // Serialize metadata to JSON for event content
         let content = serde_json::json!({
             "name": "OpenAgents Compute Provider",
-            "description": "AI inference provider using Ollama for NIP-90 data vending machine jobs",
-            "website": "https://openagents.com"
+            "description": format!("AI inference provider for NIP-90 data vending machine jobs. {}", backend_desc),
+            "website": "https://openagents.com",
+            "backends": backends
         })
         .to_string();
 
@@ -465,11 +714,11 @@ mod tests {
 
         // Create services
         let relay_service = Arc::new(RelayService::new());
-        let ollama_service = Arc::new(OllamaService::new());
+        let backend_registry = Arc::new(RwLock::new(BackendRegistry::new()));
         let (event_tx, _event_rx) = broadcast::channel(100);
 
         // Create DVM service
-        let dvm = DvmService::new(relay_service.clone(), ollama_service, event_tx);
+        let dvm = DvmService::new(relay_service.clone(), backend_registry, event_tx);
         dvm.set_identity(Arc::new(identity.clone())).await;
 
         // Connect to relays (this is mocked in tests)
@@ -491,11 +740,11 @@ mod tests {
 
         // Create services
         let relay_service = Arc::new(RelayService::new());
-        let ollama_service = Arc::new(OllamaService::new());
+        let backend_registry = Arc::new(RwLock::new(BackendRegistry::new()));
         let (event_tx, _event_rx) = broadcast::channel(100);
 
         // Create DVM service with custom config
-        let mut dvm = DvmService::new(relay_service.clone(), ollama_service, event_tx);
+        let mut dvm = DvmService::new(relay_service.clone(), backend_registry, event_tx);
         let config = DvmConfig {
             min_price_msats: 5000,
             ..Default::default()
@@ -515,10 +764,10 @@ mod tests {
     async fn test_publish_handler_info_requires_identity() {
         // Create services without setting identity
         let relay_service = Arc::new(RelayService::new());
-        let ollama_service = Arc::new(OllamaService::new());
+        let backend_registry = Arc::new(RwLock::new(BackendRegistry::new()));
         let (event_tx, _event_rx) = broadcast::channel(100);
 
-        let dvm = DvmService::new(relay_service, ollama_service, event_tx);
+        let dvm = DvmService::new(relay_service, backend_registry, event_tx);
 
         // Should fail without identity
         let result = dvm.publish_handler_info().await;

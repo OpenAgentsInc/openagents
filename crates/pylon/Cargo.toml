@@ -1,0 +1,58 @@
+[package]
+name = "pylon"
+version.workspace = true
+edition.workspace = true
+description = "NIP-90 compute provider node - earn Bitcoin running local AI inference"
+license = "MIT"
+autobins = false
+
+[[bin]]
+name = "pylon"
+path = "src/bin/main.rs"
+
+[lib]
+name = "pylon"
+path = "src/lib.rs"
+
+[dependencies]
+# Internal crates
+compute = { path = "../compute" }
+nostr = { path = "../nostr/core", features = ["full"] }
+nostr-client = { path = "../nostr/client" }
+spark = { package = "openagents-spark", path = "../spark" }
+
+# Async runtime
+tokio = { version = "1", features = ["rt-multi-thread", "sync", "time", "fs", "macros"] }
+async-trait = "0.1"
+
+# CLI
+clap = { version = "4", features = ["derive"] }
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+toml = "0.8"
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Error handling
+thiserror = "2.0"
+anyhow = "1.0"
+
+# Time
+chrono = { version = "0.4", features = ["serde"] }
+
+# Platform
+dirs = "5.0"
+rpassword = "7.4"
+
+[features]
+default = ["cli"]
+cli = []
+gui = []
+
+[dev-dependencies]
+tempfile = "3.10"
+tokio = { version = "1", features = ["rt", "macros"] }

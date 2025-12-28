@@ -1,12 +1,12 @@
 //! Compute Provider - Sell compute via NIP-90 DVMs with Bitcoin payments
 //!
-//! This crate provides a desktop application that allows users to:
-//! - Generate or import a BIP32 seed phrase
-//! - Derive both Nostr identity (NIP-06) and Spark wallet from the same seed
-//! - Go online to receive NIP-90 job requests
-//! - Execute inference via Ollama
-//! - Receive Bitcoin payments via Lightning/Spark
+//! This crate provides the infrastructure for running a NIP-90 compute provider:
+//! - Multiple inference backends (Ollama, Apple FM, Llama.cpp)
+//! - Auto-detection of available backends
+//! - NIP-90 job request/result loop
+//! - Identity management (BIP39 → Nostr + Lightning)
 
+pub mod backends;
 pub mod domain;
 pub mod services;
 pub mod storage;

@@ -1,0 +1,33 @@
+//! Pylon CLI wrapper for unified binary
+
+pub use pylon::cli::Commands as PylonCommands;
+
+/// Run a pylon command
+pub fn run(cmd: PylonCommands) -> anyhow::Result<()> {
+    let runtime = tokio::runtime::Runtime::new()?;
+
+    runtime.block_on(async {
+        match cmd {
+            PylonCommands::Init(args) => pylon::cli::execute(pylon::cli::PylonCli {
+                command: pylon::cli::Commands::Init(args),
+            })
+            .await,
+            PylonCommands::Start(args) => pylon::cli::execute(pylon::cli::PylonCli {
+                command: pylon::cli::Commands::Start(args),
+            })
+            .await,
+            PylonCommands::Stop(args) => pylon::cli::execute(pylon::cli::PylonCli {
+                command: pylon::cli::Commands::Stop(args),
+            })
+            .await,
+            PylonCommands::Status(args) => pylon::cli::execute(pylon::cli::PylonCli {
+                command: pylon::cli::Commands::Status(args),
+            })
+            .await,
+            PylonCommands::Doctor(args) => pylon::cli::execute(pylon::cli::PylonCli {
+                command: pylon::cli::Commands::Doctor(args),
+            })
+            .await,
+        }
+    })
+}
