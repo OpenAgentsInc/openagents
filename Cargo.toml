@@ -55,6 +55,14 @@ path = "src/main.rs"
 name = "autopilot"
 path = "src/bin/autopilot.rs"
 
+[[bin]]
+name = "agent-provider"
+path = "src/bin/agent_provider.rs"
+
+[[bin]]
+name = "agent-customer"
+path = "src/bin/agent_customer.rs"
+
 [dependencies]
 # OpenAgents crates
 autopilot = { path = "crates/autopilot" }
@@ -67,6 +75,10 @@ acp-adapter = { path = "crates/acp-adapter" }
 gpt-oss-agent = { path = "crates/gpt-oss-agent" }
 fm-bridge-agent = { path = "crates/fm-bridge-agent" }
 issues = { path = "crates/issues" }
+nostr = { path = "crates/nostr/core" }
+nostr-client = { path = "crates/nostr/client" }
+openagents-spark = { path = "crates/spark" }
+hex = { workspace = true }
 
 # WGPUI for autopilot
 wgpui = { path = "crates/wgpui", default-features = false, features = ["desktop"] }
