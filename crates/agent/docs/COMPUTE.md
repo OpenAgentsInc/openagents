@@ -7,13 +7,46 @@ This document explains how agents discover compute providers and pay for inferen
 Sovereign agents are **customers** in the NIP-90 compute marketplace. They:
 
 1. Discover providers via NIP-89 (kind:31990)
-2. Join provider's NIP-28 channel
-3. Send JobRequest
-4. Receive Invoice
-5. Pay with Spark wallet
-6. Receive JobResult
+2. Send job request via direct NIP-90 event (kind:5050)
+3. Receive job feedback with invoice (kind:7000)
+4. Pay Lightning invoice with Spark wallet
+5. Receive job result (kind:6050)
 
 The key insight: **The agent IS the customer.** It uses the same flow as `agent_customer.rs` but autonomously.
+
+## Primary Flow: Direct NIP-90 Events
+
+The primary flow uses direct Nostr events - no channel required:
+
+```text
+Customer                    Relay                       Provider
+   |                          |                            |
+   | -- kind:5050 request --> | --> kind:5050 request ---> |
+   |                          |                            |
+   | <-- kind:7000 feedback --|<--- kind:7000 + invoice ---|
+   |                          |                            |
+   | [pay Lightning invoice]  |                            |
+   |                          |                            |
+   | <-- kind:6050 result ----|<--- kind:6050 result ------|
+```
+
+### Event Kinds
+
+| Kind | Name | Direction | Purpose |
+|------|------|-----------|---------|
+| 5050 | JobRequest | Customer → Provider | Request compute with prompt |
+| 7000 | JobFeedback | Provider → Customer | Status updates, payment invoice |
+| 6050 | JobResult | Provider → Customer | Completed inference result |
+
+## Optional: NIP-28 Channel Coordination
+
+For multi-party scenarios or real-time discussion, agents can optionally use NIP-28 channels.
+This is **NOT required** for the core compute flow.
+
+Use channels when you need:
+- Multi-party coordination
+- Real-time chat between agents
+- HTLC escrow payments (experimental)
 
 ## Provider Discovery
 
@@ -36,7 +69,8 @@ let mut rx = relay.subscribe_with_channel("provider-discovery", &filters).await?
 pub struct ProviderInfo {
     pub pubkey: String,
     pub name: String,
-    pub channel_id: String,      // NIP-28 channel to join
+    /// NIP-28 channel ID (optional - only if provider uses channels)
+    pub channel_id: Option<String>,
     pub relay_url: String,
     pub price_msats: u64,
     pub models: Vec<String>,
@@ -46,6 +80,7 @@ pub struct ProviderInfo {
 let handler = HandlerInfo::from_event(&event)?;
 
 if handler.handler_type == HandlerType::ComputeProvider {
+    // Channel is optional
     let channel_id = handler.custom_tags
         .iter()
         .find(|(k, _)| k == "channel")
@@ -54,7 +89,7 @@ if handler.handler_type == HandlerType::ComputeProvider {
     providers.push(ProviderInfo {
         pubkey: handler.pubkey,
         name: handler.metadata.name,
-        channel_id,
+        channel_id,  // May be None for direct-events-only providers
         price_msats: handler.pricing.map(|p| p.amount).unwrap_or(0),
         // ...
     });
@@ -77,7 +112,80 @@ pub fn select_cheapest_provider(
 }
 ```
 
-## Requesting Inference
+## Requesting Inference (Direct NIP-90 Flow)
+
+### Publish Job Request (kind:5050)
+
+```rust
+use openagents::agents::{publish_job_request, KIND_JOB_REQUEST_TEXT};
+
+let job_request_id = publish_job_request(
+    &relay,
+    identity.keypair(),
+    &provider.pubkey,
+    prompt,
+    max_tokens,
+    KIND_JOB_REQUEST_TEXT,  // 5050
+).await?;
+```
+
+### Subscribe to Job Responses
+
+```rust
+use openagents::agents::subscribe_job_responses;
+
+let mut rx = subscribe_job_responses(&relay, &job_request_id).await?;
+```
+
+### Handle Feedback (kind:7000)
+
+```rust
+use openagents::agents::{parse_job_feedback, JobStatus, KIND_JOB_FEEDBACK};
+
+if event.kind == KIND_JOB_FEEDBACK {
+    if let Some((job_id, status, bolt11, amount)) = parse_job_feedback(&event) {
+        match status {
+            JobStatus::PaymentRequired => {
+                let bolt11 = bolt11.expect("Invoice in feedback");
+                let amount_sats = amount.unwrap_or(10_000) / 1000;
+
+                // Pay the invoice
+                wallet.send_payment_simple(&bolt11, None).await?;
+            }
+            JobStatus::Processing => {
+                println!("Job is processing...");
+            }
+            JobStatus::Success => {
+                println!("Job completed!");
+            }
+            JobStatus::Error => {
+                return Err("Job failed");
+            }
+            JobStatus::Cancelled => {
+                return Err("Job cancelled");
+            }
+        }
+    }
+}
+```
+
+### Receive Result (kind:6050)
+
+```rust
+use openagents::agents::{parse_job_result, KIND_JOB_RESULT_TEXT};
+
+if event.kind == KIND_JOB_RESULT_TEXT {
+    if let Some((job_id, result)) = parse_job_result(&event) {
+        if job_id == job_request_id {
+            return Ok(result);
+        }
+    }
+}
+```
+
+## Legacy: Channel-Based Flow
+
+For backward compatibility or HTLC escrow, the channel-based flow is still supported:
 
 ### Join Provider Channel
 
@@ -91,74 +199,10 @@ let filters = vec![json!({
 let rx = relay.subscribe_with_channel("agent-channel", &filters).await?;
 ```
 
-### Send JobRequest
-
-```rust
-let request = AgentMessage::JobRequest {
-    kind: 5050,  // KIND_JOB_TEXT_GENERATION
-    prompt: prompt.to_string(),
-    max_tokens: 500,
-    target_provider: Some(provider.pubkey.clone()),
-};
-
-send_channel_message(&channel_id, &request).await?;
-```
-
-### Receive Invoice
-
-```rust
-match parse_agent_message(&event.content) {
-    Some(AgentMessage::Invoice {
-        bolt11,
-        job_id,
-        amount_msats,
-        payment_hash,
-    }) => {
-        // Check amount within budget
-        let amount_sats = amount_msats / 1000;
-        if amount_sats > budget_sats {
-            return Err(anyhow!("Invoice exceeds budget"));
-        }
-
-        // Pay the invoice
-        let payment = wallet.send_payment_simple(&bolt11, None).await?;
-
-        // Confirm payment
-        let confirm = AgentMessage::PaymentSent {
-            job_id,
-            payment_id: payment.payment.id,
-        };
-        send_channel_message(&channel_id, &confirm).await?;
-    }
-    // ...
-}
-```
-
-### Receive Result
-
-```rust
-Some(AgentMessage::JobResult { job_id, result }) => {
-    if our_job_id.as_ref() == Some(&job_id) {
-        return Ok(result);
-    }
-}
-
-// Or streaming chunks
-Some(AgentMessage::StreamChunk { job_id, chunk, is_final }) => {
-    if our_job_id.as_ref() == Some(&job_id) {
-        result_text.push_str(&chunk);
-        if is_final {
-            return Ok(result_text);
-        }
-    }
-}
-```
-
-## Message Protocol
-
-### JobRequest
+### Channel Message Protocol
 
 ```json
+// JobRequest
 {
   "type": "JobRequest",
   "kind": 5050,
@@ -166,11 +210,8 @@ Some(AgentMessage::StreamChunk { job_id, chunk, is_final }) => {
   "max_tokens": 500,
   "target_provider": "pubkey..."
 }
-```
 
-### Invoice
-
-```json
+// Invoice
 {
   "type": "Invoice",
   "bolt11": "lnbc...",
@@ -178,21 +219,15 @@ Some(AgentMessage::StreamChunk { job_id, chunk, is_final }) => {
   "amount_msats": 5000,
   "payment_hash": "abc..."
 }
-```
 
-### PaymentSent
-
-```json
+// PaymentSent
 {
   "type": "PaymentSent",
   "job_id": "job-123",
   "payment_id": "payment-456"
 }
-```
 
-### JobResult
-
-```json
+// JobResult
 {
   "type": "JobResult",
   "job_id": "job-123",
@@ -243,7 +278,7 @@ pub async fn execute_tick(&mut self, trigger: TickTrigger) -> Result<TickResult>
     let provider = ComputeClient::select_cheapest_provider(&providers, budget_sats)
         .ok_or_else(|| anyhow!("No provider within budget"))?;
 
-    // Request inference and PAY for it
+    // Request inference and PAY for it (uses direct NIP-90 events)
     let reasoning = self.compute_client
         .request_inference(provider, &prompt, 500, budget_sats)
         .await?;
@@ -257,9 +292,9 @@ pub async fn execute_tick(&mut self, trigger: TickTrigger) -> Result<TickResult>
 }
 ```
 
-## HTLC Escrow (Advanced)
+## HTLC Escrow (Advanced, Channel Mode Only)
 
-For trustless payments, agents can use HTLC escrow:
+For trustless payments, agents can use HTLC escrow via channels:
 
 1. Agent generates preimage
 2. Agent sends HTLC payment (locked until preimage revealed)
@@ -268,6 +303,8 @@ For trustless payments, agents can use HTLC escrow:
 5. Provider claims payment
 
 This prevents providers from taking payment without delivering results.
+
+Note: HTLC mode requires channel-based flow.
 
 ## Error Handling
 
@@ -334,7 +371,7 @@ let providers = compute_client.discover_providers(3).await?;
 let provider = ComputeClient::select_cheapest_provider(&providers, 1000)
     .ok_or_else(|| anyhow!("No provider"))?;
 
-// Request inference
+// Request inference (uses direct NIP-90 events or channel if provider requires it)
 let result = compute_client.request_inference(
     provider,
     "What is the capital of France?",
@@ -343,4 +380,32 @@ let result = compute_client.request_inference(
 ).await?;
 
 println!("Result: {}", result);
+```
+
+## CLI Usage
+
+### Provider (Computer A)
+
+```bash
+# Primary: Direct NIP-90 events (no channel)
+cargo run --bin agent-provider
+
+# Optional: Create channel for coordination
+cargo run --bin agent-provider -- --create-channel
+
+# Optional: Join existing channel
+cargo run --bin agent-provider -- --channel <CHANNEL_ID>
+```
+
+### Customer (Computer B)
+
+```bash
+# Primary: Direct NIP-90 events (discovers provider via NIP-89)
+cargo run --bin agent-customer -- --prompt "What is Bitcoin?"
+
+# Optional: Use specific channel
+cargo run --bin agent-customer -- --channel <CHANNEL_ID> --prompt "..."
+
+# HTLC escrow mode (requires channel)
+cargo run --bin agent-customer -- --htlc --channel <CHANNEL_ID> --prompt "..."
 ```

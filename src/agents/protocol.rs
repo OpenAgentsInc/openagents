@@ -1,13 +1,25 @@
-//! Agent protocol types and helpers for NIP-28 communication
+//! Agent protocol types and helpers for NIP-90 compute marketplace
 //!
-//! This module implements agent-to-agent communication via NIP-28 public chat channels.
-//! Agents exchange structured JSON messages to negotiate NIP-90 jobs and payments.
+//! This module implements the NIP-90 Data Vending Machine protocol for compute jobs.
+//! The primary flow uses direct Nostr events - NIP-28 channels are optional for coordination.
+//!
+//! # Primary Flow (Direct NIP-90 Events)
+//!
+//! 1. Provider publishes NIP-89 handler info (kind:31990)
+//! 2. Customer discovers providers and sends job request (kind:5xxx)
+//! 3. Provider sends job feedback with invoice (kind:7000)
+//! 4. Customer pays Lightning invoice
+//! 5. Provider delivers job result (kind:6xxx)
+//!
+//! # Optional: NIP-28 Channel Coordination
+//!
+//! For multi-party coordination or real-time chat, agents can optionally use NIP-28 channels.
+//! This is NOT required for the core compute flow.
 //!
 //! # Network Field (NIP-89 Extension)
 //!
-//! The `network` field in `ServiceAnnouncement` follows NIP-89 conventions for service
-//! provider discoverability. This allows customers to filter providers by Lightning network
-//! before requesting jobs, rather than discovering network mismatch only when parsing bolt11.
+//! The `network` field follows NIP-89 conventions for service provider discoverability.
+//! This allows customers to filter providers by Lightning network before requesting jobs.
 //!
 //! Valid networks: `mainnet`, `testnet`, `signet`, `regtest`
 
@@ -17,7 +29,36 @@ use nostr::{
 };
 use nostr_client::RelayConnection;
 use serde::{Deserialize, Serialize};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
+
+// ============================================================================
+// NIP-90 Event Kinds
+// ============================================================================
+
+/// NIP-90 Job Request for text generation (customer -> provider)
+pub const KIND_JOB_REQUEST_TEXT: u16 = 5050;
+
+/// NIP-90 Job Result for text generation (provider -> customer)
+pub const KIND_JOB_RESULT_TEXT: u16 = 6050;
+
+/// NIP-90 Job Feedback (provider -> customer, includes payment-required status)
+pub const KIND_JOB_FEEDBACK: u16 = 7000;
+
+/// Job status values for feedback events
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum JobStatus {
+    /// Payment required before processing
+    PaymentRequired,
+    /// Job is being processed
+    Processing,
+    /// Job completed successfully
+    Success,
+    /// Job failed with error
+    Error,
+    /// Job was cancelled
+    Cancelled,
+}
 
 /// Result type for agent operations
 pub type AgentResult<T> = Result<T, Box<dyn std::error::Error + Send + Sync>>;
@@ -182,7 +223,240 @@ pub fn now() -> u64 {
         .as_secs()
 }
 
-/// Create a NIP-28 channel for agent communication
+// ============================================================================
+// NIP-90 Direct Event Functions (Primary Flow)
+// ============================================================================
+
+/// Publish a NIP-90 job request event (kind:5xxx)
+///
+/// This is the primary way to request compute from a provider.
+/// The provider will respond with a feedback event (kind:7000) containing an invoice.
+pub async fn publish_job_request(
+    relay: &RelayConnection,
+    keypair: &Keypair,
+    provider_pubkey: &str,
+    prompt: &str,
+    max_tokens: u32,
+    kind: u16,
+) -> AgentResult<String> {
+    // Build tags per NIP-90 spec
+    let tags = vec![
+        vec!["p".to_string(), provider_pubkey.to_string()],
+        vec!["param".to_string(), "max_tokens".to_string(), max_tokens.to_string()],
+    ];
+
+    let template = EventTemplate {
+        created_at: now(),
+        kind,
+        tags,
+        content: prompt.to_string(),
+    };
+
+    let event = finalize_event(&template, &keypair.private_key)?;
+    let event_id = event.id.clone();
+
+    relay.publish_event(&event, Duration::from_secs(10)).await?;
+
+    Ok(event_id)
+}
+
+/// Publish a NIP-90 job feedback event (kind:7000)
+///
+/// Used by providers to send status updates including payment-required with invoice.
+pub async fn publish_job_feedback(
+    relay: &RelayConnection,
+    keypair: &Keypair,
+    job_request_id: &str,
+    customer_pubkey: &str,
+    status: JobStatus,
+    bolt11: Option<&str>,
+    amount_msats: Option<u64>,
+) -> AgentResult<String> {
+    let status_str = match status {
+        JobStatus::PaymentRequired => "payment-required",
+        JobStatus::Processing => "processing",
+        JobStatus::Success => "success",
+        JobStatus::Error => "error",
+        JobStatus::Cancelled => "cancelled",
+    };
+
+    // Build tags per NIP-90 spec
+    let mut tags = vec![
+        vec!["e".to_string(), job_request_id.to_string()],
+        vec!["p".to_string(), customer_pubkey.to_string()],
+        vec!["status".to_string(), status_str.to_string()],
+    ];
+
+    // Add amount tag if provided
+    if let Some(amount) = amount_msats {
+        tags.push(vec!["amount".to_string(), amount.to_string(), "msats".to_string()]);
+    }
+
+    // Content is the bolt11 invoice for payment-required status
+    let content = bolt11.unwrap_or("").to_string();
+
+    let template = EventTemplate {
+        created_at: now(),
+        kind: KIND_JOB_FEEDBACK,
+        tags,
+        content,
+    };
+
+    let event = finalize_event(&template, &keypair.private_key)?;
+    let event_id = event.id.clone();
+
+    relay.publish_event(&event, Duration::from_secs(10)).await?;
+
+    Ok(event_id)
+}
+
+/// Publish a NIP-90 job result event (kind:6xxx)
+///
+/// Used by providers to deliver the completed job result.
+pub async fn publish_job_result(
+    relay: &RelayConnection,
+    keypair: &Keypair,
+    job_request_id: &str,
+    customer_pubkey: &str,
+    result: &str,
+    kind: u16,
+) -> AgentResult<String> {
+    // Build tags per NIP-90 spec
+    let tags = vec![
+        vec!["e".to_string(), job_request_id.to_string()],
+        vec!["p".to_string(), customer_pubkey.to_string()],
+        vec!["request".to_string(), job_request_id.to_string()],
+    ];
+
+    let template = EventTemplate {
+        created_at: now(),
+        kind,
+        tags,
+        content: result.to_string(),
+    };
+
+    let event = finalize_event(&template, &keypair.private_key)?;
+    let event_id = event.id.clone();
+
+    relay.publish_event(&event, Duration::from_secs(10)).await?;
+
+    Ok(event_id)
+}
+
+/// Subscribe to job requests targeting a specific provider pubkey
+///
+/// Used by providers to listen for incoming job requests.
+pub async fn subscribe_job_requests(
+    relay: &RelayConnection,
+    provider_pubkey: &str,
+    kinds: &[u16],
+) -> AgentResult<tokio::sync::mpsc::Receiver<Event>> {
+    let kind_values: Vec<u64> = kinds.iter().map(|k| *k as u64).collect();
+
+    let filters = vec![serde_json::json!({
+        "kinds": kind_values,
+        "#p": [provider_pubkey]
+    })];
+
+    let rx = relay.subscribe_with_channel("job-requests", &filters).await?;
+    Ok(rx)
+}
+
+/// Subscribe to job feedback/results for a specific job request
+///
+/// Used by customers to listen for provider responses.
+pub async fn subscribe_job_responses(
+    relay: &RelayConnection,
+    job_request_id: &str,
+) -> AgentResult<tokio::sync::mpsc::Receiver<Event>> {
+    let filters = vec![serde_json::json!({
+        "kinds": [KIND_JOB_FEEDBACK as u64, KIND_JOB_RESULT_TEXT as u64],
+        "#e": [job_request_id]
+    })];
+
+    let rx = relay.subscribe_with_channel("job-responses", &filters).await?;
+    Ok(rx)
+}
+
+/// Parse a NIP-90 job request event
+///
+/// Returns (prompt, max_tokens, target_provider) if valid
+pub fn parse_job_request(event: &Event) -> Option<(String, u32, Option<String>)> {
+    // Content is the prompt
+    let prompt = event.content.clone();
+
+    // Parse max_tokens from param tag
+    let max_tokens = event.tags.iter()
+        .find(|t| t.len() >= 3 && t[0] == "param" && t[1] == "max_tokens")
+        .and_then(|t| t[2].parse().ok())
+        .unwrap_or(256);
+
+    // Get target provider from p tag
+    let target_provider = event.tags.iter()
+        .find(|t| t.len() >= 2 && t[0] == "p")
+        .map(|t| t[1].clone());
+
+    Some((prompt, max_tokens, target_provider))
+}
+
+/// Parse a NIP-90 job feedback event
+///
+/// Returns (job_request_id, status, bolt11, amount_msats) if valid
+pub fn parse_job_feedback(event: &Event) -> Option<(String, JobStatus, Option<String>, Option<u64>)> {
+    // Get job request ID from e tag
+    let job_id = event.tags.iter()
+        .find(|t| t.len() >= 2 && t[0] == "e")
+        .map(|t| t[1].clone())?;
+
+    // Parse status from status tag
+    let status_str = event.tags.iter()
+        .find(|t| t.len() >= 2 && t[0] == "status")
+        .map(|t| t[1].as_str())?;
+
+    let status = match status_str {
+        "payment-required" => JobStatus::PaymentRequired,
+        "processing" => JobStatus::Processing,
+        "success" => JobStatus::Success,
+        "error" => JobStatus::Error,
+        "cancelled" => JobStatus::Cancelled,
+        _ => return None,
+    };
+
+    // Bolt11 is in content for payment-required
+    let bolt11 = if !event.content.is_empty() && event.content.starts_with("ln") {
+        Some(event.content.clone())
+    } else {
+        None
+    };
+
+    // Parse amount from amount tag
+    let amount = event.tags.iter()
+        .find(|t| t.len() >= 2 && t[0] == "amount")
+        .and_then(|t| t[1].parse().ok());
+
+    Some((job_id, status, bolt11, amount))
+}
+
+/// Parse a NIP-90 job result event
+///
+/// Returns (job_request_id, result_content) if valid
+pub fn parse_job_result(event: &Event) -> Option<(String, String)> {
+    // Get job request ID from e tag
+    let job_id = event.tags.iter()
+        .find(|t| t.len() >= 2 && t[0] == "e")
+        .map(|t| t[1].clone())?;
+
+    Some((job_id, event.content.clone()))
+}
+
+// ============================================================================
+// NIP-28 Channel Functions (Optional Coordination Layer)
+// ============================================================================
+
+/// Create a NIP-28 channel for agent communication (OPTIONAL)
+///
+/// NIP-28 channels are NOT required for the core NIP-90 compute flow.
+/// Use this for multi-party coordination or real-time discussion.
 pub async fn create_channel(
     relay: &RelayConnection,
     keypair: &Keypair,
@@ -578,5 +852,183 @@ mod tests {
 
         let parsed: AgentMessage = serde_json::from_str(&json).unwrap();
         assert_eq!(parsed, msg);
+    }
+
+    // ========================================================================
+    // NIP-90 Direct Event Tests
+    // ========================================================================
+
+    #[test]
+    fn test_job_status_serialization() {
+        assert_eq!(
+            serde_json::to_string(&JobStatus::PaymentRequired).unwrap(),
+            "\"payment-required\""
+        );
+        assert_eq!(
+            serde_json::to_string(&JobStatus::Processing).unwrap(),
+            "\"processing\""
+        );
+        assert_eq!(
+            serde_json::to_string(&JobStatus::Success).unwrap(),
+            "\"success\""
+        );
+        assert_eq!(
+            serde_json::to_string(&JobStatus::Error).unwrap(),
+            "\"error\""
+        );
+        assert_eq!(
+            serde_json::to_string(&JobStatus::Cancelled).unwrap(),
+            "\"cancelled\""
+        );
+    }
+
+    #[test]
+    fn test_job_status_deserialization() {
+        assert_eq!(
+            serde_json::from_str::<JobStatus>("\"payment-required\"").unwrap(),
+            JobStatus::PaymentRequired
+        );
+        assert_eq!(
+            serde_json::from_str::<JobStatus>("\"processing\"").unwrap(),
+            JobStatus::Processing
+        );
+        assert_eq!(
+            serde_json::from_str::<JobStatus>("\"success\"").unwrap(),
+            JobStatus::Success
+        );
+    }
+
+    #[test]
+    fn test_parse_job_request() {
+        use nostr::Event;
+
+        // Create a mock event
+        let event = Event {
+            id: "abc123".to_string(),
+            pubkey: "customer_pubkey".to_string(),
+            created_at: 1234567890,
+            kind: KIND_JOB_REQUEST_TEXT,
+            tags: vec![
+                vec!["p".to_string(), "provider_pubkey".to_string()],
+                vec!["param".to_string(), "max_tokens".to_string(), "500".to_string()],
+            ],
+            content: "What is the meaning of life?".to_string(),
+            sig: "".to_string(),
+        };
+
+        let result = parse_job_request(&event);
+        assert!(result.is_some());
+
+        let (prompt, max_tokens, target) = result.unwrap();
+        assert_eq!(prompt, "What is the meaning of life?");
+        assert_eq!(max_tokens, 500);
+        assert_eq!(target, Some("provider_pubkey".to_string()));
+    }
+
+    #[test]
+    fn test_parse_job_request_default_tokens() {
+        use nostr::Event;
+
+        // Event without max_tokens param should default to 256
+        let event = Event {
+            id: "abc123".to_string(),
+            pubkey: "customer_pubkey".to_string(),
+            created_at: 1234567890,
+            kind: KIND_JOB_REQUEST_TEXT,
+            tags: vec![
+                vec!["p".to_string(), "provider_pubkey".to_string()],
+            ],
+            content: "Hello".to_string(),
+            sig: "".to_string(),
+        };
+
+        let (_, max_tokens, _) = parse_job_request(&event).unwrap();
+        assert_eq!(max_tokens, 256);
+    }
+
+    #[test]
+    fn test_parse_job_feedback_payment_required() {
+        use nostr::Event;
+
+        let event = Event {
+            id: "feedback123".to_string(),
+            pubkey: "provider_pubkey".to_string(),
+            created_at: 1234567890,
+            kind: KIND_JOB_FEEDBACK,
+            tags: vec![
+                vec!["e".to_string(), "job_request_id".to_string()],
+                vec!["p".to_string(), "customer_pubkey".to_string()],
+                vec!["status".to_string(), "payment-required".to_string()],
+                vec!["amount".to_string(), "10000".to_string(), "msats".to_string()],
+            ],
+            content: "lnbcrt100n1pj...".to_string(),
+            sig: "".to_string(),
+        };
+
+        let result = parse_job_feedback(&event);
+        assert!(result.is_some());
+
+        let (job_id, status, bolt11, amount) = result.unwrap();
+        assert_eq!(job_id, "job_request_id");
+        assert_eq!(status, JobStatus::PaymentRequired);
+        assert_eq!(bolt11, Some("lnbcrt100n1pj...".to_string()));
+        assert_eq!(amount, Some(10000));
+    }
+
+    #[test]
+    fn test_parse_job_feedback_processing() {
+        use nostr::Event;
+
+        let event = Event {
+            id: "feedback456".to_string(),
+            pubkey: "provider_pubkey".to_string(),
+            created_at: 1234567890,
+            kind: KIND_JOB_FEEDBACK,
+            tags: vec![
+                vec!["e".to_string(), "job_request_id".to_string()],
+                vec!["p".to_string(), "customer_pubkey".to_string()],
+                vec!["status".to_string(), "processing".to_string()],
+            ],
+            content: "".to_string(),
+            sig: "".to_string(),
+        };
+
+        let (_, status, bolt11, _) = parse_job_feedback(&event).unwrap();
+        assert_eq!(status, JobStatus::Processing);
+        assert_eq!(bolt11, None);
+    }
+
+    #[test]
+    fn test_parse_job_result() {
+        use nostr::Event;
+
+        let event = Event {
+            id: "result789".to_string(),
+            pubkey: "provider_pubkey".to_string(),
+            created_at: 1234567890,
+            kind: KIND_JOB_RESULT_TEXT,
+            tags: vec![
+                vec!["e".to_string(), "job_request_id".to_string()],
+                vec!["p".to_string(), "customer_pubkey".to_string()],
+                vec!["request".to_string(), "job_request_id".to_string()],
+            ],
+            content: "The meaning of life is 42.".to_string(),
+            sig: "".to_string(),
+        };
+
+        let result = parse_job_result(&event);
+        assert!(result.is_some());
+
+        let (job_id, content) = result.unwrap();
+        assert_eq!(job_id, "job_request_id");
+        assert_eq!(content, "The meaning of life is 42.");
+    }
+
+    #[test]
+    fn test_nip90_event_kinds() {
+        // Verify event kinds match NIP-90 spec
+        assert_eq!(KIND_JOB_REQUEST_TEXT, 5050);
+        assert_eq!(KIND_JOB_RESULT_TEXT, 6050);
+        assert_eq!(KIND_JOB_FEEDBACK, 7000);
     }
 }

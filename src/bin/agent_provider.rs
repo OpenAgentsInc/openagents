@@ -2,19 +2,28 @@
 //!
 //! Run on Computer A to provide NIP-90 compute services.
 //!
-//! Usage:
+//! Primary flow uses direct NIP-90 events (no channel required):
+//!   cargo run --bin agent-provider
+//!
+//! Optional: Create a NIP-28 channel for coordination:
 //!   cargo run --bin agent-provider -- --create-channel
+//!
+//! Optional: Join existing channel for coordination:
 //!   cargo run --bin agent-provider -- --channel <CHANNEL_ID>
 
 use clap::Parser;
 use compute::backends::{BackendRegistry, CompletionRequest};
 use nostr::{
-    derive_keypair, finalize_event, ChannelMessageEvent, ChannelMetadata, Event, EventTemplate,
-    HandlerInfo, HandlerMetadata, HandlerType, Keypair, PricingInfo, KIND_CHANNEL_CREATION,
-    KIND_CHANNEL_MESSAGE, KIND_HANDLER_INFO, KIND_JOB_TEXT_GENERATION,
+    derive_keypair, finalize_event, Event, EventTemplate, HandlerInfo, HandlerMetadata,
+    HandlerType, Keypair, PricingInfo, KIND_HANDLER_INFO,
 };
 use nostr_client::RelayConnection;
-use openagents::agents::{now, parse_agent_message, AgentMessage, Network as AgentNetwork, DEFAULT_RELAY, PROVIDER_MNEMONIC};
+use openagents::agents::{
+    create_channel, now, parse_agent_message, parse_job_request, publish_job_feedback,
+    publish_job_result, send_channel_message, subscribe_job_requests, subscribe_to_channel,
+    AgentMessage, JobStatus, Network as AgentNetwork, DEFAULT_RELAY, KIND_JOB_REQUEST_TEXT,
+    KIND_JOB_RESULT_TEXT, PROVIDER_MNEMONIC,
+};
 use openagents_spark::{Network as SparkNetwork, SparkSigner, SparkWallet, WalletConfig};
 use std::collections::{HashMap, HashSet};
 use std::env::temp_dir;
@@ -23,13 +32,13 @@ use tokio::sync::mpsc;
 
 #[derive(Parser)]
 #[command(name = "agent-provider")]
-#[command(about = "NIP-90 Provider Agent - provides compute services via NIP-28 channels")]
+#[command(about = "NIP-90 Provider Agent - provides compute services via direct events or optional NIP-28 channels")]
 struct Args {
-    /// Create a new channel (prints channel ID for customer to use)
+    /// Create a new NIP-28 channel for coordination (optional)
     #[arg(long)]
     create_channel: bool,
 
-    /// Join existing channel by ID
+    /// Join existing NIP-28 channel for coordination (optional)
     #[arg(long)]
     channel: Option<String>,
 
@@ -52,70 +61,78 @@ struct Args {
 
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync>>;
 
-/// Create a NIP-28 channel
-async fn create_channel(relay: &RelayConnection, keypair: &Keypair) -> Result<String> {
-    let metadata = ChannelMetadata::new(
-        "OpenAgents Compute Marketplace",
-        "Agents negotiate NIP-90 jobs with Bitcoin payments",
-        "",
-    )
-    .with_relays(vec![DEFAULT_RELAY.to_string()]);
-
-    let template = EventTemplate {
-        created_at: now(),
-        kind: KIND_CHANNEL_CREATION,
-        tags: vec![],
-        content: metadata.to_json()?,
-    };
-
-    let event = finalize_event(&template, &keypair.private_key)?;
-    let event_id = event.id.clone();
-
-    relay
-        .publish_event(&event, Duration::from_secs(10))
-        .await?;
-
-    Ok(event_id)
-}
-
-/// Send a message to the channel
-async fn send_channel_message(
+/// Run the inference and return the result text
+async fn run_inference(
+    registry: &BackendRegistry,
+    model: &str,
+    prompt: &str,
+    stream: bool,
     relay: &RelayConnection,
-    channel_id: &str,
     keypair: &Keypair,
-    msg: &AgentMessage,
-) -> Result<()> {
-    let msg_json = serde_json::to_string(msg)?;
+    job_id: &str,
+    _customer_pubkey: &str,
+    channel_id: Option<&str>,
+) -> Result<String> {
+    if let Some(backend) = registry.default() {
+        let request = CompletionRequest::new(model, prompt)
+            .with_max_tokens(256)
+            .with_temperature(0.7);
 
-    let channel_msg = ChannelMessageEvent::new(channel_id, DEFAULT_RELAY, &msg_json, now());
+        let backend = backend.read().await;
 
-    let template = EventTemplate {
-        created_at: now(),
-        kind: KIND_CHANNEL_MESSAGE,
-        tags: channel_msg.to_tags(),
-        content: msg_json,
-    };
+        if stream {
+            // Streaming mode
+            match backend.complete_stream(request).await {
+                Ok(mut rx) => {
+                    let mut accumulated = String::new();
 
-    let event = finalize_event(&template, &keypair.private_key)?;
-    relay
-        .publish_event(&event, Duration::from_secs(10))
-        .await?;
+                    while let Some(chunk_result) = rx.recv().await {
+                        match chunk_result {
+                            Ok(chunk) => {
+                                accumulated.push_str(&chunk.delta);
 
-    Ok(())
-}
+                                // If using channel, send streaming chunk
+                                if let Some(ch_id) = channel_id {
+                                    let stream_msg = AgentMessage::StreamChunk {
+                                        job_id: job_id.to_string(),
+                                        chunk: chunk.delta.clone(),
+                                        is_final: chunk.finish_reason.is_some(),
+                                    };
+                                    let _ =
+                                        send_channel_message(relay, ch_id, keypair, &stream_msg)
+                                            .await;
+                                }
 
-/// Subscribe to channel messages
-async fn subscribe_to_channel(
-    relay: &RelayConnection,
-    channel_id: &str,
-) -> Result<mpsc::Receiver<Event>> {
-    let filters = vec![serde_json::json!({
-        "kinds": [KIND_CHANNEL_MESSAGE as u64],
-        "#e": [channel_id]
-    })];
+                                if chunk.finish_reason.is_some() {
+                                    break;
+                                }
+                            }
+                            Err(e) => {
+                                return Err(format!("Streaming error: {}", e).into());
+                            }
+                        }
+                    }
 
-    let rx = relay.subscribe_with_channel("provider-sub", &filters).await?;
-    Ok(rx)
+                    Ok(accumulated)
+                }
+                Err(e) => Err(format!("Streaming setup error: {}", e).into()),
+            }
+        } else {
+            // Non-streaming mode
+            match backend.complete(request).await {
+                Ok(response) => {
+                    println!(
+                        "[PROVIDER] Inference complete ({} tokens)",
+                        response.usage.as_ref().map(|u| u.completion_tokens).unwrap_or(0)
+                    );
+                    Ok(response.text)
+                }
+                Err(e) => Err(format!("Inference error: {}", e).into()),
+            }
+        }
+    } else {
+        Err("No inference backend available. Install Ollama: https://ollama.ai".into())
+    }
 }
 
 #[tokio::main]
@@ -126,7 +143,8 @@ async fn main() -> Result<()> {
 
     // Derive keypair
     let keypair = derive_keypair(PROVIDER_MNEMONIC)?;
-    println!("[PROVIDER] Public key: {}", hex::encode(keypair.public_key));
+    let provider_pubkey = hex::encode(keypair.public_key);
+    println!("[PROVIDER] Public key: {}", provider_pubkey);
 
     // Detect inference backends
     println!("[PROVIDER] Detecting inference backends...");
@@ -155,9 +173,10 @@ async fn main() -> Result<()> {
     }
 
     // Determine which model to use
-    let model_to_use = args.model.clone().unwrap_or_else(|| {
-        available_models.first().cloned().unwrap_or_else(|| "llama3.2".to_string())
-    });
+    let model_to_use = args
+        .model
+        .clone()
+        .unwrap_or_else(|| available_models.first().cloned().unwrap_or_else(|| "llama3.2".to_string()));
     println!("[PROVIDER] Will use model: {}", model_to_use);
 
     // Initialize wallet (optional)
@@ -184,48 +203,35 @@ async fn main() -> Result<()> {
     relay.connect().await?;
     println!("[PROVIDER] Connected to relay");
 
-    // Get or create channel
-    let channel_id = if args.create_channel {
-        let id = create_channel(&relay, &keypair).await?;
+    // Optional: Get or create channel for coordination
+    let channel_id: Option<String> = if args.create_channel {
+        let id = create_channel(
+            &relay,
+            &keypair,
+            "OpenAgents Compute Marketplace",
+            "Agents negotiate NIP-90 jobs with Bitcoin payments",
+        )
+        .await?;
         println!("\n========================================");
         println!("CHANNEL CREATED: {}", id);
         println!("========================================");
-        println!("\nShare this with customer:");
-        println!("  cargo run --bin agent-customer -- --channel {} --prompt \"Your question here\"", id);
-        println!("\nOr on another computer:");
-        println!("  cargo run --bin agent-customer -- --channel {} --prompt \"...\"", id);
+        println!("\nChannel is OPTIONAL. The primary flow uses direct NIP-90 events.");
+        println!("Share this channel ID for coordination/discussion:");
+        println!(
+            "  cargo run --bin agent-customer -- --channel {} --prompt \"...\"",
+            id
+        );
         println!("========================================\n");
-        id
+        Some(id)
     } else if let Some(id) = args.channel {
-        println!("[PROVIDER] Joining channel: {}", id);
-        id
+        println!("[PROVIDER] Joining channel for coordination: {}", id);
+        Some(id)
     } else {
-        eprintln!("Error: Must provide --create-channel or --channel <ID>");
-        std::process::exit(1);
+        println!("[PROVIDER] No channel specified - using direct NIP-90 events only");
+        None
     };
 
-    // Announce service
-    let spark_address = if let Some(ref w) = wallet {
-        w.get_spark_address().await?
-    } else {
-        "mock-spark-address".to_string()
-    };
-
-    let provider_pubkey = hex::encode(keypair.public_key);
-    let announce = AgentMessage::ServiceAnnouncement {
-        kind: KIND_JOB_TEXT_GENERATION,
-        price_msats: 10_000,
-        spark_address,
-        network: AgentNetwork::Regtest,
-        provider_pubkey: Some(provider_pubkey.clone()),
-        models: available_models.clone(),
-        capabilities: vec!["text-generation".to_string()],
-    };
-    send_channel_message(&relay, &channel_id, &keypair, &announce).await?;
-    println!("[PROVIDER] Service announced: kind=5050, price=10000 msats, network=regtest");
-    println!("[PROVIDER] Models: {:?}", available_models);
-
-    // Publish NIP-89 handler info for global discovery
+    // Build NIP-89 handler info for global discovery
     let handler_metadata = HandlerMetadata::new(
         "OpenAgents Compute Provider",
         "NIP-90 text generation service with Lightning payments",
@@ -241,9 +247,13 @@ async fn main() -> Result<()> {
             .with_model("per-request")
             .with_currency("msats"),
     )
-    .add_custom_tag("channel", &channel_id)
     .add_custom_tag("relay", &args.relay)
     .add_custom_tag("network", "regtest");
+
+    // Only add channel tag if we have a channel
+    if let Some(ref ch_id) = channel_id {
+        handler_info = handler_info.add_custom_tag("channel", ch_id);
+    }
 
     // Add models as capabilities
     for model in &available_models {
@@ -270,238 +280,317 @@ async fn main() -> Result<()> {
         .await?;
     println!("[PROVIDER] Published NIP-89 handler info (kind 31990) for global discovery");
 
-    // Subscribe to channel
-    let mut rx = subscribe_to_channel(&relay, &channel_id).await?;
-    println!("[PROVIDER] Listening for job requests...\n");
+    // If we have a channel, announce service there too (legacy support)
+    if let Some(ref ch_id) = channel_id {
+        let spark_address = if let Some(ref w) = wallet {
+            w.get_spark_address().await?
+        } else {
+            "mock-spark-address".to_string()
+        };
+
+        let announce = AgentMessage::ServiceAnnouncement {
+            kind: KIND_JOB_REQUEST_TEXT,
+            price_msats: 10_000,
+            spark_address,
+            network: AgentNetwork::Regtest,
+            provider_pubkey: Some(provider_pubkey.clone()),
+            models: available_models.clone(),
+            capabilities: vec!["text-generation".to_string()],
+        };
+        send_channel_message(&relay, ch_id, &keypair, &announce).await?;
+        println!("[PROVIDER] Service announced in channel");
+    }
+
+    // Subscribe to direct NIP-90 job requests (kind:5050 tagged with our pubkey)
+    let mut job_rx =
+        subscribe_job_requests(&relay, &provider_pubkey, &[KIND_JOB_REQUEST_TEXT]).await?;
+    println!("[PROVIDER] Listening for direct NIP-90 job requests (kind:5050)...");
+
+    // Also subscribe to channel if we have one (for legacy/coordination)
+    let mut channel_rx: Option<mpsc::Receiver<Event>> = if let Some(ref ch_id) = channel_id {
+        let rx = subscribe_to_channel(&relay, ch_id, "provider-channel").await?;
+        println!("[PROVIDER] Also listening on channel for legacy support");
+        Some(rx)
+    } else {
+        None
+    };
 
     // Record start time to filter old messages
     let start_time = now();
 
-    // Store pending jobs (job_id -> prompt)
-    let mut pending_jobs: HashMap<String, String> = HashMap::new();
+    // Store pending jobs (job_id -> (prompt, customer_pubkey, is_channel_job))
+    let mut pending_jobs: HashMap<String, (String, String, bool)> = HashMap::new();
 
     // Track processed jobs to avoid duplicates
     let mut processed_jobs: HashSet<String> = HashSet::new();
 
-    // Event loop
-    while let Some(event) = rx.recv().await {
-        // Skip old messages from before we started
-        if event.created_at < start_time {
-            continue;
-        }
+    println!("\n[PROVIDER] Ready! Waiting for job requests...\n");
 
-        // Skip our own messages
-        if event.pubkey == hex::encode(keypair.public_key) {
-            continue;
-        }
-
-        // Parse message
-        let msg = match parse_agent_message(&event.content) {
-            Some(m) => m,
-            None => continue,
-        };
-
-        match msg {
-            AgentMessage::JobRequest { prompt, kind, max_tokens, target_provider } => {
-                // Skip if targeted to another provider
-                if let Some(ref target) = target_provider {
-                    if target != &provider_pubkey {
-                        continue;
-                    }
-                }
-
-                println!("[PROVIDER] Got job request:");
-                println!("           Kind: {}", kind);
-                println!("           Prompt: {}", prompt);
-                println!("           Max tokens: {}", max_tokens);
-
-                let job_id = format!("job_{}", &event.id[..16]);
-
-                // Store prompt for later processing
-                pending_jobs.insert(job_id.clone(), prompt.clone());
-
-                if let Some(ref w) = wallet {
-                    // Create invoice
-                    let invoice = w
-                        .create_invoice(10, Some("NIP-90 Job".to_string()), Some(3600))
-                        .await?;
-
-                    // Use job_id as payment reference (payment_hash from bolt11 would require parsing)
-                    let resp = AgentMessage::Invoice {
-                        job_id: job_id.clone(),
-                        bolt11: invoice.payment_request.clone(),
-                        amount_msats: 10_000,
-                        payment_hash: Some(job_id.clone()), // Use job_id as reference
-                    };
-                    send_channel_message(&relay, &channel_id, &keypair, &resp).await?;
-                    println!("[PROVIDER] Invoice sent for job {}", job_id);
-                } else {
-                    // No wallet - send mock invoice
-                    let resp = AgentMessage::Invoice {
-                        job_id: job_id.clone(),
-                        bolt11: "lnbcrt100n1mock".to_string(),
-                        amount_msats: 10_000,
-                        payment_hash: Some("mock_payment_hash".to_string()),
-                    };
-                    send_channel_message(&relay, &channel_id, &keypair, &resp).await?;
-                    println!("[PROVIDER] Mock invoice sent for job {}", job_id);
-                }
-            }
-            AgentMessage::PaymentSent { job_id, payment_id } => {
-                // Skip if already processed
-                if processed_jobs.contains(&job_id) {
-                    println!("[PROVIDER] Skipping already processed job: {}", job_id);
+    loop {
+        tokio::select! {
+            // Handle direct NIP-90 job requests
+            Some(event) = job_rx.recv() => {
+                // Skip old messages
+                if event.created_at < start_time {
                     continue;
                 }
-                processed_jobs.insert(job_id.clone());
 
-                println!("[PROVIDER] Payment received for {}: {}", job_id, payment_id);
-
-                // Get the stored prompt
-                let prompt = pending_jobs.remove(&job_id).unwrap_or_else(|| "Hello".to_string());
-                println!("[PROVIDER] Processing prompt: {}", prompt);
-
-                // Run inference
-                if let Some(backend) = registry.default() {
-                    println!("[PROVIDER] Running inference with {}...", registry.default_id().unwrap_or("unknown"));
-
-                    let request = CompletionRequest::new(&model_to_use, &prompt)
-                        .with_max_tokens(256)
-                        .with_temperature(0.7);
-
-                    let backend = backend.read().await;
-
-                    if args.stream {
-                        // Streaming mode - send chunks as they arrive
-                        match backend.complete_stream(request).await {
-                            Ok(mut rx) => {
-                                let mut accumulated = String::new();
-                                let mut chunk_count = 0;
-
-                                while let Some(chunk_result) = rx.recv().await {
-                                    match chunk_result {
-                                        Ok(chunk) => {
-                                            accumulated.push_str(&chunk.delta);
-                                            chunk_count += 1;
-
-                                            // Send streaming chunk to channel
-                                            let stream_msg = AgentMessage::StreamChunk {
-                                                job_id: job_id.clone(),
-                                                chunk: chunk.delta.clone(),
-                                                is_final: chunk.finish_reason.is_some(),
-                                            };
-                                            send_channel_message(&relay, &channel_id, &keypair, &stream_msg).await?;
-
-                                            if chunk.finish_reason.is_some() {
-                                                break;
-                                            }
-                                        }
-                                        Err(e) => {
-                                            println!("[PROVIDER] Streaming error: {}", e);
-                                            break;
-                                        }
-                                    }
-                                }
-
-                                println!("[PROVIDER] Streamed {} chunks", chunk_count);
-
-                                // Send final complete result
-                                let result = AgentMessage::JobResult {
-                                    job_id: job_id.clone(),
-                                    result: accumulated,
-                                };
-                                send_channel_message(&relay, &channel_id, &keypair, &result).await?;
-                            }
-                            Err(e) => {
-                                println!("[PROVIDER] Streaming setup error: {}", e);
-                                let result = AgentMessage::JobResult {
-                                    job_id: job_id.clone(),
-                                    result: format!("Error: {}", e),
-                                };
-                                send_channel_message(&relay, &channel_id, &keypair, &result).await?;
-                            }
-                        }
-                    } else {
-                        // Non-streaming mode - wait for complete response
-                        match backend.complete(request).await {
-                            Ok(response) => {
-                                println!("[PROVIDER] Inference complete ({} tokens)",
-                                    response.usage.as_ref().map(|u| u.completion_tokens).unwrap_or(0));
-                                let result = AgentMessage::JobResult {
-                                    job_id: job_id.clone(),
-                                    result: response.text,
-                                };
-                                send_channel_message(&relay, &channel_id, &keypair, &result).await?;
-                            }
-                            Err(e) => {
-                                println!("[PROVIDER] Inference error: {}", e);
-                                let result = AgentMessage::JobResult {
-                                    job_id: job_id.clone(),
-                                    result: format!("Error: {}", e),
-                                };
-                                send_channel_message(&relay, &channel_id, &keypair, &result).await?;
-                            }
-                        }
-                    }
-                } else {
-                    println!("[PROVIDER] No backend available, returning error");
-                    let result = AgentMessage::JobResult {
-                        job_id: job_id.clone(),
-                        result: "Error: No inference backend available. Install Ollama: https://ollama.ai".to_string(),
-                    };
-                    send_channel_message(&relay, &channel_id, &keypair, &result).await?;
+                // Skip our own messages
+                if event.pubkey == provider_pubkey {
+                    continue;
                 }
 
-                println!("[PROVIDER] Result delivered for {}", job_id);
-                println!("\n[PROVIDER] Job complete! Waiting for more requests...\n");
-            }
-            AgentMessage::ServiceAnnouncement { .. } => {
-                // Ignore other providers
-            }
-            AgentMessage::Invoice { .. } => {
-                // Ignore invoices (we send these)
-            }
-            AgentMessage::JobResult { .. } => {
-                // Ignore results (we send these)
-            }
-            AgentMessage::StreamChunk { .. } => {
-                // Ignore stream chunks (we send these)
-            }
-            AgentMessage::HtlcLocked { job_id, payment_hash, amount_msats, expiry_secs } => {
-                // HTLC payment is locked - funds are in escrow
-                // In full implementation, we'd verify the HTLC exists in our wallet
-                println!("[PROVIDER] HTLC locked for job {}:", job_id);
-                println!("           Payment hash: {}...", &payment_hash[..16.min(payment_hash.len())]);
-                println!("           Amount: {} msats", amount_msats);
-                println!("           Expiry: {} secs", expiry_secs);
+                // Parse the job request
+                if let Some((prompt, max_tokens, _target)) = parse_job_request(&event) {
+                    let job_id = event.id.clone();
+                    let customer_pubkey = event.pubkey.clone();
 
-                // In full HTLC mode, we would:
-                // 1. Verify HTLC exists in wallet with matching payment_hash
-                // 2. Only then process the job
-                // For now, this is informational - job processing happens on PaymentSent
-                println!("[PROVIDER] HTLC escrow noted. Waiting for PaymentSent confirmation...");
-            }
-            AgentMessage::PreimageRelease { job_id, preimage } => {
-                // Customer released preimage - we can claim the payment
-                println!("[PROVIDER] Preimage released for job {}", job_id);
-                println!("           Preimage: {}...", &preimage[..16.min(preimage.len())]);
+                    println!("[PROVIDER] Got direct NIP-90 job request:");
+                    println!("           Job ID: {}", job_id);
+                    println!("           From: {}...", &customer_pubkey[..16.min(customer_pubkey.len())]);
+                    println!("           Prompt: {}", prompt);
+                    println!("           Max tokens: {}", max_tokens);
 
-                if let Some(ref w) = wallet {
-                    println!("[PROVIDER] Claiming HTLC payment...");
-                    match w.claim_htlc_payment(&preimage).await {
-                        Ok(_) => {
-                            println!("[PROVIDER] HTLC payment claimed successfully!");
-                        }
-                        Err(e) => {
-                            println!("[PROVIDER] Failed to claim HTLC: {}", e);
+                    // Store for later processing
+                    pending_jobs.insert(job_id.clone(), (prompt.clone(), customer_pubkey.clone(), false));
+
+                    if let Some(ref w) = wallet {
+                        // Create invoice
+                        let invoice = w
+                            .create_invoice(10, Some("NIP-90 Job".to_string()), Some(3600))
+                            .await?;
+
+                        // Send feedback with invoice (kind:7000)
+                        publish_job_feedback(
+                            &relay,
+                            &keypair,
+                            &job_id,
+                            &customer_pubkey,
+                            JobStatus::PaymentRequired,
+                            Some(&invoice.payment_request),
+                            Some(10_000),
+                        ).await?;
+
+                        println!("[PROVIDER] Invoice sent via NIP-90 feedback (kind:7000)");
+                    } else {
+                        // No wallet - send mock invoice via feedback
+                        publish_job_feedback(
+                            &relay,
+                            &keypair,
+                            &job_id,
+                            &customer_pubkey,
+                            JobStatus::PaymentRequired,
+                            Some("lnbcrt100n1mock"),
+                            Some(10_000),
+                        ).await?;
+
+                        println!("[PROVIDER] Mock invoice sent via NIP-90 feedback (kind:7000)");
+
+                        // For testing without wallet, process immediately
+                        if !processed_jobs.contains(&job_id) {
+                            processed_jobs.insert(job_id.clone());
+
+                            // Send processing status
+                            publish_job_feedback(
+                                &relay,
+                                &keypair,
+                                &job_id,
+                                &customer_pubkey,
+                                JobStatus::Processing,
+                                None,
+                                None,
+                            ).await?;
+
+                            // Run inference
+                            let result_text = match run_inference(
+                                &registry,
+                                &model_to_use,
+                                &prompt,
+                                args.stream,
+                                &relay,
+                                &keypair,
+                                &job_id,
+                                &customer_pubkey,
+                                channel_id.as_deref(),
+                            ).await {
+                                Ok(text) => text,
+                                Err(e) => format!("Error: {}", e),
+                            };
+
+                            // Send result via NIP-90 (kind:6050)
+                            publish_job_result(
+                                &relay,
+                                &keypair,
+                                &job_id,
+                                &customer_pubkey,
+                                &result_text,
+                                KIND_JOB_RESULT_TEXT,
+                            ).await?;
+
+                            println!("[PROVIDER] Result delivered via NIP-90 (kind:6050)");
+                            pending_jobs.remove(&job_id);
                         }
                     }
+                }
+            }
+
+            // Handle channel messages (legacy/coordination)
+            Some(event) = async {
+                if let Some(ref mut rx) = channel_rx {
+                    rx.recv().await
                 } else {
-                    println!("[PROVIDER] No wallet - would claim HTLC with preimage");
+                    std::future::pending::<Option<Event>>().await
+                }
+            } => {
+                // Skip old messages
+                if event.created_at < start_time {
+                    continue;
+                }
+
+                // Skip our own messages
+                if event.pubkey == provider_pubkey {
+                    continue;
+                }
+
+                // Parse channel message
+                let msg = match parse_agent_message(&event.content) {
+                    Some(m) => m,
+                    None => continue,
+                };
+
+                match msg {
+                    AgentMessage::JobRequest { prompt, kind: _, max_tokens, target_provider } => {
+                        // Skip if targeted to another provider
+                        if let Some(ref target) = target_provider {
+                            if target != &provider_pubkey {
+                                continue;
+                            }
+                        }
+
+                        println!("[PROVIDER] Got channel job request:");
+                        println!("           Prompt: {}", prompt);
+                        println!("           Max tokens: {}", max_tokens);
+
+                        let job_id = format!("job_{}", &event.id[..16]);
+                        let customer_pubkey = event.pubkey.clone();
+
+                        // Store prompt for later processing
+                        pending_jobs.insert(job_id.clone(), (prompt.clone(), customer_pubkey, true));
+
+                        if let Some(ref w) = wallet {
+                            // Create invoice
+                            let invoice = w
+                                .create_invoice(10, Some("NIP-90 Job".to_string()), Some(3600))
+                                .await?;
+
+                            let resp = AgentMessage::Invoice {
+                                job_id: job_id.clone(),
+                                bolt11: invoice.payment_request.clone(),
+                                amount_msats: 10_000,
+                                payment_hash: Some(job_id.clone()),
+                            };
+                            send_channel_message(&relay, channel_id.as_ref().unwrap(), &keypair, &resp).await?;
+                            println!("[PROVIDER] Invoice sent via channel for job {}", job_id);
+                        } else {
+                            // No wallet - send mock invoice
+                            let resp = AgentMessage::Invoice {
+                                job_id: job_id.clone(),
+                                bolt11: "lnbcrt100n1mock".to_string(),
+                                amount_msats: 10_000,
+                                payment_hash: Some("mock_payment_hash".to_string()),
+                            };
+                            send_channel_message(&relay, channel_id.as_ref().unwrap(), &keypair, &resp).await?;
+                            println!("[PROVIDER] Mock invoice sent via channel for job {}", job_id);
+                        }
+                    }
+                    AgentMessage::PaymentSent { job_id, payment_id } => {
+                        // Skip if already processed
+                        if processed_jobs.contains(&job_id) {
+                            println!("[PROVIDER] Skipping already processed job: {}", job_id);
+                            continue;
+                        }
+                        processed_jobs.insert(job_id.clone());
+
+                        println!("[PROVIDER] Payment received for {}: {}", job_id, payment_id);
+
+                        // Get the stored prompt
+                        let (prompt, customer_pubkey, is_channel) = pending_jobs
+                            .remove(&job_id)
+                            .unwrap_or_else(|| ("Hello".to_string(), event.pubkey.clone(), true));
+
+                        println!("[PROVIDER] Processing prompt: {}", prompt);
+
+                        // Run inference
+                        let result_text = match run_inference(
+                            &registry,
+                            &model_to_use,
+                            &prompt,
+                            args.stream,
+                            &relay,
+                            &keypair,
+                            &job_id,
+                            &customer_pubkey,
+                            channel_id.as_deref(),
+                        ).await {
+                            Ok(text) => text,
+                            Err(e) => format!("Error: {}", e),
+                        };
+
+                        if is_channel {
+                            // Send result via channel
+                            let result = AgentMessage::JobResult {
+                                job_id: job_id.clone(),
+                                result: result_text,
+                            };
+                            send_channel_message(&relay, channel_id.as_ref().unwrap(), &keypair, &result).await?;
+                            println!("[PROVIDER] Result delivered via channel for {}", job_id);
+                        } else {
+                            // Send result via direct NIP-90 event
+                            publish_job_result(
+                                &relay,
+                                &keypair,
+                                &job_id,
+                                &customer_pubkey,
+                                &result_text,
+                                KIND_JOB_RESULT_TEXT,
+                            ).await?;
+                            println!("[PROVIDER] Result delivered via NIP-90 (kind:6050)");
+                        }
+
+                        println!("\n[PROVIDER] Job complete! Waiting for more requests...\n");
+                    }
+                    AgentMessage::HtlcLocked { job_id, payment_hash, amount_msats, expiry_secs } => {
+                        println!("[PROVIDER] HTLC locked for job {}:", job_id);
+                        println!("           Payment hash: {}...", &payment_hash[..16.min(payment_hash.len())]);
+                        println!("           Amount: {} msats", amount_msats);
+                        println!("           Expiry: {} secs", expiry_secs);
+                        println!("[PROVIDER] HTLC escrow noted. Waiting for PaymentSent confirmation...");
+                    }
+                    AgentMessage::PreimageRelease { job_id, preimage } => {
+                        println!("[PROVIDER] Preimage released for job {}", job_id);
+                        println!("           Preimage: {}...", &preimage[..16.min(preimage.len())]);
+
+                        if let Some(ref w) = wallet {
+                            println!("[PROVIDER] Claiming HTLC payment...");
+                            match w.claim_htlc_payment(&preimage).await {
+                                Ok(_) => {
+                                    println!("[PROVIDER] HTLC payment claimed successfully!");
+                                }
+                                Err(e) => {
+                                    println!("[PROVIDER] Failed to claim HTLC: {}", e);
+                                }
+                            }
+                        } else {
+                            println!("[PROVIDER] No wallet - would claim HTLC with preimage");
+                        }
+                    }
+                    // Ignore messages we send
+                    AgentMessage::ServiceAnnouncement { .. } => {}
+                    AgentMessage::Invoice { .. } => {}
+                    AgentMessage::JobResult { .. } => {}
+                    AgentMessage::StreamChunk { .. } => {}
                 }
             }
         }
     }
-
-    Ok(())
 }
