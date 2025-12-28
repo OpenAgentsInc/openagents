@@ -1,6 +1,8 @@
 //! Pylon CLI commands
 
+mod agent;
 mod doctor;
+mod earnings;
 mod init;
 mod start;
 mod status;
@@ -8,10 +10,10 @@ mod stop;
 
 use clap::{Parser, Subcommand};
 
-/// Pylon - NIP-90 compute provider node
+/// Pylon - Local runtime for sovereign AI agents
 #[derive(Parser)]
 #[command(name = "pylon")]
-#[command(about = "Earn Bitcoin by running local AI inference")]
+#[command(about = "Run sovereign agents and earn Bitcoin as a compute provider")]
 pub struct PylonCli {
     #[command(subcommand)]
     pub command: Commands,
@@ -20,16 +22,20 @@ pub struct PylonCli {
 /// Available commands
 #[derive(Subcommand)]
 pub enum Commands {
-    /// Initialize provider identity
+    /// Initialize pylon identity
     Init(init::InitArgs),
-    /// Start the provider daemon
+    /// Start the pylon daemon
     Start(start::StartArgs),
-    /// Stop the provider daemon
+    /// Stop the pylon daemon
     Stop(stop::StopArgs),
-    /// Show provider status
+    /// Show daemon status
     Status(status::StatusArgs),
     /// Run diagnostics
     Doctor(doctor::DoctorArgs),
+    /// Manage agents (host mode)
+    Agent(agent::AgentArgs),
+    /// View earnings (provider mode)
+    Earnings(earnings::EarningsArgs),
 }
 
 /// Execute a CLI command
@@ -40,5 +46,7 @@ pub async fn execute(cli: PylonCli) -> anyhow::Result<()> {
         Commands::Stop(args) => stop::run(args).await,
         Commands::Status(args) => status::run(args).await,
         Commands::Doctor(args) => doctor::run(args).await,
+        Commands::Agent(args) => agent::run(args).await,
+        Commands::Earnings(args) => earnings::run(args).await,
     }
 }
