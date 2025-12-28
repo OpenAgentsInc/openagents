@@ -724,7 +724,9 @@ Pick the best rail per context:
 
 ## Documentation
 
+- **[Operator Guide](docs/operator-guide.md)** — Complete guide for deploying neobank infrastructure in a jurisdiction
 - **[Research Document](docs/research.md)** — Full specification and ecosystem analysis
+- **[Agicash Research](docs/agicash-research.md)** — Analysis of production eCash wallet patterns
 - **[Spark Integration](../spark/README.md)** — Bitcoin/Lightning rail
 - **[SYNTHESIS.md](../../SYNTHESIS.md)** — How neobank fits the broader vision
 
