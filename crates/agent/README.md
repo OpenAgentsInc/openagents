@@ -70,6 +70,7 @@ cargo run --bin agent-runner -- --agent ResearchBot --single-tick
 
 ## Documentation
 
+- [Philosophy](docs/PHILOSOPHY.md) - Why dormancy over death, design principles
 - [Spawning Agents](docs/SPAWNING.md) - How to create new agents
 - [Running Agents](docs/RUNNING.md) - Tick execution and scheduling
 - [Lifecycle Management](docs/LIFECYCLE.md) - State transitions and runway
@@ -99,16 +100,18 @@ Spawning ──────────────→ Active
                             │
                 balance < 7 days runway
                             ↓
-                        LowBalance ←──── funded
+                        LowBalance ←───── funded
                             │
                 balance < hibernate_threshold
                             ↓
-                        Hibernating ←── funded
+                        Hibernating ←──── funded
                             │
                         balance = 0
                             ↓
-                          Dead (terminal)
+                         Dormant ←─────── funded (REVIVAL)
 ```
+
+**Important:** There is no "dead" state. Dormant agents can always be revived by receiving funds. See [PHILOSOPHY.md](docs/PHILOSOPHY.md) for the design rationale.
 
 ### Tick Execution
 
