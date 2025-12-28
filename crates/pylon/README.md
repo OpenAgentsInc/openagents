@@ -85,7 +85,7 @@ Each agent has:
 
 ### Provider Mode: Earn Bitcoin
 
-Pylon can also serve inference jobs to earn sats:
+Pylon can also serve inference jobs to earn bitcoin:
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐

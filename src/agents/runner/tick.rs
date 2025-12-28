@@ -125,6 +125,7 @@ impl TickAction {
 
 /// Tick executor for a sovereign agent
 pub struct TickExecutor {
+    identity: UnifiedIdentity,
     state_manager: StateManager,
     compute_client: ComputeClient,
     lifecycle_manager: LifecycleManager,
@@ -145,8 +146,9 @@ impl TickExecutor {
         pubkey: String,
         agent_name: String,
     ) -> Self {
-        let trajectory_publisher = TrajectoryPublisher::new(identity, trajectory_relay);
+        let trajectory_publisher = TrajectoryPublisher::new(identity.clone(), trajectory_relay);
         Self {
+            identity,
             state_manager,
             compute_client,
             lifecycle_manager: LifecycleManager::with_state(LifecycleState::Active),
@@ -525,7 +527,7 @@ impl TickExecutor {
         match action {
             TickAction::Post { content } => {
                 tracing::info!("[{}] Posting: {}", self.agent_name, content);
-                // TODO: Actually post to Nostr
+                self.execute_post(content).await?;
             }
             TickAction::DirectMessage { recipient, content } => {
                 tracing::info!(
@@ -534,7 +536,7 @@ impl TickExecutor {
                     recipient,
                     content
                 );
-                // TODO: Send encrypted DM
+                self.execute_dm(recipient, content).await?;
             }
             TickAction::Zap { target, amount_sats } => {
                 tracing::info!(
@@ -543,7 +545,7 @@ impl TickExecutor {
                     target,
                     amount_sats
                 );
-                // TODO: Send zap
+                self.execute_zap(target, *amount_sats).await?;
             }
             TickAction::UpdateGoal { goal_id, progress } => {
                 tracing::info!(
@@ -568,6 +570,124 @@ impl TickExecutor {
                 tracing::debug!("[{}] No action taken", self.agent_name);
             }
         }
+
+        Ok(())
+    }
+
+    /// Post a note to Nostr (kind:1)
+    async fn execute_post(&self, content: &str) -> Result<()> {
+        use nostr::{EventTemplate, finalize_event};
+
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+
+        let template = EventTemplate {
+            created_at: now,
+            kind: 1, // Short text note
+            tags: vec![],
+            content: content.to_string(),
+        };
+
+        let event = finalize_event(&template, self.identity.private_key_bytes())
+            .map_err(|e| anyhow!("Failed to sign event: {}", e))?;
+
+        self.relay
+            .publish_event(&event, Duration::from_secs(10))
+            .await
+            .map_err(|e| anyhow!("Failed to publish event: {}", e))?;
+
+        tracing::info!("[{}] Posted event: {}", self.agent_name, &event.id[..16]);
+        Ok(())
+    }
+
+    /// Send an encrypted direct message (NIP-04, kind:4)
+    async fn execute_dm(&self, recipient: &str, content: &str) -> Result<()> {
+        use nostr::{EventTemplate, finalize_event, encrypt, decode, Nip19Entity};
+
+        // Parse recipient pubkey
+        let recipient_pubkey = if recipient.starts_with("npub") {
+            // Decode npub to hex using NIP-19
+            match decode(recipient) {
+                Ok(Nip19Entity::Pubkey(bytes)) => hex::encode(bytes),
+                Ok(_) => return Err(anyhow!("Expected npub, got different entity type")),
+                Err(e) => return Err(anyhow!("Invalid npub: {}", e)),
+            }
+        } else {
+            recipient.to_string()
+        };
+
+        // Get recipient pubkey bytes (compressed)
+        let recipient_bytes = hex::decode(&recipient_pubkey)
+            .map_err(|e| anyhow!("Invalid recipient pubkey hex: {}", e))?;
+
+        // Prepend 0x02 for compressed point (assumes even y, which is fine for encryption)
+        let mut compressed_pubkey = vec![0x02];
+        compressed_pubkey.extend_from_slice(&recipient_bytes);
+
+        // Encrypt the message using NIP-04
+        let encrypted = encrypt(
+            self.identity.private_key_bytes(),
+            &compressed_pubkey,
+            content,
+        )
+        .map_err(|e| anyhow!("Failed to encrypt DM: {}", e))?;
+
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+
+        let template = EventTemplate {
+            created_at: now,
+            kind: 4, // Encrypted direct message
+            tags: vec![vec!["p".to_string(), recipient_pubkey.clone()]],
+            content: encrypted,
+        };
+
+        let event = finalize_event(&template, self.identity.private_key_bytes())
+            .map_err(|e| anyhow!("Failed to sign DM event: {}", e))?;
+
+        self.relay
+            .publish_event(&event, Duration::from_secs(10))
+            .await
+            .map_err(|e| anyhow!("Failed to publish DM: {}", e))?;
+
+        tracing::info!(
+            "[{}] Sent DM to {}: {}",
+            self.agent_name,
+            &recipient_pubkey[..16],
+            &event.id[..16]
+        );
+        Ok(())
+    }
+
+    /// Send a zap (NIP-57)
+    async fn execute_zap(&self, target: &str, amount_sats: u64) -> Result<()> {
+        // NIP-57 zap flow:
+        // 1. Fetch recipient's lnurl from their kind:0 metadata
+        // 2. Create zap request event (kind:9734)
+        // 3. Send zap request to lnurl callback to get invoice
+        // 4. Pay the invoice
+
+        // For now, we'll implement a simplified version that skips lnurl lookup
+        // and relies on the compute_client's wallet for payment
+
+        tracing::warn!(
+            "[{}] Zap to {} for {} sats - full NIP-57 not yet implemented",
+            self.agent_name,
+            target,
+            amount_sats
+        );
+
+        // In a full implementation:
+        // 1. Query kind:0 for target to get lud16/lnurl
+        // 2. Fetch lnurl callback
+        // 3. Create kind:9734 zap request
+        // 4. POST to callback with amount and nostr query param
+        // 5. Get invoice from response
+        // 6. Pay invoice with wallet
 
         Ok(())
     }

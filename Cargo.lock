@@ -8250,16 +8250,20 @@ dependencies = [
 name = "pylon"
 version = "0.1.0"
 dependencies = [
+ "agent",
  "anyhow",
  "async-trait",
+ "bip39",
  "chrono",
  "clap",
  "compute",
  "dirs 5.0.1",
+ "nix 0.29.0",
  "nostr 0.1.0",
  "nostr-client",
  "openagents-spark",
  "rpassword",
+ "rusqlite",
  "serde",
  "serde_json",
  "tempfile",
@@ -8268,6 +8272,7 @@ dependencies = [
  "toml",
  "tracing",
  "tracing-subscriber",
+ "uuid",
 ]
 
 [[package]]

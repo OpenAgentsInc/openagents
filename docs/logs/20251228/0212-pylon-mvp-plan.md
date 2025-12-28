@@ -2,7 +2,7 @@
 
 ## Overview
 
-Build the Pylon MVP: a single self-daemonizing binary that runs both **Host Mode** (your agents) and **Provider Mode** (earn sats) with SQLite persistence.
+Build the Pylon MVP: a single self-daemonizing binary that runs both **Host Mode** (your agents) and **Provider Mode** (earn bitcoin) with SQLite persistence.
 
 **User Requirements:**
 - Both modes (host + provider)

@@ -28,6 +28,14 @@ pub fn run(cmd: PylonCommands) -> anyhow::Result<()> {
                 command: pylon::cli::Commands::Doctor(args),
             })
             .await,
+            PylonCommands::Agent(args) => pylon::cli::execute(pylon::cli::PylonCli {
+                command: pylon::cli::Commands::Agent(args),
+            })
+            .await,
+            PylonCommands::Earnings(args) => pylon::cli::execute(pylon::cli::PylonCli {
+                command: pylon::cli::Commands::Earnings(args),
+            })
+            .await,
         }
     })
 }

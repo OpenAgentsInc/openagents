@@ -2,8 +2,8 @@
 name = "pylon"
 version.workspace = true
 edition.workspace = true
-description = "NIP-90 compute provider node - earn Bitcoin running local AI inference"
-license = "MIT"
+description = "Local runtime for sovereign AI agents - host agents and earn Bitcoin as a provider"
+license = "Apache-2.0"
 autobins = false
 
 [[bin]]
@@ -16,6 +16,7 @@ path = "src/lib.rs"
 
 [dependencies]
 # Internal crates
+agent = { path = "../agent" }
 compute = { path = "../compute" }
 nostr = { path = "../nostr/core", features = ["full"] }
 nostr-client = { path = "../nostr/client" }
@@ -47,6 +48,14 @@ chrono = { version = "0.4", features = ["serde"] }
 # Platform
 dirs = "5.0"
 rpassword = "7.4"
+
+# Daemon
+nix = { version = "0.29", features = ["signal", "process", "fs"] }
+rusqlite = { version = "0.32", features = ["bundled"] }
+
+# Utils
+bip39 = "2.1"
+uuid = { version = "1.11", features = ["v4"] }
 
 [features]
 default = ["cli"]

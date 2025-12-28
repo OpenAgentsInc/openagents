@@ -1,0 +1,610 @@
+# CLI Reference
+
+Complete reference for all Pylon command-line commands.
+
+## Synopsis
+
+```
+pylon <COMMAND> [OPTIONS]
+```
+
+## Global Options
+
+None currently. All options are command-specific.
+
+---
+
+## Commands
+
+### pylon init
+
+Initialize Pylon identity and configuration.
+
+```bash
+pylon init [OPTIONS]
+```
+
+#### Options
+
+| Option | Short | Description |
+|--------|-------|-------------|
+| `--force` | `-f` | Overwrite existing identity |
+
+#### Description
+
+Creates:
+- `~/.config/pylon/config.toml` - Configuration file
+- `~/.config/pylon/identity.mnemonic` - 12-word seed phrase
+
+If identity already exists, prompts for confirmation unless `--force` is used.
+
+#### Examples
+
+```bash
+# Initialize (interactive)
+pylon init
+
+# Force overwrite existing
+pylon init --force
+```
+
+#### Output
+
+```
+Initializing Pylon...
+
+Generated new identity:
+  npub: npub1abc123...
+
+IMPORTANT: Back up your seed phrase:
+  word1 word2 word3 word4 word5 word6 word7 word8 word9 word10 word11 word12
+
+Configuration written to ~/.config/pylon/config.toml
+```
+
+---
+
+### pylon start
+
+Start the Pylon daemon.
+
+```bash
+pylon start [OPTIONS]
+```
+
+#### Options
+
+| Option | Short | Description | Default |
+|--------|-------|-------------|---------|
+| `--foreground` | `-f` | Run in foreground (don't daemonize) | false |
+| `--mode` | `-m` | Operating mode: provider, host, both | both |
+| `--config` | `-c` | Path to config file | ~/.config/pylon/config.toml |
+
+#### Description
+
+Starts the Pylon daemon with the specified mode:
+- `provider`: Earn Bitcoin by processing jobs
+- `host`: Run sovereign agents
+- `both`: Both modes simultaneously (default)
+
+In foreground mode, logs go to stderr and Ctrl+C stops the daemon.
+
+#### Examples
+
+```bash
+# Start in background (default)
+pylon start
+
+# Start in foreground for debugging
+pylon start -f
+
+# Provider mode only
+pylon start --mode provider
+
+# Host mode only
+pylon start --mode host
+
+# Both modes (explicit)
+pylon start --mode both
+
+# Custom config
+pylon start --config /path/to/config.toml
+```
+
+#### Exit Codes
+
+| Code | Meaning |
+|------|---------|
+| 0 | Success |
+| 1 | Already running |
+| 1 | Identity not initialized |
+| 1 | Other error |
+
+---
+
+### pylon stop
+
+Stop the Pylon daemon.
+
+```bash
+pylon stop [OPTIONS]
+```
+
+#### Options
+
+| Option | Short | Description | Default |
+|--------|-------|-------------|---------|
+| `--force` | `-f` | Force kill without graceful shutdown | false |
+| `--timeout` | `-t` | Graceful shutdown timeout (seconds) | 10 |
+
+#### Description
+
+Stops the running daemon:
+1. Sends Shutdown command via control socket
+2. Sends SIGTERM for graceful shutdown
+3. Waits for process to exit (up to timeout)
+4. Sends SIGKILL if timeout exceeded
+
+With `--force`, skips graceful shutdown and sends SIGKILL immediately.
+
+#### Examples
+
+```bash
+# Graceful stop
+pylon stop
+
+# Force kill
+pylon stop --force
+
+# Longer timeout
+pylon stop --timeout 30
+```
+
+---
+
+### pylon status
+
+Show daemon and system status.
+
+```bash
+pylon status [OPTIONS]
+```
+
+#### Options
+
+| Option | Description |
+|--------|-------------|
+| `--json` | Output as JSON |
+
+#### Description
+
+Shows:
+- Daemon status (running/stopped, PID, uptime)
+- Active modes (provider, host)
+- Session statistics (jobs, earnings)
+- Available backends
+- Configured relays
+
+#### Examples
+
+```bash
+# Human-readable output
+pylon status
+
+# JSON output
+pylon status --json
+```
+
+#### Output (Human)
+
+```
+Pylon Status
+============
+
+Daemon: Running (PID: 12345)
+Uptime: 2h 30m 15s
+Modes:  provider, host
+
+Session Stats:
+  Jobs completed: 42
+  Earnings: 1234 sats (1234000 msats)
+
+Identity:
+  Configured
+
+Backends:
+  Available: ollama (default)
+
+Relays:
+  wss://relay.damus.io
+```
+
+#### Output (JSON)
+
+```json
+{
+  "daemon": {
+    "running": true,
+    "pid": 12345,
+    "uptime_secs": 9015,
+    "provider_active": true,
+    "host_active": true
+  },
+  "stats": {
+    "jobs_completed": 42,
+    "earnings_msats": 1234000
+  },
+  "backends": ["ollama"],
+  "default_backend": "ollama",
+  "relays": ["wss://relay.damus.io"]
+}
+```
+
+---
+
+### pylon doctor
+
+Run diagnostic checks.
+
+```bash
+pylon doctor [OPTIONS]
+```
+
+#### Options
+
+| Option | Description |
+|--------|-------------|
+| `--json` | Output as JSON |
+
+#### Description
+
+Checks:
+- Identity configuration
+- Backend availability
+- Relay configuration
+- (Future: Relay connectivity, wallet status)
+
+#### Examples
+
+```bash
+# Run diagnostics
+pylon doctor
+
+# JSON output
+pylon doctor --json
+```
+
+#### Output
+
+```
+Pylon Diagnostics
+=================
+
+Identity:
+  ✓ Configured (npub1abc123...)
+
+Backends:
+  ✓ ollama: Available
+  ✗ apple_fm: Not available
+  ✗ llamacpp: Not available
+
+Relays:
+  wss://relay.damus.io
+
+Warnings:
+  None
+
+Status: OK
+```
+
+---
+
+### pylon agent
+
+Manage sovereign agents.
+
+```bash
+pylon agent <SUBCOMMAND>
+```
+
+#### Subcommands
+
+- `list` - List all agents
+- `info` - Show agent details
+- `spawn` - Create a new agent
+- `delete` - Delete an agent
+
+---
+
+### pylon agent list
+
+List all configured agents.
+
+```bash
+pylon agent list [OPTIONS]
+```
+
+#### Options
+
+| Option | Description |
+|--------|-------------|
+| `--json` | Output as JSON |
+
+#### Examples
+
+```bash
+# List agents
+pylon agent list
+
+# JSON output
+pylon agent list --json
+```
+
+#### Output
+
+```
+Agents:
+
+NAME                 STATE        NPUB
+-------------------- ------------ ----------------------------------------------------------------
+research-bot         active       npub1abc...
+trading-agent        dormant      npub1xyz...
+```
+
+---
+
+### pylon agent info
+
+Show detailed information about an agent.
+
+```bash
+pylon agent info <AGENT> [OPTIONS]
+```
+
+#### Arguments
+
+| Argument | Description |
+|----------|-------------|
+| `<AGENT>` | Agent name or npub |
+
+#### Options
+
+| Option | Description |
+|--------|-------------|
+| `--json` | Output as JSON |
+
+#### Examples
+
+```bash
+# Show agent info
+pylon agent info research-bot
+
+# JSON output
+pylon agent info research-bot --json
+```
+
+#### Output
+
+```
+Agent: research-bot
+===================
+
+Npub:    npub1abc123...
+State:   active
+Network: regtest
+
+Schedule:
+  Heartbeat: 900 seconds
+  Triggers:  mention, dm, zap
+
+Relays:
+  wss://relay.damus.io
+
+Stats:
+  Balance:    500 sats
+  Tick count: 42
+  Last tick:  300 seconds ago
+```
+
+---
+
+### pylon agent spawn
+
+Create a new sovereign agent.
+
+```bash
+pylon agent spawn [OPTIONS]
+```
+
+#### Options
+
+| Option | Short | Description | Default |
+|--------|-------|-------------|---------|
+| `--name` | `-n` | Agent name (required) | - |
+| `--network` | - | Bitcoin network | regtest |
+| `--heartbeat` | - | Tick interval (seconds) | 900 |
+| `--relay` | - | Relay URL | wss://relay.damus.io |
+
+#### Networks
+
+- `mainnet` - Bitcoin mainnet (real money!)
+- `testnet` - Bitcoin testnet
+- `signet` - Bitcoin signet
+- `regtest` - Local regtest (development)
+
+#### Examples
+
+```bash
+# Basic spawn
+pylon agent spawn --name myagent
+
+# With options
+pylon agent spawn \
+  --name research-bot \
+  --network regtest \
+  --heartbeat 600 \
+  --relay wss://relay.damus.io
+```
+
+#### Output
+
+```
+Agent 'research-bot' spawned successfully!
+
+Npub: npub1xyz...
+State: spawning (awaiting funding)
+
+Fund address: sp1abc...
+
+The agent wallet needs Bitcoin to operate.
+Send Bitcoin to the address above to activate the agent.
+
+IMPORTANT: Back up the mnemonic phrase:
+  word1 word2 word3 word4 word5 word6 word7 word8 word9 word10 word11 word12
+```
+
+---
+
+### pylon agent delete
+
+Delete an agent.
+
+```bash
+pylon agent delete <AGENT> [OPTIONS]
+```
+
+#### Arguments
+
+| Argument | Description |
+|----------|-------------|
+| `<AGENT>` | Agent name |
+
+#### Options
+
+| Option | Short | Description |
+|--------|-------|-------------|
+| `--force` | `-f` | Skip confirmation |
+
+#### Description
+
+Deletes:
+- Agent configuration from registry
+- Agent state from database
+- Tick history from database
+
+Does NOT delete:
+- Agent's Bitcoin (still in wallet)
+- Nostr events published by agent
+
+#### Examples
+
+```bash
+# Interactive delete
+pylon agent delete myagent
+
+# Force delete (no confirmation)
+pylon agent delete myagent --force
+```
+
+#### Confirmation
+
+```
+Are you sure you want to delete agent 'myagent'?
+This will permanently remove the agent configuration.
+
+Type the agent name to confirm:
+```
+
+---
+
+### pylon earnings
+
+View provider earnings.
+
+```bash
+pylon earnings [OPTIONS]
+```
+
+#### Options
+
+| Option | Short | Description | Default |
+|--------|-------|-------------|---------|
+| `--json` | - | Output as JSON | false |
+| `--limit` | `-l` | Number of recent earnings | 10 |
+
+#### Examples
+
+```bash
+# View earnings
+pylon earnings
+
+# More recent entries
+pylon earnings --limit 20
+
+# JSON output
+pylon earnings --json
+```
+
+#### Output
+
+```
+Pylon Earnings
+==============
+
+Summary:
+  Total earned: 1234 sats (1234000 msats)
+  Jobs completed: 42
+
+By Source:
+  job: 1200 sats
+  tip: 34 sats
+
+Recent Earnings (last 10):
+SATS     SOURCE     TIME AGO
+50       job        2 hours
+25       job        5 hours
+100      job        1 days
+75       tip        2 days
+...
+```
+
+---
+
+## Environment Variables
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `RUST_LOG` | Log level (error, warn, info, debug, trace) | info |
+| `PYLON_AGENT_RUNNER` | Path to agent-runner binary | auto-detect |
+
+### Log Levels
+
+```bash
+# Minimal logging
+RUST_LOG=warn pylon start -f
+
+# Debug logging
+RUST_LOG=debug pylon start -f
+
+# Trace specific modules
+RUST_LOG=pylon=debug,compute=trace pylon start -f
+```
+
+---
+
+## Exit Codes
+
+| Code | Meaning |
+|------|---------|
+| 0 | Success |
+| 1 | General error |
+
+All errors print a message to stderr.
+
+---
+
+## See Also
+
+- [Quick Start](./QUICKSTART.md) - Getting started guide
+- [Architecture](./ARCHITECTURE.md) - System design
+- [Configuration](./CONFIGURATION.md) - Config file reference
