@@ -2,6 +2,28 @@
 
 **For operators deploying treasury infrastructure in innovation-friendly jurisdictions**
 
+---
+
+## DISCLAIMER
+
+**This document is not legal, financial, or regulatory advice.**
+
+- OpenAgents Inc. provides technology, not legal guidance
+- You are solely responsible for compliance in every jurisdiction you touch
+- Even if your host jurisdiction is permissive, **users elsewhere may trigger enforcement**
+- Operating a money service—even tokenized, even "neobank"—carries legal risk
+- Consult qualified legal counsel in your jurisdiction before operating
+
+**This technology can be used to build systems that may be regulated as:**
+- Money transmission / payment services
+- Virtual asset service providers (VASPs)
+- Electronic money institutions
+- Custodial wallet providers
+
+**You must determine your regulatory status independently.**
+
+---
+
 This guide is for entities establishing neobank operations using OpenAgents technology. It assumes a jurisdiction with no restrictive financial regulations—a startup society, special economic zone, or digital jurisdiction actively seeking to co-develop an appropriate regulatory framework through practical operation.
 
 OpenAgents Inc. (US) provides the technology. You, the operator, provide the jurisdiction, entity, reserves, and operational expertise.
@@ -64,6 +86,102 @@ A neobank operator runs infrastructure enabling:
 │                                                                  │
 └─────────────────────────────────────────────────────────────────┘
 ```
+
+---
+
+## Threat Model
+
+Before operating, be explicit about what can go wrong.
+
+### Risk Categories
+
+| Risk | Description | Your Exposure |
+|------|-------------|---------------|
+| **Reserve loss** | Hot wallet compromise, exchange hack, custody failure | Total loss of user funds |
+| **Key compromise** | Mint signing keys stolen | Attacker can mint unlimited tokens |
+| **Operational failure** | Database corruption, backup failure, downtime | Users can't redeem |
+| **Double-spend attack** | Spent-secret DB desync, race conditions | Loss from your reserves |
+| **Regulatory action** | Enforcement in user jurisdictions | Asset freeze, prosecution |
+| **Insider fraud** | Employee collusion, reserve theft | Reserve shortfall |
+| **LN channel failure** | Stuck HTLCs, routing failures, force closes | Liquidity crunch |
+| **USD peg slip** | BTC volatility exceeds hedging | Reserve ratio breach |
+
+### Trust Boundaries
+
+| Component | What You Trust | What You Verify | Failure Mode |
+|-----------|----------------|-----------------|--------------|
+| Bitcoin blockchain | Consensus rules | Block confirmations | Reorg risk (rare) |
+| Lightning Network | Routing works | Preimages + channel state | Stuck payments |
+| Your reserve custody | Your own security | Regular audits | Theft, loss |
+| User claims | Nothing | Proof validity | Double-spend attempts |
+| Staff | Background checks | Separation of duties | Insider threat |
+
+---
+
+## Minimum Compliance Posture
+
+Even in "innovation zones," basic hygiene protects you:
+
+### Sanctions Screening (Recommended)
+
+If you have **any fiat touchpoints** (on/off ramps):
+
+```rust
+pub struct SanctionsScreening {
+    /// Screen at fiat entry/exit points
+    pub screen_fiat_ramps: bool,
+
+    /// Screening provider (Chainalysis, Elliptic, etc.)
+    pub provider: Option<ScreeningProvider>,
+
+    /// Block sanctioned addresses
+    pub block_ofac_addresses: bool,
+
+    /// Log all screening decisions
+    pub audit_log: bool,
+}
+```
+
+### Transaction Limits for Anonymous Tier
+
+Limit exposure from unverified users:
+
+| Tier | Verification | Limits |
+|------|--------------|--------|
+| Anonymous | None | $100/day, $500/month |
+| Basic | Email + phone | $1,000/day, $5,000/month |
+| Verified | ID + address | $10,000/day, $50,000/month |
+| Business | Full KYB | Custom |
+
+### Incident Reporting
+
+Maintain records for potential regulatory inquiries:
+
+```rust
+pub struct IncidentLog {
+    /// Suspected fraud attempts
+    pub fraud_attempts: Vec<FraudIncident>,
+
+    /// Large transaction reports (if required)
+    pub large_txs: Vec<LargeTxReport>,
+
+    /// Security incidents
+    pub security_incidents: Vec<SecurityIncident>,
+
+    /// Retention period
+    pub retention_years: u8,  // Default: 5
+}
+```
+
+### Reserve Transparency
+
+Even without regulatory requirement, publish:
+
+- Monthly reserve attestations
+- Proof of reserves mechanism
+- Liability summary (outstanding tokens)
+
+This builds trust and preempts regulatory concerns.
 
 ---
 
@@ -489,6 +607,111 @@ Merkle Root of All Proofs: 0xabc123...
 Verification Instructions: [link]
 
 Signed: [Operator Signature]
+```
+
+### Automated Reserve Proof Mechanism
+
+Don't just publish manually—build verifiable proofs:
+
+```rust
+/// Automated reserve proof generation
+pub struct ReserveProofSystem {
+    /// Interval for proof generation
+    pub proof_interval: Duration,
+
+    /// Where to publish proofs
+    pub publish_targets: Vec<ProofTarget>,
+}
+
+pub enum ProofTarget {
+    /// Nostr event with reserve attestation
+    Nostr { relays: Vec<Url> },
+    /// HTTPS endpoint serving JSON
+    Https { url: Url },
+    /// On-chain (expensive, for major milestones)
+    Onchain,
+}
+
+/// The proof itself
+pub struct ReserveProof {
+    /// Timestamp of proof generation
+    pub timestamp: DateTime<Utc>,
+
+    /// Liabilities (outstanding tokens)
+    pub liabilities: LiabilityProof,
+
+    /// Assets (reserves)
+    pub assets: AssetProof,
+
+    /// Operator signature
+    pub signature: Signature,
+}
+
+pub struct LiabilityProof {
+    /// Merkle root of all outstanding token commitments
+    pub merkle_root: [u8; 32],
+
+    /// Total issued per currency
+    pub totals: HashMap<Currency, Amount>,
+
+    /// Count of unique token holders (if trackable)
+    pub holder_count: Option<u64>,
+}
+
+pub struct AssetProof {
+    /// List of UTXOs with amounts (for on-chain verification)
+    pub btc_utxos: Vec<UtxoAttestation>,
+
+    /// Lightning channel balances (signed by LN node)
+    pub ln_channels: Vec<ChannelAttestation>,
+
+    /// Stablecoin holdings (with exchange/custodian attestation)
+    pub stablecoin_holdings: Vec<StablecoinAttestation>,
+}
+
+pub struct UtxoAttestation {
+    pub txid: Txid,
+    pub vout: u32,
+    pub amount_sats: u64,
+    /// Sign message with this UTXO's key to prove control
+    pub ownership_proof: Option<SignedMessage>,
+}
+```
+
+### Verification Script
+
+Provide a reproducible verification script:
+
+```bash
+#!/bin/bash
+# verify-reserves.sh
+# Downloads reserve proof and verifies against blockchain
+
+PROOF_URL="https://neobank.example/api/reserve-proof/latest"
+
+# 1. Fetch proof
+curl -s $PROOF_URL > proof.json
+
+# 2. Verify UTXO ownership signatures
+for utxo in $(jq -r '.assets.btc_utxos[] | @base64' proof.json); do
+  txid=$(echo $utxo | base64 -d | jq -r '.txid')
+  sig=$(echo $utxo | base64 -d | jq -r '.ownership_proof')
+  # Verify signature matches UTXO address
+  bitcoin-cli verifymessage "$address" "$sig" "reserve-proof-$timestamp"
+done
+
+# 3. Sum reserves
+btc_total=$(jq '.assets.btc_utxos | map(.amount_sats) | add' proof.json)
+ln_total=$(jq '.assets.ln_channels | map(.local_balance_sats) | add' proof.json)
+total_reserves=$((btc_total + ln_total))
+
+# 4. Compare to liabilities
+btc_issued=$(jq '.liabilities.totals.BTC' proof.json)
+
+# 5. Output
+echo "Reserves: $total_reserves sats"
+echo "Issued: $btc_issued sats"
+echo "Ratio: $(echo "scale=2; $total_reserves / $btc_issued * 100" | bc)%"
 ```
 
 ---

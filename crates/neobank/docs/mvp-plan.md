@@ -259,6 +259,68 @@ Wire into Autopilot:
 
 ---
 
+## Reliability Requirements
+
+### Idempotency
+
+Every operation must be safe to retry:
+
+```rust
+impl CashuWallet {
+    /// Idempotent melt - safe to call multiple times with same quote
+    pub async fn melt_idempotent(&mut self, quote: &MeltQuote) -> Result<MeltResult> {
+        // Check if already completed
+        if let Some(result) = self.get_completed_melt(&quote.id).await? {
+            return Ok(result);
+        }
+
+        // Execute melt
+        let result = self.melt_internal(quote).await?;
+
+        // Persist result before returning
+        self.store_melt_result(&quote.id, &result).await?;
+
+        Ok(result)
+    }
+}
+```
+
+### Crash Recovery
+
+On startup, resolve incomplete operations:
+
+```rust
+impl AgentTreasury {
+    /// Called on every startup
+    pub async fn recover(&mut self) -> Result<RecoveryReport> {
+        // 1. Find pending quotes, resolve state
+        // 2. Release orphaned proof reservations
+        // 3. Sync keyset counters
+        // 4. Verify balance consistency
+        // See mvp.md ReconciliationService for full implementation
+    }
+}
+```
+
+### Proof Persistence Order
+
+**Critical:** Persist proofs BEFORE any network call that depends on them.
+
+```
+WRONG:
+1. Reserve proofs in memory
+2. Call mint.melt()
+3. Persist proof state  ← Crash here = lost proofs
+
+RIGHT:
+1. Reserve proofs
+2. Persist reservation to DB
+3. Call mint.melt()
+4. Persist completion to DB
+```
+
+---
+
 ## Exchange Rate Service
 
 ```rust

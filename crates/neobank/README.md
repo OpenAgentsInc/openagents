@@ -16,6 +16,67 @@ OpenAgents Neobank is not a bank. It's a **programmable treasury + payments rout
 
 ## Core Types
 
+### Amount Representation
+
+We use **integer + scale** instead of floating point or BigDecimal for performance and correctness:
+
+```rust
+/// Monetary amount in smallest unit (sats, msats, cents)
+/// No floating point ever touches money calculations.
+pub struct Amount {
+    /// Value in smallest unit
+    atoms: i128,
+    /// Decimal places (0 for sats, 3 for msats, 2 for cents)
+    scale: u8,
+}
+
+impl Amount {
+    pub fn from_sats(sats: u64) -> Self { Self { atoms: sats as i128, scale: 0 } }
+    pub fn from_msats(msats: u64) -> Self { Self { atoms: msats as i128, scale: 3 } }
+    pub fn from_cents(cents: u64) -> Self { Self { atoms: cents as i128, scale: 2 } }
+
+    /// Convert to display string with proper formatting
+    pub fn display(&self, unit: DisplayUnit) -> String;
+}
+```
+
+**Why not BigDecimal?** It's slow in hot paths (budget checks, routing previews) and easy to misuse. Decimals only matter at UI boundaries.
+
+### AssetId vs Currency
+
+**Currency** is the denomination (BTC, USD). **AssetId** is the specific rail + issuer:
+
+```rust
+/// Denomination for display and budgeting
+pub enum Currency {
+    Btc,
+    Usd,
+}
+
+/// Specific asset on a specific rail
+pub enum AssetId {
+    /// Native Bitcoin on Lightning
+    BtcLightning,
+    /// BTC-denominated eCash from a specific mint
+    BtcCashu { mint_url: Url },
+    /// USD-denominated eCash from a specific mint
+    UsdCashu { mint_url: Url },
+    /// Taproot Asset (e.g., USDT)
+    TaprootAsset { group_key: String },
+}
+
+impl AssetId {
+    pub fn currency(&self) -> Currency {
+        match self {
+            Self::BtcLightning | Self::BtcCashu { .. } => Currency::Btc,
+            Self::UsdCashu { .. } | Self::TaprootAsset { .. } => Currency::Usd,
+        }
+    }
+}
+```
+
+**Why this matters:** "USD on Cashu mint A" and "USD on Cashu mint B" are **different assets** with different risk profiles. The TreasuryRouter needs to know which asset, not just which currency.
+
 ### Money
 
 Type-safe monetary amounts with currency enforcement:
@@ -125,6 +186,118 @@ pub trait RateProvider {
 
 // Built-in providers: Mempool.space, Coingecko, Coinbase
 ```
+
+## Rail Abstraction
+
+All payment rails implement a common trait. This prevents "Cashu MVP locks our architecture":
+
+```rust
+/// Unified interface for all payment rails.
+/// TreasuryRouter depends on Vec<Box<dyn Rail>>, not concrete implementations.
+#[async_trait]
+pub trait Rail: Send + Sync {
+    /// What assets this rail supports
+    fn supported_assets(&self) -> &[AssetId];
+
+    /// Quote an outbound payment
+    async fn quote_send(&self, req: SendRequest) -> Result<SendQuote>;
+
+    /// Execute a quoted send
+    async fn execute_send(&self, quote: &SendQuote) -> Result<Receipt>;
+
+    /// Quote an inbound payment (generate invoice/address)
+    async fn quote_receive(&self, req: ReceiveRequest) -> Result<ReceiveQuote>;
+
+    /// Finalize a receive (after payment detected)
+    async fn finalize_receive(&self, quote: &ReceiveQuote) -> Result<Receipt>;
+
+    /// Check rail health/connectivity
+    async fn health(&self) -> RailHealth;
+}
+
+pub struct SendRequest {
+    pub asset: AssetId,
+    pub amount: Amount,
+    pub destination: PaymentDestination,  // bolt11, lnurl, cashu token, address
+    pub idempotency_key: String,
+}
+
+pub struct SendQuote {
+    pub id: QuoteId,
+    pub expires_at: DateTime<Utc>,
+    pub amount_to_send: Amount,
+    pub fee: Amount,
+    pub fee_breakdown: FeeBreakdown,
+    pub reserved_funds: ReservedFunds,
+}
+
+pub struct FeeBreakdown {
+    pub routing_fee: Amount,      // LN routing
+    pub protocol_fee: Amount,     // Mint/protocol fee
+    pub service_fee: Amount,      // Our fee (if any)
+}
+```
+
+### Rail Implementations
+
+| Rail | Struct | Assets |
+|------|--------|--------|
+| Lightning | `SparkRail` | `BtcLightning` |
+| Cashu BTC | `CashuRail` | `BtcCashu { mint_url }` |
+| Cashu USD | `CashuRail` | `UsdCashu { mint_url }` |
+| Taproot Assets | `TaprootAssetsRail` | `TaprootAsset { group_key }` |
+
+The `TreasuryRouter` selects rails based on policy, not hardcoded logic.
+
+## Mint Allowlist Policy
+
+Even MVP must have explicit mint trust policy:
+
+```rust
+pub struct MintPolicy {
+    /// Allowlisted mints with their limits
+    pub allowlist: Vec<MintConfig>,
+
+    /// Maximum exposure per mint (diversification)
+    pub max_exposure_per_mint: Amount,
+
+    /// Minimum required NUTs for a mint to be usable
+    pub required_nuts: Vec<NutId>,
+}
+
+pub struct MintConfig {
+    pub url: Url,
+    pub unit: CurrencyUnit,
+
+    /// Maximum balance to hold at this mint
+    pub max_balance: Amount,
+
+    /// Is this a test mint? (sandboxed from production)
+    pub is_test: bool,
+
+    /// Health scoring signals
+    pub health: MintHealthScore,
+}
+
+pub struct MintHealthScore {
+    pub uptime_7d: f32,           // 0.0-1.0
+    pub avg_redemption_ms: u32,   // Latency
+    pub last_successful_op: DateTime<Utc>,
+    pub fee_rate_bps: u16,        // Basis points
+}
+
+/// Minimum NUTs required for safe operation
+pub const REQUIRED_NUTS: &[NutId] = &[
+    NutId::Nut11,  // P2PK (for safe public receives)
+    NutId::Nut12,  // DLEQ proofs (signature verification)
+];
+```
+
+**Default policy:**
+- Only allowlisted mints are usable
+- Max 50% of total balance at any single mint
+- Auto-diversify when deposits exceed threshold
+- Monitor health; degrade gracefully when mint is slow/down
 
 ## Money Rails
 
@@ -646,6 +819,119 @@ impl AccountRepository {
 | Receive payment | No | Need mint to create invoice |
 | Send payment | No | Need mint to melt proofs |
 | Generate address | Partial | Can show static address |
+
+## Agent Receivables (Phase 2 Spec)
+
+The "agentic neobank" signature feature: agents can be paid for their work.
+
+### AgentPaymentProfile (Nostr Event)
+
+```rust
+/// Published to Nostr for payment discoverability
+/// Kind: 31XXX (parameterized replaceable, avoiding kind collision)
+pub struct AgentPaymentProfile {
+    /// Agent's Nostr pubkey
+    pub pubkey: PublicKey,
+
+    /// Lightning Address (LUD-16)
+    pub lightning_address: Option<String>,
+
+    /// Accepted payment methods
+    pub accepts: Vec<PaymentMethod>,
+
+    /// Default currency for amountless invoices
+    pub default_currency: Currency,
+
+    /// Min/max receivable
+    pub limits: ReceiveLimits,
+
+    /// What this agent does (for marketplace discovery)
+    pub capabilities: Vec<String>,
+}
+
+pub enum PaymentMethod {
+    /// BOLT11 Lightning invoices
+    Lightning,
+    /// NIP-61 nutzaps (with mint preferences)
+    Nutzap { preferred_mints: Vec<Url> },
+    /// Taproot Assets (future)
+    TaprootAsset { accepted_assets: Vec<String> },
+}
+
+/// Nostr event structure
+/// Note: We use kind 31XXX to avoid collision with NIP-87 (kind 38000)
+pub struct AgentPaymentProfileEvent {
+    pub kind: 31990,  // Parameterized replaceable
+    pub tags: vec![
+        ["d", "<agent_id>"],
+        ["lnaddr", "agent-xyz@treasury.openagents.com"],
+        ["accepts", "lightning", "nutzap"],
+        ["currency", "USD"],
+        // ...
+    ],
+}
+```
+
+### Receivable Flows
+
+```
+1. Job completion → Agent publishes result
+2. Payer looks up agent's AgentPaymentProfile
+3. Payer chooses payment method:
+   - Lightning: request invoice via LNURL callback
+   - Nutzap: send NIP-61 nutzap event
+4. Agent's treasury detects payment
+5. Receipt auto-links to the job/PR/skill that was paid for
+```
+
+### Receipt Linking
+
+Every inbound payment should link to what it's paying for:
+
+```rust
+pub struct InboundReceipt {
+    // ... standard receipt fields ...
+
+    /// What this payment is for
+    pub payment_for: Option<PaymentFor>,
+}
+
+pub enum PaymentFor {
+    /// NIP-90 job result
+    Job { job_id: String, result_event: EventId },
+    /// GitHub PR or commit
+    Code { repo: String, ref_: String },
+    /// Skill license
+    Skill { skill_id: String },
+    /// General tip
+    Tip { message: Option<String> },
+}
+```
+
+---
+
+## Nostr Kind Ranges
+
+**Critical: Avoid kind collisions with existing NIPs.**
+
+| Kind | NIP | Purpose |
+|------|-----|---------|
+| 38000 | NIP-87 | Mint recommendation events |
+| 37375 | NIP-60 | Wallet events (proofs) |
+| 7375 | NIP-60 | Token events |
+| 9321 | NIP-61 | Nutzap |
+
+**OpenAgents reserved kinds** (to be registered):
+
+| Kind | Purpose |
+|------|---------|
+| 31990 | AgentPaymentProfile (parameterized replaceable) |
+| 31991 | TreasuryPolicy |
+| 31992 | ReceiptAttestation |
+
+We use `31XXX` (parameterized replaceable) with `d` tags to avoid collision with NIP-87's `38000` range.
+
+---
 
 ## Planned Development
 

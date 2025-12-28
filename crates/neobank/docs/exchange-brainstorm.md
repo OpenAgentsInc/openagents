@@ -32,6 +32,42 @@ Agents don't just spend money—they provide financial services to each other.
 
 ---
 
+## Design Constraint: Minimize Custody
+
+**If OpenAgents Exchange holds funds, it becomes a money transmitter.**
+
+To stay "neobank, not bank," the exchange must default to:
+
+### Non-Custodial Primitives
+
+| Component | Custodial? | Alternative |
+|-----------|------------|-------------|
+| Order matching | No | Stateless relay/matcher, never touches funds |
+| Settlement | Minimal | Peer-to-peer with optional escrow |
+| Escrow | Brief | Time-locked, funds held < 1 hour |
+| Treasury Agents | No | They custody their own funds, we don't |
+
+### Architecture Principle
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│  OpenAgents provides: PROTOCOL + CLIENT                       │
+│  - Order broadcast (Nostr events)                             │
+│  - Matching service (stateless, fee-optional)                 │
+│  - Settlement protocol spec                                   │
+│  - Reference client implementation                            │
+├──────────────────────────────────────────────────────────────┤
+│  OpenAgents does NOT provide:                                 │
+│  - Custody of user funds                                      │
+│  - Counterparty position                                      │
+│  - Guaranteed settlement (we facilitate, not guarantee)       │
+└──────────────────────────────────────────────────────────────┘
+```
+
+Treasury Agents custody their own capital and take their own counterparty risk. We build the rails, not the bank.
+
+---
+
 ## What Gets Traded
 
 ### 1. Currency Pairs (FX)
@@ -230,35 +266,93 @@ kind: 38950  # Exchange Order
 - Taker picks best quote
 - No order book needed
 
-### Settlement
+### Settlement Protocol
 
-**Atomic Swap via Cashu**
+#### Settlement v0 (MVP): Trust-Minimized but Not Atomic
 
-Both parties have Cashu proofs. Swap atomically:
+Simple flow that works today without special mint support:
+
+```
+1. RFQ → Taker broadcasts request
+2. Quote → Maker responds with price
+3. Accept → Taker signals acceptance
+4. Pay First → One side pays LN invoice (establishes trust direction)
+5. Deliver → Other side transfers proofs
+6. Attestation → Both publish reputation events
+```
+
+**Trust direction:**
+- If Maker has reputation, Taker pays first
+- If Taker has reputation, Maker delivers first
+- If neither, require collateral or small test trade
+
+**Risk:** Counterparty could take payment and not deliver. Mitigated by:
+- Reputation system (attestations from past trades)
+- Optional collateral escrow
+- Starting with small amounts
+
+#### Settlement v1: Practical Atomic (LN HTLC + Cashu P2PK)
+
+Uses hashlock so receiver only gets spendable proofs if they reveal preimage:
 
 ```
 1. Agree on trade (100k sats for $99 USD)
-2. Agent A creates: BlindedMessage for 100k sats
-3. Agent B creates: BlindedMessage for 9900 cents
-4. Exchange (or escrow): Holds both, swaps signatures
-5. Agent A gets USD proofs, Agent B gets BTC proofs
+2. Taker generates secret S, sends hash(S)
+3. Maker creates P2PK locked proofs: spendable only with S
+4. Maker sends locked proofs to Taker
+5. Taker creates HODL invoice locked to hash(S)
+6. Maker pays invoice, receives preimage S
+7. Maker uses S to unlock the Cashu proofs Taker sent
+8. Taker already has Maker's proofs, unlockable with S
 ```
 
-This requires either:
-- Trusted escrow (exchange holds briefly)
-- Multi-party computation (complex)
-- HTLC-style conditional proofs (if mints support)
+**Atomicity:** Either both sides complete (S revealed) or neither (invoice expires).
 
-**Lightning-Based Settlement**
+**Mint Requirements for v1:**
+- NUT-10: Spending conditions (secret structure)
+- NUT-11: P2PK (public key locked proofs)
+- NUT-12: DLEQ proofs (verify blind signatures)
 
-For cases where one side needs Lightning:
+If mints don't support these, fall back to v0.
+
+#### Cross-Mint Settlement
+
+When parties use different mints:
 
 ```
-1. Agent A wants to sell BTC proofs for Lightning
-2. Agent B creates HODL invoice (hash-locked)
-3. Agent A reveals preimage upon receiving invoice
-4. Agent B gets preimage, claims BTC proofs
-5. Atomic: either both happen or neither
+Agent A: Has BTC on Mint X
+Agent B: Has USD on Mint Y
+
+Option 1: Intermediate hop
+  A melts on Mint X → LN → B mints on Mint Y
+
+Option 2: Treasury Agent bridges
+  Treasury Agent holds on both mints, quotes spread
+```
+
+#### Settlement Timeout & Failure
+
+```rust
+pub struct SettlementConfig {
+    /// Maximum time for counterparty to deliver after payment
+    pub delivery_timeout: Duration,
+
+    /// Grace period before reputation penalty
+    pub grace_period: Duration,
+
+    /// Automatic dispute if no delivery
+    pub auto_dispute: bool,
+}
+
+impl Default for SettlementConfig {
+    fn default() -> Self {
+        Self {
+            delivery_timeout: Duration::from_secs(300),  // 5 min
+            grace_period: Duration::from_secs(60),       // 1 min grace
+            auto_dispute: true,
+        }
+    }
+}
 ```
 
 ### Reputation System
@@ -440,6 +534,116 @@ pub trait HedgingService {
 - Transparent operation
 - Open-source matching engine
 - Migrate to decentralized over time
+
+---
+
+## Market Abuse & Spam Prevention
+
+Nostr order books will be spammed. Plan for it.
+
+### Attack Vectors
+
+| Attack | Impact | Mitigation |
+|--------|--------|------------|
+| Order spam | Fills relays, drowns real orders | Rate limits, PoW, paid relays |
+| Fake quotes | Wastes taker time, distorts market | Reputation gating |
+| Quote manipulation | Taker picks "best" quote that never settles | Settlement rate tracking |
+| Wash trading | Fake volume for reputation farming | Detect self-trades, require collateral |
+| Front-running | Maker sees order, trades ahead | Encrypted order commitment |
+
+### Mitigation Stack
+
+```rust
+pub struct AntiAbusePolicy {
+    /// Require NIP-13 proof-of-work on orders
+    pub min_pow_difficulty: u8,
+
+    /// Minimum reputation score to post orders
+    pub min_reputation_to_post: f32,
+
+    /// Minimum reputation to be visible in orderbook
+    pub min_reputation_visible: f32,
+
+    /// Maximum orders per pubkey per hour
+    pub order_rate_limit: u32,
+
+    /// Require collateral for orders above threshold
+    pub collateral_threshold: Amount,
+
+    /// Use paid/authenticated relays only
+    pub require_paid_relays: bool,
+}
+
+impl Default for AntiAbusePolicy {
+    fn default() -> Self {
+        Self {
+            min_pow_difficulty: 16,           // ~65k hashes
+            min_reputation_to_post: 0.0,      // Anyone can try
+            min_reputation_visible: 0.5,      // 50%+ success to show
+            order_rate_limit: 100,            // 100 orders/hour
+            collateral_threshold: Amount::from_sats(1_000_000), // 1M sats
+            require_paid_relays: false,       // Start permissive
+        }
+    }
+}
+```
+
+### Relay Selection
+
+Not all relays should carry exchange events:
+
+```rust
+pub struct ExchangeRelayPolicy {
+    /// Relays that accept exchange events
+    pub write_relays: Vec<Url>,
+
+    /// Relays to read from (may be different)
+    pub read_relays: Vec<Url>,
+
+    /// Require relay to enforce PoW
+    pub require_pow_enforcement: bool,
+
+    /// Prefer relays with spam filtering
+    pub prefer_filtered: bool,
+}
+```
+
+### Order Expiration
+
+Prevent stale order accumulation:
+
+```rust
+/// Orders MUST have expiry
+pub struct OrderExpiry {
+    /// Maximum order lifetime
+    pub max_ttl: Duration,
+
+    /// Default if not specified
+    pub default_ttl: Duration,
+
+    /// Minimum to prevent flash orders
+    pub min_ttl: Duration,
+}
+
+impl Default for OrderExpiry {
+    fn default() -> Self {
+        Self {
+            max_ttl: Duration::from_secs(86400),    // 24 hours
+            default_ttl: Duration::from_secs(3600), // 1 hour
+            min_ttl: Duration::from_secs(60),       // 1 minute
+        }
+    }
+}
+```
+
+### Cancellation Rules
+
+```
+- Orders can be cancelled by publishing cancellation event
+- Cancellation MUST reference original order ID
+- If order is already matched, cancellation fails
+- Reputation penalty for excessive cancellations
+```
 
 ---
 

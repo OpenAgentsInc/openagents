@@ -603,6 +603,277 @@ For agent payment profiles, the Lightning Address server implementation is valua
 
 ---
 
+---
+
+## Patterns to Extract (Missed in Initial Analysis)
+
+### 1. Idempotency Keys Everywhere
+
+Every send must have an idempotency key derived from deterministic inputs:
+
+```rust
+/// Idempotency key for safe retries after crash
+fn idempotency_key(account_id: &str, quote_id: &str, attempt: u32) -> String {
+    format!("{}-{}-{}", account_id, quote_id, attempt)
+}
+
+/// Melt is safe to retry - mint tracks by quote ID
+pub async fn melt_proofs_idempotent(
+    &self,
+    quote: &MeltQuote,
+    proofs: &[Proof],
+) -> Result<MeltResult> {
+    // If quote already settled, mint returns success
+    // If quote failed, mint returns error
+    // If quote pending, mint completes or returns status
+    self.wallet.melt_proofs(quote, proofs).await
+}
+```
+
+**Critical:** Agicash's `meltProofsIdempotent` wrapper handles the case where invoice is already paid.
+
+### 2. Crash Recovery Loop
+
+On startup, scan for incomplete operations:
+
+```rust
+impl CrashRecovery {
+    /// Run on every startup to resolve incomplete state
+    pub async fn recover(&mut self) -> Result<RecoveryReport> {
+        let mut report = RecoveryReport::default();
+
+        // 1. Find PENDING quotes
+        for quote in self.get_pending_quotes().await? {
+            match self.poll_mint_quote_status(&quote).await? {
+                MintQuoteStatus::Paid => {
+                    // Invoice was paid, mint the proofs
+                    self.mint_proofs(&quote).await?;
+                    report.mints_completed += 1;
+                }
+                MintQuoteStatus::Unpaid => {
+                    if quote.is_expired() {
+                        self.mark_quote_expired(&quote).await?;
+                        report.quotes_expired += 1;
+                    }
+                }
+                MintQuoteStatus::Pending => {
+                    // Still in flight, will check again later
+                }
+            }
+        }
+
+        // 2. Find RESERVED proofs without active quote
+        for proof in self.get_orphaned_reservations().await? {
+            self.release_reservation(&proof).await?;
+            report.reservations_released += 1;
+        }
+
+        // 3. Find PENDING proofs (melt started but not confirmed)
+        for proof in self.get_pending_proofs().await? {
+            // Check if the melt completed
+            if let Some(preimage) = self.check_melt_status(&proof).await? {
+                self.mark_proof_spent(&proof, preimage).await?;
+                report.melts_confirmed += 1;
+            }
+        }
+
+        Ok(report)
+    }
+}
+```
+
+### 3. Deterministic Secret Generation
+
+Per-keyset counters enable wallet recovery:
+
+```rust
+pub struct KeysetCounters {
+    counters: HashMap<KeysetId, u64>,
+}
+
+impl KeysetCounters {
+    /// Generate next secret for a keyset.
+    /// CRITICAL: Counter must be persisted BEFORE using the secret.
+    pub fn next_secret(&mut self, keyset_id: &KeysetId, seed: &[u8]) -> Result<Secret> {
+        let counter = self.counters.entry(keyset_id.clone()).or_insert(0);
+        let secret = derive_secret_from_seed(seed, keyset_id, *counter)?;
+
+        // Persist counter FIRST (before network call)
+        *counter += 1;
+
+        Ok(secret)
+    }
+}
+
+/// BIP-32 derivation for Cashu secrets
+/// Path: m/129372'/0'/{keyset_id}'/{counter}
+fn derive_secret_from_seed(seed: &[u8], keyset_id: &KeysetId, counter: u64) -> Secret {
+    let path = format!("m/129372'/0'/{}'/{}", keyset_id.as_u64(), counter);
+    let key = derive_key(seed, &path);
+    Secret::from_bytes(key.secret_bytes())
+}
+```
+
+**Why this matters:** If counters aren't persisted before use, a crash could cause secret reuse (security issue) or lost proofs (funds loss).
+
+### 4. Fee Modeling
+
+Agicash tracks fees explicitly:
+
+```rust
+pub struct FeeModel {
+    /// Fixed fee in smallest unit
+    pub fixed: Amount,
+    /// Variable fee in basis points
+    pub rate_bps: u16,
+    /// Minimum fee
+    pub min: Amount,
+    /// Maximum fee (cap)
+    pub max: Option<Amount>,
+}
+
+impl FeeModel {
+    pub fn calculate(&self, amount: Amount) -> Amount {
+        let variable = amount.basis_points(self.rate_bps);
+        let total = self.fixed.add(&variable);
+
+        // Apply bounds
+        let fee = total.max(&self.min);
+        match &self.max {
+            Some(max) => fee.min(max),
+            None => fee,
+        }
+    }
+}
+
+/// Surfaces in quote preview AND receipt
+pub struct QuoteWithFees {
+    pub amount_requested: Amount,
+    pub fee_breakdown: FeeBreakdown,
+    pub amount_after_fees: Amount,
+}
+
+pub struct FeeBreakdown {
+    pub routing_fee: Amount,     // LN routing
+    pub minting_fee: Amount,     // Mint's fee (from NUT-06 extension)
+    pub service_fee: Amount,     // Our fee (if any)
+}
+```
+
+---
+
+## Portability: DB vs Relay State
+
+Agicash stores everything in Supabase (centralized DB). OpenAgents needs:
+
+**Local SQLite as source of truth:**
+- Proofs, quotes, transactions stored locally
+- Works offline (read-only balance, history)
+- Fast for budget checks and balance queries
+
+**Optional relay backup (NIP-60):**
+- Encrypted token events for portability
+- Enables wallet recovery on new device
+- Agent can migrate between machines
+
+```rust
+pub struct WalletSync {
+    local: SqlitePool,
+    relay: Option<RelayConnection>,
+}
+
+impl WalletSync {
+    /// Sync local → relay (backup)
+    pub async fn push_to_relay(&self) -> Result<()> {
+        let unsynced = self.get_unsynced_proofs().await?;
+        for proof in unsynced {
+            let event = self.create_token_event(&proof)?;  // NIP-60
+            self.relay.as_ref().unwrap().publish(event).await?;
+            self.mark_synced(&proof).await?;
+        }
+        Ok(())
+    }
+
+    /// Sync relay → local (recovery)
+    pub async fn pull_from_relay(&self) -> Result<()> {
+        let events = self.relay.as_ref().unwrap()
+            .query_wallet_events(self.pubkey).await?;
+
+        for event in events {
+            if !self.has_proof(&event.proof_id).await? {
+                let proof = self.decrypt_proof(&event)?;
+                self.store_proof(proof).await?;
+            }
+        }
+        Ok(())
+    }
+}
+```
+
+---
+
+## USD Cashu Mint Risk Profile
+
+Treating USD mints as "stablecoins exist today" understates the risk:
+
+### Risk Stack
+
+```
+┌─────────────────────────────────────────┐
+│  Your exposure                          │
+├─────────────────────────────────────────┤
+│  Cashu proof → Mint solvency            │  ← If mint rugs, proofs worthless
+│  Mint → BTC reserves                    │  ← Mint absorbs volatility
+│  Mint → Operational continuity          │  ← Mint goes down, can't redeem
+│  Mint → Honest spent-secret tracking    │  ← Mint double-spends, you lose
+└─────────────────────────────────────────┘
+```
+
+### Concentrated Risk
+
+Unlike BTC Cashu (where you just trust the mint), USD Cashu has:
+
+1. **Issuer risk** — Mint is making markets, absorbing volatility
+2. **FX risk** — BTC/USD rate matters for mint's reserve ratio
+3. **Operational risk** — More complex to run than pure BTC mint
+
+### Mitigation Policy
+
+```rust
+pub struct UsdMintPolicy {
+    /// Maximum USD exposure at any single mint
+    pub max_per_mint: Amount,
+
+    /// Maximum total USD across all mints (as % of total treasury)
+    pub max_total_pct: u8,
+
+    /// Auto-diversify when exceeding threshold
+    pub auto_diversify_at_pct: u8,
+
+    /// Minimum mint reputation score (from NIP-87)
+    pub min_reputation: f32,
+
+    /// Required reserve proof frequency
+    pub require_reserve_proof_days: u16,
+}
+
+impl Default for UsdMintPolicy {
+    fn default() -> Self {
+        Self {
+            max_per_mint: Amount::from_cents(50_000),     // $500 max per mint
+            max_total_pct: 30,                            // Max 30% of treasury in USD
+            auto_diversify_at_pct: 20,                    // Diversify at 20%
+            min_reputation: 0.8,                          // 80%+ positive attestations
+            require_reserve_proof_days: 30,               // Monthly reserve proofs
+        }
+    }
+}
+```
+
+**Default stance:** USD Cashu is useful but treat it as higher-risk than BTC Cashu. Cap exposure, diversify, monitor mint health.
+
+---
+
 ## What NOT to Copy
 
 ### 1. Key Management
