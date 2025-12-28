@@ -130,11 +130,15 @@ async fn main() -> Result<()> {
     println!("[CUSTOMER] Joining channel: {}", args.channel);
     let mut rx = subscribe_to_channel(&relay, &args.channel).await?;
 
+    // Record start time to filter old messages
+    let start_time = now();
+
     // Wait briefly for subscription to establish and receive service announcement
     println!("[CUSTOMER] Waiting for provider service announcement...");
 
     // Flag to track if we've sent our job request
     let mut job_requested = false;
+    let mut our_job_id: Option<String> = None;
     let prompt = args.prompt.clone();
 
     // Event loop with timeout
@@ -170,6 +174,11 @@ async fn main() -> Result<()> {
                 continue;
             }
         };
+
+        // Skip old messages from before we started
+        if event.created_at < start_time {
+            continue;
+        }
 
         // Skip our own messages
         if event.pubkey == hex::encode(keypair.public_key) {
@@ -219,9 +228,17 @@ async fn main() -> Result<()> {
                 job_id,
                 amount_msats,
             } => {
+                // Skip invoices for other customers' jobs
+                if our_job_id.is_some() && our_job_id.as_ref() != Some(&job_id) {
+                    continue;
+                }
+
                 println!("[CUSTOMER] Got invoice:");
                 println!("           Job ID: {}", job_id);
                 println!("           Amount: {} msats", amount_msats);
+
+                // Track this as our job
+                our_job_id = Some(job_id.clone());
 
                 if let Some(ref w) = wallet {
                     println!("[CUSTOMER] Paying invoice...");
@@ -249,6 +266,11 @@ async fn main() -> Result<()> {
                 }
             }
             AgentMessage::JobResult { job_id, result } => {
+                // Skip results for other customers' jobs
+                if our_job_id.as_ref() != Some(&job_id) {
+                    continue;
+                }
+
                 println!("\n========================================");
                 println!("JOB RESULT RECEIVED");
                 println!("========================================");
