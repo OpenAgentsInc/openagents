@@ -50,7 +50,7 @@ pub enum AgentCommands {
         #[arg(short, long)]
         verbose: bool,
 
-        /// Filter by state (spawning, active, low_balance, hibernating, dead)
+        /// Filter by state (spawning, active, low_balance, hibernating, dormant)
         #[arg(long)]
         state: Option<String>,
     },
@@ -220,7 +220,7 @@ fn list_agents(verbose: bool, state_filter: Option<String>) -> anyhow::Result<()
             "active" => LifecycleState::Active,
             "low_balance" | "lowbalance" => LifecycleState::LowBalance,
             "hibernating" => LifecycleState::Hibernating,
-            "dead" => LifecycleState::Dead,
+            "dormant" => LifecycleState::Dormant,
             other => anyhow::bail!("Invalid state filter: {}", other),
         };
         agents.into_iter().filter(|a| a.state == filter_state).collect()
@@ -242,7 +242,7 @@ fn list_agents(verbose: bool, state_filter: Option<String>) -> anyhow::Result<()
             LifecycleState::Active => "✅",
             LifecycleState::LowBalance => "⚠️",
             LifecycleState::Hibernating => "💤",
-            LifecycleState::Dead => "💀",
+            LifecycleState::Dormant => "🌑",
         };
 
         if verbose {
@@ -270,7 +270,7 @@ fn show_status(identifier: &str, verbose: bool) -> anyhow::Result<()> {
         LifecycleState::Active => "✅",
         LifecycleState::LowBalance => "⚠️",
         LifecycleState::Hibernating => "💤",
-        LifecycleState::Dead => "💀",
+        LifecycleState::Dormant => "🌑",
     };
 
     println!("Agent: {} {}", state_icon, config.name);
@@ -320,8 +320,10 @@ fn start_agent(identifier: &str, single_tick: bool, relay: Option<String>) -> an
     let registry = AgentRegistry::new()?;
     let config = registry.load(identifier)?;
 
-    if config.state == LifecycleState::Dead {
-        anyhow::bail!("Agent {} is dead and cannot be started. Create a new agent.", config.name);
+    if config.state == LifecycleState::Dormant {
+        println!("Agent {} is dormant (zero balance).", config.name);
+        println!("Fund it first to revive: openagents agent fund {}", config.name);
+        return Ok(());
     }
 
     println!("Starting agent: {}", config.name);

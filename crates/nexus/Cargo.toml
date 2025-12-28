@@ -1,0 +1,15 @@
+[package]
+name = "nexus"
+version.workspace = true
+edition.workspace = true
+description = "Cloud runtime for sovereign AI agents"
+license = "Apache-2.0"
+
+[lib]
+name = "nexus"
+path = "src/lib.rs"
+
+[dependencies]
+# TODO: Add dependencies when implementation begins
+
+[dev-dependencies]

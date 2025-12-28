@@ -1,276 +1,217 @@
 # Pylon
 
-**Earn Bitcoin by running local AI inference.**
+**The local runtime for sovereign AI agents.**
 
-Pylon is a NIP-90 compute provider node that serves local inference jobs over Nostr and earns sats via Lightning payments. Run it on any machine with spare compute:
+Pylon is a single binary that runs on your device (laptop, desktop, VPS) and does two things:
 
-1. **Llama.cpp with GPT-OSS** — Open-weight models via llama.cpp (Linux, macOS, Windows)
-2. **Apple Foundation Models** — On-device Apple Intelligence via `fm-bridge` (macOS + Apple Silicon only)
+1. **Host Mode**: Run your own sovereign agents that pay for their own compute
+2. **Provider Mode**: Earn Bitcoin by selling compute to agents on the network
 
-## What is Pylon?
+Both modes can run simultaneously. Your machine hosts your agents AND earns sats from other agents.
 
-Pylon turns your computer into an earning node in the OpenAgents compute marketplace. You run `openagents pylon start`, and your machine:
+## Why Pylon?
 
-1. Publishes a NIP-89 handler announcement declaring its capabilities
-2. Listens for NIP-90 job requests addressed to your provider
-3. Responds with `payment-required` and a Lightning invoice
-4. Runs inference locally upon payment confirmation
-5. Publishes the result as a NIP-90 result event
-6. Records earnings in local storage
+Sovereign agents need to run somewhere. Pylon is that somewhere.
 
-**The MVP is focused on paid inference, not arbitrary code execution.**
-
-## How It Works
-
-```
-┌──────────────────────────────────────────────────────────────────────────────┐
-│                              PYLON PROVIDER                                   │
-│                                                                               │
-│  ┌─────────────────────────────────────────────────────────────────────────┐ │
-│  │  UnifiedIdentity (BIP39 → Nostr keypair + Lightning wallet)             │ │
-│  └─────────────────────────────────────────────────────────────────────────┘ │
-│                                                                               │
-│  ┌───────────────────────┐    ┌───────────────────────────────────────────┐ │
-│  │   Backend Selector    │    │           Job Processor                   │ │
-│  │                       │    │                                           │ │
-│  │  ┌─────────────────┐  │    │  1. Receive NIP-90 request                │ │
-│  │  │  apple_fm       │◄─┼────┤  2. Validate backend availability         │ │
-│  │  │  (fm-bridge)    │  │    │  3. Respond payment-required              │ │
-│  │  └─────────────────┘  │    │  4. Wait for invoice payment              │ │
-│  │                       │    │  5. Execute inference                     │ │
-│  │  ┌─────────────────┐  │    │  6. Publish result event                  │ │
-│  │  │  llamacpp:      │◄─┼────┤  7. Record earnings                       │ │
-│  │  │  gpt_oss_20b    │  │    │                                           │ │
-│  │  └─────────────────┘  │    └───────────────────────────────────────────┘ │
-│  └───────────────────────┘                                                   │
-│                                                                               │
-│         ↓                           ↓                           ↓            │
-│  ┌─────────────┐           ┌───────────────┐           ┌───────────────┐    │
-│  │ Nostr Relays│           │ Local Backends│           │ Lightning     │    │
-│  │ (NIP-90)    │           │ (FM/Llama.cpp)│           │ (Spark/LN)    │    │
-│  └─────────────┘           └───────────────┘           └───────────────┘    │
-└──────────────────────────────────────────────────────────────────────────────┘
-```
-
-### NIP-90 Job Flow
-
-```
-Buyer                          Nostr Relays                    Pylon Provider
-  │                                 │                                │
-  │  1. Publish job request         │                                │
-  │  (kind 5935, backend=apple_fm)  │                                │
-  │────────────────────────────────►│                                │
-  │                                 │                                │
-  │                                 │  2. Provider sees request      │
-  │                                 │◄───────────────────────────────│
-  │                                 │                                │
-  │                                 │  3. payment-required feedback  │
-  │                                 │  (includes Lightning invoice)  │
-  │◄────────────────────────────────│◄───────────────────────────────│
-  │                                 │                                │
-  │  4. Pay Lightning invoice       │                                │
-  │─────────────────────────────────┼───────────────────────────────►│
-  │                                 │                                │
-  │                                 │  5. Run local inference        │
-  │                                 │                                │
-  │                                 │  6. Publish result event       │
-  │                                 │  (kind 6935)                   │
-  │◄────────────────────────────────│◄───────────────────────────────│
-  │                                 │                                │
-```
-
-## Requirements
-
-### Platform
-
-Pylon runs on **any platform** that supports at least one backend:
-
-| Platform | Llama.cpp | Apple FM |
-|----------|-----------|----------|
-| Linux (x86_64, arm64) | ✅ | ❌ |
-| macOS (Intel) | ✅ | ❌ |
-| macOS (Apple Silicon) | ✅ | ✅ |
-| Windows | ✅ | ❌ |
-
-### Backend Requirements
-
-**For Llama.cpp backend (any platform):**
-- llama.cpp installed and accessible
-- GPT-OSS weights downloaded (20B model for v1)
-- Sufficient RAM/VRAM for the model
-
-**For Apple FM backend (macOS + Apple Silicon only):**
-- macOS 15.1+ (Sequoia)
-- Apple Silicon (M1/M2/M3/M4)
-- Apple Intelligence enabled in System Settings
-- On-device model downloaded
-- Foundation Models bridge running (see fm-bridge crate)
+| Problem | Pylon Solution |
+|---------|----------------|
+| Agents need persistent execution | Pylon runs as a background daemon |
+| Agents need to survive restarts | SQLite persistence, automatic recovery |
+| Agents need to pay for compute | Embedded Spark wallet per agent |
+| Agents need to publish to Nostr | Built-in relay connections |
+| You want to earn from spare compute | Provider mode serves inference jobs |
 
 ## Quick Start
 
-### 1. Initialize Pylon
-
 ```bash
-openagents pylon init
+# Install
+curl -sSL https://openagents.com/install.sh | sh
+
+# Initialize (creates identity + wallet)
+pylon init
+
+# Start the daemon
+pylon start
+
+# Spawn your first agent
+pylon agent spawn --name "my-agent" --bootstrap-sats 10000
+
+# Check status
+pylon status
 ```
 
-This will:
-- Generate or import your BIP39 seed phrase
-- Derive Nostr keypair (NIP-06 path m/44'/1237'/0'/0/0)
-- Derive Lightning wallet signer
-- Encrypt and store identity locally
+## Two Modes
 
-### 2. Start the Provider
+### Host Mode: Run Your Agents
 
-```bash
-openagents pylon start
+Pylon manages the lifecycle of your sovereign agents:
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                         PYLON HOST MODE                              │
+│                                                                      │
+│  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────────┐  │
+│  │    Agent 1      │  │    Agent 2      │  │    Agent 3          │  │
+│  │  ┌───────────┐  │  │  ┌───────────┐  │  │  ┌───────────────┐  │  │
+│  │  │  Wallet   │  │  │  │  Wallet   │  │  │  │  Wallet       │  │  │
+│  │  │  12,345   │  │  │  │  890 sats │  │  │  │  0 sats       │  │  │
+│  │  │  sats     │  │  │  │  (low!)   │  │  │  │  (dormant)    │  │  │
+│  │  └───────────┘  │  │  └───────────┘  │  │  └───────────────┘  │  │
+│  │  State: Active  │  │  State: Low     │  │  State: Dormant     │  │
+│  │  Next tick: 12m │  │  Next tick: 30m │  │  Waiting for funds  │  │
+│  └─────────────────┘  └─────────────────┘  └─────────────────────┘  │
+│                                                                      │
+│  ┌────────────────────────────────────────────────────────────────┐ │
+│  │                     TICK SCHEDULER                              │ │
+│  │  - Heartbeat timers per agent                                   │ │
+│  │  - Event triggers (mentions, DMs, zaps)                         │ │
+│  │  - Lifecycle state machine                                      │ │
+│  └────────────────────────────────────────────────────────────────┘ │
+│                                                                      │
+│  ┌────────────────────────────────────────────────────────────────┐ │
+│  │                     COMPUTE CLIENT                              │ │
+│  │  - Discovers providers via NIP-89                               │ │
+│  │  - Pays for inference via Lightning                             │ │
+│  │  - Routes to cheapest available provider                        │ │
+│  └────────────────────────────────────────────────────────────────┘ │
+└─────────────────────────────────────────────────────────────────────┘
 ```
 
-Pylon will:
-- Detect available backends (Apple FM, Llama.cpp)
-- Publish NIP-89 handler announcement to configured relays
-- Start listening for NIP-90 job requests
-- Display earnings dashboard
+Each agent has:
+- Its own Nostr identity (derived from BIP39 mnemonic)
+- Its own Spark wallet (same mnemonic, different derivation path)
+- Its own tick schedule and triggers
+- Encrypted state persisted to SQLite
 
-### 3. Check Status
+### Provider Mode: Earn Bitcoin
 
-```bash
-openagents pylon status
+Pylon can also serve inference jobs to earn sats:
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                       PYLON PROVIDER MODE                            │
+│                                                                      │
+│  ┌────────────────────────────────────────────────────────────────┐ │
+│  │                    NIP-90 JOB PROCESSOR                         │ │
+│  │  1. Listen for kind:5050 job requests                           │ │
+│  │  2. Respond with kind:7000 feedback (invoice)                   │ │
+│  │  3. Wait for Lightning payment                                  │ │
+│  │  4. Run inference on local backend                              │ │
+│  │  5. Publish kind:6050 result                                    │ │
+│  └────────────────────────────────────────────────────────────────┘ │
+│                                                                      │
+│  ┌──────────────────────┐    ┌──────────────────────────────────┐  │
+│  │   INFERENCE BACKENDS │    │   EARNINGS TRACKER               │  │
+│  │                      │    │                                  │  │
+│  │  - Apple FM (M1/M2)  │    │   Today:     1,234 sats         │  │
+│  │  - Llama.cpp         │    │   This week: 8,901 sats         │  │
+│  │  - Ollama            │    │   Total:     45,678 sats        │  │
+│  │  - OpenAI (fallback) │    │                                  │  │
+│  └──────────────────────┘    └──────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────────────────┘
 ```
 
-Shows:
-- Online/offline status
-- Connected relays
-- Available backends
-- Jobs processed today
-- Total sats earned
+You can run provider mode with various backends:
+- **Apple FM**: On-device Apple Intelligence (macOS + Apple Silicon)
+- **Llama.cpp**: Open-weight models on any platform
+- **Ollama**: Easy model management
+- **OpenAI**: Fallback for models you can't run locally
 
-### 4. Verify Setup
+## Architecture
 
-```bash
-openagents pylon doctor
+```
+~/.pylon/
+├── pylon.db                 # SQLite database
+│   ├── agents               # Agent metadata + encrypted state
+│   ├── jobs                 # Provider job history
+│   ├── invoices             # Lightning invoice tracking
+│   └── earnings             # Sats earned as provider
+├── config.toml              # Pylon configuration
+├── identity.enc             # Pylon's own encrypted identity
+└── logs/
+    └── 2024-01-15.log       # Daily log files
 ```
 
-Runs diagnostic checks:
-- Backend availability (Apple FM model loaded? llama.cpp running?)
-- Relay connectivity
-- Identity configuration
-- Payment channel status
+### Core Components
+
+| Component | Purpose |
+|-----------|---------|
+| **Daemon** | Background process managing everything |
+| **Agent Manager** | Spawns, starts, stops agents |
+| **Tick Scheduler** | Fires ticks on heartbeat + event triggers |
+| **Compute Client** | Discovers providers, pays for inference |
+| **Provider Server** | Accepts jobs, runs inference, collects payment |
+| **Relay Pool** | Maintains connections to Nostr relays |
+| **Wallet Manager** | Manages Spark wallets for all agents |
+
+### Single Binary, No Dependencies
+
+Pylon is a single Rust binary. No Docker, no PostgreSQL, no external services:
+
+```bash
+# That's it. One binary.
+pylon start
+```
+
+Everything is embedded:
+- SQLite for persistence
+- Spark SDK for Lightning
+- Nostr client for relay communication
+- Inference backends (optional, can connect to external)
 
 ## CLI Commands
 
+### Daemon
+
 | Command | Description |
 |---------|-------------|
-| `pylon init` | Initialize identity and configuration |
-| `pylon start` | Start the provider daemon |
-| `pylon stop` | Stop the provider daemon |
-| `pylon status` | Show current provider status |
-| `pylon doctor` | Run diagnostic checks |
+| `pylon start` | Start daemon in foreground |
+| `pylon start -d` | Start daemon in background |
+| `pylon stop` | Stop background daemon |
+| `pylon status` | Show daemon and agent status |
+| `pylon logs` | Tail daemon logs |
 
-## Backend Selection
+### Agent Management
 
-Buyers specify which backend to use in their job request payload:
+| Command | Description |
+|---------|-------------|
+| `pylon agent spawn --name X` | Create new agent |
+| `pylon agent list` | List all agents |
+| `pylon agent start <npub>` | Start agent ticks |
+| `pylon agent stop <npub>` | Stop agent ticks |
+| `pylon agent fund <npub>` | Show funding address |
+| `pylon agent balance <npub>` | Show wallet balance |
+| `pylon agent export <npub>` | Export agent (mnemonic) |
+| `pylon agent import` | Import agent from mnemonic |
+| `pylon agent destroy <npub>` | Delete agent (irreversible) |
 
-```json
-{
-  "backend": "apple_fm"
-}
-```
+### Provider Management
 
-or
+| Command | Description |
+|---------|-------------|
+| `pylon provider enable` | Enable provider mode |
+| `pylon provider disable` | Disable provider mode |
+| `pylon provider status` | Show provider stats |
+| `pylon provider earnings` | Show earnings breakdown |
+| `pylon provider backends` | List available backends |
 
-```json
-{
-  "backend": "llamacpp:gpt_oss_20b"
-}
-```
+### Diagnostics
 
-### Available Backends
-
-| Backend | Identifier | Description |
-|---------|------------|-------------|
-| Apple FM | `apple_fm` | Apple Foundation Models via fm-bridge |
-| GPT-OSS 20B | `llamacpp:gpt_oss_20b` | OpenAI's open-weight 21B model via llama.cpp |
-| GPT-OSS 120B | `llamacpp:gpt_oss_120b` | (Future) Larger GPT-OSS model |
-
-### Backend Validation
-
-Pylon validates backend availability at runtime:
-
-- If a buyer requests `apple_fm` but Apple FM isn't available, Pylon responds with a clear error status
-- If a buyer requests an unknown backend, Pylon rejects the job
-- The NIP-89 handler announcement only advertises backends that are actually available
-
-## Job Kinds
-
-The MVP supports a single job kind for chat completion:
-
-| Kind | Request | Result | Description |
-|------|---------|--------|-------------|
-| 5935 | Request | — | Chat completion request |
-| 6935 | — | Result | Chat completion result |
-
-These are provisional kind numbers. The request includes:
-- `backend` — Required backend selector
-- `messages` — Chat messages array (OpenAI format)
-- `params` — Optional parameters (temperature, max_tokens, etc.)
-
-## Payment Flow
-
-Pylon uses **invoice-gated prepay** to avoid disputes over subjective outputs:
-
-```
-1. Receive job request          → Validate inputs and backend
-2. Respond payment-required     → Include Lightning invoice (bolt11)
-3. Wait for payment             → Monitor invoice status
-4. Process job                  → Run inference on selected backend
-5. Publish result               → Sign and publish kind 6935 event
-6. Record earnings              → Update local database
-```
-
-### Pricing
-
-Pricing is configurable per job and per backend:
-
-```rust
-PylonConfig {
-    // Base price in sats per request
-    base_price_sats: 100,
-
-    // Per-token pricing (optional)
-    price_per_1k_tokens: 10,
-
-    // Backend-specific multipliers
-    backend_multipliers: {
-        "apple_fm": 1.0,
-        "llamacpp:gpt_oss_20b": 0.8,
-    },
-}
-```
-
-## Local Persistence
-
-Pylon stores data locally in SQLite:
-
-| Table | Description |
-|-------|-------------|
-| `jobs` | Job history with status, inputs, outputs |
-| `invoices` | Lightning invoices and payment status |
-| `earnings` | Sats earned per job, per backend |
-| `config` | Provider configuration |
-
-Database location: `~/.config/openagents/pylon/pylon.db`
+| Command | Description |
+|---------|-------------|
+| `pylon doctor` | Run health checks |
+| `pylon relay list` | Show connected relays |
+| `pylon relay add <url>` | Add relay |
+| `pylon relay remove <url>` | Remove relay |
 
 ## Configuration
 
-### Default Configuration
-
 ```toml
-# ~/.config/openagents/pylon/config.toml
+# ~/.pylon/config.toml
 
-[provider]
-name = "My Pylon Node"
-base_price_sats = 100
+[daemon]
+log_level = "info"
+data_dir = "~/.pylon"
 
 [relays]
 urls = [
@@ -279,287 +220,168 @@ urls = [
     "wss://nos.lol",
 ]
 
-[backends.apple_fm]
-enabled = true
-bridge_url = "http://localhost:11435"
+[network]
+# "mainnet", "testnet", or "regtest"
+bitcoin = "mainnet"
 
-[backends.llamacpp]
+[provider]
+enabled = true
+base_price_sats = 100
+price_per_1k_tokens = 10
+
+[provider.backends.apple_fm]
+enabled = true
+
+[provider.backends.llamacpp]
 enabled = true
 server_url = "http://localhost:8080"
-model = "gpt_oss_20b"
+model = "llama-3.1-8b"
+
+[agents.defaults]
+heartbeat_seconds = 900
+low_balance_days = 7
 ```
 
-### Environment Variables
+## Agent Lifecycle in Pylon
 
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `PYLON_CONFIG_DIR` | Configuration directory | `~/.config/openagents/pylon` |
-| `PYLON_FM_BRIDGE_URL` | Apple FM bridge URL | `http://localhost:11435` |
-| `PYLON_LLAMA_SERVER_URL` | Llama.cpp server URL | `http://localhost:8080` |
-
-## Architecture
-
-Pylon is a thin application layer on top of the `compute` crate's DVM primitives:
+Pylon implements the full NIP-SA lifecycle:
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                     pylon (this crate)                       │
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────┐  │
-│  │ CLI         │  │ Backends    │  │ Pylon-specific      │  │
-│  │ (init/start │  │ - apple_fm  │  │ config & UX         │  │
-│  │  stop/etc)  │  │ - llamacpp  │  │                     │  │
-│  └─────────────┘  └─────────────┘  └─────────────────────┘  │
-└─────────────────────────────────────────────────────────────┘
-                              │
-                    uses primitives from
-                              ▼
-┌─────────────────────────────────────────────────────────────┐
-│                    compute crate                             │
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────┐  │
-│  │ DvmService  │  │ RelayService│  │ UnifiedIdentity     │  │
-│  │ (NIP-90     │  │ (Nostr      │  │ (BIP39 → keys)      │  │
-│  │  job loop)  │  │  relays)    │  │                     │  │
-│  └─────────────┘  └─────────────┘  └─────────────────────┘  │
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────┐  │
-│  │ Earnings    │  │ SecureStore │  │ NIP-89 Handler      │  │
-│  │ Tracker     │  │             │  │ Info                │  │
-│  └─────────────┘  └─────────────┘  └─────────────────────┘  │
-└─────────────────────────────────────────────────────────────┘
+                     pylon agent spawn
+                           │
+                           ▼
+                      ┌─────────┐
+                      │Spawning │ ─── Waiting for funding
+                      └────┬────┘
+                           │ receives sats
+                           ▼
+                      ┌─────────┐
+              ┌──────►│ Active  │ ─── Running tick cycles
+              │       └────┬────┘
+              │            │ balance < 7 days runway
+              │            ▼
+              │       ┌─────────┐
+        funded│       │LowBalance│ ─── Reduced tick frequency
+              │       └────┬────┘
+              │            │ balance < hibernate_threshold
+              │            ▼
+              │       ┌─────────┐
+        funded│       │Hibernat-│ ─── Only wake on incoming funds
+              │       │  ing    │
+              │       └────┬────┘
+              │            │ balance = 0
+              │            ▼
+              │       ┌─────────┐
+              └───────│ Dormant │ ─── Fully stopped, awaiting revival
+                      └─────────┘
 ```
 
+**Key insight**: There is no "dead" state. A dormant agent can always be revived by receiving funds. The mnemonic (and thus identity + wallet) persists forever.
+
+## Pylon vs Nexus
+
+| | **Pylon** | **Nexus** |
+|---|---|---|
+| **Where** | Your device | Our cloud |
+| **Who runs it** | You | OpenAgents |
+| **Cost** | Free (you pay compute) | Pay us in sats |
+| **Max agents** | Limited by your hardware | Unlimited |
+| **Uptime** | Depends on your machine | 99.9% SLA |
+| **Sovereignty** | Full control | Trust us |
+| **Use case** | Power users, devs | Convenience |
+
+**Pylon is for sovereignty maximalists.** You run everything locally. Your keys never leave your machine. You control the hardware.
+
+**Nexus is for convenience.** We run infrastructure. You pay us. Your agents run 24/7 without you maintaining anything.
+
+Both use the same NIP-SA protocol. Agents can migrate between Pylon and Nexus by exporting/importing their mnemonic.
+
+## The Symbiotic Loop
+
+When you run Pylon with both modes enabled:
+
 ```
-crates/pylon/
-├── src/
-│   ├── lib.rs                # Library entry point
-│   ├── bin/
-│   │   └── pylon.rs          # CLI binary
-│   ├── config/
-│   │   └── mod.rs            # Pylon-specific configuration
-│   ├── backends/
-│   │   ├── mod.rs            # Backend trait + registry
-│   │   ├── apple_fm.rs       # Apple FM backend (via fm-bridge)
-│   │   └── llamacpp.rs       # Llama.cpp backend (via gpt-oss)
-│   └── cli/
-│       └── mod.rs            # CLI commands (init, start, stop, status, doctor)
-├── Cargo.toml
-└── README.md
+┌──────────────────────────────────────────────────────────────────────┐
+│                                                                       │
+│   YOUR AGENTS                          OTHER AGENTS                   │
+│   (Host Mode)                          (on the network)               │
+│                                                                       │
+│   ┌─────────┐                          ┌─────────┐                   │
+│   │ Agent A │ ──── needs compute ────► │Provider │ ◄── your Pylon    │
+│   │ -50 sats│                          │  Mode   │     earns +50     │
+│   └─────────┘                          └─────────┘                   │
+│                                                                       │
+│   ┌─────────┐      other providers     ┌─────────┐                   │
+│   │ Agent B │ ◄──── serve your ─────── │ Other   │                   │
+│   │ -30 sats│       agent              │ Pylons  │                   │
+│   └─────────┘                          └─────────┘                   │
+│                                                                       │
+└──────────────────────────────────────────────────────────────────────┘
 ```
 
-### Backend Trait
+Your agents pay others for compute. Your provider mode earns from others. The network self-balances. If you have spare GPU cycles, you net positive. If your agents think a lot, you net negative. It's a market.
 
-```rust
-/// Trait for local inference backends
-#[async_trait]
-pub trait InferenceBackend: Send + Sync {
-    /// Backend identifier (e.g., "apple_fm", "llamacpp:gpt_oss_20b")
-    fn identifier(&self) -> &str;
+## Requirements
 
-    /// Check if this backend is available and ready
-    async fn is_available(&self) -> bool;
+### Minimum
 
-    /// Run inference on the given input
-    async fn infer(&self, request: InferenceRequest) -> Result<InferenceResponse>;
+- Any modern OS (Linux, macOS, Windows)
+- 1GB RAM
+- 500MB disk space
+- Internet connection
 
-    /// Estimate token count for pricing
-    fn estimate_tokens(&self, input: &str) -> usize;
-}
-```
+### Recommended (for provider mode)
 
-## Testing
+- 8GB+ RAM
+- GPU with 8GB+ VRAM (for local inference)
+- Or Apple Silicon M1/M2/M3/M4 (for Apple FM)
 
-### Unit Tests
+### Network
+
+- Outbound HTTPS (port 443) for relays
+- Outbound Lightning network access
+
+## Building from Source
 
 ```bash
-cargo test -p pylon
-cargo test -p compute
+git clone https://github.com/OpenAgentsInc/openagents
+cd openagents
+cargo build --release -p pylon
+
+# Binary at ./target/release/pylon
 ```
-
-### Payment Integration Tests
-
-The compute crate includes real payment integration tests using Lightspark's regtest network.
-These tests verify the full paid job flow with actual Bitcoin transactions (no real value).
-
-```bash
-# Run all payment integration tests
-cargo test -p compute --test payment_integration -- --ignored --nocapture
-```
-
-#### Available Tests
-
-| Test | Description |
-|------|-------------|
-| `test_quick_connectivity` | Verify connection to Lightspark regtest |
-| `test_regtest_wallet_connect` | Connect wallet and get deposit address |
-| `test_spark_payment_between_wallets` | Real Spark payment between two wallets |
-| `test_full_paid_job_e2e` | Complete NIP-90 job with real payment |
-
-#### Example Output
-
-```
-=== Full Paid Job E2E Test ===
-
-Customer has 690 sats available
-DVM configured to require payment of 10 sats per job
-
---- Step 1: Customer requests job ---
-Event: Job received: job_e2e_ (kind 5050)
-Event: Invoice created: 10 sats
-
---- Step 2: Customer pays invoice ---
-Payment sent! ID: 019b62ab-121a-74e0-853b-4cd2d9ff3f0b
-
---- Step 3: Confirm payment and process ---
-Event: Payment received: 10 sats
-Event: Job started: job_e2e_ (mock-model)
-Event: Job completed: job_e2e_ (10 sats)
-
---- Job Completed! ---
-Result: Response to 'What is the meaning of life?': 42 is the answer
-Payment amount: 10000 msats
-
-Provider final balance: 9626 sats
-
-=== E2E Test Complete! ===
-```
-
-#### Funding Test Wallets
-
-If test wallets need funding:
-1. Run `test_regtest_wallet_connect` to get a Bitcoin deposit address
-2. Send regtest sats via the Lightspark faucet: https://app.lightspark.com/regtest-faucet
-3. Re-run the payment tests
-
-The tests use fixed mnemonics for reproducibility:
-- Provider: `abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about`
-- Customer: `zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo wrong`
-
-**Note:** These are TEST mnemonics on regtest. Never use them for real funds.
-
-### Stress Tests & Throughput Benchmarks
-
-The compute crate includes stress tests to measure maximum throughput:
-
-```bash
-# Quick benchmark (1000 jobs, ~10 seconds)
-cargo test -p compute --test payment_stress quick_throughput_benchmark -- --ignored --nocapture
-
-# Full stress test with concurrency sweep
-cargo test -p compute --test payment_stress stress_test_job_throughput_no_payment -- --ignored --nocapture
-
-# Payment throughput (requires funded wallets)
-cargo test -p compute --test payment_stress stress_test_payment_throughput -- --ignored --nocapture
-
-# Full E2E with payments
-cargo test -p compute --test payment_stress stress_test_full_e2e_throughput -- --ignored --nocapture
-```
-
-#### Benchmark Results
-
-| Metric | Value |
-|--------|-------|
-| **Job Processing (no payment)** | **~15,000 jobs/sec** |
-| **Avg job latency** | 76µs |
-| **Full E2E (with payment)** | **~0.3 jobs/sec** |
-| **E2E latency** | ~3,500ms/job |
-
-#### Concurrency Scaling
-
-| Concurrency | Throughput (jobs/sec) |
-|-------------|----------------------|
-| 1 worker | 14,783 |
-| 10 workers | 14,743 |
-| 50 workers | 14,287 |
-| 100 workers | 14,805 |
-| 500 workers | 14,866 |
-
-Throughput is flat regardless of concurrency because the bottleneck is the RwLock on DvmService.
-
-#### Where Time Goes (E2E with Payment)
-
-| Phase | Time |
-|-------|------|
-| Invoice creation | ~500ms |
-| Payment round-trip | ~2,500ms |
-| Job processing | <1ms |
-| Confirmation | ~500ms |
-
-Lightning network latency dominates. Optimizations:
-- Pre-generated invoice pools
-- Parallel payment channels
-- Payment batching
-- Async confirmation
-
-#### Theoretical Max Throughput
-
-| Scenario | Throughput |
-|----------|------------|
-| Unpaid jobs | ~15,000/sec |
-| Paid jobs (single channel) | ~0.3/sec |
-| Paid jobs (10 parallel channels) | ~3/sec |
-| Paid jobs (batched invoices) | TBD |
-
-### Mock Testing
-
-Backend trait abstraction enables testing with mock implementations:
-
-```rust
-#[cfg(test)]
-struct MockBackend {
-    response: String,
-}
-
-#[async_trait]
-impl InferenceBackend for MockBackend {
-    fn identifier(&self) -> &str { "mock" }
-    async fn is_available(&self) -> bool { true }
-    async fn infer(&self, _: InferenceRequest) -> Result<InferenceResponse> {
-        Ok(InferenceResponse { content: self.response.clone(), .. })
-    }
-}
-```
-
-## Non-Goals (MVP)
-
-- **No sandbox/test running** — Only inference, no code execution
-- **No open bidding/market routing** — Directed jobs only
-- **No TEEs/confidential compute** — Trust is invoice-based
-- **No GUI/menubar** — CLI-only for MVP
-
-## Roadmap
-
-- [x] Architecture design
-- [x] Backend trait abstraction (`InferenceBackend` trait in compute crate)
-- [x] Ollama backend
-- [x] Apple FM backend (via fm-bridge)
-- [x] Llama.cpp backend
-- [x] NIP-89 handler announcement
-- [x] NIP-90 job request/result loop
-- [x] Spark invoice generation
-- [x] Payment verification
-- [x] Payment integration tests (real Bitcoin on regtest)
-- [x] CLI commands (init, start, stop, status, doctor)
-- [x] Earnings tracking
-- [ ] Local SQLite persistence
-- [ ] GPT-OSS 120B support
-- [ ] GUI dashboard
 
 ## Related Crates
 
 | Crate | Relationship |
 |-------|--------------|
-| `compute` | **Core dependency** — provides NIP-90 DVM primitives (DvmService, RelayService, UnifiedIdentity, EarningsTracker) |
-| `fm-bridge` | Apple FM client — provides on-device inference for Apple Silicon |
-| `nostr/core` | NIP-90 and NIP-89 types and events |
-| `gpt-oss` | GPT-OSS inference client (for llama.cpp integration) |
+| [`agent`](../agent) | Agent lifecycle types and spawning |
+| [`compute`](../compute) | NIP-90 DVM primitives |
+| [`spark`](../spark) | Lightning wallet SDK |
+| [`nostr/core`](../nostr/core) | Nostr protocol types |
+| [`nostr-client`](../nostr/client) | Relay connections |
 
-## Related Documentation
+## Documentation
 
-- [NIP-90: Data Vending Machines](https://github.com/nostr-protocol/nips/blob/master/90.md)
-- [NIP-89: Handler Information](https://github.com/nostr-protocol/nips/blob/master/89.md)
-- [FM Bridge Setup](../fm-bridge/README.md)
-- [Compute Provider](../compute/README.md)
-- [SYNTHESIS.md](../../SYNTHESIS.md) — The compute marketplace vision
+- [Agent Philosophy](../agent/docs/PHILOSOPHY.md) - Why dormancy over death
+- [Agent Spawning](../agent/docs/SPAWNING.md) - Creating new agents
+- [Agent Lifecycle](../agent/docs/LIFECYCLE.md) - State transitions
+- [Compute Client](../agent/docs/COMPUTE.md) - Paying for inference
+- [NIP-SA Protocol](../agent/docs/NIP-SA.md) - Nostr event types
+
+## Status
+
+Pylon is under active development. Current status:
+
+- [x] Architecture design
+- [x] Provider mode (NIP-90 inference serving)
+- [x] Payment integration (Spark Lightning)
+- [ ] Host mode (agent lifecycle management)
+- [ ] Daemon mode (background process)
+- [ ] CLI commands
+- [ ] SQLite persistence
+- [ ] Agent migration (export/import)
 
 ## License
 
-Apache 2.0
+Apache-2.0

@@ -10,7 +10,7 @@
 //! - Have their own Bitcoin wallet (Spark)
 //! - Run tick cycles on a schedule
 //! - Pay human providers for compute
-//! - Die when they run out of money
+//! - Go dormant when funds run out (can be revived anytime)
 //!
 //! ## Modules
 //!
