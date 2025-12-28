@@ -46,6 +46,11 @@
 │  │  NIP-57 (Zaps) 🟡   │ NIP-44 (Encryption) 🟢                       │  │
 │  └────────────────────────────────────────────────────────────────────┘  │
 │                              │                                           │
+│  TREASURY                    │                                           │
+│  ┌───────────────────────────┴────────────────────────────────────────┐  │
+│  │  Neobank ⚪: TreasuryRouter │ Budgets │ Multi-Currency │ Receipts  │  │
+│  └────────────────────────────────────────────────────────────────────┘  │
+│                              │                                           │
 │  TRANSPORT                   │                                           │
 │  ┌───────────────────────────┴────────────────────────────────────────┐  │
 │  │              Nostr Protocol (Events, Relays, Subscriptions) 🟡     │  │
@@ -53,8 +58,8 @@
 │                              │                                           │
 │  CRYPTOGRAPHY + PAYMENTS     │                                           │
 │  ┌──────────────┐ ┌──────────┴─────────┐ ┌────────────────┐              │
-│  │ FROST/FROSTR │ │   Spark SDK        │ │   secp256k1    │              │
-│  │      🟡      │ │ (Lightning + L2) 🔵│ │   (Schnorr) 🟢 │              │
+│  │ FROST/FROSTR │ │ Spark + Cashu      │ │   secp256k1    │              │
+│  │      🟡      │ │ (LN + eCash) 🔵    │ │   (Schnorr) 🟢 │              │
 │  └──────────────┘ └────────────────────┘ └────────────────┘              │
 │                                                                          │
 └─────────────────────────────────────────────────────────────────────────┘
@@ -78,6 +83,12 @@
 | **rlog** | Session recording format—structured logs capturing agent trajectories (messages, tool calls, thinking, errors) |
 | **APM** | Actions Per Minute—velocity metric (messages + tool calls) / duration; higher = faster autonomous operation |
 | **ACP** | Agent Client Protocol—JSON-RPC standard for editor ↔ agent communication |
+| **Neobank** | Programmable treasury layer for agents—not a bank but a payments router with budget enforcement, multi-rail support, and audit trails |
+| **TreasuryRouter** | Policy engine deciding payment routing: which rail, which asset, which limits, which approvals |
+| **Cashu** | eCash protocol for Bitcoin—blind-signed tokens redeemable at mints, enabling privacy and instant settlement |
+| **Proof** | A Cashu blind-signed token ("coin")—contains a secret and signature redeemable for value at the issuing mint |
+| **LUD-16** | Lightning Address standard (LNURL-pay)—enables human-readable payment addresses like `agent@domain.com` |
+| **ECIES** | Elliptic Curve Integrated Encryption Scheme—asymmetric encryption used for proof secret storage |
 
 ---
 
@@ -158,6 +169,28 @@ The alignment mechanism creates strong incentives: humans hold all the Bitcoin, 
 Economic alignment is not a complete solution—it does not prevent abuse, fraud, collusion, or catastrophic tool misuse. It does not substitute for capability restrictions on dangerous operations or human oversight for high-stakes decisions. What it provides is a self-enforcing incentive layer and reduced blast radius: an agent with a limited budget can only cause limited damage, and an agent dependent on reputation for income has incentives beyond its training. Economic alignment works alongside technical controls, not instead of them.
 
 The agent economy does not exist in a vacuum—it must interface with the fiat-based world where enterprises operate. A Treasury Gateway bridges these realms. Corporate finance teams cannot put "Lightning sats" on a balance sheet, but they can allocate a USD budget for "AI compute services." The gateway converts fiat deposits into agent wallet balances, generating standard invoices that satisfy procurement and accounting requirements. When an agent running on a corporate laptop needs compute, the expense flows through the gateway as a line item the CFO can understand. This is not a philosophical compromise but a practical necessity for the wedge phase: enterprises adopt agent infrastructure when it fits their existing financial workflows, then gradually discover they are participating in an open economy that extends far beyond their organizational boundary.
+
+### The Neobank Treasury Layer
+
+The economic primitives described above—Lightning, Spark, zaps, L402—are payment rails. But agents operating at scale need more than rails; they need treasury management. A human freelancer with a single bank account can muddle through, but an organization running a fleet of agents needs proper financial infrastructure: account partitions, budget enforcement, multi-currency support, audit trails, approval workflows. This is not a bank in the traditional sense—no fractional reserve lending, no credit creation—but a programmable treasury and payments router built on self-custodial Bitcoin infrastructure.
+
+The Neobank crate (`crates/neobank`) addresses this gap through several interconnected components. The core abstraction is the **TreasuryRouter**, a policy engine deciding for every payment: which rail (BTC Lightning vs eCash vs on-chain), which asset (BTC vs USD-denominated stablecoins), which budget bucket to charge, which approval flow applies. A payment under five dollars equivalent might route automatically via eCash for privacy; a payment over two hundred dollars might require guardian co-signature; a payment to an unverified provider might block entirely until reputation thresholds are met.
+
+**Multi-currency support** is not optional for agent economics. Human operators think in dollars; they want to set a "$500/day compute budget" and not worry about BTC volatility eating their allocation. The neobank layer provides stable unit-of-account through two mechanisms. First, USD-denominated eCash: Cashu mints can issue tokens backed by BTC but denominated in cents—the mint absorbs volatility, users hold stable-value tokens. This works today without waiting for Taproot Assets maturity. Second, real-time exchange rate conversion: an ExchangeRateService with provider fallback (Mempool.space, Coingecko, Coinbase) enables cross-currency budgets where "$500" is continuously evaluated against current BTC rates. When an agent exhausts its USD-denominated budget, it stops spending regardless of what happened to BTC price.
+
+The **account model** partitions funds into purpose-specific buckets. Treasury accounts hold long-term reserves and receive top-ups from humans. Operating accounts fund day-to-day agent spending with enforced caps. Escrow accounts enable pay-after-verify patterns where funds lock during job execution and release only upon verification. Payroll accounts accumulate earnings for agents that sell skills or compute, enabling automated revenue splits. Each account can have its own threshold configuration—the treasury might require 2-of-3 signatures including a human guardian, while operating accounts allow 1-of-2 for speed with lower caps.
+
+**Proof lifecycle management** ensures eCash privacy without losing auditability. Cashu proofs (the "coins" of eCash) flow through states: UNSPENT → RESERVED → SPENT. When an agent creates a payment quote, proofs are reserved—locked from other uses but not yet spent. If the payment succeeds, proofs transition to SPENT with a cryptographic receipt. If the payment fails or times out, proofs return to UNSPENT. This state machine prevents double-spending in async contexts where multiple payment attempts might overlap. Critically, proof secrets are encrypted at rest using ECIES to the user's encryption pubkey—even a compromised database reveals no spending authority.
+
+**Payment state machines** formalize what happens during every transaction. A quote progresses through CREATED → UNPAID → PENDING → PAID/FAILED/EXPIRED. Each transition is logged with timestamps and version numbers for optimistic locking. The quote captures everything needed for execution: amounts in sender and receiver currency, fee reserves, reserved proofs, keyset counters for deterministic secret generation. This enables full wallet recovery from seed—counters stored with proofs mean a restored wallet can regenerate all secrets without repeating blind signatures.
+
+**Agent Payment Addresses** solve the discoverability problem. How does someone pay an agent? Not by looking up a cryptographic pubkey. Agents receive Lightning Addresses (LUD-16)—human-readable identifiers like `solver-agent@treasury.openagents.com`. The LNURL-pay protocol converts this into a callback that creates receive quotes on demand. An AgentPaymentProfile published to Nostr announces supported currencies, min/max receivable amounts, and any required payment metadata. Cross-currency receiving works: an agent preferring USD can receive BTC payments that automatically convert at current rates before crediting to their stable-denominated account.
+
+The **receipt system** ties payments to trajectories. Every transaction yields a cryptographic receipt containing: the preimage or txid proving settlement, the trajectory session ID showing which agent run triggered it, the policy rule that authorized it, and any co-signer attestations. This is the "bank statement" for autonomous systems—not just what was spent, but why, by whom, under what authority. Auditors can verify that every expenditure maps to a specific tool call in a specific agent session with specific reasoning, and that the policy engine correctly allowed it.
+
+**Graceful degradation** ensures agents don't hard-fail when mints or services are temporarily unreachable. Accounts track online/offline status with timeout-based detection. An offline account still shows cached balance (calculated from local proof storage), still displays transaction history, still generates static receive addresses—it just cannot execute new payments until connectivity returns. The UI surfaces this clearly rather than throwing cryptic errors.
+
+The neobank layer is not about building a bank. It is about giving agents the financial infrastructure that humans take for granted: budgets that mean something, approval workflows that prevent overspend, multi-currency operations that match how humans think about money, audit trails that satisfy compliance requirements, and recovery mechanisms that survive key loss. Without this layer, agents can hold and spend Bitcoin but cannot participate in serious economic activity with proper controls. With it, agent fleets become manageable financial entities that enterprises can actually deploy.
 
 ## Part Four: The Sovereign Agent Protocol
 
