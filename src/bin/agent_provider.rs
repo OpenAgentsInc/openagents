@@ -10,7 +10,8 @@ use clap::Parser;
 use compute::backends::{BackendRegistry, CompletionRequest};
 use nostr::{
     derive_keypair, finalize_event, ChannelMessageEvent, ChannelMetadata, Event, EventTemplate,
-    Keypair, KIND_CHANNEL_CREATION, KIND_CHANNEL_MESSAGE, KIND_JOB_TEXT_GENERATION,
+    HandlerInfo, HandlerMetadata, HandlerType, Keypair, PricingInfo, KIND_CHANNEL_CREATION,
+    KIND_CHANNEL_MESSAGE, KIND_HANDLER_INFO, KIND_JOB_TEXT_GENERATION,
 };
 use nostr_client::RelayConnection;
 use openagents::agents::{now, parse_agent_message, AgentMessage, Network as AgentNetwork, DEFAULT_RELAY, PROVIDER_MNEMONIC};
@@ -223,6 +224,51 @@ async fn main() -> Result<()> {
     send_channel_message(&relay, &channel_id, &keypair, &announce).await?;
     println!("[PROVIDER] Service announced: kind=5050, price=10000 msats, network=regtest");
     println!("[PROVIDER] Models: {:?}", available_models);
+
+    // Publish NIP-89 handler info for global discovery
+    let handler_metadata = HandlerMetadata::new(
+        "OpenAgents Compute Provider",
+        "NIP-90 text generation service with Lightning payments",
+    );
+    let mut handler_info = HandlerInfo::new(
+        provider_pubkey.clone(),
+        HandlerType::ComputeProvider,
+        handler_metadata,
+    )
+    .add_capability("text-generation")
+    .with_pricing(
+        PricingInfo::new(10_000)
+            .with_model("per-request")
+            .with_currency("msats"),
+    )
+    .add_custom_tag("channel", &channel_id)
+    .add_custom_tag("relay", &args.relay)
+    .add_custom_tag("network", "regtest");
+
+    // Add models as capabilities
+    for model in &available_models {
+        handler_info = handler_info.add_custom_tag("model", model);
+    }
+
+    // Publish handler info (kind 31990)
+    let handler_tags = handler_info.to_tags();
+    let handler_content = serde_json::to_string(&serde_json::json!({
+        "name": "OpenAgents Compute Provider",
+        "description": "NIP-90 text generation service with Lightning payments",
+    }))?;
+
+    let handler_template = EventTemplate {
+        created_at: now(),
+        kind: KIND_HANDLER_INFO,
+        tags: handler_tags,
+        content: handler_content,
+    };
+
+    let handler_event = finalize_event(&handler_template, &keypair.private_key)?;
+    relay
+        .publish_event(&handler_event, Duration::from_secs(10))
+        .await?;
+    println!("[PROVIDER] Published NIP-89 handler info (kind 31990) for global discovery");
 
     // Subscribe to channel
     let mut rx = subscribe_to_channel(&relay, &channel_id).await?;

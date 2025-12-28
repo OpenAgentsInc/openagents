@@ -3,12 +3,16 @@
 //! Run on Computer B to request NIP-90 compute services.
 //!
 //! Usage:
+//!   # With manual channel ID
 //!   cargo run --bin agent-customer -- --channel <CHANNEL_ID> --prompt "Your question"
+//!
+//!   # With NIP-89 global discovery (no channel needed!)
+//!   cargo run --bin agent-customer -- --discover --prompt "Your question"
 
 use clap::Parser;
 use nostr::{
-    derive_keypair, finalize_event, ChannelMessageEvent, Event, EventTemplate, Keypair,
-    KIND_CHANNEL_MESSAGE, KIND_JOB_TEXT_GENERATION,
+    derive_keypair, finalize_event, ChannelMessageEvent, Event, EventTemplate, HandlerInfo,
+    Keypair, KIND_CHANNEL_MESSAGE, KIND_HANDLER_INFO, KIND_JOB_TEXT_GENERATION,
 };
 use nostr_client::RelayConnection;
 use openagents::agents::{now, parse_agent_message, AgentMessage, Network as AgentNetwork, CUSTOMER_MNEMONIC, DEFAULT_RELAY};
@@ -30,13 +34,31 @@ struct ProviderInfo {
     capabilities: Vec<String>,
 }
 
+/// Provider info discovered via NIP-89 (kind 31990)
+#[derive(Debug, Clone)]
+struct DiscoveredProvider {
+    pubkey: String,
+    name: String,
+    description: String,
+    channel_id: String,
+    relay_url: String,
+    network: String,
+    price_msats: u64,
+    capabilities: Vec<String>,
+    models: Vec<String>,
+}
+
 #[derive(Parser)]
 #[command(name = "agent-customer")]
 #[command(about = "NIP-90 Customer Agent - requests compute services via NIP-28 channels")]
 struct Args {
-    /// Channel ID to join (get from provider)
+    /// Channel ID to join (get from provider). Optional if using --discover.
     #[arg(long)]
-    channel: String,
+    channel: Option<String>,
+
+    /// Discover providers via NIP-89 instead of manual channel ID
+    #[arg(long)]
+    discover: bool,
 
     /// Job prompt - the question or task to send to the provider
     #[arg(long)]
@@ -57,6 +79,10 @@ struct Args {
     /// Select provider by: cheapest, first, or specific pubkey
     #[arg(long, default_value = "first")]
     select: String,
+
+    /// Filter by max price in msats (only with --discover)
+    #[arg(long)]
+    max_price: Option<u64>,
 }
 
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync>>;
@@ -147,9 +173,168 @@ async fn main() -> Result<()> {
     relay.connect().await?;
     println!("[CUSTOMER] Connected to relay");
 
+    // Determine channel ID - either from --channel or via NIP-89 discovery
+    let channel_id = if args.discover {
+        // ============================================
+        // NIP-89 GLOBAL DISCOVERY
+        // ============================================
+        println!("[CUSTOMER] Discovering providers via NIP-89 (kind 31990)...");
+
+        // Subscribe to handler info events
+        let filters = vec![serde_json::json!({
+            "kinds": [KIND_HANDLER_INFO as u64],
+            "limit": 50
+        })];
+
+        let mut discovery_rx = relay
+            .subscribe_with_channel("nip89-discovery", &filters)
+            .await?;
+
+        // Collect events during discovery period
+        let mut events: Vec<Event> = Vec::new();
+        let discovery_deadline = std::time::Instant::now() + Duration::from_secs(args.discovery_time);
+
+        while std::time::Instant::now() < discovery_deadline {
+            let remaining = discovery_deadline.saturating_duration_since(std::time::Instant::now());
+            match tokio::time::timeout(remaining.max(Duration::from_millis(100)), discovery_rx.recv()).await {
+                Ok(Some(event)) => events.push(event),
+                Ok(None) => break,
+                Err(_) => break,
+            }
+        }
+
+        println!("[CUSTOMER] Found {} handler info events", events.len());
+
+        // Parse and filter providers
+        let mut discovered: Vec<DiscoveredProvider> = Vec::new();
+
+        for event in events {
+            // Parse HandlerInfo
+            let handler = match HandlerInfo::from_event(&event) {
+                Ok(h) => h,
+                Err(_) => continue,
+            };
+
+            // Only want compute providers
+            if handler.handler_type != nostr::HandlerType::ComputeProvider {
+                continue;
+            }
+
+            // Extract channel_id from custom tags
+            let channel_id = handler
+                .custom_tags
+                .iter()
+                .find(|(k, _)| k == "channel")
+                .map(|(_, v)| v.clone());
+
+            let channel_id = match channel_id {
+                Some(id) => id,
+                None => continue, // Skip providers without channel_id
+            };
+
+            // Extract other custom tags
+            let relay_url = handler
+                .custom_tags
+                .iter()
+                .find(|(k, _)| k == "relay")
+                .map(|(_, v)| v.clone())
+                .unwrap_or_else(|| DEFAULT_RELAY.to_string());
+
+            let network = handler
+                .custom_tags
+                .iter()
+                .find(|(k, _)| k == "network")
+                .map(|(_, v)| v.clone())
+                .unwrap_or_else(|| "unknown".to_string());
+
+            // Extract models from custom tags
+            let models: Vec<String> = handler
+                .custom_tags
+                .iter()
+                .filter(|(k, _)| k == "model")
+                .map(|(_, v)| v.clone())
+                .collect();
+
+            // Get price
+            let price_msats = handler.pricing.as_ref().map(|p| p.amount).unwrap_or(0);
+
+            // Filter by max price if specified
+            if let Some(max) = args.max_price {
+                if price_msats > max {
+                    continue;
+                }
+            }
+
+            // Filter by network (we want regtest)
+            if network != "regtest" {
+                println!("[CUSTOMER] Skipping provider on {} (we need regtest)", network);
+                continue;
+            }
+
+            discovered.push(DiscoveredProvider {
+                pubkey: handler.pubkey.clone(),
+                name: handler.metadata.name.clone(),
+                description: handler.metadata.description.clone(),
+                channel_id,
+                relay_url,
+                network,
+                price_msats,
+                capabilities: handler.capabilities.clone(),
+                models,
+            });
+        }
+
+        if discovered.is_empty() {
+            println!("[CUSTOMER] No providers discovered via NIP-89!");
+            println!("[CUSTOMER] Make sure providers are running and have published handler info.");
+            println!("[CUSTOMER] Alternatively, use --channel <ID> to connect directly.");
+            relay.disconnect().await.ok();
+            return Ok(());
+        }
+
+        // Display discovered providers
+        println!("\n[CUSTOMER] Discovered {} provider(s) via NIP-89:", discovered.len());
+        for (i, p) in discovered.iter().enumerate() {
+            println!("  [{}] {}", i, p.name);
+            println!("      Pubkey: {}...", &p.pubkey[..16.min(p.pubkey.len())]);
+            println!("      Price: {} msats", p.price_msats);
+            println!("      Channel: {}...", &p.channel_id[..16.min(p.channel_id.len())]);
+            println!("      Models: {:?}", p.models);
+        }
+
+        // Select provider
+        let selected = match args.select.as_str() {
+            "cheapest" => discovered.iter().min_by_key(|p| p.price_msats).cloned(),
+            "first" => discovered.first().cloned(),
+            pubkey => discovered
+                .iter()
+                .find(|p| p.pubkey.starts_with(pubkey))
+                .cloned()
+                .or_else(|| discovered.first().cloned()),
+        };
+
+        let selected = match selected {
+            Some(p) => p,
+            None => {
+                println!("[CUSTOMER] Failed to select provider");
+                return Ok(());
+            }
+        };
+
+        println!("\n[CUSTOMER] Selected: {} ({}...)", selected.name, &selected.pubkey[..16.min(selected.pubkey.len())]);
+        println!("           Channel: {}", selected.channel_id);
+
+        selected.channel_id
+    } else if let Some(channel) = args.channel.clone() {
+        channel
+    } else {
+        eprintln!("Error: Must provide --channel <ID> or --discover");
+        std::process::exit(1);
+    };
+
     // Subscribe to channel
-    println!("[CUSTOMER] Joining channel: {}", args.channel);
-    let mut rx = subscribe_to_channel(&relay, &args.channel).await?;
+    println!("[CUSTOMER] Joining channel: {}", channel_id);
+    let mut rx = subscribe_to_channel(&relay, &channel_id).await?;
 
     // Record start time to filter old messages
     let start_time = now();
@@ -265,7 +450,7 @@ async fn main() -> Result<()> {
         max_tokens: 100,
         target_provider: Some(selected.pubkey.clone()),
     };
-    send_channel_message(&relay, &args.channel, &keypair, &request).await?;
+    send_channel_message(&relay, &channel_id, &keypair, &request).await?;
     println!("[CUSTOMER] Job requested: {}", prompt);
 
     // ============================================
@@ -341,7 +526,7 @@ async fn main() -> Result<()> {
                         job_id,
                         payment_id,
                     };
-                    send_channel_message(&relay, &args.channel, &keypair, &confirm).await?;
+                    send_channel_message(&relay, &channel_id, &keypair, &confirm).await?;
                     println!("[CUSTOMER] Payment confirmation sent");
                 } else {
                     // No wallet - send mock payment
@@ -352,7 +537,7 @@ async fn main() -> Result<()> {
                         job_id,
                         payment_id,
                     };
-                    send_channel_message(&relay, &args.channel, &keypair, &confirm).await?;
+                    send_channel_message(&relay, &channel_id, &keypair, &confirm).await?;
                 }
             }
             AgentMessage::JobResult { job_id, result } => {
