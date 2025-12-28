@@ -151,11 +151,14 @@ impl PylonProvider {
             .ok_or(ProviderError::NotInitialized)?;
 
         // Create DVM service
-        let dvm_service = DvmService::new(
+        let mut dvm_service = DvmService::new(
             self.relay_service.clone(),
             self.backend_registry.clone(),
             self.event_tx.clone(),
         );
+
+        // Configure network for NIP-89 discovery
+        dvm_service.set_network(&self.config.network);
 
         // Set identity on DVM service
         dvm_service.set_identity(identity).await;
