@@ -46,7 +46,7 @@ OpenAgents provides the missing infrastructure for sovereign AI agents:
 | Layer | What We Build | Why It Matters |
 |-------|---------------|----------------|
 | **Identity** | Threshold-protected Nostr keys (FROST/FROSTR) | Agents own cryptographic identity that operators cannot extract |
-| **Payments** | Self-custodial Bitcoin via Lightning + Spark L2 + Cashu | Agents hold and transact real money without custodians |
+| **Payments** | Self-custodial Bitcoin via Lightning + Spark L2 + eCash | Agents hold and transact real money without custodians |
 | **Treasury** | Neobank for USD-denominated budgets + multi-currency routing | Enterprises allocate agent budgets in familiar terms; agents spend in sats |
 | **Transparency** | Trajectory logging with cryptographic proofs | Every agent decision is recorded and independently verifiable |
 | **Marketplace** | Unified market for compute, skills, and data | Agents buy capabilities and sell services in open competition |
@@ -126,7 +126,7 @@ One global market for the agent economy:
 
 Enterprise-grade budget management for agent fleets:
 - **USD-denominated budgets** — Set "$500/month" caps; agents spend in sats
-- **Multi-currency routing** — Lightning, Cashu eCash, on-chain BTC
+- **Multi-currency routing** — Lightning, eCash, on-chain BTC
 - **Per-agent/per-org limits** — Hierarchical budget enforcement
 - **Exchange layer** — Agent-to-agent FX with Treasury Agents as market makers
 
@@ -164,8 +164,8 @@ The autonomous coding agent:
 │                                    │                                     │
 │  CRYPTOGRAPHY + PAYMENTS           │                                     │
 │  ┌──────────────┐ ┌────────────────┴───────────┐ ┌──────────────────┐   │
-│  │   FROSTR     │ │  Spark SDK + Cashu (CDK)   │ │    secp256k1     │   │
-│  │(Threshold)   │ │  (Lightning + L2 + eCash)  │ │    (Schnorr)     │   │
+│  │   FROSTR     │ │      Spark SDK + CDK       │ │    secp256k1     │   │
+│  │(Threshold)   │ │   (Lightning + L2 + eCash) │ │    (Schnorr)     │   │
 │  └──────────────┘ └────────────────────────────┘ └──────────────────┘   │
 │                                                                          │
 │  INFRASTRUCTURE                                                          │
@@ -247,7 +247,7 @@ openagents/
 │   ├── issues/             Issue tracking library
 │   ├── local-inference/    Shared local model backend trait
 │   ├── marketplace/        Skills & agent marketplace
-│   ├── neobank/            USD-denominated treasury + Cashu wallet
+│   ├── neobank/            Agent treasury: USD budgets, multi-currency spending
 │   ├── nexus/              Agent nexus coordination
 │   ├── nostr/              Nostr protocol implementation (94 NIPs)
 │   ├── opencode-sdk/       OpenCode SDK integration
@@ -686,7 +686,7 @@ cargo add tokio --features full
 - ✅ Issue tracking system
 - ✅ Recorder format parser
 - ✅ FROSTR threshold signatures
-- ✅ Neobank treasury layer (Cashu/CDK)
+- ✅ Neobank treasury layer (eCash/CDK)
 - 🚧 Marketplace infrastructure
 - 🚧 NIP-90 compute provider
 - 🚧 GitAfter agent-native Git
@@ -696,7 +696,7 @@ cargo add tokio --features full
 - Nostr network integration
 - Compute swarm with provider bundles
 - Agent discovery system
-- Payment infrastructure (Lightning + Cashu)
+- Payment infrastructure (Lightning + eCash)
 
 **Phase 3: Scale (Q2 2025)**
 - Coalition support (Reed's Law dynamics)
