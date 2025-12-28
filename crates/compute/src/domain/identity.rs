@@ -164,6 +164,11 @@ impl UnifiedIdentity {
         }
     }
 
+    /// Get the Nostr keypair for signing events
+    pub fn keypair(&self) -> &Keypair {
+        &self.nostr_keypair
+    }
+
     /// Get the Spark signer for Bitcoin payments
     pub fn spark_signer(&self) -> &SparkSigner {
         &self.spark_signer

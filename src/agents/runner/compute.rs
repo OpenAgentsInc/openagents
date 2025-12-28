@@ -1,14 +1,27 @@
 //! Compute Client for Agent Reasoning
 //!
 //! Agent discovers providers via NIP-89 and pays for compute using its Bitcoin wallet.
-//! This is the same flow as agent_customer.rs but encapsulated for agent use.
+//!
+//! # Primary Flow (Direct NIP-90 Events)
+//!
+//! 1. Discover providers via NIP-89 (kind:31990)
+//! 2. Publish job request (kind:5050) tagging provider
+//! 3. Receive job feedback (kind:7000) with invoice
+//! 4. Pay Lightning invoice
+//! 5. Receive job result (kind:6050)
+//!
+//! NIP-28 channels are optional and only used if the provider requires them.
 
-use crate::agents::{now, parse_agent_message, AgentMessage};
+use crate::agents::{
+    now, parse_agent_message, parse_job_feedback, parse_job_result, publish_job_request,
+    subscribe_job_responses, AgentMessage, JobStatus, KIND_JOB_FEEDBACK, KIND_JOB_REQUEST_TEXT,
+    KIND_JOB_RESULT_TEXT,
+};
 use anyhow::{anyhow, Result};
 use compute::domain::UnifiedIdentity;
 use nostr::{
     finalize_event, ChannelMessageEvent, Event, EventTemplate, HandlerInfo, KIND_CHANNEL_MESSAGE,
-    KIND_HANDLER_INFO, KIND_JOB_TEXT_GENERATION,
+    KIND_HANDLER_INFO,
 };
 use nostr_client::RelayConnection;
 use openagents_spark::SparkWallet;
@@ -21,7 +34,8 @@ use tokio::sync::mpsc;
 pub struct ProviderInfo {
     pub pubkey: String,
     pub name: String,
-    pub channel_id: String,
+    /// NIP-28 channel ID (optional - only if provider uses channels)
+    pub channel_id: Option<String>,
     pub relay_url: String,
     pub price_msats: u64,
     pub models: Vec<String>,
@@ -90,17 +104,12 @@ impl ComputeClient {
                 continue;
             }
 
-            // Extract channel_id from custom tags
+            // Extract channel_id from custom tags (optional)
             let channel_id = handler
                 .custom_tags
                 .iter()
                 .find(|(k, _)| k == "channel")
                 .map(|(_, v)| v.clone());
-
-            let channel_id = match channel_id {
-                Some(id) => id,
-                None => continue,
-            };
 
             // Extract other custom tags
             let relay_url = handler
@@ -145,6 +154,8 @@ impl ComputeClient {
     }
 
     /// Request inference from a provider and pay for it
+    ///
+    /// Uses direct NIP-90 events. Falls back to NIP-28 channel if provider requires it.
     pub async fn request_inference(
         &self,
         provider: &ProviderInfo,
@@ -162,18 +173,139 @@ impl ComputeClient {
             ));
         }
 
+        // If provider has a channel, use the channel-based flow (legacy)
+        if let Some(ref channel_id) = provider.channel_id {
+            return self
+                .request_inference_via_channel(provider, channel_id, prompt, max_tokens, budget_sats)
+                .await;
+        }
+
+        // Primary flow: Direct NIP-90 events
+        self.request_inference_direct(provider, prompt, max_tokens, budget_sats)
+            .await
+    }
+
+    /// Request inference using direct NIP-90 events (primary flow)
+    async fn request_inference_direct(
+        &self,
+        provider: &ProviderInfo,
+        prompt: &str,
+        max_tokens: u32,
+        budget_sats: u64,
+    ) -> Result<String> {
+        // Publish job request (kind:5050)
+        let job_request_id = publish_job_request(
+            &self.relay,
+            self.identity.keypair(),
+            &provider.pubkey,
+            prompt,
+            max_tokens,
+            KIND_JOB_REQUEST_TEXT,
+        )
+        .await
+        .map_err(|e| anyhow!("Failed to publish job request: {}", e))?;
+
+        tracing::debug!("Published job request: {}", job_request_id);
+
+        // Subscribe to responses for this job
+        let mut rx = subscribe_job_responses(&self.relay, &job_request_id)
+            .await
+            .map_err(|e| anyhow!("Failed to subscribe to job responses: {}", e))?;
+
+        // Wait for feedback and result
+        let timeout = Duration::from_secs(120);
+        let job_start = std::time::Instant::now();
+        let mut paid = false;
+
+        loop {
+            if job_start.elapsed() > timeout {
+                return Err(anyhow!("Timeout waiting for compute result"));
+            }
+
+            let event = match tokio::time::timeout(Duration::from_secs(10), rx.recv()).await {
+                Ok(Some(e)) => e,
+                Ok(None) => return Err(anyhow!("Channel closed")),
+                Err(_) => continue,
+            };
+
+            // Handle feedback events (kind:7000)
+            if event.kind == KIND_JOB_FEEDBACK {
+                if let Some((job_id, status, bolt11, amount)) = parse_job_feedback(&event) {
+                    if job_id != job_request_id {
+                        continue;
+                    }
+
+                    match status {
+                        JobStatus::PaymentRequired => {
+                            if paid {
+                                continue;
+                            }
+
+                            let bolt11 = bolt11.ok_or_else(|| anyhow!("No invoice in feedback"))?;
+                            let amount_msats = amount.unwrap_or(provider.price_msats);
+                            let amount_sats = amount_msats / 1000;
+
+                            if amount_sats > budget_sats {
+                                return Err(anyhow!(
+                                    "Invoice amount {} sats exceeds budget {} sats",
+                                    amount_sats,
+                                    budget_sats
+                                ));
+                            }
+
+                            // Pay the invoice
+                            tracing::debug!("Paying invoice: {} msats", amount_msats);
+                            let _payment = self.wallet.send_payment_simple(&bolt11, None).await?;
+                            paid = true;
+                            tracing::debug!("Payment sent");
+                        }
+                        JobStatus::Processing => {
+                            tracing::debug!("Job is processing...");
+                        }
+                        JobStatus::Success => {
+                            tracing::debug!("Job completed successfully");
+                        }
+                        JobStatus::Error => {
+                            return Err(anyhow!("Job failed with error"));
+                        }
+                        JobStatus::Cancelled => {
+                            return Err(anyhow!("Job was cancelled"));
+                        }
+                    }
+                }
+            }
+
+            // Handle result events (kind:6050)
+            if event.kind == KIND_JOB_RESULT_TEXT {
+                if let Some((job_id, result)) = parse_job_result(&event) {
+                    if job_id == job_request_id {
+                        return Ok(result);
+                    }
+                }
+            }
+        }
+    }
+
+    /// Request inference via NIP-28 channel (legacy flow for backwards compatibility)
+    async fn request_inference_via_channel(
+        &self,
+        provider: &ProviderInfo,
+        channel_id: &str,
+        prompt: &str,
+        max_tokens: u32,
+        budget_sats: u64,
+    ) -> Result<String> {
         // Subscribe to provider's channel
-        let mut rx = self.subscribe_to_channel(&provider.channel_id).await?;
+        let mut rx = self.subscribe_to_channel(channel_id).await?;
 
         // Send job request
         let request = AgentMessage::JobRequest {
-            kind: KIND_JOB_TEXT_GENERATION,
+            kind: KIND_JOB_REQUEST_TEXT,
             prompt: prompt.to_string(),
             max_tokens,
             target_provider: Some(provider.pubkey.clone()),
         };
-        self.send_channel_message(&provider.channel_id, &request)
-            .await?;
+        self.send_channel_message(channel_id, &request).await?;
 
         // Wait for invoice and result
         let start_time = now().saturating_sub(60); // Accept messages from last minute
@@ -238,8 +370,7 @@ impl ComputeClient {
 
                     // Confirm payment
                     let confirm = AgentMessage::PaymentSent { job_id, payment_id };
-                    self.send_channel_message(&provider.channel_id, &confirm)
-                        .await?;
+                    self.send_channel_message(channel_id, &confirm).await?;
                 }
                 AgentMessage::JobResult { job_id, result } => {
                     if our_job_id.as_ref() == Some(&job_id) {
@@ -266,7 +397,7 @@ impl ComputeClient {
         Ok(result_text)
     }
 
-    /// Subscribe to a NIP-28 channel
+    /// Subscribe to a NIP-28 channel (optional coordination layer)
     async fn subscribe_to_channel(&self, channel_id: &str) -> Result<mpsc::Receiver<Event>> {
         let filters = vec![serde_json::json!({
             "kinds": [KIND_CHANNEL_MESSAGE as u64],
@@ -280,7 +411,7 @@ impl ComputeClient {
         Ok(rx)
     }
 
-    /// Send a message to a NIP-28 channel
+    /// Send a message to a NIP-28 channel (optional coordination layer)
     async fn send_channel_message(&self, channel_id: &str, msg: &AgentMessage) -> Result<()> {
         let msg_json = serde_json::to_string(msg)?;
         let relay_url = self.relay.url().to_string();
