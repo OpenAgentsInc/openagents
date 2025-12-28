@@ -1008,11 +1008,88 @@ Pick the best rail per context:
 - Taproot Asset stable LN for "USD pricing" at scale
 - eCash for privacy / content tips / offline-ish workflows
 
+## Exchange Module
+
+The exchange module enables agent-to-agent trading using NIP-69 P2P orders. This allows agents to trade BTC for USD (or other currencies) with each other, building reputation through NIP-32 attestations.
+
+### Quick Start
+
+```rust
+use neobank::{ExchangeClient, OrderParams, OrderSide, TradeOutcome};
+
+// Create exchange client (mock mode for testing)
+let exchange = ExchangeClient::new_mock("agent_pubkey_hex");
+
+// Post a sell order: 10,000 sats for $1.00 USD
+let order_id = exchange.post_order(OrderParams {
+    side: OrderSide::Sell,
+    amount_sats: 10_000,
+    fiat_amount: 100, // cents
+    currency: "USD".to_string(),
+    payment_methods: vec!["cashu".to_string()],
+    ..Default::default()
+}).await?;
+
+// Build NIP-69 tags for Nostr event
+let tags = exchange.build_order_tags(&params);
+```
+
+### Features
+
+- **NIP-69 Compatible**: Order events work with Mostro, Robosats, lnp2pBot, Peach
+- **Mock Settlement**: Test flows without external dependencies
+- **Reputation System**: NIP-32 labels track successful/failed trades
+- **Full Audit Trail**: Integrates with NIP-SA trajectories
+
+### Core Types
+
+| Type | Description |
+|------|-------------|
+| `ExchangeClient` | Main client for posting orders, accepting, settling |
+| `OrderParams` | Parameters for creating a new order |
+| `Order` | An order in the order book |
+| `Trade` | A matched order between maker and taker |
+| `SettlementReceipt` | Proof of settlement completion |
+| `TradeAttestation` | NIP-32 label for reputation |
+
+### Order Lifecycle
+
+```
+┌─────────┐     accept      ┌─────────┐     settle     ┌─────────┐
+│ Pending │ ──────────────▶ │ Matched │ ─────────────▶ │ Success │
+└─────────┘                 └─────────┘                └─────────┘
+     │                           │
+     │ cancel/expire             │ dispute
+     ▼                           ▼
+┌─────────┐                ┌─────────┐
+│Canceled │                │Disputed │
+└─────────┘                └─────────┘
+```
+
+### Reputation
+
+After settlement, both parties publish attestations:
+
+```rust
+// Attest to successful trade
+exchange.attest_trade(&trade, TradeOutcome::Success, settlement_ms).await?;
+
+// Query reputation
+let rep = exchange.calculate_reputation("counterparty_pubkey")?;
+// Returns 0.0-1.0 based on success rate
+```
+
+### Documentation
+
+- **[Exchange API](docs/EXCHANGE-API.md)** — Complete API reference
+- **[Exchange Spec](docs/EXCHANGE-SPEC.md)** — Design specification and NIPs
+
 ## Documentation
 
 - **[Operator Guide](docs/operator-guide.md)** — Complete guide for deploying neobank infrastructure in a jurisdiction
 - **[Research Document](docs/research.md)** — Full specification and ecosystem analysis
 - **[Agicash Research](docs/agicash-research.md)** — Analysis of production eCash wallet patterns
+- **[Exchange API](docs/EXCHANGE-API.md)** — Exchange module API reference
 - **[Spark Integration](../spark/README.md)** — Bitcoin/Lightning rail
 - **[SYNTHESIS.md](../../SYNTHESIS.md)** — How neobank fits the broader vision
 
