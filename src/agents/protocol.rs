@@ -106,18 +106,33 @@ pub enum AgentMessage {
         spark_address: String,
         /// Lightning network (mainnet, testnet, signet, regtest)
         network: Network,
+        /// Provider's public key for targeting
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        provider_pubkey: Option<String>,
+        /// Available models
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        models: Vec<String>,
+        /// Capabilities (e.g., "text-generation", "code-completion")
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        capabilities: Vec<String>,
     },
     /// Customer requests a job
     JobRequest {
         kind: u16,
         prompt: String,
         max_tokens: u32,
+        /// Target specific provider by pubkey (for multi-provider channels)
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        target_provider: Option<String>,
     },
     /// Provider sends invoice for payment
     Invoice {
         job_id: String,
         bolt11: String,
         amount_msats: u64,
+        /// Payment hash for verification (hex-encoded)
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        payment_hash: Option<String>,
     },
     /// Customer confirms payment was sent
     PaymentSent {
@@ -128,6 +143,12 @@ pub enum AgentMessage {
     JobResult {
         job_id: String,
         result: String,
+    },
+    /// Streaming chunk from provider (for real-time token delivery)
+    StreamChunk {
+        job_id: String,
+        chunk: String,
+        is_final: bool,
     },
 }
 
@@ -306,6 +327,9 @@ mod tests {
             price_msats: 10_000,
             spark_address: "sp1abc...".to_string(),
             network: Network::Regtest,
+            provider_pubkey: None,
+            models: vec![],
+            capabilities: vec![],
         };
 
         let json = serde_json::to_string(&msg).unwrap();
@@ -320,11 +344,32 @@ mod tests {
     }
 
     #[test]
+    fn test_service_announcement_with_models() {
+        let msg = AgentMessage::ServiceAnnouncement {
+            kind: 5050,
+            price_msats: 10_000,
+            spark_address: "sp1abc...".to_string(),
+            network: Network::Regtest,
+            provider_pubkey: Some("abc123".to_string()),
+            models: vec!["llama3.2".to_string(), "codellama".to_string()],
+            capabilities: vec!["text-generation".to_string()],
+        };
+
+        let json = serde_json::to_string(&msg).unwrap();
+        assert!(json.contains("\"models\":[\"llama3.2\",\"codellama\"]"));
+        assert!(json.contains("\"provider_pubkey\":\"abc123\""));
+
+        let parsed: AgentMessage = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed, msg);
+    }
+
+    #[test]
     fn test_job_request_serialization() {
         let msg = AgentMessage::JobRequest {
             kind: 5050,
             prompt: "What is the meaning of life?".to_string(),
             max_tokens: 100,
+            target_provider: None,
         };
 
         let json = serde_json::to_string(&msg).unwrap();
@@ -336,16 +381,66 @@ mod tests {
     }
 
     #[test]
+    fn test_job_request_with_target() {
+        let msg = AgentMessage::JobRequest {
+            kind: 5050,
+            prompt: "Hello".to_string(),
+            max_tokens: 100,
+            target_provider: Some("provider_pubkey_123".to_string()),
+        };
+
+        let json = serde_json::to_string(&msg).unwrap();
+        assert!(json.contains("\"target_provider\":\"provider_pubkey_123\""));
+
+        let parsed: AgentMessage = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed, msg);
+    }
+
+    #[test]
     fn test_invoice_serialization() {
         let msg = AgentMessage::Invoice {
             job_id: "job_abc123".to_string(),
             bolt11: "lnbcrt100n1pj...".to_string(),
             amount_msats: 10_000,
+            payment_hash: None,
         };
 
         let json = serde_json::to_string(&msg).unwrap();
         assert!(json.contains("\"type\":\"Invoice\""));
         assert!(json.contains("\"bolt11\":\"lnbcrt100n1pj...\""));
+
+        let parsed: AgentMessage = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed, msg);
+    }
+
+    #[test]
+    fn test_invoice_with_payment_hash() {
+        let msg = AgentMessage::Invoice {
+            job_id: "job_abc123".to_string(),
+            bolt11: "lnbcrt100n1pj...".to_string(),
+            amount_msats: 10_000,
+            payment_hash: Some("abc123def456".to_string()),
+        };
+
+        let json = serde_json::to_string(&msg).unwrap();
+        assert!(json.contains("\"payment_hash\":\"abc123def456\""));
+
+        let parsed: AgentMessage = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed, msg);
+    }
+
+    #[test]
+    fn test_stream_chunk_serialization() {
+        let msg = AgentMessage::StreamChunk {
+            job_id: "job_abc123".to_string(),
+            chunk: "Hello ".to_string(),
+            is_final: false,
+        };
+
+        let json = serde_json::to_string(&msg).unwrap();
+        assert!(json.contains("\"type\":\"StreamChunk\""));
+        assert!(json.contains("\"chunk\":\"Hello \""));
+        assert!(json.contains("\"is_final\":false"));
 
         let parsed: AgentMessage = serde_json::from_str(&json).unwrap();
         assert_eq!(parsed, msg);

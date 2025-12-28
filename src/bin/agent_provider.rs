@@ -206,14 +206,19 @@ async fn main() -> Result<()> {
         "mock-spark-address".to_string()
     };
 
+    let provider_pubkey = hex::encode(keypair.public_key);
     let announce = AgentMessage::ServiceAnnouncement {
         kind: KIND_JOB_TEXT_GENERATION,
         price_msats: 10_000,
         spark_address,
         network: AgentNetwork::Regtest,
+        provider_pubkey: Some(provider_pubkey.clone()),
+        models: available_models.clone(),
+        capabilities: vec!["text-generation".to_string()],
     };
     send_channel_message(&relay, &channel_id, &keypair, &announce).await?;
     println!("[PROVIDER] Service announced: kind=5050, price=10000 msats, network=regtest");
+    println!("[PROVIDER] Models: {:?}", available_models);
 
     // Subscribe to channel
     let mut rx = subscribe_to_channel(&relay, &channel_id).await?;
@@ -247,7 +252,14 @@ async fn main() -> Result<()> {
         };
 
         match msg {
-            AgentMessage::JobRequest { prompt, kind, max_tokens } => {
+            AgentMessage::JobRequest { prompt, kind, max_tokens, target_provider } => {
+                // Skip if targeted to another provider
+                if let Some(ref target) = target_provider {
+                    if target != &provider_pubkey {
+                        continue;
+                    }
+                }
+
                 println!("[PROVIDER] Got job request:");
                 println!("           Kind: {}", kind);
                 println!("           Prompt: {}", prompt);
@@ -264,10 +276,12 @@ async fn main() -> Result<()> {
                         .create_invoice(10, Some("NIP-90 Job".to_string()), Some(3600))
                         .await?;
 
+                    // Use job_id as payment reference (payment_hash from bolt11 would require parsing)
                     let resp = AgentMessage::Invoice {
                         job_id: job_id.clone(),
                         bolt11: invoice.payment_request.clone(),
                         amount_msats: 10_000,
+                        payment_hash: Some(job_id.clone()), // Use job_id as reference
                     };
                     send_channel_message(&relay, &channel_id, &keypair, &resp).await?;
                     println!("[PROVIDER] Invoice sent for job {}", job_id);
@@ -277,6 +291,7 @@ async fn main() -> Result<()> {
                         job_id: job_id.clone(),
                         bolt11: "lnbcrt100n1mock".to_string(),
                         amount_msats: 10_000,
+                        payment_hash: Some("mock_payment_hash".to_string()),
                     };
                     send_channel_message(&relay, &channel_id, &keypair, &resp).await?;
                     println!("[PROVIDER] Mock invoice sent for job {}", job_id);
@@ -337,6 +352,9 @@ async fn main() -> Result<()> {
             }
             AgentMessage::JobResult { .. } => {
                 // Ignore results (we send these)
+            }
+            AgentMessage::StreamChunk { .. } => {
+                // Ignore stream chunks (we send these)
             }
         }
     }
