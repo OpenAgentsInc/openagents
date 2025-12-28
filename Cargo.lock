@@ -7037,6 +7037,7 @@ dependencies = [
  "clap",
  "claude-agent-sdk",
  "colored 2.2.0",
+ "compute",
  "fm-bridge-agent",
  "futures-util",
  "gitafter",
