@@ -3,8 +3,8 @@
 //! These tests verify that the complete skill marketplace stack works correctly
 //! over real relay connections, testing:
 //! - Skill discovery via NIP-89 handler info events
-//! - Skill license issuance (NIP-SA kind:38020)
-//! - Skill delivery with content verification (NIP-SA kind:38021)
+//! - Skill license issuance (NIP-SA kind:39220)
+//! - Skill delivery with content verification (NIP-SA kind:39221)
 //! - Skill versioning and updates
 //!
 //! Part of d-015: Comprehensive Marketplace and Agent Commerce E2E Tests
@@ -182,7 +182,7 @@ async fn test_skill_browse_over_relay() {
 
 #[tokio::test]
 async fn test_skill_license_issuance() {
-    // Test: Marketplace issues skill license (NIP-SA kind:38020) to agent
+    // Test: Marketplace issues skill license (NIP-SA kind:39220) to agent
     //
     // 1. Agent requests skill purchase
     // 2. Marketplace issues license after payment
@@ -303,7 +303,7 @@ async fn test_skill_license_issuance() {
 
 #[tokio::test]
 async fn test_skill_delivery_encrypted() {
-    // Test: Skill delivery with content verification (NIP-SA kind:38021)
+    // Test: Skill delivery with content verification (NIP-SA kind:39221)
     //
     // 1. After license issuance, marketplace delivers skill content
     // 2. Content is delivered with hash for verification
@@ -656,8 +656,8 @@ async fn test_complete_skill_purchase_flow() {
     // 1. Creator publishes skill (NIP-89)
     // 2. Agent discovers skill
     // 3. Agent requests purchase (simulated payment)
-    // 4. Marketplace issues license (kind:38020)
-    // 5. Marketplace delivers skill (kind:38021)
+    // 4. Marketplace issues license (kind:39220)
+    // 5. Marketplace delivers skill (kind:39221)
     // 6. Agent verifies and uses skill
 
     // 1. Start test relay
@@ -909,14 +909,14 @@ fn test_handler_info_event_kind() {
 
 #[test]
 fn test_skill_license_kind() {
-    // Verify skill license uses correct kind (38020)
-    assert_eq!(KIND_SKILL_LICENSE, 38020);
+    // Verify skill license uses correct kind (39220)
+    assert_eq!(KIND_SKILL_LICENSE, 39220);
 }
 
 #[test]
 fn test_skill_delivery_kind() {
-    // Verify skill delivery uses correct kind (38021)
-    assert_eq!(KIND_SKILL_DELIVERY, 38021);
+    // Verify skill delivery uses correct kind (39221)
+    assert_eq!(KIND_SKILL_DELIVERY, 39221);
 }
 
 #[test]

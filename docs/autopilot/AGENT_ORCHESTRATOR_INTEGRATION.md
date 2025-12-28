@@ -18,7 +18,7 @@ The `autopilot` and `agent-orchestrator` crates have complementary capabilities 
 | Issue management | ✅ Complete | Via `issues` crate |
 | Claude SDK integration | ✅ Complete | Full message processing |
 | Codex SDK integration | ✅ Complete | ThreadEvent processing |
-| NIP-SA trajectory publishing | ✅ Complete | kinds 38030/38031 |
+| NIP-SA trajectory publishing | ✅ Complete | kinds 39230/39231 |
 | Daemon supervision | ✅ Complete | Crash recovery, memory management |
 | Cost tracking | 🟡 Partial | Basic via SDK, not unified |
 

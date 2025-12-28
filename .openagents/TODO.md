@@ -231,12 +231,12 @@ P0 focus IDs: none.
 **Current:** Full protocol implementation with advanced state management and relay integration.
 
 - [x] **Core Protocol** ✅
-  - [x] AgentProfile (kind:38000) ✅
-  - [x] AgentState (kind:38001) ✅
-  - [x] AgentSchedule (kind:38002) ✅
-  - [x] TickRequest/Result (kinds:38010/38011) ✅
-  - [x] TrajectorySession/Event (kinds:38030/38031) ✅
-  - [x] SkillLicense/Delivery (kinds:38020/38021) ✅
+  - [x] AgentProfile (kind:39200) ✅
+  - [x] AgentState (kind:39201) ✅
+  - [x] AgentSchedule (kind:39202) ✅
+  - [x] TickRequest/Result (kinds:39210/39211) ✅
+  - [x] TrajectorySession/Event (kinds:39230/39231) ✅
+  - [x] SkillLicense/Delivery (kinds:39220/39221) ✅
   - [x] Budget constraints ✅
 - [x] **Wallet Integration** ✅
   - [x] Real SparkWallet initialization via `init_wallet()`

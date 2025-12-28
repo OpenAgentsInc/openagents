@@ -1,4 +1,4 @@
-//! Agent Schedule Event (kind:38002)
+//! Agent Schedule Event (kind:39202)
 //!
 //! Defines when and how an agent should be triggered to run.
 //!
@@ -20,7 +20,7 @@
 //!
 //! ```json
 //! {
-//!   "kind": 38002,
+//!   "kind": 39202,
 //!   "pubkey": "<agent-pubkey>",
 //!   "content": "",
 //!   "tags": [
@@ -36,7 +36,7 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 /// Kind for agent schedule event
-pub const KIND_AGENT_SCHEDULE: u16 = 38002;
+pub const KIND_AGENT_SCHEDULE: u16 = 39202;
 
 /// Errors that can occur during NIP-SA schedule operations
 #[derive(Debug, Error)]

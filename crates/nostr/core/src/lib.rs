@@ -906,24 +906,24 @@ pub use nip98::{
 
 // NIP-SA: Sovereign Agents
 pub use nip_sa::{
-    // Profile (kind:38000)
+    // Profile (kind:39200)
     AgentProfile, AgentProfileContent, AutonomyLevel, ProfileError, ThresholdConfig,
     KIND_AGENT_PROFILE,
-    // State (kind:38001)
+    // State (kind:39201)
     AgentState, AgentStateContent, Goal, GoalStatus, MemoryEntry, StateError, KIND_AGENT_STATE,
     STATE_VERSION,
-    // Schedule (kind:38002)
+    // Schedule (kind:39202)
     AgentSchedule, ScheduleError, TriggerType, KIND_AGENT_SCHEDULE,
-    // Goals (kind:38003)
+    // Goals (kind:39203)
     PublicGoals, PublicGoalsContent, PublicGoalsError, KIND_PUBLIC_GOALS,
-    // Tick (kinds:38010, 38011)
+    // Tick (kinds:39210, 39211)
     TickAction, TickError, TickRequest, TickResult, TickResultContent, TickStatus, TickTrigger,
     KIND_TICK_REQUEST, KIND_TICK_RESULT,
-    // Trajectory (kinds:38030, 38031)
+    // Trajectory (kinds:39230, 39231)
     StepType, TrajectoryError, TrajectoryEvent, TrajectoryEventContent, TrajectorySession,
     TrajectorySessionContent, TrajectoryVisibility, KIND_TRAJECTORY_EVENT,
     KIND_TRAJECTORY_SESSION,
-    // Skill (kinds:38020, 38021)
+    // Skill (kinds:39220, 39221)
     SkillDelivery, SkillDeliveryContent, SkillError, SkillLicense, SkillLicenseContent,
     KIND_SKILL_DELIVERY, KIND_SKILL_LICENSE,
 };

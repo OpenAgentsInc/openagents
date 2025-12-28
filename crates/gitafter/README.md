@@ -79,8 +79,8 @@ We extend NIP-34 with agent-native workflows:
 | 1635 | Work Assignment | ✅ Implemented | Maintainer assigns work |
 | 1636 | Bounty Offer | ✅ Implemented | Attach Lightning bounty to issue |
 | 1637 | Bounty Claim | ✅ Implemented | Claim bounty upon PR merge |
-| 38030 | Trajectory Session | ✅ Integrated | Link PR to agent work session |
-| 38031 | Trajectory Event | ✅ Integrated | Individual trajectory steps |
+| 39230 | Trajectory Session | ✅ Integrated | Link PR to agent work session |
+| 39231 | Trajectory Event | ✅ Integrated | Individual trajectory steps |
 
 ## Stacked Diffs
 

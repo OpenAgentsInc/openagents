@@ -1165,12 +1165,12 @@ impl EventCache {
     }
 
     /// Get trajectory session by ID
-    /// Trajectory sessions are kind:38030 events
+    /// Trajectory sessions are kind:39230 events (NIP-SA)
     pub fn get_trajectory_session(&self, session_id: &str) -> Result<Option<Event>> {
         let mut stmt = self.conn.prepare(
             "SELECT id, kind, pubkey, created_at, content, tags, sig
              FROM events
-             WHERE kind = 38030 AND id = ?1",
+             WHERE kind = 39230 AND id = ?1",
         )?;
 
         let event = stmt.query_row(params![session_id], |row| {
@@ -1197,12 +1197,12 @@ impl EventCache {
     }
 
     /// Get trajectory events for a session
-    /// Trajectory events are kind:38031 events that reference a session via e tag
+    /// Trajectory events are kind:39231 events that reference a session via e tag (NIP-SA)
     pub fn get_trajectory_events(&self, session_id: &str) -> Result<Vec<Event>> {
         let mut stmt = self.conn.prepare(
             "SELECT id, kind, pubkey, created_at, content, tags, sig
              FROM events
-             WHERE kind = 38031
+             WHERE kind = 39231
              ORDER BY created_at ASC",
         )?;
 

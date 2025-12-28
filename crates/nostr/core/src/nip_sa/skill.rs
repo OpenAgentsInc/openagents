@@ -1,9 +1,9 @@
-//! Skill Events (kinds:38020, 38021)
+//! Skill Events (kinds:39220, 39221)
 //!
 //! Skills are capabilities that agents can acquire, typically through purchase
 //! from a marketplace. Skills are protected by licenses and delivered encrypted.
 //!
-//! ## Skill License (kind:38020)
+//! ## Skill License (kind:39220)
 //!
 //! Addressable event issued by the marketplace when an agent purchases a skill.
 //!
@@ -30,7 +30,7 @@
 //! }
 //! ```
 //!
-//! ## Skill Delivery (kind:38021)
+//! ## Skill Delivery (kind:39221)
 //!
 //! Ephemeral event that delivers the actual skill content to the agent.
 //! Uses NIP-59 gift wrap for privacy.
@@ -46,10 +46,10 @@ use std::collections::HashMap;
 use thiserror::Error;
 
 /// Kind for skill license event
-pub const KIND_SKILL_LICENSE: u16 = 38020;
+pub const KIND_SKILL_LICENSE: u16 = 39220;
 
 /// Kind for skill delivery event
-pub const KIND_SKILL_DELIVERY: u16 = 38021;
+pub const KIND_SKILL_DELIVERY: u16 = 39221;
 
 /// Errors that can occur during NIP-SA skill operations
 #[derive(Debug, Error)]

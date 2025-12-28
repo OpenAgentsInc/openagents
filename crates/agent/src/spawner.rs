@@ -213,7 +213,7 @@ impl AgentSpawner {
 
         let now = chrono::Utc::now().timestamp() as u64;
 
-        // Build profile event (kind:38000)
+        // Build profile event (kind:39200)
         let profile_content = AgentProfileContent::new(
             &request.name,
             request.about.as_deref().unwrap_or("A sovereign AI agent"),
@@ -246,7 +246,7 @@ impl AgentSpawner {
             .await
             .map_err(|e| SpawnError::Relay(e.to_string()))?;
 
-        // Build initial state event (kind:38001)
+        // Build initial state event (kind:39201)
         let state_content = AgentStateContent::new();
         let state = AgentState::new(state_content);
 
@@ -272,7 +272,7 @@ impl AgentSpawner {
             .await
             .map_err(|e| SpawnError::Relay(e.to_string()))?;
 
-        // Build schedule event (kind:38002)
+        // Build schedule event (kind:39202)
         let mut schedule = AgentSchedule::new();
         if request.heartbeat_seconds > 0 {
             schedule = schedule

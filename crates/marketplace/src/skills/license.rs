@@ -1,7 +1,7 @@
 //! Skill licensing using NIP-SA types
 //!
 //! This module provides marketplace-specific wrappers around NIP-SA skill
-//! license events (kinds 38020, 38021).
+//! license events (kinds 39220, 39221).
 
 use nostr::{
     SkillLicense, SkillLicenseContent, SkillDelivery, SkillDeliveryContent,
@@ -63,7 +63,7 @@ impl LicenseManager {
 
     /// Issue a new skill license
     ///
-    /// This creates a SkillLicense event (kind:38020) that grants an agent
+    /// This creates a SkillLicense event (kind:39220) that grants an agent
     /// access to a specific skill.
     pub fn issue_license(&self, params: IssueLicenseParams) -> Result<SkillLicense, LicenseError> {
         let content = SkillLicenseContent::new(
@@ -108,7 +108,7 @@ impl LicenseManager {
 
     /// Create a skill delivery event
     ///
-    /// This creates a SkillDelivery event (kind:38021) that delivers the
+    /// This creates a SkillDelivery event (kind:39221) that delivers the
     /// encrypted skill content to the licensed agent.
     pub fn create_delivery(
         &self,

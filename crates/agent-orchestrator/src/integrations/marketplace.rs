@@ -1,7 +1,7 @@
 //! Marketplace Integration
 //!
 //! Integrates with the OpenAgents marketplace for skill licensing, usage tracking,
-//! and billing. Uses NIP-SA skill events (kinds 38020, 38021) for license verification.
+//! and billing. Uses NIP-SA skill events (kinds 39220, 39221) for license verification.
 
 use crate::hooks::{Hook, HookResult, ToolCall, ToolOutput};
 use async_trait::async_trait;

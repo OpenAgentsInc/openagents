@@ -1,9 +1,9 @@
-//! Tick Events (kinds:38010, 38011)
+//! Tick Events (kinds:39210, 39211)
 //!
 //! Tick events track agent execution cycles. Each "tick" represents one run of
 //! the agent - processing inputs, updating state, taking actions.
 //!
-//! ## Tick Request (kind:38010)
+//! ## Tick Request (kind:39210)
 //!
 //! Published by the runner at the start of a tick to signal execution.
 //!
@@ -11,7 +11,7 @@
 //! - `["runner", "<runner-pubkey>"]` - Runner identity
 //! - `["trigger", "heartbeat|mention|dm|zap"]` - What triggered this tick
 //!
-//! ## Tick Result (kind:38011)
+//! ## Tick Result (kind:39211)
 //!
 //! Published by the runner at the end of a tick with outcome metrics.
 //!
@@ -42,10 +42,10 @@ use std::collections::HashMap;
 use thiserror::Error;
 
 /// Kind for tick request event
-pub const KIND_TICK_REQUEST: u16 = 38010;
+pub const KIND_TICK_REQUEST: u16 = 39210;
 
 /// Kind for tick result event
-pub const KIND_TICK_RESULT: u16 = 38011;
+pub const KIND_TICK_RESULT: u16 = 39211;
 
 /// Errors that can occur during NIP-SA tick operations
 #[derive(Debug, Error)]

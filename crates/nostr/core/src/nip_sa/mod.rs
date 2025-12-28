@@ -16,26 +16,26 @@
 //!
 //! | Kind  | Name | Type | Description |
 //! |-------|------|------|-------------|
-//! | 38000 | Agent Profile | Replaceable | Agent metadata with threshold config |
-//! | 38001 | Agent State | Replaceable | NIP-44 encrypted goals, memory, wallet |
-//! | 38002 | Agent Schedule | Replaceable | Heartbeat interval and triggers |
-//! | 38003 | Agent Goals | Replaceable | Public goals (optional transparency) |
-//! | 38010 | Tick Request | Ephemeral | Runner signals tick start |
-//! | 38011 | Tick Result | Ephemeral | Runner reports tick outcome |
-//! | 38020 | Skill License | Addressable | Marketplace-issued license |
-//! | 38021 | Skill Delivery | Ephemeral | Gift-wrapped skill content |
-//! | 38030 | Trajectory Session | Addressable | Run metadata and participants |
-//! | 38031 | Trajectory Event | Regular | Individual trajectory step |
+//! | 39200 | Agent Profile | Replaceable | Agent metadata with threshold config |
+//! | 39201 | Agent State | Replaceable | NIP-44 encrypted goals, memory, wallet |
+//! | 39202 | Agent Schedule | Replaceable | Heartbeat interval and triggers |
+//! | 39203 | Agent Goals | Replaceable | Public goals (optional transparency) |
+//! | 39210 | Tick Request | Ephemeral | Runner signals tick start |
+//! | 39211 | Tick Result | Ephemeral | Runner reports tick outcome |
+//! | 39220 | Skill License | Addressable | Marketplace-issued license |
+//! | 39221 | Skill Delivery | Ephemeral | Gift-wrapped skill content |
+//! | 39230 | Trajectory Session | Addressable | Run metadata and participants |
+//! | 39231 | Trajectory Event | Regular | Individual trajectory step |
 //!
 //! ## Modules
 //!
-//! - [`profile`] - Agent Profile event (kind:38000)
-//! - [`state`] - Agent State event (kind:38001) with NIP-44 encryption
-//! - [`schedule`] - Agent Schedule event (kind:38002)
-//! - [`goals`] - Agent Goals event (kind:38003)
-//! - [`tick`] - Tick Request/Result events (kinds:38010, 38011)
-//! - [`trajectory`] - Trajectory Session/Event (kinds:38030, 38031)
-//! - [`skill`] - Skill License/Delivery events (kinds:38020, 38021)
+//! - [`profile`] - Agent Profile event (kind:39200)
+//! - [`state`] - Agent State event (kind:39201) with NIP-44 encryption
+//! - [`schedule`] - Agent Schedule event (kind:39202)
+//! - [`goals`] - Agent Goals event (kind:39203)
+//! - [`tick`] - Tick Request/Result events (kinds:39210, 39211)
+//! - [`trajectory`] - Trajectory Session/Event (kinds:39230, 39231)
+//! - [`skill`] - Skill License/Delivery events (kinds:39220, 39221)
 //! - [`wallet_integration`] - Integration with Spark wallet for balance queries
 //! - [`budget`] - Budget constraints and spending enforcement
 //!

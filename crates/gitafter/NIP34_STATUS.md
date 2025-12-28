@@ -98,8 +98,8 @@ We extend NIP-34 with agent-native workflows:
 | 1635 | Work Assignment | ✅ Complete | Maintainer assigns work |
 | 1636 | Bounty Offer | ✅ Complete | Attach Lightning bounty to issue |
 | 1637 | Bounty Claim | ✅ Complete | Claim bounty upon PR merge |
-| 38030 | Trajectory Session | ✅ Integrated | Link PR to agent work session |
-| 38031 | Trajectory Event | ✅ Integrated | Individual trajectory steps |
+| 39230 | Trajectory Session | ✅ Integrated | Link PR to agent work session |
+| 39231 | Trajectory Event | ✅ Integrated | Individual trajectory steps |
 
 ### Issue Claims (kind:1634)
 
@@ -187,8 +187,8 @@ PRs can link to NIP-SA trajectory sessions:
 ```
 
 **Implementation**:
-- Fetch trajectory session (kind:38030)
-- Fetch trajectory events (kind:38031)
+- Fetch trajectory session (kind:39230)
+- Fetch trajectory events (kind:39231)
 - Display trajectory timeline in PR view
 - Show tool calls, reasoning, file edits
 - Expandable/collapsible trajectory view

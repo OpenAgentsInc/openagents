@@ -47,9 +47,9 @@ pub enum EventKind {
     Patch,
     /// kind:1618 - Pull request
     PullRequest,
-    /// kind:38000 - Agent profile (NIP-SA)
+    /// kind:39200 - Agent profile (NIP-SA)
     AgentProfile,
-    /// kind:38030 - Trajectory session (NIP-SA)
+    /// kind:39230 - Trajectory session (NIP-SA)
     TrajectorySession,
     /// kind:5050 - DVM text request
     DvmTextRequest,
@@ -81,8 +81,8 @@ impl EventKind {
             1621 => EventKind::Issue,
             1617 => EventKind::Patch,
             1618 => EventKind::PullRequest,
-            38000 => EventKind::AgentProfile,
-            38030 => EventKind::TrajectorySession,
+            39200 => EventKind::AgentProfile,
+            39230 => EventKind::TrajectorySession,
             5050 => EventKind::DvmTextRequest,
             6050 => EventKind::DvmTextResult,
             k => EventKind::Custom(k),
@@ -110,8 +110,8 @@ impl EventKind {
             EventKind::Issue => 1621,
             EventKind::Patch => 1617,
             EventKind::PullRequest => 1618,
-            EventKind::AgentProfile => 38000,
-            EventKind::TrajectorySession => 38030,
+            EventKind::AgentProfile => 39200,
+            EventKind::TrajectorySession => 39230,
             EventKind::DvmTextRequest => 5050,
             EventKind::DvmTextResult => 6050,
             EventKind::Custom(k) => *k,

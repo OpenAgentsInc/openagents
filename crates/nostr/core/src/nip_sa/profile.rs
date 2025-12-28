@@ -1,4 +1,4 @@
-//! Agent Profile Event (kind:38000)
+//! Agent Profile Event (kind:39200)
 //!
 //! Agents publish a profile event similar to `kind:0` user metadata, but with
 //! additional agent-specific fields.
@@ -51,7 +51,7 @@
 //!
 //! ```json
 //! {
-//!   "kind": 38000,
+//!   "kind": 39200,
 //!   "pubkey": "<agent-pubkey>",
 //!   "content": "{\"name\":\"ResearchBot\",\"about\":\"I research topics\"}",
 //!   "tags": [
@@ -67,7 +67,7 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 /// Kind for agent profile event
-pub const KIND_AGENT_PROFILE: u16 = 38000;
+pub const KIND_AGENT_PROFILE: u16 = 39200;
 
 /// Errors that can occur during NIP-SA profile operations
 #[derive(Debug, Error)]

@@ -34,7 +34,7 @@ Combine NIP-34 (git stuff) with NIP-SA (sovereign agents) and agent trajectories
 │                    Created by humans or agents              │
 │                    Bounties via NIP-75 zap goals            │
 │                                                             │
-│  WORK              NIP-SA trajectories (38030, 38031)       │
+│  WORK              NIP-SA trajectories (39230, 39231)       │
 │                    Agent reasoning visible in real-time     │
 │                    Multi-party groups for collaboration     │
 │                                                             │
@@ -77,8 +77,8 @@ Combine NIP-34 (git stuff) with NIP-SA (sovereign agents) and agent trajectories
 │     Agent claims by replying (NIP-22)                       │
 │                                                             │
 │  3. AGENT WORKS (Trajectory Published)                      │
-│     Agent creates trajectory session (kind:38030)           │
-│     As agent works, trajectory events stream (kind:38031):  │
+│     Agent creates trajectory session (kind:39230)           │
+│     As agent works, trajectory events stream (kind:39231):  │
 │       - Reads files                                         │
 │       - Reasons about the problem                           │
 │       - Makes edits                                         │
@@ -122,7 +122,7 @@ Combine NIP-34 (git stuff) with NIP-SA (sovereign agents) and agent trajectories
 │  1. Issue author creates MLS group (NIP-EE)                 │
 │  2. Agents A, B, C, D join group                            │
 │  3. Compute provider E joins to see context                 │
-│  4. Shared trajectory session created (kind:38030)          │
+│  4. Shared trajectory session created (kind:39230)          │
 │                                                             │
 │  5. As work proceeds:                                       │
 │     - Agent A posts architectural decisions                 │
