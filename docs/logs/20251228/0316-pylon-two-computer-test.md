@@ -216,3 +216,59 @@ Stop provider with `Ctrl+C` or:
 ```bash
 cargo run -p pylon --bin pylon -- stop
 ```
+
+---
+
+## Test Results (2025-12-28 03:20 CST)
+
+### Customer Output (Computer B - Linux)
+
+```
+=== OpenAgents Customer Agent ===
+
+[CUSTOMER] Public key: ed6b4c4479c2a9a74dc2fb0757163e25dc0a4e13407263952bfc6c56525f5cfd
+[CUSTOMER] Running without wallet (--no-wallet)
+[CUSTOMER] Connecting to relay: wss://relay.damus.io
+[CUSTOMER] Connected to relay
+[CUSTOMER] Discovering providers via NIP-89 (kind 31990)...
+[CUSTOMER] Found 50 handler info events
+[CUSTOMER] Skipping provider on unknown (we need regtest)
+[CUSTOMER] Skipping provider on unknown (we need regtest)
+
+[CUSTOMER] Discovered 1 provider(s) via NIP-89:
+  [0] OpenAgents Compute Provider
+      Pubkey: e8bcf3823669444d...
+      Price: 10000 msats
+      Channel: a7be6335515e15d3...
+      Models: ["nemotron-3-nano:latest", "gpt-oss:120b", "gpt-oss:latest", "qwen3-coder:latest", "nomic-embed-text:latest", "qwen3:30b", "qwen3:latest"]
+
+[CUSTOMER] Selected: OpenAgents Compute Provider (e8bcf3823669444d...)
+[CUSTOMER] Using direct NIP-90 events (kind:5050 -> 7000 -> 6050)
+[CUSTOMER] Job request published: cdda745147bfbc26b4cf0368fcd664571b8f71e842b06f72e605f74b0fa41486
+[CUSTOMER] Waiting for provider response...
+```
+
+### Observations
+
+1. **NIP-89 Discovery Working** - Customer found 50 handler info events on relay
+2. **Network Filtering Working** - Skipped providers not on `regtest` network
+3. **Found agent-provider** - Discovered the OpenAgents agent-provider (e8bcf38...) from earlier tests
+4. **Did NOT find pylon provider** - The pylon provider (npub1zmwneaz...) was not discovered, likely because:
+   - Pylon not running on Computer A
+   - Pylon not announcing on `regtest` network
+5. **Job Published** - Customer successfully published NIP-90 job request
+6. **Timed Out** - No response because agent-provider wasn't running at the time
+
+### Next Steps
+
+To complete the pylon test, ensure pylon is running on Computer A:
+
+```bash
+RUST_LOG=info cargo run -p pylon --bin pylon -- start -f --mode provider
+```
+
+Then run customer again:
+
+```bash
+cargo run --bin agent-customer -- --prompt "What is the capital of France?" --no-wallet
+```
