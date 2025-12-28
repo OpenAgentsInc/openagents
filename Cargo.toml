@@ -63,6 +63,10 @@ path = "src/bin/agent_provider.rs"
 name = "agent-customer"
 path = "src/bin/agent_customer.rs"
 
+[[bin]]
+name = "autopilot-cli"
+path = "src/bin/autopilot-cli.rs"
+
 [dependencies]
 # OpenAgents crates
 autopilot = { path = "crates/autopilot" }

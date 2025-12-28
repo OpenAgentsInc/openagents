@@ -61,7 +61,7 @@ pub enum LogStatus {
     Thinking,
 }
 
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 #[allow(dead_code)]
 pub enum StartupPhase {
     CheckingOpenCode,
