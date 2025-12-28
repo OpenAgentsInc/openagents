@@ -1,6 +1,7 @@
 //! pylon doctor - Run diagnostics
 
 use clap::Args;
+use compute::domain::UnifiedIdentity;
 
 use crate::config::PylonConfig;
 use crate::provider::PylonProvider;
@@ -19,7 +20,17 @@ pub async fn run(args: DoctorArgs) -> anyhow::Result<()> {
     println!("=================\n");
 
     let config = PylonConfig::load()?;
-    let provider = PylonProvider::new(config.clone()).await?;
+    let mut provider = PylonProvider::new(config.clone()).await?;
+
+    // Try to load identity from file
+    let data_dir = config.data_path()?;
+    let identity_file = data_dir.join("identity.mnemonic");
+    if identity_file.exists() {
+        let mnemonic = std::fs::read_to_string(&identity_file)?;
+        if let Ok(identity) = UnifiedIdentity::from_mnemonic(mnemonic.trim(), "") {
+            provider.set_identity(identity);
+        }
+    }
     let diag = provider.doctor().await;
 
     // Identity check
