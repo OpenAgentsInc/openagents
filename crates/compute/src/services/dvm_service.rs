@@ -189,12 +189,214 @@ impl DvmService {
 
         // Subscribe to job requests
         let pubkey = identity.public_key_hex();
-        self.relay_service
+        let (_sub_id, mut event_rx) = self.relay_service
             .subscribe_job_requests(&pubkey)
             .await
             .map_err(|e| DvmError::RelayError(e.to_string()))?;
 
         *self.running.write().await = true;
+
+        // Spawn task to process incoming job events
+        let running = self.running.clone();
+        let identity_for_task = self.identity.clone();
+        let relay_service = self.relay_service.clone();
+        let backend_registry = self.backend_registry.clone();
+        let event_tx = self.event_tx.clone();
+        let config = self.config.clone();
+        let active_jobs = self.active_jobs.clone();
+        let wallet = self.wallet.clone();
+        let pending_invoices = self.pending_invoices.clone();
+
+        tokio::spawn(async move {
+            log::info!("Job event processing task started");
+            while let Some(event) = event_rx.recv().await {
+                if !*running.read().await {
+                    log::info!("Job event processing task stopping (service stopped)");
+                    break;
+                }
+
+                log::info!("Received job request event: {} (kind: {})", event.id, event.kind);
+
+                // Parse the job request from the event
+                match nostr::JobRequest::from_event(&event) {
+                    Ok(job_request) => {
+                        log::info!("Parsed job request from {}: {} inputs, {} params",
+                            &event.pubkey[..16],
+                            job_request.inputs.len(),
+                            job_request.params.len()
+                        );
+
+                        // Convert inputs and params to the format expected by handle_job_request
+                        let inputs: Vec<JobInput> = job_request.inputs;
+                        let params: HashMap<String, String> = job_request.params
+                            .into_iter()
+                            .map(|p| (p.key, p.value))
+                            .collect();
+
+                        // Process the job
+                        let job_id = format!("job_{}", &event.id[..16.min(event.id.len())]);
+                        let mut job = Job::new(
+                            job_id.clone(),
+                            event.id.clone(),
+                            event.kind,
+                            event.pubkey.clone(),
+                            inputs.clone(),
+                            params.clone(),
+                        );
+
+                        // Emit job received event
+                        let _ = event_tx.send(DomainEvent::JobReceived {
+                            job_id: job_id.clone(),
+                            kind: event.kind,
+                            customer_pubkey: event.pubkey.clone(),
+                            timestamp: Utc::now(),
+                        });
+
+                        // Check if payment is required
+                        let require_payment = config.require_payment;
+                        if require_payment {
+                            let wallet_guard = wallet.read().await;
+                            if let Some(ref w) = *wallet_guard {
+                                let amount_sats = config.min_price_msats / 1000;
+                                let description = format!("NIP-90 job {}", job_id);
+
+                                match w.create_invoice(amount_sats, Some(description), Some(3600)).await {
+                                    Ok(invoice_response) => {
+                                        let bolt11 = invoice_response.payment_request.clone();
+                                        let amount_msats = config.min_price_msats;
+
+                                        job.require_payment(amount_msats, bolt11.clone());
+                                        active_jobs.write().await.insert(job_id.clone(), job);
+                                        pending_invoices.write().await.insert(
+                                            job_id.clone(),
+                                            (bolt11.clone(), amount_msats),
+                                        );
+
+                                        let _ = event_tx.send(DomainEvent::InvoiceCreated {
+                                            job_id: job_id.clone(),
+                                            bolt11,
+                                            amount_msats,
+                                            timestamp: Utc::now(),
+                                        });
+                                        continue;
+                                    }
+                                    Err(e) => {
+                                        log::error!("Failed to create invoice: {}", e);
+                                        continue;
+                                    }
+                                }
+                            } else {
+                                log::error!("Payment required but no wallet configured");
+                                continue;
+                            }
+                        }
+
+                        // Process job immediately (no payment required)
+                        let start_time = std::time::Instant::now();
+                        job.set_processing();
+                        active_jobs.write().await.insert(job_id.clone(), job.clone());
+
+                        // Get the prompt from inputs
+                        let prompt = inputs.iter()
+                            .find(|i| i.input_type == nostr::InputType::Text)
+                            .map(|i| i.data.clone())
+                            .or_else(|| Some(job_request.content.clone()))
+                            .unwrap_or_default();
+
+                        log::info!("Processing job {} with prompt: {}", job_id,
+                            if prompt.len() > 50 { format!("{}...", &prompt[..50]) } else { prompt.clone() });
+
+                        // Get the backend
+                        let registry = backend_registry.read().await;
+                        if let Some(backend_id) = registry.default_id() {
+                            if let Some(backend) = registry.get(backend_id) {
+                                let request = CompletionRequest::new(
+                                    config.default_model.clone(),
+                                    prompt.clone(),
+                                )
+                                .with_max_tokens(
+                                    params.get("max_tokens")
+                                        .and_then(|s| s.parse().ok())
+                                        .unwrap_or(512)
+                                );
+
+                                let backend_guard = backend.read().await;
+                                drop(registry);
+
+                                match backend_guard.complete(request).await {
+                                    Ok(response) => {
+                                        let tokens = response.usage.as_ref().map(|u| u.total_tokens).unwrap_or(0);
+                                        log::info!("Job {} completed, {} tokens", job_id, tokens);
+
+                                        // Publish result
+                                        let identity_guard = identity_for_task.read().await;
+                                        if let Some(ref identity) = *identity_guard {
+                                            let result = nostr::JobResult::new(
+                                                event.kind,
+                                                &event.id,
+                                                &event.pubkey,
+                                                &response.text,
+                                            );
+
+                                            match result {
+                                                Ok(result) => {
+                                                    let template = nostr::create_job_result_event(&result);
+                                                    match nostr::finalize_event(&template, identity.private_key_bytes()) {
+                                                        Ok(result_event) => {
+                                                            match relay_service.publish(result_event).await {
+                                                                Ok(count) => {
+                                                                    log::info!("Published job result to {} relays", count);
+
+                                                                    // Update job status
+                                                                    if let Some(j) = active_jobs.write().await.get_mut(&job_id) {
+                                                                        j.set_completed(response.text.clone());
+                                                                    }
+
+                                                                    let duration_ms = start_time.elapsed().as_millis() as u64;
+                                                                    let _ = event_tx.send(DomainEvent::JobCompleted {
+                                                                        job_id: job_id.clone(),
+                                                                        amount_msats: None,
+                                                                        duration_ms,
+                                                                        timestamp: Utc::now(),
+                                                                    });
+                                                                }
+                                                                Err(e) => {
+                                                                    log::error!("Failed to publish job result: {}", e);
+                                                                }
+                                                            }
+                                                        }
+                                                        Err(e) => {
+                                                            log::error!("Failed to sign job result: {}", e);
+                                                        }
+                                                    }
+                                                }
+                                                Err(e) => {
+                                                    log::error!("Failed to create job result: {}", e);
+                                                }
+                                            }
+                                        }
+                                    }
+                                    Err(e) => {
+                                        log::error!("Inference failed for job {}: {}", job_id, e);
+                                        if let Some(j) = active_jobs.write().await.get_mut(&job_id) {
+                                            j.set_failed(e.to_string());
+                                        }
+                                    }
+                                }
+                            } else {
+                                log::error!("No backend found for job {}", job_id);
+                            }
+                        } else {
+                            log::error!("No default backend available for job {}", job_id);
+                        }
+                    }
+                    Err(e) => {
+                        log::warn!("Failed to parse job request from event {}: {}", event.id, e);
+                    }
+                }
+            }
+            log::info!("Job event processing task exited");
+        });
 
         // Publish NIP-89 handler info to advertise capabilities
         match self.publish_handler_info().await {
