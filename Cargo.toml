@@ -33,6 +33,7 @@ members = [
     "crates/auth",
     "crates/wgpui",
     "crates/pylon",
+    "crates/neobank",
 ]
 
 # Unified OpenAgents binary
