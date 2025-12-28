@@ -4,5 +4,7 @@
 //! to communicate via Nostr NIP-28 public chat channels.
 
 pub mod protocol;
+pub mod runner;
 
 pub use protocol::*;
+pub use runner::{ComputeClient, Scheduler, StateManager, TickExecutor, TickResult, TickTrigger};
