@@ -25,6 +25,15 @@ pub struct PylonConfig {
     /// Network for Lightning payments (mainnet, testnet, signet, regtest)
     #[serde(default = "default_network")]
     pub network: String,
+    /// Whether payments are enabled (requires wallet config)
+    #[serde(default)]
+    pub enable_payments: bool,
+    /// Spark wallet URL (e.g., "https://localhost:9737")
+    #[serde(default)]
+    pub spark_url: Option<String>,
+    /// Spark wallet auth token
+    #[serde(default)]
+    pub spark_token: Option<String>,
 }
 
 fn default_network() -> String {
@@ -51,6 +60,9 @@ impl Default for PylonConfig {
             ],
             data_dir: None,
             network: "regtest".to_string(),
+            enable_payments: false, // Disabled by default, free mode
+            spark_url: None,
+            spark_token: None,
         }
     }
 }

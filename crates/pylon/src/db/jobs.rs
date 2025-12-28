@@ -213,6 +213,64 @@ impl PylonDb {
 
         Ok(counts)
     }
+
+    // Invoice methods
+
+    /// Record a new invoice for a job
+    pub fn record_invoice(&self, job_id: &str, bolt11: &str, amount_msats: u64) -> anyhow::Result<()> {
+        let id = format!("inv_{}", &job_id[..16.min(job_id.len())]);
+
+        self.conn().execute(
+            "INSERT INTO invoices (id, job_id, bolt11, amount_msats, status)
+             VALUES (?1, ?2, ?3, ?4, 'pending')",
+            params![id, job_id, bolt11, amount_msats as i64],
+        )?;
+
+        Ok(())
+    }
+
+    /// Mark an invoice as paid
+    pub fn mark_invoice_paid(&self, job_id: &str, amount_msats: u64) -> anyhow::Result<()> {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as i64;
+
+        self.conn().execute(
+            "UPDATE invoices SET status = 'paid', paid_amount_msats = ?1, paid_at = ?2 WHERE job_id = ?3",
+            params![amount_msats as i64, now, job_id],
+        )?;
+
+        Ok(())
+    }
+
+    /// Get pending invoice count
+    pub fn count_pending_invoices(&self) -> anyhow::Result<u64> {
+        let count: i64 = self
+            .conn()
+            .query_row(
+                "SELECT COUNT(*) FROM invoices WHERE status = 'pending'",
+                [],
+                |row| row.get(0),
+            )?;
+
+        Ok(count as u64)
+    }
+
+    /// Mark expired invoices (older than given seconds)
+    pub fn expire_old_invoices(&self, max_age_secs: u64) -> anyhow::Result<u64> {
+        let cutoff = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as i64 - max_age_secs as i64;
+
+        let count = self.conn().execute(
+            "UPDATE invoices SET status = 'expired' WHERE status = 'pending' AND created_at < ?1",
+            params![cutoff],
+        )?;
+
+        Ok(count as u64)
+    }
 }
 
 #[cfg(test)]

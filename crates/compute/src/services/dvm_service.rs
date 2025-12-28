@@ -398,6 +398,178 @@ impl DvmService {
             log::info!("Job event processing task exited");
         });
 
+        // Spawn payment monitoring task if wallet is configured
+        if self.wallet.read().await.is_some() {
+            let running = self.running.clone();
+            let wallet = self.wallet.clone();
+            let pending_invoices = self.pending_invoices.clone();
+            let active_jobs = self.active_jobs.clone();
+            let event_tx = self.event_tx.clone();
+            let backend_registry = self.backend_registry.clone();
+            let relay_service = self.relay_service.clone();
+            let identity = self.identity.clone();
+            let config = self.config.clone();
+
+            tokio::spawn(async move {
+                log::info!("Payment monitoring task started");
+                let mut interval = tokio::time::interval(std::time::Duration::from_secs(5));
+
+                while *running.read().await {
+                    interval.tick().await;
+
+                    // Get list of pending invoices to check
+                    let invoices: Vec<(String, u64)> = {
+                        pending_invoices.read().await
+                            .iter()
+                            .map(|(job_id, (_, amount))| (job_id.clone(), *amount))
+                            .collect()
+                    };
+
+                    if invoices.is_empty() {
+                        continue;
+                    }
+
+                    log::debug!("Checking {} pending invoices", invoices.len());
+
+                    // Check each pending invoice
+                    for (job_id, amount_msats) in invoices {
+                        let wallet_guard = wallet.read().await;
+                        if let Some(ref w) = *wallet_guard {
+                            // List recent payments to check for matching amounts
+                            match w.list_payments(Some(50), None).await {
+                                Ok(payments) => {
+                                    let amount_sats = amount_msats / 1000;
+                                    for payment in payments {
+                                        if payment.status == PaymentStatus::Completed
+                                            && payment.amount as u64 == amount_sats
+                                        {
+                                            log::info!("Payment received for job {}: {} sats", job_id, amount_sats);
+
+                                            // Remove from pending invoices
+                                            pending_invoices.write().await.remove(&job_id);
+
+                                            // Emit payment received event
+                                            let _ = event_tx.send(DomainEvent::PaymentReceived {
+                                                job_id: job_id.clone(),
+                                                amount_msats,
+                                                timestamp: Utc::now(),
+                                            });
+
+                                            // Update job status and process
+                                            if let Some(job) = active_jobs.write().await.get_mut(&job_id) {
+                                                job.amount_msats = Some(amount_msats);
+                                                job.status = crate::domain::job::JobStatus::Pending;
+                                            }
+
+                                            // Process the job (simplified - just get and run inference)
+                                            drop(wallet_guard);
+                                            if let Some(job) = active_jobs.read().await.get(&job_id).cloned() {
+                                                let model = job.requested_model()
+                                                    .unwrap_or(&config.default_model)
+                                                    .to_string();
+
+                                                let _ = event_tx.send(DomainEvent::JobStarted {
+                                                    job_id: job_id.clone(),
+                                                    model: model.clone(),
+                                                    timestamp: Utc::now(),
+                                                });
+
+                                                if let Some(prompt) = job.text_input() {
+                                                    let registry = backend_registry.read().await;
+                                                    if let Some(backend) = registry.default() {
+                                                        let request = CompletionRequest::new(&model, prompt);
+                                                        let start_time = std::time::Instant::now();
+                                                        drop(registry);
+
+                                                        match backend.read().await.complete(request).await {
+                                                            Ok(response) => {
+                                                                let duration_ms = start_time.elapsed().as_millis() as u64;
+                                                                log::info!("Job {} completed after payment", job_id);
+
+                                                                // Update job status
+                                                                if let Some(j) = active_jobs.write().await.get_mut(&job_id) {
+                                                                    j.set_completed(response.text.clone());
+                                                                }
+
+                                                                let _ = event_tx.send(DomainEvent::JobCompleted {
+                                                                    job_id: job_id.clone(),
+                                                                    amount_msats: Some(amount_msats),
+                                                                    duration_ms,
+                                                                    timestamp: Utc::now(),
+                                                                });
+
+                                                                // Publish result
+                                                                if let Some(ref identity) = *identity.read().await {
+                                                                    if let Some(job) = active_jobs.read().await.get(&job_id) {
+                                                                        let result = nostr::JobResult::new(
+                                                                            job.kind,
+                                                                            &job.request_event_id,
+                                                                            &job.customer_pubkey,
+                                                                            &response.text,
+                                                                        );
+                                                                        if let Ok(result) = result {
+                                                                            let template = nostr::create_job_result_event(&result);
+                                                                            if let Ok(event) = nostr::finalize_event(&template, identity.private_key_bytes()) {
+                                                                                let _ = relay_service.publish(event).await;
+                                                                            }
+                                                                        }
+                                                                    }
+                                                                }
+                                                            }
+                                                            Err(e) => {
+                                                                log::error!("Inference failed for paid job {}: {}", job_id, e);
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                            break;
+                                        }
+                                    }
+                                }
+                                Err(e) => {
+                                    log::warn!("Failed to list payments: {}", e);
+                                }
+                            }
+                        }
+                    }
+
+                    // Clean up expired invoices (older than 1 hour)
+                    let now = Utc::now().timestamp();
+                    let expired: Vec<String> = {
+                        let jobs = active_jobs.read().await;
+                        pending_invoices.read().await
+                            .keys()
+                            .filter(|job_id| {
+                                if let Some(job) = jobs.get(*job_id) {
+                                    // Check if job was created more than 1 hour ago
+                                    now - job.created_at.timestamp() > 3600
+                                } else {
+                                    true // No job found, consider expired
+                                }
+                            })
+                            .cloned()
+                            .collect()
+                    };
+
+                    for job_id in expired {
+                        log::info!("Expiring invoice for job {}", job_id);
+                        pending_invoices.write().await.remove(&job_id);
+                        if let Some(j) = active_jobs.write().await.get_mut(&job_id) {
+                            j.set_failed("Invoice expired".to_string());
+                        }
+                        let _ = event_tx.send(DomainEvent::JobFailed {
+                            job_id: job_id.clone(),
+                            error: "Invoice expired".to_string(),
+                            timestamp: Utc::now(),
+                        });
+                    }
+                }
+
+                log::info!("Payment monitoring task exited");
+            });
+        }
+
         // Publish NIP-89 handler info to advertise capabilities
         match self.publish_handler_info().await {
             Ok(event_id) => {

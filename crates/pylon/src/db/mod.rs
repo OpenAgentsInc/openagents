@@ -53,6 +53,7 @@ impl PylonDb {
 
         // Run migrations in order
         self.run_migration("001_initial_schema", MIGRATION_001)?;
+        self.run_migration("002_invoices", MIGRATION_002)?;
 
         Ok(())
     }
@@ -158,6 +159,25 @@ CREATE TABLE IF NOT EXISTS tick_history (
 
 CREATE INDEX IF NOT EXISTS idx_tick_history_agent ON tick_history(agent_npub);
 CREATE INDEX IF NOT EXISTS idx_tick_history_date ON tick_history(created_at);
+"#;
+
+/// Invoices table migration
+const MIGRATION_002: &str = r#"
+-- Invoices table for payment tracking
+CREATE TABLE IF NOT EXISTS invoices (
+    id TEXT PRIMARY KEY,
+    job_id TEXT NOT NULL REFERENCES jobs(id),
+    bolt11 TEXT NOT NULL,
+    amount_msats INTEGER NOT NULL,
+    status TEXT NOT NULL CHECK(status IN ('pending', 'paid', 'expired', 'cancelled')) DEFAULT 'pending',
+    paid_amount_msats INTEGER,
+    created_at INTEGER NOT NULL DEFAULT (unixepoch()),
+    paid_at INTEGER
+);
+
+CREATE INDEX IF NOT EXISTS idx_invoices_job ON invoices(job_id);
+CREATE INDEX IF NOT EXISTS idx_invoices_status ON invoices(status);
+CREATE INDEX IF NOT EXISTS idx_invoices_created ON invoices(created_at);
 "#;
 
 #[cfg(test)]
