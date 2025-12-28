@@ -6476,6 +6476,7 @@ dependencies = [
  "futures",
  "hex",
  "nostr 0.1.0",
+ "openagents-spark",
  "rand 0.8.5",
  "rusqlite",
  "serde",
