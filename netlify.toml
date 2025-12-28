@@ -1,8 +1,10 @@
+# DEPRECATED: Demo gallery moved to ~/code/backroom
+# This configuration is no longer used. The demos/ folder has been archived.
 # Netlify Configuration for OpenAgents Demo Gallery
 # Deploy the demos/ directory as the demo gallery site
 
 [build]
-  # No build step required - static site
+  # DEPRECATED - demos folder has been moved
   publish = "demos/"
 
 [build.environment]

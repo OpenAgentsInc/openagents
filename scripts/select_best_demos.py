@@ -1,15 +1,13 @@
 #!/usr/bin/env python3
 """
-Analyze .rlog sessions and select the best ones for demo gallery.
-
-Quality criteria:
-- Completes successfully (not errors/blocked)
-- Shows interesting coding (not trivial)
-- Uses multiple tools
-- Clear narrative flow
-- Duration 15-60 minutes
-- Ends with passing tests
+DEPRECATED: Demo gallery moved to ~/code/backroom
+This script is no longer used. Demo and demos folders have been archived.
 """
+
+import sys
+print("ERROR: Demo gallery has been moved to ~/code/backroom")
+print("This script is deprecated and should not be run.")
+sys.exit(1)
 
 import os
 import re

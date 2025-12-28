@@ -1,10 +1,13 @@
 # OpenAgents Demo Gallery - Deployment Checklist
 
+> **DEPRECATED (2025-12-28):** Demo gallery has been moved to ~/code/backroom.
+> This document is kept for historical reference only.
+
 **Objective:** Deploy the autopilot demo gallery to demos.openagents.com
 
 **Estimated Time:** 1.5 hours hands-on work
 
-**Status:** Ready to deploy (95% complete, infrastructure only remaining)
+**Status:** Archived (was 95% complete, infrastructure only remaining)
 
 ---
 

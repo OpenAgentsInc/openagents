@@ -1,5 +1,8 @@
 # Autopilot Demo Gallery Deployment Guide
 
+> **DEPRECATED (2025-12-28):** Demo gallery has been moved to ~/code/backroom.
+> This document is kept for historical reference only.
+
 ## Overview
 
 This guide covers deploying the autopilot demo gallery to openagents.com, completing d-027 (Autopilot Demo + Dogfooding Funnel).
