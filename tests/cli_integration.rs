@@ -227,3 +227,171 @@ fn test_marketplace_subcommands_listed() {
         .stdout(predicate::str::contains("skills"))
         .stdout(predicate::str::contains("data"));
 }
+
+// Agent commands
+
+#[test]
+fn test_agent_help() {
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("openagents"));
+    cmd.arg("agent").arg("--help");
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("Sovereign agent commands"));
+}
+
+#[test]
+fn test_agent_subcommands_listed() {
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("openagents"));
+    cmd.arg("agent").arg("--help");
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("spawn"))
+        .stdout(predicate::str::contains("list"))
+        .stdout(predicate::str::contains("status"))
+        .stdout(predicate::str::contains("start"))
+        .stdout(predicate::str::contains("stop"))
+        .stdout(predicate::str::contains("fund"))
+        .stdout(predicate::str::contains("delete"));
+}
+
+#[test]
+fn test_agent_spawn_help() {
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("openagents"));
+    cmd.arg("agent").arg("spawn").arg("--help");
+    cmd.assert().success();
+}
+
+#[test]
+fn test_agent_list_help() {
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("openagents"));
+    cmd.arg("agent").arg("list").arg("--help");
+    cmd.assert().success();
+}
+
+#[test]
+fn test_agent_status_help() {
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("openagents"));
+    cmd.arg("agent").arg("status").arg("--help");
+    cmd.assert().success();
+}
+
+#[test]
+fn test_agent_start_help() {
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("openagents"));
+    cmd.arg("agent").arg("start").arg("--help");
+    cmd.assert().success();
+}
+
+#[test]
+fn test_agent_stop_help() {
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("openagents"));
+    cmd.arg("agent").arg("stop").arg("--help");
+    cmd.assert().success();
+}
+
+#[test]
+fn test_agent_fund_help() {
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("openagents"));
+    cmd.arg("agent").arg("fund").arg("--help");
+    cmd.assert().success();
+}
+
+#[test]
+fn test_agent_delete_help() {
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("openagents"));
+    cmd.arg("agent").arg("delete").arg("--help");
+    cmd.assert().success();
+}
+
+#[test]
+fn test_invalid_subcommand_agent() {
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("openagents"));
+    cmd.arg("agent").arg("nonexistent");
+    cmd.assert()
+        .failure()
+        .stderr(predicate::str::contains("error"));
+}
+
+// Pylon commands
+
+#[test]
+fn test_pylon_help() {
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("openagents"));
+    cmd.arg("pylon").arg("--help");
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("Pylon commands"));
+}
+
+#[test]
+fn test_pylon_subcommands_listed() {
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("openagents"));
+    cmd.arg("pylon").arg("--help");
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("init"))
+        .stdout(predicate::str::contains("start"))
+        .stdout(predicate::str::contains("stop"))
+        .stdout(predicate::str::contains("status"))
+        .stdout(predicate::str::contains("doctor"))
+        .stdout(predicate::str::contains("agent"))
+        .stdout(predicate::str::contains("earnings"));
+}
+
+#[test]
+fn test_pylon_init_help() {
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("openagents"));
+    cmd.arg("pylon").arg("init").arg("--help");
+    cmd.assert().success();
+}
+
+#[test]
+fn test_pylon_start_help() {
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("openagents"));
+    cmd.arg("pylon").arg("start").arg("--help");
+    cmd.assert().success();
+}
+
+#[test]
+fn test_pylon_stop_help() {
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("openagents"));
+    cmd.arg("pylon").arg("stop").arg("--help");
+    cmd.assert().success();
+}
+
+#[test]
+fn test_pylon_status_help() {
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("openagents"));
+    cmd.arg("pylon").arg("status").arg("--help");
+    cmd.assert().success();
+}
+
+#[test]
+fn test_pylon_doctor_help() {
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("openagents"));
+    cmd.arg("pylon").arg("doctor").arg("--help");
+    cmd.assert().success();
+}
+
+#[test]
+fn test_pylon_agent_help() {
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("openagents"));
+    cmd.arg("pylon").arg("agent").arg("--help");
+    cmd.assert().success();
+}
+
+#[test]
+fn test_pylon_earnings_help() {
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("openagents"));
+    cmd.arg("pylon").arg("earnings").arg("--help");
+    cmd.assert().success();
+}
+
+#[test]
+fn test_invalid_subcommand_pylon() {
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("openagents"));
+    cmd.arg("pylon").arg("nonexistent");
+    cmd.assert()
+        .failure()
+        .stderr(predicate::str::contains("error"));
+}
