@@ -26,7 +26,7 @@ pub struct PylonConfig {
     #[serde(default = "default_network")]
     pub network: String,
     /// Whether payments are enabled (requires wallet config)
-    #[serde(default)]
+    #[serde(default = "default_enable_payments")]
     pub enable_payments: bool,
     /// Spark wallet URL (e.g., "https://localhost:9737")
     #[serde(default)]
@@ -38,6 +38,10 @@ pub struct PylonConfig {
 
 fn default_network() -> String {
     "regtest".to_string()
+}
+
+fn default_enable_payments() -> bool {
+    true
 }
 
 impl Default for PylonConfig {
