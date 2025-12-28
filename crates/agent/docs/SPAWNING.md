@@ -102,9 +102,9 @@ async fn spawn_agent() -> anyhow::Result<()> {
 │       └── Get Spark address for funding                     │
 │       │                                                      │
 │  4. Publish NIP-SA events to relays                         │
-│       ├── kind:38000 AgentProfile                           │
-│       ├── kind:38001 AgentState (encrypted)                 │
-│       └── kind:38002 AgentSchedule                          │
+│       ├── kind:39200 AgentProfile                           │
+│       ├── kind:39201 AgentState (encrypted)                 │
+│       └── kind:39202 AgentSchedule                          │
 │       │                                                      │
 │  5. Save config to ~/.openagents/agents/{npub}.toml         │
 │       │                                                      │
@@ -119,11 +119,11 @@ async fn spawn_agent() -> anyhow::Result<()> {
 
 ## Published Events
 
-### AgentProfile (kind:38000)
+### AgentProfile (kind:39200)
 
 ```json
 {
-  "kind": 38000,
+  "kind": 39200,
   "pubkey": "<agent-pubkey>",
   "content": "{\"name\":\"ResearchBot\",\"about\":\"...\",\"capabilities\":[...]}",
   "tags": [
@@ -135,13 +135,13 @@ async fn spawn_agent() -> anyhow::Result<()> {
 }
 ```
 
-### AgentState (kind:38001)
+### AgentState (kind:39201)
 
 Initial state is empty and encrypted to the agent's pubkey:
 
 ```json
 {
-  "kind": 38001,
+  "kind": 39201,
   "pubkey": "<agent-pubkey>",
   "content": "<NIP-44 encrypted JSON>",
   "tags": [
@@ -155,11 +155,11 @@ Initial state is empty and encrypted to the agent's pubkey:
 }
 ```
 
-### AgentSchedule (kind:38002)
+### AgentSchedule (kind:39202)
 
 ```json
 {
-  "kind": 38002,
+  "kind": 39202,
   "pubkey": "<agent-pubkey>",
   "content": "",
   "tags": [

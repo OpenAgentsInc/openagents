@@ -1,36 +1,36 @@
 //! Integration test verifying that all NIP-SA types are publicly accessible
 
 use nostr::{
-    // Profile (kind:38000)
+    // Profile (kind:39200)
     KIND_AGENT_PROFILE,
-    // State (kind:38001)
+    // State (kind:39201)
     AgentStateContent, Goal, GoalStatus, MemoryEntry, KIND_AGENT_STATE,
-    // Schedule (kind:38002)
+    // Schedule (kind:39202)
     KIND_AGENT_SCHEDULE,
-    // Goals (kind:38003)
+    // Goals (kind:39203)
     KIND_PUBLIC_GOALS,
-    // Tick (kinds:38010, 38011)
+    // Tick (kinds:39210, 39211)
     KIND_TICK_REQUEST, KIND_TICK_RESULT,
-    // Trajectory (kinds:38030, 38031)
+    // Trajectory (kinds:39230, 39231)
     StepType, TrajectoryEventContent, TrajectorySessionContent, KIND_TRAJECTORY_EVENT,
     KIND_TRAJECTORY_SESSION,
-    // Skill (kinds:38020, 38021)
+    // Skill (kinds:39220, 39221)
     SkillLicenseContent, KIND_SKILL_DELIVERY, KIND_SKILL_LICENSE,
 };
 
 #[test]
 fn test_nip_sa_event_kinds() {
     // Verify all event kind constants are accessible and have correct values
-    assert_eq!(KIND_AGENT_PROFILE, 38000);
-    assert_eq!(KIND_AGENT_STATE, 38001);
-    assert_eq!(KIND_AGENT_SCHEDULE, 38002);
-    assert_eq!(KIND_PUBLIC_GOALS, 38003);
-    assert_eq!(KIND_TICK_REQUEST, 38010);
-    assert_eq!(KIND_TICK_RESULT, 38011);
-    assert_eq!(KIND_SKILL_LICENSE, 38020);
-    assert_eq!(KIND_SKILL_DELIVERY, 38021);
-    assert_eq!(KIND_TRAJECTORY_SESSION, 38030);
-    assert_eq!(KIND_TRAJECTORY_EVENT, 38031);
+    assert_eq!(KIND_AGENT_PROFILE, 39200);
+    assert_eq!(KIND_AGENT_STATE, 39201);
+    assert_eq!(KIND_AGENT_SCHEDULE, 39202);
+    assert_eq!(KIND_PUBLIC_GOALS, 39203);
+    assert_eq!(KIND_TICK_REQUEST, 39210);
+    assert_eq!(KIND_TICK_RESULT, 39211);
+    assert_eq!(KIND_SKILL_LICENSE, 39220);
+    assert_eq!(KIND_SKILL_DELIVERY, 39221);
+    assert_eq!(KIND_TRAJECTORY_SESSION, 39230);
+    assert_eq!(KIND_TRAJECTORY_EVENT, 39231);
 }
 
 #[test]

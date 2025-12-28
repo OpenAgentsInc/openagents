@@ -145,11 +145,11 @@ This section tracks which user stories have implemented tests.
 | 5.5.3 | Review PRs with trajectory links in GUI | Unit | `crates/gitafter/src/gui/mod.rs` |
 | 5.5.4 | Navigate with keyboard shortcuts | Unit | `crates/gitafter/src/gui/mod.rs` |
 | **d-006: NIP-SA (Sovereign Agents Protocol)** ||||
-| 6.1.1 | Publish an AgentProfile (kind:38000) | Integration | `crates/nostr/tests/integration/nip_sa.rs` |
+| 6.1.1 | Publish an AgentProfile (kind:39200) | Integration | `crates/nostr/tests/integration/nip_sa.rs` |
 | 6.1.2 | View an agent profile | Integration | `crates/nostr/tests/integration/nip_sa.rs` |
 | 6.1.3 | Update the agent profile | Integration | `crates/nostr/tests/integration/nip_sa.rs` |
 | 6.1.4 | See agent threshold key configuration | Integration | `crates/nostr/tests/integration/nip_sa.rs` |
-| 6.2.1 | Store encrypted state (kind:38001) | Integration | `crates/nostr/tests/integration/nip_sa.rs` |
+| 6.2.1 | Store encrypted state (kind:39201) | Integration | `crates/nostr/tests/integration/nip_sa.rs` |
 | 6.2.2 | Retrieve encrypted state on startup | Integration | `crates/nostr/tests/integration/nip_sa.rs` |
 | 6.2.3 | Inspect (but not decrypt) state metadata | Unit | `crates/nostr/core/src/nip_sa/state.rs` |
 | 6.2.4 | Compact old state events | Unit | `crates/nostr/core/src/nip_sa/state.rs` |
@@ -157,12 +157,12 @@ This section tracks which user stories have implemented tests.
 | 6.3.2 | Set event triggers for schedule | Integration | `crates/nostr/tests/integration/nip_sa.rs` |
 | 6.3.3 | Pause/resume schedule | Unit | `crates/nostr/core/src/nip_sa/schedule.rs` |
 | 6.3.4 | Set business hours | Unit | `crates/nostr/core/src/nip_sa/schedule.rs` |
-| 6.4.1 | Publish TickRequest (kind:38010) | Integration | `crates/nostr/tests/integration/nip_sa.rs` |
-| 6.4.2 | Publish TickResult (kind:38011) | Integration | `crates/nostr/tests/integration/nip_sa.rs` |
+| 6.4.1 | Publish TickRequest (kind:39210) | Integration | `crates/nostr/tests/integration/nip_sa.rs` |
+| 6.4.2 | Publish TickResult (kind:39211) | Integration | `crates/nostr/tests/integration/nip_sa.rs` |
 | 6.4.3 | View an agent's tick history | Unit | `crates/nostr/core/src/nip_sa/tick.rs` |
 | 6.4.4 | Include trajectory hash in TickResult | Unit | `crates/nostr/core/src/nip_sa/tick.rs` |
-| 6.5.1 | Publish TrajectorySession (kind:38030) | Integration | `crates/nostr/tests/integration/nip_sa.rs` |
-| 6.5.2 | Publish TrajectoryEvents (kind:38031) | Integration | `crates/nostr/tests/integration/nip_sa.rs` |
+| 6.5.1 | Publish TrajectorySession (kind:39230) | Integration | `crates/nostr/tests/integration/nip_sa.rs` |
+| 6.5.2 | Publish TrajectoryEvents (kind:39231) | Integration | `crates/nostr/tests/integration/nip_sa.rs` |
 | 6.5.3 | Fetch and verify an agent's trajectory | Unit | `crates/nostr/core/src/nip_sa/trajectory.rs` |
 | 6.5.4 | Redact sensitive content from trajectories | Unit | `crates/nostr/core/src/nip_sa/trajectory.rs` |
 | **d-007: FROSTR (Threshold Signatures)** ||||
@@ -859,7 +859,7 @@ This section tracks which user stories have implemented tests.
 
 | ID | Priority | User Story |
 |----|----------|------------|
-| 6.1.1 | P0 | As an agent operator, I want to publish an AgentProfile (kind:38000), so that the agent is discoverable. |
+| 6.1.1 | P0 | As an agent operator, I want to publish an AgentProfile (kind:39200), so that the agent is discoverable. |
 | 6.1.2 | P0 | As a user, I want to view an agent's profile, so that I understand its capabilities. |
 | 6.1.3 | P1 | As an agent operator, I want to update the agent's profile, so that I can change capabilities. |
 | 6.1.4 | P1 | As a user, I want to see an agent's threshold key configuration, so that I know its security model. |
@@ -868,7 +868,7 @@ This section tracks which user stories have implemented tests.
 
 | ID | Priority | User Story |
 |----|----------|------------|
-| 6.2.1 | P0 | As an agent, I want to store my encrypted state (kind:38001), so that I persist between runs. |
+| 6.2.1 | P0 | As an agent, I want to store my encrypted state (kind:39201), so that I persist between runs. |
 | 6.2.2 | P0 | As an agent, I want to retrieve my encrypted state on startup, so that I resume where I left off. |
 | 6.2.3 | P1 | As an agent operator, I want to inspect (but not decrypt) state metadata, so that I can monitor size/frequency. |
 | 6.2.4 | P2 | As an agent, I want to compact old state events, so that I don't bloat the relay. |
@@ -886,8 +886,8 @@ This section tracks which user stories have implemented tests.
 
 | ID | Priority | User Story |
 |----|----------|------------|
-| 6.4.1 | P0 | As an agent, I want to publish a TickRequest (kind:38010) when I wake, so that my activity is logged. |
-| 6.4.2 | P0 | As an agent, I want to publish a TickResult (kind:38011) when I complete, so that outcomes are recorded. |
+| 6.4.1 | P0 | As an agent, I want to publish a TickRequest (kind:39210) when I wake, so that my activity is logged. |
+| 6.4.2 | P0 | As an agent, I want to publish a TickResult (kind:39211) when I complete, so that outcomes are recorded. |
 | 6.4.3 | P1 | As an observer, I want to see an agent's tick history, so that I can monitor its activity. |
 | 6.4.4 | P1 | As an agent, I want to include a trajectory hash in my TickResult, so that my reasoning is verifiable. |
 
@@ -895,8 +895,8 @@ This section tracks which user stories have implemented tests.
 
 | ID | Priority | User Story |
 |----|----------|------------|
-| 6.5.1 | P0 | As an agent, I want to publish TrajectorySession (kind:38030) with my decision history, so that my work is transparent. |
-| 6.5.2 | P0 | As an agent, I want to publish TrajectoryEvents (kind:38031) for each step, so that reasoning is traceable. |
+| 6.5.1 | P0 | As an agent, I want to publish TrajectorySession (kind:39230) with my decision history, so that my work is transparent. |
+| 6.5.2 | P0 | As an agent, I want to publish TrajectoryEvents (kind:39231) for each step, so that reasoning is traceable. |
 | 6.5.3 | P1 | As a reviewer, I want to fetch and verify an agent's trajectory, so that I can audit its work. |
 | 6.5.4 | P2 | As an agent, I want to redact sensitive content from trajectories, so that secrets aren't leaked. |
 

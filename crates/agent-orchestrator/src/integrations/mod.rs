@@ -5,7 +5,7 @@
 //! - **Directives**: Load and inject active directives into agent context
 //! - **Autopilot**: Issue tracking hooks for claim/complete workflows
 //! - **Trajectory**: APM metrics and action logging for performance tracking
-//! - **Marketplace**: Skill licensing and usage tracking (NIP-SA kinds 38020, 38021)
+//! - **Marketplace**: Skill licensing and usage tracking (NIP-SA kinds 39220, 39221)
 //! - **Advanced**: FROSTR threshold signatures, NIP-SA solver agents, multi-backend routing
 //! - **FROSTR Bridge**: Real threshold signing with FROSTR (feature-gated)
 //! - **Spark Bridge**: Bitcoin payment provider integration (feature-gated)

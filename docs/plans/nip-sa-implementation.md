@@ -5,21 +5,21 @@
 ### Implemented (Types Only)
 | Component | File | Status |
 |-----------|------|--------|
-| Agent Profile (kind:38000) | `nip_sa/profile.rs` | Types complete |
-| Agent State (kind:38001) | `nip_sa/state.rs` | Types + encryption complete |
-| Agent Schedule (kind:38002) | `nip_sa/schedule.rs` | Types complete |
-| Agent Goals (kind:38003) | `nip_sa/goals.rs` | Types complete |
-| Tick Request (kind:38010) | `nip_sa/tick.rs` | Types complete |
-| Tick Result (kind:38011) | `nip_sa/tick.rs` | Types complete |
-| Skill License (kind:38020) | `nip_sa/skill.rs` | Types complete |
-| Skill Delivery (kind:38021) | `nip_sa/skill.rs` | Types complete |
-| Trajectory Session (kind:38030) | `nip_sa/trajectory.rs` | Types complete |
-| Trajectory Event (kind:38031) | `nip_sa/trajectory.rs` | Types complete |
+| Agent Profile (kind:39200) | `nip_sa/profile.rs` | Types complete |
+| Agent State (kind:39201) | `nip_sa/state.rs` | Types + encryption complete |
+| Agent Schedule (kind:39202) | `nip_sa/schedule.rs` | Types complete |
+| Agent Goals (kind:39203) | `nip_sa/goals.rs` | Types complete |
+| Tick Request (kind:39210) | `nip_sa/tick.rs` | Types complete |
+| Tick Result (kind:39211) | `nip_sa/tick.rs` | Types complete |
+| Skill License (kind:39220) | `nip_sa/skill.rs` | Types complete |
+| Skill Delivery (kind:39221) | `nip_sa/skill.rs` | Types complete |
+| Trajectory Session (kind:39230) | `nip_sa/trajectory.rs` | Types complete |
+| Trajectory Event (kind:39231) | `nip_sa/trajectory.rs` | Types complete |
 | Budget Enforcement | `nip_sa/budget.rs` | Fully working (14 tests) |
 
 ### Missing (Execution Layer)
 - **Agent Runner** - No binary to execute ticks
-- **Heartbeat Scheduler** - No monitoring of kind:38002
+- **Heartbeat Scheduler** - No monitoring of kind:39202
 - **Event Triggers** - No subscription to mentions/DMs/zaps
 - **State Cycle** - No fetch/decrypt/update/encrypt/publish flow
 - **Trajectory Publishing** - No integration with autopilot
@@ -45,18 +45,18 @@
 
 //! Agent Runner - Executes NIP-SA tick cycles
 //!
-//! The runner monitors an agent's schedule (kind:38002) and triggers ticks
+//! The runner monitors an agent's schedule (kind:39202) and triggers ticks
 //! based on heartbeat intervals or event triggers (mentions, DMs, zaps).
 //!
 //! ## Tick Execution Flow
 //!
 //! 1. Trigger received (heartbeat timer or event)
-//! 2. Publish TickRequest (kind:38010)
-//! 3. Fetch encrypted state (kind:38001)
+//! 2. Publish TickRequest (kind:39210)
+//! 3. Fetch encrypted state (kind:39201)
 //! 4. Decrypt state via threshold ECDH
 //! 5. Run perceive/reason/act cycle
 //! 6. Encrypt and publish updated state
-//! 7. Publish TickResult (kind:38011)
+//! 7. Publish TickResult (kind:39211)
 
 use anyhow::Result;
 use clap::Parser;
@@ -100,7 +100,7 @@ struct Args {
 #[tokio::main]
 async fn main() -> Result<()> {
     // Parse args, connect to relay
-    // Fetch agent's schedule (kind:38002)
+    // Fetch agent's schedule (kind:39202)
     // Start tick loop based on schedule
     Ok(())
 }
@@ -188,7 +188,7 @@ cargo run --bin agent-runner -- --agent <pubkey> --max-ticks 10
 
 ## Phase 2: Heartbeat Scheduler
 
-**Goal:** Watch agent's schedule (kind:38002) and trigger ticks on heartbeat interval
+**Goal:** Watch agent's schedule (kind:39202) and trigger ticks on heartbeat interval
 
 ### Implementation
 
@@ -448,13 +448,13 @@ impl TrajectoryRecorder {
     }
 
     async fn publish(&self, relay: &RelayPool, keys: &Keys) -> Result<String> {
-        // Publish session event (kind:38030)
+        // Publish session event (kind:39230)
         let session = TrajectorySession::new(&self.agent_pubkey)
             .with_runner(&self.runner_pubkey);
         let session_event = session.to_event(keys)?;
         relay.publish_event(&session_event, Duration::from_secs(5)).await?;
 
-        // Publish step events (kind:38031)
+        // Publish step events (kind:39231)
         for (i, step) in self.steps.iter().enumerate() {
             let step_event = TrajectoryEvent::new(&session_event.id, i as u32, step.clone())
                 .to_event(keys)?;
@@ -641,7 +641,7 @@ enum AgentCommands {
 - [ ] Publish TickResult at end
 
 ### Phase 2: Heartbeat Scheduler
-- [ ] Fetch schedule (kind:38002)
+- [ ] Fetch schedule (kind:39202)
 - [ ] Parse heartbeat interval
 - [ ] Implement timer loop
 - [ ] Respect business hours
@@ -655,7 +655,7 @@ enum AgentCommands {
 - [ ] Send trigger to tick executor
 
 ### Phase 4: State Cycle
-- [ ] Fetch encrypted state (kind:38001)
+- [ ] Fetch encrypted state (kind:39201)
 - [ ] Decrypt with agent keys (single-key for now)
 - [ ] Update state after tick
 - [ ] Encrypt updated state

@@ -133,8 +133,8 @@ impl NostrClient {
                 kinds::WORK_ASSIGNMENT,
                 kinds::BOUNTY_OFFER,
                 kinds::BOUNTY_CLAIM,
-                38030, // Trajectory Session
-                38031, // Trajectory Event
+                39230, // Trajectory Session (NIP-SA)
+                39231, // Trajectory Event (NIP-SA)
             ],
             "limit": 100
         })];

@@ -1,10 +1,10 @@
-//! Agent Goals Event (kind:38003)
+//! Agent Goals Event (kind:39203)
 //!
 //! For agents that want to expose their goals publicly (for transparency or
 //! coordination), a separate goals event can be published.
 //!
 //! This is optional - goals can also be kept private in the encrypted state
-//! event (kind:38001). Public goals enable coordination with other agents and
+//! event (kind:39201). Public goals enable coordination with other agents and
 //! build trust with humans.
 //!
 //! ## Tags
@@ -35,7 +35,7 @@ use thiserror::Error;
 pub use super::state::{Goal, GoalStatus};
 
 /// Kind for public goals event
-pub const KIND_PUBLIC_GOALS: u16 = 38003;
+pub const KIND_PUBLIC_GOALS: u16 = 39203;
 
 /// Errors that can occur during NIP-SA public goals operations
 #[derive(Debug, Error)]

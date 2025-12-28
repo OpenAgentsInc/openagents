@@ -1,9 +1,9 @@
-//! Trajectory Events (kinds:38030, 38031)
+//! Trajectory Events (kinds:39230, 39231)
 //!
 //! Trajectory events provide a transparent record of agent decision-making.
 //! They map to the TrajectoryCollector infrastructure in autopilot.
 //!
-//! ## Trajectory Session (kind:38030)
+//! ## Trajectory Session (kind:39230)
 //!
 //! Addressable event that describes a complete trajectory session.
 //!
@@ -27,7 +27,7 @@
 //! }
 //! ```
 //!
-//! ## Trajectory Event (kind:38031)
+//! ## Trajectory Event (kind:39231)
 //!
 //! Individual step in the trajectory.
 //!
@@ -73,10 +73,10 @@ use std::sync::OnceLock;
 use thiserror::Error;
 
 /// Kind for trajectory session event
-pub const KIND_TRAJECTORY_SESSION: u16 = 38030;
+pub const KIND_TRAJECTORY_SESSION: u16 = 39230;
 
 /// Kind for trajectory event
-pub const KIND_TRAJECTORY_EVENT: u16 = 38031;
+pub const KIND_TRAJECTORY_EVENT: u16 = 39231;
 
 /// Errors that can occur during NIP-SA trajectory operations
 #[derive(Debug, Error)]

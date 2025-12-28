@@ -183,7 +183,7 @@ async fn test_agent_profile_publish_and_fetch() {
     relay.disconnect().await.ok();
 
     // 9. Verify kind constant
-    assert_eq!(KIND_AGENT_PROFILE, 38000);
+    assert_eq!(KIND_AGENT_PROFILE, 39200);
 }
 
 #[tokio::test]
@@ -217,7 +217,7 @@ async fn test_agent_schedule_replaceable_semantics() {
     assert!(tags.iter().any(|t| t[0] == "trigger" && t[1] == "dm"));
 
     // 5. Verify kind constant
-    assert_eq!(KIND_AGENT_SCHEDULE, 38002);
+    assert_eq!(KIND_AGENT_SCHEDULE, 39202);
 }
 
 #[tokio::test]
@@ -439,8 +439,8 @@ async fn test_tick_request_result_flow() {
     relay.disconnect().await.ok();
 
     // 9. Verify kind constants
-    assert_eq!(KIND_TICK_REQUEST, 38010);
-    assert_eq!(KIND_TICK_RESULT, 38011);
+    assert_eq!(KIND_TICK_REQUEST, 39210);
+    assert_eq!(KIND_TICK_RESULT, 39211);
 }
 
 #[tokio::test]
@@ -610,19 +610,19 @@ async fn test_trajectory_session_and_events() {
     relay.disconnect().await.ok();
 
     // 7. Verify kind constants
-    assert_eq!(KIND_TRAJECTORY_SESSION, 38030);
-    assert_eq!(KIND_TRAJECTORY_EVENT, 38031);
+    assert_eq!(KIND_TRAJECTORY_SESSION, 39230);
+    assert_eq!(KIND_TRAJECTORY_EVENT, 39231);
 }
 
 #[tokio::test]
 async fn test_nip_sa_event_kinds_are_correct() {
     // Verify all NIP-SA event kinds match the specification
-    assert_eq!(KIND_AGENT_PROFILE, 38000);
-    assert_eq!(KIND_AGENT_SCHEDULE, 38002);
-    assert_eq!(KIND_TICK_REQUEST, 38010);
-    assert_eq!(KIND_TICK_RESULT, 38011);
-    assert_eq!(KIND_TRAJECTORY_SESSION, 38030);
-    assert_eq!(KIND_TRAJECTORY_EVENT, 38031);
+    assert_eq!(KIND_AGENT_PROFILE, 39200);
+    assert_eq!(KIND_AGENT_SCHEDULE, 39202);
+    assert_eq!(KIND_TICK_REQUEST, 39210);
+    assert_eq!(KIND_TICK_RESULT, 39211);
+    assert_eq!(KIND_TRAJECTORY_SESSION, 39230);
+    assert_eq!(KIND_TRAJECTORY_EVENT, 39231);
 }
 
 #[tokio::test]

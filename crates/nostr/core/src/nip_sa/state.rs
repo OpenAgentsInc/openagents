@@ -1,4 +1,4 @@
-//! Agent State Event (kind:38001)
+//! Agent State Event (kind:39201)
 //!
 //! Agent state is stored as an addressable event with NIP-44 encrypted content.
 //! State includes goals, memory, pending tasks, beliefs, and other persistent data.
@@ -64,7 +64,7 @@ use thiserror::Error;
 use crate::nip44;
 
 /// Kind for agent state event
-pub const KIND_AGENT_STATE: u16 = 38001;
+pub const KIND_AGENT_STATE: u16 = 39201;
 
 /// Current state schema version
 pub const STATE_VERSION: u32 = 1;

@@ -914,18 +914,18 @@ Agents have their own Nostr identity (pubkey) but can't unilaterally sign events
 
 | Kind | Type | Event |
 |------|------|-------|
-| 38000 | Addressable | Agent Profile |
-| 38001 | Addressable | Agent State (encrypted) |
-| 38002 | Addressable | Agent Schedule |
-| 38003 | Addressable | Public Goals |
-| 38010 | Regular | Tick Request |
-| 38011 | Regular | Tick Result |
-| 38020 | Addressable | Skill License |
-| 38021 | Ephemeral | Skill Delivery |
-| 38030 | Addressable | Trajectory Session |
-| 38031 | Regular | Trajectory Event |
+| 39200 | Addressable | Agent Profile |
+| 39201 | Addressable | Agent State (encrypted) |
+| 39202 | Addressable | Agent Schedule |
+| 39203 | Addressable | Public Goals |
+| 39210 | Regular | Tick Request |
+| 39211 | Regular | Tick Result |
+| 39220 | Addressable | Skill License |
+| 39221 | Ephemeral | Skill Delivery |
+| 39230 | Addressable | Trajectory Session |
+| 39231 | Regular | Trajectory Event |
 
-### Agent Profile (kind:38000)
+### Agent Profile (kind:39200)
 
 Describes the agent's identity, capabilities, and threshold signature configuration.
 
@@ -968,7 +968,7 @@ let tags = profile.build_tags();
 - `SemiAutonomous`: Agent requires approval for high-stakes actions
 - `Supervised`: Agent requires human review for most actions
 
-### Agent State (kind:38001)
+### Agent State (kind:39201)
 
 Encrypted storage for agent's internal state: goals, memory, beliefs, wallet balance.
 
@@ -1013,7 +1013,7 @@ let encrypted_content = state.encrypt(&sender_sk, &agent_pk)?;
 - `wallet_balance_sats`: Available satoshis
 - `tick_count`: Number of execution cycles
 
-### Agent Schedule (kind:38002)
+### Agent Schedule (kind:39202)
 
 Defines when and how the agent should be triggered.
 
@@ -1039,7 +1039,7 @@ let tags = schedule.build_tags();
 - `Zap`: When agent receives zap
 - `Custom(u32)`: Custom event kind
 
-### Public Goals (kind:38003)
+### Public Goals (kind:39203)
 
 Optional public exposure of agent goals for transparency.
 
@@ -1063,7 +1063,7 @@ let active = content.active_goals();
 let prioritized = content.goals_by_priority();
 ```
 
-### Tick Events (kinds:38010, 38011)
+### Tick Events (kinds:39210, 39211)
 
 Track agent execution cycles: inputs, processing, outputs.
 
@@ -1074,11 +1074,11 @@ use nostr::{
     KIND_TICK_REQUEST, KIND_TICK_RESULT,
 };
 
-// Tick Request (kind:38010) - marks start of execution
+// Tick Request (kind:39210) - marks start of execution
 let request = TickRequest::new("runner_pubkey", TickTrigger::Heartbeat);
 let tags = request.build_tags();
 
-// Tick Result (kind:38011) - reports outcome
+// Tick Result (kind:39211) - reports outcome
 let action1 = TickAction::new("post")
     .with_id("event-id-1");
 let action2 = TickAction::new("dm")
@@ -1111,7 +1111,7 @@ let tags = result.build_tags();
 - Actions taken
 - Duration
 
-### Trajectory Events (kinds:38030, 38031)
+### Trajectory Events (kinds:39230, 39231)
 
 Transparent record of agent decision-making process.
 
@@ -1123,7 +1123,7 @@ use nostr::{
     KIND_TRAJECTORY_SESSION, KIND_TRAJECTORY_EVENT,
 };
 
-// Session (kind:38030) - describes complete trajectory
+// Session (kind:39230) - describes complete trajectory
 let session_content = TrajectorySessionContent::new(
     "session-123",
     1703000000,
@@ -1139,7 +1139,7 @@ let session = TrajectorySession::new(
     TrajectoryVisibility::Public,
 );
 
-// Individual events (kind:38031) - each step in trajectory
+// Individual events (kind:39231) - each step in trajectory
 let event_content = TrajectoryEventContent::new(StepType::ToolUse)
     .with_data("tool", serde_json::json!("Read"))
     .with_data("input", serde_json::json!({"file_path": "/path"}));
@@ -1162,7 +1162,7 @@ let event = TrajectoryEvent::new(
 - `Public`: NIP-28 channel (fully transparent)
 - `Private`: NIP-EE group (encrypted, controlled access)
 
-### Skill Events (kinds:38020, 38021)
+### Skill Events (kinds:39220, 39221)
 
 Marketplace-based capability acquisition with licenses.
 
@@ -1173,7 +1173,7 @@ use nostr::{
     KIND_SKILL_LICENSE, KIND_SKILL_DELIVERY,
 };
 
-// License (kind:38020) - marketplace issues license
+// License (kind:39220) - marketplace issues license
 let license_content = SkillLicenseContent::new(
     "skill-123",
     "web-scraper",
@@ -1200,7 +1200,7 @@ license.validate(current_time)?;
 // Check capabilities
 assert!(license.content.has_capability("fetch"));
 
-// Delivery (kind:38021) - encrypted skill content
+// Delivery (kind:39221) - encrypted skill content
 let delivery_content = SkillDeliveryContent::new(
     "skill-123",
     "fn fetch(url: &str) { ... }",

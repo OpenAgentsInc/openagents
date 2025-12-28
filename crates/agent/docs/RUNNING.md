@@ -51,7 +51,7 @@ Each tick follows the perceive-think-act pattern:
 │                                                              │
 │  1. TRIGGER (heartbeat or event arrives)                    │
 │       ↓                                                      │
-│  2. Fetch + decrypt AgentState (kind:38001)                 │
+│  2. Fetch + decrypt AgentState (kind:39201)                 │
 │       ↓                                                      │
 │  3. Check wallet balance, update lifecycle                  │
 │       ↓                                                      │
@@ -132,7 +132,7 @@ The agent fetches its encrypted state from Nostr:
 ```rust
 // Query for state event
 let filters = vec![json!({
-    "kinds": [38001],
+    "kinds": [39201],
     "authors": [agent_pubkey],
     "#d": ["state"],
     "limit": 1
@@ -194,7 +194,7 @@ let encrypted = state.encrypt(
 
 // Publish event
 let template = EventTemplate {
-    kind: 38001,
+    kind: 39201,
     tags: state.build_tags(),
     content: encrypted,
     ..
@@ -264,8 +264,8 @@ Every tick publishes a transparent execution record for verification and debuggi
 
 | Kind | Name | Purpose |
 |------|------|---------|
-| 38030 | TrajectorySession | Run metadata with hash |
-| 38031 | TrajectoryEvent | Individual execution steps |
+| 39230 | TrajectorySession | Run metadata with hash |
+| 39231 | TrajectoryEvent | Individual execution steps |
 
 ### What Gets Recorded
 
@@ -297,7 +297,7 @@ session_content.verify_hash(&event_jsons)?; // Throws if mismatch
 ```rust
 // Query trajectory session for a tick
 let filters = vec![json!({
-    "kinds": [38030],
+    "kinds": [39230],
     "authors": [agent_pubkey],
     "#tick": [tick_request_id],
     "limit": 1
@@ -305,7 +305,7 @@ let filters = vec![json!({
 
 // Query trajectory events for a session
 let filters = vec![json!({
-    "kinds": [38031],
+    "kinds": [39231],
     "#session": [session_id]
 })];
 ```

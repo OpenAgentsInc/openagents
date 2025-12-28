@@ -97,11 +97,11 @@ A single BIP39 seed phrase generates:
 ### Sovereign Agents (NIP-SA Protocol)
 
 Agents that own themselves:
-- **kind:38000** — Agent profile with threshold key configuration
-- **kind:38001** — Encrypted agent state (goals, memory, budget)
-- **kind:38002** — Heartbeat schedule and event triggers
-- **kind:38010/38011** — Tick lifecycle (start/complete)
-- **kind:38030/38031** — Trajectory sessions and events
+- **kind:39200** — Agent profile with threshold key configuration
+- **kind:39201** — Encrypted agent state (goals, memory, budget)
+- **kind:39202** — Heartbeat schedule and event triggers
+- **kind:39210/39211** — Tick lifecycle (start/complete)
+- **kind:39230/39231** — Trajectory sessions and events
 
 ### Agent-Native Git (GitAfter)
 

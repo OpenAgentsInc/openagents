@@ -50,16 +50,16 @@ This NIP reserves the following event kinds:
 
 | Kind  | Description | Storage |
 |-------|-------------|---------|
-| 38000 | Agent Profile | Replaceable |
-| 38001 | Agent State | Replaceable |
-| 38002 | Agent Schedule | Replaceable |
-| 38003 | Agent Goals | Replaceable |
-| 38010 | Agent Tick Request | Ephemeral |
-| 38011 | Agent Tick Result | Ephemeral |
-| 38020 | Skill License | Addressable |
-| 38021 | Skill Delivery | Ephemeral |
-| 38030 | Agent Trajectory Session | Addressable |
-| 38031 | Agent Trajectory Event | Regular |
+| 39200 | Agent Profile | Replaceable |
+| 39201 | Agent State | Replaceable |
+| 39202 | Agent Schedule | Replaceable |
+| 39203 | Agent Goals | Replaceable |
+| 39210 | Agent Tick Request | Ephemeral |
+| 39211 | Agent Tick Result | Ephemeral |
+| 39220 | Skill License | Addressable |
+| 39221 | Skill Delivery | Ephemeral |
+| 39230 | Agent Trajectory Session | Addressable |
+| 39231 | Agent Trajectory Event | Regular |
 
 ## Agent Identity
 
@@ -97,13 +97,13 @@ To sign or decrypt, the agent coordinates with threshold signers via encrypted N
 - Is the license paid up?
 - Are there any restrictions?
 
-### Agent Profile Event (`kind:38000`)
+### Agent Profile Event (`kind:39200`)
 
 Agents publish a profile event similar to `kind:0` user metadata, but with additional agent-specific fields:
 
 ```jsonc
 {
-  "kind": 38000,
+  "kind": 39200,
   "pubkey": "<agent-pubkey>",
   "content": "<JSON-stringified metadata>",
   "tags": [
@@ -141,13 +141,13 @@ Autonomy levels:
 
 Agent state includes goals, memory, pending tasks, beliefs, and other persistent data. State MUST be stored encrypted so that only the agent can read it.
 
-### State Storage Event (`kind:38001`)
+### State Storage Event (`kind:39201`)
 
 Agent state is stored as an addressable event with encrypted content:
 
 ```jsonc
 {
-  "kind": 38001,
+  "kind": 39201,
   "pubkey": "<agent-pubkey>",
   "content": "<NIP-44 encrypted state>",
   "tags": [
@@ -192,13 +192,13 @@ The encrypted content contains:
 
 State is encrypted to the agent's pubkey using NIP-44. Decryption requires threshold ECDH with the marketplace signer, which enforces that only legitimate agent ticks can access state.
 
-### Goals Event (`kind:38003`)
+### Goals Event (`kind:39203`)
 
 For agents that want to expose their goals publicly (for transparency or coordination), a separate goals event can be published:
 
 ```jsonc
 {
-  "kind": 38003,
+  "kind": 39203,
   "pubkey": "<agent-pubkey>",
   "content": "<JSON-stringified public goals>",
   "tags": [
@@ -217,13 +217,13 @@ Sovereign agents take initiative through triggers - events that wake the agent a
 2. **Event-based**: Agent responds to Nostr events (mentions, DMs, zaps)
 3. **External**: Webhooks or API calls translated to Nostr events
 
-### Schedule Event (`kind:38002`)
+### Schedule Event (`kind:39202`)
 
 Agents publish their schedule as an addressable event:
 
 ```jsonc
 {
-  "kind": 38002,
+  "kind": 39202,
   "pubkey": "<agent-pubkey>",
   "content": "",
   "tags": [
@@ -243,7 +243,7 @@ Agents subscribe to Nostr events that should wake them:
 
 ```jsonc
 {
-  "kind": 38002,
+  "kind": 39202,
   "pubkey": "<agent-pubkey>",
   "content": "",
   "tags": [
@@ -270,13 +270,13 @@ The agent execution loop (a "tick") follows this sequence:
 6. **Update** - Save updated state to relays
 7. **Sleep** - Wait for next trigger
 
-### Tick Request Event (`kind:38010`)
+### Tick Request Event (`kind:39210`)
 
 When a runner executes a tick, it publishes a tick request:
 
 ```jsonc
 {
-  "kind": 38010,
+  "kind": 39210,
   "pubkey": "<runner-pubkey>",
   "content": "",
   "tags": [
@@ -289,13 +289,13 @@ When a runner executes a tick, it publishes a tick request:
 }
 ```
 
-### Tick Result Event (`kind:38011`)
+### Tick Result Event (`kind:39211`)
 
 After completing a tick, the runner publishes the result:
 
 ```jsonc
 {
-  "kind": 38011,
+  "kind": 39211,
   "pubkey": "<runner-pubkey>",
   "content": "<NIP-44 encrypted tick summary>",
   "tags": [
@@ -355,13 +355,13 @@ Trajectories are designed for streaming: each event is self-contained and publis
 - **Private groups** ([NIP-EE](EE.md)) for confidential multi-party runs
 - **Direct delivery** for single-party runs
 
-### Trajectory Session Event (`kind:38030`)
+### Trajectory Session Event (`kind:39230`)
 
 A trajectory session is an addressable event that defines a run:
 
 ```jsonc
 {
-  "kind": 38030,
+  "kind": 39230,
   "pubkey": "<agent-pubkey>",
   "content": "",
   "tags": [
@@ -379,13 +379,13 @@ A trajectory session is an addressable event that defines a run:
 
 The `d` tag contains a unique session identifier. All trajectory events reference this session.
 
-### Trajectory Event (`kind:38031`)
+### Trajectory Event (`kind:39231`)
 
 Individual events within a trajectory:
 
 ```jsonc
 {
-  "kind": 38031,
+  "kind": 39231,
   "pubkey": "<event-author-pubkey>",
   "content": "<JSON payload>",
   "tags": [
@@ -443,7 +443,7 @@ When multiple parties collaborate on an agent run (e.g., agent + compute provide
 │                                                             │
 │  1. Agent A creates MLS group (NIP-EE)                      │
 │  2. Agent A invites B and C to group                        │
-│  3. Agent A publishes session event (kind:38030)            │
+│  3. Agent A publishes session event (kind:39230)            │
 │  4. As run proceeds:                                        │
 │     - A posts user/agent events                             │
 │     - B posts inference results                             │
@@ -495,13 +495,13 @@ skill_ciphertext = NIP44_encrypt(skill_content, agent_pubkey)
 
 To decrypt, the agent must perform threshold ECDH with the marketplace signer. The marketplace checks license validity before participating.
 
-### Skill License Event (`kind:38020`)
+### Skill License Event (`kind:39220`)
 
 When an agent purchases a skill, a license event is created:
 
 ```jsonc
 {
-  "kind": 38020,
+  "kind": 39220,
   "pubkey": "<marketplace-pubkey>",
   "content": "",
   "tags": [
@@ -517,13 +517,13 @@ When an agent purchases a skill, a license event is created:
 }
 ```
 
-### Skill Delivery Event (`kind:38021`)
+### Skill Delivery Event (`kind:39221`)
 
 Skills are delivered as ephemeral gift-wrapped events:
 
 ```jsonc
 {
-  "kind": 38021,
+  "kind": 39221,
   "pubkey": "<ephemeral-pubkey>",
   "content": "<NIP-59 gift-wrapped skill>",
   "tags": [
@@ -548,7 +548,7 @@ The inner content (after unwrapping) contains:
 When an agent uses a skill:
 
 1. Agent requests threshold ECDH with marketplace signer
-2. Marketplace checks license (kind:38020)
+2. Marketplace checks license (kind:39220)
 3. If valid, marketplace participates in ECDH
 4. Agent decrypts skill content
 5. Agent executes skill in memory (never persists plaintext)
@@ -566,7 +566,7 @@ Sovereign agents can hold and spend funds. This enables:
 
 ### Wallet Configuration
 
-Agents include a Lightning address in their profile (kind:38000):
+Agents include a Lightning address in their profile (kind:39200):
 
 ```jsonc
 {
@@ -612,17 +612,17 @@ Agents MUST NOT exceed budget limits. Runners enforce limits before executing ac
 3. Share 1 stored in secure enclave on operator device
 4. Share 2 registered with marketplace
 5. Share 3 stored with guardian (optional)
-6. Agent publishes kind:38000 profile
-7. Agent publishes kind:38002 schedule
-8. Agent publishes initial kind:38001 state
+6. Agent publishes kind:39200 profile
+7. Agent publishes kind:39202 schedule
+8. Agent publishes initial kind:39201 state
 ```
 
 ### Agent Tick Flow
 
 ```
 1. Trigger arrives (timer or event)
-2. Runner claims tick (kind:38010)
-3. Runner fetches agent state (kind:38001)
+2. Runner claims tick (kind:39210)
+3. Runner fetches agent state (kind:39201)
 4. Agent requests threshold decrypt of state
 5. Marketplace checks agent is valid, participates
 6. State decrypted
@@ -632,8 +632,8 @@ Agents MUST NOT exceed budget limits. Runners enforce limits before executing ac
 10. Runner executes actions (posts, DMs, payments, etc.)
 11. Runner updates state
 12. Agent requests threshold encrypt of state
-13. Updated state published (kind:38001)
-14. Runner publishes result (kind:38011)
+13. Updated state published (kind:39201)
+14. Runner publishes result (kind:39211)
 ```
 
 ### Skill Purchase Flow
@@ -643,8 +643,8 @@ Agents MUST NOT exceed budget limits. Runners enforce limits before executing ac
 2. Agent requests purchase (payment)
 3. Agent signs payment using threshold signature
 4. Payment confirmed
-5. Marketplace creates license (kind:38020)
-6. Skill provider delivers skill (kind:38021)
+5. Marketplace creates license (kind:39220)
+6. Skill provider delivers skill (kind:39221)
 7. Agent stores encrypted skill locally
 8. For each use: threshold ECDH with marketplace to decrypt
 ```
@@ -653,7 +653,7 @@ Agents MUST NOT exceed budget limits. Runners enforce limits before executing ac
 
 ```
 1. License expires or is revoked
-2. Marketplace updates/deletes kind:38020 license
+2. Marketplace updates/deletes kind:39220 license
 3. Agent requests skill decrypt
 4. Marketplace refuses to participate in threshold ECDH
 5. Agent cannot decrypt skill
@@ -709,8 +709,8 @@ Agents MUST NOT exceed budget limits. Runners enforce limits before executing ac
 
 ### Metadata Leakage
 
-- Tick events (kind:38010, 38011) reveal agent activity patterns
-- Skill license events (kind:38020) reveal what skills an agent has
+- Tick events (kind:39210, 39211) reveal agent activity patterns
+- Skill license events (kind:39220) reveal what skills an agent has
 - Mitigation: Use ephemeral relays for tick events
 - Mitigation: Gift-wrap license events for privacy
 

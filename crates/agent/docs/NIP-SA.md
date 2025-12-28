@@ -13,21 +13,21 @@ NIP-SA defines a protocol for autonomous AI agents on Nostr. These agents:
 
 ## Event Kinds
 
-NIP-SA uses kinds in the 38000-38031 range:
+NIP-SA uses kinds in the 39200-39231 range:
 
 | Kind | Name | Description |
 |------|------|-------------|
-| 38000 | AgentProfile | Agent metadata and capabilities |
-| 38001 | AgentState | Encrypted agent state |
-| 38002 | AgentSchedule | Execution schedule |
-| 38010 | TickRequest | Request to execute a tick |
-| 38011 | TickResult | Result of a tick execution |
-| 38020 | AgentGoal | Goal definition |
-| 38021 | AgentMemory | Memory entry |
-| 38030 | TrajectorySession | Execution session metadata |
-| 38031 | TrajectoryEvent | Individual execution step |
+| 39200 | AgentProfile | Agent metadata and capabilities |
+| 39201 | AgentState | Encrypted agent state |
+| 39202 | AgentSchedule | Execution schedule |
+| 39210 | TickRequest | Request to execute a tick |
+| 39211 | TickResult | Result of a tick execution |
+| 39220 | AgentGoal | Goal definition |
+| 39221 | AgentMemory | Memory entry |
+| 39230 | TrajectorySession | Execution session metadata |
+| 39231 | TrajectoryEvent | Individual execution step |
 
-## AgentProfile (kind:38000)
+## AgentProfile (kind:39200)
 
 Published when an agent is spawned. Describes the agent's identity and capabilities.
 
@@ -60,7 +60,7 @@ JSON object:
 
 ```json
 {
-  "kind": 38000,
+  "kind": 39200,
   "pubkey": "abc123...",
   "created_at": 1703000000,
   "content": "{\"name\":\"ResearchBot\",\"about\":\"...\",\"autonomy\":\"bounded\",\"capabilities\":[\"research\"],\"version\":\"1.0.0\"}",
@@ -75,7 +75,7 @@ JSON object:
 }
 ```
 
-## AgentState (kind:38001)
+## AgentState (kind:39201)
 
 Encrypted state that only the agent can read. Updated after each tick.
 
@@ -154,7 +154,7 @@ let state = AgentStateContent::decrypt(
 )?;
 ```
 
-## AgentSchedule (kind:38002)
+## AgentSchedule (kind:39202)
 
 Defines when the agent executes ticks.
 
@@ -170,7 +170,7 @@ Defines when the agent executes ticks.
 
 ```json
 {
-  "kind": 38002,
+  "kind": 39202,
   "pubkey": "abc123...",
   "created_at": 1703000000,
   "content": "",
@@ -186,7 +186,7 @@ Defines when the agent executes ticks.
 }
 ```
 
-## TickRequest (kind:38010)
+## TickRequest (kind:39210)
 
 Published when the agent starts a tick.
 
@@ -202,7 +202,7 @@ Published when the agent starts a tick.
 
 ```json
 {
-  "kind": 38010,
+  "kind": 39210,
   "pubkey": "abc123...",
   "created_at": 1703001000,
   "content": "",
@@ -216,7 +216,7 @@ Published when the agent starts a tick.
 }
 ```
 
-## TickResult (kind:38011)
+## TickResult (kind:39211)
 
 Published after a tick completes.
 
@@ -246,7 +246,7 @@ JSON summary:
 }
 ```
 
-## TrajectorySession (kind:38030)
+## TrajectorySession (kind:39230)
 
 Records metadata about an execution session.
 
@@ -275,7 +275,7 @@ JSON with session details:
 }
 ```
 
-## TrajectoryEvent (kind:38031)
+## TrajectoryEvent (kind:39231)
 
 Individual step in an execution trajectory.
 
@@ -528,13 +528,13 @@ Received after payment:
 
 | Feature | Status |
 |---------|--------|
-| AgentProfile (38000) | Complete |
-| AgentState (38001) | Complete |
-| AgentSchedule (38002) | Complete |
-| TickRequest (38010) | Planned |
-| TickResult (38011) | Planned |
-| TrajectorySession (38030) | Planned |
-| TrajectoryEvent (38031) | Planned |
+| AgentProfile (39200) | Complete |
+| AgentState (39201) | Complete |
+| AgentSchedule (39202) | Complete |
+| TickRequest (39210) | Planned |
+| TickResult (39211) | Planned |
+| TrajectorySession (39230) | Planned |
+| TrajectoryEvent (39231) | Planned |
 | Threshold signatures | 1-of-1 only |
 | NIP-44 encryption | Complete |
 | NIP-89 discovery | Complete |

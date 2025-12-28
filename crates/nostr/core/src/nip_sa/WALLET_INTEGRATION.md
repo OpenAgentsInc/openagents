@@ -130,7 +130,7 @@ fn can_afford_operation(state: &AgentStateContent, cost_sats: u64) -> bool {
 
 ### State Encryption
 
-Balance is included in encrypted state (kind:38001), so it's:
+Balance is included in encrypted state (kind:39201), so it's:
 - Confidential (encrypted to agent pubkey)
 - Threshold-protected (requires marketplace signer to decrypt)
 - Persistent across ticks
