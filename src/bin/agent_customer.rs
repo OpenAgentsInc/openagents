@@ -343,8 +343,8 @@ async fn main() -> Result<()> {
     println!("[CUSTOMER] Joining channel: {}", channel_id);
     let mut rx = subscribe_to_channel(&relay, &channel_id).await?;
 
-    // Record start time to filter old messages
-    let start_time = now();
+    // Record start time to filter old messages (accept messages from last 5 minutes)
+    let start_time = now().saturating_sub(300);
 
     // ============================================
     // PHASE 1: Provider Discovery
