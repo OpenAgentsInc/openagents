@@ -6741,6 +6741,7 @@ dependencies = [
 name = "nostr-integration-tests"
 version = "0.1.0"
 dependencies = [
+ "neobank",
  "nostr 0.1.0",
  "nostr-client",
  "nostr-relay",

@@ -2,8 +2,11 @@
 //!
 //! These tests verify that NIP-SA event types work correctly and can be used
 //! to build events for relay communication.
+//!
+//! Includes exchange integration tests demonstrating agent-to-agent trading.
 
 use super::{start_test_relay, test_relay_url};
+use neobank::{ExchangeClient, OrderParams, OrderSide, TradeOutcome};
 use nostr::{
     finalize_event, generate_secret_key, get_public_key, get_public_key_hex, EventTemplate,
     // NIP-SA Profile types
@@ -698,4 +701,426 @@ async fn test_step_types() {
         let parsed: TrajectoryEventContent = serde_json::from_str(&json).expect("parsing should work");
         assert_eq!(parsed.step_type, step_type);
     }
+}
+
+// ============================================================================
+// EXCHANGE INTEGRATION TESTS
+// ============================================================================
+// These tests demonstrate agent-to-agent trading using NIP-69 orders,
+// combined with NIP-SA sovereign agent lifecycle events.
+
+/// NIP-69 P2P Order event kind
+const KIND_P2P_ORDER: u16 = 38383;
+
+/// NIP-32 Label event kind (for trade attestations)
+const KIND_LABEL: u16 = 1985;
+
+/// Full exchange flow: Two sovereign agents trading BTC for USD
+///
+/// This test demonstrates:
+/// 1. Two sovereign agents with FROSTR-style threshold keys
+/// 2. Treasury Agent publishes AgentProfile and sell order (NIP-69)
+/// 3. Regular Agent publishes AgentProfile and accepts order
+/// 4. Settlement executes (mock mode)
+/// 5. Both agents publish attestations (NIP-32 labels)
+/// 6. Both agents update AgentState with new balances
+/// 7. Both agents publish TrajectoryEvents showing exchange activity
+#[tokio::test]
+async fn test_sovereign_agent_exchange_flow() {
+    // 1. Start test relay
+    let port = 19110;
+    let (_server, _addr, _temp_dir) = start_test_relay(port).await;
+    let relay_url = test_relay_url(port);
+
+    let relay = RelayConnection::new(&relay_url).unwrap();
+    relay.connect().await.unwrap();
+
+    // 2. Create two sovereign agents
+    let treasury_secret = generate_secret_key();
+    let treasury_pubkey = get_public_key(&treasury_secret).expect("treasury pubkey");
+    let treasury_pubkey_hex = get_public_key_hex(&treasury_secret).expect("treasury pubkey hex");
+    let treasury_pubkey_compressed = to_compressed_pubkey(&treasury_pubkey);
+
+    let regular_secret = generate_secret_key();
+    let regular_pubkey = get_public_key(&regular_secret).expect("regular pubkey");
+    let regular_pubkey_hex = get_public_key_hex(&regular_secret).expect("regular pubkey hex");
+    let regular_pubkey_compressed = to_compressed_pubkey(&regular_pubkey);
+
+    println!("\n=== Sovereign Agent Exchange Flow ===");
+    println!("Treasury Agent: {}...", &treasury_pubkey_hex[..16]);
+    println!("Regular Agent:  {}...", &regular_pubkey_hex[..16]);
+
+    // 3. Publish AgentProfiles for both agents
+    let marketplace_signer = "0".repeat(64);
+
+    // Treasury Agent profile
+    let treasury_content = AgentProfileContent::new(
+        "TreasuryAgent",
+        "Manages protocol treasury and provides liquidity",
+        AutonomyLevel::Bounded,
+        "1.0.0",
+    )
+    .with_capabilities(vec!["treasury".to_string(), "market-making".to_string()]);
+
+    let treasury_threshold = ThresholdConfig::new(2, 3, &marketplace_signer)
+        .expect("valid threshold config");
+    let treasury_profile = AgentProfile::new(treasury_content.clone(), treasury_threshold.clone(), &treasury_pubkey_hex);
+
+    let treasury_profile_event = finalize_event(
+        &EventTemplate {
+            kind: KIND_AGENT_PROFILE,
+            content: treasury_content.to_json().expect("serialization"),
+            tags: treasury_profile.build_tags(),
+            created_at: 1703100000,
+        },
+        &treasury_secret,
+    )
+    .expect("sign treasury profile");
+
+    relay
+        .publish_event(&treasury_profile_event, Duration::from_secs(5))
+        .await
+        .unwrap();
+    println!("\n[1] Treasury Agent profile published");
+
+    // Regular Agent profile
+    let regular_content = AgentProfileContent::new(
+        "WorkerAgent",
+        "Executes tasks and earns sats",
+        AutonomyLevel::Bounded,
+        "1.0.0",
+    )
+    .with_capabilities(vec!["compute".to_string(), "research".to_string()]);
+
+    let regular_threshold = ThresholdConfig::new(2, 3, &marketplace_signer)
+        .expect("valid threshold config");
+    let regular_profile = AgentProfile::new(regular_content.clone(), regular_threshold.clone(), &regular_pubkey_hex);
+
+    let regular_profile_event = finalize_event(
+        &EventTemplate {
+            kind: KIND_AGENT_PROFILE,
+            content: regular_content.to_json().expect("serialization"),
+            tags: regular_profile.build_tags(),
+            created_at: 1703100001,
+        },
+        &regular_secret,
+    )
+    .expect("sign regular profile");
+
+    relay
+        .publish_event(&regular_profile_event, Duration::from_secs(5))
+        .await
+        .unwrap();
+    println!("[2] Regular Agent profile published");
+
+    // 4. Treasury Agent posts a sell order (NIP-69)
+    let treasury_exchange = ExchangeClient::new_mock(&treasury_pubkey_hex);
+    let order_params = OrderParams {
+        side: OrderSide::Sell,
+        amount_sats: 10_000,
+        fiat_amount: 100, // $1.00
+        currency: "USD".to_string(),
+        premium_pct: 0.0,
+        payment_methods: vec!["cashu".to_string()],
+        expires_in: Duration::from_secs(3600),
+    };
+
+    let order_id = treasury_exchange
+        .post_order(order_params.clone())
+        .await
+        .expect("post order");
+
+    // Build NIP-69 tags for the order event
+    let order_tags = treasury_exchange.build_order_tags(&order_params);
+
+    let order_event = finalize_event(
+        &EventTemplate {
+            kind: KIND_P2P_ORDER,
+            content: String::new(), // NIP-69 orders use tags, not content
+            tags: order_tags.clone(),
+            created_at: 1703100010,
+        },
+        &treasury_secret,
+    )
+    .expect("sign order");
+
+    relay
+        .publish_event(&order_event, Duration::from_secs(5))
+        .await
+        .unwrap();
+    println!("\n[3] Treasury Agent sell order published: {} sats @ $1.00", order_params.amount_sats);
+
+    // 5. Regular Agent fetches and accepts order
+    let regular_exchange = ExchangeClient::new_mock(&regular_pubkey_hex);
+
+    // Simulate relay fetch by injecting order
+    let order = treasury_exchange.get_order(&order_id).unwrap().unwrap();
+    regular_exchange.inject_order(order).unwrap();
+
+    let orders = regular_exchange
+        .fetch_orders(Some(OrderSide::Sell))
+        .await
+        .expect("fetch orders");
+
+    assert_eq!(orders.len(), 1);
+    println!("[4] Regular Agent found 1 sell order");
+
+    let trade = regular_exchange
+        .accept_order(&order_id)
+        .await
+        .expect("accept order");
+    println!("[5] Regular Agent accepted order -> trade created");
+
+    // 6. Settlement executes
+    let receipt = regular_exchange
+        .settle(&trade)
+        .await
+        .expect("settlement");
+    println!("[6] Settlement complete: {:?} in {:?}", receipt.method, receipt.duration);
+
+    // 7. Both agents publish attestations (NIP-32)
+    let settlement_ms = receipt.duration.as_millis() as u64;
+
+    // Treasury attestation
+    let trade_copy = regular_exchange.get_trade(&order_id).unwrap().unwrap();
+    treasury_exchange.inject_trade(trade_copy.clone()).unwrap();
+
+    let treasury_attest_tags = treasury_exchange.build_attestation_tags(
+        &trade_copy,
+        TradeOutcome::Success,
+        settlement_ms,
+    );
+
+    let treasury_attest_event = finalize_event(
+        &EventTemplate {
+            kind: KIND_LABEL,
+            content: String::new(),
+            tags: treasury_attest_tags,
+            created_at: 1703100020,
+        },
+        &treasury_secret,
+    )
+    .expect("sign treasury attestation");
+
+    relay
+        .publish_event(&treasury_attest_event, Duration::from_secs(5))
+        .await
+        .unwrap();
+
+    // Regular attestation
+    let regular_attest_tags = regular_exchange.build_attestation_tags(
+        &trade,
+        TradeOutcome::Success,
+        settlement_ms,
+    );
+
+    let regular_attest_event = finalize_event(
+        &EventTemplate {
+            kind: KIND_LABEL,
+            content: String::new(),
+            tags: regular_attest_tags,
+            created_at: 1703100021,
+        },
+        &regular_secret,
+    )
+    .expect("sign regular attestation");
+
+    relay
+        .publish_event(&regular_attest_event, Duration::from_secs(5))
+        .await
+        .unwrap();
+    println!("[7] Both agents published trade attestations");
+
+    // 8. Both agents update AgentState with new balances
+    // Treasury: sold 10k sats, gained $1 USD
+    let mut treasury_state_content = AgentStateContent::new();
+    treasury_state_content.update_balance(990_000); // Started with 1M, sold 10k
+    treasury_state_content.add_memory(MemoryEntry::new(
+        "trade",
+        &format!("Sold 10000 sats to {} for $1.00 USD", &regular_pubkey_hex[..16]),
+    ));
+
+    let treasury_state = AgentState::new(treasury_state_content);
+    let treasury_state_encrypted = treasury_state
+        .encrypt(&treasury_secret, &treasury_pubkey_compressed)
+        .expect("encrypt treasury state");
+
+    let treasury_state_event = finalize_event(
+        &EventTemplate {
+            kind: KIND_AGENT_STATE,
+            content: treasury_state_encrypted,
+            tags: treasury_state.build_tags(),
+            created_at: 1703100030,
+        },
+        &treasury_secret,
+    )
+    .expect("sign treasury state");
+
+    relay
+        .publish_event(&treasury_state_event, Duration::from_secs(5))
+        .await
+        .unwrap();
+
+    // Regular: bought 10k sats, spent $1 USD
+    let mut regular_state_content = AgentStateContent::new();
+    regular_state_content.update_balance(10_000); // Gained 10k sats
+    regular_state_content.add_memory(MemoryEntry::new(
+        "trade",
+        &format!("Bought 10000 sats from {} for $1.00 USD", &treasury_pubkey_hex[..16]),
+    ));
+
+    let regular_state = AgentState::new(regular_state_content);
+    let regular_state_encrypted = regular_state
+        .encrypt(&regular_secret, &regular_pubkey_compressed)
+        .expect("encrypt regular state");
+
+    let regular_state_event = finalize_event(
+        &EventTemplate {
+            kind: KIND_AGENT_STATE,
+            content: regular_state_encrypted,
+            tags: regular_state.build_tags(),
+            created_at: 1703100031,
+        },
+        &regular_secret,
+    )
+    .expect("sign regular state");
+
+    relay
+        .publish_event(&regular_state_event, Duration::from_secs(5))
+        .await
+        .unwrap();
+    println!("[8] Both agents updated state with new balances");
+
+    // 9. Both agents publish trajectory events showing exchange activity
+    let session_id = "exchange-session-1";
+
+    // Treasury trajectory: posted order
+    let mut treasury_traj_data = serde_json::Map::new();
+    treasury_traj_data.insert("action".to_string(), serde_json::json!("post_order"));
+    treasury_traj_data.insert("order_id".to_string(), serde_json::json!(order_id));
+    treasury_traj_data.insert("side".to_string(), serde_json::json!("sell"));
+    treasury_traj_data.insert("amount_sats".to_string(), serde_json::json!(10_000));
+    treasury_traj_data.insert("fiat_amount_cents".to_string(), serde_json::json!(100));
+
+    let treasury_traj_content = TrajectoryEventContent {
+        step_type: StepType::ToolUse,
+        data: treasury_traj_data,
+    };
+
+    let treasury_traj = TrajectoryEvent::new(
+        treasury_traj_content,
+        session_id,
+        "tick-exchange-1",
+        1,
+    );
+
+    let treasury_traj_event = finalize_event(
+        &EventTemplate {
+            kind: KIND_TRAJECTORY_EVENT,
+            content: treasury_traj.content.to_json().expect("traj serialization"),
+            tags: treasury_traj.build_tags(),
+            created_at: 1703100040,
+        },
+        &treasury_secret,
+    )
+    .expect("sign treasury trajectory");
+
+    relay
+        .publish_event(&treasury_traj_event, Duration::from_secs(5))
+        .await
+        .unwrap();
+
+    // Regular trajectory: accepted order and settled
+    let mut regular_traj_data = serde_json::Map::new();
+    regular_traj_data.insert("action".to_string(), serde_json::json!("accept_order"));
+    regular_traj_data.insert("order_id".to_string(), serde_json::json!(order_id));
+    regular_traj_data.insert("settlement_method".to_string(), serde_json::json!("mock"));
+    regular_traj_data.insert("settlement_ms".to_string(), serde_json::json!(settlement_ms));
+
+    let regular_traj_content = TrajectoryEventContent {
+        step_type: StepType::ToolUse,
+        data: regular_traj_data,
+    };
+
+    let regular_traj = TrajectoryEvent::new(
+        regular_traj_content,
+        session_id,
+        "tick-exchange-1",
+        2,
+    );
+
+    let regular_traj_event = finalize_event(
+        &EventTemplate {
+            kind: KIND_TRAJECTORY_EVENT,
+            content: regular_traj.content.to_json().expect("traj serialization"),
+            tags: regular_traj.build_tags(),
+            created_at: 1703100041,
+        },
+        &regular_secret,
+    )
+    .expect("sign regular trajectory");
+
+    relay
+        .publish_event(&regular_traj_event, Duration::from_secs(5))
+        .await
+        .unwrap();
+    println!("[9] Both agents published trajectory events");
+
+    // 10. Verify all events are on the relay
+    let mut all_rx = relay
+        .subscribe_with_channel(
+            "all-events",
+            &[serde_json::json!({
+                "kinds": [KIND_AGENT_PROFILE, KIND_P2P_ORDER, KIND_LABEL, KIND_AGENT_STATE, KIND_TRAJECTORY_EVENT],
+                "authors": [treasury_pubkey_hex.clone(), regular_pubkey_hex.clone()]
+            })],
+        )
+        .await
+        .unwrap();
+
+    let mut profile_count = 0;
+    let mut order_count = 0;
+    let mut label_count = 0;
+    let mut state_count = 0;
+    let mut traj_count = 0;
+
+    timeout(Duration::from_secs(2), async {
+        while profile_count < 2 || order_count < 1 || label_count < 2 || state_count < 2 || traj_count < 2 {
+            if let Some(evt) = all_rx.recv().await {
+                match evt.kind {
+                    KIND_AGENT_PROFILE => profile_count += 1,
+                    KIND_P2P_ORDER => order_count += 1,
+                    KIND_LABEL => label_count += 1,
+                    KIND_AGENT_STATE => state_count += 1,
+                    KIND_TRAJECTORY_EVENT => traj_count += 1,
+                    _ => {}
+                }
+            }
+        }
+    })
+    .await
+    .expect("should receive all events");
+
+    println!("\n[10] Verified events on relay:");
+    println!("     - {} AgentProfile events", profile_count);
+    println!("     - {} P2P Order events", order_count);
+    println!("     - {} Label (attestation) events", label_count);
+    println!("     - {} AgentState events", state_count);
+    println!("     - {} TrajectoryEvent events", traj_count);
+
+    assert_eq!(profile_count, 2);
+    assert_eq!(order_count, 1);
+    assert_eq!(label_count, 2);
+    assert_eq!(state_count, 2);
+    assert_eq!(traj_count, 2);
+
+    relay.disconnect().await.ok();
+
+    println!("\n=== Exchange Flow Complete ===");
+    println!("Summary:");
+    println!("  - Treasury Agent sold 10,000 sats for $1.00 USD");
+    println!("  - Regular Agent bought sats at market rate");
+    println!("  - Both agents published attestations");
+    println!("  - Both agents updated encrypted state");
+    println!("  - Full audit trail on relay via trajectories");
 }

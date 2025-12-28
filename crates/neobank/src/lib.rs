@@ -39,12 +39,17 @@
 //! ```
 
 pub mod error;
+pub mod exchange;
 pub mod mint_config;
 pub mod types;
 pub mod wallet;
 
 // Re-exports for convenient access
 pub use error::{Error, Result};
+pub use exchange::{
+    ExchangeClient, Order, OrderParams, OrderSide, OrderStatus, SettlementMethod,
+    SettlementMode, SettlementReceipt, Trade, TradeAttestation, TradeOutcome, TradeStatus,
+};
 pub use mint_config::{KnownMints, MintConfig};
 pub use types::{Amount, AssetId, Currency};
 pub use wallet::{CashuWallet, MeltQuote, MeltResult, MintQuote, QuoteState};
