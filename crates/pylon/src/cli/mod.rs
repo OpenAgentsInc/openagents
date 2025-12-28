@@ -1,6 +1,7 @@
 //! Pylon CLI commands
 
 mod agent;
+mod compute;
 mod doctor;
 mod earnings;
 mod init;
@@ -36,6 +37,8 @@ pub enum Commands {
     Agent(agent::AgentArgs),
     /// View earnings (provider mode)
     Earnings(earnings::EarningsArgs),
+    /// Show compute mix (all available compute options)
+    Compute(compute::ComputeArgs),
 }
 
 /// Execute a CLI command
@@ -48,5 +51,6 @@ pub async fn execute(cli: PylonCli) -> anyhow::Result<()> {
         Commands::Doctor(args) => doctor::run(args).await,
         Commands::Agent(args) => agent::run(args).await,
         Commands::Earnings(args) => earnings::run(args).await,
+        Commands::Compute(args) => compute::run(args).await,
     }
 }

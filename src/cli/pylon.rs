@@ -36,6 +36,10 @@ pub fn run(cmd: PylonCommands) -> anyhow::Result<()> {
                 command: pylon::cli::Commands::Earnings(args),
             })
             .await,
+            PylonCommands::Compute(args) => pylon::cli::execute(pylon::cli::PylonCli {
+                command: pylon::cli::Commands::Compute(args),
+            })
+            .await,
         }
     })
 }

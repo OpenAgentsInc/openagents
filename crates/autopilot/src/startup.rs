@@ -70,6 +70,12 @@ pub enum StartupPhase {
     AuthComplete,
     RunningPreflight,
     PreflightComplete,
+    // Pylon integration phases
+    CheckingPylon,
+    StartingPylon,
+    DetectingCompute,
+    ComputeMixReady,
+    // Continue with existing phases
     AnalyzingIssues,
     StreamingAnalysis,
     PlanningWithClaude,
@@ -119,6 +125,9 @@ pub struct StartupState {
     pub force_stopped: bool,
     pub force_stop_reason: Option<String>,
     pub report_path: Option<PathBuf>,
+    // Pylon integration
+    pub compute_mix: Option<crate::preflight::ComputeMix>,
+    pylon_started: bool,
 }
 
 impl StartupState {
@@ -165,6 +174,8 @@ impl StartupState {
             force_stopped: false,
             force_stop_reason: None,
             report_path: None,
+            compute_mix: None,
+            pylon_started: false,
         }
     }
 
@@ -370,6 +381,206 @@ impl StartupState {
 
             StartupPhase::PreflightComplete => {
                 if phase_time > 0.3 {
+                    // Transition to pylon integration phases
+                    self.phase = StartupPhase::CheckingPylon;
+                    self.phase_started = elapsed;
+                }
+            }
+
+            StartupPhase::CheckingPylon => {
+                if phase_time < 0.3 {
+                    return;
+                }
+
+                if !self.lines.iter().any(|l| l.text.contains("Checking local pylon")) {
+                    self.add_line("", LogStatus::Info, elapsed);
+                    self.add_line("Checking local pylon...", LogStatus::Pending, elapsed);
+                }
+
+                if phase_time > 0.6 {
+                    if let Some(line) = self.lines.iter_mut().find(|l| l.text.contains("Checking local pylon")) {
+                        line.status = LogStatus::Info;
+                    }
+
+                    if crate::pylon_integration::check_pylon_running() {
+                        self.add_line("  Pylon daemon is running", LogStatus::Success, elapsed);
+
+                        // Get detailed status if available
+                        if let Some(info) = crate::pylon_integration::get_pylon_status() {
+                            if let Some(uptime) = info.uptime_secs {
+                                let hours = uptime / 3600;
+                                let mins = (uptime % 3600) / 60;
+                                if hours > 0 {
+                                    self.add_line(&format!("  Uptime: {}h {}m", hours, mins), LogStatus::Info, elapsed);
+                                } else {
+                                    self.add_line(&format!("  Uptime: {}m", mins), LogStatus::Info, elapsed);
+                                }
+                            }
+                            if info.jobs_completed > 0 {
+                                self.add_line(&format!("  Jobs completed: {}", info.jobs_completed), LogStatus::Info, elapsed);
+                            }
+                        }
+
+                        self.phase = StartupPhase::DetectingCompute;
+                    } else {
+                        self.add_line("  Pylon not running", LogStatus::Info, elapsed);
+                        self.phase = StartupPhase::StartingPylon;
+                    }
+                    self.phase_started = elapsed;
+                }
+            }
+
+            StartupPhase::StartingPylon => {
+                if !self.lines.iter().any(|l| l.text.contains("Starting pylon")) {
+                    self.add_line("Starting pylon daemon...", LogStatus::Pending, elapsed);
+
+                    // Start pylon in background
+                    match crate::pylon_integration::start_pylon() {
+                        Ok(()) => {
+                            self.pylon_started = true;
+                        }
+                        Err(e) => {
+                            warn!("Failed to start pylon: {}", e);
+                        }
+                    }
+                }
+
+                if phase_time > 2.0 {
+                    if let Some(line) = self.lines.iter_mut().find(|l| l.text.contains("Starting pylon")) {
+                        line.status = LogStatus::Info;
+                    }
+
+                    if crate::pylon_integration::check_pylon_running() {
+                        self.add_line("  Pylon started successfully", LogStatus::Success, elapsed);
+                    } else {
+                        self.add_line("  Pylon not started (continuing anyway)", LogStatus::Info, elapsed);
+                    }
+
+                    self.phase = StartupPhase::DetectingCompute;
+                    self.phase_started = elapsed;
+                }
+            }
+
+            StartupPhase::DetectingCompute => {
+                if phase_time < 0.3 {
+                    return;
+                }
+
+                if !self.lines.iter().any(|l| l.text.contains("Detecting compute backends")) {
+                    self.add_line("", LogStatus::Info, elapsed);
+                    self.add_line("Detecting compute backends...", LogStatus::Pending, elapsed);
+                }
+
+                if phase_time > 0.8 {
+                    if let Some(line) = self.lines.iter_mut().find(|l| l.text.contains("Detecting compute backends")) {
+                        line.status = LogStatus::Info;
+                    }
+
+                    // Detect local backends
+                    let backends = crate::pylon_integration::detect_local_backends();
+                    let mut available_backends = Vec::new();
+
+                    for backend in &backends {
+                        if backend.available {
+                            let models_str = if backend.models.is_empty() {
+                                String::new()
+                            } else {
+                                format!(" - {}", backend.models.join(", "))
+                            };
+                            self.add_line(
+                                &format!("  [OK] {} ({}){}", backend.name, backend.endpoint.as_deref().unwrap_or(""), models_str),
+                                LogStatus::Success,
+                                elapsed,
+                            );
+                            available_backends.push(backend.clone());
+                        } else {
+                            self.add_line(
+                                &format!("  [--] {} (not running)", backend.name),
+                                LogStatus::Info,
+                                elapsed,
+                            );
+                        }
+                    }
+
+                    // Discover swarm providers (synchronous for now)
+                    self.add_line("", LogStatus::Info, elapsed);
+                    self.add_line("Querying NIP-89 swarm providers...", LogStatus::Pending, elapsed);
+                    let swarm_providers = crate::pylon_integration::discover_swarm_providers();
+
+                    if let Some(line) = self.lines.iter_mut().find(|l| l.text.contains("Querying NIP-89")) {
+                        line.status = LogStatus::Info;
+                    }
+
+                    if swarm_providers.is_empty() {
+                        self.add_line("  No remote providers discovered", LogStatus::Info, elapsed);
+                    } else {
+                        self.add_line(&format!("  Found {} remote provider(s)", swarm_providers.len()), LogStatus::Success, elapsed);
+                    }
+
+                    // Get cloud providers from preflight
+                    let cloud_providers = self.preflight_config
+                        .as_ref()
+                        .map(|c| c.inference.cloud_providers.clone())
+                        .unwrap_or_default();
+
+                    // Get pylon info
+                    let pylon_info = crate::pylon_integration::get_pylon_status();
+
+                    // Build compute mix
+                    self.compute_mix = Some(crate::preflight::ComputeMix {
+                        pylon: pylon_info,
+                        local_backends: backends,
+                        cloud_providers: cloud_providers.clone(),
+                        swarm_providers,
+                    });
+
+                    self.phase = StartupPhase::ComputeMixReady;
+                    self.phase_started = elapsed;
+                }
+            }
+
+            StartupPhase::ComputeMixReady => {
+                if phase_time > 0.3 {
+                    // Display compute mix summary
+                    // Clone the data we need to avoid borrow issues
+                    let mix_summary = self.compute_mix.as_ref().map(|mix| {
+                        let local_names: Vec<_> = mix.local_backends
+                            .iter()
+                            .filter(|b| b.available)
+                            .map(|b| {
+                                if b.models.is_empty() {
+                                    b.name.clone()
+                                } else {
+                                    format!("{} ({})", b.name, b.models.first().unwrap_or(&String::new()))
+                                }
+                            })
+                            .collect();
+                        let cloud = mix.cloud_providers.clone();
+                        let swarm_count = mix.swarm_providers.len();
+                        (local_names, cloud, swarm_count)
+                    });
+
+                    if let Some((local_names, cloud_providers, swarm_count)) = mix_summary {
+                        self.add_line("", LogStatus::Info, elapsed);
+                        self.add_line("Compute mix:", LogStatus::Info, elapsed);
+
+                        // Local summary
+                        if !local_names.is_empty() {
+                            self.add_line(&format!("  Local: {}", local_names.join(", ")), LogStatus::Success, elapsed);
+                        }
+
+                        // Cloud summary
+                        if !cloud_providers.is_empty() {
+                            self.add_line(&format!("  Cloud: {}", cloud_providers.join(", ")), LogStatus::Success, elapsed);
+                        }
+
+                        // Swarm summary
+                        if swarm_count > 0 {
+                            self.add_line(&format!("  Swarm: {} providers via NIP-89", swarm_count), LogStatus::Success, elapsed);
+                        }
+                    }
+
+                    // Continue to Claude phases if auth available
                     if auth::has_anthropic_auth() {
                         self.phase = StartupPhase::PlanningWithClaude;
                         self.phase_started = elapsed;
