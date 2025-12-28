@@ -27,6 +27,10 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
+    /// Sovereign agent commands (spawn, manage, run autonomous agents)
+    #[command(subcommand)]
+    Agent(cli::agent::AgentCommands),
+
     /// Wallet commands (identity, payments)
     #[command(subcommand)]
     Wallet(cli::wallet::WalletCommands),
@@ -68,6 +72,7 @@ fn main() {
             println!("Run 'cargo autopilot' to launch the Autopilot GUI");
             Ok(())
         }
+        Some(Commands::Agent(cmd)) => cli::agent::run(cmd),
         Some(Commands::Wallet(cmd)) => cli::wallet::run(cmd),
         Some(Commands::Marketplace(cmd)) => cli::marketplace::run(cmd),
         Some(Commands::Gitafter(cmd)) => cli::gitafter::run(cmd),
