@@ -312,3 +312,74 @@ cargo run --bin agent-customer -- \
   --prompt "What is 2+2?" \
   --no-wallet
 ```
+
+---
+
+## Test Run 2 (2025-12-28 03:45 CST)
+
+### Customer Output (Computer B)
+
+```
+=== OpenAgents Customer Agent ===
+
+[CUSTOMER] Public key: ed6b4c4479c2a9a74dc2fb0757163e25dc0a4e13407263952bfc6c56525f5cfd
+[CUSTOMER] Running without wallet (--no-wallet)
+[CUSTOMER] Connecting to relay: wss://relay.damus.io
+[CUSTOMER] Connected to relay
+[CUSTOMER] Discovering providers via NIP-89 (kind 31990)...
+[CUSTOMER] Found 50 handler info events
+[CUSTOMER] Skipping provider on unknown (we need regtest)
+[CUSTOMER] Skipping provider on unknown (we need regtest)
+
+[CUSTOMER] Discovered 2 provider(s) via NIP-89:
+  [0] OpenAgents Compute Provider
+      Pubkey: 16dd3cf45416ae3d...  ← PYLON
+      Price: 1000 msats
+      Channel: none (direct events only)
+      Models: []
+  [1] OpenAgents Compute Provider
+      Pubkey: e8bcf3823669444d...  ← agent-provider
+      Price: 10000 msats
+      Channel: a7be6335515e15d3...
+      Models: ["nemotron-3-nano:latest", "gpt-oss:120b", ...]
+
+[CUSTOMER] Selected: OpenAgents Compute Provider (16dd3cf45416ae3d...)
+[CUSTOMER] Using direct NIP-90 events (kind:5050 -> 7000 -> 6050)
+[CUSTOMER] Job request published: a6115aee9bb108ca45844c57866f6cc9a9b9cd321a48af7d24641032a5a46daa
+[CUSTOMER] Waiting for provider response...
+[TIMED OUT]
+```
+
+### Analysis
+
+**What Worked:**
+1. NIP-89 discovery found pylon provider (16dd3cf45416ae3d...)
+2. Network filtering correctly identified regtest providers
+3. Customer selected pylon (cheaper at 1000 msats vs 10000 msats)
+4. Job request successfully published to relay
+
+**What Failed:**
+- Pylon did not respond to job request
+- Customer timed out waiting for response
+
+**Root Cause - Kind Mismatch:**
+
+| Component | Job Kind | Result Kind |
+|-----------|----------|-------------|
+| agent-customer | 5050 | 6050 |
+| pylon (per doc) | 5100 | 6100 |
+
+The agent-customer sends `kind:5050` events, but pylon is listening for `kind:5100` events. This is a NIP-90 kind mismatch.
+
+**NIP-90 Kind Reference:**
+- 5050: Text-to-text (generic)
+- 5100: Text generation (LLM inference)
+
+**Fix Options:**
+1. Update agent-customer to send kind:5100 for LLM jobs
+2. Update pylon to also listen for kind:5050
+3. Add kind negotiation based on provider's advertised capabilities
+
+### Next Steps
+
+Align event kinds between agent-customer and pylon, then retest.
