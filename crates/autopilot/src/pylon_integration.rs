@@ -173,9 +173,15 @@ fn check_backend_http(name: &str, base_url: &str, health_path: &str) -> LocalBac
         Err(_) => false,
     };
 
-    let models = if available && name == "ollama" {
-        // Try to get Ollama models
-        get_ollama_models(base_url).unwrap_or_default()
+    // Get models from the appropriate endpoint based on backend type
+    let models = if available {
+        match name {
+            "ollama" => get_ollama_models(base_url).unwrap_or_default(),
+            "llamacpp" | "apple_fm" | "fm-bridge" => {
+                get_openai_compatible_models(base_url).unwrap_or_default()
+            }
+            _ => Vec::new(),
+        }
     } else {
         Vec::new()
     };
@@ -212,6 +218,43 @@ fn get_ollama_models(base_url: &str) -> Option<Vec<String>> {
         .as_array()?
         .iter()
         .filter_map(|m| m.get("name")?.as_str().map(|s| s.to_string()))
+        .collect();
+
+    Some(models)
+}
+
+/// Get models from OpenAI-compatible backends (llama.cpp, apple_fm, fm-bridge)
+fn get_openai_compatible_models(base_url: &str) -> Option<Vec<String>> {
+    let client = reqwest::blocking::Client::builder()
+        .timeout(Duration::from_secs(2))
+        .build()
+        .ok()?;
+
+    let url = format!("{}/v1/models", base_url);
+    let resp = client.get(&url).send().ok()?;
+
+    if !resp.status().is_success() {
+        return None;
+    }
+
+    let json: serde_json::Value = resp.json().ok()?;
+
+    // Handle both array and {data: [...]} formats (OpenAI-compatible API)
+    let models_array = if json.is_array() {
+        json.as_array()?
+    } else {
+        json.get("data")?.as_array()?
+    };
+
+    let models = models_array
+        .iter()
+        .filter_map(|m| {
+            // Try "id" first (OpenAI format), then "name"
+            m.get("id")
+                .or_else(|| m.get("name"))
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string())
+        })
         .collect();
 
     Some(models)
@@ -257,9 +300,27 @@ mod tests {
     }
 
     #[test]
+    fn test_detect_local_backends_names() {
+        let backends = detect_local_backends();
+        let names: Vec<&str> = backends.iter().map(|b| b.name.as_str()).collect();
+        assert!(names.contains(&"ollama"));
+        assert!(names.contains(&"apple_fm"));
+        assert!(names.contains(&"llamacpp"));
+        assert!(names.contains(&"fm-bridge"));
+    }
+
+    #[test]
     fn test_discover_swarm_providers_returns_empty() {
         // Until implemented, should return empty
         let providers = discover_swarm_providers();
         assert!(providers.is_empty());
+    }
+
+    #[test]
+    fn test_check_backend_http_unavailable() {
+        // Check a port that's definitely not running anything
+        let backend = check_backend_http("test", "http://localhost:59999", "/health");
+        assert!(!backend.available);
+        assert!(backend.models.is_empty());
     }
 }

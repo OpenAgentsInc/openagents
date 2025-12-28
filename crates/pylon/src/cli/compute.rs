@@ -190,8 +190,15 @@ async fn check_backend(name: &str, base_url: &str, health_path: &str) -> Backend
         Err(_) => false,
     };
 
-    let models = if available && name == "ollama" {
-        get_ollama_models(base_url).await.unwrap_or_default()
+    // Get models from the appropriate endpoint based on backend type
+    let models = if available {
+        match name {
+            "ollama" => get_ollama_models(base_url).await.unwrap_or_default(),
+            "llamacpp" | "apple_fm" | "fm-bridge" => {
+                get_openai_compatible_models(base_url).await.unwrap_or_default()
+            }
+            _ => Vec::new(),
+        }
     } else {
         Vec::new()
     };
@@ -228,6 +235,43 @@ async fn get_ollama_models(base_url: &str) -> Option<Vec<String>> {
     Some(models)
 }
 
+/// Get models from OpenAI-compatible backends (llama.cpp, apple_fm, fm-bridge)
+async fn get_openai_compatible_models(base_url: &str) -> Option<Vec<String>> {
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(2))
+        .build()
+        .ok()?;
+
+    let url = format!("{}/v1/models", base_url);
+    let resp = client.get(&url).send().await.ok()?;
+
+    if !resp.status().is_success() {
+        return None;
+    }
+
+    let json: serde_json::Value = resp.json().await.ok()?;
+
+    // Handle both array and {data: [...]} formats (OpenAI-compatible API)
+    let models_array = if json.is_array() {
+        json.as_array()?
+    } else {
+        json.get("data")?.as_array()?
+    };
+
+    let models = models_array
+        .iter()
+        .filter_map(|m| {
+            // Try "id" first (OpenAI format), then "name"
+            m.get("id")
+                .or_else(|| m.get("name"))
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string())
+        })
+        .collect();
+
+    Some(models)
+}
+
 fn detect_cloud_providers() -> Vec<String> {
     let mut providers = Vec::new();
 
@@ -252,4 +296,54 @@ struct SwarmProviderInfo {
     pubkey: String,
     name: String,
     price_msats: Option<u64>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_detect_cloud_providers() {
+        // Just verify the function doesn't panic and returns reasonable results
+        let providers = detect_cloud_providers();
+        // Should return at most 4 providers
+        assert!(providers.len() <= 4);
+        // All returned providers should be valid names
+        for provider in &providers {
+            assert!(["anthropic", "openai", "openrouter", "google"].contains(&provider.as_str()));
+        }
+    }
+
+    #[tokio::test]
+    async fn test_detect_local_backends_returns_all() {
+        let backends = detect_local_backends().await;
+        assert_eq!(backends.len(), 4); // ollama, apple_fm, llamacpp, fm-bridge
+    }
+
+    #[tokio::test]
+    async fn test_detect_local_backends_names() {
+        let backends = detect_local_backends().await;
+        let names: Vec<&str> = backends.iter().map(|b| b.name.as_str()).collect();
+        assert!(names.contains(&"ollama"));
+        assert!(names.contains(&"apple_fm"));
+        assert!(names.contains(&"llamacpp"));
+        assert!(names.contains(&"fm-bridge"));
+    }
+
+    #[tokio::test]
+    async fn test_check_backend_unavailable() {
+        // Check a port that's definitely not running anything
+        let backend = check_backend("test", "http://localhost:59999", "/health").await;
+        assert!(!backend.available);
+        assert!(backend.models.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_check_backend_model_detection_llamacpp() {
+        // If llamacpp is running, it should have models detected
+        let backend = check_backend("llamacpp", "http://localhost:8080", "/health").await;
+        // If available, models should be fetched (may be empty if not running)
+        // This test just ensures no panic occurs
+        assert!(backend.name == "llamacpp");
+    }
 }

@@ -7,6 +7,22 @@
 
 Thorough testing of the pylon compute mix integration into the autopilot startup flow and CLI.
 
+## Bug Fix: Llama.cpp Model Detection
+
+**Issue:** The initial implementation only extracted models from Ollama, but not from Llama.cpp/GPT-OSS or other OpenAI-compatible backends (apple_fm, fm-bridge). This caused the compute mix to show Llama.cpp as available but with no models, even when gpt-oss was running.
+
+**Fix:** Added `get_openai_compatible_models()` function that fetches models from backends using the OpenAI-compatible `/v1/models` endpoint. Both `crates/pylon/src/cli/compute.rs` and `crates/autopilot/src/pylon_integration.rs` were updated to call this function for llama.cpp, apple_fm, and fm-bridge backends.
+
+**Files Modified:**
+- `crates/pylon/src/cli/compute.rs` - Added OpenAI-compatible model detection
+- `crates/autopilot/src/pylon_integration.rs` - Added OpenAI-compatible model detection
+
+**New Tests Added:**
+- `test_detect_local_backends_names` - Verify all 4 backend names are present
+- `test_check_backend_unavailable` - Verify unavailable backends return empty models
+- `test_check_backend_model_detection_llamacpp` - Ensure no panic on llamacpp detection
+- `test_detect_cloud_providers` - Verify cloud provider detection
+
 ## Test Results
 
 ### 1. CLI Compute Command - Human Readable Output
