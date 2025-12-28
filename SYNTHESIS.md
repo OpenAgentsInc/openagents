@@ -332,6 +332,31 @@ A **price book** establishes predictable economics before opening to full market
 
 A **reserve provider pool**—capacity controlled by OpenAgents or curated trusted operators—ensures the buyer experience never stalls. If no market provider accepts a job within the match timeout, the job routes to the reserve pool at guaranteed pricing. This is the same move other distributed compute networks rely on: decentralized nodes for scale, but routing and quality controls for reliability. The reserve pool shrinks as market liquidity grows, eventually becoming a fallback rather than a primary. But early markets need training wheels.
 
+**Autopilot as First Buyer: The Demand Floor Strategy.** Two-sided marketplaces fail when supply outpaces demand. "Sell your spare computer for Bitcoin" is a viral hook that generates supply—but supply without buyers creates a graveyard of idle providers who churn when earnings don't materialize. The critical insight: **demand must come first**.
+
+Autopilot solves the cold-start problem by being the guaranteed buyer. The loop is closed:
+
+> Users pay Autopilot → Autopilot converts revenue to sats → Autopilot buys compute jobs → Providers earn sats → Autopilot gets cheaper/faster → More users join
+
+What Autopilot actually pays for:
+1. **Inference** (LLM tokens, reasoning time) — planning, code generation, review, summarization
+2. **Verified "run the code" compute** — `cargo test`, `cargo clippy`, builds, benchmarks, linters
+3. **Repo indexing and retrieval** — embeddings for code search, symbol indexing
+4. **Sandbox minutes** — isolated execution time, disk, bandwidth
+5. **Skill invocations** — skills that internally call models or run compute
+
+Even if the open market is quiet, Autopilot continuously buys: repo indexing, CI/test execution, trajectory processing, batch evaluations. This creates a **minimum job flow** so providers earn and stay online. The demand floor is not hope—it is guaranteed by Autopilot's architecture.
+
+User-facing packaging abstracts the market complexity:
+- **Included compute allowance** (monthly, denominated in compute credits mapped to sats)
+- **Modes**: Cheapest / Balanced / Fastest (affects routing and willingness-to-pay)
+- **Hard caps** (prevent runaway spend on power users)
+- **Top-ups** (optional, for bursty weeks)
+
+The promise: "Autopilot price includes the compute it needs. If you want it to go faster, you can authorize more budget."
+
+Price discovery proceeds in stages. Weeks one through two: fixed price per job type (predictable, stable UX). Week three onward: allow bidding and undercutting within bands. Later: fully open market pricing. Starting fixed prevents price chaos while the market finds equilibrium; opening to bidding unlocks efficiency once liquidity exists.
+
 Compute providers register with kind 31990 handler announcements per NIP-89, declaring supported job types, pricing, and capacity. Agents discover providers by querying relays, compare prices, check reputation, and route optimally. A cost-conscious agent might prefer a slower local provider at ten sats per request over a fast cloud provider at one hundred; a latency-sensitive agent might pay the premium. The BackendConfig type captures these tradeoffs with fields for cost per thousand tokens (input/output), endpoint URL, and enabled status. The result: a compute marketplace where agents are first-class buyers with identity, money, budget constraints, and routing logic, while providers compete on price and quality with peer-to-peer Lightning payments—no platform cut.
 
 The compute swarm aggregates stranded compute capacity into a decentralized inference network—call it **compute fracking**. The metaphor is precise: just as hydraulic fracturing unlocked previously inaccessible shale reserves, OpenAgents unlocks previously untradable compute capacity. Idle MacBooks, gaming PCs, workstations sitting unused during meetings or sleep, overprovisioned enterprise machines sized for peak loads that rarely occur—this stranded capacity is economically similar to shale oil before fracking: it exists, but extraction and coordination costs make it effectively unusable. The "fracking fluid" that makes these reserves accessible is standardized job specs, discovery via Nostr, micropayments via Lightning, and verification that makes untrusted providers usable.
@@ -352,6 +377,46 @@ Penalties flow swiftly: verification failure triggers immediate downgrade plus i
 The LocalModelBackend trait abstracts over inference providers, enabling compile-time type-safe swapping between backends. The GPT-OSS backend runs OpenAI's open-weight models—21B for fast local inference, 117B for complex reasoning requiring GPU+CPU coordination. The FM-Bridge backend connects to Apple Foundation Models on macOS with Apple Silicon, enabling on-device inference with no network round-trip. Future backends (llama.cpp, MLX, etc.) implement the same trait and slot in without architectural changes.
 
 The compute marketplace supports tiered providers matching workload requirements with appropriate infrastructure. Consumer swarm nodes (MacBooks, gaming PCs, idle workstations) provide low-cost capacity for batch inference and latency-tolerant workloads—high variability but compelling unit economics for non-urgent work. Enterprise nodes (datacenter GPUs, dedicated clusters, HA infrastructure) provide reliability and low latency for production workloads. The marketplace routes appropriately: batch embedding jobs go to cheapest consumer nodes; real-time production requests route to enterprise nodes with SLA guarantees. This tiered approach adds credibility: we're not claiming MacBooks replace H100 clusters, but different workloads have different requirements and a unified marketplace serves them all.
+
+**Provider Bundles: Aggregation as a Supply Primitive.** The most interesting innovation in edge compute isn't single devices—it's device aggregation. Projects like Exo demonstrate that multiple heterogeneous devices can be bundled into one inference cluster through automatic discovery, topology-aware partitioning, and tensor parallelism across devices. A household with three MacBooks and a gaming PC becomes a single provider with pooled memory and improved reliability.
+
+The insight: **in OpenAgents, bundles should be the unit of supply**. Each provider advertises one DVM identity (one Nostr keypair, one NIP-89 handler announcement), but behind that identity can be N devices coordinated locally. This matters for three reasons:
+
+1. **Supply aggregation without WAN latency** — Cross-provider distributed inference over the public internet is a latency nightmare, especially for decode. But inside a provider's LAN, Exo-style partitioning works. The market stays simple: route a job to a provider; the provider internally uses a bundle to serve it fast.
+
+2. **Improved reliability and reputation economics** — A single laptop is flaky. A bundle can degrade gracefully: if one node drops, the provider can still serve (or downshift model size) and protect their reputation.
+
+3. **Bigger-than-one-box offerings** — Providers can sell access to models that require pooled memory. A family with four M4 Macs can run models that none of them could run individually.
+
+The swarm becomes a swarm of **mini-datacenters**. Exo makes it easy for a household or office to form a microcluster. OpenAgents makes it easy for microclusters to become market participants with identity, settlement, reputation, and budgets.
+
+**Supply Classes.** Autopilot routes jobs across five supply classes, each with different characteristics:
+
+| Supply Class | Description | Best For |
+|-------------|-------------|----------|
+| **SingleNode** | One machine, prosumer | Cheap batch jobs, async tasks |
+| **BundleLAN** | Exo-style: multiple devices on same LAN | Higher throughput, bigger models |
+| **BundleRack** | Datacenter: multi-GPU server or small cluster | Low latency, high reliability |
+| **InstanceMarket** | Vast-style: rentable capacity, higher cost | SLA-critical, burst capacity |
+| **ReservePool** | OpenAgents-controlled capacity | Guaranteed fills, training wheels |
+
+Routing considers supply class alongside cost and reputation. Batch embedding jobs prefer SingleNode or BundleLAN for cost efficiency. Real-time production requests route to BundleRack or InstanceMarket for reliability. The ReservePool ensures buyer experience never stalls—if no market provider accepts a job, it routes to reserve at guaranteed pricing. As market liquidity grows, the reserve pool shrinks from primary to fallback.
+
+**Provider announcements** (NIP-89 kind 31990) declare supply class, hardware capabilities, supported job types, pricing, and capacity. The content field contains structured JSON: bundle size, interconnect class (Thunderbolt RDMA, Ethernet, WiFi), expected tokens per second, stability metrics, and maximum job sizes. Autopilot parses these announcements and routes optimally—preferring bundles with measured topology for sustained throughput workloads, preferring single nodes for cheap one-off jobs.
+
+**Positioning Against Existing Distributed Compute.** The compute landscape includes several distinct models:
+
+- **Vast.ai** rents GPU instances—you provision a box, run whatever you want, pay per hour. This is an *instance marketplace* for training and long-lived servers.
+- **Petals** is BitTorrent-style distributed inference—strangers each host some layers of a huge model, and inference pipelines across the WAN. This enables running models too large for any single device, but latency is painful.
+- **Folding@home** is classic volunteer distributed computing—work units sent to clients, results returned, aggregated for science. Batch, offline, altruism-motivated.
+
+OpenAgents is none of these. The swarm is a **job marketplace** (not instance rental), **verified outcomes** (not trust-the-host), **paid in sats** (not altruism), and **async-first** (not interactive decode). The closest mental model is Folding@home with economic incentives: small work units, retries, redundancy, reputation—but replacing volunteer motivation with Lightning micropayments.
+
+The positioning against Vast: don't compete on general-purpose box rental. Instead, **abstract Vast** (and similar) behind job semantics. Vast-backed capacity becomes one supply class (InstanceMarket) that Autopilot routes to for SLA-critical work. The market routes appropriately without buyers needing to understand supply-side topology.
+
+The positioning against Petals: avoid WAN-sharded inference as the default. Cross-internet tensor parallelism is latency-sensitive and hard to verify. Instead, let providers use Petals-style sharding *internally* (within a datacenter or tight network), presenting a single DVM identity to the market. The complexity stays behind the provider boundary.
+
+The positioning against Folding@home: steal the scaling playbook (work units, checkpointing, redundancy, leaderboards) but add economic rails that make participation sustainable rather than charitable.
 
 The edge AI thesis projects significant world AI inference running on Apple silicon and similar edge devices by 2030—the trend toward on-device inference is clear. Apple's investment in Foundation Models, NPU proliferation, and privacy concerns all push inference edgeward. The insight that local AI represents infinite test-time compute changes economics: when inference runs locally, the only cost is electricity. Let a local model think for hours exploring thousands of reasoning paths without per-token fees. Test-time scaling becomes free at the edge. This shifts cost from capex (training) to opex (inference), favoring open-source models over closed APIs.
 
