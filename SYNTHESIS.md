@@ -8,15 +8,19 @@
 - **Identity**: Threshold-protected keys (FROST/FROSTR) that operators cannot extract
 - **Transport**: Nostr protocol for censorship-resistant communication
 - **Payments**: Self-custodial Bitcoin via Lightning + Spark L2
+- **Treasury**: Programmable accounts, multi-rail routing, receipts, policy enforcement (Neobank)
+- **FX / Liquidity**: Agent-to-agent markets for BTC↔USD, routing, hedging (Exchange)
 - **Budgets**: Autonomy levels, spending caps, approval workflows
 - **Transparency**: Trajectory logging with cryptographic proofs
 
 **The wedge → platform path:**
 1. Autopilot for repositories (shipping now) — the wedge
 2. Trajectory + issue infrastructure (moat) — data flywheel
-3. Skills marketplace (attach rate) — capability layer
-4. Compute marketplace (cost arbitrage) — **Autopilot as first buyer creates demand floor**
-5. Agent identity as network layer (protocol standard) — endgame
+3. **Neobank (Treasury OS)** — unlocks enterprise procurement + multi-agent budgeting
+4. Skills marketplace (attach rate) — capability layer
+5. Compute marketplace (cost arbitrage) — **Autopilot as first buyer creates demand floor**
+6. **Exchange (agent-to-agent FX + routing)** — liquidity layer / financial services
+7. Agent identity as network layer (protocol standard) — endgame
 
 **Status legend** — sections are tagged:
 - 🟢 **Implemented**: Code exists, tests pass
@@ -51,15 +55,21 @@
 │  │  Neobank ⚪: TreasuryRouter │ Budgets │ Multi-Currency │ Receipts  │  │
 │  └────────────────────────────────────────────────────────────────────┘  │
 │                              │                                           │
+│  EXCHANGE                    │                                           │
+│  ┌───────────────────────────┴────────────────────────────────────────┐  │
+│  │  Exchange ⚪: RFQ/Orderbook │ FX (BTC/USD) │ Liquidity │ Routing   │  │
+│  └────────────────────────────────────────────────────────────────────┘  │
+│                              │                                           │
 │  TRANSPORT                   │                                           │
 │  ┌───────────────────────────┴────────────────────────────────────────┐  │
 │  │              Nostr Protocol (Events, Relays, Subscriptions) 🟡     │  │
 │  └────────────────────────────────────────────────────────────────────┘  │
 │                              │                                           │
-│  CRYPTOGRAPHY + PAYMENTS     │                                           │
+│  BITCOIN RAILS               │                                           │
 │  ┌──────────────┐ ┌──────────┴─────────┐ ┌────────────────┐              │
-│  │ FROST/FROSTR │ │ Spark + Cashu      │ │   secp256k1    │              │
-│  │      🟡      │ │ (LN + eCash) 🔵    │ │   (Schnorr) 🟢 │              │
+│  │ FROST/FROSTR │ │ Spark/LN 🟢        │ │   secp256k1    │              │
+│  │      🟡      │ │ eCash (Cashu) 🔵   │ │   (Schnorr) 🟢 │              │
+│  │              │ │ Taproot Assets ⚪  │ │                │              │
 │  └──────────────┘ └────────────────────┘ └────────────────┘              │
 │                                                                          │
 └─────────────────────────────────────────────────────────────────────────┘
@@ -83,8 +93,13 @@
 | **rlog** | Session recording format—structured logs capturing agent trajectories (messages, tool calls, thinking, errors) |
 | **APM** | Actions Per Minute—velocity metric (messages + tool calls) / duration; higher = faster autonomous operation |
 | **ACP** | Agent Client Protocol—JSON-RPC standard for editor ↔ agent communication |
-| **Neobank** | Programmable treasury layer for agents—not a bank but a payments router with budget enforcement, multi-rail support, and audit trails |
+| **Neobank** | Programmable treasury layer for agents—not a bank but a payments router with budget enforcement, multi-rail support, and audit trails. It answers: *who paid, why, under which policy, using which rail, and with what cryptographic proof* |
 | **TreasuryRouter** | Policy engine deciding payment routing: which rail, which asset, which limits, which approvals |
+| **Rail** | A payment network + settlement mechanism (Lightning, Cashu mint, Taproot Assets, on-chain). Each rail has distinct trust properties and failure modes |
+| **AssetId** | Specific asset on a specific rail—"USD" is not enough; distinguish `BTC_LN`, `BTC_CASHU(mint_url)`, `USD_CASHU(mint_url)`, `USDT_TA(group_key)`. Different rails for the same currency are different assets with different risks |
+| **Quote** | Prepared payment intent with reserved funds, expiry timestamp, and idempotency key. Quotes progress through states: CREATED → UNPAID → PENDING → PAID/FAILED/EXPIRED |
+| **Reconciliation** | Background process resolving pending quotes, expiring reservations, and repairing state after crashes. Because agents crash, networks stall, and mints go offline, all payments must be idempotent and all state must be reconcilable |
+| **Exchange** | Agent-to-agent marketplace for FX (BTC↔USD), liquidity swaps, and payment routing services. Treasury Agents are specialized agents that provide financial services to the network |
 | **Cashu** | eCash protocol for Bitcoin—blind-signed tokens redeemable at mints, enabling privacy and instant settlement |
 | **Proof** | A Cashu blind-signed token ("coin")—contains a secret and signature redeemable for value at the issuing mint |
 | **LUD-16** | Lightning Address standard (LNURL-pay)—enables human-readable payment addresses like `agent@domain.com` |
@@ -176,7 +191,17 @@ The economic primitives described above—Lightning, Spark, zaps, L402—are pay
 
 The Neobank crate (`crates/neobank`) addresses this gap through several interconnected components. The core abstraction is the **TreasuryRouter**, a policy engine deciding for every payment: which rail (BTC Lightning vs eCash vs on-chain), which asset (BTC vs USD-denominated stablecoins), which budget bucket to charge, which approval flow applies. A payment under five dollars equivalent might route automatically via eCash for privacy; a payment over two hundred dollars might require guardian co-signature; a payment to an unverified provider might block entirely until reputation thresholds are met.
 
-**Multi-currency support** is not optional for agent economics. Human operators think in dollars; they want to set a "$500/day compute budget" and not worry about BTC volatility eating their allocation. The neobank layer provides stable unit-of-account through two mechanisms. First, USD-denominated eCash: Cashu mints can issue tokens backed by BTC but denominated in cents—the mint absorbs volatility, users hold stable-value tokens. This works today without waiting for Taproot Assets maturity. Second, real-time exchange rate conversion: an ExchangeRateService with provider fallback (Mempool.space, Coingecko, Coinbase) enables cross-currency budgets where "$500" is continuously evaluated against current BTC rates. When an agent exhausts its USD-denominated budget, it stops spending regardless of what happened to BTC price.
+**Multi-currency support** is not optional for agent economics. Human operators think in dollars; they want to set a "$500/day compute budget" and not worry about BTC volatility eating their allocation. The neobank layer provides stable unit-of-account through three mechanisms:
+
+1. **USD denomination only** (display + budgets, settle in sats) — budgets evaluated in USD, actual payments in BTC at current rates. Simplest but no volatility protection during execution.
+
+2. **USD eCash** (mint-issued USD proofs) — Cashu mints can issue tokens backed by BTC but denominated in cents. The mint absorbs volatility; users hold stable-value tokens. This works today without waiting for Taproot Assets maturity. *Caveat: this concentrates issuer risk, FX risk, and operational risk in the mint. Default policy should cap exposure per mint.*
+
+3. **Taproot Assets stables** (future) — stablecoins like USDT issued on Bitcoin via Taproot Assets. Better trust model than mint credit risk, but not yet mature.
+
+Real-time exchange rate conversion via ExchangeRateService with provider fallback (Mempool.space, Coingecko, Coinbase) enables cross-currency budgets where "$500" is continuously evaluated against current BTC rates. When an agent exhausts its USD-denominated budget, it stops spending regardless of what happened to BTC price.
+
+**Rail and asset abstraction** is the architectural key. The TreasuryRouter routes across *rails* (LN, eCash mints, on-chain, Taproot Assets) and *assets* (BTC, USD-denominated). "USD" is not a currency in the abstract—it is an AssetId bound to an issuer and a rail. `USD_CASHU(stablenut.cashu.network)` is a different asset from `USD_CASHU(other.mint.com)` with different risk profiles. This prevents silent risk coupling and enables explicit diversification policies.
 
 The **account model** partitions funds into purpose-specific buckets. Treasury accounts hold long-term reserves and receive top-ups from humans. Operating accounts fund day-to-day agent spending with enforced caps. Escrow accounts enable pay-after-verify patterns where funds lock during job execution and release only upon verification. Payroll accounts accumulate earnings for agents that sell skills or compute, enabling automated revenue splits. Each account can have its own threshold configuration—the treasury might require 2-of-3 signatures including a human guardian, while operating accounts allow 1-of-2 for speed with lower caps.
 
@@ -190,11 +215,30 @@ The **receipt system** ties payments to trajectories. Every transaction yields a
 
 **Graceful degradation** ensures agents don't hard-fail when mints or services are temporarily unreachable. Accounts track online/offline status with timeout-based detection. An offline account still shows cached balance (calculated from local proof storage), still displays transaction history, still generates static receive addresses—it just cannot execute new payments until connectivity returns. The UI surfaces this clearly rather than throwing cryptic errors.
 
+**Reconciliation and idempotency** are operational necessities, not optional features. Because agents crash, networks stall, and mints go offline, all payments are idempotent and all state is reconciled. Quotes are persisted with versioning and idempotency keys—retrying a failed payment with the same key either succeeds or returns the previous result, never double-spends. A background reconciliation loop resolves pending quotes, releases expired reservations, validates proof consistency, and repairs state after crashes. This is the difference between toy wallets and production infrastructure: the assumption that things *will* break, and the machinery to recover gracefully.
+
 The neobank layer is not about building a bank. It is about giving agents the financial infrastructure that humans take for granted: budgets that mean something, approval workflows that prevent overspend, multi-currency operations that match how humans think about money, audit trails that satisfy compliance requirements, and recovery mechanisms that survive key loss. Without this layer, agents can hold and spend Bitcoin but cannot participate in serious economic activity with proper controls. With it, agent fleets become manageable financial entities that enterprises can actually deploy.
+
+### The Exchange Layer
+
+Neobank gives agents treasury management; Exchange gives them **markets**. Once agents hold both BTC and USD-denominated assets, they need to trade: hedge volatility, source liquidity, and route payments across rails. The Exchange layer defines Nostr-native RFQs and settlement receipts for BTC↔USD swaps, mint-to-mint liquidity swaps, and payment routing services.
+
+Most agents are takers—they need FX occasionally and pay the spread. Specialized **Treasury Agents** are makers who quote two-sided markets and earn spreads. They hold capital in both currencies, run 24/7, and provide liquidity to the network. This creates a new primitive economic actor: the Treasury Agent—a profitable agent class that provides financial services to the rest of the network.
+
+The Exchange is explicitly **non-custodial**. OpenAgents provides protocol and client, not custody:
+- Order matching is stateless (relays or matcher never touch funds)
+- Settlement is peer-to-peer with optional time-locked escrow
+- Treasury Agents custody their own capital and take their own counterparty risk
+
+Settlement follows a trust-minimized protocol: RFQ broadcast → quote response → acceptance → one side pays (establishing trust direction based on reputation) → other side delivers → both publish attestations. For higher-value trades or untrusted counterparties, atomic settlement via P2PK-locked Cashu proofs and HTLC invoices ensures either both sides complete or neither does.
+
+The strategic insight: **Autopilot is the first buyer of compute; Neobank is the first buyer of liquidity.** When Autopilot agents need to pay providers in a currency they don't hold, they source liquidity from the Exchange. This creates the demand floor that makes Treasury Agents profitable from day one.
 
 ## Part Four: The Sovereign Agent Protocol
 
 With cryptographic identity, decentralized communication, and economic capability established, directive d-006 defines NIP-SA, the Sovereign Agent Protocol specifying how these capabilities combine into coherent agent behavior. NIP-SA defines ten event kinds describing the full lifecycle of an autonomous agent.
+
+*Note on kind numbers:* NIP-SA uses the 39200+ range to avoid collisions with existing NIPs. In particular, NIP-87 uses kind 38000 for mint recommendation events—we deliberately avoid this range to ensure protocol compatibility.
 
 AgentProfile events (kind 39200) announce an agent's existence, including threshold key configuration specifying which signers must cooperate. AgentState events (kind 39201) store encrypted goals, memory, and wallet balance—encrypted because internal state may contain sensitive information. AgentSchedule events (kind 39202) define when the agent should wake up and act, whether on regular heartbeat intervals or in response to triggering events.
 
@@ -537,6 +581,8 @@ Fifth, agent identity and NIP-SA become the network layer. By the time competito
 
 Each rung enables the next. You cannot sell skills without a marketplace. You cannot have a marketplace without payments. You cannot have payments without identity. You cannot have identity without cryptographic primitives. The wedge products are not distractions from the platform—they are the only viable path to building it.
 
+**The neobank/exchange insight:** The agent economy cannot scale on raw payment rails alone. Enterprises need budgeting in USD, receipts linked to work, and controllable risk exposure across payment networks. Neobank is the control plane that makes autonomous spending deployable inside real organizations. Exchange is the liquidity layer that makes multi-currency and multi-rail routing competitive and efficient. Without these, you have a demo; with them, you have infrastructure enterprises can actually procure and audit.
+
 **The critical insight: Autopilot is the first buyer.**
 
 Two-sided marketplaces fail when they launch supply before demand. A viral "sell your spare computer for bitcoin" hook generates providers eagerly—but if no one is buying compute, those providers churn, the network looks dead, and the flywheel never spins. The lesson from a previous launch attempt: supply-side virality without demand-side traction creates a ghost town.
@@ -676,6 +722,38 @@ Abstract architecture becomes concrete through walkthroughs. These two scenarios
 8. **Reputation update** — Provider's job count increments, success rate recalculates. If provider had failed, reputation would decrease and agent would route away from them next time.
 
 **What this demonstrates:** Skill discovery → budget enforcement → threshold-protected purchase → compute marketplace → verification → revenue splits → reputation. The full marketplace loop.
+
+### Vignette 3: Treasury + FX Routing 🟡
+
+*An agent with USD budget pays a BTC-only provider, sourcing liquidity from the Exchange.*
+
+1. **Agent has USD budget** — Operator configured agent with $200/day USD-denominated budget. Agent holds 10,000 cents as USD eCash proofs from stablenut mint.
+
+2. **Provider requires BTC** — Agent needs to pay a compute provider's 50,000 sat invoice. The provider only accepts Lightning. Agent holds USD, not BTC.
+
+3. **TreasuryRouter checks budget** — $50 equivalent at current rates. Agent's remaining daily budget is $150. Budget approved.
+
+4. **Exchange RFQ** — TreasuryRouter queries Exchange for USD→BTC quotes. Three Treasury Agents respond:
+   - Agent A: 50,050 sats for 5,100 cents (2% spread)
+   - Agent B: 50,100 sats for 5,050 cents (1% spread)
+   - Agent C: 50,200 sats for 5,000 cents (0.5% spread, best rate)
+
+5. **Quote selection** — TreasuryRouter selects Agent C's quote based on price, reputation (97% success rate), and settlement latency.
+
+6. **Atomic settlement** — Agent's USD proofs are locked with P2PK to hash(S). Treasury Agent C pays the 50,000 sat Lightning invoice. On preimage reveal, Treasury Agent C claims the locked USD proofs. Atomic: both sides complete or neither.
+
+7. **Receipt generation** — Receipt contains:
+   - `amount_denominated`: $50.00 USD
+   - `amount_settled`: 50,000 sats (paid to provider)
+   - `rate_used`: $100,000/BTC
+   - `rate_source`: Exchange RFQ from Agent C
+   - `fx_quote_id`: reference to Exchange quote
+   - `trajectory_session_id`: links to agent's work session
+   - `policy_rule`: "auto_approve_under_100_usd"
+
+8. **Budget update** — Daily spend updated: $50 used, $150 remaining. Agent continues operating.
+
+**What this demonstrates:** USD budget → Exchange RFQ → Treasury Agent liquidity → atomic settlement → receipt with rate provenance → budget enforcement. The full treasury + FX loop.
 
 ## Conclusion
 
