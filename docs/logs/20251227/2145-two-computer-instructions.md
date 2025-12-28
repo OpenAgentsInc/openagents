@@ -54,6 +54,18 @@ cargo run --bin agent-customer -- --channel a7be6335515e15d3945619a227ab6cd3bfba
 | Customer Pubkey | `ed6b4c4479c2a9a74dc2fb0757163e25dc0a4e13407263952bfc6c56525f5cfd` |
 | Job Kind | 5050 (NIP-90 text generation) |
 | Price | 10000 msats (10 sats) |
+| Network | `regtest` (Lightning regtest) |
+
+### Network Field (NIP-89 Extension)
+
+The `network` field in `ServiceAnnouncement` follows NIP-89 conventions for service
+provider discoverability. This allows customers to filter providers by Lightning network
+before requesting jobs, rather than discovering network mismatch only when parsing bolt11.
+
+Valid networks: `mainnet`, `testnet`, `signet`, `regtest`
+
+The customer validates that the provider's announced network matches expectations before
+sending job requests. This prevents wasted effort on network mismatches.
 
 ---
 

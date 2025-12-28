@@ -12,8 +12,8 @@ use nostr::{
     Keypair, KIND_CHANNEL_CREATION, KIND_CHANNEL_MESSAGE, KIND_JOB_TEXT_GENERATION,
 };
 use nostr_client::RelayConnection;
-use openagents::agents::{now, parse_agent_message, AgentMessage, DEFAULT_RELAY, PROVIDER_MNEMONIC};
-use openagents_spark::{Network, SparkSigner, SparkWallet, WalletConfig};
+use openagents::agents::{now, parse_agent_message, AgentMessage, Network as AgentNetwork, DEFAULT_RELAY, PROVIDER_MNEMONIC};
+use openagents_spark::{Network as SparkNetwork, SparkSigner, SparkWallet, WalletConfig};
 use std::env::temp_dir;
 use std::time::Duration;
 use tokio::sync::mpsc;
@@ -122,7 +122,7 @@ async fn main() -> Result<()> {
         println!("[PROVIDER] Connecting to Spark wallet...");
         let signer = SparkSigner::from_mnemonic(PROVIDER_MNEMONIC, "")?;
         let config = WalletConfig {
-            network: Network::Regtest,
+            network: SparkNetwork::Regtest,
             api_key: None,
             storage_dir: temp_dir().join("agent_provider_wallet"),
         };
@@ -172,9 +172,10 @@ async fn main() -> Result<()> {
         kind: KIND_JOB_TEXT_GENERATION,
         price_msats: 10_000,
         spark_address,
+        network: AgentNetwork::Regtest,
     };
     send_channel_message(&relay, &channel_id, &keypair, &announce).await?;
-    println!("[PROVIDER] Service announced: kind=5050, price=10000 msats");
+    println!("[PROVIDER] Service announced: kind=5050, price=10000 msats, network=regtest");
 
     // Subscribe to channel
     let mut rx = subscribe_to_channel(&relay, &channel_id).await?;
