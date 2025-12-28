@@ -337,6 +337,7 @@ async fn test_full_paid_job_e2e() {
         require_payment: true,
         min_price_msats: 10_000, // 10 sats
         default_model: "mock-model".to_string(),
+        network: "regtest".to_string(),
     };
     dvm.set_config(config);
     dvm.set_identity(Arc::new(provider_identity)).await;

@@ -312,9 +312,24 @@ async fn run_daemon(
                                 tracing::warn!("Failed to mark job as failed: {}", e);
                             }
                         }
-                        DomainEvent::PaymentReceived { amount_msats, .. } => {
+                        DomainEvent::PaymentReceived { job_id, amount_msats, .. } => {
                             earnings_msats += amount_msats;
-                            // Payment received events are already tracked via JobCompleted
+                            // Mark the invoice as paid
+                            if let Err(e) = db.mark_invoice_paid(job_id, *amount_msats) {
+                                tracing::warn!("Failed to mark invoice paid: {}", e);
+                            }
+                        }
+                        DomainEvent::JobStarted { job_id, .. } => {
+                            // Update job status to processing
+                            if let Err(e) = db.update_job_status(job_id, JobStatus::Processing) {
+                                tracing::warn!("Failed to update job status: {}", e);
+                            }
+                        }
+                        DomainEvent::InvoiceCreated { job_id, bolt11, amount_msats, .. } => {
+                            // Record the invoice in the database
+                            if let Err(e) = db.record_invoice(job_id, bolt11, *amount_msats) {
+                                tracing::warn!("Failed to record invoice: {}", e);
+                            }
                         }
                         _ => {}
                     }

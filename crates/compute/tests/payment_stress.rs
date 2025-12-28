@@ -107,6 +107,7 @@ async fn stress_test_job_throughput_no_payment() {
             require_payment: false,
             min_price_msats: 0,
             default_model: "fast-model".to_string(),
+            network: "regtest".to_string(),
         });
         dvm.set_identity(Arc::new(provider_identity)).await;
     }
@@ -410,6 +411,7 @@ async fn stress_test_full_e2e_throughput() {
         require_payment: true,
         min_price_msats: 1000, // 1 sat
         default_model: "fast-model".to_string(),
+        network: "regtest".to_string(),
     });
     dvm.set_identity(Arc::new(provider_identity.clone())).await;
     dvm.set_wallet(provider_wallet.clone()).await;
@@ -519,6 +521,7 @@ async fn quick_throughput_benchmark() {
         require_payment: false,
         min_price_msats: 0,
         default_model: "fast-model".to_string(),
+        network: "regtest".to_string(),
     });
     dvm.set_identity(Arc::new(provider_identity)).await;
 

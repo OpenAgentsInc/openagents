@@ -4,6 +4,7 @@ use crate::config::PylonConfig;
 use compute::backends::BackendRegistry;
 use compute::domain::{DomainEvent, UnifiedIdentity};
 use compute::services::{DvmService, RelayService};
+use spark::{SparkWallet, WalletConfig, Network as SparkNetwork};
 use std::sync::Arc;
 use thiserror::Error;
 use tokio::sync::{broadcast, RwLock};
@@ -90,6 +91,8 @@ pub struct PylonProvider {
     relay_service: Arc<RelayService>,
     /// DVM service
     dvm_service: Option<DvmService>,
+    /// Spark wallet for payments
+    wallet: Option<Arc<SparkWallet>>,
     /// Event broadcaster
     event_tx: broadcast::Sender<DomainEvent>,
     /// Whether the provider is running
@@ -125,6 +128,7 @@ impl PylonProvider {
             backend_registry: Arc::new(RwLock::new(registry)),
             relay_service,
             dvm_service: None,
+            wallet: None,
             event_tx,
             running: false,
             jobs_processed: 0,
@@ -161,11 +165,60 @@ impl PylonProvider {
         dvm_service.set_network(&self.config.network);
 
         // Set identity on DVM service
-        dvm_service.set_identity(identity).await;
+        dvm_service.set_identity(identity.clone()).await;
+
+        // Initialize wallet if payments are enabled
+        if self.config.enable_payments {
+            match self.init_wallet(&identity).await {
+                Ok(wallet) => {
+                    let wallet = Arc::new(wallet);
+                    self.wallet = Some(wallet.clone());
+                    dvm_service.set_wallet(wallet).await;
+                    tracing::info!("Spark wallet initialized for payments");
+                }
+                Err(e) => {
+                    tracing::warn!("Failed to initialize wallet: {}. Continuing in free mode.", e);
+                    // Continue without wallet - free mode
+                }
+            }
+        } else {
+            tracing::info!("Payments disabled, running in free mode");
+        }
 
         self.dvm_service = Some(dvm_service);
 
         Ok(())
+    }
+
+    /// Initialize the Spark wallet from the identity
+    async fn init_wallet(&self, identity: &UnifiedIdentity) -> Result<SparkWallet, ProviderError> {
+        // Convert network string to SparkNetwork
+        let network = match self.config.network.as_str() {
+            "mainnet" => SparkNetwork::Mainnet,
+            "testnet" => SparkNetwork::Testnet,
+            "signet" => SparkNetwork::Signet,
+            _ => SparkNetwork::Regtest, // Default to regtest
+        };
+
+        // Get data directory for wallet storage
+        let storage_dir = self.config.data_path()
+            .map_err(|e| ProviderError::ConfigError(e.to_string()))?
+            .join("wallet");
+
+        // Create wallet config
+        let wallet_config = WalletConfig {
+            network,
+            api_key: None, // API key only needed for mainnet
+            storage_dir,
+        };
+
+        // Clone the signer from identity
+        let signer = identity.spark_signer().clone();
+
+        // Create the wallet
+        SparkWallet::new(signer, wallet_config)
+            .await
+            .map_err(|e| ProviderError::ServiceError(format!("Wallet initialization failed: {}", e)))
     }
 
     /// Start the provider
