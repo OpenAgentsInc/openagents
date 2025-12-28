@@ -5,6 +5,7 @@ pub mod deprecation;
 pub mod github;
 pub mod logger;
 pub mod preflight;
+pub mod pylon_integration;
 pub mod replay;
 pub mod report;
 pub mod startup;
@@ -39,7 +40,13 @@ pub use github::{
 pub use preflight::{
     PreflightConfig, GitInfo, AuthInfo, ProjectInfo, InferenceInfo,
     ToolsInfo, ToolInfo, LocalBackend, ProviderAuth,
+    PylonInfo, SwarmProvider, ComputeMix,
     run_preflight,
+};
+
+pub use pylon_integration::{
+    check_pylon_running, get_pylon_status, start_pylon,
+    detect_local_backends, discover_swarm_providers,
 };
 
 pub use startup::{StartupState, StartupPhase, LogLine, LogStatus, ClaudeModel};

@@ -133,6 +133,14 @@ pub struct InferenceInfo {
 
     /// Environment variables relevant to inference
     pub env_vars: HashMap<String, bool>,
+
+    /// Local Pylon daemon status
+    #[serde(default)]
+    pub pylon: Option<PylonInfo>,
+
+    /// Remote swarm providers discovered via NIP-89
+    #[serde(default)]
+    pub swarm_providers: Vec<SwarmProvider>,
 }
 
 /// Local inference backend information
@@ -149,6 +157,83 @@ pub struct LocalBackend {
 
     /// Models available (if detectable)
     pub models: Vec<String>,
+}
+
+/// Local Pylon daemon status
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PylonInfo {
+    /// Whether pylon daemon is running
+    pub running: bool,
+
+    /// Process ID if running
+    pub pid: Option<u32>,
+
+    /// Uptime in seconds if running
+    pub uptime_secs: Option<u64>,
+
+    /// Jobs completed this session
+    pub jobs_completed: u64,
+
+    /// Available models from pylon backends
+    pub models: Vec<String>,
+}
+
+impl Default for PylonInfo {
+    fn default() -> Self {
+        Self {
+            running: false,
+            pid: None,
+            uptime_secs: None,
+            jobs_completed: 0,
+            models: Vec::new(),
+        }
+    }
+}
+
+/// Remote compute provider discovered via NIP-89
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SwarmProvider {
+    /// Provider's npub (short form)
+    pub pubkey: String,
+
+    /// Human-readable name
+    pub name: String,
+
+    /// Price in millisats per request
+    pub price_msats: Option<u64>,
+
+    /// Relay where discovered
+    pub relay: String,
+}
+
+/// Complete compute availability summary
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ComputeMix {
+    /// Local pylon status
+    pub pylon: Option<PylonInfo>,
+
+    /// Local inference backends
+    pub local_backends: Vec<LocalBackend>,
+
+    /// Cloud API providers
+    pub cloud_providers: Vec<String>,
+
+    /// Remote swarm providers via NIP-89
+    pub swarm_providers: Vec<SwarmProvider>,
+}
+
+impl ComputeMix {
+    /// Generate a summary line for display
+    pub fn summary(&self) -> String {
+        let local_count = self.local_backends.iter().filter(|b| b.available).count();
+        let cloud_count = self.cloud_providers.len();
+        let swarm_count = self.swarm_providers.len();
+
+        format!(
+            "Local: {} backends, Cloud: {} providers, Swarm: {} providers",
+            local_count, cloud_count, swarm_count
+        )
+    }
 }
 
 /// Available CLI tools
@@ -623,6 +708,8 @@ fn detect_inference() -> InferenceInfo {
         local_backends,
         has_swarm_providers,
         env_vars,
+        pylon: None,           // Filled in later by pylon integration
+        swarm_providers: Vec::new(), // Filled in later by pylon integration
     }
 }
 

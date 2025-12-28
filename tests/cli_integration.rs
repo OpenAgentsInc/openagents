@@ -335,7 +335,8 @@ fn test_pylon_subcommands_listed() {
         .stdout(predicate::str::contains("status"))
         .stdout(predicate::str::contains("doctor"))
         .stdout(predicate::str::contains("agent"))
-        .stdout(predicate::str::contains("earnings"));
+        .stdout(predicate::str::contains("earnings"))
+        .stdout(predicate::str::contains("compute"));
 }
 
 #[test]
@@ -384,6 +385,13 @@ fn test_pylon_agent_help() {
 fn test_pylon_earnings_help() {
     let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("openagents"));
     cmd.arg("pylon").arg("earnings").arg("--help");
+    cmd.assert().success();
+}
+
+#[test]
+fn test_pylon_compute_help() {
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("openagents"));
+    cmd.arg("pylon").arg("compute").arg("--help");
     cmd.assert().success();
 }
 
