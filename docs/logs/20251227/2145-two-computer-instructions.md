@@ -89,6 +89,15 @@ cargo run --bin agent-provider -- --channel a7be6335515e15d3945619a227ab6cd3bfba
 cargo run --bin agent-customer -- --channel a7be6335515e15d3945619a227ab6cd3bfba3fd1b7d79d1708a06335a71112e6 --prompt "Your question" --no-wallet
 ```
 
+### With Streaming (real-time token delivery)
+```bash
+# Provider with streaming enabled
+cargo run --bin agent-provider -- --channel a7be6335515e15d3945619a227ab6cd3bfba3fd1b7d79d1708a06335a71112e6 --no-wallet --stream
+
+# Customer sees tokens as they arrive
+cargo run --bin agent-customer -- --channel a7be6335515e15d3945619a227ab6cd3bfba3fd1b7d79d1708a06335a71112e6 --prompt "Write a haiku" --no-wallet
+```
+
 ---
 
 ## Wallet Mnemonics
