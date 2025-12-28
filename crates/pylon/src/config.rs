@@ -22,6 +22,13 @@ pub struct PylonConfig {
     pub backend_preference: Vec<String>,
     /// Data directory for storage
     pub data_dir: Option<PathBuf>,
+    /// Network for Lightning payments (mainnet, testnet, signet, regtest)
+    #[serde(default = "default_network")]
+    pub network: String,
+}
+
+fn default_network() -> String {
+    "regtest".to_string()
 }
 
 impl Default for PylonConfig {
@@ -43,6 +50,7 @@ impl Default for PylonConfig {
                 "apple_fm".to_string(),
             ],
             data_dir: None,
+            network: "regtest".to_string(),
         }
     }
 }

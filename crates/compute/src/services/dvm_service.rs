@@ -65,6 +65,8 @@ pub struct DvmConfig {
     pub default_model: String,
     /// Whether to require payment before processing
     pub require_payment: bool,
+    /// Network for Lightning payments (mainnet, testnet, signet, regtest)
+    pub network: String,
 }
 
 impl Default for DvmConfig {
@@ -73,6 +75,7 @@ impl Default for DvmConfig {
             min_price_msats: 1000, // 1 sat minimum
             default_model: "llama3.2".to_string(),
             require_payment: false, // For testing, don't require payment
+            network: "regtest".to_string(),
         }
     }
 }
@@ -119,6 +122,16 @@ impl DvmService {
         }
     }
 
+    /// Set the DVM configuration
+    pub fn set_config(&mut self, config: DvmConfig) {
+        self.config = config;
+    }
+
+    /// Set the network for Lightning payments
+    pub fn set_network(&mut self, network: impl Into<String>) {
+        self.config.network = network.into();
+    }
+
     /// Set the Spark wallet for payment processing
     pub async fn set_wallet(&self, wallet: Arc<SparkWallet>) {
         *self.wallet.write().await = Some(wallet);
@@ -157,11 +170,6 @@ impl DvmService {
     /// Set the identity for signing events
     pub async fn set_identity(&self, identity: Arc<UnifiedIdentity>) {
         *self.identity.write().await = Some(identity);
-    }
-
-    /// Set configuration
-    pub fn set_config(&mut self, config: DvmConfig) {
-        self.config = config;
     }
 
     /// Start the DVM service
@@ -584,7 +592,8 @@ impl DvmService {
             metadata,
         )
         .add_capability("text-generation")
-        .add_capability("nip90-kind-5050");
+        .add_capability("nip90-kind-5050")
+        .add_custom_tag("network", &self.config.network);
 
         // Add pricing if configured
         if self.config.min_price_msats > 0 {
