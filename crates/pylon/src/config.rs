@@ -60,7 +60,7 @@ impl Default for PylonConfig {
             ],
             data_dir: None,
             network: "regtest".to_string(),
-            enable_payments: false, // Disabled by default, free mode
+            enable_payments: true, // Enabled by default
             spark_url: None,
             spark_token: None,
         }
