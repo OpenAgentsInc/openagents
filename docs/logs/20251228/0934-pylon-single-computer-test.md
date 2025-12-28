@@ -214,4 +214,71 @@ Result: The answer to 5 x 7 is 35.
 | Job processing | ✅ Working |
 | NIP-90 response | ✅ Received |
 
-**Note:** Breez SDK shows "invalid auth header" errors for subscription, but wallet sync works and jobs process successfully.
+**Note:** Breez SDK showed "invalid auth header" errors for subscription, but wallet sync worked and jobs processed successfully.
+
+---
+
+## Fix: Breez SDK Auth Errors (09:54 CST)
+
+### Root Cause
+
+The Breez SDK's `default_config()` enables real-time sync by default:
+```rust
+real_time_sync_server_url: Some(BREEZ_SYNC_SERVICE_URL.to_string()),
+api_key: None,
+```
+
+When the SDK connects without an API key, the sync server rejects authentication with "invalid auth header".
+
+### Fix Applied
+
+Modified `crates/spark/src/wallet.rs` to disable real-time sync when no API key is provided:
+
+```rust
+// Set API key if provided
+if config.api_key.is_some() {
+    sdk_config.api_key = config.api_key.clone();
+} else {
+    // Disable real-time sync when no API key is provided
+    // This prevents "invalid auth header" errors on regtest
+    sdk_config.real_time_sync_server_url = None;
+}
+```
+
+### Result
+
+Provider logs now show clean startup with no auth errors:
+```
+Spark wallet initialized for payments
+Detected backends: ollama
+Pylon provider started
+Provider event: Job received: job_9c1c (kind 5050)
+Provider event: Job completed: job_9c1c
+```
+
+### Test Verification
+
+```bash
+cargo run --bin agent-customer -- --prompt "What is 7 times 8?" --no-wallet
+```
+
+**Result:**
+```
+========================================
+JOB RESULT RECEIVED
+========================================
+Job ID: 9c1c241e3fbcc2da2634acc9ae2cfae519b55434ad02567d3e7f6671aa3a1e76
+Result: 7 x 8 = 56.
+========================================
+```
+
+### Summary
+
+| Issue | Status |
+|-------|--------|
+| "invalid auth header" errors | ✅ Fixed |
+| Real-time sync (regtest) | Disabled (not needed) |
+| Wallet sync | ✅ Working |
+| Job processing | ✅ Working |
+
+**Note:** Real-time sync requires a Breez API key. For regtest/development, it's not needed.

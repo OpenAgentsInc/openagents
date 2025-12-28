@@ -311,7 +311,16 @@ impl SparkWallet {
     /// ```
     pub async fn new(signer: SparkSigner, config: WalletConfig) -> Result<Self, SparkError> {
         // Create SDK config for the target network
-        let sdk_config = default_config(config.network.to_sdk_network());
+        let mut sdk_config = default_config(config.network.to_sdk_network());
+
+        // Set API key if provided
+        if config.api_key.is_some() {
+            sdk_config.api_key = config.api_key.clone();
+        } else {
+            // Disable real-time sync when no API key is provided
+            // This prevents "invalid auth header" errors on regtest
+            sdk_config.real_time_sync_server_url = None;
+        }
 
         // Build connect request with mnemonic seed
         let connect_request = ConnectRequest {
