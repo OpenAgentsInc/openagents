@@ -7,6 +7,7 @@
 //!   cargo run --bin agent-provider -- --channel <CHANNEL_ID>
 
 use clap::Parser;
+use compute::backends::{BackendRegistry, CompletionRequest};
 use nostr::{
     derive_keypair, finalize_event, ChannelMessageEvent, ChannelMetadata, Event, EventTemplate,
     Keypair, KIND_CHANNEL_CREATION, KIND_CHANNEL_MESSAGE, KIND_JOB_TEXT_GENERATION,
@@ -14,6 +15,7 @@ use nostr::{
 use nostr_client::RelayConnection;
 use openagents::agents::{now, parse_agent_message, AgentMessage, Network as AgentNetwork, DEFAULT_RELAY, PROVIDER_MNEMONIC};
 use openagents_spark::{Network as SparkNetwork, SparkSigner, SparkWallet, WalletConfig};
+use std::collections::HashMap;
 use std::env::temp_dir;
 use std::time::Duration;
 use tokio::sync::mpsc;
@@ -37,6 +39,10 @@ struct Args {
     /// Skip wallet initialization (for testing without Spark)
     #[arg(long)]
     no_wallet: bool,
+
+    /// Model to use for inference (default: auto-detect first available)
+    #[arg(long)]
+    model: Option<String>,
 }
 
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync>>;
@@ -117,6 +123,38 @@ async fn main() -> Result<()> {
     let keypair = derive_keypair(PROVIDER_MNEMONIC)?;
     println!("[PROVIDER] Public key: {}", hex::encode(keypair.public_key));
 
+    // Detect inference backends
+    println!("[PROVIDER] Detecting inference backends...");
+    let registry = BackendRegistry::detect().await;
+
+    let available_models: Vec<String>;
+    if registry.has_backends() {
+        let backends = registry.available_backends();
+        println!("[PROVIDER] Found backends: {:?}", backends);
+
+        // List available models
+        let models = registry.list_all_models().await;
+        available_models = models.iter().map(|(_, m)| m.id.clone()).collect();
+        if !available_models.is_empty() {
+            println!("[PROVIDER] Available models: {:?}", available_models);
+        }
+
+        if let Some(default_id) = registry.default_id() {
+            println!("[PROVIDER] Default backend: {}", default_id);
+        }
+    } else {
+        println!("[PROVIDER] WARNING: No inference backends available!");
+        println!("[PROVIDER] Install Ollama: https://ollama.ai");
+        println!("[PROVIDER] Or run: ollama serve");
+        available_models = vec![];
+    }
+
+    // Determine which model to use
+    let model_to_use = args.model.clone().unwrap_or_else(|| {
+        available_models.first().cloned().unwrap_or_else(|| "llama3.2".to_string())
+    });
+    println!("[PROVIDER] Will use model: {}", model_to_use);
+
     // Initialize wallet (optional)
     let wallet = if !args.no_wallet {
         println!("[PROVIDER] Connecting to Spark wallet...");
@@ -181,6 +219,9 @@ async fn main() -> Result<()> {
     let mut rx = subscribe_to_channel(&relay, &channel_id).await?;
     println!("[PROVIDER] Listening for job requests...\n");
 
+    // Store pending jobs (job_id -> prompt)
+    let mut pending_jobs: HashMap<String, String> = HashMap::new();
+
     // Event loop
     while let Some(event) = rx.recv().await {
         // Skip our own messages
@@ -201,12 +242,16 @@ async fn main() -> Result<()> {
                 println!("           Prompt: {}", prompt);
                 println!("           Max tokens: {}", max_tokens);
 
+                let job_id = format!("job_{}", &event.id[..16]);
+
+                // Store prompt for later processing
+                pending_jobs.insert(job_id.clone(), prompt.clone());
+
                 if let Some(ref w) = wallet {
                     // Create invoice
                     let invoice = w
                         .create_invoice(10, Some("NIP-90 Job".to_string()), Some(3600))
                         .await?;
-                    let job_id = format!("job_{}", &event.id[..16]);
 
                     let resp = AgentMessage::Invoice {
                         job_id: job_id.clone(),
@@ -217,7 +262,6 @@ async fn main() -> Result<()> {
                     println!("[PROVIDER] Invoice sent for job {}", job_id);
                 } else {
                     // No wallet - send mock invoice
-                    let job_id = format!("job_{}", &event.id[..16]);
                     let resp = AgentMessage::Invoice {
                         job_id: job_id.clone(),
                         bolt11: "lnbcrt100n1mock".to_string(),
@@ -230,10 +274,38 @@ async fn main() -> Result<()> {
             AgentMessage::PaymentSent { job_id, payment_id } => {
                 println!("[PROVIDER] Payment received for {}: {}", job_id, payment_id);
 
-                // Process job (mock response for now)
+                // Get the stored prompt
+                let prompt = pending_jobs.remove(&job_id).unwrap_or_else(|| "Hello".to_string());
+                println!("[PROVIDER] Processing prompt: {}", prompt);
+
+                // Run inference
+                let result_text = if let Some(backend) = registry.default() {
+                    println!("[PROVIDER] Running inference with {}...", registry.default_id().unwrap_or("unknown"));
+
+                    let request = CompletionRequest::new(&model_to_use, &prompt)
+                        .with_max_tokens(256)
+                        .with_temperature(0.7);
+
+                    let backend = backend.read().await;
+                    match backend.complete(request).await {
+                        Ok(response) => {
+                            println!("[PROVIDER] Inference complete ({} tokens)",
+                                response.usage.as_ref().map(|u| u.completion_tokens).unwrap_or(0));
+                            response.text
+                        }
+                        Err(e) => {
+                            println!("[PROVIDER] Inference error: {}", e);
+                            format!("Error: {}", e)
+                        }
+                    }
+                } else {
+                    println!("[PROVIDER] No backend available, returning error");
+                    "Error: No inference backend available. Install Ollama: https://ollama.ai".to_string()
+                };
+
                 let result = AgentMessage::JobResult {
                     job_id: job_id.clone(),
-                    result: "The meaning of life is 42. This is a response from the compute provider.".into(),
+                    result: result_text,
                 };
                 send_channel_message(&relay, &channel_id, &keypair, &result).await?;
                 println!("[PROVIDER] Result delivered for {}", job_id);

@@ -82,6 +82,7 @@ issues = { path = "crates/issues" }
 nostr = { path = "crates/nostr/core" }
 nostr-client = { path = "crates/nostr/client" }
 openagents-spark = { path = "crates/spark" }
+compute = { path = "crates/compute" }
 hex = { workspace = true }
 
 # WGPUI for autopilot
