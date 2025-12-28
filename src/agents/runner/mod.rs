@@ -13,8 +13,10 @@ pub mod compute;
 pub mod scheduler;
 pub mod state;
 pub mod tick;
+pub mod trajectory;
 
 pub use compute::ComputeClient;
 pub use scheduler::Scheduler;
 pub use state::StateManager;
 pub use tick::{TickExecutor, TickResult, TickTrigger};
+pub use trajectory::TrajectoryPublisher;

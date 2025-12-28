@@ -5,11 +5,14 @@
 //! 2. Think (request compute, pay for it)
 //! 3. Act (execute actions from LLM response)
 //! 4. Update state
+//! 5. Publish trajectory for transparency
 
 use super::compute::ComputeClient;
 use super::state::StateManager;
+use super::trajectory::TrajectoryPublisher;
 use agent::{LifecycleManager, LifecycleState, RunwayAnalysis};
 use anyhow::{anyhow, Result};
+use compute::domain::UnifiedIdentity;
 use nostr::nip_sa::AgentStateContent;
 use nostr::Event;
 use nostr_client::RelayConnection;
@@ -47,6 +50,8 @@ pub struct TickResult {
     pub runway: RunwayAnalysis,
     /// Sats spent on compute
     pub compute_cost_sats: u64,
+    /// Trajectory hash for verification (SHA-256)
+    pub trajectory_hash: Option<String>,
 }
 
 /// Action taken by the agent
@@ -66,11 +71,64 @@ pub enum TickAction {
     None,
 }
 
+impl TickAction {
+    /// Get the action type as a string
+    pub fn action_type_str(&self) -> &'static str {
+        match self {
+            TickAction::Post { .. } => "post",
+            TickAction::DirectMessage { .. } => "dm",
+            TickAction::Zap { .. } => "zap",
+            TickAction::UpdateGoal { .. } => "update_goal",
+            TickAction::AddMemory { .. } => "add_memory",
+            TickAction::None => "none",
+        }
+    }
+
+    /// Convert action to JSON value for trajectory
+    pub fn to_json_value(&self) -> serde_json::Value {
+        match self {
+            TickAction::Post { content } => {
+                serde_json::json!({
+                    "content_preview": content.chars().take(100).collect::<String>()
+                })
+            }
+            TickAction::DirectMessage { recipient, content } => {
+                serde_json::json!({
+                    "recipient": recipient,
+                    "content_preview": content.chars().take(100).collect::<String>()
+                })
+            }
+            TickAction::Zap { target, amount_sats } => {
+                serde_json::json!({
+                    "target": target,
+                    "amount_sats": amount_sats
+                })
+            }
+            TickAction::UpdateGoal { goal_id, progress } => {
+                serde_json::json!({
+                    "goal_id": goal_id,
+                    "progress": progress
+                })
+            }
+            TickAction::AddMemory { memory_type, content } => {
+                serde_json::json!({
+                    "memory_type": memory_type,
+                    "content_preview": content.chars().take(100).collect::<String>()
+                })
+            }
+            TickAction::None => {
+                serde_json::json!({})
+            }
+        }
+    }
+}
+
 /// Tick executor for a sovereign agent
 pub struct TickExecutor {
     state_manager: StateManager,
     compute_client: ComputeClient,
     lifecycle_manager: LifecycleManager,
+    trajectory_publisher: TrajectoryPublisher,
     relay: RelayConnection,
     pubkey: String,
     agent_name: String,
@@ -79,16 +137,20 @@ pub struct TickExecutor {
 impl TickExecutor {
     /// Create a new tick executor
     pub fn new(
+        identity: UnifiedIdentity,
         state_manager: StateManager,
         compute_client: ComputeClient,
         relay: RelayConnection,
+        trajectory_relay: RelayConnection,
         pubkey: String,
         agent_name: String,
     ) -> Self {
+        let trajectory_publisher = TrajectoryPublisher::new(identity, trajectory_relay);
         Self {
             state_manager,
             compute_client,
             lifecycle_manager: LifecycleManager::with_state(LifecycleState::Active),
+            trajectory_publisher,
             relay,
             pubkey,
             agent_name,
@@ -100,6 +162,7 @@ impl TickExecutor {
         // 1. Fetch current state
         let mut state = self.state_manager.get_or_create_state().await?;
         let tick_number = state.tick_count + 1;
+        let tick_id = format!("tick-{}-{}", self.pubkey, tick_number);
 
         tracing::info!("[{}] Starting tick #{}", self.agent_name, tick_number);
 
@@ -132,10 +195,20 @@ impl TickExecutor {
                 lifecycle_state,
                 runway,
                 compute_cost_sats: 0,
+                trajectory_hash: None,
             });
         }
 
-        // 3. Gather observations
+        // 3. Start trajectory session for transparency
+        if let Err(e) = self
+            .trajectory_publisher
+            .start_session(&tick_id, "claude")
+            .await
+        {
+            tracing::warn!("[{}] Failed to start trajectory session: {}", self.agent_name, e);
+        }
+
+        // 4. Gather observations
         let observations = self.gather_observations(&trigger).await?;
         tracing::info!(
             "[{}] Gathered {} observations",
@@ -143,12 +216,19 @@ impl TickExecutor {
             observations.len()
         );
 
-        // 4. Build prompt for reasoning
+        // Record observations in trajectory
+        if let Err(e) = self.trajectory_publisher.record_observations(&observations).await {
+            tracing::warn!("[{}] Failed to record observations: {}", self.agent_name, e);
+        }
+
+        // 5. Build prompt for reasoning
         let prompt = self.build_reasoning_prompt(&state, &trigger, &observations);
 
-        // 5. Discover providers and request compute
+        // 6. Discover providers and request compute
         let providers = self.compute_client.discover_providers(3).await?;
         if providers.is_empty() {
+            // End trajectory session even on error
+            let _trajectory_hash = self.trajectory_publisher.end_session().await.ok();
             return Err(anyhow!("No compute providers available"));
         }
 
@@ -169,25 +249,71 @@ impl TickExecutor {
             provider.price_msats
         );
 
-        // 6. Request inference and PAY for it
+        // Record tool use (compute request) in trajectory
+        if let Err(e) = self
+            .trajectory_publisher
+            .record_tool_use(
+                "compute_request",
+                serde_json::json!({
+                    "provider": provider.name,
+                    "price_msats": provider.price_msats,
+                    "budget_sats": budget_sats
+                }),
+            )
+            .await
+        {
+            tracing::warn!("[{}] Failed to record tool use: {}", self.agent_name, e);
+        }
+
+        // 7. Request inference and PAY for it
         let reasoning = self
             .compute_client
-            .request_inference(provider, &prompt, 500, budget_sats)
+            .request_inference(&provider, &prompt, 500, budget_sats)
             .await?;
 
         let compute_cost_sats = provider.price_msats / 1000;
 
-        // 7. Parse actions from reasoning
+        // Record tool result in trajectory
+        if let Err(e) = self
+            .trajectory_publisher
+            .record_tool_result(
+                "compute_request",
+                serde_json::json!({
+                    "tokens_estimated": reasoning.len() / 4,
+                    "cost_sats": compute_cost_sats
+                }),
+                true,
+            )
+            .await
+        {
+            tracing::warn!("[{}] Failed to record tool result: {}", self.agent_name, e);
+        }
+
+        // Record thinking (redacted) in trajectory
+        if let Err(e) = self.trajectory_publisher.record_thinking(&reasoning).await {
+            tracing::warn!("[{}] Failed to record thinking: {}", self.agent_name, e);
+        }
+
+        // 8. Parse actions from reasoning
         let actions = self.parse_actions(&reasoning);
 
-        // 8. Execute actions
+        // 9. Execute actions and record in trajectory
         for action in &actions {
+            // Record action in trajectory
+            if let Err(e) = self
+                .trajectory_publisher
+                .record_action(&action.action_type_str(), action.to_json_value())
+                .await
+            {
+                tracing::warn!("[{}] Failed to record action: {}", self.agent_name, e);
+            }
+
             if let Err(e) = self.execute_action(action).await {
                 tracing::warn!("[{}] Action failed: {}", self.agent_name, e);
             }
         }
 
-        // 9. Update state
+        // 10. Update state
         state.record_tick(chrono::Utc::now().timestamp() as u64);
         state.record_spend(compute_cost_sats);
 
@@ -197,8 +323,24 @@ impl TickExecutor {
             format!("Tick #{}: {}", tick_number, reasoning.chars().take(100).collect::<String>()),
         ));
 
-        // 10. Publish updated state
+        // 11. Publish updated state
         self.state_manager.publish_state(&state).await?;
+
+        // 12. End trajectory session and get hash
+        let trajectory_hash = match self.trajectory_publisher.end_session().await {
+            Ok(hash) => {
+                tracing::debug!(
+                    "[{}] Trajectory hash: {}",
+                    self.agent_name,
+                    &hash[..16]
+                );
+                Some(hash)
+            }
+            Err(e) => {
+                tracing::warn!("[{}] Failed to end trajectory session: {}", self.agent_name, e);
+                None
+            }
+        };
 
         tracing::info!(
             "[{}] Tick #{} complete. Cost: {} sats, New balance: {} sats",
@@ -217,6 +359,7 @@ impl TickExecutor {
             lifecycle_state,
             runway,
             compute_cost_sats,
+            trajectory_hash,
         })
     }
 

@@ -3,7 +3,7 @@
 //! Runs a sovereign agent that:
 //! - Executes tick cycles autonomously
 //! - Pays for compute with its Bitcoin wallet
-//! - Dies when it runs out of money
+//! - Goes dormant when funds run out (can be revived by funding)
 //!
 //! Usage:
 //!   cargo run --bin agent-runner -- --agent <name_or_npub>
@@ -78,8 +78,10 @@ async fn main() -> Result<()> {
         println!("Npub: {}", config.npub);
         println!("State: {:?}", config.state);
 
-        if config.state == LifecycleState::Dead {
-            anyhow::bail!("Agent {} is dead and cannot be started", config.name);
+        if config.state == LifecycleState::Dormant {
+            println!("Agent {} is dormant (zero balance).", config.name);
+            println!("Fund it first to revive: openagents agent fund {}", config.name);
+            return Ok(());
         }
 
         // Decrypt mnemonic (in production, would require password)
@@ -183,10 +185,14 @@ async fn main() -> Result<()> {
 
     let tick_relay = RelayConnection::new(&relay_url)?;
     tick_relay.connect().await?;
+    let trajectory_relay = RelayConnection::new(&relay_url)?;
+    trajectory_relay.connect().await?;
     let mut executor = TickExecutor::new(
+        UnifiedIdentity::from_mnemonic(identity.mnemonic(), "")?,
         state_manager,
         compute_client,
         tick_relay,
+        trajectory_relay,
         identity.public_key_hex(),
         agent_name.clone(),
     );
@@ -222,6 +228,9 @@ async fn main() -> Result<()> {
                 println!("Cost: {} sats", result.compute_cost_sats);
                 println!("Runway: {:.1} days", result.runway.days_remaining);
                 println!("Actions: {}", result.actions.len());
+                if let Some(hash) = &result.trajectory_hash {
+                    println!("Trajectory: {}...", &hash[..16]);
+                }
                 println!("\nReasoning:\n{}", result.reasoning);
             }
             Err(e) => {
@@ -242,7 +251,7 @@ async fn main() -> Result<()> {
             r.store(false, std::sync::atomic::Ordering::SeqCst);
         })?;
 
-        // Run scheduler (will run until agent dies or interrupted)
+        // Run scheduler (will run until agent goes dormant or interrupted)
         if let Err(e) = scheduler.run(&mut executor).await {
             eprintln!("Scheduler error: {}", e);
         }
