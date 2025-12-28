@@ -244,7 +244,7 @@ let runway = lifecycle_manager.analyze_runway(balance);
 // Update lifecycle state
 lifecycle_manager.update_from_balance(balance)?;
 
-// Skip tick if hibernating or dead
+// Skip tick if hibernating or dormant
 if !lifecycle_manager.should_tick(balance) {
     return Ok(TickResult::skipped());
 }
@@ -255,6 +255,60 @@ See [LIFECYCLE.md](LIFECYCLE.md) for details on state transitions.
 ## Compute Client
 
 The agent pays for compute using its Bitcoin wallet. See [COMPUTE.md](COMPUTE.md) for details.
+
+## Trajectory Publishing
+
+Every tick publishes a transparent execution record for verification and debugging.
+
+### Trajectory Events
+
+| Kind | Name | Purpose |
+|------|------|---------|
+| 38030 | TrajectorySession | Run metadata with hash |
+| 38031 | TrajectoryEvent | Individual execution steps |
+
+### What Gets Recorded
+
+1. **Observations** - Events that triggered or were gathered during the tick
+2. **Tool Use** - Compute requests sent to providers
+3. **Tool Results** - Responses from compute providers
+4. **Thinking** - LLM reasoning (redacted for privacy with hash for verification)
+5. **Actions** - Actions taken (posts, DMs, zaps, goal updates)
+
+### Session Hash
+
+At the end of each tick, a SHA-256 hash is computed from all trajectory events.
+This hash is published in the TrajectorySession event and included in the TickResult.
+
+```rust
+// Verify trajectory integrity
+let hash = TrajectorySessionContent::calculate_hash(&event_jsons)?;
+session_content.verify_hash(&event_jsons)?; // Throws if mismatch
+```
+
+### Privacy Protections
+
+- Thinking content is redacted to `<redacted>` with only the hash preserved
+- Sensitive keys (passwords, tokens, etc.) are automatically redacted
+- Secret patterns (API keys, mnemonics) are detected and removed
+
+### Querying Trajectories
+
+```rust
+// Query trajectory session for a tick
+let filters = vec![json!({
+    "kinds": [38030],
+    "authors": [agent_pubkey],
+    "#tick": [tick_request_id],
+    "limit": 1
+})];
+
+// Query trajectory events for a session
+let filters = vec![json!({
+    "kinds": [38031],
+    "#session": [session_id]
+})];
+```
 
 ## Example Output
 
@@ -277,7 +331,7 @@ Heartbeat: 900 seconds
 [ResearchBot] Starting tick #43
 [ResearchBot] Gathered 3 observations
 [ResearchBot] Selected provider: ComputeProvider (5000 msats)
-[ResearchBot] Tick #43 complete. Cost: 5 sats, New balance: 49995 sats
+[ResearchBot] Tick #43 complete. Cost: 5 sats, Actions: 1, Trajectory: 7a8b9c0d1e2f...
 ```
 
 ## Stopping an Agent
@@ -300,7 +354,7 @@ The agent gracefully shuts down:
 
 1. Check if agent exists: `openagents agent list`
 2. Check agent state: `openagents agent status ResearchBot`
-3. Check if agent is dead (balance = 0)
+3. Check if agent is dormant (balance = 0) - fund it to revive
 
 ### No Compute Providers
 

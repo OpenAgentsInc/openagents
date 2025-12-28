@@ -52,7 +52,7 @@ impl Scheduler {
             self.triggers
         );
 
-        // Run until agent dies or interrupted
+        // Run until agent goes dormant or interrupted
         loop {
             let trigger = tokio::select! {
                 // Heartbeat timer
@@ -71,15 +71,17 @@ impl Scheduler {
                 Ok(result) => {
                     self.log_tick_result(&result);
 
-                    // Check if agent is dead
-                    if matches!(result.lifecycle_state, LifecycleState::Dead) {
-                        tracing::warn!("Agent is dead. Stopping scheduler.");
+                    // Check if agent is dormant (zero balance)
+                    // Dormant agents stop ticking but can be revived by funding
+                    if matches!(result.lifecycle_state, LifecycleState::Dormant) {
+                        tracing::warn!("Agent is dormant (zero balance). Stopping scheduler.");
+                        tracing::info!("Fund the agent to revive it.");
                         break;
                     }
                 }
                 Err(e) => {
                     tracing::error!("Tick execution failed: {}", e);
-                    // Continue running - one failed tick shouldn't kill the agent
+                    // Continue running - one failed tick shouldn't stop the agent
                 }
             }
         }
@@ -138,13 +140,24 @@ impl Scheduler {
 
     /// Log tick result summary
     fn log_tick_result(&self, result: &TickResult) {
-        tracing::info!(
-            "Tick #{} complete: state={:?}, cost={} sats, actions={}",
-            result.tick_number,
-            result.lifecycle_state,
-            result.compute_cost_sats,
-            result.actions.len()
-        );
+        if let Some(hash) = &result.trajectory_hash {
+            tracing::info!(
+                "Tick #{} complete: state={:?}, cost={} sats, actions={}, trajectory={}...",
+                result.tick_number,
+                result.lifecycle_state,
+                result.compute_cost_sats,
+                result.actions.len(),
+                &hash[..16]
+            );
+        } else {
+            tracing::info!(
+                "Tick #{} complete: state={:?}, cost={} sats, actions={}",
+                result.tick_number,
+                result.lifecycle_state,
+                result.compute_cost_sats,
+                result.actions.len()
+            );
+        }
 
         if result.runway.days_remaining < 7.0 {
             tracing::warn!(
