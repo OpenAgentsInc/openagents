@@ -11,7 +11,7 @@ use nostr::{
     finalize_event, EventTemplate, HandlerInfo, HandlerMetadata, HandlerType, JobInput,
     JobResult, PricingInfo, KIND_HANDLER_INFO, KIND_JOB_TEXT_GENERATION,
 };
-use spark::{SparkWallet, PaymentStatus};
+use spark::{PaymentDetails, PaymentStatus, SparkWallet};
 use std::collections::HashMap;
 use std::sync::Arc;
 use thiserror::Error;
@@ -417,11 +417,11 @@ impl DvmService {
                 while *running.read().await {
                     interval.tick().await;
 
-                    // Get list of pending invoices to check
-                    let invoices: Vec<(String, u64)> = {
+                    // Get list of pending invoices to check (job_id, bolt11, amount_msats)
+                    let invoices: Vec<(String, (String, u64))> = {
                         pending_invoices.read().await
                             .iter()
-                            .map(|(job_id, (_, amount))| (job_id.clone(), *amount))
+                            .map(|(job_id, (bolt11, amount))| (job_id.clone(), (bolt11.clone(), *amount)))
                             .collect()
                     };
 
@@ -432,18 +432,24 @@ impl DvmService {
                     log::debug!("Checking {} pending invoices", invoices.len());
 
                     // Check each pending invoice
-                    for (job_id, amount_msats) in invoices {
+                    for (job_id, (bolt11, amount_msats)) in invoices {
                         let wallet_guard = wallet.read().await;
                         if let Some(ref w) = *wallet_guard {
-                            // List recent payments to check for matching amounts
+                            // List recent payments and match by invoice string (not just amount)
                             match w.list_payments(Some(50), None).await {
                                 Ok(payments) => {
-                                    let amount_sats = amount_msats / 1000;
                                     for payment in payments {
-                                        if payment.status == PaymentStatus::Completed
-                                            && payment.amount as u64 == amount_sats
-                                        {
-                                            log::info!("Payment received for job {}: {} sats", job_id, amount_sats);
+                                        // Match by invoice string for reliability
+                                        let invoice_matches = match &payment.details {
+                                            Some(PaymentDetails::Lightning { invoice, .. }) => {
+                                                invoice == &bolt11
+                                            }
+                                            _ => false,
+                                        };
+
+                                        if payment.status == PaymentStatus::Completed && invoice_matches {
+                                            let amount_sats = amount_msats / 1000;
+                                            log::info!("Payment received for job {}: {} sats (invoice matched)", job_id, amount_sats);
 
                                             // Remove from pending invoices
                                             pending_invoices.write().await.remove(&job_id);
