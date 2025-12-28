@@ -98,6 +98,28 @@ cargo run --bin agent-provider -- --channel a7be6335515e15d3945619a227ab6cd3bfba
 cargo run --bin agent-customer -- --channel a7be6335515e15d3945619a227ab6cd3bfba3fd1b7d79d1708a06335a71112e6 --prompt "Write a haiku" --no-wallet
 ```
 
+### With NIP-89 Global Discovery (no channel ID needed!)
+```bash
+# Provider creates channel and publishes NIP-89 handler info
+cargo run --bin agent-provider -- --create-channel --no-wallet
+
+# Customer discovers providers automatically via NIP-89 (kind 31990)
+cargo run --bin agent-customer -- --discover --prompt "What is 2+2?" --no-wallet
+
+# Customer options for provider selection
+cargo run --bin agent-customer -- --discover --prompt "Question" --select cheapest --no-wallet
+cargo run --bin agent-customer -- --discover --prompt "Question" --max-price 20000 --no-wallet
+```
+
+The provider publishes a NIP-89 handler info event (kind 31990) that includes:
+- Handler type: `compute_provider`
+- Capabilities: `text-generation`
+- Pricing: 10000 msats per request
+- Channel ID and relay URL for direct connection
+- Available models
+
+The customer queries for these events and automatically connects to discovered providers.
+
 ---
 
 ## Wallet Mnemonics
