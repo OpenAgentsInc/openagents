@@ -4,7 +4,9 @@ This document explains how agents transition through lifecycle states based on t
 
 ## Overview
 
-Sovereign agents have a lifecycle tied to their financial runway. When an agent runs out of Bitcoin, it dies.
+Sovereign agents have a lifecycle tied to their financial runway. When an agent runs out of Bitcoin, it enters **dormancy**—a suspended state awaiting revival.
+
+**Important:** There is no "death" state. Dormant agents can always be revived by receiving funds. See [PHILOSOPHY.md](PHILOSOPHY.md) for the rationale behind this design.
 
 ## Lifecycle States
 
@@ -14,15 +16,15 @@ Spawning ──────────────→ Active
                             │
                 balance < 7 days runway
                             ↓
-                        LowBalance ←──── funded
+                        LowBalance ←───── funded
                             │
                 balance < hibernate_threshold
                             ↓
-                        Hibernating ←── funded
+                        Hibernating ←──── funded
                             │
                         balance = 0
                             ↓
-                          Dead (terminal)
+                         Dormant ←─────── funded (REVIVAL)
 ```
 
 ### State Descriptions
@@ -33,7 +35,7 @@ Spawning ──────────────→ Active
 | `Active` | Normal operation with healthy runway | Full tick execution |
 | `LowBalance` | Less than 7 days of runway | Continues ticking, should seek funding |
 | `Hibernating` | Balance below hibernate threshold | Only responds to zaps |
-| `Dead` | Balance is zero | Cannot tick, terminal state |
+| `Dormant` | Balance is zero, awaiting revival | Only responds to zaps, can be revived |
 
 ## Runway Analysis
 
@@ -61,7 +63,7 @@ let daily_burn = config.ticks_per_day * config.cost_per_tick_sats;
 let days_remaining = balance_sats as f64 / daily_burn as f64;
 
 let state = if balance_sats == 0 {
-    Dead
+    Dormant  // NOT Dead - agent can be revived
 } else if balance_sats < config.hibernate_threshold_sats {
     Hibernating
 } else if days_remaining < config.low_balance_days {
@@ -93,31 +95,37 @@ pub struct LifecycleConfig {
 | From | To | Condition |
 |------|-----|-----------|
 | Spawning | Active | Agent is funded |
-| Spawning | Dead | Spawn failed |
+| Spawning | Dormant | No funding received |
 | Active | LowBalance | Balance < 7 days runway |
 | Active | Hibernating | Balance < hibernate threshold |
-| Active | Dead | Balance = 0 |
+| Active | Dormant | Balance = 0 |
 | LowBalance | Active | Funded above threshold |
 | LowBalance | Hibernating | Balance drops further |
-| LowBalance | Dead | Balance = 0 |
+| LowBalance | Dormant | Balance = 0 |
 | Hibernating | Active | Funded above threshold |
 | Hibernating | LowBalance | Funded above hibernate but < 7 days |
-| Hibernating | Dead | Balance = 0 |
-| Dead | (none) | Terminal state - no transitions |
+| Hibernating | Dormant | Balance = 0 |
+| **Dormant** | **Active** | **Funded above threshold (REVIVAL)** |
+| **Dormant** | **LowBalance** | **Funded but < 7 days runway** |
+| **Dormant** | **Hibernating** | **Funded but < hibernate threshold** |
 
-### Invalid Transitions
+**Key difference from "dead" models:** Dormant is NOT terminal. Any dormant agent can be revived by receiving funds.
+
+### All Transitions Are Reversible
 
 ```rust
 pub fn is_valid_transition(&self, to: &LifecycleState) -> bool {
     match (&self.current_state, to) {
-        // Dead is terminal - no transitions allowed
-        (LifecycleState::Dead, _) => false,
+        // Dormant can be REVIVED - this is the key difference from "dead"
+        (LifecycleState::Dormant, LifecycleState::Active) => true,
+        (LifecycleState::Dormant, LifecycleState::LowBalance) => true,
+        (LifecycleState::Dormant, LifecycleState::Hibernating) => true,
 
         // Same state is always valid (no-op)
         (a, b) if a == b => true,
 
         // All other valid transitions...
-        _ => false,
+        _ => true, // Most transitions are valid
     }
 }
 ```
@@ -167,18 +175,31 @@ pub fn should_tick(&self, balance_sats: u64) -> bool {
 }
 ```
 
-### Dead
+### Dormant
 
-- Cannot tick
-- Cannot be resurrected
-- Agent must be re-spawned with new identity
+- Cannot tick on heartbeat
+- **CAN respond to zaps** (incoming payments wake the agent)
+- **CAN be revived** by receiving funds
+- State is preserved on Nostr, awaiting revival
 
 ```rust
-pub fn transition(&mut self, to: LifecycleState) -> Result<(), LifecycleError> {
-    if self.current_state == LifecycleState::Dead {
-        return Err(LifecycleError::AgentDead);
+pub fn should_tick(&self, balance_sats: u64) -> bool {
+    match self.current_state {
+        LifecycleState::Active | LifecycleState::LowBalance => {
+            balance_sats >= self.config.cost_per_tick_sats
+        }
+        // Dormant agents only wake on zaps
+        LifecycleState::Dormant | LifecycleState::Hibernating => false,
+        _ => false,
     }
-    // ...
+}
+
+// Revival happens automatically when funds arrive
+pub fn update_from_balance(&mut self, balance_sats: u64) -> Result<&LifecycleState> {
+    let analysis = self.analyze_runway(balance_sats);
+    // If balance > 0, transition from Dormant to appropriate state
+    self.transition(analysis.recommended_state)?;
+    Ok(&self.current_state)
 }
 ```
 
@@ -267,7 +288,7 @@ State icons:
 - ✅ Active
 - ⚠️ LowBalance
 - 💤 Hibernating
-- 💀 Dead
+- 🌑 Dormant (awaiting revival)
 
 ## Best Practices
 

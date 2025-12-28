@@ -1,6 +1,10 @@
 //! Agent Lifecycle Management
 //!
 //! Manages agent state transitions based on wallet balance and activity.
+//!
+//! Key design principle: There is no terminal "dead" state. Agents with zero
+//! balance enter Dormant state and can be revived at any time by receiving
+//! funds. See docs/PHILOSOPHY.md for the rationale behind this design.
 
 use crate::config::LifecycleState;
 use thiserror::Error;
@@ -13,9 +17,6 @@ pub enum LifecycleError {
         from: LifecycleState,
         to: LifecycleState,
     },
-
-    #[error("agent is dead and cannot be resurrected")]
-    AgentDead,
 }
 
 /// Configuration for lifecycle thresholds
@@ -116,7 +117,7 @@ impl LifecycleManager {
         let can_tick = balance_sats >= self.config.cost_per_tick_sats;
 
         let recommended_state = if balance_sats == 0 {
-            LifecycleState::Dead
+            LifecycleState::Dormant
         } else if balance_sats < self.config.hibernate_threshold_sats {
             LifecycleState::Hibernating
         } else if days_remaining < self.config.low_balance_days {
@@ -135,29 +136,38 @@ impl LifecycleManager {
     }
 
     /// Check if a transition is valid
+    ///
+    /// Note: Unlike "dead" states in other systems, Dormant is NOT terminal.
+    /// A dormant agent can be revived by receiving funds, transitioning
+    /// back to Active, LowBalance, or Hibernating depending on the amount.
     pub fn is_valid_transition(&self, to: &LifecycleState) -> bool {
         match (&self.current_state, to) {
-            // Spawning can go to Active (funded) or Dead (failed)
+            // Spawning can go to any operational state or Dormant
             (LifecycleState::Spawning, LifecycleState::Active) => true,
-            (LifecycleState::Spawning, LifecycleState::Dead) => true,
+            (LifecycleState::Spawning, LifecycleState::LowBalance) => true,
+            (LifecycleState::Spawning, LifecycleState::Hibernating) => true,
+            (LifecycleState::Spawning, LifecycleState::Dormant) => true,
 
-            // Active can go to LowBalance, Hibernating, or Dead
+            // Active can go to LowBalance, Hibernating, or Dormant
             (LifecycleState::Active, LifecycleState::LowBalance) => true,
             (LifecycleState::Active, LifecycleState::Hibernating) => true,
-            (LifecycleState::Active, LifecycleState::Dead) => true,
+            (LifecycleState::Active, LifecycleState::Dormant) => true,
 
             // LowBalance can go back to Active (funded) or forward
             (LifecycleState::LowBalance, LifecycleState::Active) => true,
             (LifecycleState::LowBalance, LifecycleState::Hibernating) => true,
-            (LifecycleState::LowBalance, LifecycleState::Dead) => true,
+            (LifecycleState::LowBalance, LifecycleState::Dormant) => true,
 
-            // Hibernating can go back to Active (funded) or to Dead
+            // Hibernating can go back to Active/LowBalance (funded) or to Dormant
             (LifecycleState::Hibernating, LifecycleState::Active) => true,
             (LifecycleState::Hibernating, LifecycleState::LowBalance) => true,
-            (LifecycleState::Hibernating, LifecycleState::Dead) => true,
+            (LifecycleState::Hibernating, LifecycleState::Dormant) => true,
 
-            // Dead is terminal - no transitions allowed
-            (LifecycleState::Dead, _) => false,
+            // Dormant can be REVIVED by receiving funds - this is the key difference
+            // from a "dead" state. Dormant agents are just waiting for funding.
+            (LifecycleState::Dormant, LifecycleState::Active) => true,
+            (LifecycleState::Dormant, LifecycleState::LowBalance) => true,
+            (LifecycleState::Dormant, LifecycleState::Hibernating) => true,
 
             // Same state is always valid (no-op)
             (a, b) if a == b => true,
@@ -167,11 +177,10 @@ impl LifecycleManager {
     }
 
     /// Attempt to transition to a new state
+    ///
+    /// Note: All transitions are valid from Dormant state - dormant agents
+    /// can always be revived by receiving funds.
     pub fn transition(&mut self, to: LifecycleState) -> Result<(), LifecycleError> {
-        if self.current_state == LifecycleState::Dead {
-            return Err(LifecycleError::AgentDead);
-        }
-
         if !self.is_valid_transition(&to) {
             return Err(LifecycleError::InvalidTransition {
                 from: self.current_state.clone(),
@@ -208,9 +217,17 @@ impl LifecycleManager {
         }
     }
 
-    /// Check if agent should only respond to zaps (hibernating behavior)
+    /// Check if agent should only respond to zaps (hibernating/dormant behavior)
     pub fn zaps_only(&self) -> bool {
-        matches!(self.current_state, LifecycleState::Hibernating)
+        matches!(
+            self.current_state,
+            LifecycleState::Hibernating | LifecycleState::Dormant
+        )
+    }
+
+    /// Check if agent is dormant (waiting for revival)
+    pub fn is_dormant(&self) -> bool {
+        matches!(self.current_state, LifecycleState::Dormant)
     }
 }
 
@@ -232,11 +249,27 @@ mod tests {
         // LowBalance -> Active (funded)
         assert!(manager.transition(LifecycleState::Active).is_ok());
 
-        // Active -> Dead
-        assert!(manager.transition(LifecycleState::Dead).is_ok());
+        // Active -> Dormant (balance depleted)
+        assert!(manager.transition(LifecycleState::Dormant).is_ok());
+        assert!(manager.is_dormant());
 
-        // Dead -> anything should fail
-        assert!(manager.transition(LifecycleState::Active).is_err());
+        // Dormant -> Active (REVIVAL - this is the key difference from "dead")
+        assert!(manager.transition(LifecycleState::Active).is_ok());
+        assert_eq!(manager.current_state, LifecycleState::Active);
+    }
+
+    #[test]
+    fn test_dormant_revival() {
+        let mut manager = LifecycleManager::with_state(LifecycleState::Dormant);
+
+        // Dormant agents can be revived to any operational state
+        assert!(manager.is_valid_transition(&LifecycleState::Active));
+        assert!(manager.is_valid_transition(&LifecycleState::LowBalance));
+        assert!(manager.is_valid_transition(&LifecycleState::Hibernating));
+
+        // Revival works
+        assert!(manager.transition(LifecycleState::Active).is_ok());
+        assert!(!manager.is_dormant());
     }
 
     #[test]
@@ -265,9 +298,9 @@ mod tests {
         let analysis = manager.analyze_runway(500);
         assert_eq!(analysis.recommended_state, LifecycleState::Hibernating);
 
-        // 0 sats = dead
+        // 0 sats = dormant (NOT dead - can be revived)
         let analysis = manager.analyze_runway(0);
-        assert_eq!(analysis.recommended_state, LifecycleState::Dead);
+        assert_eq!(analysis.recommended_state, LifecycleState::Dormant);
     }
 
     #[test]
@@ -289,6 +322,11 @@ mod tests {
         manager.transition(LifecycleState::Hibernating).unwrap();
         assert!(!manager.should_tick(10000)); // Won't tick even with balance
         assert!(manager.zaps_only());
+
+        // Dormant - also only zaps
+        manager.transition(LifecycleState::Dormant).unwrap();
+        assert!(!manager.should_tick(0));
+        assert!(manager.zaps_only());
     }
 
     #[test]
@@ -303,8 +341,12 @@ mod tests {
         manager.update_from_balance(500).unwrap();
         assert_eq!(manager.current_state, LifecycleState::Hibernating);
 
-        // Completely drain
+        // Completely drain - becomes Dormant
         manager.update_from_balance(0).unwrap();
-        assert_eq!(manager.current_state, LifecycleState::Dead);
+        assert_eq!(manager.current_state, LifecycleState::Dormant);
+
+        // REVIVAL: Fund the dormant agent
+        manager.update_from_balance(100_000).unwrap();
+        assert_eq!(manager.current_state, LifecycleState::Active);
     }
 }

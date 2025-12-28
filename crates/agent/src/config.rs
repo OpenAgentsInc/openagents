@@ -6,6 +6,10 @@
 use serde::{Deserialize, Serialize};
 
 /// Lifecycle state of a sovereign agent
+///
+/// Note: There is no "Dead" state. Agents with zero balance enter Dormant state
+/// and can be revived at any time by receiving funds. See docs/PHILOSOPHY.md for
+/// the rationale behind this design choice.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum LifecycleState {
@@ -15,10 +19,11 @@ pub enum LifecycleState {
     Active,
     /// Balance is below 7-day runway threshold
     LowBalance,
-    /// Agent has paused operations to conserve funds
+    /// Agent has paused operations to conserve funds (low balance)
     Hibernating,
-    /// Agent has run out of funds and is terminated
-    Dead,
+    /// Agent has zero balance, suspended awaiting funding
+    /// Unlike "dead", dormant agents can be revived by sending funds
+    Dormant,
 }
 
 impl Default for LifecycleState {
@@ -235,16 +240,19 @@ impl AgentConfig {
         )
     }
 
-    /// Check if agent is dead
-    pub fn is_dead(&self) -> bool {
-        matches!(self.state, LifecycleState::Dead)
+    /// Check if agent is dormant (zero balance, awaiting revival)
+    pub fn is_dormant(&self) -> bool {
+        matches!(self.state, LifecycleState::Dormant)
     }
 
     /// Check if agent needs funding
     pub fn needs_funding(&self) -> bool {
         matches!(
             self.state,
-            LifecycleState::Spawning | LifecycleState::LowBalance | LifecycleState::Hibernating
+            LifecycleState::Spawning
+                | LifecycleState::LowBalance
+                | LifecycleState::Hibernating
+                | LifecycleState::Dormant
         )
     }
 }
@@ -293,7 +301,8 @@ mod tests {
         assert!(config.is_operational());
         config.state = LifecycleState::LowBalance;
         assert!(config.is_operational());
-        config.state = LifecycleState::Dead;
+        config.state = LifecycleState::Dormant;
         assert!(!config.is_operational());
+        assert!(config.is_dormant());
     }
 }
