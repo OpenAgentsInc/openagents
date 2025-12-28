@@ -30,6 +30,7 @@ members = [
     "crates/wallet",
     "crates/auth",
     "crates/wgpui",
+    "crates/pylon",
 ]
 
 # Unified OpenAgents binary
@@ -60,6 +61,7 @@ autopilot = { path = "crates/autopilot" }
 wallet = { path = "crates/wallet" }
 marketplace = { path = "crates/marketplace" }
 gitafter = { path = "crates/gitafter" }
+pylon = { path = "crates/pylon" }
 claude-agent-sdk = { path = "crates/claude-agent-sdk" }
 acp-adapter = { path = "crates/acp-adapter" }
 gpt-oss-agent = { path = "crates/gpt-oss-agent" }

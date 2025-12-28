@@ -5,4 +5,5 @@
 pub mod auth;
 pub mod gitafter;
 pub mod marketplace;
+pub mod pylon;
 pub mod wallet;
