@@ -97,21 +97,21 @@ For smaller operations, a single company suffices:
 - Crypto custody solution
 - Directors with operational authority
 
-### DAO-Wrapped Option
+### Multisig Governance Option
 
 For maximum decentralization:
 
 ```
 Jurisdiction Entity (legal wrapper)
         ↓
-    DAO Treasury (on-chain multisig)
+    Treasury Multisig (on-chain, e.g. 3-of-5)
         ↓
-    Operational Multisig (day-to-day)
+    Operational Multisig (day-to-day, e.g. 2-of-3)
         ↓
     Mint Infrastructure
 ```
 
-The jurisdiction entity provides legal standing; the DAO provides governance; operational multisig handles routine operations.
+The jurisdiction entity provides legal standing; the treasury multisig controls reserves and major decisions; the operational multisig handles routine operations.
 
 ---
 
