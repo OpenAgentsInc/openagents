@@ -150,6 +150,28 @@ pub enum AgentMessage {
         chunk: String,
         is_final: bool,
     },
+    /// Customer notifies provider that HTLC payment is locked (escrow)
+    ///
+    /// Used with --htlc mode for trustless conditional payments.
+    /// Funds are held in escrow until the preimage is revealed.
+    HtlcLocked {
+        job_id: String,
+        /// Payment hash (hex-encoded) - provider needs this to verify HTLC
+        payment_hash: String,
+        /// Amount locked in millisatoshis
+        amount_msats: u64,
+        /// Time until HTLC expires (seconds from now)
+        expiry_secs: u64,
+    },
+    /// Customer releases preimage after receiving result
+    ///
+    /// Once the customer receives the JobResult and is satisfied,
+    /// they release the preimage allowing the provider to claim the payment.
+    PreimageRelease {
+        job_id: String,
+        /// Preimage (hex-encoded) - provider claims payment with this
+        preimage: String,
+    },
 }
 
 /// Get current unix timestamp in seconds
@@ -523,5 +545,38 @@ mod tests {
 
         // Invalid: mainnet provider, testnet invoice
         assert!(!validate_invoice(Network::Mainnet, "lntb100n1..."));
+    }
+
+    #[test]
+    fn test_htlc_locked_serialization() {
+        let msg = AgentMessage::HtlcLocked {
+            job_id: "job_abc123".to_string(),
+            payment_hash: "deadbeef1234567890abcdef".to_string(),
+            amount_msats: 10_000,
+            expiry_secs: 3600,
+        };
+
+        let json = serde_json::to_string(&msg).unwrap();
+        assert!(json.contains("\"type\":\"HtlcLocked\""));
+        assert!(json.contains("\"payment_hash\":\"deadbeef1234567890abcdef\""));
+        assert!(json.contains("\"expiry_secs\":3600"));
+
+        let parsed: AgentMessage = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed, msg);
+    }
+
+    #[test]
+    fn test_preimage_release_serialization() {
+        let msg = AgentMessage::PreimageRelease {
+            job_id: "job_abc123".to_string(),
+            preimage: "cafebabe1234567890abcdef".to_string(),
+        };
+
+        let json = serde_json::to_string(&msg).unwrap();
+        assert!(json.contains("\"type\":\"PreimageRelease\""));
+        assert!(json.contains("\"preimage\":\"cafebabe1234567890abcdef\""));
+
+        let parsed: AgentMessage = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed, msg);
     }
 }

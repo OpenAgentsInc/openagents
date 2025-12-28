@@ -16,6 +16,8 @@ use nostr::{
 };
 use nostr_client::RelayConnection;
 use openagents::agents::{now, parse_agent_message, AgentMessage, Network as AgentNetwork, CUSTOMER_MNEMONIC, DEFAULT_RELAY};
+use rand::Rng;
+use sha2::{Sha256, Digest};
 use openagents_spark::{Network as SparkNetwork, SparkSigner, SparkWallet, WalletConfig};
 use std::collections::HashMap;
 use std::env::temp_dir;
@@ -83,6 +85,11 @@ struct Args {
     /// Filter by max price in msats (only with --discover)
     #[arg(long)]
     max_price: Option<u64>,
+
+    /// Use HTLC escrow for trustless payments (experimental)
+    /// Funds are locked until result is received, then preimage is released.
+    #[arg(long)]
+    htlc: bool,
 }
 
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync>>;
@@ -457,8 +464,13 @@ async fn main() -> Result<()> {
     // PHASE 4: Wait for Invoice and Result
     // ============================================
     let mut our_job_id: Option<String> = None;
+    let mut htlc_preimages: HashMap<String, String> = HashMap::new(); // job_id -> preimage
     let timeout = Duration::from_secs(120);
     let job_start = std::time::Instant::now();
+
+    if args.htlc {
+        println!("[CUSTOMER] HTLC escrow mode enabled - trustless payments");
+    }
 
     loop {
         if job_start.elapsed() > timeout {
@@ -515,29 +527,105 @@ async fn main() -> Result<()> {
                 // Track this as our job
                 our_job_id = Some(job_id.clone());
 
-                if let Some(ref w) = wallet {
-                    println!("[CUSTOMER] Paying invoice...");
-                    let payment = w.send_payment_simple(&bolt11, None).await?;
-                    let payment_id = payment.payment.id.clone();
-                    println!("[CUSTOMER] Payment sent: {}", payment_id);
+                if args.htlc {
+                    // HTLC escrow mode - generate preimage, send HTLC payment
+                    println!("[CUSTOMER] HTLC mode - generating preimage...");
 
-                    // Confirm payment
-                    let confirm = AgentMessage::PaymentSent {
-                        job_id,
-                        payment_id,
-                    };
-                    send_channel_message(&relay, &channel_id, &keypair, &confirm).await?;
-                    println!("[CUSTOMER] Payment confirmation sent");
+                    // Generate 32-byte random preimage
+                    let preimage_bytes: [u8; 32] = rand::rng().random();
+                    let preimage = hex::encode(&preimage_bytes);
+
+                    // Compute payment_hash = SHA256(preimage)
+                    let mut hasher = Sha256::new();
+                    hasher.update(&preimage_bytes);
+                    let hash_result = hasher.finalize();
+                    let htlc_payment_hash = hex::encode(hash_result);
+
+                    println!("[CUSTOMER] Preimage: {}...", &preimage[..16]);
+                    println!("[CUSTOMER] Payment Hash: {}...", &htlc_payment_hash[..16]);
+
+                    // Store preimage for later release
+                    htlc_preimages.insert(job_id.clone(), preimage);
+
+                    if let Some(ref w) = wallet {
+                        // Send HTLC payment (1 hour expiry)
+                        let amount_sats = amount_msats / 1000;
+                        let expiry_secs: u64 = 3600;
+
+                        println!("[CUSTOMER] Sending HTLC payment ({} sats, {} sec expiry)...", amount_sats, expiry_secs);
+
+                        match w.send_htlc_payment(&bolt11, amount_sats, &htlc_payment_hash, expiry_secs, None).await {
+                            Ok(payment) => {
+                                let payment_id = payment.payment.id.clone();
+                                println!("[CUSTOMER] HTLC payment sent: {}", payment_id);
+
+                                // Notify provider that HTLC is locked
+                                let locked = AgentMessage::HtlcLocked {
+                                    job_id: job_id.clone(),
+                                    payment_hash: htlc_payment_hash,
+                                    amount_msats,
+                                    expiry_secs,
+                                };
+                                send_channel_message(&relay, &channel_id, &keypair, &locked).await?;
+
+                                // Also send PaymentSent for backward compatibility
+                                let confirm = AgentMessage::PaymentSent {
+                                    job_id,
+                                    payment_id,
+                                };
+                                send_channel_message(&relay, &channel_id, &keypair, &confirm).await?;
+                                println!("[CUSTOMER] HTLC lock confirmed");
+                            }
+                            Err(e) => {
+                                println!("[CUSTOMER] HTLC payment failed: {}", e);
+                                // Clean up stored preimage
+                                htlc_preimages.remove(&job_id);
+                            }
+                        }
+                    } else {
+                        // No wallet - mock HTLC
+                        println!("[CUSTOMER] Mock HTLC payment (no wallet)");
+
+                        let locked = AgentMessage::HtlcLocked {
+                            job_id: job_id.clone(),
+                            payment_hash: htlc_payment_hash,
+                            amount_msats,
+                            expiry_secs: 3600,
+                        };
+                        send_channel_message(&relay, &channel_id, &keypair, &locked).await?;
+
+                        let confirm = AgentMessage::PaymentSent {
+                            job_id,
+                            payment_id: "mock-htlc-payment".to_string(),
+                        };
+                        send_channel_message(&relay, &channel_id, &keypair, &confirm).await?;
+                    }
                 } else {
-                    // No wallet - send mock payment
-                    let payment_id = "mock-payment-id".to_string();
-                    println!("[CUSTOMER] Mock payment (no wallet): {}", payment_id);
+                    // Regular payment mode
+                    if let Some(ref w) = wallet {
+                        println!("[CUSTOMER] Paying invoice...");
+                        let payment = w.send_payment_simple(&bolt11, None).await?;
+                        let payment_id = payment.payment.id.clone();
+                        println!("[CUSTOMER] Payment sent: {}", payment_id);
 
-                    let confirm = AgentMessage::PaymentSent {
-                        job_id,
-                        payment_id,
-                    };
-                    send_channel_message(&relay, &channel_id, &keypair, &confirm).await?;
+                        // Confirm payment
+                        let confirm = AgentMessage::PaymentSent {
+                            job_id,
+                            payment_id,
+                        };
+                        send_channel_message(&relay, &channel_id, &keypair, &confirm).await?;
+                        println!("[CUSTOMER] Payment confirmation sent");
+                    } else {
+                        // No wallet - send mock payment
+                        let payment_id = "mock-payment-id".to_string();
+                        println!("[CUSTOMER] Mock payment (no wallet): {}", payment_id);
+
+                        let confirm = AgentMessage::PaymentSent {
+                            job_id,
+                            payment_id,
+                        };
+                        send_channel_message(&relay, &channel_id, &keypair, &confirm).await?;
+                    }
                 }
             }
             AgentMessage::JobResult { job_id, result } => {
@@ -552,6 +640,19 @@ async fn main() -> Result<()> {
                 println!("Job ID: {}", job_id);
                 println!("Result: {}", result);
                 println!("========================================\n");
+
+                // In HTLC mode, release preimage so provider can claim payment
+                if args.htlc {
+                    if let Some(preimage) = htlc_preimages.remove(&job_id) {
+                        println!("[CUSTOMER] Releasing preimage for HTLC claim...");
+                        let release = AgentMessage::PreimageRelease {
+                            job_id: job_id.clone(),
+                            preimage,
+                        };
+                        send_channel_message(&relay, &channel_id, &keypair, &release).await?;
+                        println!("[CUSTOMER] Preimage released - provider can now claim payment");
+                    }
+                }
 
                 println!("[CUSTOMER] Job complete!");
                 break;
@@ -572,6 +673,12 @@ async fn main() -> Result<()> {
                         println!();  // Newline after streaming
                     }
                 }
+            }
+            AgentMessage::HtlcLocked { .. } => {
+                // Ignore (we send these)
+            }
+            AgentMessage::PreimageRelease { .. } => {
+                // Ignore (we send these)
             }
         }
     }
