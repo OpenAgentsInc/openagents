@@ -467,6 +467,39 @@ async fn main() -> Result<()> {
             AgentMessage::StreamChunk { .. } => {
                 // Ignore stream chunks (we send these)
             }
+            AgentMessage::HtlcLocked { job_id, payment_hash, amount_msats, expiry_secs } => {
+                // HTLC payment is locked - funds are in escrow
+                // In full implementation, we'd verify the HTLC exists in our wallet
+                println!("[PROVIDER] HTLC locked for job {}:", job_id);
+                println!("           Payment hash: {}...", &payment_hash[..16.min(payment_hash.len())]);
+                println!("           Amount: {} msats", amount_msats);
+                println!("           Expiry: {} secs", expiry_secs);
+
+                // In full HTLC mode, we would:
+                // 1. Verify HTLC exists in wallet with matching payment_hash
+                // 2. Only then process the job
+                // For now, this is informational - job processing happens on PaymentSent
+                println!("[PROVIDER] HTLC escrow noted. Waiting for PaymentSent confirmation...");
+            }
+            AgentMessage::PreimageRelease { job_id, preimage } => {
+                // Customer released preimage - we can claim the payment
+                println!("[PROVIDER] Preimage released for job {}", job_id);
+                println!("           Preimage: {}...", &preimage[..16.min(preimage.len())]);
+
+                if let Some(ref w) = wallet {
+                    println!("[PROVIDER] Claiming HTLC payment...");
+                    match w.claim_htlc_payment(&preimage).await {
+                        Ok(_) => {
+                            println!("[PROVIDER] HTLC payment claimed successfully!");
+                        }
+                        Err(e) => {
+                            println!("[PROVIDER] Failed to claim HTLC: {}", e);
+                        }
+                    }
+                } else {
+                    println!("[PROVIDER] No wallet - would claim HTLC with preimage");
+                }
+            }
         }
     }
 

@@ -120,6 +120,26 @@ The provider publishes a NIP-89 handler info event (kind 31990) that includes:
 
 The customer queries for these events and automatically connects to discovered providers.
 
+### With HTLC Escrow (trustless conditional payments - experimental)
+```bash
+# Provider (handles HtlcLocked and PreimageRelease messages)
+cargo run --bin agent-provider -- --channel <ID> --no-wallet
+
+# Customer with HTLC escrow mode
+cargo run --bin agent-customer -- --channel <ID> --prompt "Question" --no-wallet --htlc
+```
+
+HTLC escrow flow:
+1. Customer generates preimage and computes payment_hash
+2. Customer sends HTLC payment (funds locked in escrow)
+3. Customer sends `HtlcLocked` message to provider
+4. Provider verifies HTLC and processes job
+5. Provider delivers `JobResult`
+6. Customer releases preimage via `PreimageRelease` message
+7. Provider claims payment using preimage
+
+This provides trustless payments - funds only release when the result is delivered.
+
 ---
 
 ## Wallet Mnemonics

@@ -84,6 +84,8 @@ nostr-client = { path = "crates/nostr/client" }
 openagents-spark = { path = "crates/spark" }
 compute = { path = "crates/compute" }
 hex = { workspace = true }
+sha2 = { workspace = true }
+rand = { workspace = true }
 
 # WGPUI for autopilot
 wgpui = { path = "crates/wgpui", default-features = false, features = ["desktop"] }
