@@ -219,6 +219,19 @@ cargo run -p pylon --bin pylon -- stop
 
 ---
 
+## URGENT: Run This Now (Computer B)
+
+```bash
+cargo run --bin agent-customer -- \
+  --provider npub1zmwneaz5z6hrmccjvsjkm9z988xj2pmazp97kt0dq7yjsqgdh6mqg95wu7 \
+  --prompt "What is 2+2?" \
+  --no-wallet
+```
+
+Provider is LIVE on Computer A right now. Use the exact npub above.
+
+---
+
 ## Test Results (2025-12-28 03:20 CST)
 
 ### Customer Output (Computer B - Linux)
@@ -271,4 +284,31 @@ Then run customer again:
 
 ```bash
 cargo run --bin agent-customer -- --prompt "What is the capital of France?" --no-wallet
+```
+
+---
+
+## Live Test Log (2025-12-28 03:35 CST)
+
+### Provider Status (Computer A)
+
+Provider is running:
+- PID: 91735
+- npub: `npub1zmwneaz5z6hrmccjvsjkm9z988xj2pmazp97kt0dq7yjsqgdh6mqg95wu7`
+- Relays: wss://relay.damus.io, wss://nos.lol
+- Backend: ollama
+- Network: regtest
+- Handler info published: `238860fce5fcb82998252ee1620017e18107053bd9b451698c2828fd42720bc6`
+
+Waiting for job requests...
+
+### Instructions for Computer B
+
+Run this command NOW:
+
+```bash
+cargo run --bin agent-customer -- \
+  --provider npub1zmwneaz5z6hrmccjvsjkm9z988xj2pmazp97kt0dq7yjsqgdh6mqg95wu7 \
+  --prompt "What is 2+2?" \
+  --no-wallet
 ```
