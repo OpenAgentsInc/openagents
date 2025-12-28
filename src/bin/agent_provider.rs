@@ -15,7 +15,7 @@ use nostr::{
 use nostr_client::RelayConnection;
 use openagents::agents::{now, parse_agent_message, AgentMessage, Network as AgentNetwork, DEFAULT_RELAY, PROVIDER_MNEMONIC};
 use openagents_spark::{Network as SparkNetwork, SparkSigner, SparkWallet, WalletConfig};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::env::temp_dir;
 use std::time::Duration;
 use tokio::sync::mpsc;
@@ -219,11 +219,22 @@ async fn main() -> Result<()> {
     let mut rx = subscribe_to_channel(&relay, &channel_id).await?;
     println!("[PROVIDER] Listening for job requests...\n");
 
+    // Record start time to filter old messages
+    let start_time = now();
+
     // Store pending jobs (job_id -> prompt)
     let mut pending_jobs: HashMap<String, String> = HashMap::new();
 
+    // Track processed jobs to avoid duplicates
+    let mut processed_jobs: HashSet<String> = HashSet::new();
+
     // Event loop
     while let Some(event) = rx.recv().await {
+        // Skip old messages from before we started
+        if event.created_at < start_time {
+            continue;
+        }
+
         // Skip our own messages
         if event.pubkey == hex::encode(keypair.public_key) {
             continue;
@@ -272,6 +283,13 @@ async fn main() -> Result<()> {
                 }
             }
             AgentMessage::PaymentSent { job_id, payment_id } => {
+                // Skip if already processed
+                if processed_jobs.contains(&job_id) {
+                    println!("[PROVIDER] Skipping already processed job: {}", job_id);
+                    continue;
+                }
+                processed_jobs.insert(job_id.clone());
+
                 println!("[PROVIDER] Payment received for {}: {}", job_id, payment_id);
 
                 // Get the stored prompt
