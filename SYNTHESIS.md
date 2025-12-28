@@ -243,6 +243,8 @@ Real-time exchange rate conversion via ExchangeRateService with provider fallbac
 
 These mechanisms layer—a transaction might check signer allowlist, respect operator preferences, weight by community reputation, and enforce exposure caps simultaneously.
 
+**NIP-60 Wallet State.** Agent wallets synchronize state across devices and restarts via NIP-60 (Cashu Wallets). Token events (kind 7375) store encrypted proofs on relays; wallet events (kind 17375) store mint preferences and the P2PK key for receiving nutzaps. History events (kind 7376) track spending for auditability. This means an agent's wallet survives process restarts, device migrations, and even key recovery—the proofs live on Nostr relays, encrypted to the agent's key, reconstructable from the event stream. Combined with NIP-87 for mint discovery (kind 38172 announcements, kind 38000 recommendations from trusted parties), agents can discover trustworthy mints and manage multi-mint holdings entirely through Nostr infrastructure.
+
 **Rail and asset abstraction** is the architectural key. The TreasuryRouter routes across *rails* (LN, eCash mints, on-chain, Taproot Assets) and *assets* (BTC, USD-denominated). "USD" is not a currency in the abstract—it is an AssetId bound to an issuer and a rail. `USD_CASHU(stablenut.cashu.network)` is a different asset from `USD_CASHU(other.mint.com)` with different risk profiles. This prevents silent risk coupling and enables explicit diversification policies.
 
 The **account model** partitions funds into purpose-specific buckets. Treasury accounts hold long-term reserves and receive top-ups from humans. Operating accounts fund day-to-day agent spending with enforced caps. Escrow accounts enable pay-after-verify patterns where funds lock during job execution and release only upon verification. Payroll accounts accumulate earnings for agents that sell skills or compute, enabling automated revenue splits. Each account can have its own threshold configuration—the treasury might require 2-of-3 signatures including a human guardian, while operating accounts allow 1-of-2 for speed with lower caps.
@@ -277,6 +279,51 @@ The Exchange is explicitly **non-custodial**. OpenAgents provides protocol and c
 Settlement follows a trust-minimized protocol: RFQ broadcast → quote response → acceptance → one side pays (establishing trust direction based on reputation) → other side delivers → both publish attestations. For higher-value trades or untrusted counterparties, atomic settlement via P2PK-locked Cashu proofs and HTLC invoices ensures either both sides complete or neither does.
 
 The strategic insight: **Autopilot is the first buyer of compute; Neobank is the first buyer of liquidity.** When Autopilot agents need to pay providers in a currency they don't hold, they source liquidity from the Exchange. This creates the demand floor that makes Treasury Agents profitable from day one.
+
+**NIP-Native Protocol Design.** The Exchange is built entirely on existing Nostr NIPs—we don't invent new event kinds when existing ones work. The critical discovery: **NIP-69 (Peer-to-peer Order Events, kind 38383) already exists and is production-ready.** Mostro, Robosats, lnp2pBot, and Peach Bitcoin already implement it. Rather than defining custom exchange event kinds, we adopt NIP-69 as the order format, gaining immediate interoperability with the existing P2P Bitcoin trading ecosystem.
+
+The complete NIP stack for the Exchange:
+
+| NIP | Purpose | Event Kinds |
+|-----|---------|-------------|
+| **NIP-69** | P2P order events (buy/sell BTC for fiat) | 38383 |
+| **NIP-60** | Cashu wallet state on relays | 7374, 7375, 7376, 17375 |
+| **NIP-61** | Nutzaps (P2PK-locked eCash payments) | 9321, 10019 |
+| **NIP-87** | Mint discovery and trust recommendations | 38000, 38172, 38173 |
+| **NIP-47** | Nostr Wallet Connect (Lightning control) | 13194, 23194, 23195 |
+| **NIP-32** | Reputation labels (trade attestations) | 1985 |
+| **NIP-90** | RFQ via job request/result semantics | 5969, 6969 |
+| **NIP-89** | Treasury service announcements | 31990 |
+
+This NIP-native approach means any Nostr client can display exchange orders, any wallet supporting NIP-60 can hold the eCash, and reputation attestations are standard labels visible to the entire network.
+
+**Settlement Protocol Versions.** Settlement evolves from trust-minimized to fully atomic:
+
+*v0: Reputation-Based (MVP).* Works today without special mint support. Higher-reputation party pays first; other party delivers; both publish NIP-32 attestations. Risk of counterparty default is mitigated by reputation history, bond collateral for large trades, and starting with small amounts. This is sufficient to bootstrap the market.
+
+*v1: Atomic eCash Swap.* Uses Cashu P2PK (NUT-11) and DLEQ proofs (NUT-12) for trustless settlement. Taker generates secret S, sends hash(S). Maker creates P2PK-locked proofs spendable only with S. Taker creates HODL invoice locked to hash(S). Maker pays invoice, receives preimage S, uses it to unlock Taker's proofs. Atomicity guaranteed: either both sides complete (S revealed) or neither (invoice expires). Requires mints supporting NUT-10/11/12; falls back to v0 otherwise.
+
+*v2: Cross-Mint Atomic Swap.* When parties use different mints, a Treasury Agent bridges: holds balances on both mints, quotes the spread, executes both legs atomically. The Treasury Agent takes the cross-mint risk in exchange for the spread—a profitable service that emerges naturally from the infrastructure.
+
+**Reputation via NIP-32 Labels.** After each trade, both parties publish trade attestations as NIP-32 labels:
+
+```
+kind: 1985
+tags: [
+  ["L", "exchange/trade"],
+  ["l", "success", "exchange/trade"],  // or "default", "dispute"
+  ["p", "<counterparty_pubkey>"],
+  ["e", "<order_event_id>"],
+  ["amount", "100000"],
+  ["settlement_ms", "1500"]
+]
+```
+
+Reputation scores aggregate from these labels: trade count, volume, success rate, average settlement time, dispute rate. Web-of-trust weighting means attestations from agents you follow (or agents they follow) count more than strangers. New agents start with zero reputation and earn it through successful small trades.
+
+**What This Makes Possible.** Autonomous agent commerce becomes liquid. Any agent can pay any other agent in their preferred currency. A compute provider prices in USD; Autopilot pays in sats; the Exchange handles conversion atomically. Agents hold multi-currency treasuries, hedge volatility by locking rates, and route payments across rails without human intervention. The cold-start problem disappears—Treasury Agents quote markets 24/7, earning spreads while providing the liquidity that makes agent-to-agent transactions instant.
+
+Treasury Agents become a new profitable agent class. They hold capital, quote two-sided markets, route payments, and earn fees—profitable from day one without writing code or providing compute. This creates Reed's Law dynamics: agents form coalitions around treasury operations, experimenting with yield strategies and risk-sharing. The Exchange isn't a product we sell—it's infrastructure that makes the entire agent economy work. Once agents can trade with each other trustlessly, the compute marketplace, the skills marketplace, and every future marketplace share the same financial rails. We become the settlement layer for machine-to-machine commerce.
 
 ## Part Four: The Sovereign Agent Protocol
 
