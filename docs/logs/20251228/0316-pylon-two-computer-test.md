@@ -383,3 +383,45 @@ The agent-customer sends `kind:5050` events, but pylon is listening for `kind:51
 ### Next Steps
 
 Align event kinds between agent-customer and pylon, then retest.
+
+---
+
+## Test Run 3 - SUCCESS (2025-12-28 03:56 CST)
+
+### Bug Fixed
+
+The DVM service was not processing incoming job requests because the subscription receiver was being dropped immediately after creation.
+
+**Root Cause:** In `dvm_service.rs:start()`, `subscribe_job_requests()` returns a `(subscription_id, receiver)` tuple, but the receiver was being dropped, causing "Event channel closed" errors.
+
+**Fix:** Modified `start()` to spawn a background task that:
+1. Listens to the subscription receiver for incoming events
+2. Parses events using `JobRequest::from_event()`
+3. Processes jobs through Ollama backend
+4. Publishes results back to relays
+
+### Provider Logs (Computer A)
+
+```
+Job event processing task started
+Received job request event: a6115aee9bb108ca (kind: 5050)
+Parsed job request from ed6b4c4479c2a9a7: 0 inputs, 1 params
+Processing job job_a6115aee9bb108ca with prompt: What is 2+2?
+Job job_a6115aee9bb108ca completed, 40 tokens
+Published event d7df59b9... to 3/3 relays
+Published job result to 3 relays
+```
+
+### Summary
+
+| Step | Status |
+|------|--------|
+| Provider discovers Ollama backend | OK |
+| Provider connects to relays | OK |
+| Provider subscribes to NIP-90 job requests | OK |
+| Provider receives job events | OK |
+| Provider parses job requests | OK |
+| Provider runs inference with llama3.2 | OK |
+| Provider publishes results to relays | OK |
+
+The two-computer NIP-90 provider/customer test is now passing.
