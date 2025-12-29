@@ -127,10 +127,10 @@ async fn test_agent_exchange_demo() {
 
     println!("    Settlement complete!");
     println!("    Method: {:?}", receipt.method);
-    println!("    Amount: {} sats", receipt.amount_sats);
+    println!("    Amount: {} sats", receipt.btc_amount_sats);
     println!("    Duration: {:?}", receipt.duration);
     assert_eq!(receipt.method, SettlementMethod::Mock);
-    assert_eq!(receipt.amount_sats, 10_000);
+    assert_eq!(receipt.btc_amount_sats, 10_000);
 
     // ----- Step 5: Both agents publish attestations -----
     println!("\n[5] Publishing trade attestations (NIP-32 labels)");

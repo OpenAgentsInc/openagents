@@ -6565,6 +6565,8 @@ version = "0.1.0"
 dependencies = [
  "cdk",
  "cdk-redb",
+ "nostr 0.1.0",
+ "nostr-client",
  "serde",
  "serde_json",
  "tempfile",
