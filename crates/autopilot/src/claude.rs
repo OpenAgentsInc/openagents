@@ -18,6 +18,17 @@ macro_rules! verbose_println {
     };
 }
 
+/// Retry configuration
+const MAX_RETRIES: u32 = 3;
+const INITIAL_RETRY_DELAY_MS: u64 = 2000;
+const MAX_RETRY_DELAY_MS: u64 = 30000;
+
+/// Calculate retry delay with exponential backoff
+fn retry_delay(attempt: u32) -> std::time::Duration {
+    let delay_ms = INITIAL_RETRY_DELAY_MS * 2u64.pow(attempt);
+    std::time::Duration::from_millis(delay_ms.min(MAX_RETRY_DELAY_MS))
+}
+
 #[derive(Clone)]
 pub enum ClaudeToken {
     Chunk(String),
@@ -42,37 +53,81 @@ pub fn run_claude_planning(
     logger: Option<SessionLogger>,
 ) {
     use futures_util::StreamExt;
-    
+    use tokio::time::{timeout, Duration};
+
     if let Some(ref log) = logger {
         log.log_phase_start("planning");
     }
-    
-    let prompt = r#"You are an expert software architect and project planner for the OpenAgents project.
 
-## Your Task
+    let prompt = r#"You are an expert software architect creating a comprehensive plan for the OpenAgents project.
 
-1. First, gather context about this repository:
+Plan mode is active. You MUST NOT make any edits to files other than the plan output. You are only allowed to take READ-ONLY actions (Read, Glob, Grep, Bash for git commands, Task with Explore agents).
+
+## Plan Workflow
+
+### Phase 1: Initial Understanding
+Goal: Gain comprehensive understanding of the project state and what needs to be done.
+
+1. **Gather repository context:**
    - Run `git log --oneline -10` to see recent commits
    - Run `git branch --show-current` to see current branch
    - Run `git status --short` to see any uncommitted changes
 
-2. Read the key project files:
-   - Read README.md in the root directory
-   - Read SYNTHESIS.md in the root directory (this is the comprehensive vision document)
-   - Read all files in the .openagents/ directory (use Glob to find them, then Read each one)
-     - This includes directives, issues, TODO.md, etc.
+2. **Launch up to 3 Explore agents IN PARALLEL** (single message, multiple Task tool calls) to efficiently explore the codebase:
+   - Agent 1: Read README.md and SYNTHESIS.md to understand project vision and architecture
+   - Agent 2: Explore .openagents/ directory (directives, issues, TODO.md) to find open work
+   - Agent 3: Search for recent changes, blocked issues, or areas needing attention
 
-3. Based on what you learn, create a comprehensive plan in Markdown format:
-   - **Current State** - What's the project about, what has been built
-   - **Recent Activity** - What was worked on recently based on commits
-   - **Open Work** - What issues/directives are pending
-   - **Recommended Next Steps** - Prioritized list of what to work on next
-   - **Technical Considerations** - Any blockers, dependencies, or architectural notes
+   Use fewer agents if the scope is clear. Quality over quantity - use minimum agents necessary.
 
-Focus on being actionable and specific. This plan will guide what an autonomous agent works on next."#.to_string();
+3. After exploration, synthesize what you learned about the project state.
+
+### Phase 2: Design
+Goal: Design an implementation approach based on Phase 1 findings.
+
+Launch 1-3 Plan agent(s) to design the implementation:
+- **Default**: Launch at least 1 Plan agent to validate understanding and consider alternatives
+- **Multiple agents**: Use for complex tasks benefiting from different perspectives:
+  - Perspective 1: Focus on highest business value / revenue impact
+  - Perspective 2: Focus on technical debt / infrastructure improvements
+  - Perspective 3: Focus on quick wins / unblocking other work
+
+In the agent prompt, provide:
+- Comprehensive context from Phase 1 exploration
+- Current blockers and constraints
+- Request a prioritized implementation plan
+
+### Phase 3: Review
+Goal: Review and consolidate the plan(s) from Phase 2.
+
+1. Read any critical files identified by the Plan agents
+2. Ensure recommendations align with project priorities (check SYNTHESIS.md, directives)
+3. Resolve conflicts between different perspectives
+
+### Phase 4: Final Plan
+Goal: Output your final consolidated plan.
+
+Create a comprehensive plan in Markdown format with these sections:
+- **Current State** - Project status, what's been built, recent activity
+- **Open Work** - Pending issues, directives, their priorities and blockers
+- **Recommended Next Steps** - Prioritized list of what to work on next (be specific!)
+  - Include file paths that need to be modified
+  - Include specific implementation steps
+  - Estimate complexity (small/medium/large)
+- **Technical Considerations** - Blockers, dependencies, architectural notes
+
+The plan must be:
+- Actionable and specific (not vague suggestions)
+- Prioritized by business value and feasibility
+- Executable by an autonomous agent
+
+### Phase 5: Exit
+Call ExitPlanMode when your plan is complete.
+
+Your turn should only end with calling ExitPlanMode. Do not stop early."#.to_string();
 
     let cwd_clone = std::env::current_dir().unwrap_or_default();
-    
+
     let rt = match tokio::runtime::Runtime::new() {
         Ok(rt) => rt,
         Err(e) => {
@@ -83,118 +138,190 @@ Focus on being actionable and specific. This plan will guide what an autonomous 
 
     rt.block_on(async {
         use claude_agent_sdk::{query, QueryOptions, SdkMessage, PermissionMode};
-        
-        verbose_println!("[CLAUDE] Starting query with prompt length: {} chars", prompt.len());
-        verbose_println!("[CLAUDE] Options: cwd={:?}, model={}, permission_mode=Plan, max_turns=50", cwd_clone, model.as_str());
-        
-        let options = QueryOptions::new()
-            .cwd(cwd_clone)
-            .model(model.as_str())
-            .permission_mode(PermissionMode::Plan)
-            .max_turns(50);
-        
-        let mut stream = match query(&prompt, options).await {
-            Ok(s) => {
-                verbose_println!("[CLAUDE] Stream started successfully");
-                s
+
+        let mut attempt = 0;
+        let mut last_error = String::new();
+
+        'retry: loop {
+            if attempt > 0 {
+                let delay = retry_delay(attempt - 1);
+                eprintln!("[CLAUDE] Retry attempt {} after {:?}...", attempt, delay);
+                tokio::time::sleep(delay).await;
             }
-            Err(e) => {
-                eprintln!("[CLAUDE] Failed to start: {}", e);
-                let _ = tx.send(ClaudeToken::Error(format!("Failed to start Claude: {}", e)));
+
+            if attempt >= MAX_RETRIES {
+                eprintln!("[CLAUDE] All {} retries exhausted. Last error: {}", MAX_RETRIES, last_error);
+                let _ = tx.send(ClaudeToken::Error(format!("Failed after {} retries: {}", MAX_RETRIES, last_error)));
                 return;
             }
-        };
 
-        let mut full_response = String::new();
-        let mut last_tool_name = String::new();
-        
-        while let Some(msg) = stream.next().await {
-            match msg {
-                Ok(SdkMessage::Assistant(assistant_msg)) => {
-                    verbose_println!("[CLAUDE][ASSISTANT] uuid={}", assistant_msg.uuid);
-                    verbose_println!("[CLAUDE][ASSISTANT] message={}", serde_json::to_string_pretty(&assistant_msg.message).unwrap_or_default());
-                    if let Some(ref log) = logger {
-                        log.log_assistant("planning", &assistant_msg.message);
+            attempt += 1;
+            verbose_println!("[CLAUDE] Starting query (attempt {}/{}) with prompt length: {} chars", attempt, MAX_RETRIES, prompt.len());
+            verbose_println!("[CLAUDE] Options: cwd={:?}, model={}, permission_mode=Plan, max_turns=50", cwd_clone, model.as_str());
+
+            let options = QueryOptions::new()
+                .cwd(cwd_clone.clone())
+                .model(model.as_str())
+                .permission_mode(PermissionMode::Plan)
+                .max_turns(50);
+
+            // Start query with timeout
+            let query_result = timeout(
+                Duration::from_secs(QUERY_START_TIMEOUT_SECS),
+                query(&prompt, options)
+            ).await;
+
+            let mut stream = match query_result {
+                Ok(Ok(s)) => {
+                    verbose_println!("[CLAUDE] Stream started successfully");
+                    s
+                }
+                Ok(Err(e)) => {
+                    last_error = format!("Failed to start Claude: {}", e);
+                    eprintln!("[CLAUDE] {}", last_error);
+                    continue 'retry;
+                }
+                Err(_) => {
+                    last_error = format!("Timeout starting query after {}s", QUERY_START_TIMEOUT_SECS);
+                    eprintln!("[CLAUDE] {}", last_error);
+                    continue 'retry;
+                }
+            };
+
+            let mut full_response = String::new();
+            let mut last_tool_name = String::new();
+            let mut got_result = false;
+
+            loop {
+                let next_result = timeout(
+                    Duration::from_secs(STREAM_IDLE_TIMEOUT_SECS),
+                    stream.next()
+                ).await;
+
+                let msg = match next_result {
+                    Ok(Some(msg)) => msg,
+                    Ok(None) => {
+                        // Stream ended without Result - this is the hang case
+                        if !got_result && full_response.is_empty() {
+                            last_error = "Stream ended unexpectedly with no data".to_string();
+                            eprintln!("[CLAUDE] {}", last_error);
+                            let _ = stream.abort().await;
+                            continue 'retry;
+                        }
+                        break; // Normal end
                     }
-                    if let Some(content) = assistant_msg.message.get("content") {
-                        if let Some(blocks) = content.as_array() {
-                            for block in blocks {
-                                verbose_println!("[CLAUDE][BLOCK] type={}", block.get("type").and_then(|t| t.as_str()).unwrap_or("unknown"));
-                                if let Some(text) = block.get("text").and_then(|t| t.as_str()) {
-                                    verbose_println!("[CLAUDE][TEXT] {}", text);
-                                    full_response.push_str(text);
-                                    let _ = tx.send(ClaudeToken::Chunk(text.to_string()));
-                                }
-                                if let Some(tool_name) = block.get("name").and_then(|n| n.as_str()) {
-                                    verbose_println!("[CLAUDE][TOOL_USE] name={}", tool_name);
-                                    let input = block.get("input");
-                                    let params = extract_tool_params(tool_name, input);
-                                    last_tool_name = tool_name.to_string();
-                                    if let Some(ref log) = logger {
-                                        log.log_tool_use("planning", tool_name, input.unwrap_or(&serde_json::Value::Null));
+                    Err(_) => {
+                        last_error = format!("Stream idle timeout after {}s", STREAM_IDLE_TIMEOUT_SECS);
+                        eprintln!("[CLAUDE] {}", last_error);
+                        let _ = stream.abort().await;
+                        continue 'retry;
+                    }
+                };
+
+                match msg {
+                    Ok(SdkMessage::Assistant(assistant_msg)) => {
+                        verbose_println!("[CLAUDE][ASSISTANT] uuid={}", assistant_msg.uuid);
+                        verbose_println!("[CLAUDE][ASSISTANT] message={}", serde_json::to_string_pretty(&assistant_msg.message).unwrap_or_default());
+                        if let Some(ref log) = logger {
+                            log.log_assistant("planning", &assistant_msg.message);
+                        }
+                        if let Some(content) = assistant_msg.message.get("content") {
+                            if let Some(blocks) = content.as_array() {
+                                for block in blocks {
+                                    verbose_println!("[CLAUDE][BLOCK] type={}", block.get("type").and_then(|t| t.as_str()).unwrap_or("unknown"));
+                                    if let Some(text) = block.get("text").and_then(|t| t.as_str()) {
+                                        verbose_println!("[CLAUDE][TEXT] {}", text);
+                                        full_response.push_str(text);
+                                        let _ = tx.send(ClaudeToken::Chunk(text.to_string()));
                                     }
-                                    let _ = tx.send(ClaudeToken::ToolUse {
-                                        name: tool_name.to_string(),
-                                        params
-                                    });
-                                    verbose_println!("[CLAUDE][TOOL_USE] input={}", serde_json::to_string_pretty(input.unwrap_or(&serde_json::Value::Null)).unwrap_or_default());
+                                    if let Some(tool_name) = block.get("name").and_then(|n| n.as_str()) {
+                                        verbose_println!("[CLAUDE][TOOL_USE] name={}", tool_name);
+                                        let input = block.get("input");
+                                        let params = extract_tool_params(tool_name, input);
+                                        last_tool_name = tool_name.to_string();
+                                        if let Some(ref log) = logger {
+                                            log.log_tool_use("planning", tool_name, input.unwrap_or(&serde_json::Value::Null));
+                                        }
+                                        let _ = tx.send(ClaudeToken::ToolUse {
+                                            name: tool_name.to_string(),
+                                            params
+                                        });
+                                        verbose_println!("[CLAUDE][TOOL_USE] input={}", serde_json::to_string_pretty(input.unwrap_or(&serde_json::Value::Null)).unwrap_or_default());
+                                    }
                                 }
                             }
                         }
                     }
-                }
-                Ok(SdkMessage::User(user_msg)) => {
-                    verbose_println!("[CLAUDE][USER] session_id={}", user_msg.session_id);
-                    verbose_println!("[CLAUDE][USER] message={}", serde_json::to_string_pretty(&user_msg.message).unwrap_or_default());
-                    if let Some(ref log) = logger {
-                        log.log_user("planning", &user_msg.message);
-                    }
-                    if let Some(tool_result) = &user_msg.tool_use_result {
-                        let tool_name = tool_result.get("name")
-                            .and_then(|n| n.as_str())
-                            .or_else(|| tool_result.get("tool_name").and_then(|n| n.as_str()))
-                            .unwrap_or(&last_tool_name)
-                            .to_string();
+                    Ok(SdkMessage::User(user_msg)) => {
+                        verbose_println!("[CLAUDE][USER] session_id={}", user_msg.session_id);
+                        verbose_println!("[CLAUDE][USER] message={}", serde_json::to_string_pretty(&user_msg.message).unwrap_or_default());
                         if let Some(ref log) = logger {
-                            log.log_tool_result("planning", &tool_name, tool_result);
+                            log.log_user("planning", &user_msg.message);
                         }
-                        let _ = tx.send(ClaudeToken::ToolDone { name: tool_name });
-                        verbose_println!("[CLAUDE][TOOL_RESULT] {}", serde_json::to_string_pretty(tool_result).unwrap_or_default());
+                        if let Some(tool_result) = &user_msg.tool_use_result {
+                            let tool_name = tool_result.get("name")
+                                .and_then(|n| n.as_str())
+                                .or_else(|| tool_result.get("tool_name").and_then(|n| n.as_str()))
+                                .unwrap_or(&last_tool_name)
+                                .to_string();
+                            if let Some(ref log) = logger {
+                                log.log_tool_result("planning", &tool_name, tool_result);
+                            }
+                            let _ = tx.send(ClaudeToken::ToolDone { name: tool_name });
+                            verbose_println!("[CLAUDE][TOOL_RESULT] {}", serde_json::to_string_pretty(tool_result).unwrap_or_default());
+                        }
                     }
-                }
-                Ok(SdkMessage::System(sys_msg)) => {
-                    verbose_println!("[CLAUDE][SYSTEM] {:?}", sys_msg);
-                }
-                Ok(SdkMessage::StreamEvent(event)) => {
-                    verbose_println!("[CLAUDE][STREAM] {:?}", event);
-                }
-                Ok(SdkMessage::ToolProgress(progress)) => {
-                    verbose_println!("[CLAUDE][TOOL_PROGRESS] tool={} elapsed={}s", progress.tool_name, progress.elapsed_time_seconds);
-                }
-                Ok(SdkMessage::AuthStatus(auth)) => {
-                    verbose_println!("[CLAUDE][AUTH] is_authenticating={}", auth.is_authenticating);
-                }
-                Ok(SdkMessage::Result(result)) => {
-                    verbose_println!("[CLAUDE][RESULT] {:?}", result);
-                    break;
-                }
-                Err(e) => {
-                    eprintln!("[CLAUDE][ERROR] Stream error: {}", e);
-                    let _ = tx.send(ClaudeToken::Error(format!("Stream error: {}", e)));
-                    return;
+                    Ok(SdkMessage::System(sys_msg)) => {
+                        verbose_println!("[CLAUDE][SYSTEM] {:?}", sys_msg);
+                    }
+                    Ok(SdkMessage::StreamEvent(event)) => {
+                        verbose_println!("[CLAUDE][STREAM] {:?}", event);
+                    }
+                    Ok(SdkMessage::ToolProgress(progress)) => {
+                        verbose_println!("[CLAUDE][TOOL_PROGRESS] tool={} elapsed={}s", progress.tool_name, progress.elapsed_time_seconds);
+                    }
+                    Ok(SdkMessage::AuthStatus(auth)) => {
+                        verbose_println!("[CLAUDE][AUTH] is_authenticating={}", auth.is_authenticating);
+                    }
+                    Ok(SdkMessage::Result(result)) => {
+                        verbose_println!("[CLAUDE][RESULT] {:?}", result);
+                        got_result = true;
+                        break;
+                    }
+                    Err(e) => {
+                        last_error = format!("Stream error: {}", e);
+                        eprintln!("[CLAUDE][ERROR] {}", last_error);
+                        let _ = stream.abort().await;
+                        continue 'retry;
+                    }
                 }
             }
-        }
 
-        verbose_println!("[CLAUDE] Done. Total response length: {} chars, {} lines",
-            full_response.len(),
-            full_response.lines().count());
-        if let Some(ref log) = logger {
-            log.log_phase_end("planning", &format!("{} chars, {} lines", full_response.len(), full_response.lines().count()));
+            // Success - cleanup and return
+            verbose_println!("[CLAUDE] Aborting stream for cleanup...");
+            if let Err(e) = stream.abort().await {
+                verbose_println!("[CLAUDE] Abort returned error (expected): {}", e);
+            }
+
+            verbose_println!("[CLAUDE] Done. Total response length: {} chars, {} lines",
+                full_response.len(),
+                full_response.lines().count());
+            if let Some(ref log) = logger {
+                log.log_phase_end("planning", &format!("{} chars, {} lines", full_response.len(), full_response.lines().count()));
+            }
+            let _ = tx.send(ClaudeToken::Done(full_response));
+
+            // Small delay to let process cleanup complete before next query
+            tokio::time::sleep(Duration::from_millis(500)).await;
+            return;
         }
-        let _ = tx.send(ClaudeToken::Done(full_response));
     });
 }
+
+/// Timeout for starting a query (getting the stream)
+const QUERY_START_TIMEOUT_SECS: u64 = 60;
+/// Timeout between stream messages (if no message received in this time, abort)
+const STREAM_IDLE_TIMEOUT_SECS: u64 = 300;
 
 pub fn run_claude_execution(
     plan: &str,
@@ -203,11 +330,12 @@ pub fn run_claude_execution(
     logger: Option<SessionLogger>,
 ) {
     use futures_util::StreamExt;
-    
+    use tokio::time::{timeout, Duration};
+
     if let Some(ref log) = logger {
         log.log_phase_start("execution");
     }
-    
+
     let prompt = format!(r#"You are an autonomous software engineer executing a plan for the OpenAgents project.
 
 ## The Plan
@@ -226,7 +354,7 @@ Work autonomously. Make real changes to the codebase. If you encounter blockers,
 Start now."#, plan);
 
     let cwd_clone = std::env::current_dir().unwrap_or_default();
-    
+
     let rt = match tokio::runtime::Runtime::new() {
         Ok(rt) => rt,
         Err(e) => {
@@ -237,93 +365,162 @@ Start now."#, plan);
 
     rt.block_on(async {
         use claude_agent_sdk::{query, QueryOptions, SdkMessage, PermissionMode};
-        
-        verbose_println!("[CLAUDE-EXEC] Starting execution with plan length: {} chars", plan.len());
-        verbose_println!("[CLAUDE-EXEC] Options: cwd={:?}, model={}, permission_mode=BypassPermissions, max_turns=100", cwd_clone, model.as_str());
-        
-        let options = QueryOptions::new()
-            .cwd(cwd_clone)
-            .model(model.as_str())
-            .permission_mode(PermissionMode::BypassPermissions)
-            .dangerously_skip_permissions(true)
-            .max_turns(100);
-        
-        let mut stream = match query(&prompt, options).await {
-            Ok(s) => {
-                verbose_println!("[CLAUDE-EXEC] Stream started successfully");
-                s
+
+        let mut attempt = 0;
+        let mut last_error = String::new();
+
+        'retry: loop {
+            if attempt > 0 {
+                let delay = retry_delay(attempt - 1);
+                eprintln!("[CLAUDE-EXEC] Retry attempt {} after {:?}...", attempt, delay);
+                tokio::time::sleep(delay).await;
             }
-            Err(e) => {
-                eprintln!("[CLAUDE-EXEC] Failed to start: {}", e);
-                let _ = tx.send(ClaudeToken::Error(format!("Failed to start Claude: {}", e)));
+
+            if attempt >= MAX_RETRIES {
+                eprintln!("[CLAUDE-EXEC] All {} retries exhausted. Last error: {}", MAX_RETRIES, last_error);
+                let _ = tx.send(ClaudeToken::Error(format!("Failed after {} retries: {}", MAX_RETRIES, last_error)));
                 return;
             }
-        };
 
-        let mut full_response = String::new();
-        let mut last_tool_name = String::new();
-        
-        while let Some(msg) = stream.next().await {
-            match msg {
-                Ok(SdkMessage::Assistant(assistant_msg)) => {
-                    if let Some(ref log) = logger {
-                        log.log_assistant("execution", &assistant_msg.message);
+            attempt += 1;
+            verbose_println!("[CLAUDE-EXEC] Starting execution (attempt {}/{}) with plan length: {} chars", attempt, MAX_RETRIES, plan.len());
+            verbose_println!("[CLAUDE-EXEC] Options: cwd={:?}, model={}, permission_mode=BypassPermissions, max_turns=100", cwd_clone, model.as_str());
+
+            let options = QueryOptions::new()
+                .cwd(cwd_clone.clone())
+                .model(model.as_str())
+                .permission_mode(PermissionMode::BypassPermissions)
+                .dangerously_skip_permissions(true)
+                .max_turns(100);
+
+            verbose_println!("[CLAUDE-EXEC] Calling query() with {}s timeout...", QUERY_START_TIMEOUT_SECS);
+            let query_result = timeout(
+                Duration::from_secs(QUERY_START_TIMEOUT_SECS),
+                query(&prompt, options)
+            ).await;
+
+            let mut stream = match query_result {
+                Ok(Ok(s)) => {
+                    verbose_println!("[CLAUDE-EXEC] Stream started successfully");
+                    s
+                }
+                Ok(Err(e)) => {
+                    last_error = format!("Failed to start Claude: {}", e);
+                    eprintln!("[CLAUDE-EXEC] {}", last_error);
+                    continue 'retry;
+                }
+                Err(_) => {
+                    last_error = format!("Timeout starting query after {}s", QUERY_START_TIMEOUT_SECS);
+                    eprintln!("[CLAUDE-EXEC] {}", last_error);
+                    continue 'retry;
+                }
+            };
+
+            let mut full_response = String::new();
+            let mut last_tool_name = String::new();
+            let mut got_result = false;
+
+            loop {
+                let next_result = timeout(
+                    Duration::from_secs(STREAM_IDLE_TIMEOUT_SECS),
+                    stream.next()
+                ).await;
+
+                let msg = match next_result {
+                    Ok(Some(msg)) => msg,
+                    Ok(None) => {
+                        if !got_result && full_response.is_empty() {
+                            last_error = "Stream ended unexpectedly with no data".to_string();
+                            eprintln!("[CLAUDE-EXEC] {}", last_error);
+                            let _ = stream.abort().await;
+                            continue 'retry;
+                        }
+                        verbose_println!("[CLAUDE-EXEC] Stream ended (None)");
+                        break;
                     }
-                    if let Some(content) = assistant_msg.message.get("content") {
-                        if let Some(blocks) = content.as_array() {
-                            for block in blocks {
-                                if let Some(text) = block.get("text").and_then(|t| t.as_str()) {
-                                    full_response.push_str(text);
-                                    let _ = tx.send(ClaudeToken::Chunk(text.to_string()));
-                                }
-                                if let Some(tool_name) = block.get("name").and_then(|n| n.as_str()) {
-                                    let input = block.get("input");
-                                    let params = extract_tool_params(tool_name, input);
-                                    last_tool_name = tool_name.to_string();
-                                    if let Some(ref log) = logger {
-                                        log.log_tool_use("execution", tool_name, input.unwrap_or(&serde_json::Value::Null));
+                    Err(_) => {
+                        last_error = format!("Stream idle timeout after {}s", STREAM_IDLE_TIMEOUT_SECS);
+                        eprintln!("[CLAUDE-EXEC] {}", last_error);
+                        let _ = stream.abort().await;
+                        continue 'retry;
+                    }
+                };
+
+                match msg {
+                    Ok(SdkMessage::Assistant(assistant_msg)) => {
+                        if let Some(ref log) = logger {
+                            log.log_assistant("execution", &assistant_msg.message);
+                        }
+                        if let Some(content) = assistant_msg.message.get("content") {
+                            if let Some(blocks) = content.as_array() {
+                                for block in blocks {
+                                    if let Some(text) = block.get("text").and_then(|t| t.as_str()) {
+                                        full_response.push_str(text);
+                                        let _ = tx.send(ClaudeToken::Chunk(text.to_string()));
                                     }
-                                    let _ = tx.send(ClaudeToken::ToolUse { 
-                                        name: tool_name.to_string(), 
-                                        params 
-                                    });
+                                    if let Some(tool_name) = block.get("name").and_then(|n| n.as_str()) {
+                                        let input = block.get("input");
+                                        let params = extract_tool_params(tool_name, input);
+                                        last_tool_name = tool_name.to_string();
+                                        if let Some(ref log) = logger {
+                                            log.log_tool_use("execution", tool_name, input.unwrap_or(&serde_json::Value::Null));
+                                        }
+                                        let _ = tx.send(ClaudeToken::ToolUse {
+                                            name: tool_name.to_string(),
+                                            params
+                                        });
+                                    }
                                 }
                             }
                         }
                     }
-                }
-                Ok(SdkMessage::User(user_msg)) => {
-                    if let Some(ref log) = logger {
-                        log.log_user("execution", &user_msg.message);
-                    }
-                    if let Some(tool_result) = &user_msg.tool_use_result {
-                        let tool_name = tool_result.get("name")
-                            .and_then(|n| n.as_str())
-                            .or_else(|| tool_result.get("tool_name").and_then(|n| n.as_str()))
-                            .unwrap_or(&last_tool_name)
-                            .to_string();
+                    Ok(SdkMessage::User(user_msg)) => {
                         if let Some(ref log) = logger {
-                            log.log_tool_result("execution", &tool_name, tool_result);
+                            log.log_user("execution", &user_msg.message);
                         }
-                        let _ = tx.send(ClaudeToken::ToolDone { name: tool_name });
+                        if let Some(tool_result) = &user_msg.tool_use_result {
+                            let tool_name = tool_result.get("name")
+                                .and_then(|n| n.as_str())
+                                .or_else(|| tool_result.get("tool_name").and_then(|n| n.as_str()))
+                                .unwrap_or(&last_tool_name)
+                                .to_string();
+                            if let Some(ref log) = logger {
+                                log.log_tool_result("execution", &tool_name, tool_result);
+                            }
+                            let _ = tx.send(ClaudeToken::ToolDone { name: tool_name });
+                        }
                     }
+                    Ok(SdkMessage::Result(_)) => {
+                        verbose_println!("[CLAUDE-EXEC] Got Result message, breaking");
+                        got_result = true;
+                        break;
+                    }
+                    Err(e) => {
+                        last_error = format!("Stream error: {}", e);
+                        eprintln!("[CLAUDE-EXEC][ERROR] {}", last_error);
+                        let _ = stream.abort().await;
+                        continue 'retry;
+                    }
+                    _ => {}
                 }
-                Ok(SdkMessage::Result(_)) => {
-                    break;
-                }
-                Err(e) => {
-                    let _ = tx.send(ClaudeToken::Error(format!("Stream error: {}", e)));
-                    return;
-                }
-                _ => {}
             }
+
+            // Success - cleanup and return
+            verbose_println!("[CLAUDE-EXEC] Aborting stream for cleanup...");
+            if let Err(e) = stream.abort().await {
+                verbose_println!("[CLAUDE-EXEC] Abort returned error (expected): {}", e);
+            }
+
+            verbose_println!("[CLAUDE-EXEC] Done. Total response length: {} chars", full_response.len());
+            if let Some(ref log) = logger {
+                log.log_phase_end("execution", &format!("{} chars", full_response.len()));
+            }
+            let _ = tx.send(ClaudeToken::Done(full_response));
+
+            // Small delay to let process cleanup complete before next query
+            tokio::time::sleep(Duration::from_millis(500)).await;
+            return;
         }
-        
-        verbose_println!("[CLAUDE-EXEC] Done. Total response length: {} chars", full_response.len());
-        if let Some(ref log) = logger {
-            log.log_phase_end("execution", &format!("{} chars", full_response.len()));
-        }
-        let _ = tx.send(ClaudeToken::Done(full_response));
     });
 }
 
@@ -337,11 +534,12 @@ pub fn run_claude_review(
     logger: Option<SessionLogger>,
 ) {
     use futures_util::StreamExt;
-    
+    use tokio::time::{timeout, Duration};
+
     if let Some(ref log) = logger {
         log.log_phase_start(&format!("review_{}", iteration));
     }
-    
+
     let prompt = format!(r#"You are reviewing work done by an autonomous software engineer on the OpenAgents project.
 
 ## Iteration {iteration}
@@ -373,7 +571,7 @@ If ALL planned work is complete and no new issues were found, respond with:
 Otherwise, provide a detailed plan for the next iteration in the same format as the original plan."#);
 
     let cwd_clone = std::env::current_dir().unwrap_or_default();
-    
+
     let rt = match tokio::runtime::Runtime::new() {
         Ok(rt) => rt,
         Err(e) => {
@@ -384,93 +582,159 @@ Otherwise, provide a detailed plan for the next iteration in the same format as 
 
     rt.block_on(async {
         use claude_agent_sdk::{query, QueryOptions, SdkMessage, PermissionMode};
-        
-        verbose_println!("[CLAUDE-REVIEW] Starting review iteration {}", iteration);
-        verbose_println!("[CLAUDE-REVIEW] Options: cwd={:?}, model={}, permission_mode=BypassPermissions, max_turns=30", cwd_clone, model.as_str());
-        
-        let options = QueryOptions::new()
-            .cwd(cwd_clone)
-            .model(model.as_str())
-            .permission_mode(PermissionMode::BypassPermissions)
-            .dangerously_skip_permissions(true)
-            .max_turns(30);
-        
-        let mut stream = match query(&prompt, options).await {
-            Ok(s) => {
-                verbose_println!("[CLAUDE-REVIEW] Stream started successfully");
-                s
+
+        let mut attempt = 0;
+        let mut last_error = String::new();
+
+        'retry: loop {
+            if attempt > 0 {
+                let delay = retry_delay(attempt - 1);
+                eprintln!("[CLAUDE-REVIEW] Retry attempt {} after {:?}...", attempt, delay);
+                tokio::time::sleep(delay).await;
             }
-            Err(e) => {
-                eprintln!("[CLAUDE-REVIEW] Failed to start: {}", e);
-                let _ = tx.send(ClaudeToken::Error(format!("Failed to start Claude: {}", e)));
+
+            if attempt >= MAX_RETRIES {
+                eprintln!("[CLAUDE-REVIEW] All {} retries exhausted. Last error: {}", MAX_RETRIES, last_error);
+                let _ = tx.send(ClaudeToken::Error(format!("Failed after {} retries: {}", MAX_RETRIES, last_error)));
                 return;
             }
-        };
 
-        let mut full_response = String::new();
-        let mut last_tool_name = String::new();
-        
-        while let Some(msg) = stream.next().await {
-            match msg {
-                Ok(SdkMessage::Assistant(assistant_msg)) => {
-                    if let Some(ref log) = logger {
-                        log.log_assistant(&format!("review_{}", iteration), &assistant_msg.message);
+            attempt += 1;
+            verbose_println!("[CLAUDE-REVIEW] Starting review iteration {} (attempt {}/{})", iteration, attempt, MAX_RETRIES);
+            verbose_println!("[CLAUDE-REVIEW] Options: cwd={:?}, model={}, permission_mode=BypassPermissions, max_turns=30", cwd_clone, model.as_str());
+
+            let options = QueryOptions::new()
+                .cwd(cwd_clone.clone())
+                .model(model.as_str())
+                .permission_mode(PermissionMode::BypassPermissions)
+                .dangerously_skip_permissions(true)
+                .max_turns(30);
+
+            let query_result = timeout(
+                Duration::from_secs(QUERY_START_TIMEOUT_SECS),
+                query(&prompt, options)
+            ).await;
+
+            let mut stream = match query_result {
+                Ok(Ok(s)) => {
+                    verbose_println!("[CLAUDE-REVIEW] Stream started successfully");
+                    s
+                }
+                Ok(Err(e)) => {
+                    last_error = format!("Failed to start Claude: {}", e);
+                    eprintln!("[CLAUDE-REVIEW] {}", last_error);
+                    continue 'retry;
+                }
+                Err(_) => {
+                    last_error = format!("Timeout starting query after {}s", QUERY_START_TIMEOUT_SECS);
+                    eprintln!("[CLAUDE-REVIEW] {}", last_error);
+                    continue 'retry;
+                }
+            };
+
+            let mut full_response = String::new();
+            let mut last_tool_name = String::new();
+            let mut got_result = false;
+
+            loop {
+                let next_result = timeout(
+                    Duration::from_secs(STREAM_IDLE_TIMEOUT_SECS),
+                    stream.next()
+                ).await;
+
+                let msg = match next_result {
+                    Ok(Some(msg)) => msg,
+                    Ok(None) => {
+                        if !got_result && full_response.is_empty() {
+                            last_error = "Stream ended unexpectedly with no data".to_string();
+                            eprintln!("[CLAUDE-REVIEW] {}", last_error);
+                            let _ = stream.abort().await;
+                            continue 'retry;
+                        }
+                        break;
                     }
-                    if let Some(content) = assistant_msg.message.get("content") {
-                        if let Some(blocks) = content.as_array() {
-                            for block in blocks {
-                                if let Some(text) = block.get("text").and_then(|t| t.as_str()) {
-                                    full_response.push_str(text);
-                                    let _ = tx.send(ClaudeToken::Chunk(text.to_string()));
-                                }
-                                if let Some(tool_name) = block.get("name").and_then(|n| n.as_str()) {
-                                    let input = block.get("input");
-                                    let params = extract_tool_params(tool_name, input);
-                                    last_tool_name = tool_name.to_string();
-                                    if let Some(ref log) = logger {
-                                        log.log_tool_use(&format!("review_{}", iteration), tool_name, input.unwrap_or(&serde_json::Value::Null));
+                    Err(_) => {
+                        last_error = format!("Stream idle timeout after {}s", STREAM_IDLE_TIMEOUT_SECS);
+                        eprintln!("[CLAUDE-REVIEW] {}", last_error);
+                        let _ = stream.abort().await;
+                        continue 'retry;
+                    }
+                };
+
+                match msg {
+                    Ok(SdkMessage::Assistant(assistant_msg)) => {
+                        if let Some(ref log) = logger {
+                            log.log_assistant(&format!("review_{}", iteration), &assistant_msg.message);
+                        }
+                        if let Some(content) = assistant_msg.message.get("content") {
+                            if let Some(blocks) = content.as_array() {
+                                for block in blocks {
+                                    if let Some(text) = block.get("text").and_then(|t| t.as_str()) {
+                                        full_response.push_str(text);
+                                        let _ = tx.send(ClaudeToken::Chunk(text.to_string()));
                                     }
-                                    let _ = tx.send(ClaudeToken::ToolUse { 
-                                        name: tool_name.to_string(), 
-                                        params 
-                                    });
+                                    if let Some(tool_name) = block.get("name").and_then(|n| n.as_str()) {
+                                        let input = block.get("input");
+                                        let params = extract_tool_params(tool_name, input);
+                                        last_tool_name = tool_name.to_string();
+                                        if let Some(ref log) = logger {
+                                            log.log_tool_use(&format!("review_{}", iteration), tool_name, input.unwrap_or(&serde_json::Value::Null));
+                                        }
+                                        let _ = tx.send(ClaudeToken::ToolUse {
+                                            name: tool_name.to_string(),
+                                            params
+                                        });
+                                    }
                                 }
                             }
                         }
                     }
-                }
-                Ok(SdkMessage::User(user_msg)) => {
-                    if let Some(ref log) = logger {
-                        log.log_user(&format!("review_{}", iteration), &user_msg.message);
-                    }
-                    if let Some(tool_result) = &user_msg.tool_use_result {
-                        let tool_name = tool_result.get("name")
-                            .and_then(|n| n.as_str())
-                            .or_else(|| tool_result.get("tool_name").and_then(|n| n.as_str()))
-                            .unwrap_or(&last_tool_name)
-                            .to_string();
+                    Ok(SdkMessage::User(user_msg)) => {
                         if let Some(ref log) = logger {
-                            log.log_tool_result(&format!("review_{}", iteration), &tool_name, tool_result);
+                            log.log_user(&format!("review_{}", iteration), &user_msg.message);
                         }
-                        let _ = tx.send(ClaudeToken::ToolDone { name: tool_name });
+                        if let Some(tool_result) = &user_msg.tool_use_result {
+                            let tool_name = tool_result.get("name")
+                                .and_then(|n| n.as_str())
+                                .or_else(|| tool_result.get("tool_name").and_then(|n| n.as_str()))
+                                .unwrap_or(&last_tool_name)
+                                .to_string();
+                            if let Some(ref log) = logger {
+                                log.log_tool_result(&format!("review_{}", iteration), &tool_name, tool_result);
+                            }
+                            let _ = tx.send(ClaudeToken::ToolDone { name: tool_name });
+                        }
                     }
+                    Ok(SdkMessage::Result(_)) => {
+                        got_result = true;
+                        break;
+                    }
+                    Err(e) => {
+                        last_error = format!("Stream error: {}", e);
+                        eprintln!("[CLAUDE-REVIEW][ERROR] {}", last_error);
+                        let _ = stream.abort().await;
+                        continue 'retry;
+                    }
+                    _ => {}
                 }
-                Ok(SdkMessage::Result(_)) => {
-                    break;
-                }
-                Err(e) => {
-                    let _ = tx.send(ClaudeToken::Error(format!("Stream error: {}", e)));
-                    return;
-                }
-                _ => {}
             }
+
+            // Success - cleanup and return
+            verbose_println!("[CLAUDE-REVIEW] Aborting stream for cleanup...");
+            if let Err(e) = stream.abort().await {
+                verbose_println!("[CLAUDE-REVIEW] Abort returned error (expected): {}", e);
+            }
+
+            verbose_println!("[CLAUDE-REVIEW] Done. Total response length: {} chars", full_response.len());
+            if let Some(ref log) = logger {
+                log.log_phase_end(&format!("review_{}", iteration), &format!("{} chars", full_response.len()));
+            }
+            let _ = tx.send(ClaudeToken::Done(full_response));
+
+            // Small delay to let process cleanup complete before next query
+            tokio::time::sleep(Duration::from_millis(500)).await;
+            return;
         }
-        
-        verbose_println!("[CLAUDE-REVIEW] Done. Total response length: {} chars", full_response.len());
-        if let Some(ref log) = logger {
-            log.log_phase_end(&format!("review_{}", iteration), &format!("{} chars", full_response.len()));
-        }
-        let _ = tx.send(ClaudeToken::Done(full_response));
     });
 }
 
