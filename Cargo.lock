@@ -7544,12 +7544,16 @@ dependencies = [
  "futures",
  "nostr 0.1.0",
  "nostr-client",
+ "pollster",
  "serde",
  "serde_json",
  "thiserror 2.0.17",
  "tokio",
  "tracing",
  "tracing-subscriber",
+ "wgpu",
+ "wgpui",
+ "winit",
 ]
 
 [[package]]

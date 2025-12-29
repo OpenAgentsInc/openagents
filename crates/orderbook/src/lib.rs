@@ -51,6 +51,9 @@ pub mod parser;
 pub mod state;
 pub mod viewer;
 
+#[cfg(feature = "gui")]
+pub mod gui;
+
 pub use market::MarketKey;
 pub use parser::{parse_order_lenient, ParsedOrder, P2P_ORDER_KIND};
 pub use state::{OrderCoord, OrderbookState};
