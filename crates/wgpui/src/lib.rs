@@ -47,6 +47,7 @@ pub mod renderer;
 pub mod scene;
 pub mod scroll;
 pub mod styled;
+pub mod svg;
 #[cfg(any(test, feature = "testing"))]
 pub mod testing;
 pub mod text;
@@ -62,7 +63,7 @@ pub use hit_test::{Hit, HitTestEntry, HitTestIndex, NodeId};
 pub use input::{Cursor, InputEvent, Key, KeyCode, Modifiers, MouseButton, NamedKey};
 pub use layout::{LayoutEngine, LayoutId, LayoutStyle, auto, length, length_auto, pct, px, relative, zero};
 pub use platform::Platform;
-pub use scene::{GlyphInstance, GpuQuad, GpuTextQuad, Quad, Scene, TextRun};
+pub use scene::{GlyphInstance, GpuImageQuad, GpuQuad, GpuTextQuad, Quad, Scene, SvgQuad, TextRun};
 pub use scroll::{ScrollContainer, ScrollDirection};
 pub use text::{FontStyle, TextSystem};
 pub use text_system::{
@@ -125,6 +126,7 @@ pub use window::{DispatchTree, InvalidationFlags, Invalidator, Window, WindowHan
 pub use action::{Action, ActionId, AnyAction, ActionRegistry, ActionListeners, DispatchPhase, DispatchResult, PendingAction, KeyBinding, Keystroke, KeystrokeMatch, KeystrokeParseError, NoAction};
 pub use interactive::{Interactive, WithAction, WithContext};
 pub use keymap::{KeyContext, Keymap, default_keymap};
+pub use svg::{SvgRenderer, SvgRasterized};
 
 #[cfg(all(feature = "web", target_arch = "wasm32"))]
 pub use platform::web::{WebPlatform, run_animation_loop, setup_resize_observer};
