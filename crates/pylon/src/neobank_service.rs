@@ -107,6 +107,7 @@ pub struct NeobankService {
     /// Reputation service
     reputation: ReputationService,
     /// Escrow service
+    #[allow(dead_code)]
     escrow: EscrowService,
     /// Configuration
     config: NeobankConfig,

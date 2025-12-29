@@ -21,7 +21,7 @@
 //! }
 //! ```
 
-use crate::error::{Error, Result};
+use crate::error::Result;
 use crate::exchange::TradeAttestation;
 use crate::relay::ExchangeRelay;
 use std::collections::HashMap;
@@ -159,6 +159,7 @@ struct CacheEntry {
 /// Reputation service for fetching and calculating trust scores
 pub struct ReputationService {
     /// Relay for fetching attestations (optional)
+    #[allow(dead_code)]
     relay: Option<Arc<ExchangeRelay>>,
     /// Local attestation cache
     attestations: Arc<RwLock<HashMap<String, Vec<TradeAttestation>>>>,
@@ -332,7 +333,7 @@ impl ReputationService {
     /// Checks how many of our follows have traded successfully with this counterparty.
     pub fn calculate_wot_score(
         &self,
-        pubkey: &str,
+        _pubkey: &str,
         attestations: &[TradeAttestation],
         follows: &[String],
     ) -> f64 {

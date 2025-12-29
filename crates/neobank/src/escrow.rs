@@ -643,7 +643,7 @@ impl EscrowService {
         };
 
         // Determine which side won and slash loser's bond
-        let (winner_bond_id, loser_bond_id, loser_trader) = {
+        let (winner_bond_id, loser_bond_id, _loser_trader) = {
             let escrows = self.escrows.read().await;
             let escrow = escrows.get(&escrow_id).unwrap();
 

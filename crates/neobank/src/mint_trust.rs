@@ -30,7 +30,7 @@ use crate::relay::ExchangeRelay;
 use crate::types::Currency;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::sync::RwLock;
 use url::Url;
 
