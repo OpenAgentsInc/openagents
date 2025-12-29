@@ -57,4 +57,90 @@ Zed GPUI covers a much larger platform/runtime surface, richer element primitive
 - `img`, `svg`, `canvas`, `surface`, `deferred`, `anchored`, `list`, `uniform_list`, `animation` from `/home/christopherdavid/code/zed/crates/gpui/src/elements/*`.
 - `svg_renderer` + `path_builder` for vector drawing.
 - `image_cache` and `asset_cache` for asset lifecycle.
-- `action` + `keymap` system for keyboard-first workflows.
+- ~~`action` + `keymap` system for keyboard-first workflows.~~ **DONE** (2025-12-29)
+
+---
+
+## Implementation Status (2025-12-29)
+
+### Completed: Action + Keymap System
+
+The action/keymap system has been fully implemented. This closes the "Input, actions, and keymaps" gap identified above.
+
+**Files created (14):**
+
+| Module | Files |
+|--------|-------|
+| `crates/wgpui/src/action/` | `mod.rs`, `action.rs`, `keystroke.rs`, `binding.rs`, `registry.rs`, `dispatch.rs`, `macros.rs`, `standard.rs` |
+| `crates/wgpui/src/keymap/` | `mod.rs`, `context.rs`, `keymap.rs`, `defaults.rs` |
+| `crates/wgpui/src/` | `interactive.rs` |
+
+**Files modified:**
+- `lib.rs` - Module exports
+- `input.rs` - Added `PartialEq`, `Eq`, `Hash` to `Key`, `Modifiers`, `NamedKey`
+- `components/context.rs` - Extended `EventContext` with `KeyContext` and action dispatch
+
+**Features implemented:**
+- `Action` trait with type-safe dispatch and runtime type erasure
+- `Keystroke` parsing from strings ("cmd-shift-s")
+- `KeyBinding` connecting keystrokes to actions with optional context
+- `Keymap` with precedence-based resolution (context depth > binding order)
+- `KeyContext` stack for scoped bindings
+- `ActionListeners` for per-component action handlers
+- `Interactive` trait with fluent `.on_action()` and `.key_context()` API
+- `actions!` and `action!` macros for concise action definitions
+- 21 standard actions (MoveUp, Copy, Cancel, Save, etc.)
+- Default keymap with common bindings
+
+**Documentation:** `crates/wgpui/docs/action-keymap-system.md`
+
+**Simplifications vs Zed:**
+- Manual registration (no `inventory` crate auto-registration)
+- Simple string context matching (no complex predicates like `"Editor && mode == vim"`)
+- Single keystrokes only (no multi-key sequences like "ctrl-k ctrl-c")
+- Bubble phase only (no capture phase)
+
+---
+
+## Recommended Next Steps
+
+### Priority 1: Text System Upgrade
+Replace fixed-width heuristic with proper text layout:
+- Line wrapping
+- Font fallbacks
+- Tab stops
+
+**Key files to study:**
+- `/home/christopherdavid/code/zed/crates/gpui/src/text_system/*`
+- `/home/christopherdavid/code/zed/crates/gpui/src/tab_stop.rs`
+
+### Priority 2: SVG Renderer
+Port `svg_renderer.rs` + `path_builder.rs`. Enables:
+- Vector icons without rasterization
+- Scalable graphics
+- Custom shapes
+
+**Key files to study:**
+- `/home/christopherdavid/code/zed/crates/gpui/src/svg_renderer.rs`
+- `/home/christopherdavid/code/zed/crates/gpui/src/path_builder.rs`
+- `/home/christopherdavid/code/zed/crates/gpui/src/elements/svg.rs`
+
+### Priority 3: Image Element + Cache
+Port from Zed's `img.rs` and `image_cache.rs`. Enables:
+- User avatars
+- Icons
+- Data visualizations
+
+**Key files to study:**
+- `/home/christopherdavid/code/zed/crates/gpui/src/elements/img.rs`
+- `/home/christopherdavid/code/zed/crates/gpui/src/elements/image_cache.rs`
+
+### Priority 4: Expand StyleRefinement
+Add more CSS-like properties:
+- Overflow handling
+- Box shadows
+- Opacity
+- Cursor styles
+
+### Priority 5: Inspector/Profiler
+Add runtime debugging tools for development
