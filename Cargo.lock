@@ -960,6 +960,35 @@ dependencies = [
 ]
 
 [[package]]
+name = "autopilot-app"
+version = "0.1.0"
+dependencies = [
+ "autopilot-service",
+ "autopilot-ui",
+ "pollster",
+ "wgpu",
+ "wgpui",
+ "winit",
+]
+
+[[package]]
+name = "autopilot-service"
+version = "0.1.0"
+dependencies = [
+ "autopilot",
+ "issues",
+ "serde",
+]
+
+[[package]]
+name = "autopilot-ui"
+version = "0.1.0"
+dependencies = [
+ "autopilot-service",
+ "wgpui",
+]
+
+[[package]]
 name = "autopilot-wasm"
 version = "0.1.0"
 dependencies = [
