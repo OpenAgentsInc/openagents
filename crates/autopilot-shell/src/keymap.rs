@@ -4,7 +4,8 @@ use wgpui::action::KeyBinding;
 use wgpui::keymap::Keymap;
 
 use crate::actions::{
-    FocusCenter, ToggleAllSidebars, ToggleBottomPanel, ToggleLeftSidebar, ToggleRightSidebar,
+    FocusCenter, ToggleAllSidebars, ToggleBottomPanel, ToggleFullAuto, ToggleLeftSidebar,
+    ToggleRightSidebar,
 };
 
 /// Create a keymap with shell-specific keybindings.
@@ -16,6 +17,9 @@ use crate::actions::{
 /// - cmd-\: Toggle all sidebars
 pub fn shell_keymap() -> Keymap {
     let mut keymap = Keymap::new();
+
+    // Full Auto toggle
+    add_binding(&mut keymap, "cmd-f", ToggleFullAuto);
 
     // Sidebar toggles
     add_binding(&mut keymap, "cmd-b", ToggleLeftSidebar);

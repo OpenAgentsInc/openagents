@@ -66,3 +66,16 @@ impl Action for FocusCenter {
         Box::new(*self)
     }
 }
+
+/// Toggle Full Auto mode (cmd-f)
+#[derive(Debug, Clone, Copy, Default)]
+pub struct ToggleFullAuto;
+
+impl Action for ToggleFullAuto {
+    fn name() -> &'static str {
+        "shell::ToggleFullAuto"
+    }
+    fn boxed_clone(&self) -> Box<dyn AnyAction> {
+        Box::new(*self)
+    }
+}

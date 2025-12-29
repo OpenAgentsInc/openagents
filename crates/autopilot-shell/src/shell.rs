@@ -13,6 +13,7 @@ use wgpui::{
     keymap::{Keymap, KeyContext},
 };
 
+use crate::components::FullAutoToggle;
 use crate::dock::{Dock, DockPosition};
 use crate::hud::{HudBackground, StartupSequence};
 use crate::keymap::shell_keymap;
@@ -46,6 +47,9 @@ pub struct AutopilotShell {
     // Runtime
     runtime: AutopilotRuntime,
     last_line_count: usize,
+
+    // Full Auto toggle
+    full_auto_toggle: FullAutoToggle,
 
     // Input handling
     keymap: Keymap,
@@ -93,6 +97,7 @@ impl AutopilotShell {
             status_bar,
             runtime: AutopilotRuntime::new(ClaudeModel::Sonnet),
             last_line_count: 0,
+            full_auto_toggle: FullAutoToggle::new(),
             keymap,
             key_context: KeyContext::new(),
         }
@@ -244,12 +249,17 @@ impl AutopilotShell {
                 }
                 EventResult::Handled
             }
+            "shell::ToggleFullAuto" => {
+                self.full_auto_toggle.toggle();
+                EventResult::Handled
+            }
             _ => EventResult::Ignored,
         }
     }
 
     fn paint_hotkey_legend(&self, bounds: Bounds, cx: &mut PaintContext) {
         let hotkeys = [
+            ("cmd-f", "Toggle Full Auto"),
             ("cmd-b", "Toggle left sidebar"),
             ("cmd-shift-b", "Toggle right sidebar"),
             ("cmd-\\", "Toggle all sidebars"),
@@ -331,10 +341,12 @@ impl Component for AutopilotShell {
             return;
         }
 
-        // 3. Tick runtime and apply snapshot
-        self.runtime.tick();
-        let snapshot = self.runtime.snapshot();
-        self.apply_snapshot(&snapshot);
+        // 3. Only tick runtime when Full Auto is enabled
+        if self.full_auto_toggle.is_enabled() {
+            self.runtime.tick();
+            let snapshot = self.runtime.snapshot();
+            self.apply_snapshot(&snapshot);
+        }
 
         // 4. Calculate layout
         let layout = self.calculate_layout(bounds);
@@ -343,13 +355,29 @@ impl Component for AutopilotShell {
         self.left_dock.paint(layout.left, cx);
         self.right_dock.paint(layout.right, cx);
 
-        // 6. Paint center thread view
-        self.thread_view.paint(layout.center, cx);
+        // 6. Paint Full Auto toggle at top of center area
+        let toggle_h = 36.0;
+        let toggle_bounds = Bounds::new(
+            layout.center.origin.x + 8.0,
+            layout.center.origin.y + 8.0,
+            240.0,
+            toggle_h,
+        );
+        self.full_auto_toggle.paint(toggle_bounds, cx);
 
-        // 7. Paint status bar
+        // 7. Paint center thread view (below toggle)
+        let thread_bounds = Bounds::new(
+            layout.center.origin.x,
+            layout.center.origin.y + toggle_h + 16.0,
+            layout.center.size.width,
+            layout.center.size.height - toggle_h - 16.0,
+        );
+        self.thread_view.paint(thread_bounds, cx);
+
+        // 8. Paint status bar
         self.status_bar.paint(layout.status, cx);
 
-        // 8. Paint hotkey legend in bottom left
+        // 9. Paint hotkey legend in bottom left
         self.paint_hotkey_legend(bounds, cx);
     }
 
