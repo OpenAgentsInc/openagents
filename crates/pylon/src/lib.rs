@@ -19,10 +19,12 @@ pub mod config;
 pub mod daemon;
 pub mod db;
 pub mod host;
+pub mod neobank_service;
 pub mod provider;
 
 pub use config::PylonConfig;
 pub use daemon::{is_daemon_running, pid_path, runtime_dir, socket_path, PidFile};
 pub use db::PylonDb;
 pub use host::{AgentHandle, AgentRunner};
+pub use neobank_service::{NeobankConfig, NeobankError, NeobankService, TreasuryStatus};
 pub use provider::PylonProvider;

@@ -40,6 +40,10 @@ pub fn run(cmd: PylonCommands) -> anyhow::Result<()> {
                 command: pylon::cli::Commands::Compute(args),
             })
             .await,
+            PylonCommands::Neobank(args) => pylon::cli::execute(pylon::cli::PylonCli {
+                command: pylon::cli::Commands::Neobank(args),
+            })
+            .await,
         }
     })
 }

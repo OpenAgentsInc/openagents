@@ -54,6 +54,7 @@ impl PylonDb {
         // Run migrations in order
         self.run_migration("001_initial_schema", MIGRATION_001)?;
         self.run_migration("002_invoices", MIGRATION_002)?;
+        self.run_migration("003_neobank", MIGRATION_003)?;
 
         Ok(())
     }
@@ -178,6 +179,58 @@ CREATE TABLE IF NOT EXISTS invoices (
 CREATE INDEX IF NOT EXISTS idx_invoices_job ON invoices(job_id);
 CREATE INDEX IF NOT EXISTS idx_invoices_status ON invoices(status);
 CREATE INDEX IF NOT EXISTS idx_invoices_created ON invoices(created_at);
+"#;
+
+/// Neobank tables migration
+const MIGRATION_003: &str = r#"
+-- Neobank wallets table
+CREATE TABLE IF NOT EXISTS neobank_wallets (
+    id TEXT PRIMARY KEY,
+    currency TEXT NOT NULL CHECK(currency IN ('btc', 'usd')),
+    mint_url TEXT NOT NULL,
+    balance_sats INTEGER NOT NULL DEFAULT 0,
+    created_at INTEGER NOT NULL DEFAULT (unixepoch()),
+    updated_at INTEGER NOT NULL DEFAULT (unixepoch())
+);
+
+CREATE INDEX IF NOT EXISTS idx_neobank_wallets_currency ON neobank_wallets(currency);
+
+-- Neobank transactions table
+CREATE TABLE IF NOT EXISTS neobank_transactions (
+    id TEXT PRIMARY KEY,
+    wallet_id TEXT NOT NULL REFERENCES neobank_wallets(id),
+    tx_type TEXT NOT NULL CHECK(tx_type IN ('deposit', 'withdraw', 'send', 'receive', 'exchange')),
+    amount_sats INTEGER NOT NULL,
+    counterparty TEXT,
+    bolt11 TEXT,
+    token TEXT,
+    preimage TEXT,
+    status TEXT NOT NULL CHECK(status IN ('pending', 'completed', 'failed')) DEFAULT 'pending',
+    created_at INTEGER NOT NULL DEFAULT (unixepoch()),
+    completed_at INTEGER
+);
+
+CREATE INDEX IF NOT EXISTS idx_neobank_tx_wallet ON neobank_transactions(wallet_id);
+CREATE INDEX IF NOT EXISTS idx_neobank_tx_type ON neobank_transactions(tx_type);
+CREATE INDEX IF NOT EXISTS idx_neobank_tx_created ON neobank_transactions(created_at);
+
+-- Neobank trades table (for exchange operations)
+CREATE TABLE IF NOT EXISTS neobank_trades (
+    id TEXT PRIMARY KEY,
+    order_id TEXT,
+    from_currency TEXT NOT NULL,
+    to_currency TEXT NOT NULL,
+    from_amount_sats INTEGER NOT NULL,
+    to_amount_sats INTEGER,
+    rate REAL,
+    status TEXT NOT NULL CHECK(status IN ('pending', 'matched', 'settled', 'failed', 'cancelled')) DEFAULT 'pending',
+    counterparty TEXT,
+    created_at INTEGER NOT NULL DEFAULT (unixepoch()),
+    settled_at INTEGER
+);
+
+CREATE INDEX IF NOT EXISTS idx_neobank_trades_status ON neobank_trades(status);
+CREATE INDEX IF NOT EXISTS idx_neobank_trades_created ON neobank_trades(created_at);
 "#;
 
 #[cfg(test)]

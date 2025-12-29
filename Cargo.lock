@@ -8459,6 +8459,7 @@ dependencies = [
  "clap",
  "compute",
  "dirs 5.0.1",
+ "neobank",
  "nix 0.29.0",
  "nostr 0.1.0",
  "nostr-client",
@@ -8474,6 +8475,7 @@ dependencies = [
  "toml",
  "tracing",
  "tracing-subscriber",
+ "url",
  "uuid",
 ]
 

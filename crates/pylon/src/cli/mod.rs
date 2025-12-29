@@ -5,6 +5,7 @@ mod compute;
 mod doctor;
 mod earnings;
 mod init;
+mod neobank;
 mod start;
 mod status;
 mod stop;
@@ -39,6 +40,8 @@ pub enum Commands {
     Earnings(earnings::EarningsArgs),
     /// Show compute mix (all available compute options)
     Compute(compute::ComputeArgs),
+    /// Manage neobank treasury
+    Neobank(neobank::NeobankArgs),
 }
 
 /// Execute a CLI command
@@ -52,5 +55,6 @@ pub async fn execute(cli: PylonCli) -> anyhow::Result<()> {
         Commands::Agent(args) => agent::run(args).await,
         Commands::Earnings(args) => earnings::run(args).await,
         Commands::Compute(args) => compute::run(args).await,
+        Commands::Neobank(args) => neobank::run(args).await,
     }
 }

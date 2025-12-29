@@ -18,6 +18,16 @@ pub enum DaemonCommand {
     Shutdown,
     /// Ping to check if daemon is responsive
     Ping,
+    /// Get neobank balance for a currency
+    NeobankBalance { currency: String },
+    /// Pay a Lightning invoice via neobank
+    NeobankPay { bolt11: String },
+    /// Send Cashu tokens via neobank
+    NeobankSend { amount_sats: u64, currency: String },
+    /// Receive Cashu tokens via neobank
+    NeobankReceive { token: String },
+    /// Get neobank treasury status
+    NeobankStatus,
 }
 
 /// Responses from the daemon
@@ -38,6 +48,21 @@ pub enum DaemonResponse {
     Pong,
     /// Error response
     Error(String),
+    /// Neobank balance response
+    NeobankBalance { sats: u64 },
+    /// Neobank payment response
+    NeobankPayment { preimage: String },
+    /// Neobank send response (token string)
+    NeobankSend { token: String },
+    /// Neobank receive response
+    NeobankReceive { amount_sats: u64 },
+    /// Neobank treasury status response
+    NeobankStatus {
+        btc_balance_sats: u64,
+        usd_balance_cents: u64,
+        treasury_active: bool,
+        btc_usd_rate: Option<f64>,
+    },
 }
 
 /// Unix socket server for daemon control
@@ -152,6 +177,40 @@ impl ControlClient {
     /// Request graceful shutdown
     pub fn shutdown(&self) -> anyhow::Result<DaemonResponse> {
         self.send(DaemonCommand::Shutdown)
+    }
+
+    /// Get neobank balance for a currency
+    pub fn neobank_balance(&self, currency: &str) -> anyhow::Result<DaemonResponse> {
+        self.send(DaemonCommand::NeobankBalance {
+            currency: currency.to_string(),
+        })
+    }
+
+    /// Pay a Lightning invoice via neobank
+    pub fn neobank_pay(&self, bolt11: &str) -> anyhow::Result<DaemonResponse> {
+        self.send(DaemonCommand::NeobankPay {
+            bolt11: bolt11.to_string(),
+        })
+    }
+
+    /// Send Cashu tokens via neobank
+    pub fn neobank_send(&self, amount_sats: u64, currency: &str) -> anyhow::Result<DaemonResponse> {
+        self.send(DaemonCommand::NeobankSend {
+            amount_sats,
+            currency: currency.to_string(),
+        })
+    }
+
+    /// Receive Cashu tokens via neobank
+    pub fn neobank_receive(&self, token: &str) -> anyhow::Result<DaemonResponse> {
+        self.send(DaemonCommand::NeobankReceive {
+            token: token.to_string(),
+        })
+    }
+
+    /// Get neobank treasury status
+    pub fn neobank_status(&self) -> anyhow::Result<DaemonResponse> {
+        self.send(DaemonCommand::NeobankStatus)
     }
 }
 
