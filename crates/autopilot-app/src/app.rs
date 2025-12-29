@@ -2,10 +2,10 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use anyhow::Result;
-use autopilot_service::{AutopilotRuntime, RuntimeSnapshot, UnixDaemonClient};
+use autopilot_service::{AutopilotRuntime, DaemonClient, RuntimeSnapshot, UnixDaemonClient};
 use autopilot_ui::AutopilotIde;
 use wgpui::{
-    Bounds, EventContext, InputEvent, PaintContext, Point, Scene, Size, TextSystem,
+    Bounds, Component, EventContext, InputEvent, PaintContext, Point, Scene, Size, TextSystem,
 };
 use wgpui::renderer::Renderer;
 use winit::application::ApplicationHandler;
