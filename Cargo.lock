@@ -963,6 +963,7 @@ dependencies = [
 name = "autopilot-app"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "autopilot-service",
  "autopilot-ui",
  "pollster",
@@ -975,9 +976,12 @@ dependencies = [
 name = "autopilot-service"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "autopilot",
  "issues",
  "serde",
+ "serde_json",
+ "tracing-subscriber",
 ]
 
 [[package]]
@@ -7371,6 +7375,8 @@ dependencies = [
  "assert_cmd",
  "async-trait",
  "autopilot",
+ "autopilot-app",
+ "autopilot-service",
  "base64 0.22.1",
  "bech32 0.11.1",
  "bip39",
