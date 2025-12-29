@@ -15,6 +15,15 @@ path = "src/lib.rs"
 name = "orderbook"
 path = "src/main.rs"
 
+[[bin]]
+name = "orderbook-gui"
+path = "src/gui/main.rs"
+required-features = ["gui"]
+
+[features]
+default = []
+gui = ["dep:wgpui", "dep:wgpu", "dep:winit", "dep:pollster"]
+
 [dependencies]
 nostr = { path = "../nostr/core" }
 nostr-client = { path = "../nostr/client" }
@@ -28,6 +37,12 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 thiserror = { workspace = true }
 futures.workspace = true
 anyhow.workspace = true
+
+# GUI dependencies (optional)
+wgpui = { path = "../wgpui", optional = true }
+wgpu = { workspace = true, optional = true }
+winit = { workspace = true, optional = true }
+pollster = { workspace = true, optional = true }
 
 [lints]
 workspace = true
