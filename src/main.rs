@@ -6,7 +6,7 @@
 //!   - `openagents marketplace ...`
 //!   - `openagents gitafter ...`
 //!
-//! Note: For the Autopilot GUI, use `cargo autopilot` which runs src/bin/autopilot.rs
+//! Note: Running `openagents` without args launches the Autopilot IDE.
 
 use clap::{Parser, Subcommand};
 use std::process;
@@ -27,6 +27,9 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
+    /// Autopilot commands (IDE and CLI)
+    Autopilot(cli::autopilot::AutopilotArgs),
+
     /// Sovereign agent commands (spawn, manage, run autonomous agents)
     #[command(subcommand)]
     Agent(cli::agent::AgentCommands),
@@ -55,23 +58,26 @@ enum Commands {
 fn main() {
     let cli = Cli::parse();
 
-    // Initialize logging
-    let log_level = if cli.verbose { "debug" } else { "info" };
-    tracing_subscriber::fmt()
-        .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new(log_level)),
-        )
-        .init();
+    let init_logging = match &cli.command {
+        None => false,
+        Some(Commands::Autopilot(_)) => false,
+        _ => true,
+    };
+
+    if init_logging {
+        let log_level = if cli.verbose { "debug" } else { "info" };
+        tracing_subscriber::fmt()
+            .with_env_filter(
+                tracing_subscriber::EnvFilter::try_from_default_env()
+                    .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new(log_level)),
+            )
+            .init();
+    }
 
     // Run command
     let result = match cli.command {
-        None => {
-            println!("OpenAgents CLI");
-            println!("Run 'openagents --help' to see available commands");
-            println!("Run 'cargo autopilot' to launch the Autopilot GUI");
-            Ok(())
-        }
+        None => autopilot_app::run(),
+        Some(Commands::Autopilot(cmd)) => cli::autopilot::run(cmd, cli.verbose),
         Some(Commands::Agent(cmd)) => cli::agent::run(cmd),
         Some(Commands::Wallet(cmd)) => cli::wallet::run(cmd),
         Some(Commands::Marketplace(cmd)) => cli::marketplace::run(cmd),

@@ -1,0 +1,14 @@
+[package]
+name = "autopilot-service"
+version = "0.1.0"
+edition = "2024"
+description = "Autopilot runtime service layer for IDE and CLI"
+publish = false
+
+[dependencies]
+autopilot = { path = "../autopilot" }
+issues = { path = "../issues" }
+anyhow = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
