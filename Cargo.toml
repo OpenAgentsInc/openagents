@@ -109,6 +109,7 @@ clap = { version = "4.4", features = ["derive", "wrap_help"] }
 # Async
 tokio = { version = "1", features = ["full", "signal"] }
 futures-util = "0.3"
+async-trait = { workspace = true }
 
 # Serialization
 serde = { version = "1", features = ["derive"] }
@@ -126,6 +127,7 @@ shellexpand = "2.1"
 chrono = { version = "0.4", features = ["serde"] }
 base64 = { workspace = true }
 uuid = { workspace = true }
+bech32 = "0.11.0"
 colored = "2.0"
 rusqlite = { version = "0.32", features = ["bundled"] }
 toml = { workspace = true }

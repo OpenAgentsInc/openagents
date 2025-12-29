@@ -10,14 +10,19 @@
 //!   cargo run --bin agent-runner -- --agent myagent --single-tick
 //!   cargo run --bin agent-runner -- --mnemonic "12 words..."
 
-use agent::{AgentRegistry, LifecycleState};
+use agent::{AgentConfig, AgentRegistry, AutonomyLevel, LifecycleState};
 use anyhow::Result;
 use clap::Parser;
 use compute::domain::UnifiedIdentity;
-use nostr_client::RelayConnection;
-use openagents::agents::{ComputeClient, Scheduler, StateManager, TickExecutor};
+use nostr::nip_sa::{
+    AgentProfile, AgentProfileContent, AgentSchedule, AutonomyLevel as NipSaAutonomyLevel,
+    ThresholdConfig, TriggerType, KIND_AGENT_PROFILE, KIND_AGENT_SCHEDULE,
+};
+use nostr::{finalize_event, EventTemplate, KIND_CHANNEL_MESSAGE};
+use openagents::agents::{ComputeClient, RelayHub, Scheduler, SharedRelay, StateManager, TickExecutor};
 use openagents_spark::{Network as SparkNetwork, SparkWallet, WalletConfig};
 use std::sync::Arc;
+use std::time::Duration;
 
 #[derive(Parser)]
 #[command(name = "agent-runner")]
@@ -31,9 +36,13 @@ struct Args {
     #[arg(long, conflicts_with = "agent")]
     mnemonic: Option<String>,
 
-    /// Relay URL (overrides config)
+    /// Relay URL (repeat or comma-delimit to use multiple relays)
+    #[arg(long = "relay", value_delimiter = ',')]
+    relays: Vec<String>,
+
+    /// NIP-28 channel ID for agent chat (optional)
     #[arg(long)]
-    relay: Option<String>,
+    channel: Option<String>,
 
     /// Run a single tick and exit
     #[arg(long)]
@@ -54,6 +63,79 @@ fn parse_network(network: &str) -> Result<SparkNetwork> {
     }
 }
 
+async fn publish_agent_profile_schedule(
+    relay: &SharedRelay,
+    identity: &UnifiedIdentity,
+    config: &AgentConfig,
+    triggers: &[String],
+) -> Result<()> {
+    let now = chrono::Utc::now().timestamp() as u64;
+
+    let autonomy = match config.profile.autonomy {
+        AutonomyLevel::Supervised => NipSaAutonomyLevel::Supervised,
+        AutonomyLevel::Bounded => NipSaAutonomyLevel::Bounded,
+        AutonomyLevel::Autonomous => NipSaAutonomyLevel::Autonomous,
+    };
+
+    let profile_content = AgentProfileContent::new(
+        &config.profile.name,
+        &config.profile.about,
+        autonomy,
+        &config.profile.version,
+    )
+    .with_capabilities(config.profile.capabilities.clone());
+
+    let threshold = ThresholdConfig::new(1, 1, &identity.public_key_hex())?;
+    let profile = AgentProfile::new(profile_content, threshold, &identity.public_key_hex());
+
+    let profile_event = EventTemplate {
+        created_at: now,
+        kind: KIND_AGENT_PROFILE,
+        tags: profile.build_tags(),
+        content: profile
+            .content
+            .to_json()
+            .map_err(|e| anyhow::anyhow!("Profile serialization failed: {}", e))?,
+    };
+
+    let event = finalize_event(&profile_event, identity.private_key_bytes())?;
+    relay
+        .publish_event(&event, Duration::from_secs(10))
+        .await?;
+
+    let mut schedule = AgentSchedule::new();
+    if config.schedule.heartbeat_seconds > 0 {
+        schedule = schedule.with_heartbeat(config.schedule.heartbeat_seconds)?;
+    }
+    for trigger in triggers {
+        let trigger_type = match trigger.as_str() {
+            "mention" => Some(TriggerType::Mention),
+            "dm" => Some(TriggerType::Dm),
+            "zap" => Some(TriggerType::Zap),
+            "channel" => Some(TriggerType::Custom(KIND_CHANNEL_MESSAGE as u32)),
+            _ => None,
+        };
+
+        if let Some(trigger_type) = trigger_type {
+            schedule = schedule.add_trigger(trigger_type);
+        }
+    }
+
+    let schedule_event = EventTemplate {
+        created_at: now,
+        kind: KIND_AGENT_SCHEDULE,
+        tags: schedule.build_tags(),
+        content: String::new(),
+    };
+
+    let event = finalize_event(&schedule_event, identity.private_key_bytes())?;
+    relay
+        .publish_event(&event, Duration::from_secs(10))
+        .await?;
+
+    Ok(())
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     // Initialize logging
@@ -69,7 +151,7 @@ async fn main() -> Result<()> {
     println!("=== OpenAgents Sovereign Agent Runner ===\n");
 
     // Load agent config
-    let (identity, config, relay_url) = if let Some(agent_id) = &args.agent {
+    let (identity, config, relay_urls) = if let Some(agent_id) = &args.agent {
         // Load from registry
         let registry = AgentRegistry::new()?;
         let config = registry.load(agent_id)?;
@@ -88,21 +170,23 @@ async fn main() -> Result<()> {
         let mnemonic = &config.mnemonic_encrypted; // TODO: decrypt
         let identity = UnifiedIdentity::from_mnemonic(mnemonic, "")?;
 
-        let relay_url = args.relay.unwrap_or_else(|| {
-            config
-                .relays
-                .first()
-                .cloned()
-                .unwrap_or_else(|| "wss://relay.damus.io".to_string())
-        });
+        let relay_urls = if !args.relays.is_empty() {
+            args.relays.clone()
+        } else if config.relays.is_empty() {
+            vec!["wss://relay.damus.io".to_string()]
+        } else {
+            config.relays.clone()
+        };
 
-        (identity, Some(config), relay_url)
+        (identity, Some(config), relay_urls)
     } else if let Some(mnemonic) = &args.mnemonic {
         // Run from mnemonic directly
         let identity = UnifiedIdentity::from_mnemonic(mnemonic, "")?;
-        let relay_url = args
-            .relay
-            .unwrap_or_else(|| "wss://relay.damus.io".to_string());
+        let relay_urls = if !args.relays.is_empty() {
+            args.relays.clone()
+        } else {
+            vec!["wss://relay.damus.io".to_string()]
+        };
 
         println!("Running from mnemonic");
         println!(
@@ -110,7 +194,7 @@ async fn main() -> Result<()> {
             identity.npub().unwrap_or_else(|_| "unknown".to_string())
         );
 
-        (identity, None, relay_url)
+        (identity, None, relay_urls)
     } else {
         anyhow::bail!("Must provide --agent <name> or --mnemonic <phrase>");
     };
@@ -162,39 +246,34 @@ async fn main() -> Result<()> {
     let wallet = Arc::new(wallet);
 
     // Connect to relay
-    println!("\nConnecting to relay: {}", relay_url);
-    let relay = RelayConnection::new(&relay_url)?;
-    relay.connect().await?;
+    println!("\nConnecting to relays: {}", relay_urls.join(", "));
+    let relay_hub = Arc::new(RelayHub::new(relay_urls)?);
+    relay_hub.connect_all().await?;
     println!("Connected!");
 
-    // Initialize components - each needs its own relay connection
-    let state_relay = RelayConnection::new(&relay_url)?;
-    state_relay.connect().await?;
+    let relay: SharedRelay = relay_hub.clone();
+
+    // Initialize components using the shared relay hub
     let state_manager = StateManager::new(
         UnifiedIdentity::from_mnemonic(identity.mnemonic(), "")?,
-        state_relay,
+        relay.clone(),
     );
 
-    let compute_relay = RelayConnection::new(&relay_url)?;
-    compute_relay.connect().await?;
     let compute_client = ComputeClient::new(
         UnifiedIdentity::from_mnemonic(identity.mnemonic(), "")?,
-        compute_relay,
+        relay.clone(),
         wallet.clone(),
     );
 
-    let tick_relay = RelayConnection::new(&relay_url)?;
-    tick_relay.connect().await?;
-    let trajectory_relay = RelayConnection::new(&relay_url)?;
-    trajectory_relay.connect().await?;
     let mut executor = TickExecutor::new(
         UnifiedIdentity::from_mnemonic(identity.mnemonic(), "")?,
         state_manager,
         compute_client,
-        tick_relay,
-        trajectory_relay,
+        relay.clone(),
+        relay.clone(),
         identity.public_key_hex(),
         agent_name.clone(),
+        args.channel.clone(),
     );
 
     // Get schedule from config
@@ -203,18 +282,28 @@ async fn main() -> Result<()> {
         .map(|c| c.schedule.heartbeat_seconds)
         .unwrap_or(900);
 
-    let triggers = config
+    let mut triggers = config
         .as_ref()
         .map(|c| c.schedule.triggers.clone())
         .unwrap_or_else(|| vec!["mention".to_string(), "dm".to_string(), "zap".to_string()]);
+    if args.channel.is_some() && !triggers.iter().any(|t| t == "channel") {
+        triggers.push("channel".to_string());
+    }
 
-    let scheduler_relay = RelayConnection::new(&relay_url)?;
-    scheduler_relay.connect().await?;
+    if let Some(ref config) = config {
+        if let Err(e) =
+            publish_agent_profile_schedule(&relay, &identity, config, &triggers).await
+        {
+            tracing::warn!("Failed to publish agent profile/schedule: {}", e);
+        }
+    }
+
     let scheduler = Scheduler::new(
         heartbeat_seconds,
         triggers,
         identity.public_key_hex(),
-        scheduler_relay,
+        relay.clone(),
+        args.channel.clone(),
     );
 
     if args.single_tick {

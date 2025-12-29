@@ -6,18 +6,19 @@ use anyhow::Result;
 use compute::domain::UnifiedIdentity;
 use nostr::nip_sa::{AgentState, AgentStateContent, KIND_AGENT_STATE, STATE_D_TAG, STATE_VERSION};
 use nostr::{finalize_event, Event, EventTemplate};
-use nostr_client::RelayConnection;
+use crate::agents::SharedRelay;
 use std::time::Duration;
+use uuid::Uuid;
 
 /// Manages agent state on Nostr
 pub struct StateManager {
     identity: UnifiedIdentity,
-    pub relay: RelayConnection,
+    pub relay: SharedRelay,
 }
 
 impl StateManager {
     /// Create a new state manager
-    pub fn new(identity: UnifiedIdentity, relay: RelayConnection) -> Self {
+    pub fn new(identity: UnifiedIdentity, relay: SharedRelay) -> Self {
         Self { identity, relay }
     }
 
@@ -40,9 +41,10 @@ impl StateManager {
         })];
 
         // Subscribe and collect events
+        let subscription_id = format!("state-fetch-{}", Uuid::new_v4());
         let mut rx = self
             .relay
-            .subscribe_with_channel("state-fetch", &filters)
+            .subscribe_with_channel(&subscription_id, &filters)
             .await?;
 
         // Collect events with timeout

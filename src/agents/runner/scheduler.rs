@@ -5,10 +5,11 @@
 use super::tick::{TickExecutor, TickResult, TickTrigger};
 use agent::LifecycleState;
 use anyhow::Result;
-use nostr::Event;
-use nostr_client::RelayConnection;
+use nostr::{Event, KIND_CHANNEL_MESSAGE};
+use crate::agents::SharedRelay;
 use std::time::Duration;
 use tokio::sync::mpsc;
+use uuid::Uuid;
 
 /// Agent scheduler that fires ticks on heartbeat and events
 pub struct Scheduler {
@@ -19,7 +20,9 @@ pub struct Scheduler {
     /// Agent pubkey (for filtering mentions)
     agent_pubkey: String,
     /// Relay connection
-    relay: RelayConnection,
+    relay: SharedRelay,
+    /// Optional channel ID to listen for NIP-28 messages
+    channel_id: Option<String>,
 }
 
 impl Scheduler {
@@ -28,13 +31,15 @@ impl Scheduler {
         heartbeat_seconds: u64,
         triggers: Vec<String>,
         agent_pubkey: String,
-        relay: RelayConnection,
+        relay: SharedRelay,
+        channel_id: Option<String>,
     ) -> Self {
         Self {
             heartbeat_seconds,
             triggers,
             agent_pubkey,
             relay,
+            channel_id,
         }
     }
 
@@ -97,6 +102,7 @@ impl Scheduler {
     /// Subscribe to trigger events (mentions, DMs, zaps)
     async fn subscribe_triggers(&self) -> Result<mpsc::Receiver<Event>> {
         let mut filter_kinds = vec![];
+        let mut filters = Vec::new();
 
         // Build filter based on enabled triggers
         if self.triggers.contains(&"mention".to_string()) {
@@ -109,20 +115,31 @@ impl Scheduler {
             filter_kinds.push(9735u64); // kind:9735 zap receipt
         }
 
-        if filter_kinds.is_empty() {
-            // No triggers enabled - return a dummy channel
+        if !filter_kinds.is_empty() {
+            filters.push(serde_json::json!({
+                "kinds": filter_kinds,
+                "#p": [self.agent_pubkey]
+            }));
+        }
+
+        if self.triggers.contains(&"channel".to_string()) {
+            if let Some(channel_id) = &self.channel_id {
+                filters.push(serde_json::json!({
+                    "kinds": [KIND_CHANNEL_MESSAGE as u64],
+                    "#e": [channel_id]
+                }));
+            }
+        }
+
+        if filters.is_empty() {
             let (_, rx) = mpsc::channel(1);
             return Ok(rx);
         }
 
-        let filters = vec![serde_json::json!({
-            "kinds": filter_kinds,
-            "#p": [self.agent_pubkey]
-        })];
-
+        let subscription_id = format!("agent-triggers-{}", Uuid::new_v4());
         let rx = self
             .relay
-            .subscribe_with_channel("agent-triggers", &filters)
+            .subscribe_with_channel(&subscription_id, &filters)
             .await?;
 
         Ok(rx)
@@ -134,6 +151,7 @@ impl Scheduler {
             1 => TickTrigger::Mention(event.clone()),
             4 => TickTrigger::DirectMessage(event.clone()),
             9735 => TickTrigger::Zap(event.clone()),
+            KIND_CHANNEL_MESSAGE => TickTrigger::ChannelMessage(event.clone()),
             _ => TickTrigger::Heartbeat, // Fallback
         }
     }

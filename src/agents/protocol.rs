@@ -23,13 +23,14 @@
 //!
 //! Valid networks: `mainnet`, `testnet`, `signet`, `regtest`
 
+use crate::agents::RelayApi;
 use nostr::{
     finalize_event, ChannelMessageEvent, ChannelMetadata, Event, EventTemplate, Keypair,
     KIND_CHANNEL_CREATION, KIND_CHANNEL_MESSAGE,
 };
-use nostr_client::RelayConnection;
 use serde::{Deserialize, Serialize};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use uuid::Uuid;
 
 // ============================================================================
 // NIP-90 Event Kinds
@@ -232,7 +233,7 @@ pub fn now() -> u64 {
 /// This is the primary way to request compute from a provider.
 /// The provider will respond with a feedback event (kind:7000) containing an invoice.
 pub async fn publish_job_request(
-    relay: &RelayConnection,
+    relay: &dyn RelayApi,
     keypair: &Keypair,
     provider_pubkey: &str,
     prompt: &str,
@@ -264,7 +265,7 @@ pub async fn publish_job_request(
 ///
 /// Used by providers to send status updates including payment-required with invoice.
 pub async fn publish_job_feedback(
-    relay: &RelayConnection,
+    relay: &dyn RelayApi,
     keypair: &Keypair,
     job_request_id: &str,
     customer_pubkey: &str,
@@ -314,7 +315,7 @@ pub async fn publish_job_feedback(
 ///
 /// Used by providers to deliver the completed job result.
 pub async fn publish_job_result(
-    relay: &RelayConnection,
+    relay: &dyn RelayApi,
     keypair: &Keypair,
     job_request_id: &str,
     customer_pubkey: &str,
@@ -347,7 +348,7 @@ pub async fn publish_job_result(
 ///
 /// Used by providers to listen for incoming job requests.
 pub async fn subscribe_job_requests(
-    relay: &RelayConnection,
+    relay: &dyn RelayApi,
     provider_pubkey: &str,
     kinds: &[u16],
 ) -> AgentResult<tokio::sync::mpsc::Receiver<Event>> {
@@ -358,7 +359,10 @@ pub async fn subscribe_job_requests(
         "#p": [provider_pubkey]
     })];
 
-    let rx = relay.subscribe_with_channel("job-requests", &filters).await?;
+    let subscription_id = format!("job-requests-{}-{}", provider_pubkey, Uuid::new_v4());
+    let rx = relay
+        .subscribe_with_channel(&subscription_id, &filters)
+        .await?;
     Ok(rx)
 }
 
@@ -366,7 +370,7 @@ pub async fn subscribe_job_requests(
 ///
 /// Used by customers to listen for provider responses.
 pub async fn subscribe_job_responses(
-    relay: &RelayConnection,
+    relay: &dyn RelayApi,
     job_request_id: &str,
 ) -> AgentResult<tokio::sync::mpsc::Receiver<Event>> {
     let filters = vec![serde_json::json!({
@@ -374,7 +378,10 @@ pub async fn subscribe_job_responses(
         "#e": [job_request_id]
     })];
 
-    let rx = relay.subscribe_with_channel("job-responses", &filters).await?;
+    let subscription_id = format!("job-responses-{}-{}", job_request_id, Uuid::new_v4());
+    let rx = relay
+        .subscribe_with_channel(&subscription_id, &filters)
+        .await?;
     Ok(rx)
 }
 
@@ -458,13 +465,12 @@ pub fn parse_job_result(event: &Event) -> Option<(String, String)> {
 /// NIP-28 channels are NOT required for the core NIP-90 compute flow.
 /// Use this for multi-party coordination or real-time discussion.
 pub async fn create_channel(
-    relay: &RelayConnection,
+    relay: &dyn RelayApi,
     keypair: &Keypair,
     name: &str,
     description: &str,
 ) -> AgentResult<String> {
-    let metadata = ChannelMetadata::new(name, description, "")
-        .with_relays(vec![DEFAULT_RELAY.to_string()]);
+    let metadata = ChannelMetadata::new(name, description, "").with_relays(relay.relay_urls());
 
     let template = EventTemplate {
         created_at: now(),
@@ -485,14 +491,15 @@ pub async fn create_channel(
 
 /// Send a message to a NIP-28 channel
 pub async fn send_channel_message(
-    relay: &RelayConnection,
+    relay: &dyn RelayApi,
     channel_id: &str,
     keypair: &Keypair,
     msg: &AgentMessage,
 ) -> AgentResult<String> {
     let msg_json = serde_json::to_string(msg)?;
 
-    let channel_msg = ChannelMessageEvent::new(channel_id, DEFAULT_RELAY, &msg_json, now());
+    let relay_url = relay.relay_url();
+    let channel_msg = ChannelMessageEvent::new(channel_id, &relay_url, &msg_json, now());
 
     let template = EventTemplate {
         created_at: now(),
@@ -513,7 +520,7 @@ pub async fn send_channel_message(
 
 /// Subscribe to messages in a NIP-28 channel
 pub async fn subscribe_to_channel(
-    relay: &RelayConnection,
+    relay: &dyn RelayApi,
     channel_id: &str,
     subscription_id: &str,
 ) -> AgentResult<tokio::sync::mpsc::Receiver<Event>> {
