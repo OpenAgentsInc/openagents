@@ -4,6 +4,20 @@ use std::sync::mpsc;
 use crate::logger::SessionLogger;
 use crate::startup::ClaudeModel;
 
+/// Check if verbose mode is enabled
+fn is_verbose() -> bool {
+    std::env::var("AUTOPILOT_VERBOSE").is_ok()
+}
+
+/// Print only if verbose mode is enabled
+macro_rules! verbose_println {
+    ($($arg:tt)*) => {
+        if is_verbose() {
+            eprintln!($($arg)*);
+        }
+    };
+}
+
 #[derive(Clone)]
 pub enum ClaudeToken {
     Chunk(String),
@@ -70,8 +84,8 @@ Focus on being actionable and specific. This plan will guide what an autonomous 
     rt.block_on(async {
         use claude_agent_sdk::{query, QueryOptions, SdkMessage, PermissionMode};
         
-        eprintln!("[CLAUDE] Starting query with prompt length: {} chars", prompt.len());
-        eprintln!("[CLAUDE] Options: cwd={:?}, model={}, permission_mode=Plan, max_turns=50", cwd_clone, model.as_str());
+        verbose_println!("[CLAUDE] Starting query with prompt length: {} chars", prompt.len());
+        verbose_println!("[CLAUDE] Options: cwd={:?}, model={}, permission_mode=Plan, max_turns=50", cwd_clone, model.as_str());
         
         let options = QueryOptions::new()
             .cwd(cwd_clone)
@@ -81,7 +95,7 @@ Focus on being actionable and specific. This plan will guide what an autonomous 
         
         let mut stream = match query(&prompt, options).await {
             Ok(s) => {
-                eprintln!("[CLAUDE] Stream started successfully");
+                verbose_println!("[CLAUDE] Stream started successfully");
                 s
             }
             Err(e) => {
@@ -97,45 +111,41 @@ Focus on being actionable and specific. This plan will guide what an autonomous 
         while let Some(msg) = stream.next().await {
             match msg {
                 Ok(SdkMessage::Assistant(assistant_msg)) => {
-                    eprintln!("[CLAUDE][ASSISTANT] uuid={}", assistant_msg.uuid);
-                    eprintln!("[CLAUDE][ASSISTANT] message={}", serde_json::to_string_pretty(&assistant_msg.message).unwrap_or_default());
+                    verbose_println!("[CLAUDE][ASSISTANT] uuid={}", assistant_msg.uuid);
+                    verbose_println!("[CLAUDE][ASSISTANT] message={}", serde_json::to_string_pretty(&assistant_msg.message).unwrap_or_default());
                     if let Some(ref log) = logger {
                         log.log_assistant("planning", &assistant_msg.message);
                     }
                     if let Some(content) = assistant_msg.message.get("content") {
                         if let Some(blocks) = content.as_array() {
                             for block in blocks {
-                                if let Some(block_type) = block.get("type").and_then(|t| t.as_str()) {
-                                    eprintln!("[CLAUDE][BLOCK] type={}", block_type);
-                                }
+                                verbose_println!("[CLAUDE][BLOCK] type={}", block.get("type").and_then(|t| t.as_str()).unwrap_or("unknown"));
                                 if let Some(text) = block.get("text").and_then(|t| t.as_str()) {
-                                    eprintln!("[CLAUDE][TEXT] {}", text);
+                                    verbose_println!("[CLAUDE][TEXT] {}", text);
                                     full_response.push_str(text);
                                     let _ = tx.send(ClaudeToken::Chunk(text.to_string()));
                                 }
                                 if let Some(tool_name) = block.get("name").and_then(|n| n.as_str()) {
-                                    eprintln!("[CLAUDE][TOOL_USE] name={}", tool_name);
+                                    verbose_println!("[CLAUDE][TOOL_USE] name={}", tool_name);
                                     let input = block.get("input");
                                     let params = extract_tool_params(tool_name, input);
                                     last_tool_name = tool_name.to_string();
                                     if let Some(ref log) = logger {
                                         log.log_tool_use("planning", tool_name, input.unwrap_or(&serde_json::Value::Null));
                                     }
-                                    let _ = tx.send(ClaudeToken::ToolUse { 
-                                        name: tool_name.to_string(), 
-                                        params 
+                                    let _ = tx.send(ClaudeToken::ToolUse {
+                                        name: tool_name.to_string(),
+                                        params
                                     });
-                                    if let Some(inp) = input {
-                                        eprintln!("[CLAUDE][TOOL_USE] input={}", serde_json::to_string_pretty(inp).unwrap_or_default());
-                                    }
+                                    verbose_println!("[CLAUDE][TOOL_USE] input={}", serde_json::to_string_pretty(input.unwrap_or(&serde_json::Value::Null)).unwrap_or_default());
                                 }
                             }
                         }
                     }
                 }
                 Ok(SdkMessage::User(user_msg)) => {
-                    eprintln!("[CLAUDE][USER] session_id={}", user_msg.session_id);
-                    eprintln!("[CLAUDE][USER] message={}", serde_json::to_string_pretty(&user_msg.message).unwrap_or_default());
+                    verbose_println!("[CLAUDE][USER] session_id={}", user_msg.session_id);
+                    verbose_println!("[CLAUDE][USER] message={}", serde_json::to_string_pretty(&user_msg.message).unwrap_or_default());
                     if let Some(ref log) = logger {
                         log.log_user("planning", &user_msg.message);
                     }
@@ -149,23 +159,23 @@ Focus on being actionable and specific. This plan will guide what an autonomous 
                             log.log_tool_result("planning", &tool_name, tool_result);
                         }
                         let _ = tx.send(ClaudeToken::ToolDone { name: tool_name });
-                        eprintln!("[CLAUDE][TOOL_RESULT] {}", serde_json::to_string_pretty(tool_result).unwrap_or_default());
+                        verbose_println!("[CLAUDE][TOOL_RESULT] {}", serde_json::to_string_pretty(tool_result).unwrap_or_default());
                     }
                 }
                 Ok(SdkMessage::System(sys_msg)) => {
-                    eprintln!("[CLAUDE][SYSTEM] {:?}", sys_msg);
+                    verbose_println!("[CLAUDE][SYSTEM] {:?}", sys_msg);
                 }
                 Ok(SdkMessage::StreamEvent(event)) => {
-                    eprintln!("[CLAUDE][STREAM] {:?}", event);
+                    verbose_println!("[CLAUDE][STREAM] {:?}", event);
                 }
                 Ok(SdkMessage::ToolProgress(progress)) => {
-                    eprintln!("[CLAUDE][TOOL_PROGRESS] tool={} elapsed={}s", progress.tool_name, progress.elapsed_time_seconds);
+                    verbose_println!("[CLAUDE][TOOL_PROGRESS] tool={} elapsed={}s", progress.tool_name, progress.elapsed_time_seconds);
                 }
                 Ok(SdkMessage::AuthStatus(auth)) => {
-                    eprintln!("[CLAUDE][AUTH] is_authenticating={}", auth.is_authenticating);
+                    verbose_println!("[CLAUDE][AUTH] is_authenticating={}", auth.is_authenticating);
                 }
                 Ok(SdkMessage::Result(result)) => {
-                    eprintln!("[CLAUDE][RESULT] {:?}", result);
+                    verbose_println!("[CLAUDE][RESULT] {:?}", result);
                     break;
                 }
                 Err(e) => {
@@ -175,9 +185,9 @@ Focus on being actionable and specific. This plan will guide what an autonomous 
                 }
             }
         }
-        
-        eprintln!("[CLAUDE] Done. Total response length: {} chars, {} lines", 
-            full_response.len(), 
+
+        verbose_println!("[CLAUDE] Done. Total response length: {} chars, {} lines",
+            full_response.len(),
             full_response.lines().count());
         if let Some(ref log) = logger {
             log.log_phase_end("planning", &format!("{} chars, {} lines", full_response.len(), full_response.lines().count()));
@@ -228,8 +238,8 @@ Start now."#, plan);
     rt.block_on(async {
         use claude_agent_sdk::{query, QueryOptions, SdkMessage, PermissionMode};
         
-        eprintln!("[CLAUDE-EXEC] Starting execution with plan length: {} chars", plan.len());
-        eprintln!("[CLAUDE-EXEC] Options: cwd={:?}, model={}, permission_mode=BypassPermissions, max_turns=100", cwd_clone, model.as_str());
+        verbose_println!("[CLAUDE-EXEC] Starting execution with plan length: {} chars", plan.len());
+        verbose_println!("[CLAUDE-EXEC] Options: cwd={:?}, model={}, permission_mode=BypassPermissions, max_turns=100", cwd_clone, model.as_str());
         
         let options = QueryOptions::new()
             .cwd(cwd_clone)
@@ -240,7 +250,7 @@ Start now."#, plan);
         
         let mut stream = match query(&prompt, options).await {
             Ok(s) => {
-                eprintln!("[CLAUDE-EXEC] Stream started successfully");
+                verbose_println!("[CLAUDE-EXEC] Stream started successfully");
                 s
             }
             Err(e) => {
@@ -309,7 +319,7 @@ Start now."#, plan);
             }
         }
         
-        eprintln!("[CLAUDE-EXEC] Done. Total response length: {} chars", full_response.len());
+        verbose_println!("[CLAUDE-EXEC] Done. Total response length: {} chars", full_response.len());
         if let Some(ref log) = logger {
             log.log_phase_end("execution", &format!("{} chars", full_response.len()));
         }
@@ -375,8 +385,8 @@ Otherwise, provide a detailed plan for the next iteration in the same format as 
     rt.block_on(async {
         use claude_agent_sdk::{query, QueryOptions, SdkMessage, PermissionMode};
         
-        eprintln!("[CLAUDE-REVIEW] Starting review iteration {}", iteration);
-        eprintln!("[CLAUDE-REVIEW] Options: cwd={:?}, model={}, permission_mode=BypassPermissions, max_turns=30", cwd_clone, model.as_str());
+        verbose_println!("[CLAUDE-REVIEW] Starting review iteration {}", iteration);
+        verbose_println!("[CLAUDE-REVIEW] Options: cwd={:?}, model={}, permission_mode=BypassPermissions, max_turns=30", cwd_clone, model.as_str());
         
         let options = QueryOptions::new()
             .cwd(cwd_clone)
@@ -387,7 +397,7 @@ Otherwise, provide a detailed plan for the next iteration in the same format as 
         
         let mut stream = match query(&prompt, options).await {
             Ok(s) => {
-                eprintln!("[CLAUDE-REVIEW] Stream started successfully");
+                verbose_println!("[CLAUDE-REVIEW] Stream started successfully");
                 s
             }
             Err(e) => {
@@ -456,7 +466,7 @@ Otherwise, provide a detailed plan for the next iteration in the same format as 
             }
         }
         
-        eprintln!("[CLAUDE-REVIEW] Done. Total response length: {} chars", full_response.len());
+        verbose_println!("[CLAUDE-REVIEW] Done. Total response length: {} chars", full_response.len());
         if let Some(ref log) = logger {
             log.log_phase_end(&format!("review_{}", iteration), &format!("{} chars", full_response.len()));
         }
