@@ -2,8 +2,8 @@
 // Provides GitHub OAuth, Stripe checkout, and autopilot execution as a service
 
 use actix_web::{web, App, HttpResponse, HttpServer, Result};
-use serde::{Deserialize, Serialize};
-use tracing::{info, warn};
+use serde::Serialize;
+use tracing::info;
 
 mod github;
 mod stripe_integration;

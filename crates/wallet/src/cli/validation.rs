@@ -1,5 +1,7 @@
 //! Payment address validation functions.
 
+#![allow(dead_code)]
+
 use super::error::WalletError;
 
 #[derive(Debug, Clone, PartialEq, Eq)]

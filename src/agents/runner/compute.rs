@@ -74,9 +74,10 @@ impl ComputeClient {
             "limit": 50
         })];
 
+        let subscription_id = format!("provider-discovery-{}", Uuid::new_v4());
         let mut rx = self
             .relay
-            .subscribe_with_channel("provider-discovery", &filters)
+            .subscribe_with_channel(&subscription_id, &filters)
             .await?;
 
         // Collect events during discovery period

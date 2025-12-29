@@ -17,18 +17,19 @@ use nostr::{
     derive_keypair, finalize_event, Event, EventTemplate, HandlerInfo, HandlerMetadata,
     HandlerType, Keypair, PricingInfo, KIND_HANDLER_INFO,
 };
-use nostr_client::RelayConnection;
 use openagents::agents::{
     create_channel, now, parse_agent_message, parse_job_request, publish_job_feedback,
     publish_job_result, send_channel_message, subscribe_job_requests, subscribe_to_channel,
-    AgentMessage, JobStatus, Network as AgentNetwork, DEFAULT_RELAY, KIND_JOB_REQUEST_TEXT,
-    KIND_JOB_RESULT_TEXT, PROVIDER_MNEMONIC,
+    AgentMessage, JobStatus, Network as AgentNetwork, RelayApi, RelayHub, SharedRelay,
+    DEFAULT_RELAY, KIND_JOB_REQUEST_TEXT, KIND_JOB_RESULT_TEXT, PROVIDER_MNEMONIC,
 };
 use openagents_spark::{Network as SparkNetwork, SparkSigner, SparkWallet, WalletConfig};
 use std::collections::{HashMap, HashSet};
 use std::env::temp_dir;
+use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::mpsc;
+use uuid::Uuid;
 
 #[derive(Parser)]
 #[command(name = "agent-provider")]
@@ -42,9 +43,9 @@ struct Args {
     #[arg(long)]
     channel: Option<String>,
 
-    /// Relay URL
-    #[arg(long, default_value = DEFAULT_RELAY)]
-    relay: String,
+    /// Relay URL (repeat or comma-delimit to use multiple relays)
+    #[arg(long = "relay", value_delimiter = ',', default_value = DEFAULT_RELAY)]
+    relays: Vec<String>,
 
     /// Skip wallet initialization (for testing without Spark)
     #[arg(long)]
@@ -67,7 +68,7 @@ async fn run_inference(
     model: &str,
     prompt: &str,
     stream: bool,
-    relay: &RelayConnection,
+    relay: &dyn RelayApi,
     keypair: &Keypair,
     job_id: &str,
     _customer_pubkey: &str,
@@ -197,16 +198,25 @@ async fn main() -> Result<()> {
         None
     };
 
-    // Connect to relay
-    println!("[PROVIDER] Connecting to relay: {}", args.relay);
-    let relay = RelayConnection::new(&args.relay)?;
-    relay.connect().await?;
-    println!("[PROVIDER] Connected to relay");
+    // Connect to relays
+    let relay_urls = if args.relays.is_empty() {
+        vec![DEFAULT_RELAY.to_string()]
+    } else {
+        args.relays.clone()
+    };
+    println!(
+        "[PROVIDER] Connecting to relays: {}",
+        relay_urls.join(", ")
+    );
+    let relay_hub = Arc::new(RelayHub::new(relay_urls)?);
+    relay_hub.connect_all().await?;
+    println!("[PROVIDER] Connected to relays");
+    let relay: SharedRelay = relay_hub.clone();
 
     // Optional: Get or create channel for coordination
     let channel_id: Option<String> = if args.create_channel {
         let id = create_channel(
-            &relay,
+            relay.as_ref(),
             &keypair,
             "OpenAgents Compute Marketplace",
             "Agents negotiate NIP-90 jobs with Bitcoin payments",
@@ -247,7 +257,7 @@ async fn main() -> Result<()> {
             .with_model("per-request")
             .with_currency("msats"),
     )
-    .add_custom_tag("relay", &args.relay)
+    .add_custom_tag("relay", relay.relay_url())
     .add_custom_tag("network", "regtest");
 
     // Only add channel tag if we have a channel
@@ -297,18 +307,19 @@ async fn main() -> Result<()> {
             models: available_models.clone(),
             capabilities: vec!["text-generation".to_string()],
         };
-        send_channel_message(&relay, ch_id, &keypair, &announce).await?;
+        send_channel_message(relay.as_ref(), ch_id, &keypair, &announce).await?;
         println!("[PROVIDER] Service announced in channel");
     }
 
     // Subscribe to direct NIP-90 job requests (kind:5050 tagged with our pubkey)
     let mut job_rx =
-        subscribe_job_requests(&relay, &provider_pubkey, &[KIND_JOB_REQUEST_TEXT]).await?;
+        subscribe_job_requests(relay.as_ref(), &provider_pubkey, &[KIND_JOB_REQUEST_TEXT]).await?;
     println!("[PROVIDER] Listening for direct NIP-90 job requests (kind:5050)...");
 
     // Also subscribe to channel if we have one (for legacy/coordination)
     let mut channel_rx: Option<mpsc::Receiver<Event>> = if let Some(ref ch_id) = channel_id {
-        let rx = subscribe_to_channel(&relay, ch_id, "provider-channel").await?;
+        let subscription_id = format!("provider-channel-{}", Uuid::new_v4());
+        let rx = subscribe_to_channel(relay.as_ref(), ch_id, &subscription_id).await?;
         println!("[PROVIDER] Also listening on channel for legacy support");
         Some(rx)
     } else {
@@ -362,7 +373,7 @@ async fn main() -> Result<()> {
 
                         // Send feedback with invoice (kind:7000)
                         publish_job_feedback(
-                            &relay,
+                            relay.as_ref(),
                             &keypair,
                             &job_id,
                             &customer_pubkey,
@@ -375,7 +386,7 @@ async fn main() -> Result<()> {
                     } else {
                         // No wallet - send mock invoice via feedback
                         publish_job_feedback(
-                            &relay,
+                            relay.as_ref(),
                             &keypair,
                             &job_id,
                             &customer_pubkey,
@@ -392,7 +403,7 @@ async fn main() -> Result<()> {
 
                             // Send processing status
                             publish_job_feedback(
-                                &relay,
+                                relay.as_ref(),
                                 &keypair,
                                 &job_id,
                                 &customer_pubkey,
@@ -407,7 +418,7 @@ async fn main() -> Result<()> {
                                 &model_to_use,
                                 &prompt,
                                 args.stream,
-                                &relay,
+                                relay.as_ref(),
                                 &keypair,
                                 &job_id,
                                 &customer_pubkey,
@@ -419,7 +430,7 @@ async fn main() -> Result<()> {
 
                             // Send result via NIP-90 (kind:6050)
                             publish_job_result(
-                                &relay,
+                                relay.as_ref(),
                                 &keypair,
                                 &job_id,
                                 &customer_pubkey,
@@ -489,7 +500,13 @@ async fn main() -> Result<()> {
                                 amount_msats: 10_000,
                                 payment_hash: Some(job_id.clone()),
                             };
-                            send_channel_message(&relay, channel_id.as_ref().unwrap(), &keypair, &resp).await?;
+                            send_channel_message(
+                                relay.as_ref(),
+                                channel_id.as_ref().unwrap(),
+                                &keypair,
+                                &resp,
+                            )
+                            .await?;
                             println!("[PROVIDER] Invoice sent via channel for job {}", job_id);
                         } else {
                             // No wallet - send mock invoice
@@ -499,7 +516,13 @@ async fn main() -> Result<()> {
                                 amount_msats: 10_000,
                                 payment_hash: Some("mock_payment_hash".to_string()),
                             };
-                            send_channel_message(&relay, channel_id.as_ref().unwrap(), &keypair, &resp).await?;
+                            send_channel_message(
+                                relay.as_ref(),
+                                channel_id.as_ref().unwrap(),
+                                &keypair,
+                                &resp,
+                            )
+                            .await?;
                             println!("[PROVIDER] Mock invoice sent via channel for job {}", job_id);
                         }
                     }
@@ -526,7 +549,7 @@ async fn main() -> Result<()> {
                             &model_to_use,
                             &prompt,
                             args.stream,
-                            &relay,
+                            relay.as_ref(),
                             &keypair,
                             &job_id,
                             &customer_pubkey,
@@ -542,12 +565,18 @@ async fn main() -> Result<()> {
                                 job_id: job_id.clone(),
                                 result: result_text,
                             };
-                            send_channel_message(&relay, channel_id.as_ref().unwrap(), &keypair, &result).await?;
+                            send_channel_message(
+                                relay.as_ref(),
+                                channel_id.as_ref().unwrap(),
+                                &keypair,
+                                &result,
+                            )
+                            .await?;
                             println!("[PROVIDER] Result delivered via channel for {}", job_id);
                         } else {
                             // Send result via direct NIP-90 event
                             publish_job_result(
-                                &relay,
+                                relay.as_ref(),
                                 &keypair,
                                 &job_id,
                                 &customer_pubkey,

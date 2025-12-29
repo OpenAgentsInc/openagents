@@ -5,6 +5,8 @@
 //! - Recovery suggestions to help users resolve issues
 //! - Categorization of error types for better handling
 
+#![allow(dead_code)]
+
 use thiserror::Error;
 
 /// Wallet CLI error types with user-friendly messages.

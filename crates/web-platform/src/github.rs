@@ -1,6 +1,6 @@
 // GitHub OAuth integration
 
-use actix_web::{web, HttpRequest, HttpResponse, Result};
+use actix_web::{web, HttpResponse, Result};
 use oauth2::{
     AuthorizationCode, AuthUrl, ClientId, ClientSecret, CsrfToken, RedirectUrl, Scope,
     TokenResponse, TokenUrl,
@@ -10,6 +10,7 @@ use oauth2::reqwest::async_http_client;
 use serde::{Deserialize, Serialize};
 use tracing::{info, error};
 
+#[allow(dead_code)]
 #[derive(Debug, Serialize)]
 struct OAuthState {
     csrf_token: String,
@@ -55,6 +56,7 @@ pub async fn start_oauth() -> Result<HttpResponse> {
         .finish())
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 pub struct OAuthCallback {
     code: String,

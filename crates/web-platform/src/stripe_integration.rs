@@ -137,6 +137,7 @@ pub async fn checkout_cancel() -> Result<HttpResponse> {
     "#))
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 pub struct StripeWebhookEvent {
     #[serde(rename = "type")]
