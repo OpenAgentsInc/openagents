@@ -96,6 +96,7 @@ compute = { path = "crates/compute" }
 hex = { workspace = true }
 sha2 = { workspace = true }
 rand = { workspace = true }
+bitcoin = { workspace = true }
 
 # WGPUI for autopilot
 wgpui = { path = "crates/wgpui", default-features = false, features = ["desktop"] }
@@ -189,6 +190,7 @@ clap = { version = "4.4", features = ["derive", "wrap_help"] }
 futures = "0.3"
 hex = "0.4.3"
 rand = "0.9"
+bitcoin = "0.32.6"
 reqwest = { version = "0.12", default-features = false, features = ["json", "stream", "rustls-tls"] }
 serde = { version = "1.0.221", features = ["derive", "rc"] }
 serde_json = { version = "1.0.144", features = ["preserve_order", "raw_value"] }

@@ -74,6 +74,7 @@ fn add_binding<A: crate::action::Action>(keymap: &mut Keymap, keystroke: &str, a
 }
 
 /// Create an empty keymap (for testing or custom setups).
+#[allow(dead_code)]
 pub fn empty_keymap() -> Keymap {
     Keymap::new()
 }

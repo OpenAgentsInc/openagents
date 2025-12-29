@@ -14,6 +14,7 @@ use crate::agents::SharedRelay;
 use agent::{LifecycleManager, LifecycleState, RunwayAnalysis};
 use anyhow::{anyhow, Result};
 use bech32::{Bech32, Hrp};
+use bitcoin::secp256k1::PublicKey;
 use compute::domain::UnifiedIdentity;
 use nostr::nip_sa::{
     AgentStateContent, TickAction as NipSaTickAction, TickRequest, TickResult as NipSaTickResult,
@@ -21,7 +22,7 @@ use nostr::nip_sa::{
     KIND_TICK_RESULT,
 };
 use nostr::{
-    decode, decrypt, decrypt_v2, encrypt, finalize_event, ChannelMessageEvent, Event,
+    decode, decrypt, decrypt_v2, encrypt, encrypt_v2, finalize_event, ChannelMessageEvent, Event,
     EventTemplate, Nip19Entity, KIND_CHANNEL_MESSAGE, ZAP_REQUEST_KIND,
 };
 use reqwest::{Client, Url};
@@ -74,6 +75,8 @@ pub enum TickAction {
     Post { content: String },
     /// Send a DM
     DirectMessage { recipient: String, content: String },
+    /// Send a DM using NIP-44
+    DirectMessageNip44 { recipient: String, content: String },
     /// Send a message to a channel (optional channel ID overrides default)
     ChannelMessage {
         channel_id: Option<String>,
@@ -97,12 +100,102 @@ pub enum TickAction {
     None,
 }
 
+#[derive(Debug, Clone, Copy)]
+enum DmEncryption {
+    Nip04,
+    Nip44,
+}
+
+struct RecipientPubkey {
+    xonly_hex: String,
+    compressed: Vec<u8>,
+}
+
+fn parse_recipient_pubkey(value: &str) -> Result<RecipientPubkey> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return Err(anyhow!("Recipient pubkey is empty"));
+    }
+
+    if trimmed.to_lowercase().starts_with("npub") {
+        match decode(trimmed) {
+            Ok(Nip19Entity::Pubkey(bytes)) => {
+                let mut compressed = Vec::with_capacity(33);
+                compressed.push(0x02);
+                compressed.extend_from_slice(&bytes);
+                PublicKey::from_slice(&compressed)
+                    .map_err(|e| anyhow!("Invalid npub pubkey: {}", e))?;
+                Ok(RecipientPubkey {
+                    xonly_hex: hex::encode(bytes),
+                    compressed,
+                })
+            }
+            Ok(_) => Err(anyhow!("Expected npub, got different entity type")),
+            Err(e) => Err(anyhow!("Invalid npub: {}", e)),
+        }
+    } else {
+        let bytes =
+            hex::decode(trimmed).map_err(|e| anyhow!("Invalid pubkey hex: {}", e))?;
+        match bytes.len() {
+            32 => {
+                let mut compressed = Vec::with_capacity(33);
+                compressed.push(0x02);
+                compressed.extend_from_slice(&bytes);
+                PublicKey::from_slice(&compressed)
+                    .map_err(|e| anyhow!("Invalid x-only pubkey: {}", e))?;
+                Ok(RecipientPubkey {
+                    xonly_hex: hex::encode(bytes),
+                    compressed,
+                })
+            }
+            33 | 65 => {
+                let pubkey = PublicKey::from_slice(&bytes)
+                    .map_err(|e| anyhow!("Invalid pubkey bytes: {}", e))?;
+                let compressed = pubkey.serialize().to_vec();
+                let xonly_bytes = pubkey.x_only_public_key().0.serialize();
+                Ok(RecipientPubkey {
+                    xonly_hex: hex::encode(xonly_bytes),
+                    compressed,
+                })
+            }
+            _ => Err(anyhow!("Invalid pubkey length: {}", bytes.len())),
+        }
+    }
+}
+
+fn xonly_hex_to_compressed(pubkey_hex: &str) -> Result<Vec<u8>> {
+    let bytes = hex::decode(pubkey_hex).map_err(|e| anyhow!("Invalid pubkey hex: {}", e))?;
+    if bytes.len() != 32 {
+        return Err(anyhow!("Invalid pubkey length: {}", bytes.len()));
+    }
+    let mut compressed = Vec::with_capacity(33);
+    compressed.push(0x02);
+    compressed.extend_from_slice(&bytes);
+    PublicKey::from_slice(&compressed).map_err(|e| anyhow!("Invalid pubkey bytes: {}", e))?;
+    Ok(compressed)
+}
+
+fn encrypt_direct_message(
+    sender_privkey: &[u8; 32],
+    recipient_pubkey: &[u8],
+    content: &str,
+    encryption: DmEncryption,
+) -> Result<String> {
+    match encryption {
+        DmEncryption::Nip04 => encrypt(sender_privkey, recipient_pubkey, content)
+            .map_err(|e| anyhow!("NIP-04 encryption failed: {}", e)),
+        DmEncryption::Nip44 => encrypt_v2(sender_privkey, recipient_pubkey, content)
+            .map_err(|e| anyhow!("NIP-44 encryption failed: {}", e)),
+    }
+}
+
 impl TickAction {
     /// Get the action type as a string
     pub fn action_type_str(&self) -> &'static str {
         match self {
             TickAction::Post { .. } => "post",
             TickAction::DirectMessage { .. } => "dm",
+            TickAction::DirectMessageNip44 { .. } => "dm_nip44",
             TickAction::ChannelMessage { .. } => "channel_message",
             TickAction::Zap { .. } => "zap",
             TickAction::PayInvoice { .. } => "pay_invoice",
@@ -125,6 +218,13 @@ impl TickAction {
                 serde_json::json!({
                     "recipient": recipient,
                     "content_preview": content.chars().take(100).collect::<String>()
+                })
+            }
+            TickAction::DirectMessageNip44 { recipient, content } => {
+                serde_json::json!({
+                    "recipient": recipient,
+                    "content_preview": content.chars().take(100).collect::<String>(),
+                    "encryption": "nip44"
                 })
             }
             TickAction::ChannelMessage { channel_id, content } => {
@@ -658,6 +758,7 @@ impl TickExecutor {
             "Respond with action lines using the following formats:\n\
             POST: <text>\n\
             DM: <npub_or_hex> | <message>\n\
+            DM44: <npub_or_hex> | <message>\n\
             CHANNEL: [channel_id |] <message>\n\
             PAY_INVOICE: <bolt11>\n\
             REQUEST_PAYMENT: <npub_or_hex|channel[:id]> | <amount_sats> | <memo optional>\n\
@@ -698,6 +799,21 @@ impl TickExecutor {
                     let message = message.trim();
                     if !recipient.is_empty() && !message.is_empty() {
                         actions.push(TickAction::DirectMessage {
+                            recipient: recipient.to_string(),
+                            content: message.to_string(),
+                        });
+                    }
+                }
+                continue;
+            }
+
+            if lower.starts_with("dm44:") {
+                let payload = trimmed[5..].trim();
+                if let Some((recipient, message)) = payload.split_once('|') {
+                    let recipient = recipient.trim();
+                    let message = message.trim();
+                    if !recipient.is_empty() && !message.is_empty() {
+                        actions.push(TickAction::DirectMessageNip44 {
                             recipient: recipient.to_string(),
                             content: message.to_string(),
                         });
@@ -853,7 +969,7 @@ impl TickExecutor {
 
     fn decrypt_direct_message(&self, event: &Event) -> Option<String> {
         let peer_pubkey = self.dm_peer_pubkey(event)?;
-        let compressed = self.compress_pubkey_hex(&peer_pubkey).ok()?;
+        let compressed = xonly_hex_to_compressed(&peer_pubkey).ok()?;
 
         if let Ok(plaintext) = decrypt(self.identity.private_key_bytes(), &compressed, &event.content)
         {
@@ -867,35 +983,6 @@ impl TickExecutor {
         }
 
         None
-    }
-
-    fn parse_pubkey_input(&self, value: &str) -> Result<String> {
-        let trimmed = value.trim();
-        if trimmed.to_lowercase().starts_with("npub") {
-            match decode(trimmed) {
-                Ok(Nip19Entity::Pubkey(bytes)) => Ok(hex::encode(bytes)),
-                Ok(_) => Err(anyhow!("Expected npub, got different entity type")),
-                Err(e) => Err(anyhow!("Invalid npub: {}", e)),
-            }
-        } else {
-            let bytes =
-                hex::decode(trimmed).map_err(|e| anyhow!("Invalid pubkey hex: {}", e))?;
-            if bytes.len() != 32 {
-                return Err(anyhow!("Invalid pubkey length: {}", bytes.len()));
-            }
-            Ok(trimmed.to_lowercase())
-        }
-    }
-
-    fn compress_pubkey_hex(&self, pubkey_hex: &str) -> Result<Vec<u8>> {
-        let bytes = hex::decode(pubkey_hex).map_err(|e| anyhow!("Invalid pubkey hex: {}", e))?;
-        if bytes.len() != 32 {
-            return Err(anyhow!("Invalid pubkey length: {}", bytes.len()));
-        }
-        let mut compressed = Vec::with_capacity(33);
-        compressed.push(0x02);
-        compressed.extend_from_slice(&bytes);
-        Ok(compressed)
     }
 
     fn estimate_tokens(&self, text: &str) -> u64 {
@@ -923,7 +1010,15 @@ impl TickExecutor {
                 .with_metadata(
                     "content_preview",
                     serde_json::json!(content.chars().take(100).collect::<String>()),
-                ),
+                )
+                .with_metadata("encryption", serde_json::json!("nip04")),
+            TickAction::DirectMessageNip44 { recipient, content } => NipSaTickAction::new("dm")
+                .with_metadata("recipient", serde_json::json!(recipient))
+                .with_metadata(
+                    "content_preview",
+                    serde_json::json!(content.chars().take(100).collect::<String>()),
+                )
+                .with_metadata("encryption", serde_json::json!("nip44")),
             TickAction::ChannelMessage { channel_id, content } => {
                 let mut action = NipSaTickAction::new("channel_message").with_metadata(
                     "content_preview",
@@ -1214,6 +1309,15 @@ impl TickExecutor {
                 );
                 self.execute_dm(recipient, content).await?;
             }
+            TickAction::DirectMessageNip44 { recipient, content } => {
+                tracing::info!(
+                    "[{}] DM (NIP-44) to {}: {}",
+                    self.agent_name,
+                    recipient,
+                    content
+                );
+                self.execute_dm_nip44(recipient, content).await?;
+            }
             TickAction::ChannelMessage { channel_id, content } => {
                 tracing::info!(
                     "[{}] Channel message: {}",
@@ -1309,19 +1413,29 @@ impl TickExecutor {
 
     /// Send an encrypted direct message (NIP-04, kind:4)
     async fn execute_dm(&self, recipient: &str, content: &str) -> Result<()> {
-        // Parse recipient pubkey
-        let recipient_pubkey = self.parse_pubkey_input(recipient)?;
+        self.execute_dm_with_encryption(recipient, content, DmEncryption::Nip04)
+            .await
+    }
 
-        // Get recipient pubkey bytes (compressed)
-        let compressed_pubkey = self.compress_pubkey_hex(&recipient_pubkey)?;
+    /// Send an encrypted direct message using NIP-44
+    async fn execute_dm_nip44(&self, recipient: &str, content: &str) -> Result<()> {
+        self.execute_dm_with_encryption(recipient, content, DmEncryption::Nip44)
+            .await
+    }
 
-        // Encrypt the message using NIP-04
-        let encrypted = encrypt(
+    async fn execute_dm_with_encryption(
+        &self,
+        recipient: &str,
+        content: &str,
+        encryption: DmEncryption,
+    ) -> Result<()> {
+        let recipient_pubkey = parse_recipient_pubkey(recipient)?;
+        let encrypted = encrypt_direct_message(
             self.identity.private_key_bytes(),
-            &compressed_pubkey,
+            &recipient_pubkey.compressed,
             content,
-        )
-        .map_err(|e| anyhow!("Failed to encrypt DM: {}", e))?;
+            encryption,
+        )?;
 
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -1331,7 +1445,7 @@ impl TickExecutor {
         let template = EventTemplate {
             created_at: now,
             kind: 4, // Encrypted direct message
-            tags: vec![vec!["p".to_string(), recipient_pubkey.clone()]],
+            tags: vec![vec!["p".to_string(), recipient_pubkey.xonly_hex.clone()]],
             content: encrypted,
         };
 
@@ -1346,7 +1460,7 @@ impl TickExecutor {
         tracing::info!(
             "[{}] Sent DM to {}: {}",
             self.agent_name,
-            &recipient_pubkey[..16],
+            &recipient_pubkey.xonly_hex[..16],
             &event.id[..16]
         );
         Ok(())
@@ -1365,7 +1479,7 @@ impl TickExecutor {
             let event = self.fetch_event_by_id(&event_id).await?;
             (event.pubkey.clone(), Some(event))
         } else {
-            let pubkey = self.parse_pubkey_input(target)?;
+            let pubkey = parse_recipient_pubkey(target)?.xonly_hex;
             (pubkey, None)
         };
 
@@ -1618,4 +1732,60 @@ async fn request_zap_invoice(
         .ok_or_else(|| anyhow!("LNURL response missing invoice (pr)"))?;
 
     Ok(invoice.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use bitcoin::secp256k1::{Secp256k1, SecretKey};
+
+    const TEST_MNEMONIC_1: &str =
+        "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
+    const TEST_MNEMONIC_2: &str =
+        "legal winner thank year wave sausage worth useful legal winner thank yellow";
+
+    #[test]
+    fn parse_recipient_pubkey_accepts_npub_and_hex_variants() {
+        let keypair = nostr::derive_keypair(TEST_MNEMONIC_1).expect("derive keypair");
+        let npub = keypair.npub().expect("npub");
+        let xonly_hex = hex::encode(keypair.public_key);
+
+        let secp = Secp256k1::new();
+        let secret = SecretKey::from_slice(&keypair.private_key).expect("secret key");
+        let full_pubkey = PublicKey::from_secret_key(&secp, &secret);
+        let compressed_hex = hex::encode(full_pubkey.serialize());
+        let uncompressed_hex = hex::encode(full_pubkey.serialize_uncompressed());
+        let expected_compressed = full_pubkey.serialize().to_vec();
+
+        for input in [&npub, &xonly_hex, &compressed_hex, &uncompressed_hex] {
+            let parsed = parse_recipient_pubkey(input).expect("parse recipient pubkey");
+            assert_eq!(parsed.xonly_hex, xonly_hex);
+            assert_eq!(parsed.compressed, expected_compressed);
+        }
+    }
+
+    #[test]
+    fn encrypt_direct_message_nip44_round_trips() {
+        let sender = nostr::derive_keypair(TEST_MNEMONIC_1).expect("sender keypair");
+        let recipient = nostr::derive_keypair(TEST_MNEMONIC_2).expect("recipient keypair");
+        let recipient_pubkey =
+            parse_recipient_pubkey(&hex::encode(recipient.public_key)).expect("recipient pubkey");
+
+        let encrypted = encrypt_direct_message(
+            &sender.private_key,
+            &recipient_pubkey.compressed,
+            "hello nip44",
+            DmEncryption::Nip44,
+        )
+        .expect("encrypt nip44");
+
+        let secp = Secp256k1::new();
+        let sender_secret = SecretKey::from_slice(&sender.private_key).expect("sender secret");
+        let sender_pubkey = PublicKey::from_secret_key(&secp, &sender_secret);
+        let decrypted =
+            decrypt_v2(&recipient.private_key, &sender_pubkey.serialize(), &encrypted)
+                .expect("decrypt nip44");
+
+        assert_eq!(decrypted, "hello nip44");
+    }
 }
