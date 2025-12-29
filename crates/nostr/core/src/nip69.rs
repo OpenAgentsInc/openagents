@@ -452,6 +452,7 @@ pub fn create_document_tag() -> Vec<String> {
 }
 
 /// Builder for creating P2P order events
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct P2POrderBuilder {
     order_id: String,
@@ -472,6 +473,7 @@ pub struct P2POrderBuilder {
     bond: Option<u64>,
 }
 
+#[allow(dead_code)]
 impl P2POrderBuilder {
     /// Create a new order builder
     pub fn new(order_id: impl Into<String>) -> Self {
