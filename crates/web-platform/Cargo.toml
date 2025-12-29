@@ -1,0 +1,58 @@
+[package]
+name = "web-platform"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "OpenAgents web platform - GitHub OAuth, Stripe checkout, autopilot execution"
+
+[[bin]]
+name = "web-platform"
+path = "src/main.rs"
+
+[dependencies]
+# Web framework
+actix-web = "4.4"
+actix-rt = "2.9"
+
+# Async runtime
+tokio = { workspace = true, features = ["full"] }
+
+# Serialization
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+
+# Environment
+dotenvy = "0.15"
+
+# Error handling
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+
+# GitHub OAuth
+oauth2 = "4.4"
+reqwest = { workspace = true, features = ["json"] }
+
+# Stripe (using async-stripe instead of deprecated stripe-rust)
+# TODO: Integrate real Stripe SDK later
+# async-stripe = { version = "0.12", features = ["checkout"] }
+
+# Additional dependencies
+chrono = { workspace = true }
+rand = { workspace = true }
+
+# Database (use rusqlite to avoid version conflicts)
+rusqlite = { version = "0.32", features = ["bundled"] }
+
+# OpenAgents crates
+autopilot = { path = "../autopilot" }
+openagents-spark = { path = "../spark" }
+wallet = { path = "../wallet" }
+nostr = { path = "../nostr/core" }
+
+# Logging
+tracing = { workspace = true }
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+[dev-dependencies]
