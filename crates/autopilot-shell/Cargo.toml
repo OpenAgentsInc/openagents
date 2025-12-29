@@ -1,0 +1,13 @@
+[package]
+name = "autopilot-shell"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Unified autopilot shell with HUD effects and dock-based layout"
+
+[dependencies]
+wgpui = { path = "../wgpui", features = ["desktop"] }
+autopilot-service = { path = "../autopilot-service" }
+autopilot = { path = "../autopilot" }
+tracing = "0.1"

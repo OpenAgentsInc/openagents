@@ -46,10 +46,13 @@ pub enum NamedKey {
     Tab,
     Home,
     End,
+    PageUp,
+    PageDown,
     ArrowUp,
     ArrowDown,
     ArrowLeft,
     ArrowRight,
+    Unidentified,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]

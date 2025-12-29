@@ -7,6 +7,7 @@ members = [
     "crates/autopilot",
     "crates/autopilot-app",
     "crates/autopilot-service",
+    "crates/autopilot-shell",
     "crates/autopilot-ui",
     "crates/autopilot-wasm",
     "crates/gitafter",
@@ -85,6 +86,7 @@ agent = { path = "crates/agent" }
 autopilot = { path = "crates/autopilot" }
 autopilot-app = { path = "crates/autopilot-app" }
 autopilot-service = { path = "crates/autopilot-service" }
+autopilot-shell = { path = "crates/autopilot-shell" }
 wallet = { path = "crates/wallet" }
 marketplace = { path = "crates/marketplace" }
 gitafter = { path = "crates/gitafter" }
