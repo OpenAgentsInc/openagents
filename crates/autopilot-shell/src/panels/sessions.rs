@@ -1,17 +1,15 @@
 //! Sessions panel for the left sidebar
 
 use wgpui::{
-    Bounds, Component, EventContext, EventResult, Hsla, InputEvent, PaintContext, theme,
+    Bounds, Component, EventContext, EventResult, Hsla, InputEvent, PaintContext, Point, Quad,
     components::TextInput,
-    components::molecules::{SessionCard, SessionInfo},
     components::hud::Frame,
 };
 use crate::dock::{DockPosition, Panel};
 
-/// Left sidebar panel with session search and card
+/// Left sidebar panel with session search
 pub struct SessionsPanel {
     search: TextInput,
-    card: SessionCard,
 }
 
 impl SessionsPanel {
@@ -19,21 +17,8 @@ impl SessionsPanel {
         Self {
             search: TextInput::new()
                 .placeholder("Search sessions...")
-                .background(theme::bg::SURFACE),
-            card: SessionCard::new(
-                SessionInfo::new("session", "Autopilot Shell")
-                    .model("claude-sonnet-4-5")
-                    .task_count(0),
-            ),
+                .background(Hsla::new(0.0, 0.0, 0.1, 1.0)),
         }
-    }
-
-    pub fn set_task_count(&mut self, count: u32) {
-        self.card = SessionCard::new(
-            SessionInfo::new("session", "Autopilot Shell")
-                .model("claude-sonnet-4-5")
-                .task_count(count),
-        );
     }
 }
 
@@ -79,14 +64,25 @@ impl Panel for SessionsPanel {
         );
         Component::paint(&mut self.search, search_bounds, cx);
 
-        // Session card below search
-        let card_bounds = Bounds::new(
-            bounds.origin.x + padding,
-            bounds.origin.y + padding + search_h + theme::spacing::SM,
-            bounds.size.width - padding * 2.0,
-            120.0,
-        );
-        Component::paint(&mut self.card, card_bounds, cx);
+        // Simple session list below
+        let y = bounds.origin.y + padding + search_h + 16.0;
+        let x = bounds.origin.x + padding;
+        let w = bounds.size.width - padding * 2.0;
+
+        // Current session indicator
+        let item_h = 36.0;
+        let item_bg = Hsla::new(0.0, 0.0, 0.1, 1.0);
+        let accent = Hsla::new(180.0, 0.5, 0.5, 1.0); // cyan accent
+
+        // Item background
+        cx.scene.draw_quad(Quad::new(Bounds::new(x, y, w, item_h)).with_background(item_bg));
+        // Left accent bar
+        cx.scene.draw_quad(Quad::new(Bounds::new(x, y, 3.0, item_h)).with_background(accent));
+
+        // Session title
+        let label_color = Hsla::new(0.0, 0.0, 0.8, 1.0);
+        let title = cx.text.layout("Current Session", Point::new(x + 12.0, y + 10.0), 12.0, label_color);
+        cx.scene.draw_text(title);
     }
 
     fn event(&mut self, event: &InputEvent, bounds: Bounds, cx: &mut EventContext) -> EventResult {
@@ -99,16 +95,6 @@ impl Panel for SessionsPanel {
             bounds.size.width - padding * 2.0,
             search_h,
         );
-        if Component::event(&mut self.search, event, search_bounds, cx).is_handled() {
-            return EventResult::Handled;
-        }
-
-        let card_bounds = Bounds::new(
-            bounds.origin.x + padding,
-            bounds.origin.y + padding + search_h + theme::spacing::SM,
-            bounds.size.width - padding * 2.0,
-            120.0,
-        );
-        Component::event(&mut self.card, event, card_bounds, cx)
+        self.search.event(event, search_bounds, cx)
     }
 }
