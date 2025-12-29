@@ -9,11 +9,13 @@ use wgpui::{
     components::molecules::PermissionBar,
 };
 use crate::dock::{DockPosition, Panel};
+use super::ClaudeUsage;
 
 /// Right sidebar panel with daemon status and permissions
 pub struct SystemPanel {
     daemon_status: Option<DaemonStatus>,
     pending_permissions: Vec<String>,
+    claude_usage: ClaudeUsage,
 }
 
 impl SystemPanel {
@@ -21,6 +23,7 @@ impl SystemPanel {
         Self {
             daemon_status: None,
             pending_permissions: Vec::new(),
+            claude_usage: ClaudeUsage::new(),
         }
     }
 
@@ -116,6 +119,7 @@ impl Panel for SystemPanel {
                 Bounds::new(bounds.origin.x + padding, y, bounds.size.width - padding * 2.0, 40.0),
                 cx,
             );
+            y += 50.0;
         } else {
             let mut text = Text::new("No pending requests")
                 .font_size(theme::font_size::XS)
@@ -125,7 +129,19 @@ impl Panel for SystemPanel {
                 Bounds::new(bounds.origin.x + padding, y, bounds.size.width - padding * 2.0, 20.0),
                 cx,
             );
+            y += 30.0;
         }
+
+        // Claude Usage at bottom - calculate remaining space
+        let usage_height = 320.0;
+        let usage_y = (bounds.origin.y + bounds.size.height - usage_height - padding).max(y + 10.0);
+        let usage_bounds = Bounds::new(
+            bounds.origin.x + padding,
+            usage_y,
+            bounds.size.width - padding * 2.0,
+            usage_height,
+        );
+        self.claude_usage.paint(usage_bounds, cx);
     }
 
     fn event(&mut self, _event: &InputEvent, _bounds: Bounds, _cx: &mut EventContext) -> EventResult {
