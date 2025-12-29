@@ -432,6 +432,41 @@ impl StartupState {
 
             StartupPhase::StartingPylon => {
                 if !self.lines.iter().any(|l| l.text.contains("Starting pylon")) {
+                    if !crate::pylon_integration::pylon_identity_exists() {
+                        self.add_line("Initializing pylon identity...", LogStatus::Pending, elapsed);
+                        match crate::pylon_integration::init_pylon_identity() {
+                            Ok(()) => {
+                                if let Some(line) = self
+                                    .lines
+                                    .iter_mut()
+                                    .find(|l| l.text.contains("Initializing pylon identity")) {
+                                    line.status = LogStatus::Success;
+                                }
+                                self.add_line(
+                                    "  Pylon identity created (seed phrase printed in terminal)",
+                                    LogStatus::Info,
+                                    elapsed,
+                                );
+                            }
+                            Err(e) => {
+                                if let Some(line) = self
+                                    .lines
+                                    .iter_mut()
+                                    .find(|l| l.text.contains("Initializing pylon identity")) {
+                                    line.status = LogStatus::Error;
+                                }
+                                self.add_line(
+                                    &format!("  Failed to initialize pylon identity: {}", e),
+                                    LogStatus::Error,
+                                    elapsed,
+                                );
+                                self.phase = StartupPhase::DetectingCompute;
+                                self.phase_started = elapsed;
+                                return;
+                            }
+                        }
+                    }
+
                     self.add_line("Starting pylon daemon...", LogStatus::Pending, elapsed);
 
                     // Start pylon in background
