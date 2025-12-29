@@ -1,6 +1,6 @@
 //! Dock container for side panels
 
-use wgpui::{Bounds, EventContext, EventResult, Hsla, InputEvent, PaintContext, Quad, theme};
+use wgpui::{Bounds, EventContext, EventResult, Hsla, InputEvent, PaintContext};
 
 use super::Panel;
 
@@ -126,60 +126,14 @@ impl Dock {
             return;
         }
 
-        // Background
-        cx.scene.draw_quad(
-            Quad::new(bounds).with_background(theme::bg::SURFACE),
-        );
-
-        // Minimal line border
-        let border_width = 1.0;
-        match self.state.position {
-            DockPosition::Left => {
-                // Right edge border
-                cx.scene.draw_quad(
-                    Quad::new(Bounds::new(
-                        bounds.origin.x + bounds.size.width - border_width,
-                        bounds.origin.y,
-                        border_width,
-                        bounds.size.height,
-                    ))
-                    .with_background(self.border_color),
-                );
-            }
-            DockPosition::Right => {
-                // Left edge border
-                cx.scene.draw_quad(
-                    Quad::new(Bounds::new(
-                        bounds.origin.x,
-                        bounds.origin.y,
-                        border_width,
-                        bounds.size.height,
-                    ))
-                    .with_background(self.border_color),
-                );
-            }
-            DockPosition::Bottom => {
-                // Top edge border
-                cx.scene.draw_quad(
-                    Quad::new(Bounds::new(
-                        bounds.origin.x,
-                        bounds.origin.y,
-                        bounds.size.width,
-                        border_width,
-                    ))
-                    .with_background(self.border_color),
-                );
-            }
-        }
-
-        // Paint active panel content
+        // Paint active panel - panels handle their own HUD frame styling
         if let Some(panel) = self.panels.get_mut(self.active_panel) {
-            let padding = 1.0;
+            let margin = 8.0;
             let content_bounds = Bounds::new(
-                bounds.origin.x + padding,
-                bounds.origin.y + padding,
-                bounds.size.width - padding * 2.0,
-                bounds.size.height - padding * 2.0,
+                bounds.origin.x + margin,
+                bounds.origin.y + margin,
+                bounds.size.width - margin * 2.0,
+                bounds.size.height - margin * 2.0,
             );
             panel.paint(content_bounds, cx);
         }

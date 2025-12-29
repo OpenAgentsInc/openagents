@@ -2,9 +2,10 @@
 
 use autopilot_service::DaemonStatus;
 use wgpui::{
-    Bounds, Component, EventContext, EventResult, InputEvent, PaintContext, theme,
+    Bounds, Component, EventContext, EventResult, Hsla, InputEvent, PaintContext, theme,
     components::Text,
     components::atoms::{DaemonStatus as UiDaemonStatus, DaemonStatusBadge},
+    components::hud::{CornerConfig, Frame},
     components::molecules::PermissionBar,
 };
 use crate::dock::{DockPosition, Panel};
@@ -52,7 +53,21 @@ impl Panel for SystemPanel {
     }
 
     fn paint(&mut self, bounds: Bounds, cx: &mut PaintContext) {
-        let padding = 12.0;
+        // Draw HUD frame around panel
+        let line_color = Hsla::new(0.0, 0.0, 0.5, 0.6);
+        let bg_color = Hsla::new(0.0, 0.0, 0.05, 0.85);
+
+        let mut frame = Frame::nefrex()
+            .line_color(line_color)
+            .bg_color(bg_color)
+            .stroke_width(1.0)
+            .corner_config(CornerConfig::all())
+            .square_size(6.0)
+            .small_line_length(6.0)
+            .large_line_length(20.0);
+        frame.paint(bounds, cx);
+
+        let padding = 16.0;
         let mut y = bounds.origin.y + padding;
 
         // Section header: System
