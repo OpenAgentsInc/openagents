@@ -163,6 +163,29 @@ impl TextRun {
     pub fn push_glyph(&mut self, glyph: GlyphInstance) {
         self.glyphs.push(glyph);
     }
+
+    /// Compute the bounding box of this text run
+    pub fn bounds(&self) -> Bounds {
+        if self.glyphs.is_empty() {
+            return Bounds::new(self.origin.x, self.origin.y, 0.0, 0.0);
+        }
+
+        let mut min_x = f32::MAX;
+        let mut min_y = f32::MAX;
+        let mut max_x = f32::MIN;
+        let mut max_y = f32::MIN;
+
+        for glyph in &self.glyphs {
+            let x = self.origin.x + glyph.offset.x;
+            let y = self.origin.y + glyph.offset.y;
+            min_x = min_x.min(x);
+            min_y = min_y.min(y);
+            max_x = max_x.max(x + glyph.size.width);
+            max_y = max_y.max(y + glyph.size.height);
+        }
+
+        Bounds::new(min_x, min_y, max_x - min_x, max_y - min_y)
+    }
 }
 
 #[repr(C)]
@@ -266,7 +289,13 @@ impl Scene {
     }
 
     pub fn draw_text(&mut self, text_run: TextRun) {
-        self.text_runs.push(text_run);
+        if let Some(clip) = self.clip_stack.last() {
+            if text_run.bounds().intersects(clip) {
+                self.text_runs.push(text_run);
+            }
+        } else {
+            self.text_runs.push(text_run);
+        }
     }
 
     /// Draw an SVG at the specified bounds.
