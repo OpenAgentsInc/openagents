@@ -1,6 +1,4 @@
 //! Bitcoin/Lightning CLI commands using Spark SDK
-//!
-//! Provides wallet commands for balance, send, receive using the Breez Spark SDK.
 
 #![allow(dead_code)]
 
@@ -9,6 +7,7 @@ use async_trait::async_trait;
 use bech32::{Bech32, Hrp};
 use bip39::Mnemonic;
 use chrono;
+use colored::Colorize;
 use nostr::{decode as decode_nip19, Event, EventTemplate, Nip19Entity, ZapReceipt, ZAP_RECEIPT_KIND, ZAP_REQUEST_KIND};
 use reqwest::{Client, Url};
 use serde::Deserialize;
@@ -23,6 +22,8 @@ use crate::core::nwc::{build_connection, publish_info_event, NwcService};
 use crate::storage::address_book::AddressBook;
 use crate::storage::config::WalletConfig as LocalWalletConfig;
 use crate::storage::nwc::NwcConnectionStore;
+use super::error::{WalletError, format_error_with_hint};
+use super::validation::{detect_and_validate_destination, validate_amount};
 
 const CLIPBOARD_FILE_ENV: &str = "OPENAGENTS_CLIPBOARD_FILE";
 const NOTIFICATION_FILE_ENV: &str = "OPENAGENTS_NOTIFICATION_FILE";
@@ -30,17 +31,21 @@ const RETRY_PAGE_SIZE: u32 = 50;
 const RETRY_MAX_PAGES: u32 = 20;
 const NETWORK_STATUS_TIMEOUT_SECS: u64 = 5;
 
-/// Get or create the SparkWallet from keychain mnemonic
 async fn get_wallet() -> Result<SparkWallet> {
-    // Get mnemonic from keychain
-    let mnemonic = load_mnemonic()?;
+    let mnemonic = load_mnemonic().map_err(|e| {
+        let error = WalletError::WalletNotInitialized;
+        eprintln!("{}", format_error_with_hint(&error));
+        e
+    })?;
 
-    // Create signer from mnemonic
-    let signer = SparkSigner::from_mnemonic(&mnemonic, "")
-        .context("Failed to create signer from mnemonic")?;
+    let signer = SparkSigner::from_mnemonic(&mnemonic, "").map_err(|e| {
+        anyhow::anyhow!(
+            "Failed to create signer from mnemonic: {}\n\n{}: Your recovery phrase may be corrupted. Try 'openagents wallet import' with your backup phrase.",
+            e,
+            "Hint".cyan()
+        )
+    })?;
 
-    // Use regtest by default (no API key required)
-    // For mainnet, set BREEZ_API_KEY env var
     let network = if std::env::var("MAINNET").is_ok() {
         Network::Mainnet
     } else {
@@ -53,22 +58,31 @@ async fn get_wallet() -> Result<SparkWallet> {
         ..Default::default()
     };
 
-    // Connect to Spark network
-    SparkWallet::new(signer, config).await
-        .context("Failed to connect to Spark network")
+    SparkWallet::new(signer, config).await.map_err(|e| {
+        let error = WalletError::NetworkError(e.to_string());
+        eprintln!("{}", format_error_with_hint(&error));
+        anyhow::anyhow!("Failed to connect to Spark network: {}", e)
+    })
 }
 
-/// Query wallet balance
 pub fn balance() -> Result<()> {
     let rt = tokio::runtime::Runtime::new()?;
     rt.block_on(async {
         let wallet = get_wallet().await?;
-        let balance = wallet.get_balance().await?;
+        let balance = wallet.get_balance().await.map_err(|e| {
+            let error = WalletError::NetworkError(format!("Failed to fetch balance: {}", e));
+            eprintln!("{}", format_error_with_hint(&error));
+            anyhow::anyhow!("{}", e)
+        })?;
 
         let usd_rate = match fetch_btc_usd_rate().await {
             Ok(rate) => rate,
             Err(err) => {
-                eprintln!("Warning: USD pricing unavailable: {}", err);
+                eprintln!(
+                    "{} USD pricing unavailable: {}",
+                    "Warning:".yellow(),
+                    err
+                );
                 None
             }
         };
@@ -79,7 +93,6 @@ pub fn balance() -> Result<()> {
     })
 }
 
-/// Show Spark network connectivity status
 pub fn status() -> Result<()> {
     let rt = tokio::runtime::Runtime::new()?;
     rt.block_on(async {
@@ -87,16 +100,41 @@ pub fn status() -> Result<()> {
         let report = wallet
             .network_status(std::time::Duration::from_secs(NETWORK_STATUS_TIMEOUT_SECS))
             .await;
-        let output = format_network_status(report, wallet.config().network);
+
+        let output = format_network_status(report.clone(), wallet.config().network);
         print!("{}", output);
+
+        if report.status != spark::NetworkStatus::Connected {
+            eprintln!();
+            eprintln!(
+                "{}: If on mainnet, ensure BREEZ_API_KEY is set. Check your internet connection.",
+                "Hint".cyan()
+            );
+        }
+
         Ok(())
     })
 }
 
-/// Generate a receive address or invoice
 pub fn receive(amount: Option<u64>, show_qr: bool, copy: bool, expiry: Option<u64>) -> Result<()> {
     if amount.is_none() && expiry.is_some() {
+        eprintln!(
+            "{}: --expiry requires --amount to create an invoice.",
+            "Error".red()
+        );
+        eprintln!();
+        eprintln!(
+            "{}: Use 'openagents wallet receive --amount 1000 --expiry 3600' for a 1-hour invoice.",
+            "Hint".cyan()
+        );
         anyhow::bail!("--expiry requires --amount to create an invoice.");
+    }
+
+    if let Some(sats) = amount {
+        if let Err(e) = validate_amount(sats) {
+            eprintln!("{}", format_error_with_hint(&e));
+            return Err(e.into());
+        }
     }
 
     let rt = tokio::runtime::Runtime::new()?;
@@ -105,22 +143,32 @@ pub fn receive(amount: Option<u64>, show_qr: bool, copy: bool, expiry: Option<u6
 
         match amount {
             Some(sats) => {
-                // Create invoice for specific amount
-                let response = wallet.create_invoice(sats, None, expiry).await?;
+                let response = wallet.create_invoice(sats, None, expiry).await
+                    .map_err(|e| {
+                        let error = WalletError::NetworkError(format!("Failed to create invoice: {}", e));
+                        eprintln!("{}", format_error_with_hint(&error));
+                        anyhow::anyhow!("{}", e)
+                    })?;
+
                 let mut output = format_receive_invoice(sats, &response.payment_request, show_qr)?;
                 if copy {
                     copy_to_clipboard(&response.payment_request)?;
-                    output.push_str("Copied invoice to clipboard.\n");
+                    output.push_str(&format!("{} Copied invoice to clipboard.\n", "✓".green()));
                 }
                 print!("{}", output);
             }
             None => {
-                // Get static Spark address
-                let address = wallet.get_spark_address().await?;
+                let address = wallet.get_spark_address().await
+                    .map_err(|e| {
+                        let error = WalletError::NetworkError(format!("Failed to get Spark address: {}", e));
+                        eprintln!("{}", format_error_with_hint(&error));
+                        anyhow::anyhow!("{}", e)
+                    })?;
+
                 let mut output = format_receive_address(&address, show_qr)?;
                 if copy {
                     copy_to_clipboard(&address)?;
-                    output.push_str("Copied address to clipboard.\n");
+                    output.push_str(&format!("{} Copied address to clipboard.\n", "✓".green()));
                 }
                 print!("{}", output);
             }
@@ -443,7 +491,6 @@ fn escape_osascript(input: &str) -> String {
         .replace('\n', "\\n")
 }
 
-/// Send payment to address or pay invoice
 pub fn send(
     destination: String,
     amount: u64,
@@ -451,6 +498,11 @@ pub fn send(
     qr: Option<PathBuf>,
     payee: Option<String>,
 ) -> Result<()> {
+    if let Err(e) = validate_amount(amount) {
+        eprintln!("{}", format_error_with_hint(&e));
+        return Err(e.into());
+    }
+
     let rt = tokio::runtime::Runtime::new()?;
     rt.block_on(async {
         let wallet = get_wallet().await?;
@@ -458,10 +510,36 @@ pub fn send(
 
         let destination = resolve_send_destination(destination, qr, payee)?;
 
+        if let Err(e) = detect_and_validate_destination(&destination) {
+            eprintln!("{}", format_error_with_hint(&e));
+            return Err(e.into());
+        }
+
         println!("Preparing Payment...");
         println!();
 
-        let prepare_response = wallet.prepare_send_payment(&destination, Some(amount)).await?;
+        let prepare_response = wallet.prepare_send_payment(&destination, Some(amount)).await
+            .map_err(|e| {
+                let msg = e.to_string();
+                if msg.to_lowercase().contains("insufficient") {
+                    let error = WalletError::InsufficientBalance {
+                        required: amount,
+                        available: 0,
+                    };
+                    eprintln!("{}", format_error_with_hint(&error));
+                } else if msg.to_lowercase().contains("expired") {
+                    let error = WalletError::InvoiceExpired;
+                    eprintln!("{}", format_error_with_hint(&error));
+                } else if msg.to_lowercase().contains("route") {
+                    let error = WalletError::NoRouteFound;
+                    eprintln!("{}", format_error_with_hint(&error));
+                } else {
+                    let error = WalletError::PaymentFailed(msg.clone());
+                    eprintln!("{}", format_error_with_hint(&error));
+                }
+                anyhow::anyhow!("{}", e)
+            })?;
+
         let amount_sats = amount_from_prepare(&prepare_response)?;
         enforce_transaction_limit(amount_sats, &config)?;
         let preview = build_send_preview(&destination, &prepare_response);
@@ -477,39 +555,66 @@ pub fn send(
         println!("Sending Payment...");
         println!();
 
-        // Prepare and send payment
         match wallet.send_payment(prepare_response, None).await {
             Ok(response) => {
-                println!("✓ Payment Sent!");
+                println!("{} Payment Sent!", "✓".green());
                 println!("────────────────────────────────────────");
                 println!("  Payment ID: {}", response.payment.id);
                 Ok(())
             }
             Err(e) => {
-                eprintln!("✗ Payment Failed");
+                eprintln!("{} Payment Failed", "✗".red());
                 eprintln!("────────────────────────────────────────");
                 eprintln!("{}", e.user_friendly_message());
                 if e.balance_unaffected() {
                     eprintln!();
-                    eprintln!("ℹ️  Your balance was NOT deducted.");
+                    eprintln!("{}", "ℹ️  Your balance was NOT deducted.".cyan());
                 }
+                eprintln!();
+                eprintln!(
+                    "{}: Use 'openagents wallet retry --last' to retry this payment.",
+                    "Hint".cyan()
+                );
                 Err(e.into())
             }
         }
     })
 }
 
-/// Retry a failed payment using the original invoice details
 pub fn retry(payment_id: Option<String>, last: bool, yes: bool) -> Result<()> {
     let rt = tokio::runtime::Runtime::new()?;
     rt.block_on(async {
         let wallet = get_wallet().await?;
         let config = LocalWalletConfig::load()?;
         let context = if last {
-            find_last_retryable_payment(&wallet).await?
+            find_last_retryable_payment(&wallet).await.map_err(|e| {
+                eprintln!("{}: {}", "Error".red(), e);
+                eprintln!();
+                eprintln!(
+                    "{}: Use 'openagents wallet history' to find payment IDs to retry.",
+                    "Hint".cyan()
+                );
+                e
+            })?
         } else {
-            let payment_id = payment_id.context("Provide a payment ID or use --last.")?;
-            find_retry_context_by_id(&wallet, &payment_id).await?
+            let payment_id = payment_id.ok_or_else(|| {
+                eprintln!("{}: Provide a payment ID or use --last.", "Error".red());
+                eprintln!();
+                eprintln!(
+                    "{}: Use 'openagents wallet retry --last' to retry the most recent failed payment.",
+                    "Hint".cyan()
+                );
+                anyhow::anyhow!("Provide a payment ID or use --last.")
+            })?;
+            find_retry_context_by_id(&wallet, &payment_id).await.map_err(|e| {
+                eprintln!("{}: {}", "Error".red(), e);
+                eprintln!();
+                eprintln!(
+                    "{}: Use 'openagents wallet history' to see your payment history.",
+                    "Hint".cyan()
+                );
+                e
+            })?
         };
 
         println!("Preparing Retry...");
@@ -520,7 +625,13 @@ pub fn retry(payment_id: Option<String>, last: bool, yes: bool) -> Result<()> {
                 &context.request.payment_request,
                 context.request.amount_sats,
             )
-            .await?;
+            .await
+            .map_err(|e| {
+                let error = WalletError::PaymentFailed(e.to_string());
+                eprintln!("{}", format_error_with_hint(&error));
+                anyhow::anyhow!("{}", e)
+            })?;
+
         let amount_sats = amount_from_prepare(&prepare_response)?;
         enforce_transaction_limit(amount_sats, &config)?;
         let preview = build_send_preview(&context.request.payment_request, &prepare_response);
@@ -538,19 +649,19 @@ pub fn retry(payment_id: Option<String>, last: bool, yes: bool) -> Result<()> {
 
         match wallet.send_payment(prepare_response, None).await {
             Ok(response) => {
-                println!("✓ Payment Sent!");
+                println!("{} Payment Sent!", "✓".green());
                 println!("────────────────────────────────────────");
                 println!("  Original Payment ID: {}", context.payment.id);
                 println!("  New Payment ID:      {}", response.payment.id);
                 Ok(())
             }
             Err(e) => {
-                eprintln!("✗ Payment Failed");
+                eprintln!("{} Payment Failed", "✗".red());
                 eprintln!("────────────────────────────────────────");
                 eprintln!("{}", e.user_friendly_message());
                 if e.balance_unaffected() {
                     eprintln!();
-                    eprintln!("ℹ️  Your balance was NOT deducted.");
+                    eprintln!("{}", "ℹ️  Your balance was NOT deducted.".cyan());
                 }
                 Err(e.into())
             }
@@ -934,11 +1045,22 @@ pub fn history(limit: usize, format: HistoryFormat, output: Option<PathBuf>) -> 
     rt.block_on(async {
         let wallet = get_wallet().await?;
 
-        let payments = wallet.list_payments(Some(limit as u32), None).await?;
+        let payments = wallet.list_payments(Some(limit as u32), None).await
+            .map_err(|e| {
+                let error = WalletError::NetworkError(format!("Failed to fetch history: {}", e));
+                eprintln!("{}", format_error_with_hint(&error));
+                anyhow::anyhow!("{}", e)
+            })?;
 
         match format {
             HistoryFormat::Table => {
                 if output.is_some() {
+                    eprintln!("{}: --output is only supported with --format csv.", "Error".red());
+                    eprintln!();
+                    eprintln!(
+                        "{}: Use 'openagents wallet history --format csv --output payments.csv'",
+                        "Hint".cyan()
+                    );
                     anyhow::bail!("--output is only supported with --format csv.");
                 }
                 let table = format_history_table(&payments);
@@ -947,9 +1069,17 @@ pub fn history(limit: usize, format: HistoryFormat, output: Option<PathBuf>) -> 
             HistoryFormat::Csv => {
                 let csv = format_history_csv(&payments);
                 if let Some(path) = output {
-                    std::fs::write(&path, csv)
-                        .with_context(|| format!("Failed to write CSV history to {}", path.display()))?;
-                    println!("Saved CSV history to {}", path.display());
+                    std::fs::write(&path, &csv)
+                        .map_err(|e| {
+                            let error = WalletError::FileError(format!(
+                                "Failed to write CSV history to {}: {}",
+                                path.display(),
+                                e
+                            ));
+                            eprintln!("{}", format_error_with_hint(&error));
+                            anyhow::anyhow!("{}", e)
+                        })?;
+                    println!("{} Saved CSV history to {}", "✓".green(), path.display());
                 } else {
                     print!("{}", csv);
                 }

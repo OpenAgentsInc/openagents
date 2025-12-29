@@ -3,6 +3,7 @@
 use anyhow::{Context, Result};
 use colored::Colorize;
 use crate::cli::load_mnemonic;
+use crate::cli::error::{WalletError, format_error_with_hint};
 use crate::core::identity::UnifiedIdentity;
 use spark::{Network, SparkSigner, SparkWallet, WalletConfig as SparkWalletConfig};
 use crate::storage::identities::{
@@ -32,15 +33,25 @@ fn spark_address_from_mnemonic(mnemonic: &str) -> Option<String> {
     })
 }
 
-fn validate_identity_name(name: &str) -> Result<()> {
-    if name.trim().is_empty() {
-        anyhow::bail!("Identity name cannot be empty.");
+fn validate_identity_name(name: &str) -> Result<(), WalletError> {
+    let trimmed = name.trim();
+    if trimmed.is_empty() {
+        return Err(WalletError::InvalidIdentityName(
+            "Identity name cannot be empty".to_string(),
+        ));
     }
-    if !name
+    if trimmed.len() > 50 {
+        return Err(WalletError::InvalidIdentityName(
+            "Identity name too long (max 50 characters)".to_string(),
+        ));
+    }
+    if !trimmed
         .chars()
         .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
     {
-        anyhow::bail!("Identity name must be ASCII letters, numbers, '-' or '_'.");
+        return Err(WalletError::InvalidIdentityName(
+            "Identity name must be ASCII letters, numbers, '-' or '_'".to_string(),
+        ));
     }
     Ok(())
 }
@@ -48,25 +59,23 @@ fn validate_identity_name(name: &str) -> Result<()> {
 pub fn init(show_mnemonic: bool) -> Result<()> {
     println!("{}", "Initializing new wallet...".cyan());
 
-    // Check if wallet already exists
     if SecureKeychain::has_mnemonic_for(DEFAULT_IDENTITY_NAME) {
-        anyhow::bail!("Wallet already exists! Use 'wallet import' to replace or 'wallet export' to view.");
+        let error = WalletError::WalletAlreadyExists;
+        eprintln!("{}", format_error_with_hint(&error));
+        return Err(error.into());
     }
 
-    // Generate new identity
     let identity = UnifiedIdentity::generate()
         .context("Failed to generate identity")?;
 
-    // Get mnemonic phrase
     let mnemonic_phrase = identity.mnemonic().to_string();
 
-    // Store in keychain
     SecureKeychain::store_mnemonic(&mnemonic_phrase)
         .context("Failed to store mnemonic in keychain")?;
     register_identity(DEFAULT_IDENTITY_NAME, true)
         .context("Failed to register default identity")?;
 
-    println!("{}", "✓ Wallet initialized".green());
+    println!("{} Wallet initialized", "✓".green());
     println!();
 
     if show_mnemonic {
@@ -78,7 +87,7 @@ pub fn init(show_mnemonic: bool) -> Result<()> {
     }
 
     println!("{}", "IMPORTANT: Write down your recovery phrase and store it safely!".yellow().bold());
-    println!("{}", "Use 'wallet export' to view it again.".cyan());
+    println!("{}", "Use 'openagents wallet export' to view it again.".cyan());
     println!();
     println!("{}: {}", "Nostr Public Key".bold(), identity.nostr_public_key());
 
@@ -92,11 +101,9 @@ pub fn import(mnemonic: Option<String>) -> Result<()> {
     println!("{}", "Importing wallet from mnemonic...".cyan());
     println!();
 
-    // Get mnemonic phrase
     let mnemonic_phrase = if let Some(phrase) = mnemonic {
         phrase
     } else {
-        // Prompt for mnemonic
         print!("Enter your 12 or 24 word recovery phrase: ");
         io::stdout().flush()?;
         let mut input = String::new();
@@ -104,15 +111,15 @@ pub fn import(mnemonic: Option<String>) -> Result<()> {
         input.trim().to_string()
     };
 
-    // Validate mnemonic
-    let mnemonic = Mnemonic::parse(&mnemonic_phrase)
-        .context("Invalid mnemonic phrase")?;
+    let mnemonic = Mnemonic::parse(&mnemonic_phrase).map_err(|e| {
+        let error = WalletError::InvalidMnemonic(e.to_string());
+        eprintln!("{}", format_error_with_hint(&error));
+        anyhow::anyhow!("{}", e)
+    })?;
 
-    // Derive identity to validate
     let identity = UnifiedIdentity::from_mnemonic(mnemonic)
         .context("Failed to derive identity from mnemonic")?;
 
-    // Check if wallet already exists
     if SecureKeychain::has_mnemonic_for(DEFAULT_IDENTITY_NAME) {
         println!("{}", "WARNING: This will replace your existing wallet!".red().bold());
         print!("Type 'yes' to confirm: ");
@@ -123,17 +130,15 @@ pub fn import(mnemonic: Option<String>) -> Result<()> {
             println!("Import cancelled.");
             return Ok(());
         }
-        // Delete existing mnemonic
         SecureKeychain::delete_mnemonic_for(DEFAULT_IDENTITY_NAME)?;
     }
 
-    // Store in keychain
     SecureKeychain::store_mnemonic(&mnemonic_phrase)
         .context("Failed to store mnemonic in keychain")?;
     register_identity(DEFAULT_IDENTITY_NAME, true)
         .context("Failed to register default identity")?;
 
-    println!("{}", "✓ Wallet imported".green());
+    println!("{} Wallet imported", "✓".green());
     println!();
     println!("{}: {}", "Nostr Public Key".bold(), identity.nostr_public_key());
 
@@ -169,11 +174,16 @@ pub fn identity_current() -> Result<()> {
 }
 
 pub fn identity_create(name: String, show_mnemonic: bool) -> Result<()> {
-    validate_identity_name(&name)?;
+    if let Err(e) = validate_identity_name(&name) {
+        eprintln!("{}", format_error_with_hint(&e));
+        return Err(e.into());
+    }
 
     let mut registry = IdentityRegistry::load()?;
     if registry.contains(&name) {
-        anyhow::bail!("Identity '{}' already exists.", name);
+        let error = WalletError::IdentityAlreadyExists(name.clone());
+        eprintln!("{}", format_error_with_hint(&error));
+        return Err(error.into());
     }
 
     println!("{}", format!("Creating identity '{}'...", name).cyan());
@@ -188,7 +198,7 @@ pub fn identity_create(name: String, show_mnemonic: bool) -> Result<()> {
     registry.set_current(&name)?;
     registry.save()?;
 
-    println!("{}", "✓ Identity created".green());
+    println!("{} Identity created", "✓".green());
     println!("{}", format!("Active identity: {}", name).cyan());
     println!();
     println!("{}: {}", "Nostr Public Key".bold(), identity.nostr_public_key());
@@ -207,10 +217,16 @@ pub fn identity_import(name: String, mnemonic: Option<String>) -> Result<()> {
     use bip39::Mnemonic;
     use std::io::{self, Write};
 
-    validate_identity_name(&name)?;
+    if let Err(e) = validate_identity_name(&name) {
+        eprintln!("{}", format_error_with_hint(&e));
+        return Err(e.into());
+    }
+
     let mut registry = IdentityRegistry::load()?;
     if registry.contains(&name) {
-        anyhow::bail!("Identity '{}' already exists.", name);
+        let error = WalletError::IdentityAlreadyExists(name.clone());
+        eprintln!("{}", format_error_with_hint(&error));
+        return Err(error.into());
     }
 
     println!("{}", format!("Importing identity '{}'...", name).cyan());
@@ -226,8 +242,12 @@ pub fn identity_import(name: String, mnemonic: Option<String>) -> Result<()> {
         input.trim().to_string()
     };
 
-    let mnemonic = Mnemonic::parse(&mnemonic_phrase)
-        .context("Invalid mnemonic phrase")?;
+    let mnemonic = Mnemonic::parse(&mnemonic_phrase).map_err(|e| {
+        let error = WalletError::InvalidMnemonic(e.to_string());
+        eprintln!("{}", format_error_with_hint(&error));
+        anyhow::anyhow!("{}", e)
+    })?;
+
     let identity = UnifiedIdentity::from_mnemonic(mnemonic)
         .context("Failed to derive identity from mnemonic")?;
 
@@ -237,7 +257,7 @@ pub fn identity_import(name: String, mnemonic: Option<String>) -> Result<()> {
     registry.set_current(&name)?;
     registry.save()?;
 
-    println!("{}", "✓ Identity imported".green());
+    println!("{} Identity imported", "✓".green());
     println!("{}", format!("Active identity: {}", name).cyan());
     println!("{}: {}", "Nostr Public Key".bold(), identity.nostr_public_key());
 
@@ -245,16 +265,28 @@ pub fn identity_import(name: String, mnemonic: Option<String>) -> Result<()> {
 }
 
 pub fn identity_use(name: String) -> Result<()> {
-    validate_identity_name(&name)?;
-    set_current_identity(&name)?;
-    println!("{}", format!("Active identity set to '{}'.", name).green());
+    if let Err(e) = validate_identity_name(&name) {
+        eprintln!("{}", format_error_with_hint(&e));
+        return Err(e.into());
+    }
+
+    set_current_identity(&name).map_err(|e| {
+        let error = WalletError::IdentityNotFound(name.clone());
+        eprintln!("{}", format_error_with_hint(&error));
+        anyhow::anyhow!("{}", e)
+    })?;
+
+    println!("{} Active identity set to '{}'.", "✓".green(), name);
     Ok(())
 }
 
 pub fn identity_remove(name: String, yes: bool) -> Result<()> {
     use std::io::{self, Write};
 
-    validate_identity_name(&name)?;
+    if let Err(e) = validate_identity_name(&name) {
+        eprintln!("{}", format_error_with_hint(&e));
+        return Err(e.into());
+    }
 
     if !yes {
         if std::io::stdin().is_terminal() {
@@ -267,13 +299,20 @@ pub fn identity_remove(name: String, yes: bool) -> Result<()> {
                 return Ok(());
             }
         } else {
-            anyhow::bail!("Non-interactive removal requires --yes.");
+            let error = WalletError::ConfirmationRequired;
+            eprintln!("{}", format_error_with_hint(&error));
+            return Err(error.into());
         }
     }
 
-    unregister_identity(&name)?;
+    unregister_identity(&name).map_err(|e| {
+        let error = WalletError::IdentityNotFound(name.clone());
+        eprintln!("{}", format_error_with_hint(&error));
+        anyhow::anyhow!("{}", e)
+    })?;
+
     SecureKeychain::delete_mnemonic_for(&name)?;
-    println!("{}", format!("Identity '{}' removed.", name).green());
+    println!("{} Identity '{}' removed.", "✓".green(), name);
     Ok(())
 }
 
