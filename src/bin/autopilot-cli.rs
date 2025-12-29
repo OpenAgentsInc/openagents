@@ -1,23 +1,41 @@
 use std::io::{self, Write};
 use std::time::Instant;
-use tracing::info;
 
 use autopilot::{StartupState, LogStatus, ClaudeModel, StartupPhase};
 
 fn main() {
-    tracing_subscriber::fmt()
-        .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| {
-                    tracing_subscriber::EnvFilter::new(
-                        "autopilot=debug,openagents=debug,claude_agent_sdk=info,info"
-                    )
-                })
-        )
-        .with_target(true)
-        .init();
+    // Check for --verbose or -v flag
+    let args: Vec<String> = std::env::args().collect();
+    let verbose = args.iter().any(|a| a == "--verbose" || a == "-v");
 
-    info!("Starting Autopilot CLI");
+    // Set AUTOPILOT_VERBOSE env var for child modules
+    // SAFETY: We're single-threaded at this point before spawning any threads
+    if verbose {
+        unsafe { std::env::set_var("AUTOPILOT_VERBOSE", "1") };
+    }
+
+    // Only show tracing output in verbose mode
+    if verbose {
+        tracing_subscriber::fmt()
+            .with_env_filter(
+                tracing_subscriber::EnvFilter::try_from_default_env()
+                    .unwrap_or_else(|_| {
+                        tracing_subscriber::EnvFilter::new(
+                            "autopilot=debug,openagents=debug,claude_agent_sdk=info,info"
+                        )
+                    })
+            )
+            .with_target(true)
+            .init();
+    } else {
+        // Minimal logging - only errors, no timestamps
+        tracing_subscriber::fmt()
+            .with_env_filter("error")
+            .without_time()
+            .with_target(false)
+            .init();
+    }
+
     println!("\n=== AUTOPILOT CLI MODE ===\n");
 
     let model = match std::env::var("AUTOPILOT_MODEL").as_deref() {
@@ -62,7 +80,7 @@ fn main() {
         }
 
         if startup_state.phase != last_phase {
-            info!("Phase transition: {:?} -> {:?}", last_phase, startup_state.phase);
+            // Phase transitions are now silent by default
             last_phase = startup_state.phase;
         }
 
