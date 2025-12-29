@@ -26,18 +26,25 @@
 
 use crate::error::{Error, Result};
 use crate::exchange::{Order, OrderSide, OrderStatus, TradeAttestation, TradeOutcome};
-use nostr::{Event, EventTemplate, finalize_event};
-use nostr_client::{RelayPool, PoolConfig};
+use nostr::{finalize_event, Event, EventTemplate};
+use nostr_client::{PoolConfig, RelayPool};
+use serde_json::json;
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::{mpsc, RwLock};
+use tracing::warn;
 
 /// Event kind for P2P orders (NIP-69)
 pub const P2P_ORDER_KIND: u16 = 38383;
 
 /// Event kind for labels/attestations (NIP-32)
 pub const LABEL_KIND: u16 = 1985;
+
+const ORDER_FETCH_LIMIT: u64 = 500;
+const ORDER_FETCH_TIMEOUT_MS: u64 = 800;
+static ORDER_SUB_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 /// Filter for fetching orders
 #[derive(Debug, Clone, Default)]
@@ -208,13 +215,23 @@ impl ExchangeRelay {
 
     /// Fetch orders from local cache
     ///
-    /// In a real implementation, this would query relays.
-    /// For now, returns cached orders matching the filter.
+    /// Queries relays when available, then returns cached orders matching the filter.
     pub async fn fetch_orders(&self, filter: OrderFilter) -> Result<Vec<Order>> {
+        if !self.relays.is_empty() {
+            if let Err(err) = self.refresh_orders_from_relays(&filter).await {
+                warn!("Relay order fetch failed: {}", err);
+            }
+        }
+
         let cache = self.order_cache.read().await;
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
 
         let orders: Vec<Order> = cache
             .values()
+            .filter(|order| order.expires_at > now)
             .filter(|order| self.order_matches_filter(order, &filter))
             .cloned()
             .collect();
@@ -450,6 +467,81 @@ impl ExchangeRelay {
         }
         true
     }
+
+    async fn refresh_orders_from_relays(&self, filter: &OrderFilter) -> Result<()> {
+        let mut filter_map = serde_json::Map::new();
+        filter_map.insert("kinds".to_string(), json!([P2P_ORDER_KIND as u64]));
+        filter_map.insert("limit".to_string(), json!(ORDER_FETCH_LIMIT));
+
+        if let Some(ref maker) = filter.maker {
+            filter_map.insert("authors".to_string(), json!([maker]));
+        }
+        if let Some(ref currency) = filter.currency {
+            filter_map.insert("#f".to_string(), json!([currency]));
+        }
+        if let Some(side) = filter.side {
+            filter_map.insert("#k".to_string(), json!([side.as_str()]));
+        }
+        if filter.only_active {
+            filter_map.insert("#s".to_string(), json!(["pending"]));
+        }
+
+        let filters = vec![serde_json::Value::Object(filter_map)];
+        let subscription_id = next_order_subscription_id();
+        let mut rx = self.pool.subscribe(&subscription_id, &filters).await?;
+
+        let fetch_timeout = Duration::from_millis(ORDER_FETCH_TIMEOUT_MS);
+        let start = tokio::time::Instant::now();
+        let mut incoming: HashMap<String, Order> = HashMap::new();
+
+        loop {
+            let elapsed = start.elapsed();
+            if elapsed >= fetch_timeout {
+                break;
+            }
+
+            let remaining = fetch_timeout - elapsed;
+            match tokio::time::timeout(remaining, rx.recv()).await {
+                Ok(Some(event)) => {
+                    if let Some(order) = self.parse_order_event(&event) {
+                        let replace = match incoming.get(&order.order_id) {
+                            Some(existing) => order.created_at >= existing.created_at,
+                            None => true,
+                        };
+                        if replace {
+                            incoming.insert(order.order_id.clone(), order);
+                        }
+                    }
+                }
+                Ok(None) => break,
+                Err(_) => break,
+            }
+        }
+
+        if let Err(err) = self.pool.unsubscribe(&subscription_id).await {
+            warn!(
+                "Failed to close order subscription {}: {}",
+                subscription_id, err
+            );
+        }
+
+        if incoming.is_empty() {
+            return Ok(());
+        }
+
+        let mut cache = self.order_cache.write().await;
+        for (order_id, order) in incoming {
+            let replace = match cache.get(&order_id) {
+                Some(existing) => order.created_at >= existing.created_at,
+                None => true,
+            };
+            if replace {
+                cache.insert(order_id, order);
+            }
+        }
+
+        Ok(())
+    }
 }
 
 // ============================================================
@@ -474,6 +566,15 @@ fn get_tag_values(tags: &[Vec<String>], key: &str) -> Vec<String> {
         }
     }
     Vec::new()
+}
+
+fn next_order_subscription_id() -> String {
+    let counter = ORDER_SUB_COUNTER.fetch_add(1, Ordering::Relaxed);
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+    format!("exchange-orders-{}-{}", now, counter)
 }
 
 #[cfg(test)]
