@@ -190,7 +190,6 @@ Your turn should only end with calling ExitPlanMode. Do not stop early."#.to_str
 
             let mut full_response = String::new();
             let mut last_tool_name = String::new();
-            let mut got_result = false;
 
             loop {
                 let next_result = timeout(
@@ -202,7 +201,7 @@ Your turn should only end with calling ExitPlanMode. Do not stop early."#.to_str
                     Ok(Some(msg)) => msg,
                     Ok(None) => {
                         // Stream ended without Result - this is the hang case
-                        if !got_result && full_response.is_empty() {
+                        if full_response.is_empty() {
                             last_error = "Stream ended unexpectedly with no data".to_string();
                             eprintln!("[CLAUDE] {}", last_error);
                             let _ = stream.abort().await;
@@ -285,7 +284,6 @@ Your turn should only end with calling ExitPlanMode. Do not stop early."#.to_str
                     }
                     Ok(SdkMessage::Result(result)) => {
                         verbose_println!("[CLAUDE][RESULT] {:?}", result);
-                        got_result = true;
                         break;
                     }
                     Err(e) => {
@@ -418,7 +416,6 @@ Start now."#, plan);
 
             let mut full_response = String::new();
             let mut last_tool_name = String::new();
-            let mut got_result = false;
 
             loop {
                 let next_result = timeout(
@@ -429,7 +426,7 @@ Start now."#, plan);
                 let msg = match next_result {
                     Ok(Some(msg)) => msg,
                     Ok(None) => {
-                        if !got_result && full_response.is_empty() {
+                        if full_response.is_empty() {
                             last_error = "Stream ended unexpectedly with no data".to_string();
                             eprintln!("[CLAUDE-EXEC] {}", last_error);
                             let _ = stream.abort().await;
@@ -492,7 +489,6 @@ Start now."#, plan);
                     }
                     Ok(SdkMessage::Result(_)) => {
                         verbose_println!("[CLAUDE-EXEC] Got Result message, breaking");
-                        got_result = true;
                         break;
                     }
                     Err(e) => {
@@ -634,7 +630,6 @@ Otherwise, provide a detailed plan for the next iteration in the same format as 
 
             let mut full_response = String::new();
             let mut last_tool_name = String::new();
-            let mut got_result = false;
 
             loop {
                 let next_result = timeout(
@@ -645,7 +640,7 @@ Otherwise, provide a detailed plan for the next iteration in the same format as 
                 let msg = match next_result {
                     Ok(Some(msg)) => msg,
                     Ok(None) => {
-                        if !got_result && full_response.is_empty() {
+                        if full_response.is_empty() {
                             last_error = "Stream ended unexpectedly with no data".to_string();
                             eprintln!("[CLAUDE-REVIEW] {}", last_error);
                             let _ = stream.abort().await;
@@ -706,7 +701,6 @@ Otherwise, provide a detailed plan for the next iteration in the same format as 
                         }
                     }
                     Ok(SdkMessage::Result(_)) => {
-                        got_result = true;
                         break;
                     }
                     Err(e) => {

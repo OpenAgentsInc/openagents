@@ -7345,6 +7345,7 @@ dependencies = [
  "base64 0.22.1",
  "bech32 0.11.1",
  "bip39",
+ "bitcoin",
  "chrono",
  "clap",
  "claude-agent-sdk",
