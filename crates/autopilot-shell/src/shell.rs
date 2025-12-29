@@ -73,7 +73,7 @@ impl AutopilotShell {
         let mut thread_view = ThreadView::new().auto_scroll(true);
         thread_view.push_entry(ThreadEntry::new(
             ThreadEntryType::System,
-            Text::new("Autopilot Shell ready."),
+            Text::new("Autopilot ready."),
         ));
 
         // Status bar
@@ -355,22 +355,41 @@ impl Component for AutopilotShell {
         self.left_dock.paint(layout.left, cx);
         self.right_dock.paint(layout.right, cx);
 
-        // 6. Paint Full Auto toggle at top of center area
-        let toggle_h = 36.0;
-        let toggle_bounds = Bounds::new(
-            layout.center.origin.x + 8.0,
-            layout.center.origin.y + 8.0,
-            240.0,
-            toggle_h,
-        );
-        self.full_auto_toggle.paint(toggle_bounds, cx);
+        // 5b. Paint Full Auto toggle at top of right sidebar
+        if self.right_dock.is_open() {
+            let toggle_bounds = Bounds::new(
+                layout.right.origin.x + 16.0,
+                layout.right.origin.y + 16.0,
+                layout.right.size.width - 32.0,
+                36.0,
+            );
+            self.full_auto_toggle.paint(toggle_bounds, cx);
+        }
 
-        // 7. Paint center thread view (below toggle)
+        // 6. Paint Kranox frame around center area
+        let center_margin = 8.0;
+        let center_frame_bounds = Bounds::new(
+            layout.center.origin.x + center_margin,
+            layout.center.origin.y + center_margin,
+            layout.center.size.width - center_margin * 2.0,
+            layout.center.size.height - center_margin * 2.0,
+        );
+
+        let frame_color = Hsla::new(0.0, 0.0, 0.3, 0.4);
+        let frame_bg = Hsla::new(0.0, 0.0, 0.02, 0.8);
+        let mut center_frame = Frame::kranox()
+            .line_color(frame_color)
+            .bg_color(frame_bg)
+            .stroke_width(1.0);
+        center_frame.paint(center_frame_bounds, cx);
+
+        // 7. Paint center thread view inside frame
+        let thread_padding = 16.0;
         let thread_bounds = Bounds::new(
-            layout.center.origin.x,
-            layout.center.origin.y + toggle_h + 16.0,
-            layout.center.size.width,
-            layout.center.size.height - toggle_h - 16.0,
+            center_frame_bounds.origin.x + thread_padding,
+            center_frame_bounds.origin.y + thread_padding,
+            center_frame_bounds.size.width - thread_padding * 2.0,
+            center_frame_bounds.size.height - thread_padding * 2.0,
         );
         self.thread_view.paint(thread_bounds, cx);
 
