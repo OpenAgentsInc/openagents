@@ -355,11 +355,24 @@ impl RelayConnection {
 
                         // Route EVENT messages to subscriptions
                         if let RelayMessage::Event(sub_id, event) = &relay_msg {
-                            let subs = subscriptions.lock().await;
-                            if let Some(subscription) = subs.get(sub_id)
-                                && let Err(e) = subscription.handle_event(event.clone())
+                            let mut should_remove = false;
                             {
-                                warn!("Error handling event for subscription {}: {}", sub_id, e);
+                                let subs = subscriptions.lock().await;
+                                if let Some(subscription) = subs.get(sub_id) {
+                                    if let Err(e) = subscription.handle_event(event.clone()) {
+                                        let err_str = e.to_string();
+                                        // Only warn once if channel closed, then remove subscription
+                                        if err_str.contains("channel closed") {
+                                            debug!("Subscription {} channel closed, removing", sub_id);
+                                            should_remove = true;
+                                        } else {
+                                            warn!("Error handling event for subscription {}: {}", sub_id, e);
+                                        }
+                                    }
+                                }
+                            }
+                            if should_remove {
+                                subscriptions.lock().await.remove(sub_id);
                             }
                         }
 
@@ -643,11 +656,23 @@ impl RelayConnection {
 
                     // Route EVENT messages to subscriptions
                     if let Some(RelayMessage::Event(sub_id, event)) = &msg {
-                        let subs = self.subscriptions.lock().await;
-                        if let Some(subscription) = subs.get(sub_id)
-                            && let Err(e) = subscription.handle_event(event.clone())
+                        let mut should_remove = false;
                         {
-                            warn!("Error handling event for subscription {}: {}", sub_id, e);
+                            let subs = self.subscriptions.lock().await;
+                            if let Some(subscription) = subs.get(sub_id) {
+                                if let Err(e) = subscription.handle_event(event.clone()) {
+                                    let err_str = e.to_string();
+                                    if err_str.contains("channel closed") {
+                                        debug!("Subscription {} channel closed, removing", sub_id);
+                                        should_remove = true;
+                                    } else {
+                                        warn!("Error handling event for subscription {}: {}", sub_id, e);
+                                    }
+                                }
+                            }
+                        }
+                        if should_remove {
+                            self.subscriptions.lock().await.remove(sub_id);
                         }
                     }
 

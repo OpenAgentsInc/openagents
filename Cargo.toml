@@ -35,6 +35,7 @@ members = [
     "crates/pylon",
     "crates/neobank",
     "crates/web-platform",
+    "crates/orderbook",
 ]
 
 # Unified OpenAgents binary
