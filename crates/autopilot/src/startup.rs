@@ -1470,37 +1470,8 @@ impl StartupState {
             }
         }
 
-        self.add_line("", LogStatus::Info, elapsed);
-        self.add_line("Inference backends:", LogStatus::Info, elapsed);
-
-        for backend in &config.inference.local_backends {
-            if backend.available {
-                let models_str = if backend.models.is_empty() {
-                    String::new()
-                } else {
-                    format!(" ({})", backend.models.join(", "))
-                };
-                self.add_line(
-                    &format!("  [OK] {}{}", backend.name, models_str),
-                    LogStatus::Success,
-                    elapsed,
-                );
-            } else {
-                self.add_line(
-                    &format!("  [--] {} (not running)", backend.name),
-                    LogStatus::Info,
-                    elapsed,
-                );
-            }
-        }
-
-        if !config.inference.cloud_providers.is_empty() {
-            self.add_line(
-                &format!("  Cloud: {}", config.inference.cloud_providers.join(", ")),
-                LogStatus::Success,
-                elapsed,
-            );
-        }
+        // Inference backends are shown in the DetectingCompute phase
+        // with more detailed info (endpoints, models), so skip here
 
         self.add_line("", LogStatus::Info, elapsed);
         self.add_line("Tools:", LogStatus::Info, elapsed);
