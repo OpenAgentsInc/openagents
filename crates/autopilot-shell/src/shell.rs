@@ -4,10 +4,10 @@ use autopilot::ClaudeModel;
 use autopilot_service::{AutopilotRuntime, DaemonStatus, RuntimeSnapshot, SessionEvent, SessionPhase};
 use tracing::info;
 use wgpui::{
-    Bounds, Component, EventContext, EventResult, InputEvent, PaintContext,
+    Bounds, Component, EventContext, EventResult, Hsla, InputEvent, PaintContext, Point,
     components::Text,
     components::atoms::{ToolStatus, ToolType},
-    components::hud::{StatusBar, StatusItem, StatusItemContent},
+    components::hud::{CornerConfig, Frame, StatusBar, StatusItem, StatusItemContent},
     components::organisms::{ThreadEntry, ThreadEntryType, ToolCallCard},
     components::sections::ThreadView,
     keymap::{Keymap, KeyContext},
@@ -247,6 +247,68 @@ impl AutopilotShell {
             _ => EventResult::Ignored,
         }
     }
+
+    fn paint_hotkey_legend(&self, bounds: Bounds, cx: &mut PaintContext) {
+        let hotkeys = [
+            ("cmd-b", "Toggle left sidebar"),
+            ("cmd-shift-b", "Toggle right sidebar"),
+            ("cmd-\\", "Toggle all sidebars"),
+            ("esc", "Exit"),
+        ];
+
+        let line_height = 18.0;
+        let padding = 12.0;
+        let legend_w = 220.0;
+        let legend_h = (hotkeys.len() as f32 * line_height) + padding * 2.0;
+
+        // Position in bottom left, above status bar
+        let legend_x = bounds.origin.x + padding;
+        let legend_y = bounds.origin.y + bounds.size.height - 28.0 - legend_h - padding;
+
+        let legend_bounds = Bounds::new(legend_x, legend_y, legend_w, legend_h);
+
+        // Draw HUD frame
+        let line_color = Hsla::new(0.0, 0.0, 0.4, 0.5);
+        let bg_color = Hsla::new(0.0, 0.0, 0.05, 0.9);
+
+        let mut frame = Frame::nefrex()
+            .line_color(line_color)
+            .bg_color(bg_color)
+            .stroke_width(1.0)
+            .corner_config(CornerConfig::all())
+            .square_size(4.0)
+            .small_line_length(4.0)
+            .large_line_length(12.0);
+        frame.paint(legend_bounds, cx);
+
+        // Draw hotkey text
+        let text_color = Hsla::new(0.0, 0.0, 0.6, 0.9);
+        let key_color = Hsla::new(180.0, 0.5, 0.6, 0.9); // Cyan for keys
+        let font_size = 11.0;
+
+        let mut y = legend_y + padding;
+        for (key, desc) in &hotkeys {
+            // Key
+            let key_run = cx.text.layout(
+                key,
+                Point::new(legend_x + padding, y),
+                font_size,
+                key_color,
+            );
+            cx.scene.draw_text(key_run);
+
+            // Description
+            let desc_run = cx.text.layout(
+                desc,
+                Point::new(legend_x + padding + 90.0, y),
+                font_size,
+                text_color,
+            );
+            cx.scene.draw_text(desc_run);
+
+            y += line_height;
+        }
+    }
 }
 
 impl Default for AutopilotShell {
@@ -286,6 +348,9 @@ impl Component for AutopilotShell {
 
         // 7. Paint status bar
         self.status_bar.paint(layout.status, cx);
+
+        // 8. Paint hotkey legend in bottom left
+        self.paint_hotkey_legend(bounds, cx);
     }
 
     fn event(&mut self, event: &InputEvent, bounds: Bounds, cx: &mut EventContext) -> EventResult {
