@@ -279,9 +279,9 @@ impl RelayPool {
     pub async fn publish(&self, event: &Event) -> Result<Vec<PublishConfirmation>> {
         let relays = self.relays.read().await;
 
-        // Get write relays for this event using outbox model
+        // Get publish relays for this event using outbox model
         let outbox = self.outbox.read().await;
-        let target_relay_urls = outbox.get_write_relays(&event.pubkey);
+        let target_relay_urls = outbox.get_publish_relays(event);
 
         // If no specific relays, use all connected relays
         let target_relays: Vec<_> = if target_relay_urls.is_empty() {
@@ -293,6 +293,37 @@ impl RelayPool {
                 .collect()
         };
 
+        self.publish_to_relay_connections(event, target_relays)
+    }
+
+    /// Publish an event to a specific relay URL list
+    pub async fn publish_to_relays(
+        &self,
+        event: &Event,
+        relay_urls: &[String],
+    ) -> Result<Vec<PublishConfirmation>> {
+        let relays = self.relays.read().await;
+        let target_relays: Vec<_> = if relay_urls.is_empty() {
+            relays.values().cloned().collect()
+        } else {
+            let mut selected: Vec<_> = relay_urls
+                .iter()
+                .filter_map(|url| relays.get(url).cloned())
+                .collect();
+            if selected.is_empty() {
+                selected = relays.values().cloned().collect();
+            }
+            selected
+        };
+
+        self.publish_to_relay_connections(event, target_relays)
+    }
+
+    async fn publish_to_relay_connections(
+        &self,
+        event: &Event,
+        target_relays: Vec<Arc<RelayConnection>>,
+    ) -> Result<Vec<PublishConfirmation>> {
         if target_relays.is_empty() {
             return Err(ClientError::NotConnected);
         }

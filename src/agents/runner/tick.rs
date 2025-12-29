@@ -23,10 +23,12 @@ use nostr::nip_sa::{
 };
 use nostr::{
     decode, decrypt, decrypt_v2, encrypt, encrypt_v2, finalize_event, ChannelMessageEvent, Event,
-    EventTemplate, Nip19Entity, KIND_CHANNEL_MESSAGE, ZAP_REQUEST_KIND,
+    EventTemplate, KIND_CHANNEL_MESSAGE, KIND_DM_RELAY_LIST, Nip19Entity,
+    RELAY_LIST_METADATA_KIND, ZAP_REQUEST_KIND,
 };
 use reqwest::{Client, Url};
 use serde::Deserialize;
+use std::collections::{HashMap, HashSet};
 use std::time::{Duration, Instant};
 use uuid::Uuid;
 
@@ -416,6 +418,14 @@ impl TickExecutor {
             tracing::warn!("[{}] Failed to record observations: {}", self.agent_name, e);
         }
 
+        if let Err(e) = self.ingest_peer_relay_lists(&observations).await {
+            tracing::debug!(
+                "[{}] Failed to ingest peer relay lists: {}",
+                self.agent_name,
+                e
+            );
+        }
+
         // 5. Build prompt for reasoning
         let prompt = self.build_reasoning_prompt(&state, &trigger, &observations);
 
@@ -683,6 +693,81 @@ impl TickExecutor {
         }
 
         Ok(observations)
+    }
+
+    async fn ingest_peer_relay_lists(&self, observations: &[Event]) -> Result<()> {
+        let mut peers = HashSet::new();
+
+        for event in observations {
+            if event.kind == 4 {
+                if let Some(peer) = self.dm_peer_pubkey(event) {
+                    if peer != self.pubkey {
+                        peers.insert(peer);
+                    }
+                }
+                continue;
+            }
+
+            if event.pubkey != self.pubkey {
+                peers.insert(event.pubkey.clone());
+            }
+        }
+
+        if peers.is_empty() {
+            return Ok(());
+        }
+
+        let mut authors: Vec<String> = peers.into_iter().collect();
+        authors.sort();
+
+        let filters = vec![serde_json::json!({
+            "kinds": [RELAY_LIST_METADATA_KIND as u64, KIND_DM_RELAY_LIST as u64],
+            "authors": authors,
+            "limit": 200
+        })];
+
+        let subscription_id = format!("relay-list-peers-{}", Uuid::new_v4());
+        let mut rx = self
+            .relay
+            .subscribe_with_channel(&subscription_id, &filters)
+            .await?;
+
+        let deadline = Instant::now() + Duration::from_secs(2);
+        let mut latest_by_key: HashMap<(String, u16), Event> = HashMap::new();
+
+        while Instant::now() < deadline {
+            let remaining = deadline.saturating_duration_since(Instant::now());
+            match tokio::time::timeout(remaining.max(Duration::from_millis(100)), rx.recv()).await
+            {
+                Ok(Some(event)) => {
+                    if event.kind != RELAY_LIST_METADATA_KIND
+                        && event.kind != KIND_DM_RELAY_LIST
+                    {
+                        continue;
+                    }
+                    latest_by_key
+                        .entry((event.pubkey.clone(), event.kind))
+                        .and_modify(|current| {
+                            if event.created_at > current.created_at {
+                                *current = event.clone();
+                            }
+                        })
+                        .or_insert(event);
+                }
+                Ok(None) => break,
+                Err(_) => break,
+            }
+        }
+
+        for event in latest_by_key.values() {
+            let _ = if event.kind == RELAY_LIST_METADATA_KIND {
+                self.relay.ingest_peer_relay_list_event(event).await
+            } else {
+                self.relay.ingest_dm_relay_list_event(event).await
+            };
+        }
+
+        Ok(())
     }
 
     /// Build the reasoning prompt for the LLM

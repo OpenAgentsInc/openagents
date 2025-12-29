@@ -18,11 +18,17 @@ use nostr::nip_sa::{
     AgentProfile, AgentProfileContent, AgentSchedule, AutonomyLevel as NipSaAutonomyLevel,
     ThresholdConfig, TriggerType, KIND_AGENT_PROFILE, KIND_AGENT_SCHEDULE,
 };
-use nostr::{finalize_event, EventTemplate, KIND_CHANNEL_MESSAGE};
-use openagents::agents::{ComputeClient, RelayHub, Scheduler, SharedRelay, StateManager, TickExecutor};
+use nostr::{
+    finalize_event, EventTemplate, KIND_CHANNEL_MESSAGE, KIND_DM_RELAY_LIST,
+    RELAY_LIST_METADATA_KIND,
+};
+use openagents::agents::{
+    ComputeClient, RelayApi, RelayHub, Scheduler, SharedRelay, StateManager, TickExecutor,
+};
 use openagents_spark::{Network as SparkNetwork, SparkWallet, WalletConfig};
 use std::sync::Arc;
 use std::time::Duration;
+use uuid::Uuid;
 
 #[derive(Parser)]
 #[command(name = "agent-runner")]
@@ -39,6 +45,14 @@ struct Args {
     /// Relay URL (repeat or comma-delimit to use multiple relays)
     #[arg(long = "relay", value_delimiter = ',')]
     relays: Vec<String>,
+
+    /// Minimum relay confirmations required for publishing
+    #[arg(long, default_value_t = 2)]
+    min_write_confirmations: usize,
+
+    /// Allow relay list updates to prune existing relays
+    #[arg(long)]
+    allow_relay_prune: bool,
 
     /// NIP-28 channel ID for agent chat (optional)
     #[arg(long)]
@@ -132,6 +146,121 @@ async fn publish_agent_profile_schedule(
     relay
         .publish_event(&event, Duration::from_secs(10))
         .await?;
+
+    Ok(())
+}
+
+fn relay_list_tags(relay_urls: &[String]) -> Vec<Vec<String>> {
+    let mut tags = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+
+    for relay in relay_urls {
+        let trimmed = relay.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        if seen.insert(trimmed.to_string()) {
+            tags.push(vec!["r".to_string(), trimmed.to_string()]);
+        }
+    }
+
+    tags
+}
+
+fn dm_relay_list_tags(relay_urls: &[String]) -> Vec<Vec<String>> {
+    let mut tags = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+
+    for relay in relay_urls {
+        let trimmed = relay.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        if seen.insert(trimmed.to_string()) {
+            tags.push(vec!["relay".to_string(), trimmed.to_string()]);
+        }
+    }
+
+    tags
+}
+
+async fn publish_relay_list(
+    relay_hub: &RelayHub,
+    identity: &UnifiedIdentity,
+    relay_urls: &[String],
+) -> Result<()> {
+    let tags = relay_list_tags(relay_urls);
+    let template = EventTemplate {
+        created_at: chrono::Utc::now().timestamp() as u64,
+        kind: RELAY_LIST_METADATA_KIND,
+        tags,
+        content: String::new(),
+    };
+
+    let event = finalize_event(&template, identity.private_key_bytes())?;
+    relay_hub
+        .publish_event(&event, Duration::from_secs(10))
+        .await?;
+    relay_hub.ingest_relay_list_event(&event).await?;
+
+    Ok(())
+}
+
+async fn publish_dm_relay_list(
+    relay_hub: &RelayHub,
+    identity: &UnifiedIdentity,
+    relay_urls: &[String],
+) -> Result<()> {
+    let template = EventTemplate {
+        created_at: chrono::Utc::now().timestamp() as u64,
+        kind: KIND_DM_RELAY_LIST,
+        tags: dm_relay_list_tags(relay_urls),
+        content: String::new(),
+    };
+
+    let event = finalize_event(&template, identity.private_key_bytes())?;
+    relay_hub
+        .publish_event(&event, Duration::from_secs(10))
+        .await?;
+    relay_hub.ingest_dm_relay_list_event(&event).await?;
+
+    Ok(())
+}
+
+async fn watch_relay_list_updates(
+    relay_hub: Arc<RelayHub>,
+    pubkey_hex: String,
+) -> Result<()> {
+    let filters = vec![serde_json::json!({
+        "kinds": [RELAY_LIST_METADATA_KIND as u64, KIND_DM_RELAY_LIST as u64],
+        "authors": [pubkey_hex],
+    })];
+    let subscription_id = format!("relay-list-{}", Uuid::new_v4());
+    let mut rx = relay_hub
+        .subscribe_with_channel(&subscription_id, &filters)
+        .await?;
+    let mut latest_seen = 0_u64;
+
+    while let Some(event) = rx.recv().await {
+        if event.kind != RELAY_LIST_METADATA_KIND
+            && event.kind != KIND_DM_RELAY_LIST
+        {
+            continue;
+        }
+        if event.created_at < latest_seen {
+            continue;
+        }
+        latest_seen = event.created_at;
+
+        let result = if event.kind == RELAY_LIST_METADATA_KIND {
+            relay_hub.ingest_relay_list_event(&event).await
+        } else {
+            relay_hub.ingest_dm_relay_list_event(&event).await
+        };
+        if let Err(e) = result {
+            tracing::warn!("Failed to apply relay list update: {}", e);
+        }
+    }
 
     Ok(())
 }
@@ -252,6 +381,36 @@ async fn main() -> Result<()> {
     println!("Connected!");
 
     let relay: SharedRelay = relay_hub.clone();
+
+    if let Err(e) = relay_hub.set_min_write_confirmations(args.min_write_confirmations) {
+        tracing::warn!("Failed to set min write confirmations: {}", e);
+    } else {
+        println!(
+            "Min write confirmations: {}",
+            relay_hub.min_write_confirmations()
+        );
+    }
+
+    if let Err(e) = relay_hub.set_allow_relay_prune(args.allow_relay_prune) {
+        tracing::warn!("Failed to set relay prune flag: {}", e);
+    } else if args.allow_relay_prune {
+        println!("Relay pruning enabled");
+    }
+
+    if let Err(e) = publish_relay_list(&relay_hub, &identity, &relay.relay_urls()).await {
+        tracing::warn!("Failed to publish relay list metadata: {}", e);
+    }
+    if let Err(e) = publish_dm_relay_list(&relay_hub, &identity, &relay.relay_urls()).await {
+        tracing::warn!("Failed to publish DM relay list metadata: {}", e);
+    }
+
+    let relay_watch_hub = relay_hub.clone();
+    let relay_watch_pubkey = identity.public_key_hex();
+    tokio::spawn(async move {
+        if let Err(e) = watch_relay_list_updates(relay_watch_hub, relay_watch_pubkey).await {
+            tracing::warn!("Relay list watcher stopped: {}", e);
+        }
+    });
 
     // Initialize components using the shared relay hub
     let state_manager = StateManager::new(

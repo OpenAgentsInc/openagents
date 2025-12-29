@@ -15,7 +15,8 @@ use clap::Parser;
 use compute::backends::{BackendRegistry, CompletionRequest};
 use nostr::{
     derive_keypair, finalize_event, Event, EventTemplate, HandlerInfo, HandlerMetadata,
-    HandlerType, Keypair, PricingInfo, KIND_HANDLER_INFO,
+    HandlerType, Keypair, PricingInfo, KIND_DM_RELAY_LIST, KIND_HANDLER_INFO,
+    RELAY_LIST_METADATA_KIND,
 };
 use openagents::agents::{
     create_channel, now, parse_agent_message, parse_job_request, publish_job_feedback,
@@ -47,6 +48,14 @@ struct Args {
     #[arg(long = "relay", value_delimiter = ',', default_value = DEFAULT_RELAY)]
     relays: Vec<String>,
 
+    /// Minimum relay confirmations required for publishing
+    #[arg(long, default_value_t = 2)]
+    min_write_confirmations: usize,
+
+    /// Allow relay list updates to prune existing relays
+    #[arg(long)]
+    allow_relay_prune: bool,
+
     /// Skip wallet initialization (for testing without Spark)
     #[arg(long)]
     no_wallet: bool,
@@ -61,6 +70,117 @@ struct Args {
 }
 
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync>>;
+
+fn relay_list_tags(relay_urls: &[String]) -> Vec<Vec<String>> {
+    let mut tags = Vec::new();
+    let mut seen = HashSet::new();
+
+    for relay in relay_urls {
+        let trimmed = relay.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        if seen.insert(trimmed.to_string()) {
+            tags.push(vec!["r".to_string(), trimmed.to_string()]);
+        }
+    }
+
+    tags
+}
+
+fn dm_relay_list_tags(relay_urls: &[String]) -> Vec<Vec<String>> {
+    let mut tags = Vec::new();
+    let mut seen = HashSet::new();
+
+    for relay in relay_urls {
+        let trimmed = relay.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        if seen.insert(trimmed.to_string()) {
+            tags.push(vec!["relay".to_string(), trimmed.to_string()]);
+        }
+    }
+
+    tags
+}
+
+async fn publish_relay_list(
+    relay_hub: &RelayHub,
+    keypair: &Keypair,
+    relay_urls: &[String],
+) -> Result<()> {
+    let template = EventTemplate {
+        created_at: now(),
+        kind: RELAY_LIST_METADATA_KIND,
+        tags: relay_list_tags(relay_urls),
+        content: String::new(),
+    };
+    let event = finalize_event(&template, &keypair.private_key)?;
+
+    relay_hub
+        .publish_event(&event, Duration::from_secs(10))
+        .await?;
+    relay_hub.ingest_relay_list_event(&event).await?;
+
+    Ok(())
+}
+
+async fn publish_dm_relay_list(
+    relay_hub: &RelayHub,
+    keypair: &Keypair,
+    relay_urls: &[String],
+) -> Result<()> {
+    let template = EventTemplate {
+        created_at: now(),
+        kind: KIND_DM_RELAY_LIST,
+        tags: dm_relay_list_tags(relay_urls),
+        content: String::new(),
+    };
+    let event = finalize_event(&template, &keypair.private_key)?;
+
+    relay_hub
+        .publish_event(&event, Duration::from_secs(10))
+        .await?;
+    relay_hub.ingest_dm_relay_list_event(&event).await?;
+
+    Ok(())
+}
+
+async fn watch_relay_list_updates(relay_hub: Arc<RelayHub>, pubkey_hex: String) -> Result<()> {
+    let filters = vec![serde_json::json!({
+        "kinds": [RELAY_LIST_METADATA_KIND as u64, KIND_DM_RELAY_LIST as u64],
+        "authors": [pubkey_hex],
+    })];
+    let subscription_id = format!("relay-list-{}", Uuid::new_v4());
+    let mut rx = relay_hub
+        .subscribe_with_channel(&subscription_id, &filters)
+        .await?;
+    let mut latest_seen = 0_u64;
+
+    while let Some(event) = rx.recv().await {
+        if event.kind != RELAY_LIST_METADATA_KIND
+            && event.kind != KIND_DM_RELAY_LIST
+        {
+            continue;
+        }
+        if event.created_at < latest_seen {
+            continue;
+        }
+        latest_seen = event.created_at;
+
+        let result = if event.kind == RELAY_LIST_METADATA_KIND {
+            relay_hub.ingest_relay_list_event(&event).await
+        } else {
+            relay_hub.ingest_dm_relay_list_event(&event).await
+        };
+        if let Err(e) = result {
+            eprintln!("[PROVIDER] Failed to apply relay list update: {}", e);
+        }
+    }
+
+    Ok(())
+}
 
 /// Run the inference and return the result text
 async fn run_inference(
@@ -212,6 +332,36 @@ async fn main() -> Result<()> {
     relay_hub.connect_all().await?;
     println!("[PROVIDER] Connected to relays");
     let relay: SharedRelay = relay_hub.clone();
+
+    if let Err(e) = relay_hub.set_min_write_confirmations(args.min_write_confirmations) {
+        eprintln!("[PROVIDER] Failed to set min write confirmations: {}", e);
+    } else {
+        println!(
+            "[PROVIDER] Min write confirmations: {}",
+            relay_hub.min_write_confirmations()
+        );
+    }
+
+    if let Err(e) = relay_hub.set_allow_relay_prune(args.allow_relay_prune) {
+        eprintln!("[PROVIDER] Failed to set relay prune flag: {}", e);
+    } else if args.allow_relay_prune {
+        println!("[PROVIDER] Relay pruning enabled");
+    }
+
+    if let Err(e) = publish_relay_list(&relay_hub, &keypair, &relay.relay_urls()).await {
+        eprintln!("[PROVIDER] Failed to publish relay list metadata: {}", e);
+    }
+    if let Err(e) = publish_dm_relay_list(&relay_hub, &keypair, &relay.relay_urls()).await {
+        eprintln!("[PROVIDER] Failed to publish DM relay list metadata: {}", e);
+    }
+
+    let relay_watch_hub = relay_hub.clone();
+    let relay_watch_pubkey = hex::encode(keypair.public_key);
+    tokio::spawn(async move {
+        if let Err(e) = watch_relay_list_updates(relay_watch_hub, relay_watch_pubkey).await {
+            eprintln!("[PROVIDER] Relay list watcher stopped: {}", e);
+        }
+    });
 
     // Optional: Get or create channel for coordination
     let channel_id: Option<String> = if args.create_channel {
