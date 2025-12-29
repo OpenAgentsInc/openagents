@@ -1,5 +1,6 @@
 //! Autopilot Shell - unified HUD with dock-based layout
 
+use std::process::Command;
 use std::sync::Arc;
 use tracing::info;
 use wgpui::{
@@ -16,6 +17,15 @@ use winit::window::{Window, WindowId};
 use autopilot_shell::AutopilotShell;
 
 fn main() {
+    // Check for --allow-multiple flag
+    let args: Vec<String> = std::env::args().collect();
+    let allow_multiple = args.iter().any(|a| a == "--allow-multiple");
+
+    // Kill existing autopilot processes unless --allow-multiple is passed
+    if !allow_multiple {
+        kill_existing_autopilots();
+    }
+
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env()
@@ -324,5 +334,34 @@ fn physical_key_to_key(physical_key: &PhysicalKey) -> Key {
             _ => Key::Named(NamedKey::Unidentified),
         },
         PhysicalKey::Unidentified(_) => Key::Named(NamedKey::Unidentified),
+    }
+}
+
+/// Kill any existing autopilot processes (except self)
+fn kill_existing_autopilots() {
+    let my_pid = std::process::id();
+
+    // Use pgrep to find autopilot processes, then kill them
+    if let Ok(output) = Command::new("pgrep").arg("-f").arg("target/debug/autopilot").output() {
+        let pids = String::from_utf8_lossy(&output.stdout);
+        for line in pids.lines() {
+            if let Ok(pid) = line.trim().parse::<u32>() {
+                if pid != my_pid {
+                    let _ = Command::new("kill").arg("-9").arg(pid.to_string()).output();
+                }
+            }
+        }
+    }
+
+    // Also check for release builds
+    if let Ok(output) = Command::new("pgrep").arg("-f").arg("target/release/autopilot").output() {
+        let pids = String::from_utf8_lossy(&output.stdout);
+        for line in pids.lines() {
+            if let Ok(pid) = line.trim().parse::<u32>() {
+                if pid != my_pid {
+                    let _ = Command::new("kill").arg("-9").arg(pid.to_string()).output();
+                }
+            }
+        }
     }
 }
