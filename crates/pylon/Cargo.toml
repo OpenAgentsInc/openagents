@@ -18,6 +18,7 @@ path = "src/lib.rs"
 # Internal crates
 agent = { path = "../agent" }
 compute = { path = "../compute" }
+neobank = { path = "../neobank" }
 nostr = { path = "../nostr/core", features = ["full"] }
 nostr-client = { path = "../nostr/client" }
 spark = { package = "openagents-spark", path = "../spark" }
@@ -56,6 +57,7 @@ rusqlite = { version = "0.32", features = ["bundled"] }
 # Utils
 bip39 = "2.1"
 uuid = { version = "1.11", features = ["v4"] }
+url = "2.5"
 
 # HTTP client for compute detection
 reqwest = { version = "0.12", features = ["json"] }

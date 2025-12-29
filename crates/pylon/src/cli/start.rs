@@ -233,6 +233,24 @@ async fn run_daemon(
                             shutdown_requested = true;
                             DaemonResponse::Ok
                         }
+                        // Neobank commands - not yet connected to service
+                        // These require async support in the daemon loop
+                        DaemonCommand::NeobankBalance { currency: _ } => {
+                            DaemonResponse::Error("Neobank not initialized".to_string())
+                        }
+                        DaemonCommand::NeobankPay { bolt11: _ } => {
+                            DaemonResponse::Error("Neobank not initialized".to_string())
+                        }
+                        DaemonCommand::NeobankSend {
+                            amount_sats: _,
+                            currency: _,
+                        } => DaemonResponse::Error("Neobank not initialized".to_string()),
+                        DaemonCommand::NeobankReceive { token: _ } => {
+                            DaemonResponse::Error("Neobank not initialized".to_string())
+                        }
+                        DaemonCommand::NeobankStatus => {
+                            DaemonResponse::Error("Neobank not initialized".to_string())
+                        }
                     };
                     let _ = conn.write_response(&response);
                 }
