@@ -5,7 +5,7 @@
 use clap::{Args, ValueEnum};
 use compute::domain::{DomainEvent, UnifiedIdentity};
 use std::time::Instant;
-use tokio::sync::broadcast;
+use tokio::sync::{broadcast, RwLock};
 
 use crate::config::PylonConfig;
 use crate::daemon::{
@@ -15,7 +15,9 @@ use crate::daemon::{
 use crate::db::jobs::{Job, JobStatus};
 use crate::db::PylonDb;
 use crate::host::AgentRunner;
+use crate::neobank_service::{NeobankConfig, NeobankService};
 use crate::provider::PylonProvider;
+use neobank::Currency;
 use std::sync::Arc;
 
 /// Operating mode for Pylon
@@ -117,6 +119,30 @@ pub async fn run(args: StartArgs) -> anyhow::Result<()> {
     }
 }
 
+fn parse_currency(value: &str) -> anyhow::Result<Currency> {
+    match value.to_lowercase().as_str() {
+        "btc" | "sats" | "sat" => Ok(Currency::Btc),
+        "usd" | "cents" | "cent" => Ok(Currency::Usd),
+        other => Err(anyhow::anyhow!("Unsupported currency '{}'", other)),
+    }
+}
+
+async fn ensure_neobank_initialized(
+    service: &Arc<RwLock<NeobankService>>,
+    identity: &UnifiedIdentity,
+) -> Result<(), anyhow::Error> {
+    if service.read().await.is_initialized() {
+        return Ok(());
+    }
+
+    let mut service = service.write().await;
+    if service.is_initialized() {
+        return Ok(());
+    }
+
+    service.init(identity).await.map_err(|e| anyhow::anyhow!(e))
+}
+
 /// Run the daemon (called in either foreground or after daemonize)
 async fn run_daemon(
     config: PylonConfig,
@@ -149,6 +175,10 @@ async fn run_daemon(
 
     // Open control socket
     let control_socket = ControlSocket::new(socket_path()?)?;
+
+    let mut neobank_config = NeobankConfig::default();
+    neobank_config.data_dir = config.data_path()?.join("neobank");
+    let neobank = Arc::new(RwLock::new(NeobankService::new(neobank_config)));
 
     // Provider state
     let mut provider: Option<PylonProvider> = None;
@@ -233,23 +263,82 @@ async fn run_daemon(
                             shutdown_requested = true;
                             DaemonResponse::Ok
                         }
-                        // Neobank commands - not yet connected to service
-                        // These require async support in the daemon loop
-                        DaemonCommand::NeobankBalance { currency: _ } => {
-                            DaemonResponse::Error("Neobank not initialized".to_string())
+                        DaemonCommand::NeobankBalance { currency } => {
+                            match parse_currency(&currency) {
+                                Ok(currency) => {
+                                    if let Err(e) =
+                                        ensure_neobank_initialized(&neobank, &identity).await
+                                    {
+                                        DaemonResponse::Error(e.to_string())
+                                    } else {
+                                        let service = neobank.read().await;
+                                        match service.get_balance(currency).await {
+                                            Ok(sats) => DaemonResponse::NeobankBalance { sats },
+                                            Err(e) => DaemonResponse::Error(e.to_string()),
+                                        }
+                                    }
+                                }
+                                Err(e) => DaemonResponse::Error(e.to_string()),
+                            }
                         }
-                        DaemonCommand::NeobankPay { bolt11: _ } => {
-                            DaemonResponse::Error("Neobank not initialized".to_string())
+                        DaemonCommand::NeobankPay { bolt11 } => {
+                            if let Err(e) = ensure_neobank_initialized(&neobank, &identity).await {
+                                DaemonResponse::Error(e.to_string())
+                            } else {
+                                let service = neobank.read().await;
+                                match service.pay_invoice(&bolt11).await {
+                                    Ok(preimage) => DaemonResponse::NeobankPayment { preimage },
+                                    Err(e) => DaemonResponse::Error(e.to_string()),
+                                }
+                            }
                         }
                         DaemonCommand::NeobankSend {
-                            amount_sats: _,
-                            currency: _,
-                        } => DaemonResponse::Error("Neobank not initialized".to_string()),
-                        DaemonCommand::NeobankReceive { token: _ } => {
-                            DaemonResponse::Error("Neobank not initialized".to_string())
+                            amount_sats,
+                            currency,
+                        } => match parse_currency(&currency) {
+                            Ok(currency) => {
+                                if let Err(e) =
+                                    ensure_neobank_initialized(&neobank, &identity).await
+                                {
+                                    DaemonResponse::Error(e.to_string())
+                                } else {
+                                    let service = neobank.read().await;
+                                    match service.send_tokens(amount_sats, currency).await {
+                                        Ok(token) => DaemonResponse::NeobankSend { token },
+                                        Err(e) => DaemonResponse::Error(e.to_string()),
+                                    }
+                                }
+                            }
+                            Err(e) => DaemonResponse::Error(e.to_string()),
+                        },
+                        DaemonCommand::NeobankReceive { token } => {
+                            if let Err(e) = ensure_neobank_initialized(&neobank, &identity).await {
+                                DaemonResponse::Error(e.to_string())
+                            } else {
+                                let service = neobank.read().await;
+                                match service.receive_tokens(&token).await {
+                                    Ok(amount_sats) => {
+                                        DaemonResponse::NeobankReceive { amount_sats }
+                                    }
+                                    Err(e) => DaemonResponse::Error(e.to_string()),
+                                }
+                            }
                         }
                         DaemonCommand::NeobankStatus => {
-                            DaemonResponse::Error("Neobank not initialized".to_string())
+                            if let Err(e) = ensure_neobank_initialized(&neobank, &identity).await {
+                                DaemonResponse::Error(e.to_string())
+                            } else {
+                                let service = neobank.read().await;
+                                match service.get_treasury_status().await {
+                                    Ok(status) => DaemonResponse::NeobankStatus {
+                                        btc_balance_sats: status.btc_balance_sats,
+                                        usd_balance_cents: status.usd_balance_cents,
+                                        treasury_active: status.treasury_active,
+                                        btc_usd_rate: status.btc_usd_rate,
+                                    },
+                                    Err(e) => DaemonResponse::Error(e.to_string()),
+                                }
+                            }
                         }
                     };
                     let _ = conn.write_response(&response);

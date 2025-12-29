@@ -23,7 +23,9 @@
 //! This is NOT required for the core compute flow.
 
 pub mod protocol;
+pub mod relay;
 pub mod runner;
 
 pub use protocol::*;
+pub use relay::{RelayApi, RelayHub, SharedRelay};
 pub use runner::{ComputeClient, Scheduler, StateManager, TickExecutor, TickResult, TickTrigger, TrajectoryPublisher};

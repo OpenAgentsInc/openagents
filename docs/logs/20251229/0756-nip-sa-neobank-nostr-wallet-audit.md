@@ -58,3 +58,11 @@ Goal: Validate readiness for sovereign agents to go live on multiple relays, com
 
 ## Open questions / assumptions
 - I assumed "DM spec" refers to NIP-04 or NIP-44. If you require NIP-17, it is not wired into any runtime paths yet.
+
+## Changes implemented after audit
+- Added a multi-relay RelayHub/RelayApi abstraction and updated protocol helpers + runner components to use shared relay pools with unique subscriptions.
+- Agent runner now accepts multiple `--relay` values, optional `--channel`, and publishes AgentProfile/AgentSchedule on startup via the shared relay hub (including channel trigger when configured).
+- Tick executor now refreshes wallet balance, publishes NIP-SA tick request/result events, decrypts inbound DMs (NIP-04 + NIP-44), and formats channel/DM observations in prompts.
+- Added action parsing/execution for DMs, channel messages, invoice payments, and payment requests; implemented NIP-57 zap flow (LNURL lookup + invoice pay).
+- Compute client now exposes wallet balance refresh and invoice create/pay helpers for agent-to-agent payments.
+- Pylon daemon now initializes neobank service on demand and wires balance/pay/send/receive/status commands.

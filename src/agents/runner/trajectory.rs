@@ -13,13 +13,13 @@ use nostr::nip_sa::{
     TrajectoryVisibility, KIND_TRAJECTORY_EVENT, KIND_TRAJECTORY_SESSION,
 };
 use nostr::{finalize_event, Event, EventTemplate};
-use nostr_client::RelayConnection;
+use crate::agents::SharedRelay;
 use std::time::Duration;
 
 /// Trajectory publisher for agent tick execution
 pub struct TrajectoryPublisher {
     identity: UnifiedIdentity,
-    relay: RelayConnection,
+    relay: SharedRelay,
     /// Current session ID (set when session starts)
     current_session_id: Option<String>,
     /// Current tick ID
@@ -34,7 +34,7 @@ pub struct TrajectoryPublisher {
 
 impl TrajectoryPublisher {
     /// Create a new trajectory publisher
-    pub fn new(identity: UnifiedIdentity, relay: RelayConnection) -> Self {
+    pub fn new(identity: UnifiedIdentity, relay: SharedRelay) -> Self {
         Self {
             identity,
             relay,

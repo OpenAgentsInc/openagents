@@ -17,17 +17,19 @@ use crate::agents::{
     subscribe_job_responses, AgentMessage, JobStatus, KIND_JOB_FEEDBACK, KIND_JOB_REQUEST_TEXT,
     KIND_JOB_RESULT_TEXT,
 };
+use crate::agents::SharedRelay;
 use anyhow::{anyhow, Result};
 use compute::domain::UnifiedIdentity;
 use nostr::{
     finalize_event, ChannelMessageEvent, Event, EventTemplate, HandlerInfo, KIND_CHANNEL_MESSAGE,
     KIND_HANDLER_INFO,
 };
-use nostr_client::RelayConnection;
+use nostr::nip_sa::AgentStateContent;
 use openagents_spark::SparkWallet;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::mpsc;
+use uuid::Uuid;
 
 /// Provider discovered via NIP-89
 #[derive(Debug, Clone)]
@@ -44,13 +46,13 @@ pub struct ProviderInfo {
 /// Compute client for agents to buy inference
 pub struct ComputeClient {
     identity: UnifiedIdentity,
-    pub relay: RelayConnection,
+    pub relay: SharedRelay,
     wallet: Arc<SparkWallet>,
 }
 
 impl ComputeClient {
     /// Create a new compute client
-    pub fn new(identity: UnifiedIdentity, relay: RelayConnection, wallet: Arc<SparkWallet>) -> Self {
+    pub fn new(identity: UnifiedIdentity, relay: SharedRelay, wallet: Arc<SparkWallet>) -> Self {
         Self {
             identity,
             relay,
@@ -117,7 +119,7 @@ impl ComputeClient {
                 .iter()
                 .find(|(k, _)| k == "relay")
                 .map(|(_, v)| v.clone())
-                .unwrap_or_else(|| self.relay.url().to_string());
+                .unwrap_or_else(|| self.relay.relay_url());
 
             let network = handler
                 .custom_tags
@@ -195,7 +197,7 @@ impl ComputeClient {
     ) -> Result<String> {
         // Publish job request (kind:5050)
         let job_request_id = publish_job_request(
-            &self.relay,
+            self.relay.as_ref(),
             self.identity.keypair(),
             &provider.pubkey,
             prompt,
@@ -208,7 +210,7 @@ impl ComputeClient {
         tracing::debug!("Published job request: {}", job_request_id);
 
         // Subscribe to responses for this job
-        let mut rx = subscribe_job_responses(&self.relay, &job_request_id)
+        let mut rx = subscribe_job_responses(self.relay.as_ref(), &job_request_id)
             .await
             .map_err(|e| anyhow!("Failed to subscribe to job responses: {}", e))?;
 
@@ -404,9 +406,10 @@ impl ComputeClient {
             "#e": [channel_id]
         })];
 
+        let subscription_id = format!("agent-channel-{}-{}", channel_id, Uuid::new_v4());
         let rx = self
             .relay
-            .subscribe_with_channel("agent-channel", &filters)
+            .subscribe_with_channel(&subscription_id, &filters)
             .await?;
         Ok(rx)
     }
@@ -414,7 +417,7 @@ impl ComputeClient {
     /// Send a message to a NIP-28 channel (optional coordination layer)
     async fn send_channel_message(&self, channel_id: &str, msg: &AgentMessage) -> Result<()> {
         let msg_json = serde_json::to_string(msg)?;
-        let relay_url = self.relay.url().to_string();
+        let relay_url = self.relay.relay_url();
 
         let channel_msg = ChannelMessageEvent::new(channel_id, &relay_url, &msg_json, now());
 
@@ -431,6 +434,34 @@ impl ComputeClient {
             .await?;
 
         Ok(())
+    }
+
+    /// Refresh wallet balance and update agent state
+    pub async fn refresh_wallet_balance(&self, state: &mut AgentStateContent) -> Result<u64> {
+        let balance = self.wallet.get_balance().await?;
+        let total = balance.total_sats();
+        state.update_balance(total);
+        Ok(total)
+    }
+
+    /// Pay a Lightning invoice via Spark
+    pub async fn pay_invoice(&self, bolt11: &str, amount_sats: Option<u64>) -> Result<String> {
+        let payment = self.wallet.send_payment_simple(bolt11, amount_sats).await?;
+        Ok(payment.payment.id)
+    }
+
+    /// Create an invoice for receiving funds
+    pub async fn create_invoice(
+        &self,
+        amount_sats: u64,
+        memo: Option<String>,
+        expiry_seconds: Option<u64>,
+    ) -> Result<String> {
+        let invoice = self
+            .wallet
+            .create_invoice(amount_sats, memo, expiry_seconds)
+            .await?;
+        Ok(invoice.payment_request)
     }
 
     /// Get the cheapest available provider
