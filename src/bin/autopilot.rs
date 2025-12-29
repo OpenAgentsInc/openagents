@@ -38,6 +38,7 @@ fn main() {
 #[derive(Default)]
 struct App {
     state: Option<RenderState>,
+    current_modifiers: Modifiers,
 }
 
 struct RenderState {
@@ -142,7 +143,6 @@ impl ApplicationHandler for App {
         match event {
             WindowEvent::CloseRequested => event_loop.exit(),
             WindowEvent::KeyboardInput { event, .. } => {
-                // Convert to InputEvent for shell
                 if event.state.is_pressed() {
                     // Check for escape to exit
                     if let PhysicalKey::Code(KeyCode::Escape) = event.physical_key {
@@ -150,20 +150,11 @@ impl ApplicationHandler for App {
                         return;
                     }
 
-                    // Convert to wgpui InputEvent
+                    // Convert to wgpui InputEvent with current modifiers
                     let key = physical_key_to_key(&event.physical_key);
-                    let modifiers = Modifiers {
-                        shift: event.repeat,
-                        ctrl: false,
-                        alt: false,
-                        meta: false,
-                    };
-
-                    // Get modifiers from window state
-                    // For now, handle commonly used shortcuts
                     let input_event = InputEvent::KeyDown {
                         key,
-                        modifiers,
+                        modifiers: self.current_modifiers,
                     };
 
                     let scale_factor = state.window.scale_factor() as f32;
@@ -177,9 +168,14 @@ impl ApplicationHandler for App {
                 state.window.request_redraw();
             }
             WindowEvent::ModifiersChanged(modifiers) => {
-                // Store modifiers for key events
-                // Could be enhanced to track modifiers properly
-                let _ = modifiers;
+                // Track current modifier state
+                let mods = modifiers.state();
+                self.current_modifiers = Modifiers {
+                    shift: mods.shift_key(),
+                    ctrl: mods.control_key(),
+                    alt: mods.alt_key(),
+                    meta: mods.super_key(),
+                };
             }
             WindowEvent::Resized(new_size) => {
                 state.config.width = new_size.width.max(1);
@@ -188,7 +184,6 @@ impl ApplicationHandler for App {
                 state.window.request_redraw();
             }
             WindowEvent::MouseWheel { delta, .. } => {
-                // Convert to scroll event for shell
                 let scroll_delta = match delta {
                     winit::event::MouseScrollDelta::LineDelta(_, y) => y * 40.0,
                     winit::event::MouseScrollDelta::PixelDelta(pos) => pos.y as f32,
