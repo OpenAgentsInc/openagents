@@ -2,21 +2,24 @@
 
 use wgpui::{
     Bounds, Component, EventContext, EventResult, Hsla, InputEvent, PaintContext, theme,
-    components::molecules::{SessionCard, SessionInfo, SessionSearchBar},
+    components::TextInput,
+    components::molecules::{SessionCard, SessionInfo},
     components::hud::{CornerConfig, Frame},
 };
 use crate::dock::{DockPosition, Panel};
 
 /// Left sidebar panel with session search and card
 pub struct SessionsPanel {
-    search: SessionSearchBar,
+    search: TextInput,
     card: SessionCard,
 }
 
 impl SessionsPanel {
     pub fn new() -> Self {
         Self {
-            search: SessionSearchBar::new(),
+            search: TextInput::new()
+                .placeholder("Search sessions...")
+                .background(theme::bg::SURFACE),
             card: SessionCard::new(
                 SessionInfo::new("session", "Autopilot Shell")
                     .model("claude-sonnet-4-5")
@@ -69,7 +72,7 @@ impl Panel for SessionsPanel {
         frame.paint(bounds, cx);
 
         let padding = 16.0;
-        let search_h = 46.0;
+        let search_h = 32.0;
 
         // Search bar at top
         let search_bounds = Bounds::new(
@@ -91,8 +94,8 @@ impl Panel for SessionsPanel {
     }
 
     fn event(&mut self, event: &InputEvent, bounds: Bounds, cx: &mut EventContext) -> EventResult {
-        let padding = 12.0;
-        let search_h = 46.0;
+        let padding = 16.0;
+        let search_h = 32.0;
 
         let search_bounds = Bounds::new(
             bounds.origin.x + padding,
