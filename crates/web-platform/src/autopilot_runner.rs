@@ -2,12 +2,13 @@
 
 use actix_web::{web, HttpResponse, Result};
 use serde::{Deserialize, Serialize};
-use tracing::{info, error};
+use tracing::info;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use std::collections::HashMap;
 
 // In-memory job store (use database in production)
+#[allow(dead_code)]
 type JobStore = Arc<RwLock<HashMap<String, AutopilotJob>>>;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

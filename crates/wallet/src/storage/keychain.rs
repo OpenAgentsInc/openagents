@@ -5,6 +5,8 @@
 //! - Linux: Secret Service (GNOME Keyring, KWallet)
 //! - Windows: Credential Manager
 
+#![allow(dead_code)]
+
 use anyhow::{Context, Result};
 use argon2::Argon2;
 use base64::engine::general_purpose::STANDARD as Base64;

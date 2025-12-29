@@ -1,5 +1,7 @@
 //! Nostr identity CLI commands
 
+#![allow(dead_code)]
+
 use anyhow::{Context, Result};
 use colored::Colorize;
 use crate::cli::load_mnemonic;

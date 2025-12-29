@@ -1,5 +1,7 @@
 //! Payee address book CLI commands.
 
+#![allow(dead_code)]
+
 use anyhow::Result;
 use colored::Colorize;
 

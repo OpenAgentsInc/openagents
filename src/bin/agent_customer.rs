@@ -10,20 +10,21 @@
 
 use clap::Parser;
 use nostr::{derive_keypair, Event, HandlerInfo, Keypair, KIND_HANDLER_INFO};
-use nostr_client::RelayConnection;
 use openagents::agents::{
     now, parse_agent_message, parse_job_feedback, parse_job_result, publish_job_request,
     send_channel_message, subscribe_job_responses, subscribe_to_channel, AgentMessage, JobStatus,
-    CUSTOMER_MNEMONIC, DEFAULT_RELAY, KIND_JOB_FEEDBACK, KIND_JOB_REQUEST_TEXT,
-    KIND_JOB_RESULT_TEXT,
+    RelayApi, RelayHub, SharedRelay, CUSTOMER_MNEMONIC, DEFAULT_RELAY, KIND_JOB_FEEDBACK,
+    KIND_JOB_REQUEST_TEXT, KIND_JOB_RESULT_TEXT,
 };
 use openagents_spark::{Network as SparkNetwork, SparkSigner, SparkWallet, WalletConfig};
 use rand::Rng;
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::env::temp_dir;
+use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::mpsc;
+use uuid::Uuid;
 
 /// Provider info discovered via NIP-89 (kind 31990)
 #[derive(Debug, Clone)]
@@ -51,9 +52,9 @@ struct Args {
     #[arg(long)]
     prompt: String,
 
-    /// Relay URL
-    #[arg(long, default_value = DEFAULT_RELAY)]
-    relay: String,
+    /// Relay URL (repeat or comma-delimit to use multiple relays)
+    #[arg(long = "relay", value_delimiter = ',', default_value = DEFAULT_RELAY)]
+    relays: Vec<String>,
 
     /// Skip wallet initialization (for testing without Spark)
     #[arg(long)]
@@ -80,7 +81,7 @@ type Result<T> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync>
 
 /// Discover providers via NIP-89 (kind 31990)
 async fn discover_providers(
-    relay: &RelayConnection,
+    relay: &dyn RelayApi,
     discovery_time: u64,
     max_price: Option<u64>,
 ) -> Result<Vec<DiscoveredProvider>> {
@@ -91,8 +92,9 @@ async fn discover_providers(
         "limit": 50
     })];
 
+    let subscription_id = format!("nip89-discovery-{}", Uuid::new_v4());
     let mut discovery_rx = relay
-        .subscribe_with_channel("nip89-discovery", &filters)
+        .subscribe_with_channel(&subscription_id, &filters)
         .await?;
 
     // Collect events during discovery period
@@ -191,7 +193,7 @@ async fn discover_providers(
 
 /// Request compute via direct NIP-90 events (primary flow)
 async fn request_via_direct_events(
-    relay: &RelayConnection,
+    relay: &dyn RelayApi,
     keypair: &Keypair,
     provider: &DiscoveredProvider,
     prompt: &str,
@@ -320,7 +322,7 @@ async fn request_via_direct_events(
 
 /// Request compute via NIP-28 channel (legacy flow for backward compatibility)
 async fn request_via_channel(
-    relay: &RelayConnection,
+    relay: &dyn RelayApi,
     keypair: &Keypair,
     channel_id: &str,
     provider_pubkey: &str,
@@ -331,11 +333,13 @@ async fn request_via_channel(
     let customer_pubkey = hex::encode(keypair.public_key);
 
     // Subscribe to channel
-    let mut rx: mpsc::Receiver<Event> = subscribe_to_channel(relay, channel_id, "customer-channel")
-        .await
-        .map_err(|e| -> Box<dyn std::error::Error + Send + Sync> {
-            format!("Failed to subscribe to channel: {}", e).into()
-        })?;
+    let subscription_id = format!("customer-channel-{}", Uuid::new_v4());
+    let mut rx: mpsc::Receiver<Event> =
+        subscribe_to_channel(relay, channel_id, &subscription_id)
+            .await
+            .map_err(|e| -> Box<dyn std::error::Error + Send + Sync> {
+                format!("Failed to subscribe to channel: {}", e).into()
+            })?;
 
     // Record start time (accept messages from last 5 minutes)
     let start_time = now().saturating_sub(300);
@@ -568,14 +572,24 @@ async fn main() -> Result<()> {
         None
     };
 
-    // Connect to relay
-    println!("[CUSTOMER] Connecting to relay: {}", args.relay);
-    let relay = RelayConnection::new(&args.relay)?;
-    relay.connect().await?;
-    println!("[CUSTOMER] Connected to relay");
+    // Connect to relays
+    let relay_urls = if args.relays.is_empty() {
+        vec![DEFAULT_RELAY.to_string()]
+    } else {
+        args.relays.clone()
+    };
+    println!(
+        "[CUSTOMER] Connecting to relays: {}",
+        relay_urls.join(", ")
+    );
+    let relay_hub = Arc::new(RelayHub::new(relay_urls)?);
+    relay_hub.connect_all().await?;
+    println!("[CUSTOMER] Connected to relays");
+    let relay: SharedRelay = relay_hub.clone();
 
     // Discover providers via NIP-89
-    let discovered = discover_providers(&relay, args.discovery_time, args.max_price).await?;
+    let discovered =
+        discover_providers(relay.as_ref(), args.discovery_time, args.max_price).await?;
 
     if discovered.is_empty() {
         println!("[CUSTOMER] No providers discovered via NIP-89!");
@@ -640,7 +654,7 @@ async fn main() -> Result<()> {
             Some(ch_id) => {
                 println!("[CUSTOMER] Using channel flow: {}", ch_id);
                 request_via_channel(
-                    &relay,
+                    relay.as_ref(),
                     &keypair,
                     ch_id,
                     &selected.pubkey,
@@ -660,7 +674,7 @@ async fn main() -> Result<()> {
         println!("[CUSTOMER] Using direct NIP-90 events (kind:5050 -> 7000 -> 6050)");
         let budget_sats = args.max_price.map(|p| p / 1000).unwrap_or(1000);
         request_via_direct_events(
-            &relay,
+            relay.as_ref(),
             &keypair,
             &selected,
             &args.prompt,

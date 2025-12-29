@@ -4,10 +4,12 @@ use rusqlite::Connection;
 use anyhow::Result;
 use std::sync::{Arc, Mutex};
 
+#[allow(dead_code)]
 pub struct Database {
     conn: Arc<Mutex<Connection>>,
 }
 
+#[allow(dead_code)]
 impl Database {
     pub fn new(database_path: &str) -> Result<Self> {
         let conn = Connection::open(database_path)?;
