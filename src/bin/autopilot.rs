@@ -152,6 +152,16 @@ impl ApplicationHandler for App {
 
                     // Convert to wgpui InputEvent with current modifiers
                     let key = physical_key_to_key(&event.physical_key);
+
+                    info!(
+                        "KeyDown: {:?}, modifiers: shift={} ctrl={} alt={} meta={}",
+                        key,
+                        self.current_modifiers.shift,
+                        self.current_modifiers.ctrl,
+                        self.current_modifiers.alt,
+                        self.current_modifiers.meta
+                    );
+
                     let input_event = InputEvent::KeyDown {
                         key,
                         modifiers: self.current_modifiers,
@@ -163,7 +173,8 @@ impl ApplicationHandler for App {
                     let bounds = Bounds::new(0.0, 0.0, width, height);
 
                     let mut cx = EventContext::new();
-                    let _ = state.shell.event(&input_event, bounds, &mut cx);
+                    let result = state.shell.event(&input_event, bounds, &mut cx);
+                    info!("Shell event result: {:?}", result);
                 }
                 state.window.request_redraw();
             }

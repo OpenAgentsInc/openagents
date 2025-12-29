@@ -2,6 +2,7 @@
 
 use autopilot::ClaudeModel;
 use autopilot_service::{AutopilotRuntime, DaemonStatus, RuntimeSnapshot, SessionEvent, SessionPhase};
+use tracing::info;
 use wgpui::{
     Bounds, Component, EventContext, EventResult, InputEvent, PaintContext,
     components::Text,
@@ -88,7 +89,7 @@ impl AutopilotShell {
             bottom_dock,
             thread_view,
             background: HudBackground::new(),
-            startup: Some(StartupSequence::new()),
+            startup: None, // Skip startup animation, show UI immediately
             status_bar,
             runtime: AutopilotRuntime::new(ClaudeModel::Sonnet),
             last_line_count: 0,
@@ -288,18 +289,34 @@ impl Component for AutopilotShell {
     }
 
     fn event(&mut self, event: &InputEvent, bounds: Bounds, cx: &mut EventContext) -> EventResult {
-        // During startup, ignore events
-        if self.startup.is_some() {
-            return EventResult::Ignored;
+        // During startup, ignore events (but also check if startup is complete)
+        if let Some(ref startup) = self.startup {
+            if !startup.is_complete() {
+                info!("Shell: ignoring event during startup");
+                return EventResult::Ignored;
+            }
+            // Startup complete, clear it
+            info!("Shell: startup complete, clearing");
+        }
+        // Clear startup if complete
+        if self.startup.as_ref().is_some_and(|s| s.is_complete()) {
+            self.startup = None;
         }
 
         // Handle keyboard via keymap
         if let InputEvent::KeyDown { key, modifiers } = event {
+            info!("Shell: KeyDown {:?} with modifiers {:?}", key, modifiers);
+            info!("Shell: keymap has {} bindings", self.keymap.len());
+
             if let Some(action) = self.keymap.match_keystroke(key, modifiers, &self.key_context) {
+                info!("Shell: matched action: {}", action.name());
                 let result = self.handle_action(action.name());
+                info!("Shell: action result: {:?}", result);
                 if result.is_handled() {
                     return result;
                 }
+            } else {
+                info!("Shell: no action matched");
             }
         }
 

@@ -62,8 +62,8 @@ impl Component for StartupSequence {
 
         // Draw centered frame
         if frame_progress > 0.0 {
-            let frame_w = 600.0;
-            let frame_h = 400.0;
+            let frame_w = 1000.0;
+            let frame_h = 600.0;
             let frame_x = (bounds.size.width - frame_w) / 2.0;
             let frame_y = (bounds.size.height - frame_h) / 2.0;
 
@@ -96,12 +96,17 @@ impl Component for StartupSequence {
                 let text_area_x = frame_x + bounds.origin.x + padding;
                 let text_area_y = frame_y + bounds.origin.y + padding;
                 let text_area_w = frame_w - padding * 2.0;
+                let text_area_h = frame_h - padding * 2.0;
+                let max_y = text_area_y + text_area_h - line_height;
 
                 let char_width = 7.2;
                 let max_chars = (text_area_w / char_width) as usize;
 
                 let mut y = text_area_y;
                 for log_line in &self.startup_state.lines {
+                    if y > max_y {
+                        break; // Stop if we'd overflow
+                    }
                     let color = match log_line.status {
                         LogStatus::Pending => Hsla::new(45.0, 0.9, 0.65, text_alpha),
                         LogStatus::Success => Hsla::new(120.0, 0.7, 0.6, text_alpha),
@@ -119,6 +124,9 @@ impl Component for StartupSequence {
                     let wrapped = wrap_text(&full_text, max_chars);
 
                     for line in wrapped {
+                        if y > max_y {
+                            break;
+                        }
                         let text_run = cx.text.layout(&line, Point::new(text_area_x, y), font_size, color);
                         cx.scene.draw_text(text_run);
                         y += line_height;
