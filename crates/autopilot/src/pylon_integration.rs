@@ -70,6 +70,40 @@ fn get_pylon_pid() -> Option<u32> {
     content.trim().parse().ok()
 }
 
+pub fn pylon_identity_exists() -> bool {
+    let config = match pylon::PylonConfig::load() {
+        Ok(config) => config,
+        Err(err) => {
+            debug!("Failed to load pylon config: {}", err);
+            return false;
+        }
+    };
+
+    let data_dir = match config.data_path() {
+        Ok(path) => path,
+        Err(err) => {
+            debug!("Failed to resolve pylon data dir: {}", err);
+            return false;
+        }
+    };
+
+    data_dir.join("identity.mnemonic").exists()
+}
+
+pub fn init_pylon_identity() -> anyhow::Result<()> {
+    let pylon_bin = find_pylon_binary()?;
+    let status = Command::new(&pylon_bin)
+        .arg("init")
+        .status()
+        .map_err(|e| anyhow::anyhow!("Failed to run pylon init: {}", e))?;
+
+    if status.success() {
+        Ok(())
+    } else {
+        Err(anyhow::anyhow!("pylon init failed with status: {}", status))
+    }
+}
+
 /// Start the pylon daemon in background
 ///
 /// Runs `pylon start` command which will daemonize itself.
