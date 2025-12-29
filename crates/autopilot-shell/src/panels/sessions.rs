@@ -4,7 +4,7 @@ use wgpui::{
     Bounds, Component, EventContext, EventResult, Hsla, InputEvent, PaintContext, theme,
     components::TextInput,
     components::molecules::{SessionCard, SessionInfo},
-    components::hud::{CornerConfig, Frame},
+    components::hud::Frame,
 };
 use crate::dock::{DockPosition, Panel};
 
@@ -57,18 +57,14 @@ impl Panel for SessionsPanel {
     }
 
     fn paint(&mut self, bounds: Bounds, cx: &mut PaintContext) {
-        // Draw HUD frame around panel
-        let line_color = Hsla::new(0.0, 0.0, 0.5, 0.6);
-        let bg_color = Hsla::new(0.0, 0.0, 0.05, 0.85);
+        // Draw simple line frame around panel
+        let line_color = Hsla::new(0.0, 0.0, 0.3, 0.5);
+        let bg_color = Hsla::new(0.0, 0.0, 0.05, 0.9);
 
-        let mut frame = Frame::nefrex()
+        let mut frame = Frame::lines()
             .line_color(line_color)
             .bg_color(bg_color)
-            .stroke_width(1.0)
-            .corner_config(CornerConfig::all())
-            .square_size(6.0)
-            .small_line_length(6.0)
-            .large_line_length(20.0);
+            .stroke_width(1.0);
         frame.paint(bounds, cx);
 
         let padding = 16.0;
