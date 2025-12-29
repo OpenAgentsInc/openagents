@@ -985,6 +985,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "autopilot-shell"
+version = "0.1.0"
+dependencies = [
+ "autopilot",
+ "autopilot-service",
+ "tracing",
+ "wgpui",
+]
+
+[[package]]
 name = "autopilot-ui"
 version = "0.1.0"
 dependencies = [
@@ -7448,6 +7458,7 @@ dependencies = [
  "autopilot",
  "autopilot-app",
  "autopilot-service",
+ "autopilot-shell",
  "base64 0.22.1",
  "bech32 0.11.1",
  "bip39",

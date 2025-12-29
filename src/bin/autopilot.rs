@@ -1,11 +1,10 @@
+//! Autopilot Shell - unified HUD with dock-based layout
+
 use std::sync::Arc;
-use std::time::Instant;
 use tracing::info;
 use wgpui::{
-    Bounds, Component, Easing, Hsla, PaintContext, Point, Quad, Scene, Size, TextSystem,
-};
-use wgpui::components::hud::{
-    CornerConfig, DotsGrid, DotsOrigin, DotShape, DrawDirection, Frame, FrameAnimation,
+    Bounds, Component, EventContext, InputEvent, Key, Modifiers, NamedKey, PaintContext,
+    Scene, Size, TextSystem,
 };
 use wgpui::renderer::Renderer;
 use winit::application::ApplicationHandler;
@@ -14,7 +13,7 @@ use winit::event_loop::{ActiveEventLoop, EventLoop};
 use winit::keyboard::{KeyCode, PhysicalKey};
 use winit::window::{Window, WindowId};
 
-use autopilot::{StartupState, LogStatus, ClaudeModel, wrap_text};
+use autopilot_shell::AutopilotShell;
 
 fn main() {
     tracing_subscriber::fmt()
@@ -22,14 +21,14 @@ fn main() {
             tracing_subscriber::EnvFilter::try_from_default_env()
                 .unwrap_or_else(|_| {
                     tracing_subscriber::EnvFilter::new(
-                        "autopilot=debug,openagents=debug,wgpui=info,cosmic_text=warn,wgpu=warn,info"
+                        "autopilot=debug,autopilot_shell=debug,openagents=debug,wgpui=info,cosmic_text=warn,wgpu=warn,info"
                     )
                 })
         )
         .with_target(true)
         .init();
 
-    info!("Starting Autopilot");
+    info!("Starting Autopilot Shell");
 
     let event_loop = EventLoop::new().expect("Failed to create event loop");
     let mut app = App::default();
@@ -49,10 +48,7 @@ struct RenderState {
     config: wgpu::SurfaceConfiguration,
     renderer: Renderer,
     text_system: TextSystem,
-    start_time: Instant,
-    startup_state: StartupState,
-    scroll_offset: f32,
-    auto_scroll: bool,
+    shell: AutopilotShell,
 }
 
 impl ApplicationHandler for App {
@@ -63,7 +59,8 @@ impl ApplicationHandler for App {
 
         let window_attrs = Window::default_attributes()
             .with_title("Autopilot")
-            .with_inner_size(winit::dpi::LogicalSize::new(1600, 1000));
+            .with_inner_size(winit::dpi::LogicalSize::new(1600, 1000))
+            .with_maximized(true);
 
         let window = Arc::new(
             event_loop
@@ -120,11 +117,8 @@ impl ApplicationHandler for App {
             let scale_factor = window.scale_factor() as f32;
             let text_system = TextSystem::new(scale_factor);
 
-            let model = match std::env::var("AUTOPILOT_MODEL").as_deref() {
-                Ok("opus") | Ok("Opus") | Ok("OPUS") => ClaudeModel::Opus,
-                _ => ClaudeModel::Sonnet,
-            };
-            
+            let shell = AutopilotShell::new();
+
             RenderState {
                 window,
                 surface,
@@ -133,10 +127,7 @@ impl ApplicationHandler for App {
                 config,
                 renderer,
                 text_system,
-                start_time: Instant::now(),
-                startup_state: StartupState::with_model(model),
-                scroll_offset: 0.0,
-                auto_scroll: true,
+                shell,
             }
         });
 
@@ -151,10 +142,44 @@ impl ApplicationHandler for App {
         match event {
             WindowEvent::CloseRequested => event_loop.exit(),
             WindowEvent::KeyboardInput { event, .. } => {
-                if event.state.is_pressed()
-                    && let PhysicalKey::Code(KeyCode::Escape) = event.physical_key {
+                // Convert to InputEvent for shell
+                if event.state.is_pressed() {
+                    // Check for escape to exit
+                    if let PhysicalKey::Code(KeyCode::Escape) = event.physical_key {
                         event_loop.exit();
+                        return;
                     }
+
+                    // Convert to wgpui InputEvent
+                    let key = physical_key_to_key(&event.physical_key);
+                    let modifiers = Modifiers {
+                        shift: event.repeat,
+                        ctrl: false,
+                        alt: false,
+                        meta: false,
+                    };
+
+                    // Get modifiers from window state
+                    // For now, handle commonly used shortcuts
+                    let input_event = InputEvent::KeyDown {
+                        key,
+                        modifiers,
+                    };
+
+                    let scale_factor = state.window.scale_factor() as f32;
+                    let width = state.config.width as f32 / scale_factor;
+                    let height = state.config.height as f32 / scale_factor;
+                    let bounds = Bounds::new(0.0, 0.0, width, height);
+
+                    let mut cx = EventContext::new();
+                    let _ = state.shell.event(&input_event, bounds, &mut cx);
+                }
+                state.window.request_redraw();
+            }
+            WindowEvent::ModifiersChanged(modifiers) => {
+                // Store modifiers for key events
+                // Could be enhanced to track modifiers properly
+                let _ = modifiers;
             }
             WindowEvent::Resized(new_size) => {
                 state.config.width = new_size.width.max(1);
@@ -163,51 +188,34 @@ impl ApplicationHandler for App {
                 state.window.request_redraw();
             }
             WindowEvent::MouseWheel { delta, .. } => {
-                let scroll_amount = match delta {
+                // Convert to scroll event for shell
+                let scroll_delta = match delta {
                     winit::event::MouseScrollDelta::LineDelta(_, y) => y * 40.0,
                     winit::event::MouseScrollDelta::PixelDelta(pos) => pos.y as f32,
                 };
 
-                if scroll_amount.abs() > 0.1 {
-                    state.auto_scroll = false;
-                }
+                let input_event = InputEvent::Scroll { dx: 0.0, dy: scroll_delta };
 
-                state.scroll_offset = (state.scroll_offset - scroll_amount).max(0.0);
+                let scale_factor = state.window.scale_factor() as f32;
+                let width = state.config.width as f32 / scale_factor;
+                let height = state.config.height as f32 / scale_factor;
+                let bounds = Bounds::new(0.0, 0.0, width, height);
+
+                let mut cx = EventContext::new();
+                let _ = state.shell.event(&input_event, bounds, &mut cx);
+
                 state.window.request_redraw();
             }
             WindowEvent::RedrawRequested => {
-                let width = state.config.width as f32;
-                let height = state.config.height as f32;
-
-                let elapsed = state.start_time.elapsed().as_secs_f32();
-                let dots_progress = ease_out_cubic((elapsed / 1.5).min(1.0));
-                let frame_progress = ease_out_cubic(((elapsed - 0.8) / 1.0).clamp(0.0, 1.0));
-
-                if frame_progress > 0.7 {
-                    let startup_elapsed = elapsed - 1.8;
-                    if startup_elapsed > 0.0 {
-                        state.startup_state.tick(startup_elapsed);
-                    }
-                }
+                let scale_factor = state.window.scale_factor() as f32;
+                let width = state.config.width as f32 / scale_factor;
+                let height = state.config.height as f32 / scale_factor;
 
                 let mut scene = Scene::new();
-                let (max_scroll, _) = render(
-                    &mut scene,
-                    &mut state.text_system,
-                    width,
-                    height,
-                    dots_progress,
-                    frame_progress,
-                    &state.startup_state,
-                    state.scroll_offset,
-                    state.auto_scroll,
-                );
+                let mut cx = PaintContext::new(&mut scene, &mut state.text_system, scale_factor);
 
-                state.scroll_offset = state.scroll_offset.min(max_scroll).max(0.0);
-
-                if state.scroll_offset >= max_scroll - 1.0 {
-                    state.auto_scroll = true;
-                }
+                let bounds = Bounds::new(0.0, 0.0, width, height);
+                state.shell.paint(bounds, &mut cx);
 
                 let output = state
                     .surface
@@ -223,7 +231,9 @@ impl ApplicationHandler for App {
                         label: Some("Render Encoder"),
                     });
 
-                state.renderer.resize(&state.queue, Size::new(width, height), 1.0);
+                let physical_width = state.config.width as f32;
+                let physical_height = state.config.height as f32;
+                state.renderer.resize(&state.queue, Size::new(physical_width, physical_height), scale_factor);
 
                 if state.text_system.is_dirty() {
                     state.renderer.update_atlas(
@@ -234,7 +244,6 @@ impl ApplicationHandler for App {
                     state.text_system.mark_clean();
                 }
 
-                let scale_factor = state.window.scale_factor() as f32;
                 state.renderer.prepare(&state.device, &state.queue, &scene, scale_factor);
                 state.renderer.render(&mut encoder, &view);
 
@@ -252,133 +261,62 @@ impl ApplicationHandler for App {
     }
 }
 
-fn ease_out_cubic(t: f32) -> f32 {
-    let t = t.clamp(0.0, 1.0);
-    1.0 - (1.0 - t).powi(3)
-}
-
-struct WrappedLine {
-    text: String,
-    color: Hsla,
-}
-
-fn render(
-    scene: &mut Scene,
-    text_system: &mut TextSystem,
-    width: f32,
-    height: f32,
-    dots_progress: f32,
-    frame_progress: f32,
-    startup_state: &StartupState,
-    scroll_offset: f32,
-    auto_scroll: bool,
-) -> (f32, f32) {
-    scene.draw_quad(
-        Quad::new(Bounds::new(0.0, 0.0, width, height))
-            .with_background(Hsla::new(0.0, 0.0, 0.0, 1.0)),
-    );
-
-    let mut cx = PaintContext::new(scene, text_system, 1.0);
-
-    let mut dots_grid = DotsGrid::new()
-        .color(Hsla::new(0.0, 0.0, 0.25, 0.2))
-        .shape(DotShape::Circle)
-        .distance(48.0)
-        .size(2.0)
-        .origin(DotsOrigin::Center)
-        .easing(Easing::EaseOut)
-        .animation_progress(dots_progress);
-
-    dots_grid.paint(Bounds::new(0.0, 0.0, width, height), &mut cx);
-
-    if frame_progress > 0.0 {
-        let frame_w = 1000.0;
-        let frame_h = 600.0;
-        let frame_x = (width - frame_w) / 2.0;
-        let frame_y = (height - frame_h) / 2.0;
-
-        let line_color = Hsla::new(0.0, 0.0, 0.7, frame_progress);
-        let bg_color = Hsla::new(0.0, 0.0, 0.05, 0.95 * frame_progress);
-        let glow_color = Hsla::new(180.0, 0.6, 0.5, 0.3 * frame_progress);
-
-        let mut frame = Frame::nefrex()
-            .line_color(line_color)
-            .bg_color(bg_color)
-            .glow_color(glow_color)
-            .stroke_width(1.5)
-            .corner_config(CornerConfig::all())
-            .square_size(10.0)
-            .small_line_length(10.0)
-            .large_line_length(40.0)
-            .animation_mode(FrameAnimation::Assemble)
-            .draw_direction(DrawDirection::CenterOut)
-            .animation_progress(frame_progress);
-
-        frame.paint(Bounds::new(frame_x, frame_y, frame_w, frame_h), &mut cx);
-
-        if frame_progress > 0.5 {
-            let text_alpha = ((frame_progress - 0.5) * 2.0).min(1.0);
-            let line_height = 22.0;
-            let font_size = 12.0;
-            let padding = 16.0;
-            let text_area_x = frame_x + padding;
-            let text_area_y = frame_y + padding;
-            let text_area_w = frame_w - padding * 2.0;
-            let text_area_h = frame_h - padding * 2.0;
-
-            let char_width = 7.2;
-            let max_chars = (text_area_w / char_width) as usize;
-            let max_visible_lines = (text_area_h / line_height) as usize;
-
-            let mut all_wrapped: Vec<WrappedLine> = Vec::new();
-
-            for log_line in &startup_state.lines {
-                let color = match log_line.status {
-                    LogStatus::Pending => Hsla::new(45.0, 0.9, 0.65, text_alpha),
-                    LogStatus::Success => Hsla::new(120.0, 0.7, 0.6, text_alpha),
-                    LogStatus::Error => Hsla::new(0.0, 0.8, 0.6, text_alpha),
-                    LogStatus::Info => Hsla::new(0.0, 0.0, 0.7, text_alpha),
-                    LogStatus::Thinking => Hsla::new(270.0, 0.5, 0.6, text_alpha * 0.7),
-                };
-
-                let prefix = match log_line.status {
-                    LogStatus::Pending => "> ",
-                    _ => "  ",
-                };
-
-                let full_text = format!("{}{}", prefix, log_line.text);
-                let wrapped = wrap_text(&full_text, max_chars);
-
-                for line in wrapped {
-                    all_wrapped.push(WrappedLine { text: line, color });
-                }
-            }
-
-            let total_visual_lines = all_wrapped.len();
-            let content_height = total_visual_lines as f32 * line_height;
-            let max_scroll = (content_height - text_area_h).max(0.0);
-
-            let start_idx = if auto_scroll {
-                total_visual_lines.saturating_sub(max_visible_lines)
-            } else {
-                let scroll_lines = (scroll_offset / line_height) as usize;
-                scroll_lines.min(total_visual_lines.saturating_sub(max_visible_lines))
-            };
-
-            for (i, wrapped_line) in all_wrapped.iter().skip(start_idx).take(max_visible_lines + 1).enumerate() {
-                let y = text_area_y + (i as f32 * line_height);
-
-                if y > frame_y + frame_h - padding {
-                    break;
-                }
-
-                let text_run = cx.text.layout(&wrapped_line.text, Point::new(text_area_x, y), font_size, wrapped_line.color);
-                cx.scene.draw_text(text_run);
-            }
-
-            return (max_scroll, content_height);
-        }
+/// Convert winit PhysicalKey to wgpui Key
+fn physical_key_to_key(physical_key: &PhysicalKey) -> Key {
+    match physical_key {
+        PhysicalKey::Code(code) => match code {
+            KeyCode::Escape => Key::Named(NamedKey::Escape),
+            KeyCode::Enter => Key::Named(NamedKey::Enter),
+            KeyCode::Tab => Key::Named(NamedKey::Tab),
+            KeyCode::Backspace => Key::Named(NamedKey::Backspace),
+            KeyCode::Delete => Key::Named(NamedKey::Delete),
+            KeyCode::ArrowUp => Key::Named(NamedKey::ArrowUp),
+            KeyCode::ArrowDown => Key::Named(NamedKey::ArrowDown),
+            KeyCode::ArrowLeft => Key::Named(NamedKey::ArrowLeft),
+            KeyCode::ArrowRight => Key::Named(NamedKey::ArrowRight),
+            KeyCode::Home => Key::Named(NamedKey::Home),
+            KeyCode::End => Key::Named(NamedKey::End),
+            KeyCode::PageUp => Key::Named(NamedKey::PageUp),
+            KeyCode::PageDown => Key::Named(NamedKey::PageDown),
+            KeyCode::KeyA => Key::Character("a".to_string()),
+            KeyCode::KeyB => Key::Character("b".to_string()),
+            KeyCode::KeyC => Key::Character("c".to_string()),
+            KeyCode::KeyD => Key::Character("d".to_string()),
+            KeyCode::KeyE => Key::Character("e".to_string()),
+            KeyCode::KeyF => Key::Character("f".to_string()),
+            KeyCode::KeyG => Key::Character("g".to_string()),
+            KeyCode::KeyH => Key::Character("h".to_string()),
+            KeyCode::KeyI => Key::Character("i".to_string()),
+            KeyCode::KeyJ => Key::Character("j".to_string()),
+            KeyCode::KeyK => Key::Character("k".to_string()),
+            KeyCode::KeyL => Key::Character("l".to_string()),
+            KeyCode::KeyM => Key::Character("m".to_string()),
+            KeyCode::KeyN => Key::Character("n".to_string()),
+            KeyCode::KeyO => Key::Character("o".to_string()),
+            KeyCode::KeyP => Key::Character("p".to_string()),
+            KeyCode::KeyQ => Key::Character("q".to_string()),
+            KeyCode::KeyR => Key::Character("r".to_string()),
+            KeyCode::KeyS => Key::Character("s".to_string()),
+            KeyCode::KeyT => Key::Character("t".to_string()),
+            KeyCode::KeyU => Key::Character("u".to_string()),
+            KeyCode::KeyV => Key::Character("v".to_string()),
+            KeyCode::KeyW => Key::Character("w".to_string()),
+            KeyCode::KeyX => Key::Character("x".to_string()),
+            KeyCode::KeyY => Key::Character("y".to_string()),
+            KeyCode::KeyZ => Key::Character("z".to_string()),
+            KeyCode::Digit0 => Key::Character("0".to_string()),
+            KeyCode::Digit1 => Key::Character("1".to_string()),
+            KeyCode::Digit2 => Key::Character("2".to_string()),
+            KeyCode::Digit3 => Key::Character("3".to_string()),
+            KeyCode::Digit4 => Key::Character("4".to_string()),
+            KeyCode::Digit5 => Key::Character("5".to_string()),
+            KeyCode::Digit6 => Key::Character("6".to_string()),
+            KeyCode::Digit7 => Key::Character("7".to_string()),
+            KeyCode::Digit8 => Key::Character("8".to_string()),
+            KeyCode::Digit9 => Key::Character("9".to_string()),
+            KeyCode::Backslash => Key::Character("\\".to_string()),
+            _ => Key::Named(NamedKey::Unidentified),
+        },
+        PhysicalKey::Unidentified(_) => Key::Named(NamedKey::Unidentified),
     }
-
-    (0.0, 0.0)
 }

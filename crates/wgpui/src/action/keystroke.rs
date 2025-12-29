@@ -163,6 +163,9 @@ impl fmt::Display for Keystroke {
             Key::Named(NamedKey::ArrowRight) => "right",
             Key::Named(NamedKey::Home) => "home",
             Key::Named(NamedKey::End) => "end",
+            Key::Named(NamedKey::PageUp) => "pageup",
+            Key::Named(NamedKey::PageDown) => "pagedown",
+            Key::Named(NamedKey::Unidentified) => "unidentified",
             Key::Character(c) => c,
         };
         parts.push(key_str);
