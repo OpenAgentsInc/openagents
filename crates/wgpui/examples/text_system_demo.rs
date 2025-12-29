@@ -972,21 +972,8 @@ fn demo_streaming_markdown(
     let debug_y = y + 14.0;
     let font_size = 14.0;
 
-    // Simple test: just render "A" and check its glyph info
+    // Simple test: render "AAAA" with background showing measured width
     let text_run = text_system.layout_styled("AAAA", Point::new(x, debug_y), font_size, theme::text::PRIMARY, wgpui::FontStyle::normal());
-
-    // Log glyph positions to understand what's happening
-    if demo.frame_count % 60 == 1 {
-        println!("=== GLYPH DEBUG (frame {}) ===", demo.frame_count);
-        println!("Origin: ({}, {})", x, debug_y);
-        println!("Font size: {}", font_size);
-        for (i, glyph) in text_run.glyphs.iter().enumerate() {
-            println!("  Glyph[{}]: offset=({:.2}, {:.2}), size=({:.2}, {:.2})",
-                i, glyph.offset.x, glyph.offset.y, glyph.size.width, glyph.size.height);
-        }
-        let measured = text_system.measure("AAAA", font_size);
-        println!("Measured width: {:.2}", measured);
-    }
 
     // Draw background for expected width
     let expected_width = text_system.measure("AAAA", font_size);
