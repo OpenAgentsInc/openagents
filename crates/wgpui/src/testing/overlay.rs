@@ -407,6 +407,9 @@ fn format_key_display(key: &crate::Key, modifiers: &crate::Modifiers) -> String 
             crate::NamedKey::ArrowDown => "↓".to_string(),
             crate::NamedKey::ArrowLeft => "←".to_string(),
             crate::NamedKey::ArrowRight => "→".to_string(),
+            crate::NamedKey::PageUp => "PgUp".to_string(),
+            crate::NamedKey::PageDown => "PgDn".to_string(),
+            crate::NamedKey::Unidentified => "?".to_string(),
         },
         crate::Key::Character(c) => {
             if c == " " {
