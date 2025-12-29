@@ -83,7 +83,9 @@ impl RelayHub {
         }
 
         let primary_url = relay_urls[0].clone();
-        let pool = RelayPool::new(PoolConfig::default());
+        let mut config = PoolConfig::default();
+        config.min_write_confirmations = config.min_write_confirmations.min(relay_urls.len());
+        let pool = RelayPool::new(config);
 
         Ok(Self {
             pool,
