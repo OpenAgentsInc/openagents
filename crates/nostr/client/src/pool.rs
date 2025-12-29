@@ -293,7 +293,7 @@ impl RelayPool {
                 .collect()
         };
 
-        self.publish_to_relay_connections(event, target_relays)
+        self.publish_to_relay_connections(event, target_relays).await
     }
 
     /// Publish an event to a specific relay URL list
@@ -316,7 +316,7 @@ impl RelayPool {
             selected
         };
 
-        self.publish_to_relay_connections(event, target_relays)
+        self.publish_to_relay_connections(event, target_relays).await
     }
 
     async fn publish_to_relay_connections(
