@@ -7,11 +7,13 @@ use crate::storage::identities::{current_identity, DEFAULT_IDENTITY_NAME};
 use crate::storage::keychain::{SecureKeychain, WALLET_PASSWORD_ENV};
 
 pub mod bitcoin;
+pub mod error;
 pub mod frostr;
 pub mod identity;
 pub mod payee;
 pub mod password;
 pub mod settings;
+pub mod validation;
 
 pub fn load_mnemonic() -> Result<String> {
     let identity = current_identity().unwrap_or_else(|_| DEFAULT_IDENTITY_NAME.to_string());
