@@ -30,7 +30,7 @@ Zed GPUI covers a much larger platform/runtime surface, richer element primitive
 
 ### Text system depth
 - Zed text system includes line layout/wrapping, font features, font fallbacks, tab stops. See `/home/christopherdavid/code/zed/crates/gpui/src/text_system/*` and `/home/christopherdavid/code/zed/crates/gpui/src/tab_stop.rs`.
-- WGPUI text shaping is minimal; measurement is fixed-width heuristic and layout assumes a single line. See `crates/wgpui/src/text.rs`.
+- ~~WGPUI text shaping is minimal; measurement is fixed-width heuristic and layout assumes a single line. See `crates/wgpui/src/text.rs`.~~ **DONE** (2025-12-29) - Text system upgraded with line wrapping, decoration runs, layout caching. See `crates/wgpui/src/text_system/*`.
 
 ### Styling and layout breadth
 - Zed style supports large CSS-like surface: overflow, position, border radii, shadows, background fills, cursor, opacity, etc. See `/home/christopherdavid/code/zed/crates/gpui/src/style.rs` and `/home/christopherdavid/code/zed/crates/gpui/src/styled.rs`.

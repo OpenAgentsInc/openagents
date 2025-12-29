@@ -465,7 +465,8 @@ impl ApplicationHandler for App {
                             label: Some("Render Encoder"),
                         });
 
-                state.renderer.prepare(&state.device, &scene);
+                let scale_factor = state.window.scale_factor() as f32;
+                state.renderer.prepare(&state.device, &scene, scale_factor);
                 state.renderer.render(&mut encoder, &view);
                 state.queue.submit(std::iter::once(encoder.finish()));
                 output.present();

@@ -18,6 +18,126 @@ impl MarkdownRenderer {
         Self { config }
     }
 
+    /// Measure the height that rendering this document would take, without actually drawing.
+    pub fn measure(
+        &self,
+        document: &MarkdownDocument,
+        max_width: f32,
+        text_system: &mut TextSystem,
+    ) -> Size {
+        let mut y = 0.0;
+
+        for (i, block) in document.blocks.iter().enumerate() {
+            if i > 0 {
+                y += theme::spacing::MD;
+            }
+            y += self.measure_block(block, max_width, text_system);
+        }
+
+        Size::new(max_width, y)
+    }
+
+    fn measure_block(
+        &self,
+        block: &MarkdownBlock,
+        max_width: f32,
+        text_system: &mut TextSystem,
+    ) -> f32 {
+        match block {
+            MarkdownBlock::Paragraph(lines) => self.measure_lines(lines),
+
+            MarkdownBlock::Header { level, lines } => {
+                let margin_top = match level {
+                    1 => theme::spacing::XL,
+                    2 => theme::spacing::LG,
+                    _ => theme::spacing::MD,
+                };
+                margin_top + self.measure_lines(lines)
+            }
+
+            MarkdownBlock::CodeBlock { lines, .. } => {
+                let padding = theme::spacing::MD;
+                let margin = theme::spacing::SM;
+                let content_height: f32 = lines
+                    .iter()
+                    .map(|l| {
+                        l.spans
+                            .first()
+                            .map(|s| s.style.font_size * l.line_height)
+                            .unwrap_or(self.config.base_font_size * theme::line_height::NORMAL)
+                    })
+                    .sum();
+                content_height + padding * 2.0 + margin * 2.0
+            }
+
+            MarkdownBlock::Blockquote(blocks) => {
+                let bar_width = 4.0;
+                let gap = theme::spacing::MD;
+                let indent = bar_width + gap;
+                let margin = theme::spacing::SM;
+                let mut height = 0.0;
+                for block in blocks {
+                    height += self.measure_block(block, max_width - indent, text_system);
+                }
+                height + margin * 2.0
+            }
+
+            MarkdownBlock::UnorderedList(items) => {
+                let indent = theme::spacing::XL;
+                let margin = theme::spacing::XS;
+                let mut height = margin;
+                for item in items {
+                    for block in item {
+                        height += self.measure_block(block, max_width - indent, text_system);
+                    }
+                }
+                height + margin
+            }
+
+            MarkdownBlock::OrderedList { items, .. } => {
+                let indent = theme::spacing::XL * 2.0;
+                let margin = theme::spacing::XS;
+                let mut height = margin;
+                for item in items {
+                    for block in item {
+                        height += self.measure_block(block, max_width - indent, text_system);
+                    }
+                }
+                height + margin
+            }
+
+            MarkdownBlock::HorizontalRule => {
+                let margin = theme::spacing::LG;
+                margin * 2.0 + 1.0
+            }
+
+            MarkdownBlock::Table { headers, rows, .. } => {
+                let header_height = 32.0;
+                let row_height = 28.0;
+                let separator = 1.0;
+                if headers.is_empty() {
+                    0.0
+                } else {
+                    header_height + separator + (rows.len() as f32 * row_height)
+                }
+            }
+        }
+    }
+
+    fn measure_lines(&self, lines: &[StyledLine]) -> f32 {
+        let mut height = 0.0;
+        for line in lines {
+            height += line.margin_top;
+            let base_font_size = line
+                .spans
+                .first()
+                .map(|s| s.style.font_size)
+                .unwrap_or(self.config.base_font_size);
+            height += base_font_size * line.line_height;
+        }
+        height
+    }
+
     pub fn render(
         &self,
         document: &MarkdownDocument,
@@ -43,7 +163,8 @@ impl MarkdownRenderer {
 
         for (i, block) in document.blocks.iter().enumerate() {
             if i > 0 {
-                y += theme::spacing::SM;
+                // Add generous spacing between blocks
+                y += theme::spacing::MD;
             }
 
             y += self.render_block_with_opacity(
@@ -133,7 +254,11 @@ impl MarkdownRenderer {
             let x = origin.x + indent;
 
             let mut span_x = x;
-            let mut line_height = 0.0f32;
+            // Ensure minimum line height based on font size
+            let base_font_size = line.spans.first()
+                .map(|s| s.style.font_size)
+                .unwrap_or(self.config.base_font_size);
+            let mut line_height = base_font_size * line.line_height;
 
             for span in &line.spans {
                 let text_size = text_system.measure_size(&span.text, span.style.font_size, None);
@@ -170,7 +295,9 @@ impl MarkdownRenderer {
                     font_style,
                 );
 
-                let span_width = text_system.measure(&span.text, span.style.font_size);
+                // CRITICAL: Use measure_styled with the SAME font_style as layout_styled!
+                // Bold/italic text has different widths than regular text.
+                let span_width = text_system.measure_styled(&span.text, span.style.font_size, font_style);
                 line_height = line_height.max(span.style.font_size * line.line_height);
 
                 scene.draw_text(text_run);
@@ -251,9 +378,12 @@ impl MarkdownRenderer {
         opacity: f32,
     ) -> f32 {
         let bar_width = 4.0;
-        let gap = theme::spacing::SM;
+        let gap = theme::spacing::MD; // Gap between bar and text
         let indent = bar_width + gap;
         let margin = theme::spacing::SM;
+        // Text ascent offset - text baseline is at Y, but visual top is higher
+        // For ~14px font, ascent is about 11px
+        let text_ascent = 11.0;
 
         let start_y = origin.y + margin;
         let mut y = start_y;
@@ -271,9 +401,11 @@ impl MarkdownRenderer {
 
         let content_height = y - start_y;
 
+        // Draw bar aligned with text visual top (accounting for text ascent)
         let bar_color = theme::accent::PRIMARY.with_alpha(opacity);
+        let bar_top = start_y - text_ascent + 2.0; // Slight adjustment for visual centering
         scene.draw_quad(Quad {
-            bounds: Bounds::new(origin.x, start_y, bar_width, content_height.max(20.0)),
+            bounds: Bounds::new(origin.x, bar_top, bar_width, content_height + text_ascent),
             background: Some(bar_color),
             border_color: Hsla::transparent(),
             border_width: 0.0,

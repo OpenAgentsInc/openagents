@@ -61,10 +61,19 @@ pub struct GpuQuad {
 }
 
 impl GpuQuad {
-    pub fn from_quad(quad: &Quad) -> Self {
+    /// Create a GPU quad from a scene quad.
+    /// This is the GPU boundary where we scale from logical to physical pixels.
+    pub fn from_quad(quad: &Quad, scale_factor: f32) -> Self {
+        // Scale from LOGICAL to PHYSICAL pixels at GPU boundary.
         Self {
-            origin: [quad.bounds.origin.x, quad.bounds.origin.y],
-            size: [quad.bounds.size.width, quad.bounds.size.height],
+            origin: [
+                quad.bounds.origin.x * scale_factor,
+                quad.bounds.origin.y * scale_factor,
+            ],
+            size: [
+                quad.bounds.size.width * scale_factor,
+                quad.bounds.size.height * scale_factor,
+            ],
             background: quad
                 .background
                 .map(|c| {
@@ -88,8 +97,8 @@ impl GpuQuad {
                     quad.border_color.to_rgba()
                 }
             },
-            border_width: quad.border_width,
-            corner_radius: quad.corner_radius,
+            border_width: quad.border_width * scale_factor,
+            corner_radius: quad.corner_radius * scale_factor,
             _padding: [0.0, 0.0],
         }
     }
@@ -136,10 +145,23 @@ pub struct GpuTextQuad {
 }
 
 impl GpuTextQuad {
-    pub fn from_glyph(glyph: &GlyphInstance, origin: Point, color: Hsla) -> Self {
+    /// Create a GPU text quad from a glyph instance.
+    /// This is the GPU boundary where we scale from logical to physical pixels.
+    pub fn from_glyph(glyph: &GlyphInstance, origin: Point, color: Hsla, scale_factor: f32) -> Self {
+        // Scale from LOGICAL to PHYSICAL pixels at GPU boundary.
+        // - origin: logical position where text run starts
+        // - glyph.offset: logical offset from origin (already divided by scale_factor in text.rs)
+        // - glyph.size: logical glyph size (already divided by scale_factor in text.rs)
+        // Multiply by scale_factor to get physical pixels for the shader.
         Self {
-            position: [origin.x + glyph.offset.x, origin.y + glyph.offset.y],
-            size: [glyph.size.width, glyph.size.height],
+            position: [
+                (origin.x + glyph.offset.x) * scale_factor,
+                (origin.y + glyph.offset.y) * scale_factor,
+            ],
+            size: [
+                glyph.size.width * scale_factor,
+                glyph.size.height * scale_factor,
+            ],
             uv: glyph.uv,
             color: {
                 #[cfg(not(target_arch = "wasm32"))]
@@ -204,15 +226,22 @@ impl Scene {
         self.clip_stack.last()
     }
 
-    pub fn gpu_quads(&self) -> Vec<GpuQuad> {
-        self.quads.iter().map(GpuQuad::from_quad).collect()
+    /// Get GPU quads for rendering.
+    /// This is the GPU boundary where we scale from logical to physical pixels.
+    pub fn gpu_quads(&self, scale_factor: f32) -> Vec<GpuQuad> {
+        self.quads
+            .iter()
+            .map(|q| GpuQuad::from_quad(q, scale_factor))
+            .collect()
     }
 
-    pub fn gpu_text_quads(&self) -> Vec<GpuTextQuad> {
+    /// Get GPU text quads for rendering.
+    /// This is the GPU boundary where we scale from logical to physical pixels.
+    pub fn gpu_text_quads(&self, scale_factor: f32) -> Vec<GpuTextQuad> {
         let mut quads = Vec::new();
         for run in &self.text_runs {
             for glyph in &run.glyphs {
-                quads.push(GpuTextQuad::from_glyph(glyph, run.origin, run.color));
+                quads.push(GpuTextQuad::from_glyph(glyph, run.origin, run.color, scale_factor));
             }
         }
         quads
@@ -309,12 +338,30 @@ mod tests {
         let quad = Quad::new(Bounds::new(10.0, 20.0, 100.0, 50.0))
             .with_background(Hsla::from_hex(0xFF0000));
 
-        let gpu_quad = GpuQuad::from_quad(&quad);
+        // Test with scale_factor 1.0 (no scaling)
+        let gpu_quad = GpuQuad::from_quad(&quad, 1.0);
 
         assert!((gpu_quad.origin[0] - 10.0).abs() < 0.001);
         assert!((gpu_quad.origin[1] - 20.0).abs() < 0.001);
         assert!((gpu_quad.size[0] - 100.0).abs() < 0.001);
         assert!((gpu_quad.size[1] - 50.0).abs() < 0.001);
+    }
+
+    #[test]
+    fn test_gpu_quad_scaling() {
+        let quad = Quad::new(Bounds::new(10.0, 20.0, 100.0, 50.0))
+            .with_background(Hsla::from_hex(0xFF0000))
+            .with_border(Hsla::white(), 2.0);
+
+        // Test with scale_factor 2.0 (2x scaling)
+        let gpu_quad = GpuQuad::from_quad(&quad, 2.0);
+
+        // Position and size should be scaled by 2x
+        assert!((gpu_quad.origin[0] - 20.0).abs() < 0.001); // 10 * 2 = 20
+        assert!((gpu_quad.origin[1] - 40.0).abs() < 0.001); // 20 * 2 = 40
+        assert!((gpu_quad.size[0] - 200.0).abs() < 0.001);  // 100 * 2 = 200
+        assert!((gpu_quad.size[1] - 100.0).abs() < 0.001);  // 50 * 2 = 100
+        assert!((gpu_quad.border_width - 4.0).abs() < 0.001); // 2 * 2 = 4
     }
 
     #[test]
@@ -326,10 +373,30 @@ mod tests {
             uv: [0.0, 0.0, 0.1, 0.1],
         };
 
-        let gpu_quad = GpuTextQuad::from_glyph(&glyph, Point::new(10.0, 20.0), Hsla::white());
+        // Test with scale_factor 1.0 (no scaling)
+        let gpu_quad = GpuTextQuad::from_glyph(&glyph, Point::new(10.0, 20.0), Hsla::white(), 1.0);
 
         assert!((gpu_quad.position[0] - 15.0).abs() < 0.001);
         assert!((gpu_quad.position[1] - 20.0).abs() < 0.001);
+    }
+
+    #[test]
+    fn test_gpu_text_quad_scaling() {
+        let glyph = GlyphInstance {
+            glyph_id: 65,
+            offset: Point::new(5.0, 0.0),
+            size: Size::new(8.0, 14.0),
+            uv: [0.0, 0.0, 0.1, 0.1],
+        };
+
+        // Test with scale_factor 2.0 (2x scaling)
+        let gpu_quad = GpuTextQuad::from_glyph(&glyph, Point::new(10.0, 20.0), Hsla::white(), 2.0);
+
+        // Position and size should be scaled by 2x
+        assert!((gpu_quad.position[0] - 30.0).abs() < 0.001); // (10 + 5) * 2 = 30
+        assert!((gpu_quad.position[1] - 40.0).abs() < 0.001); // (20 + 0) * 2 = 40
+        assert!((gpu_quad.size[0] - 16.0).abs() < 0.001);     // 8 * 2 = 16
+        assert!((gpu_quad.size[1] - 28.0).abs() < 0.001);     // 14 * 2 = 28
     }
 
     #[test]

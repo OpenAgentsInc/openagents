@@ -321,7 +321,8 @@ impl ApplicationHandler for OrderbookApp {
                     state.text_system.mark_clean();
                 }
 
-                state.renderer.prepare(&state.device, &scene);
+                let scale_factor = state.window.scale_factor() as f32;
+                state.renderer.prepare(&state.device, &scene, scale_factor);
                 state.renderer.render(&mut encoder, &view);
 
                 state.queue.submit(std::iter::once(encoder.finish()));

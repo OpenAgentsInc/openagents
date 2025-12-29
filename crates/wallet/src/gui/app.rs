@@ -143,7 +143,7 @@ impl ApplicationHandler for WalletAppHandler {
                         label: Some("Wallet Render Encoder"),
                     });
 
-                state.renderer.prepare(&state.device, &scene);
+                state.renderer.prepare(&state.device, &scene, state.ui.scale_factor());
                 state.renderer.render(&mut encoder, &view);
                 state.queue.submit(std::iter::once(encoder.finish()));
                 output.present();
