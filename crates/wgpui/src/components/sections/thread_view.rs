@@ -97,7 +97,7 @@ impl Default for ThreadView {
 
 impl Component for ThreadView {
     fn paint(&mut self, bounds: Bounds, cx: &mut PaintContext) {
-        cx.scene.draw_quad(Quad::new(bounds).with_background(theme::bg::APP));
+        // No background - let parent control transparency
 
         self.content_height = self.calculate_content_height();
 

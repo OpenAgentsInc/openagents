@@ -1,7 +1,6 @@
 //! Claude Usage component - shows API usage stats
 
 use wgpui::{Bounds, Component, EventContext, EventResult, Hsla, InputEvent, PaintContext, Point, Quad};
-use wgpui::components::hud::{CornerConfig, Frame};
 
 /// Session-level usage stats
 #[derive(Default, Clone)]
@@ -83,24 +82,18 @@ impl Default for ClaudeUsage {
 
 impl Component for ClaudeUsage {
     fn paint(&mut self, bounds: Bounds, cx: &mut PaintContext) {
-        // Draw HUD frame
-        let line_color = Hsla::new(0.0, 0.0, 0.4, 0.5);
-        let bg_color = Hsla::new(0.0, 0.0, 0.05, 0.9);
+        let line_color = Hsla::new(0.0, 0.0, 0.3, 0.5);
 
-        let mut frame = Frame::nefrex()
-            .line_color(line_color)
-            .bg_color(bg_color)
-            .stroke_width(1.0)
-            .corner_config(CornerConfig::all())
-            .square_size(4.0)
-            .small_line_length(4.0)
-            .large_line_length(12.0);
-        frame.paint(bounds, cx);
+        // Divider line at top
+        cx.scene.draw_quad(
+            Quad::new(Bounds::new(bounds.origin.x, bounds.origin.y, bounds.size.width, 1.0))
+                .with_background(line_color),
+        );
 
-        let padding = 12.0;
-        let mut y = bounds.origin.y + padding;
-        let x = bounds.origin.x + padding;
-        let w = bounds.size.width - padding * 2.0;
+        let padding = 8.0;
+        let mut y = bounds.origin.y + padding + 4.0;
+        let x = bounds.origin.x;
+        let w = bounds.size.width;
 
         let label_color = Hsla::new(0.0, 0.0, 0.5, 1.0);
         let value_color = Hsla::new(0.0, 0.0, 0.7, 1.0);

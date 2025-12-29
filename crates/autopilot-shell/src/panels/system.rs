@@ -52,16 +52,15 @@ impl Panel for SystemPanel {
 
         let padding = 16.0;
 
-        // Full Auto toggle is painted by the shell at top (about 52px)
-        // Start Claude Usage below that
-        let toggle_space = 60.0;
-        let usage_y = bounds.origin.y + toggle_space;
-        let usage_height = bounds.size.height - toggle_space - padding;
+        // Claude Usage at bottom right - fixed height for content
+        let usage_height = 280.0;
+        let usage_width = bounds.size.width - padding * 2.0;
+        let usage_y = bounds.origin.y + bounds.size.height - usage_height - padding;
 
         let usage_bounds = Bounds::new(
             bounds.origin.x + padding,
             usage_y,
-            bounds.size.width - padding * 2.0,
+            usage_width,
             usage_height,
         );
         self.claude_usage.paint(usage_bounds, cx);
