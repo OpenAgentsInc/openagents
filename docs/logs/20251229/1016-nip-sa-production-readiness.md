@@ -63,3 +63,16 @@ Make the NIP-SA flow safe and reliable for production: multi-relay operation, ag
 - `cargo check -p openagents` passes.
 - At least one full end-to-end test run across multiple relays.
 - Logging + metrics validated on staging relay set.
+
+## Progress update (2025-12-29)
+- Added NIP-65 relay list publishing on startup for agent-runner, agent-provider, and agent-customer.
+- Added relay list watcher tasks that subscribe to kind 10002 updates for the local pubkey.
+- Wired RelayHub to ingest relay list events (updates outbox model and adds new relays to the pool).
+- Dynamic relay updates currently add new relays and retain existing ones (no removal yet).
+- Verified `cargo check -p openagents` after relay list integration.
+- Added peer relay list ingestion for DM/mention observations to improve outbox routing.
+- Added configurable min write confirmations (`--min-write-confirmations`) for runner/provider/customer.
+- Ran multi-relay DM + channel smoke test: `cargo test -p nostr-client --test multi_relay_smoke -- --ignored --nocapture`.
+- Updated relay publish routing to include tagged users' read relays (outbox publish relays).
+- Added DM relay list (kind 10050) publish + watch + peer ingestion for DM routing.
+- Added `--allow-relay-prune` flag to let operators opt into relay list pruning.
