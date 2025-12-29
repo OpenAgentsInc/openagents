@@ -50,6 +50,7 @@ pub mod styled;
 #[cfg(any(test, feature = "testing"))]
 pub mod testing;
 pub mod text;
+pub mod text_system;
 pub mod theme;
 pub mod tools;
 pub mod styles;
@@ -64,6 +65,19 @@ pub use platform::Platform;
 pub use scene::{GlyphInstance, GpuQuad, GpuTextQuad, Quad, Scene, TextRun};
 pub use scroll::{ScrollContainer, ScrollDirection};
 pub use text::{FontStyle, TextSystem};
+pub use text_system::{
+    // Core layout types
+    LineLayout, WrappedLineLayout, ShapedRun, ShapedGlyph, FontRun, WrapBoundary,
+    FontId, GlyphId,
+    // Line wrapper
+    LineWrapper, LineFragment, Boundary, TruncateFrom,
+    // Paintable lines
+    ShapedLine, WrappedLine, LinePaintInfo, GlyphPaintEntry,
+    DecorationRun, UnderlineStyle, StrikethroughStyle, TextAlign,
+    DecorationSegment, BackgroundSegment,
+    // Cache
+    LineLayoutCache, LineLayoutIndex, CacheStats,
+};
 pub use components::{
     AnyComponent, Button, ButtonVariant, Component, ComponentId, Div, Dropdown, DropdownOption,
     EventContext, EventResult, Modal, PaintContext, ScrollView, Tab, Tabs, Text, TextDecipher,

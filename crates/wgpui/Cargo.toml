@@ -138,6 +138,10 @@ required-features = ["desktop", "testing"]
 name = "chat_streaming_test"
 required-features = ["desktop"]
 
+[[example]]
+name = "text_system_demo"
+required-features = ["desktop"]
+
 [[bench]]
 name = "performance"
 harness = false

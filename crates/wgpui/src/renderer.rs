@@ -73,8 +73,8 @@ impl Renderer {
         let atlas_texture = device.create_texture(&wgpu::TextureDescriptor {
             label: Some("Glyph Atlas"),
             size: wgpu::Extent3d {
-                width: 1024,
-                height: 1024,
+                width: 2048,
+                height: 2048,
                 depth_or_array_layers: 1,
             },
             mip_level_count: 1,
@@ -315,8 +315,11 @@ impl Renderer {
         );
     }
 
-    pub fn prepare(&mut self, device: &wgpu::Device, scene: &Scene) {
-        let quads = scene.gpu_quads();
+    /// Prepare scene for rendering.
+    /// The scale_factor is used to convert both quads and text from logical to physical pixels at the GPU boundary.
+    pub fn prepare(&mut self, device: &wgpu::Device, scene: &Scene, scale_factor: f32) {
+        // Pass scale_factor to gpu_quads for logical->physical conversion
+        let quads = scene.gpu_quads(scale_factor);
         if !quads.is_empty() {
             self.quad_instance_buffer = Some(device.create_buffer_init(
                 &wgpu::util::BufferInitDescriptor {
@@ -331,7 +334,8 @@ impl Renderer {
             self.quad_count = 0;
         }
 
-        let text_quads = scene.gpu_text_quads();
+        // Pass scale_factor to gpu_text_quads for logical->physical conversion
+        let text_quads = scene.gpu_text_quads(scale_factor);
         if !text_quads.is_empty() {
             self.text_instance_buffer = Some(device.create_buffer_init(
                 &wgpu::util::BufferInitDescriptor {
