@@ -41,6 +41,10 @@ pub enum Error {
     /// URL parse error
     #[error("URL parse error: {0}")]
     UrlParse(#[from] url::ParseError),
+
+    /// Nostr client error
+    #[error("Nostr client error: {0}")]
+    NostrClient(#[from] nostr_client::ClientError),
 }
 
 /// Result type for neobank operations
