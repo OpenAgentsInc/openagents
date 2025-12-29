@@ -185,6 +185,17 @@ impl ApplicationHandler for App {
                     let mut cx = EventContext::new();
                     let result = state.shell.event(&input_event, bounds, &mut cx);
                     info!("Shell event result: {:?}", result);
+
+                    // Check for fullscreen toggle request
+                    if state.shell.take_fullscreen_toggle() {
+                        use winit::window::Fullscreen;
+                        let current = state.window.fullscreen();
+                        if current.is_some() {
+                            state.window.set_fullscreen(None);
+                        } else {
+                            state.window.set_fullscreen(Some(Fullscreen::Borderless(None)));
+                        }
+                    }
                 }
                 state.window.request_redraw();
             }
@@ -331,6 +342,8 @@ fn physical_key_to_key(physical_key: &PhysicalKey) -> Key {
             KeyCode::Digit8 => Key::Character("8".to_string()),
             KeyCode::Digit9 => Key::Character("9".to_string()),
             KeyCode::Backslash => Key::Character("\\".to_string()),
+            KeyCode::BracketLeft => Key::Character("[".to_string()),
+            KeyCode::BracketRight => Key::Character("]".to_string()),
             _ => Key::Named(NamedKey::Unidentified),
         },
         PhysicalKey::Unidentified(_) => Key::Named(NamedKey::Unidentified),

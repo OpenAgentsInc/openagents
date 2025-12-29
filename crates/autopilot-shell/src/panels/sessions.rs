@@ -2,30 +2,24 @@
 
 use wgpui::{
     Bounds, Component, EventContext, EventResult, Hsla, InputEvent, PaintContext, Point, Quad,
-    components::TextInput,
     components::hud::Frame,
 };
 use crate::dock::{DockPosition, Panel};
 
-/// Left sidebar panel with session search
-pub struct SessionsPanel {
-    search: TextInput,
-}
+/// Left sidebar panel with session list
+pub struct SessionsPanel {}
 
 impl SessionsPanel {
     pub fn new() -> Self {
-        Self {
-            search: TextInput::new()
-                .placeholder("Search sessions...")
-                .background(Hsla::new(0.0, 0.0, 0.1, 1.0)),
-        }
+        Self {}
     }
 
     fn paint_hotkey_legend(&self, bounds: Bounds, cx: &mut PaintContext) {
         let hotkeys = [
-            ("cmd-f", "Toggle Full Auto"),
-            ("cmd-b", "Toggle left sidebar"),
-            ("cmd-shift-b", "Toggle right sidebar"),
+            ("cmd-a", "Toggle Full Auto"),
+            ("cmd-f", "Toggle Fullscreen"),
+            ("cmd-[", "Toggle left sidebar"),
+            ("cmd-]", "Toggle right sidebar"),
             ("cmd-\\", "Toggle all sidebars"),
             ("esc", "Exit"),
         ];
@@ -82,19 +76,9 @@ impl Panel for SessionsPanel {
         frame.paint(bounds, cx);
 
         let padding = 16.0;
-        let search_h = 32.0;
 
-        // Search bar at top
-        let search_bounds = Bounds::new(
-            bounds.origin.x + padding,
-            bounds.origin.y + padding,
-            bounds.size.width - padding * 2.0,
-            search_h,
-        );
-        Component::paint(&mut self.search, search_bounds, cx);
-
-        // Simple session list below
-        let y = bounds.origin.y + padding + search_h + 16.0;
+        // Simple session list
+        let y = bounds.origin.y + padding;
         let x = bounds.origin.x + padding;
         let w = bounds.size.width - padding * 2.0;
 
@@ -117,16 +101,7 @@ impl Panel for SessionsPanel {
         self.paint_hotkey_legend(bounds, cx);
     }
 
-    fn event(&mut self, event: &InputEvent, bounds: Bounds, cx: &mut EventContext) -> EventResult {
-        let padding = 16.0;
-        let search_h = 32.0;
-
-        let search_bounds = Bounds::new(
-            bounds.origin.x + padding,
-            bounds.origin.y + padding,
-            bounds.size.width - padding * 2.0,
-            search_h,
-        );
-        self.search.event(event, search_bounds, cx)
+    fn event(&mut self, _event: &InputEvent, _bounds: Bounds, _cx: &mut EventContext) -> EventResult {
+        EventResult::Ignored
     }
 }

@@ -960,19 +960,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "autopilot-app"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "autopilot-service",
- "autopilot-ui",
- "pollster",
- "wgpu",
- "wgpui",
- "winit",
-]
-
-[[package]]
 name = "autopilot-service"
 version = "0.1.0"
 dependencies = [
@@ -991,14 +978,6 @@ dependencies = [
  "autopilot",
  "autopilot-service",
  "tracing",
- "wgpui",
-]
-
-[[package]]
-name = "autopilot-ui"
-version = "0.1.0"
-dependencies = [
- "autopilot-service",
  "wgpui",
 ]
 
@@ -7456,7 +7435,6 @@ dependencies = [
  "assert_cmd",
  "async-trait",
  "autopilot",
- "autopilot-app",
  "autopilot-service",
  "autopilot-shell",
  "base64 0.22.1",

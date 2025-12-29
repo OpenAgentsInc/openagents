@@ -67,13 +67,26 @@ impl Action for FocusCenter {
     }
 }
 
-/// Toggle Full Auto mode (cmd-f)
+/// Toggle Full Auto mode (cmd-a)
 #[derive(Debug, Clone, Copy, Default)]
 pub struct ToggleFullAuto;
 
 impl Action for ToggleFullAuto {
     fn name() -> &'static str {
         "shell::ToggleFullAuto"
+    }
+    fn boxed_clone(&self) -> Box<dyn AnyAction> {
+        Box::new(*self)
+    }
+}
+
+/// Toggle fullscreen mode (cmd-f)
+#[derive(Debug, Clone, Copy, Default)]
+pub struct ToggleFullscreen;
+
+impl Action for ToggleFullscreen {
+    fn name() -> &'static str {
+        "shell::ToggleFullscreen"
     }
     fn boxed_clone(&self) -> Box<dyn AnyAction> {
         Box::new(*self)

@@ -73,9 +73,9 @@ impl Component for FullAutoToggle {
         // State indicator
         let state_x = label_x + 85.0;
         let (state_text, state_color) = if self.enabled {
-            ("ON", Hsla::new(120.0, 0.7, 0.5, 1.0)) // Green
+            ("ON", Hsla::new(120.0, 1.0, 0.45, 1.0)) // Bright green
         } else {
-            ("OFF", Hsla::new(0.0, 0.7, 0.5, 1.0)) // Red
+            ("OFF", Hsla::new(0.0, 0.8, 0.5, 1.0)) // Red
         };
         let state_label = cx.text.layout(state_text, Point::new(state_x, y), 11.0, state_color);
         cx.scene.draw_text(state_label);
@@ -83,7 +83,7 @@ impl Component for FullAutoToggle {
         // Hint text
         let hint_x = state_x + 35.0;
         let hint_color = Hsla::new(0.0, 0.0, 0.35, 1.0);
-        let hint = cx.text.layout("(cmd-f)", Point::new(hint_x, y), 10.0, hint_color);
+        let hint = cx.text.layout("(cmd-a)", Point::new(hint_x, y), 10.0, hint_color);
         cx.scene.draw_text(hint);
 
         // Divider line at bottom
