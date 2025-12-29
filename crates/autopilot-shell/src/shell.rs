@@ -306,10 +306,11 @@ impl Component for AutopilotShell {
 
         // 6. Paint center thread view
         let thread_padding = 24.0;
+        let right_padding = 40.0; // extra right padding to prevent overflow
         let thread_bounds = Bounds::new(
             layout.center.origin.x + thread_padding,
             layout.center.origin.y + thread_padding,
-            layout.center.size.width - thread_padding * 2.0,
+            layout.center.size.width - thread_padding - right_padding,
             layout.center.size.height - thread_padding * 2.0,
         );
         self.thread_view.paint(thread_bounds, cx);
