@@ -3,6 +3,7 @@ use cdk::wallet::Wallet;
 use cdk::Amount as CdkAmount;
 use cdk_redb::WalletRedbDatabase;
 use std::path::Path;
+use std::str::FromStr;
 use std::sync::Arc;
 use url::Url;
 
@@ -129,6 +130,131 @@ impl CashuWallet {
     pub async fn proof_count(&self) -> Result<usize> {
         let proofs = self.inner.get_unspent_proofs().await?;
         Ok(proofs.len())
+    }
+
+    // ============================================================
+    // Proof Transfer Methods (for settlement)
+    // ============================================================
+
+    /// Create a cashu token from wallet proofs
+    ///
+    /// Selects proofs to cover the amount and serializes them as a token string.
+    /// The token can be sent to another party to receive the funds.
+    ///
+    /// # Arguments
+    /// * `amount` - Amount to send in smallest unit (sats for BTC, cents for USD)
+    ///
+    /// # Returns
+    /// A cashu token string (cashuA... format) that can be redeemed
+    pub async fn send_token(&self, amount: u64) -> Result<String> {
+        // Check balance first
+        let balance = self.balance().await?;
+        if balance.value < amount {
+            return Err(Error::InsufficientBalance {
+                have: balance.value,
+                need: amount,
+            });
+        }
+
+        // Use CDK to create a token
+        // The send method selects proofs and creates a serialized token
+        let token = self
+            .inner
+            .send(
+                CdkAmount::from(amount),
+                None, // memo
+                None, // conditions (for P2PK)
+                &cdk::amount::SplitTarget::default(),
+                &cdk::wallet::SendKind::default(),
+                false, // include fees
+            )
+            .await?;
+
+        Ok(token.to_string())
+    }
+
+    /// Receive a cashu token into the wallet
+    ///
+    /// Verifies the token with the mint and adds the proofs to the wallet.
+    /// Returns the amount received.
+    ///
+    /// # Arguments
+    /// * `token` - Cashu token string to redeem
+    ///
+    /// # Returns
+    /// The amount received
+    pub async fn receive_token(&self, token: &str) -> Result<Amount> {
+        // Parse and receive the token
+        let received = self
+            .inner
+            .receive(
+                token,
+                cdk::amount::SplitTarget::default(),
+                &[], // signing keys (for P2PK)
+                &[], // preimages (for HTLC)
+            )
+            .await?;
+
+        Ok(Amount::new(u64::from(received), self.currency))
+    }
+
+    /// Verify a cashu token is valid without redeeming
+    ///
+    /// Checks with the mint that the proofs are valid and unspent.
+    /// Does NOT consume the proofs - they can still be received later.
+    ///
+    /// # Arguments
+    /// * `token` - Cashu token string to verify
+    ///
+    /// # Returns
+    /// true if token is valid and unspent
+    pub async fn verify_token(&self, token: &str) -> Result<bool> {
+        // Parse the token
+        let token_parsed = cdk::nuts::Token::from_str(token)
+            .map_err(|e| Error::Database(format!("Invalid token format: {}", e)))?;
+
+        // Extract proofs (Token::proofs() returns Vec<Proof>)
+        let proofs = token_parsed.proofs();
+
+        if proofs.is_empty() {
+            return Ok(false);
+        }
+
+        // Check if proofs are spent using the mint
+        let spent_states = self.inner.check_proofs_spent(proofs).await?;
+
+        // All proofs must be unspent for the token to be valid
+        Ok(spent_states.iter().all(|state| {
+            matches!(state.state, cdk::nuts::State::Unspent)
+        }))
+    }
+
+    /// Get the total amount in a token without redeeming
+    ///
+    /// # Arguments
+    /// * `token` - Cashu token string
+    ///
+    /// # Returns
+    /// The total amount in the token
+    pub fn token_amount(&self, token: &str) -> Result<Amount> {
+        let token_parsed = cdk::nuts::Token::from_str(token)
+            .map_err(|e| Error::Database(format!("Invalid token format: {}", e)))?;
+
+        // Token::proofs() returns Vec<Proof>
+        let amount: u64 = token_parsed
+            .proofs()
+            .iter()
+            .map(|p| u64::from(p.amount))
+            .sum();
+
+        Ok(Amount::new(amount, self.currency))
+    }
+
+    /// Get a reference to the inner CDK wallet
+    ///
+    /// For advanced operations not exposed by this wrapper.
+    pub fn inner(&self) -> &Wallet {
+        &self.inner
     }
 }
 

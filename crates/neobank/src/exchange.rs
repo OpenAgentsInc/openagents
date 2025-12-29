@@ -33,6 +33,8 @@
 //! ```
 
 use crate::error::{Error, Result};
+use crate::relay::{ExchangeRelay, OrderFilter};
+use crate::settlement::{SettlementEngine, SettlementReceipt};
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, RwLock};
@@ -177,31 +179,7 @@ pub enum TradeStatus {
     Canceled,
 }
 
-/// Settlement receipt proving a trade completed
-#[derive(Debug, Clone)]
-pub struct SettlementReceipt {
-    /// Trade ID
-    pub trade_id: String,
-    /// Settlement method used
-    pub method: SettlementMethod,
-    /// Amount settled (sats)
-    pub amount_sats: u64,
-    /// Settlement duration
-    pub duration: Duration,
-    /// Proof (method-specific)
-    pub proof: Option<String>,
-}
-
-/// Settlement method
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SettlementMethod {
-    /// Mock settlement for testing
-    Mock,
-    /// Reputation-based (v0)
-    ReputationBased,
-    /// Atomic eCash swap (v1)
-    AtomicCashu,
-}
+// SettlementReceipt and SettlementMethod are imported from crate::settlement
 
 /// Trade outcome for attestations
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -244,22 +222,19 @@ pub struct TradeAttestation {
     pub amount_sats: u64,
 }
 
-/// Settlement mode configuration
-#[derive(Debug, Clone)]
-pub enum SettlementMode {
-    /// Mock settlement for testing (always succeeds)
-    Mock,
-    // TODO: Add real settlement modes
-    // Real { btc_wallet: CashuWallet, usd_wallet: CashuWallet },
-}
+// SettlementMode is imported from crate::settlement
 
 /// Exchange client for agent-to-agent trading
 pub struct ExchangeClient {
     /// Our public key (hex)
     pubkey: String,
-    /// Settlement mode
-    settlement_mode: SettlementMode,
-    /// Local order book (for mock mode)
+    /// Secret key for signing events (optional, needed for relay mode)
+    secret_key: Option<[u8; 32]>,
+    /// Settlement engine
+    settlement: SettlementEngine,
+    /// Relay for publishing/fetching orders (optional)
+    relay: Option<Arc<ExchangeRelay>>,
+    /// Local order book (for mock mode or cache)
     orders: Arc<RwLock<HashMap<String, Order>>>,
     /// Active trades
     trades: Arc<RwLock<HashMap<String, Trade>>>,
@@ -272,11 +247,65 @@ impl ExchangeClient {
     pub fn new_mock(pubkey: impl Into<String>) -> Self {
         Self {
             pubkey: pubkey.into(),
-            settlement_mode: SettlementMode::Mock,
+            secret_key: None,
+            settlement: SettlementEngine::new_mock(),
+            relay: None,
             orders: Arc::new(RwLock::new(HashMap::new())),
             trades: Arc::new(RwLock::new(HashMap::new())),
             attestations: Arc::new(RwLock::new(Vec::new())),
         }
+    }
+
+    /// Create a new exchange client with a custom settlement engine
+    pub fn new_with_settlement(pubkey: impl Into<String>, settlement: SettlementEngine) -> Self {
+        Self {
+            pubkey: pubkey.into(),
+            secret_key: None,
+            settlement,
+            relay: None,
+            orders: Arc::new(RwLock::new(HashMap::new())),
+            trades: Arc::new(RwLock::new(HashMap::new())),
+            attestations: Arc::new(RwLock::new(Vec::new())),
+        }
+    }
+
+    /// Create a new exchange client with relay integration
+    ///
+    /// # Arguments
+    /// * `pubkey` - Our public key (hex)
+    /// * `secret_key` - 32-byte secret key for signing events
+    /// * `settlement` - Settlement engine to use
+    /// * `relay` - Exchange relay for publishing/fetching orders
+    pub fn new_with_relay(
+        pubkey: impl Into<String>,
+        secret_key: [u8; 32],
+        settlement: SettlementEngine,
+        relay: Arc<ExchangeRelay>,
+    ) -> Self {
+        Self {
+            pubkey: pubkey.into(),
+            secret_key: Some(secret_key),
+            settlement,
+            relay: Some(relay),
+            orders: Arc::new(RwLock::new(HashMap::new())),
+            trades: Arc::new(RwLock::new(HashMap::new())),
+            attestations: Arc::new(RwLock::new(Vec::new())),
+        }
+    }
+
+    /// Check if relay mode is enabled
+    pub fn has_relay(&self) -> bool {
+        self.relay.is_some() && self.secret_key.is_some()
+    }
+
+    /// Get a reference to the relay (if configured)
+    pub fn relay(&self) -> Option<&Arc<ExchangeRelay>> {
+        self.relay.as_ref()
+    }
+
+    /// Get a reference to the settlement engine
+    pub fn settlement_engine(&self) -> &SettlementEngine {
+        &self.settlement
     }
 
     /// Get our public key
@@ -285,6 +314,9 @@ impl ExchangeClient {
     }
 
     /// Post a new order to the exchange
+    ///
+    /// If relay mode is enabled, the order will be published to connected relays.
+    /// Otherwise, it's stored locally only.
     pub async fn post_order(&self, params: OrderParams) -> Result<String> {
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -313,7 +345,12 @@ impl ExchangeClient {
             expires_at: now + params.expires_in.as_secs(),
         };
 
-        // Store locally (in real impl, would publish to relay)
+        // Publish to relay if configured
+        if let (Some(relay), Some(secret_key)) = (&self.relay, &self.secret_key) {
+            relay.publish_order(&order, secret_key).await?;
+        }
+
+        // Always store locally for quick access
         self.orders
             .write()
             .map_err(|e| Error::Database(e.to_string()))?
@@ -323,7 +360,34 @@ impl ExchangeClient {
     }
 
     /// Fetch orders from the exchange
+    ///
+    /// If relay mode is enabled, orders are fetched from the relay.
+    /// Otherwise, returns orders from local cache.
     pub async fn fetch_orders(&self, side_filter: Option<OrderSide>) -> Result<Vec<Order>> {
+        // Build filter from side
+        let filter = OrderFilter {
+            side: side_filter,
+            only_active: true,
+            ..Default::default()
+        };
+
+        self.fetch_orders_with_filter(filter).await
+    }
+
+    /// Fetch orders with a detailed filter
+    ///
+    /// If relay mode is enabled, orders are fetched from the relay.
+    /// Otherwise, returns orders from local cache.
+    pub async fn fetch_orders_with_filter(&self, filter: OrderFilter) -> Result<Vec<Order>> {
+        // Try relay first if available
+        if let Some(relay) = &self.relay {
+            let relay_orders = relay.fetch_orders(filter.clone()).await?;
+            if !relay_orders.is_empty() {
+                return Ok(relay_orders);
+            }
+        }
+
+        // Fall back to local cache
         let orders = self
             .orders
             .read()
@@ -337,12 +401,17 @@ impl ExchangeClient {
         Ok(orders
             .values()
             .filter(|o| {
-                // Filter by status and expiration
-                o.status == OrderStatus::Pending && o.expires_at > now
+                // Always filter by expiration
+                o.expires_at > now
             })
             .filter(|o| {
-                // Filter by side if specified
-                side_filter.map_or(true, |s| o.side == s)
+                // Apply filter criteria
+                filter.side.map_or(true, |s| o.side == s)
+                    && filter.currency.as_ref().map_or(true, |c| &o.currency == c)
+                    && filter.maker.as_ref().map_or(true, |m| &o.maker_pubkey == m)
+                    && filter.min_amount.map_or(true, |min| o.amount_sats >= min)
+                    && filter.max_amount.map_or(true, |max| o.amount_sats <= max)
+                    && (!filter.only_active || o.status == OrderStatus::Pending)
             })
             .cloned()
             .collect())
@@ -408,9 +477,7 @@ impl ExchangeClient {
 
     /// Settle a trade
     pub async fn settle(&self, trade: &Trade) -> Result<SettlementReceipt> {
-        let start = Instant::now();
-
-        // Update trade status
+        // Update trade status to settling
         {
             let mut trades = self
                 .trades
@@ -422,14 +489,8 @@ impl ExchangeClient {
             }
         }
 
-        // Execute settlement based on mode
-        let (method, proof) = match &self.settlement_mode {
-            SettlementMode::Mock => {
-                // Mock settlement: just simulate delay
-                tokio::time::sleep(Duration::from_millis(100)).await;
-                (SettlementMethod::Mock, None)
-            }
-        };
+        // Execute settlement via the settlement engine
+        let receipt = self.settlement.settle(trade).await?;
 
         // Update trade to completed
         {
@@ -455,16 +516,12 @@ impl ExchangeClient {
             }
         }
 
-        Ok(SettlementReceipt {
-            trade_id: trade.trade_id.clone(),
-            method,
-            amount_sats: trade.order.amount_sats,
-            duration: start.elapsed(),
-            proof,
-        })
+        Ok(receipt)
     }
 
     /// Publish a trade attestation (NIP-32 label)
+    ///
+    /// If relay mode is enabled, the attestation is published to relays.
     pub async fn attest_trade(
         &self,
         trade: &Trade,
@@ -489,6 +546,12 @@ impl ExchangeClient {
             amount_sats: trade.order.amount_sats,
         };
 
+        // Publish to relay if configured
+        if let (Some(relay), Some(secret_key)) = (&self.relay, &self.secret_key) {
+            relay.publish_attestation(&attestation, secret_key).await?;
+        }
+
+        // Store locally
         self.attestations
             .write()
             .map_err(|e| Error::Database(e.to_string()))?
@@ -643,6 +706,7 @@ impl ExchangeClient {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::settlement::SettlementMethod;
 
     #[tokio::test]
     async fn test_post_and_fetch_order() {
@@ -722,7 +786,7 @@ mod tests {
 
         assert_eq!(receipt.trade_id, order_id);
         assert_eq!(receipt.method, SettlementMethod::Mock);
-        assert_eq!(receipt.amount_sats, 10_000);
+        assert_eq!(receipt.btc_amount_sats, 10_000);
     }
 
     #[tokio::test]
@@ -828,5 +892,103 @@ mod tests {
         assert!(tags.iter().any(|t| t[0] == "amount" && t[1] == "10000"));
         assert!(tags.iter().any(|t| t[0] == "settlement_ms" && t[1] == "150"));
         assert!(tags.iter().any(|t| t[0] == "pair" && t[1] == "BTC/USD"));
+    }
+
+    #[tokio::test]
+    async fn test_new_with_relay() {
+        let secret_key = [0u8; 32];
+        let relay = Arc::new(ExchangeRelay::new_mock());
+        let settlement = SettlementEngine::new_mock();
+
+        let exchange = ExchangeClient::new_with_relay(
+            "test_pubkey",
+            secret_key,
+            settlement,
+            relay,
+        );
+
+        assert!(exchange.has_relay());
+        assert!(exchange.relay().is_some());
+        assert_eq!(exchange.pubkey(), "test_pubkey");
+    }
+
+    #[tokio::test]
+    async fn test_mock_has_no_relay() {
+        let exchange = ExchangeClient::new_mock("test_pubkey");
+        assert!(!exchange.has_relay());
+        assert!(exchange.relay().is_none());
+    }
+
+    #[tokio::test]
+    async fn test_fetch_orders_with_filter() {
+        let exchange = ExchangeClient::new_mock("alice_pubkey");
+
+        // Post some orders
+        exchange
+            .post_order(OrderParams {
+                side: OrderSide::Sell,
+                amount_sats: 10_000,
+                fiat_amount: 100,
+                currency: "USD".to_string(),
+                ..Default::default()
+            })
+            .await
+            .unwrap();
+
+        exchange
+            .post_order(OrderParams {
+                side: OrderSide::Buy,
+                amount_sats: 20_000,
+                fiat_amount: 200,
+                currency: "USD".to_string(),
+                ..Default::default()
+            })
+            .await
+            .unwrap();
+
+        exchange
+            .post_order(OrderParams {
+                side: OrderSide::Sell,
+                amount_sats: 5_000,
+                fiat_amount: 50,
+                currency: "EUR".to_string(),
+                ..Default::default()
+            })
+            .await
+            .unwrap();
+
+        // Filter by side
+        let sell_orders = exchange
+            .fetch_orders_with_filter(OrderFilter {
+                side: Some(OrderSide::Sell),
+                only_active: true,
+                ..Default::default()
+            })
+            .await
+            .unwrap();
+        assert_eq!(sell_orders.len(), 2);
+
+        // Filter by currency
+        let usd_orders = exchange
+            .fetch_orders_with_filter(OrderFilter {
+                currency: Some("USD".to_string()),
+                only_active: true,
+                ..Default::default()
+            })
+            .await
+            .unwrap();
+        assert_eq!(usd_orders.len(), 2);
+
+        // Filter by amount range
+        let large_orders = exchange
+            .fetch_orders_with_filter(OrderFilter {
+                min_amount: Some(15_000),
+                only_active: true,
+                ..Default::default()
+            })
+            .await
+            .unwrap();
+        assert_eq!(large_orders.len(), 1);
+        assert_eq!(large_orders[0].amount_sats, 20_000);
     }
 }

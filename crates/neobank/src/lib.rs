@@ -39,17 +39,34 @@
 //! ```
 
 pub mod error;
+pub mod escrow;
 pub mod exchange;
 pub mod mint_config;
+pub mod mint_trust;
+pub mod relay;
+pub mod reputation;
+pub mod rfq;
+pub mod settlement;
+pub mod treasury_agent;
 pub mod types;
 pub mod wallet;
 
 // Re-exports for convenient access
 pub use error::{Error, Result};
+pub use escrow::{Bond, Dispute, Escrow, EscrowConfig, EscrowService, EscrowStatus, TradeSide};
 pub use exchange::{
-    ExchangeClient, Order, OrderParams, OrderSide, OrderStatus, SettlementMethod,
-    SettlementMode, SettlementReceipt, Trade, TradeAttestation, TradeOutcome, TradeStatus,
+    ExchangeClient, Order, OrderParams, OrderSide, OrderStatus, Trade, TradeAttestation,
+    TradeOutcome, TradeStatus,
 };
 pub use mint_config::{KnownMints, MintConfig};
+pub use mint_trust::{MintHealth, MintInfo, MintNetwork, MintTrustService};
+pub use relay::{ExchangeRelay, OrderFilter, SettlementMessage};
+pub use reputation::{ReputationConfig, ReputationScore, ReputationService, TrustLevel};
+pub use rfq::{RfqFilter, RfqMarket, RfqQuote, RfqRequest};
+pub use settlement::{
+    LockedProof, SettlementEngine, SettlementMethod, SettlementMode, SettlementReceipt,
+    SettlementStatus, TokenTransfer,
+};
+pub use treasury_agent::{TradingPair, TreasuryAgent, TreasuryAgentConfig};
 pub use types::{Amount, AssetId, Currency};
 pub use wallet::{CashuWallet, MeltQuote, MeltResult, MintQuote, QuoteState};

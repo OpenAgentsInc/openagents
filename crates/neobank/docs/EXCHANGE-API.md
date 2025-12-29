@@ -587,9 +587,267 @@ cargo test -p nostr-integration-tests test_sovereign_agent_exchange_flow
 | 39201 | NIP-SA | Agent State |
 | 39231 | NIP-SA | Trajectory Event |
 
+## Relay Integration
+
+The `ExchangeRelay` provides real Nostr relay connectivity for publishing orders and attestations.
+
+```rust
+use neobank::{ExchangeClient, ExchangeRelay, SettlementEngine};
+use std::sync::Arc;
+
+// Connect to relays
+let relay = Arc::new(ExchangeRelay::connect(&[
+    "wss://relay.damus.io",
+    "wss://relay.nostr.band",
+]).await?);
+
+// Create exchange with relay
+let secret_key = [1u8; 32]; // Your nostr secret key
+let settlement = SettlementEngine::new_mock();
+let exchange = ExchangeClient::new_with_relay(
+    "my_pubkey",
+    secret_key,
+    settlement,
+    relay,
+);
+
+// Orders are now published to real relays
+let order_id = exchange.post_order(params).await?;
+
+// Fetch orders with filtering
+use neobank::relay::OrderFilter;
+let filter = OrderFilter {
+    side: Some(OrderSide::Sell),
+    currency: Some("USD".to_string()),
+    ..Default::default()
+};
+let orders = exchange.fetch_orders_with_filter(filter).await?;
+```
+
+See [relay.rs](../src/relay.rs) for the full API.
+
+## Settlement Modes
+
+Choose from multiple settlement strategies:
+
+| Mode | Use Case | Security |
+|------|----------|----------|
+| Mock | Testing | None |
+| ReputationBased | Established traders | Trust-based |
+| AtomicP2PK | High-value trades | Cryptographic |
+
+```rust
+use neobank::settlement::{SettlementEngine, SettlementMode};
+
+// Mock for testing
+let mock_engine = SettlementEngine::new_mock();
+
+// Reputation-based (higher rep pays first)
+let rep_engine = SettlementEngine::new_reputation_based(
+    wallet,
+    Duration::from_secs(60),
+);
+
+// Atomic P2PK (cryptographically secure)
+let atomic_engine = SettlementEngine::new_atomic_p2pk(
+    wallet,
+    Duration::from_secs(300),
+);
+```
+
+See [SETTLEMENT.md](./SETTLEMENT.md) for detailed documentation.
+
+## Reputation System
+
+Track and query trader reputation based on NIP-32 attestations:
+
+```rust
+use neobank::{ReputationService, ReputationConfig, TrustLevel};
+
+let config = ReputationConfig::default();
+let rep_service = ReputationService::new(config);
+
+// Fetch reputation
+let score = rep_service.fetch_reputation("counterparty_pubkey").await?;
+println!("Reputation: {:.2}", score.composite_score());
+println!("Trust level: {:?}", rep_service.trust_level(&score));
+
+// Decision helpers
+if rep_service.should_pay_first(&my_rep, &their_rep) {
+    // We should pay first in reputation-based settlement
+}
+
+// Minimum reputation for amount
+let min_rep = rep_service.min_reputation_for_amount(1_000_000);
+if their_rep.composite_score() < min_rep {
+    return Err("Insufficient reputation for this trade amount");
+}
+```
+
+See [reputation.rs](../src/reputation.rs) for the full API.
+
+## RFQ Market
+
+Request and receive competitive quotes from liquidity providers:
+
+```rust
+use neobank::{RfqMarket, RfqRequest, OrderSide};
+
+let market = RfqMarket::new();
+
+// Broadcast RFQ
+let request = RfqRequest {
+    id: uuid::Uuid::new_v4().to_string(),
+    requester_pubkey: "my_pubkey".to_string(),
+    side: OrderSide::Buy,
+    amount_sats: 100_000,
+    currency: "USD".to_string(),
+    max_premium_pct: 2.0,
+    min_premium_pct: -5.0,
+    expires_at: now() + 60,
+    min_reputation: 0.5,
+};
+
+let request_id = market.broadcast_rfq(request).await?;
+
+// Wait and collect quotes
+tokio::time::sleep(Duration::from_secs(5)).await;
+let quotes = market.collect_quotes(&request_id).await?;
+
+// Select best quote
+if let Some(best) = market.best_quote(&quotes, OrderSide::Buy) {
+    let trade_id = market.accept_quote(&best).await?;
+}
+```
+
+See [RFQ.md](./RFQ.md) for detailed documentation.
+
+## Treasury Agent
+
+Market-making agent for liquidity provision:
+
+```rust
+use neobank::{TreasuryAgent, TreasuryAgentConfig, TradingPair};
+
+let config = TreasuryAgentConfig {
+    pubkey: "treasury_pubkey".to_string(),
+    supported_pairs: vec![TradingPair::BtcUsd],
+    spread_bps: 50,  // 0.5% spread
+    min_trade_sats: 10_000,
+    max_trade_sats: 10_000_000,
+    ..Default::default()
+};
+
+let agent = TreasuryAgent::new(config);
+
+// Set market rate
+agent.set_rate(TradingPair::BtcUsd, 42_000.0).await;
+
+// Get bid/ask
+let (bid, ask) = agent.get_bid_ask(TradingPair::BtcUsd).await.unwrap();
+println!("Bid: ${:.2}, Ask: ${:.2}", bid, ask);
+
+// Handle incoming RFQ
+let quote = agent.handle_rfq(&rfq_request).await?;
+```
+
+See [treasury_agent.rs](../src/treasury_agent.rs) for the full API.
+
+## Mint Trust (NIP-87)
+
+Discover and evaluate Cashu mints:
+
+```rust
+use neobank::{MintTrustService, MintNetwork, Currency};
+use url::Url;
+
+let service = MintTrustService::new();
+
+// Add known mints
+service.add_mint(
+    "https://mint.cashu.space",
+    Currency::Btc,
+    MintNetwork::Mainnet,
+).await?;
+
+// Check health
+let health = service.check_mint_health(
+    &Url::parse("https://mint.cashu.space")?
+).await?;
+println!("Mint healthy: {}", health.is_online);
+
+// Select best mint
+let mint_url = service.select_mint(Currency::Btc, 0.7).await?;
+
+// Allowlist/blocklist
+service.add_to_allowlist(Url::parse("https://trusted.mint")?).await;
+service.add_to_blocklist(Url::parse("https://sketchy.mint")?).await;
+```
+
+See [mint_trust.rs](../src/mint_trust.rs) for the full API.
+
+## Escrow System
+
+Collateral and dispute handling for trades:
+
+```rust
+use neobank::{EscrowService, EscrowConfig, TradeSide};
+
+let config = EscrowConfig::default();
+let escrow_service = EscrowService::new(config);
+
+// Create escrow with 5% bond
+let escrow = escrow_service.create_escrow(
+    &trade_id,
+    trade_amount,
+    Some(0.05),  // 5% bond
+).await?;
+
+// Both parties fund their bonds
+escrow_service.fund_escrow(&escrow.id, TradeSide::Maker, &maker_pubkey).await?;
+escrow_service.fund_escrow(&escrow.id, TradeSide::Taker, &taker_pubkey).await?;
+
+// On successful trade
+escrow_service.release_escrow(&escrow.id).await?;
+
+// Or if dispute needed
+let dispute_id = escrow_service.initiate_dispute(
+    &escrow.id,
+    &initiator_pubkey,
+    "Counterparty did not deliver",
+).await?;
+
+// Resolve dispute (by oracle/mediator)
+escrow_service.resolve_dispute(
+    &dispute_id,
+    &winner_pubkey,
+    Some("Evidence reviewed"),
+).await?;
+```
+
+See [escrow.rs](../src/escrow.rs) for the full API.
+
+## Complete Module Reference
+
+| Module | Purpose | Documentation |
+|--------|---------|---------------|
+| `exchange` | Core order/trade management | This document |
+| `settlement` | Fund transfer protocols | [SETTLEMENT.md](./SETTLEMENT.md) |
+| `relay` | Nostr relay integration | [relay.rs](../src/relay.rs) |
+| `reputation` | Trader reputation scoring | [reputation.rs](../src/reputation.rs) |
+| `rfq` | Request for quote market | [RFQ.md](./RFQ.md) |
+| `treasury_agent` | Market making services | [treasury_agent.rs](../src/treasury_agent.rs) |
+| `mint_trust` | Mint discovery (NIP-87) | [mint_trust.rs](../src/mint_trust.rs) |
+| `escrow` | Collateral and disputes | [escrow.rs](../src/escrow.rs) |
+| `wallet` | Cashu wallet operations | [wallet.rs](../src/wallet.rs) |
+
 ## See Also
 
 - [EXCHANGE-SPEC.md](./EXCHANGE-SPEC.md) - Design specification
+- [SETTLEMENT.md](./SETTLEMENT.md) - Settlement protocol documentation
+- [RFQ.md](./RFQ.md) - RFQ market documentation
 - [NIP-69](https://github.com/nostr-protocol/nips/blob/master/69.md) - P2P Order Events
 - [NIP-32](https://github.com/nostr-protocol/nips/blob/master/32.md) - Labeling
+- [NIP-87](https://github.com/nostr-protocol/nips/blob/master/87.md) - Mint Discovery
+- [NIP-90](https://github.com/nostr-protocol/nips/blob/master/90.md) - Data Vending Machines
 - [nip_sa.rs](../../nostr/tests/integration/nip_sa.rs) - Integration tests
