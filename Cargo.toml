@@ -34,6 +34,7 @@ members = [
     "crates/wgpui",
     "crates/pylon",
     "crates/neobank",
+    "crates/web-platform",
 ]
 
 # Unified OpenAgents binary
