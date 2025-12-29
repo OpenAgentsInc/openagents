@@ -229,8 +229,10 @@ pub struct RfqFilter {
 /// RFQ market for broadcasting requests and collecting quotes
 pub struct RfqMarket {
     /// Relay for publishing (optional)
+    #[allow(dead_code)]
     relay: Option<Arc<ExchangeRelay>>,
     /// Secret key for signing (optional)
+    #[allow(dead_code)]
     secret_key: Option<[u8; 32]>,
     /// Local request cache
     requests: Arc<RwLock<HashMap<String, RfqRequest>>>,
