@@ -22,6 +22,8 @@
 //! - `theme` - Color and style tokens
 
 pub mod accessibility;
+#[macro_use]
+pub mod action;
 pub mod r#async;
 pub mod animation;
 pub mod app;
@@ -36,6 +38,8 @@ pub mod geometry;
 pub mod hit_test;
 pub mod input;
 pub mod integration;
+pub mod interactive;
+pub mod keymap;
 pub mod layout;
 pub mod markdown;
 pub mod platform;
@@ -104,6 +108,9 @@ pub use element::{
 };
 pub use styled::{Style, StyleRefinement, Styled, button, div, text};
 pub use window::{DispatchTree, InvalidationFlags, Invalidator, Window, WindowHandle};
+pub use action::{Action, ActionId, AnyAction, ActionRegistry, ActionListeners, DispatchPhase, DispatchResult, PendingAction, KeyBinding, Keystroke, KeystrokeMatch, KeystrokeParseError, NoAction};
+pub use interactive::{Interactive, WithAction, WithContext};
+pub use keymap::{KeyContext, Keymap, default_keymap};
 
 #[cfg(all(feature = "web", target_arch = "wasm32"))]
 pub use platform::web::{WebPlatform, run_animation_loop, setup_resize_observer};

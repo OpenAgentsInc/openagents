@@ -1,4 +1,4 @@
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub struct Modifiers {
     pub shift: bool,
     pub ctrl: bool,
@@ -37,7 +37,7 @@ impl Cursor {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct KeyCode(pub u32);
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum NamedKey {
     Enter,
     Escape,
@@ -52,7 +52,7 @@ pub enum NamedKey {
     ArrowRight,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum Key {
     Named(NamedKey),
     Character(String),
