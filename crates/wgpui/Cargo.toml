@@ -105,6 +105,9 @@ derive_more = { version = "2.1.1", features = ["deref", "deref_mut"] }
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 rodio = "0.20"
 reqwest = { workspace = true, features = ["blocking"] }
+# SVG rendering (desktop only - resvg doesn't support WASM)
+resvg = "0.44"
+usvg = "0.44"
 
 [dev-dependencies]
 criterion = "0.5"

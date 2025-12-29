@@ -253,7 +253,7 @@ impl ApplicationHandler for App {
                     label: Some("Render Encoder"),
                 });
 
-                state.renderer.prepare(&state.device, &scene, state.scale_factor);
+                state.renderer.prepare(&state.device, &state.queue, &scene, state.scale_factor);
                 state.renderer.render(&mut encoder, &view);
 
                 state.queue.submit(std::iter::once(encoder.finish()));

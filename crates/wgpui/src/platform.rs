@@ -160,7 +160,7 @@ pub mod web {
                 self.text_system.mark_clean();
             }
 
-            self.renderer.prepare(&self.device, scene, self.scale_factor);
+            self.renderer.prepare(&self.device, &self.queue, scene, self.scale_factor);
 
             let frame = self
                 .surface

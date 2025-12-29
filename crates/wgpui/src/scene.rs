@@ -2,6 +2,36 @@ use crate::color::Hsla;
 use crate::geometry::{Bounds, Point, Size};
 use bytemuck::{Pod, Zeroable};
 
+/// GPU-ready image/SVG quad for rendering.
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Pod, Zeroable)]
+pub struct GpuImageQuad {
+    pub position: [f32; 2],
+    pub size: [f32; 2],
+    pub uv: [f32; 4],
+    pub tint: [f32; 4],
+}
+
+impl GpuImageQuad {
+    /// Create a GPU image quad from bounds and optional tint.
+    /// UV is full texture (0,0 to 1,1).
+    pub fn new(position: [f32; 2], size: [f32; 2], tint: Option<Hsla>) -> Self {
+        let tint_color = tint.map(|c| {
+            #[cfg(not(target_arch = "wasm32"))]
+            { c.to_linear_rgba() }
+            #[cfg(target_arch = "wasm32")]
+            { c.to_rgba() }
+        }).unwrap_or([1.0, 1.0, 1.0, 1.0]); // White = no tint
+
+        Self {
+            position,
+            size,
+            uv: [0.0, 0.0, 1.0, 1.0], // Full texture
+            tint: tint_color,
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct Quad {
     pub bounds: Bounds,
@@ -177,10 +207,39 @@ impl GpuTextQuad {
     }
 }
 
+/// An SVG to be rendered as a textured quad.
+#[derive(Clone, Debug)]
+pub struct SvgQuad {
+    /// Bounds to render the SVG within (logical pixels)
+    pub bounds: Bounds,
+    /// Raw SVG bytes
+    pub svg_data: std::sync::Arc<[u8]>,
+    /// Optional tint color (for monochrome icons)
+    pub tint: Option<Hsla>,
+}
+
+impl SvgQuad {
+    /// Create a new SVG quad.
+    pub fn new(bounds: Bounds, svg_data: std::sync::Arc<[u8]>) -> Self {
+        Self {
+            bounds,
+            svg_data,
+            tint: None,
+        }
+    }
+
+    /// Set a tint color for the SVG.
+    pub fn with_tint(mut self, color: Hsla) -> Self {
+        self.tint = Some(color);
+        self
+    }
+}
+
 #[derive(Default)]
 pub struct Scene {
     pub quads: Vec<Quad>,
     pub text_runs: Vec<TextRun>,
+    pub svg_quads: Vec<SvgQuad>,
     clip_stack: Vec<Bounds>,
 }
 
@@ -192,6 +251,7 @@ impl Scene {
     pub fn clear(&mut self) {
         self.quads.clear();
         self.text_runs.clear();
+        self.svg_quads.clear();
         self.clip_stack.clear();
     }
 
@@ -207,6 +267,17 @@ impl Scene {
 
     pub fn draw_text(&mut self, text_run: TextRun) {
         self.text_runs.push(text_run);
+    }
+
+    /// Draw an SVG at the specified bounds.
+    pub fn draw_svg(&mut self, svg: SvgQuad) {
+        if let Some(clip) = self.clip_stack.last() {
+            if svg.bounds.intersects(clip) {
+                self.svg_quads.push(svg);
+            }
+        } else {
+            self.svg_quads.push(svg);
+        }
     }
 
     pub fn push_clip(&mut self, bounds: Bounds) {
@@ -253,6 +324,10 @@ impl Scene {
 
     pub fn text_runs(&self) -> &[TextRun] {
         &self.text_runs
+    }
+
+    pub fn svg_quads(&self) -> &[SvgQuad] {
+        &self.svg_quads
     }
 }
 

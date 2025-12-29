@@ -11,15 +11,18 @@
 
 use std::collections::VecDeque;
 use std::sync::Arc;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 use wgpui::{
-    Bounds, Point, Quad, Scene, Size, TextSystem, theme,
+    Animation, AnimationController, Bounds, Component, Easing, Hsla, PaintContext, Point, Quad, Scene, Size, SvgQuad, TextSystem, theme,
     // New text system types
     LineWrapper, LineFragment, Boundary, TruncateFrom,
     LineLayout, ShapedRun, ShapedGlyph, FontRun,
     LineLayoutCache,
     // Markdown
     StreamingMarkdown, MarkdownRenderer,
+};
+use wgpui::components::hud::{
+    CornerConfig, DotsGrid, DotsOrigin, DotShape, Frame,
 };
 use wgpui::renderer::Renderer;
 use winit::application::ApplicationHandler;
@@ -64,6 +67,11 @@ struct DemoState {
     markdown_tokens: VecDeque<String>,
     markdown_started: bool,
     last_token_frame: u64,
+    // HUD effects
+    dots_grid: DotsGrid,
+    dots_anim: Animation<f32>,
+    frame_anim: Animation<f32>,
+    anim_controller: AnimationController,
 }
 
 impl Default for DemoState {
@@ -106,6 +114,20 @@ fn main() {
             .map(|chunk| chunk.iter().collect())
             .collect();
 
+        // Initialize dots animation (infinite loop)
+        let mut dots_anim = Animation::new(0.0_f32, 1.0, Duration::from_millis(2000))
+            .easing(Easing::EaseOut)
+            .iterations(0) // infinite
+            .alternate();
+        dots_anim.start();
+
+        // Initialize frame animation (infinite loop)
+        let mut frame_anim = Animation::new(0.0_f32, 1.0, Duration::from_millis(1500))
+            .easing(Easing::EaseInOutCubic)
+            .iterations(0) // infinite
+            .alternate();
+        frame_anim.start();
+
         Self {
             start_time: Instant::now(),
             frame_count: 0,
@@ -118,6 +140,18 @@ fn main() {
             markdown_tokens: tokens,
             markdown_started: true, // Start immediately
             last_token_frame: 0,
+            // HUD effects
+            dots_grid: DotsGrid::new()
+                .color(Hsla::new(0.0, 0.0, 1.0, 0.15)) // White, subtle
+                .shape(DotShape::Cross)
+                .distance(32.0)
+                .size(4.0)
+                .cross_thickness(1.0)
+                .origin(DotsOrigin::Center)
+                .animation_progress(1.0), // Fully visible, no animation
+            dots_anim,
+            frame_anim,
+            anim_controller: AnimationController::new(),
         }
     }
 }
@@ -376,7 +410,7 @@ impl ApplicationHandler for App {
                 }
 
                 // Pass scale_factor to prepare() for logical->physical coordinate conversion
-                state.renderer.prepare(&state.device, &scene, scale_factor);
+                state.renderer.prepare(&state.device, &state.queue, &scene, scale_factor);
                 state.renderer.render(&mut encoder, &view);
 
                 state.queue.submit(std::iter::once(encoder.finish()));
@@ -403,8 +437,16 @@ fn build_text_demo(
     let margin = 24.0;
     let col_width = (width - margin * 3.0) / 2.0;
 
+    // Get delta time and update frame animation (dots are static now)
+    let delta = demo.anim_controller.delta();
+    let _frame_progress = demo.frame_anim.tick(delta);
+
     // Background
     scene.draw_quad(Quad::new(Bounds::new(0.0, 0.0, width, height)).with_background(theme::bg::APP));
+
+    // Paint static dots grid as background effect (white, no animation)
+    let mut cx = PaintContext::new(scene, text_system, 1.0);
+    demo.dots_grid.paint(Bounds::new(0.0, 0.0, width, height), &mut cx);
 
     let mut y = margin - demo.scroll_offset;
 
@@ -433,6 +475,8 @@ fn build_text_demo(
     demo_line_layout_api(scene, text_system, right_x, col_width, &mut right_y);
     right_y += 24.0;
     demo_cache_stats(scene, text_system, demo, right_x, col_width, &mut right_y);
+    right_y += 24.0;
+    demo_svg_rendering(scene, text_system, right_x, col_width, &mut right_y);
 
     // Full-width streaming markdown demo at the bottom
     let bottom_y = left_y.max(right_y) + 24.0;
@@ -447,6 +491,22 @@ fn draw_header(
     width: f32,
     demo: &DemoState,
 ) {
+    let header_bounds = Bounds::new(margin, *y, width - margin * 2.0, 80.0);
+
+    // Draw animated frame around header
+    // Use current_value() since tick() was already called in build_text_demo
+    let frame_progress = demo.frame_anim.current_value();
+    let mut frame = Frame::nefrex()
+        .line_color(theme::accent::PRIMARY)
+        .bg_color(theme::bg::SURFACE.with_alpha(0.3))
+        .stroke_width(1.5)
+        .corner_length(24.0)
+        .corner_config(CornerConfig::diagonal())
+        .animation_progress(frame_progress);
+
+    let mut cx = PaintContext::new(scene, text_system, 1.0);
+    frame.paint(header_bounds, &mut cx);
+
     let title = "wgpui Text System Demo";
     let subtitle = format!(
         "Frame {} | Wrap: {}px | Keys: -/= wrap width, R restart markdown",
@@ -454,16 +514,11 @@ fn draw_header(
         demo.wrap_width,
     );
 
-    let title_run = text_system.layout(title, Point::new(margin, *y + 24.0), 28.0, theme::text::PRIMARY);
+    let title_run = text_system.layout(title, Point::new(margin + 12.0, *y + 24.0), 28.0, theme::text::PRIMARY);
     scene.draw_text(title_run);
 
-    let subtitle_run = text_system.layout(&subtitle, Point::new(margin, *y + 54.0), 12.0, theme::text::MUTED);
+    let subtitle_run = text_system.layout(&subtitle, Point::new(margin + 12.0, *y + 54.0), 12.0, theme::text::MUTED);
     scene.draw_text(subtitle_run);
-
-    scene.draw_quad(
-        Quad::new(Bounds::new(margin, *y + 72.0, width - margin * 2.0, 2.0))
-            .with_background(theme::accent::PRIMARY),
-    );
 
     *y += 92.0;
 }
@@ -960,6 +1015,89 @@ fn demo_cache_stats(
     *y += 130.0;
 }
 
+fn demo_svg_rendering(
+    scene: &mut Scene,
+    text_system: &mut TextSystem,
+    x: f32,
+    width: f32,
+    y: &mut f32,
+) {
+    draw_section_header(scene, text_system, x, y, "SVG Rendering");
+
+    scene.draw_quad(
+        Quad::new(Bounds::new(x, *y, width, 180.0))
+            .with_background(theme::bg::SURFACE)
+            .with_border(theme::border::DEFAULT, 1.0),
+    );
+
+    let line_height = 20.0;
+    let mut text_y = *y + 12.0;
+
+    // Simple SVG icons embedded as bytes (using rgb() for colors to avoid raw string issues)
+    let circle_svg = b"<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 100 100\"><circle cx=\"50\" cy=\"50\" r=\"45\" fill=\"rgb(255,180,0)\" stroke=\"rgb(255,140,0)\" stroke-width=\"4\"/></svg>";
+
+    let checkmark_svg = b"<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 100 100\"><polyline points=\"20,50 40,70 80,30\" fill=\"none\" stroke=\"rgb(0,230,118)\" stroke-width=\"10\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/></svg>";
+
+    let star_svg = b"<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 100 100\"><polygon points=\"50,5 61,40 98,40 68,62 79,97 50,75 21,97 32,62 2,40 39,40\" fill=\"rgb(255,215,0)\" stroke=\"rgb(255,165,0)\" stroke-width=\"2\"/></svg>";
+
+    let arrow_svg = b"<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 100 100\"><polygon points=\"50,10 90,90 50,70 10,90\" fill=\"rgb(33,150,243)\"/></svg>";
+
+    // Title
+    let title_run = text_system.layout("SVG Icons at different sizes:", Point::new(x + 8.0, text_y), 12.0, theme::text::PRIMARY);
+    scene.draw_text(title_run);
+    text_y += line_height + 8.0;
+
+    // Draw SVGs at different sizes
+    let sizes = [16.0, 24.0, 32.0, 48.0];
+    let svgs = [
+        (circle_svg.as_slice(), "Circle"),
+        (checkmark_svg.as_slice(), "Check"),
+        (star_svg.as_slice(), "Star"),
+        (arrow_svg.as_slice(), "Arrow"),
+    ];
+
+    let mut svg_x = x + 12.0;
+    for (svg_data, _label) in svgs.iter() {
+        for (i, &size) in sizes.iter().enumerate() {
+            scene.draw_svg(SvgQuad {
+                bounds: Bounds::new(svg_x + (i as f32 * (size + 8.0)), text_y, size, size),
+                svg_data: Arc::from(*svg_data),
+                tint: None,
+            });
+        }
+        svg_x += 180.0;
+    }
+
+    text_y += 60.0;
+
+    // Draw with tint colors
+    let tint_title = text_system.layout("With color tinting:", Point::new(x + 8.0, text_y), 12.0, theme::text::PRIMARY);
+    scene.draw_text(tint_title);
+    text_y += line_height + 8.0;
+
+    let tint_colors = [
+        Some(theme::accent::PRIMARY),
+        Some(theme::accent::GREEN),
+        Some(theme::accent::RED),
+        Some(theme::accent::BLUE),
+    ];
+
+    for (i, tint) in tint_colors.iter().enumerate() {
+        scene.draw_svg(SvgQuad {
+            bounds: Bounds::new(x + 12.0 + (i as f32 * 48.0), text_y, 32.0, 32.0),
+            svg_data: Arc::from(star_svg.as_slice()),
+            tint: *tint,
+        });
+    }
+
+    text_y += 48.0;
+
+    let info_run = text_system.layout("SVGs are rasterized to RGBA and cached by content hash + size", Point::new(x + 8.0, text_y), 10.0, theme::text::MUTED);
+    scene.draw_text(info_run);
+
+    *y += 190.0;
+}
+
 fn demo_streaming_markdown(
     scene: &mut Scene,
     text_system: &mut TextSystem,
@@ -1011,12 +1149,18 @@ fn demo_streaming_markdown(
     let padding = 12.0;
     let content_height = (status_height + padding + md_size.height + padding).max(60.0);
 
-    // Background panel sized to actual content
-    scene.draw_quad(
-        Quad::new(Bounds::new(x, content_y, width, content_height))
-            .with_background(theme::bg::SURFACE)
-            .with_border(theme::border::DEFAULT, 1.0),
-    );
+    // Use Frame for the markdown container
+    let frame_bounds = Bounds::new(x, content_y, width, content_height);
+    let mut frame = Frame::nefrex()
+        .line_color(theme::accent::PRIMARY.with_alpha(0.6))
+        .bg_color(theme::bg::SURFACE.with_alpha(0.2))
+        .stroke_width(1.0)
+        .corner_length(16.0)
+        .corner_config(CornerConfig::diagonal())
+        .animation_progress(1.0);
+
+    let mut cx = PaintContext::new(scene, text_system, 1.0);
+    frame.paint(frame_bounds, &mut cx);
 
     // Status info
     let status = if demo.markdown_tokens.is_empty() {
