@@ -18,7 +18,7 @@ impl HudBackground {
         Self {
             start_time: Instant::now(),
             animation_complete: false,
-            color: Hsla::new(0.0, 0.0, 1.0, 0.12), // White, very subtle
+            color: Hsla::new(0.0, 0.0, 0.25, 0.2), // Subtle gray
         }
     }
 
