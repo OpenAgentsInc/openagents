@@ -44,7 +44,7 @@ fn extract_tool_display(name: &str, params: &str) -> String {
     }
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct LogLine {
     pub text: String,
     #[allow(dead_code)]
@@ -52,7 +52,7 @@ pub struct LogLine {
     pub status: LogStatus,
 }
 
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum LogStatus {
     Pending,
     Success,
