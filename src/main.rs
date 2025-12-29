@@ -76,7 +76,7 @@ fn main() {
 
     // Run command
     let result = match cli.command {
-        None => autopilot_app::run(),
+        None => cli::autopilot::run(cli::autopilot::AutopilotArgs::default(), cli.verbose),
         Some(Commands::Autopilot(cmd)) => cli::autopilot::run(cmd, cli.verbose),
         Some(Commands::Agent(cmd)) => cli::agent::run(cmd),
         Some(Commands::Wallet(cmd)) => cli::wallet::run(cmd),

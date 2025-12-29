@@ -5,10 +5,8 @@ members = [
     "crates/agent",
     "crates/agent-orchestrator",
     "crates/autopilot",
-    "crates/autopilot-app",
     "crates/autopilot-service",
     "crates/autopilot-shell",
-    "crates/autopilot-ui",
     "crates/autopilot-wasm",
     "crates/gitafter",
     "crates/frostr",
@@ -84,7 +82,6 @@ path = "src/bin/agent_runner.rs"
 # OpenAgents crates
 agent = { path = "crates/agent" }
 autopilot = { path = "crates/autopilot" }
-autopilot-app = { path = "crates/autopilot-app" }
 autopilot-service = { path = "crates/autopilot-service" }
 autopilot-shell = { path = "crates/autopilot-shell" }
 wallet = { path = "crates/wallet" }

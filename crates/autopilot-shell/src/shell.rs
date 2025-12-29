@@ -54,6 +54,9 @@ pub struct AutopilotShell {
     // Input handling
     keymap: Keymap,
     key_context: KeyContext,
+
+    // Window requests
+    pending_fullscreen_toggle: bool,
 }
 
 impl AutopilotShell {
@@ -82,10 +85,10 @@ impl AutopilotShell {
             StatusItem::text("agent", "Claude").right(),
         ]);
 
-        // Keymap with shell bindings
-        let mut keymap = shell_keymap();
-        // Add default bindings
-        keymap.add_bindings(wgpui::keymap::default_keymap().bindings().iter().cloned());
+        // Keymap with default bindings, then shell overrides
+        let mut keymap = wgpui::keymap::default_keymap();
+        // Add shell bindings (these override defaults due to later-wins precedence)
+        keymap.add_bindings(shell_keymap().bindings().iter().cloned());
 
         Self {
             left_dock,
@@ -100,7 +103,13 @@ impl AutopilotShell {
             full_auto_toggle: FullAutoToggle::new(),
             keymap,
             key_context: KeyContext::new(),
+            pending_fullscreen_toggle: false,
         }
+    }
+
+    /// Check and consume pending fullscreen toggle request
+    pub fn take_fullscreen_toggle(&mut self) -> bool {
+        std::mem::take(&mut self.pending_fullscreen_toggle)
     }
 
     /// Apply a runtime snapshot to update the UI
@@ -253,6 +262,10 @@ impl AutopilotShell {
                 self.full_auto_toggle.toggle();
                 EventResult::Handled
             }
+            "shell::ToggleFullscreen" => {
+                self.pending_fullscreen_toggle = true;
+                EventResult::Handled
+            }
             _ => EventResult::Ignored,
         }
     }
@@ -353,6 +366,19 @@ impl Component for AutopilotShell {
 
         // Calculate layout for event routing
         let layout = self.calculate_layout(bounds);
+
+        // Route to Full Auto toggle first (it's painted over right sidebar)
+        if self.right_dock.is_open() {
+            let toggle_bounds = Bounds::new(
+                layout.right.origin.x + 16.0,
+                layout.right.origin.y + 16.0,
+                layout.right.size.width - 32.0,
+                36.0,
+            );
+            if let EventResult::Handled = self.full_auto_toggle.event(event, toggle_bounds, cx) {
+                return EventResult::Handled;
+            }
+        }
 
         // Route to docks
         if self.left_dock.is_open() {

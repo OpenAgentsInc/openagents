@@ -4,26 +4,29 @@ use wgpui::action::KeyBinding;
 use wgpui::keymap::Keymap;
 
 use crate::actions::{
-    FocusCenter, ToggleAllSidebars, ToggleBottomPanel, ToggleFullAuto, ToggleLeftSidebar,
-    ToggleRightSidebar,
+    FocusCenter, ToggleAllSidebars, ToggleBottomPanel, ToggleFullAuto, ToggleFullscreen,
+    ToggleLeftSidebar, ToggleRightSidebar,
 };
 
 /// Create a keymap with shell-specific keybindings.
 ///
 /// Keybindings:
-/// - cmd-b: Toggle left sidebar
-/// - cmd-shift-b: Toggle right sidebar
+/// - cmd-[: Toggle left sidebar
+/// - cmd-]: Toggle right sidebar
 /// - cmd-j: Toggle bottom panel
 /// - cmd-\: Toggle all sidebars
 pub fn shell_keymap() -> Keymap {
     let mut keymap = Keymap::new();
 
     // Full Auto toggle
-    add_binding(&mut keymap, "cmd-f", ToggleFullAuto);
+    add_binding(&mut keymap, "cmd-a", ToggleFullAuto);
+
+    // Fullscreen toggle
+    add_binding(&mut keymap, "cmd-f", ToggleFullscreen);
 
     // Sidebar toggles
-    add_binding(&mut keymap, "cmd-b", ToggleLeftSidebar);
-    add_binding(&mut keymap, "cmd-shift-b", ToggleRightSidebar);
+    add_binding(&mut keymap, "cmd-[", ToggleLeftSidebar);
+    add_binding(&mut keymap, "cmd-]", ToggleRightSidebar);
     add_binding(&mut keymap, "cmd-j", ToggleBottomPanel);
     add_binding(&mut keymap, "cmd-\\", ToggleAllSidebars);
 
@@ -53,12 +56,12 @@ mod tests {
     }
 
     #[test]
-    fn test_cmd_b_toggles_left_sidebar() {
+    fn test_cmd_bracket_toggles_left_sidebar() {
         let keymap = shell_keymap();
         let context = KeyContext::new();
 
         let action = keymap.match_keystroke(
-            &Key::Character("b".to_string()),
+            &Key::Character("[".to_string()),
             &Modifiers {
                 meta: true,
                 ..Default::default()
@@ -71,15 +74,14 @@ mod tests {
     }
 
     #[test]
-    fn test_cmd_shift_b_toggles_right_sidebar() {
+    fn test_cmd_bracket_toggles_right_sidebar() {
         let keymap = shell_keymap();
         let context = KeyContext::new();
 
         let action = keymap.match_keystroke(
-            &Key::Character("b".to_string()),
+            &Key::Character("]".to_string()),
             &Modifiers {
                 meta: true,
-                shift: true,
                 ..Default::default()
             },
             &context,
@@ -105,5 +107,41 @@ mod tests {
 
         assert!(action.is_some());
         assert_eq!(action.unwrap().name(), "shell::ToggleBottomPanel");
+    }
+
+    #[test]
+    fn test_cmd_a_toggles_full_auto() {
+        let keymap = shell_keymap();
+        let context = KeyContext::new();
+
+        let action = keymap.match_keystroke(
+            &Key::Character("a".to_string()),
+            &Modifiers {
+                meta: true,
+                ..Default::default()
+            },
+            &context,
+        );
+
+        assert!(action.is_some());
+        assert_eq!(action.unwrap().name(), "shell::ToggleFullAuto");
+    }
+
+    #[test]
+    fn test_cmd_f_toggles_fullscreen() {
+        let keymap = shell_keymap();
+        let context = KeyContext::new();
+
+        let action = keymap.match_keystroke(
+            &Key::Character("f".to_string()),
+            &Modifiers {
+                meta: true,
+                ..Default::default()
+            },
+            &context,
+        );
+
+        assert!(action.is_some());
+        assert_eq!(action.unwrap().name(), "shell::ToggleFullscreen");
     }
 }
