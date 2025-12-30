@@ -336,16 +336,10 @@ impl AutopilotShell {
 
         // Update ClaudeUsage with model info from runtime
         let model_str = snapshot.model.as_str();
-        let context_total = match snapshot.model {
-            ClaudeModel::Sonnet => 200_000,
-            ClaudeModel::Opus => 200_000,
-        };
-        // Use context_window from session_usage if available, otherwise default
-        let context_used = if snapshot.session_usage.context_window > 0 {
-            snapshot.session_usage.context_window
-        } else {
-            0
-        };
+        // Note: context_window from SDK is the model's capacity, NOT used context
+        // Use input_tokens as a rough proxy for context used in this session
+        let context_used = snapshot.session_usage.input_tokens;
+        let context_total = snapshot.session_usage.context_window.max(200_000);
         self.system_panel.update_usage(model_str, context_used, context_total);
 
         // Update session stats from accumulated usage data
