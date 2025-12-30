@@ -220,6 +220,7 @@ Your turn should only end with calling ExitPlanMode. Do not stop early."#.to_str
                     Ok(Some(msg)) => msg,
                     Ok(None) => {
                         // Stream ended without Result - this is problematic
+                        eprintln!("[CLAUDE] WARNING: Stream ended with Ok(None) - no Result message received!");
                         tracing::warn!("[CLAUDE] Stream ended with Ok(None) - no Result message received!");
                         if full_response.is_empty() {
                             last_error = "Stream ended unexpectedly with no data".to_string();
@@ -227,6 +228,7 @@ Your turn should only end with calling ExitPlanMode. Do not stop early."#.to_str
                             let _ = stream.abort().await;
                             continue 'retry;
                         }
+                        eprintln!("[CLAUDE] Breaking without usage data - response len={}", full_response.len());
                         tracing::warn!("[CLAUDE] Breaking without usage data - response len={}", full_response.len());
                         break; // No Result received, so no usage data available
                     }
@@ -305,9 +307,16 @@ Your turn should only end with calling ExitPlanMode. Do not stop early."#.to_str
                     }
                     Ok(SdkMessage::Result(result)) => {
                         verbose_println!("[CLAUDE][RESULT] {:?}", result);
+                        eprintln!("[CLAUDE] RESULT MESSAGE RECEIVED!");
                         tracing::info!("[CLAUDE] Received Result message - extracting usage data");
+                        // Log result to session logger
+                        if let Some(ref log) = logger {
+                            log.log_result("planning", &serde_json::to_value(&result).unwrap_or_default());
+                        }
                         // Extract usage data and send it
                         let usage = extract_usage_from_result(&result, model.as_str());
+                        eprintln!("[CLAUDE] Usage: input={}, output={}, cost=${:.4}, turns={}",
+                            usage.input_tokens, usage.output_tokens, usage.total_cost_usd, usage.num_turns);
                         tracing::info!("[CLAUDE] Usage: input={}, output={}, cost=${:.4}, turns={}",
                             usage.input_tokens, usage.output_tokens, usage.total_cost_usd, usage.num_turns);
                         let _ = tx.send(ClaudeToken::Usage(usage));
@@ -453,6 +462,7 @@ Start now."#, plan);
                 let msg = match next_result {
                     Ok(Some(msg)) => msg,
                     Ok(None) => {
+                        tracing::warn!("[CLAUDE-EXEC] Stream ended with Ok(None) - no Result message received!");
                         if full_response.is_empty() {
                             last_error = "Stream ended unexpectedly with no data".to_string();
                             eprintln!("[CLAUDE-EXEC] {}", last_error);
@@ -516,8 +526,11 @@ Start now."#, plan);
                     }
                     Ok(SdkMessage::Result(result)) => {
                         verbose_println!("[CLAUDE-EXEC] Got Result message, breaking");
+                        tracing::info!("[CLAUDE-EXEC] Received Result message - extracting usage data");
                         // Extract usage data and send it
                         let usage = extract_usage_from_result(&result, model.as_str());
+                        tracing::info!("[CLAUDE-EXEC] Usage: input={}, output={}, cost=${:.4}, turns={}",
+                            usage.input_tokens, usage.output_tokens, usage.total_cost_usd, usage.num_turns);
                         let _ = tx.send(ClaudeToken::Usage(usage));
                         break;
                     }
@@ -670,6 +683,7 @@ Otherwise, provide a detailed plan for the next iteration in the same format as 
                 let msg = match next_result {
                     Ok(Some(msg)) => msg,
                     Ok(None) => {
+                        tracing::warn!("[CLAUDE-REVIEW] Stream ended with Ok(None) - no Result message received!");
                         if full_response.is_empty() {
                             last_error = "Stream ended unexpectedly with no data".to_string();
                             eprintln!("[CLAUDE-REVIEW] {}", last_error);
@@ -731,8 +745,11 @@ Otherwise, provide a detailed plan for the next iteration in the same format as 
                         }
                     }
                     Ok(SdkMessage::Result(result)) => {
+                        tracing::info!("[CLAUDE-REVIEW] Received Result message - extracting usage data");
                         // Extract usage data and send it
                         let usage = extract_usage_from_result(&result, model.as_str());
+                        tracing::info!("[CLAUDE-REVIEW] Usage: input={}, output={}, cost=${:.4}, turns={}",
+                            usage.input_tokens, usage.output_tokens, usage.total_cost_usd, usage.num_turns);
                         let _ = tx.send(ClaudeToken::Usage(usage));
                         break;
                     }
