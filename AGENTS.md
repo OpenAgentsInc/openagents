@@ -17,6 +17,8 @@ OpenAgents desktop repo.
 - NEVER destructive commands (`reset --hard`, `checkout -- .`, `restore .`) without asking
 
 **Multi-agent coordination:** Other agents may have uncommitted work. Before discarding changes in files you didn't modify, run `git diff <file>` and ASK first.
+**Clarification:** You can always continue work in your own files without asking permission, even if other files are dirty. You do not need permission to ignore other agents' changes.
+**Commits:** When committing, stage only your own files explicitly. Do not assume all changes in the worktree should be committed.
 
 **Autopilot commits:** Add `Co-Authored-By: Autopilot <autopilot@openagents.com>` after Claude's co-author line.
 
