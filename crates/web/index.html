@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>WGPUI Web Demo</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        html, body {
+            width: 100%;
+            height: 100%;
+            background: #0a0a0a;
+            overflow: hidden;
+        }
+        #canvas {
+            width: 100%;
+            height: 100%;
+            display: block;
+        }
+        #loading {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: #888;
+            font-family: monospace;
+            font-size: 14px;
+        }
+        #error {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: #ff4444;
+            font-family: monospace;
+            font-size: 14px;
+            max-width: 80%;
+            text-align: center;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+    <div id="loading">Loading WGPUI...</div>
+    <div id="error"></div>
+    <script type="module">
+        import init, { start_demo } from './pkg/openagents_web.js';
+
+        async function run() {
+            const loading = document.getElementById('loading');
+            const error = document.getElementById('error');
+
+            try {
+                loading.textContent = 'Initializing WASM...';
+                await init();
+
+                loading.textContent = 'Starting GPU...';
+                await start_demo('canvas');
+
+                loading.style.display = 'none';
+            } catch (e) {
+                loading.style.display = 'none';
+                error.style.display = 'block';
+                error.textContent = 'Error: ' + e.toString();
+                console.error('Failed to start demo:', e);
+            }
+        }
+
+        run();
+    </script>
+</body>
+</html>
