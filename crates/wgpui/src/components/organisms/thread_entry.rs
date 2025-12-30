@@ -82,6 +82,11 @@ impl ThreadEntry {
     pub fn is_hovered(&self) -> bool {
         self.hovered
     }
+
+    /// Replace the content component (useful for updating tool status)
+    pub fn set_content(&mut self, content: impl Component + 'static) {
+        self.content = Box::new(content);
+    }
 }
 
 impl Component for ThreadEntry {

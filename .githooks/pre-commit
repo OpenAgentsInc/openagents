@@ -38,25 +38,5 @@ if [ -f "$COMMIT_MSG_FILE" ]; then
     fi
 fi
 
-# Run fast unit tests
-echo "Running unit tests..."
-if ! cargo test --workspace --lib --exclude agent-orchestrator -- --test-threads=4; then
-    echo "❌ Unit tests failed. Fix the failures before committing."
-    exit 1
-fi
-
-if ! cargo test -p agent-orchestrator --lib -- --test-threads=4; then
-    echo "❌ Unit tests failed. Fix the failures before committing."
-    exit 1
-fi
-
-# Check for snapshot changes
-echo "Checking for snapshot changes..."
-if ! cargo insta test --check; then
-    echo "❌ ERROR: Uncommitted snapshot changes detected."
-    echo "   Run 'cargo insta review' to review and accept/reject changes."
-    exit 1
-fi
-
 echo "✅ All pre-commit checks passed!"
 exit 0

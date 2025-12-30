@@ -57,9 +57,10 @@ impl UsageLevel {
     }
 
     pub fn color(&self) -> Hsla {
+        // Hue is 0.0-1.0 range: green=0.333, gold=0.125, red=0.0
         match self {
-            UsageLevel::Normal => Hsla::new(120.0, 0.7, 0.45, 1.0),   // Green
-            UsageLevel::Warning => Hsla::new(45.0, 0.8, 0.5, 1.0),    // Gold
+            UsageLevel::Normal => Hsla::new(0.333, 0.7, 0.45, 1.0),   // Green
+            UsageLevel::Warning => Hsla::new(0.125, 0.8, 0.5, 1.0),   // Gold
             UsageLevel::Critical => Hsla::new(0.0, 0.8, 0.55, 1.0),   // Red
         }
     }

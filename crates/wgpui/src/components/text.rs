@@ -1,12 +1,13 @@
-//! Text component for rendering styled text.
+//! Text component for rendering styled text with optional wrapping.
 
 use crate::components::context::{EventContext, PaintContext};
 use crate::components::{Component, ComponentId, EventResult};
 use crate::styled::{StyleRefinement, Styled};
 use crate::text::FontStyle;
+use crate::text_system::{LineFragment, LineWrapper};
 use crate::{Bounds, Hsla, InputEvent, Point, theme};
 
-/// A component that renders text content.
+/// A component that renders text content with optional word wrapping.
 pub struct Text {
     id: Option<ComponentId>,
     content: String,
@@ -14,6 +15,12 @@ pub struct Text {
     font_size: f32,
     color: Hsla,
     font_style: FontStyle,
+    /// Whether to wrap text to fit bounds width. Default: true.
+    wrap: bool,
+    /// Cached line count for size_hint (updated during paint).
+    cached_line_count: usize,
+    /// Cached width used for wrapping.
+    cached_wrap_width: f32,
 }
 
 impl Text {
@@ -25,7 +32,16 @@ impl Text {
             font_size: theme::font_size::SM,
             color: theme::text::PRIMARY,
             font_style: FontStyle::normal(),
+            wrap: true,
+            cached_line_count: 1,
+            cached_wrap_width: 0.0,
         }
+    }
+
+    /// Disable text wrapping (render as single line, may overflow).
+    pub fn no_wrap(mut self) -> Self {
+        self.wrap = false;
+        self
     }
 
     pub fn with_id(mut self, id: ComponentId) -> Self {
@@ -80,15 +96,68 @@ impl Component for Text {
 
         let font_size = self.style.font_size.unwrap_or(self.font_size);
         let color = self.style.text_color.unwrap_or(self.color);
+        let line_height = font_size * 1.4;
 
-        let text_run = cx.text.layout_styled(
-            &self.content,
-            Point::new(bounds.origin.x, bounds.origin.y + font_size),
-            font_size,
-            color,
-            self.font_style,
-        );
-        cx.scene.draw_text(text_run);
+        if !self.wrap || bounds.size.width <= 0.0 {
+            // No wrapping - single line
+            let text_run = cx.text.layout_styled(
+                &self.content,
+                Point::new(bounds.origin.x, bounds.origin.y + font_size),
+                font_size,
+                color,
+                self.font_style,
+            );
+            cx.scene.draw_text(text_run);
+            return;
+        }
+
+        // Text wrapping using LineWrapper
+        let char_width = font_size * 0.6;
+        let mut wrapper = LineWrapper::new_monospace(0, font_size, char_width);
+        let fragments = [LineFragment::text(&self.content)];
+        let boundaries: Vec<_> = wrapper.wrap_line(&fragments, bounds.size.width).collect();
+
+        let mut line_start = 0;
+        let mut y = bounds.origin.y + font_size;
+        let mut line_count = 0;
+
+        for boundary in &boundaries {
+            if y > bounds.origin.y + bounds.size.height {
+                break; // Stop if we've exceeded bounds
+            }
+            let line_text = &self.content[line_start..boundary.ix];
+            if !line_text.is_empty() {
+                let text_run = cx.text.layout_styled(
+                    line_text.trim_end(),
+                    Point::new(bounds.origin.x, y),
+                    font_size,
+                    color,
+                    self.font_style,
+                );
+                cx.scene.draw_text(text_run);
+            }
+            line_start = boundary.ix;
+            y += line_height;
+            line_count += 1;
+        }
+
+        // Draw remaining text after last boundary
+        let remaining = &self.content[line_start..];
+        if !remaining.is_empty() && y <= bounds.origin.y + bounds.size.height {
+            let text_run = cx.text.layout_styled(
+                remaining.trim_end(),
+                Point::new(bounds.origin.x, y),
+                font_size,
+                color,
+                self.font_style,
+            );
+            cx.scene.draw_text(text_run);
+            line_count += 1;
+        }
+
+        // Update cached values for size_hint
+        self.cached_line_count = line_count.max(1);
+        self.cached_wrap_width = bounds.size.width;
     }
 
     fn event(

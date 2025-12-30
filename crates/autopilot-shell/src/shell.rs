@@ -1,15 +1,18 @@
 //! Main AutopilotShell component
 
-use autopilot::ClaudeModel;
-use autopilot_service::{AutopilotRuntime, DaemonStatus, RuntimeSnapshot, SessionEvent, SessionPhase};
+use std::collections::{HashMap, HashSet};
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
+
+use autopilot::{ClaudeModel, LogLine, LogStatus, SessionCheckpoint, StartupSection};
+use autopilot_service::{AutopilotRuntime, DaemonStatus, LogSection, RuntimeSnapshot, SessionEvent, SessionPhase};
 use tracing::info;
 use wgpui::{
     Bounds, Component, EventContext, EventResult, Hsla, InputEvent, PaintContext,
     components::Text,
     components::atoms::{ToolStatus, ToolType},
     components::hud::{Frame, StatusBar, StatusItem, StatusItemContent},
+    components::molecules::{CollapsibleSection, SectionStatus},
     components::organisms::{ThreadEntry, ThreadEntryType, ToolCallCard},
     components::sections::ThreadView,
     keymap::{Keymap, KeyContext},
@@ -53,6 +56,13 @@ pub struct AutopilotShell {
     // Runtime
     runtime: AutopilotRuntime,
     last_line_count: usize,
+    last_section_count: usize,
+
+    // Collapsible section state (which sections are expanded)
+    expanded_sections: HashSet<StartupSection>,
+
+    // Track in-flight tool calls: tool_key -> entry_index
+    pending_tools: HashMap<String, usize>,
 
     // Full Auto toggle
     full_auto_toggle: FullAutoToggle,
@@ -68,6 +78,9 @@ pub struct AutopilotShell {
     #[allow(dead_code)]
     rate_limit_fetcher: RateLimitFetcher,
     rate_limits: Arc<Mutex<Option<RateLimitSnapshot>>>,
+
+    // Working directory for checkpoint saves
+    working_dir: PathBuf,
 }
 
 impl AutopilotShell {
@@ -164,13 +177,137 @@ impl AutopilotShell {
             status_bar,
             runtime: AutopilotRuntime::new(ClaudeModel::Sonnet),
             last_line_count: 0,
+            last_section_count: 0,
+            expanded_sections: HashSet::new(), // All sections start collapsed
+            pending_tools: HashMap::new(),
             full_auto_toggle: FullAutoToggle::new(),
             keymap,
             key_context: KeyContext::new(),
             pending_fullscreen_toggle: false,
             rate_limit_fetcher,
             rate_limits,
+            working_dir: std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
         }
+    }
+
+    /// Create a shell from a saved checkpoint.
+    pub fn with_checkpoint(cp: SessionCheckpoint) -> Self {
+        let working_dir = cp.working_dir.clone();
+
+        // Create left dock with sessions panel
+        let mut left_dock = Dock::new(DockPosition::Left, 280.0);
+        left_dock.add_panel(Box::new(SessionsPanel::new()));
+
+        // Create right dock (empty - we render system panel directly for data access)
+        let right_dock = Dock::new(DockPosition::Right, 300.0);
+
+        // Bottom dock (empty for now)
+        let bottom_dock = Dock::new(DockPosition::Bottom, 200.0);
+
+        // Thread view for center - will be populated from checkpoint state
+        let mut thread_view = ThreadView::new().auto_scroll(true);
+        thread_view.push_entry(ThreadEntry::new(
+            ThreadEntryType::System,
+            Text::new("Session resumed."),
+        ));
+
+        // Status bar
+        let status_bar = StatusBar::new().items(vec![
+            StatusItem::text("phase", "Resumed").left(),
+            StatusItem::text("agent", "Claude").right(),
+        ]);
+
+        // Keymap
+        let mut keymap = wgpui::keymap::default_keymap();
+        keymap.add_bindings(shell_keymap().bindings().iter().cloned());
+
+        // Rate limit fetcher
+        let rate_limit_fetcher = RateLimitFetcher::new();
+        let rate_limits: Arc<Mutex<Option<RateLimitSnapshot>>> = Arc::new(Mutex::new(None));
+
+        // Fetch rate limits in background
+        if rate_limit_fetcher.can_fetch() {
+            let fetcher = rate_limit_fetcher.clone();
+            let limits_arc = rate_limits.clone();
+            std::thread::spawn(move || {
+                let rt = tokio::runtime::Runtime::new().expect("Failed to create tokio runtime");
+                if let Ok(snapshot) = rt.block_on(fetcher.fetch_rate_limits()) {
+                    if let Ok(mut guard) = limits_arc.lock() {
+                        *guard = Some(snapshot);
+                    }
+                }
+            });
+        }
+
+        // Create system panel
+        let mut system_panel = SystemPanel::new();
+        if rate_limit_fetcher.has_credentials() {
+            let tier = rate_limit_fetcher.rate_limit_tier().unwrap_or("unknown");
+            let sub = rate_limit_fetcher.subscription_type().unwrap_or("free");
+            let multiplier = tier
+                .rsplit('_')
+                .next()
+                .filter(|s| s.ends_with('x') && s.len() > 1 && s[..s.len()-1].chars().all(|c| c.is_ascii_digit()))
+                .unwrap_or("");
+
+            let sub_display = match sub {
+                "max" => {
+                    if !multiplier.is_empty() {
+                        format!("Claude Max ({})", multiplier)
+                    } else {
+                        "Claude Max".to_string()
+                    }
+                }
+                "pro" => "Claude Pro".to_string(),
+                _ => sub.to_string(),
+            };
+            system_panel.update_limits(vec![UsageLimit {
+                name: sub_display,
+                percent_used: 0.0,
+                resets_at: "usage updates on API calls".to_string(),
+            }]);
+        }
+
+        // Create runtime from checkpoint
+        let runtime = AutopilotRuntime::from_checkpoint(cp);
+
+        Self {
+            left_dock,
+            right_dock,
+            bottom_dock,
+            system_panel,
+            thread_view,
+            background: HudBackground::new(),
+            startup: None,
+            status_bar,
+            runtime,
+            last_line_count: 0,
+            last_section_count: 0,
+            expanded_sections: HashSet::new(),
+            pending_tools: HashMap::new(),
+            full_auto_toggle: FullAutoToggle::new(),
+            keymap,
+            key_context: KeyContext::new(),
+            pending_fullscreen_toggle: false,
+            rate_limit_fetcher,
+            rate_limits,
+            working_dir,
+        }
+    }
+
+    /// Set the working directory for checkpoint saves.
+    pub fn set_working_dir(&mut self, path: PathBuf) {
+        self.working_dir = path;
+    }
+
+    /// Save current session to a checkpoint file.
+    pub fn save_checkpoint(&self) -> Result<PathBuf, std::io::Error> {
+        self.runtime.save_checkpoint(self.working_dir.clone())
+    }
+
+    /// Get the current session ID.
+    pub fn session_id(&self) -> &str {
+        self.runtime.session_id()
     }
 
     /// Check and consume pending fullscreen toggle request
@@ -194,23 +331,84 @@ impl AutopilotShell {
         // Context used would come from actual API response - for now show 0
         self.system_panel.update_usage(model_str, 0, context_total);
 
-        // Add new log lines to thread
-        if snapshot.lines.len() > self.last_line_count {
-            for line in snapshot.lines.iter().skip(self.last_line_count) {
-                if line.text.trim().is_empty() {
-                    continue;
-                }
-                self.thread_view.push_entry(ThreadEntry::new(
-                    ThreadEntryType::System,
-                    Text::new(line.text.clone()),
-                ));
-            }
+        // Rebuild thread view when sections change
+        if snapshot.sections.len() != self.last_section_count {
+            self.rebuild_with_sections(&snapshot.sections, &snapshot.lines);
+            self.last_section_count = snapshot.sections.len();
             self.last_line_count = snapshot.lines.len();
+        } else {
+            // Add new Claude (non-section) lines incrementally
+            self.add_claude_lines(&snapshot.lines);
         }
 
         // Process events
         for event in &snapshot.events {
             self.push_event(event);
+        }
+    }
+
+    /// Rebuild thread view with collapsible sections for startup messages.
+    fn rebuild_with_sections(&mut self, sections: &[LogSection], lines: &[LogLine]) {
+        self.thread_view.clear();
+
+        // Add "Autopilot ready." header
+        self.thread_view.push_entry(ThreadEntry::new(
+            ThreadEntryType::System,
+            Text::new("Autopilot ready."),
+        ));
+
+        // Add collapsible sections for startup phases
+        for section in sections {
+            let is_expanded = self.expanded_sections.contains(&section.section);
+            let status = match section.summary_status {
+                LogStatus::Success => SectionStatus::Success,
+                LogStatus::Error => SectionStatus::Error,
+                LogStatus::Pending => SectionStatus::Pending,
+                _ => SectionStatus::InProgress,
+            };
+
+            let details: Vec<String> = section
+                .details
+                .iter()
+                .map(|l| l.text.clone())
+                .filter(|t| !t.trim().is_empty())
+                .collect();
+
+            let collapsible = CollapsibleSection::new(&section.summary)
+                .expanded(is_expanded)
+                .status(status)
+                .details(details);
+
+            self.thread_view.push_entry(ThreadEntry::new(
+                ThreadEntryType::System,
+                collapsible,
+            ));
+        }
+
+        // Add Claude (non-section) lines
+        for line in lines {
+            if line.section == Some(StartupSection::Claude) && !line.text.trim().is_empty() {
+                self.thread_view.push_entry(ThreadEntry::new(
+                    ThreadEntryType::System,
+                    Text::new(line.text.clone()),
+                ));
+            }
+        }
+    }
+
+    /// Add new Claude lines incrementally (for streaming updates).
+    fn add_claude_lines(&mut self, lines: &[LogLine]) {
+        if lines.len() > self.last_line_count {
+            for line in lines.iter().skip(self.last_line_count) {
+                // Only add Claude section lines (startup sections are in collapsible)
+                if line.section == Some(StartupSection::Claude) && !line.text.trim().is_empty() {
+                    self.thread_view.push_entry(ThreadEntry::new(
+                        ThreadEntryType::System,
+                        Text::new(line.text.clone()),
+                    ));
+                }
+            }
+            self.last_line_count = lines.len();
         }
     }
 
@@ -223,12 +421,8 @@ impl AutopilotShell {
 
     fn push_event(&mut self, event: &SessionEvent) {
         match event {
-            SessionEvent::Text { phase, content } => {
-                let label = format!("[{}] {}", phase_label(*phase), content);
-                self.thread_view.push_entry(ThreadEntry::new(
-                    ThreadEntryType::Assistant,
-                    Text::new(label),
-                ));
+            SessionEvent::Text { .. } => {
+                // Text content is already shown via log lines, skip duplicate display
             }
             SessionEvent::Tool {
                 phase,
@@ -237,17 +431,34 @@ impl AutopilotShell {
                 done,
             } => {
                 let tool_type = tool_type_from_name(name);
-                let status = if *done {
-                    ToolStatus::Success
+                // Use phase::name + truncated params as unique key (multiple tools can have same name)
+                let params_hash = params.chars().take(60).collect::<String>();
+                let tool_key = format!("{}::{}::{}", phase_label(*phase), name, params_hash);
+                let display_name = format!("{}::{}", phase_label(*phase), name);
+
+                if *done {
+                    // Tool completed - update existing entry's status
+                    if let Some(entry_idx) = self.pending_tools.remove(&tool_key) {
+                        if let Some(entry) = self.thread_view.entry_mut(entry_idx) {
+                            // Replace with completed card
+                            let card = ToolCallCard::new(tool_type, display_name)
+                                .status(ToolStatus::Success)
+                                .input(params.clone());
+                            entry.set_content(card);
+                        }
+                    }
+                    // Don't push a new entry - we updated the existing one
                 } else {
-                    ToolStatus::Running
-                };
-                let tool_name = format!("{}::{}", phase_label(*phase), name);
-                let card = ToolCallCard::new(tool_type, tool_name)
-                    .status(status)
-                    .input(params.clone());
-                self.thread_view
-                    .push_entry(ThreadEntry::new(ThreadEntryType::Tool, card));
+                    // Tool starting - create entry and track it
+                    let entry_idx = self.thread_view.entry_count();
+                    self.pending_tools.insert(tool_key.clone(), entry_idx);
+
+                    let card = ToolCallCard::new(tool_type, display_name)
+                        .status(ToolStatus::Running)
+                        .input(params.clone());
+                    self.thread_view
+                        .push_entry(ThreadEntry::new(ThreadEntryType::Tool, card));
+                }
             }
         }
     }
@@ -334,7 +545,18 @@ impl AutopilotShell {
                 EventResult::Handled
             }
             "shell::ToggleFullAuto" => {
+                let was_enabled = self.full_auto_toggle.is_enabled();
                 self.full_auto_toggle.toggle();
+
+                // Save checkpoint when Full Auto is toggled OFF
+                if was_enabled && !self.full_auto_toggle.is_enabled() {
+                    if let Err(e) = self.save_checkpoint() {
+                        info!("Failed to save checkpoint: {}", e);
+                    } else {
+                        info!("Checkpoint saved for session {}", self.session_id());
+                    }
+                }
+
                 EventResult::Handled
             }
             "shell::ToggleFullscreen" => {
@@ -423,21 +645,21 @@ impl Component for AutopilotShell {
                 .stroke_width(1.0);
             frame.paint(layout.right, cx);
 
-            // Full Auto toggle at top
+            // Full Auto toggle at top - tight padding
             let toggle_bounds = Bounds::new(
-                layout.right.origin.x + 16.0,
-                layout.right.origin.y + 16.0,
-                layout.right.size.width - 32.0,
-                36.0,
+                layout.right.origin.x + 8.0,
+                layout.right.origin.y + 8.0,
+                layout.right.size.width - 16.0,
+                28.0,
             );
             self.full_auto_toggle.paint(toggle_bounds, cx);
 
-            // System panel content below toggle
+            // System panel content below toggle - tight spacing
             let panel_bounds = Bounds::new(
-                layout.right.origin.x + 8.0,
-                layout.right.origin.y + 60.0,
-                layout.right.size.width - 16.0,
-                layout.right.size.height - 68.0,
+                layout.right.origin.x,
+                layout.right.origin.y + 40.0,
+                layout.right.size.width,
+                layout.right.size.height - 48.0,
             );
             self.system_panel.paint(panel_bounds, cx);
         }
@@ -495,10 +717,10 @@ impl Component for AutopilotShell {
         // Route to Full Auto toggle first (it's painted over right sidebar)
         if self.right_dock.is_open() {
             let toggle_bounds = Bounds::new(
-                layout.right.origin.x + 16.0,
-                layout.right.origin.y + 16.0,
-                layout.right.size.width - 32.0,
-                36.0,
+                layout.right.origin.x + 8.0,
+                layout.right.origin.y + 8.0,
+                layout.right.size.width - 16.0,
+                28.0,
             );
             if let EventResult::Handled = self.full_auto_toggle.event(event, toggle_bounds, cx) {
                 return EventResult::Handled;

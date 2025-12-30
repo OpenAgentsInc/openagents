@@ -1,13 +1,13 @@
 //! Full Auto Toggle component
 //!
-//! Terminal-style toggle for enabling/disabling autopilot loop.
-//! Visual: [■][_] FULL AUTO: OFF / [_][■] FULL AUTO: ON
+//! Compact one-line toggle for enabling/disabling autopilot loop.
+//! Visual: ○ FULL AUTO OFF / ● FULL AUTO ON
 
 use wgpui::{
-    Bounds, Component, EventContext, EventResult, Hsla, InputEvent, PaintContext, Point, Quad,
+    Bounds, Component, EventContext, EventResult, Hsla, InputEvent, PaintContext, Point, Quad, theme,
 };
 
-/// Full Auto mode toggle
+/// Full Auto mode toggle - compact one-line style
 pub struct FullAutoToggle {
     pub enabled: bool,
     hovered: bool,
@@ -38,55 +38,48 @@ impl Default for FullAutoToggle {
 
 impl Component for FullAutoToggle {
     fn paint(&mut self, bounds: Bounds, cx: &mut PaintContext) {
-        let line_color = Hsla::new(0.0, 0.0, 0.3, 0.5);
-
+        let font_size = 11.0;
         let padding = 8.0;
         let x = bounds.origin.x + padding;
-        let y = bounds.origin.y + 8.0;
+        let y = bounds.origin.y + (bounds.size.height - font_size) / 2.0;
 
-        // Toggle boxes - two squares side by side
-        let box_size = 12.0;
-        let box_border = Hsla::new(0.0, 0.0, 0.9, 1.0);
-        let box_fill = Hsla::new(0.0, 0.0, 0.9, 1.0);
-        let box_empty = Hsla::new(0.0, 0.0, 0.1, 1.0);
+        // Hover background
+        if self.hovered {
+            cx.scene.draw_quad(
+                Quad::new(bounds).with_background(theme::bg::MUTED.with_alpha(0.3)),
+            );
+        }
 
-        // Left box (filled when OFF)
-        cx.scene.draw_quad(
-            Quad::new(Bounds::new(x, y, box_size, box_size))
-                .with_background(if !self.enabled { box_fill } else { box_empty })
-                .with_border(box_border, 1.0),
-        );
+        // Indicator + Label + State all on one line
+        // Use brighter colors for visibility on dark background
+        let bright_green = Hsla::new(0.403, 1.0, 0.6, 1.0); // Brighter than theme::accent::GREEN
+        let bright_red = Hsla::new(0.0, 0.8, 0.6, 1.0);     // Brighter than theme::accent::RED
+        let (indicator, state_text, state_color) = if self.enabled {
+            ("●", "ON", bright_green)
+        } else {
+            ("○", "OFF", bright_red)
+        };
 
-        // Right box (filled when ON)
-        cx.scene.draw_quad(
-            Quad::new(Bounds::new(x + box_size - 1.0, y, box_size, box_size))
-                .with_background(if self.enabled { box_fill } else { box_empty })
-                .with_border(box_border, 1.0),
-        );
+        // Draw indicator
+        let indicator_run = cx.text.layout(indicator, Point::new(x, y), font_size, state_color);
+        cx.scene.draw_text(indicator_run);
 
-        // Label
-        let label_x = x + box_size * 2.0 + 8.0;
-        let label_color = Hsla::new(0.0, 0.0, 0.5, 1.0);
-        let label = cx.text.layout("FULL AUTO:", Point::new(label_x, y), 11.0, label_color);
+        // "FULL AUTO" label
+        let label_x = x + font_size * 1.2;
+        let label = cx.text.layout("FULL AUTO", Point::new(label_x, y), font_size, theme::text::MUTED);
         cx.scene.draw_text(label);
 
-        // State indicator
-        let state_x = label_x + 85.0;
-        let (state_text, state_color) = if self.enabled {
-            ("ON", Hsla::new(120.0, 1.0, 0.45, 1.0)) // Bright green
-        } else {
-            ("OFF", Hsla::new(0.0, 0.8, 0.5, 1.0)) // Red
-        };
-        let state_label = cx.text.layout(state_text, Point::new(state_x, y), 11.0, state_color);
+        // State text (ON/OFF)
+        let state_x = label_x + font_size * 6.5;
+        let state_label = cx.text.layout(state_text, Point::new(state_x, y), font_size, state_color);
         cx.scene.draw_text(state_label);
 
         // Hint text
-        let hint_x = state_x + 35.0;
-        let hint_color = Hsla::new(0.0, 0.0, 0.35, 1.0);
-        let hint = cx.text.layout("(cmd-a)", Point::new(hint_x, y), 10.0, hint_color);
+        let hint_x = state_x + font_size * 2.5;
+        let hint = cx.text.layout("(⌘A)", Point::new(hint_x, y), 10.0, theme::text::MUTED.with_alpha(0.5));
         cx.scene.draw_text(hint);
 
-        // Divider line at bottom
+        // Subtle divider line at bottom
         cx.scene.draw_quad(
             Quad::new(Bounds::new(
                 bounds.origin.x,
@@ -94,7 +87,7 @@ impl Component for FullAutoToggle {
                 bounds.size.width,
                 1.0,
             ))
-            .with_background(line_color),
+            .with_background(theme::border::DEFAULT.with_alpha(0.3)),
         );
     }
 

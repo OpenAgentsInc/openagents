@@ -1,4 +1,5 @@
 pub mod auth;
+pub mod checkpoint;
 pub mod ci;
 pub mod claude;
 pub mod deprecation;
@@ -49,7 +50,7 @@ pub use pylon_integration::{
     detect_local_backends, discover_swarm_providers,
 };
 
-pub use startup::{StartupState, StartupPhase, LogLine, LogStatus, ClaudeModel};
+pub use startup::{StartupState, StartupPhase, StartupSection, LogLine, LogStatus, ClaudeModel};
 
 pub use streaming::{
     StreamToken, HarmonySegment,
@@ -76,4 +77,8 @@ pub use replay::{
 pub use report::{
     AfterActionReport, SessionStats,
     collect_session_stats, generate_suggested_next_steps, generate_questions_for_user,
+};
+
+pub use checkpoint::{
+    SessionCheckpoint, SessionSummary, CHECKPOINT_VERSION,
 };

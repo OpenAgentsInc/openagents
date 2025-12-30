@@ -1,6 +1,8 @@
 use std::path::Path;
 use std::sync::mpsc;
 
+use serde::{Deserialize, Serialize};
+
 use crate::logger::SessionLogger;
 use crate::startup::ClaudeModel;
 
@@ -29,7 +31,7 @@ fn retry_delay(attempt: u32) -> std::time::Duration {
     std::time::Duration::from_millis(delay_ms.min(MAX_RETRY_DELAY_MS))
 }
 
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 pub enum ClaudeToken {
     Chunk(String),
     ToolUse { name: String, params: String },
@@ -41,7 +43,7 @@ pub enum ClaudeToken {
 }
 
 /// Usage data from Claude SDK Result
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct ClaudeUsageData {
     pub input_tokens: u64,
     pub output_tokens: u64,
@@ -55,7 +57,7 @@ pub struct ClaudeUsageData {
     pub model: String,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum ClaudeEvent {
     Text(String),
     Tool { name: String, params: String, done: bool },

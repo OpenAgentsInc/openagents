@@ -111,9 +111,10 @@ impl Component for ClaudeUsage {
         let label_color = Hsla::new(0.0, 0.0, 0.5, 1.0);
         let value_color = Hsla::new(0.0, 0.0, 0.7, 1.0);
         let muted_color = Hsla::new(0.0, 0.0, 0.4, 1.0);
-        let green_color = Hsla::new(140.0, 0.6, 0.5, 1.0);
-        let cyan_color = Hsla::new(180.0, 0.5, 0.6, 1.0);
-        let orange_color = Hsla::new(30.0, 0.7, 0.5, 1.0);
+        // Hue is 0.0-1.0 range (not degrees): green=0.389, cyan=0.5, orange=0.083, yellow=0.125
+        let green_color = Hsla::new(0.389, 0.7, 0.5, 1.0);
+        let cyan_color = Hsla::new(0.5, 0.6, 0.6, 1.0);
+        let orange_color = Hsla::new(0.083, 0.8, 0.55, 1.0);
 
         let font_size = 10.0;
         let line_height = 14.0;
@@ -145,11 +146,11 @@ impl Component for ClaudeUsage {
         // Progress bar background
         let bar_h = 4.0;
         cx.scene.draw_quad(Quad::new(Bounds::new(x, y, w, bar_h)).with_background(Hsla::new(0.0, 0.0, 0.2, 1.0)));
-        // Progress bar fill
+        // Progress bar fill (hue 0-1: yellow=0.125, red=0.0)
         let bar_color = if ctx_pct < 50.0 {
             green_color
         } else if ctx_pct < 75.0 {
-            Hsla::new(45.0, 0.8, 0.5, 1.0) // yellow
+            Hsla::new(0.125, 0.8, 0.5, 1.0) // yellow
         } else {
             Hsla::new(0.0, 0.8, 0.5, 1.0) // red
         };
@@ -169,13 +170,13 @@ impl Component for ClaudeUsage {
             cx.scene.draw_text(limit_label);
             y += line_height;
 
-            // Progress bar
+            // Progress bar (hue 0-1: yellow=0.125, red=0.0)
             cx.scene.draw_quad(Quad::new(Bounds::new(x, y, w, bar_h)).with_background(Hsla::new(0.0, 0.0, 0.2, 1.0)));
             let limit_fill = (w * limit.percent_used as f32 / 100.0).min(w);
             let limit_color = if limit.percent_used < 50.0 {
                 green_color
             } else if limit.percent_used < 75.0 {
-                Hsla::new(45.0, 0.8, 0.5, 1.0)
+                Hsla::new(0.125, 0.8, 0.5, 1.0)
             } else {
                 Hsla::new(0.0, 0.8, 0.5, 1.0)
             };

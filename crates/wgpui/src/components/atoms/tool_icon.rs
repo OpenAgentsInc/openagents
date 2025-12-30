@@ -19,7 +19,8 @@ pub enum ToolType {
 }
 
 impl ToolType {
-    fn icon_char(&self) -> &'static str {
+    /// Get the single-character icon for this tool type
+    pub fn icon(&self) -> &'static str {
         match self {
             ToolType::Read => "R",
             ToolType::Write => "W",
@@ -35,7 +36,8 @@ impl ToolType {
         }
     }
 
-    fn color(&self) -> Hsla {
+    /// Get the accent color for this tool type
+    pub fn color(&self) -> Hsla {
         match self {
             ToolType::Read => theme::accent::PRIMARY,
             ToolType::Write => theme::status::SUCCESS,
@@ -115,7 +117,7 @@ impl Component for ToolIcon {
         let text_y = icon_bounds.origin.y + self.size * 0.5 - font_size * 0.55;
 
         let text_run = cx.text.layout(
-            self.tool_type.icon_char(),
+            self.tool_type.icon(),
             crate::Point::new(text_x, text_y),
             font_size,
             self.tool_type.color(),
@@ -160,8 +162,8 @@ mod tests {
 
     #[test]
     fn test_tool_type_icons() {
-        assert_eq!(ToolType::Bash.icon_char(), "$");
-        assert_eq!(ToolType::Read.icon_char(), "R");
-        assert_eq!(ToolType::Write.icon_char(), "W");
+        assert_eq!(ToolType::Bash.icon(), "$");
+        assert_eq!(ToolType::Read.icon(), "R");
+        assert_eq!(ToolType::Write.icon(), "W");
     }
 }
