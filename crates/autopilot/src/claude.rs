@@ -219,14 +219,16 @@ Your turn should only end with calling ExitPlanMode. Do not stop early."#.to_str
                 let msg = match next_result {
                     Ok(Some(msg)) => msg,
                     Ok(None) => {
-                        // Stream ended without Result - this is the hang case
+                        // Stream ended without Result - this is problematic
+                        tracing::warn!("[CLAUDE] Stream ended with Ok(None) - no Result message received!");
                         if full_response.is_empty() {
                             last_error = "Stream ended unexpectedly with no data".to_string();
                             eprintln!("[CLAUDE] {}", last_error);
                             let _ = stream.abort().await;
                             continue 'retry;
                         }
-                        break; // Normal end
+                        tracing::warn!("[CLAUDE] Breaking without usage data - response len={}", full_response.len());
+                        break; // No Result received, so no usage data available
                     }
                     Err(_) => {
                         last_error = format!("Stream idle timeout after {}s", STREAM_IDLE_TIMEOUT_SECS);
@@ -303,8 +305,11 @@ Your turn should only end with calling ExitPlanMode. Do not stop early."#.to_str
                     }
                     Ok(SdkMessage::Result(result)) => {
                         verbose_println!("[CLAUDE][RESULT] {:?}", result);
+                        tracing::info!("[CLAUDE] Received Result message - extracting usage data");
                         // Extract usage data and send it
                         let usage = extract_usage_from_result(&result, model.as_str());
+                        tracing::info!("[CLAUDE] Usage: input={}, output={}, cost=${:.4}, turns={}",
+                            usage.input_tokens, usage.output_tokens, usage.total_cost_usd, usage.num_turns);
                         let _ = tx.send(ClaudeToken::Usage(usage));
                         break;
                     }

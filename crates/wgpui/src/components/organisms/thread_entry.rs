@@ -118,20 +118,22 @@ impl Component for ThreadEntry {
         content_bounds.size.width -= padding * 2.0;
         content_bounds.size.height -= padding * 2.0;
 
-        if self.show_actions || self.hovered {
-            content_bounds.size.height -= 32.0;
-        }
+        // Always reserve space for actions bar
+        content_bounds.size.height -= 32.0;
 
         self.content.paint(content_bounds, cx);
 
+        // Always paint actions bar (visible when hovered or show_actions)
+        let actions_y = bounds.origin.y + bounds.size.height - padding - 24.0;
+        let actions_bounds = Bounds::new(
+            bounds.origin.x + bounds.size.width - padding - 100.0,
+            actions_y,
+            100.0,
+            24.0,
+        );
+
+        // Only paint actions when hovered or explicitly shown
         if self.show_actions || self.hovered {
-            let actions_y = bounds.origin.y + bounds.size.height - padding - 24.0;
-            let actions_bounds = Bounds::new(
-                bounds.origin.x + bounds.size.width - padding - 100.0,
-                actions_y,
-                100.0,
-                24.0,
-            );
             self.actions.paint(actions_bounds, cx);
         }
     }
@@ -152,18 +154,20 @@ impl Component for ThreadEntry {
         content_bounds.size.width -= padding * 2.0;
         content_bounds.size.height -= padding * 2.0;
 
+        // Always reserve space for actions bar
+        content_bounds.size.height -= 32.0;
+
+        // Route events to actions bar when visible
+        let actions_y = bounds.origin.y + bounds.size.height - padding - 24.0;
+        let actions_bounds = Bounds::new(
+            bounds.origin.x + bounds.size.width - padding - 100.0,
+            actions_y,
+            100.0,
+            24.0,
+        );
+
+        // Handle actions events when hovered or shown
         if self.show_actions || self.hovered {
-            content_bounds.size.height -= 32.0;
-
-            // Route events to actions bar when visible
-            let actions_y = bounds.origin.y + bounds.size.height - padding - 24.0;
-            let actions_bounds = Bounds::new(
-                bounds.origin.x + bounds.size.width - padding - 100.0,
-                actions_y,
-                100.0,
-                24.0,
-            );
-
             if let EventResult::Handled = self.actions.event(event, actions_bounds, cx) {
                 // Check if an action was triggered
                 if let Some(action) = self.actions.take_triggered_action() {
@@ -192,7 +196,8 @@ impl Component for ThreadEntry {
     fn size_hint(&self) -> (Option<f32>, Option<f32>) {
         let (w, h) = self.content.size_hint();
         let padding = theme::spacing::SM * 2.0;
-        let actions_height = if self.show_actions { 32.0 } else { 0.0 };
+        // Always include space for actions bar so hover doesn't cause clipping
+        let actions_height = 32.0;
         (w.map(|w| w + padding), h.map(|h| h + padding + actions_height))
     }
 }
