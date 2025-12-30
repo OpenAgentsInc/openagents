@@ -22,10 +22,15 @@ pub struct ClaudeSession {
 /// A message from a Claude Code session
 #[derive(Debug, Clone)]
 pub struct SessionMessage {
-    pub role: String,        // "user" or "assistant"
-    pub content: String,     // text content
-    pub is_tool_use: bool,   // whether this is a tool use block
+    pub role: String,               // "user" or "assistant"
+    pub content: String,            // text content
+    pub is_tool_use: bool,          // whether this is a tool use block
     pub tool_name: Option<String>,
+    pub tool_id: Option<String>,    // for linking tool_use to tool_result
+    pub tool_input: Option<String>, // JSON params
+    pub tool_output: Option<String>, // result content
+    pub is_error: Option<bool>,     // error status
+    pub parent_task_id: Option<String>, // for Task nesting
 }
 
 /// JSONL entry from Claude Code session files (metadata)
@@ -52,12 +57,28 @@ struct MessageContent {
     content: Option<Vec<ContentBlock>>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 struct ContentBlock {
     #[serde(rename = "type")]
     block_type: String,
+    // For text blocks
     text: Option<String>,
-    name: Option<String>,  // for tool_use blocks
+    // For tool_use blocks
+    name: Option<String>,
+    id: Option<String>,
+    input: Option<serde_json::Value>,
+    // For tool_result blocks
+    tool_use_id: Option<String>,
+    content: Option<serde_json::Value>, // Can be string or array
+    #[serde(default)]
+    is_error: Option<bool>,
+}
+
+/// Parsed tool result for linking to tool_use
+#[derive(Debug, Clone)]
+struct ToolResult {
+    content: String,
+    is_error: bool,
 }
 
 /// List recent Claude Code sessions from ~/.claude/projects/
@@ -190,22 +211,64 @@ pub fn find_session_file(session_id: &str) -> Option<PathBuf> {
 }
 
 /// Load all messages from a Claude Code session JSONL file
+///
+/// Uses two-pass parsing to link tool_use blocks with their tool_result responses,
+/// enabling rich display with input params, output, and error status.
 pub fn load_session_messages(path: &PathBuf) -> Vec<SessionMessage> {
     let file = match fs::File::open(path) {
         Ok(f) => f,
         Err(_) => return Vec::new(),
     };
     let reader = BufReader::new(file);
-    let mut messages = Vec::new();
 
-    for line in reader.lines() {
-        let line = match line {
-            Ok(l) => l,
+    // Collect all lines first for two-pass parsing
+    let lines: Vec<String> = reader.lines().filter_map(|l| l.ok()).collect();
+
+    // Pass 1: Collect tool_result blocks indexed by tool_use_id
+    let mut tool_results: HashMap<String, ToolResult> = HashMap::new();
+
+    for line in &lines {
+        let entry: MessageEntry = match serde_json::from_str(line) {
+            Ok(e) => e,
             Err(_) => continue,
         };
 
-        // Parse as generic JSON first to check type
-        let entry: MessageEntry = match serde_json::from_str(&line) {
+        if let Some(msg) = entry.message {
+            if let Some(content) = msg.content {
+                for block in content {
+                    if block.block_type == "tool_result" {
+                        if let Some(tool_use_id) = block.tool_use_id {
+                            // Extract result content - can be string or array
+                            let result_content = match &block.content {
+                                Some(serde_json::Value::String(s)) => s.clone(),
+                                Some(serde_json::Value::Array(arr)) => {
+                                    // Array of content blocks - extract text
+                                    arr.iter()
+                                        .filter_map(|v| v.get("text").and_then(|t| t.as_str()))
+                                        .collect::<Vec<_>>()
+                                        .join("\n")
+                                }
+                                Some(v) => v.to_string(),
+                                None => String::new(),
+                            };
+
+                            tool_results.insert(tool_use_id, ToolResult {
+                                content: result_content,
+                                is_error: block.is_error.unwrap_or(false),
+                            });
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Pass 2: Build messages with linked tool data
+    let mut messages = Vec::new();
+    let mut task_stack: Vec<String> = Vec::new(); // Stack of active Task IDs for nesting
+
+    for line in &lines {
+        let entry: MessageEntry = match serde_json::from_str(line) {
             Ok(e) => e,
             Err(_) => continue,
         };
@@ -216,30 +279,88 @@ pub fn load_session_messages(path: &PathBuf) -> Vec<SessionMessage> {
             _ => continue,
         };
 
-        // Extract content blocks
         if let Some(msg) = entry.message {
             if let Some(content) = msg.content {
                 for block in content {
                     match block.block_type.as_str() {
                         "text" => {
-                            if let Some(text) = block.text {
+                            if let Some(text) = &block.text {
                                 if !text.trim().is_empty() {
                                     messages.push(SessionMessage {
                                         role: entry_type.clone(),
-                                        content: text,
+                                        content: text.clone(),
                                         is_tool_use: false,
                                         tool_name: None,
+                                        tool_id: None,
+                                        tool_input: None,
+                                        tool_output: None,
+                                        is_error: None,
+                                        parent_task_id: None,
                                     });
                                 }
                             }
                         }
                         "tool_use" => {
+                            let tool_name = block.name.clone().unwrap_or_else(|| "unknown".to_string());
+                            let tool_id = block.id.clone();
+
+                            // Serialize input params for display
+                            let tool_input = block.input.as_ref().map(|input| {
+                                serde_json::to_string_pretty(input)
+                                    .unwrap_or_else(|_| input.to_string())
+                            });
+
+                            // Look up corresponding tool_result
+                            let (tool_output, is_error) = if let Some(id) = &tool_id {
+                                if let Some(result) = tool_results.get(id) {
+                                    // Truncate very large outputs
+                                    let output = if result.content.len() > 5000 {
+                                        format!("{}...\n\n({} bytes total)", &result.content[..5000], result.content.len())
+                                    } else {
+                                        result.content.clone()
+                                    };
+                                    (Some(output), Some(result.is_error))
+                                } else {
+                                    (None, None) // Tool incomplete - no result
+                                }
+                            } else {
+                                (None, None)
+                            };
+
+                            // Determine parent Task for nesting
+                            let parent_task_id = if tool_name != "Task" && !task_stack.is_empty() {
+                                task_stack.last().cloned()
+                            } else {
+                                None
+                            };
+
+                            // Track Task tools for nesting
+                            if tool_name == "Task" {
+                                if let Some(id) = &tool_id {
+                                    if tool_output.is_none() {
+                                        // Task starting - push to stack
+                                        task_stack.push(id.clone());
+                                    } else {
+                                        // Task completed - pop from stack
+                                        task_stack.pop();
+                                    }
+                                }
+                            }
+
                             messages.push(SessionMessage {
                                 role: entry_type.clone(),
-                                content: format!("Tool: {}", block.name.as_deref().unwrap_or("unknown")),
+                                content: String::new(), // Content is in tool_input/tool_output
                                 is_tool_use: true,
-                                tool_name: block.name,
+                                tool_name: Some(tool_name),
+                                tool_id,
+                                tool_input,
+                                tool_output,
+                                is_error,
+                                parent_task_id,
                             });
+                        }
+                        "tool_result" => {
+                            // Skip - already linked to tool_use in pass 1
                         }
                         _ => {}
                     }
