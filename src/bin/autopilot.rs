@@ -49,6 +49,7 @@ fn main() {
 struct App {
     state: Option<RenderState>,
     current_modifiers: Modifiers,
+    last_cursor_pos: (f32, f32),
 }
 
 struct RenderState {
@@ -227,6 +228,52 @@ impl ApplicationHandler for App {
                 let width = state.config.width as f32 / scale_factor;
                 let height = state.config.height as f32 / scale_factor;
                 let bounds = Bounds::new(0.0, 0.0, width, height);
+
+                let mut cx = EventContext::new();
+                let _ = state.shell.event(&input_event, bounds, &mut cx);
+
+                state.window.request_redraw();
+            }
+            WindowEvent::CursorMoved { position, .. } => {
+                let scale_factor = state.window.scale_factor() as f32;
+                let x = position.x as f32 / scale_factor;
+                let y = position.y as f32 / scale_factor;
+
+                // Track cursor position for use in MouseInput events
+                self.last_cursor_pos = (x, y);
+
+                let input_event = InputEvent::MouseMove { x, y };
+
+                let width = state.config.width as f32 / scale_factor;
+                let height = state.config.height as f32 / scale_factor;
+                let bounds = Bounds::new(0.0, 0.0, width, height);
+
+                let mut cx = EventContext::new();
+                let _ = state.shell.event(&input_event, bounds, &mut cx);
+
+                state.window.request_redraw();
+            }
+            WindowEvent::MouseInput { state: button_state, button, .. } => {
+                let scale_factor = state.window.scale_factor() as f32;
+                let width = state.config.width as f32 / scale_factor;
+                let height = state.config.height as f32 / scale_factor;
+                let bounds = Bounds::new(0.0, 0.0, width, height);
+
+                // Use tracked cursor position from CursorMoved events
+                let (x, y) = self.last_cursor_pos;
+
+                let mouse_button = match button {
+                    winit::event::MouseButton::Left => wgpui::MouseButton::Left,
+                    winit::event::MouseButton::Right => wgpui::MouseButton::Right,
+                    winit::event::MouseButton::Middle => wgpui::MouseButton::Middle,
+                    _ => wgpui::MouseButton::Left,
+                };
+
+                let input_event = if button_state.is_pressed() {
+                    InputEvent::MouseDown { button: mouse_button, x, y }
+                } else {
+                    InputEvent::MouseUp { button: mouse_button, x, y }
+                };
 
                 let mut cx = EventContext::new();
                 let _ = state.shell.event(&input_event, bounds, &mut cx);
