@@ -21,7 +21,7 @@ impl ThreadView {
             scroll_offset: 0.0,
             content_height: 0.0,
             auto_scroll: true,
-            item_spacing: 1.0, // Dense: minimal spacing between entries
+            item_spacing: 6.0, // Dense but readable spacing between entries
             on_entry_click: None,
         }
     }
