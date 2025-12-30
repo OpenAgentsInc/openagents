@@ -174,6 +174,12 @@ cargo test -p openagents-spark
 # cargo test -p openagents-spark --features integration-tests
 ```
 
+## Docs
+
+- `crates/spark/docs/README.md`
+- `crates/spark/docs/CONFIGURATION.md`
+- `crates/spark/docs/API.md`
+
 ## Related
 
 - **Directive**: [d-001](../../.openagents/directives/d-001-breez-spark-sdk.md)
