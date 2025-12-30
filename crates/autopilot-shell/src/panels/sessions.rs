@@ -6,6 +6,7 @@ use chrono::{DateTime, Local};
 use wgpui::{
     Bounds, Component, EventContext, EventResult, Hsla, InputEvent, MouseButton, PaintContext,
     Point, Quad,
+    components::TextInput,
     components::atoms::Model,
     components::hud::Frame,
     components::molecules::ModelSelector,
@@ -16,7 +17,11 @@ use crate::dock::{DockPosition, Panel};
 /// Actions that can be triggered by the sessions panel
 #[derive(Debug, Clone)]
 pub enum SessionAction {
-    ResumeSession(String),
+    ResumeSession {
+        session_id: String,
+        resume_at: Option<String>,
+        fork_session: bool,
+    },
     SetModel(Model),
     Interrupt,
     NewSession,
@@ -67,6 +72,9 @@ pub struct SessionsPanel {
     is_running: bool,
     new_session_hovered: bool,
     interrupt_hovered: bool,
+    fork_hovered: bool,
+    fork_session: bool,
+    resume_at_input: TextInput,
 
     /// Pending actions to be polled by the shell
     pending_actions: Vec<SessionAction>,
@@ -82,6 +90,12 @@ impl SessionsPanel {
             is_running: false,
             new_session_hovered: false,
             interrupt_hovered: false,
+            fork_hovered: false,
+            fork_session: false,
+            resume_at_input: TextInput::new()
+                .placeholder("resume_session_at (uuid)")
+                .font_size(10.0)
+                .padding(6.0, 4.0),
             pending_actions: Vec::new(),
         }
     }
@@ -99,6 +113,20 @@ impl SessionsPanel {
     /// Set whether a query is currently running
     pub fn set_running(&mut self, running: bool) {
         self.is_running = running;
+    }
+
+    /// Get the current resume options from the panel.
+    pub fn resume_options(&self) -> (Option<String>, bool) {
+        (self.resume_at_value(), self.fork_session)
+    }
+
+    fn resume_at_value(&self) -> Option<String> {
+        let value = self.resume_at_input.get_value().trim();
+        if value.is_empty() {
+            None
+        } else {
+            Some(value.to_string())
+        }
     }
 
     /// Take all pending actions
@@ -218,18 +246,41 @@ impl SessionsPanel {
         let header_h = 20.0;
         let item_h = 28.0;
         let session_count = self.sessions.len().min(5);
-        let y = bounds.origin.y + padding + header_h + (session_count as f32 * item_h) + 8.0;
+        let y = bounds.origin.y
+            + padding
+            + header_h
+            + (session_count as f32 * item_h)
+            + 8.0
+            + header_h
+            + 32.0
+            + 32.0;
+        Bounds::new(bounds.origin.x + padding, y, bounds.size.width - padding * 2.0, 24.0)
+    }
+
+    fn resume_header_y(&self, bounds: Bounds) -> f32 {
+        let padding = 16.0;
+        let header_h = 20.0;
+        let item_h = 28.0;
+        let session_count = self.sessions.len().min(5);
+        bounds.origin.y + padding + header_h + (session_count as f32 * item_h) + 8.0
+    }
+
+    fn resume_input_bounds(&self, bounds: Bounds) -> Bounds {
+        let padding = 16.0;
+        let y = self.resume_header_y(bounds) + 20.0;
+        Bounds::new(bounds.origin.x + padding, y, bounds.size.width - padding * 2.0, 24.0)
+    }
+
+    fn resume_fork_bounds(&self, bounds: Bounds) -> Bounds {
+        let padding = 16.0;
+        let y = self.resume_input_bounds(bounds).origin.y + 32.0;
         Bounds::new(bounds.origin.x + padding, y, bounds.size.width - padding * 2.0, 24.0)
     }
 
     fn model_selector_bounds(&self, bounds: Bounds) -> Bounds {
         let padding = 16.0;
         let header_h = 20.0;
-        let item_h = 28.0;
-        let session_count = self.sessions.len().min(5);
-        let new_btn_h = 32.0;
-        let section_gap = 16.0;
-        let y = bounds.origin.y + padding + header_h + (session_count as f32 * item_h) + new_btn_h + section_gap + header_h;
+        let y = self.new_session_button_bounds(bounds).origin.y + 32.0 + 8.0 + header_h;
         Bounds::new(bounds.origin.x + padding, y, bounds.size.width - padding * 2.0, 24.0)
     }
 
@@ -285,10 +336,23 @@ impl Panel for SessionsPanel {
             y += item_h;
         }
 
-        // New Session button
-        y += 8.0;
-        self.paint_button("+ New Session", y, bounds, self.new_session_hovered, cx);
+        // RESUME section
+        y = self.resume_header_y(bounds);
+        self.paint_section_header("RESUME", y, bounds, cx);
+        y += header_h;
+
+        let resume_input_bounds = self.resume_input_bounds(bounds);
+        self.resume_at_input.paint(resume_input_bounds, cx);
+        y = resume_input_bounds.origin.y + 32.0;
+
+        let fork_label = if self.fork_session { "Fork session: on" } else { "Fork session: off" };
+        self.paint_button(fork_label, y, bounds, self.fork_hovered, cx);
         y += 32.0;
+
+        // New Session button
+        let new_btn_bounds = self.new_session_button_bounds(bounds);
+        self.paint_button("+ New Session", new_btn_bounds.origin.y, bounds, self.new_session_hovered, cx);
+        y = new_btn_bounds.origin.y + 32.0;
 
         // MODEL section
         y += 8.0;
@@ -311,7 +375,13 @@ impl Panel for SessionsPanel {
     }
 
     fn event(&mut self, event: &InputEvent, bounds: Bounds, cx: &mut EventContext) -> EventResult {
-        // Handle model selector events first
+        // Handle resume input events first
+        let resume_input_bounds = self.resume_input_bounds(bounds);
+        if let EventResult::Handled = self.resume_at_input.event(event, resume_input_bounds, cx) {
+            return EventResult::Handled;
+        }
+
+        // Handle model selector events next
         let model_bounds = self.model_selector_bounds(bounds);
         if let EventResult::Handled = self.model_selector.event(event, model_bounds, cx) {
             // Check if selection changed
@@ -338,6 +408,9 @@ impl Panel for SessionsPanel {
                 let new_btn_bounds = self.new_session_button_bounds(bounds);
                 self.new_session_hovered = new_btn_bounds.contains(point);
 
+                let fork_bounds = self.resume_fork_bounds(bounds);
+                self.fork_hovered = fork_bounds.contains(point);
+
                 let interrupt_bounds = self.interrupt_button_bounds(bounds);
                 self.interrupt_hovered = self.is_running && interrupt_bounds.contains(point);
 
@@ -355,7 +428,11 @@ impl Panel for SessionsPanel {
                     let item_bounds = self.session_item_bounds(i, bounds);
                     if item_bounds.contains(point) {
                         let session_id = self.sessions[i].id.clone();
-                        self.pending_actions.push(SessionAction::ResumeSession(session_id));
+                        self.pending_actions.push(SessionAction::ResumeSession {
+                            session_id,
+                            resume_at: self.resume_at_value(),
+                            fork_session: self.fork_session,
+                        });
                         return EventResult::Handled;
                     }
                 }
@@ -364,6 +441,13 @@ impl Panel for SessionsPanel {
                 let new_btn_bounds = self.new_session_button_bounds(bounds);
                 if new_btn_bounds.contains(point) {
                     self.pending_actions.push(SessionAction::NewSession);
+                    return EventResult::Handled;
+                }
+
+                // Check Fork Session toggle
+                let fork_bounds = self.resume_fork_bounds(bounds);
+                if fork_bounds.contains(point) {
+                    self.fork_session = !self.fork_session;
                     return EventResult::Handled;
                 }
 

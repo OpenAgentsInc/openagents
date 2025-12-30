@@ -126,3 +126,9 @@ Remaining gaps:
 - Permission UI and PermissionHandler wiring.
 - resume_session_at and fork_session controls.
 - Other QueryOptions fields (system_prompt, output_format, MCP, agents, etc.).
+
+## Addendum (2025-12-30 later)
+Resume UX now exposes resume_session_at and fork_session:
+- Sessions panel includes a resume_session_at input and fork toggle.
+- Autopilot Shell passes these options into QueryOptions when resuming SDK sessions.
+- Resumed sessions emit session IDs back to the UI so forked IDs can be tracked.
