@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 use std::time::Instant;
 
-use autopilot::{ClaudeEvent, ClaudeModel, LogLine, LogStatus, SessionCheckpoint, StartupPhase, StartupSection, StartupState};
+use autopilot::{ClaudeEvent, ClaudeModel, ClaudeUsageData, LogLine, LogStatus, SessionCheckpoint, StartupPhase, StartupSection, StartupState};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -43,6 +43,8 @@ pub struct RuntimeSnapshot {
     /// Grouped sections for collapsible UI (startup phases only).
     pub sections: Vec<LogSection>,
     pub events: Vec<SessionEvent>,
+    /// Accumulated session usage stats (tokens, cost, duration).
+    pub session_usage: ClaudeUsageData,
 }
 
 pub struct AutopilotRuntime {
@@ -107,6 +109,7 @@ impl AutopilotRuntime {
             lines: self.state.lines.clone(),
             sections,
             events,
+            session_usage: self.state.session_usage.clone(),
         }
     }
 

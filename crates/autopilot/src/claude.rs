@@ -303,6 +303,9 @@ Your turn should only end with calling ExitPlanMode. Do not stop early."#.to_str
                     }
                     Ok(SdkMessage::Result(result)) => {
                         verbose_println!("[CLAUDE][RESULT] {:?}", result);
+                        // Extract usage data and send it
+                        let usage = extract_usage_from_result(&result, model.as_str());
+                        let _ = tx.send(ClaudeToken::Usage(usage));
                         break;
                     }
                     Err(e) => {
@@ -506,8 +509,11 @@ Start now."#, plan);
                             let _ = tx.send(ClaudeToken::ToolDone { name: tool_name });
                         }
                     }
-                    Ok(SdkMessage::Result(_)) => {
+                    Ok(SdkMessage::Result(result)) => {
                         verbose_println!("[CLAUDE-EXEC] Got Result message, breaking");
+                        // Extract usage data and send it
+                        let usage = extract_usage_from_result(&result, model.as_str());
+                        let _ = tx.send(ClaudeToken::Usage(usage));
                         break;
                     }
                     Err(e) => {
@@ -719,7 +725,10 @@ Otherwise, provide a detailed plan for the next iteration in the same format as 
                             let _ = tx.send(ClaudeToken::ToolDone { name: tool_name });
                         }
                     }
-                    Ok(SdkMessage::Result(_)) => {
+                    Ok(SdkMessage::Result(result)) => {
+                        // Extract usage data and send it
+                        let usage = extract_usage_from_result(&result, model.as_str());
+                        let _ = tx.send(ClaudeToken::Usage(usage));
                         break;
                     }
                     Err(e) => {
@@ -749,6 +758,54 @@ Otherwise, provide a detailed plan for the next iteration in the same format as 
             return;
         }
     });
+}
+
+/// Extract usage data from SDK Result message into ClaudeUsageData.
+fn extract_usage_from_result(result: &claude_agent_sdk::SdkResultMessage, model: &str) -> ClaudeUsageData {
+    use claude_agent_sdk::SdkResultMessage;
+
+    // Extract common fields from success or error variants
+    let (duration_ms, duration_api_ms, num_turns, total_cost_usd, usage, model_usage) = match result {
+        SdkResultMessage::Success(s) => (
+            s.duration_ms,
+            s.duration_api_ms,
+            s.num_turns,
+            s.total_cost_usd,
+            &s.usage,
+            &s.model_usage,
+        ),
+        SdkResultMessage::ErrorDuringExecution(e)
+        | SdkResultMessage::ErrorMaxTurns(e)
+        | SdkResultMessage::ErrorMaxBudget(e)
+        | SdkResultMessage::ErrorMaxStructuredOutputRetries(e) => (
+            e.duration_ms,
+            e.duration_api_ms,
+            e.num_turns,
+            e.total_cost_usd,
+            &e.usage,
+            &e.model_usage,
+        ),
+    };
+
+    // Get context window from model_usage if available
+    let context_window = model_usage
+        .values()
+        .next()
+        .map(|m| m.context_window)
+        .unwrap_or(0);
+
+    ClaudeUsageData {
+        input_tokens: usage.input_tokens,
+        output_tokens: usage.output_tokens,
+        cache_read_tokens: usage.cache_read_input_tokens.unwrap_or(0),
+        cache_creation_tokens: usage.cache_creation_input_tokens.unwrap_or(0),
+        total_cost_usd,
+        duration_ms,
+        duration_api_ms,
+        num_turns,
+        context_window,
+        model: model.to_string(),
+    }
 }
 
 fn extract_tool_params(tool_name: &str, input: Option<&serde_json::Value>) -> String {

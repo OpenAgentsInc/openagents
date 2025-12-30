@@ -22,7 +22,7 @@ use crate::components::FullAutoToggle;
 use crate::dock::{Dock, DockPosition, Panel};
 use crate::hud::{HudBackground, StartupSequence};
 use crate::keymap::shell_keymap;
-use crate::panels::{SessionsPanel, SystemPanel, UsageLimit};
+use crate::panels::{SessionsPanel, SessionUsage, SystemPanel, UsageLimit};
 use crate::rate_limits::{RateLimitFetcher, RateLimitSnapshot};
 
 /// Layout dimensions calculated from current bounds
@@ -67,6 +67,10 @@ pub struct AutopilotShell {
     // Active Task tool for nesting child tools: (tool_key, entry_index)
     active_task: Option<(String, usize)>,
 
+    // External children storage for Task tools (works around type erasure)
+    // Maps parent entry_idx -> accumulated child tools
+    task_children: HashMap<usize, Vec<ChildTool>>,
+
     // Full Auto toggle
     full_auto_toggle: FullAutoToggle,
 
@@ -100,10 +104,10 @@ impl AutopilotShell {
 
         // Thread view for center
         let mut thread_view = ThreadView::new().auto_scroll(true);
-        thread_view.push_entry(ThreadEntry::new(
-            ThreadEntryType::System,
-            Text::new("Autopilot ready."),
-        ));
+        thread_view.push_entry(
+            ThreadEntry::new(ThreadEntryType::System, Text::new("Autopilot ready."))
+                .copyable_text("Autopilot ready."),
+        );
 
         // Status bar
         let status_bar = StatusBar::new().items(vec![
@@ -184,6 +188,7 @@ impl AutopilotShell {
             expanded_sections: HashSet::new(), // All sections start collapsed
             pending_tools: HashMap::new(),
             active_task: None,
+            task_children: HashMap::new(),
             full_auto_toggle: FullAutoToggle::new(),
             keymap,
             key_context: KeyContext::new(),
@@ -210,10 +215,10 @@ impl AutopilotShell {
 
         // Thread view for center - will be populated from checkpoint state
         let mut thread_view = ThreadView::new().auto_scroll(true);
-        thread_view.push_entry(ThreadEntry::new(
-            ThreadEntryType::System,
-            Text::new("Session resumed."),
-        ));
+        thread_view.push_entry(
+            ThreadEntry::new(ThreadEntryType::System, Text::new("Session resumed."))
+                .copyable_text("Session resumed."),
+        );
 
         // Status bar
         let status_bar = StatusBar::new().items(vec![
@@ -290,6 +295,7 @@ impl AutopilotShell {
             expanded_sections: HashSet::new(),
             pending_tools: HashMap::new(),
             active_task: None,
+            task_children: HashMap::new(),
             full_auto_toggle: FullAutoToggle::new(),
             keymap,
             key_context: KeyContext::new(),
@@ -333,8 +339,26 @@ impl AutopilotShell {
             ClaudeModel::Sonnet => 200_000,
             ClaudeModel::Opus => 200_000,
         };
-        // Context used would come from actual API response - for now show 0
-        self.system_panel.update_usage(model_str, 0, context_total);
+        // Use context_window from session_usage if available, otherwise default
+        let context_used = if snapshot.session_usage.context_window > 0 {
+            snapshot.session_usage.context_window
+        } else {
+            0
+        };
+        self.system_panel.update_usage(model_str, context_used, context_total);
+
+        // Update session stats from accumulated usage data
+        let session = SessionUsage {
+            input_tokens: snapshot.session_usage.input_tokens,
+            output_tokens: snapshot.session_usage.output_tokens,
+            cache_read_tokens: snapshot.session_usage.cache_read_tokens,
+            cache_creation_tokens: snapshot.session_usage.cache_creation_tokens,
+            total_cost_usd: snapshot.session_usage.total_cost_usd,
+            duration_ms: snapshot.session_usage.duration_ms,
+            duration_api_ms: snapshot.session_usage.duration_api_ms,
+            num_turns: snapshot.session_usage.num_turns,
+        };
+        self.system_panel.update_session(session);
 
         // Rebuild thread view when sections change
         if snapshot.sections.len() != self.last_section_count {
@@ -357,10 +381,10 @@ impl AutopilotShell {
         self.thread_view.clear();
 
         // Add "Autopilot ready." header
-        self.thread_view.push_entry(ThreadEntry::new(
-            ThreadEntryType::System,
-            Text::new("Autopilot ready."),
-        ));
+        self.thread_view.push_entry(
+            ThreadEntry::new(ThreadEntryType::System, Text::new("Autopilot ready."))
+                .copyable_text("Autopilot ready."),
+        );
 
         // Add collapsible sections for startup phases
         for section in sections {
@@ -382,21 +406,21 @@ impl AutopilotShell {
             let collapsible = CollapsibleSection::new(&section.summary)
                 .expanded(is_expanded)
                 .status(status)
-                .details(details);
+                .details(details.clone());
 
-            self.thread_view.push_entry(ThreadEntry::new(
-                ThreadEntryType::System,
-                collapsible,
-            ));
+            self.thread_view.push_entry(
+                ThreadEntry::new(ThreadEntryType::System, collapsible)
+                    .copyable_text(details.join("\n")),
+            );
         }
 
         // Add Claude (non-section) lines
         for line in lines {
             if line.section == Some(StartupSection::Claude) && !line.text.trim().is_empty() {
-                self.thread_view.push_entry(ThreadEntry::new(
-                    ThreadEntryType::System,
-                    Text::new(line.text.clone()),
-                ));
+                self.thread_view.push_entry(
+                    ThreadEntry::new(ThreadEntryType::System, Text::new(line.text.clone()))
+                        .copyable_text(line.text.clone()),
+                );
             }
         }
     }
@@ -407,10 +431,10 @@ impl AutopilotShell {
             for line in lines.iter().skip(self.last_line_count) {
                 // Only add Claude section lines (startup sections are in collapsible)
                 if line.section == Some(StartupSection::Claude) && !line.text.trim().is_empty() {
-                    self.thread_view.push_entry(ThreadEntry::new(
-                        ThreadEntryType::System,
-                        Text::new(line.text.clone()),
-                    ));
+                    self.thread_view.push_entry(
+                        ThreadEntry::new(ThreadEntryType::System, Text::new(line.text.clone()))
+                            .copyable_text(line.text.clone()),
+                    );
                 }
             }
             self.last_line_count = lines.len();
@@ -422,6 +446,41 @@ impl AutopilotShell {
         // Access system panel through dock
         // For now we can't easily access it, but the panel can be updated separately
         let _ = status;
+    }
+
+    /// Rebuild a Task entry with all its accumulated children.
+    /// This works around type erasure by creating a new ToolCallCard with children.
+    fn rebuild_task_entry(&mut self, entry_idx: usize) {
+        // Find the parent tool info from pending_tools (reverse lookup)
+        let parent_info = self
+            .pending_tools
+            .iter()
+            .find(|&(_, idx)| *idx == entry_idx)
+            .map(|(key, _)| key.clone());
+
+        if let Some(key) = parent_info {
+            // Parse key to get phase::name::params_hash
+            let parts: Vec<&str> = key.split("::").collect();
+            if parts.len() >= 2 {
+                let display_name = format!("{}::{}", parts[0], parts[1]);
+
+                // Build new card with all children
+                let mut card = ToolCallCard::new(ToolType::Task, display_name)
+                    .status(ToolStatus::Running);
+
+                // Add all accumulated children
+                if let Some(children) = self.task_children.get(&entry_idx) {
+                    for child in children {
+                        card.add_child(child.clone());
+                    }
+                }
+
+                // Replace entry content
+                if let Some(entry) = self.thread_view.entry_mut(entry_idx) {
+                    entry.set_content(card);
+                }
+            }
+        }
     }
 
     fn push_event(&mut self, event: &SessionEvent) {
@@ -443,30 +502,61 @@ impl AutopilotShell {
                 let is_task = name == "Task";
 
                 if *done {
-                    // Tool completed - update existing entry's status
-                    if let Some(entry_idx) = self.pending_tools.remove(&tool_key) {
-                        if let Some(entry) = self.thread_view.entry_mut(entry_idx) {
-                            // Replace with completed card
-                            let card = ToolCallCard::new(tool_type, display_name)
+                    // Tool completed
+                    if is_task {
+                        // Task completed - update entry and clean up children
+                        if let Some(entry_idx) = self.pending_tools.remove(&tool_key) {
+                            // Build final card with all children marked complete
+                            let mut card = ToolCallCard::new(tool_type, display_name.clone())
                                 .status(ToolStatus::Success)
                                 .input(params.clone());
-                            entry.set_content(card);
-                        }
-                    }
 
-                    // If this was the active task, clear it
-                    if let Some((ref active_key, _)) = self.active_task {
-                        if *active_key == tool_key {
-                            self.active_task = None;
-                        }
-                    }
+                            // Add all children (they should already be marked complete)
+                            if let Some(children) = self.task_children.get(&entry_idx) {
+                                for child in children {
+                                    card.add_child(child.clone());
+                                }
+                            }
 
-                    // Also update child tool status if there's an active task
-                    if let Some((_, parent_idx)) = self.active_task {
-                        if let Some(entry) = self.thread_view.entry_mut(parent_idx) {
-                            // Try to downcast to ToolCallCard and update child
-                            // Note: This requires the entry content to be ToolCallCard
-                            // We use a workaround by recreating with updated child
+                            if let Some(entry) = self.thread_view.entry_mut(entry_idx) {
+                                entry.set_content(card);
+                            }
+
+                            // Clean up children tracking
+                            self.task_children.remove(&entry_idx);
+                        }
+
+                        // Clear active task if this was it
+                        if let Some((ref active_key, _)) = self.active_task {
+                            if *active_key == tool_key {
+                                self.active_task = None;
+                            }
+                        }
+                    } else {
+                        // Non-Task tool completed
+                        if let Some((_, parent_idx)) = self.active_task {
+                            // This is a child of an active Task - update child status
+                            if let Some(children) = self.task_children.get_mut(&parent_idx) {
+                                // Find and update the child status (reverse search for most recent)
+                                for child in children.iter_mut().rev() {
+                                    if child.name == *name && child.status == ToolStatus::Running {
+                                        child.status = ToolStatus::Success;
+                                        break;
+                                    }
+                                }
+                            }
+                            // Rebuild parent to show updated child status
+                            self.rebuild_task_entry(parent_idx);
+                        } else {
+                            // Standalone tool (no parent Task) - update directly
+                            if let Some(entry_idx) = self.pending_tools.remove(&tool_key) {
+                                if let Some(entry) = self.thread_view.entry_mut(entry_idx) {
+                                    let card = ToolCallCard::new(tool_type, display_name)
+                                        .status(ToolStatus::Success)
+                                        .input(params.clone());
+                                    entry.set_content(card);
+                                }
+                            }
                         }
                     }
                 } else {
@@ -483,38 +573,24 @@ impl AutopilotShell {
                         self.thread_view
                             .push_entry(ThreadEntry::new(ThreadEntryType::Tool, card));
                     } else if let Some((_, parent_idx)) = self.active_task {
-                        // Non-Task tool with active parent - add as child
-                        // We need to add child to the parent entry
-                        // Since we can't easily modify BoxedComponent, track separately
-                        // For now, still add to pending but don't create new entry
-                        self.pending_tools.insert(tool_key.clone(), parent_idx);
+                        // Non-Task tool with active parent - add as nested child
+                        // DON'T add to thread_view as separate entry
+                        // Accumulate in task_children and rebuild parent
 
-                        // Add child to parent card if we can access it
-                        if let Some(entry) = self.thread_view.entry_mut(parent_idx) {
-                            // Create child tool
-                            let child = ChildTool {
-                                tool_type,
-                                name: name.clone(),
-                                params: params.clone(),
-                                status: ToolStatus::Running,
-                            };
-                            // We need to access the ToolCallCard to add the child
-                            // Since content is Box<dyn Component>, we need a workaround
-                            // For now, we'll need to store children separately or modify architecture
+                        let child = ChildTool {
+                            tool_type,
+                            name: name.clone(),
+                            params: params.clone(),
+                            status: ToolStatus::Running,
+                        };
 
-                            // Store in a separate map: parent_entry_idx -> Vec<ChildTool>
-                            // For now, let's just add children directly to main feed with indent marker
-                        }
+                        self.task_children
+                            .entry(parent_idx)
+                            .or_default()
+                            .push(child);
 
-                        // Fallback: Add as indented entry in main thread
-                        let card = ToolCallCard::new(tool_type, format!("  {}", name))
-                            .status(ToolStatus::Running)
-                            .input(params.clone());
-                        // Override entry_idx to be the actual new entry
-                        let actual_idx = self.thread_view.entry_count();
-                        self.pending_tools.insert(tool_key.clone(), actual_idx);
-                        self.thread_view
-                            .push_entry(ThreadEntry::new(ThreadEntryType::Tool, card));
+                        // Rebuild parent entry with new child
+                        self.rebuild_task_entry(parent_idx);
                     } else {
                         // No active task - add to main thread normally
                         let entry_idx = self.thread_view.entry_count();

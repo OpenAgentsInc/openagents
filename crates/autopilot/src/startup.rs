@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use tracing::{info, warn, debug};
 
 use crate::auth;
-use crate::claude::{ClaudeToken, ClaudeEvent, run_claude_planning, run_claude_execution, run_claude_review};
+use crate::claude::{ClaudeToken, ClaudeEvent, ClaudeUsageData, run_claude_planning, run_claude_execution, run_claude_review};
 use crate::logger::{SessionLogger, generate_session_id};
 use crate::preflight::PreflightConfig;
 use crate::report::{AfterActionReport, collect_session_stats, generate_suggested_next_steps, generate_questions_for_user};
@@ -230,6 +230,8 @@ pub struct StartupState {
     // Pylon integration
     pub compute_mix: Option<crate::preflight::ComputeMix>,
     pylon_started: bool,
+    // Session usage tracking (accumulated from ClaudeToken::Usage)
+    pub session_usage: ClaudeUsageData,
 }
 
 impl StartupState {
@@ -278,6 +280,7 @@ impl StartupState {
             report_path: None,
             compute_mix: None,
             pylon_started: false,
+            session_usage: ClaudeUsageData::default(),
         }
     }
 
@@ -952,8 +955,18 @@ impl StartupState {
                             self.phase_started = elapsed;
                             return;
                         }
-                        ClaudeToken::Usage(_) => {
-                            // Usage data - can be used for tracking
+                        ClaudeToken::Usage(usage) => {
+                            // Accumulate usage data for session stats
+                            self.session_usage.input_tokens += usage.input_tokens;
+                            self.session_usage.output_tokens += usage.output_tokens;
+                            self.session_usage.cache_read_tokens += usage.cache_read_tokens;
+                            self.session_usage.cache_creation_tokens += usage.cache_creation_tokens;
+                            self.session_usage.total_cost_usd += usage.total_cost_usd;
+                            self.session_usage.duration_ms += usage.duration_ms;
+                            self.session_usage.duration_api_ms += usage.duration_api_ms;
+                            self.session_usage.num_turns += usage.num_turns;
+                            self.session_usage.context_window = usage.context_window;
+                            self.session_usage.model = usage.model;
                         }
                     }
                 }
@@ -1087,8 +1100,18 @@ impl StartupState {
                             self.phase_started = elapsed;
                             return;
                         }
-                        ClaudeToken::Usage(_) => {
-                            // Usage data - can be used for tracking
+                        ClaudeToken::Usage(usage) => {
+                            // Accumulate usage data for session stats
+                            self.session_usage.input_tokens += usage.input_tokens;
+                            self.session_usage.output_tokens += usage.output_tokens;
+                            self.session_usage.cache_read_tokens += usage.cache_read_tokens;
+                            self.session_usage.cache_creation_tokens += usage.cache_creation_tokens;
+                            self.session_usage.total_cost_usd += usage.total_cost_usd;
+                            self.session_usage.duration_ms += usage.duration_ms;
+                            self.session_usage.duration_api_ms += usage.duration_api_ms;
+                            self.session_usage.num_turns += usage.num_turns;
+                            self.session_usage.context_window = usage.context_window;
+                            self.session_usage.model = usage.model;
                         }
                     }
                 }
@@ -1209,8 +1232,18 @@ impl StartupState {
                             self.phase_started = elapsed;
                             return;
                         }
-                        ClaudeToken::Usage(_) => {
-                            // Usage data - can be used for tracking
+                        ClaudeToken::Usage(usage) => {
+                            // Accumulate usage data for session stats
+                            self.session_usage.input_tokens += usage.input_tokens;
+                            self.session_usage.output_tokens += usage.output_tokens;
+                            self.session_usage.cache_read_tokens += usage.cache_read_tokens;
+                            self.session_usage.cache_creation_tokens += usage.cache_creation_tokens;
+                            self.session_usage.total_cost_usd += usage.total_cost_usd;
+                            self.session_usage.duration_ms += usage.duration_ms;
+                            self.session_usage.duration_api_ms += usage.duration_api_ms;
+                            self.session_usage.num_turns += usage.num_turns;
+                            self.session_usage.context_window = usage.context_window;
+                            self.session_usage.model = usage.model;
                         }
                     }
                 }
@@ -1408,8 +1441,18 @@ impl StartupState {
                             self.phase_started = elapsed;
                             return;
                         }
-                        ClaudeToken::Usage(_) => {
-                            // Usage data - can be used for tracking
+                        ClaudeToken::Usage(usage) => {
+                            // Accumulate usage data for session stats
+                            self.session_usage.input_tokens += usage.input_tokens;
+                            self.session_usage.output_tokens += usage.output_tokens;
+                            self.session_usage.cache_read_tokens += usage.cache_read_tokens;
+                            self.session_usage.cache_creation_tokens += usage.cache_creation_tokens;
+                            self.session_usage.total_cost_usd += usage.total_cost_usd;
+                            self.session_usage.duration_ms += usage.duration_ms;
+                            self.session_usage.duration_api_ms += usage.duration_api_ms;
+                            self.session_usage.num_turns += usage.num_turns;
+                            self.session_usage.context_window = usage.context_window;
+                            self.session_usage.model = usage.model;
                         }
                     }
                 }
@@ -1819,6 +1862,7 @@ impl StartupState {
             report_path: None,
             compute_mix: None,
             pylon_started: false,
+            session_usage: ClaudeUsageData::default(), // Not persisted in checkpoint yet
         }
     }
 
