@@ -270,7 +270,8 @@ mod scheduler {
         {
             self.stop(Some(&id));
 
-            let ledger = self.ledger.clone();
+            let ledger_for_closure = self.ledger.clone();
+            let ledger_for_insert = self.ledger.clone();
             let id_clone = id.clone();
             let mut callback = Some(callback);
 
@@ -278,7 +279,7 @@ mod scheduler {
                 if let Some(cb) = callback.take() {
                     cb();
                 }
-                ledger.borrow_mut().remove(&id_clone);
+                ledger_for_closure.borrow_mut().remove(&id_clone);
             }) as Box<dyn FnMut()>);
 
             if let Some(window) = web_sys::window() {
@@ -287,7 +288,7 @@ mod scheduler {
                     closure.as_ref().unchecked_ref(),
                     delay_ms,
                 ) {
-                    ledger.borrow_mut().insert(
+                    ledger_for_insert.borrow_mut().insert(
                         id,
                         Scheduled {
                             timeout_id,
