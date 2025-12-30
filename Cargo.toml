@@ -5,6 +5,7 @@ members = [
     "crates/agent",
     "crates/agent-orchestrator",
     "crates/autopilot",
+    "crates/autopilot-container",
     "crates/autopilot-service",
     "crates/autopilot-shell",
     "crates/autopilot-wasm",
@@ -38,6 +39,7 @@ members = [
     "crates/neobank",
     "crates/web-platform",
     "crates/orderbook",
+    "crates/relay",
     "crates/web",
 ]
 

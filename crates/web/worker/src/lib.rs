@@ -4,11 +4,15 @@
 
 use worker::*;
 
+mod autopilot_container;
 mod db;
+mod identity;
 mod middleware;
+mod relay;
 mod routes;
 mod services;
 
+pub use autopilot_container::AutopilotContainer;
 pub use db::sessions::Session;
 pub use middleware::auth::AuthenticatedUser;
 
@@ -24,17 +28,32 @@ async fn fetch(mut req: Request, env: Env, _ctx: Context) -> Result<Response> {
 
     // Route the request
     match (method, path.as_ref()) {
-        // Auth routes
+        // GitHub Auth routes
         (Method::Get, "/api/auth/github/start") => routes::auth::github_start(req, env).await,
         (Method::Get, "/api/auth/github/callback") => routes::auth::github_callback(req, env).await,
         (Method::Post, "/api/auth/logout") => routes::auth::logout(req, env).await,
+
+        // Claude Auth routes (OAuth with PKCE)
+        (Method::Get, "/api/auth/claude/start") => routes::claude_auth::claude_start(req, env).await,
+        (Method::Get, "/api/auth/claude/callback") => routes::claude_auth::claude_callback(req, env).await,
+        (Method::Get, "/api/auth/claude/status") => routes::claude_auth::claude_status(req, env).await,
+        (Method::Post, "/api/auth/claude/disconnect") => routes::claude_auth::claude_disconnect(req, env).await,
+        (Method::Post, "/api/auth/claude/link") => {
+            let body = req.text().await?;
+            routes::claude_auth::claude_link(req, env, body).await
+        }
         (Method::Get, "/api/auth/me") => {
             // Return current user or null
             match get_optional_user(&req, &env).await {
-                Some(user) => Response::from_json(&serde_json::json!({
-                    "user_id": user.user_id,
-                    "github_username": user.github_username,
-                })),
+                Some(user) => {
+                    let db = env.d1("DB")?;
+                    let user_record = db::users::get_by_id(&db, &user.user_id).await?;
+                    Response::from_json(&serde_json::json!({
+                        "user_id": user_record.user_id,
+                        "github_username": user_record.github_username,
+                        "nostr_npub": user_record.nostr_npub,
+                    }))
+                }
                 None => Response::from_json(&serde_json::json!({ "user": null })),
             }
         }
@@ -44,11 +63,9 @@ async fn fetch(mut req: Request, env: Env, _ctx: Context) -> Result<Response> {
             let env_clone = env.clone();
             with_auth(&req, &env, |user| async move {
                 let db = env_clone.d1("DB")?;
-                let user_record = db::users::get_by_id(&db, &user.user_id).await?;
-
-                // Get GitHub access token (stored during OAuth)
-                let access_token = user_record.github_access_token
-                    .ok_or_else(|| Error::RustError("No GitHub token".to_string()))?;
+                let session_secret = env_clone.secret("SESSION_SECRET")?.to_string();
+                let access_token =
+                    db::users::get_github_access_token(&db, &user.user_id, &session_secret).await?;
 
                 let repos = services::github::get_repos(&access_token).await?;
 
@@ -132,6 +149,42 @@ async fn fetch(mut req: Request, env: Env, _ctx: Context) -> Result<Response> {
                 routes::hud::update_settings(user, env.clone(), body.clone())
             })
             .await
+        }
+
+        // Tunnel routes (WebSocket relay)
+        (Method::Post, "/api/tunnel/register") => {
+            let body = req.text().await?;
+            let origin = req.url()?.origin().ascii_serialization();
+            let env_clone = env.clone();
+            with_auth(&req, &env, |user| async move {
+                routes::tunnel::register_with_origin(env_clone, user, body, origin).await
+            })
+            .await
+        }
+        (Method::Get, path) if path.starts_with("/api/tunnel/status/") => {
+            let session_id = path.trim_start_matches("/api/tunnel/status/").to_string();
+            routes::tunnel::status(env, session_id).await
+        }
+        (Method::Get, path) if path.starts_with("/api/tunnel/ws/") => {
+            routes::tunnel::websocket(req, env).await
+        }
+
+        // Container routes (paid tier - cloud compute)
+        (Method::Post, "/api/container/start") => {
+            let body = req.text().await?;
+            with_auth(&req, &env, |user| {
+                routes::container::start_task(user, env.clone(), body.clone())
+            })
+            .await
+        }
+        (Method::Get, "/api/container/status") => {
+            with_auth(&req, &env, |user| {
+                routes::container::get_status(user, env.clone())
+            })
+            .await
+        }
+        (Method::Get, path) if path.starts_with("/api/container/ws/") => {
+            routes::container::websocket(req, env).await
         }
 
         // For all other routes, let Cloudflare's asset binding handle it
