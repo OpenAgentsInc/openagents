@@ -26,6 +26,19 @@ pub enum SessionEvent {
         output: Option<String>,
         is_error: bool,
     },
+    ToolProgress {
+        phase: SessionPhase,
+        tool_name: String,
+        elapsed_secs: f64,
+    },
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct SdkSessionIds {
+    pub plan: Option<String>,
+    pub exec: Option<String>,
+    pub review: Option<String>,
+    pub fix: Option<String>,
 }
 
 /// A grouped section of log lines for collapsible UI display.
@@ -47,6 +60,8 @@ pub struct RuntimeSnapshot {
     pub events: Vec<SessionEvent>,
     /// Accumulated session usage stats (tokens, cost, duration).
     pub session_usage: ClaudeUsageData,
+    pub autopilot_session_id: String,
+    pub sdk_session_ids: SdkSessionIds,
 }
 
 pub struct AutopilotRuntime {
@@ -112,6 +127,13 @@ impl AutopilotRuntime {
             sections,
             events,
             session_usage: self.state.session_usage.clone(),
+            autopilot_session_id: self.state.session_id.clone(),
+            sdk_session_ids: SdkSessionIds {
+                plan: self.state.claude_session_id.clone(),
+                exec: self.state.exec_session_id.clone(),
+                review: self.state.review_session_id.clone(),
+                fix: self.state.fix_session_id.clone(),
+            },
         }
     }
 
@@ -258,6 +280,11 @@ impl AutopilotRuntime {
                     done: *done,
                     output: output.clone(),
                     is_error: *is_error,
+                }),
+                ClaudeEvent::ToolProgress { tool_name, elapsed_secs } => out.push(SessionEvent::ToolProgress {
+                    phase,
+                    tool_name: tool_name.clone(),
+                    elapsed_secs: *elapsed_secs,
                 }),
             }
         }

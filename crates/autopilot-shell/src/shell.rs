@@ -68,6 +68,9 @@ pub struct AutopilotShell {
     // Track in-flight tool calls: tool_key -> entry_index
     pending_tools: HashMap<String, usize>,
 
+    // Metadata for pending tool cards keyed by entry index
+    pending_tool_meta: HashMap<usize, PendingToolMeta>,
+
     // Active Task tools for nesting child tools: Vec of (tool_key, entry_index)
     // Multiple Tasks can run in parallel, we track all of them
     active_tasks: Vec<(String, usize)>,
@@ -112,6 +115,15 @@ enum SdkMessageEvent {
     Completed,
     /// Error occurred
     Error(String),
+}
+
+#[derive(Clone)]
+struct PendingToolMeta {
+    tool_name: String,
+    display_name: String,
+    tool_type: ToolType,
+    params: String,
+    elapsed_secs: Option<f64>,
 }
 
 impl AutopilotShell {
@@ -227,6 +239,7 @@ impl AutopilotShell {
             last_section_count: 0,
             expanded_sections: HashSet::new(), // All sections start collapsed
             pending_tools: HashMap::new(),
+            pending_tool_meta: HashMap::new(),
             active_tasks: Vec::new(),
             task_children: HashMap::new(),
             full_auto_toggle: FullAutoToggle::new(),
@@ -352,6 +365,7 @@ impl AutopilotShell {
             last_section_count: 0,
             expanded_sections: HashSet::new(),
             pending_tools: HashMap::new(),
+            pending_tool_meta: HashMap::new(),
             active_tasks: Vec::new(),
             task_children: HashMap::new(),
             full_auto_toggle: FullAutoToggle::new(),
@@ -413,6 +427,10 @@ impl AutopilotShell {
             num_turns: snapshot.session_usage.num_turns,
         };
         self.system_panel.update_session(session);
+        self.system_panel.update_session_ids(
+            snapshot.autopilot_session_id.clone(),
+            snapshot.sdk_session_ids.clone(),
+        );
 
         // Rebuild thread view when sections change
         if snapshot.sections.len() != self.last_section_count {
@@ -517,10 +535,21 @@ impl AutopilotShell {
             let parts: Vec<&str> = key.split("::").collect();
             if parts.len() >= 2 {
                 let display_name = format!("{}::{}", parts[0], parts[1]);
+                let (input_params, elapsed_secs) = self
+                    .pending_tool_meta
+                    .get(&entry_idx)
+                    .map(|meta| (meta.params.clone(), meta.elapsed_secs))
+                    .unwrap_or_default();
 
                 // Build new card with all children
                 let mut card = ToolCallCard::new(ToolType::Task, display_name)
                     .status(ToolStatus::Running);
+                if !input_params.is_empty() {
+                    card = card.input(input_params);
+                }
+                if let Some(elapsed) = elapsed_secs {
+                    card = card.elapsed_secs(elapsed);
+                }
 
                 // Add all accumulated children
                 if let Some(children) = self.task_children.get(&entry_idx) {
@@ -568,6 +597,7 @@ impl AutopilotShell {
                     if is_task_tool {
                         // Task completed - update entry and clean up children
                         if let Some(entry_idx) = self.pending_tools.remove(&tool_key) {
+                            self.pending_tool_meta.remove(&entry_idx);
                             // Build final card with all children marked complete
                             let mut card = ToolCallCard::new(tool_type, display_name.clone())
                                 .status(status)
@@ -655,6 +685,7 @@ impl AutopilotShell {
                         } else if self.active_tasks.is_empty() {
                             // Standalone tool (no parent Task) - update directly
                             if let Some(entry_idx) = self.pending_tools.remove(&tool_key) {
+                                self.pending_tool_meta.remove(&entry_idx);
                                 if let Some(entry) = self.thread_view.entry_mut(entry_idx) {
                                     let mut card = ToolCallCard::new(tool_type, display_name)
                                         .status(status)
@@ -677,6 +708,13 @@ impl AutopilotShell {
                         let entry_idx = self.thread_view.entry_count();
                         self.pending_tools.insert(tool_key.clone(), entry_idx);
                         self.active_tasks.push((tool_key.clone(), entry_idx));
+                        self.pending_tool_meta.insert(entry_idx, PendingToolMeta {
+                            tool_name: name.clone(),
+                            display_name: display_name.clone(),
+                            tool_type,
+                            params: params.clone(),
+                            elapsed_secs: None,
+                        });
 
                         let card = ToolCallCard::new(tool_type, display_name)
                             .status(ToolStatus::Running)
@@ -696,6 +734,7 @@ impl AutopilotShell {
                             name: name.clone(),
                             params: params.clone(),
                             status: ToolStatus::Running,
+                            elapsed_secs: None,
                         };
 
                         self.task_children
@@ -709,6 +748,13 @@ impl AutopilotShell {
                         // No active task - add to main thread normally
                         let entry_idx = self.thread_view.entry_count();
                         self.pending_tools.insert(tool_key.clone(), entry_idx);
+                        self.pending_tool_meta.insert(entry_idx, PendingToolMeta {
+                            tool_name: name.clone(),
+                            display_name: display_name.clone(),
+                            tool_type,
+                            params: params.clone(),
+                            elapsed_secs: None,
+                        });
 
                         let card = ToolCallCard::new(tool_type, display_name)
                             .status(ToolStatus::Running)
@@ -716,6 +762,49 @@ impl AutopilotShell {
                         self.thread_view
                             .push_entry(ThreadEntry::new(ThreadEntryType::Tool, card));
                     }
+                }
+            }
+            SessionEvent::ToolProgress { tool_name, elapsed_secs, .. } => {
+                let mut updated_entries = Vec::new();
+                for (entry_idx, meta) in self.pending_tool_meta.iter_mut() {
+                    if meta.tool_name == *tool_name {
+                        meta.elapsed_secs = Some(*elapsed_secs);
+                        updated_entries.push(*entry_idx);
+                    }
+                }
+
+                for entry_idx in updated_entries {
+                    if let Some(meta) = self.pending_tool_meta.get(&entry_idx) {
+                        if meta.tool_type == ToolType::Task {
+                            self.rebuild_task_entry(entry_idx);
+                        } else if let Some(entry) = self.thread_view.entry_mut(entry_idx) {
+                            let mut card = ToolCallCard::new(meta.tool_type, meta.display_name.clone())
+                                .status(ToolStatus::Running)
+                                .input(meta.params.clone());
+                            if let Some(elapsed) = meta.elapsed_secs {
+                                card = card.elapsed_secs(elapsed);
+                            }
+                            entry.set_content(card);
+                        }
+                    }
+                }
+
+                let mut updated_parents = Vec::new();
+                for (parent_idx, children) in self.task_children.iter_mut() {
+                    let mut updated = false;
+                    for child in children.iter_mut().rev() {
+                        if child.name == *tool_name && child.status == ToolStatus::Running {
+                            child.elapsed_secs = Some(*elapsed_secs);
+                            updated = true;
+                            break;
+                        }
+                    }
+                    if updated {
+                        updated_parents.push(*parent_idx);
+                    }
+                }
+                for parent_idx in updated_parents {
+                    self.rebuild_task_entry(parent_idx);
                 }
             }
         }
@@ -872,6 +961,7 @@ impl AutopilotShell {
                     // Clear current thread view
                     self.thread_view.clear();
                     self.pending_tools.clear();
+                    self.pending_tool_meta.clear();
                     self.active_tasks.clear();
                     self.task_children.clear();
 
@@ -944,6 +1034,7 @@ impl AutopilotShell {
                                                 name: child_name.to_string(),
                                                 params: child_msg.tool_input.clone().unwrap_or_default(),
                                                 status: child_status,
+                                                elapsed_secs: None,
                                             });
                                         }
                                     }
@@ -1025,6 +1116,7 @@ impl AutopilotShell {
                 // Clear UI state
                 self.thread_view.clear();
                 self.pending_tools.clear();
+                self.pending_tool_meta.clear();
                 self.active_tasks.clear();
                 self.task_children.clear();
 

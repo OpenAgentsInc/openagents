@@ -10,6 +10,7 @@ pub struct ChildTool {
     pub name: String,
     pub params: String,
     pub status: ToolStatus,
+    pub elapsed_secs: Option<f64>,
 }
 
 /// Compact tool call card - Zed-style one-line rendering
@@ -20,6 +21,7 @@ pub struct ToolCallCard {
     status: ToolStatus,
     input: Option<String>,
     output: Option<String>,
+    elapsed_secs: Option<f64>,
     expanded: bool,
     hovered: bool,
     /// Child tools for Task/subagent cards
@@ -49,6 +51,7 @@ impl ToolCallCard {
             status: ToolStatus::Pending,
             input: None,
             output: None,
+            elapsed_secs: None,
             expanded: false, // Collapsed by default
             hovered: false,
             child_tools: Vec::new(),
@@ -76,6 +79,15 @@ impl ToolCallCard {
     pub fn output(mut self, output: impl Into<String>) -> Self {
         self.output = Some(output.into());
         self
+    }
+
+    pub fn elapsed_secs(mut self, elapsed_secs: f64) -> Self {
+        self.elapsed_secs = Some(elapsed_secs);
+        self
+    }
+
+    pub fn set_elapsed_secs(&mut self, elapsed_secs: f64) {
+        self.elapsed_secs = Some(elapsed_secs);
     }
 
     pub fn expanded(mut self, expanded: bool) -> Self {
@@ -208,13 +220,19 @@ impl Component for ToolCallCard {
         // Status indicator on right
         let status_x = bounds.origin.x + bounds.size.width - 80.0;
         let (status_text, status_color) = match self.status {
-            ToolStatus::Pending => ("pending", theme::text::MUTED),
-            ToolStatus::Running => ("running", theme::status::WARNING),
-            ToolStatus::Success => ("done", theme::status::SUCCESS),
-            ToolStatus::Error => ("error", theme::status::ERROR),
-            ToolStatus::Cancelled => ("cancelled", theme::text::MUTED),
+            ToolStatus::Pending => ("pending".to_string(), theme::text::MUTED),
+            ToolStatus::Running => {
+                if let Some(elapsed) = self.elapsed_secs {
+                    (format!("{:.1}s", elapsed), theme::status::WARNING)
+                } else {
+                    ("running".to_string(), theme::status::WARNING)
+                }
+            }
+            ToolStatus::Success => ("done".to_string(), theme::status::SUCCESS),
+            ToolStatus::Error => ("error".to_string(), theme::status::ERROR),
+            ToolStatus::Cancelled => ("cancelled".to_string(), theme::text::MUTED),
         };
-        let status_run = cx.text.layout(status_text, Point::new(status_x, y), Self::DETAIL_FONT_SIZE, status_color);
+        let status_run = cx.text.layout(status_text.as_str(), Point::new(status_x, y), Self::DETAIL_FONT_SIZE, status_color);
         cx.scene.draw_text(status_run);
 
         // Expand/collapse arrow
@@ -310,13 +328,19 @@ impl Component for ToolCallCard {
                     // Child status
                     let status_x = container_bounds.origin.x + container_bounds.size.width - 50.0;
                     let (status_text, status_color) = match child.status {
-                        ToolStatus::Pending => ("...", theme::text::MUTED),
-                        ToolStatus::Running => ("...", theme::status::WARNING),
-                        ToolStatus::Success => ("✓", theme::status::SUCCESS),
-                        ToolStatus::Error => ("✗", theme::status::ERROR),
-                        ToolStatus::Cancelled => ("—", theme::text::MUTED),
+                        ToolStatus::Pending => ("...".to_string(), theme::text::MUTED),
+                        ToolStatus::Running => {
+                            if let Some(elapsed) = child.elapsed_secs {
+                                (format!("{:.1}s", elapsed), theme::status::WARNING)
+                            } else {
+                                ("...".to_string(), theme::status::WARNING)
+                            }
+                        }
+                        ToolStatus::Success => ("✓".to_string(), theme::status::SUCCESS),
+                        ToolStatus::Error => ("✗".to_string(), theme::status::ERROR),
+                        ToolStatus::Cancelled => ("—".to_string(), theme::text::MUTED),
                     };
-                    let status_run = cx.text.layout(status_text, Point::new(status_x, child_text_y), Self::DETAIL_FONT_SIZE, status_color);
+                    let status_run = cx.text.layout(status_text.as_str(), Point::new(status_x, child_text_y), Self::DETAIL_FONT_SIZE, status_color);
                     cx.scene.draw_text(status_run);
                 }
                 child_y += Self::HEADER_HEIGHT;
