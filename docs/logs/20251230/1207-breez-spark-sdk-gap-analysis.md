@@ -117,3 +117,9 @@ Remaining gaps still blocked in Phase 2:
 - WalletConfig does not expose advanced SDK config (sync interval, max claim fee, lnurl domain, real-time sync, private mode, key set/account selection).
 - WalletInfo population and token-aware balance shaping are still missing.
 - CLI/GUI/IDE integration for LNURL, on-chain claims, tokens, user settings, and optimization is not wired.
+
+## Addendum (2025-12-30, docs)
+Documentation added under `crates/spark/docs/`:
+- README.md: overview + quickstart + builder guidance.
+- CONFIGURATION.md: WalletConfig vs Breez Config + builder/key set/passphrase details.
+- API.md: wrapper API coverage + workflows (LNURL, on-chain claims, tokens, events).
