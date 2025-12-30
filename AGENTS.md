@@ -1,6 +1,6 @@
 # Agent Instructions
 
-OpenAgents desktop foundation repo.
+OpenAgents desktop repo.
 
 ## Tech Stack
 
@@ -72,3 +72,19 @@ Issues are NOT done unless:
 
 - **No placeholder data** - Connect to real sources or show empty state
 - **No GitHub workflows**
+
+## Design Philosophy
+
+Dense. Give me the information. Dial down your whitespace. Dial up your contrast. Allow text to span more than 56 characters, allow spacing below 1.7, allow black borders between columns, scroll bars, tables with alternating background tints.
+
+Fast. Local-first or optimistic writes on the client. Few if any animations. Smart use of fonts, images, and assets to prioritize quick loads and transitions.
+
+Present. Do not navigate me if I don’t need to be navigated, but orient your design from the start for multiple views. Allow multiple panes. Look at high-pressure applications (trading, IDEs, medical, emergency, military) and take inspiration. Don’t take me away from my task.
+
+File over app. Open file format that many apps can view. Skip the spec until things harden, but keep it open anyway. Let my bots read it.
+
+Moldable. Decompose your app into lower primitives that can be loosely recomposed by the user to form many types of documents, dashboards, reports, etc. Start me at a good set of constructions. I’ll make the software into what I need it to be whether you like it or not, so make it easy for me and my bots.
+
+BYOAI. Let me bring my own services and information, either because the application is open enough for the bots to interact with directly (see File over app) or via an exposed host / tunnel or some other dangerous route.
+
+Above all remember that making software is getting easier so businesses will be making software on top of your software. Design for this!
