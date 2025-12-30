@@ -241,9 +241,15 @@ Your turn should only end with calling ExitPlanMode. Do not stop early."#.to_str
                     }
                 };
 
-                // Debug: log message type
+                // Debug: log message type with clear names
                 match &msg {
-                    Ok(m) => eprintln!("[CLAUDE] Got message: {:?}", std::mem::discriminant(m)),
+                    Ok(SdkMessage::Assistant(_)) => {}, // too noisy
+                    Ok(SdkMessage::User(_)) => {}, // too noisy
+                    Ok(SdkMessage::Result(_)) => eprintln!("[CLAUDE] *** GOT RESULT MESSAGE! ***"),
+                    Ok(SdkMessage::System(_)) => eprintln!("[CLAUDE] Got: System"),
+                    Ok(SdkMessage::StreamEvent(_)) => {},
+                    Ok(SdkMessage::ToolProgress(_)) => {},
+                    Ok(SdkMessage::AuthStatus(_)) => eprintln!("[CLAUDE] Got: AuthStatus"),
                     Err(e) => eprintln!("[CLAUDE] Got error: {}", e),
                 }
 
