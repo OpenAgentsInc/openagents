@@ -35,12 +35,15 @@ impl Model {
 
     fn color(&self) -> Hsla {
         match self {
+            // Claude models: bright orange for high visibility
             Model::Claude | Model::ClaudeSonnet | Model::ClaudeOpus | Model::ClaudeHaiku => {
-                Hsla::new(25.0, 0.8, 0.55, 1.0)
+                Hsla::new(25.0, 0.9, 0.65, 1.0)
             }
-            Model::Gpt4 | Model::Gpt4o | Model::GptOss => Hsla::new(160.0, 0.7, 0.45, 1.0),
-            Model::Gemini => Hsla::new(220.0, 0.7, 0.55, 1.0),
-            Model::Local => theme::text::MUTED,
+            // GPT models: bright cyan/teal
+            Model::Gpt4 | Model::Gpt4o | Model::GptOss => Hsla::new(160.0, 0.8, 0.55, 1.0),
+            // Gemini: bright blue
+            Model::Gemini => Hsla::new(220.0, 0.8, 0.65, 1.0),
+            Model::Local => theme::text::SECONDARY,
             Model::Unknown => theme::text::MUTED,
         }
     }
