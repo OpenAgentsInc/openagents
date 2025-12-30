@@ -36,6 +36,23 @@ pub enum ClaudeToken {
     ToolDone { name: String },
     Done(String),
     Error(String),
+    /// Usage update from SDK Result
+    Usage(ClaudeUsageData),
+}
+
+/// Usage data from Claude SDK Result
+#[derive(Clone, Debug, Default)]
+pub struct ClaudeUsageData {
+    pub input_tokens: u64,
+    pub output_tokens: u64,
+    pub cache_read_tokens: u64,
+    pub cache_creation_tokens: u64,
+    pub total_cost_usd: f64,
+    pub duration_ms: u64,
+    pub duration_api_ms: u64,
+    pub num_turns: u32,
+    pub context_window: u64,
+    pub model: String,
 }
 
 #[derive(Clone)]

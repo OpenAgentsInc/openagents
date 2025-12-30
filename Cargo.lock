@@ -977,6 +977,10 @@ version = "0.1.0"
 dependencies = [
  "autopilot",
  "autopilot-service",
+ "chrono",
+ "reqwest 0.12.27",
+ "serde_json",
+ "tokio",
  "tracing",
  "wgpui",
 ]

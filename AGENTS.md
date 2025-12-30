@@ -636,3 +636,16 @@ export RUSTC_WRAPPER=sccache
 **Also note**
 
 Never add GitHub workflows.
+
+
+---
+
+## No Placeholder Data
+
+**NEVER use hardcoded placeholder/mock data** unless the user specifically requests it. Components must either:
+1. Connect to real data sources
+2. Show empty/zero state
+3. Be clearly marked as non-functional stubs awaiting integration
+
+Hardcoded fake values like `percent_used: 34.0` or `input_tokens: 125_000` are unacceptable.
+

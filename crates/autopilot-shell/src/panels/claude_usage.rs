@@ -1,4 +1,7 @@
 //! Claude Usage component - shows API usage stats
+//!
+//! Displays live usage data from Claude API response headers.
+//! Rate limits come from headers like `x-codex-primary-used-percent`.
 
 use wgpui::{Bounds, Component, EventContext, EventResult, Hsla, InputEvent, PaintContext, Point, Quad};
 
@@ -15,7 +18,7 @@ pub struct SessionUsage {
     pub num_turns: u32,
 }
 
-/// Usage limit info
+/// Usage limit info from API response headers
 #[derive(Clone)]
 pub struct UsageLimit {
     pub name: String,
@@ -24,6 +27,9 @@ pub struct UsageLimit {
 }
 
 /// Claude usage display component
+///
+/// Shows live usage data from API responses. All fields start at zero
+/// and are updated via setter methods when real data is available.
 pub struct ClaudeUsage {
     pub model: String,
     pub context_used: u64,
@@ -35,28 +41,14 @@ pub struct ClaudeUsage {
 
 impl ClaudeUsage {
     pub fn new() -> Self {
+        // Start with empty/zero state - NO placeholder data
         Self {
-            model: "opus-4-5".to_string(),
-            context_used: 45_000,
-            context_total: 200_000,
-            session: SessionUsage {
-                input_tokens: 125_000,
-                output_tokens: 42_000,
-                cache_read_tokens: 98_000,
-                cache_creation_tokens: 15_000,
-                total_cost_usd: 2.47,
-                duration_ms: 847_000,
-                duration_api_ms: 234_000,
-                num_turns: 23,
-            },
-            limits: vec![
-                UsageLimit {
-                    name: "Weekly limit".to_string(),
-                    percent_used: 34.0,
-                    resets_at: "Jan 1".to_string(),
-                },
-            ],
-            web_searches: 5,
+            model: String::new(),
+            context_used: 0,
+            context_total: 0,
+            session: SessionUsage::default(),
+            limits: Vec::new(),
+            web_searches: 0,
         }
     }
 
@@ -71,6 +63,27 @@ impl ClaudeUsage {
 
     pub fn set_session(&mut self, session: SessionUsage) {
         self.session = session;
+    }
+
+    /// Update rate limits from API response headers
+    pub fn set_limits(&mut self, limits: Vec<UsageLimit>) {
+        self.limits = limits;
+    }
+
+    /// Update a single session stat
+    pub fn add_tokens(&mut self, input: u64, output: u64, cache_read: u64, cache_create: u64) {
+        self.session.input_tokens += input;
+        self.session.output_tokens += output;
+        self.session.cache_read_tokens += cache_read;
+        self.session.cache_creation_tokens += cache_create;
+    }
+
+    pub fn increment_turns(&mut self) {
+        self.session.num_turns += 1;
+    }
+
+    pub fn set_web_searches(&mut self, count: u64) {
+        self.web_searches = count;
     }
 }
 
