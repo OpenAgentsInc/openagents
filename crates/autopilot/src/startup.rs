@@ -2,6 +2,7 @@ use std::path::PathBuf;
 use std::sync::mpsc;
 use std::time::Instant;
 use chrono::Local;
+use serde::{Deserialize, Serialize};
 use tracing::{info, warn, debug};
 
 use crate::auth;
@@ -11,9 +12,10 @@ use crate::preflight::PreflightConfig;
 use crate::report::{AfterActionReport, collect_session_stats, generate_suggested_next_steps, generate_questions_for_user};
 use crate::streaming::{StreamToken, query_issue_summary, stream_gpt_oss_analysis, parse_harmony_stream, extract_final_content};
 use crate::utils::shorten_path;
+use crate::checkpoint::SessionCheckpoint;
 use crate::verification::{TerminationChecklist, VerificationRunner, generate_fix_prompt, should_force_stop};
 
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub enum ClaudeModel {
     #[default]
     Sonnet,
@@ -44,15 +46,17 @@ fn extract_tool_display(name: &str, params: &str) -> String {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LogLine {
     pub text: String,
     #[allow(dead_code)]
     pub timestamp: f32,
     pub status: LogStatus,
+    /// Which UI section this line belongs to for collapsible grouping.
+    pub section: Option<StartupSection>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub enum LogStatus {
     Pending,
     Success,
@@ -61,7 +65,81 @@ pub enum LogStatus {
     Thinking,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+/// Logical groupings of startup phases for collapsible UI sections.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum StartupSection {
+    Auth,
+    Preflight,
+    Tools,
+    Pylon,
+    Compute,
+    Claude,
+}
+
+impl StartupSection {
+    /// Generate a summary text for this section based on its detail lines.
+    pub fn summary_text(&self, details: &[LogLine]) -> String {
+        match self {
+            StartupSection::Auth => {
+                let has_auth = details.iter().any(|l| l.text.contains("Auth ready"));
+                if has_auth {
+                    "Auth ready".to_string()
+                } else {
+                    "Checking auth".to_string()
+                }
+            }
+            StartupSection::Preflight => {
+                let directive_count = details
+                    .iter()
+                    .find(|l| l.text.contains("directives"))
+                    .and_then(|l| {
+                        l.text
+                            .split_whitespace()
+                            .find(|s| s.parse::<u32>().is_ok())
+                    })
+                    .unwrap_or("0");
+                format!("Preflight complete ({} directives)", directive_count)
+            }
+            StartupSection::Tools => {
+                let ok_count = details.iter().filter(|l| l.text.contains("[OK]")).count();
+                format!("{} tools ready", ok_count)
+            }
+            StartupSection::Pylon => {
+                let running = details
+                    .iter()
+                    .any(|l| l.text.contains("running") || l.text.contains("started"));
+                if running {
+                    "Pylon ready".to_string()
+                } else {
+                    "Pylon not running".to_string()
+                }
+            }
+            StartupSection::Compute => {
+                let backends = details.iter().filter(|l| l.text.contains("[OK]")).count();
+                format!("Compute: {} local backend(s)", backends)
+            }
+            StartupSection::Claude => "Claude session".to_string(),
+        }
+    }
+
+    /// Determine overall status for this section based on its detail lines.
+    pub fn summary_status(&self, details: &[LogLine]) -> LogStatus {
+        if details.iter().any(|l| l.status == LogStatus::Error) {
+            LogStatus::Error
+        } else if details
+            .iter()
+            .all(|l| l.status == LogStatus::Success || l.status == LogStatus::Info)
+        {
+            LogStatus::Success
+        } else if details.iter().any(|l| l.status == LogStatus::Pending) {
+            LogStatus::Pending
+        } else {
+            LogStatus::Info
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 #[allow(dead_code)]
 pub enum StartupPhase {
     CheckingOpenCode,
@@ -90,6 +168,30 @@ pub enum StartupPhase {
     StreamingFix,
     GeneratingReport,
     Complete,
+}
+
+impl StartupPhase {
+    /// Map a phase to its logical section for UI grouping.
+    pub fn section(&self) -> StartupSection {
+        match self {
+            StartupPhase::CheckingOpenCode
+            | StartupPhase::CheckingOpenAgents
+            | StartupPhase::CopyingAuth
+            | StartupPhase::AuthComplete => StartupSection::Auth,
+
+            StartupPhase::RunningPreflight | StartupPhase::PreflightComplete => {
+                StartupSection::Preflight
+            }
+
+            StartupPhase::CheckingPylon | StartupPhase::StartingPylon => StartupSection::Pylon,
+
+            StartupPhase::DetectingCompute | StartupPhase::ComputeMixReady => {
+                StartupSection::Compute
+            }
+
+            _ => StartupSection::Claude,
+        }
+    }
 }
 
 pub struct StartupState {
@@ -184,6 +286,23 @@ impl StartupState {
             text: text.to_string(),
             timestamp: elapsed,
             status,
+            section: Some(self.phase.section()),
+        });
+    }
+
+    /// Add a line with an explicit section override (useful for tool discovery during preflight).
+    pub fn add_line_to_section(
+        &mut self,
+        text: &str,
+        status: LogStatus,
+        elapsed: f32,
+        section: StartupSection,
+    ) {
+        self.lines.push(LogLine {
+            text: text.to_string(),
+            timestamp: elapsed,
+            status,
+            section: Some(section),
         });
     }
 
@@ -765,6 +884,14 @@ impl StartupState {
                             self.update_claude_streaming_line(elapsed);
                         }
                         ClaudeToken::ToolDone { name } => {
+                            // Find the matching tool and get its params
+                            let params = self.claude_events.iter().rev()
+                                .find_map(|e| {
+                                    if let ClaudeEvent::Tool { name: n, params, done } = e {
+                                        if n == &name && !*done { Some(params.clone()) } else { None }
+                                    } else { None }
+                                });
+                            // Mark original as done (for done counting)
                             for event in self.claude_events.iter_mut().rev() {
                                 if let ClaudeEvent::Tool { name: n, done, .. } = event {
                                     if n == &name && !*done {
@@ -772,6 +899,14 @@ impl StartupState {
                                         break;
                                     }
                                 }
+                            }
+                            // Push completion event so shell receives it
+                            if let Some(params) = params {
+                                self.claude_events.push(ClaudeEvent::Tool {
+                                    name: name.clone(),
+                                    params,
+                                    done: true,
+                                });
                             }
                             self.update_claude_streaming_line(elapsed);
                         }
@@ -905,6 +1040,14 @@ impl StartupState {
                             self.update_exec_streaming_line(elapsed);
                         }
                         ClaudeToken::ToolDone { name } => {
+                            // Find the matching tool and get its params
+                            let params = self.exec_events.iter().rev()
+                                .find_map(|e| {
+                                    if let ClaudeEvent::Tool { name: n, params, done } = e {
+                                        if n == &name && !*done { Some(params.clone()) } else { None }
+                                    } else { None }
+                                });
+                            // Mark original as done
                             for event in self.exec_events.iter_mut().rev() {
                                 if let ClaudeEvent::Tool { name: n, done, .. } = event {
                                     if n == &name && !*done {
@@ -912,6 +1055,14 @@ impl StartupState {
                                         break;
                                     }
                                 }
+                            }
+                            // Push completion event
+                            if let Some(params) = params {
+                                self.exec_events.push(ClaudeEvent::Tool {
+                                    name: name.clone(),
+                                    params,
+                                    done: true,
+                                });
                             }
                             self.update_exec_streaming_line(elapsed);
                         }
@@ -995,6 +1146,14 @@ impl StartupState {
                             self.update_review_streaming_line(elapsed);
                         }
                         ClaudeToken::ToolDone { name } => {
+                            // Find the matching tool and get its params
+                            let params = self.review_events.iter().rev()
+                                .find_map(|e| {
+                                    if let ClaudeEvent::Tool { name: n, params, done } = e {
+                                        if n == &name && !*done { Some(params.clone()) } else { None }
+                                    } else { None }
+                                });
+                            // Mark original as done
                             for event in self.review_events.iter_mut().rev() {
                                 if let ClaudeEvent::Tool { name: n, done, .. } = event {
                                     if n == &name && !*done {
@@ -1002,6 +1161,14 @@ impl StartupState {
                                         break;
                                     }
                                 }
+                            }
+                            // Push completion event
+                            if let Some(params) = params {
+                                self.review_events.push(ClaudeEvent::Tool {
+                                    name: name.clone(),
+                                    params,
+                                    done: true,
+                                });
                             }
                             self.update_review_streaming_line(elapsed);
                         }
@@ -1189,6 +1356,14 @@ impl StartupState {
                             self.update_fix_streaming_line(elapsed);
                         }
                         ClaudeToken::ToolDone { name } => {
+                            // Find the matching tool and get its params
+                            let params = self.fix_events.iter().rev()
+                                .find_map(|e| {
+                                    if let ClaudeEvent::Tool { name: n, params, done } = e {
+                                        if n == &name && !*done { Some(params.clone()) } else { None }
+                                    } else { None }
+                                });
+                            // Mark original as done
                             for event in self.fix_events.iter_mut().rev() {
                                 if let ClaudeEvent::Tool { name: n, done, .. } = event {
                                     if n == &name && !*done {
@@ -1196,6 +1371,14 @@ impl StartupState {
                                         break;
                                     }
                                 }
+                            }
+                            // Push completion event
+                            if let Some(params) = params {
+                                self.fix_events.push(ClaudeEvent::Tool {
+                                    name: name.clone(),
+                                    params,
+                                    done: true,
+                                });
                             }
                             self.update_fix_streaming_line(elapsed);
                         }
@@ -1374,13 +1557,12 @@ impl StartupState {
                     let lines: Vec<&str> = text.lines().filter(|l| !l.trim().is_empty()).collect();
                     let line_start = if lines.len() > 10 { lines.len() - 10 } else { 0 };
                     for line in &lines[line_start..] {
-                        self.add_line(&format!("  > {}", line), LogStatus::Thinking, elapsed);
+                        // Show text without prefix - tool cards handle tool display
+                        self.add_line(&format!("  {}", line), LogStatus::Thinking, elapsed);
                     }
                 }
-                ClaudeEvent::Tool { name, params, done } => {
-                    let status = if *done { "done" } else { "..." };
-                    let params_display = extract_tool_display(name, params);
-                    self.add_line(&format!("  [{}] {} {}", name, params_display, status), LogStatus::Info, elapsed);
+                ClaudeEvent::Tool { .. } => {
+                    // Tool cards handle tool display via SessionEvents, skip here
                 }
             }
         }
@@ -1410,13 +1592,11 @@ impl StartupState {
                     let lines: Vec<&str> = text.lines().filter(|l| !l.trim().is_empty()).collect();
                     let line_start = if lines.len() > 10 { lines.len() - 10 } else { 0 };
                     for line in &lines[line_start..] {
-                        self.add_line(&format!("  > {}", line), LogStatus::Thinking, elapsed);
+                        self.add_line(&format!("  {}", line), LogStatus::Thinking, elapsed);
                     }
                 }
-                ClaudeEvent::Tool { name, params, done } => {
-                    let status = if *done { "done" } else { "..." };
-                    let params_display = extract_tool_display(name, params);
-                    self.add_line(&format!("  [{}] {} {}", name, params_display, status), LogStatus::Info, elapsed);
+                ClaudeEvent::Tool { .. } => {
+                    // Tool cards handle tool display via SessionEvents
                 }
             }
         }
@@ -1446,13 +1626,11 @@ impl StartupState {
                     let lines: Vec<&str> = text.lines().filter(|l| !l.trim().is_empty()).collect();
                     let line_start = if lines.len() > 10 { lines.len() - 10 } else { 0 };
                     for line in &lines[line_start..] {
-                        self.add_line(&format!("  > {}", line), LogStatus::Thinking, elapsed);
+                        self.add_line(&format!("  {}", line), LogStatus::Thinking, elapsed);
                     }
                 }
-                ClaudeEvent::Tool { name, params, done } => {
-                    let status = if *done { "done" } else { "..." };
-                    let params_display = extract_tool_display(name, params);
-                    self.add_line(&format!("  [{}] {} {}", name, params_display, status), LogStatus::Info, elapsed);
+                ClaudeEvent::Tool { .. } => {
+                    // Tool cards handle tool display via SessionEvents
                 }
             }
         }
@@ -1482,13 +1660,11 @@ impl StartupState {
                     let lines: Vec<&str> = text.lines().filter(|l| !l.trim().is_empty()).collect();
                     let line_start = if lines.len() > 10 { lines.len() - 10 } else { 0 };
                     for line in &lines[line_start..] {
-                        self.add_line(&format!("  > {}", line), LogStatus::Thinking, elapsed);
+                        self.add_line(&format!("  {}", line), LogStatus::Thinking, elapsed);
                     }
                 }
-                ClaudeEvent::Tool { name, params, done } => {
-                    let status = if *done { "done" } else { "..." };
-                    let params_display = extract_tool_display(name, params);
-                    self.add_line(&format!("  [{}] {} {}", name, params_display, status), LogStatus::Info, elapsed);
+                ClaudeEvent::Tool { .. } => {
+                    // Tool cards handle tool display via SessionEvents
                 }
             }
         }
@@ -1520,18 +1696,144 @@ impl StartupState {
         // Inference backends are shown in the DetectingCompute phase
         // with more detailed info (endpoints, models), so skip here
 
-        self.add_line("", LogStatus::Info, elapsed);
-        self.add_line("Tools:", LogStatus::Info, elapsed);
+        // Tools section (separate from Preflight for cleaner grouping)
+        self.add_line_to_section("Tools:", LogStatus::Info, elapsed, StartupSection::Tools);
 
         if let Some(ref claude) = config.tools.claude {
-            self.add_line(&format!("  [OK] claude: {}", shorten_path(&claude.path)), LogStatus::Success, elapsed);
+            self.add_line_to_section(
+                &format!("  [OK] claude: {}", shorten_path(&claude.path)),
+                LogStatus::Success,
+                elapsed,
+                StartupSection::Tools,
+            );
         }
         if let Some(ref codex) = config.tools.codex {
-            self.add_line(&format!("  [OK] codex: {}", shorten_path(&codex.path)), LogStatus::Success, elapsed);
+            self.add_line_to_section(
+                &format!("  [OK] codex: {}", shorten_path(&codex.path)),
+                LogStatus::Success,
+                elapsed,
+                StartupSection::Tools,
+            );
         }
         if let Some(ref opencode) = config.tools.opencode {
-            self.add_line(&format!("  [OK] opencode: {}", shorten_path(&opencode.path)), LogStatus::Success, elapsed);
+            self.add_line_to_section(
+                &format!("  [OK] opencode: {}", shorten_path(&opencode.path)),
+                LogStatus::Success,
+                elapsed,
+                StartupSection::Tools,
+            );
         }
+    }
+
+    /// Create a checkpoint from the current state.
+    ///
+    /// The cursors are provided by the runtime, since they track event delivery.
+    pub fn create_checkpoint(
+        &self,
+        plan_cursor: usize,
+        exec_cursor: usize,
+        review_cursor: usize,
+        fix_cursor: usize,
+        working_dir: PathBuf,
+    ) -> SessionCheckpoint {
+        let elapsed = self.start_instant.elapsed().as_secs_f32();
+
+        SessionCheckpoint {
+            version: crate::checkpoint::CHECKPOINT_VERSION,
+            session_id: self.session_id.clone(),
+            checkpoint_time: Local::now(),
+            original_start_time: self.start_time,
+            phase: self.phase,
+            phase_started_offset: elapsed - self.phase_started,
+            iteration: self.iteration,
+            model: self.model,
+            // Claude SDK session IDs - to be captured from SDK responses
+            claude_session_id: None,
+            exec_session_id: None,
+            review_session_id: None,
+            fix_session_id: None,
+            // Events
+            claude_events: self.claude_events.clone(),
+            claude_full_text: self.claude_full_text.clone(),
+            exec_events: self.exec_events.clone(),
+            exec_full_text: self.exec_full_text.clone(),
+            review_events: self.review_events.clone(),
+            review_full_text: self.review_full_text.clone(),
+            fix_events: self.fix_events.clone(),
+            fix_full_text: self.fix_full_text.clone(),
+            // Cursors
+            plan_cursor,
+            exec_cursor,
+            review_cursor,
+            fix_cursor,
+            // State
+            lines: self.lines.clone(),
+            plan_path: self.plan_path.clone(),
+            last_checklist: self.last_checklist.clone(),
+            working_dir,
+            force_stopped: self.force_stopped,
+            force_stop_reason: self.force_stop_reason.clone(),
+        }
+    }
+
+    /// Restore state from a checkpoint.
+    ///
+    /// Note: This recreates the state machine but cannot restore mpsc receivers.
+    /// The caller must re-establish streaming connections if needed.
+    pub fn from_checkpoint(cp: SessionCheckpoint) -> Self {
+        let session_logger = SessionLogger::new(&cp.session_id).ok();
+        let start_instant = Instant::now();
+
+        Self {
+            lines: cp.lines,
+            phase: cp.phase,
+            phase_started: start_instant.elapsed().as_secs_f32() - cp.phase_started_offset,
+            preflight_config: None, // Must be re-run or cached separately
+            model: cp.model,
+            stream_receiver: None,
+            gpt_oss_buffer: String::new(),
+            issue_summary: None, // Could be saved in checkpoint if needed
+            gpt_oss_assessment: None,
+            claude_receiver: None, // Cannot persist channels
+            claude_events: cp.claude_events,
+            claude_full_text: cp.claude_full_text,
+            plan_path: cp.plan_path,
+            exec_receiver: None,
+            exec_events: cp.exec_events,
+            exec_full_text: cp.exec_full_text,
+            review_receiver: None,
+            review_events: cp.review_events,
+            review_full_text: cp.review_full_text,
+            iteration: cp.iteration,
+            session_logger,
+            session_id: cp.session_id,
+            start_time: cp.original_start_time,
+            start_instant,
+            verification_runner: None,
+            last_checklist: cp.last_checklist,
+            fix_receiver: None,
+            fix_events: cp.fix_events,
+            fix_full_text: cp.fix_full_text,
+            force_stopped: cp.force_stopped,
+            force_stop_reason: cp.force_stop_reason,
+            report_path: None,
+            compute_mix: None,
+            pylon_started: false,
+        }
+    }
+
+    /// Check if the current phase is resumable.
+    ///
+    /// Some phases (like mid-stream) may require restarting from the phase beginning.
+    pub fn is_phase_resumable(&self) -> bool {
+        matches!(
+            self.phase,
+            StartupPhase::PlanningWithClaude
+                | StartupPhase::ExecutingPlan
+                | StartupPhase::ReviewingWork
+                | StartupPhase::FixingVerificationFailures
+                | StartupPhase::Complete
+        )
     }
 }
 

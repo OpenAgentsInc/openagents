@@ -1,9 +1,9 @@
 use crate::components::atoms::{ToolStatus, ToolType};
 use crate::components::context::{EventContext, PaintContext};
-use crate::components::molecules::ToolHeader;
-use crate::components::{Component, ComponentId, EventResult, Text};
-use crate::{Bounds, InputEvent, Quad, theme};
+use crate::components::{Component, ComponentId, EventResult};
+use crate::{Bounds, InputEvent, MouseButton, Point, Quad, theme};
 
+/// Compact tool call card - Zed-style one-line rendering
 pub struct ToolCallCard {
     id: Option<ComponentId>,
     tool_type: ToolType,
@@ -12,9 +12,15 @@ pub struct ToolCallCard {
     input: Option<String>,
     output: Option<String>,
     expanded: bool,
+    hovered: bool,
 }
 
 impl ToolCallCard {
+    const HEADER_HEIGHT: f32 = 22.0;
+    const LINE_HEIGHT: f32 = 18.0;
+    const FONT_SIZE: f32 = 12.0;
+    const DETAIL_FONT_SIZE: f32 = 11.0;
+
     pub fn new(tool_type: ToolType, name: impl Into<String>) -> Self {
         Self {
             id: None,
@@ -23,7 +29,8 @@ impl ToolCallCard {
             status: ToolStatus::Pending,
             input: None,
             output: None,
-            expanded: true,
+            expanded: false, // Collapsed by default
+            hovered: false,
         }
     }
 
@@ -67,6 +74,19 @@ impl ToolCallCard {
     pub fn get_status(&self) -> ToolStatus {
         self.status
     }
+
+    /// Truncate text to fit within available width
+    fn truncate_text(text: &str, available_width: f32, font_size: f32) -> String {
+        let char_width = font_size * 0.6;
+        let max_chars = (available_width / char_width) as usize;
+        if text.len() <= max_chars {
+            text.to_string()
+        } else if max_chars > 3 {
+            format!("{}...", &text[..max_chars - 3])
+        } else {
+            "...".to_string()
+        }
+    }
 }
 
 impl Default for ToolCallCard {
@@ -77,97 +97,110 @@ impl Default for ToolCallCard {
 
 impl Component for ToolCallCard {
     fn paint(&mut self, bounds: Bounds, cx: &mut PaintContext) {
-        let padding = theme::spacing::SM;
+        let padding = 4.0; // Minimal padding
+        let x = bounds.origin.x + padding;
+        let y = bounds.origin.y + (Self::HEADER_HEIGHT - Self::FONT_SIZE) / 2.0;
 
-        cx.scene.draw_quad(
-            Quad::new(bounds)
-                .with_background(theme::bg::SURFACE)
-                .with_border(theme::border::DEFAULT, 1.0),
-        );
-
-        let header_height = 28.0;
-        let mut header = ToolHeader::new(self.tool_type, &self.tool_name).status(self.status);
-        header.paint(
-            Bounds::new(
-                bounds.origin.x + padding,
-                bounds.origin.y + padding,
-                bounds.size.width - padding * 2.0,
-                header_height,
-            ),
-            cx,
-        );
-
-        if !self.expanded {
-            return;
+        // Hover background
+        if self.hovered {
+            cx.scene.draw_quad(
+                Quad::new(Bounds::new(bounds.origin.x, bounds.origin.y, bounds.size.width, Self::HEADER_HEIGHT))
+                    .with_background(theme::bg::MUTED.with_alpha(0.3)),
+            );
         }
 
-        let content_y = bounds.origin.y + padding + header_height + theme::spacing::XS;
-        let content_width = bounds.size.width - padding * 2.0;
-        let mut y = content_y;
+        // Icon (colored square with letter)
+        let icon_size = 14.0;
+        let icon_char = self.tool_type.icon();
+        let icon_color = self.tool_type.color();
+        cx.scene.draw_quad(
+            Quad::new(Bounds::new(x, bounds.origin.y + 4.0, icon_size, icon_size))
+                .with_background(icon_color.with_alpha(0.2)),
+        );
+        let icon_run = cx.text.layout(icon_char, Point::new(x + 3.0, y), Self::FONT_SIZE, icon_color);
+        cx.scene.draw_text(icon_run);
+
+        // Tool name
+        let name_x = x + icon_size + 6.0;
+        let name_run = cx.text.layout(&self.tool_name, Point::new(name_x, y), Self::FONT_SIZE, theme::text::PRIMARY);
+        cx.scene.draw_text(name_run);
+
+        // Truncated input inline (when collapsed, show first part of input)
+        let name_width = self.tool_name.len() as f32 * Self::FONT_SIZE * 0.6;
+        let input_x = name_x + name_width + 8.0;
+        let available_width = bounds.size.width - input_x - 100.0; // Reserve space for status + arrow
 
         if let Some(input) = &self.input {
-            let label_height = 16.0;
-            let mut label = Text::new("Input:")
-                .font_size(theme::font_size::XS)
-                .color(theme::text::MUTED);
-            label.paint(
-                Bounds::new(bounds.origin.x + padding, y, content_width, label_height),
-                cx,
-            );
-            y += label_height + 4.0;
-
-            let input_height = 40.0;
-            cx.scene.draw_quad(
-                Quad::new(Bounds::new(
-                    bounds.origin.x + padding,
-                    y,
-                    content_width,
-                    input_height,
-                ))
-                .with_background(theme::bg::MUTED),
-            );
-            let mut input_text = Text::new(input)
-                .font_size(theme::font_size::SM)
-                .color(theme::text::PRIMARY);
-            input_text.paint(
-                Bounds::new(bounds.origin.x + padding + 8.0, y + 8.0, content_width - 16.0, input_height - 16.0),
-                cx,
-            );
-            y += input_height + theme::spacing::SM;
+            if available_width > 50.0 {
+                let truncated = Self::truncate_text(input, available_width, Self::DETAIL_FONT_SIZE);
+                let input_run = cx.text.layout(&truncated, Point::new(input_x, y), Self::DETAIL_FONT_SIZE, theme::text::MUTED);
+                cx.scene.draw_text(input_run);
+            }
         }
 
-        if let Some(output) = &self.output {
-            let label_height = 16.0;
-            let mut label = Text::new("Output:")
-                .font_size(theme::font_size::XS)
-                .color(theme::text::MUTED);
-            label.paint(
-                Bounds::new(bounds.origin.x + padding, y, content_width, label_height),
-                cx,
-            );
-            y += label_height + 4.0;
+        // Status indicator on right
+        let status_x = bounds.origin.x + bounds.size.width - 80.0;
+        let (status_text, status_color) = match self.status {
+            ToolStatus::Pending => ("pending", theme::text::MUTED),
+            ToolStatus::Running => ("running", theme::status::WARNING),
+            ToolStatus::Success => ("done", theme::status::SUCCESS),
+            ToolStatus::Error => ("error", theme::status::ERROR),
+            ToolStatus::Cancelled => ("cancelled", theme::text::MUTED),
+        };
+        let status_run = cx.text.layout(status_text, Point::new(status_x, y), Self::DETAIL_FONT_SIZE, status_color);
+        cx.scene.draw_text(status_run);
 
-            let output_height = 40.0;
-            cx.scene.draw_quad(
-                Quad::new(Bounds::new(
-                    bounds.origin.x + padding,
-                    y,
-                    content_width,
-                    output_height,
-                ))
-                .with_background(theme::bg::MUTED),
-            );
-            let mut output_text = Text::new(output)
-                .font_size(theme::font_size::SM)
-                .color(theme::text::PRIMARY);
-            output_text.paint(
-                Bounds::new(bounds.origin.x + padding + 8.0, y + 8.0, content_width - 16.0, output_height - 16.0),
-                cx,
-            );
+        // Expand/collapse arrow
+        let arrow = if self.expanded { "v" } else { ">" };
+        let arrow_x = bounds.origin.x + bounds.size.width - 16.0;
+        let arrow_color = if self.hovered { theme::text::PRIMARY } else { theme::text::MUTED };
+        let arrow_run = cx.text.layout(arrow, Point::new(arrow_x, y), Self::FONT_SIZE, arrow_color);
+        cx.scene.draw_text(arrow_run);
+
+        // No bottom border - dense layout
+
+        // Expanded content: indented input/output lines
+        if self.expanded {
+            let indent = 24.0;
+            let mut detail_y = bounds.origin.y + Self::HEADER_HEIGHT + 2.0;
+
+            if let Some(input) = &self.input {
+                let input_run = cx.text.layout(input, Point::new(x + indent, detail_y), Self::DETAIL_FONT_SIZE, theme::text::SECONDARY);
+                cx.scene.draw_text(input_run);
+                detail_y += Self::LINE_HEIGHT;
+            }
+
+            if let Some(output) = &self.output {
+                let output_preview = if output.len() > 100 {
+                    format!("{}...", &output[..100])
+                } else {
+                    output.clone()
+                };
+                let output_run = cx.text.layout(&output_preview, Point::new(x + indent, detail_y), Self::DETAIL_FONT_SIZE, theme::text::MUTED);
+                cx.scene.draw_text(output_run);
+            }
         }
     }
 
-    fn event(&mut self, _event: &InputEvent, _bounds: Bounds, _cx: &mut EventContext) -> EventResult {
+    fn event(&mut self, event: &InputEvent, bounds: Bounds, _cx: &mut EventContext) -> EventResult {
+        let header_bounds = Bounds::new(bounds.origin.x, bounds.origin.y, bounds.size.width, Self::HEADER_HEIGHT);
+
+        match event {
+            InputEvent::MouseMove { x, y } => {
+                let was_hovered = self.hovered;
+                self.hovered = header_bounds.contains(Point::new(*x, *y));
+                if was_hovered != self.hovered {
+                    return EventResult::Handled;
+                }
+            }
+            InputEvent::MouseDown { button, x, y } => {
+                if *button == MouseButton::Left && header_bounds.contains(Point::new(*x, *y)) {
+                    self.expanded = !self.expanded;
+                    return EventResult::Handled;
+                }
+            }
+            _ => {}
+        }
         EventResult::Ignored
     }
 
@@ -177,12 +210,11 @@ impl Component for ToolCallCard {
 
     fn size_hint(&self) -> (Option<f32>, Option<f32>) {
         let height = if self.expanded {
-            let base = 28.0 + theme::spacing::SM * 2.0;
-            let input_height = if self.input.is_some() { 60.0 + theme::spacing::SM } else { 0.0 };
-            let output_height = if self.output.is_some() { 60.0 } else { 0.0 };
-            base + input_height + output_height
+            Self::HEADER_HEIGHT
+                + (if self.input.is_some() { Self::LINE_HEIGHT } else { 0.0 })
+                + (if self.output.is_some() { Self::LINE_HEIGHT } else { 0.0 })
         } else {
-            28.0 + theme::spacing::SM * 2.0
+            Self::HEADER_HEIGHT
         };
         (None, Some(height))
     }
@@ -196,7 +228,7 @@ mod tests {
     fn test_tool_call_card_new() {
         let card = ToolCallCard::new(ToolType::Read, "read_file");
         assert_eq!(card.tool_name(), "read_file");
-        assert!(card.is_expanded());
+        assert!(!card.is_expanded()); // Default collapsed
     }
 
     #[test]
@@ -206,18 +238,33 @@ mod tests {
             .status(ToolStatus::Success)
             .input("path: /src/main.rs")
             .output("File written successfully")
-            .expanded(false);
+            .expanded(true);
 
         assert_eq!(card.id, Some(1));
         assert_eq!(card.get_status(), ToolStatus::Success);
-        assert!(!card.is_expanded());
+        assert!(card.is_expanded());
     }
 
     #[test]
     fn test_toggle_expanded() {
         let mut card = ToolCallCard::new(ToolType::Read, "read");
-        assert!(card.is_expanded());
+        assert!(!card.is_expanded()); // Starts collapsed
         card.toggle_expanded();
-        assert!(!card.is_expanded());
+        assert!(card.is_expanded());
+    }
+
+    #[test]
+    fn test_size_hint_compact() {
+        let card = ToolCallCard::new(ToolType::Read, "read");
+        let (_, height) = card.size_hint();
+        assert_eq!(height, Some(ToolCallCard::HEADER_HEIGHT)); // Just header when collapsed
+    }
+
+    #[test]
+    fn test_truncate_text() {
+        let long = "This is a very long path that needs truncation";
+        let truncated = ToolCallCard::truncate_text(long, 100.0, 11.0);
+        assert!(truncated.len() < long.len());
+        assert!(truncated.ends_with("..."));
     }
 }

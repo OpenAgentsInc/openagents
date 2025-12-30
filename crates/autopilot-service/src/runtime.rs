@@ -1,8 +1,10 @@
+use std::path::PathBuf;
 use std::time::Instant;
 
-use autopilot::{ClaudeEvent, ClaudeModel, LogLine, StartupPhase, StartupState};
+use autopilot::{ClaudeEvent, ClaudeModel, LogLine, LogStatus, SessionCheckpoint, StartupPhase, StartupSection, StartupState};
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum SessionPhase {
     Plan,
     Execute,
@@ -10,7 +12,7 @@ pub enum SessionPhase {
     Fix,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum SessionEvent {
     Text {
         phase: SessionPhase,
@@ -24,11 +26,22 @@ pub enum SessionEvent {
     },
 }
 
-#[derive(Debug, Clone)]
+/// A grouped section of log lines for collapsible UI display.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LogSection {
+    pub section: StartupSection,
+    pub summary: String,
+    pub summary_status: LogStatus,
+    pub details: Vec<LogLine>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RuntimeSnapshot {
     pub phase: StartupPhase,
     pub model: ClaudeModel,
     pub lines: Vec<LogLine>,
+    /// Grouped sections for collapsible UI (startup phases only).
+    pub sections: Vec<LogSection>,
     pub events: Vec<SessionEvent>,
 }
 
@@ -85,16 +98,106 @@ impl AutopilotRuntime {
             &mut events,
         );
 
+        // Build sections from log lines for collapsible UI
+        let sections = Self::build_sections(&self.state.lines);
+
         RuntimeSnapshot {
             phase: self.state.phase,
             model: self.state.model,
             lines: self.state.lines.clone(),
+            sections,
             events,
         }
     }
 
+    /// Group log lines into sections for collapsible display.
+    fn build_sections(lines: &[LogLine]) -> Vec<LogSection> {
+        use std::collections::HashMap;
+
+        // Collect lines by section (only non-Claude sections are collapsible)
+        let mut section_lines: HashMap<StartupSection, Vec<LogLine>> = HashMap::new();
+        let section_order = [
+            StartupSection::Auth,
+            StartupSection::Preflight,
+            StartupSection::Tools,
+            StartupSection::Pylon,
+            StartupSection::Compute,
+        ];
+
+        for line in lines {
+            if let Some(section) = line.section {
+                // Only group startup sections, not Claude
+                if section != StartupSection::Claude {
+                    section_lines
+                        .entry(section)
+                        .or_default()
+                        .push(line.clone());
+                }
+            }
+        }
+
+        // Build sections in order
+        let mut sections = Vec::new();
+        for section in section_order {
+            if let Some(details) = section_lines.get(&section) {
+                if !details.is_empty() {
+                    let summary = section.summary_text(details);
+                    let summary_status = section.summary_status(details);
+                    sections.push(LogSection {
+                        section,
+                        summary,
+                        summary_status,
+                        details: details.clone(),
+                    });
+                }
+            }
+        }
+
+        sections
+    }
+
     pub fn state(&self) -> &StartupState {
         &self.state
+    }
+
+    /// Get the session ID.
+    pub fn session_id(&self) -> &str {
+        &self.state.session_id
+    }
+
+    /// Save a checkpoint of the current runtime state.
+    pub fn save_checkpoint(&self, working_dir: PathBuf) -> Result<PathBuf, std::io::Error> {
+        let checkpoint = self.state.create_checkpoint(
+            self.plan_cursor,
+            self.exec_cursor,
+            self.review_cursor,
+            self.fix_cursor,
+            working_dir,
+        );
+        checkpoint.save()
+    }
+
+    /// Create a runtime from a saved checkpoint.
+    pub fn from_checkpoint(cp: SessionCheckpoint) -> Self {
+        let plan_cursor = cp.plan_cursor;
+        let exec_cursor = cp.exec_cursor;
+        let review_cursor = cp.review_cursor;
+        let fix_cursor = cp.fix_cursor;
+
+        Self {
+            started_at: Instant::now(),
+            state: StartupState::from_checkpoint(cp),
+            plan_cursor,
+            exec_cursor,
+            review_cursor,
+            fix_cursor,
+        }
+    }
+
+    /// Load a runtime from a checkpoint file.
+    pub fn load_checkpoint(session_id: &str) -> Result<Self, std::io::Error> {
+        let checkpoint = SessionCheckpoint::load(session_id)?;
+        Ok(Self::from_checkpoint(checkpoint))
     }
 
     fn append_events(

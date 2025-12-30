@@ -55,10 +55,18 @@ impl ThreadView {
     }
 
     pub fn push_entry(&mut self, entry: ThreadEntry) {
+        // Only auto-scroll if already at bottom (within threshold)
+        let was_at_bottom = self.is_at_bottom();
         self.entries.push(entry);
-        if self.auto_scroll {
+        if self.auto_scroll && was_at_bottom {
             self.scroll_to_bottom();
         }
+    }
+
+    /// Check if scroll position is at or near the bottom
+    fn is_at_bottom(&self) -> bool {
+        // Consider "at bottom" if within 50px of the end
+        self.scroll_offset >= (self.content_height - 50.0).max(0.0)
     }
 
     pub fn clear(&mut self) {
@@ -69,6 +77,21 @@ impl ThreadView {
 
     pub fn entry_count(&self) -> usize {
         self.entries.len()
+    }
+
+    /// Remove and return the last entry (useful for updating tool status)
+    pub fn pop_entry(&mut self) -> Option<ThreadEntry> {
+        self.entries.pop()
+    }
+
+    /// Get mutable reference to last entry
+    pub fn last_entry_mut(&mut self) -> Option<&mut ThreadEntry> {
+        self.entries.last_mut()
+    }
+
+    /// Get mutable reference to entry at index
+    pub fn entry_mut(&mut self, index: usize) -> Option<&mut ThreadEntry> {
+        self.entries.get_mut(index)
     }
 
     pub fn scroll_to_bottom(&mut self) {
