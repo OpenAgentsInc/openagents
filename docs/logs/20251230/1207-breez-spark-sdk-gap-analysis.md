@@ -106,3 +106,14 @@ Date: 2025-12-30
 4) Implement receive/send UX for LNURL, lightning addresses, and on-chain deposit/withdraw with fee previews and unclaimed deposit handling.
 5) Add token balances, token payments, and issuer tooling to CLI/UI.
 6) Build a regtest-backed test harness and add end-to-end coverage for wallet flows, including event-driven updates.
+
+## Addendum (2025-12-30)
+Phase 1 implementation updates in openagents-spark:
+- Added SparkWalletBuilder to allow advanced Breez SDK configuration and key set selection without breaking existing WalletConfig call sites.
+- Re-exported Config/KeySetType/InputType/ExternalInputParser at the crate root and surfaced parse_input for easier access to the parsing API.
+- Updated spark README to reflect the builder path and the remaining integration gaps.
+
+Remaining gaps still blocked in Phase 2:
+- WalletConfig does not expose advanced SDK config (sync interval, max claim fee, lnurl domain, real-time sync, private mode, key set/account selection).
+- WalletInfo population and token-aware balance shaping are still missing.
+- CLI/GUI/IDE integration for LNURL, on-chain claims, tokens, user settings, and optimization is not wired.
