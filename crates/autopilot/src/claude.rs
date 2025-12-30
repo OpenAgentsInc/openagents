@@ -840,7 +840,7 @@ fn extract_usage_from_result(result: &claude_agent_sdk::SdkResultMessage, model:
 fn extract_tool_params(tool_name: &str, input: Option<&serde_json::Value>) -> String {
     match tool_name {
         "Read" | "read" => input
-            .and_then(|i| i.get("filePath"))
+            .and_then(|i| i.get("file_path").or_else(|| i.get("filePath")))
             .and_then(|p| p.as_str())
             .unwrap_or("")
             .to_string(),
@@ -860,7 +860,7 @@ fn extract_tool_params(tool_name: &str, input: Option<&serde_json::Value>) -> St
             .unwrap_or("")
             .to_string(),
         "Edit" | "edit" | "Write" | "write" => input
-            .and_then(|i| i.get("filePath"))
+            .and_then(|i| i.get("file_path").or_else(|| i.get("filePath")))
             .and_then(|p| p.as_str())
             .unwrap_or("")
             .to_string(),
