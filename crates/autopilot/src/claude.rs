@@ -81,6 +81,48 @@ fn extract_tool_output(tool_result: &serde_json::Value) -> Option<String> {
     }
 }
 
+fn extract_session_id(message: &claude_agent_sdk::SdkMessage) -> Option<&str> {
+    use claude_agent_sdk::{SdkMessage, SdkResultMessage, SdkSystemMessage};
+
+    match message {
+        SdkMessage::Assistant(msg) => Some(msg.session_id.as_str()),
+        SdkMessage::User(msg) => Some(msg.session_id.as_str()),
+        SdkMessage::Result(result) => match result {
+            SdkResultMessage::Success(msg) => Some(msg.session_id.as_str()),
+            SdkResultMessage::ErrorDuringExecution(msg)
+            | SdkResultMessage::ErrorMaxTurns(msg)
+            | SdkResultMessage::ErrorMaxBudget(msg)
+            | SdkResultMessage::ErrorMaxStructuredOutputRetries(msg) => {
+                Some(msg.session_id.as_str())
+            }
+        },
+        SdkMessage::System(system) => Some(match system {
+            SdkSystemMessage::Init(msg) => msg.session_id.as_str(),
+            SdkSystemMessage::CompactBoundary(msg) => msg.session_id.as_str(),
+            SdkSystemMessage::Status(msg) => msg.session_id.as_str(),
+            SdkSystemMessage::HookResponse(msg) => msg.session_id.as_str(),
+            SdkSystemMessage::ApiError(msg) => msg.session_id.as_str(),
+            SdkSystemMessage::StopHookSummary(msg) => msg.session_id.as_str(),
+            SdkSystemMessage::Informational(msg) => msg.session_id.as_str(),
+            SdkSystemMessage::LocalCommand(msg) => msg.session_id.as_str(),
+        }),
+        SdkMessage::StreamEvent(event) => Some(event.session_id.as_str()),
+        SdkMessage::ToolProgress(progress) => Some(progress.session_id.as_str()),
+        SdkMessage::AuthStatus(auth) => Some(auth.session_id.as_str()),
+    }
+}
+
+fn maybe_send_session_id(
+    session_id: &str,
+    last_sent: &mut Option<String>,
+    tx: &mpsc::Sender<ClaudeToken>,
+) {
+    if last_sent.as_deref() != Some(session_id) {
+        let _ = tx.send(ClaudeToken::SessionId(session_id.to_string()));
+        *last_sent = Some(session_id.to_string());
+    }
+}
+
 #[derive(Clone, Serialize, Deserialize)]
 pub enum ClaudeToken {
     Chunk(String),
@@ -90,6 +132,7 @@ pub enum ClaudeToken {
         output: Option<String>,
         is_error: bool,
     },
+    SessionId(String),
     Done(String),
     Error(String),
     /// Usage update from SDK Result
@@ -281,6 +324,7 @@ Your turn should only end with calling ExitPlanMode. Do not stop early."#.to_str
                 }
             };
 
+            let mut session_id: Option<String> = None;
             let mut full_response = String::new();
             let mut last_tool_name = String::new();
 
@@ -309,6 +353,12 @@ Your turn should only end with calling ExitPlanMode. Do not stop early."#.to_str
                         continue 'retry;
                     }
                 };
+
+                if let Ok(ref sdk_msg) = msg {
+                    if let Some(id) = extract_session_id(sdk_msg) {
+                        maybe_send_session_id(id, &mut session_id, &tx);
+                    }
+                }
 
                 match msg {
                     Ok(SdkMessage::Assistant(assistant_msg)) => {
@@ -524,6 +574,7 @@ Start now."#, plan);
                 }
             };
 
+            let mut session_id: Option<String> = None;
             let mut full_response = String::new();
             let mut last_tool_name = String::new();
 
@@ -552,6 +603,12 @@ Start now."#, plan);
                         continue 'retry;
                     }
                 };
+
+                if let Ok(ref sdk_msg) = msg {
+                    if let Some(id) = extract_session_id(sdk_msg) {
+                        maybe_send_session_id(id, &mut session_id, &tx);
+                    }
+                }
 
                 match msg {
                     Ok(SdkMessage::Assistant(assistant_msg)) => {
@@ -750,6 +807,7 @@ Otherwise, provide a detailed plan for the next iteration in the same format as 
                 }
             };
 
+            let mut session_id: Option<String> = None;
             let mut full_response = String::new();
             let mut last_tool_name = String::new();
 
@@ -777,6 +835,12 @@ Otherwise, provide a detailed plan for the next iteration in the same format as 
                         continue 'retry;
                     }
                 };
+
+                if let Ok(ref sdk_msg) = msg {
+                    if let Some(id) = extract_session_id(sdk_msg) {
+                        maybe_send_session_id(id, &mut session_id, &tx);
+                    }
+                }
 
                 match msg {
                     Ok(SdkMessage::Assistant(assistant_msg)) => {
