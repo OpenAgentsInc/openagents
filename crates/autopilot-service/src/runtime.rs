@@ -203,6 +203,36 @@ impl AutopilotRuntime {
         Ok(Self::from_checkpoint(checkpoint))
     }
 
+    /// Set the model for this runtime.
+    pub fn set_model(&mut self, model: ClaudeModel) {
+        self.state.model = model;
+    }
+
+    /// Get the current model.
+    pub fn model(&self) -> ClaudeModel {
+        self.state.model
+    }
+
+    /// Request interruption of the current operation.
+    pub fn interrupt(&mut self) {
+        self.state.force_stopped = true;
+    }
+
+    /// Check if interruption was requested.
+    pub fn is_interrupted(&self) -> bool {
+        self.state.force_stopped
+    }
+
+    /// Reset runtime to fresh state with specified model.
+    pub fn reset(&mut self, model: ClaudeModel) {
+        self.started_at = Instant::now();
+        self.state = StartupState::with_model(model);
+        self.plan_cursor = 0;
+        self.exec_cursor = 0;
+        self.review_cursor = 0;
+        self.fix_cursor = 0;
+    }
+
     fn append_events(
         source: &[ClaudeEvent],
         phase: SessionPhase,

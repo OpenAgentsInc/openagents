@@ -5,5 +5,5 @@ mod sessions;
 mod system;
 
 pub use claude_usage::{ClaudeUsage, SessionUsage, UsageLimit};
-pub use sessions::SessionsPanel;
+pub use sessions::{SessionAction, SessionInfo, SessionsPanel};
 pub use system::SystemPanel;
