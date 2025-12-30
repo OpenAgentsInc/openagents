@@ -104,7 +104,8 @@ impl ThreadEntry {
 
 impl Component for ThreadEntry {
     fn paint(&mut self, bounds: Bounds, cx: &mut PaintContext) {
-        let padding = theme::spacing::SM;
+        // Dense: minimal padding (2px)
+        let padding = 2.0;
 
         if self.hovered {
             cx.scene.draw_quad(
@@ -118,22 +119,17 @@ impl Component for ThreadEntry {
         content_bounds.size.width -= padding * 2.0;
         content_bounds.size.height -= padding * 2.0;
 
-        // Always reserve space for actions bar
-        content_bounds.size.height -= 32.0;
-
+        // No reserved space for actions - they overlay on hover
         self.content.paint(content_bounds, cx);
 
-        // Always paint actions bar (visible when hovered or show_actions)
-        let actions_y = bounds.origin.y + bounds.size.height - padding - 24.0;
-        let actions_bounds = Bounds::new(
-            bounds.origin.x + bounds.size.width - padding - 100.0,
-            actions_y,
-            100.0,
-            24.0,
-        );
-
-        // Only paint actions when hovered or explicitly shown
+        // Actions overlay in top-right corner when hovered
         if self.show_actions || self.hovered {
+            let actions_bounds = Bounds::new(
+                bounds.origin.x + bounds.size.width - padding - 100.0,
+                bounds.origin.y + padding,
+                100.0,
+                20.0,
+            );
             self.actions.paint(actions_bounds, cx);
         }
     }
@@ -147,23 +143,20 @@ impl Component for ThreadEntry {
             }
         }
 
-        let padding = theme::spacing::SM;
+        // Dense: minimal padding (2px)
+        let padding = 2.0;
         let mut content_bounds = bounds;
         content_bounds.origin.x += padding;
         content_bounds.origin.y += padding;
         content_bounds.size.width -= padding * 2.0;
         content_bounds.size.height -= padding * 2.0;
 
-        // Always reserve space for actions bar
-        content_bounds.size.height -= 32.0;
-
-        // Route events to actions bar when visible
-        let actions_y = bounds.origin.y + bounds.size.height - padding - 24.0;
+        // Actions overlay in top-right corner
         let actions_bounds = Bounds::new(
             bounds.origin.x + bounds.size.width - padding - 100.0,
-            actions_y,
+            bounds.origin.y + padding,
             100.0,
-            24.0,
+            20.0,
         );
 
         // Handle actions events when hovered or shown
@@ -195,10 +188,10 @@ impl Component for ThreadEntry {
 
     fn size_hint(&self) -> (Option<f32>, Option<f32>) {
         let (w, h) = self.content.size_hint();
-        let padding = theme::spacing::SM * 2.0;
-        // Always include space for actions bar so hover doesn't cause clipping
-        let actions_height = 32.0;
-        (w.map(|w| w + padding), h.map(|h| h + padding + actions_height))
+        // Dense: minimal padding (2px on each side = 4px total)
+        let padding = 4.0;
+        // No reserved space for actions - they overlay on hover
+        (w.map(|w| w + padding), h.map(|h| h + padding))
     }
 }
 
