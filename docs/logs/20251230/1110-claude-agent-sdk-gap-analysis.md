@@ -62,10 +62,18 @@ Date: 2025-12-30
 - Structured output in SdkResultMessage is not displayed or stored.
 
 ### 6) Tool call visualization parity gaps
-- Historical sessions display ToolCallCard with params and output; live Autopilot sessions show only tool name and params, without output or error details.
+- ~~Historical sessions display ToolCallCard with params and output; live Autopilot sessions show only tool name and params, without output or error details.~~
 - Resumed SDK sessions render tool uses as plain text ("Tool: name") instead of ToolCallCard.
 
-**ADDENDUM (2025-12-30 evening):** Partially addressed. Historical sessions now parse `tool_use` blocks for input params and link to `tool_result` blocks by ID to get output and error status. Two-pass JSONL parser in `claude_sessions.rs` collects tool results first, then builds messages with linked data. Display logic in `shell.rs` creates `ToolCallCard` components with expandable sections, status indicators, and Task nesting. Commits: `2b377a489`. **Remaining:** Live sessions still discard tool output - need to surface `tool_result` content in live `ToolCallCard` entries.
+**ADDENDUM (2025-12-30 evening):** Partially addressed. Historical sessions now parse `tool_use` blocks for input params and link to `tool_result` blocks by ID to get output and error status. Two-pass JSONL parser in `claude_sessions.rs` collects tool results first, then builds messages with linked data. Display logic in `shell.rs` creates `ToolCallCard` components with expandable sections, status indicators, and Task nesting. Commits: `2b377a489`.
+
+**ADDENDUM (2025-12-30 late):** Fully addressed for live sessions. Tool output (stdout/stderr/error) is now threaded through the entire event pipeline:
+- Added `output: Option<String>` and `is_error: bool` fields to `ClaudeToken::ToolDone`, `ClaudeEvent::Tool`, and `SessionEvent::Tool`
+- Added `extract_tool_output()` helper in `claude.rs` to parse tool_result JSON
+- Updated all phase handlers (planning, execution, review, fix) to extract output from SDK tool_result messages
+- Updated `shell.rs` to populate `ToolCallCard.output()` and use error status for tool status indicator
+- Live sessions now display expandable tool output matching historical session UI
+Commits: `94f6edbf2`.
 
 ### 7) MCP, plugins, and custom tools
 - No IDE or runtime path to configure MCP servers or plugin definitions.
