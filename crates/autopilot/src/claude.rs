@@ -262,7 +262,7 @@ Your turn should only end with calling ExitPlanMode. Do not stop early."#.to_str
     };
 
     rt.block_on(async {
-        use claude_agent_sdk::{query, QueryOptions, SdkMessage, PermissionMode};
+        use claude_agent_sdk::{query, QueryOptions, SdkMessage, PermissionMode, SettingSource};
 
         let mut attempt = 0;
         let mut last_error = String::new();
@@ -294,6 +294,7 @@ Your turn should only end with calling ExitPlanMode. Do not stop early."#.to_str
                 .permission_mode(PermissionMode::Plan)
                 .max_turns(50)
                 .include_partial_messages(true)
+                .setting_sources(vec![SettingSource::Project, SettingSource::User])
                 .disallowed_tools(vec![
                     "Edit".to_string(),
                     "Write".to_string(),
@@ -548,7 +549,7 @@ Start now."#, plan);
     };
 
     rt.block_on(async {
-        use claude_agent_sdk::{query, QueryOptions, SdkMessage, PermissionMode};
+        use claude_agent_sdk::{query, QueryOptions, SdkMessage, PermissionMode, SettingSource};
 
         let mut attempt = 0;
         let mut last_error = String::new();
@@ -580,7 +581,8 @@ Start now."#, plan);
                 .permission_mode(PermissionMode::BypassPermissions)
                 .dangerously_skip_permissions(true)
                 .max_turns(100)
-                .include_partial_messages(true);
+                .include_partial_messages(true)
+                .setting_sources(vec![SettingSource::Project, SettingSource::User]);
 
             if let Some(ref session_id) = resume_session_id {
                 options = options.resume(session_id.clone());
@@ -808,7 +810,7 @@ Otherwise, provide a detailed plan for the next iteration in the same format as 
     };
 
     rt.block_on(async {
-        use claude_agent_sdk::{query, QueryOptions, SdkMessage, PermissionMode};
+        use claude_agent_sdk::{query, QueryOptions, SdkMessage, PermissionMode, SettingSource};
 
         let mut attempt = 0;
         let mut last_error = String::new();
@@ -840,7 +842,8 @@ Otherwise, provide a detailed plan for the next iteration in the same format as 
                 .permission_mode(PermissionMode::BypassPermissions)
                 .dangerously_skip_permissions(true)
                 .max_turns(30)
-                .include_partial_messages(true);
+                .include_partial_messages(true)
+                .setting_sources(vec![SettingSource::Project, SettingSource::User]);
 
             if let Some(ref session_id) = resume_session_id {
                 options = options.resume(session_id.clone());
