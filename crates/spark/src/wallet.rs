@@ -15,23 +15,8 @@
 
 use crate::{SparkSigner, SparkError};
 use breez_sdk_spark::{
-    BreezSdk, connect, default_config,
-    ClaimDepositRequest, ClaimDepositResponse, ClaimHtlcPaymentRequest,
-    CheckLightningAddressRequest, CheckMessageRequest, CheckMessageResponse,
-    Config, ConnectRequest, ExternalInputParser,
-    GetInfoRequest, GetInfoResponse, GetPaymentRequest, GetPaymentResponse,
-    GetTokensMetadataRequest, GetTokensMetadataResponse,
-    InputType,
-    ListPaymentsRequest, ListPaymentsResponse,
-    ListUnclaimedDepositsRequest, ListUnclaimedDepositsResponse,
-    LnurlPayRequest, LnurlPayResponse, LnurlWithdrawRequest, LnurlWithdrawResponse,
-    Network as SdkNetwork, PrepareLnurlPayRequest, PrepareLnurlPayResponse,
-    PrepareSendPaymentRequest, ReceivePaymentMethod, ReceivePaymentRequest, ReceivePaymentResponse,
-    RegisterLightningAddressRequest, RefundDepositRequest, RefundDepositResponse,
-    RecommendedFees, Seed, SendPaymentRequest, SyncWalletRequest, SyncWalletResponse,
-    EventListener, KeySetType, LightningAddressInfo, SdkBuilder,
-    SignMessageRequest, SignMessageResponse,
-    UpdateUserSettingsRequest, UserSettings, OptimizationProgress, TokenIssuer,
+    BreezSdk, ClaimHtlcPaymentRequest, ConnectRequest, EventListener, Network as SdkNetwork,
+    PrepareSendPaymentRequest, SdkBuilder, Seed, connect, default_config,
 };
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -350,7 +335,10 @@ impl SparkWalletBuilder {
         let mut sdk_config = match self.sdk_config {
             Some(config) => {
                 let expected = self.config.network.to_sdk_network();
-                if config.network != expected {
+                // breez_sdk_spark::Network does not implement PartialEq.
+                if std::mem::discriminant(&config.network)
+                    != std::mem::discriminant(&expected)
+                {
                     return Err(SparkError::InitializationFailed(format!(
                         "SDK config network {:?} does not match wallet network {:?}",
                         config.network, expected
