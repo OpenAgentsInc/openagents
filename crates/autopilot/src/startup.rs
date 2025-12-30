@@ -205,13 +205,16 @@ pub struct StartupState {
     issue_summary: Option<String>,
     gpt_oss_assessment: Option<String>,
     claude_receiver: Option<mpsc::Receiver<ClaudeToken>>,
+    pub claude_session_id: Option<String>,
     pub claude_events: Vec<ClaudeEvent>,
     pub claude_full_text: String,
     pub plan_path: Option<PathBuf>,
     exec_receiver: Option<mpsc::Receiver<ClaudeToken>>,
+    pub exec_session_id: Option<String>,
     pub exec_events: Vec<ClaudeEvent>,
     pub exec_full_text: String,
     review_receiver: Option<mpsc::Receiver<ClaudeToken>>,
+    pub review_session_id: Option<String>,
     pub review_events: Vec<ClaudeEvent>,
     pub review_full_text: String,
     pub iteration: u32,
@@ -222,6 +225,7 @@ pub struct StartupState {
     verification_runner: Option<VerificationRunner>,
     pub last_checklist: Option<TerminationChecklist>,
     fix_receiver: Option<mpsc::Receiver<ClaudeToken>>,
+    pub fix_session_id: Option<String>,
     pub fix_events: Vec<ClaudeEvent>,
     pub fix_full_text: String,
     pub force_stopped: bool,
@@ -256,13 +260,16 @@ impl StartupState {
             issue_summary: None,
             gpt_oss_assessment: None,
             claude_receiver: None,
+            claude_session_id: None,
             claude_events: Vec::new(),
             claude_full_text: String::new(),
             plan_path: None,
             exec_receiver: None,
+            exec_session_id: None,
             exec_events: Vec::new(),
             exec_full_text: String::new(),
             review_receiver: None,
+            review_session_id: None,
             review_events: Vec::new(),
             review_full_text: String::new(),
             iteration: 1,
@@ -273,6 +280,7 @@ impl StartupState {
             verification_runner: None,
             last_checklist: None,
             fix_receiver: None,
+            fix_session_id: None,
             fix_events: Vec::new(),
             fix_full_text: String::new(),
             force_stopped: false,
@@ -917,6 +925,9 @@ impl StartupState {
                             }
                             self.update_claude_streaming_line(elapsed);
                         }
+                        ClaudeToken::SessionId(session_id) => {
+                            self.claude_session_id = Some(session_id);
+                        }
                         ClaudeToken::Done(plan) => {
                             self.claude_receiver = None;
                             if let Some(line) = self.lines.iter_mut().find(|l| l.text.contains("Creating plan with Claude")) {
@@ -1091,6 +1102,9 @@ impl StartupState {
                             }
                             self.update_exec_streaming_line(elapsed);
                         }
+                        ClaudeToken::SessionId(session_id) => {
+                            self.exec_session_id = Some(session_id);
+                        }
                         ClaudeToken::Done(_result) => {
                             self.exec_receiver = None;
                             if let Some(line) = self.lines.iter_mut().find(|l| l.text.contains("Executing plan")) {
@@ -1210,6 +1224,9 @@ impl StartupState {
                                 });
                             }
                             self.update_review_streaming_line(elapsed);
+                        }
+                        ClaudeToken::SessionId(session_id) => {
+                            self.review_session_id = Some(session_id);
                         }
                         ClaudeToken::Done(review_result) => {
                             self.review_receiver = None;
@@ -1434,6 +1451,9 @@ impl StartupState {
                                 });
                             }
                             self.update_fix_streaming_line(elapsed);
+                        }
+                        ClaudeToken::SessionId(session_id) => {
+                            self.fix_session_id = Some(session_id);
                         }
                         ClaudeToken::Done(_result) => {
                             self.fix_receiver = None;
@@ -1810,11 +1830,11 @@ impl StartupState {
             phase_started_offset: elapsed - self.phase_started,
             iteration: self.iteration,
             model: self.model,
-            // Claude SDK session IDs - to be captured from SDK responses
-            claude_session_id: None,
-            exec_session_id: None,
-            review_session_id: None,
-            fix_session_id: None,
+            // Claude SDK session IDs captured from SDK responses
+            claude_session_id: self.claude_session_id.clone(),
+            exec_session_id: self.exec_session_id.clone(),
+            review_session_id: self.review_session_id.clone(),
+            fix_session_id: self.fix_session_id.clone(),
             // Events
             claude_events: self.claude_events.clone(),
             claude_full_text: self.claude_full_text.clone(),
@@ -1858,13 +1878,16 @@ impl StartupState {
             issue_summary: None, // Could be saved in checkpoint if needed
             gpt_oss_assessment: None,
             claude_receiver: None, // Cannot persist channels
+            claude_session_id: cp.claude_session_id,
             claude_events: cp.claude_events,
             claude_full_text: cp.claude_full_text,
             plan_path: cp.plan_path,
             exec_receiver: None,
+            exec_session_id: cp.exec_session_id,
             exec_events: cp.exec_events,
             exec_full_text: cp.exec_full_text,
             review_receiver: None,
+            review_session_id: cp.review_session_id,
             review_events: cp.review_events,
             review_full_text: cp.review_full_text,
             iteration: cp.iteration,
@@ -1875,6 +1898,7 @@ impl StartupState {
             verification_runner: None,
             last_checklist: cp.last_checklist,
             fix_receiver: None,
+            fix_session_id: cp.fix_session_id,
             fix_events: cp.fix_events,
             fix_full_text: cp.fix_full_text,
             force_stopped: cp.force_stopped,

@@ -101,3 +101,11 @@ Commits: `94f6edbf2`.
 5) Enable StreamEvent and ToolProgress handling with include_partial_messages.
 6) Add MCP configuration and status views, plus hooks and plugin configuration where needed.
 7) Align model selector with supported_models from the SDK and remove unsupported entries.
+
+## Addendum (2025-12-30)
+Completed work on SDK session ID capture and persistence:
+- Added a ClaudeToken::SessionId message and emit it from all SDK message streams (plan, exec, review, fix) when a session_id is observed.
+- Stored session IDs in StartupState per phase and persisted them into SessionCheckpoint (claude_session_id, exec_session_id, review_session_id, fix_session_id).
+- Restored session IDs from SessionCheckpoint on resume so they are available for future resume wiring.
+
+Remaining gap: the IDE still does not resume SDK sessions using these IDs; wiring to QueryOptions::resume or Session::send/receive is still required.
