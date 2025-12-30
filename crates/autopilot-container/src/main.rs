@@ -33,8 +33,12 @@ use tokio::net::TcpListener;
 use tokio::sync::{broadcast, RwLock};
 use tracing::{error, info, warn};
 
-/// Workspace directory for cloned repos
-const WORKSPACE_DIR: &str = "/workspace";
+/// Get workspace directory from env or default to /workspace
+fn workspace_dir() -> PathBuf {
+    std::env::var("WORKSPACE_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| PathBuf::from("/workspace"))
+}
 
 /// Application state shared across handlers
 struct AppState {
@@ -139,7 +143,7 @@ async fn main() {
     info!("Starting autopilot container service");
 
     // Create workspace directory
-    std::fs::create_dir_all(WORKSPACE_DIR).ok();
+    std::fs::create_dir_all(workspace_dir()).ok();
 
     // Create broadcast channel for events (capacity 1000)
     let (events_tx, _) = broadcast::channel(1000);
@@ -289,7 +293,7 @@ fn clone_repo(repo_url: &str, task_id: &str) -> Result<PathBuf, String> {
         .unwrap_or("repo")
         .trim_end_matches(".git");
 
-    let target_dir = PathBuf::from(WORKSPACE_DIR).join(format!("{}_{}", repo_name, task_id));
+    let target_dir = workspace_dir().join(format!("{}_{}", repo_name, task_id));
 
     // Use git CLI for simplicity (handles auth better)
     let status = Command::new("git")
