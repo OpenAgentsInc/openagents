@@ -20,16 +20,39 @@ database_id = "8ba16bce-6e9f-41ed-9bfb-3dee08050d65"
 binding = "SESSIONS"
 id = "0aa10501fe834f84ad33672acf4ed741"
 
+# Durable Objects for WebSocket relay and containers
+[durable_objects]
+bindings = [
+    { name = "TUNNEL_RELAY", class_name = "TunnelRelay" },
+    { name = "AUTOPILOT_CONTAINER", class_name = "AutopilotContainer" }
+]
+
+[[migrations]]
+tag = "v1"
+new_classes = ["TunnelRelay"]
+
+[[migrations]]
+tag = "v2"
+new_classes = ["AutopilotContainer"]
+
+# Container configuration
+[[containers]]
+class_name = "AutopilotContainer"
+image = "./worker/../autopilot-container/Dockerfile"
+max_instances = 10
+
 # Environment variables (non-secret)
 [vars]
 GITHUB_CLIENT_ID = "Ov23lirHI1DWTzZ1zT1u"
 STRIPE_PUBLISHABLE_KEY = ""
+# CLAUDE_CLIENT_ID = "" # Set when available
 
 # Secrets (set via: wrangler secret put <NAME>)
 # GITHUB_CLIENT_SECRET
 # STRIPE_SECRET_KEY
 # STRIPE_WEBHOOK_SECRET
 # SESSION_SECRET
+# CLAUDE_CLIENT_SECRET
 
 # Static assets (WGPUI client build)
 [assets]
