@@ -24,6 +24,7 @@
 pub mod accessibility;
 #[macro_use]
 pub mod action;
+pub mod clipboard;
 pub mod r#async;
 pub mod animation;
 pub mod app;
@@ -127,6 +128,7 @@ pub use action::{Action, ActionId, AnyAction, ActionRegistry, ActionListeners, D
 pub use interactive::{Interactive, WithAction, WithContext};
 pub use keymap::{KeyContext, Keymap, default_keymap};
 pub use svg::{SvgRenderer, SvgRasterized};
+pub use clipboard::copy_to_clipboard;
 
 #[cfg(all(feature = "web", target_arch = "wasm32"))]
 pub use platform::web::{WebPlatform, run_animation_loop, setup_resize_observer};

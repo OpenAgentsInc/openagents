@@ -326,7 +326,7 @@ impl Component for ToolCallCard {
         let max_children_height = Self::MAX_VISIBLE_CHILDREN as f32 * Self::HEADER_HEIGHT;
         let total_children_height = self.child_tools.len() as f32 * Self::HEADER_HEIGHT;
         let visible_height = total_children_height.min(max_children_height);
-        let children_bounds = Bounds::new(
+        let _children_bounds = Bounds::new(
             bounds.origin.x + 16.0,
             children_start_y,
             bounds.size.width - 16.0,
