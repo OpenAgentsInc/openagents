@@ -3,6 +3,7 @@
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
+use std::sync::mpsc::{self, Receiver, TryRecvError};
 
 use autopilot::{ClaudeModel, LogLine, LogStatus, SessionCheckpoint, StartupSection};
 use autopilot_service::{AutopilotRuntime, DaemonStatus, LogSection, RuntimeSnapshot, SessionEvent, SessionPhase};
@@ -92,6 +93,25 @@ pub struct AutopilotShell {
 
     // Working directory for checkpoint saves
     working_dir: PathBuf,
+
+    // Session resume state (for Claude Code session continuation)
+    resumed_session_id: Option<String>,
+
+    // Channel for receiving messages from resumed SDK session
+    sdk_message_rx: Option<Receiver<SdkMessageEvent>>,
+}
+
+/// Events from the Claude SDK session
+#[derive(Debug)]
+enum SdkMessageEvent {
+    /// Text from assistant
+    AssistantText(String),
+    /// Tool use started
+    ToolUse { name: String },
+    /// Session completed
+    Completed,
+    /// Error occurred
+    Error(String),
 }
 
 impl AutopilotShell {
@@ -216,6 +236,8 @@ impl AutopilotShell {
             rate_limit_fetcher,
             rate_limits,
             working_dir: std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
+            resumed_session_id: None,
+            sdk_message_rx: None,
         }
     }
 
@@ -339,6 +361,8 @@ impl AutopilotShell {
             rate_limit_fetcher,
             rate_limits,
             working_dir,
+            resumed_session_id: None,
+            sdk_message_rx: None,
         }
     }
 
@@ -763,12 +787,19 @@ impl AutopilotShell {
                 let was_enabled = self.full_auto_toggle.is_enabled();
                 self.full_auto_toggle.toggle();
 
-                // Save checkpoint when Full Auto is toggled OFF
-                if was_enabled && !self.full_auto_toggle.is_enabled() {
-                    if let Err(e) = self.save_checkpoint() {
-                        info!("Failed to save checkpoint: {}", e);
-                    } else {
-                        info!("Checkpoint saved for session {}", self.session_id());
+                if self.full_auto_toggle.is_enabled() {
+                    // Full Auto turned ON - check if we have a session to resume
+                    if let Some(session_id) = self.resumed_session_id.take() {
+                        self.start_session_resume(session_id);
+                    }
+                } else {
+                    // Full Auto turned OFF - save checkpoint
+                    if was_enabled {
+                        if let Err(e) = self.save_checkpoint() {
+                            info!("Failed to save checkpoint: {}", e);
+                        } else {
+                            info!("Checkpoint saved for session {}", self.session_id());
+                        }
                     }
                 }
 
@@ -855,6 +886,16 @@ impl AutopilotShell {
                         );
                     }
 
+                    // Store session ID for resume when Full Auto is toggled
+                    self.resumed_session_id = Some(session_id.clone());
+
+                    // Show ready to resume message
+                    self.thread_view.push_entry(
+                        ThreadEntry::new(ThreadEntryType::System,
+                            Text::new("Session loaded. Toggle Full Auto (cmd-a) to continue."))
+                            .copyable_text("Toggle Full Auto to continue"),
+                    );
+
                     // Mark as current in the list
                     self.refresh_sessions_list(&session_id);
                 } else {
@@ -913,6 +954,143 @@ impl AutopilotShell {
         }
     }
 
+    /// Start resuming a Claude Code session via the SDK
+    fn start_session_resume(&mut self, session_id: String) {
+        use claude_agent_sdk::{QueryOptions, SdkMessage};
+        use futures::StreamExt;
+
+        info!("Starting session resume for: {}", session_id);
+
+        // Create channel for SDK messages
+        let (tx, rx) = mpsc::channel::<SdkMessageEvent>();
+        self.sdk_message_rx = Some(rx);
+
+        // Get model from runtime
+        let model = self.runtime.model().as_str().to_string();
+
+        // Spawn async task to resume session
+        std::thread::spawn(move || {
+            let rt = match tokio::runtime::Runtime::new() {
+                Ok(rt) => rt,
+                Err(e) => {
+                    let _ = tx.send(SdkMessageEvent::Error(format!("Failed to create runtime: {}", e)));
+                    return;
+                }
+            };
+
+            rt.block_on(async move {
+                // Build options for resume
+                let options = QueryOptions::new()
+                    .resume(session_id.clone())
+                    .model(&model)
+                    .max_turns(100);
+
+                // Resume the session
+                let mut session = match claude_agent_sdk::unstable_v2_resume_session(session_id, options).await {
+                    Ok(s) => s,
+                    Err(e) => {
+                        let _ = tx.send(SdkMessageEvent::Error(format!("Failed to resume session: {}", e)));
+                        return;
+                    }
+                };
+
+                // Send empty message to continue (SDK will pick up from history)
+                if let Err(e) = session.send("").await {
+                    let _ = tx.send(SdkMessageEvent::Error(format!("Failed to send: {}", e)));
+                    return;
+                }
+
+                // Stream messages from session
+                while let Some(msg_result) = session.receive().next().await {
+                    match msg_result {
+                        Ok(msg) => {
+                            match msg {
+                                SdkMessage::Assistant(a) => {
+                                    // Extract text content from assistant message (message is serde_json::Value)
+                                    if let Some(content) = a.message.get("content").and_then(|c| c.as_array()) {
+                                        for block in content {
+                                            if let Some(text) = block.get("text").and_then(|t| t.as_str()) {
+                                                let _ = tx.send(SdkMessageEvent::AssistantText(text.to_string()));
+                                            }
+                                            if let Some(name) = block.get("name").and_then(|n| n.as_str()) {
+                                                let _ = tx.send(SdkMessageEvent::ToolUse { name: name.to_string() });
+                                            }
+                                        }
+                                    }
+                                }
+                                SdkMessage::Result(_) => {
+                                    let _ = tx.send(SdkMessageEvent::Completed);
+                                    break;
+                                }
+                                _ => {}
+                            }
+                        }
+                        Err(e) => {
+                            let _ = tx.send(SdkMessageEvent::Error(format!("Stream error: {}", e)));
+                            break;
+                        }
+                    }
+                }
+            });
+        });
+
+        // Add status message
+        self.thread_view.push_entry(
+            ThreadEntry::new(ThreadEntryType::System, Text::new("Resuming session..."))
+                .copyable_text("Resuming session..."),
+        );
+    }
+
+    /// Poll for SDK messages and update thread view
+    fn poll_sdk_messages(&mut self) {
+        if let Some(ref rx) = self.sdk_message_rx {
+            loop {
+                match rx.try_recv() {
+                    Ok(event) => {
+                        match event {
+                            SdkMessageEvent::AssistantText(text) => {
+                                self.thread_view.push_entry(
+                                    ThreadEntry::new(ThreadEntryType::Assistant, Text::new(&text))
+                                        .copyable_text(&text),
+                                );
+                            }
+                            SdkMessageEvent::ToolUse { name } => {
+                                let msg = format!("Tool: {}", name);
+                                self.thread_view.push_entry(
+                                    ThreadEntry::new(ThreadEntryType::Tool, Text::new(&msg))
+                                        .copyable_text(&msg),
+                                );
+                            }
+                            SdkMessageEvent::Completed => {
+                                self.thread_view.push_entry(
+                                    ThreadEntry::new(ThreadEntryType::System, Text::new("Session completed."))
+                                        .copyable_text("Session completed."),
+                                );
+                                self.sdk_message_rx = None;
+                                self.full_auto_toggle.set_enabled(false);
+                                break;
+                            }
+                            SdkMessageEvent::Error(e) => {
+                                self.thread_view.push_entry(
+                                    ThreadEntry::new(ThreadEntryType::Error, Text::new(&e))
+                                        .copyable_text(&e),
+                                );
+                                self.sdk_message_rx = None;
+                                self.full_auto_toggle.set_enabled(false);
+                                break;
+                            }
+                        }
+                    }
+                    Err(TryRecvError::Empty) => break,
+                    Err(TryRecvError::Disconnected) => {
+                        self.sdk_message_rx = None;
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
     /// Refresh the sessions list in the sidebar
     fn refresh_sessions_list(&mut self, current_id: &str) {
         let claude_sessions = crate::claude_sessions::list_claude_sessions();
@@ -959,6 +1137,9 @@ impl Component for AutopilotShell {
 
         // 3b. Check for rate limit updates and apply to UI
         self.update_rate_limits_ui();
+
+        // 3c. Poll for SDK session messages (from resumed sessions)
+        self.poll_sdk_messages();
 
         // 4. Calculate layout
         let layout = self.calculate_layout(bounds);

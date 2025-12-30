@@ -28,6 +28,10 @@ impl FullAutoToggle {
     pub fn is_enabled(&self) -> bool {
         self.enabled
     }
+
+    pub fn set_enabled(&mut self, enabled: bool) {
+        self.enabled = enabled;
+    }
 }
 
 impl Default for FullAutoToggle {
