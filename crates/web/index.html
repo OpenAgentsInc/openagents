@@ -3,7 +3,7 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>WGPUI Web Demo</title>
+    <title>OpenAgents</title>
     <style>
         * {
             margin: 0;
@@ -46,10 +46,10 @@
 </head>
 <body>
     <canvas id="canvas"></canvas>
-    <div id="loading">Loading WGPUI...</div>
+    <div id="loading">Loading OpenAgents...</div>
     <div id="error"></div>
     <script type="module">
-        import init, { start_demo } from './pkg/openagents_web.js';
+        import init, { start_demo } from './pkg/openagents_web_client.js';
 
         async function run() {
             const loading = document.getElementById('loading');

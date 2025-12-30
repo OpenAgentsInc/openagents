@@ -1,0 +1,53 @@
+# OpenAgents Web - Cloudflare Workers configuration
+# Deploy with: bun run deploy
+
+name = "openagents-web"
+main = "worker/build/index.js"
+compatibility_date = "2024-12-01"
+
+# Worker build configuration
+[build]
+command = "cargo install -q worker-build && cd worker && worker-build --release"
+
+# D1 Database
+[[d1_databases]]
+binding = "DB"
+database_name = "openagents"
+database_id = "8ba16bce-6e9f-41ed-9bfb-3dee08050d65"
+
+# KV Namespace for sessions
+[[kv_namespaces]]
+binding = "SESSIONS"
+id = "0aa10501fe834f84ad33672acf4ed741"
+
+# Environment variables (non-secret)
+[vars]
+GITHUB_CLIENT_ID = "Ov23lirHI1DWTzZ1zT1u"
+STRIPE_PUBLISHABLE_KEY = ""
+
+# Secrets (set via: wrangler secret put <NAME>)
+# GITHUB_CLIENT_SECRET
+# STRIPE_SECRET_KEY
+# STRIPE_WEBHOOK_SECRET
+# SESSION_SECRET
+
+# Static assets (WGPUI client build)
+[assets]
+directory = "./dist"
+
+# Serve as SPA for client-side routes
+not_found_handling = "single-page-application"
+
+# Production environment
+[env.production]
+name = "openagents-web"
+routes = []
+
+# Preview environment for testing
+[env.preview]
+name = "openagents-web-preview"
+
+# Local development settings
+[dev]
+port = 8787
+local_protocol = "http"

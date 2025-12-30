@@ -9,8 +9,10 @@ const mimeTypes: Record<string, string> = {
   '.json': 'application/json',
 };
 
-Bun.serve({
-  port: 3000,
+const PORT = parseInt(process.env.PORT || '3000');
+
+const server = Bun.serve({
+  port: PORT,
   async fetch(req) {
     const url = new URL(req.url);
     let path = url.pathname;
@@ -45,4 +47,4 @@ Bun.serve({
   },
 });
 
-console.log('WGPUI Web Demo server running at http://localhost:3000');
+console.log(`WGPUI Web Demo server running at http://localhost:${server.port}`);

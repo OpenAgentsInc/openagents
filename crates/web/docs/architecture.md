@@ -1,390 +1,621 @@
-# WGPUI Web Architecture
+# OpenAgents Web Architecture
 
-Technical architecture of the WGPUI web deployment.
+Technical architecture of the full-stack Rust web application running on Cloudflare's edge.
 
-## Overview
+## System Overview
+
+OpenAgents Web consists of two WASM targets:
+
+1. **Client WASM** (wasm-pack → browser) - WGPUI GPU-accelerated frontend
+2. **Worker WASM** (worker-build → Cloudflare) - Axum API backend
+
+Both are 100% Rust, compiled to WebAssembly, running at the edge.
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                         Browser                                  │
-├─────────────────────────────────────────────────────────────────┤
-│  index.html                                                      │
-│    └── <script type="module">                                   │
-│          └── import init, { start_demo } from './pkg/...'       │
-│                │                                                 │
-│                ▼                                                 │
-│  ┌─────────────────────────────────────────────────────────┐   │
-│  │  openagents_web.js (wasm-bindgen glue)                  │   │
-│  │    • Loads WASM binary                                   │   │
-│  │    • Marshals JS ↔ Rust types                           │   │
-│  │    • Manages memory                                      │   │
-│  └─────────────────────────────────────────────────────────┘   │
-│                │                                                 │
-│                ▼                                                 │
-│  ┌─────────────────────────────────────────────────────────┐   │
-│  │  openagents_web_bg.wasm                                  │   │
-│  │    • Rust compiled to WebAssembly                        │   │
-│  │    • WGPUI rendering engine                              │   │
-│  │    • Text shaping (cosmic-text)                          │   │
-│  │    • Layout (taffy)                                      │   │
-│  └─────────────────────────────────────────────────────────┘   │
-│                │                                                 │
-│                ▼                                                 │
-│  ┌─────────────────────────────────────────────────────────┐   │
-│  │  WebGPU / WebGL                                          │   │
-│  │    • GPU-accelerated rendering                           │   │
-│  │    • Canvas output                                       │   │
-│  └─────────────────────────────────────────────────────────┘   │
-│                │                                                 │
-│                ▼                                                 │
-│  ┌─────────────────────────────────────────────────────────┐   │
-│  │  <canvas id="canvas">                                    │   │
-│  │    • GPU renders directly here                           │   │
-│  │    • No DOM manipulation for UI                          │   │
-│  └─────────────────────────────────────────────────────────┘   │
-└─────────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                              CLOUDFLARE EDGE                                 │
+│                         (300+ global locations)                              │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  ┌─────────────────────────────────────────────────────────────────────────┐│
+│  │                         WORKER (Server-side WASM)                        ││
+│  │                                                                          ││
+│  │  ┌──────────────┐    ┌──────────────┐    ┌──────────────┐              ││
+│  │  │   Router     │    │   D1         │    │   KV         │              ││
+│  │  │   (Axum)     │───▶│   (SQLite)   │    │   (Sessions) │              ││
+│  │  │              │    │              │    │              │              ││
+│  │  │  Pattern     │    │  users       │    │  session:*   │              ││
+│  │  │  matching    │    │  billing     │    │  oauth:*     │              ││
+│  │  │  on path     │    │  stripe      │    │              │              ││
+│  │  └──────────────┘    └──────────────┘    └──────────────┘              ││
+│  │         │                                                                ││
+│  │         ▼                                                                ││
+│  │  ┌──────────────────────────────────────────────────────────────────┐  ││
+│  │  │                        Route Handlers                             │  ││
+│  │  │                                                                   │  ││
+│  │  │  routes/auth.rs      → GitHub OAuth flow                         │  ││
+│  │  │  routes/account.rs   → User settings, API keys                   │  ││
+│  │  │  routes/billing.rs   → Credits, plans, packages                  │  ││
+│  │  │  routes/stripe.rs    → Payment methods, webhooks                 │  ││
+│  │  │  routes/hud.rs       → Personal HUD URLs, embed                  │  ││
+│  │  └──────────────────────────────────────────────────────────────────┘  ││
+│  │                                                                          ││
+│  └─────────────────────────────────────────────────────────────────────────┘│
+│                                      │                                       │
+│                                      │ serves static assets                  │
+│                                      ▼                                       │
+│  ┌─────────────────────────────────────────────────────────────────────────┐│
+│  │                       STATIC ASSETS (CDN Cache)                          ││
+│  │                                                                          ││
+│  │  index.html                                                              ││
+│  │  pkg/openagents_web_client.js      ← wasm-bindgen glue                  ││
+│  │  pkg/openagents_web_client_bg.wasm ← WGPUI client (~4MB)                ││
+│  │                                                                          ││
+│  └─────────────────────────────────────────────────────────────────────────┘│
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+                                       │
+                                       │ downloaded to browser
+                                       ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                                BROWSER                                       │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  ┌─────────────────────────────────────────────────────────────────────────┐│
+│  │                      CLIENT WASM (WGPUI)                                 ││
+│  │                                                                          ││
+│  │  ┌──────────────┐    ┌──────────────┐    ┌──────────────┐              ││
+│  │  │   Scene      │    │   Text       │    │   Renderer   │              ││
+│  │  │   Graph      │───▶│   System     │───▶│   (wgpu)     │              ││
+│  │  │              │    │              │    │              │              ││
+│  │  │  Quads       │    │  cosmic-text │    │  WebGPU or   │              ││
+│  │  │  Text runs   │    │  Glyph atlas │    │  WebGL2      │              ││
+│  │  └──────────────┘    └──────────────┘    └──────────────┘              ││
+│  │                                                    │                     ││
+│  │                                                    ▼                     ││
+│  │                                          ┌──────────────┐               ││
+│  │                                          │   <canvas>   │               ││
+│  │                                          │   GPU output │               ││
+│  │                                          └──────────────┘               ││
+│  │                                                                          ││
+│  └─────────────────────────────────────────────────────────────────────────┘│
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
 ```
 
-## Module Structure
+---
 
-### Rust Side (lib.rs)
+## Worker Architecture
+
+### Entry Point (worker/src/lib.rs)
+
+The worker uses the `#[event(fetch)]` macro from workers-rs:
 
 ```rust
-// Entry point - called when WASM loads
-#[wasm_bindgen(start)]
-pub fn main() {
-    console_error_panic_hook::set_once();
-}
+#[event(fetch)]
+async fn fetch(mut req: Request, env: Env, _ctx: Context) -> Result<Response> {
+    let url = req.url()?;
+    let path = url.path();
+    let method = req.method();
 
-// Exposed to JavaScript
-#[wasm_bindgen]
-pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
-    // Initialize WebPlatform (wgpu surface, device, queue)
-    // Set up event handlers
-    // Start animation loop
-}
-```
+    match (method, path.as_ref()) {
+        // Auth
+        (Method::Get, "/api/auth/github/start") => routes::auth::github_start(req, env).await,
+        (Method::Get, "/api/auth/github/callback") => routes::auth::github_callback(req, env).await,
 
-### JavaScript Side (generated)
+        // Protected routes
+        (Method::Get, "/api/account") => {
+            with_auth(&req, &env, |user| routes::account::get_settings(user, env.clone())).await
+        }
 
-```javascript
-// openagents_web.js (auto-generated by wasm-bindgen)
+        // HUD (dynamic paths)
+        (Method::Get, path) if path.starts_with("/hud/") => {
+            routes::hud::view_hud(env, parse_hud_path(path)).await
+        }
 
-export async function default init() {
-    // Fetch and compile WASM
-    // Initialize memory
-    // Set up imports/exports
-}
-
-export function start_demo(canvas_id) {
-    // Call into WASM
-    // Returns Promise
+        // Static assets handled by Cloudflare
+        _ => Response::error("Not Found", 404),
+    }
 }
 ```
 
-### HTML Side
-
-```html
-<canvas id="canvas"></canvas>
-<script type="module">
-    import init, { start_demo } from './pkg/openagents_web.js';
-    await init();
-    await start_demo('canvas');
-</script>
-```
-
-## Data Flow
-
-### Initialization
+### Authentication Flow
 
 ```
-1. Browser loads index.html
-2. ES module import triggers openagents_web.js load
-3. init() fetches openagents_web_bg.wasm
-4. WebAssembly.instantiateStreaming() compiles WASM
-5. start_demo() called from JS
-6. Rust initializes WebPlatform:
-   a. Get canvas element from DOM
-   b. Create wgpu Instance
-   c. Create Surface from canvas
-   d. Request GPU adapter
-   e. Create Device and Queue
-   f. Initialize TextSystem with embedded fonts
-   g. Create Renderer with shaders
-7. Set up event listeners (keyboard, mouse, wheel, resize)
-8. Start requestAnimationFrame loop
+┌─────────┐     ┌──────────────────┐     ┌────────────────┐     ┌─────────┐
+│ Browser │     │ Worker           │     │ GitHub         │     │ D1/KV   │
+└────┬────┘     └────────┬─────────┘     └───────┬────────┘     └────┬────┘
+     │                   │                       │                    │
+     │  GET /api/auth/   │                       │                    │
+     │  github/start     │                       │                    │
+     │──────────────────▶│                       │                    │
+     │                   │                       │                    │
+     │                   │  Store state in KV    │                    │
+     │                   │───────────────────────│───────────────────▶│
+     │                   │                       │                    │
+     │  302 Redirect     │                       │                    │
+     │  to GitHub OAuth  │                       │                    │
+     │◀──────────────────│                       │                    │
+     │                   │                       │                    │
+     │  Authorize app    │                       │                    │
+     │──────────────────────────────────────────▶│                    │
+     │                   │                       │                    │
+     │  Redirect with    │                       │                    │
+     │  code + state     │                       │                    │
+     │◀──────────────────────────────────────────│                    │
+     │                   │                       │                    │
+     │  GET /api/auth/   │                       │                    │
+     │  github/callback  │                       │                    │
+     │──────────────────▶│                       │                    │
+     │                   │                       │                    │
+     │                   │  Verify state in KV   │                    │
+     │                   │───────────────────────│───────────────────▶│
+     │                   │                       │                    │
+     │                   │  Exchange code        │                    │
+     │                   │  for token            │                    │
+     │                   │──────────────────────▶│                    │
+     │                   │                       │                    │
+     │                   │  Access token         │                    │
+     │                   │◀──────────────────────│                    │
+     │                   │                       │                    │
+     │                   │  Get user info        │                    │
+     │                   │──────────────────────▶│                    │
+     │                   │                       │                    │
+     │                   │  Upsert user in D1    │                    │
+     │                   │───────────────────────│───────────────────▶│
+     │                   │                       │                    │
+     │                   │  Create session in KV │                    │
+     │                   │───────────────────────│───────────────────▶│
+     │                   │                       │                    │
+     │  302 Redirect     │                       │                    │
+     │  + Set-Cookie     │                       │                    │
+     │◀──────────────────│                       │                    │
+     │                   │                       │                    │
 ```
 
-### Render Loop
+### Session Management
 
-```
-Each frame (16.6ms at 60fps):
-
-1. requestAnimationFrame callback fires
-2. Rust closure invoked via wasm-bindgen
-3. Update demo state (frame count, animations)
-4. Advance streaming markdown
-5. Build Scene (collect draw commands):
-   a. draw_quad() - Background, panels
-   b. draw_text() - Text runs with glyphs
-6. If text atlas dirty, upload to GPU
-7. Renderer.prepare() - Convert scene to GPU buffers
-8. Renderer.render() - Issue draw calls
-9. surface.present() - Swap buffers
-10. Schedule next frame
-```
-
-### Event Handling
-
-```
-Browser Event → JS Callback → WASM → Rust Handler
-
-Keyboard:
-  keydown → Closure<dyn FnMut(KeyboardEvent)> → demo.restart_stream()
-
-Mouse:
-  mousemove → Closure<dyn FnMut(MouseEvent)> → demo.mouse_pos = ...
-
-Wheel:
-  wheel → Closure<dyn FnMut(WheelEvent)> → demo.scroll_offset += ...
-
-Resize:
-  ResizeObserver → Closure → platform.handle_resize()
-```
-
-## Memory Model
-
-### Linear Memory
-
-WASM has a single linear memory buffer shared between Rust and JS:
-
-```
-┌────────────────────────────────────────────────────────┐
-│                    WASM Linear Memory                   │
-├────────────────────────────────────────────────────────┤
-│  Stack (grows down)                                     │
-│    • Local variables                                    │
-│    • Function call frames                               │
-├────────────────────────────────────────────────────────┤
-│  Heap (grows up)                                        │
-│    • Box, Vec, String allocations                       │
-│    • Scene primitives                                   │
-│    • Text layouts                                       │
-│    • Glyph cache                                        │
-├────────────────────────────────────────────────────────┤
-│  Static Data                                            │
-│    • Embedded fonts (~800KB)                            │
-│    • Syntax highlighting themes                         │
-│    • String literals                                    │
-└────────────────────────────────────────────────────────┘
-```
-
-### GPU Memory
-
-Separate from WASM memory, managed by wgpu:
-
-```
-┌────────────────────────────────────────────────────────┐
-│                      GPU Memory                         │
-├────────────────────────────────────────────────────────┤
-│  Textures                                               │
-│    • Glyph atlas (2048x2048 R8)                        │
-│    • Image cache                                        │
-├────────────────────────────────────────────────────────┤
-│  Buffers                                                │
-│    • Vertex buffer (quads, text)                       │
-│    • Index buffer                                       │
-│    • Uniform buffer (viewport, scale)                  │
-├────────────────────────────────────────────────────────┤
-│  Pipelines                                              │
-│    • Quad pipeline (SDF rendering)                     │
-│    • Text pipeline (glyph rendering)                   │
-└────────────────────────────────────────────────────────┘
-```
-
-## Platform Abstraction
-
-### WebPlatform (wgpui/src/platform.rs)
+Sessions are stored in Cloudflare KV with 30-day TTL:
 
 ```rust
-pub struct WebPlatform {
-    canvas: HtmlCanvasElement,      // DOM canvas element
-    device: wgpu::Device,           // GPU device handle
-    queue: wgpu::Queue,             // Command submission
-    surface: wgpu::Surface,         // Render target
-    surface_config: SurfaceConfiguration,
-    renderer: Renderer,             // Draw primitives
-    text_system: TextSystem,        // Font/glyph handling
-    scale_factor: f32,              // HiDPI scaling
-    logical_size: Size,             // Canvas dimensions
+// worker/src/db/sessions.rs
+
+#[derive(Serialize, Deserialize)]
+pub struct Session {
+    pub user_id: String,
+    pub github_username: String,
+    pub github_oauth_state: Option<String>,
+    pub created_at: String,
+    pub last_active_at: String,
+}
+
+impl Session {
+    pub async fn create(kv: &KvStore, user_id: &str, username: &str) -> Result<String> {
+        let token = generate_secure_token(); // 32 bytes, base64
+        let session = Session { /* ... */ };
+
+        kv.put(&format!("session:{}", token), serde_json::to_string(&session)?)
+            .expiration_ttl(30 * 24 * 60 * 60) // 30 days
+            .execute()
+            .await?;
+
+        Ok(token)
+    }
 }
 ```
 
-### Platform Trait
+Cookie format:
+```
+oa_session=<token>; HttpOnly; SameSite=Lax; Path=/; Max-Age=2592000; Secure
+```
+
+### Database Schema (D1)
+
+D1 is SQLite at the edge. Key differences from PostgreSQL:
+
+| PostgreSQL | D1 (SQLite) |
+|------------|-------------|
+| `UUID` | `TEXT` (store as string) |
+| `TIMESTAMPTZ` | `TEXT` (ISO8601) |
+| `BOOLEAN` | `INTEGER` (0/1) |
+| `JSONB` | `TEXT` (JSON string) |
+| `gen_random_uuid()` | Generate in Rust |
+| `now()` | `datetime('now')` |
+
+Schema overview:
+
+```sql
+-- Users
+CREATE TABLE users (
+    user_id TEXT PRIMARY KEY,
+    github_id TEXT UNIQUE,
+    github_username TEXT,
+    email TEXT,
+    signup_credits INTEGER DEFAULT 100000,
+    purchased_credits INTEGER DEFAULT 0,
+    credits_balance INTEGER DEFAULT 100000,
+    payment_method_status TEXT DEFAULT 'none',
+    created_at TEXT DEFAULT (datetime('now'))
+);
+
+-- Stripe integration
+CREATE TABLE stripe_customers (
+    user_id TEXT PRIMARY KEY REFERENCES users(user_id),
+    stripe_customer_id TEXT UNIQUE
+);
+
+CREATE TABLE stripe_payment_methods (
+    stripe_payment_method_id TEXT PRIMARY KEY,
+    user_id TEXT REFERENCES users(user_id),
+    brand TEXT,
+    last4 TEXT,
+    is_default INTEGER DEFAULT 0
+);
+
+-- HUD settings (GTM)
+CREATE TABLE hud_settings (
+    user_id TEXT REFERENCES users(user_id),
+    repo TEXT,
+    is_public INTEGER DEFAULT 1,
+    embed_allowed INTEGER DEFAULT 1,
+    PRIMARY KEY (user_id, repo)
+);
+```
+
+### Stripe Integration
+
+Payment flow:
+
+```
+┌─────────┐     ┌──────────────────┐     ┌────────────────┐
+│ Browser │     │ Worker           │     │ Stripe         │
+└────┬────┘     └────────┬─────────┘     └───────┬────────┘
+     │                   │                       │
+     │  POST /api/stripe/│                       │
+     │  setup-intent     │                       │
+     │──────────────────▶│                       │
+     │                   │                       │
+     │                   │  Create SetupIntent   │
+     │                   │──────────────────────▶│
+     │                   │                       │
+     │                   │  client_secret        │
+     │                   │◀──────────────────────│
+     │                   │                       │
+     │  { client_secret }│                       │
+     │◀──────────────────│                       │
+     │                   │                       │
+     │  Stripe.js        │                       │
+     │  confirmSetup()   │                       │
+     │──────────────────────────────────────────▶│
+     │                   │                       │
+     │                   │  Webhook: setup_      │
+     │                   │  intent.succeeded     │
+     │                   │◀──────────────────────│
+     │                   │                       │
+     │                   │  Save payment method  │
+     │                   │  to D1                │
+     │                   │                       │
+```
+
+Webhook signature verification:
 
 ```rust
-pub trait Platform {
-    fn logical_size(&self) -> Size;
-    fn scale_factor(&self) -> f32;
-    fn text_system(&mut self) -> &mut TextSystem;
-    fn render(&mut self, scene: &Scene) -> Result<(), String>;
-    fn request_redraw(&self);
-    fn set_cursor(&self, cursor: Cursor);
-    fn handle_resize(&mut self);
+pub fn verify_webhook_signature(payload: &[u8], signature: &str, secret: &str) -> bool {
+    // Parse t=timestamp,v1=signature
+    let (timestamp, v1_sig) = parse_signature(signature);
+
+    // Compute expected: HMAC-SHA256(timestamp.payload, secret)
+    let signed_payload = format!("{}.{}", timestamp, String::from_utf8_lossy(payload));
+    let mut mac = Hmac::<Sha256>::new_from_slice(secret.as_bytes()).unwrap();
+    mac.update(signed_payload.as_bytes());
+    let expected = hex::encode(mac.finalize().into_bytes());
+
+    expected == v1_sig
 }
 ```
 
-Allows same rendering code to work on:
-- Web (WebPlatform)
-- Desktop (via winit)
-- Headless (for testing)
+---
 
-## Text Rendering Pipeline
+## Client Architecture
 
-```
-"Hello" → TextSystem → Scene → Renderer → GPU
-
-1. TextSystem.layout("Hello", position, size, color)
-   └── cosmic-text shapes text
-   └── Looks up glyphs in cache
-   └── Rasterizes missing glyphs to atlas
-   └── Returns TextRun with glyph positions
-
-2. Scene.draw_text(text_run)
-   └── Stores TextRun in scene's text list
-
-3. Renderer.prepare(scene)
-   └── Converts TextRuns to GlyphInstances
-   └── Uploads to vertex buffer
-
-4. Renderer.render()
-   └── Binds glyph atlas texture
-   └── Draws instanced quads
-   └── Each quad samples atlas for glyph
-```
-
-## Coordinate System
+### WGPUI Rendering Pipeline
 
 ```
-Screen Space (physical pixels)
+User Input → DemoState → Scene → Renderer → GPU → Canvas
+
+1. Event handlers update DemoState
+   - Keyboard: restart stream, adjust width
+   - Mouse: track position
+   - Wheel: scroll offset
+
+2. Each frame (60fps):
+   a. Advance streaming markdown (tick)
+   b. Build Scene:
+      - draw_quad() for backgrounds, panels
+      - draw_text() for text runs
+   c. Renderer.prepare() converts to GPU buffers
+   d. Renderer.render() issues draw calls
+   e. surface.present() swaps buffers
+```
+
+### Text System
+
+```
+"Hello" → TextSystem → TextRun → Scene → GPU
+
+TextSystem (cosmic-text):
+├── FontDB (embedded Vera Mono)
+├── Shaper (rustybuzz)
+├── GlyphCache (atlas)
+└── Layout engine
+
+TextRun contains:
+├── Positioned glyphs
+├── Atlas UV coordinates
+├── Color
+└── Underline/highlight info
+```
+
+### Memory Layout
+
+```
+┌────────────────────────────────────────────┐
+│           WASM Linear Memory               │
+├────────────────────────────────────────────┤
+│  Stack (grows down)                        │
+│    • Local variables                       │
+│    • Call frames                           │
+├────────────────────────────────────────────┤
+│  Heap (grows up)                           │
+│    • Scene primitives                      │
+│    • Text layouts                          │
+│    • Streaming markdown state              │
+├────────────────────────────────────────────┤
+│  Static Data                               │
+│    • Embedded fonts (~800KB)               │
+│    • Syntax themes                         │
+└────────────────────────────────────────────┘
+
+┌────────────────────────────────────────────┐
+│              GPU Memory                    │
+├────────────────────────────────────────────┤
+│  Textures                                  │
+│    • Glyph atlas (2048x2048 R8)           │
+├────────────────────────────────────────────┤
+│  Buffers                                   │
+│    • Vertex buffer (quads, glyphs)        │
+│    • Index buffer                          │
+│    • Uniform buffer (viewport)            │
+├────────────────────────────────────────────┤
+│  Pipelines                                 │
+│    • Quad pipeline (SDF corners)          │
+│    • Text pipeline (alpha blend)          │
+└────────────────────────────────────────────┘
+```
+
+### Coordinate System
+
+```
+Physical Pixels (Canvas buffer)
 ┌─────────────────────────────────────┐
 │ (0,0)                               │
 │   ┌───────────────────────────┐     │
-│   │ Logical Space             │     │
-│   │ (CSS pixels)              │     │
+│   │ Logical Pixels            │     │
+│   │ (CSS units)               │     │
 │   │                           │     │
-│   │   UI coordinates here     │     │
+│   │   UI coordinates          │     │
 │   │                           │     │
 │   └───────────────────────────┘     │
-│                        (width*dpr,  │
-│                         height*dpr) │
+│                    (width * dpr,    │
+│                     height * dpr)   │
 └─────────────────────────────────────┘
 
-scale_factor = window.devicePixelRatio (e.g., 2.0 for Retina)
-
-Physical = Logical * scale_factor
-Logical = Physical / scale_factor
+scale_factor = window.devicePixelRatio
+Physical = Logical × scale_factor
 ```
 
-All UI code uses logical coordinates. Conversion happens at GPU boundary.
+---
 
-## Shader Architecture
+## Data Flow
 
-### Quad Shader
-
-Renders filled rectangles with optional:
-- Background color
-- Border (all sides or individual)
-- Corner radius (SDF-based)
-
-```wgsl
-// Vertex
-struct QuadVertex {
-    @location(0) position: vec2<f32>,
-    @location(1) bounds: vec4<f32>,      // x, y, w, h
-    @location(2) background: vec4<f32>,  // RGBA
-    @location(3) border_color: vec4<f32>,
-    @location(4) border_width: f32,
-    @location(5) corner_radius: f32,
-}
-
-// Fragment
-fn sdf_rounded_rect(p: vec2<f32>, size: vec2<f32>, radius: f32) -> f32 {
-    let q = abs(p) - size + radius;
-    return length(max(q, vec2(0.0))) + min(max(q.x, q.y), 0.0) - radius;
-}
-```
-
-### Text Shader
-
-Renders glyphs from atlas:
-
-```wgsl
-struct GlyphVertex {
-    @location(0) position: vec2<f32>,
-    @location(1) uv: vec2<f32>,
-    @location(2) color: vec4<f32>,
-}
-
-@fragment
-fn fs_main(in: GlyphInput) -> @location(0) vec4<f32> {
-    let alpha = textureSample(glyph_atlas, sampler, in.uv).r;
-    return vec4(in.color.rgb, in.color.a * alpha);
-}
-```
-
-## Dependencies Graph
+### Request Lifecycle
 
 ```
-openagents-web
-└── wgpui
-    ├── wgpu (GPU abstraction)
-    │   ├── wgpu-core (cross-platform core)
-    │   └── wgpu-hal (WebGPU/WebGL backends)
-    ├── cosmic-text (text shaping)
-    │   ├── fontdb (font database)
-    │   ├── rustybuzz (shaping)
-    │   └── swash (font parsing)
-    ├── taffy (flexbox layout)
-    ├── syntect (syntax highlighting)
-    │   └── fancy-regex
-    ├── pulldown-cmark (markdown)
-    ├── wasm-bindgen (JS interop)
-    └── web-sys (DOM bindings)
+1. Browser sends request to nearest Cloudflare edge
+
+2. Worker receives request:
+   a. Parse URL and method
+   b. Route to handler
+   c. For protected routes: validate session from cookie
+      - Extract token from oa_session cookie
+      - Look up in KV
+      - Check expiry, update last_active_at
+
+3. Handler executes:
+   a. Query D1 database
+   b. Call external APIs (GitHub, Stripe)
+   c. Build response
+
+4. Response returned:
+   a. JSON for API routes
+   b. HTML for HUD routes (with context injected)
+   c. Static assets from CDN cache
+
+5. Browser processes response:
+   a. For API: update client state
+   b. For HUD: load WGPUI client, render
 ```
 
-## Thread Model
-
-WASM is single-threaded by default. All execution happens on the main thread:
+### HUD Page Flow
 
 ```
-Main Thread (Browser UI Thread)
-├── JS event loop
-├── WASM execution
-├── requestAnimationFrame
-└── GPU command submission
-
-GPU Thread (Browser internal)
-└── Command execution
-└── Texture uploads
-└── Present
+GET /hud/username/repo
+        │
+        ▼
+┌───────────────────┐
+│ Route Handler     │
+│ routes/hud.rs     │
+└────────┬──────────┘
+         │
+         ▼
+┌───────────────────┐
+│ Check visibility  │
+│ D1: hud_settings  │
+└────────┬──────────┘
+         │
+    ┌────┴────┐
+    │ Public? │
+    └────┬────┘
+    Yes  │  No
+    ▼    ▼
+   OK   Check if
+        owner
+         │
+    ┌────┴────┐
+    │ Owner?  │
+    └────┬────┘
+    Yes  │  No
+    ▼    ▼
+   OK   403
+         │
+         ▼
+┌───────────────────┐
+│ Generate HTML     │
+│ Inject context:   │
+│ - username        │
+│ - repo            │
+│ - is_owner        │
+│ - embed_mode      │
+└────────┬──────────┘
+         │
+         ▼
+┌───────────────────┐
+│ Browser loads     │
+│ WGPUI client      │
+│ Renders HUD       │
+└───────────────────┘
 ```
 
-### Future: Web Workers
+---
 
-For background work (e.g., syntax highlighting large files):
+## External Services
 
-```javascript
-// Main thread
-const worker = new Worker('worker.js');
-worker.postMessage({ type: 'highlight', code: '...' });
+### GitHub API
 
-// worker.js
-importScripts('pkg/openagents_web.js');
-onmessage = async (e) => {
-    const result = await highlight(e.data.code);
-    postMessage(result);
-};
+Used for:
+- OAuth authentication
+- User info (login, email, avatar)
+- Repository list (future)
+
+Endpoints:
+```
+POST https://github.com/login/oauth/access_token
+GET  https://api.github.com/user
+GET  https://api.github.com/user/emails
+GET  https://api.github.com/user/repos
 ```
 
-Requires `--target no-modules` and careful memory management.
+### Stripe API
+
+Used for:
+- Customer management
+- Payment method storage
+- Webhook events
+
+Endpoints:
+```
+POST https://api.stripe.com/v1/customers
+POST https://api.stripe.com/v1/setup_intents
+GET  https://api.stripe.com/v1/payment_methods/:id
+POST https://api.stripe.com/v1/payment_intents
+```
+
+Webhooks handled:
+- `setup_intent.succeeded` → Save payment method
+- `payment_intent.succeeded` → Add credits
+
+---
+
+## Dependencies
+
+### Worker Dependencies
+
+```toml
+[dependencies]
+worker = { version = "0.4", features = ["http", "d1"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+uuid = { version = "1", features = ["v4", "serde", "js"] }
+chrono = { version = "0.4", features = ["serde", "wasmbind", "clock"] }
+hmac = "0.12"
+sha2 = "0.10"
+base64 = "0.22"
+urlencoding = "2"
+```
+
+### Client Dependencies
+
+```toml
+[dependencies]
+wgpui = { path = "../../wgpui" }
+wasm-bindgen = "0.2"
+wasm-bindgen-futures = "0.4"
+js-sys = "0.3"
+web-sys = { version = "0.3", features = [...] }
+console_error_panic_hook = "0.1"
+```
+
+---
+
+## Security Considerations
+
+### Session Security
+
+- Tokens: 32 bytes, cryptographically random
+- Storage: KV with TTL (auto-expiry)
+- Cookies: HttpOnly, Secure, SameSite=Lax
+- No session fixation (new token on login)
+
+### OAuth Security
+
+- State parameter: Random UUID, 10-minute expiry
+- PKCE: Not used (server-side flow)
+- Token storage: Encrypted in D1 (production)
+
+### Stripe Security
+
+- Webhook signatures verified with HMAC-SHA256
+- No card data stored (Stripe handles)
+- Customer IDs only stored locally
+
+### API Security
+
+- All `/api/*` routes require authentication
+- Rate limiting: Cloudflare's built-in
+- CORS: Handled by worker headers
+
+---
+
+## Performance Characteristics
+
+### Worker
+
+- Cold start: ~5ms (WASM is pre-compiled)
+- D1 query: ~1-5ms (edge-local)
+- KV read: ~1ms
+- GitHub API: ~100-300ms (external)
+- Stripe API: ~200-500ms (external)
+
+### Client
+
+- WASM load: ~500ms (4MB compressed)
+- First frame: ~100ms after load
+- Frame time: ~16ms (60fps)
+- Text layout: ~1ms per paragraph
+
+### Caching
+
+- Static assets: 1 year immutable
+- WASM: Streaming compilation while downloading
+- D1: Edge-local, sub-millisecond reads
+- KV: Global replication, eventual consistency
