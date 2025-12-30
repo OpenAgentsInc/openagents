@@ -94,6 +94,7 @@ impl Component for ModelSelector {
             let item_height = self.item_height();
             let dropdown_height = self.available_models.len() as f32 * item_height;
 
+            // Dropdown background - use SURFACE for better visibility
             cx.scene.draw_quad(
                 Quad::new(Bounds::new(
                     bounds.origin.x,
@@ -101,7 +102,7 @@ impl Component for ModelSelector {
                     bounds.size.width,
                     dropdown_height,
                 ))
-                .with_background(theme::bg::ELEVATED)
+                .with_background(theme::bg::SURFACE)
                 .with_border(theme::border::DEFAULT, 1.0),
             );
 
@@ -110,8 +111,9 @@ impl Component for ModelSelector {
                 let item_bounds = Bounds::new(bounds.origin.x, item_y, bounds.size.width, item_height);
 
                 if self.hovered_index == Some(i) {
+                    // Brighter hover state
                     cx.scene.draw_quad(
-                        Quad::new(item_bounds).with_background(theme::bg::HOVER),
+                        Quad::new(item_bounds).with_background(theme::bg::SELECTED),
                     );
                 }
 
