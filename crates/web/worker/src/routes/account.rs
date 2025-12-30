@@ -11,6 +11,7 @@ struct AccountSettings {
     email: Option<String>,
     username: Option<String>,
     github_username: String,
+    nostr_npub: Option<String>,
     credits_balance: i64,
     signup_credits: i64,
     purchased_credits: i64,
@@ -29,6 +30,7 @@ pub async fn get_settings(user: AuthenticatedUser, env: Env) -> Result<Response>
         email: user_record.email,
         username: user_record.username,
         github_username: user_record.github_username,
+        nostr_npub: user_record.nostr_npub,
         credits_balance: user_record.credits_balance,
         signup_credits: user_record.signup_credits,
         purchased_credits: user_record.purchased_credits,
@@ -43,7 +45,8 @@ pub async fn get_settings(user: AuthenticatedUser, env: Env) -> Result<Response>
 /// Generate a new API key
 pub async fn generate_api_key(user: AuthenticatedUser, env: Env) -> Result<Response> {
     let db = env.d1("DB")?;
-    let api_key = users::generate_api_key(&db, &user.user_id).await?;
+    let session_secret = env.secret("SESSION_SECRET")?.to_string();
+    let api_key = users::generate_api_key(&db, &user.user_id, &session_secret).await?;
 
     Response::from_json(&serde_json::json!({
         "api_key": api_key,
