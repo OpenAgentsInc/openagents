@@ -26,14 +26,18 @@ Implemented:
 - Spark invoice creation
 - Prepare/send payments + payment history listing
 - Event listeners, network status checks, HTLC claim
+- LNURL pay/withdraw + Lightning address management APIs
+- On-chain deposit claim/refund + recommended fee lookup
+- Token metadata + issuer API access
+- Message signing/verification, user settings, leaf optimization controls
+- Passphrase support for wallet initialization
+- Advanced SDK config + key set selection via SparkWalletBuilder
 
 Remaining for Phase 2:
 
-- LNURL pay/withdraw + Lightning address management
-- On-chain deposit claim/refund + fee quote UX
-- Token balances/metadata and issuer APIs
-- Advanced config surface (sync interval, max claim fee, lnurl domain, real-time sync, private mode)
-- Passphrase support + explicit wallet info coverage
+- Expose advanced config through WalletConfig + CLI/GUI surfaces
+- Token-aware balance shaping + WalletInfo population
+- CLI/GUI wiring for LNURL, on-chain claims, tokens, user settings, and optimization
 
 ### ⏸️ Phase 3: Payment Extensions (PLANNED)
 

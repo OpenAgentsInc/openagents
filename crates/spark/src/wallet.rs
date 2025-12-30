@@ -18,7 +18,7 @@ use breez_sdk_spark::{
     BreezSdk, connect, default_config,
     ClaimDepositRequest, ClaimDepositResponse, ClaimHtlcPaymentRequest,
     CheckLightningAddressRequest, CheckMessageRequest, CheckMessageResponse,
-    ConnectRequest, ExternalInputParser,
+    Config, ConnectRequest, ExternalInputParser,
     GetInfoRequest, GetInfoResponse, GetPaymentRequest, GetPaymentResponse,
     GetTokensMetadataRequest, GetTokensMetadataResponse,
     InputType,
@@ -29,7 +29,8 @@ use breez_sdk_spark::{
     PrepareSendPaymentRequest, ReceivePaymentMethod, ReceivePaymentRequest, ReceivePaymentResponse,
     RegisterLightningAddressRequest, RefundDepositRequest, RefundDepositResponse,
     RecommendedFees, Seed, SendPaymentRequest, SyncWalletRequest, SyncWalletResponse,
-    EventListener, LightningAddressInfo, SignMessageRequest, SignMessageResponse,
+    EventListener, KeySetType, LightningAddressInfo, SdkBuilder,
+    SignMessageRequest, SignMessageResponse,
     UpdateUserSettingsRequest, UserSettings, OptimizationProgress, TokenIssuer,
 };
 use serde::{Deserialize, Serialize};
@@ -38,6 +39,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 // Re-export SDK types that consumers need
 pub use breez_sdk_spark::{
+    Config,
     BitcoinAddressDetails,
     BitcoinNetwork,
     Bolt11Invoice,
@@ -69,6 +71,7 @@ pub use breez_sdk_spark::{
     LnurlPayResponse,
     LnurlWithdrawRequest,
     LnurlWithdrawResponse,
+    KeySetType,
     MaxFee,
     OptimizationConfig,
     OptimizationProgress,
@@ -292,6 +295,111 @@ impl Default for WalletConfig {
     }
 }
 
+/// Builder for advanced Spark wallet configuration
+pub struct SparkWalletBuilder {
+    signer: SparkSigner,
+    config: WalletConfig,
+    sdk_config: Option<Config>,
+    key_set_type: Option<KeySetType>,
+    use_address_index: bool,
+    account_number: Option<u32>,
+}
+
+impl SparkWalletBuilder {
+    pub fn new(signer: SparkSigner, config: WalletConfig) -> Self {
+        Self {
+            signer,
+            config,
+            sdk_config: None,
+            key_set_type: None,
+            use_address_index: false,
+            account_number: None,
+        }
+    }
+
+    /// Override the Breez SDK config (advanced use)
+    pub fn with_sdk_config(mut self, sdk_config: Config) -> Self {
+        self.sdk_config = Some(sdk_config);
+        self
+    }
+
+    /// Override the key set and derivation path selection
+    pub fn with_key_set(
+        mut self,
+        key_set_type: KeySetType,
+        use_address_index: bool,
+        account_number: Option<u32>,
+    ) -> Self {
+        self.key_set_type = Some(key_set_type);
+        self.use_address_index = use_address_index;
+        self.account_number = account_number;
+        self
+    }
+
+    pub async fn build(self) -> Result<SparkWallet, SparkError> {
+        let passphrase = if self.signer.passphrase().is_empty() {
+            None
+        } else {
+            Some(self.signer.passphrase().to_string())
+        };
+        let seed = Seed::Mnemonic {
+            mnemonic: self.signer.mnemonic().to_string(),
+            passphrase,
+        };
+
+        let mut sdk_config = match self.sdk_config {
+            Some(config) => {
+                let expected = self.config.network.to_sdk_network();
+                if config.network != expected {
+                    return Err(SparkError::InitializationFailed(format!(
+                        "SDK config network {:?} does not match wallet network {:?}",
+                        config.network, expected
+                    )));
+                }
+                config
+            }
+            None => {
+                let mut config = default_config(self.config.network.to_sdk_network());
+                if self.config.api_key.is_some() {
+                    config.api_key = self.config.api_key.clone();
+                } else {
+                    config.real_time_sync_server_url = None;
+                }
+                config
+            }
+        };
+
+        if sdk_config.api_key.is_none() {
+            sdk_config.api_key = self.config.api_key.clone();
+        }
+
+        let mut builder = SdkBuilder::new(sdk_config, seed)
+            .with_default_storage(self.config.storage_dir.to_string_lossy().to_string());
+
+        let configure_key_set = self.key_set_type.is_some()
+            || self.account_number.is_some()
+            || self.use_address_index;
+        if configure_key_set {
+            builder = builder.with_key_set(
+                self.key_set_type.unwrap_or(KeySetType::Default),
+                self.use_address_index,
+                self.account_number,
+            );
+        }
+
+        let sdk = builder
+            .build()
+            .await
+            .map_err(|e| SparkError::InitializationFailed(e.to_string()))?;
+
+        Ok(SparkWallet {
+            signer: self.signer,
+            config: self.config,
+            sdk: Arc::new(sdk),
+        })
+    }
+}
+
 /// Spark wallet for Bitcoin/Lightning payments
 ///
 /// This wraps the Breez SDK to provide self-custodial Bitcoin payments
@@ -343,6 +451,11 @@ pub struct SparkWallet {
 }
 
 impl SparkWallet {
+    /// Create a builder for advanced configuration
+    pub fn builder(signer: SparkSigner, config: WalletConfig) -> SparkWalletBuilder {
+        SparkWalletBuilder::new(signer, config)
+    }
+
     /// Create a new Spark wallet with the given signer and configuration
     ///
     /// This method initializes the Breez SDK with the wallet's mnemonic and configuration,
