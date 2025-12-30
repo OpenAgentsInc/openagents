@@ -1,6 +1,7 @@
+use crate::clipboard::copy_to_clipboard;
 use crate::components::atoms::EntryType as AtomEntryType;
 use crate::components::context::{EventContext, PaintContext};
-use crate::components::molecules::EntryActions;
+use crate::components::molecules::{EntryAction, EntryActions};
 use crate::components::{Component, ComponentId, EventResult};
 use crate::{Bounds, InputEvent, Point, Quad, theme};
 
@@ -34,6 +35,10 @@ pub struct ThreadEntry {
     hovered: bool,
     on_copy: Option<Box<dyn FnMut()>>,
     on_retry: Option<Box<dyn FnMut()>>,
+    /// Text that will be copied to clipboard when Copy is clicked.
+    copyable_text: Option<String>,
+    /// Persistent actions component (not recreated each frame).
+    actions: EntryActions,
 }
 
 impl ThreadEntry {
@@ -46,6 +51,8 @@ impl ThreadEntry {
             hovered: false,
             on_copy: None,
             on_retry: None,
+            copyable_text: None,
+            actions: EntryActions::new(),
         }
     }
 
@@ -72,6 +79,12 @@ impl ThreadEntry {
         F: FnMut() + 'static,
     {
         self.on_retry = Some(Box::new(f));
+        self
+    }
+
+    /// Set the text that will be copied to clipboard when Copy is clicked.
+    pub fn copyable_text(mut self, text: impl Into<String>) -> Self {
+        self.copyable_text = Some(text.into());
         self
     }
 
@@ -113,16 +126,13 @@ impl Component for ThreadEntry {
 
         if self.show_actions || self.hovered {
             let actions_y = bounds.origin.y + bounds.size.height - padding - 24.0;
-            let mut actions = EntryActions::new();
-            actions.paint(
-                Bounds::new(
-                    bounds.origin.x + bounds.size.width - padding - 100.0,
-                    actions_y,
-                    100.0,
-                    24.0,
-                ),
-                cx,
+            let actions_bounds = Bounds::new(
+                bounds.origin.x + bounds.size.width - padding - 100.0,
+                actions_y,
+                100.0,
+                24.0,
             );
+            self.actions.paint(actions_bounds, cx);
         }
     }
 
@@ -144,6 +154,32 @@ impl Component for ThreadEntry {
 
         if self.show_actions || self.hovered {
             content_bounds.size.height -= 32.0;
+
+            // Route events to actions bar when visible
+            let actions_y = bounds.origin.y + bounds.size.height - padding - 24.0;
+            let actions_bounds = Bounds::new(
+                bounds.origin.x + bounds.size.width - padding - 100.0,
+                actions_y,
+                100.0,
+                24.0,
+            );
+
+            if let EventResult::Handled = self.actions.event(event, actions_bounds, cx) {
+                // Check if an action was triggered
+                if let Some(action) = self.actions.take_triggered_action() {
+                    match action {
+                        EntryAction::Copy => {
+                            if let Some(ref text) = self.copyable_text {
+                                let _ = copy_to_clipboard(text);
+                            }
+                        }
+                        _ => {
+                            // Other actions not yet implemented
+                        }
+                    }
+                }
+                return EventResult::Handled;
+            }
         }
 
         self.content.event(event, content_bounds, cx)

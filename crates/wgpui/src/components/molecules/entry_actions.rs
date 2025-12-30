@@ -23,6 +23,8 @@ pub struct EntryActions {
     hovered_action: Option<EntryAction>,
     on_action: Option<Box<dyn FnMut(EntryAction)>>,
     on_feedback: Option<Box<dyn FnMut(FeedbackType)>>,
+    /// Last triggered action (for polling instead of callbacks).
+    triggered_action: Option<EntryAction>,
 }
 
 impl EntryActions {
@@ -39,7 +41,13 @@ impl EntryActions {
             hovered_action: None,
             on_action: None,
             on_feedback: None,
+            triggered_action: None,
         }
+    }
+
+    /// Take the last triggered action (clears it).
+    pub fn take_triggered_action(&mut self) -> Option<EntryAction> {
+        self.triggered_action.take()
     }
 
     pub fn with_id(mut self, id: ComponentId) -> Self {
@@ -221,6 +229,9 @@ impl Component for EntryActions {
                         let width = label.len() as f32 * font_size * 0.6;
                         let action_bounds = Bounds::new(current_x, bounds.origin.y, width, bounds.size.height);
                         if action_bounds.contains(click) {
+                            // Store for polling
+                            self.triggered_action = Some(action);
+                            // Also call callback if set
                             if let Some(cb) = &mut self.on_action {
                                 cb(action);
                             }
