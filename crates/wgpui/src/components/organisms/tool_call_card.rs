@@ -26,6 +26,10 @@ pub struct ToolCallCard {
     child_tools: Vec<ChildTool>,
     /// Scroll offset for child tools area
     child_scroll: f32,
+    /// Whether to auto-scroll to bottom when children are added
+    auto_scroll: bool,
+    /// Last mouse position for scroll hit-testing
+    last_mouse_pos: Option<Point>,
 }
 
 impl ToolCallCard {
@@ -49,6 +53,8 @@ impl ToolCallCard {
             hovered: false,
             child_tools: Vec::new(),
             child_scroll: 0.0,
+            auto_scroll: true, // Auto-scroll to bottom by default
+            last_mouse_pos: None,
         }
     }
 
@@ -101,6 +107,23 @@ impl ToolCallCard {
     /// Add a child tool (for Task/subagent cards)
     pub fn add_child(&mut self, child: ChildTool) {
         self.child_tools.push(child);
+        // Auto-scroll to bottom when a new child is added
+        if self.auto_scroll {
+            self.scroll_to_bottom();
+        }
+    }
+
+    /// Scroll to show the most recent (bottom) child
+    pub fn scroll_to_bottom(&mut self) {
+        let total_children_height = self.child_tools.len() as f32 * Self::HEADER_HEIGHT;
+        let visible_height = (Self::MAX_VISIBLE_CHILDREN as f32 * Self::HEADER_HEIGHT).min(total_children_height);
+        let max_scroll = (total_children_height - visible_height).max(0.0);
+        self.child_scroll = max_scroll;
+    }
+
+    /// Enable or disable auto-scroll to bottom
+    pub fn set_auto_scroll(&mut self, enabled: bool) {
+        self.auto_scroll = enabled;
     }
 
     /// Update a child tool's status by name and params
@@ -326,7 +349,7 @@ impl Component for ToolCallCard {
         let max_children_height = Self::MAX_VISIBLE_CHILDREN as f32 * Self::HEADER_HEIGHT;
         let total_children_height = self.child_tools.len() as f32 * Self::HEADER_HEIGHT;
         let visible_height = total_children_height.min(max_children_height);
-        let _children_bounds = Bounds::new(
+        let children_bounds = Bounds::new(
             bounds.origin.x + 16.0,
             children_start_y,
             bounds.size.width - 16.0,
@@ -335,6 +358,9 @@ impl Component for ToolCallCard {
 
         match event {
             InputEvent::MouseMove { x, y } => {
+                // Track mouse position for scroll hit-testing
+                self.last_mouse_pos = Some(Point::new(*x, *y));
+
                 let was_hovered = self.hovered;
                 self.hovered = header_bounds.contains(Point::new(*x, *y));
                 if was_hovered != self.hovered {
@@ -348,11 +374,25 @@ impl Component for ToolCallCard {
                 }
             }
             InputEvent::Scroll { dy, .. } => {
-                // Handle scroll within child tools area (if we have children, handle scroll)
+                // Only handle scroll if mouse is within children bounds
                 if !self.child_tools.is_empty() {
-                    let max_scroll = (total_children_height - visible_height).max(0.0);
-                    self.child_scroll = (self.child_scroll - dy).clamp(0.0, max_scroll);
-                    return EventResult::Handled;
+                    if let Some(mouse_pos) = self.last_mouse_pos {
+                        if children_bounds.contains(mouse_pos) {
+                            let max_scroll = (total_children_height - visible_height).max(0.0);
+                            let new_scroll = (self.child_scroll - dy).clamp(0.0, max_scroll);
+
+                            // Disable auto-scroll if user scrolled up manually
+                            if new_scroll < max_scroll {
+                                self.auto_scroll = false;
+                            } else {
+                                // Re-enable auto-scroll if user scrolled to bottom
+                                self.auto_scroll = true;
+                            }
+
+                            self.child_scroll = new_scroll;
+                            return EventResult::Handled;
+                        }
+                    }
                 }
             }
             _ => {}
