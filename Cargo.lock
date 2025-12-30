@@ -964,16 +964,14 @@ name = "autopilot-container"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "autopilot",
- "autopilot-service",
  "axum 0.8.8",
  "chrono",
  "claude-agent-sdk",
  "futures-util",
+ "git2",
  "serde",
  "serde_json",
  "tokio",
- "tokio-tungstenite 0.24.0",
  "tower 0.5.2",
  "tower-http",
  "tracing",
