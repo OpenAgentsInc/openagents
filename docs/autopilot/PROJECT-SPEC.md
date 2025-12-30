@@ -1,8 +1,10 @@
 # Autopilot Project Specification
 
-**Vision:** A mech suit for Claude Code—infrastructure that transforms AI coding assistants from interactive tools into autonomous workers.
+**Vision:** A mech suit for Claude Code—infrastructure that transforms AI coding assistants from interactive tools into autonomous workers. The experience is visceral: a sci-fi HUD with panes opening, code streaming, tools firing—your AI coding on autopilot while you watch or walk away.
 
 **The Core Insight:** A copilot assists you while you work; an autopilot works for you while you do other things. The difference is not in the model but in the architecture: removing the human from the critical path removes the primary constraint on velocity.
+
+**Category Ownership:** We own "Autopilot" for code. Not "AI coding assistant" or "code agent"—Autopilot. The term captures what matters: autonomous operation, human oversight without human bottleneck, the experience of watching your AI work for you.
 
 ---
 
@@ -26,6 +28,7 @@
 | Layer | What It Does | When |
 |-------|--------------|------|
 | **Autopilot Core** | Autonomous task execution with trajectory logging | Phase 0-1 |
+| **Autopilot HUD** | Sci-fi visual interface—watch your AI code in real-time | Phase 1 |
 | **Daemon** | Crash recovery, supervision, stall detection | Phase 0-1 |
 | **Metrics & Learning** | Self-improvement flywheel, APM tracking | Phase 2 |
 | **Orchestration** | Multi-agent coordination, hook system | Phase 3 |
@@ -83,14 +86,34 @@ crates/
 
 ### Features
 
-#### 1.1 Full-Auto Mode
+#### 1.1 Autopilot HUD (WGPUI) — The Hero Experience
+The HUD is not a nice-to-have dashboard—it's the product's signature moment. When someone sees Autopilot for the first time, they should see a sci-fi command center with panes opening, code streaming, tools firing autonomously. This is what people screenshot, share, and remember.
+
+**Design Principles:**
+- Dense information display (no wasted whitespace)
+- Sharp corners, Vera Mono font, high contrast
+- Panes that open/close/resize as the agent works
+- Visible autonomous action—the AI is clearly "doing things"
+- Minimal but powerful user intervention points
+
+**Features:**
+- [x] Basic shell with panels
+- [ ] **Live coding pane** - Stream agent's file edits in real-time
+- [ ] **Tool activity feed** - Visual log of tools firing (read, edit, bash, etc.)
+- [ ] **Issue queue pane** - Watch backlog shrink as issues complete
+- [ ] **APM gauge** - Real-time actions-per-minute display
+- [ ] **Session timeline** - Scrubable trajectory visualization
+- [ ] **Agent status indicators** - Thinking, executing, waiting, blocked
+- [ ] **Multi-agent grid** (future) - Watch multiple agents work simultaneously
+
+#### 1.2 Full-Auto Mode
 - [x] Claim issue → implement → test → commit → PR workflow
 - [x] Budget/turn limits for safety
 - [x] `--full-auto` flag
 - [ ] Automatic issue discovery when queue empty
 - [ ] Loop continuation until budget exhausted
 
-#### 1.2 Daemon Supervisor (`autopilotd`)
+#### 1.3 Daemon Supervisor (`autopilotd`)
 - [x] Crash recovery with exponential backoff
 - [x] Memory monitoring and node process killing
 - [x] Known-good binary system (prevents compile-breaking crashes)
@@ -98,32 +121,27 @@ crates/
 - [ ] Health check endpoint for monitoring
 - [ ] Multi-worker support (run N agents in parallel)
 
-#### 1.3 Context Management
+#### 1.4 Context Management
 - [x] Compaction strategies (Detailed, Summary, Autonomous, Planning)
 - [x] Context loss detection
 - [x] Pre-compaction hook injection
 - [ ] Adaptive compaction based on task type
 - [ ] Critical context auto-preservation
 
-#### 1.4 Plan Mode
+#### 1.5 Plan Mode
 - [x] Restricted environment for exploration/design
 - [x] Tool restrictions (read-only except plan file)
 - [x] Phase progression (Explore → Design → Review → Final)
 - [ ] Subagent launching from plan mode
 - [ ] Plan validation before implementation
 
-#### 1.5 Dashboard (WGPUI)
-- [x] Basic shell with panels
-- [ ] Real-time APM display
-- [ ] Issue queue visualization
-- [ ] Trajectory viewer
-- [ ] Session browser with search
-
 ### Success Criteria
 - [ ] 10+ paying customers
 - [ ] >80% issue completion rate
 - [ ] <5% tool error rate
 - [ ] Positive NPS from early adopters
+- [ ] **Demo video that creates "wait, it can do that?" reaction in <10 seconds**
+- [ ] **HUD screenshots shared organically on social media**
 
 ---
 
@@ -590,11 +608,18 @@ Draft → Pending Review → Approved → Published → (Deprecated)
 ## Metrics Dashboard
 
 ### Phase 1 Metrics
+**Product:**
 - Paying customers
 - Issue completion rate
 - Tool error rate
 - Session crash rate
 - Customer NPS
+
+**Visibility (the product is the demo):**
+- Demo video view count
+- Organic social shares of HUD screenshots
+- "Wait, it can do that?" reaction rate
+- Time-to-first-ah-ha-moment (<10 sec target)
 
 ### Phase 2 Metrics
 - Velocity score trend
@@ -626,10 +651,13 @@ Draft → Pending Review → Approved → Published → (Deprecated)
 Autopilot is a "mech suit" for Claude Code:
 
 1. **Amplification** - Same Claude, 4x throughput (19 vs 4.5 APM)
-2. **Protection** - Budget limits, approval workflows, crash recovery
-3. **Coordination** - Multi-agent orchestration
-4. **Persistence** - Session resume, trajectory logging
-5. **Economics** - Payments, marketplace access
-6. **Identity** - Sovereign keys, verifiable actions
+2. **Visibility** - Sci-fi HUD showing your AI at work—the cockpit of your mech suit
+3. **Protection** - Budget limits, approval workflows, crash recovery
+4. **Coordination** - Multi-agent orchestration
+5. **Persistence** - Session resume, trajectory logging
+6. **Economics** - Payments, marketplace access
+7. **Identity** - Sovereign keys, verifiable actions
 
 You don't become the mech suit. The mech suit makes you more powerful while keeping you safe.
+
+**The HUD is the product.** When Iron Man puts on the suit, the first thing you see is the heads-up display activating. The HUD is not decoration—it's how you know you're in a mech suit. Autopilot's visual interface serves the same purpose: it makes the invisible (AI cognition) visible, and the mundane (background processes) spectacular.
