@@ -31,11 +31,65 @@ fn retry_delay(attempt: u32) -> std::time::Duration {
     std::time::Duration::from_millis(delay_ms.min(MAX_RETRY_DELAY_MS))
 }
 
+/// Extract output from tool_result JSON (stdout, stderr, error)
+fn extract_tool_output(tool_result: &serde_json::Value) -> Option<String> {
+    // Check for error first
+    if let Some(error) = tool_result.get("error").and_then(|e| e.as_str()) {
+        if !error.is_empty() {
+            return Some(error.to_string());
+        }
+    }
+
+    // Combine stdout and stderr
+    let stdout = tool_result
+        .get("stdout")
+        .and_then(|s| s.as_str())
+        .unwrap_or("");
+    let stderr = tool_result
+        .get("stderr")
+        .and_then(|s| s.as_str())
+        .unwrap_or("");
+
+    // Also check for content field (some tools use this)
+    let content = tool_result
+        .get("content")
+        .and_then(|c| c.as_str())
+        .unwrap_or("");
+
+    // Build combined output
+    let combined = if !stdout.is_empty() && !stderr.is_empty() {
+        format!("{}\n\nstderr:\n{}", stdout, stderr)
+    } else if !stdout.is_empty() {
+        stdout.to_string()
+    } else if !stderr.is_empty() {
+        stderr.to_string()
+    } else if !content.is_empty() {
+        content.to_string()
+    } else {
+        return None;
+    };
+
+    // Truncate very large outputs
+    if combined.len() > 5000 {
+        Some(format!(
+            "{}...\n\n({} bytes total)",
+            &combined[..5000],
+            combined.len()
+        ))
+    } else {
+        Some(combined)
+    }
+}
+
 #[derive(Clone, Serialize, Deserialize)]
 pub enum ClaudeToken {
     Chunk(String),
     ToolUse { name: String, params: String },
-    ToolDone { name: String },
+    ToolDone {
+        name: String,
+        output: Option<String>,
+        is_error: bool,
+    },
     Done(String),
     Error(String),
     /// Usage update from SDK Result
@@ -60,7 +114,13 @@ pub struct ClaudeUsageData {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum ClaudeEvent {
     Text(String),
-    Tool { name: String, params: String, done: bool },
+    Tool {
+        name: String,
+        params: String,
+        done: bool,
+        output: Option<String>,
+        is_error: bool,
+    },
 }
 
 pub fn run_claude_planning(
@@ -299,7 +359,17 @@ Your turn should only end with calling ExitPlanMode. Do not stop early."#.to_str
                             if let Some(ref log) = logger {
                                 log.log_tool_result("planning", &tool_name, tool_result);
                             }
-                            let _ = tx.send(ClaudeToken::ToolDone { name: tool_name });
+                            // Extract output and error status from tool_result
+                            let output = extract_tool_output(tool_result);
+                            let is_error = tool_result
+                                .get("is_error")
+                                .and_then(|v| v.as_bool())
+                                .unwrap_or(false);
+                            let _ = tx.send(ClaudeToken::ToolDone {
+                                name: tool_name,
+                                output,
+                                is_error,
+                            });
                             verbose_println!("[CLAUDE][TOOL_RESULT] {}", serde_json::to_string_pretty(tool_result).unwrap_or_default());
                         }
                     }
@@ -524,7 +594,17 @@ Start now."#, plan);
                             if let Some(ref log) = logger {
                                 log.log_tool_result("execution", &tool_name, tool_result);
                             }
-                            let _ = tx.send(ClaudeToken::ToolDone { name: tool_name });
+                            // Extract output and error status from tool_result
+                            let output = extract_tool_output(tool_result);
+                            let is_error = tool_result
+                                .get("is_error")
+                                .and_then(|v| v.as_bool())
+                                .unwrap_or(false);
+                            let _ = tx.send(ClaudeToken::ToolDone {
+                                name: tool_name,
+                                output,
+                                is_error,
+                            });
                         }
                     }
                     Ok(SdkMessage::Result(result)) => {
@@ -739,7 +819,17 @@ Otherwise, provide a detailed plan for the next iteration in the same format as 
                             if let Some(ref log) = logger {
                                 log.log_tool_result(&format!("review_{}", iteration), &tool_name, tool_result);
                             }
-                            let _ = tx.send(ClaudeToken::ToolDone { name: tool_name });
+                            // Extract output and error status from tool_result
+                            let output = extract_tool_output(tool_result);
+                            let is_error = tool_result
+                                .get("is_error")
+                                .and_then(|v| v.as_bool())
+                                .unwrap_or(false);
+                            let _ = tx.send(ClaudeToken::ToolDone {
+                                name: tool_name,
+                                output,
+                                is_error,
+                            });
                         }
                     }
                     Ok(SdkMessage::Result(result)) => {

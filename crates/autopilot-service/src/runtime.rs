@@ -23,6 +23,8 @@ pub enum SessionEvent {
         name: String,
         params: String,
         done: bool,
+        output: Option<String>,
+        is_error: bool,
     },
 }
 
@@ -249,11 +251,13 @@ impl AutopilotRuntime {
                     phase,
                     content: content.clone(),
                 }),
-                ClaudeEvent::Tool { name, params, done } => out.push(SessionEvent::Tool {
+                ClaudeEvent::Tool { name, params, done, output, is_error } => out.push(SessionEvent::Tool {
                     phase,
                     name: name.clone(),
                     params: params.clone(),
                     done: *done,
+                    output: output.clone(),
+                    is_error: *is_error,
                 }),
             }
         }

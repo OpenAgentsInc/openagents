@@ -547,23 +547,36 @@ impl AutopilotShell {
                 name,
                 params,
                 done,
+                output,
+                is_error,
             } => {
                 let tool_type = tool_type_from_name(name);
                 // Use phase::name + truncated params as unique key (multiple tools can have same name)
                 let params_hash = params.chars().take(60).collect::<String>();
                 let tool_key = format!("{}::{}::{}", phase_label(*phase), name, params_hash);
                 let display_name = format!("{}::{}", phase_label(*phase), name);
-                let is_task = name == "Task";
+                let is_task_tool = name == "Task";
 
                 if *done {
-                    // Tool completed
-                    if is_task {
+                    // Tool completed - determine status from error flag
+                    let status = if *is_error {
+                        ToolStatus::Error
+                    } else {
+                        ToolStatus::Success
+                    };
+
+                    if is_task_tool {
                         // Task completed - update entry and clean up children
                         if let Some(entry_idx) = self.pending_tools.remove(&tool_key) {
                             // Build final card with all children marked complete
                             let mut card = ToolCallCard::new(tool_type, display_name.clone())
-                                .status(ToolStatus::Success)
+                                .status(status)
                                 .input(params.clone());
+
+                            // Add output if available
+                            if let Some(output_text) = output {
+                                card = card.output(output_text.clone());
+                            }
 
                             // Add all children (they should already be marked complete)
                             if let Some(children) = self.task_children.get(&entry_idx) {
@@ -622,16 +635,16 @@ impl AutopilotShell {
                                         && child.status == ToolStatus::Running
                                         && child.params.starts_with(&params_prefix)
                                     {
-                                        child.status = ToolStatus::Success;
+                                        child.status = status;
                                         break;
                                     }
                                 }
                                 // Fallback: if no exact match found, try name-only
-                                let any_updated = children.iter().any(|c| c.name == *name && c.status == ToolStatus::Success);
+                                let any_updated = children.iter().any(|c| c.name == *name && c.status != ToolStatus::Running);
                                 if !any_updated {
                                     for child in children.iter_mut().rev() {
                                         if child.name == *name && child.status == ToolStatus::Running {
-                                            child.status = ToolStatus::Success;
+                                            child.status = status;
                                             break;
                                         }
                                     }
@@ -643,9 +656,15 @@ impl AutopilotShell {
                             // Standalone tool (no parent Task) - update directly
                             if let Some(entry_idx) = self.pending_tools.remove(&tool_key) {
                                 if let Some(entry) = self.thread_view.entry_mut(entry_idx) {
-                                    let card = ToolCallCard::new(tool_type, display_name)
-                                        .status(ToolStatus::Success)
+                                    let mut card = ToolCallCard::new(tool_type, display_name)
+                                        .status(status)
                                         .input(params.clone());
+
+                                    // Add output if available
+                                    if let Some(output_text) = output {
+                                        card = card.output(output_text.clone());
+                                    }
+
                                     entry.set_content(card);
                                 }
                             }
@@ -653,7 +672,7 @@ impl AutopilotShell {
                     }
                 } else {
                     // Tool starting
-                    if is_task {
+                    if is_task_tool {
                         // Task tool - add to main thread and push to active_tasks
                         let entry_idx = self.thread_view.entry_count();
                         self.pending_tools.insert(tool_key.clone(), entry_idx);

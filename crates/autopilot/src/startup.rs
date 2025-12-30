@@ -883,14 +883,16 @@ impl StartupState {
                                 name: name.clone(),
                                 params,
                                 done: false,
+                                output: None,
+                                is_error: false,
                             });
                             self.update_claude_streaming_line(elapsed);
                         }
-                        ClaudeToken::ToolDone { name } => {
+                        ClaudeToken::ToolDone { name, output, is_error } => {
                             // Find the matching tool and get its params
                             let params = self.claude_events.iter().rev()
                                 .find_map(|e| {
-                                    if let ClaudeEvent::Tool { name: n, params, done } = e {
+                                    if let ClaudeEvent::Tool { name: n, params, done, .. } = e {
                                         if n == &name && !*done { Some(params.clone()) } else { None }
                                     } else { None }
                                 });
@@ -903,12 +905,14 @@ impl StartupState {
                                     }
                                 }
                             }
-                            // Push completion event so shell receives it
+                            // Push completion event with output so shell receives it
                             if let Some(params) = params {
                                 self.claude_events.push(ClaudeEvent::Tool {
                                     name: name.clone(),
                                     params,
                                     done: true,
+                                    output,
+                                    is_error,
                                 });
                             }
                             self.update_claude_streaming_line(elapsed);
@@ -1053,14 +1057,16 @@ impl StartupState {
                                 name: name.clone(),
                                 params,
                                 done: false,
+                                output: None,
+                                is_error: false,
                             });
                             self.update_exec_streaming_line(elapsed);
                         }
-                        ClaudeToken::ToolDone { name } => {
+                        ClaudeToken::ToolDone { name, output, is_error } => {
                             // Find the matching tool and get its params
                             let params = self.exec_events.iter().rev()
                                 .find_map(|e| {
-                                    if let ClaudeEvent::Tool { name: n, params, done } = e {
+                                    if let ClaudeEvent::Tool { name: n, params, done, .. } = e {
                                         if n == &name && !*done { Some(params.clone()) } else { None }
                                     } else { None }
                                 });
@@ -1073,12 +1079,14 @@ impl StartupState {
                                     }
                                 }
                             }
-                            // Push completion event
+                            // Push completion event with output
                             if let Some(params) = params {
                                 self.exec_events.push(ClaudeEvent::Tool {
                                     name: name.clone(),
                                     params,
                                     done: true,
+                                    output,
+                                    is_error,
                                 });
                             }
                             self.update_exec_streaming_line(elapsed);
@@ -1169,14 +1177,16 @@ impl StartupState {
                                 name: name.clone(),
                                 params,
                                 done: false,
+                                output: None,
+                                is_error: false,
                             });
                             self.update_review_streaming_line(elapsed);
                         }
-                        ClaudeToken::ToolDone { name } => {
+                        ClaudeToken::ToolDone { name, output, is_error } => {
                             // Find the matching tool and get its params
                             let params = self.review_events.iter().rev()
                                 .find_map(|e| {
-                                    if let ClaudeEvent::Tool { name: n, params, done } = e {
+                                    if let ClaudeEvent::Tool { name: n, params, done, .. } = e {
                                         if n == &name && !*done { Some(params.clone()) } else { None }
                                     } else { None }
                                 });
@@ -1189,12 +1199,14 @@ impl StartupState {
                                     }
                                 }
                             }
-                            // Push completion event
+                            // Push completion event with output
                             if let Some(params) = params {
                                 self.review_events.push(ClaudeEvent::Tool {
                                     name: name.clone(),
                                     params,
                                     done: true,
+                                    output,
+                                    is_error,
                                 });
                             }
                             self.update_review_streaming_line(elapsed);
@@ -1389,14 +1401,16 @@ impl StartupState {
                                 name: name.clone(),
                                 params,
                                 done: false,
+                                output: None,
+                                is_error: false,
                             });
                             self.update_fix_streaming_line(elapsed);
                         }
-                        ClaudeToken::ToolDone { name } => {
+                        ClaudeToken::ToolDone { name, output, is_error } => {
                             // Find the matching tool and get its params
                             let params = self.fix_events.iter().rev()
                                 .find_map(|e| {
-                                    if let ClaudeEvent::Tool { name: n, params, done } = e {
+                                    if let ClaudeEvent::Tool { name: n, params, done, .. } = e {
                                         if n == &name && !*done { Some(params.clone()) } else { None }
                                     } else { None }
                                 });
@@ -1409,12 +1423,14 @@ impl StartupState {
                                     }
                                 }
                             }
-                            // Push completion event
+                            // Push completion event with output
                             if let Some(params) = params {
                                 self.fix_events.push(ClaudeEvent::Tool {
                                     name: name.clone(),
                                     params,
                                     done: true,
+                                    output,
+                                    is_error,
                                 });
                             }
                             self.update_fix_streaming_line(elapsed);
