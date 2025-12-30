@@ -104,8 +104,8 @@ impl ThreadEntry {
 
 impl Component for ThreadEntry {
     fn paint(&mut self, bounds: Bounds, cx: &mut PaintContext) {
-        // Dense: minimal padding (2px)
-        let padding = 2.0;
+        // Dense but readable padding (4px)
+        let padding = 4.0;
 
         if self.hovered {
             cx.scene.draw_quad(
@@ -143,8 +143,8 @@ impl Component for ThreadEntry {
             }
         }
 
-        // Dense: minimal padding (2px)
-        let padding = 2.0;
+        // Dense but readable padding (4px)
+        let padding = 4.0;
         let mut content_bounds = bounds;
         content_bounds.origin.x += padding;
         content_bounds.origin.y += padding;
@@ -188,8 +188,8 @@ impl Component for ThreadEntry {
 
     fn size_hint(&self) -> (Option<f32>, Option<f32>) {
         let (w, h) = self.content.size_hint();
-        // Dense: minimal padding (2px on each side = 4px total)
-        let padding = 4.0;
+        // Dense but readable padding (4px on each side = 8px total)
+        let padding = 8.0;
         // No reserved space for actions - they overlay on hover
         (w.map(|w| w + padding), h.map(|h| h + padding))
     }
