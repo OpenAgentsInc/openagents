@@ -64,8 +64,9 @@ pub struct AutopilotShell {
     // Track in-flight tool calls: tool_key -> entry_index
     pending_tools: HashMap<String, usize>,
 
-    // Active Task tool for nesting child tools: (tool_key, entry_index)
-    active_task: Option<(String, usize)>,
+    // Active Task tools for nesting child tools: Vec of (tool_key, entry_index)
+    // Multiple Tasks can run in parallel, we track all of them
+    active_tasks: Vec<(String, usize)>,
 
     // External children storage for Task tools (works around type erasure)
     // Maps parent entry_idx -> accumulated child tools
@@ -187,7 +188,7 @@ impl AutopilotShell {
             last_section_count: 0,
             expanded_sections: HashSet::new(), // All sections start collapsed
             pending_tools: HashMap::new(),
-            active_task: None,
+            active_tasks: Vec::new(),
             task_children: HashMap::new(),
             full_auto_toggle: FullAutoToggle::new(),
             keymap,
@@ -294,7 +295,7 @@ impl AutopilotShell {
             last_section_count: 0,
             expanded_sections: HashSet::new(),
             pending_tools: HashMap::new(),
-            active_task: None,
+            active_tasks: Vec::new(),
             task_children: HashMap::new(),
             full_auto_toggle: FullAutoToggle::new(),
             keymap,
@@ -526,18 +527,24 @@ impl AutopilotShell {
                             self.task_children.remove(&entry_idx);
                         }
 
-                        // Clear active task if this was it
-                        if let Some((ref active_key, _)) = self.active_task {
-                            if *active_key == tool_key {
-                                self.active_task = None;
+                        // Remove this Task from active_tasks
+                        self.active_tasks.retain(|(key, _)| key != &tool_key);
+                    } else {
+                        // Non-Task tool completed - find which parent Task owns it
+                        // Search all active Tasks for one that has this child
+                        let mut found_parent = None;
+                        for (_, parent_idx) in &self.active_tasks {
+                            if let Some(children) = self.task_children.get(parent_idx) {
+                                if children.iter().any(|c| c.name == *name && c.status == ToolStatus::Running) {
+                                    found_parent = Some(*parent_idx);
+                                    break;
+                                }
                             }
                         }
-                    } else {
-                        // Non-Task tool completed
-                        if let Some((_, parent_idx)) = self.active_task {
-                            // This is a child of an active Task - update child status
+
+                        if let Some(parent_idx) = found_parent {
+                            // Update child status in the parent that owns it
                             if let Some(children) = self.task_children.get_mut(&parent_idx) {
-                                // Find and update the child status (reverse search for most recent)
                                 for child in children.iter_mut().rev() {
                                     if child.name == *name && child.status == ToolStatus::Running {
                                         child.status = ToolStatus::Success;
@@ -547,7 +554,7 @@ impl AutopilotShell {
                             }
                             // Rebuild parent to show updated child status
                             self.rebuild_task_entry(parent_idx);
-                        } else {
+                        } else if self.active_tasks.is_empty() {
                             // Standalone tool (no parent Task) - update directly
                             if let Some(entry_idx) = self.pending_tools.remove(&tool_key) {
                                 if let Some(entry) = self.thread_view.entry_mut(entry_idx) {
@@ -562,20 +569,23 @@ impl AutopilotShell {
                 } else {
                     // Tool starting
                     if is_task {
-                        // Task tool - add to main thread and set as active
+                        // Task tool - add to main thread and push to active_tasks
                         let entry_idx = self.thread_view.entry_count();
                         self.pending_tools.insert(tool_key.clone(), entry_idx);
-                        self.active_task = Some((tool_key.clone(), entry_idx));
+                        self.active_tasks.push((tool_key.clone(), entry_idx));
 
                         let card = ToolCallCard::new(tool_type, display_name)
                             .status(ToolStatus::Running)
                             .input(params.clone());
                         self.thread_view
                             .push_entry(ThreadEntry::new(ThreadEntryType::Tool, card));
-                    } else if let Some((_, parent_idx)) = self.active_task {
-                        // Non-Task tool with active parent - add as nested child
-                        // DON'T add to thread_view as separate entry
-                        // Accumulate in task_children and rebuild parent
+                    } else if !self.active_tasks.is_empty() {
+                        // Non-Task tool with active parent(s) - add as nested child
+                        // Find the active Task with fewest children (distribute evenly)
+                        let parent_idx = self.active_tasks.iter()
+                            .map(|(_, idx)| *idx)
+                            .min_by_key(|idx| self.task_children.get(idx).map(|c| c.len()).unwrap_or(0))
+                            .unwrap(); // Safe: we checked active_tasks is not empty
 
                         let child = ChildTool {
                             tool_type,
