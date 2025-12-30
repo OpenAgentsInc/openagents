@@ -318,20 +318,65 @@ pub fn verify_webhook_signature(payload: &[u8], signature: &str, secret: &str) -
 
 ## Client Architecture
 
+### Client-Side View Routing
+
+The client is a single-page app that runs entirely on `/`. Views are managed via `AppView` enum:
+
+```rust
+enum AppView {
+    Landing,      // Login screen (not authenticated)
+    RepoSelector, // Repository picker (authenticated)
+    RepoView,     // Main app shell with sidebars (repo selected)
+}
+```
+
+**View transitions:**
+```
+Landing ──[OAuth success]──▶ RepoSelector ──[click repo]──▶ RepoView
+                                  │                             │
+                                  └─────[logout]────────────────┘
+                                            │
+                                            ▼
+                                        Landing
+```
+
+No URL changes occur during view transitions - all state is client-side.
+
+### App Shell Structure (RepoView)
+
+```
+┌──────────────────────────────────────────────────────────────────────────┐
+│  LEFT DOCK (280px)  │        CENTER PANE         │  RIGHT DOCK (300px)   │
+│  - Model selector   │        - Repo name         │  - Full Auto toggle   │
+│  - Sessions list    │        - ThreadView        │  - Usage stats        │
+│  - Hotkey legend    │          (future)          │  - Token counts       │
+├─────────────────────┴────────────────────────────┴───────────────────────┤
+│                            STATUS BAR (28px)                              │
+│  - Dock toggle hints                                      - Repo path    │
+└──────────────────────────────────────────────────────────────────────────┘
+```
+
+Dock visibility controlled by keyboard shortcuts:
+- `cmd-[` → `left_dock_open`
+- `cmd-]` → `right_dock_open`
+- `cmd-\` → Toggle both
+- `cmd-a` → `full_auto_enabled`
+
 ### WGPUI Rendering Pipeline
 
 ```
-User Input → DemoState → Scene → Renderer → GPU → Canvas
+User Input → AppState → Scene → Renderer → GPU → Canvas
 
-1. Event handlers update DemoState
-   - Keyboard: restart stream, adjust width
-   - Mouse: track position
+1. Event handlers update AppState
+   - Keyboard: dock toggles, Full Auto
+   - Mouse: track position, hover detection
+   - Click: view transitions, toggles
    - Wheel: scroll offset
 
 2. Each frame (60fps):
-   a. Advance streaming markdown (tick)
+   a. Match current view (Landing/RepoSelector/RepoView)
    b. Build Scene:
-      - draw_quad() for backgrounds, panels
+      - draw_quad() for backgrounds, panels, buttons
       - draw_text() for text runs
    c. Renderer.prepare() converts to GPU buffers
    d. Renderer.render() issues draw calls

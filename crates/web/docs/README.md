@@ -2,7 +2,37 @@
 
 Full-stack Rust web application on Cloudflare's edge: GPU-accelerated WGPUI frontend + Axum API backend.
 
-**Production URL:** https://openagents.com
+**Production URL:** https://openagents-web.openagents.workers.dev
+
+## User Flow
+
+```
+┌────────────────────────────────────────────────────────────────────────────┐
+│                         ALL ON ROOT URL (/)                                 │
+│                                                                             │
+│  ┌─────────────┐      ┌─────────────────┐      ┌─────────────────────────┐ │
+│  │   Landing   │─────▶│  Repo Selector  │─────▶│       App Shell         │ │
+│  │             │      │                 │      │                         │ │
+│  │ "OpenAgents"│      │ "Select repo:"  │      │ ┌─────┬───────┬───────┐ │ │
+│  │             │      │                 │      │ │Left │Center │Right  │ │ │
+│  │ [Login with │      │ ┌─────────────┐ │      │ │Dock │ Pane  │Dock   │ │ │
+│  │   GitHub]   │      │ │owner/repo   │ │      │ ├─────┴───────┴───────┤ │ │
+│  │             │      │ └─────────────┘ │      │ │    Status Bar       │ │ │
+│  └─────────────┘      └─────────────────┘      │ └─────────────────────┘ │ │
+│        │                      │                └─────────────────────────┘ │
+│        │ OAuth               │ click repo                                  │
+│        ▼                      ▼                                             │
+│   /api/auth/            Set context +                                      │
+│   github/start          switch view                                        │
+│                                                                             │
+└────────────────────────────────────────────────────────────────────────────┘
+
+Keyboard shortcuts (in App Shell):
+  cmd-[     Toggle left dock
+  cmd-]     Toggle right dock
+  cmd-\     Toggle both docks
+  cmd-a     Toggle Full Auto
+```
 
 ## Architecture Overview
 
@@ -20,15 +50,15 @@ Full-stack Rust web application on Cloudflare's edge: GPU-accelerated WGPUI fron
 │   │                                                                       │   │
 │   │   ┌───────────────┐   ┌───────────────┐   ┌───────────────┐         │   │
 │   │   │  API Routes   │   │   Sessions    │   │   Database    │         │   │
-│   │   │   (Axum)      │   │     (KV)      │   │     (D1)      │         │   │
+│   │   │               │   │     (KV)      │   │     (D1)      │         │   │
 │   │   │               │   │               │   │               │         │   │
 │   │   │ /api/auth/*   │   │ 30-day TTL    │   │ SQLite at     │         │   │
-│   │   │ /api/billing/*│   │ Session data  │   │ edge          │         │   │
-│   │   │ /api/stripe/* │   │ OAuth state   │   │               │         │   │
-│   │   │ /hud/:user/*  │   │               │   │ Users         │         │   │
+│   │   │ /api/repos    │   │ Session data  │   │ edge          │         │   │
+│   │   │ /api/billing/*│   │ OAuth state   │   │               │         │   │
+│   │   │ /api/stripe/* │   │               │   │ Users         │         │   │
 │   │   └───────────────┘   └───────────────┘   │ Billing       │         │   │
 │   │           │                   │           │ Stripe        │         │   │
-│   │           └───────────────────┴───────────┤ HUD settings  │         │   │
+│   │           └───────────────────┴───────────┤               │         │   │
 │   │                                           └───────────────┘         │   │
 │   └─────────────────────────────────────────────────────────────────────┘   │
 │                                      │                                       │
@@ -39,9 +69,10 @@ Full-stack Rust web application on Cloudflare's edge: GPU-accelerated WGPUI fron
 │   │                                                                       │   │
 │   │   index.html → WGPUI Client (WASM) → WebGPU/WebGL → <canvas>        │   │
 │   │                                                                       │   │
-│   │   • GPU-accelerated text rendering                                   │   │
-│   │   • Streaming markdown                                               │   │
-│   │   • Live HUD visualization                                           │   │
+│   │   Single-page app with client-side view routing:                     │   │
+│   │   • Landing (login)                                                  │   │
+│   │   • RepoSelector (pick repo)                                         │   │
+│   │   • App Shell (autopilot UI with sidebars)                          │   │
 │   └─────────────────────────────────────────────────────────────────────┘   │
 │                                                                              │
 └─────────────────────────────────────────────────────────────────────────────┘
@@ -94,7 +125,7 @@ crates/web/
 ├── client/                     # WGPUI Frontend (Client-side WASM)
 │   ├── Cargo.toml              # wasm-bindgen, wgpui dependencies
 │   └── src/
-│       └── lib.rs              # GPU-accelerated UI demo
+│       └── lib.rs              # Single-page app: Landing → RepoSelector → App Shell
 │
 ├── worker/                     # Axum API (Server-side WASM)
 │   ├── Cargo.toml              # workers-rs, serde, chrono
@@ -113,14 +144,14 @@ crates/web/
 │       │   ├── account.rs      # User settings, API keys
 │       │   ├── billing.rs      # Credits, plans, packages
 │       │   ├── stripe.rs       # Payment methods, webhooks
-│       │   └── hud.rs          # Personal HUD URLs (GTM)
+│       │   └── hud.rs          # HUD page rendering
 │       └── services/
 │           ├── mod.rs
-│           ├── github.rs       # GitHub API client
+│           ├── github.rs       # GitHub API client (OAuth, repos)
 │           └── stripe.rs       # Stripe API client
 │
 ├── migrations/                 # D1 SQL migrations
-│   └── 0001_initial.sql        # Users, billing, Stripe, HUD tables
+│   └── 0001_initial.sql        # Users, billing, Stripe tables
 │
 ├── static/                     # Static assets
 ├── pkg/                        # wasm-pack output (git-ignored)
@@ -133,6 +164,7 @@ crates/web/
 │
 └── docs/
     ├── README.md               # This file
+    ├── client-ui.md            # Client UI architecture & views
     ├── architecture.md         # Technical deep-dive
     └── deployment.md           # Deployment guide
 ```
@@ -170,7 +202,14 @@ bun run cf:tail          # Live logs from production
 |--------|----------|-------------|
 | GET | `/api/auth/github/start` | Initiate GitHub OAuth flow |
 | GET | `/api/auth/github/callback` | OAuth callback handler |
+| GET | `/api/auth/me` | Get current user info |
 | POST | `/api/auth/logout` | Clear session and logout |
+
+### Repositories (requires auth)
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/repos` | List user's GitHub repositories |
 
 ### Account (requires auth)
 
@@ -242,18 +281,37 @@ Binding: `SESSIONS`
 - Session tokens with 30-day TTL
 - OAuth state tokens (10-minute TTL)
 
-## GTM (Go-To-Market) Features
+## App Shell Layout
 
-The web app implements the [GTM strategy](../../live/GTM.md):
+After logging in and selecting a repository, users see the main Autopilot interface:
 
-| Feature | Implementation | Description |
-|---------|----------------|-------------|
-| **Live Fishbowl** | `/` | Landing page showing live Autopilot session |
-| **Personal HUD** | `/hud/:user/:repo` | Shareable personal HUD URLs |
-| **Embeddable** | `/embed/:user/:repo` | iframe-friendly minimal HUD |
-| **<30s Onboarding** | OAuth → Repo select | Single-click GitHub to live HUD |
-| **Public by Default** | `hud_settings.is_public` | HUDs visible unless opted out |
-| **Viral Loop** | Share URL | Users share their HUDs, driving signups |
+```
+┌────────────────────────────────────────────────────────────────────────────┐
+│ LEFT DOCK (280px)    │      CENTER PANE         │ RIGHT DOCK (300px)       │
+│                      │                          │                          │
+│ Model: sonnet        │                          │ ○ FULL AUTO OFF          │
+│ ───────────────────  │                          │                          │
+│ Sessions             │      owner/repo          │ Claude Usage             │
+│ ┌──────────────────┐ │                          │ ───────────────────────  │
+│ │ Today 14:32      │ │  (ThreadView will go     │ Model: sonnet            │
+│ └──────────────────┘ │   here)                  │ Context: ████░░░░░░ 10%  │
+│                      │                          │                          │
+│ Hotkeys              │                          │ Tokens:  0 / 0           │
+│ cmd-[   left dock    │                          │ Cost:    $0.00           │
+│ cmd-]   right dock   │                          │                          │
+├──────────────────────┴──────────────────────────┴──────────────────────────┤
+│ cmd-[ / cmd-] toggle docks                                  owner/repo     │
+└────────────────────────────────────────────────────────────────────────────┘
+                                STATUS BAR (28px)
+```
+
+**Keyboard shortcuts:**
+- `cmd-[` Toggle left dock
+- `cmd-]` Toggle right dock
+- `cmd-\` Toggle both docks
+- `cmd-a` Toggle Full Auto mode
+
+See [client-ui.md](./client-ui.md) for detailed UI documentation.
 
 ## Database Schema
 
@@ -280,11 +338,11 @@ See `migrations/0001_initial.sql` for full schema. Key tables:
 
 | Document | Description |
 |----------|-------------|
+| [client-ui.md](./client-ui.md) | Client UI views, app shell, keyboard shortcuts |
 | [architecture.md](./architecture.md) | Technical architecture, data flows, WASM details |
 | [deployment.md](./deployment.md) | Build, optimize, deploy to Cloudflare |
 
 ## Related
 
 - [WGPUI Crate](../../wgpui/) - GPU-accelerated UI library
-- [GTM Strategy](../../../live/GTM.md) - Go-to-market approach
 - [Autopilot Spec](../../../docs/autopilot/PROJECT-SPEC.md) - Product roadmap
