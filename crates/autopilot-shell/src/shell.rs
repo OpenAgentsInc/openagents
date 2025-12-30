@@ -22,7 +22,7 @@ use crate::components::FullAutoToggle;
 use crate::dock::{Dock, DockPosition, Panel};
 use crate::hud::{HudBackground, StartupSequence};
 use crate::keymap::shell_keymap;
-use crate::panels::{SessionsPanel, SessionUsage, SystemPanel, UsageLimit};
+use crate::panels::{SessionAction, SessionInfo, SessionsPanel, SessionUsage, SystemPanel, UsageLimit};
 use crate::rate_limits::{RateLimitFetcher, RateLimitSnapshot};
 
 /// Layout dimensions calculated from current bounds
@@ -39,6 +39,9 @@ pub struct AutopilotShell {
     left_dock: Dock,
     right_dock: Dock,
     bottom_dock: Dock,
+
+    // Left sidebar panel (stored directly for action handling)
+    sessions_panel: SessionsPanel,
 
     // Right sidebar panel (not in dock for direct access)
     system_panel: SystemPanel,
@@ -93,9 +96,25 @@ pub struct AutopilotShell {
 
 impl AutopilotShell {
     pub fn new() -> Self {
-        // Create left dock with sessions panel
-        let mut left_dock = Dock::new(DockPosition::Left, 280.0);
-        left_dock.add_panel(Box::new(SessionsPanel::new()));
+        // Create left dock (empty - we render sessions panel directly for action handling)
+        let left_dock = Dock::new(DockPosition::Left, 280.0);
+
+        // Create sessions panel directly (like system_panel)
+        let mut sessions_panel = SessionsPanel::new();
+        // Load recent sessions
+        if let Ok(summaries) = autopilot::SessionCheckpoint::list_sessions() {
+            let sessions: Vec<SessionInfo> = summaries
+                .into_iter()
+                .take(5)
+                .map(|s| SessionInfo {
+                    id: s.session_id,
+                    timestamp: s.checkpoint_time,
+                    model: format!("{:?}", s.phase), // We don't have model in summary, use phase
+                    is_current: false,
+                })
+                .collect();
+            sessions_panel.set_sessions(sessions);
+        }
 
         // Create right dock (empty - we render system panel directly for data access)
         let right_dock = Dock::new(DockPosition::Right, 300.0);
@@ -178,6 +197,7 @@ impl AutopilotShell {
             left_dock,
             right_dock,
             bottom_dock,
+            sessions_panel,
             system_panel,
             thread_view,
             background: HudBackground::new(),
@@ -203,10 +223,26 @@ impl AutopilotShell {
     /// Create a shell from a saved checkpoint.
     pub fn with_checkpoint(cp: SessionCheckpoint) -> Self {
         let working_dir = cp.working_dir.clone();
+        let current_session_id = cp.session_id.clone();
 
-        // Create left dock with sessions panel
-        let mut left_dock = Dock::new(DockPosition::Left, 280.0);
-        left_dock.add_panel(Box::new(SessionsPanel::new()));
+        // Create left dock (empty - we render sessions panel directly)
+        let left_dock = Dock::new(DockPosition::Left, 280.0);
+
+        // Create sessions panel directly
+        let mut sessions_panel = SessionsPanel::new();
+        if let Ok(summaries) = autopilot::SessionCheckpoint::list_sessions() {
+            let sessions: Vec<SessionInfo> = summaries
+                .into_iter()
+                .take(5)
+                .map(|s| SessionInfo {
+                    id: s.session_id.clone(),
+                    timestamp: s.checkpoint_time,
+                    model: format!("{:?}", s.phase),
+                    is_current: s.session_id == current_session_id,
+                })
+                .collect();
+            sessions_panel.set_sessions(sessions);
+        }
 
         // Create right dock (empty - we render system panel directly for data access)
         let right_dock = Dock::new(DockPosition::Right, 300.0);
@@ -285,6 +321,7 @@ impl AutopilotShell {
             left_dock,
             right_dock,
             bottom_dock,
+            sessions_panel,
             system_panel,
             thread_view,
             background: HudBackground::new(),
@@ -776,6 +813,117 @@ impl AutopilotShell {
         }
     }
 
+    /// Handle actions from the sessions panel
+    fn handle_session_action(&mut self, action: SessionAction) {
+        match action {
+            SessionAction::ResumeSession(session_id) => {
+                info!("Resuming session: {}", session_id);
+
+                // Load checkpoint
+                match SessionCheckpoint::load(&session_id) {
+                    Ok(checkpoint) => {
+                        // Clear and rebuild thread view
+                        self.thread_view.clear();
+                        self.pending_tools.clear();
+                        self.active_tasks.clear();
+                        self.task_children.clear();
+
+                        // Add phase header
+                        let header = format!("Resumed: {} ({:?})", session_id, checkpoint.phase);
+                        self.thread_view.push_entry(
+                            ThreadEntry::new(ThreadEntryType::System, Text::new(&header))
+                                .copyable_text(&header),
+                        );
+
+                        // Reconstruct messages from log lines
+                        for line in &checkpoint.lines {
+                            if !line.text.is_empty() {
+                                self.thread_view.push_entry(
+                                    ThreadEntry::new(ThreadEntryType::System, Text::new(&line.text))
+                                        .copyable_text(&line.text),
+                                );
+                            }
+                        }
+
+                        // Replace runtime with checkpoint runtime
+                        self.runtime = AutopilotRuntime::from_checkpoint(checkpoint);
+
+                        // Update sessions panel
+                        self.refresh_sessions_list(&session_id);
+                    }
+                    Err(e) => {
+                        let err_msg = format!("Failed to load session: {}", e);
+                        self.thread_view.push_entry(
+                            ThreadEntry::new(ThreadEntryType::Error, Text::new(&err_msg))
+                                .copyable_text(&err_msg),
+                        );
+                    }
+                }
+            }
+            SessionAction::SetModel(model) => {
+                info!("Setting model to: {:?}", model);
+
+                // Convert wgpui Model to ClaudeModel
+                use wgpui::components::atoms::Model;
+                let claude_model = match model {
+                    Model::ClaudeSonnet => ClaudeModel::Sonnet,
+                    Model::ClaudeOpus => ClaudeModel::Opus,
+                    _ => ClaudeModel::Sonnet, // Fallback for other models
+                };
+
+                self.runtime.set_model(claude_model);
+            }
+            SessionAction::Interrupt => {
+                info!("Interrupting current query");
+
+                self.runtime.interrupt();
+                self.sessions_panel.set_running(false);
+
+                self.thread_view.push_entry(
+                    ThreadEntry::new(ThreadEntryType::System, Text::new("Interrupted."))
+                        .copyable_text("Interrupted."),
+                );
+            }
+            SessionAction::NewSession => {
+                info!("Creating new session");
+
+                // Clear UI state
+                self.thread_view.clear();
+                self.pending_tools.clear();
+                self.active_tasks.clear();
+                self.task_children.clear();
+
+                // Reset runtime
+                self.runtime.reset(ClaudeModel::Sonnet);
+
+                // Add welcome message
+                self.thread_view.push_entry(
+                    ThreadEntry::new(ThreadEntryType::System, Text::new("New session started."))
+                        .copyable_text("New session started."),
+                );
+
+                // Refresh sessions list (no current session)
+                self.refresh_sessions_list("");
+            }
+        }
+    }
+
+    /// Refresh the sessions list in the sidebar
+    fn refresh_sessions_list(&mut self, current_id: &str) {
+        if let Ok(summaries) = SessionCheckpoint::list_sessions() {
+            let sessions: Vec<SessionInfo> = summaries
+                .into_iter()
+                .take(5)
+                .map(|s| SessionInfo {
+                    id: s.session_id.clone(),
+                    timestamp: s.checkpoint_time,
+                    model: format!("{:?}", s.phase),
+                    is_current: s.session_id == current_id,
+                })
+                .collect();
+            self.sessions_panel.set_sessions(sessions);
+        }
+    }
 }
 
 impl Default for AutopilotShell {
@@ -811,8 +959,26 @@ impl Component for AutopilotShell {
         // 4. Calculate layout
         let layout = self.calculate_layout(bounds);
 
-        // 5. Paint docks
-        self.left_dock.paint(layout.left, cx);
+        // 5. Paint left sidebar with sessions panel
+        if self.left_dock.is_open() {
+            // Draw line frame for left sidebar
+            let line_color = Hsla::new(0.0, 0.0, 0.3, 0.5);
+            let bg_color = Hsla::new(0.0, 0.0, 0.05, 0.9);
+            let mut frame = Frame::lines()
+                .line_color(line_color)
+                .bg_color(bg_color)
+                .stroke_width(1.0);
+            frame.paint(layout.left, cx);
+
+            // Sessions panel content
+            let panel_bounds = Bounds::new(
+                layout.left.origin.x + 8.0,
+                layout.left.origin.y + 8.0,
+                layout.left.size.width - 16.0,
+                layout.left.size.height - 16.0,
+            );
+            self.sessions_panel.paint(panel_bounds, cx);
+        }
 
         // 5b. Paint right sidebar with system panel (rendered directly for data access)
         if self.right_dock.is_open() {
@@ -907,9 +1073,19 @@ impl Component for AutopilotShell {
             }
         }
 
-        // Route to docks
+        // Route to left sidebar sessions panel
         if self.left_dock.is_open() {
-            if let EventResult::Handled = self.left_dock.event(event, layout.left, cx) {
+            let panel_bounds = Bounds::new(
+                layout.left.origin.x + 8.0,
+                layout.left.origin.y + 8.0,
+                layout.left.size.width - 16.0,
+                layout.left.size.height - 16.0,
+            );
+            if let EventResult::Handled = self.sessions_panel.event(event, panel_bounds, cx) {
+                // Process any pending actions from the panel
+                for action in self.sessions_panel.take_actions() {
+                    self.handle_session_action(action);
+                }
                 return EventResult::Handled;
             }
         }
