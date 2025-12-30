@@ -24,8 +24,9 @@ pub struct Text {
 }
 
 impl Text {
-    /// Default wrap width estimate for size_hint before paint
-    const DEFAULT_WRAP_WIDTH: f32 = 700.0;
+    /// Default wrap width estimate for size_hint before paint.
+    /// Use conservative estimate (narrower) to avoid underestimating height.
+    const DEFAULT_WRAP_WIDTH: f32 = 400.0;
 
     pub fn new(content: impl Into<String>) -> Self {
         let content = content.into();
@@ -33,12 +34,19 @@ impl Text {
         let font_size = theme::font_size::SM;
         let char_width = font_size * 0.6;
         let chars_per_line = (Self::DEFAULT_WRAP_WIDTH / char_width) as usize;
-        let char_count = content.chars().count();
-        let estimated_lines = if chars_per_line > 0 {
-            (char_count / chars_per_line).max(1)
-        } else {
-            1
-        };
+
+        // Count explicit newlines + estimate wrapped lines for each paragraph
+        let mut estimated_lines = 0;
+        for line in content.split('\n') {
+            let char_count = line.chars().count();
+            let line_wrap_count = if chars_per_line > 0 && char_count > 0 {
+                (char_count / chars_per_line).max(1)
+            } else {
+                1
+            };
+            estimated_lines += line_wrap_count;
+        }
+        estimated_lines = estimated_lines.max(1);
 
         Self {
             id: None,
@@ -113,18 +121,29 @@ impl Text {
         let line_height = font_size * 1.4;
         let char_width = font_size * 0.6;
 
-        // Calculate wrapped line count
-        let mut wrapper = LineWrapper::new_monospace(0, font_size, char_width);
-        let fragments = [LineFragment::text(&self.content)];
-        let boundaries: Vec<_> = wrapper.wrap_line(&fragments, wrap_width).collect();
+        // Calculate wrapped line count accounting for newlines
+        let mut total_lines = 0;
 
-        let line_count = boundaries.len().max(1);
+        for paragraph in self.content.split('\n') {
+            if paragraph.is_empty() {
+                total_lines += 1;
+                continue;
+            }
+
+            let mut wrapper = LineWrapper::new_monospace(0, font_size, char_width);
+            let fragments = [LineFragment::text(paragraph)];
+            let boundaries: Vec<_> = wrapper.wrap_line(&fragments, wrap_width).collect();
+
+            // boundaries.len() gives wrap points, add 1 for the final segment
+            total_lines += boundaries.len().max(1);
+        }
+        total_lines = total_lines.max(1);
 
         // Update cache for size_hint()
-        self.cached_line_count = line_count;
+        self.cached_line_count = total_lines;
         self.cached_wrap_width = wrap_width;
 
-        let height = line_height * line_count as f32;
+        let height = line_height * total_lines as f32;
         (None, Some(height))
     }
 }
@@ -138,66 +157,83 @@ impl Component for Text {
         let font_size = self.style.font_size.unwrap_or(self.font_size);
         let color = self.style.text_color.unwrap_or(self.color);
         let line_height = font_size * 1.4;
-
-        if !self.wrap || bounds.size.width <= 0.0 {
-            // No wrapping - single line
-            let text_run = cx.text.layout_styled(
-                &self.content,
-                Point::new(bounds.origin.x, bounds.origin.y + font_size),
-                font_size,
-                color,
-                self.font_style,
-            );
-            cx.scene.draw_text(text_run);
-            return;
-        }
-
-        // Text wrapping using LineWrapper
         let char_width = font_size * 0.6;
-        let mut wrapper = LineWrapper::new_monospace(0, font_size, char_width);
-        let fragments = [LineFragment::text(&self.content)];
-        let boundaries: Vec<_> = wrapper.wrap_line(&fragments, bounds.size.width).collect();
 
-        let mut line_start = 0;
         let mut y = bounds.origin.y + font_size;
-        let mut line_count = 0;
+        let mut total_line_count = 0;
 
-        for boundary in &boundaries {
+        // Split by newlines first, then wrap each paragraph
+        for paragraph in self.content.split('\n') {
             if y > bounds.origin.y + bounds.size.height {
-                break; // Stop if we've exceeded bounds
+                break;
             }
-            let line_text = &self.content[line_start..boundary.ix];
-            if !line_text.is_empty() {
+
+            if paragraph.is_empty() {
+                // Empty line - just advance y
+                y += line_height;
+                total_line_count += 1;
+                continue;
+            }
+
+            if !self.wrap || bounds.size.width <= 0.0 {
+                // No wrapping - render paragraph as single line
                 let text_run = cx.text.layout_styled(
-                    line_text.trim_end(),
+                    paragraph,
                     Point::new(bounds.origin.x, y),
                     font_size,
                     color,
                     self.font_style,
                 );
                 cx.scene.draw_text(text_run);
-            }
-            line_start = boundary.ix;
-            y += line_height;
-            line_count += 1;
-        }
+                y += line_height;
+                total_line_count += 1;
+            } else {
+                // Wrap this paragraph
+                let mut wrapper = LineWrapper::new_monospace(0, font_size, char_width);
+                let fragments = [LineFragment::text(paragraph)];
+                let boundaries: Vec<_> = wrapper.wrap_line(&fragments, bounds.size.width).collect();
 
-        // Draw remaining text after last boundary
-        let remaining = &self.content[line_start..];
-        if !remaining.is_empty() && y <= bounds.origin.y + bounds.size.height {
-            let text_run = cx.text.layout_styled(
-                remaining.trim_end(),
-                Point::new(bounds.origin.x, y),
-                font_size,
-                color,
-                self.font_style,
-            );
-            cx.scene.draw_text(text_run);
-            line_count += 1;
+                let mut line_start = 0;
+
+                for boundary in &boundaries {
+                    if y > bounds.origin.y + bounds.size.height {
+                        break;
+                    }
+                    let line_text = &paragraph[line_start..boundary.ix];
+                    if !line_text.is_empty() {
+                        let text_run = cx.text.layout_styled(
+                            line_text.trim_end(),
+                            Point::new(bounds.origin.x, y),
+                            font_size,
+                            color,
+                            self.font_style,
+                        );
+                        cx.scene.draw_text(text_run);
+                    }
+                    line_start = boundary.ix;
+                    y += line_height;
+                    total_line_count += 1;
+                }
+
+                // Draw remaining text after last boundary
+                let remaining = &paragraph[line_start..];
+                if !remaining.is_empty() && y <= bounds.origin.y + bounds.size.height {
+                    let text_run = cx.text.layout_styled(
+                        remaining.trim_end(),
+                        Point::new(bounds.origin.x, y),
+                        font_size,
+                        color,
+                        self.font_style,
+                    );
+                    cx.scene.draw_text(text_run);
+                    y += line_height;
+                    total_line_count += 1;
+                }
+            }
         }
 
         // Update cached values for size_hint
-        self.cached_line_count = line_count.max(1);
+        self.cached_line_count = total_line_count.max(1);
         self.cached_wrap_width = bounds.size.width;
     }
 
@@ -215,24 +251,43 @@ impl Component for Text {
     }
 
     fn size_hint(&self) -> (Option<f32>, Option<f32>) {
-        let char_count = self.content.chars().count() as f32;
         let font_size = self.style.font_size.unwrap_or(self.font_size);
         let line_height = font_size * 1.4;
-        let width = char_count * font_size * 0.6;
+        let char_width = font_size * 0.6;
 
-        // Use cached line count if available (from previous paint), otherwise estimate
-        let line_count = if self.cached_line_count > 1 && self.cached_wrap_width > 0.0 {
-            self.cached_line_count
-        } else if self.wrap && self.cached_wrap_width > 0.0 {
-            // Estimate line count based on text length and cached width
-            let chars_per_line = (self.cached_wrap_width / (font_size * 0.6)).max(1.0) as usize;
-            (char_count as usize / chars_per_line).max(1)
-        } else {
-            1
-        };
+        // Use cached line count if we have it from a previous paint
+        if self.cached_line_count > 0 && self.cached_wrap_width > 0.0 {
+            let height = line_height * self.cached_line_count as f32;
+            let max_line_width = self
+                .content
+                .split('\n')
+                .map(|line| line.chars().count() as f32 * char_width)
+                .fold(0.0f32, f32::max);
+            return (Some(max_line_width), Some(height));
+        }
 
-        let height = line_height * line_count as f32;
-        (Some(width), Some(height))
+        // Estimate line count accounting for newlines and wrapping
+        let wrap_width = self.cached_wrap_width.max(Self::DEFAULT_WRAP_WIDTH);
+        let chars_per_line = (wrap_width / char_width).max(1.0) as usize;
+
+        let mut estimated_lines = 0;
+        let mut max_line_width = 0.0f32;
+
+        for paragraph in self.content.split('\n') {
+            let char_count = paragraph.chars().count();
+            let paragraph_width = char_count as f32 * char_width;
+            max_line_width = max_line_width.max(paragraph_width);
+
+            if self.wrap && chars_per_line > 0 && char_count > 0 {
+                estimated_lines += (char_count / chars_per_line).max(1);
+            } else {
+                estimated_lines += 1;
+            }
+        }
+        estimated_lines = estimated_lines.max(1);
+
+        let height = line_height * estimated_lines as f32;
+        (Some(max_line_width), Some(height))
     }
 }
 
