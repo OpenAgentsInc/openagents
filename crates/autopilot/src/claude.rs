@@ -192,6 +192,7 @@ Your turn should only end with calling ExitPlanMode. Do not stop early."#.to_str
 
             let mut stream = match query_result {
                 Ok(Ok(s)) => {
+                    eprintln!("[CLAUDE] *** STREAM STARTED - will look for Result message ***");
                     verbose_println!("[CLAUDE] Stream started successfully");
                     s
                 }
@@ -239,6 +240,12 @@ Your turn should only end with calling ExitPlanMode. Do not stop early."#.to_str
                         continue 'retry;
                     }
                 };
+
+                // Debug: log message type
+                match &msg {
+                    Ok(m) => eprintln!("[CLAUDE] Got message: {:?}", std::mem::discriminant(m)),
+                    Err(e) => eprintln!("[CLAUDE] Got error: {}", e),
+                }
 
                 match msg {
                     Ok(SdkMessage::Assistant(assistant_msg)) => {
