@@ -13,7 +13,7 @@ use wgpui::{
     components::atoms::{ToolStatus, ToolType},
     components::hud::{Frame, StatusBar, StatusItem, StatusItemContent},
     components::molecules::{CollapsibleSection, SectionStatus},
-    components::organisms::{ThreadEntry, ThreadEntryType, ToolCallCard},
+    components::organisms::{ChildTool, ThreadEntry, ThreadEntryType, ToolCallCard},
     components::sections::ThreadView,
     keymap::{Keymap, KeyContext},
 };
@@ -63,6 +63,9 @@ pub struct AutopilotShell {
 
     // Track in-flight tool calls: tool_key -> entry_index
     pending_tools: HashMap<String, usize>,
+
+    // Active Task tool for nesting child tools: (tool_key, entry_index)
+    active_task: Option<(String, usize)>,
 
     // Full Auto toggle
     full_auto_toggle: FullAutoToggle,
@@ -180,6 +183,7 @@ impl AutopilotShell {
             last_section_count: 0,
             expanded_sections: HashSet::new(), // All sections start collapsed
             pending_tools: HashMap::new(),
+            active_task: None,
             full_auto_toggle: FullAutoToggle::new(),
             keymap,
             key_context: KeyContext::new(),
@@ -285,6 +289,7 @@ impl AutopilotShell {
             last_section_count: 0,
             expanded_sections: HashSet::new(),
             pending_tools: HashMap::new(),
+            active_task: None,
             full_auto_toggle: FullAutoToggle::new(),
             keymap,
             key_context: KeyContext::new(),
@@ -435,6 +440,7 @@ impl AutopilotShell {
                 let params_hash = params.chars().take(60).collect::<String>();
                 let tool_key = format!("{}::{}::{}", phase_label(*phase), name, params_hash);
                 let display_name = format!("{}::{}", phase_label(*phase), name);
+                let is_task = name == "Task";
 
                 if *done {
                     // Tool completed - update existing entry's status
@@ -447,17 +453,79 @@ impl AutopilotShell {
                             entry.set_content(card);
                         }
                     }
-                    // Don't push a new entry - we updated the existing one
-                } else {
-                    // Tool starting - create entry and track it
-                    let entry_idx = self.thread_view.entry_count();
-                    self.pending_tools.insert(tool_key.clone(), entry_idx);
 
-                    let card = ToolCallCard::new(tool_type, display_name)
-                        .status(ToolStatus::Running)
-                        .input(params.clone());
-                    self.thread_view
-                        .push_entry(ThreadEntry::new(ThreadEntryType::Tool, card));
+                    // If this was the active task, clear it
+                    if let Some((ref active_key, _)) = self.active_task {
+                        if *active_key == tool_key {
+                            self.active_task = None;
+                        }
+                    }
+
+                    // Also update child tool status if there's an active task
+                    if let Some((_, parent_idx)) = self.active_task {
+                        if let Some(entry) = self.thread_view.entry_mut(parent_idx) {
+                            // Try to downcast to ToolCallCard and update child
+                            // Note: This requires the entry content to be ToolCallCard
+                            // We use a workaround by recreating with updated child
+                        }
+                    }
+                } else {
+                    // Tool starting
+                    if is_task {
+                        // Task tool - add to main thread and set as active
+                        let entry_idx = self.thread_view.entry_count();
+                        self.pending_tools.insert(tool_key.clone(), entry_idx);
+                        self.active_task = Some((tool_key.clone(), entry_idx));
+
+                        let card = ToolCallCard::new(tool_type, display_name)
+                            .status(ToolStatus::Running)
+                            .input(params.clone());
+                        self.thread_view
+                            .push_entry(ThreadEntry::new(ThreadEntryType::Tool, card));
+                    } else if let Some((_, parent_idx)) = self.active_task {
+                        // Non-Task tool with active parent - add as child
+                        // We need to add child to the parent entry
+                        // Since we can't easily modify BoxedComponent, track separately
+                        // For now, still add to pending but don't create new entry
+                        self.pending_tools.insert(tool_key.clone(), parent_idx);
+
+                        // Add child to parent card if we can access it
+                        if let Some(entry) = self.thread_view.entry_mut(parent_idx) {
+                            // Create child tool
+                            let child = ChildTool {
+                                tool_type,
+                                name: name.clone(),
+                                params: params.clone(),
+                                status: ToolStatus::Running,
+                            };
+                            // We need to access the ToolCallCard to add the child
+                            // Since content is Box<dyn Component>, we need a workaround
+                            // For now, we'll need to store children separately or modify architecture
+
+                            // Store in a separate map: parent_entry_idx -> Vec<ChildTool>
+                            // For now, let's just add children directly to main feed with indent marker
+                        }
+
+                        // Fallback: Add as indented entry in main thread
+                        let card = ToolCallCard::new(tool_type, format!("  {}", name))
+                            .status(ToolStatus::Running)
+                            .input(params.clone());
+                        // Override entry_idx to be the actual new entry
+                        let actual_idx = self.thread_view.entry_count();
+                        self.pending_tools.insert(tool_key.clone(), actual_idx);
+                        self.thread_view
+                            .push_entry(ThreadEntry::new(ThreadEntryType::Tool, card));
+                    } else {
+                        // No active task - add to main thread normally
+                        let entry_idx = self.thread_view.entry_count();
+                        self.pending_tools.insert(tool_key.clone(), entry_idx);
+
+                        let card = ToolCallCard::new(tool_type, display_name)
+                            .status(ToolStatus::Running)
+                            .input(params.clone());
+                        self.thread_view
+                            .push_entry(ThreadEntry::new(ThreadEntryType::Tool, card));
+                    }
                 }
             }
         }

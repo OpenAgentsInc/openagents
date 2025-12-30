@@ -3,6 +3,15 @@ use crate::components::context::{EventContext, PaintContext};
 use crate::components::{Component, ComponentId, EventResult};
 use crate::{Bounds, InputEvent, MouseButton, Point, Quad, theme};
 
+/// Child tool for nested display under Task tools
+#[derive(Clone)]
+pub struct ChildTool {
+    pub tool_type: ToolType,
+    pub name: String,
+    pub params: String,
+    pub status: ToolStatus,
+}
+
 /// Compact tool call card - Zed-style one-line rendering
 pub struct ToolCallCard {
     id: Option<ComponentId>,
@@ -13,6 +22,10 @@ pub struct ToolCallCard {
     output: Option<String>,
     expanded: bool,
     hovered: bool,
+    /// Child tools for Task/subagent cards
+    child_tools: Vec<ChildTool>,
+    /// Scroll offset for child tools area
+    child_scroll: f32,
 }
 
 impl ToolCallCard {
@@ -20,6 +33,9 @@ impl ToolCallCard {
     const LINE_HEIGHT: f32 = 18.0;
     const FONT_SIZE: f32 = 12.0;
     const DETAIL_FONT_SIZE: f32 = 11.0;
+
+    /// Max visible child tools (height = 5 * HEADER_HEIGHT)
+    const MAX_VISIBLE_CHILDREN: usize = 5;
 
     pub fn new(tool_type: ToolType, name: impl Into<String>) -> Self {
         Self {
@@ -31,6 +47,8 @@ impl ToolCallCard {
             output: None,
             expanded: false, // Collapsed by default
             hovered: false,
+            child_tools: Vec::new(),
+            child_scroll: 0.0,
         }
     }
 
@@ -73,6 +91,32 @@ impl ToolCallCard {
 
     pub fn get_status(&self) -> ToolStatus {
         self.status
+    }
+
+    /// Check if this is a Task tool (has or can have children)
+    pub fn is_task(&self) -> bool {
+        self.tool_type == ToolType::Task
+    }
+
+    /// Add a child tool (for Task/subagent cards)
+    pub fn add_child(&mut self, child: ChildTool) {
+        self.child_tools.push(child);
+    }
+
+    /// Update a child tool's status by name and params
+    pub fn update_child_status(&mut self, name: &str, params: &str, status: ToolStatus) {
+        // Find matching child and update (search in reverse for most recent)
+        for child in self.child_tools.iter_mut().rev() {
+            if child.name == name && child.params.starts_with(&params[..params.len().min(30)]) {
+                child.status = status;
+                break;
+            }
+        }
+    }
+
+    /// Get number of child tools
+    pub fn child_count(&self) -> usize {
+        self.child_tools.len()
     }
 
     /// Truncate text to fit within available width
@@ -180,10 +224,114 @@ impl Component for ToolCallCard {
                 cx.scene.draw_text(output_run);
             }
         }
+
+        // Render child tools for Task cards (always visible, below header)
+        if !self.child_tools.is_empty() {
+            let children_start_y = bounds.origin.y + Self::HEADER_HEIGHT;
+            let max_children_height = Self::MAX_VISIBLE_CHILDREN as f32 * Self::HEADER_HEIGHT;
+            let total_children_height = self.child_tools.len() as f32 * Self::HEADER_HEIGHT;
+            let visible_height = total_children_height.min(max_children_height);
+
+            // Child tools container background
+            let container_bounds = Bounds::new(
+                bounds.origin.x + 16.0, // indent
+                children_start_y,
+                bounds.size.width - 16.0,
+                visible_height,
+            );
+            cx.scene.draw_quad(
+                Quad::new(container_bounds)
+                    .with_background(theme::bg::MUTED.with_alpha(0.3)),
+            );
+
+            // Clip to container bounds
+            cx.scene.push_clip(container_bounds);
+
+            // Render visible children
+            let max_scroll = (total_children_height - visible_height).max(0.0);
+            let scroll = self.child_scroll.clamp(0.0, max_scroll);
+            let mut child_y = children_start_y - scroll;
+
+            for child in &self.child_tools {
+                if child_y + Self::HEADER_HEIGHT >= children_start_y
+                    && child_y < children_start_y + visible_height
+                {
+                    // Child icon
+                    let child_x = container_bounds.origin.x + 4.0;
+                    let icon_char = child.tool_type.icon();
+                    let icon_color = child.tool_type.color();
+                    let child_text_y = child_y + (Self::HEADER_HEIGHT - Self::DETAIL_FONT_SIZE) / 2.0;
+
+                    cx.scene.draw_quad(
+                        Quad::new(Bounds::new(child_x, child_y + 4.0, 12.0, 12.0))
+                            .with_background(icon_color.with_alpha(0.2)),
+                    );
+                    let icon_run = cx.text.layout(icon_char, Point::new(child_x + 2.0, child_text_y), Self::DETAIL_FONT_SIZE, icon_color);
+                    cx.scene.draw_text(icon_run);
+
+                    // Child name
+                    let name_x = child_x + 16.0;
+                    let child_display = format!("{}", child.name);
+                    let name_run = cx.text.layout(&child_display, Point::new(name_x, child_text_y), Self::DETAIL_FONT_SIZE, theme::text::SECONDARY);
+                    cx.scene.draw_text(name_run);
+
+                    // Child params (truncated)
+                    let params_x = name_x + child.name.len() as f32 * Self::DETAIL_FONT_SIZE * 0.6 + 6.0;
+                    let params_available = container_bounds.size.width - (params_x - container_bounds.origin.x) - 60.0;
+                    if params_available > 30.0 {
+                        let params_truncated = Self::truncate_text(&child.params, params_available, Self::DETAIL_FONT_SIZE);
+                        let params_run = cx.text.layout(&params_truncated, Point::new(params_x, child_text_y), Self::DETAIL_FONT_SIZE, theme::text::MUTED);
+                        cx.scene.draw_text(params_run);
+                    }
+
+                    // Child status
+                    let status_x = container_bounds.origin.x + container_bounds.size.width - 50.0;
+                    let (status_text, status_color) = match child.status {
+                        ToolStatus::Pending => ("...", theme::text::MUTED),
+                        ToolStatus::Running => ("...", theme::status::WARNING),
+                        ToolStatus::Success => ("✓", theme::status::SUCCESS),
+                        ToolStatus::Error => ("✗", theme::status::ERROR),
+                        ToolStatus::Cancelled => ("—", theme::text::MUTED),
+                    };
+                    let status_run = cx.text.layout(status_text, Point::new(status_x, child_text_y), Self::DETAIL_FONT_SIZE, status_color);
+                    cx.scene.draw_text(status_run);
+                }
+                child_y += Self::HEADER_HEIGHT;
+            }
+
+            cx.scene.pop_clip();
+
+            // Scrollbar if needed
+            if total_children_height > visible_height {
+                let scrollbar_height = visible_height * (visible_height / total_children_height);
+                let scrollbar_y = children_start_y + (scroll / total_children_height) * visible_height;
+                cx.scene.draw_quad(
+                    Quad::new(Bounds::new(
+                        bounds.origin.x + bounds.size.width - 6.0,
+                        scrollbar_y,
+                        4.0,
+                        scrollbar_height,
+                    ))
+                    .with_background(theme::text::MUTED.with_alpha(0.5)),
+                );
+            }
+        }
     }
 
     fn event(&mut self, event: &InputEvent, bounds: Bounds, _cx: &mut EventContext) -> EventResult {
         let header_bounds = Bounds::new(bounds.origin.x, bounds.origin.y, bounds.size.width, Self::HEADER_HEIGHT);
+
+        // Child tools scroll area bounds
+        let children_start_y = bounds.origin.y + Self::HEADER_HEIGHT;
+        let max_children_height = Self::MAX_VISIBLE_CHILDREN as f32 * Self::HEADER_HEIGHT;
+        let total_children_height = self.child_tools.len() as f32 * Self::HEADER_HEIGHT;
+        let visible_height = total_children_height.min(max_children_height);
+        let children_bounds = Bounds::new(
+            bounds.origin.x + 16.0,
+            children_start_y,
+            bounds.size.width - 16.0,
+            visible_height,
+        );
 
         match event {
             InputEvent::MouseMove { x, y } => {
@@ -199,6 +347,14 @@ impl Component for ToolCallCard {
                     return EventResult::Handled;
                 }
             }
+            InputEvent::Scroll { dy, .. } => {
+                // Handle scroll within child tools area (if we have children, handle scroll)
+                if !self.child_tools.is_empty() {
+                    let max_scroll = (total_children_height - visible_height).max(0.0);
+                    self.child_scroll = (self.child_scroll - dy).clamp(0.0, max_scroll);
+                    return EventResult::Handled;
+                }
+            }
             _ => {}
         }
         EventResult::Ignored
@@ -209,13 +365,25 @@ impl Component for ToolCallCard {
     }
 
     fn size_hint(&self) -> (Option<f32>, Option<f32>) {
-        let height = if self.expanded {
-            Self::HEADER_HEIGHT
-                + (if self.input.is_some() { Self::LINE_HEIGHT } else { 0.0 })
-                + (if self.output.is_some() { Self::LINE_HEIGHT } else { 0.0 })
-        } else {
-            Self::HEADER_HEIGHT
-        };
+        let mut height = Self::HEADER_HEIGHT;
+
+        // Add expanded content height
+        if self.expanded {
+            if self.input.is_some() {
+                height += Self::LINE_HEIGHT;
+            }
+            if self.output.is_some() {
+                height += Self::LINE_HEIGHT;
+            }
+        }
+
+        // Add child tools height (capped at MAX_VISIBLE_CHILDREN)
+        if !self.child_tools.is_empty() {
+            let children_height = (self.child_tools.len().min(Self::MAX_VISIBLE_CHILDREN) as f32)
+                * Self::HEADER_HEIGHT;
+            height += children_height;
+        }
+
         (None, Some(height))
     }
 }

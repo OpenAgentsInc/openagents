@@ -36,7 +36,7 @@ pub use thread_entry::{EntryType as ThreadEntryType, ThreadEntry};
 pub use threshold_key_manager::{
     KeyManagerTab, KeyShare, PeerStatus, SigningRequest, ThresholdKeyManager, ThresholdPeer,
 };
-pub use tool_call_card::ToolCallCard;
+pub use tool_call_card::{ChildTool, ToolCallCard};
 pub use user_message::UserMessage;
 pub use event_inspector::{EventCategory, EventData, EventInspector, InspectorView, TagData};
 pub use schedule_config::{

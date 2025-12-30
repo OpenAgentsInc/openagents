@@ -24,17 +24,32 @@ pub struct Text {
 }
 
 impl Text {
+    /// Default wrap width estimate for size_hint before paint
+    const DEFAULT_WRAP_WIDTH: f32 = 700.0;
+
     pub fn new(content: impl Into<String>) -> Self {
+        let content = content.into();
+        // Pre-calculate estimated line count for better size_hint
+        let font_size = theme::font_size::SM;
+        let char_width = font_size * 0.6;
+        let chars_per_line = (Self::DEFAULT_WRAP_WIDTH / char_width) as usize;
+        let char_count = content.chars().count();
+        let estimated_lines = if chars_per_line > 0 {
+            (char_count / chars_per_line).max(1)
+        } else {
+            1
+        };
+
         Self {
             id: None,
-            content: content.into(),
+            content,
             style: StyleRefinement::default(),
-            font_size: theme::font_size::SM,
+            font_size,
             color: theme::text::PRIMARY,
             font_style: FontStyle::normal(),
             wrap: true,
-            cached_line_count: 1,
-            cached_wrap_width: 0.0,
+            cached_line_count: estimated_lines,
+            cached_wrap_width: Self::DEFAULT_WRAP_WIDTH,
         }
     }
 
@@ -85,6 +100,32 @@ impl Text {
 
     pub fn content(&self) -> &str {
         &self.content
+    }
+
+    /// Calculate size hint with a specific wrap width.
+    /// Call this before painting when you know the available width.
+    pub fn size_hint_with_width(&mut self, wrap_width: f32) -> (Option<f32>, Option<f32>) {
+        if !self.wrap || wrap_width <= 0.0 {
+            return Component::size_hint(self);
+        }
+
+        let font_size = self.style.font_size.unwrap_or(self.font_size);
+        let line_height = font_size * 1.4;
+        let char_width = font_size * 0.6;
+
+        // Calculate wrapped line count
+        let mut wrapper = LineWrapper::new_monospace(0, font_size, char_width);
+        let fragments = [LineFragment::text(&self.content)];
+        let boundaries: Vec<_> = wrapper.wrap_line(&fragments, wrap_width).collect();
+
+        let line_count = boundaries.len().max(1);
+
+        // Update cache for size_hint()
+        self.cached_line_count = line_count;
+        self.cached_wrap_width = wrap_width;
+
+        let height = line_height * line_count as f32;
+        (None, Some(height))
     }
 }
 
@@ -176,8 +217,21 @@ impl Component for Text {
     fn size_hint(&self) -> (Option<f32>, Option<f32>) {
         let char_count = self.content.chars().count() as f32;
         let font_size = self.style.font_size.unwrap_or(self.font_size);
+        let line_height = font_size * 1.4;
         let width = char_count * font_size * 0.6;
-        let height = font_size * 1.4;
+
+        // Use cached line count if available (from previous paint), otherwise estimate
+        let line_count = if self.cached_line_count > 1 && self.cached_wrap_width > 0.0 {
+            self.cached_line_count
+        } else if self.wrap && self.cached_wrap_width > 0.0 {
+            // Estimate line count based on text length and cached width
+            let chars_per_line = (self.cached_wrap_width / (font_size * 0.6)).max(1.0) as usize;
+            (char_count as usize / chars_per_line).max(1)
+        } else {
+            1
+        };
+
+        let height = line_height * line_count as f32;
         (Some(width), Some(height))
     }
 }
