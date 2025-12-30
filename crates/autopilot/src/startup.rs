@@ -957,6 +957,8 @@ impl StartupState {
                         }
                         ClaudeToken::Usage(usage) => {
                             // Accumulate usage data for session stats
+                            tracing::info!("[STARTUP] Received Usage token: input={}, output={}, cost=${:.4}",
+                                usage.input_tokens, usage.output_tokens, usage.total_cost_usd);
                             self.session_usage.input_tokens += usage.input_tokens;
                             self.session_usage.output_tokens += usage.output_tokens;
                             self.session_usage.cache_read_tokens += usage.cache_read_tokens;
@@ -966,7 +968,9 @@ impl StartupState {
                             self.session_usage.duration_api_ms += usage.duration_api_ms;
                             self.session_usage.num_turns += usage.num_turns;
                             self.session_usage.context_window = usage.context_window;
-                            self.session_usage.model = usage.model;
+                            self.session_usage.model = usage.model.clone();
+                            tracing::info!("[STARTUP] Accumulated usage: input={}, output={}, cost=${:.4}",
+                                self.session_usage.input_tokens, self.session_usage.output_tokens, self.session_usage.total_cost_usd);
                         }
                     }
                 }
