@@ -99,6 +99,8 @@ pub struct AutopilotShell {
 
     // Session resume state (for Claude Code session continuation)
     resumed_session_id: Option<String>,
+    resumed_session_at: Option<String>,
+    resumed_fork_session: bool,
 
     // Channel for receiving messages from resumed SDK session
     sdk_message_rx: Option<Receiver<SdkMessageEvent>>,
@@ -111,6 +113,8 @@ enum SdkMessageEvent {
     AssistantText(String),
     /// Tool use started
     ToolUse { name: String },
+    /// Session ID observed (may change on fork)
+    SessionId(String),
     /// Session completed
     Completed,
     /// Error occurred
@@ -250,6 +254,8 @@ impl AutopilotShell {
             rate_limits,
             working_dir: std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
             resumed_session_id: None,
+            resumed_session_at: None,
+            resumed_fork_session: false,
             sdk_message_rx: None,
         }
     }
@@ -376,6 +382,8 @@ impl AutopilotShell {
             rate_limits,
             working_dir,
             resumed_session_id: None,
+            resumed_session_at: None,
+            resumed_fork_session: false,
             sdk_message_rx: None,
         }
     }
@@ -898,7 +906,10 @@ impl AutopilotShell {
                 if self.full_auto_toggle.is_enabled() {
                     // Full Auto turned ON - check if we have a session to resume
                     if let Some(session_id) = self.resumed_session_id.take() {
-                        self.start_session_resume(session_id);
+                        let (resume_at, fork_session) = self.sessions_panel.resume_options();
+                        self.resumed_session_at = resume_at.clone();
+                        self.resumed_fork_session = fork_session;
+                        self.start_session_resume(session_id, resume_at, fork_session);
                     }
                 } else {
                     // Full Auto turned OFF - save checkpoint
@@ -953,7 +964,7 @@ impl AutopilotShell {
     /// Handle actions from the sessions panel
     fn handle_session_action(&mut self, action: SessionAction) {
         match action {
-            SessionAction::ResumeSession(session_id) => {
+            SessionAction::ResumeSession { session_id, resume_at, fork_session } => {
                 // Load Claude Code session from ~/.claude/projects/
                 if let Some(file_path) = crate::claude_sessions::find_session_file(&session_id) {
                     let messages = crate::claude_sessions::load_session_messages(&file_path);
@@ -971,6 +982,27 @@ impl AutopilotShell {
                         ThreadEntry::new(ThreadEntryType::System, Text::new(&header))
                             .copyable_text(&session_id),
                     );
+
+                    let mut resume_details = Vec::new();
+                    if fork_session {
+                        resume_details.push("fork=on".to_string());
+                    } else {
+                        resume_details.push("fork=off".to_string());
+                    }
+                    if let Some(ref at) = resume_at {
+                        let short_at = &at[..8.min(at.len())];
+                        resume_details.push(format!("resume_at={}", short_at));
+                    }
+                    if !resume_details.is_empty() {
+                        let resume_desc = resume_details.join(", ");
+                        self.thread_view.push_entry(
+                            ThreadEntry::new(
+                                ThreadEntryType::System,
+                                Text::new(&format!("Resume options: {}", resume_desc)),
+                            )
+                            .copyable_text(resume_desc),
+                        );
+                    }
 
                     // Group child tools by parent Task ID for nesting
                     let mut task_children_map: HashMap<String, Vec<&crate::claude_sessions::SessionMessage>> = HashMap::new();
@@ -1066,14 +1098,23 @@ impl AutopilotShell {
                         }
                     }
 
-                    // Store session ID for resume when Full Auto is toggled
+                    // Store session ID/options for resume when Full Auto is toggled
                     self.resumed_session_id = Some(session_id.clone());
+                    self.resumed_session_at = resume_at.clone();
+                    self.resumed_fork_session = fork_session;
 
                     // Show ready to resume message
                     self.thread_view.push_entry(
                         ThreadEntry::new(ThreadEntryType::System,
                             Text::new("Session loaded. Toggle Full Auto (cmd-a) to continue."))
                             .copyable_text("Toggle Full Auto to continue"),
+                    );
+                    self.thread_view.push_entry(
+                        ThreadEntry::new(
+                            ThreadEntryType::System,
+                            Text::new("Adjust resume options in the sidebar before continuing."),
+                        )
+                        .copyable_text("Adjust resume options in the sidebar before continuing."),
                     );
 
                     // Mark as current in the list
@@ -1123,6 +1164,10 @@ impl AutopilotShell {
                 // Reset runtime
                 self.runtime.reset(ClaudeModel::Sonnet);
 
+                self.resumed_session_id = None;
+                self.resumed_session_at = None;
+                self.resumed_fork_session = false;
+
                 // Add welcome message
                 self.thread_view.push_entry(
                     ThreadEntry::new(ThreadEntryType::System, Text::new("New session started."))
@@ -1136,7 +1181,12 @@ impl AutopilotShell {
     }
 
     /// Start resuming a Claude Code session via the SDK
-    fn start_session_resume(&mut self, session_id: String) {
+    fn start_session_resume(
+        &mut self,
+        session_id: String,
+        resume_at: Option<String>,
+        fork_session: bool,
+    ) {
         use claude_agent_sdk::{QueryOptions, SdkMessage};
         use futures::StreamExt;
 
@@ -1161,10 +1211,15 @@ impl AutopilotShell {
 
             rt.block_on(async move {
                 // Build options for resume
-                let options = QueryOptions::new()
+                let mut options = QueryOptions::new()
                     .resume(session_id.clone())
                     .model(&model)
-                    .max_turns(100);
+                    .max_turns(100)
+                    .fork_session(fork_session);
+
+                if let Some(ref message_id) = resume_at {
+                    options = options.resume_session_at(message_id.clone());
+                }
 
                 // Resume the session
                 let mut session = match claude_agent_sdk::unstable_v2_resume_session(session_id, options).await {
@@ -1174,6 +1229,8 @@ impl AutopilotShell {
                         return;
                     }
                 };
+
+                let mut last_session_id: Option<String> = None;
 
                 // Send empty message to continue (SDK will pick up from history)
                 if let Err(e) = session.send("").await {
@@ -1185,6 +1242,12 @@ impl AutopilotShell {
                 while let Some(msg_result) = session.receive().next().await {
                     match msg_result {
                         Ok(msg) => {
+                            if let Some(current_id) = session.session_id().map(|id| id.to_string()) {
+                                if last_session_id.as_deref() != Some(current_id.as_str()) {
+                                    let _ = tx.send(SdkMessageEvent::SessionId(current_id.clone()));
+                                    last_session_id = Some(current_id);
+                                }
+                            }
                             match msg {
                                 SdkMessage::Assistant(a) => {
                                     // Extract text content from assistant message (message is serde_json::Value)
@@ -1240,6 +1303,14 @@ impl AutopilotShell {
                                 self.thread_view.push_entry(
                                     ThreadEntry::new(ThreadEntryType::Tool, Text::new(&msg))
                                         .copyable_text(&msg),
+                                );
+                            }
+                            SdkMessageEvent::SessionId(session_id) => {
+                                self.resumed_session_id = Some(session_id.clone());
+                                let msg = format!("Session id: {}", session_id);
+                                self.thread_view.push_entry(
+                                    ThreadEntry::new(ThreadEntryType::System, Text::new(&msg))
+                                        .copyable_text(&session_id),
                                 );
                             }
                             SdkMessageEvent::Completed => {

@@ -25,3 +25,18 @@ QueryOptions::include_partial_messages(true) enables additional SDK message type
 - SdkMessage::ToolProgress for elapsed time updates
 
 Callers should enable this when they want real-time tool progress and intermediate streaming updates.
+
+## Resume controls
+QueryOptions includes resume helpers for session management:
+
+```rust
+use claude_agent_sdk::QueryOptions;
+
+let options = QueryOptions::new()
+    .resume("session-id")
+    .resume_session_at("message-uuid")
+    .fork_session(true);
+```
+
+- `resume_session_at` resumes from a specific message ID.
+- `fork_session(true)` starts a new session ID from the resume point.

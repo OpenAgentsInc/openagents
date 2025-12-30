@@ -458,6 +458,18 @@ impl QueryOptions {
         self
     }
 
+    /// Resume a session at a specific message ID.
+    pub fn resume_session_at(mut self, message_id: impl Into<String>) -> Self {
+        self.resume_session_at = Some(message_id.into());
+        self
+    }
+
+    /// Fork a session when resuming.
+    pub fn fork_session(mut self, fork: bool) -> Self {
+        self.fork_session = fork;
+        self
+    }
+
     /// Set setting sources to load (user, project, local).
     /// Required to load skills from `.claude/skills/`.
     pub fn setting_sources(mut self, sources: Vec<SettingSource>) -> Self {
