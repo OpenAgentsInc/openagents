@@ -65,6 +65,8 @@ Date: 2025-12-30
 - Historical sessions display ToolCallCard with params and output; live Autopilot sessions show only tool name and params, without output or error details.
 - Resumed SDK sessions render tool uses as plain text ("Tool: name") instead of ToolCallCard.
 
+**ADDENDUM (2025-12-30 evening):** Partially addressed. Historical sessions now parse `tool_use` blocks for input params and link to `tool_result` blocks by ID to get output and error status. Two-pass JSONL parser in `claude_sessions.rs` collects tool results first, then builds messages with linked data. Display logic in `shell.rs` creates `ToolCallCard` components with expandable sections, status indicators, and Task nesting. Commits: `2b377a489`. **Remaining:** Live sessions still discard tool output - need to surface `tool_result` content in live `ToolCallCard` entries.
+
 ### 7) MCP, plugins, and custom tools
 - No IDE or runtime path to configure MCP servers or plugin definitions.
 - No exposure of custom tool definitions or MCP tool invocation status in the UI.
