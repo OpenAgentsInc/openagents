@@ -109,7 +109,10 @@ impl SessionsPanel {
     fn paint_hotkey_legend(&self, bounds: Bounds, cx: &mut PaintContext) {
         let hotkeys = [
             ("cmd-a", "Toggle Full Auto"),
-            ("cmd-[", "Toggle sidebar"),
+            ("cmd-f", "Toggle Fullscreen"),
+            ("cmd-[", "Toggle left sidebar"),
+            ("cmd-]", "Toggle right sidebar"),
+            ("cmd-\\", "Toggle all sidebars"),
             ("esc", "Exit"),
         ];
 
