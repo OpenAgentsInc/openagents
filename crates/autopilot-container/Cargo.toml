@@ -19,12 +19,9 @@ tower = "0.5"
 tower-http = { version = "0.6", features = ["cors", "trace"] }
 
 # WebSocket
-tokio-tungstenite = { workspace = true }
 futures-util = "0.3"
 
-# Autopilot
-autopilot = { path = "../autopilot" }
-autopilot-service = { path = "../autopilot-service" }
+# Claude SDK for running agent queries
 claude-agent-sdk = { workspace = true }
 
 # Serialization
@@ -37,3 +34,6 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 uuid = { workspace = true }
 chrono = { workspace = true }
 anyhow = { workspace = true }
+
+# Git operations
+git2 = "0.20"
