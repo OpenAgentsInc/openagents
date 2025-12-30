@@ -101,20 +101,19 @@ impl AutopilotShell {
 
         // Create sessions panel directly (like system_panel)
         let mut sessions_panel = SessionsPanel::new();
-        // Load recent sessions
-        if let Ok(summaries) = autopilot::SessionCheckpoint::list_sessions() {
-            let sessions: Vec<SessionInfo> = summaries
-                .into_iter()
-                .take(5)
-                .map(|s| SessionInfo {
-                    id: s.session_id,
-                    timestamp: s.checkpoint_time,
-                    model: format!("{:?}", s.phase), // We don't have model in summary, use phase
-                    is_current: false,
-                })
-                .collect();
-            sessions_panel.set_sessions(sessions);
-        }
+        // Load recent sessions from ~/.claude/projects/
+        let claude_sessions = crate::claude_sessions::list_claude_sessions();
+        let sessions: Vec<SessionInfo> = claude_sessions
+            .into_iter()
+            .take(5)
+            .map(|s| SessionInfo {
+                id: s.session_id,
+                timestamp: s.timestamp,
+                model: "sonnet".to_string(), // Claude sessions don't store model
+                is_current: false,
+            })
+            .collect();
+        sessions_panel.set_sessions(sessions);
 
         // Create right dock (empty - we render system panel directly for data access)
         let right_dock = Dock::new(DockPosition::Right, 300.0);
@@ -228,21 +227,20 @@ impl AutopilotShell {
         // Create left dock (empty - we render sessions panel directly)
         let left_dock = Dock::new(DockPosition::Left, 280.0);
 
-        // Create sessions panel directly
+        // Create sessions panel directly - load from ~/.claude/projects/
         let mut sessions_panel = SessionsPanel::new();
-        if let Ok(summaries) = autopilot::SessionCheckpoint::list_sessions() {
-            let sessions: Vec<SessionInfo> = summaries
-                .into_iter()
-                .take(5)
-                .map(|s| SessionInfo {
-                    id: s.session_id.clone(),
-                    timestamp: s.checkpoint_time,
-                    model: format!("{:?}", s.phase),
-                    is_current: s.session_id == current_session_id,
-                })
-                .collect();
-            sessions_panel.set_sessions(sessions);
-        }
+        let claude_sessions = crate::claude_sessions::list_claude_sessions();
+        let sessions: Vec<SessionInfo> = claude_sessions
+            .into_iter()
+            .take(5)
+            .map(|s| SessionInfo {
+                id: s.session_id.clone(),
+                timestamp: s.timestamp,
+                model: "sonnet".to_string(),
+                is_current: s.session_id == current_session_id,
+            })
+            .collect();
+        sessions_panel.set_sessions(sessions);
 
         // Create right dock (empty - we render system panel directly for data access)
         let right_dock = Dock::new(DockPosition::Right, 300.0);
@@ -817,47 +815,54 @@ impl AutopilotShell {
     fn handle_session_action(&mut self, action: SessionAction) {
         match action {
             SessionAction::ResumeSession(session_id) => {
-                info!("Resuming session: {}", session_id);
+                // Load Claude Code session from ~/.claude/projects/
+                if let Some(file_path) = crate::claude_sessions::find_session_file(&session_id) {
+                    let messages = crate::claude_sessions::load_session_messages(&file_path);
 
-                // Load checkpoint
-                match SessionCheckpoint::load(&session_id) {
-                    Ok(checkpoint) => {
-                        // Clear and rebuild thread view
-                        self.thread_view.clear();
-                        self.pending_tools.clear();
-                        self.active_tasks.clear();
-                        self.task_children.clear();
+                    // Clear current thread view
+                    self.thread_view.clear();
+                    self.pending_tools.clear();
+                    self.active_tasks.clear();
+                    self.task_children.clear();
 
-                        // Add phase header
-                        let header = format!("Resumed: {} ({:?})", session_id, checkpoint.phase);
+                    // Add header
+                    let header = format!("Loaded session: {}", &session_id[..8.min(session_id.len())]);
+                    self.thread_view.push_entry(
+                        ThreadEntry::new(ThreadEntryType::System, Text::new(&header))
+                            .copyable_text(&session_id),
+                    );
+
+                    // Add all messages from the session
+                    for msg in messages {
+                        let entry_type = if msg.role == "user" {
+                            ThreadEntryType::User
+                        } else if msg.is_tool_use {
+                            ThreadEntryType::Tool
+                        } else {
+                            ThreadEntryType::Assistant
+                        };
+
+                        // Truncate very long messages for display
+                        let display_content = if msg.content.len() > 500 {
+                            format!("{}...", &msg.content[..500])
+                        } else {
+                            msg.content.clone()
+                        };
+
                         self.thread_view.push_entry(
-                            ThreadEntry::new(ThreadEntryType::System, Text::new(&header))
-                                .copyable_text(&header),
-                        );
-
-                        // Reconstruct messages from log lines
-                        for line in &checkpoint.lines {
-                            if !line.text.is_empty() {
-                                self.thread_view.push_entry(
-                                    ThreadEntry::new(ThreadEntryType::System, Text::new(&line.text))
-                                        .copyable_text(&line.text),
-                                );
-                            }
-                        }
-
-                        // Replace runtime with checkpoint runtime
-                        self.runtime = AutopilotRuntime::from_checkpoint(checkpoint);
-
-                        // Update sessions panel
-                        self.refresh_sessions_list(&session_id);
-                    }
-                    Err(e) => {
-                        let err_msg = format!("Failed to load session: {}", e);
-                        self.thread_view.push_entry(
-                            ThreadEntry::new(ThreadEntryType::Error, Text::new(&err_msg))
-                                .copyable_text(&err_msg),
+                            ThreadEntry::new(entry_type, Text::new(&display_content))
+                                .copyable_text(&msg.content),
                         );
                     }
+
+                    // Mark as current in the list
+                    self.refresh_sessions_list(&session_id);
+                } else {
+                    let err_msg = format!("Session not found: {}", session_id);
+                    self.thread_view.push_entry(
+                        ThreadEntry::new(ThreadEntryType::Error, Text::new(&err_msg))
+                            .copyable_text(&err_msg),
+                    );
                 }
             }
             SessionAction::SetModel(model) => {
@@ -910,19 +915,18 @@ impl AutopilotShell {
 
     /// Refresh the sessions list in the sidebar
     fn refresh_sessions_list(&mut self, current_id: &str) {
-        if let Ok(summaries) = SessionCheckpoint::list_sessions() {
-            let sessions: Vec<SessionInfo> = summaries
-                .into_iter()
-                .take(5)
-                .map(|s| SessionInfo {
-                    id: s.session_id.clone(),
-                    timestamp: s.checkpoint_time,
-                    model: format!("{:?}", s.phase),
-                    is_current: s.session_id == current_id,
-                })
-                .collect();
-            self.sessions_panel.set_sessions(sessions);
-        }
+        let claude_sessions = crate::claude_sessions::list_claude_sessions();
+        let sessions: Vec<SessionInfo> = claude_sessions
+            .into_iter()
+            .take(5)
+            .map(|s| SessionInfo {
+                id: s.session_id.clone(),
+                timestamp: s.timestamp,
+                model: "sonnet".to_string(),
+                is_current: s.session_id == current_id,
+            })
+            .collect();
+        self.sessions_panel.set_sessions(sessions);
     }
 }
 
