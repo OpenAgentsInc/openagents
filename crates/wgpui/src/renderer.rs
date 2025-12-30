@@ -431,11 +431,13 @@ impl Renderer {
     }
 
     pub fn resize(&self, queue: &wgpu::Queue, size: Size, scale: f32) {
+        // Viewport must be in PHYSICAL pixels since gpu_quads/gpu_text_quads
+        // scale positions to physical. Otherwise NDC calculation is wrong.
         queue.write_buffer(
             &self.uniform_buffer,
             0,
             bytemuck::cast_slice(&[Uniforms {
-                viewport: [size.width, size.height],
+                viewport: [size.width * scale, size.height * scale],
                 scale,
                 _padding: 0.0,
             }]),

@@ -2,6 +2,8 @@
 
 Comprehensive guide for building, optimizing, and deploying the WGPUI web demo to production.
 
+**Live Demo:** https://wgpui-demo.openagents.workers.dev
+
 ## Table of Contents
 
 1. [Build Process](#build-process)
@@ -313,6 +315,148 @@ sed -i "s/openagents_web_bg.wasm/openagents_web_bg.${HASH}.wasm/" pkg/openagents
   ]
 }
 ```
+
+---
+
+## Cloudflare Workers Deployment
+
+This project includes full Cloudflare Workers support for edge deployment.
+
+### Prerequisites
+
+```bash
+# Install wrangler CLI
+bun add -d wrangler
+
+# Or globally
+npm install -g wrangler
+
+# Login to Cloudflare
+npx wrangler login
+```
+
+### Quick Deploy
+
+```bash
+cd crates/web
+
+# Build and deploy in one command
+bun run deploy
+
+# Or step by step:
+bun run build        # Build WASM + optimize + prepare dist/
+npx wrangler deploy  # Deploy to Cloudflare
+```
+
+**Current deployment:** https://wgpui-demo.openagents.workers.dev
+
+### Project Structure
+
+```
+crates/web/
+├── wrangler.toml     # Cloudflare Workers config
+├── package.json      # Build scripts
+├── build.ts          # Prepares dist/ directory
+├── src/
+│   ├── lib.rs        # WASM source
+│   └── worker.js     # Edge worker (adds headers)
+├── pkg/              # wasm-pack output
+└── dist/             # Deployment bundle
+    ├── index.html
+    └── pkg/
+        ├── openagents_web.js
+        └── openagents_web_bg.wasm
+```
+
+### Configuration (wrangler.toml)
+
+```toml
+name = "wgpui-demo"
+main = "src/worker.js"
+compatibility_date = "2024-12-01"
+
+[assets]
+directory = "./dist"
+not_found_handling = "single-page-application"
+
+[build]
+command = "bun run build"
+```
+
+### What the Worker Does
+
+The edge worker (`src/worker.js`) adds required headers:
+
+```javascript
+// Required for SharedArrayBuffer (WebGPU threading)
+Cross-Origin-Opener-Policy: same-origin
+Cross-Origin-Embedder-Policy: require-corp
+
+// Correct MIME types
+Content-Type: application/wasm
+
+// Aggressive caching for immutable assets
+Cache-Control: public, max-age=31536000, immutable
+```
+
+### Available Commands
+
+| Command | Description |
+|---------|-------------|
+| `bun run build` | Full build (WASM + optimize + dist) |
+| `bun run dev` | Local dev server (Bun, port 3000) |
+| `bun run cf:dev` | Local dev with Wrangler (port 8787) |
+| `bun run deploy` | Build and deploy to production |
+| `bun run deploy:preview` | Deploy to preview environment |
+| `bun run cf:tail` | View live logs from deployed worker |
+
+### Custom Domain
+
+Add to `wrangler.toml`:
+
+```toml
+routes = [
+  { pattern = "wgpui.yourdomain.com", zone_name = "yourdomain.com" }
+]
+```
+
+Or use Cloudflare dashboard to add custom domain.
+
+### Environment Variables
+
+```toml
+[vars]
+ENVIRONMENT = "production"
+
+[env.preview.vars]
+ENVIRONMENT = "preview"
+```
+
+### Performance Benefits
+
+Cloudflare Workers provides:
+
+- **Global edge deployment** - Code runs in 300+ locations
+- **Automatic compression** - Brotli/gzip handled automatically
+- **HTTP/3 & QUIC** - Fastest protocols by default
+- **Smart caching** - Tiered cache across edge network
+- **Zero cold starts** - Instant response times
+
+### Monitoring
+
+```bash
+# View real-time logs
+npx wrangler tail
+
+# View in dashboard
+# https://dash.cloudflare.com → Workers → wgpui-demo → Logs
+```
+
+### Pricing
+
+- **Free tier**: 100,000 requests/day
+- **Paid ($5/mo)**: 10 million requests/month
+- Static assets served from edge cache don't count against limits
 
 ---
 
