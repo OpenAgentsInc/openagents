@@ -27,7 +27,7 @@ pub use ci::{
     detect_test_command,
 };
 
-pub use claude::{ClaudeToken, ClaudeEvent, run_claude_planning, run_claude_execution, run_claude_review};
+pub use claude::{ClaudeToken, ClaudeEvent, ClaudeUsageData, run_claude_planning, run_claude_execution, run_claude_review};
 
 pub use logger::{SessionLogger, LogEntry, generate_session_id};
 
