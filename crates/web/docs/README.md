@@ -101,6 +101,7 @@ bun run setup
 wrangler secret put GITHUB_CLIENT_SECRET
 wrangler secret put STRIPE_SECRET_KEY
 wrangler secret put STRIPE_WEBHOOK_SECRET
+wrangler secret put SESSION_SECRET
 
 # Edit wrangler.toml with your GitHub/Stripe public keys
 # [vars]
@@ -152,6 +153,7 @@ crates/web/
 │
 ├── migrations/                 # D1 SQL migrations
 │   └── 0001_initial.sql        # Users, billing, Stripe tables
+│   └── 0002_identity_keys.sql  # Nostr/Bitcoin identity columns
 │
 ├── static/                     # Static assets
 ├── pkg/                        # wasm-pack output (git-ignored)
@@ -205,6 +207,8 @@ bun run cf:tail          # Live logs from production
 | GET | `/api/auth/me` | Get current user info |
 | POST | `/api/auth/logout` | Clear session and logout |
 
+`/api/auth/me` response includes `user_id`, `github_username`, and `nostr_npub`.
+
 ### Repositories (requires auth)
 
 | Method | Endpoint | Description |
@@ -218,6 +222,8 @@ bun run cf:tail          # Live logs from production
 | GET | `/api/account` | Get account settings |
 | POST | `/api/account/api-key` | Generate new API key |
 | POST | `/api/account/delete` | Soft delete account |
+
+Account settings include `nostr_npub` when available.
 
 ### Billing (requires auth)
 
@@ -265,6 +271,7 @@ Set via CLI (never in code):
 wrangler secret put GITHUB_CLIENT_SECRET
 wrangler secret put STRIPE_SECRET_KEY
 wrangler secret put STRIPE_WEBHOOK_SECRET
+wrangler secret put SESSION_SECRET
 ```
 
 ### D1 Database
@@ -274,6 +281,7 @@ Binding: `DB`
 - Stripe customers and payment methods
 - Usage events and invoices
 - HUD visibility settings
+ - Nostr identity keys (npub + encrypted key material for credential encryption)
 
 ### KV Namespace
 

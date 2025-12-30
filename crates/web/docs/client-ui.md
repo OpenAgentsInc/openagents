@@ -57,6 +57,7 @@ Shown after login, before selecting a repository.
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │ Welcome, username                                    [Logout]   │
+│ npub: npub1xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx       │
 │                                                                  │
 │ Select a repository:                                            │
 │                                                                  │
@@ -74,6 +75,7 @@ Shown after login, before selecting a repository.
 ```
 
 - **Header:** "Welcome, {username}"
+- **Nostr identity:** `npub` shown under the GitHub username
 - **Logout button:** Top right, POST to `/api/auth/logout`
 - **Repo list:** Scrollable, fetched from `/api/repos`
 - **Private badge:** Shown for private repos

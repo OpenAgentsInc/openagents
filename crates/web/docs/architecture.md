@@ -230,6 +230,10 @@ CREATE TABLE users (
     user_id TEXT PRIMARY KEY,
     github_id TEXT UNIQUE,
     github_username TEXT,
+    nostr_public_key TEXT,
+    nostr_npub TEXT,
+    nostr_private_key_encrypted TEXT,
+    bitcoin_xpriv_encrypted TEXT,
     email TEXT,
     signup_credits INTEGER DEFAULT 100000,
     purchased_credits INTEGER DEFAULT 0,
@@ -626,6 +630,12 @@ console_error_panic_hook = "0.1"
 - State parameter: Random UUID, 10-minute expiry
 - PKCE: Not used (server-side flow)
 - Token storage: Encrypted in D1 (production)
+
+### Credential Encryption
+
+- A Nostr/Bitcoin identity is generated at GitHub OAuth and stored as encrypted key material.
+- Credential fields (GitHub tokens, API keys) are encrypted with a key derived from the user's identity.
+- Identity private keys are encrypted with `SESSION_SECRET` before being stored in D1.
 
 ### Stripe Security
 

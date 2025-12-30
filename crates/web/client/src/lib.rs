@@ -22,6 +22,7 @@ pub fn main() {
 #[derive(Clone, Default)]
 struct UserInfo {
     github_username: Option<String>,
+    nostr_npub: Option<String>,
 }
 
 #[derive(Clone)]
@@ -139,7 +140,7 @@ fn get_hud_context() -> Option<HudContext> {
 }
 
 /// Fetch current user from /api/auth/me
-async fn fetch_current_user() -> Option<String> {
+async fn fetch_current_user() -> Option<UserInfo> {
     let window = web_sys::window()?;
     let resp = JsFuture::from(window.fetch_with_str("/api/auth/me")).await.ok()?;
     let resp: web_sys::Response = resp.dyn_into().ok()?;
@@ -156,7 +157,16 @@ async fn fetch_current_user() -> Option<String> {
         return None;
     }
 
-    username.as_string()
+    let nostr_npub = js_sys::Reflect::get(&obj, &"nostr_npub".into())
+        .ok()
+        .and_then(|v| v.as_string());
+
+    username
+        .as_string()
+        .map(|github_username| UserInfo {
+            github_username: Some(github_username),
+            nostr_npub,
+        })
 }
 
 /// Fetch repos from /api/repos
@@ -239,22 +249,22 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
     {
         let state_clone = state.clone();
         wasm_bindgen_futures::spawn_local(async move {
-            let username = fetch_current_user().await;
+            let user_info = fetch_current_user().await;
 
             {
                 let mut state = state_clone.borrow_mut();
-                state.user.github_username = username.clone();
                 state.loading = false;
 
                 // If logged in, show repo selector first
-                if username.is_some() {
+                if let Some(info) = user_info.clone() {
+                    state.user = info;
                     state.view = AppView::RepoSelector;
                     state.repos_loading = true;
                 }
             }
 
             // Fetch repos if logged in
-            if username.is_some() {
+            if user_info.is_some() {
                 let repos = fetch_repos().await;
                 let mut state = state_clone.borrow_mut();
                 state.repos = repos;
@@ -578,7 +588,21 @@ fn build_repo_selector(
     );
     scene.draw_text(logout_run);
 
-    y += 40.0;
+    y += 28.0;
+
+    if let Some(npub) = state.user.nostr_npub.as_deref() {
+        let npub_text = format!("npub: {}", npub);
+        let npub_run = text_system.layout(
+            &npub_text,
+            Point::new(padding, y),
+            11.0,
+            theme::text::MUTED,
+        );
+        scene.draw_text(npub_run);
+        y += 18.0;
+    }
+
+    y += 16.0;
 
     // Subtitle
     let subtitle = "Select a repository:";

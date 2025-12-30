@@ -88,12 +88,14 @@ pub async fn github_callback(req: Request, env: Env) -> Result<Response> {
 
     // Upsert user in D1
     let db = env.d1("DB")?;
+    let session_secret = env.secret("SESSION_SECRET")?.to_string();
     let user = users::upsert_from_github(
         &db,
         &github_user.id.to_string(),
         &github_user.login,
         primary_email,
-        &token_response.access_token, // In production, encrypt this
+        &token_response.access_token,
+        &session_secret,
     )
     .await?;
 
