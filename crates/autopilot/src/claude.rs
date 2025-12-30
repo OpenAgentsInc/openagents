@@ -132,6 +132,7 @@ pub enum ClaudeToken {
         output: Option<String>,
         is_error: bool,
     },
+    Progress { tool_name: String, elapsed_secs: f64 },
     SessionId(String),
     Done(String),
     Error(String),
@@ -164,6 +165,7 @@ pub enum ClaudeEvent {
         output: Option<String>,
         is_error: bool,
     },
+    ToolProgress { tool_name: String, elapsed_secs: f64 },
 }
 
 pub fn run_claude_planning(
@@ -171,6 +173,7 @@ pub fn run_claude_planning(
     _issue_summary: &str,
     _assessment: &str,
     model: ClaudeModel,
+    resume_session_id: Option<String>,
     tx: mpsc::Sender<ClaudeToken>,
     logger: Option<SessionLogger>,
 ) {
@@ -278,38 +281,56 @@ Your turn should only end with calling ExitPlanMode. Do not stop early."#.to_str
             }
 
             attempt += 1;
+            let resume_session_id = resume_session_id.clone().filter(|id| !id.is_empty());
+            if let Some(ref session_id) = resume_session_id {
+                verbose_println!("[CLAUDE] Resuming session {}", session_id);
+            }
             verbose_println!("[CLAUDE] Starting query (attempt {}/{}) with prompt length: {} chars", attempt, MAX_RETRIES, prompt.len());
             verbose_println!("[CLAUDE] Options: cwd={:?}, model={}, permission_mode=Plan, max_turns=50", cwd_clone, model.as_str());
 
-            let options = QueryOptions::new()
+            let mut options = QueryOptions::new()
                 .cwd(cwd_clone.clone())
                 .model(model.as_str())
                 .permission_mode(PermissionMode::Plan)
-                .max_turns(50);
+                .max_turns(50)
+                .include_partial_messages(true)
+                .disallowed_tools(vec![
+                    "Edit".to_string(),
+                    "Write".to_string(),
+                    "NotebookEdit".to_string(),
+                ]);
+
+            if let Some(ref session_id) = resume_session_id {
+                options = options.resume(session_id.clone());
+            }
+
+            let prompt_to_send = if resume_session_id.is_some() { "" } else { &prompt };
 
             // Start query with timeout
             let query_result = timeout(
                 Duration::from_secs(QUERY_START_TIMEOUT_SECS),
-                query(&prompt, options)
+                query(prompt_to_send, options)
             ).await;
 
             let mut stream = match query_result {
                 Ok(Ok(s)) => {
                     verbose_println!("[CLAUDE] Stream started successfully");
-                    // Send initial usage estimate based on prompt size (rough: ~4 chars per token)
-                    let estimated_input = (prompt.len() / 4) as u64;
-                    let _ = tx.send(ClaudeToken::Usage(ClaudeUsageData {
-                        input_tokens: estimated_input,
-                        output_tokens: 0,
-                        cache_read_tokens: 0,
-                        cache_creation_tokens: 0,
-                        total_cost_usd: 0.0,
-                        duration_ms: 0,
-                        duration_api_ms: 0,
-                        num_turns: 1,
-                        context_window: 200_000,
-                        model: model.as_str().to_string(),
-                    }));
+                    if resume_session_id.is_none() {
+                        // Send initial usage estimate based on prompt size (rough: ~4 chars per token)
+                        let estimated_input = (prompt.len() / 4) as u64;
+                        let _ = tx.send(ClaudeToken::Usage(ClaudeUsageData {
+                            input_tokens: estimated_input,
+                            output_tokens: 0,
+                            cache_read_tokens: 0,
+                            cache_creation_tokens: 0,
+                            total_cost_usd: 0.0,
+                            duration_ms: 0,
+                            duration_api_ms: 0,
+                            num_turns: 1,
+                            context_window: 200_000,
+                            model: model.as_str().to_string(),
+                        }));
+                    }
                     s
                 }
                 Ok(Err(e)) => {
@@ -431,6 +452,10 @@ Your turn should only end with calling ExitPlanMode. Do not stop early."#.to_str
                     }
                     Ok(SdkMessage::ToolProgress(progress)) => {
                         verbose_println!("[CLAUDE][TOOL_PROGRESS] tool={} elapsed={}s", progress.tool_name, progress.elapsed_time_seconds);
+                        let _ = tx.send(ClaudeToken::Progress {
+                            tool_name: progress.tool_name.clone(),
+                            elapsed_secs: progress.elapsed_time_seconds,
+                        });
                     }
                     Ok(SdkMessage::AuthStatus(auth)) => {
                         verbose_println!("[CLAUDE][AUTH] is_authenticating={}", auth.is_authenticating);
@@ -484,6 +509,7 @@ const STREAM_IDLE_TIMEOUT_SECS: u64 = 300;
 pub fn run_claude_execution(
     plan: &str,
     model: ClaudeModel,
+    resume_session_id: Option<String>,
     tx: mpsc::Sender<ClaudeToken>,
     logger: Option<SessionLogger>,
 ) {
@@ -541,20 +567,31 @@ Start now."#, plan);
             }
 
             attempt += 1;
+            let resume_session_id = resume_session_id.clone().filter(|id| !id.is_empty());
+            if let Some(ref session_id) = resume_session_id {
+                verbose_println!("[CLAUDE-EXEC] Resuming session {}", session_id);
+            }
             verbose_println!("[CLAUDE-EXEC] Starting execution (attempt {}/{}) with plan length: {} chars", attempt, MAX_RETRIES, plan.len());
             verbose_println!("[CLAUDE-EXEC] Options: cwd={:?}, model={}, permission_mode=BypassPermissions, max_turns=100", cwd_clone, model.as_str());
 
-            let options = QueryOptions::new()
+            let mut options = QueryOptions::new()
                 .cwd(cwd_clone.clone())
                 .model(model.as_str())
                 .permission_mode(PermissionMode::BypassPermissions)
                 .dangerously_skip_permissions(true)
-                .max_turns(100);
+                .max_turns(100)
+                .include_partial_messages(true);
+
+            if let Some(ref session_id) = resume_session_id {
+                options = options.resume(session_id.clone());
+            }
+
+            let prompt_to_send = if resume_session_id.is_some() { "" } else { &prompt };
 
             verbose_println!("[CLAUDE-EXEC] Calling query() with {}s timeout...", QUERY_START_TIMEOUT_SECS);
             let query_result = timeout(
                 Duration::from_secs(QUERY_START_TIMEOUT_SECS),
-                query(&prompt, options)
+                query(prompt_to_send, options)
             ).await;
 
             let mut stream = match query_result {
@@ -664,6 +701,20 @@ Start now."#, plan);
                             });
                         }
                     }
+                    Ok(SdkMessage::StreamEvent(event)) => {
+                        verbose_println!("[CLAUDE-EXEC][STREAM] {:?}", event);
+                    }
+                    Ok(SdkMessage::ToolProgress(progress)) => {
+                        verbose_println!(
+                            "[CLAUDE-EXEC][TOOL_PROGRESS] tool={} elapsed={}s",
+                            progress.tool_name,
+                            progress.elapsed_time_seconds
+                        );
+                        let _ = tx.send(ClaudeToken::Progress {
+                            tool_name: progress.tool_name.clone(),
+                            elapsed_secs: progress.elapsed_time_seconds,
+                        });
+                    }
                     Ok(SdkMessage::Result(result)) => {
                         verbose_println!("[CLAUDE-EXEC] Got Result message");
                         let usage = extract_usage_from_result(&result, model.as_str());
@@ -705,6 +756,7 @@ pub fn run_claude_review(
     execution_result: &str,
     iteration: u32,
     model: ClaudeModel,
+    resume_session_id: Option<String>,
     tx: mpsc::Sender<ClaudeToken>,
     logger: Option<SessionLogger>,
 ) {
@@ -775,19 +827,30 @@ Otherwise, provide a detailed plan for the next iteration in the same format as 
             }
 
             attempt += 1;
+            let resume_session_id = resume_session_id.clone().filter(|id| !id.is_empty());
+            if let Some(ref session_id) = resume_session_id {
+                verbose_println!("[CLAUDE-REVIEW] Resuming session {}", session_id);
+            }
             verbose_println!("[CLAUDE-REVIEW] Starting review iteration {} (attempt {}/{})", iteration, attempt, MAX_RETRIES);
             verbose_println!("[CLAUDE-REVIEW] Options: cwd={:?}, model={}, permission_mode=BypassPermissions, max_turns=30", cwd_clone, model.as_str());
 
-            let options = QueryOptions::new()
+            let mut options = QueryOptions::new()
                 .cwd(cwd_clone.clone())
                 .model(model.as_str())
                 .permission_mode(PermissionMode::BypassPermissions)
                 .dangerously_skip_permissions(true)
-                .max_turns(30);
+                .max_turns(30)
+                .include_partial_messages(true);
+
+            if let Some(ref session_id) = resume_session_id {
+                options = options.resume(session_id.clone());
+            }
+
+            let prompt_to_send = if resume_session_id.is_some() { "" } else { &prompt };
 
             let query_result = timeout(
                 Duration::from_secs(QUERY_START_TIMEOUT_SECS),
-                query(&prompt, options)
+                query(prompt_to_send, options)
             ).await;
 
             let mut stream = match query_result {
@@ -895,6 +958,20 @@ Otherwise, provide a detailed plan for the next iteration in the same format as 
                                 is_error,
                             });
                         }
+                    }
+                    Ok(SdkMessage::StreamEvent(event)) => {
+                        verbose_println!("[CLAUDE-REVIEW][STREAM] {:?}", event);
+                    }
+                    Ok(SdkMessage::ToolProgress(progress)) => {
+                        verbose_println!(
+                            "[CLAUDE-REVIEW][TOOL_PROGRESS] tool={} elapsed={}s",
+                            progress.tool_name,
+                            progress.elapsed_time_seconds
+                        );
+                        let _ = tx.send(ClaudeToken::Progress {
+                            tool_name: progress.tool_name.clone(),
+                            elapsed_secs: progress.elapsed_time_seconds,
+                        });
                     }
                     Ok(SdkMessage::Result(result)) => {
                         // Extract usage data and send it

@@ -482,6 +482,12 @@ impl QueryOptions {
         self
     }
 
+    /// Disallow specific tools by name.
+    pub fn disallowed_tools(mut self, tools: Vec<String>) -> Self {
+        self.disallowed_tools = Some(tools);
+        self
+    }
+
     /// Enable a beta feature.
     pub fn beta(mut self, beta: SdkBeta) -> Self {
         self.betas.push(beta.as_str().to_string());

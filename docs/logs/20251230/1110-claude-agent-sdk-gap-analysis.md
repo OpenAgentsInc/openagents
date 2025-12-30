@@ -108,4 +108,21 @@ Completed work on SDK session ID capture and persistence:
 - Stored session IDs in StartupState per phase and persisted them into SessionCheckpoint (claude_session_id, exec_session_id, review_session_id, fix_session_id).
 - Restored session IDs from SessionCheckpoint on resume so they are available for future resume wiring.
 
-Remaining gap: the IDE still does not resume SDK sessions using these IDs; wiring to QueryOptions::resume or Session::send/receive is still required.
+Remaining gap: resume is now wired via QueryOptions::resume (empty prompt) but does not yet expose resume_session_at or fork_session controls.
+
+Addendum update:
+- Resume wiring now uses saved session IDs to resume plan/exec/review/fix streams (empty prompt on resume) and will respawn streaming receivers after checkpoint reloads.
+- System panel now shows the autopilot session id and phase-specific Claude session ids; full ids are also logged in the Claude section for manual copy.
+
+## Addendum (2025-12-30 night)
+Addressed partial-message and tool restriction gaps:
+- Enabled QueryOptions::include_partial_messages for plan/exec/review, allowing StreamEvent and ToolProgress delivery.
+- Added ClaudeToken::Progress -> ClaudeEvent::ToolProgress -> SessionEvent::ToolProgress pipeline.
+- Shell updates running ToolCallCard entries with elapsed time (including Task children when possible).
+- Added QueryOptions::disallowed_tools builder in claude-agent-sdk and applied it to Plan phase to block Edit/Write/NotebookEdit.
+- StreamEvent is now logged in exec/review for debugging, but not rendered in the UI.
+
+Remaining gaps:
+- Permission UI and PermissionHandler wiring.
+- resume_session_at and fork_session controls.
+- Other QueryOptions fields (system_prompt, output_format, MCP, agents, etc.).

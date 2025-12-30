@@ -3,6 +3,7 @@
 //! Displays live usage data from Claude API response headers.
 //! Rate limits come from headers like `x-codex-primary-used-percent`.
 
+use autopilot_service::SdkSessionIds;
 use wgpui::{Bounds, Component, EventContext, EventResult, Hsla, InputEvent, PaintContext, Point, Quad};
 
 /// Session-level usage stats
@@ -37,6 +38,8 @@ pub struct ClaudeUsage {
     pub session: SessionUsage,
     pub limits: Vec<UsageLimit>,
     pub web_searches: u64,
+    pub autopilot_session_id: Option<String>,
+    pub sdk_session_ids: SdkSessionIds,
 }
 
 impl ClaudeUsage {
@@ -49,6 +52,8 @@ impl ClaudeUsage {
             session: SessionUsage::default(),
             limits: Vec::new(),
             web_searches: 0,
+            autopilot_session_id: None,
+            sdk_session_ids: SdkSessionIds::default(),
         }
     }
 
@@ -84,6 +89,15 @@ impl ClaudeUsage {
 
     pub fn set_web_searches(&mut self, count: u64) {
         self.web_searches = count;
+    }
+
+    pub fn set_session_ids(&mut self, autopilot_session_id: String, sdk_session_ids: SdkSessionIds) {
+        if autopilot_session_id.is_empty() {
+            self.autopilot_session_id = None;
+        } else {
+            self.autopilot_session_id = Some(autopilot_session_id);
+        }
+        self.sdk_session_ids = sdk_session_ids;
     }
 }
 
@@ -241,6 +255,48 @@ impl Component for ClaudeUsage {
         cx.scene.draw_text(api_dur_label);
         y += line_height + 4.0;
 
+        // Session IDs
+        let session_header = cx.text.layout("SESSIONS", Point::new(x, y), font_size, label_color);
+        cx.scene.draw_text(session_header);
+        y += line_height + 4.0;
+
+        let autopilot_id = self
+            .autopilot_session_id
+            .as_deref()
+            .unwrap_or("-");
+        let autopilot_line = format!("Autopilot: {}", format_session_id(autopilot_id));
+        let autopilot_label = cx.text.layout(&autopilot_line, Point::new(x, y), 9.0, muted_color);
+        cx.scene.draw_text(autopilot_label);
+        y += line_height;
+
+        if let Some(ref plan_id) = self.sdk_session_ids.plan {
+            let plan_line = format!("Plan: {}", format_session_id(plan_id));
+            let plan_label = cx.text.layout(&plan_line, Point::new(x, y), 9.0, muted_color);
+            cx.scene.draw_text(plan_label);
+            y += line_height;
+        }
+
+        if let Some(ref exec_id) = self.sdk_session_ids.exec {
+            let exec_line = format!("Exec: {}", format_session_id(exec_id));
+            let exec_label = cx.text.layout(&exec_line, Point::new(x, y), 9.0, muted_color);
+            cx.scene.draw_text(exec_label);
+            y += line_height;
+        }
+
+        if let Some(ref review_id) = self.sdk_session_ids.review {
+            let review_line = format!("Review: {}", format_session_id(review_id));
+            let review_label = cx.text.layout(&review_line, Point::new(x, y), 9.0, muted_color);
+            cx.scene.draw_text(review_label);
+            y += line_height;
+        }
+
+        if let Some(ref fix_id) = self.sdk_session_ids.fix {
+            let fix_line = format!("Fix: {}", format_session_id(fix_id));
+            let fix_label = cx.text.layout(&fix_line, Point::new(x, y), 9.0, muted_color);
+            cx.scene.draw_text(fix_label);
+            y += line_height;
+        }
+
         // Web searches
         if self.web_searches > 0 {
             let web_text = format!("{} web searches", self.web_searches);
@@ -262,6 +318,19 @@ fn format_tokens(n: u64) -> String {
     } else {
         n.to_string()
     }
+}
+
+fn format_session_id(id: &str) -> String {
+    let trimmed = id.trim();
+    if trimmed.is_empty() || trimmed == "-" {
+        return "-".to_string();
+    }
+    if trimmed.len() <= 16 {
+        return trimmed.to_string();
+    }
+    let prefix = &trimmed[..8];
+    let suffix = &trimmed[trimmed.len() - 4..];
+    format!("{}...{}", prefix, suffix)
 }
 
 fn format_duration(ms: u64) -> String {

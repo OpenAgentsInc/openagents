@@ -16,14 +16,21 @@
 use crate::{SparkSigner, SparkError};
 use breez_sdk_spark::{
     BreezSdk, connect, default_config,
-    ConnectRequest, Network as SdkNetwork, Seed,
-    GetInfoRequest,
-    PrepareSendPaymentRequest, SendPaymentRequest,
-    ReceivePaymentRequest, ReceivePaymentMethod,
-    ListPaymentsRequest,
-    SyncWalletRequest,
-    EventListener,
-    ClaimHtlcPaymentRequest,
+    ClaimDepositRequest, ClaimDepositResponse, ClaimHtlcPaymentRequest,
+    CheckLightningAddressRequest, CheckMessageRequest, CheckMessageResponse,
+    ConnectRequest, ExternalInputParser,
+    GetInfoRequest, GetInfoResponse, GetPaymentRequest, GetPaymentResponse,
+    GetTokensMetadataRequest, GetTokensMetadataResponse,
+    InputType,
+    ListPaymentsRequest, ListPaymentsResponse,
+    ListUnclaimedDepositsRequest, ListUnclaimedDepositsResponse,
+    LnurlPayRequest, LnurlPayResponse, LnurlWithdrawRequest, LnurlWithdrawResponse,
+    Network as SdkNetwork, PrepareLnurlPayRequest, PrepareLnurlPayResponse,
+    PrepareSendPaymentRequest, ReceivePaymentMethod, ReceivePaymentRequest, ReceivePaymentResponse,
+    RegisterLightningAddressRequest, RefundDepositRequest, RefundDepositResponse,
+    RecommendedFees, Seed, SendPaymentRequest, SyncWalletRequest, SyncWalletResponse,
+    EventListener, LightningAddressInfo, SignMessageRequest, SignMessageResponse,
+    UpdateUserSettingsRequest, UserSettings, OptimizationProgress, TokenIssuer,
 };
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -31,29 +38,76 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 // Re-export SDK types that consumers need
 pub use breez_sdk_spark::{
-    PrepareSendPaymentResponse,
-    SendPaymentMethod,
-    SendPaymentResponse,
-    SendPaymentOptions,
-    ReceivePaymentResponse,
-    Payment,
-    PaymentStatus,
-    PaymentType,
-    PaymentMethod,
-    PaymentDetails,
     BitcoinAddressDetails,
     BitcoinNetwork,
-    PaymentRequestSource,
-    Bolt11InvoiceDetails,
     Bolt11Invoice,
-    SparkInvoiceDetails,
-    SparkInvoicePaymentDetails,
-    SparkHtlcDetails,
-    SparkHtlcStatus,
-    SparkHtlcOptions,
+    Bolt11InvoiceDetails,
+    CheckLightningAddressRequest,
+    CheckMessageRequest,
+    CheckMessageResponse,
+    ClaimDepositRequest,
+    ClaimDepositResponse,
     ClaimHtlcPaymentResponse,
+    DepositInfo,
+    ExternalInputParser,
+    Fee,
+    GetInfoRequest,
+    GetInfoResponse,
+    GetPaymentRequest,
+    GetPaymentResponse,
+    GetTokensMetadataRequest,
+    GetTokensMetadataResponse,
+    InputType,
+    LightningAddressInfo,
+    ListFiatCurrenciesResponse,
+    ListFiatRatesResponse,
+    ListPaymentsRequest,
+    ListPaymentsResponse,
+    ListUnclaimedDepositsRequest,
+    ListUnclaimedDepositsResponse,
+    LnurlPayRequest,
+    LnurlPayResponse,
+    LnurlWithdrawRequest,
+    LnurlWithdrawResponse,
+    MaxFee,
+    OptimizationConfig,
+    OptimizationProgress,
+    Payment,
+    PaymentDetails,
+    PaymentMethod,
+    PaymentRequestSource,
+    PaymentStatus,
+    PaymentType,
+    PrepareLnurlPayRequest,
+    PrepareLnurlPayResponse,
+    PrepareSendPaymentResponse,
+    ReceivePaymentMethod,
+    ReceivePaymentRequest,
+    ReceivePaymentResponse,
+    RecommendedFees,
+    RegisterLightningAddressRequest,
+    RefundDepositRequest,
+    RefundDepositResponse,
     SendOnchainFeeQuote,
     SendOnchainSpeedFeeQuote,
+    SendPaymentMethod,
+    SendPaymentOptions,
+    SendPaymentRequest,
+    SendPaymentResponse,
+    SignMessageRequest,
+    SignMessageResponse,
+    SparkHtlcDetails,
+    SparkHtlcOptions,
+    SparkHtlcStatus,
+    SparkInvoiceDetails,
+    SparkInvoicePaymentDetails,
+    SyncWalletRequest,
+    SyncWalletResponse,
+    TokenBalance,
+    TokenIssuer,
+    TokenMetadata,
+    UpdateUserSettingsRequest,
+    UserSettings,
 };
 
 /// Bitcoin network to use for Spark wallet
@@ -323,11 +377,16 @@ impl SparkWallet {
         }
 
         // Build connect request with mnemonic seed
+        let passphrase = if signer.passphrase().is_empty() {
+            None
+        } else {
+            Some(signer.passphrase().to_string())
+        };
         let connect_request = ConnectRequest {
             config: sdk_config,
             seed: Seed::Mnemonic {
                 mnemonic: signer.mnemonic().to_string(),
-                passphrase: None,
+                passphrase,
             },
             storage_dir: config.storage_dir.to_string_lossy().to_string(),
         };
@@ -419,19 +478,25 @@ impl SparkWallet {
     /// println!("Total: {} sats", balance.total_sats());
     /// ```
     pub async fn get_balance(&self) -> Result<Balance, SparkError> {
-        let request = GetInfoRequest {
-            ensure_synced: Some(true),
-        };
-
-        let info = self.sdk.get_info(request)
-            .await
-            .map_err(|e| SparkError::BalanceQueryFailed(e.to_string()))?;
+        let info = self.get_info(true).await?;
 
         Ok(Balance {
             spark_sats: info.balance_sats,
             lightning_sats: 0, // Spark SDK handles Lightning internally
             onchain_sats: 0,   // On-chain shown separately via deposits
         })
+    }
+
+    /// Get raw wallet info from the Breez SDK
+    pub async fn get_info(&self, ensure_synced: bool) -> Result<GetInfoResponse, SparkError> {
+        let request = GetInfoRequest {
+            ensure_synced: Some(ensure_synced),
+        };
+
+        self.sdk
+            .get_info(request)
+            .await
+            .map_err(|e| SparkError::BalanceQueryFailed(e.to_string()))
     }
 
     /// Check network connectivity by forcing a sync with a timeout
@@ -477,9 +542,7 @@ impl SparkWallet {
             token_identifier: None,
         };
 
-        self.sdk.prepare_send_payment(request)
-            .await
-            .map_err(|e| SparkError::PaymentFailed(e.to_string()))
+        self.prepare_send_payment_request(request).await
     }
 
     /// Send a payment using Lightning or Spark
@@ -706,11 +769,22 @@ impl SparkWallet {
             ..Default::default()
         };
 
-        let response = self.sdk.list_payments(request)
-            .await
-            .map_err(|e| SparkError::Wallet(format!("Failed to list payments: {}", e)))?;
+        let response = self
+            .list_payments_request(request)
+            .await?;
 
         Ok(response.payments)
+    }
+
+    /// List payments with full filter control
+    pub async fn list_payments_request(
+        &self,
+        request: ListPaymentsRequest,
+    ) -> Result<ListPaymentsResponse, SparkError> {
+        self.sdk
+            .list_payments(request)
+            .await
+            .map_err(|e| SparkError::Wallet(format!("Failed to list payments: {}", e)))
     }
 
     /// List Spark HTLC payments with optional status filtering.
@@ -735,12 +809,308 @@ impl SparkWallet {
             ..Default::default()
         };
 
-        let response = self.sdk.list_payments(request)
+        let response = self
+            .list_payments_request(request)
             .await
             .map_err(|e| SparkError::Wallet(format!("Failed to list HTLC payments: {}", e)))?;
 
         Ok(response.payments)
     }
+
+    /// Sync wallet state with operators
+    pub async fn sync_wallet(
+        &self,
+        request: SyncWalletRequest,
+    ) -> Result<SyncWalletResponse, SparkError> {
+        self.sdk
+            .sync_wallet(request)
+            .await
+            .map_err(|e| SparkError::Network(e.to_string()))
+    }
+
+    /// Disconnect the Breez SDK and stop background tasks
+    pub async fn disconnect(&self) -> Result<(), SparkError> {
+        self.sdk
+            .disconnect()
+            .await
+            .map_err(|e| SparkError::Network(e.to_string()))
+    }
+
+    /// Parse a payment input using the SDK configuration
+    pub async fn parse_input(&self, input: &str) -> Result<InputType, SparkError> {
+        self.sdk
+            .parse(input)
+            .await
+            .map_err(|e| SparkError::InvalidAddress(e.to_string()))
+    }
+
+    /// Prepare a payment with full request support (tokens, spark address options)
+    pub async fn prepare_send_payment_request(
+        &self,
+        request: PrepareSendPaymentRequest,
+    ) -> Result<PrepareSendPaymentResponse, SparkError> {
+        self.sdk
+            .prepare_send_payment(request)
+            .await
+            .map_err(|e| SparkError::PaymentFailed(e.to_string()))
+    }
+
+    /// Receive a payment using a full request (Spark, Bitcoin, or BOLT-11)
+    pub async fn receive_payment(
+        &self,
+        request: ReceivePaymentRequest,
+    ) -> Result<ReceivePaymentResponse, SparkError> {
+        self.sdk
+            .receive_payment(request)
+            .await
+            .map_err(|e| SparkError::Wallet(e.to_string()))
+    }
+
+    /// Create a BOLT-11 invoice for receiving Lightning payments
+    pub async fn create_bolt11_invoice(
+        &self,
+        amount_sats: Option<u64>,
+        description: String,
+    ) -> Result<ReceivePaymentResponse, SparkError> {
+        let request = ReceivePaymentRequest {
+            payment_method: ReceivePaymentMethod::Bolt11Invoice {
+                description,
+                amount_sats,
+            },
+        };
+
+        self.receive_payment(request).await
+    }
+
+    /// Fetch a single payment by ID
+    pub async fn get_payment(
+        &self,
+        request: GetPaymentRequest,
+    ) -> Result<GetPaymentResponse, SparkError> {
+        self.sdk
+            .get_payment(request)
+            .await
+            .map_err(|e| SparkError::Wallet(format!("Failed to get payment: {}", e)))
+    }
+
+    /// Prepare an LNURL-Pay request
+    pub async fn prepare_lnurl_pay(
+        &self,
+        request: PrepareLnurlPayRequest,
+    ) -> Result<PrepareLnurlPayResponse, SparkError> {
+        self.sdk
+            .prepare_lnurl_pay(request)
+            .await
+            .map_err(|e| SparkError::PaymentFailed(e.to_string()))
+    }
+
+    /// Send an LNURL-Pay payment
+    pub async fn lnurl_pay(
+        &self,
+        request: LnurlPayRequest,
+    ) -> Result<LnurlPayResponse, SparkError> {
+        self.sdk
+            .lnurl_pay(request)
+            .await
+            .map_err(|e| SparkError::PaymentFailed(e.to_string()))
+    }
+
+    /// Perform an LNURL-Withdraw operation
+    pub async fn lnurl_withdraw(
+        &self,
+        request: LnurlWithdrawRequest,
+    ) -> Result<LnurlWithdrawResponse, SparkError> {
+        self.sdk
+            .lnurl_withdraw(request)
+            .await
+            .map_err(|e| SparkError::PaymentFailed(e.to_string()))
+    }
+
+    /// List unclaimed on-chain deposits
+    pub async fn list_unclaimed_deposits(
+        &self,
+        request: ListUnclaimedDepositsRequest,
+    ) -> Result<ListUnclaimedDepositsResponse, SparkError> {
+        self.sdk
+            .list_unclaimed_deposits(request)
+            .await
+            .map_err(|e| SparkError::Wallet(e.to_string()))
+    }
+
+    /// Claim an on-chain deposit
+    pub async fn claim_deposit(
+        &self,
+        request: ClaimDepositRequest,
+    ) -> Result<ClaimDepositResponse, SparkError> {
+        self.sdk
+            .claim_deposit(request)
+            .await
+            .map_err(|e| SparkError::Wallet(e.to_string()))
+    }
+
+    /// Refund an on-chain deposit
+    pub async fn refund_deposit(
+        &self,
+        request: RefundDepositRequest,
+    ) -> Result<RefundDepositResponse, SparkError> {
+        self.sdk
+            .refund_deposit(request)
+            .await
+            .map_err(|e| SparkError::Wallet(e.to_string()))
+    }
+
+    /// Fetch recommended on-chain fees
+    pub async fn recommended_fees(&self) -> Result<RecommendedFees, SparkError> {
+        self.sdk
+            .recommended_fees()
+            .await
+            .map_err(|e| SparkError::Wallet(e.to_string()))
+    }
+
+    /// Check Lightning address availability
+    pub async fn check_lightning_address_available(
+        &self,
+        request: CheckLightningAddressRequest,
+    ) -> Result<bool, SparkError> {
+        self.sdk
+            .check_lightning_address_available(request)
+            .await
+            .map_err(|e| SparkError::Wallet(e.to_string()))
+    }
+
+    /// Get the currently registered Lightning address
+    pub async fn get_lightning_address(
+        &self,
+    ) -> Result<Option<LightningAddressInfo>, SparkError> {
+        self.sdk
+            .get_lightning_address()
+            .await
+            .map_err(|e| SparkError::Wallet(e.to_string()))
+    }
+
+    /// Register a Lightning address
+    pub async fn register_lightning_address(
+        &self,
+        request: RegisterLightningAddressRequest,
+    ) -> Result<LightningAddressInfo, SparkError> {
+        self.sdk
+            .register_lightning_address(request)
+            .await
+            .map_err(|e| SparkError::Wallet(e.to_string()))
+    }
+
+    /// Delete the registered Lightning address
+    pub async fn delete_lightning_address(&self) -> Result<(), SparkError> {
+        self.sdk
+            .delete_lightning_address()
+            .await
+            .map_err(|e| SparkError::Wallet(e.to_string()))
+    }
+
+    /// List supported fiat currencies
+    pub async fn list_fiat_currencies(
+        &self,
+    ) -> Result<ListFiatCurrenciesResponse, SparkError> {
+        self.sdk
+            .list_fiat_currencies()
+            .await
+            .map_err(|e| SparkError::Wallet(e.to_string()))
+    }
+
+    /// List fiat exchange rates
+    pub async fn list_fiat_rates(
+        &self,
+    ) -> Result<ListFiatRatesResponse, SparkError> {
+        self.sdk
+            .list_fiat_rates()
+            .await
+            .map_err(|e| SparkError::Wallet(e.to_string()))
+    }
+
+    /// Fetch token metadata for specific tokens
+    pub async fn get_tokens_metadata(
+        &self,
+        request: GetTokensMetadataRequest,
+    ) -> Result<GetTokensMetadataResponse, SparkError> {
+        self.sdk
+            .get_tokens_metadata(request)
+            .await
+            .map_err(|e| SparkError::Wallet(e.to_string()))
+    }
+
+    /// Access the token issuer API
+    pub fn get_token_issuer(&self) -> TokenIssuer {
+        self.sdk.get_token_issuer()
+    }
+
+    /// Sign an arbitrary message with the wallet key
+    pub async fn sign_message(
+        &self,
+        request: SignMessageRequest,
+    ) -> Result<SignMessageResponse, SparkError> {
+        self.sdk
+            .sign_message(request)
+            .await
+            .map_err(|e| SparkError::Wallet(e.to_string()))
+    }
+
+    /// Verify a message signature
+    pub async fn check_message(
+        &self,
+        request: CheckMessageRequest,
+    ) -> Result<CheckMessageResponse, SparkError> {
+        self.sdk
+            .check_message(request)
+            .await
+            .map_err(|e| SparkError::Wallet(e.to_string()))
+    }
+
+    /// Get current user settings
+    pub async fn get_user_settings(&self) -> Result<UserSettings, SparkError> {
+        self.sdk
+            .get_user_settings()
+            .await
+            .map_err(|e| SparkError::Wallet(e.to_string()))
+    }
+
+    /// Update user settings
+    pub async fn update_user_settings(
+        &self,
+        request: UpdateUserSettingsRequest,
+    ) -> Result<(), SparkError> {
+        self.sdk
+            .update_user_settings(request)
+            .await
+            .map_err(|e| SparkError::Wallet(e.to_string()))
+    }
+
+    /// Start leaf optimization in the background
+    pub fn start_leaf_optimization(&self) {
+        self.sdk.start_leaf_optimization();
+    }
+
+    /// Cancel leaf optimization
+    pub async fn cancel_leaf_optimization(&self) -> Result<(), SparkError> {
+        self.sdk
+            .cancel_leaf_optimization()
+            .await
+            .map_err(|e| SparkError::Wallet(e.to_string()))
+    }
+
+    /// Get leaf optimization progress
+    pub fn get_leaf_optimization_progress(&self) -> OptimizationProgress {
+        self.sdk.get_leaf_optimization_progress()
+    }
+}
+
+/// Parse a payment input without initializing a wallet
+pub async fn parse_input(
+    input: &str,
+    parsers: Option<Vec<ExternalInputParser>>,
+) -> Result<InputType, SparkError> {
+    breez_sdk_spark::parse_input(input, parsers)
+        .await
+        .map_err(|e| SparkError::InvalidAddress(e.to_string()))
 }
 
 fn build_receive_request(

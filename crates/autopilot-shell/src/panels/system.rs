@@ -37,6 +37,16 @@ impl SystemPanel {
         self.claude_usage.add_tokens(input, output, cache_read, cache_create);
     }
 
+    /// Update session IDs for display
+    pub fn update_session_ids(
+        &mut self,
+        autopilot_session_id: String,
+        sdk_session_ids: autopilot_service::SdkSessionIds,
+    ) {
+        self.claude_usage
+            .set_session_ids(autopilot_session_id, sdk_session_ids);
+    }
+
     /// Get mutable access to ClaudeUsage for direct updates
     pub fn claude_usage_mut(&mut self) -> &mut ClaudeUsage {
         &mut self.claude_usage

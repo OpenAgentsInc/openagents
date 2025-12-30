@@ -854,12 +854,21 @@ impl StartupState {
                     let cwd = std::env::current_dir().unwrap_or_default();
                     let model = self.model;
                     let logger = self.session_logger.clone();
+                    let resume_session_id = self.claude_session_id.clone();
                     
                     let (tx, rx) = mpsc::channel();
                     self.claude_receiver = Some(rx);
 
                     std::thread::spawn(move || {
-                        run_claude_planning(&cwd, &issue_summary, &assessment, model, tx, logger);
+                        run_claude_planning(
+                            &cwd,
+                            &issue_summary,
+                            &assessment,
+                            model,
+                            resume_session_id,
+                            tx,
+                            logger,
+                        );
                     });
 
                     self.phase = StartupPhase::StreamingClaudePlan;
@@ -868,6 +877,31 @@ impl StartupState {
             }
 
             StartupPhase::StreamingClaudePlan => {
+                if self.claude_receiver.is_none() {
+                    if let Some(session_id) = self.claude_session_id.clone() {
+                        let assessment = self.gpt_oss_assessment.clone().unwrap_or_default();
+                        let issue_summary = self.issue_summary.clone().unwrap_or_default();
+                        let cwd = std::env::current_dir().unwrap_or_default();
+                        let model = self.model;
+                        let logger = self.session_logger.clone();
+
+                        let (tx, rx) = mpsc::channel();
+                        self.claude_receiver = Some(rx);
+
+                        std::thread::spawn(move || {
+                            run_claude_planning(
+                                &cwd,
+                                &issue_summary,
+                                &assessment,
+                                model,
+                                Some(session_id),
+                                tx,
+                                logger,
+                            );
+                        });
+                    }
+                }
+
                 let mut tokens = Vec::new();
                 if let Some(ref rx) = self.claude_receiver {
                     while let Ok(token) = rx.try_recv() {
@@ -925,7 +959,20 @@ impl StartupState {
                             }
                             self.update_claude_streaming_line(elapsed);
                         }
+                        ClaudeToken::Progress { tool_name, elapsed_secs } => {
+                            self.claude_events.push(ClaudeEvent::ToolProgress {
+                                tool_name,
+                                elapsed_secs,
+                            });
+                        }
                         ClaudeToken::SessionId(session_id) => {
+                            if self.claude_session_id.as_deref() != Some(session_id.as_str()) {
+                                self.add_line(
+                                    &format!("  Claude session id (plan): {}", session_id),
+                                    LogStatus::Info,
+                                    elapsed,
+                                );
+                            }
                             self.claude_session_id = Some(session_id);
                         }
                         ClaudeToken::Done(plan) => {
@@ -1031,12 +1078,13 @@ impl StartupState {
                     let plan = self.claude_full_text.clone();
                     let model = self.model;
                     let logger = self.session_logger.clone();
+                    let resume_session_id = self.exec_session_id.clone();
                     
                     let (tx, rx) = mpsc::channel();
                     self.exec_receiver = Some(rx);
                     
                     std::thread::spawn(move || {
-                        run_claude_execution(&plan, model, tx, logger);
+                        run_claude_execution(&plan, model, resume_session_id, tx, logger);
                     });
                     
                     self.phase = StartupPhase::StreamingExecution;
@@ -1045,6 +1093,21 @@ impl StartupState {
             }
 
             StartupPhase::StreamingExecution => {
+                if self.exec_receiver.is_none() {
+                    if let Some(session_id) = self.exec_session_id.clone() {
+                        let plan = self.claude_full_text.clone();
+                        let model = self.model;
+                        let logger = self.session_logger.clone();
+
+                        let (tx, rx) = mpsc::channel();
+                        self.exec_receiver = Some(rx);
+
+                        std::thread::spawn(move || {
+                            run_claude_execution(&plan, model, Some(session_id), tx, logger);
+                        });
+                    }
+                }
+
                 let mut tokens = Vec::new();
                 if let Some(ref rx) = self.exec_receiver {
                     while let Ok(token) = rx.try_recv() {
@@ -1102,7 +1165,20 @@ impl StartupState {
                             }
                             self.update_exec_streaming_line(elapsed);
                         }
+                        ClaudeToken::Progress { tool_name, elapsed_secs } => {
+                            self.exec_events.push(ClaudeEvent::ToolProgress {
+                                tool_name,
+                                elapsed_secs,
+                            });
+                        }
                         ClaudeToken::SessionId(session_id) => {
+                            if self.exec_session_id.as_deref() != Some(session_id.as_str()) {
+                                self.add_line(
+                                    &format!("  Claude session id (exec): {}", session_id),
+                                    LogStatus::Info,
+                                    elapsed,
+                                );
+                            }
                             self.exec_session_id = Some(session_id);
                         }
                         ClaudeToken::Done(_result) => {
@@ -1154,12 +1230,21 @@ impl StartupState {
                     let iteration = self.iteration;
                     let model = self.model;
                     let logger = self.session_logger.clone();
+                    let resume_session_id = self.review_session_id.clone();
                     
                     let (tx, rx) = mpsc::channel();
                     self.review_receiver = Some(rx);
                     
                     std::thread::spawn(move || {
-                        run_claude_review(&plan, &exec_result, iteration, model, tx, logger);
+                        run_claude_review(
+                            &plan,
+                            &exec_result,
+                            iteration,
+                            model,
+                            resume_session_id,
+                            tx,
+                            logger,
+                        );
                     });
                     
                     self.phase = StartupPhase::StreamingReview;
@@ -1168,6 +1253,31 @@ impl StartupState {
             }
 
             StartupPhase::StreamingReview => {
+                if self.review_receiver.is_none() {
+                    if let Some(session_id) = self.review_session_id.clone() {
+                        let plan = self.claude_full_text.clone();
+                        let exec_result = self.exec_full_text.clone();
+                        let iteration = self.iteration;
+                        let model = self.model;
+                        let logger = self.session_logger.clone();
+
+                        let (tx, rx) = mpsc::channel();
+                        self.review_receiver = Some(rx);
+
+                        std::thread::spawn(move || {
+                            run_claude_review(
+                                &plan,
+                                &exec_result,
+                                iteration,
+                                model,
+                                Some(session_id),
+                                tx,
+                                logger,
+                            );
+                        });
+                    }
+                }
+
                 let mut tokens = Vec::new();
                 if let Some(ref rx) = self.review_receiver {
                     while let Ok(token) = rx.try_recv() {
@@ -1225,7 +1335,20 @@ impl StartupState {
                             }
                             self.update_review_streaming_line(elapsed);
                         }
+                        ClaudeToken::Progress { tool_name, elapsed_secs } => {
+                            self.review_events.push(ClaudeEvent::ToolProgress {
+                                tool_name,
+                                elapsed_secs,
+                            });
+                        }
                         ClaudeToken::SessionId(session_id) => {
+                            if self.review_session_id.as_deref() != Some(session_id.as_str()) {
+                                self.add_line(
+                                    &format!("  Claude session id (review): {}", session_id),
+                                    LogStatus::Info,
+                                    elapsed,
+                                );
+                            }
                             self.review_session_id = Some(session_id);
                         }
                         ClaudeToken::Done(review_result) => {
@@ -1242,8 +1365,12 @@ impl StartupState {
                             } else {
                                 self.add_line("", LogStatus::Info, elapsed);
                                 self.add_line("Review complete. Starting next iteration...", LogStatus::Info, elapsed);
-                                
+
                                 self.iteration += 1;
+                                self.claude_session_id = None;
+                                self.exec_session_id = None;
+                                self.review_session_id = None;
+                                self.fix_session_id = None;
                                 self.claude_full_text = review_result;
                                 self.claude_events.clear();
                                 self.exec_events.clear();
@@ -1354,6 +1481,7 @@ impl StartupState {
                     } else {
                         self.add_line("", LogStatus::Info, elapsed);
                         self.add_line("Generating fix plan...", LogStatus::Info, elapsed);
+                        self.fix_session_id = None;
                         self.verification_runner = Some(runner);
                         self.phase = StartupPhase::FixingVerificationFailures;
                         self.phase_started = elapsed;
@@ -1381,12 +1509,13 @@ impl StartupState {
                     let fix_prompt = generate_fix_prompt(&checklist, self.iteration);
                     let model = self.model;
                     let logger = self.session_logger.clone();
+                    let resume_session_id = self.fix_session_id.clone();
                     
                     let (tx, rx) = mpsc::channel();
                     self.fix_receiver = Some(rx);
                     
                     std::thread::spawn(move || {
-                        run_claude_execution(&fix_prompt, model, tx, logger);
+                        run_claude_execution(&fix_prompt, model, resume_session_id, tx, logger);
                     });
                     
                     self.phase = StartupPhase::StreamingFix;
@@ -1395,6 +1524,35 @@ impl StartupState {
             }
 
             StartupPhase::StreamingFix => {
+                if self.fix_receiver.is_none() {
+                    if let Some(session_id) = self.fix_session_id.clone() {
+                        let fix_prompt = generate_fix_prompt(
+                            &self.last_checklist.clone().unwrap_or_else(|| TerminationChecklist {
+                                build_clean: crate::verification::CheckResult::fail("", ""),
+                                clippy_clean: crate::verification::CheckResult::fail("", ""),
+                                tests_passing: crate::verification::CheckResult::fail("", ""),
+                                coverage_adequate: crate::verification::CheckResult::fail("", ""),
+                                no_stubs: crate::verification::CheckResult::fail("", ""),
+                                todos_complete: crate::verification::CheckResult::fail("", ""),
+                                user_stories_complete: crate::verification::CheckResult::fail("", ""),
+                                issues_complete: crate::verification::CheckResult::fail("", ""),
+                                git_clean: crate::verification::CheckResult::fail("", ""),
+                                git_pushed: crate::verification::CheckResult::fail("", ""),
+                            }),
+                            self.iteration,
+                        );
+                        let model = self.model;
+                        let logger = self.session_logger.clone();
+
+                        let (tx, rx) = mpsc::channel();
+                        self.fix_receiver = Some(rx);
+
+                        std::thread::spawn(move || {
+                            run_claude_execution(&fix_prompt, model, Some(session_id), tx, logger);
+                        });
+                    }
+                }
+
                 let mut tokens = Vec::new();
                 if let Some(ref rx) = self.fix_receiver {
                     while let Ok(token) = rx.try_recv() {
@@ -1452,7 +1610,20 @@ impl StartupState {
                             }
                             self.update_fix_streaming_line(elapsed);
                         }
+                        ClaudeToken::Progress { tool_name, elapsed_secs } => {
+                            self.fix_events.push(ClaudeEvent::ToolProgress {
+                                tool_name,
+                                elapsed_secs,
+                            });
+                        }
                         ClaudeToken::SessionId(session_id) => {
+                            if self.fix_session_id.as_deref() != Some(session_id.as_str()) {
+                                self.add_line(
+                                    &format!("  Claude session id (fix): {}", session_id),
+                                    LogStatus::Info,
+                                    elapsed,
+                                );
+                            }
                             self.fix_session_id = Some(session_id);
                         }
                         ClaudeToken::Done(_result) => {
@@ -1647,6 +1818,9 @@ impl StartupState {
                 ClaudeEvent::Tool { .. } => {
                     // Tool cards handle tool display via SessionEvents, skip here
                 }
+                ClaudeEvent::ToolProgress { .. } => {
+                    // Tool cards handle progress via SessionEvents
+                }
             }
         }
     }
@@ -1680,6 +1854,9 @@ impl StartupState {
                 }
                 ClaudeEvent::Tool { .. } => {
                     // Tool cards handle tool display via SessionEvents
+                }
+                ClaudeEvent::ToolProgress { .. } => {
+                    // Tool cards handle progress via SessionEvents
                 }
             }
         }
@@ -1715,6 +1892,9 @@ impl StartupState {
                 ClaudeEvent::Tool { .. } => {
                     // Tool cards handle tool display via SessionEvents
                 }
+                ClaudeEvent::ToolProgress { .. } => {
+                    // Tool cards handle progress via SessionEvents
+                }
             }
         }
     }
@@ -1748,6 +1928,9 @@ impl StartupState {
                 }
                 ClaudeEvent::Tool { .. } => {
                     // Tool cards handle tool display via SessionEvents
+                }
+                ClaudeEvent::ToolProgress { .. } => {
+                    // Tool cards handle progress via SessionEvents
                 }
             }
         }
