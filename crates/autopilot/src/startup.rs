@@ -817,6 +817,9 @@ impl StartupState {
                             self.phase_started = elapsed;
                             return;
                         }
+                        ClaudeToken::Usage(_) => {
+                            // Usage data - can be used for tracking
+                        }
                     }
                 }
             }
@@ -933,6 +936,9 @@ impl StartupState {
                             self.phase_started = elapsed;
                             return;
                         }
+                        ClaudeToken::Usage(_) => {
+                            // Usage data - can be used for tracking
+                        }
                     }
                 }
             }
@@ -1035,6 +1041,9 @@ impl StartupState {
                             self.phase = StartupPhase::Complete;
                             self.phase_started = elapsed;
                             return;
+                        }
+                        ClaudeToken::Usage(_) => {
+                            // Usage data - can be used for tracking
                         }
                     }
                 }
@@ -1215,6 +1224,9 @@ impl StartupState {
                             self.phase = StartupPhase::GeneratingReport;
                             self.phase_started = elapsed;
                             return;
+                        }
+                        ClaudeToken::Usage(_) => {
+                            // Usage data - can be used for tracking
                         }
                     }
                 }

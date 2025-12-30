@@ -5,7 +5,7 @@ use wgpui::{
     components::hud::Frame,
 };
 use crate::dock::{DockPosition, Panel};
-use super::ClaudeUsage;
+use super::{ClaudeUsage, SessionUsage, UsageLimit};
 
 /// Right sidebar panel with Claude usage stats
 pub struct SystemPanel {
@@ -17,6 +17,32 @@ impl SystemPanel {
         Self {
             claude_usage: ClaudeUsage::new(),
         }
+    }
+
+    /// Update the Claude usage data
+    pub fn update_usage(&mut self, model: &str, context_used: u64, context_total: u64) {
+        self.claude_usage.set_model(model);
+        self.claude_usage.set_context(context_used, context_total);
+    }
+
+    /// Update session usage stats
+    pub fn update_session(&mut self, session: SessionUsage) {
+        self.claude_usage.set_session(session);
+    }
+
+    /// Update usage limits
+    pub fn update_limits(&mut self, limits: Vec<UsageLimit>) {
+        self.claude_usage.set_limits(limits);
+    }
+
+    /// Add tokens to session
+    pub fn add_tokens(&mut self, input: u64, output: u64, cache_read: u64, cache_create: u64) {
+        self.claude_usage.add_tokens(input, output, cache_read, cache_create);
+    }
+
+    /// Get mutable access to ClaudeUsage for direct updates
+    pub fn claude_usage_mut(&mut self) -> &mut ClaudeUsage {
+        &mut self.claude_usage
     }
 }
 

@@ -2,22 +2,25 @@
 
 use autopilot::ClaudeModel;
 use autopilot_service::{AutopilotRuntime, DaemonStatus, RuntimeSnapshot, SessionEvent, SessionPhase};
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 use tracing::info;
 use wgpui::{
-    Bounds, Component, EventContext, EventResult, InputEvent, PaintContext,
+    Bounds, Component, EventContext, EventResult, Hsla, InputEvent, PaintContext,
     components::Text,
     components::atoms::{ToolStatus, ToolType},
-    components::hud::{StatusBar, StatusItem, StatusItemContent},
+    components::hud::{Frame, StatusBar, StatusItem, StatusItemContent},
     components::organisms::{ThreadEntry, ThreadEntryType, ToolCallCard},
     components::sections::ThreadView,
     keymap::{Keymap, KeyContext},
 };
 
 use crate::components::FullAutoToggle;
-use crate::dock::{Dock, DockPosition};
+use crate::dock::{Dock, DockPosition, Panel};
 use crate::hud::{HudBackground, StartupSequence};
 use crate::keymap::shell_keymap;
-use crate::panels::{SessionsPanel, SystemPanel};
+use crate::panels::{SessionsPanel, SystemPanel, UsageLimit};
+use crate::rate_limits::{RateLimitFetcher, RateLimitSnapshot};
 
 /// Layout dimensions calculated from current bounds
 struct ShellLayout {
@@ -33,6 +36,9 @@ pub struct AutopilotShell {
     left_dock: Dock,
     right_dock: Dock,
     bottom_dock: Dock,
+
+    // Right sidebar panel (not in dock for direct access)
+    system_panel: SystemPanel,
 
     // Center content
     thread_view: ThreadView,
@@ -57,6 +63,11 @@ pub struct AutopilotShell {
 
     // Window requests
     pending_fullscreen_toggle: bool,
+
+    // Rate limit state
+    #[allow(dead_code)]
+    rate_limit_fetcher: RateLimitFetcher,
+    rate_limits: Arc<Mutex<Option<RateLimitSnapshot>>>,
 }
 
 impl AutopilotShell {
@@ -65,9 +76,8 @@ impl AutopilotShell {
         let mut left_dock = Dock::new(DockPosition::Left, 280.0);
         left_dock.add_panel(Box::new(SessionsPanel::new()));
 
-        // Create right dock with system panel
-        let mut right_dock = Dock::new(DockPosition::Right, 300.0);
-        right_dock.add_panel(Box::new(SystemPanel::new()));
+        // Create right dock (empty - we render system panel directly for data access)
+        let right_dock = Dock::new(DockPosition::Right, 300.0);
 
         // Bottom dock (empty for now)
         let bottom_dock = Dock::new(DockPosition::Bottom, 200.0);
@@ -90,10 +100,64 @@ impl AutopilotShell {
         // Add shell bindings (these override defaults due to later-wins precedence)
         keymap.add_bindings(shell_keymap().bindings().iter().cloned());
 
+        // Rate limit fetcher and shared state
+        let rate_limit_fetcher = RateLimitFetcher::new();
+        let rate_limits: Arc<Mutex<Option<RateLimitSnapshot>>> = Arc::new(Mutex::new(None));
+
+        // Spawn background thread to fetch rate limits on startup
+        if rate_limit_fetcher.can_fetch() {
+            let fetcher = rate_limit_fetcher.clone();
+            let limits_arc = rate_limits.clone();
+            std::thread::spawn(move || {
+                // Create tokio runtime for the async fetch
+                let rt = tokio::runtime::Runtime::new().expect("Failed to create tokio runtime");
+                if let Ok(snapshot) = rt.block_on(fetcher.fetch_rate_limits()) {
+                    info!("Fetched initial rate limits: {:?}", snapshot.primary.as_ref().map(|p| p.used_percent));
+                    if let Ok(mut guard) = limits_arc.lock() {
+                        *guard = Some(snapshot);
+                    }
+                }
+            });
+        }
+
+        // Create system panel and set initial subscription info from credentials
+        let mut system_panel = SystemPanel::new();
+        if rate_limit_fetcher.has_credentials() {
+            let tier = rate_limit_fetcher.rate_limit_tier().unwrap_or("unknown");
+            let sub = rate_limit_fetcher.subscription_type().unwrap_or("free");
+            info!("Claude subscription: {} (tier: {})", sub, tier);
+
+            // Extract multiplier from tier (e.g., "default_claude_max_20x" -> "20x")
+            let multiplier = tier
+                .rsplit('_')
+                .next()
+                .filter(|s| s.ends_with('x') && s.len() > 1 && s[..s.len()-1].chars().all(|c| c.is_ascii_digit()))
+                .unwrap_or("");
+
+            // Show subscription type in UI (actual usage % comes from API responses)
+            let sub_display = match sub {
+                "max" => {
+                    if !multiplier.is_empty() {
+                        format!("Claude Max ({})", multiplier)
+                    } else {
+                        "Claude Max".to_string()
+                    }
+                }
+                "pro" => "Claude Pro".to_string(),
+                _ => sub.to_string(),
+            };
+            system_panel.update_limits(vec![UsageLimit {
+                name: sub_display,
+                percent_used: 0.0, // Will update from API responses
+                resets_at: "usage updates on API calls".to_string(),
+            }]);
+        }
+
         Self {
             left_dock,
             right_dock,
             bottom_dock,
+            system_panel,
             thread_view,
             background: HudBackground::new(),
             startup: None, // Skip startup animation, show UI immediately
@@ -104,6 +168,8 @@ impl AutopilotShell {
             keymap,
             key_context: KeyContext::new(),
             pending_fullscreen_toggle: false,
+            rate_limit_fetcher,
+            rate_limits,
         }
     }
 
@@ -118,6 +184,15 @@ impl AutopilotShell {
             "phase",
             StatusItemContent::Text(format!("{:?}", snapshot.phase)),
         );
+
+        // Update ClaudeUsage with model info from runtime
+        let model_str = snapshot.model.as_str();
+        let context_total = match snapshot.model {
+            ClaudeModel::Sonnet => 200_000,
+            ClaudeModel::Opus => 200_000,
+        };
+        // Context used would come from actual API response - for now show 0
+        self.system_panel.update_usage(model_str, 0, context_total);
 
         // Add new log lines to thread
         if snapshot.lines.len() > self.last_line_count {
@@ -270,6 +345,35 @@ impl AutopilotShell {
         }
     }
 
+    /// Update UI with current rate limits from shared state
+    fn update_rate_limits_ui(&mut self) {
+        if let Ok(guard) = self.rate_limits.lock() {
+            if let Some(ref snapshot) = *guard {
+                let mut limits = Vec::new();
+
+                // Add primary limit (usually weekly)
+                if let Some(ref primary) = snapshot.primary {
+                    limits.push(UsageLimit {
+                        name: primary.window_name().to_string(),
+                        percent_used: primary.used_percent,
+                        resets_at: primary.format_reset(),
+                    });
+                }
+
+                // Add secondary limit (usually daily/session)
+                if let Some(ref secondary) = snapshot.secondary {
+                    limits.push(UsageLimit {
+                        name: secondary.window_name().to_string(),
+                        percent_used: secondary.used_percent,
+                        resets_at: secondary.format_reset(),
+                    });
+                }
+
+                self.system_panel.update_limits(limits);
+            }
+        }
+    }
+
 }
 
 impl Default for AutopilotShell {
@@ -299,15 +403,27 @@ impl Component for AutopilotShell {
             self.apply_snapshot(&snapshot);
         }
 
+        // 3b. Check for rate limit updates and apply to UI
+        self.update_rate_limits_ui();
+
         // 4. Calculate layout
         let layout = self.calculate_layout(bounds);
 
         // 5. Paint docks
         self.left_dock.paint(layout.left, cx);
-        self.right_dock.paint(layout.right, cx);
 
-        // 5b. Paint Full Auto toggle at top of right sidebar
+        // 5b. Paint right sidebar with system panel (rendered directly for data access)
         if self.right_dock.is_open() {
+            // Draw line frame for right sidebar
+            let line_color = Hsla::new(0.0, 0.0, 0.3, 0.5);
+            let bg_color = Hsla::new(0.0, 0.0, 0.05, 0.9);
+            let mut frame = Frame::lines()
+                .line_color(line_color)
+                .bg_color(bg_color)
+                .stroke_width(1.0);
+            frame.paint(layout.right, cx);
+
+            // Full Auto toggle at top
             let toggle_bounds = Bounds::new(
                 layout.right.origin.x + 16.0,
                 layout.right.origin.y + 16.0,
@@ -315,6 +431,15 @@ impl Component for AutopilotShell {
                 36.0,
             );
             self.full_auto_toggle.paint(toggle_bounds, cx);
+
+            // System panel content below toggle
+            let panel_bounds = Bounds::new(
+                layout.right.origin.x + 8.0,
+                layout.right.origin.y + 60.0,
+                layout.right.size.width - 16.0,
+                layout.right.size.height - 68.0,
+            );
+            self.system_panel.paint(panel_bounds, cx);
         }
 
         // 6. Paint center thread view
@@ -388,7 +513,14 @@ impl Component for AutopilotShell {
         }
 
         if self.right_dock.is_open() {
-            if let EventResult::Handled = self.right_dock.event(event, layout.right, cx) {
+            // Route to system panel content area
+            let panel_bounds = Bounds::new(
+                layout.right.origin.x + 8.0,
+                layout.right.origin.y + 60.0,
+                layout.right.size.width - 16.0,
+                layout.right.size.height - 68.0,
+            );
+            if let EventResult::Handled = self.system_panel.event(event, panel_bounds, cx) {
                 return EventResult::Handled;
             }
         }
