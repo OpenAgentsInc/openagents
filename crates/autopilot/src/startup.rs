@@ -25,7 +25,7 @@ pub enum ClaudeModel {
 impl ClaudeModel {
     pub fn as_str(&self) -> &'static str {
         match self {
-            ClaudeModel::Sonnet => "claude-sonnet-4-20250514",
+            ClaudeModel::Sonnet => "claude-sonnet-4-5-20250929",
             ClaudeModel::Opus => "claude-opus-4-5-20251101",
         }
     }
