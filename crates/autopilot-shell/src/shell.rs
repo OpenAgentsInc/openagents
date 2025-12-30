@@ -863,27 +863,97 @@ impl AutopilotShell {
                             .copyable_text(&session_id),
                     );
 
+                    // Group child tools by parent Task ID for nesting
+                    let mut task_children_map: HashMap<String, Vec<&crate::claude_sessions::SessionMessage>> = HashMap::new();
+                    for msg in &messages {
+                        if let Some(parent_id) = &msg.parent_task_id {
+                            task_children_map.entry(parent_id.clone()).or_default().push(msg);
+                        }
+                    }
+
                     // Add all messages from the session
-                    for msg in messages {
-                        let entry_type = if msg.role == "user" {
-                            ThreadEntryType::User
-                        } else if msg.is_tool_use {
-                            ThreadEntryType::Tool
-                        } else {
-                            ThreadEntryType::Assistant
-                        };
+                    for msg in &messages {
+                        // Skip child tools - they'll be nested under their parent Task
+                        if msg.parent_task_id.is_some() {
+                            continue;
+                        }
 
-                        // Truncate very long messages for display
-                        let display_content = if msg.content.len() > 500 {
-                            format!("{}...", &msg.content[..500])
-                        } else {
-                            msg.content.clone()
-                        };
+                        if msg.is_tool_use {
+                            // Create ToolCallCard for tool messages
+                            let tool_name = msg.tool_name.as_deref().unwrap_or("unknown");
+                            let tool_type = tool_type_from_name(tool_name);
 
-                        self.thread_view.push_entry(
-                            ThreadEntry::new(entry_type, Text::new(&display_content))
-                                .copyable_text(&msg.content),
-                        );
+                            // Determine status from result
+                            let status = match (&msg.tool_output, msg.is_error) {
+                                (Some(_), Some(true)) => ToolStatus::Error,
+                                (Some(_), _) => ToolStatus::Success,
+                                (None, _) => ToolStatus::Pending,
+                            };
+
+                            let mut card = ToolCallCard::new(tool_type, tool_name)
+                                .status(status);
+
+                            // Add input params
+                            if let Some(input) = &msg.tool_input {
+                                card = card.input(input.clone());
+                            }
+
+                            // Add output
+                            if let Some(output) = &msg.tool_output {
+                                card = card.output(output.clone());
+                            }
+
+                            // Add child tools for Task
+                            if tool_name == "Task" {
+                                if let Some(tool_id) = &msg.tool_id {
+                                    if let Some(children) = task_children_map.get(tool_id) {
+                                        for child_msg in children {
+                                            let child_name = child_msg.tool_name.as_deref().unwrap_or("unknown");
+                                            let child_type = tool_type_from_name(child_name);
+                                            let child_status = match child_msg.is_error {
+                                                Some(true) => ToolStatus::Error,
+                                                Some(false) => ToolStatus::Success,
+                                                None => if child_msg.tool_output.is_some() {
+                                                    ToolStatus::Success
+                                                } else {
+                                                    ToolStatus::Pending
+                                                },
+                                            };
+
+                                            card.add_child(ChildTool {
+                                                tool_type: child_type,
+                                                name: child_name.to_string(),
+                                                params: child_msg.tool_input.clone().unwrap_or_default(),
+                                                status: child_status,
+                                            });
+                                        }
+                                    }
+                                }
+                            }
+
+                            self.thread_view.push_entry(
+                                ThreadEntry::new(ThreadEntryType::Tool, card),
+                            );
+                        } else {
+                            // Text message
+                            let entry_type = if msg.role == "user" {
+                                ThreadEntryType::User
+                            } else {
+                                ThreadEntryType::Assistant
+                            };
+
+                            // Truncate very long messages for display
+                            let display_content = if msg.content.len() > 500 {
+                                format!("{}...", &msg.content[..500])
+                            } else {
+                                msg.content.clone()
+                            };
+
+                            self.thread_view.push_entry(
+                                ThreadEntry::new(entry_type, Text::new(&display_content))
+                                    .copyable_text(&msg.content),
+                            );
+                        }
                     }
 
                     // Store session ID for resume when Full Auto is toggled
