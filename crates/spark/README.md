@@ -13,41 +13,35 @@ This crate provides Bitcoin payment capabilities with unified identity managemen
 - ✅ **SparkSigner** - BIP44 key derivation (m/44'/0'/0'/0/0)
 - ✅ **UnifiedIdentity integration** - Spark keys alongside Nostr keys
 - ✅ **Basic wallet types** - Balance, WalletInfo, Network, WalletConfig
-- ✅ **Stub implementations** - API surface defined for future integration
+- ✅ **Breez SDK wiring** - Connect + wallet scaffolding
 
 ### 🚧 Phase 2: Wallet Operations (IN PROGRESS)
 
-Current state: **Stub implementations** - Methods are defined but return placeholder data.
+Current state: **Breez SDK connected** - Core wallet operations are implemented.
 
-To complete Phase 2, we need to:
+Implemented:
 
-1. **Add Breez SDK dependency**
-   - Add `spark-wallet` from GitHub: `breez/spark-sdk`
-   - Or wait for crates.io publication
-   - Add `spark` core crate dependency
+- Breez SDK connect using local spark-sdk dependency
+- Spark + Bitcoin receive addresses
+- Spark invoice creation
+- Prepare/send payments + payment history listing
+- Event listeners, network status checks, HTLC claim
 
-2. **Implement wallet initialization**
-   - Configure Breez SDK client
-   - Set up Spark operator connections
-   - Initialize wallet state from mnemonic + network
+Remaining for Phase 2:
 
-3. **Wire up balance operations**
-   - Query Spark Layer 2 balance
-   - Query Lightning channel balances
-   - Query on-chain funds (cooperative exit)
+- LNURL pay/withdraw + Lightning address management
+- On-chain deposit claim/refund + fee quote UX
+- Token balances/metadata and issuer APIs
+- Advanced config surface (sync interval, max claim fee, lnurl domain, real-time sync, private mode)
+- Passphrase support + explicit wallet info coverage
 
-4. **Add wallet sync**
-   - Real-time sync with Spark operators
-   - Background sync tasks
-   - State persistence
+### ⏸️ Phase 3: Payment Extensions (PLANNED)
 
-### ⏸️ Phase 3: Payment Methods (PLANNED)
-
-- Lightning send/receive (BOLT-11)
-- Spark send/receive (SparkAddress)
-- On-chain deposit/withdrawal
+- Lightning receive (BOLT-11 invoice)
 - LNURL support (pay, withdraw)
-- Payment history
+- Lightning address receive
+- On-chain deposit/withdrawal workflows
+- Payment history UI/export
 
 ### ⏸️ Phase 4: Token Support (PLANNED)
 
@@ -104,7 +98,7 @@ let pubkey = signer.public_key_hex();
 println!("Bitcoin public key: {}", pubkey);
 ```
 
-### Future (After Phase 2 Complete)
+### Wallet Operations (Available)
 
 ```rust
 use spark::{SparkSigner, SparkWallet, WalletConfig, Network};
@@ -125,9 +119,12 @@ println!("Lightning: {} sats", balance.lightning_sats);
 println!("On-chain: {} sats", balance.onchain_sats);
 println!("Total: {} sats", balance.total_sats());
 
-// Sync with operators
-wallet.sync().await?;
+// Check network status (uses sync)
+let report = wallet.network_status(std::time::Duration::from_secs(5)).await;
+println!("Network: {}", report.status.as_str());
 ```
+
+Note: Breez SDK currently supports Mainnet and Regtest. Network::Testnet and Network::Signet map to Regtest in this crate.
 
 ## Breez SDK Integration
 
@@ -137,17 +134,15 @@ wallet.sync().await?;
 - **Docs**: https://sdk-doc-spark.breez.technology/
 - **API**: https://breez.github.io/spark-sdk/breez_sdk_spark/
 
-### Key Dependencies Needed
+### Key Dependencies
 
 ```toml
 [dependencies]
-# From Breez spark-sdk (when available)
-spark-wallet = { git = "https://github.com/breez/spark-sdk", branch = "main" }
-spark = { git = "https://github.com/breez/spark-sdk", branch = "main" }
+# Local dependency on breez-sdk-spark core crate
+breez-sdk-spark = { path = "../../../spark-sdk/crates/breez-sdk/core" }
 
 # Or when published to crates.io:
-# spark-wallet = "0.1.0"
-# spark = "0.1.0"
+# breez-sdk-spark = "0.1.0"
 ```
 
 ### API Key
@@ -168,11 +163,11 @@ For development/testing, the API key is optional.
 ## Testing
 
 ```bash
-# Run tests (currently stub implementations)
-cargo test -p spark
+# Run tests
+cargo test -p openagents-spark
 
 # Future: Integration tests with regtest
-# cargo test -p spark --features integration-tests
+# cargo test -p openagents-spark --features integration-tests
 ```
 
 ## Related
