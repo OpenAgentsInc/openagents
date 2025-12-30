@@ -531,13 +531,31 @@ impl AutopilotShell {
                         self.active_tasks.retain(|(key, _)| key != &tool_key);
                     } else {
                         // Non-Task tool completed - find which parent Task owns it
-                        // Search all active Tasks for one that has this child
+                        // Match by both name AND params prefix to handle multiple Tasks
+                        // with children of the same tool type
+                        let params_prefix: String = params.chars().take(50).collect();
                         let mut found_parent = None;
                         for (_, parent_idx) in &self.active_tasks {
                             if let Some(children) = self.task_children.get(parent_idx) {
-                                if children.iter().any(|c| c.name == *name && c.status == ToolStatus::Running) {
+                                // Try exact params match first, then name-only match
+                                if children.iter().any(|c| {
+                                    c.name == *name
+                                        && c.status == ToolStatus::Running
+                                        && c.params.starts_with(&params_prefix)
+                                }) {
                                     found_parent = Some(*parent_idx);
                                     break;
+                                }
+                            }
+                        }
+                        // Fallback: if no exact match, try name-only match
+                        if found_parent.is_none() {
+                            for (_, parent_idx) in &self.active_tasks {
+                                if let Some(children) = self.task_children.get(parent_idx) {
+                                    if children.iter().any(|c| c.name == *name && c.status == ToolStatus::Running) {
+                                        found_parent = Some(*parent_idx);
+                                        break;
+                                    }
                                 }
                             }
                         }
@@ -546,9 +564,23 @@ impl AutopilotShell {
                             // Update child status in the parent that owns it
                             if let Some(children) = self.task_children.get_mut(&parent_idx) {
                                 for child in children.iter_mut().rev() {
-                                    if child.name == *name && child.status == ToolStatus::Running {
+                                    // Match by name and params prefix
+                                    if child.name == *name
+                                        && child.status == ToolStatus::Running
+                                        && child.params.starts_with(&params_prefix)
+                                    {
                                         child.status = ToolStatus::Success;
                                         break;
+                                    }
+                                }
+                                // Fallback: if no exact match found, try name-only
+                                let any_updated = children.iter().any(|c| c.name == *name && c.status == ToolStatus::Success);
+                                if !any_updated {
+                                    for child in children.iter_mut().rev() {
+                                        if child.name == *name && child.status == ToolStatus::Running {
+                                            child.status = ToolStatus::Success;
+                                            break;
+                                        }
                                     }
                                 }
                             }
