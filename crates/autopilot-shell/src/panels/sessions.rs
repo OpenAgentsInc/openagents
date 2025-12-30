@@ -346,7 +346,6 @@ impl Panel for SessionsPanel {
                 }
 
                 let point = Point::new(*x, *y);
-                tracing::info!("SessionsPanel: MouseDown at ({}, {}), bounds: {:?}", x, y, bounds);
 
                 // Check session clicks
                 for i in 0..self.sessions.len().min(5) {
@@ -360,9 +359,7 @@ impl Panel for SessionsPanel {
 
                 // Check New Session button
                 let new_btn_bounds = self.new_session_button_bounds(bounds);
-                tracing::info!("SessionsPanel: New Session btn bounds: {:?}, contains: {}", new_btn_bounds, new_btn_bounds.contains(point));
                 if new_btn_bounds.contains(point) {
-                    tracing::info!("SessionsPanel: New Session clicked!");
                     self.pending_actions.push(SessionAction::NewSession);
                     return EventResult::Handled;
                 }
