@@ -47,6 +47,14 @@ struct HudContext {
     is_owner: bool,
 }
 
+/// Session info for sidebar
+#[derive(Clone)]
+struct SessionInfo {
+    id: String,
+    timestamp: String,
+    model: String,
+}
+
 struct AppState {
     mouse_pos: Point,
     button_hovered: bool,
@@ -62,6 +70,14 @@ struct AppState {
     scroll_offset: f32,
     // For RepoView
     hud_context: Option<HudContext>,
+
+    // App shell state
+    left_dock_open: bool,
+    right_dock_open: bool,
+    full_auto_enabled: bool,
+    full_auto_bounds: Bounds,
+    selected_model: String,
+    sessions: Vec<SessionInfo>,
 }
 
 impl Default for AppState {
@@ -80,6 +96,17 @@ impl Default for AppState {
             selected_repo: None,
             scroll_offset: 0.0,
             hud_context: None,
+            // App shell defaults
+            left_dock_open: true,
+            right_dock_open: true,
+            full_auto_enabled: false,
+            full_auto_bounds: Bounds::ZERO,
+            selected_model: "sonnet".to_string(),
+            sessions: vec![
+                SessionInfo { id: "abc123".into(), timestamp: "Today 14:32".into(), model: "sonnet".into() },
+                SessionInfo { id: "def456".into(), timestamp: "Yesterday 09:15".into(), model: "opus".into() },
+                SessionInfo { id: "ghi789".into(), timestamp: "Dec 28 16:45".into(), model: "sonnet".into() },
+            ],
         }
     }
 }
@@ -208,14 +235,8 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
     // Force initial resize
     platform.borrow_mut().handle_resize();
 
-    // Check if we're on a repo page (HUD_CONTEXT exists)
-    if let Some(hud_ctx) = get_hud_context() {
-        let mut s = state.borrow_mut();
-        s.hud_context = Some(hud_ctx);
-        s.view = AppView::RepoView;
-        s.loading = false;
-    } else {
-        // On landing page - fetch current user, then repos if logged in
+    // Fetch current user - if logged in, show repo selector, then app shell after selection
+    {
         let state_clone = state.clone();
         wasm_bindgen_futures::spawn_local(async move {
             let username = fetch_current_user().await;
@@ -225,7 +246,7 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
                 state.user.github_username = username.clone();
                 state.loading = false;
 
-                // If logged in, switch to repo selector
+                // If logged in, show repo selector first
                 if username.is_some() {
                     state.view = AppView::RepoSelector;
                     state.repos_loading = true;
@@ -281,17 +302,33 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
             let mut state = state_clone.borrow_mut();
             let click_pos = Point::new(event.offset_x() as f32, event.offset_y() as f32);
 
-            // Check repo click - navigate to repo view
+            // Check Full Auto toggle click (only in RepoView)
+            if state.view == AppView::RepoView && state.full_auto_bounds.contains(click_pos) {
+                state.full_auto_enabled = !state.full_auto_enabled;
+                return;
+            }
+
+            // Check repo click - select repo and switch to app shell (no navigation)
             if let Some(idx) = state.hovered_repo_idx {
                 if idx < state.repos.len() {
-                    let full_name = state.repos[idx].full_name.clone();
-                    state.selected_repo = Some(full_name.clone());
+                    let repo = &state.repos[idx];
+                    let full_name = repo.full_name.clone();
 
-                    // Navigate to repo view
-                    if let Some(window) = web_sys::window() {
-                        let repo_url = format!("/repo/{}", full_name);
-                        let _ = window.location().set_href(&repo_url);
-                    }
+                    // Parse owner/repo from full_name
+                    let parts: Vec<&str> = full_name.split('/').collect();
+                    let (owner, repo_name) = if parts.len() == 2 {
+                        (parts[0].to_string(), parts[1].to_string())
+                    } else {
+                        (full_name.clone(), "".to_string())
+                    };
+
+                    state.selected_repo = Some(full_name);
+                    state.hud_context = Some(HudContext {
+                        username: owner,
+                        repo: repo_name,
+                        is_owner: true,
+                    });
+                    state.view = AppView::RepoView;
                     return;
                 }
             }
@@ -300,11 +337,7 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
             if state.button_bounds.contains(click_pos) {
                 if let Some(window) = web_sys::window() {
                     match state.view {
-                        AppView::RepoView => {
-                            // Back button - go to home
-                            let _ = window.location().set_href("/");
-                        }
-                        AppView::RepoSelector => {
+                        AppView::RepoView | AppView::RepoSelector => {
                             // Logout button
                             let opts = web_sys::RequestInit::new();
                             opts.set_method("POST");
@@ -353,6 +386,43 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
             let _ = canvas2.style().set_property("cursor", cursor);
         });
         canvas.add_event_listener_with_callback("mousemove", closure.as_ref().unchecked_ref())?;
+        closure.forget();
+    }
+
+    // Keyboard events for dock toggles
+    {
+        let state_clone = state.clone();
+        let window = web_sys::window().unwrap();
+        let closure = Closure::<dyn FnMut(_)>::new(move |event: web_sys::KeyboardEvent| {
+            let meta = event.meta_key() || event.ctrl_key();
+            let key = event.key();
+
+            if meta && state_clone.borrow().view == AppView::RepoView {
+                let mut state = state_clone.borrow_mut();
+                match key.as_str() {
+                    "[" => {
+                        state.left_dock_open = !state.left_dock_open;
+                        event.prevent_default();
+                    }
+                    "]" => {
+                        state.right_dock_open = !state.right_dock_open;
+                        event.prevent_default();
+                    }
+                    "\\" => {
+                        let both_open = state.left_dock_open && state.right_dock_open;
+                        state.left_dock_open = !both_open;
+                        state.right_dock_open = !both_open;
+                        event.prevent_default();
+                    }
+                    "a" => {
+                        state.full_auto_enabled = !state.full_auto_enabled;
+                        event.prevent_default();
+                    }
+                    _ => {}
+                }
+            }
+        });
+        window.add_event_listener_with_callback("keydown", closure.as_ref().unchecked_ref())?;
         closure.forget();
     }
 
@@ -658,97 +728,329 @@ fn build_repo_view(
     // Background
     scene.draw_quad(Quad::new(Bounds::new(0.0, 0.0, width, height)).with_background(theme::bg::APP));
 
-    let padding = 24.0;
+    // Layout constants
+    let status_h = 28.0;
+    let left_w = if state.left_dock_open { 280.0 } else { 0.0 };
+    let right_w = if state.right_dock_open { 300.0 } else { 0.0 };
+    let center_x = left_w;
+    let center_w = width - left_w - right_w;
+    let content_h = height - status_h;
 
-    // Get context
-    let (username, repo, is_owner) = match &state.hud_context {
-        Some(ctx) => (ctx.username.as_str(), ctx.repo.as_str(), ctx.is_owner),
-        None => ("?", "?", false),
-    };
+    // Draw sidebars
+    if state.left_dock_open {
+        draw_left_sidebar(scene, text_system, state, 0.0, 0.0, left_w, content_h);
+    }
 
-    // Header bar
-    let header_height = 48.0;
+    // Draw center placeholder
+    draw_center_pane(scene, text_system, state, center_x, 0.0, center_w, content_h);
+
+    if state.right_dock_open {
+        draw_right_sidebar(scene, text_system, state, width - right_w, 0.0, right_w, content_h);
+    }
+
+    // Draw status bar
+    draw_status_bar(scene, text_system, state, 0.0, content_h, width, status_h);
+}
+
+fn draw_left_sidebar(
+    scene: &mut Scene,
+    text_system: &mut TextSystem,
+    state: &mut AppState,
+    x: f32,
+    y: f32,
+    w: f32,
+    h: f32,
+) {
+    // Sidebar background
     scene.draw_quad(
-        Quad::new(Bounds::new(0.0, 0.0, width, header_height))
+        Quad::new(Bounds::new(x, y, w, h))
             .with_background(theme::bg::SURFACE)
             .with_border(theme::border::DEFAULT, 1.0),
     );
 
-    // Repo title
-    let title = format!("{}/{}", username, repo);
-    let title_run = text_system.layout(
-        &title,
-        Point::new(padding, 14.0),
-        18.0,
+    let padding = 12.0;
+    let mut cy = y + padding;
+
+    // Model selector
+    let model_label = format!("Model: {}", state.selected_model);
+    let model_run = text_system.layout(
+        &model_label,
+        Point::new(x + padding, cy),
+        14.0,
         theme::text::PRIMARY,
     );
-    scene.draw_text(title_run);
+    scene.draw_text(model_run);
+    cy += 32.0;
 
-    // Owner badge
-    if is_owner {
-        let badge_x = padding + title.len() as f32 * 18.0 * 0.6 + 12.0;
-        let badge_bounds = Bounds::new(badge_x, 12.0, 50.0, 20.0);
+    // Divider
+    scene.draw_quad(
+        Quad::new(Bounds::new(x + padding, cy, w - padding * 2.0, 1.0))
+            .with_background(theme::border::DEFAULT),
+    );
+    cy += 16.0;
+
+    // Sessions header
+    let sessions_run = text_system.layout(
+        "Sessions",
+        Point::new(x + padding, cy),
+        12.0,
+        theme::text::MUTED,
+    );
+    scene.draw_text(sessions_run);
+    cy += 24.0;
+
+    // Session list
+    for session in &state.sessions {
+        // Session row background
         scene.draw_quad(
-            Quad::new(badge_bounds)
-                .with_background(theme::accent::PRIMARY.with_alpha(0.2))
-                .with_border(theme::accent::PRIMARY, 1.0),
+            Quad::new(Bounds::new(x + padding, cy, w - padding * 2.0, 28.0))
+                .with_background(theme::bg::ELEVATED),
         );
-        let badge_run = text_system.layout(
-            "Owner",
-            Point::new(badge_x + 8.0, 14.0),
+
+        // Session timestamp
+        let ts_run = text_system.layout(
+            &session.timestamp,
+            Point::new(x + padding + 8.0, cy + 6.0),
             11.0,
-            theme::accent::PRIMARY,
+            theme::text::PRIMARY,
         );
-        scene.draw_text(badge_run);
+        scene.draw_text(ts_run);
+
+        // Session model badge
+        let model_badge = text_system.layout(
+            &session.model,
+            Point::new(x + w - padding - 50.0, cy + 6.0),
+            10.0,
+            theme::text::MUTED,
+        );
+        scene.draw_text(model_badge);
+
+        cy += 32.0;
     }
 
-    // Back button (top right)
-    let back_text = "← Back";
-    let back_width = back_text.len() as f32 * 12.0 * 0.6 + 16.0;
-    let back_x = width - padding - back_width;
-    state.button_bounds = Bounds::new(back_x, 10.0, back_width, 28.0);
+    // Hotkey legend at bottom
+    let legend_y = y + h - 80.0;
 
-    let back_bg = if state.button_hovered {
-        theme::bg::HOVER
+    let legend_title = text_system.layout(
+        "Hotkeys",
+        Point::new(x + padding, legend_y),
+        10.0,
+        theme::text::MUTED,
+    );
+    scene.draw_text(legend_title);
+
+    let hotkeys = [
+        ("cmd-[", "left dock"),
+        ("cmd-]", "right dock"),
+        ("cmd-\\", "both docks"),
+        ("cmd-a", "full auto"),
+    ];
+
+    for (i, (key, desc)) in hotkeys.iter().enumerate() {
+        let hy = legend_y + 14.0 + (i as f32 * 12.0);
+        let key_run = text_system.layout(key, Point::new(x + padding, hy), 9.0, theme::accent::PRIMARY);
+        scene.draw_text(key_run);
+        let desc_run = text_system.layout(desc, Point::new(x + padding + 50.0, hy), 9.0, theme::text::MUTED);
+        scene.draw_text(desc_run);
+    }
+}
+
+fn draw_right_sidebar(
+    scene: &mut Scene,
+    text_system: &mut TextSystem,
+    state: &mut AppState,
+    x: f32,
+    y: f32,
+    w: f32,
+    h: f32,
+) {
+    // Sidebar background
+    scene.draw_quad(
+        Quad::new(Bounds::new(x, y, w, h))
+            .with_background(theme::bg::SURFACE)
+            .with_border(theme::border::DEFAULT, 1.0),
+    );
+
+    let padding = 12.0;
+    let mut cy = y + padding;
+
+    // Full Auto toggle
+    let (label, color) = if state.full_auto_enabled {
+        ("● FULL AUTO ON", theme::status::SUCCESS)
+    } else {
+        ("○ FULL AUTO OFF", theme::text::MUTED)
+    };
+
+    let toggle_bg = if state.full_auto_enabled {
+        theme::status::SUCCESS.with_alpha(0.15)
     } else {
         theme::bg::ELEVATED
     };
 
+    state.full_auto_bounds = Bounds::new(x + padding, cy, w - padding * 2.0, 32.0);
+
     scene.draw_quad(
-        Quad::new(state.button_bounds)
-            .with_background(back_bg)
+        Quad::new(state.full_auto_bounds)
+            .with_background(toggle_bg)
+            .with_border(color, 1.0),
+    );
+
+    let toggle_run = text_system.layout(
+        label,
+        Point::new(x + padding + 12.0, cy + 8.0),
+        14.0,
+        color,
+    );
+    scene.draw_text(toggle_run);
+    cy += 48.0;
+
+    // Divider
+    scene.draw_quad(
+        Quad::new(Bounds::new(x + padding, cy, w - padding * 2.0, 1.0))
+            .with_background(theme::border::DEFAULT),
+    );
+    cy += 16.0;
+
+    // Claude Usage header
+    let usage_header = text_system.layout(
+        "Claude Usage",
+        Point::new(x + padding, cy),
+        12.0,
+        theme::text::MUTED,
+    );
+    scene.draw_text(usage_header);
+    cy += 24.0;
+
+    // Model info
+    let model_info = text_system.layout(
+        &format!("Model: {}", state.selected_model),
+        Point::new(x + padding, cy),
+        11.0,
+        theme::text::PRIMARY,
+    );
+    scene.draw_text(model_info);
+    cy += 20.0;
+
+    // Context progress bar (placeholder)
+    let bar_w = w - padding * 2.0;
+    scene.draw_quad(
+        Quad::new(Bounds::new(x + padding, cy, bar_w, 8.0))
+            .with_background(theme::bg::ELEVATED),
+    );
+    // Filled portion (10% for demo)
+    scene.draw_quad(
+        Quad::new(Bounds::new(x + padding, cy, bar_w * 0.1, 8.0))
+            .with_background(theme::accent::PRIMARY),
+    );
+    cy += 16.0;
+
+    let context_label = text_system.layout(
+        "Context: 10%",
+        Point::new(x + padding, cy),
+        10.0,
+        theme::text::MUTED,
+    );
+    scene.draw_text(context_label);
+    cy += 24.0;
+
+    // Stats
+    let stats = [
+        ("Tokens:", "0 / 0"),
+        ("Cache:", "0"),
+        ("Turns:", "0"),
+        ("Cost:", "$0.00"),
+    ];
+
+    for (label, value) in stats {
+        let label_run = text_system.layout(label, Point::new(x + padding, cy), 10.0, theme::text::MUTED);
+        scene.draw_text(label_run);
+        let value_run = text_system.layout(value, Point::new(x + padding + 60.0, cy), 10.0, theme::text::PRIMARY);
+        scene.draw_text(value_run);
+        cy += 16.0;
+    }
+}
+
+fn draw_center_pane(
+    scene: &mut Scene,
+    text_system: &mut TextSystem,
+    state: &AppState,
+    x: f32,
+    y: f32,
+    w: f32,
+    h: f32,
+) {
+    // Center pane background (slightly different from sidebars)
+    scene.draw_quad(
+        Quad::new(Bounds::new(x, y, w, h))
+            .with_background(theme::bg::APP),
+    );
+
+    let center_x = x + w / 2.0;
+    let center_y = y + h / 2.0;
+
+    // Get repo info for display
+    let (owner, repo) = state.hud_context.as_ref()
+        .map(|ctx| (ctx.username.as_str(), ctx.repo.as_str()))
+        .unwrap_or(("", ""));
+
+    // Repo name as title
+    let title = format!("{}/{}", owner, repo);
+    let title_run = text_system.layout(
+        &title,
+        Point::new(center_x - title.len() as f32 * 7.0, center_y - 30.0),
+        24.0,
+        theme::text::PRIMARY,
+    );
+    scene.draw_text(title_run);
+
+    let hint = "(ThreadView will go here)";
+    let hint_run = text_system.layout(
+        hint,
+        Point::new(center_x - hint.len() as f32 * 4.5, center_y + 20.0),
+        10.0,
+        theme::text::MUTED,
+    );
+    scene.draw_text(hint_run);
+}
+
+fn draw_status_bar(
+    scene: &mut Scene,
+    text_system: &mut TextSystem,
+    state: &AppState,
+    x: f32,
+    y: f32,
+    w: f32,
+    h: f32,
+) {
+    // Status bar background
+    scene.draw_quad(
+        Quad::new(Bounds::new(x, y, w, h))
+            .with_background(theme::bg::SURFACE)
             .with_border(theme::border::DEFAULT, 1.0),
     );
 
-    let back_run = text_system.layout(
-        back_text,
-        Point::new(back_x + 8.0, 14.0),
-        12.0,
-        theme::text::PRIMARY,
-    );
-    scene.draw_text(back_run);
+    let padding = 12.0;
 
-    // Main content area
-    let content_y = header_height + padding;
-    let center_x = width / 2.0;
-    let center_y = (height + header_height) / 2.0;
-
-    // Placeholder - this is where the actual HUD would go
-    let placeholder = "HUD View";
-    let placeholder_run = text_system.layout(
-        placeholder,
-        Point::new(center_x - 40.0, center_y - 20.0),
-        24.0,
+    // Left: dock toggle hints
+    let hints = "cmd-[ / cmd-] toggle docks";
+    let hints_run = text_system.layout(
+        hints,
+        Point::new(x + padding, y + 8.0),
+        10.0,
         theme::text::MUTED,
     );
-    scene.draw_text(placeholder_run);
+    scene.draw_text(hints_run);
 
-    let subtitle = format!("Viewing {}/{}", username, repo);
-    let subtitle_run = text_system.layout(
-        &subtitle,
-        Point::new(center_x - subtitle.len() as f32 * 12.0 * 0.3, center_y + 20.0),
-        12.0,
-        theme::text::MUTED,
-    );
-    scene.draw_text(subtitle_run);
+    // Right: repo path
+    if let Some(ctx) = &state.hud_context {
+        let repo_text = format!("{}/{}", ctx.username, ctx.repo);
+        let text_w = repo_text.len() as f32 * 10.0 * 0.6;
+        let repo_run = text_system.layout(
+            &repo_text,
+            Point::new(w - padding - text_w, y + 8.0),
+            10.0,
+            theme::text::MUTED,
+        );
+        scene.draw_text(repo_run);
+    }
 }
