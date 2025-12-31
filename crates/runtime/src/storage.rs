@@ -7,6 +7,8 @@ use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
+#[cfg(feature = "cloudflare")]
+use worker::sql::{SqlStorage, SqlStorageValue};
 
 /// Storage operation for transactions.
 #[derive(Debug, Clone)]
@@ -350,6 +352,205 @@ impl AgentStorage for SqliteStorage {
 
 impl From<AgentError> for StorageError {
     fn from(err: AgentError) -> Self {
+        StorageError::Other(err.to_string())
+    }
+}
+
+/// Durable Object SQLite-backed storage for Cloudflare runtime.
+#[cfg(feature = "cloudflare")]
+#[derive(Clone)]
+pub struct CloudflareStorage {
+    sql: SqlStorage,
+}
+
+#[cfg(feature = "cloudflare")]
+impl CloudflareStorage {
+    /// Create a storage wrapper around a DO SQL handle.
+    pub fn new(sql: SqlStorage) -> StorageResult<Self> {
+        let storage = Self { sql };
+        storage.init()?;
+        Ok(storage)
+    }
+
+    fn init(&self) -> StorageResult<()> {
+        self.sql.exec(
+            "CREATE TABLE IF NOT EXISTS agent_state (
+                agent_id TEXT PRIMARY KEY,
+                state BLOB NOT NULL
+            );",
+            None,
+        )?;
+        self.sql.exec(
+            "CREATE TABLE IF NOT EXISTS agent_kv (
+                agent_id TEXT NOT NULL,
+                key TEXT NOT NULL,
+                value BLOB NOT NULL,
+                PRIMARY KEY (agent_id, key)
+            );",
+            None,
+        )?;
+        Ok(())
+    }
+
+    fn exec(
+        &self,
+        query: &str,
+        bindings: Option<Vec<SqlStorageValue>>,
+    ) -> StorageResult<worker::sql::SqlCursor> {
+        self.sql.exec(query, bindings).map_err(StorageError::from)
+    }
+}
+
+#[cfg(feature = "cloudflare")]
+#[derive(Deserialize)]
+struct ValueRow {
+    value: Vec<u8>,
+}
+
+#[cfg(feature = "cloudflare")]
+#[derive(Deserialize)]
+struct StateRow {
+    state: Vec<u8>,
+}
+
+#[cfg(feature = "cloudflare")]
+#[derive(Deserialize)]
+struct KeyRow {
+    key: String,
+}
+
+#[cfg(feature = "cloudflare")]
+#[async_trait]
+impl AgentStorage for CloudflareStorage {
+    async fn load_state(&self, agent_id: &AgentId) -> StorageResult<Option<Vec<u8>>> {
+        let cursor = self.exec(
+            "SELECT state FROM agent_state WHERE agent_id = ?1",
+            Some(vec![SqlStorageValue::from(agent_id.as_str())]),
+        )?;
+        let rows: Vec<StateRow> = cursor.to_array().map_err(StorageError::from)?;
+        Ok(rows.into_iter().next().map(|row| row.state))
+    }
+
+    async fn save_state(&self, agent_id: &AgentId, state: &[u8]) -> StorageResult<()> {
+        self.exec(
+            "INSERT OR REPLACE INTO agent_state (agent_id, state) VALUES (?1, ?2)",
+            Some(vec![
+                SqlStorageValue::from(agent_id.as_str()),
+                SqlStorageValue::from(state.to_vec()),
+            ]),
+        )?;
+        Ok(())
+    }
+
+    async fn delete_state(&self, agent_id: &AgentId) -> StorageResult<()> {
+        self.exec(
+            "DELETE FROM agent_state WHERE agent_id = ?1",
+            Some(vec![SqlStorageValue::from(agent_id.as_str())]),
+        )?;
+        Ok(())
+    }
+
+    async fn get(&self, agent_id: &AgentId, key: &str) -> StorageResult<Option<Vec<u8>>> {
+        let cursor = self.exec(
+            "SELECT value FROM agent_kv WHERE agent_id = ?1 AND key = ?2",
+            Some(vec![
+                SqlStorageValue::from(agent_id.as_str()),
+                SqlStorageValue::from(key),
+            ]),
+        )?;
+        let rows: Vec<ValueRow> = cursor.to_array().map_err(StorageError::from)?;
+        Ok(rows.into_iter().next().map(|row| row.value))
+    }
+
+    async fn set(&self, agent_id: &AgentId, key: &str, value: &[u8]) -> StorageResult<()> {
+        self.exec(
+            "INSERT OR REPLACE INTO agent_kv (agent_id, key, value) VALUES (?1, ?2, ?3)",
+            Some(vec![
+                SqlStorageValue::from(agent_id.as_str()),
+                SqlStorageValue::from(key),
+                SqlStorageValue::from(value.to_vec()),
+            ]),
+        )?;
+        Ok(())
+    }
+
+    async fn delete(&self, agent_id: &AgentId, key: &str) -> StorageResult<()> {
+        self.exec(
+            "DELETE FROM agent_kv WHERE agent_id = ?1 AND key = ?2",
+            Some(vec![
+                SqlStorageValue::from(agent_id.as_str()),
+                SqlStorageValue::from(key),
+            ]),
+        )?;
+        Ok(())
+    }
+
+    async fn list(&self, agent_id: &AgentId, prefix: &str) -> StorageResult<Vec<String>> {
+        let pattern = format!("{}%", prefix);
+        let cursor = self.exec(
+            "SELECT key FROM agent_kv WHERE agent_id = ?1 AND key LIKE ?2 ORDER BY key",
+            Some(vec![
+                SqlStorageValue::from(agent_id.as_str()),
+                SqlStorageValue::from(pattern.as_str()),
+            ]),
+        )?;
+        let rows: Vec<KeyRow> = cursor.to_array().map_err(StorageError::from)?;
+        Ok(rows.into_iter().map(|row| row.key).collect())
+    }
+
+    async fn transaction(&self, agent_id: &AgentId, ops: Vec<StorageOp>) -> StorageResult<()> {
+        self.exec("BEGIN", None)?;
+        let mut result = Ok(());
+
+        for op in ops {
+            let op_result = match op {
+                StorageOp::Set { key, value } => self.exec(
+                    "INSERT OR REPLACE INTO agent_kv (agent_id, key, value) VALUES (?1, ?2, ?3)",
+                    Some(vec![
+                        SqlStorageValue::from(agent_id.as_str()),
+                        SqlStorageValue::from(key.as_str()),
+                        SqlStorageValue::from(value),
+                    ]),
+                ),
+                StorageOp::Delete { key } => self.exec(
+                    "DELETE FROM agent_kv WHERE agent_id = ?1 AND key = ?2",
+                    Some(vec![
+                        SqlStorageValue::from(agent_id.as_str()),
+                        SqlStorageValue::from(key.as_str()),
+                    ]),
+                ),
+                StorageOp::SetState { state } => self.exec(
+                    "INSERT OR REPLACE INTO agent_state (agent_id, state) VALUES (?1, ?2)",
+                    Some(vec![
+                        SqlStorageValue::from(agent_id.as_str()),
+                        SqlStorageValue::from(state),
+                    ]),
+                ),
+                StorageOp::DeleteState => self.exec(
+                    "DELETE FROM agent_state WHERE agent_id = ?1",
+                    Some(vec![SqlStorageValue::from(agent_id.as_str())]),
+                ),
+            };
+
+            if let Err(err) = op_result {
+                result = Err(err);
+                break;
+            }
+        }
+
+        if result.is_ok() {
+            self.exec("COMMIT", None)?;
+        } else {
+            let _ = self.exec("ROLLBACK", None);
+        }
+
+        result.map(|_| ())
+    }
+}
+
+#[cfg(feature = "cloudflare")]
+impl From<worker::Error> for StorageError {
+    fn from(err: worker::Error) -> Self {
         StorageError::Other(err.to_string())
     }
 }
